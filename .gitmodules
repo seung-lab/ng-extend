@@ -1,0 +1,4 @@
+[submodule "third_party/neuroglancer"]
+	path = third_party/neuroglancer
+	url = https://github.com/seung-lab/neuroglancer.git
+	branch = cj_expose_auth_token 
