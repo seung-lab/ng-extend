@@ -8,12 +8,14 @@ import {disableContextMenu, disableWheel} from 'neuroglancer/ui/disable_default_
 import {DisplayContext} from 'neuroglancer/display_context';
 import {StatusMessage} from 'neuroglancer/status';
 import {Viewer} from 'neuroglancer/viewer';
-import {app} from './vueapp';
 
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
 import {UrlHashBinding} from 'neuroglancer/ui/url_hash_binding';
 
+import {setupVueApp} from './vueapp';
+
 window.addEventListener('DOMContentLoaded', () => {
+  setupVueApp();
   setupViewer();
 });
 
@@ -53,9 +55,15 @@ function makeExtendViewer() {
   }
 }
 
+import {authTokenShared} from "neuroglancer/authentication/frontend";
+import { storeProxy } from './state';
+
 class ExtendViewer extends Viewer {
   constructor(public display: DisplayContext) {
     super(display);
-    app.$root.$emit('ng-viewer-loaded');
+    authTokenShared!.changed.add(() => {
+      storeProxy.fetchLoggedInUser();
+    });
+    storeProxy.fetchLoggedInUser();
   }
 }

@@ -1,8 +1,11 @@
-import Vue from 'vue';
+import {store, Vue} from "./state";
 import App from 'components/App.vue';
 
-export const app = new Vue({
-  render: h => h(App)
-});
-
-app.$mount('#vueApp');
+export function setupVueApp() {
+  const app = new Vue({
+    store,
+    render: h => h(App),
+  });
+  
+  app.$mount('#vueApp');
+}

@@ -1,6 +1,6 @@
 <template>
   <div id="vueMain">
-    <Auth />
+    <auth />
     <div id="neuroglancer-container"></div>
   </div>
 </template>
@@ -10,7 +10,7 @@ import Vue from "vue";
 import Auth from "components/Auth.vue";
 
 export default Vue.extend({
-  components: { Auth }
+  components: { Auth },
 });
 </script>
 
