@@ -13,14 +13,18 @@ import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/d
 import {UrlHashBinding} from 'neuroglancer/ui/url_hash_binding';
 
 import {setupVueApp} from './vueapp';
+import { storeProxy } from './state';
 
 window.addEventListener('DOMContentLoaded', () => {
   setupVueApp();
   setupViewer();
+  storeProxy.loadActiveDataset();
 });
 
+export let viewer: Viewer|null = null;
+
 function setupViewer() {
-  let viewer = (<any>window)['viewer'] = makeExtendViewer();
+  viewer = (<any>window)['viewer'] = makeExtendViewer();
   setDefaultInputEventBindings(viewer.inputEventBindings);
 
   const hashBinding = viewer.registerDisposer(new UrlHashBinding(viewer.state));
@@ -56,11 +60,15 @@ function makeExtendViewer() {
 }
 
 import {authTokenShared} from "neuroglancer/authentication/frontend";
-import { storeProxy } from './state';
 
 class ExtendViewer extends Viewer {
   constructor(public display: DisplayContext) {
-    super(display);
+    super(display, {
+      showLayerDialog: false,
+      showUIControls: true,
+      showPanelBorders: true,
+    });
+
     authTokenShared!.changed.add(() => {
       storeProxy.fetchLoggedInUser();
     });
