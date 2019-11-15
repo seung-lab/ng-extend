@@ -9,7 +9,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: Install ng-extend
     - run: git submodule init
     - run: git submodule update
     - run: npm i
