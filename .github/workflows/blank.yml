@@ -9,5 +9,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: Run a one-line script
-      run: echo Hello, world
+    - name: Install ng-extend
+    - run: git submodule init
+    - run: git submodule update
+    - run: npm i
+    - run: cd third_party/neuroglancer/ && npm i && cd ../.
