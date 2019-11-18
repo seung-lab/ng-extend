@@ -9,7 +9,16 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '10.x'
     - run: git submodule init
     - run: git submodule update
     - run: npm i
     - run: cd third_party/neuroglancer/ && npm i && cd ../.
+    - run: npm run build
+    - name: Extract branch name
+      id: get_branch
+      shell: bash
+      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / -)"
+    - run: echo ${{ steps.get_branch.outputs.branch }}
