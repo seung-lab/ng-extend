@@ -28,4 +28,4 @@ jobs:
         PROJECT_ID: seung-lab
         APPLICATION_CREDENTIALS: ${{ secrets.SA_GOOGLE_APPS_DEPLOY }}
       with:
-        args: app deploy appengine/frontend/app.yaml --no-promote --verbose --version ${{ steps.get_branch.outputs.branch }}
+        args: app deploy appengine/frontend/app.yaml --no-promote --version ${{ steps.get_branch.outputs.branch }}
