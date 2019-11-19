@@ -16,8 +16,8 @@ jobs:
     - run: git submodule update
     - run: npm i
     - run: cd third_party/neuroglancer/ && npm i && cd ../.
-    - run: npm run build-python-min
-    - run: cp -r ./dist/python-min appengine/frontend/static/
+    - run: npm run build-min
+    - run: cp -r ./dist/build-min appengine/frontend/static/
     - name: Extract branch name
       id: get_branch
       shell: bash
