@@ -17,7 +17,7 @@ jobs:
     - run: npm i
     - run: cd third_party/neuroglancer/ && npm i && cd ../.
     - run: npm run build
-    - run: cp -r ./dist/build appengine/frontend/static/
+    - run: cp -r ./dist/dev appengine/frontend/static/
     - name: Extract branch name
       id: get_branch
       shell: bash
