@@ -1,0 +1,41 @@
+name: BuildAndDeploy
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '10.x'
+    - run: git submodule init
+    - run: git submodule update
+    - run: npm i
+    - run: cd third_party/neuroglancer/ && npm i && cd ../.
+    - run: npm run build
+    - run: cp -r ./dist/dev appengine/frontend/static/
+    - name: Extract branch name
+      id: get_branch
+      shell: bash
+      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / - | tr _ -)"
+    - run: echo ${{ steps.get_branch.outputs.branch }}
+    - name: deploy to gcloud master
+      if: steps.get_branch.outputs.branch == 'master'
+      uses: actions-hub/gcloud@271.0.0
+      env:
+        PROJECT_ID: seung-lab
+        APPLICATION_CREDENTIALS: ${{ secrets.SA_GOOGLE_APPS_DEPLOY }}
+      with:
+        args: app deploy appengine/frontend/app.yaml --promote --version ${{ steps.get_branch.outputs.branch }}
+    - name: deploy to gcloud dev branch
+      if: steps.get_branch.outputs.branch != 'master'
+      uses: actions-hub/gcloud@271.0.0
+      env:
+        PROJECT_ID: seung-lab
+        APPLICATION_CREDENTIALS: ${{ secrets.SA_GOOGLE_APPS_DEPLOY }}
+      with:
+        args: app deploy appengine/frontend/app.yaml --no-promote --version ${{ steps.get_branch.outputs.branch }}
