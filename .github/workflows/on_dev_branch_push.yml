@@ -1,0 +1,53 @@
+name: BuildAndDeployDevBranch
+
+on:
+  push:
+    branches-ignore:
+      - 'master'
+
+jobs:
+  build-and-deploy:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '10.x'
+    - run: git submodule init
+    - run: git submodule update
+    - run: npm i
+    - run: cd third_party/neuroglancer/ && npm i && cd ../.
+    - run: npm run build
+    - run: cp -r ./dist/dev appengine/frontend/static/
+    - name: Extract branch name
+      id: get_branch
+      shell: bash
+      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / - | tr _ -)"
+    - run: echo ${{ steps.get_branch.outputs.branch }}
+    - name: start deployment
+      uses: bobheadxi/deployments@master
+      id: deployment
+      with:
+        step: start
+        token: ${{ secrets.GITHUB_TOKEN }}
+        env: ${{ steps.get_branch.outputs.branch }}
+        desc: Setting up staging deployment for ${{ steps.get_branch.outputs.branch }}
+    - name: deploy to gcloud dev branch
+      uses: actions-hub/gcloud@271.0.0
+      env:
+        PROJECT_ID: seung-lab
+        APPLICATION_CREDENTIALS: ${{ secrets.SA_GOOGLE_APPS_DEPLOY }}
+      with:
+        args: app deploy appengine/frontend/app.yaml --no-promote --version ${{ steps.get_branch.outputs.branch }}
+    - name: update deployment status
+      uses: bobheadxi/deployments@master
+      if: always()
+      with:
+        step: finish
+        token: ${{ secrets.GITHUB_TOKEN }}
+        env: ${{ steps.deployment.outputs.env }}
+        env_url: https://${{ steps.get_branch.outputs.branch }}-dot-ngextend-dot-seung-lab.appspot.com
+        status: ${{ job.status }}
+        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
