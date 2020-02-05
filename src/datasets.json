@@ -1,0 +1,30 @@
+[
+  {
+    "name": "production",
+    "active": false,
+    "layers": [
+      {
+        "type": "image",
+        "source": "precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02"
+      },
+      {
+        "type": "segmentation_with_graph",
+        "source": "graphene://https://fafbv2.dynamicannotationframework.com/segmentation/1.0/fly_v31"
+      }
+    ]
+  },
+  {
+    "name": "sandbox",
+    "active": false,
+    "layers": [
+      {
+        "type": "image",
+        "source": "precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02"
+      },
+      {
+        "type": "segmentation_with_graph",
+        "source": "graphene://https://fafbv2.dynamicannotationframework.com/segmentation/1.0/fly_v26"
+      }
+    ]
+  }
+]
