@@ -3,6 +3,7 @@
       v-on:keyup.t="appState.showCellChooser = !appState.showCellChooser">
     <extension-bar />
     <div id="neuroglancer-container"></div>
+    <leaderboard />
     <overlay-container/>
   </div>
 </template>
@@ -11,10 +12,11 @@
 import Vue from "vue";
 import ExtensionBar from "components/ExtensionBar.vue";
 import OverlayContainer from "components/OverlayContainer.vue";
+import Leaderboard from "components/Leaderboard.vue";
 import {storeProxy} from "../state";
 
 export default Vue.extend({
-  components: { ExtensionBar, OverlayContainer },
+  components: { ExtensionBar, OverlayContainer, Leaderboard },
   data: () => {
     return {
       appState: storeProxy,
