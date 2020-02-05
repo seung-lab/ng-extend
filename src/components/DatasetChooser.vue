@@ -1,17 +1,16 @@
 <template>
-  <div class="overlay" @click="$emit('hide')" @mousedown.stop.prevent>
-    <div id="datasetList" class="overlay-content" @click.stop.prevent>
-      <div class="title">Datasets</div>
-      <ul>
-        <li v-for="dataset of datasets" v-bind:key="dataset.name" :class="{selected: dataset.active}" @click="selectDataset(dataset)">{{ dataset.name }}</li>
-      </ul>
-    </div>
-  </div>
+  <modal-overlay @hide="$emit('hide')" class="list">
+    <div class="title">Datasets</div>
+    <ul>
+      <li v-for="dataset of datasets" v-bind:key="dataset.name" :class="{selected: dataset === activeDataset}" @click="selectDataset(dataset)">{{ dataset.name }}</li>
+    </ul>
+  </modal-overlay>
 </template>
 
 <script lang="ts">
 import Vue from "vue";
-import {storeProxy, Dataset} from "../state";
+import {storeProxy, DatasetDescription} from "../state";
+import ModalOverlay from "components/ModalOverlay.vue";
 
 export default Vue.extend({
   data() {
@@ -19,13 +18,17 @@ export default Vue.extend({
       appState: storeProxy
     }
   },
+  components: { ModalOverlay },
   computed: {
     datasets() {
       return storeProxy.datasets;
-    }
+    },
+    activeDataset() {
+      return storeProxy.datasets;
+    },
   },
   methods: {
-    selectDataset: async function(dataset: Dataset) {
+    selectDataset: async function(dataset: DatasetDescription) {
       const success = await this.appState.selectDataset(dataset);
 
       if (success) {
@@ -39,34 +42,4 @@ export default Vue.extend({
 </script>
 
 <style>
-@import "../common.css";
-
-#datasetList {
-  min-width: 250px;
-}
-
-#datasetList .title {
-  background-color: lightgray;
-  font-size: 1.25em;
-}
-
-#datasetList li, #datasetList .title {
-  height: 48px;
-  box-sizing: border-box;
-  padding: 10px;
-  display: flex;
-  align-items: center;
-}
-
-#datasetList li {
-  cursor: pointer;
-}
-
-#datasetList li:hover {
-  background-color: #f1f1f1;
-}
-
-#datasetList li.selected {
-  background-color: lightgreen;
-}
 </style>

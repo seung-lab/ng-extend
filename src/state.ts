@@ -1,5 +1,7 @@
 import { createModule, action, createProxy, extractVuexModule } from "vuex-class-component";
 import { authFetch, authTokenShared } from "neuroglancer/authentication/frontend";
+import { SegmentationUserLayer } from "neuroglancer/segmentation_user_layer";
+import { Uint64 } from "neuroglancer/util/uint64";
 
 import {viewer} from "./main";
 
@@ -8,25 +10,32 @@ interface LoggedInUser {
   email: string;
 }
 
-interface Layer {
+interface LayerDescription {
   source: string,
   type: "image"|"segmentation"|"segmentation_with_graph"
 }
 
-export interface Dataset {
+export interface DatasetDescription {
   name: string,
-  layers: Layer[],
-  active: boolean,
+  layers: LayerDescription[],
+  curatedCells?: CellDescription[]
+}
+
+export interface CellDescription {
+  id: string,
 }
 
 class AppStore extends createModule({strict: false}) {
   loggedInUser: LoggedInUser|null = null;
   showDatasetChooser: boolean = false;
+  showCellChooser: boolean = false;
 
-  datasets: Dataset[] = [
+  activeDataset: DatasetDescription|null = null;
+  activeCells: CellDescription[] = [];
+
+  datasets: DatasetDescription[] = [
     {
       name: "production",
-      active: false,
       layers: [
         {
           type: "image",
@@ -36,11 +45,15 @@ class AppStore extends createModule({strict: false}) {
           type: "segmentation_with_graph",
           source: "graphene://https://fafbv2.dynamicannotationframework.com/segmentation/1.0/fly_v31"
         }
+      ],
+      curatedCells: [
+        {
+          id: "720575940650468481",
+        }
       ]
     },
     {
       name: "sandbox",
-      active: false,
       layers: [
         {
           type: "image",
@@ -50,6 +63,14 @@ class AppStore extends createModule({strict: false}) {
           type: "segmentation_with_graph",
           source: "graphene://https://fafbv2.dynamicannotationframework.com/segmentation/1.0/fly_v26"
         }
+      ],
+      curatedCells: [
+        {
+          id: "720575940625416797",
+        },
+        {
+          id: "720575940637436173",
+        },
       ]
     }
   ];
@@ -59,44 +80,130 @@ class AppStore extends createModule({strict: false}) {
 
     if (numberOfLayers > 0) {
       const firstLayerName = viewer!.layerManager.managedLayers[0].name.split('-')[0];
-      for (let datasets of this.datasets) {
-        if (datasets.name === firstLayerName) {
+      for (let dataset of this.datasets) {
+        if (dataset.name === firstLayerName) {
           // TODO, should check to see the layers are correct
-          datasets.active = true;
-
-          // force update
-          this.datasets = this.datasets;
+          this.activeDataset = dataset;
           break;
         }
       }
     } else {
       storeProxy.showDatasetChooser = true;
     }
+
+    const layers = viewer!.layerManager.managedLayers;
+
+    for (const {layer} of layers) {
+      if (layer instanceof SegmentationUserLayer) {
+        console.log('root segments callback 2');
+        layer.displayState.rootSegments.changed.add(() => {
+          console.log('root segments changed! 2');
+          this.refreshActiveCells();
+        });
+        this.refreshActiveCells();
+      }
+    }
   }
 
-  @action async selectDataset(dataset: Dataset) {
+  @action async refreshActiveCells() {
     if (!viewer) {
       return false;
     }
 
-    for (let v of this.datasets.values()) {
-      v.active = false;
+    if (!this.activeDataset || !this.activeDataset.curatedCells) {
+      return false;
     }
-    dataset.active = true;
-    // force update
-    this.datasets = this.datasets;
+
+    const layers = viewer.layerManager.managedLayers;
+
+    for (const {layer} of layers) {
+      if (layer instanceof SegmentationUserLayer) {
+        let changes = false;
+        // await layer.multiscaleSource!;
+
+        console.log('clearing active cells!');
+        this.activeCells = [];
+
+        console.log('---- checking active');
+
+        console.log('active roots', layer.displayState.rootSegments);
+
+        for (let segment of layer.displayState.rootSegments) {
+          console.log('we have a segment: ', segment.toString());
+          for (let cell of this.activeDataset.curatedCells) {
+            if (segment.toString() === cell.id) {
+              console.log('segment confirmed curated', cell.id);
+              this.activeCells.push(cell);
+              changes = true;
+            }
+          }
+        }
+
+        if (changes) {
+          // force update
+          // this.activeCells = this.activeCells;
+        }
+
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  @action async selectDataset(dataset: DatasetDescription) {
+    if (!viewer) {
+      return false;
+    }
+
+    this.activeDataset = dataset;
 
     viewer.layerManager.clear();
     viewer.navigationState.position.spatialCoordinatesValid = false;
 
-    for (let layer of dataset.layers) {
-      viewer.layerManager.addManagedLayer(viewer.layerSpecification.getLayer(`${dataset.name}-${layer.type}`, {
-        source: layer.source,
-        type: layer.type,
-      }));
+    for (let layerDesc of dataset.layers) {
+      const layerWithSpec = viewer.layerSpecification.getLayer(`${dataset.name}-${layerDesc.type}`, layerDesc);
+      viewer.layerManager.addManagedLayer(layerWithSpec);
+
+      const {layer} = layerWithSpec;
+
+      if (layer instanceof SegmentationUserLayer) {
+        await layer.multiscaleSource!;
+        console.log('root segments callback 1');
+        layer.displayState.rootSegments.changed.add(() => {
+          console.log('root segments changed 1');
+          this.refreshActiveCells();
+        });
+        this.refreshActiveCells();
+      }
     }
 
     return true;
+  }
+
+  @action async selectCell(cell: CellDescription) {
+    if (!viewer) {
+      return false;
+    }
+
+    console.log('selectCell');
+    const layers = viewer.layerManager.managedLayers;
+
+    for (const {layer} of layers) {
+      if (layer instanceof SegmentationUserLayer) {
+        console.log('we have a seg layer');
+        console.log('want to select cell', cell.id);
+        await layer.multiscaleSource!;
+        const uint64Id = new Uint64().parseString(cell.id, 10);
+        layer.displayState.segmentSelectionState.set(uint64Id);
+        layer.displayState.segmentSelectionState.setRaw(uint64Id);
+        layer.selectSegment();
+        console.log('selectedCell', cell.id);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   @action async fetchLoggedInUser() {

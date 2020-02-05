@@ -1,42 +1,31 @@
 <template>
-  <div id="vueMain" v-on:keyup.d="appState.showDatasetChooser = !appState.showDatasetChooser">
-    <div id="extensionBar">
-      <button @click="appState.showDatasetChooser=true">Choose Dataset</button>
-      <button @click="toggleNeuroglancerUI">Toggle Neuroglancer UI</button>
-      <auth />
-    </div>
+  <div id="vueMain" v-on:keyup.d="appState.showDatasetChooser = !appState.showDatasetChooser"
+      v-on:keyup.t="appState.showCellChooser = !appState.showCellChooser">
+    <extension-bar />
     <div id="neuroglancer-container"></div>
-    <div class="overlays">
-      <dataset-chooser v-if="appState.showDatasetChooser" @hide="appState.showDatasetChooser=false"/>
-    </div>
+    <overlay-container/>
   </div>
 </template>
 
 <script lang="ts">
 import Vue from "vue";
-import Auth from "components/Auth.vue";
-import DatasetChooser from "components/DatasetChooser.vue";
-import {viewer} from "../main";
+import ExtensionBar from "components/ExtensionBar.vue";
+import OverlayContainer from "components/OverlayContainer.vue";
 import {storeProxy} from "../state";
 
 export default Vue.extend({
+  components: { ExtensionBar, OverlayContainer },
   data: () => {
     return {
       appState: storeProxy,
-    }
-  },
-  components: { Auth, DatasetChooser },
-  methods: {
-    toggleNeuroglancerUI() {
-      if (viewer) {
-        viewer.uiConfiguration.showUIControls.toggle();
-      }
     }
   }
 });
 </script>
 
 <style>
+@import "../common.css";
+
 #vueMain {
   position: relative;
   display: flex;
@@ -49,15 +38,5 @@ export default Vue.extend({
   list-style: none;
   margin: 0;
   padding: 0;
-}
-
-#extensionBar {
-  display: grid;
-  grid-template-columns: min-content min-content min-content;
-  white-space: nowrap;
-  justify-content: end;
-  grid-column-gap: 20px;
-  height: 30px;
-  align-items: center;
 }
 </style>

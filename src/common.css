@@ -2,3 +2,49 @@
   --color-dark-bg: #222;
   --color-small-text: white;
 }
+
+.list li, .list .title {
+  height: 48px;
+  box-sizing: border-box;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.list li {
+  cursor: pointer;
+}
+
+.list li:hover {
+  background-color: #f1f1f1;
+}
+
+.list li.selected {
+  background-color: lightgreen;
+}
+
+button {
+  display: inline-block;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-decoration: none;
+  background: none;
+  color: #ffffff;
+  font-family: sans-serif;
+  font-size: 1rem;
+  cursor: pointer;
+  text-align: center;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  outline: none;
+  white-space: nowrap;
+}
+
+button:hover {
+  background-color: hsla(0,0%,100%,.1);
+}
+
+.flex-fill {
+  flex-grow: 1;
+}
