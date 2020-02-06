@@ -258,9 +258,6 @@ class AppStore extends createModule({strict: false}) {
       for (const entry of newEntries) {
         this.leaderboardEntries.push(entry);
       }
-
-      const loadingEl = <HTMLElement>document.querySelector('.nge-leaderboard-loading');
-      loadingEl.classList.toggle('hidden', true);
     });
   }
 
