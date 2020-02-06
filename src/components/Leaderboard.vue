@@ -1,15 +1,20 @@
 <template>
   <div class="nge-leaderboard">
-    <overlay class="modal nge-overlay-content">
-      <div id="title">Top Editors This Week</div>
-      <div id="entries">
-        <div class="nge-leaderboard-row"
-        v-for="entry of appState.leaderboardEntries" :key="entry.name">
-          <div>{{entry.name}}</div>
-          <div>{{entry.score}}</div>
-        </div>
+    <div class="nge-leaderboard-title">Top Editors This Week</div>
+    <div class="nge-leaderboard-entries">
+      <div class="nge-leaderboard-row nge-leaderboard-header">
+        <div>Rank</div>
+        <div>User ID</div>
+        <div># of Edits</div>
       </div>
-    </overlay>
+      <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
+        :class="'nge-leaderboard-row row' + (index % 2)">
+        <div class="nge-leaderboard-rank">{{index+1}}</div>
+        <div class="nge-leaderboard-name">{{entry.name}}</div>
+        <div class="nge-leaderboard-score">{{entry.score}}</div>
+      </div>
+    </div>
+    <div class="nge-leaderboard-loading" v-show="appState.leaderboardEntries.length === 0">Loading...</div>
   </div>
 </template>
 
@@ -32,20 +37,50 @@ export default Vue.extend({
 <style>
 .nge-leaderboard {
   width: 250px;
-  background-color: #222222;
-}
-
-#title {
-  background-color: #444444;
-  font-size: 1.25em;
-}
-
-#entries {
+  background-color: #111;
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-rows: min-content auto auto;
+}
+
+.nge-leaderboard-title {
+  background-color: #333;
+  font-size: 1.25em;
+  text-align: center;
+  padding-top: 0.5em;
+  padding-bottom: 0.5em;
+}
+
+.nge-leaderboard-entries {
+  display: grid;
+  grid-template-columns: auto minmax(auto, 40%) auto;
+  grid-auto-rows: min-content;
+  overflow: auto;
+}
+
+.nge-leaderboard-header {
+  font-weight: bold;
 }
 
 .nge-leaderboard-row {
   display: contents;
+}
+
+.nge-leaderboard-row > div {
+  padding-top: 0.5em;
+  padding-bottom: 0.5em;
+  padding-left: 0.4em;
+  padding-right: 0.4em;
+}
+
+.row1 > div {
+  background-color: #222;
+}
+
+.nge-leaderboard-rank {
+  text-align: right;
+}
+
+.nge-leaderboard-loading {
+  text-align: center;
 }
 </style>

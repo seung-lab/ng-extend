@@ -51,5 +51,6 @@ export default Vue.extend({
 
 #neuroglancer-container {
   width: 100% !important;
+  overflow: hidden;
 }
 </style>
