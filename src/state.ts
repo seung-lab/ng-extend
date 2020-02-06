@@ -272,6 +272,10 @@ class AppStore extends createModule({strict: false}) {
     }
     results.sort((a, b) => b.score - a.score);
 
+    /*for (let i = 0; i < 100; i++) {
+      results.push({name: 'fake' + i, score: 1});
+    }*/
+
     return results;
   }
 }
