@@ -1,20 +1,28 @@
 <template>
   <div class="nge-leaderboard">
-    <div class="nge-leaderboard-title">Top Editors This Week</div>
-    <div class="nge-leaderboard-entries">
-      <div class="nge-leaderboard-row nge-leaderboard-header">
-        <div>Rank</div>
-        <div>User ID</div>
-        <div># of Edits</div>
-      </div>
-      <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
-        :class="'nge-leaderboard-row row' + (index % 2)">
-        <div class="nge-leaderboard-rank">{{index+1}}</div>
-        <div class="nge-leaderboard-name">{{entry.name}}</div>
-        <div class="nge-leaderboard-score">{{entry.score}}</div>
-      </div>
+    <div class="nge-leaderboard-hidden" v-show="!visible">
+      <button class="nge-leaderboard-button show" title="Show Leaderboard" @click="setPanelVisible(true);">&gt;</button>
     </div>
-    <div class="nge-leaderboard-loading" v-show="appState.leaderboardEntries.length === 0">Loading...</div>
+    <div class="nge-leaderboard-visible" v-show="visible">
+      <div class="nge-leaderboard-titlebar">
+        <div class="nge-leaderboard-title">Top Editors This Week</div>
+        <button class="nge-leaderboard-button" title="Hide Leaderboard" @click="setPanelVisible(false);">&lt;</button>
+      </div>
+      <div class="nge-leaderboard-entries">
+        <div class="nge-leaderboard-row nge-leaderboard-header">
+          <div>Rank</div>
+          <div>User ID</div>
+          <div># of Edits</div>
+        </div>
+        <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
+          :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even')">
+          <div class="nge-leaderboard-rank">{{index+1}}</div>
+          <div class="nge-leaderboard-name">{{entry.name}}</div>
+          <div class="nge-leaderboard-score">{{entry.score}}</div>
+        </div>
+      </div>
+      <div class="nge-leaderboard-loading" v-show="appState.leaderboardEntries.length === 0">Loading...</div>
+    </div>
   </div>
 </template>
 
@@ -29,25 +37,41 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy,
+      visible: true
+    }
+  },
+  methods: {
+    setPanelVisible: function(visible: boolean) {
+      this.visible = visible;
     }
   }
 });
 </script>
 
 <style>
-.nge-leaderboard {
+.nge-leaderboard-visible {
   width: 250px;
   background-color: #111;
   display: grid;
   grid-template-rows: min-content auto auto;
 }
 
-.nge-leaderboard-title {
+.nge-leaderboard-titlebar {
   background-color: #333;
   font-size: 1.25em;
-  text-align: center;
   padding-top: 0.5em;
   padding-bottom: 0.5em;
+  display: grid;
+  grid-template-columns: auto auto;
+}
+
+.nge-leaderboard-title {
+  text-align: center;
+}
+
+.nge-leaderboard-button.show {
+  background-color: #333;
+  padding: 5px;
 }
 
 .nge-leaderboard-entries {
@@ -72,7 +96,7 @@ export default Vue.extend({
   padding-right: 0.4em;
 }
 
-.row1 > div {
+.rowOdd > div {
   background-color: #222;
 }
 
