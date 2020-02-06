@@ -20,6 +20,7 @@ window.addEventListener('DOMContentLoaded', () => {
   setupViewer();
   mergeTopBars();
   storeProxy.loadActiveDataset();
+  storeProxy.updateLeaderboard(); // TODO move this somewhere more appropriate
 });
 
 export let viewer: Viewer|null = null;

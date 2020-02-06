@@ -1,11 +1,14 @@
 <template>
   <div class="nge-leaderboard">
-    <overlay class="modal overlay-content">
-      <div class="title">Top Editors This Week</div>
-      <!--
-        TODO:
-        this should display each leaderboard entry in a grid
-      -->
+    <overlay class="modal nge-overlay-content">
+      <div id="title">Top Editors This Week</div>
+      <div id="entries">
+        <div class="nge-leaderboard-row"
+        v-for="entry of appState.leaderboardEntries" :key="entry.name">
+          <div>{{entry.name}}</div>
+          <div>{{entry.score}}</div>
+        </div>
+      </div>
     </overlay>
   </div>
 </template>
@@ -14,28 +17,35 @@
 import Vue from "vue";
 
 import Overlay from "components/Overlay.vue";
+import {storeProxy} from "../state";
 
 export default Vue.extend({
-  components: { Overlay }
+  components: { Overlay },
+  data: () => {
+    return {
+      appState: storeProxy,
+    }
+  }
 });
 </script>
 
 <style>
 .nge-leaderboard {
-  position: fixed;
-  left: 10%;
-  top: 30%;
-  width: 10%;
-  height: 40%;
-  z-index: 50;
+  width: 250px;
+  background-color: #222222;
 }
 
-.nge-overlay-content {
-  min-width: 250px;
-}
-
-.nge-overlay-content .title {
-  background-color: lightgray;
+#title {
+  background-color: #444444;
   font-size: 1.25em;
+}
+
+#entries {
+  display: grid;
+  grid-template-columns: auto auto;
+}
+
+.nge-leaderboard-row {
+  display: contents;
 }
 </style>

@@ -1,9 +1,11 @@
 <template>
-  <div id="vueMain" v-on:keyup.d="appState.showDatasetChooser = !appState.showDatasetChooser">
+  <div id="vueMain">
     <extension-bar class="ng-extend" />
-    <div id="neuroglancer-container"></div>
+    <div id="content">
+      <leaderboard />
+      <div id="neuroglancer-container"></div>
+    </div>
     <overlay-container class="ng-extend" />
-    <leaderboard />
   </div>
 </template>
 
@@ -39,5 +41,15 @@ export default Vue.extend({
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+#content {
+  display: grid;
+  grid-template-columns: min-content auto;
+  flex: 1;
+}
+
+#neuroglancer-container {
+  width: 100% !important;
 }
 </style>
