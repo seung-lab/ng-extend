@@ -251,23 +251,23 @@ class AppStore extends createModule({strict: false}) {
   }
 
   @action async updateLeaderboard() {
-    //TODO: "Loading..." message at start, remove when first update finishes?
     const url = "https://fafbv2.dynamicannotationframework.com/segmentation/api/v1/table/fly_v31/root/720575940621316277/tabular_change_log";
     authFetch(url).then(result => result.json()).then(async (json) => {
-      console.log('json:', json);
       const newEntries = await this.parseSegmentationLog(json);
       this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
       for (const entry of newEntries) {
         this.leaderboardEntries.push(entry);
       }
+
+      const loadingEl = <HTMLElement>document.querySelector('.nge-leaderboard-loading');
+      loadingEl.classList.toggle('hidden', true);
     });
   }
 
   @action async parseSegmentationLog(json: any): Promise<LeaderboardEntry[]> {
     const userScores = new Map<string, number>();
-    const operationIds = json["operation_id"];
-    const userIds = json["user_id"]; 
-    for (const index of Object.keys(operationIds)) {
+    const userIds = json["user_id"];
+    for (const index of Object.keys(userIds)) {
       const user = userIds[index];
       if (!userScores.has(user)) {
         userScores.set(user, 0);
@@ -278,7 +278,8 @@ class AppStore extends createModule({strict: false}) {
     for (const [user, score] of userScores.entries()) {
       results.push({name: user, score: score});
     }
-    results.sort((a, b) => b.score - a.score); //sort descending
+    results.sort((a, b) => b.score - a.score);
+
     return results;
   }
 }
