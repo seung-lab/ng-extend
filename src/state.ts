@@ -25,6 +25,11 @@ export interface CellDescription {
   id: string,
 }
 
+export interface LeaderboardEntry {
+  name: string,
+  score: number
+}
+
 class AppStore extends createModule({strict: false}) {
   loggedInUser: LoggedInUser|null = null;
   showDatasetChooser: boolean = false;
@@ -32,6 +37,8 @@ class AppStore extends createModule({strict: false}) {
 
   activeDataset: DatasetDescription|null = null;
   activeCells: CellDescription[] = [];
+
+  leaderboardEntries: LeaderboardEntry[] = [];
 
   datasets: DatasetDescription[] = [
     {
@@ -236,6 +243,38 @@ class AppStore extends createModule({strict: false}) {
 
       this.loggedInUser = null;
     }
+  }
+
+  @action async updateLeaderboard() {
+    //TODO: "Loading..." message at start, remove when first update finishes?
+    const url = "https://fafbv2.dynamicannotationframework.com/segmentation/api/v1/table/fly_v31/root/720575940621316277/tabular_change_log";
+    authFetch(url).then(result => result.json()).then(async (json) => {
+      console.log('json:', json);
+      const newEntries = await this.parseSegmentationLog(json);
+      this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
+      for (const entry of newEntries) {
+        this.leaderboardEntries.push(entry);
+      }
+    });
+  }
+
+  @action async parseSegmentationLog(json: any): Promise<LeaderboardEntry[]> {
+    const userScores = new Map<string, number>();
+    const operationIds = json["operation_id"];
+    const userIds = json["user_id"]; 
+    for (const index of Object.keys(operationIds)) {
+      const user = userIds[index];
+      if (!userScores.has(user)) {
+        userScores.set(user, 0);
+      }
+      userScores.set(user, userScores.get(user)! + 1);
+    }
+    const results: LeaderboardEntry[] = [];
+    for (const [user, score] of userScores.entries()) {
+      results.push({name: user, score: score});
+    }
+    results.sort((a, b) => b.score - a.score); //sort descending
+    return results;
   }
 }
 
