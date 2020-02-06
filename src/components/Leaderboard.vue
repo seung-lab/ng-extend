@@ -12,7 +12,7 @@
         <div class="nge-leaderboard-row nge-leaderboard-header">
           <div>Rank</div>
           <div>User ID</div>
-          <div># of Edits</div>
+          <div>Edits</div>
         </div>
         <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
           :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even')">
@@ -77,7 +77,7 @@ export default Vue.extend({
 
 .nge-leaderboard-entries {
   display: grid;
-  grid-template-columns: auto minmax(auto, 40%) auto;
+  grid-template-columns: auto minmax(auto, 50%) auto;
   grid-auto-rows: min-content;
   overflow: auto;
 }
@@ -103,6 +103,10 @@ export default Vue.extend({
 
 .nge-leaderboard-rank {
   text-align: right;
+}
+
+.nge-leaderboard-name {
+  overflow-wrap: break-word;
 }
 
 .nge-leaderboard-loading {
