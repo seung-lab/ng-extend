@@ -251,37 +251,14 @@ class AppStore extends createModule({strict: false}) {
   }
 
   @action async updateLeaderboard() {
-    const url = "https://fafbv2.dynamicannotationframework.com/segmentation/api/v1/table/fly_v31/root/720575940621316277/tabular_change_log";
-    authFetch(url).then(result => result.json()).then(async (json) => {
-      const newEntries = await this.parseSegmentationLog(json);
+    const url = "http://35.237.74.13:9000";
+    fetch(url).then(result => result.json()).then(async (json) => {
+      const newEntries = json.entries;
       this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
       for (const entry of newEntries) {
         this.leaderboardEntries.push(entry);
       }
     });
-  }
-
-  @action async parseSegmentationLog(json: any): Promise<LeaderboardEntry[]> {
-    const userScores = new Map<string, number>();
-    const userIds = json["user_id"];
-    for (const index of Object.keys(userIds)) {
-      const user = userIds[index];
-      if (!userScores.has(user)) {
-        userScores.set(user, 0);
-      }
-      userScores.set(user, userScores.get(user)! + 1);
-    }
-    const results: LeaderboardEntry[] = [];
-    for (const [user, score] of userScores.entries()) {
-      results.push({name: user, score: score});
-    }
-    results.sort((a, b) => b.score - a.score);
-
-    /*for (let i = 0; i < 100; i++) {
-      results.push({name: 'reallyreallylong firstandlastname' + i, score: 1});
-    }*/
-
-    return results;
   }
 }
 
