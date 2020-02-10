@@ -260,6 +260,13 @@ class AppStore extends createModule({strict: false}) {
       }
     });
   }
+
+  @action async submitMessage() {
+    const messageEl = <HTMLInputElement>document.getElementById('chatMessage');
+    const message = messageEl.value;
+    console.log('sending message', message);
+    messageEl.value = '';
+  }
 }
 
 import Vue from 'vue';

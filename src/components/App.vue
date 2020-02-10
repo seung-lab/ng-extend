@@ -2,7 +2,7 @@
   <div id="vueMain">
     <extension-bar class="ng-extend" />
     <div id="content">
-      <leaderboard />
+      <sidebar />
       <div id="neuroglancer-container"></div>
     </div>
     <overlay-container class="ng-extend" />
@@ -13,11 +13,11 @@
 import Vue from "vue";
 import ExtensionBar from "components/ExtensionBar.vue";
 import OverlayContainer from "components/OverlayContainer.vue";
-import Leaderboard from "components/Leaderboard.vue";
+import Sidebar from "components/Sidebar.vue";
 import {storeProxy} from "../state";
 
 export default Vue.extend({
-  components: { ExtensionBar, OverlayContainer, Leaderboard },
+  components: { ExtensionBar, OverlayContainer, Sidebar },
   data: () => {
     return {
       appState: storeProxy,

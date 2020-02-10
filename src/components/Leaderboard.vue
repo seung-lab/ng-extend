@@ -1,55 +1,41 @@
 <template>
   <div class="nge-leaderboard">
-    <div class="nge-leaderboard-hidden" v-show="!visible">
-      <button class="nge-leaderboard-button show" title="Show Leaderboard" @click="setPanelVisible(true);">&gt;</button>
+    <div class="nge-leaderboard-titlebar">
+      <div class="nge-leaderboard-title">Top Editors This Week</div>
     </div>
-    <div class="nge-leaderboard-visible" v-show="visible">
-      <div class="nge-leaderboard-titlebar">
-        <div class="nge-leaderboard-title">Top Editors This Week</div>
-        <button class="nge-leaderboard-button" title="Hide Leaderboard" @click="setPanelVisible(false);">&lt;</button>
+    <div class="nge-leaderboard-entries">
+      <div class="nge-leaderboard-row nge-leaderboard-header">
+        <div>Rank</div>
+        <div>User ID</div>
+        <div>Edits</div>
       </div>
-      <div class="nge-leaderboard-entries">
-        <div class="nge-leaderboard-row nge-leaderboard-header">
-          <div>Rank</div>
-          <div>User ID</div>
-          <div>Edits</div>
-        </div>
-        <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
-          :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even')">
-          <div class="nge-leaderboard-rank">{{index+1}}</div>
-          <div class="nge-leaderboard-name">{{entry.name}}</div>
-          <div class="nge-leaderboard-score">{{entry.score}}</div>
-        </div>
+      <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
+        :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even')">
+        <div class="nge-leaderboard-rank">{{index+1}}</div>
+        <div class="nge-leaderboard-name">{{entry.name}}</div>
+        <div class="nge-leaderboard-score">{{entry.score}}</div>
       </div>
-      <div class="nge-leaderboard-loading" v-show="appState.leaderboardEntries.length === 0">Loading...</div>
     </div>
+    <div class="nge-leaderboard-loading" v-show="appState.leaderboardEntries.length === 0">Loading...</div>
   </div>
 </template>
 
 <script lang="ts">
 import Vue from "vue";
 
-import Overlay from "components/Overlay.vue";
 import {storeProxy} from "../state";
 
 export default Vue.extend({
-  components: { Overlay },
   data: () => {
     return {
-      appState: storeProxy,
-      visible: true
-    }
-  },
-  methods: {
-    setPanelVisible: function(visible: boolean) {
-      this.visible = visible;
+      appState: storeProxy
     }
   }
 });
 </script>
 
 <style>
-.nge-leaderboard-visible {
+.nge-leaderboard {
   width: 250px;
   background-color: #111;
   display: grid;
@@ -68,11 +54,6 @@ export default Vue.extend({
 
 .nge-leaderboard-title {
   text-align: center;
-}
-
-.nge-leaderboard-button.show {
-  background-color: #333;
-  padding: 5px;
 }
 
 .nge-leaderboard-entries {
