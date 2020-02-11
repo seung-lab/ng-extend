@@ -267,6 +267,8 @@ class AppStore extends createModule({strict: false}) {
         this.leaderboardEntries.push(entry);
       }
     });
+
+    await new Promise(() => setTimeout(this.updateLeaderboard, 10000));
   }
 
   @action async joinChat() {
