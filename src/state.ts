@@ -45,7 +45,7 @@ class AppStore extends createModule({strict: false}) {
         },
         {
           type: "segmentation_with_graph",
-          source: "graphene://https://fafbv2.dynamicannotationframework.com/segmentation/1.0/fly_v31"
+          source: "graphene://https://test1.flywire-daf.com/segmentation/1.0/fly_v31"
         }
       ],
       curatedCells: [
@@ -63,7 +63,7 @@ class AppStore extends createModule({strict: false}) {
         },
         {
           type: "segmentation_with_graph",
-          source: "graphene://https://fafbv2.dynamicannotationframework.com/segmentation/1.0/fly_v26"
+          source: "graphene://https://test1.flywire-daf.com/segmentation/1.0/fly_v26"
         }
       ],
       curatedCells: [
