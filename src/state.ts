@@ -32,6 +32,7 @@ export interface LeaderboardEntry {
 
 export interface ChatMessage {
   name: string,
+  time: string,
   message: string
 }
 
@@ -270,6 +271,12 @@ class AppStore extends createModule({strict: false}) {
   @action async handleMessage(message: any) {
     const messageObj: ChatMessage = JSON.parse(message);
     this.chatMessages.push(messageObj);
+
+    // scroll to bottom of message box (once vue updates the page)
+    Vue.nextTick(() => {
+      const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-messages');
+      messageBox.scrollTo(0, messageBox.scrollHeight);
+    });
   }
 }
 

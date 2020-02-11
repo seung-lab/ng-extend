@@ -1,10 +1,10 @@
 <template>
   <div id="nge-sidebar">
     <div class="nge-sidebar-hidden" v-show="!visible">
-      <button class="nge-sidebar-button show" title="Show Sidebar" @click="setVisible(true);">↓</button>
+      <button class="nge-sidebar-button show" title="Show Sidebar" @click="setVisible(true);">→</button>
     </div>
     <div class="nge-sidebar-visible" v-show="visible">
-      <button class="nge-leaderboard-button" title="Hide Sidebar" @click="setVisible(false);">↑</button>
+      <button class="nge-leaderboard-button" title="Hide Sidebar" @click="setVisible(false);">←</button>
       <leaderboard />
       <chatbox />
     </div>
@@ -38,7 +38,7 @@ export default Vue.extend({
 .nge-sidebar-visible {
   width: 250px;
   display: grid;
-  grid-template-rows: min-content auto auto;
+  grid-template-rows: min-content 50% auto;
   height: 100%;
 }
 
