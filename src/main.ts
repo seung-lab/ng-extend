@@ -20,7 +20,7 @@ window.addEventListener('DOMContentLoaded', () => {
   setupViewer();
   mergeTopBars();
   storeProxy.loadActiveDataset();
-  storeProxy.updateLeaderboard(); // TODO move this somewhere more appropriate
+  storeProxy.updateLeaderboard();
   storeProxy.joinChat();
 });
 
