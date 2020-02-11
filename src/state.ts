@@ -33,6 +33,8 @@ class AppStore extends createModule({strict: false}) {
   activeDataset: DatasetDescription|null = null;
   activeCells: CellDescription[] = [];
 
+  activeDropdown: { [group: string]: number} = {};
+
   datasets: DatasetDescription[] = [
     {
       name: "production",

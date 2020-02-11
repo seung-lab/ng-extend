@@ -24,7 +24,7 @@ export default Vue.extend({
       return storeProxy.datasets;
     },
     activeDataset() {
-      return storeProxy.datasets;
+      return storeProxy.activeDataset;
     },
   },
   methods: {

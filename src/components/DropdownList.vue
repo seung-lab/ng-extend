@@ -1,7 +1,7 @@
 <template>
-  <div>
-    <button @click="visible=!visible"><slot name="buttonTitle">Button</slot></button>
-      <ul v-visible="visible" class="dropdownMenu">
+  <div class="dropdownList" :class="{ open: isActive }">
+    <button @click="toggleVisible"><slot name="buttonTitle">Button</slot></button>
+      <ul v-visible="isActive" class="dropdownMenu">
         <slot name="listItems"></slot>
       </ul>
   </div>
@@ -9,32 +9,44 @@
 
 <script lang="ts">
 import Vue from "vue";
+import {storeProxy} from "../state";
+
+let uuid = 0;
 
 export default Vue.extend({
+  props: ['dropdownGroup'],
   data() {
     return {
-      visible: false,
-      offRight: false,
+      appState: storeProxy,
+      id: uuid++,
     }
   },
   mounted() {
     console.log('mounted!');
-    document.body.addEventListener('mousedown', () => {
-      console.log('mousedown!');
-    });
+    // document.body.addEventListener('mousedown', () => {
+    //   console.log('mousedown!');
+    // });
 
-    document.getElementById('neuroglancerViewer')!.addEventListener('mousedown', () => {
-      console.log('mousedown ngc');
-    });
+    // document.getElementById('neuroglancerViewer')!.addEventListener('mousedown', () => {
+    //   console.log('mousedown ngc');
+    // });
   },
-  watch: {
-    visible: function (isVisible) {
-      if (isVisible)  {
-        const dropdownEl = this.$el.querySelector('.dropdownMenu')!;
+  computed: {
+    isActive(): boolean { // https://github.com/vuejs/vue/issues/8721#issuecomment-551301489
+      if (this.dropdownGroup) {
+        return this.appState.activeDropdown[this.dropdownGroup] === this.id;
+      }
 
-        const rect = dropdownEl.getBoundingClientRect();
-
-        this.offRight = rect.right > window.innerWidth;
+      return false;
+    },
+    activeDropdowns(): { [key: string]: number} {
+      return this.appState.activeDropdown;
+    }
+  },
+  methods: {
+    toggleVisible() {
+      if (this.dropdownGroup) {
+        Vue.set(this.appState.activeDropdown, this.dropdownGroup, this.isActive ? -1 : this.id);
       }
     }
   }
@@ -42,6 +54,20 @@ export default Vue.extend({
 </script>
 
 <style>
+.dropdownList {
+  position: relative;
+}
+
+.dropdownList > button {
+  width: 100%;
+  height: 100%;
+  padding: 0 4px;
+}
+
+.dropdownList.open > button {
+  background-color: gray;
+}
+
 .hideDropdown {
   position: absolute;
   left: 0;
@@ -54,8 +80,9 @@ export default Vue.extend({
 
 .dropdownMenu {
   position: absolute;
+  right: 0;
   top: 30px;
-  background-color: green;
+  background-color: var(--color-dark-bg);
 }
 
 .dropdownMenu > li > button {
