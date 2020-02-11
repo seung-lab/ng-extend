@@ -294,6 +294,22 @@ class AppStore extends createModule({strict: false}) {
     const now = new Date();
     const time = now.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
     messageObj.time = time;
+
+    if (messageObj.type === 'message') {
+      const numMessages = this.chatMessages.length;
+      let addInfo = true;
+      if (numMessages > 0) {
+        const lastMessage = this.chatMessages[numMessages - 1];
+        if (lastMessage.type === 'message' && lastMessage.name === messageObj.name) {
+          addInfo = false;
+        }
+      }
+      if (addInfo) {
+        const senderInfo: ChatMessage = { type: 'sender', name: messageObj.name, time: messageObj.time, message: undefined };
+        this.chatMessages.push(senderInfo);
+      }
+    }
+    
     this.chatMessages.push(messageObj);
 
     // scroll to bottom of message box (once vue updates the page)

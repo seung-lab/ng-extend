@@ -8,11 +8,12 @@
         v-for="(message, index) of appState.chatMessages"
         :key="index"
       >
+        <div class="nge-chatbox-message-info" v-if="message.type === 'sender'">
+          <div class="nge-chatbox-message-sender">{{message.name}}</div>
+          <div class="nge-chatbox-message-time">{{message.time}}</div>
+        </div>
+
         <div class="nge-chatbox-message" v-if="message.type === 'message'">
-          <div class="nge-chatbox-message-info">
-            <div class="nge-chatbox-message-sender">{{message.name}}</div>
-            <div class="nge-chatbox-message-time">{{message.time}}</div>
-          </div>
           <div class="nge-chatbox-message-content">{{message.message}}</div>
         </div>
 
