@@ -10,19 +10,19 @@
     "dev-server-python": "webpack-dev-server --config ./config/webpack.config.js --env=python-dev"
   },
   "dependencies": {
-    "direct-vuex": "^0.7.3",
-    "vue": "^2.6.10",
-    "vue-loader": "^15.7.1",
-    "vue-template-compiler": "^2.6.10",
-    "vuex": "^3.1.1",
-    "vuex-class-component": "^2.1.1",
-    "webpack": "^4.25.1"
+    "direct-vuex": "^0.7.6",
+    "vue": "^2.6.11",
+    "vue-loader": "^15.8.3",
+    "vue-template-compiler": "^2.6.11",
+    "vuex": "^3.1.2",
+    "vuex-class-component": "^2.2.1",
+    "webpack": "^4.41.5"
   },
   "devDependencies": {
     "html-webpack-plugin": "^3.2.0",
     "tslint-eslint-rules": "^4.1.1",
     "typescript": "2.6.1",
-    "webpack-cli": "^3.1.2",
-    "webpack-dev-server": ">=3.1.11"
+    "webpack-cli": "^3.3.10",
+    "webpack-dev-server": "^3.10.3"
   }
 }
