@@ -31,9 +31,10 @@ export interface LeaderboardEntry {
 }
 
 export interface ChatMessage {
+  type: string,
   name: string,
-  time: string,
-  message: string
+  time: string | undefined,
+  message: string | undefined
 }
 
 class AppStore extends createModule({strict: false}) {
@@ -268,8 +269,28 @@ class AppStore extends createModule({strict: false}) {
     });
   }
 
+  @action async joinChat() {
+    ws.onmessage = (event) => {
+      this.handleMessage(event.data);
+    };
+
+    await this.fetchLoggedInUser();
+    const joinMessage = JSON.stringify({
+      type: 'join',
+      name: this.loggedInUser ? this.loggedInUser.name : 'Guest'
+    });
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(joinMessage);
+    } else {
+      ws.onopen = () => { ws.send(joinMessage); };
+    }
+  }
+
   @action async handleMessage(message: any) {
     const messageObj: ChatMessage = JSON.parse(message);
+    const now = new Date();
+    const time = now.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
+    messageObj.time = time;
     this.chatMessages.push(messageObj);
 
     // scroll to bottom of message box (once vue updates the page)
@@ -282,6 +303,7 @@ class AppStore extends createModule({strict: false}) {
 
 import Vue from 'vue';
 import Vuex from 'vuex';
+import ws from './chat_socket';
 Vue.use(Vuex);
 
 export const store = new Vuex.Store({
@@ -292,8 +314,3 @@ export const store = new Vuex.Store({
 
 export const storeProxy = createProxy(store, AppStore);
 export {Vue}; // vue app needs to be instantiated from this modified VueConstructor
-
-import ws from "./chat_socket";
-ws.onmessage = (event) => {
-  storeProxy.handleMessage(event.data);
-};
