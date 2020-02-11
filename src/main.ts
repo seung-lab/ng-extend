@@ -21,6 +21,7 @@ window.addEventListener('DOMContentLoaded', () => {
   mergeTopBars();
   storeProxy.loadActiveDataset();
   storeProxy.updateLeaderboard(); // TODO move this somewhere more appropriate
+  storeProxy.joinChat();
 });
 
 export let viewer: Viewer|null = null;

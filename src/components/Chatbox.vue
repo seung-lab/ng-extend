@@ -3,12 +3,30 @@
     <div class="nge-chatbox-title">Chat</div>
     <div class="nge-chatbox-filler"></div>
     <div class="nge-chatbox-messages">
-      <div class="nge-chatbox-message" v-for="(message, index) of appState.chatMessages" :key="index">
-        <div class="nge-chatbox-message-info">
-          <div class="nge-chatbox-message-sender">{{message.name}}</div>
-          <div class="nge-chatbox-message-time">{{message.time}}</div>
+      <div
+        class="nge-chatbox-item"
+        v-for="(message, index) of appState.chatMessages"
+        :key="index"
+      >
+        <div class="nge-chatbox-message" v-if="message.type === 'message'">
+          <div class="nge-chatbox-message-info">
+            <div class="nge-chatbox-message-sender">{{message.name}}</div>
+            <div class="nge-chatbox-message-time">{{message.time}}</div>
+          </div>
+          <div class="nge-chatbox-message-content">{{message.message}}</div>
         </div>
-        <div class="nge-chatbox-message-content">{{message.message}}</div>
+
+        <div class="nge-chatbox-info" v-if="message.type === 'users'">
+          <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
+        </div>
+
+        <div class="nge-chatbox-info" v-if="message.type === 'join'">
+          <div class="nge-chatbox-info-content">{{message.name}} joined chat.</div>
+        </div>
+
+        <div class="nge-chatbox-info" v-if="message.type === 'leave'">
+          <div class="nge-chatbox-info-content">{{message.name}} left chat.</div>
+        </div>
       </div>
     </div>
     <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
@@ -37,9 +55,8 @@ export default Vue.extend({
       );
       const message = messageEl.value;
       messageEl.value = "";
-      const name = this.appState.loggedInUser ? this.appState.loggedInUser.name : "Guest";
 
-      const messageObj = { name: name, message: message };
+      const messageObj = { type: "message", message: message };
       ws.send(JSON.stringify(messageObj));
     }
   }
@@ -85,6 +102,13 @@ export default Vue.extend({
 .nge-chatbox-message-content {
   padding: 0.5em;
   padding-top: 0.15em;
+}
+
+.nge-chatbox-info-content {
+  padding: 0.5em;
+  padding-top: 0.15em;
+  text-align: center;
+  font-style: italic;
 }
 
 .nge-chatbox-sendmessage {
