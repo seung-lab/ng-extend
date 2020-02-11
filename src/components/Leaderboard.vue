@@ -48,8 +48,6 @@ export default Vue.extend({
   font-size: 1.25em;
   padding-top: 0.5em;
   padding-bottom: 0.5em;
-  display: grid;
-  grid-template-columns: auto auto;
 }
 
 .nge-leaderboard-title {
