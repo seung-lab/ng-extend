@@ -30,6 +30,11 @@ export interface LeaderboardEntry {
   score: number
 }
 
+export interface ChatMessage {
+  name: string,
+  message: string
+}
+
 class AppStore extends createModule({strict: false}) {
   loggedInUser: LoggedInUser|null = null;
   showDatasetChooser: boolean = false;
@@ -39,6 +44,7 @@ class AppStore extends createModule({strict: false}) {
   activeCells: CellDescription[] = [];
 
   leaderboardEntries: LeaderboardEntry[] = [];
+  chatMessages: ChatMessage[] = [];
 
   datasets: DatasetDescription[] = [
     {
@@ -246,7 +252,7 @@ class AppStore extends createModule({strict: false}) {
   }
 
   @action async updateLeaderboard() {
-    const url = "https://api.pyrdev.eyewire.org:9000";
+    const url = 'https://api.pyrdev.eyewire.org:9000';
     fetch(url).then(result => result.json()).then(async (json) => {
       const newEntries = json.entries;
       this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
@@ -256,11 +262,9 @@ class AppStore extends createModule({strict: false}) {
     });
   }
 
-  @action async submitMessage() {
-    const messageEl = <HTMLInputElement>document.getElementById('chatMessage');
-    const message = messageEl.value;
-    console.log('sending message', message);
-    messageEl.value = '';
+  @action async handleMessage(message: any) {
+    const messageObj: ChatMessage = JSON.parse(message);
+    this.chatMessages.push(messageObj);
   }
 }
 
@@ -276,3 +280,8 @@ export const store = new Vuex.Store({
 
 export const storeProxy = createProxy(store, AppStore);
 export {Vue}; // vue app needs to be instantiated from this modified VueConstructor
+
+import ws from "./chat_socket";
+ws.onmessage = (event) => {
+  storeProxy.handleMessage(event.data);
+};
