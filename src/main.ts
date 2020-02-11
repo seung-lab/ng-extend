@@ -19,7 +19,7 @@ window.addEventListener('DOMContentLoaded', () => {
   setupVueApp();
   setupViewer();
   storeProxy.loadActiveDataset();
-  storeProxy.updateLeaderboard(); // TODO move this somewhere more appropriate
+  storeProxy.updateLeaderboard();
   storeProxy.joinChat();
 });
 
