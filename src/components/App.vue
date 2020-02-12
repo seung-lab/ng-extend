@@ -1,9 +1,9 @@
 <template>
   <div id="vueMain" v-on:keyup.d="appState.showDatasetChooser = !appState.showDatasetChooser"
       v-on:keyup.t="appState.showCellChooser = !appState.showCellChooser">
-    <extension-bar />
+    <extension-bar class="ng-extend" />
     <div id="content">
-      <sidebar />
+      <sidebar class="ng-extend" />
       <div id="neuroglancer-container"></div>
     </div>
     <overlay-container/>

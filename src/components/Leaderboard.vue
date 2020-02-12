@@ -1,7 +1,7 @@
 <template>
   <div class="nge-leaderboard">
     <div class="nge-leaderboard-titlebar">
-      <div class="nge-leaderboard-title">Top Editors This Week</div>
+      <div class="nge-sidebar-section-title">Top Editors This Week</div>
     </div>
     <div class="nge-leaderboard-entries">
       <div class="nge-leaderboard-row nge-leaderboard-header">
@@ -52,13 +52,6 @@ export default Vue.extend({
   height: 100%;
 }
 
-.nge-leaderboard-titlebar {
-  background-color: #333;
-  font-size: 1.25em;
-  padding-top: 0.5em;
-  padding-bottom: 0.5em;
-}
-
 .nge-leaderboard-title {
   text-align: center;
 }
@@ -90,7 +83,7 @@ export default Vue.extend({
 }
 
 .nge-leaderboard-rank {
-  text-align: right;
+  text-align: center;
 }
 
 .nge-leaderboard-name {

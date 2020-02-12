@@ -23,7 +23,7 @@
   background-color: lightgreen;
 }
 
-button {
+.ng-extend button {
   display: inline-block;
   border: none;
   padding: 0;
