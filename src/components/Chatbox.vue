@@ -61,13 +61,13 @@ export default Vue.extend({
       ws.send(JSON.stringify(messageObj));
     },
     getPlace(name: string): string {
-      const places: string[] = ['first', 'second', 'third'];
+      const places: string[] = ['firstplace', 'secondplace', 'thirdplace'];
       for (let i = 0; i < places.length; i++) {
         if (storeProxy.leaderboardEntries.length > i && storeProxy.leaderboardEntries[i].name === name) {
           return ' ' + places[i];
         }
       }
-    return '';
+      return '';
     }
   }
 });
@@ -103,18 +103,6 @@ export default Vue.extend({
 
 .nge-chatbox-message-sender {
   font-weight: bold;
-}
-
-.nge-chatbox-message-sender.first {
-  color: gold;
-}
-
-.nge-chatbox-message-sender.second {
-  color: silver;
-}
-
-.nge-chatbox-message-sender.third {
-  color: #cd7f32;
 }
 
 .nge-chatbox-message-time {
