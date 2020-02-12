@@ -14,9 +14,10 @@
 <script lang="ts">
 import Vue from "vue";
 
-import {storeProxy} from "../state";
+import { storeProxy } from "../state";
 import Leaderboard from "components/Leaderboard.vue";
 import Chatbox from "components/Chatbox.vue";
+import Cookies from "js-cookie";
 
 export default Vue.extend({
   components: { Leaderboard, Chatbox },
@@ -24,12 +25,17 @@ export default Vue.extend({
     return {
       appState: storeProxy,
       visible: true
-    }
+    };
   },
   methods: {
     setVisible: function(visible: boolean) {
+      Cookies.set("visible", visible.toString());
       this.visible = visible;
     }
+  },
+  beforeMount() {
+    const visible = Cookies.get("visible");
+    this.visible = visible !== "false";
   }
 });
 </script>
@@ -58,6 +64,4 @@ export default Vue.extend({
 .thirdplace {
   color: #cd7f32;
 }
-
-
 </style>
