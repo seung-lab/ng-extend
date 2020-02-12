@@ -125,6 +125,10 @@ export default Vue.extend({
   align-self: end;
 }
 
+.nge-chatbox-sendmessage > button {
+  padding: 5px;
+}
+
 /*.nge-chatbox-sendmessage > input {
   color: #fff;
   background-color: #000;
