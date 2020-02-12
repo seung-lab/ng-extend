@@ -49,6 +49,14 @@ export default Vue.extend({
   padding: 5px;
 }
 
+.nge-sidebar-section-title {
+  background-color: #333;
+  font-size: 1.25em;
+  padding-top: 0.75em;
+  padding-bottom: 0.75em;
+  text-align: center;
+}
+
 .firstplace {
   color: gold;
 }
