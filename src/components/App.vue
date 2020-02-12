@@ -2,7 +2,7 @@
   <div id="vueMain">
     <extension-bar class="ng-extend" />
     <div id="content">
-      <sidebar />
+      <sidebar class="ng-extend" />
       <div id="neuroglancer-container"></div>
     </div>
     <overlay-container class="ng-extend" />

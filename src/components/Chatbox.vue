@@ -1,6 +1,6 @@
 <template>
   <div class="nge-chatbox">
-    <div class="nge-chatbox-title">Chat</div>
+    <div class="nge-sidebar-section-title">Chat</div>
     <div class="nge-chatbox-filler"></div>
     <div class="nge-chatbox-messages">
       <div
@@ -80,14 +80,6 @@ export default Vue.extend({
   background-color: #111;
 }
 
-.nge-chatbox-title {
-  background-color: #333;
-  font-size: 1.25em;
-  padding-top: 0.5em;
-  padding-bottom: 0.5em;
-  text-align: center;
-}
-
 .nge-chatbox-messages {
   overflow: auto;
   overflow-wrap: break-word;
@@ -125,8 +117,8 @@ export default Vue.extend({
   align-self: end;
 }
 
-.nge-chatbox-sendmessage > button {
-  padding: 5px;
+.nge-chatbox-sendmessage button {
+  padding: 5px !important;
 }
 
 /*.nge-chatbox-sendmessage > input {
