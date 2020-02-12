@@ -24,7 +24,7 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy,
-      visible: true
+      visible: Cookies.get("visible") !== "false"
     };
   },
   methods: {
@@ -32,10 +32,6 @@ export default Vue.extend({
       Cookies.set("visible", visible.toString());
       this.visible = visible;
     }
-  },
-  beforeMount() {
-    const visible = Cookies.get("visible");
-    this.visible = visible !== "false";
   }
 });
 </script>
