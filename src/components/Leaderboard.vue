@@ -10,7 +10,7 @@
         <div>Edits</div>
       </div>
       <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
-        :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even')">
+        :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
         <div class="nge-leaderboard-rank">{{index+1}}</div>
         <div class="nge-leaderboard-name">{{entry.name}}</div>
         <div class="nge-leaderboard-score">{{entry.score}}</div>
@@ -29,6 +29,15 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy
+    }
+  },
+  methods: {
+    getPlace(index: number): string {
+      const places: string[] = ['firstplace', 'secondplace', 'thirdplace'];
+      if (index < places.length) {
+        return ' ' + places[index];
+      }
+      return '';
     }
   }
 });

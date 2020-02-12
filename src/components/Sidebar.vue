@@ -46,4 +46,18 @@ export default Vue.extend({
   background-color: #222;
   padding: 5px;
 }
+
+.firstplace {
+  color: gold;
+}
+
+.secondplace {
+  color: silver;
+}
+
+.thirdplace {
+  color: #cd7f32;
+}
+
+
 </style>
