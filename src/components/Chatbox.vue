@@ -3,20 +3,11 @@
     <div class="nge-sidebar-section-title">Chat</div>
     <div class="nge-chatbox-filler"></div>
     <div class="nge-chatbox-messages">
-      <div
+      <span
         class="nge-chatbox-item"
         v-for="(message, index) of appState.chatMessages"
         :key="index"
       >
-        <div class="nge-chatbox-message-info" v-if="message.type === 'sender'">
-          <div :class="'nge-chatbox-message-sender' + getPlace(message.name)">{{message.name}}</div>
-          <div class="nge-chatbox-message-time">{{message.time}}</div>
-        </div>
-
-        <div class="nge-chatbox-message" v-if="message.type === 'message'">
-          <div class="nge-chatbox-message-content">{{message.message}}</div>
-        </div>
-
         <div class="nge-chatbox-info" v-if="message.type === 'users'">
           <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
         </div>
@@ -28,7 +19,26 @@
         <div class="nge-chatbox-info" v-if="message.type === 'leave'">
           <div class="nge-chatbox-info-content">{{message.name}} left chat.</div>
         </div>
-      </div>
+
+        <div class="nge-chatbox-message-info" v-if="message.type === 'sender'">
+          <div :class="'nge-chatbox-message-sender' + getPlace(message.name)">{{message.name}}</div>
+          <div class="nge-chatbox-message-time">{{message.time}}</div>
+        </div>
+
+        <span class="nge-chatbox-message" v-if="message.type === 'messagePart'">
+          <span class="nge-chatbox-message-content">{{message.message}}</span>
+        </span>
+
+        <span class="nge-chatbox-message" v-if="message.type === 'messageLink'">
+          <a class="nge-chatbox-message-content" target="_blank" v-bind:href="message.message">{{message.message}}</a>
+        </span>
+
+        <div class="nge-chatbox-message" v-if="message.type === 'messageEnd'"></div>
+
+        <!--<div class="nge-chatbox-message" v-if="message.type === 'message'">
+          <div class="nge-chatbox-message-content">{{message.message}}</div>
+        </div>-->
+      </span>
     </div>
     <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
       <input type="text" id="chatMessage" />
@@ -104,6 +114,10 @@ export default Vue.extend({
 .nge-chatbox-message-content {
   padding: 0.5em;
   padding-top: 0.15em;
+}
+
+a.nge-chatbox-message-content {
+  color: white;
 }
 
 .nge-chatbox-info-content {
