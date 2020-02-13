@@ -114,10 +114,14 @@ export default Vue.extend({
 .nge-chatbox-message-content {
   padding: 0.5em;
   padding-top: 0.15em;
+  display: inline-block;
+  width: 92%;
 }
 
 a.nge-chatbox-message-content {
   color: white;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .nge-chatbox-info-content {
