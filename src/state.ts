@@ -295,7 +295,7 @@ class AppStore extends createModule({strict: false}) {
       let addInfo = true;
       if (numMessages > 0) {
         const lastMessage = this.chatMessages[numMessages - 1];
-        if (lastMessage.type === 'message' && lastMessage.name === messageObj.name) {
+        if (lastMessage.type.startsWith('message') && lastMessage.name === messageObj.name) {
           addInfo = false;
         }
       }
@@ -303,6 +303,20 @@ class AppStore extends createModule({strict: false}) {
         const senderInfo: ChatMessage = { type: 'sender', name: messageObj.name, time: messageObj.time, message: undefined };
         this.chatMessages.push(senderInfo);
       }
+
+      // split message up into text and links
+      const messageParts = messageObj.message!.split(/(https?:\/\/\S+)/);
+      console.log(messageParts);
+      for (let i = 0; i < messageParts.length; i++) {
+        const messagePart: ChatMessage = {
+          type: i % 2 === 0 ? 'messagePart' : 'messageLink',
+          message: messageParts[i],
+          name: messageObj.name,
+          time: messageObj.time
+        }
+        this.chatMessages.push(messagePart);
+      }
+      messageObj.type = 'messageEnd';
     }
     
     this.chatMessages.push(messageObj);
