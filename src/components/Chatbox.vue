@@ -99,6 +99,7 @@ export default Vue.extend({
 .nge-chatbox-message-info {
   background-color: #222;
   padding: 0.5em;
+  margin-bottom: 0.5em;
   display: grid;
   grid-template-columns: minmax(auto, 70%) auto;
 }
