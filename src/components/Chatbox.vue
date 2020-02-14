@@ -23,7 +23,7 @@
         </div>
 
         <span class="nge-chatbox-message" v-if="message.type === 'messagePart'">
-          <span class="nge-chatbox-message-content">{{message.message}}</span>
+          <span class="nge-chatbox-message-content" :title="message.time">{{message.message}}</span>
         </span>
 
         <span class="nge-chatbox-message" v-if="message.type === 'messageLink'">
@@ -31,6 +31,7 @@
             class="nge-chatbox-message-content"
             target="_blank"
             v-bind:href="message.message"
+            :title="message.time"
           >{{message.message}}</a>
         </span>
 
