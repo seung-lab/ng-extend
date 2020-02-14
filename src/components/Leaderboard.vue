@@ -49,7 +49,6 @@ export default Vue.extend({
   background-color: #111;
   display: grid;
   grid-template-rows: min-content auto auto;
-  height: 100%;
 }
 
 .nge-leaderboard-title {
