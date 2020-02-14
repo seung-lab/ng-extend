@@ -1,12 +1,39 @@
 <template>
   <div id="nge-sidebar">
     <div class="nge-sidebar-hidden" v-show="!visible">
-      <button class="nge-sidebar-button show" title="Show Sidebar" @click="setVisible(true);">→</button>
+      <button class="nge-sidebar-button show" title="Show Sidebar" @click="setVisible(true);">🡆</button>
     </div>
-    <div class="nge-sidebar-visible" v-show="visible">
-      <button class="nge-leaderboard-button" title="Hide Sidebar" @click="setVisible(false);">←</button>
-      <leaderboard />
-      <chatbox />
+    <div :class="'nge-sidebar-visible ' + getSidebarItems()" v-show="visible">
+      <button class="nge-sidebar-button" title="Hide Sidebar" @click="setVisible(false);">🡄</button>
+
+      <leaderboard v-show="showLeaderboard" />
+      <div class="nge-sidebar-buttons">
+        <button
+          class="nge-sidebar-button"
+          title="Show Leaderboard"
+          @click="setLeaderboardVisible(true);"
+          v-show="!showLeaderboard"
+        >⇓</button>
+        <button
+          class="nge-sidebar-button"
+          title="Show Chat"
+          @click="setChatVisible(true);"
+          v-show="!showChat"
+        >⇑</button>
+        <button
+          class="nge-sidebar-button"
+          title="Hide Leaderboard"
+          @click="setLeaderboardVisible(false);"
+          v-show="showLeaderboard && showChat"
+        >⇑</button>
+        <button
+          class="nge-sidebar-button"
+          title="Hide Chat"
+          @click="setChatVisible(false);"
+          v-show="showLeaderboard && showChat"
+        >⇓</button>
+      </div>
+      <chatbox v-show="showChat" />
     </div>
   </div>
 </template>
@@ -24,13 +51,33 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy,
-      visible: Cookies.get("visible") !== "false"
+      visible: Cookies.get("visible") !== "false",
+      showLeaderboard: true,
+      showChat: true
     };
   },
   methods: {
-    setVisible: function(visible: boolean) {
+    setVisible(visible: boolean) {
       Cookies.set("visible", visible.toString());
       this.visible = visible;
+    },
+    setLeaderboardVisible(visible: boolean) {
+      this.showLeaderboard = visible;
+    },
+    setChatVisible(visible: boolean) {
+      this.showChat = visible;
+    },
+    getSidebarItems(): string {
+      if (this.showLeaderboard && this.showChat) {
+        return "both";
+      }
+      if (this.showLeaderboard) {
+        return "lb-only";
+      }
+      if (this.showChat) {
+        return "chat-only";
+      }
+      return ""; //should never happen
     }
   }
 });
@@ -40,8 +87,24 @@ export default Vue.extend({
 .nge-sidebar-visible {
   width: 250px;
   display: grid;
-  grid-template-rows: min-content 50% auto;
   height: 100%;
+}
+
+.nge-sidebar-visible.both {
+  grid-template-rows: min-content 50% min-content auto;
+}
+
+.nge-sidebar-visible.lb-only {
+  grid-template-rows: min-content auto min-content;
+}
+
+.nge-sidebar-visible.chat-only {
+  grid-template-rows: min-content min-content auto;
+}
+
+.nge-sidebar-buttons {
+  display: grid;
+  grid-template-rows: min-content min-content;
 }
 
 .nge-sidebar-button {
