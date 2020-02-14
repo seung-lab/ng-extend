@@ -3,13 +3,10 @@
     <div class="nge-sidebar-section-title">Chat</div>
     <div class="nge-chatbox-filler"></div>
     <div class="nge-chatbox-messages">
-      <span
-        class="nge-chatbox-item"
-        v-for="(message, index) of appState.chatMessages"
-        :key="index"
-      >
+      <span class="nge-chatbox-item" v-for="(message, index) of appState.chatMessages" :key="index">
         <div class="nge-chatbox-info" v-if="message.type === 'users'">
           <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
+          <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
         </div>
 
         <div class="nge-chatbox-info" v-if="message.type === 'join'">
@@ -30,14 +27,14 @@
         </span>
 
         <span class="nge-chatbox-message" v-if="message.type === 'messageLink'">
-          <a class="nge-chatbox-message-content" target="_blank" v-bind:href="message.message">{{message.message}}</a>
+          <a
+            class="nge-chatbox-message-content"
+            target="_blank"
+            v-bind:href="message.message"
+          >{{message.message}}</a>
         </span>
 
         <div class="nge-chatbox-message" v-if="message.type === 'messageEnd'"></div>
-
-        <!--<div class="nge-chatbox-message" v-if="message.type === 'message'">
-          <div class="nge-chatbox-message-content">{{message.message}}</div>
-        </div>-->
       </span>
     </div>
     <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
@@ -71,13 +68,16 @@ export default Vue.extend({
       ws.send(JSON.stringify(messageObj));
     },
     getPlace(name: string): string {
-      const places: string[] = ['firstplace', 'secondplace', 'thirdplace'];
+      const places: string[] = ["firstplace", "secondplace", "thirdplace"];
       for (let i = 0; i < places.length; i++) {
-        if (storeProxy.leaderboardEntries.length > i && storeProxy.leaderboardEntries[i].name === name) {
-          return ' ' + places[i];
+        if (
+          storeProxy.leaderboardEntries.length > i &&
+          storeProxy.leaderboardEntries[i].name === name
+        ) {
+          return " " + places[i];
         }
       }
-      return '';
+      return "";
     }
   }
 });
