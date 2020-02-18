@@ -6,7 +6,7 @@
     <div class="nge-leaderboard-entries">
       <div class="nge-leaderboard-row nge-leaderboard-header">
         <div>Rank</div>
-        <div>User ID</div>
+        <div>Name</div>
         <div>Edits</div>
       </div>
       <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
