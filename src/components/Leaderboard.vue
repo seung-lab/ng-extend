@@ -89,6 +89,10 @@ export default Vue.extend({
   overflow-wrap: break-word;
 }
 
+.nge-leaderboard-score {
+  text-align: center;
+}
+
 .nge-leaderboard-loading {
   text-align: center;
 }
