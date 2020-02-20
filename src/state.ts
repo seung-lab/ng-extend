@@ -254,7 +254,7 @@ class AppStore extends createModule({strict: false}) {
   }
 
   @action async updateLeaderboard() {
-    const url = 'https://api.pyrdev.eyewire.org:9000';
+    const url = 'https://pyrdev.eyewire.org/pyr-backend';
     //const url = 'http://localhost:9000';
     fetch(url).then(result => result.json()).then(async (json) => {
       const newEntries = json.entries;
