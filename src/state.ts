@@ -37,6 +37,11 @@ export interface ChatMessage {
   message: string | undefined
 }
 
+export enum LeaderboardTimespan {
+  Daily = 0,
+  Weekly = 6
+}
+
 class AppStore extends createModule({strict: false}) {
   loggedInUser: LoggedInUser|null = null;
   showDatasetChooser: boolean = false;
@@ -48,6 +53,7 @@ class AppStore extends createModule({strict: false}) {
   activeDropdown: { [group: string]: number} = {};
   leaderboardEntries: LeaderboardEntry[] = [];
   chatMessages: ChatMessage[] = [];
+  leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Daily;
 
   datasets: DatasetDescription[] = [
     {
@@ -258,10 +264,15 @@ class AppStore extends createModule({strict: false}) {
     }
   }
 
+  @action async loopUpdateLeaderboard() {
+    await this.updateLeaderboard();
+    await new Promise(() => setTimeout(this.loopUpdateLeaderboard, 20000));
+  }
+
   @action async updateLeaderboard() {
     const url = 'https://pyrdev.eyewire.org/pyr-backend';
     //const url = 'http://localhost:9000';
-    const queryUrl = url + '?days=1';
+    const queryUrl = url + '?days=' + this.leaderboardTimespan;
     fetch(queryUrl).then(result => result.json()).then(async (json) => {
       const newEntries = json.entries;
       this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
@@ -269,8 +280,11 @@ class AppStore extends createModule({strict: false}) {
         this.leaderboardEntries.push(entry);
       }
     });
+  }
 
-    await new Promise(() => setTimeout(this.updateLeaderboard, 20000));
+  @action async resetLeaderboard() {
+    this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
+    return this.updateLeaderboard();
   }
 
   @action async joinChat() {

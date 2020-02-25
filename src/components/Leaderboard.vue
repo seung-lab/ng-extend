@@ -1,7 +1,11 @@
 <template>
   <div class="nge-leaderboard">
     <div class="nge-leaderboard-titlebar">
-      <div class="nge-sidebar-section-title">Top Editors This Week</div>
+      <div class="nge-sidebar-section-title" v-show='getTimespan() === "Daily"'>Top Editors Today</div>
+      <div class="nge-sidebar-section-title" v-show='getTimespan() === "Weekly"'>Top Editors This Week</div>
+    </div>
+    <div class="nge-leaderboard-timeselect">
+      <button v-for="timespan of getTimespanNames()" :key="timespan" class="nge-sidebar-button" @click="setTimespan(timespan);">{{timespan}}</button>
     </div>
     <div class="nge-leaderboard-entries">
       <div class="nge-leaderboard-row nge-leaderboard-header">
@@ -23,7 +27,7 @@
 <script lang="ts">
 import Vue from "vue";
 
-import {storeProxy} from "../state";
+import {storeProxy, LeaderboardTimespan} from "../state";
 
 export default Vue.extend({
   data: () => {
@@ -38,6 +42,17 @@ export default Vue.extend({
         return ' ' + places[index];
       }
       return '';
+    },
+    getTimespan(): string {
+      return LeaderboardTimespan[storeProxy.leaderboardTimespan];
+    },
+    getTimespanNames(): string[] {
+      // from https://stackoverflow.com/questions/18111657/how-to-get-names-of-enum-entries#comment85271383_43091709
+      return Object.values(LeaderboardTimespan).filter(value => typeof value === 'string') as string[];
+    },
+    setTimespan(timespan: string) {
+      storeProxy.leaderboardTimespan = LeaderboardTimespan[timespan as keyof typeof LeaderboardTimespan];
+      storeProxy.resetLeaderboard();
     }
   }
 });
@@ -48,11 +63,16 @@ export default Vue.extend({
   width: 250px;
   background-color: #111;
   display: grid;
-  grid-template-rows: min-content auto auto;
+  grid-template-rows: min-content min-content auto auto;
 }
 
 .nge-leaderboard-title {
   text-align: center;
+}
+
+.nge-leaderboard-timeselect {
+  display: grid;
+  grid-template-columns: auto auto;
 }
 
 .nge-leaderboard-entries {
