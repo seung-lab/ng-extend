@@ -5,7 +5,8 @@
       <div class="nge-sidebar-section-title" v-show='getTimespan() === "Weekly"'>Top Editors This Week</div>
     </div>
     <div class="nge-leaderboard-timeselect">
-      <button v-for="timespan of getTimespanNames()" :key="timespan" class="nge-sidebar-button" @click="setTimespan(timespan);">{{timespan}}</button>
+      <button v-for="timespan of getTimespanNames()" :key="timespan" class="nge-sidebar-button"
+       :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="setTimespan(timespan);">{{timespan}}</button>
     </div>
     <div class="nge-leaderboard-entries">
       <div class="nge-leaderboard-row nge-leaderboard-header">
@@ -73,6 +74,10 @@ export default Vue.extend({
 .nge-leaderboard-timeselect {
   display: grid;
   grid-template-columns: auto auto;
+}
+
+.nge-leaderboard-timeselect > .nge-sidebar-button {
+  padding: 5px;
 }
 
 .nge-leaderboard-entries {
