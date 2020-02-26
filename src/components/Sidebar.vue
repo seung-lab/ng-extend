@@ -1,34 +1,34 @@
 <template>
   <div id="nge-sidebar">
     <div class="nge-sidebar-hidden" v-show="!visible">
-      <button class="nge-sidebar-button show" title="Show Sidebar" @click="setVisible(true);">🡆</button>
+      <button class="nge-sidebar-button show" title="Show sidebar" @click="setVisible(true);">🡆</button>
     </div>
     <div :class="'nge-sidebar-visible ' + getSidebarItems()" v-show="visible">
-      <button class="nge-sidebar-button" title="Hide Sidebar" @click="setVisible(false);">🡄</button>
+      <button class="nge-sidebar-button" title="Hide sidebar" @click="setVisible(false);">🡄</button>
 
       <leaderboard v-show="showLeaderboard" />
       <div class="nge-sidebar-buttons">
         <button
           class="nge-sidebar-button"
-          title="Show Leaderboard"
+          title="Show leaderboard"
           @click="setLeaderboardVisible(true);"
           v-show="!showLeaderboard"
         >⇓</button>
         <button
           class="nge-sidebar-button"
-          title="Show Chat"
+          title="Show chat"
           @click="setChatVisible(true);"
           v-show="!showChat"
         >⇑</button>
         <button
           class="nge-sidebar-button"
-          title="Hide Leaderboard"
+          title="Hide leaderboard"
           @click="setLeaderboardVisible(false);"
           v-show="showLeaderboard && showChat"
         >⇑</button>
         <button
           class="nge-sidebar-button"
-          title="Hide Chat"
+          title="Hide chat"
           @click="setChatVisible(false);"
           v-show="showLeaderboard && showChat"
         >⇓</button>
