@@ -1,7 +1,8 @@
 <template>
   <div id="extensionBar" @mousedown.stop.prevent>
+    <button class="toggleSidebarButton" @click="toggleSidebar()">Toggle Sidebar</button>
     <div id="insertNGTopBar" class="flex-fill"></div>
-
+    <div class="flex-fill"></div>
     <button @click="appState.showDatasetChooser=true">Choose Dataset</button>
 
     
@@ -57,6 +58,9 @@ export default Vue.extend({
       } else {
         console.warn("cannot select cell because viewer is not yet created");
       }
+    },
+    toggleSidebar() {
+      this.$root.$emit('toggleSidebar');
     }
   },
 });
@@ -83,5 +87,9 @@ export default Vue.extend({
 
 #extensionBar > button, #extensionBar > .dropdownList > button {
   padding: 0 8px;
+}
+
+#extensionBar > .toggleSidebarButton {
+  width: 250px;
 }
 </style>

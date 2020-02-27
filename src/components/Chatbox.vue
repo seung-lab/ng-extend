@@ -2,7 +2,7 @@
   <div class="nge-chatbox">
     <div class="nge-sidebar-section-title">Chat</div>
     <div class="nge-chatbox-filler"></div>
-    <div class="nge-chatbox-messages">
+    <simplebar class="nge-chatbox-messages" data-simplebar-auto-hide="false">
       <span class="nge-chatbox-item" v-for="(message, index) of appState.chatMessages" :key="index">
         <div class="nge-chatbox-info" v-if="message.type === 'users'">
           <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
@@ -37,7 +37,7 @@
 
         <div class="nge-chatbox-message" v-if="message.type === 'messageEnd'"></div>
       </span>
-    </div>
+    </simplebar>
     <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
       <input type="text" id="chatMessage" />
       <button type="submit">Submit</button>
@@ -48,10 +48,15 @@
 <script lang="ts">
 import Vue from "vue";
 
+import simplebar from "simplebar-vue";
+import "simplebar/dist/simplebar.min.css";
 import { storeProxy } from "../state";
 import ws from "../chat_socket";
 
 export default Vue.extend({
+  components: {
+    simplebar
+  },
   data: () => {
     return {
       appState: storeProxy
@@ -92,7 +97,6 @@ export default Vue.extend({
 }
 
 .nge-chatbox-messages {
-  overflow: auto;
   overflow-wrap: break-word;
   font-size: 0.85em;
 }
@@ -135,6 +139,7 @@ a.nge-chatbox-message-content {
 
 .nge-chatbox-sendmessage {
   align-self: end;
+  z-index: 1000;
 }
 
 .nge-chatbox-sendmessage button {
