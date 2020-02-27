@@ -86,15 +86,18 @@ export default Vue.extend({
 .nge-sidebar {
   display: grid;
   height: 100%;
-  transition: width 0.5s;
+  transition: all 0.5s;
+  transition-property: opacity, width;
 }
 
 .nge-sidebar.visible {
   width: 250px;
+  opacity: 100%;
 }
 
 .nge-sidebar:not(.visible) {
   width: 0px;
+  opacity: 0%;
 }
 
 .nge-sidebar.both {
@@ -120,8 +123,8 @@ export default Vue.extend({
 }
 
 .nge-sidebar-section-title {
-  background-color: #333;
-  font-size: 1.25em;
+  background-color: #111;
+  font-size: 1.15em;
   padding-top: 0.75em;
   padding-bottom: 0.75em;
   text-align: center;
