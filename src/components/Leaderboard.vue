@@ -3,26 +3,28 @@
     <div class="nge-leaderboard-titlebar">
       <div class="nge-sidebar-section-title">Top Editors</div>
     </div>
-    <div class="nge-leaderboard-timeselect">
-      <button v-for="timespan of getTimespanNames()" :key="timespan" class="nge-sidebar-button"
-       :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="setTimespan(timespan);">{{timespan}}</button>
-    </div>
-    <simplebar data-simplebar-auto-hide="false">
-     <div class="nge-leaderboard-entries">
-        <div class="nge-leaderboard-row nge-leaderboard-header">
-          <div>Rank</div>
-          <div>Name</div>
-          <div>Edits</div>
-        </div>
-        <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
-          :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
-          <div class="nge-leaderboard-rank">{{index+1}}</div>
-          <div class="nge-leaderboard-name">{{entry.name}}</div>
-          <div class="nge-leaderboard-score">{{entry.score}}</div>
-        </div>
+    <div class="nge-leaderboard-content" v-show="!minimized">
+      <div class="nge-leaderboard-timeselect">
+        <button v-for="timespan of getTimespanNames()" :key="timespan" class="nge-sidebar-button"
+        :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="setTimespan(timespan);">{{timespan}}</button>
       </div>
-    </simplebar>
-    <div class="nge-leaderboard-loading" v-show="appState.leaderboardEntries.length === 0">Loading...</div>
+      <simplebar data-simplebar-auto-hide="false">
+      <div class="nge-leaderboard-entries">
+          <div class="nge-leaderboard-row nge-leaderboard-header">
+            <div>Rank</div>
+            <div>Name</div>
+            <div>Edits</div>
+          </div>
+          <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
+            :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
+            <div class="nge-leaderboard-rank">{{index+1}}</div>
+            <div class="nge-leaderboard-name">{{entry.name}}</div>
+            <div class="nge-leaderboard-score">{{entry.score}}</div>
+          </div>
+        </div>
+      </simplebar>
+      <div class="nge-leaderboard-loading" v-show="appState.leaderboardEntries.length === 0">Loading...</div>
+    </div>
   </div>
 </template>
 
@@ -34,16 +36,17 @@ import {storeProxy, LeaderboardTimespan} from "../state";
 export default Vue.extend({
   data: () => {
     return {
-      appState: storeProxy
+      appState: storeProxy,
+      minimized: false
     }
   },
   methods: {
     getPlace(index: number): string {
-      const places: string[] = ['firstplace', 'secondplace', 'thirdplace'];
+      const places: string[] = ["firstplace", "secondplace", "thirdplace"];
       if (index < places.length) {
-        return ' ' + places[index];
+        return " " + places[index];
       }
-      return '';
+      return "";
     },
     getTimespan(): string {
       return LeaderboardTimespan[storeProxy.leaderboardTimespan];
@@ -56,6 +59,11 @@ export default Vue.extend({
       storeProxy.leaderboardTimespan = LeaderboardTimespan[timespan as keyof typeof LeaderboardTimespan];
       storeProxy.resetLeaderboard();
     }
+  },
+  mounted() {
+    this.$root.$on("toggleLeaderboard", () => {
+      this.minimized = !this.minimized;
+    });
   }
 });
 </script>
@@ -65,11 +73,16 @@ export default Vue.extend({
   width: 250px;
   background-color: #111;
   display: grid;
-  grid-template-rows: min-content min-content auto auto;
+  grid-template-rows: min-content auto;
 }
 
 .nge-leaderboard-title {
   text-align: center;
+}
+
+.nge-leaderboard-content {
+  display: grid;
+  grid-template-rows: min-content auto auto;
 }
 
 .nge-leaderboard-timeselect {
@@ -88,9 +101,9 @@ export default Vue.extend({
   overflow: auto;
 }
 
-.nge-leaderboard-header {
+/*.nge-leaderboard-header {
   font-weight: bold;
-}
+}*/
 
 .nge-leaderboard-row {
   display: contents;
