@@ -13,6 +13,7 @@
     "@types/js-cookie": "^2.2.4",
     "direct-vuex": "^0.7.3",
     "js-cookie": "^2.2.1",
+    "simplebar-vue": "^1.4.0",
     "vue": "^2.6.10",
     "vue-loader": "^15.7.1",
     "vue-template-compiler": "^2.6.10",
