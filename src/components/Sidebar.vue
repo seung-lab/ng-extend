@@ -1,40 +1,33 @@
 <template>
-  <div id="nge-sidebar">
-    <div class="nge-sidebar-hidden" v-show="!visible">
-      <button class="nge-sidebar-button show" title="Show sidebar" @click="setVisible(true);">🡆</button>
+  <div :class="'nge-sidebar ' + getSidebarItems() + (visible ? ' visible' : '')">
+    <leaderboard v-show="showLeaderboard" />
+    <div class="nge-sidebar-buttons">
+      <button
+        class="nge-sidebar-button"
+        title="Show leaderboard"
+        @click="setLeaderboardVisible(true);"
+        v-show="!showLeaderboard"
+      >⇓</button>
+      <button
+        class="nge-sidebar-button"
+        title="Show chat"
+        @click="setChatVisible(true);"
+        v-show="!showChat"
+      >⇑</button>
+      <button
+        class="nge-sidebar-button"
+        title="Hide leaderboard"
+        @click="setLeaderboardVisible(false);"
+        v-show="showLeaderboard && showChat"
+      >⇑</button>
+      <button
+        class="nge-sidebar-button"
+        title="Hide chat"
+        @click="setChatVisible(false);"
+        v-show="showLeaderboard && showChat"
+      >⇓</button>
     </div>
-    <div :class="'nge-sidebar-visible ' + getSidebarItems()" v-show="visible">
-      <button class="nge-sidebar-button" title="Hide sidebar" @click="setVisible(false);">🡄</button>
-
-      <leaderboard v-show="showLeaderboard" />
-      <div class="nge-sidebar-buttons">
-        <button
-          class="nge-sidebar-button"
-          title="Show leaderboard"
-          @click="setLeaderboardVisible(true);"
-          v-show="!showLeaderboard"
-        >⇓</button>
-        <button
-          class="nge-sidebar-button"
-          title="Show chat"
-          @click="setChatVisible(true);"
-          v-show="!showChat"
-        >⇑</button>
-        <button
-          class="nge-sidebar-button"
-          title="Hide leaderboard"
-          @click="setLeaderboardVisible(false);"
-          v-show="showLeaderboard && showChat"
-        >⇑</button>
-        <button
-          class="nge-sidebar-button"
-          title="Hide chat"
-          @click="setChatVisible(false);"
-          v-show="showLeaderboard && showChat"
-        >⇓</button>
-      </div>
-      <chatbox v-show="showChat" />
-    </div>
+    <chatbox v-show="showChat" />
   </div>
 </template>
 
@@ -60,6 +53,7 @@ export default Vue.extend({
     setVisible(visible: boolean) {
       Cookies.set("visible", visible.toString());
       this.visible = visible;
+      (<HTMLElement>document.querySelector('.nge-sidebar')).classList.toggle('visible', visible);
     },
     setLeaderboardVisible(visible: boolean) {
       this.showLeaderboard = visible;
@@ -79,27 +73,40 @@ export default Vue.extend({
       }
       return ""; //should never happen
     }
+  },
+  mounted() {
+    this.$root.$on("toggleSidebar", () => {
+      this.setVisible(!this.visible);
+    });
   }
 });
 </script>
 
 <style>
-.nge-sidebar-visible {
-  width: 250px;
+.nge-sidebar {
   display: grid;
   height: 100%;
+  transition: width 0.5s;
 }
 
-.nge-sidebar-visible.both {
-  grid-template-rows: min-content 50% min-content auto;
+.nge-sidebar.visible {
+  width: 250px;
 }
 
-.nge-sidebar-visible.lb-only {
-  grid-template-rows: min-content auto min-content;
+.nge-sidebar:not(.visible) {
+  width: 0px;
 }
 
-.nge-sidebar-visible.chat-only {
-  grid-template-rows: min-content min-content auto;
+.nge-sidebar.both {
+  grid-template-rows: 50% min-content auto;
+}
+
+.nge-sidebar.lb-only {
+  grid-template-rows: auto min-content;
+}
+
+.nge-sidebar.chat-only {
+  grid-template-rows: min-content auto;
 }
 
 .nge-sidebar-buttons {
@@ -130,5 +137,9 @@ export default Vue.extend({
 
 .thirdplace {
   color: #cd7f32;
+}
+
+.simplebar-scrollbar.simplebar-visible:before {
+  background-color: #999;
 }
 </style>

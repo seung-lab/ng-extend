@@ -321,7 +321,6 @@ class AppStore extends createModule({strict: false}) {
 
       // split message up into text and links
       const messageParts = messageObj.message!.split(/(https?:\/\/\S+)/);
-      console.log(messageParts);
       for (let i = 0; i < messageParts.length; i++) {
         const messagePart: ChatMessage = {
           type: i % 2 === 0 ? 'messagePart' : 'messageLink',
@@ -338,7 +337,7 @@ class AppStore extends createModule({strict: false}) {
 
     // scroll to bottom of message box (once vue updates the page)
     Vue.nextTick(() => {
-      const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-messages');
+      const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-messages .simplebar-content-wrapper');
       messageBox.scrollTo(0, messageBox.scrollHeight);
     });
   }

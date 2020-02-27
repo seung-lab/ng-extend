@@ -1,5 +1,6 @@
 <template>
   <div id="extensionBar" @mousedown.stop.prevent>
+    <button class="toggleSidebarButton" @click="toggleSidebar()">Toggle Sidebar</button>
     <div class="flex-fill"></div>
     <button @click="appState.showDatasetChooser=true">Choose Dataset</button>
     
@@ -40,6 +41,9 @@ export default Vue.extend({
       if (viewer) {
         viewer.uiConfiguration.showUIControls.toggle();
       }
+    },
+    toggleSidebar() {
+      this.$root.$emit('toggleSidebar');
     }
   },
 });
@@ -62,5 +66,9 @@ export default Vue.extend({
 
 #extensionBar > button {
   padding: 0 16px;
+}
+
+#extensionBar > .toggleSidebarButton {
+  width: 250px;
 }
 </style>

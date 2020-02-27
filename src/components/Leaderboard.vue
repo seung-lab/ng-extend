@@ -1,26 +1,27 @@
 <template>
   <div class="nge-leaderboard">
     <div class="nge-leaderboard-titlebar">
-      <div class="nge-sidebar-section-title" v-show='getTimespan() === "Daily"'>Top Editors Today</div>
-      <div class="nge-sidebar-section-title" v-show='getTimespan() === "Weekly"'>Top Editors This Week</div>
+      <div class="nge-sidebar-section-title">Top Editors</div>
     </div>
     <div class="nge-leaderboard-timeselect">
       <button v-for="timespan of getTimespanNames()" :key="timespan" class="nge-sidebar-button"
        :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="setTimespan(timespan);">{{timespan}}</button>
     </div>
-    <div class="nge-leaderboard-entries">
-      <div class="nge-leaderboard-row nge-leaderboard-header">
-        <div>Rank</div>
-        <div>Name</div>
-        <div>Edits</div>
+    <simplebar data-simplebar-auto-hide="false">
+     <div class="nge-leaderboard-entries">
+        <div class="nge-leaderboard-row nge-leaderboard-header">
+          <div>Rank</div>
+          <div>Name</div>
+          <div>Edits</div>
+        </div>
+        <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
+          :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
+          <div class="nge-leaderboard-rank">{{index+1}}</div>
+          <div class="nge-leaderboard-name">{{entry.name}}</div>
+          <div class="nge-leaderboard-score">{{entry.score}}</div>
+        </div>
       </div>
-      <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
-        :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
-        <div class="nge-leaderboard-rank">{{index+1}}</div>
-        <div class="nge-leaderboard-name">{{entry.name}}</div>
-        <div class="nge-leaderboard-score">{{entry.score}}</div>
-      </div>
-    </div>
+    </simplebar>
     <div class="nge-leaderboard-loading" v-show="appState.leaderboardEntries.length === 0">Loading...</div>
   </div>
 </template>
