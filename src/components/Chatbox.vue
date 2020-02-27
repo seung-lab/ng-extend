@@ -1,47 +1,53 @@
 <template>
   <div class="nge-chatbox">
-    <div class="nge-sidebar-section-title">Chat</div>
-    <div class="nge-chatbox-filler"></div>
-    <simplebar class="nge-chatbox-messages" data-simplebar-auto-hide="false">
-      <span class="nge-chatbox-item" v-for="(message, index) of appState.chatMessages" :key="index">
-        <div class="nge-chatbox-info" v-if="message.type === 'users'">
-          <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
-          <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
-        </div>
+    <div class="nge-chatbox-title">
+      <div>Chat</div>
+      <button class="nge-chatbox-title-button" @click="minimize()">minimize</button>
+      <button class="nge-chatbox-title-button" @click="expand()">expand</button>
+    </div>
+    <div class="nge-chatbox-content" v-show="!minimized">
+      <div class="nge-chatbox-filler"></div>
+      <simplebar class="nge-chatbox-messages" data-simplebar-auto-hide="false">
+        <span class="nge-chatbox-item" v-for="(message, index) of appState.chatMessages" :key="index">
+          <div class="nge-chatbox-info" v-if="message.type === 'users'">
+            <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
+            <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
+          </div>
 
-        <div class="nge-chatbox-info" v-if="message.type === 'join'">
-          <div class="nge-chatbox-info-content">{{message.name}} joined chat.</div>
-        </div>
+          <div class="nge-chatbox-info" v-if="message.type === 'join'">
+            <div class="nge-chatbox-info-content">{{message.name}} joined chat.</div>
+          </div>
 
-        <div class="nge-chatbox-info" v-if="message.type === 'leave'">
-          <div class="nge-chatbox-info-content">{{message.name}} left chat.</div>
-        </div>
+          <div class="nge-chatbox-info" v-if="message.type === 'leave'">
+            <div class="nge-chatbox-info-content">{{message.name}} left chat.</div>
+          </div>
 
-        <div class="nge-chatbox-message-info" v-if="message.type === 'sender'">
-          <div :class="'nge-chatbox-message-sender' + getPlace(message.name)">{{message.name}}</div>
-          <div class="nge-chatbox-message-time">{{message.time}}</div>
-        </div>
+          <div class="nge-chatbox-message-info" v-if="message.type === 'sender'">
+            <div :class="'nge-chatbox-message-sender' + getPlace(message.name)">{{message.name}}</div>
+            <div class="nge-chatbox-message-time">{{message.time}}</div>
+          </div>
 
-        <span class="nge-chatbox-message" v-if="message.type === 'messagePart'">
-          <span class="nge-chatbox-message-content" :title="message.time">{{message.message}}</span>
+          <span class="nge-chatbox-message" v-if="message.type === 'messagePart'">
+            <span class="nge-chatbox-message-content" :title="message.time">{{message.message}}</span>
+          </span>
+
+          <span class="nge-chatbox-message" v-if="message.type === 'messageLink'">
+            <a
+              class="nge-chatbox-message-content"
+              target="_blank"
+              v-bind:href="message.message"
+              :title="message.time"
+            >{{message.message}}</a>
+          </span>
+
+          <div class="nge-chatbox-message" v-if="message.type === 'messageEnd'"></div>
         </span>
-
-        <span class="nge-chatbox-message" v-if="message.type === 'messageLink'">
-          <a
-            class="nge-chatbox-message-content"
-            target="_blank"
-            v-bind:href="message.message"
-            :title="message.time"
-          >{{message.message}}</a>
-        </span>
-
-        <div class="nge-chatbox-message" v-if="message.type === 'messageEnd'"></div>
-      </span>
-    </simplebar>
-    <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
-      <input type="text" id="chatMessage" />
-      <button type="submit">Submit</button>
-    </form>
+      </simplebar>
+      <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
+        <input type="text" id="chatMessage" />
+        <button type="submit">Submit</button>
+      </form>
+    </div>
   </div>
 </template>
 
@@ -59,7 +65,8 @@ export default Vue.extend({
   },
   data: () => {
     return {
-      appState: storeProxy
+      appState: storeProxy,
+      minimized: false
     };
   },
   methods: {
@@ -84,6 +91,12 @@ export default Vue.extend({
         }
       }
       return "";
+    },
+    minimize() {
+      this.minimized = !this.minimized;
+    },
+    expand() {
+      this.$root.$emit('toggleLeaderboard');
     }
   }
 });
@@ -92,7 +105,24 @@ export default Vue.extend({
 <style>
 .nge-chatbox {
   display: grid;
-  grid-template-rows: min-content auto minmax(auto, min-content) min-content;
+  grid-template-rows: min-content auto;
+}
+
+.nge-chatbox-title {
+  background-color: #000;
+  font-size: 1.15em;
+  padding: 0.75em;
+  display: grid;
+  grid-template-columns: auto min-content min-content;
+}
+
+.nge-chatbox-title-button {
+  align-self: end;
+}
+
+.nge-chatbox-content {
+  display: grid;
+  grid-template-rows: auto minmax(auto, min-content) min-content;
   background-color: #111;
 }
 
