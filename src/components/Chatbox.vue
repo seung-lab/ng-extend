@@ -140,6 +140,11 @@ export default Vue.extend({
   align-self: end;
 }
 
+.nge-chatbox-title-button > img {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
 .nge-chatbox-content {
   display: grid;
   grid-template-rows: auto minmax(auto, min-content) min-content;
