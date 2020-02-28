@@ -8,7 +8,13 @@
       </button>
       <button class="nge-chatbox-title-button" @click="toggleExpanded()">
         <img v-show="!expanded" src="images/expand.svg" width="20" title="Expand" />
-        <img v-show="expanded" src="images/chevron.svg" width="20" style="transform: rotate(180deg);" title="Restore" />
+        <img
+          v-show="expanded"
+          src="images/chevron.svg"
+          width="20"
+          style="transform: rotate(180deg);"
+          title="Restore"
+        />
       </button>
     </div>
     <div class="nge-chatbox-content" v-show="!minimized">
@@ -32,23 +38,25 @@
             <div class="nge-chatbox-info-content">{{message.name}} left chat.</div>
           </div>
 
-          <div class="nge-chatbox-message-info" v-if="message.type === 'sender'">
+          <!--<div class="nge-chatbox-message-info" v-if="message.type === 'sender'">
             <div :class="'nge-chatbox-message-sender' + getPlace(message.name)">{{message.name}}</div>
             <div class="nge-chatbox-message-time">{{message.time}}</div>
-          </div>
+          </div>-->
 
-          <span class="nge-chatbox-message" v-if="message.type === 'messagePart'">
-            <span class="nge-chatbox-message-content" :title="message.time">{{message.message}}</span>
-          </span>
+          <span
+            v-if="message.type === 'sender'"
+            :class="'nge-chatbox-message-text sender ' + getPlace(message.name)"
+            :title="message.time"
+          >{{message.name}}:</span>
 
-          <span class="nge-chatbox-message" v-if="message.type === 'messageLink'">
-            <a
-              class="nge-chatbox-message-content"
-              target="_blank"
-              v-bind:href="message.message"
-              :title="message.time"
-            >{{message.message}}</a>
-          </span>
+          <span v-if="message.type === 'messagePart'" class="nge-chatbox-message-text" :title="message.time">{{message.message}}</span>
+
+          <a v-if="message.type === 'messageLink'"
+            class="nge-chatbox-message-text"
+            target="_blank"
+            v-bind:href="message.message"
+            :title="message.time"
+          >{{message.message}}</a>
 
           <div class="nge-chatbox-message" v-if="message.type === 'messageEnd'"></div>
         </span>
@@ -99,10 +107,10 @@ export default Vue.extend({
           storeProxy.leaderboardEntries.length > i &&
           storeProxy.leaderboardEntries[i].name === name
         ) {
-          return " " + places[i];
+          return places[i];
         }
       }
-      return "";
+      return "normal";
     },
     toggleMinimized() {
       if (this.expanded) {
@@ -153,7 +161,7 @@ export default Vue.extend({
 
 .nge-chatbox-messages {
   overflow-wrap: break-word;
-  font-size: 0.85em;
+  font-size: 0.75em;
 }
 
 .nge-chatbox-message-info {
@@ -164,22 +172,18 @@ export default Vue.extend({
   grid-template-columns: minmax(auto, 70%) auto;
 }
 
-.nge-chatbox-message-sender {
+.nge-chatbox-message-text.sender {
   font-weight: bold;
 }
 
-.nge-chatbox-message-time {
-  text-align: right;
+.nge-chatbox-message-text.sender.normal {
+  color: dodgerblue;
 }
 
-.nge-chatbox-message-content {
+.nge-chatbox-message-text {
   padding: 0.5em;
   padding-top: 0.15em;
   display: inline-block;
-  width: 92%;
-}
-
-a.nge-chatbox-message-content {
   color: white;
   padding-left: 0;
   padding-right: 0;
