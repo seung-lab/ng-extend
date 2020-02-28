@@ -30,6 +30,7 @@
 
 <script lang="ts">
 import Vue from "vue";
+import Cookies from "js-cookie";
 
 import {storeProxy, LeaderboardTimespan} from "../state";
 
@@ -37,7 +38,7 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy,
-      minimized: false
+      minimized: Cookies.get("leaderboardVisible") === "false"
     }
   },
   methods: {

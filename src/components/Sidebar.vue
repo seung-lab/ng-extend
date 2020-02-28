@@ -19,8 +19,8 @@ export default Vue.extend({
     return {
       appState: storeProxy,
       visible: Cookies.get("visible") !== "false",
-      showLeaderboard: true,
-      showChat: true
+      showLeaderboard: Cookies.get("leaderboardVisible") !== "false",
+      showChat: Cookies.get("chatVisible") !== "false"
     };
   },
   methods: {
@@ -30,9 +30,11 @@ export default Vue.extend({
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
     },
     setLeaderboardVisible(visible: boolean) {
+      Cookies.set("leaderboardVisible", visible.toString());
       this.showLeaderboard = visible;
     },
     setChatVisible(visible: boolean) {
+      Cookies.set("chatVisible", visible.toString());
       this.showChat = visible;
     },
     getSidebarItems(): string {
