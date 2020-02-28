@@ -34,6 +34,7 @@ export interface ChatMessage {
   type: string,
   name: string,
   time: string | undefined,
+  dateTime: Date | undefined,
   message: string | undefined
 }
 
@@ -307,20 +308,37 @@ class AppStore extends createModule({strict: false}) {
   @action async handleMessage(message: any) {
     const messageObj: ChatMessage = JSON.parse(message);
     const now = new Date();
+    messageObj.dateTime = now;
     const time = now.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
     messageObj.time = time;
 
     if (messageObj.type === 'message') {
-      const numMessages = this.chatMessages.length;
-      let addInfo = true;
-      if (numMessages > 0) {
-        const lastMessage = this.chatMessages[numMessages - 1];
-        if (lastMessage.type.startsWith('message') && lastMessage.name === messageObj.name) {
-          addInfo = false;
+      function isCloseTo(timeA: Date|undefined, timeB: Date|undefined): boolean {
+        if (!timeA || !timeB) return false;
+        const diff = timeB.valueOf() - timeA.valueOf();
+        return diff < 1000 * 60 * 10; // 10 minutes in milliseconds
+      }
+      let addTime = true;
+      if (this.chatMessages.length > 0) {
+        const lastMessage = this.chatMessages[this.chatMessages.length - 1];
+        if (lastMessage.type.startsWith('message') && isCloseTo(lastMessage.dateTime, messageObj.dateTime)) {
+          addTime = false;
         }
       }
-      if (addInfo) {
-        const senderInfo: ChatMessage = { type: 'sender', name: messageObj.name, time: messageObj.time, message: undefined };
+      if (addTime) {
+        const timeInfo: ChatMessage = { type: 'time', name: messageObj.name, time: messageObj.time, dateTime: messageObj.dateTime, message: undefined };
+        this.chatMessages.push(timeInfo);
+      }
+
+      let addSender = true;
+      if (this.chatMessages.length > 0) {
+        const lastMessage = this.chatMessages[this.chatMessages.length - 1];
+        if (lastMessage.type.startsWith('message') && lastMessage.name === messageObj.name) {
+          addSender = false;
+        }
+      }
+      if (addSender) {
+        const senderInfo: ChatMessage = { type: 'sender', name: messageObj.name, time: messageObj.time, dateTime: messageObj.dateTime, message: undefined };
         this.chatMessages.push(senderInfo);
       }
 
@@ -331,7 +349,8 @@ class AppStore extends createModule({strict: false}) {
           type: i % 2 === 0 ? 'messagePart' : 'messageLink',
           message: messageParts[i],
           name: messageObj.name,
-          time: messageObj.time
+          time: messageObj.time,
+          dateTime: messageObj.dateTime
         }
         this.chatMessages.push(messagePart);
       }
@@ -342,7 +361,7 @@ class AppStore extends createModule({strict: false}) {
 
     // scroll to bottom of message box (once vue updates the page)
     Vue.nextTick(() => {
-      const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-messages .simplebar-content-wrapper');
+      const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
       messageBox.scrollTo(0, messageBox.scrollHeight);
     });
   }
