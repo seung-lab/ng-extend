@@ -2,8 +2,8 @@
   <div class="nge-chatbox">
     <div class="nge-chatbox-title">
       <div>Chat</div>
-      <button class="nge-chatbox-title-button" @click="minimize()">minimize</button>
-      <button class="nge-chatbox-title-button" @click="expand()">expand</button>
+      <button class="nge-chatbox-title-button" @click="toggleMinimized()">minimize</button>
+      <button class="nge-chatbox-title-button" @click="toggleExpanded()">expand</button>
     </div>
     <div class="nge-chatbox-content" v-show="!minimized">
       <div class="nge-chatbox-filler"></div>
@@ -66,7 +66,8 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy,
-      minimized: false
+      minimized: false,
+      expanded: false
     };
   },
   methods: {
@@ -92,11 +93,19 @@ export default Vue.extend({
       }
       return "";
     },
-    minimize() {
+    toggleMinimized() {
+      if (this.expanded) {
+        this.toggleExpanded();
+      }
       this.minimized = !this.minimized;
+      this.$root.$emit("toggleChat");
     },
-    expand() {
-      this.$root.$emit('toggleLeaderboard');
+    toggleExpanded() {
+      if (this.minimized) {
+        this.toggleMinimized();
+      }
+      this.expanded = !this.expanded;
+      this.$root.$emit("toggleLeaderboard");
     }
   }
 });
