@@ -1,19 +1,38 @@
 <template>
   <div id="extensionBar" @mousedown.stop.prevent>
-    <button class="toggleSidebarButton" @click="toggleSidebar()">Toggle Sidebar</button>
+    <button class="toggleSidebarButton" @click="toggleSidebar()">
+      <img
+        v-show="!showSidebar"
+        src="images/chevron.svg"
+        width="20"
+        style="transform: rotate(90deg);"
+        title="Show sidebar"
+      />
+      <img
+        v-show="showSidebar"
+        src="images/chevron.svg"
+        width="20"
+        style="transform: rotate(270deg);"
+        title="Hide sidebar"
+      />
+    </button>
     <div class="flex-fill"></div>
     <button @click="appState.showDatasetChooser=true">Choose Dataset</button>
-    
+
     <template v-if="appState.loggedInUser">
       <div>{{ appState.loggedInUser.name }} ({{ appState.loggedInUser.email }})</div>
     </template>
-    
+
     <dropdown-list>
       <template #buttonTitle>Settings</template>
       <template #listItems>
-        <li><button @click="toggleNeuroglancerUI">Toggle Neuroglancer UI</button></li>
+        <li>
+          <button @click="toggleNeuroglancerUI">Toggle Neuroglancer UI</button>
+        </li>
         <template v-if="appState.loggedInUser">
-          <li><button @click="appState.logout">Logout</button></li>
+          <li>
+            <button @click="appState.logout">Logout</button>
+          </li>
         </template>
       </template>
     </dropdown-list>
@@ -24,17 +43,19 @@
 
 <script lang="ts">
 import Vue from "vue";
-import {storeProxy} from "../state";
-import {viewer} from "../main";
+import { storeProxy } from "../state";
+import { viewer } from "../main";
+import Cookies from "js-cookie";
 
 import DropdownList from "components/DropdownList.vue";
 
 export default Vue.extend({
-  components: {DropdownList},
+  components: { DropdownList },
   data() {
     return {
-      appState: storeProxy
-    }
+      appState: storeProxy,
+      showSidebar: Cookies.get("visible") !== "false"
+    };
   },
   methods: {
     toggleNeuroglancerUI() {
@@ -43,9 +64,10 @@ export default Vue.extend({
       }
     },
     toggleSidebar() {
-      this.$root.$emit('toggleSidebar');
+      this.$root.$emit("toggleSidebar");
+      this.showSidebar = !this.showSidebar;
     }
-  },
+  }
 });
 </script>
 
