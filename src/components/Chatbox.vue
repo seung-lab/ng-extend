@@ -19,50 +19,50 @@
     </div>
     <div class="nge-chatbox-content" v-show="!minimized">
       <div class="nge-chatbox-filler"></div>
-      <simplebar class="nge-chatbox-messages" data-simplebar-auto-hide="false">
-        <span
-          class="nge-chatbox-item"
-          v-for="(message, index) of appState.chatMessages"
-          :key="index"
-        >
-          <div class="nge-chatbox-info" v-if="message.type === 'users'">
-            <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
-            <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
-          </div>
-
-          <div class="nge-chatbox-info" v-if="message.type === 'join'">
-            <div class="nge-chatbox-info-content">{{message.name}} joined chat.</div>
-          </div>
-
-          <div class="nge-chatbox-info" v-if="message.type === 'leave'">
-            <div class="nge-chatbox-info-content">{{message.name}} left chat.</div>
-          </div>
-
-          <!--<div class="nge-chatbox-message-info" v-if="message.type === 'sender'">
-            <div :class="'nge-chatbox-message-sender' + getPlace(message.name)">{{message.name}}</div>
-            <div class="nge-chatbox-message-time">{{message.time}}</div>
-          </div>-->
-
+      <simplebar class="nge-chatbox-scroll" data-simplebar-auto-hide="false">
+        <div class="nge-chatbox-messages">
           <span
-            v-if="message.type === 'sender'"
-            :class="'nge-chatbox-message-text sender ' + getPlace(message.name)"
-            :title="message.time"
-          >{{message.name}}:</span>
+            class="nge-chatbox-item"
+            v-for="(message, index) of appState.chatMessages"
+            :key="index"
+          >
+            <div class="nge-chatbox-info" v-if="message.type === 'users'">
+              <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
+              <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
+            </div>
 
-          <span v-if="message.type === 'messagePart'" class="nge-chatbox-message-text" :title="message.time">{{message.message}}</span>
+            <div class="nge-chatbox-info" v-if="message.type === 'join'">
+              <div class="nge-chatbox-info-content">{{message.name}} joined chat.</div>
+            </div>
 
-          <a v-if="message.type === 'messageLink'"
-            class="nge-chatbox-message-text"
-            target="_blank"
-            v-bind:href="message.message"
-            :title="message.time"
-          >{{message.message}}</a>
+            <div class="nge-chatbox-info" v-if="message.type === 'leave'">
+              <div class="nge-chatbox-info-content">{{message.name}} left chat.</div>
+            </div>
 
-          <div class="nge-chatbox-message" v-if="message.type === 'messageEnd'"></div>
-        </span>
+            <div class="nge-chatbox-time" v-if="message.type === 'time'">{{message.time}}</div>
+
+            <span
+              v-if="message.type === 'sender'"
+              :class="'nge-chatbox-message-text sender ' + getPlace(message.name)"
+              :title="message.time"
+            >{{message.name}}:</span>
+
+            <span v-if="message.type === 'messagePart'" class="nge-chatbox-message-text" :title="message.time">{{message.message}}</span>
+
+            <a v-if="message.type === 'messageLink'"
+              class="nge-chatbox-message-text"
+              target="_blank"
+              v-bind:href="message.message"
+              :title="message.time"
+            >{{message.message}}</a>
+
+            <div class="nge-chatbox-message" v-if="message.type === 'messageEnd'"></div>
+          </span>
+        </div>
       </simplebar>
       <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
-        <input type="text" id="chatMessage" />
+        <img src="images/chevron.svg" width="15" style="transform: rotate(90deg);" />
+        <input type="text" id="chatMessage" size="18" />
         <button type="submit">Submit</button>
       </form>
     </div>
@@ -97,8 +97,10 @@ export default Vue.extend({
       const message = messageEl.value;
       messageEl.value = "";
 
-      const messageObj = { type: "message", message: message };
-      ws.send(JSON.stringify(messageObj));
+      if (message.trim() !== "") {
+        const messageObj = { type: "message", message: message };
+        ws.send(JSON.stringify(messageObj));
+      }
     },
     getPlace(name: string): string {
       const places: string[] = ["firstplace", "secondplace", "thirdplace"];
@@ -160,16 +162,11 @@ export default Vue.extend({
 }
 
 .nge-chatbox-messages {
-  overflow-wrap: break-word;
+  overflow-wrap: break-word; /* TODO doesn't work. */
   font-size: 0.75em;
-}
-
-.nge-chatbox-message-info {
-  background-color: #222;
-  padding: 0.5em;
-  margin-bottom: 0.5em;
-  display: grid;
-  grid-template-columns: minmax(auto, 70%) auto;
+  padding-top: 10px;
+  padding-left: 10px;
+  padding-right: 10px;
 }
 
 .nge-chatbox-message-text.sender {
@@ -196,6 +193,13 @@ export default Vue.extend({
   font-style: italic;
 }
 
+.nge-chatbox-time {
+  padding: 0.5em;
+  padding-top: 0.15em;
+  text-align: center;
+  font-size: 0.85em;
+}
+
 .nge-chatbox-sendmessage {
   align-self: end;
   z-index: 1000;
@@ -205,8 +209,9 @@ export default Vue.extend({
   padding: 5px !important;
 }
 
-/*.nge-chatbox-sendmessage > input {
+.nge-chatbox-sendmessage > input {
   color: #fff;
-  background-color: #000;
-}*/
+  background-color: #111;
+  border-width: 0px;
+}
 </style>
