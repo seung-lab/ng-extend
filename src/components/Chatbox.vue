@@ -2,13 +2,23 @@
   <div class="nge-chatbox">
     <div class="nge-chatbox-title">
       <div>Chat</div>
-      <button class="nge-chatbox-title-button" @click="toggleMinimized()">minimize</button>
-      <button class="nge-chatbox-title-button" @click="toggleExpanded()">expand</button>
+      <button class="nge-chatbox-title-button" @click="toggleMinimized()">
+        <img v-show="!minimized" src="images/minimize.svg" width="20" title="Minimize" />
+        <img v-show="minimized" src="images/chevron.svg" width="20" title="Restore" />
+      </button>
+      <button class="nge-chatbox-title-button" @click="toggleExpanded()">
+        <img v-show="!expanded" src="images/expand.svg" width="20" title="Expand" />
+        <img v-show="expanded" src="images/chevron.svg" width="20" style="transform: rotate(180deg);" title="Restore" />
+      </button>
     </div>
     <div class="nge-chatbox-content" v-show="!minimized">
       <div class="nge-chatbox-filler"></div>
       <simplebar class="nge-chatbox-messages" data-simplebar-auto-hide="false">
-        <span class="nge-chatbox-item" v-for="(message, index) of appState.chatMessages" :key="index">
+        <span
+          class="nge-chatbox-item"
+          v-for="(message, index) of appState.chatMessages"
+          :key="index"
+        >
           <div class="nge-chatbox-info" v-if="message.type === 'users'">
             <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
             <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
@@ -68,7 +78,7 @@ export default Vue.extend({
     return {
       appState: storeProxy,
       minimized: Cookies.get("chatVisible") === "false",
-      expanded: Cookies.get("leaderboardVisible") === "false",
+      expanded: Cookies.get("leaderboardVisible") === "false"
     };
   },
   methods: {
