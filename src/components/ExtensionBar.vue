@@ -1,7 +1,23 @@
 <template>
   <div id="extensionBar" @mousedown.stop.prevent>
-    <button class="toggleSidebarButton" @click="toggleSidebar()">Toggle Sidebar</button>
-    <div id="insertNGTopBar" class="flex-fill"></div>
+    <button class="toggleSidebarButton" @click="toggleSidebar()">
+      <img
+        v-show="!showSidebar"
+        src="images/chevron.svg"
+        width="20"
+        style="transform: rotate(90deg);"
+        title="Show sidebar"
+      />
+      <img
+        v-show="showSidebar"
+        src="images/chevron.svg"
+        width="20"
+        style="transform: rotate(270deg);"
+        title="Hide sidebar"
+      />
+    </button>
+
+        <div id="insertNGTopBar" class="flex-fill"></div>
     <div class="flex-fill"></div>
     <button @click="appState.showDatasetChooser=true">Choose Dataset</button>
 
@@ -22,15 +38,17 @@
 import Vue from "vue";
 import {storeProxy, CellDescription} from "../state";
 import {viewer} from "../main";
+import Cookies from "js-cookie";
 
 import DropdownList from "components/DropdownList.vue";
 
 export default Vue.extend({
-  components: {DropdownList},
+  components: { DropdownList },
   data() {
     return {
-      appState: storeProxy
-    }
+      appState: storeProxy,
+      showSidebar: Cookies.get("visible") !== "false"
+    };
   },
   computed: {
     cells() {
@@ -60,9 +78,10 @@ export default Vue.extend({
       }
     },
     toggleSidebar() {
-      this.$root.$emit('toggleSidebar');
+      this.$root.$emit("toggleSidebar");
+      this.showSidebar = !this.showSidebar;
     }
-  },
+  }
 });
 </script>
 

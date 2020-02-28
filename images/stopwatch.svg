@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 19.2.1, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 115 115" style="enable-background:new 0 0 115 115;" xml:space="preserve">
+<style type="text/css">
+	.st0{display:none;}
+	.st1{display:inline;fill:#1B2731;}
+	.st2{display:inline;}
+	.st3{opacity:0.5;}
+	.st4{fill:#434C5A;}
+	.st5{opacity:0.5;fill:none;stroke:#434C5A;stroke-width:0.125;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
+	
+		.st6{opacity:0.5;fill:none;stroke:#434C5A;stroke-width:0.125;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;stroke-dasharray:1.1684,4.6736;}
+	.st7{fill:#FFFFFF;}
+	.st8{fill:none;stroke:#E6EDF2;stroke-width:6;stroke-linecap:round;stroke-miterlimit:10;}
+	.st9{fill:#E6EDF2;}
+	.st10{fill:none;stroke:#E6EDF2;stroke-width:6;stroke-miterlimit:10;}
+	.st11{fill:none;stroke:#E6EDF2;stroke-width:6;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st12{fill:none;stroke:#E6EDF2;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st13{fill:none;stroke:#E6EDF2;stroke-width:7;stroke-linecap:round;stroke-miterlimit:10;}
+	.st14{fill:#E6EDF2;stroke:#E6EDF2;stroke-width:2;stroke-miterlimit:10;}
+	.st15{fill:#E6EDF2;stroke:#E6EDF2;stroke-miterlimit:10;}
+	.st16{fill:none;stroke:#E6EDF2;stroke-width:6;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:10;}
+	.st17{fill:none;stroke:#E6EDF2;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;}
+	.st18{fill:#E6ECF1;}
+	.st19{fill:none;stroke:#E6EDF2;stroke-width:10;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st20{fill:none;stroke:#E6EDF2;stroke-width:8;stroke-linecap:round;stroke-miterlimit:10;}
+	.st21{fill:none;stroke:#E6EDF2;stroke-width:8;stroke-linecap:round;stroke-linejoin:round;}
+	.st22{display:inline;fill:#E6EDF2;}
+	.st23{fill:none;stroke:#A3B3BF;stroke-miterlimit:10;}
+	.st24{fill:#A3B3BF;}
+</style>
+<g id="BG" class="st0">
+	<rect x="-882.9" y="-1064.7" class="st1" width="1701.8" height="2001.3"/>
+</g>
+<g id="Grid" class="st0">
+	<g class="st2">
+		<g class="st3">
+			<path class="st4" d="M112,3v109H3.1V3H112 M112.1,2.9H3v109.2h109.1V2.9L112.1,2.9z"/>
+		</g>
+		<g class="st3">
+			<path class="st4" d="M57.6,23.5c18.7,0,34,15.3,34,34s-15.2,34-34,34s-34-15.3-34-34S38.8,23.5,57.6,23.5 M57.6,23.4
+				c-18.8,0-34.1,15.3-34.1,34.1s15.3,34.1,34.1,34.1c18.8,0,34.1-15.3,34.1-34.1S76.4,23.4,57.6,23.4L57.6,23.4z"/>
+		</g>
+		<line class="st5" x1="112.1" y1="57.5" x2="3" y2="57.5"/>
+		<line class="st5" x1="57.6" y1="2.9" x2="57.6" y2="112.1"/>
+		<line class="st6" x1="33.5" y1="2.9" x2="33.5" y2="112.1"/>
+		<line class="st6" x1="81.4" y1="2.9" x2="81.4" y2="112.1"/>
+		<g class="st3">
+			<path class="st4" d="M57.6,3c30,0,54.4,24.4,54.4,54.5S87.6,112,57.6,112S3.1,87.6,3.1,57.5S27.5,3,57.6,3 M57.6,2.9
+				C27.4,2.9,3,27.3,3,57.5s24.4,54.6,54.6,54.6c30.1,0,54.6-24.5,54.6-54.6S87.7,2.9,57.6,2.9L57.6,2.9z"/>
+		</g>
+		<g class="st3">
+			<path class="st4" d="M95.9,19.1v76.9H19.2V19.1H95.9 M96.1,18.9H19v77.1h77V18.9L96.1,18.9z"/>
+		</g>
+		<line class="st5" x1="96.2" y1="18.8" x2="19.1" y2="96.1"/>
+		<line class="st5" x1="19" y1="18.7" x2="96.1" y2="96"/>
+		<g class="st3">
+			<ellipse class="st7" cx="57.6" cy="57.5" rx="8.5" ry="8.5"/>
+			<path class="st4" d="M57.6,49.1c4.6,0,8.4,3.8,8.4,8.4s-3.8,8.4-8.4,8.4c-4.6,0-8.4-3.8-8.4-8.4S52.9,49.1,57.6,49.1 M57.6,49
+				c-4.7,0-8.5,3.8-8.5,8.5s3.8,8.5,8.5,8.5s8.5-3.8,8.5-8.5S62.3,49,57.6,49L57.6,49z"/>
+		</g>
+		<line class="st6" x1="2.9" y1="81.5" x2="112" y2="81.5"/>
+		<line class="st6" x1="2.9" y1="33.5" x2="112" y2="33.5"/>
+	</g>
+</g>
+<g id="Icons">
+	<circle class="st10" cx="58.4" cy="61.9" r="37.2"/>
+	<line class="st10" x1="58.4" y1="26.7" x2="58.4" y2="12.7"/>
+	<line class="st8" x1="46" y1="13.7" x2="71" y2="13.7"/>
+	<line class="st10" x1="34.4" y1="37" x2="24.6" y2="27.3"/>
+	<line class="st8" x1="20.6" y1="32.2" x2="29.5" y2="23.2"/>
+	<g>
+		<path class="st9" d="M59.1,52.3c5.5,0,10.1,4.5,10.1,10.1c0,5.5-4.5,10.1-10.1,10.1c-5.5,0-10.1-4.5-10.1-10.1
+			C49,56.8,53.5,52.3,59.1,52.3 M59.1,46.3c-8.9,0-16.1,7.2-16.1,16.1s7.2,16.1,16.1,16.1c8.9,0,16.1-7.2,16.1-16.1
+			S68,46.3,59.1,46.3L59.1,46.3z"/>
+	</g>
+</g>
+<g id="Type">
+</g>
+</svg>
