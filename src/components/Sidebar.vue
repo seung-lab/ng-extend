@@ -1,33 +1,7 @@
 <template>
   <div :class="'nge-sidebar ' + getSidebarItems() + (visible ? ' visible' : '')">
-    <leaderboard v-show="showLeaderboard" />
-    <div class="nge-sidebar-buttons">
-      <button
-        class="nge-sidebar-button"
-        title="Show leaderboard"
-        @click="setLeaderboardVisible(true);"
-        v-show="!showLeaderboard"
-      >⇓</button>
-      <button
-        class="nge-sidebar-button"
-        title="Show chat"
-        @click="setChatVisible(true);"
-        v-show="!showChat"
-      >⇑</button>
-      <button
-        class="nge-sidebar-button"
-        title="Hide leaderboard"
-        @click="setLeaderboardVisible(false);"
-        v-show="showLeaderboard && showChat"
-      >⇑</button>
-      <button
-        class="nge-sidebar-button"
-        title="Hide chat"
-        @click="setChatVisible(false);"
-        v-show="showLeaderboard && showChat"
-      >⇓</button>
-    </div>
-    <chatbox v-show="showChat" />
+    <leaderboard />
+    <chatbox />
   </div>
 </template>
 
@@ -53,7 +27,7 @@ export default Vue.extend({
     setVisible(visible: boolean) {
       Cookies.set("visible", visible.toString());
       this.visible = visible;
-      (<HTMLElement>document.querySelector('.nge-sidebar')).classList.toggle('visible', visible);
+      (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
     },
     setLeaderboardVisible(visible: boolean) {
       this.showLeaderboard = visible;
@@ -78,6 +52,12 @@ export default Vue.extend({
     this.$root.$on("toggleSidebar", () => {
       this.setVisible(!this.visible);
     });
+    this.$root.$on("toggleLeaderboard", () => {
+      this.setLeaderboardVisible(!this.showLeaderboard);
+    });
+    this.$root.$on("toggleChat", () => {
+      this.setChatVisible(!this.showChat);
+    });
   }
 });
 </script>
@@ -101,7 +81,7 @@ export default Vue.extend({
 }
 
 .nge-sidebar.both {
-  grid-template-rows: 50% min-content auto;
+  grid-template-rows: 50% auto;
 }
 
 .nge-sidebar.lb-only {
@@ -110,11 +90,6 @@ export default Vue.extend({
 
 .nge-sidebar.chat-only {
   grid-template-rows: min-content auto;
-}
-
-.nge-sidebar-buttons {
-  display: grid;
-  grid-template-rows: min-content min-content;
 }
 
 .nge-sidebar-button {
