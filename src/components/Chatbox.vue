@@ -140,7 +140,7 @@ export default Vue.extend({
 
 <style>
 .nge-chatbox {
-  z-index: 500; /* over top of leaderboard simplebar */
+  z-index: 80; /* over top of leaderboard simplebar */
   display: grid;
   grid-template-rows: min-content auto;
 }
@@ -207,7 +207,7 @@ export default Vue.extend({
 
 .nge-chatbox-sendmessage {
   align-self: end;
-  z-index: 1000;
+  z-index: 90;
 }
 
 .nge-chatbox-sendmessage button {
