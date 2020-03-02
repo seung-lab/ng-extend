@@ -6,7 +6,7 @@
     <div class="nge-leaderboard-content" v-show="!minimized">
       <div class="nge-leaderboard-timeselect">
         <button v-for="timespan of getTimespanNames()" :key="timespan" class="nge-sidebar-button"
-        :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="setTimespan(timespan);">{{timespan}}</button>
+        :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="selectButton(timestamp, $event)">{{timespan}}</button>
       </div>
       <simplebar data-simplebar-auto-hide="false">
         <div class="nge-leaderboard-entries">
@@ -43,7 +43,8 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy,
-      minimized: Cookies.get("leaderboardVisible") === "false"
+      minimized: Cookies.get("leaderboardVisible") === "false",
+      selectedButton: undefined as HTMLElement|undefined
     }
   },
   methods: {
@@ -59,17 +60,25 @@ export default Vue.extend({
     },
     getTimespanNames(): string[] {
       // from https://stackoverflow.com/questions/18111657/how-to-get-names-of-enum-entries#comment85271383_43091709
-      return Object.values(LeaderboardTimespan).filter(value => typeof value === 'string') as string[];
+      return Object.values(LeaderboardTimespan).filter(value => typeof value === "string") as string[];
     },
     setTimespan(timespan: string) {
       storeProxy.leaderboardTimespan = LeaderboardTimespan[timespan as keyof typeof LeaderboardTimespan];
       storeProxy.resetLeaderboard();
+    },
+    selectButton(timespan: string, event: MouseEvent) {
+      const buttonEl = <HTMLElement>event.target;
+      if (this.selectedButton) this.selectedButton.classList.toggle("selected", false);
+      this.setTimespan(timespan);
+      buttonEl.classList.toggle("selected", true);
+      this.selectedButton = buttonEl;
     }
   },
   mounted() {
     this.$root.$on("toggleLeaderboard", () => {
       this.minimized = !this.minimized;
     });
+    // TODO select button from cookie, or default to first one
   }
 });
 </script>
@@ -98,6 +107,10 @@ export default Vue.extend({
 
 .nge-leaderboard-timeselect > .nge-sidebar-button {
   padding: 5px;
+}
+
+.nge-leaderboard-timeselect > .nge-sidebar-button.selected {
+  background-color: magenta;
 }
 
 .nge-leaderboard-entries {
