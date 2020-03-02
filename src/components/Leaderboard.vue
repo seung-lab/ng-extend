@@ -9,7 +9,7 @@
         :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="setTimespan(timespan);">{{timespan}}</button>
       </div>
       <simplebar data-simplebar-auto-hide="false">
-      <div class="nge-leaderboard-entries">
+        <div class="nge-leaderboard-entries">
           <div class="nge-leaderboard-row nge-leaderboard-header">
             <div>Rank</div>
             <div>Name</div>
@@ -31,10 +31,15 @@
 <script lang="ts">
 import Vue from "vue";
 import Cookies from "js-cookie";
+import simplebar from "simplebar-vue";
+import "simplebar/dist/simplebar.min.css";
 
 import {storeProxy, LeaderboardTimespan} from "../state";
 
 export default Vue.extend({
+  components: {
+    simplebar
+  },
   data: () => {
     return {
       appState: storeProxy,
