@@ -162,7 +162,6 @@ export default Vue.extend({
 }
 
 .nge-chatbox-messages {
-  overflow-wrap: break-word; /* TODO doesn't work. */
   font-size: 0.75em;
   padding-top: 10px;
   padding-left: 10px;
@@ -178,6 +177,8 @@ export default Vue.extend({
 }
 
 .nge-chatbox-message-text {
+  overflow-wrap: break-word;
+  max-width: 230px;
   padding: 0.5em;
   padding-top: 0.15em;
   display: inline-block;
