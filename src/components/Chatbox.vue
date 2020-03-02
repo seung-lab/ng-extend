@@ -24,7 +24,7 @@
           <span
             class="nge-chatbox-item"
             v-for="(message, index) of appState.chatMessages"
-            :key="index"
+            :key="'message' + index"
           >
             <div class="nge-chatbox-info" v-if="message.type === 'users'">
               <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
@@ -41,22 +41,28 @@
 
             <div class="nge-chatbox-time" v-if="message.type === 'time'">{{message.time}}</div>
 
-            <span
-              v-if="message.type === 'sender'"
-              :class="'nge-chatbox-message-text sender ' + getPlace(message.name)"
+            <div
+              class="nge-chatbox-message"
+              v-if="message.type === 'message'"
               :title="message.time"
-            >{{message.name}}:</span>
-
-            <span v-if="message.type === 'messagePart'" class="nge-chatbox-message-text" :title="message.time">{{message.message}}</span>
-
-            <a v-if="message.type === 'messageLink'"
-              class="nge-chatbox-message-text"
-              target="_blank"
-              v-bind:href="message.message"
-              :title="message.time"
-            >{{message.message}}</a>
-
-            <div class="nge-chatbox-message" v-if="message.type === 'messageEnd'"></div>
+            >
+              <span
+                v-for="(part, partIndex) of message.parts"
+                :key="'messagepart' + index + '-' + partIndex"
+              >
+                <span
+                  v-if="part.type === 'sender'"
+                  :class="'nge-chatbox-message-text sender ' + getPlace(message.name)"
+                >{{part.text}}:</span>
+                <span v-if="part.type === 'text'" class="nge-chatbox-message-text">{{part.text}}</span>
+                <a
+                  v-if="part.type === 'link'"
+                  class="nge-chatbox-message-text"
+                  target="_blank"
+                  :href="part.text"
+                >{{part.text}}</a>
+              </span>
+            </div>
           </span>
         </div>
       </simplebar>
@@ -134,6 +140,7 @@ export default Vue.extend({
 
 <style>
 .nge-chatbox {
+  z-index: 500; /* over top of leaderboard simplebar */
   display: grid;
   grid-template-rows: min-content auto;
 }
@@ -168,6 +175,12 @@ export default Vue.extend({
   padding-right: 10px;
 }
 
+.nge-chatbox-message {
+  overflow-wrap: break-word;
+  padding-top: 0.5em;
+  padding-bottom: 0.15em;
+}
+
 .nge-chatbox-message-text.sender {
   font-weight: bold;
 }
@@ -177,25 +190,16 @@ export default Vue.extend({
 }
 
 .nge-chatbox-message-text {
-  overflow-wrap: break-word;
-  max-width: 230px;
-  padding: 0.5em;
-  padding-top: 0.15em;
-  display: inline-block;
   color: white;
-  padding-left: 0;
-  padding-right: 0;
 }
 
 .nge-chatbox-info-content {
   padding: 0.5em;
-  padding-top: 0.15em;
   text-align: center;
   font-style: italic;
 }
 
 .nge-chatbox-time {
-  padding: 0.5em;
   padding-top: 0.15em;
   text-align: center;
   font-size: 0.85em;
