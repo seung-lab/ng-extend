@@ -244,7 +244,7 @@ class AppStore extends createModule({strict: false}) {
     const existingAuthURL = localStorage.getItem("auth_url");
 
     if (existingToken && existingAuthURL) {
-      let res = await authFetch(`https://${existingAuthURL}/user/me`);
+      let res = await authFetch(`${existingAuthURL.substring(0, existingAuthURL.indexOf('/authorize'))}/user/me`); //TODO go back to just ${existingAuthURL} once server is updated
       let user = await res.json();
       let {name, email} = user;
       this.loggedInUser = {name, email};
@@ -258,7 +258,7 @@ class AppStore extends createModule({strict: false}) {
     const existingAuthURL = localStorage.getItem("auth_url");
 
     if (existingToken && existingAuthURL) {
-      await authFetch(`https://${existingAuthURL}/logout`).then(res => {
+      await authFetch(`${existingAuthURL.substring(0, existingAuthURL.indexOf('/authorize'))}/logout`).then(res => {  //TODO go back to just ${existingAuthURL} once server is updated
         return res.json();
       });
 
