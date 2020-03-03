@@ -96,9 +96,9 @@ export default Vue.extend({
   grid-template-rows: min-content auto;
 }
 
-.nge-leaderboard-title {
-  text-align: center;
-}
+/*.nge-leaderboard-titlebar .nge-sidebar-section-title {
+  padding-bottom: 0.25em;
+}*/
 
 .nge-leaderboard-content {
   display: grid;
@@ -112,10 +112,16 @@ export default Vue.extend({
 
 .nge-leaderboard-timeselect > .nge-sidebar-button {
   padding: 5px;
+  margin-bottom: 10px;
+  margin-left: 15px;
+  margin-right: 15px;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
 }
 
 .nge-leaderboard-timeselect > .nge-sidebar-button.selected {
-  background-color: magenta;
+  background-color: #333;
 }
 
 .nge-leaderboard-entries {
