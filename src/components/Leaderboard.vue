@@ -96,10 +96,6 @@ export default Vue.extend({
   grid-template-rows: min-content auto;
 }
 
-/*.nge-leaderboard-titlebar .nge-sidebar-section-title {
-  padding-bottom: 0.25em;
-}*/
-
 .nge-leaderboard-content {
   display: grid;
   grid-template-rows: min-content auto auto;
@@ -130,10 +126,6 @@ export default Vue.extend({
   grid-auto-rows: min-content;
   overflow: auto;
 }
-
-/*.nge-leaderboard-header {
-  font-weight: bold;
-}*/
 
 .nge-leaderboard-row {
   display: contents;
