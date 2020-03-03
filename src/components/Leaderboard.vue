@@ -30,7 +30,6 @@
 
 <script lang="ts">
 import Vue from "vue";
-import Cookies from "js-cookie";
 import simplebar from "simplebar-vue";
 import "simplebar/dist/simplebar.min.css";
 
@@ -43,8 +42,8 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy,
-      minimized: Cookies.get("leaderboardVisible") === "false",
-      timespan: Cookies.get("timespan")
+      minimized: localStorage.getItem("leaderboardVisible") === "false",
+      timespan: localStorage.getItem("timespan")
     }
   },
   methods: {
@@ -63,7 +62,7 @@ export default Vue.extend({
       return Object.values(LeaderboardTimespan).filter(value => typeof value === "string") as string[];
     },
     setTimespan(timespan: string) {
-      Cookies.set("timespan", timespan);
+      localStorage.setItem("timespan", timespan);
       this.timespan = timespan;
       storeProxy.leaderboardTimespan = LeaderboardTimespan[timespan as keyof typeof LeaderboardTimespan];
       storeProxy.resetLeaderboard();
@@ -73,7 +72,7 @@ export default Vue.extend({
       this.setTimespan(timespan);
       this.setButtonHighlighted(this.timespan, true);
     },
-    setButtonHighlighted(timespan: string|undefined, highlighted: boolean) {
+    setButtonHighlighted(timespan: string|null, highlighted: boolean) {
       if (!timespan) return;
       const button = <HTMLElement>document.querySelector(".nge-sidebar-button." + timespan);
       button.classList.toggle("selected", highlighted);

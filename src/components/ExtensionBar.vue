@@ -36,9 +36,8 @@
 
 <script lang="ts">
 import Vue from "vue";
-import {storeProxy, CellDescription} from "../state";
-import {viewer} from "../main";
-import Cookies from "js-cookie";
+import { storeProxy, CellDescription } from "../state";
+import { viewer } from "../main";
 
 import DropdownList from "components/DropdownList.vue";
 
@@ -47,7 +46,7 @@ export default Vue.extend({
   data() {
     return {
       appState: storeProxy,
-      showSidebar: Cookies.get("visible") !== "false"
+      showSidebar: localStorage.getItem("visible") !== "false"
     };
   },
   computed: {

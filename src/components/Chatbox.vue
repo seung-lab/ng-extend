@@ -82,7 +82,6 @@ import simplebar from "simplebar-vue";
 import "simplebar/dist/simplebar.min.css";
 import { storeProxy } from "../state";
 import ws from "../chat_socket";
-import Cookies from "js-cookie";
 
 export default Vue.extend({
   components: {
@@ -91,8 +90,8 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy,
-      minimized: Cookies.get("chatVisible") === "false",
-      expanded: Cookies.get("leaderboardVisible") === "false"
+      minimized: localStorage.getItem("chatVisible") === "false",
+      expanded: localStorage.getItem("leaderboardVisible") === "false"
     };
   },
   methods: {
