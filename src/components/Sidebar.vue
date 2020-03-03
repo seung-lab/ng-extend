@@ -11,30 +11,29 @@ import Vue from "vue";
 import { storeProxy } from "../state";
 import Leaderboard from "components/Leaderboard.vue";
 import Chatbox from "components/Chatbox.vue";
-import Cookies from "js-cookie";
 
 export default Vue.extend({
   components: { Leaderboard, Chatbox },
   data: () => {
     return {
       appState: storeProxy,
-      visible: Cookies.get("visible") !== "false",
-      showLeaderboard: Cookies.get("leaderboardVisible") !== "false",
-      showChat: Cookies.get("chatVisible") !== "false"
+      visible: localStorage.getItem("visible") !== "false",
+      showLeaderboard: localStorage.getItem("leaderboardVisible") !== "false",
+      showChat: localStorage.getItem("chatVisible") !== "false"
     };
   },
   methods: {
     setVisible(visible: boolean) {
-      Cookies.set("visible", visible.toString());
+      localStorage.setItem("visible", visible.toString());
       this.visible = visible;
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
     },
     setLeaderboardVisible(visible: boolean) {
-      Cookies.set("leaderboardVisible", visible.toString());
+      localStorage.setItem("leaderboardVisible", visible.toString());
       this.showLeaderboard = visible;
     },
     setChatVisible(visible: boolean) {
-      Cookies.set("chatVisible", visible.toString());
+      localStorage.setItem("chatVisible", visible.toString());
       this.showChat = visible;
     },
     getSidebarItems(): string {
