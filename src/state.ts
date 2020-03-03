@@ -64,7 +64,7 @@ class AppStore extends createModule({strict: false}) {
 
   leaderboardEntries: LeaderboardEntry[] = [];
   chatMessages: ChatMessage[] = [];
-  leaderboardTimespan: LeaderboardTimespan;
+  leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Daily;
 
   datasets: DatasetDescription[] = [
     {
