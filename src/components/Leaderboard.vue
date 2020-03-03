@@ -5,8 +5,8 @@
     </div>
     <div class="nge-leaderboard-content" v-show="!minimized">
       <div class="nge-leaderboard-timeselect">
-        <button v-for="timespan of getTimespanNames()" :key="timespan" class="nge-sidebar-button"
-        :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="selectButton(timestamp, $event)">{{timespan}}</button>
+        <button v-for="timespan of getTimespanNames()" :key="timespan" :class="'nge-sidebar-button ' + timespan"
+        :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="selectButton(timespan)">{{timespan}}</button>
       </div>
       <simplebar data-simplebar-auto-hide="false">
         <div class="nge-leaderboard-entries">
@@ -44,7 +44,7 @@ export default Vue.extend({
     return {
       appState: storeProxy,
       minimized: Cookies.get("leaderboardVisible") === "false",
-      selectedButton: undefined as HTMLElement|undefined
+      timespan: Cookies.get("timespan")
     }
   },
   methods: {
@@ -63,22 +63,27 @@ export default Vue.extend({
       return Object.values(LeaderboardTimespan).filter(value => typeof value === "string") as string[];
     },
     setTimespan(timespan: string) {
+      Cookies.set("timespan", timespan);
+      this.timespan = timespan;
       storeProxy.leaderboardTimespan = LeaderboardTimespan[timespan as keyof typeof LeaderboardTimespan];
       storeProxy.resetLeaderboard();
     },
-    selectButton(timespan: string, event: MouseEvent) {
-      const buttonEl = <HTMLElement>event.target;
-      if (this.selectedButton) this.selectedButton.classList.toggle("selected", false);
+    selectButton(timespan: string) {
+      this.setButtonHighlighted(this.timespan, false);
       this.setTimespan(timespan);
-      buttonEl.classList.toggle("selected", true);
-      this.selectedButton = buttonEl;
+      this.setButtonHighlighted(this.timespan, true);
+    },
+    setButtonHighlighted(timespan: string|undefined, highlighted: boolean) {
+      if (!timespan) return;
+      const button = <HTMLElement>document.querySelector(".nge-sidebar-button." + timespan);
+      button.classList.toggle("selected", highlighted);
     }
   },
   mounted() {
     this.$root.$on("toggleLeaderboard", () => {
       this.minimized = !this.minimized;
     });
-    // TODO select button from cookie, or default to first one
+    this.selectButton(this.timespan || "Daily");
   }
 });
 </script>

@@ -65,7 +65,7 @@ class AppStore extends createModule({strict: false}) {
   activeDropdown: { [group: string]: number} = {};
   leaderboardEntries: LeaderboardEntry[] = [];
   chatMessages: ChatMessage[] = [];
-  leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Daily;
+  leaderboardTimespan: LeaderboardTimespan;
 
   datasets: DatasetDescription[] = [
     {
