@@ -3,15 +3,15 @@
     <div class="nge-chatbox-title">
       <div>Chat</div>
       <button class="nge-chatbox-title-button" @click="toggleMinimized()">
-        <img v-show="!minimized" src="images/minimize.svg" width="20" title="Minimize" />
-        <img v-show="minimized" src="images/chevron.svg" width="20" title="Restore" />
+        <img v-show="!minimized" src="images/minimize.svg" width="15" title="Minimize" />
+        <img v-show="minimized" src="images/chevron.svg" width="15" title="Restore" />
       </button>
       <button class="nge-chatbox-title-button" @click="toggleExpanded()">
-        <img v-show="!expanded" src="images/expand.svg" width="20" title="Expand" />
+        <img v-show="!expanded" src="images/expand.svg" width="15" title="Expand" />
         <img
           v-show="expanded"
           src="images/chevron.svg"
-          width="20"
+          width="15"
           style="transform: rotate(180deg);"
           title="Restore"
         />

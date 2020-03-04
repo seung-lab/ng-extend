@@ -19,6 +19,8 @@
 
         <div id="insertNGTopBar" class="flex-fill"></div>
     <div class="flex-fill"></div>
+    <stopwatch />
+    <div class="flex-fill"></div>
     <button @click="appState.showDatasetChooser=true">Choose Dataset</button>
 
     
@@ -40,9 +42,10 @@ import { storeProxy, CellDescription } from "../state";
 import { viewer } from "../main";
 
 import DropdownList from "components/DropdownList.vue";
+import Stopwatch from "components/Stopwatch.vue";
 
 export default Vue.extend({
-  components: { DropdownList },
+  components: { DropdownList, Stopwatch },
   data() {
     return {
       appState: storeProxy,

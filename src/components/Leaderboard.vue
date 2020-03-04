@@ -102,17 +102,19 @@ export default Vue.extend({
 
 .nge-leaderboard-timeselect {
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: 50% 50%;
 }
 
 .nge-leaderboard-timeselect > .nge-sidebar-button {
-  padding: 5px;
+  padding: 8px;
   margin-bottom: 10px;
-  margin-left: 15px;
-  margin-right: 15px;
-  border-radius: 8px;
+  margin-left: 20px;
+  margin-right: 20px;
+  border-radius: 4px;
   border-style: solid;
+  border-color: #555;
   border-width: 1px;
+  font-size: .9em;
 }
 
 .nge-leaderboard-timeselect > .nge-sidebar-button.selected {
@@ -135,6 +137,11 @@ export default Vue.extend({
   padding-bottom: 0.5em;
   padding-left: 0.4em;
   padding-right: 0.4em;
+}
+
+.nge-leaderboard-header {
+  color: #999;
+  font-size: .9em;
 }
 
 .rowOdd > div {
