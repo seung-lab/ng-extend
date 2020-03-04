@@ -67,7 +67,7 @@ export default Vue.extend({
 .nge-sidebar {
   display: grid;
   height: 100%;
-  transition: all 0.5s;
+  transition: all 0.25s;
   transition-property: opacity, width;
 }
 
