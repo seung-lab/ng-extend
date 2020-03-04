@@ -27,7 +27,7 @@
             :key="'message' + index"
           >
             <div class="nge-chatbox-info" v-if="message.type === 'users'">
-              <div class="nge-chatbox-info-content">Users online: {{message.name}}</div>
+              <div class="nge-chatbox-info-content">{{message.name}}</div>
               <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
             </div>
 
