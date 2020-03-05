@@ -5,8 +5,10 @@
     </div>
     <div class="nge-leaderboard-content" v-show="!minimized">
       <div class="nge-leaderboard-timeselect">
+        <div class="nge-leaderboard-timeselect-filler"></div>
         <button v-for="timespan of getTimespanNames()" :key="timespan" :class="'nge-sidebar-button ' + timespan"
         :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="selectButton(timespan)">{{timespan}}</button>
+        <div class="nge-leaderboard-timeselect-filler"></div>
       </div>
       <simplebar data-simplebar-auto-hide="false">
         <div class="nge-leaderboard-entries">
@@ -102,14 +104,14 @@ export default Vue.extend({
 
 .nge-leaderboard-timeselect {
   display: grid;
-  grid-template-columns: 50% 50%;
+  grid-template-columns: 15% 35% 35% 15%;
 }
 
 .nge-leaderboard-timeselect > .nge-sidebar-button {
   padding: 8px;
   margin-bottom: 10px;
-  margin-left: 20px;
-  margin-right: 20px;
+  margin-left: 10px;
+  margin-right: 10px;
   border-radius: 4px;
   border-style: solid;
   border-color: #555;
