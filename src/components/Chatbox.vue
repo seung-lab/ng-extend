@@ -147,7 +147,7 @@ export default Vue.extend({
 .nge-chatbox-title {
   background-color: #000;
   font-size: 1.15em;
-  padding: 0.75em;
+  padding: 10px;
   display: grid;
   grid-template-columns: auto min-content min-content;
 }
@@ -157,8 +157,8 @@ export default Vue.extend({
 }
 
 .nge-chatbox-title-button > img {
-  padding-left: 5px;
-  padding-right: 5px;
+  padding-left: 10px;
+  padding-right: 10px;
 }
 
 .nge-chatbox-content {
