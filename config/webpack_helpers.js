@@ -20,7 +20,8 @@ const path = require('path');
 const originalWebpackHelpers = require('../third_party/neuroglancer/config/webpack_helpers');
 const resolveReal = require('../third_party/neuroglancer/config/resolve_real');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const VueLoaderPlugin = require('vue-loader/lib/plugin')
+const CopyWebpackPlugin = require('copy-webpack-plugin');
+const VueLoaderPlugin = require('vue-loader/lib/plugin');
 
 function modifyViewerOptions(options) {
   options = options || {};
@@ -40,7 +41,12 @@ function modifyViewerOptions(options) {
   // neuroglancer.
   options.frontendModules = [resolveReal(__dirname, '../src/main.ts')];
 
-  options.frontendPlugins = [new VueLoaderPlugin()];
+  options.frontendPlugins = [new VueLoaderPlugin(),
+    new CopyWebpackPlugin([{
+        'from': 'images',
+        'to': 'images'
+      }])
+	];
 
   options.htmlPlugin = new HtmlWebpackPlugin({template: resolveReal(__dirname, '../src/index.html')});
 
