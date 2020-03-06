@@ -43,10 +43,10 @@ function modifyViewerOptions(options) {
 
   options.frontendPlugins = [new VueLoaderPlugin(),
     new CopyWebpackPlugin([{
-        'from': 'images',
-        'to': 'images'
-      }])
-	];
+      'from': 'images',
+      'to': 'images'
+    }])
+  ];
 
   options.htmlPlugin = new HtmlWebpackPlugin({template: resolveReal(__dirname, '../src/index.html')});
 
