@@ -42,6 +42,7 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
 
   viewer.loadFromJsonUrl();
+  viewer.initializeSaver();
 
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
