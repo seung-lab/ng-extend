@@ -14,17 +14,27 @@ import {UrlHashBinding} from 'neuroglancer/ui/url_hash_binding';
 
 import {setupVueApp} from './vueapp';
 import { storeProxy } from './state';
+import './config';
 
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadConfig();
   setupVueApp();
   setupViewer();
   mergeTopBars();
   storeProxy.loadActiveDataset();
   storeProxy.loopUpdateLeaderboard();
-  storeProxy.joinChat();
+  if (config.enableChat) {
+    storeProxy.joinChat();
+  }
 });
 
 export let viewer: Viewer|null = null;
+export let config: Config;
+
+async function loadConfig() {
+  const configURL = 'src/config.json';
+  config = await fetch(configURL).then(res => res.json());
+}
 
 function mergeTopBars() {
   const ngTopBar = document.getElementById('neuroglancerViewer')!.children[0];
@@ -70,6 +80,7 @@ function makeExtendViewer() {
 }
 
 import {authTokenShared} from "neuroglancer/authentication/frontend";
+import Config from './config';
 
 class ExtendViewer extends Viewer {
   constructor(public display: DisplayContext) {

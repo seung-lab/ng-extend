@@ -314,7 +314,8 @@ class AppStore extends createModule({strict: false}) {
       ws.send(joinMessage);
     } else {
       ws.onopen = () => {
-        ws.send(joinMessage); };
+        ws.send(joinMessage);
+      };
     }
   }
 
