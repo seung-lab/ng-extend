@@ -81,7 +81,7 @@ import Vue from "vue";
 import simplebar from "simplebar-vue";
 import "simplebar/dist/simplebar.min.css";
 import { storeProxy } from "../state";
-import ws from "../chat_socket";
+import getChatSocket from "../chat_socket";
 
 export default Vue.extend({
   components: {
@@ -104,7 +104,7 @@ export default Vue.extend({
 
       if (message.trim() !== "") {
         const messageObj = { type: "message", message: message };
-        ws.send(JSON.stringify(messageObj));
+        getChatSocket().send(JSON.stringify(messageObj));
       }
     },
     getPlace(name: string): string {

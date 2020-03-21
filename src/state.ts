@@ -300,6 +300,7 @@ class AppStore extends createModule({strict: false}) {
   }
 
   @action async joinChat() {
+    const ws = getChatSocket();
     ws.onmessage = (event) => {
       this.handleMessage(event.data);
     };
@@ -385,7 +386,7 @@ class AppStore extends createModule({strict: false}) {
 
 import Vue from 'vue';
 import Vuex from 'vuex';
-import ws from './chat_socket';
+import getChatSocket from './chat_socket';
 Vue.use(Vuex);
 
 export const store = new Vuex.Store({
