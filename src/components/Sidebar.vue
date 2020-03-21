@@ -1,7 +1,7 @@
 <template>
   <div :class="'nge-sidebar ' + getSidebarItems() + (visible ? ' visible' : '')">
     <leaderboard />
-    <chatbox />
+    <chatbox v-if="enableChat" />
   </div>
 </template>
 
@@ -11,12 +11,14 @@ import Vue from "vue";
 import { storeProxy } from "../state";
 import Leaderboard from "components/Leaderboard.vue";
 import Chatbox from "components/Chatbox.vue";
+import { config } from "../main";
 
 export default Vue.extend({
   components: { Leaderboard, Chatbox },
   data: () => {
     return {
       appState: storeProxy,
+      enableChat: config.enableChat,
       visible: localStorage.getItem("visible") !== "false",
       showLeaderboard: localStorage.getItem("leaderboardVisible") !== "false",
       showChat: localStorage.getItem("chatVisible") !== "false"
@@ -37,6 +39,9 @@ export default Vue.extend({
       this.showChat = visible;
     },
     getSidebarItems(): string {
+      if (!this.enableChat) {
+        return "chat-disabled";
+      }
       if (this.showLeaderboard && this.showChat) {
         return "both";
       }
@@ -79,6 +84,10 @@ export default Vue.extend({
 .nge-sidebar:not(.visible) {
   width: 0px;
   opacity: 0%;
+}
+
+.nge-sidebar.chat-disabled {
+  grid-template-rows: auto;
 }
 
 .nge-sidebar.both {
