@@ -1,7 +1,7 @@
 <template>
-  <div :class="'nge-sidebar ' + getSidebarItems() + (visible ? ' visible' : '')">
+  <div :class="'nge-sidebar' + (visible ? ' visible' : '')">
+    <getting-started />
     <leaderboard />
-    <chatbox v-if="enableChat" />
   </div>
 </template>
 
@@ -10,18 +10,14 @@ import Vue from "vue";
 
 import { storeProxy } from "../state";
 import Leaderboard from "components/Leaderboard.vue";
-import Chatbox from "components/Chatbox.vue";
-import { config } from "../main";
+import GettingStarted from "components/GettingStarted.vue";
 
 export default Vue.extend({
-  components: { Leaderboard, Chatbox },
+  components: { Leaderboard, GettingStarted },
   data: () => {
     return {
       appState: storeProxy,
-      enableChat: config.enableChat,
-      visible: localStorage.getItem("visible") !== "false",
-      showLeaderboard: localStorage.getItem("leaderboardVisible") !== "false",
-      showChat: localStorage.getItem("chatVisible") !== "false"
+      visible: localStorage.getItem("visible") !== "false"
     };
   },
   methods: {
@@ -29,40 +25,11 @@ export default Vue.extend({
       localStorage.setItem("visible", visible.toString());
       this.visible = visible;
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
-    },
-    setLeaderboardVisible(visible: boolean) {
-      localStorage.setItem("leaderboardVisible", visible.toString());
-      this.showLeaderboard = visible;
-    },
-    setChatVisible(visible: boolean) {
-      localStorage.setItem("chatVisible", visible.toString());
-      this.showChat = visible;
-    },
-    getSidebarItems(): string {
-      if (!this.enableChat) {
-        return "chat-disabled";
-      }
-      if (this.showLeaderboard && this.showChat) {
-        return "both";
-      }
-      if (this.showLeaderboard) {
-        return "lb-only";
-      }
-      if (this.showChat) {
-        return "chat-only";
-      }
-      return ""; //should never happen
     }
   },
   mounted() {
     this.$root.$on("toggleSidebar", () => {
       this.setVisible(!this.visible);
-    });
-    this.$root.$on("toggleLeaderboard", () => {
-      this.setLeaderboardVisible(!this.showLeaderboard);
-    });
-    this.$root.$on("toggleChat", () => {
-      this.setChatVisible(!this.showChat);
     });
   }
 });
@@ -86,19 +53,7 @@ export default Vue.extend({
   opacity: 0%;
 }
 
-.nge-sidebar.chat-disabled {
-  grid-template-rows: auto;
-}
-
-.nge-sidebar.both {
-  grid-template-rows: 50% auto;
-}
-
-.nge-sidebar.lb-only {
-  grid-template-rows: auto min-content;
-}
-
-.nge-sidebar.chat-only {
+.nge-sidebar {
   grid-template-rows: min-content auto;
 }
 

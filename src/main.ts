@@ -14,7 +14,6 @@ import {UrlHashBinding} from 'neuroglancer/ui/url_hash_binding';
 
 import {setupVueApp} from './vueapp';
 import { storeProxy } from './state';
-import { connectChatSocket } from './chat_socket';
 import './config';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -24,10 +23,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   mergeTopBars();
   storeProxy.loadActiveDataset();
   storeProxy.loopUpdateLeaderboard();
-  if (config.enableChat) {
-    connectChatSocket();
-    storeProxy.joinChat();
-  }
 });
 
 export let viewer: Viewer|null = null;
