@@ -45,6 +45,10 @@ function modifyViewerOptions(options) {
     new CopyWebpackPlugin([{
       'from': 'images',
       'to': 'images'
+    }]),
+    new CopyWebpackPlugin([{
+      'from': 'src/config.json',
+      'to': 'src/config.json'
     }])
   ];
 
