@@ -24,8 +24,6 @@
         <li v-for="cell of cells" v-bind:key="cell.id" :class="{selected: activeCells.includes(cell)}"><button @click="selectCell(cell)">{{ cell.id }}</button></li>
       </template>
     </dropdown-list>
-
-    <button>yo</button>
   </div>
 </template>
 
@@ -89,7 +87,7 @@ export default Vue.extend({
   align-items: center;
 }
 
-#extensionBar > button {
-  padding: 0 16px;
+#extensionBar > button, #extensionBar > .dropdownList > button {
+  padding: 0 8px;
 }
 </style>

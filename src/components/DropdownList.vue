@@ -65,7 +65,7 @@ export default Vue.extend({
 }
 
 .dropdownList.open > button {
-  background-color: gray;
+  background-color: var(--color-medium-bg);
 }
 
 .hideDropdown {
@@ -82,7 +82,7 @@ export default Vue.extend({
   position: absolute;
   right: 0;
   top: 30px;
-  background-color: var(--color-dark-bg);
+  background-color: var(--color-medium-bg);
 }
 
 .dropdownMenu > li > button {
