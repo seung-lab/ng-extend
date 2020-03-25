@@ -6,7 +6,7 @@
     "build": "webpack --config ./config/webpack.config.js --env=dev",
     "build-python": "webpack --config ./config/webpack.config.js --env=python-dev",
     "build-python-min": "webpack --config ./config/webpack.config.js --env=python-min",
-    "dev-server": "webpack-dev-server --config ./config/webpack.config.js",
+    "dev-server": "webpack-dev-server --config ./config/webpack.config.js --port 80 --host 0.0.0.0",
     "dev-server-python": "webpack-dev-server --config ./config/webpack.config.js --env=python-dev"
   },
   "dependencies": {

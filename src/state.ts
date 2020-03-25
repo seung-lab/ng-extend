@@ -45,7 +45,7 @@ class AppStore extends createModule({strict: false}) {
         },
         {
           type: "segmentation_with_graph",
-          source: "graphene://https://fafbv2.dynamicannotationframework.com/segmentation/1.0/fly_v31"
+          source: "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31"
         }
       ],
       curatedCells: [
@@ -63,7 +63,7 @@ class AppStore extends createModule({strict: false}) {
         },
         {
           type: "segmentation_with_graph",
-          source: "graphene://https://fafbv2.dynamicannotationframework.com/segmentation/1.0/fly_v26"
+          source: "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26"
         }
       ],
       curatedCells: [
@@ -213,7 +213,9 @@ class AppStore extends createModule({strict: false}) {
     const existingAuthURL = localStorage.getItem("auth_url");
 
     if (existingToken && existingAuthURL) {
-      let res = await authFetch(`https://${existingAuthURL}/user/me`);
+      const authURL = new URL(existingAuthURL).origin;
+
+      let res = await authFetch(`${authURL}/auth/api/v1/user/me`);
       let user = await res.json();
       let {name, email} = user;
       this.loggedInUser = {name, email};
@@ -227,7 +229,9 @@ class AppStore extends createModule({strict: false}) {
     const existingAuthURL = localStorage.getItem("auth_url");
 
     if (existingToken && existingAuthURL) {
-      await authFetch(`https://${existingAuthURL}/logout`).then(res => {
+      const authURL = new URL(existingAuthURL).origin;
+
+      await authFetch(`${authURL}/auth/api/v1/logout`).then(res => {
         return res.json();
       });
 
