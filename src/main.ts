@@ -92,4 +92,14 @@ class ExtendViewer extends Viewer {
     });
     storeProxy.fetchLoggedInUser();
   }
+
+  promptJsonStateServer(message: string): void {
+    let json_server_input =
+        prompt(message, config.linkShortenerURL + '/nglstate/post');
+    if (json_server_input !== null) {
+      this.jsonStateServer.value = json_server_input;
+    } else {
+      this.jsonStateServer.reset();
+    }
+  }
 }
