@@ -48,6 +48,6 @@ export default Vue.extend({
   padding-bottom: 1em;
 }
 .nge-gs-link > a {
-  color: white;
+  color: #000;
 }
 </style>
