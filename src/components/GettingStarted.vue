@@ -12,13 +12,10 @@
         <a href="https://drive.google.com/drive/u/0/folders/1SwWatyE-GLLhJrRIIuRqPBhLh5uf5C3x" target="_blank">Self-guided training</a>
       </div>
       <div class="nge-gs-link">
-        <a href="https://docs.google.com/document/d/1FvEtMnAHenufDtCqKdi2DAyPyX9IzWkW9P2H31WxkMo/edit" target="_blank">FAQ</a>
-      </div>
-      <div class="nge-gs-link">
         <a href="http://flywire-forum.slack.com/" target="_blank">Slack Forum</a>
       </div>
       <div class="nge-gs-link">
-        <a href="mailto:flywire@princeton.edu">Email us</a>
+        <a href="https://flywire.ai/support.html" target="_blank">Support</a>
       </div>
     </div>
   </div>
