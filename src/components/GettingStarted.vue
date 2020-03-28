@@ -1,6 +1,6 @@
 <template>
   <div class="nge-getting-started">
-    <div class="nge-gs-title">Getting Started</div>
+    <div class="nge-gs-title">FlyWire</div>
     <div class="nge-gs-links">
       <div class="nge-gs-link">
         <a href="https://www.youtube.com/watch?v=oHg5SJYRHA0" target="_blank">Welcome video</a>
@@ -30,7 +30,7 @@ export default Vue.extend({
 
 <style>
 .nge-getting-started {
-  background-color: black;
+  background-color: #111;
 }
 .nge-gs-title {
   text-align: center;

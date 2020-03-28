@@ -1,5 +1,6 @@
 <template>
   <div :class="'nge-sidebar' + (visible ? ' visible' : '')">
+    <!--<button class="nge-sidebar-hide-button" @click="setVisible(false);">&lt;</button>-->
     <getting-started />
     <leaderboard />
   </div>
@@ -61,6 +62,13 @@ export default Vue.extend({
   background-color: #222;
   padding: 5px;
 }
+
+/*.nge-sidebar-hide-button {
+  position: fixed;
+  top: 50%;
+  left: 230px;
+  z-index: 1;
+}*/
 
 .nge-sidebar-section-title {
   background-color: #111;
