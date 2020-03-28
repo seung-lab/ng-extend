@@ -12,7 +12,7 @@
         <a href="https://drive.google.com/drive/u/0/folders/1SwWatyE-GLLhJrRIIuRqPBhLh5uf5C3x" target="_blank">Self-guided training</a>
       </div>
       <div class="nge-gs-link">
-        <a href="http://flywire-forum.slack.com/" target="_blank">Slack Forum</a>
+        <a href="https://join.slack.com/t/flywire-forum/shared_invite/zt-d6pyjonk-uC7_kjcjU~8c64t~Qid~oQ" target="_blank">Slack Forum</a>
       </div>
       <div class="nge-gs-link">
         <a href="https://flywire.ai/support.html" target="_blank">Support</a>
