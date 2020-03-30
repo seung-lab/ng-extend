@@ -5,7 +5,7 @@
     </div>
     <div class="nge-gs-links">
       <div class="nge-gs-link">
-        <a href="https://www.youtube.com/watch?v=oHg5SJYRHA0" target="_blank">Welcome video</a>
+        <a href="https://drive.google.com/file/d/19qtO1U0wF4Ga9_Ruow6yHvRyZxsSG3zn/view?ts=5e822617" target="_blank">Welcome video</a>
       </div>
       <div class="nge-gs-link">
         <a href="https://docs.google.com/document/d/1tjy6axXvxVcfvrYiBbJsLTSx1Y3rTGI_HcXKETIqyiM/edit" target="_blank">Cheatsheet</a>
