@@ -1,12 +1,14 @@
 <template>
   <div class="nge-getting-started">
-    <div class="nge-gs-title">FlyWire</div>
+    <div class="nge-gs-title">
+      <a href="https://flywire.ai/" target="_blank">FlyWire</a>
+    </div>
     <div class="nge-gs-links">
       <div class="nge-gs-link">
         <a href="https://www.youtube.com/watch?v=oHg5SJYRHA0" target="_blank">Welcome video</a>
       </div>
       <div class="nge-gs-link">
-        <a href="https://www.youtube.com/watch?v=R1LtZb9ZlWQ" target="_blank">Cheatsheet</a>
+        <a href="https://docs.google.com/document/d/1tjy6axXvxVcfvrYiBbJsLTSx1Y3rTGI_HcXKETIqyiM/edit" target="_blank">Cheatsheet</a>
       </div>
       <div class="nge-gs-link">
         <a href="https://drive.google.com/drive/u/0/folders/1SwWatyE-GLLhJrRIIuRqPBhLh5uf5C3x" target="_blank">Self-guided training</a>
@@ -37,6 +39,9 @@ export default Vue.extend({
   font-size: 1.3em;
   padding-top: 0.75em;
   padding-bottom: 0.75em;
+}
+.nge-gs-title > a {
+  color: #fff;
 }
 .nge-gs-links {
   padding-left: 1em;
