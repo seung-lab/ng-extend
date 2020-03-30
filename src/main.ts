@@ -18,10 +18,17 @@ import { storeProxy } from './state';
 window.addEventListener('DOMContentLoaded', () => {
   setupVueApp();
   setupViewer();
+  mergeTopBars();
   storeProxy.loadActiveDataset();
 });
 
 export let viewer: Viewer|null = null;
+
+function mergeTopBars() {
+  const ngTopBar = document.getElementById('neuroglancerViewer')!.children[0];
+  const topBarVueParent = document.getElementById('insertNGTopBar')!;
+  topBarVueParent.appendChild(ngTopBar);
+}
 
 function setupViewer() {
   viewer = (<any>window)['viewer'] = makeExtendViewer();
