@@ -1,18 +1,16 @@
 <template>
   <div id="extensionBar" @mousedown.stop.prevent>
-    <button class="toggleSidebarButton" @click="toggleSidebar()">
+    <button :class="'toggleSidebarButton' + (showSidebar ? ' expanded' : '')" @click="toggleSidebar()">
       <img
         v-show="!showSidebar"
-        src="images/chevron.svg"
-        width="20"
-        style="transform: rotate(90deg);"
+        src="images/menu.svg"
+        width="30"
         title="Show sidebar"
       />
       <img
         v-show="showSidebar"
-        src="images/chevron.svg"
-        width="20"
-        style="transform: rotate(270deg);"
+        src="images/menu_open.svg"
+        width="30"
         title="Hide sidebar"
       />
     </button>
@@ -93,6 +91,11 @@ export default Vue.extend({
 }
 
 #extensionBar > .toggleSidebarButton {
+  transition: width 0.2s;
+  width: 65px;
+}
+
+#extensionBar > .toggleSidebarButton.expanded {
   width: 250px;
 }
 </style>
