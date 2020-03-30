@@ -1,29 +1,19 @@
 <template>
   <div id="extensionBar" @mousedown.stop.prevent>
-    <div class="flex-fill"></div>
+    <div id="insertNGTopBar" class="flex-fill"></div>
+
     <button @click="appState.showDatasetChooser=true">Choose Dataset</button>
+
     
     <template v-if="appState.loggedInUser">
-      <div>{{ appState.loggedInUser.name }} ({{ appState.loggedInUser.email }})</div>
-    </template>
-    
-    <dropdown-list dropdown-group="blah">
-      <template #buttonTitle>Settings</template>
-      <template #listItems>
-        <li><button @click="toggleNeuroglancerUI">Toggle Neuroglancer UI</button></li>
-        <template v-if="appState.loggedInUser">
+      <dropdown-list dropdown-group="blah">
+        <template #buttonTitle>{{ appState.loggedInUser.name }}</template>
+        <template #listItems>
+          <li><div>Email: {{ appState.loggedInUser.email }}</div></li>
           <li><button @click="appState.logout">Logout</button></li>
         </template>
-      </template>
-    </dropdown-list>
-
-
-    <dropdown-list dropdown-group="blah">
-      <template #buttonTitle>Cells</template>
-      <template #listItems>
-        <li v-for="cell of cells" v-bind:key="cell.id" :class="{selected: activeCells.includes(cell)}"><button @click="selectCell(cell)">{{ cell.id }}</button></li>
-      </template>
-    </dropdown-list>
+      </dropdown-list>
+    </template>
   </div>
 </template>
 
@@ -73,6 +63,10 @@ export default Vue.extend({
 </script>
 
 <style>
+#insertNGTopBar > div {
+  width: 100%;
+}
+
 #extensionBar {
   display: flex;
   height: 30px;

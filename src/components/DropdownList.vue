@@ -85,9 +85,10 @@ export default Vue.extend({
   background-color: var(--color-medium-bg);
 }
 
-.dropdownMenu > li > button {
+.dropdownMenu > li > button, .dropdownMenu > li > div {
   padding: 16px 26px;
   width: 100%;
+  white-space: nowrap;
 }
 
 .dropdownGroup > button {
