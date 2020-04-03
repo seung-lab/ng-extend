@@ -1,7 +1,7 @@
 <template>
   <div class="nge-getting-started">
     <div class="nge-gs-title">
-      <a href="https://flywire.ai/" target="_blank">FlyWire</a>
+      <a href="https://flywire.ai/" target="_blank"><img src="images/logo.png" width=200 title="FlyWire"></a>
     </div>
     <div class="nge-gs-links">
       <div class="nge-gs-link">
