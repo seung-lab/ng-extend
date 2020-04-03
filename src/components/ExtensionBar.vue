@@ -15,6 +15,12 @@
       />
     </button>
 
+    <div :class="'ng-extend-logo' + (showSidebar ? ' hidden' : '')">
+      <a href="https://flywire.ai/" target="_blank">
+        <img src="images/logo.png" height=25 title="FlyWire">
+      </a>
+    </div>
+
     <div id="insertNGTopBar" class="flex-fill"></div>
 
     <!-- <div class="flex-fill"></div>
@@ -116,5 +122,14 @@ export default Vue.extend({
 
 #extensionBar > .toggleSidebarButton.expanded {
   width: 250px;
+}
+
+.ng-extend-logo.hidden {
+  width: 0px;
+}
+
+.ng-extend-logo {
+  width: 150px;
+  transition: width 0.2s;
 }
 </style>
