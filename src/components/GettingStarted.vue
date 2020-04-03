@@ -1,8 +1,8 @@
 <template>
   <div class="nge-getting-started">
-    <div class="nge-gs-title">
+    <!--div class="nge-gs-title">
       <a href="https://flywire.ai/" target="_blank"><img src="images/logo.png" width=200 title="FlyWire"></a>
-    </div>
+    </div-->
     <div class="nge-gs-links">
       <div class="nge-gs-link">
         <a href="https://drive.google.com/file/d/19qtO1U0wF4Ga9_Ruow6yHvRyZxsSG3zn/view?ts=5e822617" target="_blank">Welcome video</a>
@@ -45,6 +45,7 @@ export default Vue.extend({
 }
 .nge-gs-links {
   padding-left: 1em;
+  padding-top: 1em;
 }
 .nge-gs-link {
   padding-bottom: 1em;
