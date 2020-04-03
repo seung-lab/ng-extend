@@ -1,6 +1,6 @@
 <template>
   <div id="extensionBar" @mousedown.stop.prevent>
-    <button :class="'toggleSidebarButton' + (showSidebar ? ' expanded' : '')" @click="toggleSidebar()">
+    <button class="toggleSidebarButton" @click="toggleSidebar()">
       <img
         v-show="!showSidebar"
         src="images/menu.svg"
@@ -15,9 +15,9 @@
       />
     </button>
 
-    <div :class="'ng-extend-logo' + (showSidebar ? ' hidden' : '')">
+    <div class="ng-extend-logo">
       <a href="https://flywire.ai/" target="_blank">
-        <img src="images/logo.png" height=25 title="FlyWire">
+        <img src="images/logo.png" height=22 title="FlyWire">
       </a>
     </div>
 
@@ -99,7 +99,7 @@ export default Vue.extend({
 
 #extensionBar {
   display: flex;
-  height: 30px;
+  height: 40px;
   align-items: center;
   background-color: var(--color-dark-bg);
   z-index: 3;
@@ -116,20 +116,17 @@ export default Vue.extend({
 }
 
 #extensionBar > .toggleSidebarButton {
-  transition: width 0.2s;
   width: 65px;
-}
-
-#extensionBar > .toggleSidebarButton.expanded {
-  width: 250px;
-}
-
-.ng-extend-logo.hidden {
-  width: 0px;
+  justify-content: center;
 }
 
 .ng-extend-logo {
   width: 150px;
-  transition: width 0.2s;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.ng-extend-logo > a {
+  height: 22px;
 }
 </style>
