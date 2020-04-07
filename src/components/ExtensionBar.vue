@@ -17,7 +17,7 @@
 
     <div class="ng-extend-logo">
       <a href="https://flywire.ai/" target="_blank">
-        <img src="images/logo.png" height=22 title="FlyWire">
+        <img src="images/logo-filled.png" height=22 title="FlyWire">
       </a>
     </div>
 
