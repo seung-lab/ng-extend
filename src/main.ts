@@ -43,7 +43,7 @@ function setupViewer() {
   viewer = (<any>window)['viewer'] = makeExtendViewer();
   setDefaultInputEventBindings(viewer.inputEventBindings);
 
-  const hashBinding = viewer.registerDisposer(new UrlHashBinding(viewer.state));
+  const hashBinding = viewer.registerDisposer(new UrlHashBinding(viewer.state, viewer));
   viewer.registerDisposer(hashBinding.parseError.changed.add(() => {
     const {value} = hashBinding.parseError;
     if (value !== undefined) {
