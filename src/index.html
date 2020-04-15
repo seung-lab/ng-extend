@@ -11,9 +11,45 @@
   <link rel="mask-icon" href="images/favicon/safari-pinned-tab.svg?v=rMJJ5wk4zj" color="#5bbad5">
   <link rel="shortcut icon" href="images/favicon/favicon.ico?v=rMJJ5wk4zj">
   <script src="https://unpkg.com/vue/dist/vue.js"></script>
+  <script>
+    // localStorage test
+    {
+      const type = 'localStorage';
+      let storage;
+      try {
+        storage = window[type];
+        let x = '__storage_test__';
+        storage.setItem(x, x);
+        storage.removeItem(x);
+      } catch (e) {
+        const outOfSpace = e instanceof DOMException && (
+          // everything except Firefox
+          e.code === 22 ||
+          // Firefox
+          e.code === 1014 ||
+          // test name field too, because code might not be present
+          // everything except Firefox
+          e.name === 'QuotaExceededError' ||
+          // Firefox
+          e.name === 'NS_ERROR_DOM_QUOTA_REACHED') &&
+          // acknowledge QuotaExceededError only if there's something already stored
+          (storage && storage.length !== 0);
+
+        if (!outOfSpace) {
+          alert('Local Storage has been disabled, please renable it in Chrome');
+        }
+      }
+    }
+  </script>
 </head>
 
 <body>
+  <div id="neuroglancer-error">Oops! There was an error and Neuroglancer could not be loaded. Please follow the
+    instructions in the <a
+      href="https://docs.google.com/document/d/1FvEtMnAHenufDtCqKdi2DAyPyX9IzWkW9P2H31WxkMo">FAQ</a> to
+    troubleshoot.
+  </div>
+  </div>
   <div id="vueApp" class="full"></div>
 </body>
 
