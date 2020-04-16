@@ -27,7 +27,7 @@
     <stopwatch />
     <div class="flex-fill"></div> -->
 
-    <button @click="appState.showDatasetChooser=true">Choose Dataset</button>
+    <button @click="appState.showDatasetChooser=true">Dataset: {{ appState.activeDataset ? appState.activeDataset.name : 'None' }}</button>
 
     <template v-if="appState.loggedInUser">
       <dropdown-list dropdown-group="blah">
