@@ -1,9 +1,10 @@
-import { createModule, action, createProxy, extractVuexModule } from "vuex-class-component";
-import { authFetch, authTokenShared } from "neuroglancer/authentication/frontend";
-import { SegmentationUserLayer } from "neuroglancer/segmentation_user_layer";
-import { Uint64 } from "neuroglancer/util/uint64";
+import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
+import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
+import {StatusMessage} from 'neuroglancer/status';
+import {Uint64} from 'neuroglancer/util/uint64';
+import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
 
-import {viewer} from "./main";
+import {viewer} from './main';
 
 interface LoggedInUser {
   name: string;
@@ -11,14 +12,11 @@ interface LoggedInUser {
 }
 
 interface LayerDescription {
-  source: string,
-  type: "image"|"segmentation"|"segmentation_with_graph"
+  source: string, type: 'image'|'segmentation'|'segmentation_with_graph'
 }
 
 export interface DatasetDescription {
-  name: string,
-  layers: LayerDescription[],
-  curatedCells?: CellDescription[]
+  name: string, layers: LayerDescription[], curatedCells?: CellDescription[]
 }
 
 export interface CellDescription {
@@ -26,8 +24,7 @@ export interface CellDescription {
 }
 
 export interface LeaderboardEntry {
-  name: string,
-  score: number
+  name: string, score: number
 }
 
 export enum LeaderboardTimespan {
@@ -35,7 +32,8 @@ export enum LeaderboardTimespan {
   Weekly = 6
 }
 
-class AppStore extends createModule({strict: false}) {
+class AppStore extends createModule
+({strict: false}) {
   loggedInUser: LoggedInUser|null = null;
   showDatasetChooser: boolean = false;
   showCellChooser: boolean = false;
@@ -43,57 +41,61 @@ class AppStore extends createModule({strict: false}) {
   activeDataset: DatasetDescription|null = null;
   activeCells: CellDescription[] = [];
 
-  activeDropdown: { [group: string]: number} = {};
+  activeDropdown: {[group: string]: number} = {};
   leaderboardEntries: LeaderboardEntry[] = [];
   leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Daily;
 
   datasets: DatasetDescription[] = [
     {
-      name: "production",
+      name: 'production',
       layers: [
         {
-          type: "image",
-          source: "precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02"
+          type: 'image',
+          source:
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02'
         },
         {
-          type: "segmentation_with_graph",
-          source: "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31"
+          type: 'segmentation_with_graph',
+          source:
+              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31'
         }
       ],
-      curatedCells: [
-        {
-          id: "720575940650468481",
-        }
-      ]
+      curatedCells: [{
+        id: '720575940650468481',
+      }]
     },
     {
-      name: "sandbox",
+      name: 'sandbox',
       layers: [
         {
-          type: "image",
-          source: "precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02"
+          type: 'image',
+          source:
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02'
         },
         {
-          type: "segmentation_with_graph",
-          source: "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26"
+          type: 'segmentation_with_graph',
+          source:
+              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26'
         }
       ],
       curatedCells: [
         {
-          id: "720575940625416797",
+          id: '720575940625416797',
         },
         {
-          id: "720575940637436173",
+          id: '720575940637436173',
         },
       ]
     }
   ];
 
-  @action async loadActiveDataset() {
+  @action
+  async loadActiveDataset() {
     const numberOfLayers = viewer!.layerManager.managedLayers.length;
 
     if (numberOfLayers > 0) {
-      const firstLayerName = viewer!.layerManager.managedLayers[0].name.split('-')[0];
+      const firstLayerName =
+          viewer!.layerManager.managedLayers[0].name.split('-')[0];
       for (let dataset of this.datasets) {
         if (dataset.name === firstLayerName) {
           // TODO, should check to see the layers are correct
@@ -102,7 +104,17 @@ class AppStore extends createModule({strict: false}) {
         }
       }
     } else {
-      storeProxy.showDatasetChooser = true;
+      // storeProxy.showDatasetChooser = true;
+      if (this.datasets.length) {
+        for (let dataset of this.datasets) {
+          if (dataset.name == 'sandbox') {
+            this.selectDataset(dataset);
+          }
+        }
+      } else {
+        StatusMessage.showTemporaryMessage(
+            `There are no datasets avaliable.`, 10000, {color: 'yellow'});
+      }
     }
 
     const layers = viewer!.layerManager.managedLayers;
@@ -119,7 +131,8 @@ class AppStore extends createModule({strict: false}) {
     }
   }
 
-  @action async refreshActiveCells() {
+  @action
+  async refreshActiveCells() {
     if (!viewer) {
       return false;
     }
@@ -165,7 +178,8 @@ class AppStore extends createModule({strict: false}) {
     return false;
   }
 
-  @action async selectDataset(dataset: DatasetDescription) {
+  @action
+  async selectDataset(dataset: DatasetDescription) {
     if (!viewer) {
       return false;
     }
@@ -176,7 +190,8 @@ class AppStore extends createModule({strict: false}) {
     viewer.navigationState.position.spatialCoordinatesValid = false;
 
     for (let layerDesc of dataset.layers) {
-      const layerWithSpec = viewer.layerSpecification.getLayer(`${dataset.name}-${layerDesc.type}`, layerDesc);
+      const layerWithSpec = viewer.layerSpecification.getLayer(
+          `${dataset.name}-${layerDesc.type}`, layerDesc);
       viewer.layerManager.addManagedLayer(layerWithSpec);
 
       const {layer} = layerWithSpec;
@@ -195,7 +210,8 @@ class AppStore extends createModule({strict: false}) {
     return true;
   }
 
-  @action async selectCell(cell: CellDescription) {
+  @action
+  async selectCell(cell: CellDescription) {
     if (!viewer) {
       return false;
     }
@@ -220,9 +236,10 @@ class AppStore extends createModule({strict: false}) {
     return false;
   }
 
-  @action async fetchLoggedInUser() {
-    const existingToken = localStorage.getItem("auth_token");
-    const existingAuthURL = localStorage.getItem("auth_url");
+  @action
+  async fetchLoggedInUser() {
+    const existingToken = localStorage.getItem('auth_token');
+    const existingAuthURL = localStorage.getItem('auth_url');
 
     if (existingToken && existingAuthURL) {
       const authURL = new URL(existingAuthURL).origin;
@@ -232,13 +249,14 @@ class AppStore extends createModule({strict: false}) {
       let {name, email} = user;
       this.loggedInUser = {name, email};
     } else {
-      this.loggedInUser = null; // TODO - do I need this?
+      this.loggedInUser = null;  // TODO - do I need this?
     }
   }
 
-  @action async logout() {
-    const existingToken = localStorage.getItem("auth_token");
-    const existingAuthURL = localStorage.getItem("auth_url");
+  @action
+  async logout() {
+    const existingToken = localStorage.getItem('auth_token');
+    const existingAuthURL = localStorage.getItem('auth_url');
 
     if (existingToken && existingAuthURL) {
       const authURL = new URL(existingAuthURL).origin;
@@ -247,8 +265,8 @@ class AppStore extends createModule({strict: false}) {
         return res.json();
       });
 
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("auth_url");
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_url');
 
       authTokenShared!.value = null;
 
@@ -256,12 +274,14 @@ class AppStore extends createModule({strict: false}) {
     }
   }
 
-  @action async loopUpdateLeaderboard() {
+  @action
+  async loopUpdateLeaderboard() {
     await this.updateLeaderboard();
     await new Promise(() => setTimeout(this.loopUpdateLeaderboard, 20000));
   }
 
-  @action async updateLeaderboard() {
+  @action
+  async updateLeaderboard() {
     const url = config.leaderboardURL;
     const queryUrl = url + '?days=' + this.leaderboardTimespan;
     fetch(queryUrl).then(result => result.json()).then(async (json) => {
@@ -273,7 +293,8 @@ class AppStore extends createModule({strict: false}) {
     });
   }
 
-  @action async resetLeaderboard() {
+  @action
+  async resetLeaderboard() {
     this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
     return this.updateLeaderboard();
   }
@@ -285,10 +306,10 @@ import {config} from './main';
 Vue.use(Vuex);
 
 export const store = new Vuex.Store({
-  modules: {
-    ...extractVuexModule(AppStore)
-  },
+  modules: {...extractVuexModule(AppStore)},
 });
 
 export const storeProxy = createProxy(store, AppStore);
-export {Vue}; // vue app needs to be instantiated from this modified VueConstructor
+export {
+  Vue
+};  // vue app needs to be instantiated from this modified VueConstructor
