@@ -13,10 +13,11 @@ import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/d
 import {UrlHashBinding} from 'neuroglancer/ui/url_hash_binding';
 
 import {setupVueApp} from './vueapp';
-import { storeProxy } from './state';
+import {storeProxy} from './state';
 import './config';
 
 window.addEventListener('DOMContentLoaded', async () => {
+  disableNGErrMsg();
   await loadConfig();
   setupVueApp();
   setupViewer();
@@ -33,6 +34,13 @@ async function loadConfig() {
   config = await fetch(configURL).then(res => res.json());
 }
 
+function disableNGErrMsg() {
+  const error = document.getElementById('nge-error');
+  if (error) {
+    error.style.display = 'none';
+  }
+}
+
 function mergeTopBars() {
   const ngTopBar = document.getElementById('neuroglancerViewer')!.children[0];
   const topBarVueParent = document.getElementById('insertNGTopBar')!;
@@ -43,7 +51,8 @@ function setupViewer() {
   viewer = (<any>window)['viewer'] = makeExtendViewer();
   setDefaultInputEventBindings(viewer.inputEventBindings);
 
-  const hashBinding = viewer.registerDisposer(new UrlHashBinding(viewer.state, viewer));
+  const hashBinding =
+      viewer.registerDisposer(new UrlHashBinding(viewer.state, viewer));
   viewer.registerDisposer(hashBinding.parseError.changed.add(() => {
     const {value} = hashBinding.parseError;
     if (value !== undefined) {
@@ -68,7 +77,8 @@ function makeExtendViewer() {
   disableContextMenu();
   disableWheel();
   try {
-    let display = new DisplayContext(document.getElementById('neuroglancer-container')!);
+    let display =
+        new DisplayContext(document.getElementById('neuroglancer-container')!);
     return new ExtendViewer(display);
   } catch (error) {
     StatusMessage.showMessage(`Error: ${error.message}`);
@@ -76,7 +86,7 @@ function makeExtendViewer() {
   }
 }
 
-import {authTokenShared} from "neuroglancer/authentication/frontend";
+import {authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 
 class ExtendViewer extends Viewer {
