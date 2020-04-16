@@ -17,6 +17,7 @@ import {storeProxy} from './state';
 import './config';
 
 window.addEventListener('DOMContentLoaded', async () => {
+  disableNGErrMsg();
   await loadConfig();
   setupVueApp();
   setupViewer();
@@ -34,6 +35,13 @@ async function loadConfig() {
   config = await fetch(configURL).then(res => res.json());
 }
 
+function disableNGErrMsg() {
+  const error = document.getElementById('nge-error');
+  if (error) {
+    error.style.display = 'none';
+  }
+}
+
 function newUserExperience() {
   const newUser = !localStorage.getItem('ng-newuser');
   if (newUser && viewer) {
@@ -43,7 +51,6 @@ function newUserExperience() {
     return new WhatsNewDialog(viewer, description, {center: true});
   }
   return;
-  // maybe defer?
 }
 
 function mergeTopBars() {
