@@ -10,7 +10,7 @@ import {StatusMessage} from 'neuroglancer/status';
 import {Viewer} from 'neuroglancer/viewer';
 
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
-import {UrlHashBinding} from 'neuroglancer/ui/url_hash_binding';
+import {WhatsNewDialog} from 'neuroglancer/whats_new/whats_new';
 
 import {setupVueApp} from './vueapp';
 import {storeProxy} from './state';
@@ -22,6 +22,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupVueApp();
   setupViewer();
   mergeTopBars();
+  newUserExperience();
   storeProxy.loadActiveDataset();
   storeProxy.loopUpdateLeaderboard();
 });
@@ -39,6 +40,16 @@ function disableNGErrMsg() {
   if (error) {
     error.style.display = 'none';
   }
+
+function newUserExperience() {
+  const newUser = !localStorage.getItem('ng-newuser');
+  if (newUser && viewer) {
+    localStorage.setItem('ng-newuser', '1');
+    localStorage.setItem('neuroglancer-whatsnew', '1');
+    let description = (require('../src/NEW_USER.md')) || '';
+    return new WhatsNewDialog(viewer, description, {center: true});
+  }
+  return;
 }
 
 function mergeTopBars() {
@@ -50,19 +61,6 @@ function mergeTopBars() {
 function setupViewer() {
   viewer = (<any>window)['viewer'] = makeExtendViewer();
   setDefaultInputEventBindings(viewer.inputEventBindings);
-
-  const hashBinding =
-      viewer.registerDisposer(new UrlHashBinding(viewer.state, viewer));
-  viewer.registerDisposer(hashBinding.parseError.changed.add(() => {
-    const {value} = hashBinding.parseError;
-    if (value !== undefined) {
-      const status = new StatusMessage();
-      status.setErrorMessage(`Error parsing state: ${value.message}`);
-      console.log('Error parsing state', value);
-    }
-    hashBinding.parseError;
-  }));
-  hashBinding.updateFromUrlHash();
 
   viewer.loadFromJsonUrl();
   viewer.initializeSaver();
