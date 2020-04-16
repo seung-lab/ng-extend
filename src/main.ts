@@ -40,6 +40,7 @@ function disableNGErrMsg() {
   if (error) {
     error.style.display = 'none';
   }
+}
 
 function newUserExperience() {
   const newUser = !localStorage.getItem('ng-newuser');
