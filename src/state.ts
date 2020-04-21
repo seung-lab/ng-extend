@@ -43,7 +43,7 @@ class AppStore extends createModule
 
   activeDropdown: {[group: string]: number} = {};
   leaderboardEntries: LeaderboardEntry[] = [];
-  leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Daily;
+  leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
 
   datasets: DatasetDescription[] = [
     {

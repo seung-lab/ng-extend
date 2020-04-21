@@ -84,7 +84,7 @@ export default Vue.extend({
     this.$root.$on("toggleLeaderboard", () => {
       this.minimized = !this.minimized;
     });
-    this.selectButton(this.timespan || "Daily");
+    this.selectButton(this.timespan || "Weekly");
   }
 });
 </script>
