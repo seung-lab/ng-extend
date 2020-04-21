@@ -44,6 +44,7 @@ class AppStore extends createModule
   activeDropdown: {[group: string]: number} = {};
   leaderboardEntries: LeaderboardEntry[] = [];
   leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
+  leaderboardLoaded: boolean = false;
 
   datasets: DatasetDescription[] = [
     {
@@ -290,11 +291,13 @@ class AppStore extends createModule
       for (const entry of newEntries) {
         this.leaderboardEntries.push(entry);
       }
+      this.leaderboardLoaded = true;
     });
   }
 
   @action
   async resetLeaderboard() {
+    this.leaderboardLoaded = false;
     this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
     return this.updateLeaderboard();
   }

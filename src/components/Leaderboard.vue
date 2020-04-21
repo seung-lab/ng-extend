@@ -25,7 +25,8 @@
           </div>
         </div>
       </simplebar>
-      <div class="nge-leaderboard-loading" v-show="appState.leaderboardEntries.length === 0">Loading...</div>
+      <div class="nge-leaderboard-loading" v-show="!appState.leaderboardLoaded">Loading...</div>
+      <div class="nge-leaderboard-loading" v-show="appState.leaderboardLoaded && appState.leaderboardEntries.length === 0">No edits yet... why not make one?</div>
     </div>
   </div>
 </template>
