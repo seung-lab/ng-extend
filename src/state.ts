@@ -283,9 +283,11 @@ class AppStore extends createModule
 
   @action
   async updateLeaderboard() {
+    const goalTimespan = this.leaderboardTimespan;
     const url = config.leaderboardURL;
     const queryUrl = url + '?days=' + this.leaderboardTimespan;
     fetch(queryUrl).then(result => result.json()).then(async (json) => {
+      if (this.leaderboardTimespan != goalTimespan) return;
       const newEntries = json.entries;
       this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
       for (const entry of newEntries) {
