@@ -94,6 +94,7 @@ class ExtendViewer extends Viewer {
       showLayerDialog: false,
       showUIControls: true,
       showPanelBorders: true,
+      defaultLayoutSpecification: 'xy-3d'
     });
 
     authTokenShared!.changed.add(() => {
