@@ -37,9 +37,10 @@
     </dropdown-list>
 
     <template v-if="appState.loggedInUser">
-      <dropdown-list dropdown-group="blah">
-        <template #buttonTitle>{{ appState.loggedInUser.name }}</template>
+      <dropdown-list dropdown-group="blah" id="loggedInUserDropdown">
+        <template #buttonTitle class="foo"></template>
         <template #listItems>
+          <li><div>Email: {{ appState.loggedInUser.name }}</div></li>
           <li><div>Email: {{ appState.loggedInUser.email }}</div></li>
           <li><button @click="appState.logout">Logout</button></li>
         </template>
@@ -146,5 +147,13 @@ export default Vue.extend({
 
 .ng-extend-logo > a {
   height: 22px;
+}
+
+#loggedInUserDropdown > button {
+  width: 40px;
+  background-image: url('images/user.svg');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 70%;
 }
 </style>

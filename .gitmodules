@@ -1,4 +1,4 @@
 [submodule "third_party/neuroglancer"]
 	path = third_party/neuroglancer
 	url = https://github.com/seung-lab/neuroglancer.git
-	branch = expose_auth 
+	branch = ng-extend-flywire

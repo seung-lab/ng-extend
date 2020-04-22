@@ -1,6 +1,6 @@
 <template>
   <div class="dropdownList" :class="{ open: isActive }">
-    <button @click="toggleVisible"><slot name="buttonTitle">Button</slot></button>
+    <button @click="toggleVisible"><slot name="buttonTitle"></slot></button>
       <ul v-visible="isActive" class="dropdownMenu">
         <slot name="listItems"></slot>
       </ul>
