@@ -40,8 +40,8 @@
       <dropdown-list dropdown-group="blah" id="loggedInUserDropdown">
         <template #buttonTitle class="foo"></template>
         <template #listItems>
-          <li><div>Email: {{ appState.loggedInUser.name }}</div></li>
-          <li><div>Email: {{ appState.loggedInUser.email }}</div></li>
+          <li><div>{{ appState.loggedInUser.name }}</div></li>
+          <li><div>{{ appState.loggedInUser.email }}</div></li>
           <li><button @click="appState.logout">Logout</button></li>
         </template>
       </dropdown-list>
