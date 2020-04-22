@@ -27,7 +27,14 @@
     <stopwatch />
     <div class="flex-fill"></div> -->
 
-    <button @click="appState.showDatasetChooser=true">Dataset: {{ appState.activeDataset ? appState.activeDataset.name : 'N/A' }}</button>
+    <dropdown-list dropdown-group="dataset">
+      <template #buttonTitle>Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template>
+      <template #listItems>
+        <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
+          <button @click="selectDataset(dataset)">{{ dataset.name }}</button>
+        </li>
+      </template>
+    </dropdown-list>
 
     <template v-if="appState.loggedInUser">
       <dropdown-list dropdown-group="blah">
@@ -43,7 +50,7 @@
 
 <script lang="ts">
 import Vue from "vue";
-import { storeProxy, CellDescription } from "../state";
+import { storeProxy, CellDescription, DatasetDescription } from "../state";
 import { viewer } from "../main";
 
 import DropdownList from "components/DropdownList.vue";
@@ -63,13 +70,15 @@ export default Vue.extend({
     },
     activeCells() {
       return storeProxy.activeCells;
+    },
+    datasets() {
+      return storeProxy.datasets;
+    },
+    activeDataset() {
+      return storeProxy.activeDataset;
     }
   },
   methods: {
-    boop() {
-      console.log('boop');
-      this.$emit('hideDropdowns');
-    },
     toggleNeuroglancerUI() {
       if (viewer) {
         viewer.uiConfiguration.showUIControls.toggle();
@@ -87,6 +96,15 @@ export default Vue.extend({
     toggleSidebar() {
       this.$root.$emit("toggleSidebar");
       this.showSidebar = !this.showSidebar;
+    },
+    selectDataset: async function(dataset: DatasetDescription) {
+      const success = await this.appState.selectDataset(dataset);
+
+      if (success) {
+        this.$root.$emit("closeDropdowns");
+      } else {
+        console.warn("cannot select dataset because viewer is not yet created");
+      }
     }
   }
 });

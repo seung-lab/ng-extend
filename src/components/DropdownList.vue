@@ -22,7 +22,12 @@ export default Vue.extend({
     }
   },
   mounted() {
-    console.log('mounted!');
+    this.$root.$on("closeDropdowns", () => {
+      if (this.isActive) {
+        this.toggleVisible();
+      }
+    });
+
     // document.body.addEventListener('mousedown', () => {
     //   console.log('mousedown!');
     // });
@@ -81,7 +86,7 @@ export default Vue.extend({
 .dropdownMenu {
   position: absolute;
   right: 0;
-  top: 30px;
+  top: 40px;
   background-color: var(--color-medium-bg);
 }
 
@@ -97,5 +102,9 @@ export default Vue.extend({
 
 #extensionBar > .dropdownGroup > button {
   padding: 0 16px;
+}
+
+.dropdownMenu > li.selected {
+  background-color: green;
 }
 </style>
