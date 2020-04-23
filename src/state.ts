@@ -12,7 +12,9 @@ interface LoggedInUser {
 }
 
 interface LayerDescription {
-  source: string, type: 'image'|'segmentation'|'segmentation_with_graph'
+  source: string,
+  type: 'image'|'segmentation'|'segmentation_with_graph',
+  name?: string,
 }
 
 export interface DatasetDescription {
@@ -21,6 +23,7 @@ export interface DatasetDescription {
 
 export interface CellDescription {
   id: string,
+  default?: boolean,
 }
 
 export interface LeaderboardEntry {
@@ -74,6 +77,7 @@ class AppStore extends createModule
               'precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02'
         },
         {
+          name: 'SANDBOX-CHANGES NOT SAVED TO REAL DATASET',
           type: 'segmentation_with_graph',
           source:
               'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26'
@@ -85,6 +89,14 @@ class AppStore extends createModule
         },
         {
           id: '720575940637436173',
+        },
+        {
+          id: "720575940615251979",
+          default: true,
+        },
+        {
+          id: "720575940610453042",
+          default: true
         },
       ]
     }
@@ -105,11 +117,21 @@ class AppStore extends createModule
         }
       }
     } else {
-      // storeProxy.showDatasetChooser = true;
+      // load sandbox with default view state
       if (this.datasets.length) {
         for (let dataset of this.datasets) {
           if (dataset.name == 'sandbox') {
             this.selectDataset(dataset);
+            if (viewer) {
+              viewer.perspectiveNavigationState.zoomFactor.value = 6310;
+            }
+            if (dataset.curatedCells) {
+              for (let cell of dataset.curatedCells) {
+                if (cell.default) {
+                  this.selectCell(cell);
+                }
+              }
+            }
           }
         }
       } else {
@@ -191,8 +213,8 @@ class AppStore extends createModule
     viewer.navigationState.position.spatialCoordinatesValid = false;
 
     for (let layerDesc of dataset.layers) {
-      const layerWithSpec = viewer.layerSpecification.getLayer(
-          `${dataset.name}-${layerDesc.type}`, layerDesc);
+      const layerName = layerDesc.name ? layerDesc.name : `${dataset.name}-${layerDesc.type}`;
+      const layerWithSpec = viewer.layerSpecification.getLayer(layerName, layerDesc);
       viewer.layerManager.addManagedLayer(layerWithSpec);
 
       const {layer} = layerWithSpec;
