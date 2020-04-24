@@ -43,6 +43,7 @@
           <li><div>{{ appState.loggedInUser.name }}</div></li>
           <li><div>{{ appState.loggedInUser.email }}</div></li>
           <li><button @click="appState.logout">Logout</button></li>
+          <li><user-card></user-card></li>
         </template>
       </dropdown-list>
     </template>
@@ -56,9 +57,10 @@ import { viewer } from "../main";
 
 import DropdownList from "components/DropdownList.vue";
 import Stopwatch from "components/Stopwatch.vue";
+import UserCard from "components/UserCard.vue";
 
 export default Vue.extend({
-  components: { DropdownList, Stopwatch },
+  components: { DropdownList, Stopwatch, UserCard },
   data() {
     return {
       appState: storeProxy,
