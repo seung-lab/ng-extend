@@ -16,10 +16,11 @@ interface LayerDescription {
   source: string,
   type: 'image'|'segmentation'|'segmentation_with_graph',
   name?: string,
+  defaultSelected?: boolean,
 }
 
 export interface DatasetDescription {
-  name: string, layers: LayerDescription[], curatedCells?: CellDescription[]
+  name: string, layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number,
 }
 
 export interface CellDescription {
@@ -71,6 +72,7 @@ class AppStore extends createModule
     },
     {
       name: 'sandbox',
+      defaultPerspectiveZoomFactor: 6310,
       layers: [
         {
           type: 'image',
@@ -81,7 +83,8 @@ class AppStore extends createModule
           name: 'SANDBOX-CHANGES NOT SAVED TO REAL DATASET',
           type: 'segmentation_with_graph',
           source:
-              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26'
+              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26',
+          defaultSelected: true,
         }
       ],
       curatedCells: [
@@ -123,17 +126,6 @@ class AppStore extends createModule
         for (let dataset of this.datasets) {
           if (dataset.name == 'sandbox') {
             this.selectDataset(dataset);
-            if (viewer) {
-              viewer.perspectiveNavigationState.zoomFactor.value = 6310;
-              const groupViewerSingleton = viewer.layout.container.component;
-              if (groupViewerSingleton instanceof SingletonLayerGroupViewer) {
-                const layerPanel = groupViewerSingleton.layerGroupViewer.layerPanel;
-                if (layerPanel) {
-                  layerPanel.selectedLayer.layer = viewer.layerManager.managedLayers[1]; // segmentation layer
-                  layerPanel.selectedLayer.visible = true;
-                }
-              }
-            }
             if (dataset.curatedCells) {
               for (let cell of dataset.curatedCells) {
                 if (cell.default) {
@@ -216,6 +208,10 @@ class AppStore extends createModule
       return false;
     }
 
+    if (dataset.defaultPerspectiveZoomFactor) {
+      viewer.perspectiveNavigationState.zoomFactor.value = dataset.defaultPerspectiveZoomFactor;
+    }
+
     this.activeDataset = dataset;
 
     viewer.layerManager.clear();
@@ -227,6 +223,17 @@ class AppStore extends createModule
       viewer.layerManager.addManagedLayer(layerWithSpec);
 
       const {layer} = layerWithSpec;
+
+      if (layerDesc.defaultSelected) {
+        const groupViewerSingleton = viewer.layout.container.component;
+        if (groupViewerSingleton instanceof SingletonLayerGroupViewer) {
+          const layerPanel = groupViewerSingleton.layerGroupViewer.layerPanel;
+          if (layerPanel) {
+            layerPanel.selectedLayer.layer = layerWithSpec;
+            layerPanel.selectedLayer.visible = true;
+          }
+        }
+      }
 
       if (layer instanceof SegmentationUserLayer) {
         await layer.multiscaleSource!;
