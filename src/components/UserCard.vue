@@ -51,11 +51,6 @@ export default Vue.extend({
         "--avatar-hue-rotate": avatarHueRotate
       };
     }
-  },
-  methods: {
-    hashString(str: string): number {
-      return str.length;
-    }
   }
 });
 </script>
