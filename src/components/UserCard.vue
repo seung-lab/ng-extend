@@ -1,10 +1,10 @@
 <template>
   <div class="nge-usercard">
     <div class="nge-usercard-profile">
-      <img class="nge-usercard-avatar" src="images/icon-filled.png" width="50">
+      <img class="nge-usercard-avatar" src="images/icon-filled.png" :style="cssVars" width="50">
       <div class="nge-usercard-info">
-        <div class="nge-usercard-name">Doug Rattmann</div>
-        <div class="nge-usercard-email">rattmann@aperturescience.com</div>
+        <div class="nge-usercard-name">{{ appState.loggedInUser.name }}</div>
+        <div class="nge-usercard-email">{{ appState.loggedInUser.email }}</div>
         <div class="nge-usercard-date">joined 4/20/2020</div>
       </div>
     </div>
@@ -37,6 +37,25 @@ export default Vue.extend({
     return {
       appState: storeProxy
     };
+  },
+  computed: {
+    cssVars() {
+      const name = storeProxy.loggedInUser ? storeProxy.loggedInUser.name : "";
+      let nameHash = 0;
+      for (let i = 0; i < name.length; i++) {
+        nameHash = Math.imul(31, nameHash) + name.charCodeAt(i) | 0; // https://stackoverflow.com/a/52171480
+      }
+      const degrees = nameHash % 360;
+      const avatarHueRotate = degrees + "deg";
+      return {
+        "--avatar-hue-rotate": avatarHueRotate
+      };
+    }
+  },
+  methods: {
+    hashString(str: string): number {
+      return str.length;
+    }
   }
 });
 </script>
@@ -55,6 +74,6 @@ export default Vue.extend({
   grid-template-columns: auto auto auto;
 }
 .nge-usercard-avatar {
-  filter: hue-rotate(90deg);
+  filter: hue-rotate(var(--avatar-hue-rotate));
 }
 </style>
