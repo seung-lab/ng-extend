@@ -1,5 +1,6 @@
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
+import {SingletonLayerGroupViewer} from 'neuroglancer/layer_groups_layout';
 import {StatusMessage} from 'neuroglancer/status';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
@@ -124,6 +125,14 @@ class AppStore extends createModule
             this.selectDataset(dataset);
             if (viewer) {
               viewer.perspectiveNavigationState.zoomFactor.value = 6310;
+              const groupViewerSingleton = viewer.layout.container.component;
+              if (groupViewerSingleton instanceof SingletonLayerGroupViewer) {
+                const layerPanel = groupViewerSingleton.layerGroupViewer.layerPanel;
+                if (layerPanel) {
+                  layerPanel.selectedLayer.layer = viewer.layerManager.managedLayers[1]; // segmentation layer
+                  layerPanel.selectedLayer.visible = true;
+                }
+              }
             }
             if (dataset.curatedCells) {
               for (let cell of dataset.curatedCells) {
