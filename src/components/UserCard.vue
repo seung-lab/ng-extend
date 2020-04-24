@@ -25,6 +25,7 @@
         </div>
       </div>
     </div>
+    <button class="nge-usercard-logout" @click="appState.logout">Log Out</button>
   </div>
 </template>
 
