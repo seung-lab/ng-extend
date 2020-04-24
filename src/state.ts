@@ -208,7 +208,7 @@ class AppStore extends createModule
       return false;
     }
 
-    if (dataset.defaultPerspectiveZoomFactor) {
+    if (dataset.defaultPerspectiveZoomFactor !== undefined) {
       viewer.perspectiveNavigationState.zoomFactor.value = dataset.defaultPerspectiveZoomFactor;
     }
 
