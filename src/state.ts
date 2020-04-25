@@ -1,5 +1,6 @@
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
+import {SingletonLayerGroupViewer} from 'neuroglancer/layer_groups_layout';
 import {StatusMessage} from 'neuroglancer/status';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
@@ -15,10 +16,11 @@ interface LayerDescription {
   source: string,
   type: 'image'|'segmentation'|'segmentation_with_graph',
   name?: string,
+  defaultSelected?: boolean,
 }
 
 export interface DatasetDescription {
-  name: string, layers: LayerDescription[], curatedCells?: CellDescription[]
+  name: string, layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number,
 }
 
 export interface CellDescription {
@@ -70,6 +72,7 @@ class AppStore extends createModule
     },
     {
       name: 'sandbox',
+      defaultPerspectiveZoomFactor: 6310,
       layers: [
         {
           type: 'image',
@@ -80,7 +83,8 @@ class AppStore extends createModule
           name: 'SANDBOX-FOR PRACTICE ONLY',
           type: 'segmentation_with_graph',
           source:
-              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26'
+              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26',
+          defaultSelected: true,
         }
       ],
       curatedCells: [
@@ -122,9 +126,6 @@ class AppStore extends createModule
         for (let dataset of this.datasets) {
           if (dataset.name == 'sandbox') {
             this.selectDataset(dataset);
-            if (viewer) {
-              viewer.perspectiveNavigationState.zoomFactor.value = 6310;
-            }
             if (dataset.curatedCells) {
               for (let cell of dataset.curatedCells) {
                 if (cell.default) {
@@ -207,6 +208,10 @@ class AppStore extends createModule
       return false;
     }
 
+    if (dataset.defaultPerspectiveZoomFactor !== undefined) {
+      viewer.perspectiveNavigationState.zoomFactor.value = dataset.defaultPerspectiveZoomFactor;
+    }
+
     this.activeDataset = dataset;
 
     viewer.layerManager.clear();
@@ -218,6 +223,17 @@ class AppStore extends createModule
       viewer.layerManager.addManagedLayer(layerWithSpec);
 
       const {layer} = layerWithSpec;
+
+      if (layerDesc.defaultSelected) {
+        const groupViewerSingleton = viewer.layout.container.component;
+        if (groupViewerSingleton instanceof SingletonLayerGroupViewer) {
+          const layerPanel = groupViewerSingleton.layerGroupViewer.layerPanel;
+          if (layerPanel) {
+            layerPanel.selectedLayer.layer = layerWithSpec;
+            layerPanel.selectedLayer.visible = true;
+          }
+        }
+      }
 
       if (layer instanceof SegmentationUserLayer) {
         await layer.multiscaleSource!;
