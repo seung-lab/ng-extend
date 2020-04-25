@@ -77,7 +77,7 @@ class AppStore extends createModule
               'precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02'
         },
         {
-          name: 'SANDBOX-CHANGES NOT SAVED TO REAL DATASET',
+          name: 'SANDBOX-FOR PRACTICE ONLY',
           type: 'segmentation_with_graph',
           source:
               'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26'
