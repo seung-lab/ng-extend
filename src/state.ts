@@ -53,7 +53,7 @@ class AppStore extends createModule
 
   datasets: DatasetDescription[] = [
     {
-      name: 'production',
+      name: 'Production',
       layers: [
         {
           type: 'image',
@@ -71,7 +71,7 @@ class AppStore extends createModule
       }]
     },
     {
-      name: 'sandbox',
+      name: 'Sandbox',
       defaultPerspectiveZoomFactor: 6310,
       layers: [
         {
@@ -124,7 +124,7 @@ class AppStore extends createModule
       // load sandbox with default view state
       if (this.datasets.length) {
         for (let dataset of this.datasets) {
-          if (dataset.name == 'sandbox') {
+          if (dataset.name === 'Sandbox') {
             this.selectDataset(dataset);
             if (dataset.curatedCells) {
               for (let cell of dataset.curatedCells) {
