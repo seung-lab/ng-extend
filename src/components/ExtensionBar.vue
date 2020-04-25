@@ -37,13 +37,22 @@
     </dropdown-list>
 
     <template v-if="appState.loggedInUser">
-      <dropdown-list dropdown-group="blah" id="loggedInUserDropdown">
+      <dropdown-list dropdown-group="user" id="loggedInUserDropdown">
         <template #buttonTitle class="foo"></template>
         <template #listItems>
           <li><user-card></user-card></li>
         </template>
       </dropdown-list>
     </template>
+
+    <dropdown-list dropdown-group="actions" id="moreActions">
+      <template #buttonTitle></template>
+      <template #listItems>
+        <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
+          <button @click="selectDataset(dataset)">{{ dataset.name }}</button>
+        </li>
+      </template>
+    </dropdown-list>
   </div>
 </template>
 
@@ -151,6 +160,14 @@ export default Vue.extend({
 #loggedInUserDropdown > button {
   width: 40px;
   background-image: url('images/user.svg');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 70%;
+}
+
+#moreActions > button {
+  width: 40px;
+  background-image: url('images/more.svg');
   background-repeat: no-repeat;
   background-position: center;
   background-size: 70%;
