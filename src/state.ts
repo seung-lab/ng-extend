@@ -3,6 +3,8 @@ import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {SingletonLayerGroupViewer} from 'neuroglancer/layer_groups_layout';
 import {StatusMessage} from 'neuroglancer/status';
 import {Uint64} from 'neuroglancer/util/uint64';
+import {vec3} from 'neuroglancer/util/geom';
+
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
 
 import {viewer} from './main';
@@ -21,6 +23,7 @@ interface LayerDescription {
 
 export interface DatasetDescription {
   name: string, layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number,
+  defaultPosition?: {x: number, y: number, z: number},
 }
 
 export interface CellDescription {
@@ -73,6 +76,7 @@ class AppStore extends createModule
     {
       name: 'sandbox',
       defaultPerspectiveZoomFactor: 6310,
+      defaultPosition: {x: 39651, y: 18056, z: 2198},
       layers: [
         {
           type: 'image',
@@ -210,6 +214,11 @@ class AppStore extends createModule
 
     if (dataset.defaultPerspectiveZoomFactor !== undefined) {
       viewer.perspectiveNavigationState.zoomFactor.value = dataset.defaultPerspectiveZoomFactor;
+    }
+
+    if (dataset.defaultPosition !== undefined) {
+      const {x, y, z} = dataset.defaultPosition;
+      viewer.navigationState.position.setVoxelCoordinates(vec3.fromValues(x, y, z));
     }
 
     this.activeDataset = dataset;
