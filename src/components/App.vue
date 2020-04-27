@@ -27,9 +27,6 @@ export default Vue.extend({
     return {
       appState: storeProxy,
     }
-  },
-  mounted() {
-    document.title = "FlyWire";
   }
 });
 </script>
