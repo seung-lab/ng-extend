@@ -1,5 +1,5 @@
 <template>
-  <div id="extensionBar" @mousedown.stop.prevent>
+  <div id="extensionBar">
     <button class="toggleSidebarButton" @click="toggleSidebar()">
       <img
         v-show="!showSidebar"
@@ -27,7 +27,7 @@
     <stopwatch />
     <div class="flex-fill"></div> -->
 
-    <dropdown-list dropdown-group="dataset">
+    <dropdown-list dropdown-group="extension-bar-right">
       <template #buttonTitle>Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template>
       <template #listItems>
         <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
@@ -37,7 +37,7 @@
     </dropdown-list>
 
     <template v-if="appState.loggedInUser">
-      <dropdown-list dropdown-group="blah" id="loggedInUserDropdown">
+      <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown">
         <template #buttonTitle class="foo"></template>
         <template #listItems>
           <li><div>{{ appState.loggedInUser.name }}</div></li>
