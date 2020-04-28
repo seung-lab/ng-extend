@@ -1,5 +1,5 @@
 <template>
-  <div class="dropdownList" :class="{ open: isActive }">
+  <div class="dropdownList" :class="{ open: isActive }" @mousedown.stop.prevent>
     <button @click="toggleVisible"><slot name="buttonTitle"></slot></button>
       <ul v-visible="isActive" class="dropdownMenu">
         <slot name="listItems"></slot>
