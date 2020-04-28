@@ -20,7 +20,7 @@ interface LayerDescription {
 }
 
 export interface DatasetDescription {
-  name: string, layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number,
+  name: string, description: string, color?: string, layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number,
 }
 
 export interface CellDescription {
@@ -37,6 +37,11 @@ export enum LeaderboardTimespan {
   Weekly = 6
 }
 
+export interface ActionsMenuItem {
+  text: string,
+  click(): void
+}
+
 class AppStore extends createModule
 ({strict: false}) {
   loggedInUser: LoggedInUser|null = null;
@@ -47,6 +52,7 @@ class AppStore extends createModule
   activeCells: CellDescription[] = [];
 
   activeDropdown: {[group: string]: number} = {};
+  actionsMenuItems: ActionsMenuItem[] = [];
   leaderboardEntries: LeaderboardEntry[] = [];
   leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
   leaderboardLoaded: boolean = false;
@@ -54,6 +60,7 @@ class AppStore extends createModule
   datasets: DatasetDescription[] = [
     {
       name: 'Production',
+      description: 'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
       layers: [
         {
           type: 'image',
@@ -72,6 +79,8 @@ class AppStore extends createModule
     },
     {
       name: 'Sandbox',
+      description: 'A practice dataset. Cell edits are visible to all, but user mistakes don\'t matter here.',
+      color: '#E6C760',
       defaultPerspectiveZoomFactor: 6310,
       layers: [
         {

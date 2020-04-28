@@ -13,15 +13,15 @@
       <div class="nge-usercard-edits-table">
         <div class="nge-usercard-edits-section">
           <div class="nge-usercard-edits-timespan">Day</div>
-          <div class="nge-usercard-edits-count">154</div>
+          <div class="nge-usercard-edits-count">N/A</div>
         </div>
         <div class="nge-usercard-edits-section">
           <div class="nge-usercard-edits-timespan">Week</div>
-          <div class="nge-usercard-edits-count">1,540</div>
+          <div class="nge-usercard-edits-count">N/A</div>
         </div>
         <div class="nge-usercard-edits-section">
           <div class="nge-usercard-edits-timespan">All Time</div>
-          <div class="nge-usercard-edits-count">154,000</div>
+          <div class="nge-usercard-edits-count">N/A</div>
         </div>
       </div>
     </div>

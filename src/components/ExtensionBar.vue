@@ -28,10 +28,13 @@
     <div class="flex-fill"></div> -->
 
     <dropdown-list dropdown-group="dataset">
-      <template #buttonTitle>Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template>
+      <template #buttonTitle :style="(appState.activeDataset && appState.activeDataset.color) ? 'color: ' + appState.activeDataset.color : ''">Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template>
       <template #listItems>
         <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
-          <button @click="selectDataset(dataset)">{{ dataset.name }}</button>
+          <div class="" @click="selectDataset(dataset)">
+            <div class="nge-dataset-button-name" :style="dataset.color ? 'color: ' + dataset.color : ''">{{ dataset.name }}</div>
+            <div class="nge-dataset-button-description">{{ dataset.description }}</div>
+          </div>
         </li>
       </template>
     </dropdown-list>
@@ -48,8 +51,8 @@
     <dropdown-list dropdown-group="actions" id="moreActions">
       <template #buttonTitle></template>
       <template #listItems>
-        <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
-          <button @click="selectDataset(dataset)">{{ dataset.name }}</button>
+        <li v-for="item of appState.actionsMenuItems" :key="item.text">
+          <button @click="item.click">{{ item.text }}</button>
         </li>
       </template>
     </dropdown-list>
