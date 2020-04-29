@@ -1,5 +1,6 @@
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
+import {ImageUserLayer} from 'neuroglancer/image_user_layer';
 import {SingletonLayerGroupViewer} from 'neuroglancer/layer_groups_layout';
 import {StatusMessage} from 'neuroglancer/status';
 import {Uint64} from 'neuroglancer/util/uint64';
@@ -61,7 +62,7 @@ class AppStore extends createModule
         {
           type: 'image',
           source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02'
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
         },
         {
           type: 'segmentation_with_graph',
@@ -76,12 +77,12 @@ class AppStore extends createModule
     {
       name: 'sandbox',
       defaultPerspectiveZoomFactor: 6310,
-      defaultPosition: {x: 39651, y: 18056, z: 2198},
+      defaultPosition: {x: 158604, y: 72224, z: 2198},
       layers: [
         {
           type: 'image',
           source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02'
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
         },
         {
           name: 'SANDBOX-FOR PRACTICE ONLY',
@@ -244,7 +245,9 @@ class AppStore extends createModule
         }
       }
 
-      if (layer instanceof SegmentationUserLayer) {
+      if (layer instanceof ImageUserLayer) {
+        await layer.multiscaleSource!; // wait because there is an error if both layers load at the same time?
+      } else if (layer instanceof SegmentationUserLayer) {
         await layer.multiscaleSource!;
         console.log('root segments callback 1');
         layer.displayState.rootSegments.changed.add(() => {
