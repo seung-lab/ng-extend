@@ -6,6 +6,10 @@
         <span class="nge-gs-unread" v-show="!welcomeRead">⬤</span>
       </div>
       <div class="nge-gs-link">
+        <a href="https://docs.google.com/document/d/1imS4s8Bfl6KaGHbIlDNus6EdFNuX8dVtCHvyiyDY1Wc/edit" target="_blank" @click="markRead('quickstartRead')">Quick Start</a>
+        <span class="nge-gs-unread" v-show="!quickstartRead">⬤</span>
+      </div>
+      <div class="nge-gs-link">
         <a href="https://docs.google.com/document/d/1tjy6axXvxVcfvrYiBbJsLTSx1Y3rTGI_HcXKETIqyiM/edit" target="_blank" @click="markRead('cheatsheetRead')">Cheatsheet</a>
         <span class="nge-gs-unread" v-show="!cheatsheetRead">⬤</span>
       </div>
@@ -30,6 +34,7 @@ export default Vue.extend({
   data() {
     return {
       welcomeRead: localStorage.getItem("welcomeRead") === "true",
+      quickstartRead: localStorage.getItem("quickstartRead") === "true",
       cheatsheetRead: localStorage.getItem("cheatsheetRead") === "true",
       trainingRead: localStorage.getItem("trainingRead") === "true"
     }
