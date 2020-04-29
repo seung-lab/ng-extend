@@ -10,7 +10,7 @@
         <span class="nge-gs-unread" v-show="!cheatsheetRead">⬤</span>
       </div>
       <div class="nge-gs-link">
-        <a href="https://drive.google.com/drive/u/0/folders/1SwWatyE-GLLhJrRIIuRqPBhLh5uf5C3x" target="_blank" @click="markRead('trainingRead')">Self-guided training</a>
+        <a href="https://docs.google.com/document/d/1ItdRpMybhx1ebjI41TQZDFIymfruk_GiZu4ztP6f3OM/edit" target="_blank" @click="markRead('trainingRead')">Self-guided training</a>
         <span class="nge-gs-unread" v-show="!trainingRead">⬤</span>
       </div>
       <div class="nge-gs-link">
@@ -67,7 +67,7 @@ export default Vue.extend({
   color: #fff;
 }
 .nge-gs-unread {
-  color: #19C178;
+  text-shadow: 0 0 8px;
   animation: pulse 2s infinite;
 }
 
