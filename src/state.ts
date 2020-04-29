@@ -131,13 +131,6 @@ class AppStore extends createModule
         for (let dataset of this.datasets) {
           if (dataset.name == 'sandbox') {
             this.selectDataset(dataset);
-            if (dataset.curatedCells) {
-              for (let cell of dataset.curatedCells) {
-                if (cell.default) {
-                  this.selectCell(cell);
-                }
-              }
-            }
           }
         }
       } else {
@@ -258,6 +251,14 @@ class AppStore extends createModule
       }
     }
 
+    if (dataset.curatedCells) {
+      for (let cell of dataset.curatedCells) {
+        if (cell.default) {
+          this.selectCell(cell);
+        }
+      }
+    }
+
     return true;
   }
 
@@ -267,19 +268,15 @@ class AppStore extends createModule
       return false;
     }
 
-    console.log('selectCell');
     const layers = viewer.layerManager.managedLayers;
 
     for (const {layer} of layers) {
       if (layer instanceof SegmentationUserLayer) {
-        console.log('we have a seg layer');
-        console.log('want to select cell', cell.id);
         await layer.multiscaleSource!;
         const uint64Id = new Uint64().parseString(cell.id, 10);
         layer.displayState.segmentSelectionState.set(uint64Id);
         layer.displayState.segmentSelectionState.setRaw(uint64Id);
         layer.selectSegment();
-        console.log('selectedCell', cell.id);
         return true;
       }
     }
