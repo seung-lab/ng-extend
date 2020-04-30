@@ -1,8 +1,11 @@
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
+import {ImageUserLayer} from 'neuroglancer/image_user_layer';
 import {SingletonLayerGroupViewer} from 'neuroglancer/layer_groups_layout';
 import {StatusMessage} from 'neuroglancer/status';
 import {Uint64} from 'neuroglancer/util/uint64';
+import {vec3} from 'neuroglancer/util/geom';
+
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
 
 import {viewer} from './main';
@@ -20,7 +23,8 @@ interface LayerDescription {
 }
 
 export interface DatasetDescription {
-  name: string, description: string, color?: string, layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number,
+  name: string, description: string, color?: string, 
+  layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number, defaultPosition?: {x: number, y: number, z: number},
 }
 
 export interface CellDescription {
@@ -65,7 +69,7 @@ class AppStore extends createModule
         {
           type: 'image',
           source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02'
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
         },
         {
           type: 'segmentation_with_graph',
@@ -82,11 +86,12 @@ class AppStore extends createModule
       description: 'A practice dataset. Cell edits are visible to all, but user mistakes don\'t matter here.',
       color: '#E6C760',
       defaultPerspectiveZoomFactor: 6310,
+      defaultPosition: {x: 158604, y: 72224, z: 2198},
       layers: [
         {
           type: 'image',
           source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/vector_fixer30_faster_v01/v4/image_stitch_v02'
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
         },
         {
           name: 'SANDBOX-FOR PRACTICE ONLY',
@@ -135,13 +140,6 @@ class AppStore extends createModule
         for (let dataset of this.datasets) {
           if (dataset.name === 'Sandbox') {
             this.selectDataset(dataset);
-            if (dataset.curatedCells) {
-              for (let cell of dataset.curatedCells) {
-                if (cell.default) {
-                  this.selectCell(cell);
-                }
-              }
-            }
           }
         }
       } else {
@@ -221,6 +219,11 @@ class AppStore extends createModule
       viewer.perspectiveNavigationState.zoomFactor.value = dataset.defaultPerspectiveZoomFactor;
     }
 
+    if (dataset.defaultPosition !== undefined) {
+      const {x, y, z} = dataset.defaultPosition;
+      viewer.navigationState.position.setVoxelCoordinates(vec3.fromValues(x, y, z));
+    }
+
     this.activeDataset = dataset;
 
     viewer.layerManager.clear();
@@ -244,7 +247,9 @@ class AppStore extends createModule
         }
       }
 
-      if (layer instanceof SegmentationUserLayer) {
+      if (layer instanceof ImageUserLayer) {
+        await layer.multiscaleSource!; // wait because there is an error if both layers load at the same time?
+      } else if (layer instanceof SegmentationUserLayer) {
         await layer.multiscaleSource!;
         console.log('root segments callback 1');
         layer.displayState.rootSegments.changed.add(() => {
@@ -252,6 +257,14 @@ class AppStore extends createModule
           this.refreshActiveCells();
         });
         this.refreshActiveCells();
+      }
+    }
+
+    if (dataset.curatedCells) {
+      for (let cell of dataset.curatedCells) {
+        if (cell.default) {
+          this.selectCell(cell);
+        }
       }
     }
 
@@ -264,19 +277,15 @@ class AppStore extends createModule
       return false;
     }
 
-    console.log('selectCell');
     const layers = viewer.layerManager.managedLayers;
 
     for (const {layer} of layers) {
       if (layer instanceof SegmentationUserLayer) {
-        console.log('we have a seg layer');
-        console.log('want to select cell', cell.id);
         await layer.multiscaleSource!;
         const uint64Id = new Uint64().parseString(cell.id, 10);
         layer.displayState.segmentSelectionState.set(uint64Id);
         layer.displayState.segmentSelectionState.setRaw(uint64Id);
         layer.selectSegment();
-        console.log('selectedCell', cell.id);
         return true;
       }
     }

@@ -1,5 +1,5 @@
 <template>
-  <div id="extensionBar" @mousedown.stop.prevent>
+  <div id="extensionBar">
     <button class="toggleSidebarButton" @click="toggleSidebar()">
       <img
         v-show="!showSidebar"
@@ -27,7 +27,7 @@
     <stopwatch />
     <div class="flex-fill"></div> -->
 
-    <dropdown-list dropdown-group="dataset">
+    <dropdown-list dropdown-group="extension-bar-right">
       <template #buttonTitle :style="(appState.activeDataset && appState.activeDataset.color) ? 'color: ' + appState.activeDataset.color : ''">Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template>
       <template #listItems>
         <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
@@ -40,7 +40,7 @@
     </dropdown-list>
 
     <template v-if="appState.loggedInUser">
-      <dropdown-list dropdown-group="user" id="loggedInUserDropdown">
+      <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown">
         <template #buttonTitle class="foo"></template>
         <template #listItems>
           <li><user-card></user-card></li>
@@ -48,7 +48,7 @@
       </dropdown-list>
     </template>
 
-    <dropdown-list dropdown-group="actions" id="moreActions">
+    <dropdown-list dropdown-group="extension-bar-right" id="moreActions">
       <template #buttonTitle></template>
       <template #listItems>
         <li v-for="item of appState.actionsMenuItems" :key="item.text">
