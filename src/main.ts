@@ -61,7 +61,7 @@ function mergeTopBars() {
   for (const button of buttons) {
     const htmlButton = <HTMLElement>button;
     const text = htmlButton.title;
-    const click = htmlButton.click;
+    const click = () => htmlButton.click();
     storeProxy.actionsMenuItems.push({text: text, click: click});
     button.remove();
   }
