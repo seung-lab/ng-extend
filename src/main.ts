@@ -20,14 +20,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   disableNGErrMsg();
   await loadConfig();
   setupVueApp();
-  setupViewer();
+  const viewer = setupViewer();
+  storeProxy.initializeViewer(viewer);
   mergeTopBars();
-  newUserExperience();
+  newUserExperience(viewer);
   storeProxy.loadActiveDataset();
   storeProxy.loopUpdateLeaderboard();
 });
 
-export let viewer: Viewer|null = null;
 export let config: Config;
 
 async function loadConfig() {
@@ -42,9 +42,9 @@ function disableNGErrMsg() {
   }
 }
 
-function newUserExperience() {
+function newUserExperience(viewer: Viewer) {
   const newUser = !localStorage.getItem('ng-newuser');
-  if (newUser && viewer) {
+  if (newUser) {
     localStorage.setItem('ng-newuser', '1');
     localStorage.setItem('neuroglancer-whatsnew', '1');
     let description = (require('../src/NEW_USER.md')) || '';
@@ -60,7 +60,7 @@ function mergeTopBars() {
 }
 
 function setupViewer() {
-  viewer = (<any>window)['viewer'] = makeExtendViewer();
+  const viewer = (<any>window)['viewer'] = makeExtendViewer();
   setDefaultInputEventBindings(viewer.inputEventBindings);
 
   viewer.loadFromJsonUrl();

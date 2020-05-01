@@ -3,6 +3,7 @@
     <extension-bar class="ng-extend" />
     <div id="content">
       <sidebar class="ng-extend" />
+      <n-g-sidebar-header class="ng-extend" v-show="appState.viewer.sidebar.open" />
       <div id="neuroglancer-container">
         <div id="neuroglancer-error">Oops! There was an error and Neuroglancer could not be loaded. Please follow the
           instructions in the <a
@@ -19,10 +20,11 @@ import Vue from "vue";
 import ExtensionBar from "components/ExtensionBar.vue";
 import OverlayContainer from "components/OverlayContainer.vue";
 import Sidebar from "components/Sidebar.vue";
+import NGSidebarHeader from "components/NGSidebarHeader.vue";
 import {storeProxy} from "../state";
 
 export default Vue.extend({
-  components: { ExtensionBar, OverlayContainer, Sidebar },
+  components: { ExtensionBar, OverlayContainer, Sidebar, NGSidebarHeader },
   data: () => {
     return {
       appState: storeProxy,
@@ -36,6 +38,7 @@ export default Vue.extend({
 
 <style>
 @import "../common.css";
+@import "../ng-override.css";
 
 #vueMain {
   position: relative;

@@ -73,6 +73,10 @@ export default Vue.extend({
   background-color: var(--color-medium-bg);
 }
 
+.ng-extend button:hover {
+  background-color: hsla(0,0%,100%,.1);
+}
+
 .hideDropdown {
   position: absolute;
   left: 0;
@@ -104,7 +108,11 @@ export default Vue.extend({
   padding: 0 16px;
 }
 
-.dropdownMenu > li.selected {
+.dropdownMenu > li.selected button {
   background-color: green;
+}
+
+.dropdownMenu > li.selected button:hover {
+  background-color: hsla(120, 100%, 34%, 1);
 }
 </style>
