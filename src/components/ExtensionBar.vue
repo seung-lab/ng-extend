@@ -27,35 +27,37 @@
     <stopwatch />
     <div class="flex-fill"></div> -->
 
-    <dropdown-list dropdown-group="extension-bar-right">
-      <template #buttonTitle :style="(appState.activeDataset && appState.activeDataset.color) ? 'color: ' + appState.activeDataset.color : ''">Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template>
-      <template #listItems>
-        <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
-          <div class="" @click="selectDataset(dataset)">
-            <div class="nge-dataset-button-name" :style="dataset.color ? 'color: ' + dataset.color : ''">{{ dataset.name }}</div>
-            <div class="nge-dataset-button-description">{{ dataset.description }}</div>
-          </div>
-        </li>
-      </template>
-    </dropdown-list>
-
-    <template v-if="appState.loggedInUser">
-      <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown">
-        <template #buttonTitle class="foo"></template>
+    <template v-if="appState.loadedViewer">
+      <dropdown-list dropdown-group="extension-bar-right" id="datasetChooser">
+        <template #buttonTitle>Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template>
         <template #listItems>
-          <li><user-card></user-card></li>
+          <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
+            <div class="" @click="selectDataset(dataset)">
+              <div class="nge-dataset-button-name" :style="dataset.color ? 'color: ' + dataset.color : ''">{{ dataset.name }}</div>
+              <div class="nge-dataset-button-description">{{ dataset.description }}</div>
+            </div>
+          </li>
+        </template>
+      </dropdown-list>
+
+      <template v-if="appState.loggedInUser">
+        <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown">
+          <template #buttonTitle></template>
+          <template #listItems>
+            <li><user-card></user-card></li>
+          </template>
+        </dropdown-list>
+      </template>
+
+      <dropdown-list dropdown-group="extension-bar-right" id="moreActions">
+        <template #buttonTitle></template>
+        <template #listItems>
+          <li v-for="item of appState.actionsMenuItems" :key="item.text">
+            <button @click="item.click">{{ item.text }}</button>
+          </li>
         </template>
       </dropdown-list>
     </template>
-
-    <dropdown-list dropdown-group="extension-bar-right" id="moreActions">
-      <template #buttonTitle></template>
-      <template #listItems>
-        <li v-for="item of appState.actionsMenuItems" :key="item.text">
-          <button @click="item.click">{{ item.text }}</button>
-        </li>
-      </template>
-    </dropdown-list>
   </div>
 </template>
 
@@ -158,6 +160,10 @@ export default Vue.extend({
 
 .ng-extend-logo > a {
   height: 22px;
+}
+
+#datasetChooser > button {
+  color: red;
 }
 
 #loggedInUserDropdown > button {

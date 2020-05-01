@@ -55,6 +55,7 @@ class AppStore extends createModule
   activeDataset: DatasetDescription|null = null;
   activeCells: CellDescription[] = [];
 
+  loadedViewer: boolean = false;
   activeDropdown: {[group: string]: number} = {};
   actionsMenuItems: ActionsMenuItem[] = [];
   leaderboardEntries: LeaderboardEntry[] = [];

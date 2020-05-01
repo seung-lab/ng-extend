@@ -106,6 +106,7 @@ class ExtendViewer extends Viewer {
     });
 
     document.title = 'FlyWire';
+    storeProxy.loadedViewer = true;
     authTokenShared!.changed.add(() => {
       storeProxy.fetchLoggedInUser();
     });

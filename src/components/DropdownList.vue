@@ -10,6 +10,7 @@
 <script lang="ts">
 import Vue from "vue";
 import {storeProxy} from "../state";
+import { viewer } from "../main";
 
 let uuid = 0;
 
@@ -23,18 +24,34 @@ export default Vue.extend({
   },
   mounted() {
     this.$root.$on("closeDropdowns", () => {
-      if (this.isActive) {
-        this.toggleVisible();
-      }
+      this.close();
     });
 
-    // document.body.addEventListener('mousedown', () => {
-    //   console.log('mousedown!');
-    // });
+    /*
+     Add a click handler to close the dropdown when anywhere else on the page is clicked.
+     For most of the page, document.body will get the event. When the viewer panel is clicked,
+     however, it will stop the click event's propagation.
+     The viewer is not created immediately on page load, and it may be replaced if the user
+     changes their view. So we wait until the viewer has loaded (by wrapping the dropdown in a 
+     <template v-if="appState.loadedViewer">), then wait one more frame for the panel to be added
+     (by using setTimeout with delay 0). Then we can add the event listener.
+     We need to repeat this whenever the viewer layout is changed (and the dropdown is created after
+     the initial layout change happens, so we need to do it separately the first time). This we wrap
+     inside an extra setTimeout so that the panels are actually created when it runs.
+    */
 
-    // document.getElementById('neuroglancerViewer')!.addEventListener('mousedown', () => {
-    //   console.log('mousedown ngc');
-    // });
+    //Regular mousedown handler
+    document.body.addEventListener("mousedown", () => {
+      this.close();
+    });
+
+    //Add mousedown handler to initial viewer panels
+    this.addPanelClickHandlers();
+    
+    //Add mousedown handler to new viewer panels whenever they update
+    viewer!.layout.changed.add(() => {
+      setTimeout(() => this.addPanelClickHandlers());
+    });
   },
   computed: {
     isActive(): boolean { // https://github.com/vuejs/vue/issues/8721#issuecomment-551301489
@@ -53,6 +70,19 @@ export default Vue.extend({
       if (this.dropdownGroup) {
         Vue.set(this.appState.activeDropdown, this.dropdownGroup, this.isActive ? -1 : this.id);
       }
+    },
+    close() {
+      if (this.isActive) {
+        this.toggleVisible();
+      }
+    },
+    addPanelClickHandlers() {
+      setTimeout(() => {
+        document.querySelectorAll("div.neuroglancer-rendered-data-panel.neuroglancer-panel.neuroglancer-noselect")
+          .forEach(e => e.addEventListener("mousedown", () => {
+            this.close();
+          }));
+      }, 0);
     }
   }
 });
