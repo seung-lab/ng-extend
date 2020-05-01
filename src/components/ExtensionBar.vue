@@ -46,13 +46,14 @@
         </template>
       </dropdown-list>
     </template>
+
+    <button @click="appState.toggleSidePanel()" class="toggleControls iconBtn" :class="{open: appState.viewer.sidebar.open}" alt="Toggle Controls"></button>
   </div>
 </template>
 
 <script lang="ts">
 import Vue from "vue";
 import { storeProxy, CellDescription, DatasetDescription } from "../state";
-import { viewer } from "../main";
 
 import DropdownList from "components/DropdownList.vue";
 import Stopwatch from "components/Stopwatch.vue";
@@ -80,11 +81,11 @@ export default Vue.extend({
     }
   },
   methods: {
-    toggleNeuroglancerUI() {
-      if (viewer) {
-        viewer.uiConfiguration.showUIControls.toggle();
-      }
-    },
+    // toggleNeuroglancerUI() {
+    //   if (viewer) {
+    //     viewer.uiConfiguration.showUIControls.toggle();
+    //   }
+    // },
     selectCell: async function(cell: CellDescription) {
       const success = await this.appState.selectCell(cell);
 
@@ -121,7 +122,7 @@ export default Vue.extend({
   height: 40px;
   align-items: center;
   background-color: var(--color-dark-bg);
-  z-index: 3;
+  z-index: 30;
 }
 
 #extensionBar > * {
@@ -149,11 +150,27 @@ export default Vue.extend({
   height: 22px;
 }
 
-#loggedInUserDropdown > button {
-  width: 40px;
-  background-image: url('images/user.svg');
+#extensionBar .iconBtn, #loggedInUserDropdown > button {
   background-repeat: no-repeat;
   background-position: center;
+  width: 40px;
+}
+
+#loggedInUserDropdown > button {
+  background-image: url('images/user.svg');
   background-size: 70%;
+}
+
+#extensionBar .toggleControls {
+  background-image: url('images/ng-controls.svg');
+  background-size: 50%;
+}
+
+#extensionBar .toggleControls.open {
+  background-color: var(--color-medium-bg);
+}
+
+#extensionBar .toggleControls.open:hover {
+  background-color: var(--color-light-bg);
 }
 </style>

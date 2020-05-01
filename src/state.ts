@@ -5,10 +5,10 @@ import {SingletonLayerGroupViewer} from 'neuroglancer/layer_groups_layout';
 import {StatusMessage} from 'neuroglancer/status';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {vec3} from 'neuroglancer/util/geom';
+import {Viewer} from 'neuroglancer/viewer';
+import {config} from './main';
 
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
-
-import {viewer} from './main';
 
 interface LoggedInUser {
   name: string;
@@ -41,8 +41,47 @@ export enum LeaderboardTimespan {
   Weekly = 6
 }
 
-class AppStore extends createModule
+let viewer: Viewer | undefined;
+
+function getLayerPanel(viewer: Viewer) {
+  const groupViewerSingleton = viewer.layout.container.component;
+  if (groupViewerSingleton instanceof SingletonLayerGroupViewer) {
+    return groupViewerSingleton.layerGroupViewer.layerPanel;
+  }
+
+  return undefined;
+}
+
+function getLayerByName(name: string) {
+  if (!viewer) {
+    return undefined;
+  }
+
+  const layers = viewer.layerManager.managedLayers;
+
+  for (let layer of layers) {
+    if (layer.name === name) {
+      return layer;
+    }
+  }
+
+  return undefined;
+}
+
+export interface ViewerState {
+  layers: string[],
+  selectedLayer: string|undefined,
+  sidebar: {
+    open: boolean,
+    width: number,
+  }
+};
+
+
+export class AppStore extends createModule
 ({strict: false}) {
+  sidebarOpen = false;
+
   loggedInUser: LoggedInUser|null = null;
   showDatasetChooser: boolean = false;
   showCellChooser: boolean = false;
@@ -54,6 +93,15 @@ class AppStore extends createModule
   leaderboardEntries: LeaderboardEntry[] = [];
   leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
   leaderboardLoaded: boolean = false;
+
+  viewer: ViewerState = {
+    layers: [],
+    selectedLayer: undefined,
+    sidebar: {
+      open: false,
+      width: 0,
+    }
+  };
 
   datasets: DatasetDescription[] = [
     {
@@ -67,7 +115,8 @@ class AppStore extends createModule
         {
           type: 'segmentation_with_graph',
           source:
-              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31'
+              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31',
+          defaultSelected: true,
         }
       ],
       curatedCells: [{
@@ -110,6 +159,23 @@ class AppStore extends createModule
       ]
     }
   ];
+
+  @action
+  async initializeViewer(v: Viewer) {
+    viewer = v;
+    
+    const layerPanel = getLayerPanel(v)!;
+    layerPanel.selectedLayer.changed.add(() => {
+      this.viewer.selectedLayer = layerPanel.selectedLayer.layer ? layerPanel.selectedLayer.layer.name : undefined;
+      this.viewer.sidebar.open = layerPanel.selectedLayer.visible;
+      // size has it's own changed signal but size changes also trigger selectedLayer.changed
+      this.viewer.sidebar.width = layerPanel.selectedLayer.size.value;
+    });
+
+    v.layerManager.layersChanged.add(() => {
+      this.viewer.layers = v.layerManager.managedLayers.map((layer) => layer.name);
+    });
+  }
 
   @action
   async loadActiveDataset() {
@@ -201,6 +267,27 @@ class AppStore extends createModule
   }
 
   @action
+  async selectActiveLayer(name: string) {
+    const layerPanel = getLayerPanel(viewer!)!;
+    const layer = getLayerByName(name);
+
+    if (layer) {
+      layerPanel.selectedLayer.layer = layer;
+    }
+  }
+
+  @action
+  async toggleSidePanel(visible?: boolean) {
+    const layerPanel = getLayerPanel(viewer!)!;
+
+    if (visible === undefined) {
+      layerPanel.selectedLayer.visible = !layerPanel.selectedLayer.visible;
+    } else {
+      layerPanel.selectedLayer.visible = visible;
+    }
+  }
+
+  @action
   async selectDataset(dataset: DatasetDescription) {
     if (!viewer) {
       return false;
@@ -228,20 +315,13 @@ class AppStore extends createModule
       const {layer} = layerWithSpec;
 
       if (layerDesc.defaultSelected) {
-        const groupViewerSingleton = viewer.layout.container.component;
-        if (groupViewerSingleton instanceof SingletonLayerGroupViewer) {
-          const layerPanel = groupViewerSingleton.layerGroupViewer.layerPanel;
-          if (layerPanel) {
-            layerPanel.selectedLayer.layer = layerWithSpec;
-            layerPanel.selectedLayer.visible = true;
-          }
-        }
+        this.selectActiveLayer(layerName);
       }
 
       if (layer instanceof ImageUserLayer) {
-        await layer.multiscaleSource!; // wait because there is an error if both layers load at the same time?
+        await layer.multiscaleSource; // wait because there is an error if both layers load at the same time?
       } else if (layer instanceof SegmentationUserLayer) {
-        await layer.multiscaleSource!;
+        await layer.multiscaleSource;
         console.log('root segments callback 1');
         layer.displayState.rootSegments.changed.add(() => {
           console.log('root segments changed 1');
@@ -354,7 +434,6 @@ class AppStore extends createModule
 
 import Vue from 'vue';
 import Vuex from 'vuex';
-import {config} from './main';
 Vue.use(Vuex);
 
 export const store = new Vuex.Store({

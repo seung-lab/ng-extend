@@ -1,27 +1,8 @@
 :root {
-  --color-dark-bg: #222;
-  --color-medium-bg: hsla(0, 0%, 30%, 1);
-  --color-small-text: white;
-}
-
-.ng-extend .list li, .ng-extend .list .title {
-  height: 48px;
-  box-sizing: border-box;
-  padding: 10px;
-  display: flex;
-  align-items: center;
-}
-
-.ng-extend .list li {
-  cursor: pointer;
-}
-
-.ng-extend .list li:hover {
-  background-color: #f1f1f1;
-}
-
-.ng-extend .list li.selected {
-  background-color: lightgreen;
+  --color-dark-bg: #212227;
+  --color-medium-bg: #33353c;
+  --color-light-bg: #4d505b;
+  --color-small-text: #eee;
 }
 
 .ng-extend button {
@@ -31,7 +12,7 @@
   margin: 0;
   text-decoration: none;
   background: none;
-  color: #ffffff;
+  color: var(--color-small-text);
   font-family: sans-serif;
   font-size: 1rem;
   cursor: pointer;
@@ -43,7 +24,7 @@
 }
 
 .ng-extend button:hover {
-  background-color: hsla(0,0%,100%,.1);
+  background-color: var(--color-light-bg);
 }
 
 .ng-extend .flex-fill {

@@ -1,0 +1,19 @@
+.neuroglancer-layer-side-panel-title {
+    display: none;
+}
+
+.neuroglancer-layer-side-panel {
+    margin-top: 80px;
+}
+
+.neuroglancer-minimizable-group-title {
+    background-color: var(--color-medium-bg);
+    color: var(--color-small-text);
+    padding: 8px;
+    font-weight: bold;
+}
+
+.neuroglancer-viewer-top-row {
+    background-color: var(--color-dark-bg);
+}
+
