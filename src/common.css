@@ -2,6 +2,10 @@
   --color-dark-bg: #222;
   --color-medium-bg: hsla(0, 0%, 30%, 1);
   --color-small-text: white;
+  --color-border: #a3b3bf;
+  --color-header-text: #eeeeee;
+  --gradient-highlight: linear-gradient(-45deg, rgba(2, 146, 174, 0.88), rgba(15, 177, 139, 0.88));
+  --gradient-highlight-hover: linear-gradient(-45deg, rgba(2, 146, 174,1), rgba(15, 177, 139,1));
 }
 
 .ng-extend .list li, .ng-extend .list .title {

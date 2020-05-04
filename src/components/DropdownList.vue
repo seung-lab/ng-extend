@@ -117,13 +117,18 @@ export default Vue.extend({
   position: absolute;
   right: 0;
   top: 40px;
-  background-color: var(--color-medium-bg);
+  background-color: var(--color-dark-bg);
+  border-radius: 5px;
+  border-color: var(--color-border);
+  border-width: 1px;
+  border-style: solid;
 }
 
 .dropdownMenu > li > button, .dropdownMenu > li > div {
   padding: 16px 26px;
   width: 100%;
   white-space: nowrap;
+  text-align: left;
 }
 
 .dropdownGroup > button {
