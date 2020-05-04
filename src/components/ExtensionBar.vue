@@ -53,7 +53,7 @@
         <template #buttonTitle></template>
         <template #listItems>
           <li v-for="item of appState.actionsMenuItems" :key="item.text">
-            <button @click="item.click">{{ item.text }}</button>
+            <button @click="clickAction(item)">{{ item.text }}</button>
           </li>
         </template>
       </dropdown-list>
@@ -63,7 +63,7 @@
 
 <script lang="ts">
 import Vue from "vue";
-import { storeProxy, CellDescription, DatasetDescription } from "../state";
+import { storeProxy, CellDescription, DatasetDescription, ActionsMenuItem } from "../state";
 import { viewer } from "../main";
 
 import DropdownList from "components/DropdownList.vue";
@@ -119,6 +119,10 @@ export default Vue.extend({
       } else {
         console.warn("cannot select dataset because viewer is not yet created");
       }
+    },
+    clickAction(item: ActionsMenuItem) {
+      this.$root.$emit("closeDropdowns");
+      item.click();
     }
   }
 });
