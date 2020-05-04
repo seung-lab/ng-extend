@@ -29,11 +29,11 @@
 
     <template v-if="appState.loadedViewer">
       <dropdown-list dropdown-group="extension-bar-right" id="datasetChooser">
-        <template #buttonTitle>Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template>
+        <template #buttonTitle>Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template> <!-- :style="dataset.color ? 'color: ' + dataset.color : ''"-->
         <template #listItems>
-          <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
-            <div class="" @click="selectDataset(dataset)">
-              <div class="nge-dataset-button-name" :style="dataset.color ? 'color: ' + dataset.color : ''">{{ dataset.name }}</div>
+          <li v-for="dataset of datasets" :key="dataset.name" :class="'nge-dataset-button' + (dataset === activeDataset ? ' selected' : '')">
+            <div @click="selectDataset(dataset)">
+              <div class="nge-dataset-button-name">{{ dataset.name }}</div>
               <div class="nge-dataset-button-description">{{ dataset.description }}</div>
             </div>
           </li>
@@ -166,8 +166,16 @@ export default Vue.extend({
   height: 22px;
 }
 
-#datasetChooser > button {
+/*#datasetChooser > button {
   color: red;
+}*/
+
+.nge-dataset-button {
+  cursor: pointer;
+}
+
+.nge-dataset-button:hover {
+  background-color: var(--color-highlight-hover);
 }
 
 #loggedInUserDropdown > button {

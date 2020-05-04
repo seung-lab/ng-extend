@@ -64,25 +64,6 @@ class AppStore extends createModule
 
   datasets: DatasetDescription[] = [
     {
-      name: 'Production',
-      description: 'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
-      layers: [
-        {
-          type: 'image',
-          source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
-        },
-        {
-          type: 'segmentation_with_graph',
-          source:
-              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31'
-        }
-      ],
-      curatedCells: [{
-        id: '720575940650468481',
-      }]
-    },
-    {
       name: 'Sandbox',
       description: 'A practice dataset. Cell edits are visible to all, but user mistakes don\'t matter here.',
       color: '#E6C760',
@@ -118,6 +99,25 @@ class AppStore extends createModule
           default: true
         },
       ]
+    },
+    {
+      name: 'Production',
+      description: 'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
+      layers: [
+        {
+          type: 'image',
+          source:
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
+        },
+        {
+          type: 'segmentation_with_graph',
+          source:
+              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31'
+        }
+      ],
+      curatedCells: [{
+        id: '720575940650468481',
+      }]
     }
   ];
 

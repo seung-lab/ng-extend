@@ -1,6 +1,7 @@
 :root {
   --color-dark-bg: #222;
   --color-medium-bg: hsla(0, 0%, 30%, 1);
+  --color-highlight-hover: hsla(0, 0%, 100%, .1);
   --color-small-text: white;
   --color-border: #a3b3bf;
   --color-header-text: #eeeeee;
@@ -47,7 +48,7 @@
 }
 
 .ng-extend button:hover {
-  background-color: hsla(0,0%,100%,.1);
+  background-color: var(--color-highlight-hover);
 }
 
 .ng-extend .flex-fill {

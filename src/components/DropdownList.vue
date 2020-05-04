@@ -140,6 +140,9 @@ export default Vue.extend({
 }
 
 .dropdownMenu > li.selected {
-  background-color: green;
+  background: var(--gradient-highlight);
+}
+.dropdownMenu > li.selected:hover {
+  background: var(--gradient-highlight-hover);
 }
 </style>
