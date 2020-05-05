@@ -44,7 +44,7 @@
         <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown">
           <template #buttonTitle></template>
           <template #listItems>
-            <li><user-card></user-card></li>
+            <user-card></user-card>
           </template>
         </dropdown-list>
       </template>
@@ -176,6 +176,15 @@ export default Vue.extend({
 
 .nge-dataset-button:hover {
   background-color: var(--color-highlight-hover);
+}
+
+.nge-dataset-button-name {
+  font-size: 1.3em;
+}
+
+.nge-dataset-button-description {
+  font-size: 0.8em;
+  padding-top: 10px;
 }
 
 #loggedInUserDropdown > button {

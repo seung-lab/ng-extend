@@ -112,7 +112,6 @@ export default Vue.extend({
   /* pointer-events: none; */
 }
 
-
 .dropdownMenu {
   position: absolute;
   right: 0;

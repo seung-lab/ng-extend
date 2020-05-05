@@ -61,16 +61,21 @@ export default Vue.extend({
 </script>
 
 <style>
-.nge-usercard {
-  /*display: grid;
-  grid-template-rows: auto auto;*/
-}
+/*.nge-usercard {
+  display: grid;
+  grid-template-rows: auto auto;
+}*/
 .nge-usercard-profile {
   display: grid;
   grid-template-columns: auto auto;
+  padding: 15px;
+}
+.nge-usercard-info {
+  padding: 5px;
+  padding-left: 15px;
 }
 .nge-usercard-name {
-  font-size: 1.5em;
+  font-size: 1.3em;
 }
 .nge-usercard-email {
   font-style: italic;
@@ -85,9 +90,7 @@ export default Vue.extend({
 }
 .nge-usercard-avatar-image {
   filter: hue-rotate(var(--avatar-hue-rotate));
-}
-.nge-usercard-controls {
-  padding-top: 10px;
+  padding: 5px;
 }
 .ng-extend button.nge-usercard-logout {
   width: 100%;
