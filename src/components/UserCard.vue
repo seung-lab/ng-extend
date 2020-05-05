@@ -1,14 +1,16 @@
 <template>
   <div class="nge-usercard">
     <div class="nge-usercard-profile">
-      <img class="nge-usercard-avatar" src="images/icon-filled.png" :style="cssVars" width="50">
+      <div class="nge-usercard-avatar">
+        <img class="nge-usercard-avatar-image" src="images/icon-filled.png" :style="cssVars" width="50">
+      </div>
       <div class="nge-usercard-info">
         <div class="nge-usercard-name">{{ appState.loggedInUser.name }}</div>
         <div class="nge-usercard-email">{{ appState.loggedInUser.email }}</div>
-        <div class="nge-usercard-date">joined 4/20/2020</div>
+        <!--div class="nge-usercard-date">joined MM/DD/YYYY</div-->
       </div>
     </div>
-    <div class="nge-usercard-edits">
+    <!--div class="nge-usercard-edits">
       <div class="nge-usercard-edits-title">Fixes</div>
       <div class="nge-usercard-edits-table">
         <div class="nge-usercard-edits-section">
@@ -24,8 +26,10 @@
           <div class="nge-usercard-edits-count">N/A</div>
         </div>
       </div>
+    </div-->
+    <div class="nge-usercard-controls">
+      <button class="nge-usercard-logout" @click="appState.logout">Log Out</button>
     </div>
-    <button class="nge-usercard-logout" @click="appState.logout">Log Out</button>
   </div>
 </template>
 
@@ -58,18 +62,36 @@ export default Vue.extend({
 
 <style>
 .nge-usercard {
-  display: grid;
-  grid-template-rows: auto auto;
+  /*display: grid;
+  grid-template-rows: auto auto;*/
 }
 .nge-usercard-profile {
   display: grid;
   grid-template-columns: auto auto;
 }
-.nge-usercard-edits-table {
+.nge-usercard-name {
+  font-size: 1.5em;
+}
+.nge-usercard-email {
+  font-style: italic;
+}
+/*.nge-usercard-edits-table {
   display: grid;
   grid-template-columns: auto auto auto;
-}
+}*/
 .nge-usercard-avatar {
+  background-color: var(--color-highlight-hover);
+  border-radius: 5px;
+}
+.nge-usercard-avatar-image {
   filter: hue-rotate(var(--avatar-hue-rotate));
+}
+.nge-usercard-controls {
+  padding-top: 10px;
+}
+.ng-extend button.nge-usercard-logout {
+  width: 100%;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 </style>
