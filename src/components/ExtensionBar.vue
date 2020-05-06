@@ -28,8 +28,12 @@
     <div class="flex-fill"></div> -->
 
     <template v-if="appState.loadedViewer">
-      <dropdown-list dropdown-group="extension-bar-right" id="datasetChooser">
-        <template #buttonTitle>Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template> <!-- :style="dataset.color ? 'color: ' + dataset.color : ''"-->
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser">
+        <template #chooserTitle>
+          <span :style="{color: appState.activeDataset.color}">
+            {{ appState.activeDataset ? "Dataset: " + appState.activeDataset.name : "Choose Dataset" }} <!--TODO: show 'choose dataset' if dropdown is open-->
+          </span>
+        </template>
         <template #listItems>
           <li v-for="dataset of datasets" :key="dataset.name" :class="'nge-dataset-button' + (dataset === activeDataset ? ' selected' : '')">
             <div @click="selectDataset(dataset)">
