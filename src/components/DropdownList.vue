@@ -21,8 +21,7 @@
 
 <script lang="ts">
 import Vue from "vue";
-import {storeProxy} from "../state";
-import { viewer } from "../main";
+import { storeProxy, viewer } from "../state";
 
 let uuid = 0;
 
@@ -115,6 +114,10 @@ export default Vue.extend({
   background-color: var(--color-medium-bg);
 }
 
+.ng-extend button:hover {
+  background-color: hsla(0,0%,100%,.1);
+}
+
 .hideDropdown {
   position: absolute;
   left: 0;
@@ -195,5 +198,9 @@ export default Vue.extend({
 
 .dropdownMenu > li.selected:hover {
   background: var(--gradient-highlight-hover);
+}
+
+.dropdownMenu > li.selected button:hover {
+  background-color: hsla(120, 100%, 34%, 1);
 }
 </style>
