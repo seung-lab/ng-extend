@@ -1,11 +1,11 @@
 <template>
   <div class="dropdownList" :class="{ open: isActive }" @mousedown.stop.prevent>
     <template v-if="type === 'chooser'">
-      <div class="dropdownChooser" @click="toggleVisible">
-        <slot name="chooserTitle"></slot>
-        <span class="dropdownChooserArrow">▼</span>
+      <div class="dropdownChooser" :style="{width: width}" @click="toggleVisible">
+        <div class="dropdownChooserTitle"><slot name="chooserTitle"></slot></div>
+        <div class="dropdownChooserArrow">▼</div>
       </div>
-      <ul v-visible="isActive" class="dropdownMenu">
+      <ul v-visible="isActive" class="dropdownMenu chooser">
         <slot name="listItems"></slot>
       </ul>
     </template>
@@ -27,7 +27,7 @@ import { viewer } from "../main";
 let uuid = 0;
 
 export default Vue.extend({
-  props: ['dropdownGroup', 'type'],
+  props: ['dropdownGroup', 'type', 'width'],
   data() {
     return {
       appState: storeProxy,
@@ -145,11 +145,17 @@ export default Vue.extend({
   border: 1px solid var(--color-border);
 }
 
+.dropdownMenu.chooser {
+  top: 35px;
+}
+
 .dropdownMenu > li > button, .dropdownMenu > li > div {
   padding: 16px 26px;
-  width: 100%;
-  white-space: nowrap;
   text-align: left;
+}
+
+.dropdownMenu > li > button {
+  width: 100%;
 }
 
 .dropdownGroup > button {
@@ -166,15 +172,21 @@ export default Vue.extend({
   padding: 7px;
   border-radius: 5px;
   border: 1px solid var(--color-border);
-  margin-left: 10px;
+  display: grid;
+  grid-template-columns: auto min-content;
 }
 
 .dropdownChooser:hover {
   background-color: var(--color-highlight-hover);
 }
 
+.dropdownChooserTitle {
+  text-align: center;
+}
+
 .dropdownChooserArrow {
   margin-left: 10px;
+  margin-right: 10px;
 }
 
 .dropdownMenu > li.selected {

@@ -27,8 +27,10 @@
     <stopwatch />
     <div class="flex-fill"></div> -->
 
+    <div class="ng-extend-spacer"></div>
+
     <template v-if="appState.loadedViewer">
-      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser">
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px">
         <template #chooserTitle>
           <span :style="{color: appState.activeDataset.color}">
             {{ appState.activeDataset ? "Dataset: " + appState.activeDataset.name : "Choose Dataset" }} <!--TODO: show 'choose dataset' if dropdown is open-->
@@ -44,6 +46,8 @@
         </template>
       </dropdown-list>
 
+      <div class="ng-extend-spacer"></div>
+
       <template v-if="appState.loggedInUser">
         <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown">
           <template #buttonTitle></template>
@@ -51,6 +55,7 @@
             <user-card></user-card>
           </template>
         </dropdown-list>
+        <div class="ng-extend-spacer"></div>
       </template>
 
       <dropdown-list dropdown-group="extension-bar-right" id="moreActions">
@@ -168,6 +173,10 @@ export default Vue.extend({
 
 .ng-extend-logo > a {
   height: 22px;
+}
+
+.ng-extend-spacer {
+  width: 10px;
 }
 
 /*#datasetChooser > button {
