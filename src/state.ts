@@ -134,7 +134,7 @@ export class AppStore extends createModule
               'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
         },
         {
-          name: 'SANDBOX-FOR PRACTICE ONLY',
+          name: 'sandbox-segmentation-FOR PRACTICE ONLY',
           type: 'segmentation_with_graph',
           source:
               'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26',
