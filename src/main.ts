@@ -94,18 +94,22 @@ class ExtendViewer extends Viewer {
       showLayerDialog: false,
       showUIControls: true,
       showPanelBorders: true,
-      defaultLayoutSpecification: 'xy-3d'
+      defaultLayoutSpecification: 'xy-3d',
     });
 
     authTokenShared!.changed.add(() => {
       storeProxy.fetchLoggedInUser();
     });
     storeProxy.fetchLoggedInUser();
+
+    if (!this.jsonStateServer.value) {
+      this.jsonStateServer.value = config.linkShortenerURL;
+    }
   }
 
   promptJsonStateServer(message: string): void {
     let json_server_input =
-        prompt(message, config.linkShortenerURL + '/nglstate/post');
+        prompt(message, config.linkShortenerURL);
     if (json_server_input !== null) {
       this.jsonStateServer.value = json_server_input;
     } else {
