@@ -85,7 +85,7 @@ export default Vue.extend({
   grid-template-columns: auto auto auto;
 }*/
 .nge-usercard-avatar {
-  background-color: var(--color-highlight-hover);
+  background-color: var(--color-light-bg);
   border-radius: 5px;
 }
 .nge-usercard-avatar-image {

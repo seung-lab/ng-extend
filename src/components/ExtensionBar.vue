@@ -187,7 +187,7 @@ export default Vue.extend({
 }
 
 .nge-dataset-button:hover {
-  background-color: var(--color-highlight-hover);
+  background-color: var(--color-light-bg);
 }
 
 .nge-dataset-button-name {

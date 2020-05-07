@@ -171,7 +171,7 @@ export default Vue.extend({
 
 .dropdownChooser {
   cursor: pointer;
-  font-size: 0.8em;
+  font-size: 0.9em;
   padding: 7px;
   border-radius: 5px;
   border: 1px solid var(--color-border);
@@ -180,7 +180,7 @@ export default Vue.extend({
 }
 
 .dropdownChooser:hover {
-  background-color: var(--color-highlight-hover);
+  background-color: var(--color-light-bg);
 }
 
 .dropdownChooserTitle {
