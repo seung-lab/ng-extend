@@ -1,20 +1,32 @@
 <template>
   <div class="dropdownList" :class="{ open: isActive }" @mousedown.stop.prevent>
-    <button @click="toggleVisible"><slot name="buttonTitle"></slot></button>
+    <template v-if="type === 'chooser'">
+      <div class="dropdownChooser" :style="{width: width}" @click="toggleVisible">
+        <div class="dropdownChooserTitle"><slot name="chooserTitle"></slot></div>
+        <div class="dropdownChooserArrow">▼</div>
+      </div>
+      <ul v-visible="isActive" class="dropdownMenu chooser">
+        <slot name="listItems"></slot>
+      </ul>
+    </template>
+    <template v-else>
+      <button @click="toggleVisible"><slot name="buttonTitle"></slot></button>
       <ul v-visible="isActive" class="dropdownMenu">
         <slot name="listItems"></slot>
       </ul>
+      <div class="dropdownArrow" v-visible="isActive"></div>
+    </template>
   </div>
 </template>
 
 <script lang="ts">
 import Vue from "vue";
-import {storeProxy} from "../state";
+import { storeProxy, viewer } from "../state";
 
 let uuid = 0;
 
 export default Vue.extend({
-  props: ['dropdownGroup'],
+  props: ['dropdownGroup', 'type', 'width'],
   data() {
     return {
       appState: storeProxy,
@@ -23,18 +35,34 @@ export default Vue.extend({
   },
   mounted() {
     this.$root.$on("closeDropdowns", () => {
-      if (this.isActive) {
-        this.toggleVisible();
-      }
+      this.close();
     });
 
-    // document.body.addEventListener('mousedown', () => {
-    //   console.log('mousedown!');
-    // });
+    /*
+     Add a click handler to close the dropdown when anywhere else on the page is clicked.
+     For most of the page, document.body will get the event. When the viewer panel is clicked,
+     however, it will stop the click event's propagation.
+     The viewer is not created immediately on page load, and it may be replaced if the user
+     changes their view. So we wait until the viewer has loaded (by wrapping the dropdown in a 
+     <template v-if="appState.loadedViewer">), then wait one more frame for the panel to be added
+     (by using setTimeout with delay 0). Then we can add the event listener.
+     We need to repeat this whenever the viewer layout is changed (and the dropdown is created after
+     the initial layout change happens, so we need to do it separately the first time). This we wrap
+     inside an extra setTimeout so that the panels are actually created by the time it runs.
+    */
 
-    // document.getElementById('neuroglancerViewer')!.addEventListener('mousedown', () => {
-    //   console.log('mousedown ngc');
-    // });
+    //Regular mousedown handler
+    document.body.addEventListener("mousedown", () => {
+      this.close();
+    });
+
+    //Add mousedown handler to initial viewer panels
+    this.addPanelClickHandlers();
+    
+    //Add mousedown handler to new viewer panels whenever they update
+    viewer!.layout.changed.add(() => {
+      setTimeout(() => this.addPanelClickHandlers());
+    });
   },
   computed: {
     isActive(): boolean { // https://github.com/vuejs/vue/issues/8721#issuecomment-551301489
@@ -53,6 +81,19 @@ export default Vue.extend({
       if (this.dropdownGroup) {
         Vue.set(this.appState.activeDropdown, this.dropdownGroup, this.isActive ? -1 : this.id);
       }
+    },
+    close() {
+      if (this.isActive) {
+        this.toggleVisible();
+      }
+    },
+    addPanelClickHandlers() {
+      setTimeout(() => {
+        document.querySelectorAll("div.neuroglancer-rendered-data-panel.neuroglancer-panel.neuroglancer-noselect")
+          .forEach(e => e.addEventListener("mousedown", () => {
+            this.close();
+          }));
+      }, 0);
     }
   }
 });
@@ -86,18 +127,38 @@ export default Vue.extend({
   /* pointer-events: none; */
 }
 
+.dropdownArrow {
+  position: absolute;
+  bottom: -1px;
+  border-width: 7px;
+  border-style: solid;
+  border-color: transparent;
+  border-bottom-color: var(--color-dark-bg);
+  left: 50%;
+  margin-left: -7px;
+  pointer-events: none;
+}
 
 .dropdownMenu {
   position: absolute;
   right: 0;
   top: 40px;
-  background-color: var(--color-medium-bg);
+  background-color: var(--color-dark-bg);
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+}
+
+.dropdownMenu.chooser {
+  top: 35px;
 }
 
 .dropdownMenu > li > button, .dropdownMenu > li > div {
   padding: 16px 26px;
+  text-align: left;
+}
+
+.dropdownMenu > li > button {
   width: 100%;
-  white-space: nowrap;
 }
 
 .dropdownGroup > button {
@@ -108,8 +169,35 @@ export default Vue.extend({
   padding: 0 16px;
 }
 
-.dropdownMenu > li.selected button {
-  background-color: green;
+.dropdownChooser {
+  cursor: pointer;
+  font-size: 0.8em;
+  padding: 7px;
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+  display: grid;
+  grid-template-columns: auto min-content;
+}
+
+.dropdownChooser:hover {
+  background-color: var(--color-highlight-hover);
+}
+
+.dropdownChooserTitle {
+  text-align: center;
+}
+
+.dropdownChooserArrow {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+.dropdownMenu > li.selected {
+  background: var(--gradient-highlight);
+}
+
+.dropdownMenu > li.selected:hover {
+  background: var(--gradient-highlight-hover);
 }
 
 .dropdownMenu > li.selected button:hover {

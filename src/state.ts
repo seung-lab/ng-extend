@@ -23,8 +23,8 @@ interface LayerDescription {
 }
 
 export interface DatasetDescription {
-  name: string, layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number,
-  defaultPosition?: {x: number, y: number, z: number},
+  name: string, description: string, color?: string, 
+  layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number, defaultPosition?: {x: number, y: number, z: number},
 }
 
 export interface CellDescription {
@@ -41,7 +41,12 @@ export enum LeaderboardTimespan {
   Weekly = 6
 }
 
-let viewer: Viewer | undefined;
+export interface ActionsMenuItem {
+  text: string,
+  click(): void
+}
+
+export let viewer: Viewer | undefined;
 
 function getLayerPanel(viewer: Viewer) {
   const groupViewerSingleton = viewer.layout.container.component;
@@ -89,7 +94,9 @@ export class AppStore extends createModule
   activeDataset: DatasetDescription|null = null;
   activeCells: CellDescription[] = [];
 
+  loadedViewer: boolean = false;
   activeDropdown: {[group: string]: number} = {};
+  actionsMenuItems: ActionsMenuItem[] = [];
   leaderboardEntries: LeaderboardEntry[] = [];
   leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
   leaderboardLoaded: boolean = false;
@@ -105,26 +112,9 @@ export class AppStore extends createModule
 
   datasets: DatasetDescription[] = [
     {
-      name: 'production',
-      layers: [
-        {
-          type: 'image',
-          source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
-        },
-        {
-          type: 'segmentation_with_graph',
-          source:
-              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31',
-          defaultSelected: true,
-        }
-      ],
-      curatedCells: [{
-        id: '720575940650468481',
-      }]
-    },
-    {
-      name: 'sandbox',
+      name: 'Sandbox',
+      description: 'A practice dataset. Cell edits are visible to all, but user mistakes don\'t matter here.',
+      color: '#E6C760',
       defaultPerspectiveZoomFactor: 6310,
       defaultPosition: {x: 158604, y: 72224, z: 2198},
       layers: [
@@ -157,6 +147,26 @@ export class AppStore extends createModule
           default: true
         },
       ]
+    },
+    {
+      name: 'Production',
+      description: 'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
+      layers: [
+        {
+          type: 'image',
+          source:
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
+        },
+        {
+          type: 'segmentation_with_graph',
+          source:
+              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31',
+          defaultSelected: true,
+        }
+      ],
+      curatedCells: [{
+        id: '720575940650468481',
+      }]
     }
   ];
 
@@ -195,7 +205,7 @@ export class AppStore extends createModule
       // load sandbox with default view state
       if (this.datasets.length) {
         for (let dataset of this.datasets) {
-          if (dataset.name == 'sandbox') {
+          if (dataset.name === 'Sandbox') {
             this.selectDataset(dataset);
           }
         }

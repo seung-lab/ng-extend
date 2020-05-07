@@ -78,13 +78,13 @@ export default Vue.extend({
 
 @keyframes pulse {
   0% {
-    color: #19C178;
+    color: rgba(15, 177, 139, 1);
   }
   50% {
-    color: #008DB4;
+    color: rgba(2, 146, 174, 1);
   }
   100% {
-    color: #19C178;
+    color: rgba(15, 177, 139, 1);
   }
 }
 </style>

@@ -139,7 +139,6 @@ export default Vue.extend({
   padding-top: 0.5em;
   padding-bottom: 0.5em;
   padding-left: 0.4em;
-  padding-right: 0.4em;
 }
 
 .nge-leaderboard-header {
@@ -152,15 +151,18 @@ export default Vue.extend({
 }
 
 .nge-leaderboard-rank {
-  text-align: center;
+  text-align: right;
+  padding-right: 1em;
 }
 
 .nge-leaderboard-name {
   overflow-wrap: break-word;
+  padding-right: 0.4em;
 }
 
 .nge-leaderboard-score {
-  text-align: center;
+  text-align: right;
+  padding-right: 1em;
 }
 
 .nge-leaderboard-loading {

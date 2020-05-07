@@ -57,6 +57,14 @@ function mergeTopBars() {
   const ngTopBar = document.getElementById('neuroglancerViewer')!.children[0];
   const topBarVueParent = document.getElementById('insertNGTopBar')!;
   topBarVueParent.appendChild(ngTopBar);
+  const buttons = ngTopBar.querySelectorAll('div.neuroglancer-icon-button');
+  for (const button of buttons) {
+    const htmlButton = <HTMLElement>button;
+    const text = htmlButton.title;
+    const click = () => htmlButton.click();
+    storeProxy.actionsMenuItems.push({text: text, click: click});
+    button.remove();
+  }
 }
 
 function setupViewer() {
@@ -97,6 +105,7 @@ class ExtendViewer extends Viewer {
       defaultLayoutSpecification: 'xy-3d',
     });
 
+    storeProxy.loadedViewer = true;
     authTokenShared!.changed.add(() => {
       storeProxy.fetchLoggedInUser();
     });

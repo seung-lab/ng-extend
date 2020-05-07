@@ -27,39 +27,63 @@
     <stopwatch />
     <div class="flex-fill"></div> -->
 
-    <dropdown-list dropdown-group="extension-bar-right">
-      <template #buttonTitle>Dataset: {{ appState.activeDataset ? appState.activeDataset.name : "N/A" }}</template>
-      <template #listItems>
-        <li v-for="dataset of datasets" :key="dataset.name" :class="{selected: dataset === activeDataset}">
-          <button @click="selectDataset(dataset)">{{ dataset.name }}</button>
-        </li>
-      </template>
-    </dropdown-list>
+    <div class="ng-extend-spacer"></div>
 
-    <template v-if="appState.loggedInUser">
-      <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown">
-        <template #buttonTitle class="foo"></template>
+    <template v-if="appState.loadedViewer">
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px">
+        <template #chooserTitle>
+          <span :style="{color: appState.activeDataset.color}">
+            {{ appState.activeDataset ? "Dataset: " + appState.activeDataset.name : "Choose Dataset" }} <!--TODO: show 'choose dataset' if dropdown is open-->
+          </span>
+        </template>
         <template #listItems>
-          <li><div>{{ appState.loggedInUser.name }}</div></li>
-          <li><div>{{ appState.loggedInUser.email }}</div></li>
-          <li><button @click="appState.logout">Logout</button></li>
+          <li v-for="dataset of datasets" :key="dataset.name" :class="'nge-dataset-button' + (dataset === activeDataset ? ' selected' : '')">
+            <div @click="selectDataset(dataset)">
+              <div class="nge-dataset-button-name">{{ dataset.name }}</div>
+              <div class="nge-dataset-button-description">{{ dataset.description }}</div>
+            </div>
+          </li>
+        </template>
+      </dropdown-list>
+
+      <div class="ng-extend-spacer"></div>
+
+      <template v-if="appState.loggedInUser">
+        <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown">
+          <template #buttonTitle></template>
+          <template #listItems>
+            <user-card></user-card>
+          </template>
+        </dropdown-list>
+        <div class="ng-extend-spacer"></div>
+      </template>
+
+      <button @click="appState.toggleSidePanel()" class="toggleControls iconBtn" :class="{open: appState.viewer.sidebar.open}" alt="Toggle Controls"></button>
+
+      <div class="ng-extend-spacer"></div>
+
+      <dropdown-list dropdown-group="extension-bar-right" id="moreActions">
+        <template #buttonTitle></template>
+        <template #listItems>
+          <li v-for="item of appState.actionsMenuItems" :key="item.text">
+            <button @click="clickAction(item)">{{ item.text }}</button>
+          </li>
         </template>
       </dropdown-list>
     </template>
-
-    <button @click="appState.toggleSidePanel()" class="toggleControls iconBtn" :class="{open: appState.viewer.sidebar.open}" alt="Toggle Controls"></button>
   </div>
 </template>
 
 <script lang="ts">
 import Vue from "vue";
-import { storeProxy, CellDescription, DatasetDescription } from "../state";
+import { storeProxy, CellDescription, DatasetDescription, ActionsMenuItem } from "../state";
 
 import DropdownList from "components/DropdownList.vue";
 import Stopwatch from "components/Stopwatch.vue";
+import UserCard from "components/UserCard.vue";
 
 export default Vue.extend({
-  components: { DropdownList, Stopwatch },
+  components: { DropdownList, Stopwatch, UserCard },
   data() {
     return {
       appState: storeProxy,
@@ -107,6 +131,10 @@ export default Vue.extend({
       } else {
         console.warn("cannot select dataset because viewer is not yet created");
       }
+    },
+    clickAction(item: ActionsMenuItem) {
+      this.$root.$emit("closeDropdowns");
+      item.click();
     }
   }
 });
@@ -150,6 +178,27 @@ export default Vue.extend({
   height: 22px;
 }
 
+.ng-extend-spacer {
+  width: 10px;
+}
+
+.nge-dataset-button {
+  cursor: pointer;
+}
+
+.nge-dataset-button:hover {
+  background-color: var(--color-highlight-hover);
+}
+
+.nge-dataset-button-name {
+  font-size: 1.3em;
+}
+
+.nge-dataset-button-description {
+  font-size: 0.8em;
+  padding-top: 10px;
+}
+
 #extensionBar .iconBtn, #loggedInUserDropdown > button {
   background-repeat: no-repeat;
   background-position: center;
@@ -158,6 +207,14 @@ export default Vue.extend({
 
 #loggedInUserDropdown > button {
   background-image: url('images/user.svg');
+  background-size: 70%;
+}
+
+#moreActions > button {
+  width: 40px;
+  background-image: url('images/more.svg');
+  background-repeat: no-repeat;
+  background-position: center;
   background-size: 70%;
 }
 

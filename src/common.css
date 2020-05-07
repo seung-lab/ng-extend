@@ -3,6 +3,10 @@
   --color-medium-bg: #33353c;
   --color-light-bg: #4d505b;
   --color-small-text: #eee;
+  --color-highlight-hover: hsla(0, 0%, 100%, .1);
+  --color-border: #a3b3bf;
+  --gradient-highlight: linear-gradient(-45deg, rgba(2, 146, 174, 0.88), rgba(15, 177, 139, 0.88));
+  --gradient-highlight-hover: linear-gradient(-45deg, rgba(2, 146, 174, 1), rgba(15, 177, 139, 1));
 }
 
 .ng-extend button {
