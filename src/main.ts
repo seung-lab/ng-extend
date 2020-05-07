@@ -105,7 +105,6 @@ class ExtendViewer extends Viewer {
       defaultLayoutSpecification: 'xy-3d',
     });
 
-    document.title = 'FlyWire';
     storeProxy.loadedViewer = true;
     authTokenShared!.changed.add(() => {
       storeProxy.fetchLoggedInUser();
