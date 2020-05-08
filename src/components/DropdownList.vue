@@ -2,10 +2,16 @@
   <div class="dropdownList" :class="{ open: isActive }" @mousedown.stop.prevent>
     <template v-if="type === 'chooser'">
       <div class="dropdownChooser" :style="{width: width}" @click="toggleVisible">
-        <div class="dropdownChooserTitle"><slot name="chooserTitle"></slot></div>
-        <div class="dropdownChooserArrow">▼</div>
+        <div class="dropdownChooserLabel">
+          <div class="dropdownChooserTitle"><slot name="chooserTitle"></slot></div>
+          <div class="dropdownChooserArrow">▼</div>
+        </div>
       </div>
       <ul v-visible="isActive" class="dropdownMenu chooser">
+        <div class="dropdownChooserLabel" @click="toggleVisible">
+          <div class="dropdownChooserTitle"><slot name="chooserTitle"></slot></div>
+          <div class="dropdownChooserArrow">▼</div>
+        </div>
         <slot name="listItems"></slot>
       </ul>
     </template>
@@ -146,10 +152,11 @@ export default Vue.extend({
   background-color: var(--color-dark-bg);
   border-radius: 5px;
   border: 1px solid var(--color-border);
+  overflow: hidden;
 }
 
 .dropdownMenu.chooser {
-  top: 35px;
+  top: 4px;
 }
 
 .dropdownMenu > li > button, .dropdownMenu > li > div {
@@ -170,16 +177,20 @@ export default Vue.extend({
 }
 
 .dropdownChooser {
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.dropdownChooserLabel {
   cursor: pointer;
   font-size: 0.9em;
   padding: 7px;
-  border-radius: 5px;
-  border: 1px solid var(--color-border);
   display: grid;
   grid-template-columns: auto min-content;
 }
 
-.dropdownChooser:hover {
+.dropdownChooserLabel:hover {
   background-color: var(--color-light-bg);
 }
 
