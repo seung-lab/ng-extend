@@ -47,7 +47,10 @@ function newUserExperience(viewer: Viewer) {
   if (newUser) {
     localStorage.setItem('ng-newuser', '1');
     localStorage.setItem('neuroglancer-whatsnew', '1');
-    let description = (require('../src/NEW_USER.md')) || '';
+    const videoURL = `https://www.youtube.com/embed/KwMRgOFAsAU`
+    const embedVid = `<iframe width='640' height='360' src="${
+        videoURL}" frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+    let description = `${(require('../src/NEW_USER.md')) || ''}<br>${embedVid}`;
     return new WhatsNewDialog(viewer, description, {center: true});
   }
   return;
@@ -117,8 +120,7 @@ class ExtendViewer extends Viewer {
   }
 
   promptJsonStateServer(message: string): void {
-    let json_server_input =
-        prompt(message, config.linkShortenerURL);
+    let json_server_input = prompt(message, config.linkShortenerURL);
     if (json_server_input !== null) {
       this.jsonStateServer.value = json_server_input;
     } else {

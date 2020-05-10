@@ -12,9 +12,6 @@
   <link rel="shortcut icon" href="images/favicon/favicon.ico?v=rMJJ5wk4zj">
   <script src="https://unpkg.com/vue/dist/vue.js"></script>
   <style>
-    .defer-visible {
-      display: none;
-    }
   </style>
   <script>
     // localStorage test
@@ -45,12 +42,11 @@
         }
       }
     }
-    setTimeout(() => document.querySelectorAll('.defer-visible').forEach(e => e.classList.remove('defer-visible')), 1000);
   </script>
 </head>
 
 <body>
-  <div id="nge-error" class='defer-visible'>Oops! There was an error and Neuroglancer could not be loaded. Please follow
+  <div id="nge-error">Loading… if still loading after 10 sec, please follow
     the
     instructions in the <a
       href="https://docs.google.com/document/d/1FvEtMnAHenufDtCqKdi2DAyPyX9IzWkW9P2H31WxkMo">FAQ</a> to
