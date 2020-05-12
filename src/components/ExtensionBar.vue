@@ -33,7 +33,7 @@
       <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px">
         <template #chooserTitle>
           <span :style="{color: appState.activeDataset.color}">
-            {{ appState.activeDataset ? "Dataset: " + appState.activeDataset.name : "Choose Dataset" }} <!--TODO: show 'choose dataset' if dropdown is open-->
+            {{ appState.activeDataset ? "Dataset: " + appState.activeDataset.name : "Choose Dataset" }}
           </span>
         </template>
         <template #listItems>
@@ -48,6 +48,11 @@
 
       <div class="ng-extend-spacer"></div>
 
+      <template v-if="appState.activeDataset && appState.activeDataset.name === 'Sandbox'">
+        <button @click="resetDataset()" class="resetDataset iconBtn" title="Reset Dataset"></button>
+        <div class="ng-extend-spacer"></div>
+      </template>
+
       <template v-if="appState.loggedInUser">
         <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown">
           <template #buttonTitle></template>
@@ -58,7 +63,7 @@
         <div class="ng-extend-spacer"></div>
       </template>
 
-      <button @click="appState.toggleSidePanel()" class="toggleControls iconBtn" :class="{open: appState.viewer.sidebar.open}" alt="Toggle Controls"></button>
+      <button @click="appState.toggleSidePanel()" class="toggleControls iconBtn" :class="{open: appState.viewer.sidebar.open}" title="Toggle Controls"></button>
 
       <div class="ng-extend-spacer"></div>
 
@@ -132,6 +137,11 @@ export default Vue.extend({
         console.warn("cannot select dataset because viewer is not yet created");
       }
     },
+    resetDataset() {
+      if (this.appState.activeDataset) {
+        this.appState.selectDataset(this.appState.activeDataset);
+      }
+    },
     clickAction(item: ActionsMenuItem) {
       this.$root.$emit("closeDropdowns");
       item.click();
@@ -199,7 +209,7 @@ export default Vue.extend({
   padding-top: 10px;
 }
 
-#extensionBar .iconBtn, #loggedInUserDropdown > button {
+#extensionBar .iconBtn, #loggedInUserDropdown > button, #moreActions > button {
   background-repeat: no-repeat;
   background-position: center;
   width: 40px;
@@ -211,10 +221,12 @@ export default Vue.extend({
 }
 
 #moreActions > button {
-  width: 40px;
   background-image: url('images/more.svg');
-  background-repeat: no-repeat;
-  background-position: center;
+  background-size: 70%;
+}
+
+#extensionBar .resetDataset {
+  background-image: url('images/reset.svg');
   background-size: 70%;
 }
 
