@@ -30,7 +30,7 @@
     <div class="ng-extend-spacer"></div>
 
     <template v-if="appState.loadedViewer">
-      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px" alt="Choose dataset">
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px" hover="Choose dataset">
         <template #chooserTitle>
           <span :style="{color: appState.activeDataset.color}">
             {{ appState.activeDataset ? "Dataset: " + appState.activeDataset.name : "Choose Dataset" }}
@@ -54,7 +54,7 @@
       </template>
 
       <template v-if="appState.loggedInUser">
-        <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown" alt="User profile">
+        <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown" hover="User profile">
           <template #buttonTitle></template>
           <template #listItems>
             <user-card></user-card>
@@ -67,7 +67,7 @@
 
       <div class="ng-extend-spacer"></div>
 
-      <dropdown-list dropdown-group="extension-bar-right" id="moreActions" alt="More actions">
+      <dropdown-list dropdown-group="extension-bar-right" id="moreActions" hover="More actions">
         <template #buttonTitle></template>
         <template #listItems>
           <li v-for="item of appState.actionsMenuItems" :key="item.text">

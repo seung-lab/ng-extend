@@ -1,7 +1,7 @@
 <template>
   <div class="dropdownList" :class="{ open: isActive }" @mousedown.stop.prevent>
     <template v-if="type === 'chooser'">
-      <div class="dropdownChooser" :style="{width: width}" @click="toggleVisible" :title="alt">
+      <div class="dropdownChooser" :style="{width: width}" @click="toggleVisible" :title="hover">
         <div class="dropdownChooserLabel">
           <div class="dropdownChooserTitle"><slot name="chooserTitle"></slot></div>
           <div class="dropdownChooserArrow">⯆</div>
@@ -16,7 +16,7 @@
       </ul>
     </template>
     <template v-else>
-      <button @click="toggleVisible" :title="alt"><slot name="buttonTitle"></slot></button>
+      <button @click="toggleVisible" :title="hover"><slot name="buttonTitle"></slot></button>
       <ul v-visible="isActive" class="dropdownMenu">
         <slot name="listItems"></slot>
       </ul>
@@ -32,7 +32,7 @@ import { storeProxy, viewer } from "../state";
 let uuid = 0;
 
 export default Vue.extend({
-  props: ['dropdownGroup', 'type', 'width', 'alt'],
+  props: ['dropdownGroup', 'type', 'width', 'hover'],
   data() {
     return {
       appState: storeProxy,
