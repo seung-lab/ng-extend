@@ -4,13 +4,13 @@
       <div class="dropdownChooser" :style="{width: width}" @click="toggleVisible" :title="alt">
         <div class="dropdownChooserLabel">
           <div class="dropdownChooserTitle"><slot name="chooserTitle"></slot></div>
-          <div class="dropdownChooserArrow">▼</div>
+          <div class="dropdownChooserArrow">⯆</div>
         </div>
       </div>
       <ul v-visible="isActive" class="dropdownMenu chooser">
         <div class="dropdownChooserLabel" @click="toggleVisible">
           <div class="dropdownChooserTitle"><slot name="chooserTitle"></slot></div>
-          <div class="dropdownChooserArrow">▼</div>
+          <div class="dropdownChooserArrow">⯆</div>
         </div>
         <slot name="listItems"></slot>
       </ul>
@@ -201,6 +201,7 @@ export default Vue.extend({
 .dropdownChooserArrow {
   margin-left: 10px;
   margin-right: 10px;
+  font-size: 0.8em;
 }
 
 .dropdownMenu > li.selected {
