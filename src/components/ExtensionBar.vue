@@ -30,7 +30,7 @@
     <div class="ng-extend-spacer"></div>
 
     <template v-if="appState.loadedViewer">
-      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px" alt="Choose Dataset">
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px" alt="Choose dataset">
         <template #chooserTitle>
           <span :style="{color: appState.activeDataset.color}">
             {{ appState.activeDataset ? "Dataset: " + appState.activeDataset.name : "Choose Dataset" }}
@@ -49,12 +49,12 @@
       <div class="ng-extend-spacer"></div>
 
       <template v-if="appState.activeDataset && appState.activeDataset.name === 'Sandbox'">
-        <button @click="resetDataset()" class="resetDataset iconBtn" title="Reset Dataset"></button>
+        <button @click="resetDataset()" class="resetDataset iconBtn" title="Reset to default view"></button>
         <div class="ng-extend-spacer"></div>
       </template>
 
       <template v-if="appState.loggedInUser">
-        <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown" alt="User Profile">
+        <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown" alt="User profile">
           <template #buttonTitle></template>
           <template #listItems>
             <user-card></user-card>
@@ -63,11 +63,11 @@
         <div class="ng-extend-spacer"></div>
       </template>
 
-      <button @click="appState.toggleSidePanel()" class="toggleControls iconBtn" :class="{open: appState.viewer.sidebar.open}" title="Toggle Controls"></button>
+      <button @click="appState.toggleSidePanel()" class="toggleControls iconBtn" :class="{open: appState.viewer.sidebar.open}" title="Toggle controls"></button>
 
       <div class="ng-extend-spacer"></div>
 
-      <dropdown-list dropdown-group="extension-bar-right" id="moreActions" alt="More Actions">
+      <dropdown-list dropdown-group="extension-bar-right" id="moreActions" alt="More actions">
         <template #buttonTitle></template>
         <template #listItems>
           <li v-for="item of appState.actionsMenuItems" :key="item.text">
@@ -81,7 +81,7 @@
 
 <script lang="ts">
 import Vue from "vue";
-import { storeProxy, CellDescription, DatasetDescription, ActionsMenuItem } from "../state";
+import { storeProxy, viewer, CellDescription, DatasetDescription, ActionsMenuItem } from "../state";
 
 import DropdownList from "components/DropdownList.vue";
 import Stopwatch from "components/Stopwatch.vue";
@@ -140,6 +140,14 @@ export default Vue.extend({
     resetDataset() {
       if (this.appState.activeDataset) {
         this.appState.selectDataset(this.appState.activeDataset);
+      }
+
+      if (viewer) {
+        viewer.layout.reset();
+      }
+
+      if (!this.showSidebar) {
+        this.toggleSidebar();
       }
     },
     clickAction(item: ActionsMenuItem) {
@@ -217,7 +225,7 @@ export default Vue.extend({
 
 #loggedInUserDropdown > button {
   background-image: url('images/user.svg');
-  background-size: 70%;
+  background-size: 60%;
 }
 
 #moreActions > button {
