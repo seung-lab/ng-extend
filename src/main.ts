@@ -24,7 +24,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   storeProxy.initializeViewer(viewer);
   mergeTopBars();
   newUserExperience(viewer);
-  storeProxy.loadActiveDataset();
   storeProxy.loopUpdateLeaderboard();
 });
 
@@ -74,7 +73,9 @@ function setupViewer() {
   const viewer = (<any>window)['viewer'] = makeExtendViewer();
   setDefaultInputEventBindings(viewer.inputEventBindings);
 
-  viewer.loadFromJsonUrl();
+  viewer.loadFromJsonUrl().then(() => {
+    storeProxy.loadActiveDataset();
+  });
   viewer.initializeSaver();
 
   bindDefaultCopyHandler(viewer);

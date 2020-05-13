@@ -33,7 +33,7 @@
     <template v-if="appState.loadedViewer">
       <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px" hover="Choose dataset">
         <template #chooserTitle>
-          <span :style="{color: appState.activeDataset.color}">
+          <span :style="{color: appState.activeDataset ? appState.activeDataset.color : undefined}">
             {{ appState.activeDataset ? "Dataset: " + appState.activeDataset.name : "Choose Dataset" }}
           </span>
         </template>
