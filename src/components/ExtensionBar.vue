@@ -183,7 +183,7 @@ export default Vue.extend({
 }
 
 #extensionBar > .toggleSidebarButton {
-  width: 65px;
+  width: 52px;
   justify-content: center;
 }
 
