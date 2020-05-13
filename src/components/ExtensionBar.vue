@@ -211,6 +211,10 @@ export default Vue.extend({
   top: 1.5px;
 }
 
+#extensionBar button.ng-saver.busy, #extensionBar button.ng-saver.busy:hover {
+  background: grey !important;
+}
+
 #extensionBar button.ng-saver.dirty {
   border: unset;
   background: var(--gradient-highlight);
