@@ -50,8 +50,10 @@ function newUserExperience(viewer: Viewer) {
     const videoURL = `https://www.youtube.com/embed/KwMRgOFAsAU`
     const embedVid = `<iframe width='640' height='360' src="${
         videoURL}" frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
-    let description = `${(require('../src/NEW_USER.md')) || ''}<br>${embedVid}`;
-    return new WhatsNewDialog(viewer, description, {center: true});
+    let description = `${embedVid}<br>${(require('../src/NEW_USER.md')) || ''}`;
+    require('./newuserexperience.css')
+    return new WhatsNewDialog(
+        viewer, description, {center: true, className: 'ng-newuser'});
   }
   return;
 }
