@@ -22,9 +22,15 @@ interface LayerDescription {
   defaultSelected?: boolean,
 }
 
+export interface Vector3 {
+  x: number,
+  y: number,
+  z: number,
+}
+
 export interface DatasetDescription {
   name: string, description: string, color?: string, 
-  layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number, defaultPosition?: {x: number, y: number, z: number},
+  layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number, defaultPosition?: Vector3,
 }
 
 export interface CellDescription {
@@ -115,8 +121,8 @@ export class AppStore extends createModule
       name: 'Sandbox',
       description: 'A practice dataset. Cell edits are visible to all, but user mistakes don\'t matter here.',
       color: '#E6C760',
-      defaultPerspectiveZoomFactor: 6310,
-      defaultPosition: {x: 158604, y: 72224, z: 2198},
+      defaultPerspectiveZoomFactor: 79,
+      defaultPosition: {x: 158581, y: 72226, z: 2189},
       layers: [
         {
           type: 'image',
@@ -151,6 +157,8 @@ export class AppStore extends createModule
     {
       name: 'Production',
       description: 'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
+      defaultPerspectiveZoomFactor: 79,
+      defaultPosition: {x: 158581, y: 72226, z: 2189},
       layers: [
         {
           type: 'image',
@@ -164,9 +172,16 @@ export class AppStore extends createModule
           defaultSelected: true,
         }
       ],
-      curatedCells: [{
-        id: '720575940650468481',
-      }]
+      curatedCells: [
+        {
+          id: "720575940621039145",
+          default: true,
+        },
+        {
+          id: "720575940626877799",
+          default: true
+        },
+      ]
     }
   ];
 
@@ -298,24 +313,29 @@ export class AppStore extends createModule
   }
 
   @action
+  async set2dPosition({x, y, z}: Vector3) {
+    if (viewer) {
+      viewer.navigationState.position.setVoxelCoordinates(vec3.fromValues(x, y, z));
+      // viewer.navigationState.position.spatialCoordinatesValid = false; TODO what was this for? seems to cause issues
+    }
+  }
+
+  @action
   async selectDataset(dataset: DatasetDescription) {
     if (!viewer) {
       return false;
     }
 
-    if (dataset.defaultPerspectiveZoomFactor !== undefined) {
-      viewer.perspectiveNavigationState.zoomFactor.value = dataset.defaultPerspectiveZoomFactor;
-    }
-
-    if (dataset.defaultPosition !== undefined) {
-      const {x, y, z} = dataset.defaultPosition;
-      viewer.navigationState.position.setVoxelCoordinates(vec3.fromValues(x, y, z));
-    }
+    viewer.layerManager.clear();
 
     this.activeDataset = dataset;
 
-    viewer.layerManager.clear();
-    viewer.navigationState.position.spatialCoordinatesValid = false;
+    if (dataset.defaultPosition) {
+      this.set2dPosition(dataset.defaultPosition);
+    }
+    if (dataset.defaultPerspectiveZoomFactor !== undefined) {
+      viewer.perspectiveNavigationState.zoomFactor.value = dataset.defaultPerspectiveZoomFactor;
+    }
 
     for (let layerDesc of dataset.layers) {
       const layerName = layerDesc.name ? layerDesc.name : `${dataset.name}-${layerDesc.type}`;
