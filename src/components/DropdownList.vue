@@ -120,9 +120,9 @@ export default Vue.extend({
   background-color: var(--color-medium-bg);
 }
 
-.ng-extend button:hover {
+/*.ng-extend button:hover {
   background-color: hsla(0,0%,100%,.1);
-}
+}*/
 
 .hideDropdown {
   position: absolute;

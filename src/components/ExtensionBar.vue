@@ -28,6 +28,7 @@
     <div class="flex-fill"></div> -->
 
     <div class="ng-extend-spacer"></div>
+    <div class="ng-extend-spacer"></div>
 
     <template v-if="appState.loadedViewer">
       <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px" hover="Choose dataset">
@@ -198,6 +199,24 @@ export default Vue.extend({
 
 .ng-extend-spacer {
   width: 10px;
+}
+
+#extensionBar button.ng-saver {
+  border: 1px solid var(--color-border);
+  color: unset;
+  font-weight: unset;
+  font-size: 0.9em;
+  padding: 7px 18px;
+  position: relative;
+  top: 1.5px;
+}
+
+#extensionBar button.ng-saver.dirty {
+  background: var(--gradient-highlight);
+}
+
+#extensionBar button.ng-saver.dirty:hover {
+  background: var(--gradient-highlight-hover);
 }
 
 .nge-dataset-button {
