@@ -74,6 +74,7 @@ export default Vue.extend({
 .nge-gs-unread {
   text-shadow: 0 0 8px;
   animation: pulse 2s infinite;
+  cursor: default;
 }
 
 @keyframes pulse {

@@ -188,7 +188,7 @@ export default Vue.extend({
 }
 
 .ng-extend-logo {
-  width: 150px;
+  width: 110px;
   padding-left: 20px;
   padding-right: 20px;
 }
