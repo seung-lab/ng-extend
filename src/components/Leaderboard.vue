@@ -92,7 +92,7 @@ export default Vue.extend({
 
 <style>
 .nge-leaderboard {
-  width: 250px;
+  width: 200px;
   background-color: #111;
   display: grid;
   grid-template-rows: min-content auto;
@@ -106,7 +106,7 @@ export default Vue.extend({
 
 .nge-leaderboard-timeselect {
   display: grid;
-  grid-template-columns: 15% 35% 35% 15%;
+  grid-template-columns: 5% 45% 45% 5%;
 }
 
 .nge-leaderboard-timeselect > .nge-sidebar-button {
@@ -127,7 +127,7 @@ export default Vue.extend({
 
 .nge-leaderboard-entries {
   display: grid;
-  grid-template-columns: auto minmax(auto, 50%) auto;
+  grid-template-columns: auto minmax(auto, 70%) auto;
   grid-auto-rows: min-content;
   overflow: auto;
 }
@@ -140,6 +140,7 @@ export default Vue.extend({
   padding-top: 0.5em;
   padding-bottom: 0.5em;
   padding-left: 0.4em;
+  font-size: 0.9em;
 }
 
 .nge-leaderboard-header {

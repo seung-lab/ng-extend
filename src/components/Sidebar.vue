@@ -45,7 +45,7 @@ export default Vue.extend({
 }
 
 .nge-sidebar.visible {
-  width: 250px;
+  width: 200px;
   opacity: 100%;
   padding-right: 3px;
 }
