@@ -212,6 +212,7 @@ export default Vue.extend({
 }
 
 #extensionBar button.ng-saver.dirty {
+  border: unset;
   background: var(--gradient-highlight);
 }
 
