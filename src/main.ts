@@ -23,6 +23,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const viewer = setupViewer();
   storeProxy.initializeViewer(viewer);
   mergeTopBars();
+  localStorage.setItem('neuroglancer-disableWhatsNew', '1');
   newUserExperience(viewer);
   storeProxy.loopUpdateLeaderboard();
 });
@@ -45,7 +46,6 @@ function newUserExperience(viewer: Viewer) {
   const newUser = !localStorage.getItem('ng-newuser');
   if (newUser) {
     localStorage.setItem('ng-newuser', '1');
-    localStorage.setItem('neuroglancer-whatsnew', '1');
     const videoURL = `https://www.youtube.com/embed/KwMRgOFAsAU`
     const embedVid = `<iframe width='640' height='360' src="${
         videoURL}" frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
