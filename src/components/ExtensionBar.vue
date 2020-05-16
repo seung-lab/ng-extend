@@ -50,7 +50,7 @@
       <div class="ng-extend-spacer"></div>
 
       <template v-if="appState.activeDataset && appState.activeDataset.name === 'Sandbox'">
-        <button @click="resetDataset()" class="resetDataset iconBtn" title="Reset to default view"></button>
+        <button @click="resetDataset()" class="resetDataset iconBtn" title="Restore default neurons"></button>
         <div class="ng-extend-spacer"></div>
       </template>
 
@@ -139,6 +139,9 @@ export default Vue.extend({
       }
     },
     resetDataset() {
+      const ok = confirm("This will delete any cells you have selected and reset your view to the default neurons. Are you sure you want to do this?");
+      if (!ok) return;
+
       if (this.appState.activeDataset) {
         this.appState.selectDataset(this.appState.activeDataset);
       }
