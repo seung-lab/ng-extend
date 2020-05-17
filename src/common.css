@@ -6,6 +6,7 @@
   --color-border: #a3b3bf;
   --gradient-highlight: linear-gradient(-45deg, rgba(2, 146, 174, 0.88), rgba(15, 177, 139, 0.88));
   --gradient-highlight-hover: linear-gradient(-45deg, rgba(2, 146, 174, 1), rgba(15, 177, 139, 1));
+  --color-flywire-dark-green: #0FB18B;
 }
 
 .ng-extend button {
@@ -15,9 +16,9 @@
   margin: 0;
   text-decoration: none;
   background: none;
-  color: var(--color-small-text);
-  font-family: sans-serif;
-  font-size: 1rem;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
   cursor: pointer;
   text-align: center;
   -webkit-appearance: none;

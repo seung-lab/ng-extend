@@ -48,7 +48,7 @@ export default Vue.extend({
   padding-top: 1em;
 }
 .nge-gs-link {
-  padding-bottom: 1em;
+  margin-bottom: 1em;
 }
 .nge-gs-link > a {
   color: #fff;
