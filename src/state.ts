@@ -89,8 +89,7 @@ export interface ViewerState {
 };
 
 
-export class AppStore extends createModule
-({strict: false}) {
+export class AppStore extends createModule({strict: false, enableLocalWatchers: true,}) {
   sidebarOpen = false;
 
   loggedInUser: LoggedInUser|null = null;
@@ -102,11 +101,14 @@ export class AppStore extends createModule
   activeCells: CellDescription[] = [];
 
   loadedViewer: boolean = false;
+  finishedLoading: boolean = false;
   activeDropdown: {[group: string]: number} = {};
   actionsMenuItems: ActionsMenuItem[] = [];
   leaderboardEntries: LeaderboardEntry[] = [];
   leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
   leaderboardLoaded: boolean = false;
+  
+  introductionStep: number = parseInt(localStorage.getItem('nge-introduction-step') || '0');
 
   viewer: ViewerState = {
     layers: [],
@@ -185,6 +187,12 @@ export class AppStore extends createModule
       ]
     }
   ];
+
+  static $watch = {
+    introductionStep(newVal: number) {
+      localStorage.setItem('nge-introduction-step', JSON.stringify(newVal));
+    }
+  }
 
   @action
   async initializeViewer(v: Viewer) {

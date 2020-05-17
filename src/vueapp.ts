@@ -12,4 +12,6 @@ export function setupVueApp() {
   });
   
   app.$mount('#vueApp');
+
+  return app;
 }

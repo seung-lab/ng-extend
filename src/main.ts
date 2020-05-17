@@ -10,22 +10,25 @@ import {StatusMessage} from 'neuroglancer/status';
 import {Viewer} from 'neuroglancer/viewer';
 
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
-import {WhatsNewDialog} from 'neuroglancer/whats_new/whats_new';
 
 import {setupVueApp} from './vueapp';
 import {storeProxy} from './state';
 import './config';
 
 window.addEventListener('DOMContentLoaded', async () => {
-  disableNGErrMsg();
   await loadConfig();
-  setupVueApp();
+  const app = setupVueApp();
+  localStorage.setItem('neuroglancer-disableWhatsNew', '1');
   const viewer = setupViewer();
   storeProxy.initializeViewer(viewer);
   mergeTopBars();
-  localStorage.setItem('neuroglancer-disableWhatsNew', '1');
-  newUserExperience(viewer);
   storeProxy.loopUpdateLeaderboard();
+  disableNGErrMsg();
+
+
+  app.$nextTick(() => {
+    storeProxy.finishedLoading = true;
+  });
 });
 
 export let config: Config;
@@ -40,19 +43,6 @@ function disableNGErrMsg() {
   if (error) {
     error.style.display = 'none';
   }
-}
-
-function newUserExperience(viewer: Viewer) {
-  const newUser = !localStorage.getItem('ng-newuser');
-  if (newUser) {
-    localStorage.setItem('ng-newuser', '1');
-    const videoURL = `https://www.youtube-nocookie.com/embed/eHUPaGvx4Ng`
-    const embedVid = `<iframe width='640' height='360' src="${
-        videoURL}" frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
-    let description = `${(require('../src/NEW_USER.md')) || ''}<br>${embedVid}`;
-    return new WhatsNewDialog(viewer, description, {center: true});
-  }
-  return;
 }
 
 function mergeTopBars() {
