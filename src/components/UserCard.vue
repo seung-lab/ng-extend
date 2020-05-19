@@ -87,6 +87,7 @@ export default Vue.extend({
 .nge-usercard-avatar {
   background-color: var(--color-light-bg);
   border-radius: 5px;
+  height: 60px;
 }
 .nge-usercard-avatar-image {
   filter: hue-rotate(var(--avatar-hue-rotate));
