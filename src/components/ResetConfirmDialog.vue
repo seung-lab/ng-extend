@@ -51,16 +51,16 @@ export default Vue.extend({
   padding: 30px 50px;
 }
 
-.title {
+.dialogContent .title {
   font-size: 2em;
 }
 
-.description {
+.dialogContent .description {
   padding-top: 20px;
   padding-bottom: 30px;
 }
 
-.actions {
+.dialogContent .actions {
   display: grid;
   grid-template-columns: 20% 30% 30% 20%;
 }
