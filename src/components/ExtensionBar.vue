@@ -139,9 +139,15 @@ export default Vue.extend({
       }
     },
     resetDataset() {
-      const ok = confirm("This will delete any cells you have selected and reset your view to the default neurons. Are you sure you want to do this?");
-      if (!ok) return;
-
+      this.appState.showResetConfirm = true;
+    },
+    clickAction(item: ActionsMenuItem) {
+      this.$root.$emit("closeDropdowns");
+      item.click();
+    }
+  },
+  mounted() {
+    this.$root.$on("confirmReset", () => {
       if (this.appState.activeDataset) {
         this.appState.selectDataset(this.appState.activeDataset);
       }
@@ -153,11 +159,7 @@ export default Vue.extend({
       if (!this.showSidebar) {
         this.toggleSidebar();
       }
-    },
-    clickAction(item: ActionsMenuItem) {
-      this.$root.$emit("closeDropdowns");
-      item.click();
-    }
+    });
   }
 });
 </script>

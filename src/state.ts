@@ -96,6 +96,7 @@ export class AppStore extends createModule
   loggedInUser: LoggedInUser|null = null;
   showDatasetChooser: boolean = false;
   showCellChooser: boolean = false;
+  showResetConfirm: boolean = false;
 
   activeDataset: DatasetDescription|null = null;
   activeCells: CellDescription[] = [];
