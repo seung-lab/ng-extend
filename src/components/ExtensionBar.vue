@@ -48,6 +48,7 @@
       </dropdown-list>
 
       <div class="ng-extend-spacer"></div>
+      <div class="ng-extend-spacer"></div>
 
       <template v-if="appState.activeDataset && appState.activeDataset.name === 'Sandbox'">
         <button @click="resetDataset()" class="resetDataset iconBtn" title="Restore default neurons"></button>
@@ -263,8 +264,8 @@ export default Vue.extend({
 }
 
 #extensionBar .resetDataset {
-  background-image: url('images/reset.svg');
-  background-size: 70%;
+  background-image: url('images/return.svg');
+  background-size: 60%;
 }
 
 #extensionBar .toggleControls {
