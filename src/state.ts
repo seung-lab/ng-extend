@@ -92,7 +92,7 @@ export interface ViewerState {
 export class AppStore extends createModule({strict: false, enableLocalWatchers: true,}) {
   sidebarOpen = false;
 
-  loggedInUser: LoggedInUser|null = null;
+  loggedInUser: LoggedInUser|null|undefined = undefined; // undefined = fetchLoggedInUser hasn't returned yet 
   showDatasetChooser: boolean = false;
   showCellChooser: boolean = false;
   showResetConfirm: boolean = false;
@@ -416,7 +416,7 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       let {name, email} = user;
       this.loggedInUser = {name, email};
     } else {
-      this.loggedInUser = null;  // TODO - do I need this?
+      this.loggedInUser = null;
     }
   }
 

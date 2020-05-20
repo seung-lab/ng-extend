@@ -1,6 +1,6 @@
 <template>
   <div id="vueMain">
-    <modal-overlay v-if="!appState.loggedInUser">
+    <modal-overlay v-if="appState.loggedInUser === null">
       <div>You are not logged in. Refresh the page if you do not see a google login pop-up.</div>
     </modal-overlay>
     <introduction v-if="appState.finishedLoading" />
