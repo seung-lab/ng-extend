@@ -53,7 +53,7 @@ interface ComputedStep {
 const steps: Step[] = [
   {
     html: `<iframe width='640' height='360'
-      src="https://www.youtube-nocookie.com/embed/eHUPaGvx4Ng?rel=0"
+      src="https://www.youtube-nocookie.com/embed/PzSC3yxs1To?rel=0"
       frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
     position: 'center',
     modal: true,
