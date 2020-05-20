@@ -1,8 +1,5 @@
 <template>
   <div id="vueMain">
-    <modal-overlay v-if="appState.loggedInUser === null">
-      <div>You are not logged in. Refresh the page if you do not see a google login pop-up.</div>
-    </modal-overlay>
     <introduction v-if="appState.finishedLoading" />
     <extension-bar class="ng-extend" />
     <div id="content">
@@ -14,6 +11,7 @@
             href="https://docs.google.com/document/d/1FvEtMnAHenufDtCqKdi2DAyPyX9IzWkW9P2H31WxkMo">FAQ</a> to
           troubleshoot.</div>
       </div>
+      <overlay-container class="ng-extend" />
     </div>
   </div>
 </template>
@@ -25,11 +23,10 @@ import OverlayContainer from "components/OverlayContainer.vue";
 import Sidebar from "components/Sidebar.vue";
 import NGSidebarHeader from "components/NGSidebarHeader.vue";
 import Introduction from "components/Introduction.vue";
-import ModalOverlay from "components/ModalOverlay.vue";
 import {storeProxy} from "../state";
 
 export default Vue.extend({
-  components: { ExtensionBar, OverlayContainer, Sidebar, NGSidebarHeader, Introduction, ModalOverlay },
+  components: { ExtensionBar, OverlayContainer, Sidebar, NGSidebarHeader, Introduction },
   data: () => {
     return {
       appState: storeProxy,
