@@ -1,5 +1,5 @@
 <template>
-  <div class="introductionStep" v-if="activeStep">
+  <div class="introductionStep" v-if="appState.finishedLoading&& appState.activeDataset && appState.activeDataset.name === 'Sandbox' && activeStep">
     <div v-if="activeStep.modal" class="nge-overlay-blocker" @mousedown.stop.prevent></div>
     <div class="ng-extend introductionStepAnchor" :class="activeStep.cssClass" :style="{left: activeStep.left, top: activeStep.top}">
       <div class="arrow"></div>
@@ -72,6 +72,7 @@ const steps: Step[] = [
 export default Vue.extend({
   data: () => {
     return {
+      appState: storeProxy,
       chipBounds: {top: 'auto', left: 'auto'},
       windowWidth: window.innerWidth,
       windowHeight: window.innerHeight,

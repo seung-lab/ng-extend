@@ -1,6 +1,6 @@
 <template>
   <div id="vueMain">
-    <introduction v-if="appState.finishedLoading" />
+    <introduction />
     <extension-bar class="ng-extend" />
     <div id="content">
       <sidebar class="ng-extend" />
