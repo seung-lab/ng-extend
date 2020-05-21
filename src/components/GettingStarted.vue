@@ -19,6 +19,9 @@
       <div class="nge-gs-link">
         <a href="https://flywire.ai/support.html" target="_blank">Support</a>
       </div>
+      <div class="nge-gs-link">
+        <button @click="appState.introductionStep = 0">Restart Tutorial</button>
+      </div>
     </div>
   </div>
 </template>
@@ -26,7 +29,14 @@
 <script lang="ts">
 import Vue from "vue";
 
+import { storeProxy } from "../state";
+
 export default Vue.extend({
+  data: () => {
+    return {
+      appState: storeProxy,
+    }
+  },
 });
 </script>
 
