@@ -360,6 +360,14 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       if (layer instanceof ImageUserLayer) {
         await layer.multiscaleSource; // wait because there is an error if both layers load at the same time?
       } else if (layer instanceof SegmentationUserLayer) {
+        if (dataset.curatedCells) {
+          for (let cell of dataset.curatedCells) {
+            if (cell.default) {
+              this.selectCell(cell);
+            }
+          }
+        }
+
         await layer.multiscaleSource;
         console.log('root segments callback 1');
         layer.displayState.rootSegments.changed.add(() => {
@@ -367,14 +375,6 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
           this.refreshActiveCells();
         });
         this.refreshActiveCells();
-      }
-    }
-
-    if (dataset.curatedCells) {
-      for (let cell of dataset.curatedCells) {
-        if (cell.default) {
-          this.selectCell(cell);
-        }
       }
     }
 
@@ -391,11 +391,7 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
 
     for (const {layer} of layers) {
       if (layer instanceof SegmentationUserLayer) {
-        await layer.multiscaleSource!;
-        const uint64Id = new Uint64().parseString(cell.id, 10);
-        layer.displayState.segmentSelectionState.set(uint64Id);
-        layer.displayState.segmentSelectionState.setRaw(uint64Id);
-        layer.selectSegment();
+        layer.displayState.rootSegments.add(new Uint64().parseString(cell.id, 10));
         return true;
       }
     }
