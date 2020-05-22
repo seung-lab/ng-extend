@@ -336,6 +336,8 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
     }
 
     viewer.layerManager.clear();
+    viewer.navigationState.reset();
+    viewer.perspectiveNavigationState.reset();
 
     this.activeDataset = dataset;
 
