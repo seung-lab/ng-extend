@@ -39,12 +39,6 @@ export default Vue.extend({
 </script>
 
 <style>
-.overlay-content {
-  background-color: var(--color-dark-bg);
-  color: var(--color-small-text);
-  border-radius: 20px;
-}
-
 .dialogContent {
   display: grid;
   padding: 30px;

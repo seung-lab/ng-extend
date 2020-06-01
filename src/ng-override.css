@@ -17,3 +17,14 @@
     background-color: var(--color-dark-bg);
 }
 
+.overlay-content {
+  background-color: var(--color-dark-bg);
+  color: var(--color-small-text);
+  border-radius: 20px;
+  outline: none;
+  min-width: max-content;
+}
+
+input.rounded-input {
+    outline: none;
+}

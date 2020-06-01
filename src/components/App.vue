@@ -44,7 +44,7 @@ export default Vue.extend({
   display: flex;
   flex: 1;
   flex-direction: column;
-  font-family: sans-serif;
+  font-family: 'Roboto', sans-serif;
 }
 
 #vueMain ul {
