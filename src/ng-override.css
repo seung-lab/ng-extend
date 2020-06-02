@@ -17,7 +17,7 @@
     background-color: var(--color-dark-bg);
 }
 
-.overlay-content {
+.ng-extend .overlay-content, .overlay-content.ng-dark {
   background-color: var(--color-dark-bg);
   color: var(--color-small-text);
   border-radius: 20px;
