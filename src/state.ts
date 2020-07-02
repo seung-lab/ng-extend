@@ -13,6 +13,7 @@ import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-c
 interface LoggedInUser {
   name: string;
   email: string;
+  created: Date;
 }
 
 interface LayerDescription {
@@ -20,6 +21,7 @@ interface LayerDescription {
   type: 'image'|'segmentation'|'segmentation_with_graph',
   name?: string,
   defaultSelected?: boolean,
+  annotationColor?: string,
 }
 
 export interface Vector3 {
@@ -88,6 +90,7 @@ export interface ViewerState {
   }
 };
 
+const NGEDefaultAnnotationColor = '#4F4F5F';
 
 export class AppStore extends createModule({strict: false, enableLocalWatchers: true,}) {
   sidebarOpen = false;
@@ -130,7 +133,8 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
         {
           type: 'image',
           source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked',
+              annotationColor: NGEDefaultAnnotationColor,
         },
         {
           name: 'sandbox-segmentation-FOR PRACTICE ONLY',
@@ -138,6 +142,7 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
           source:
               'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26',
           defaultSelected: true,
+          annotationColor: NGEDefaultAnnotationColor,
         }
       ],
       curatedCells: [
@@ -166,13 +171,15 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
         {
           type: 'image',
           source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked',
+              annotationColor: NGEDefaultAnnotationColor,
         },
         {
           type: 'segmentation_with_graph',
           source:
               'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31',
           defaultSelected: true,
+          annotationColor: NGEDefaultAnnotationColor,
         }
       ],
       curatedCells: [
@@ -411,8 +418,9 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
 
       let res = await authFetch(`${authURL}/auth/api/v1/user/me`);
       let user = await res.json();
-      let {name, email} = user;
-      this.loggedInUser = {name, email};
+      let {name, email, created} = user;
+      this.loggedInUser = {name, email, created: new Date(created)};
+      console.log(this.loggedInUser);
     } else {
       this.loggedInUser = null;
     }

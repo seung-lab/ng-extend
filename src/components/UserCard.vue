@@ -1,5 +1,5 @@
 <template>
-  <div class="nge-usercard">
+  <div class="nge-usercard" v-if="appState.loggedInUser">
     <div class="nge-usercard-profile">
       <div class="nge-usercard-avatar">
         <img class="nge-usercard-avatar-image" src="images/icon-filled.png" :style="cssVars" width="50">
@@ -7,6 +7,7 @@
       <div class="nge-usercard-info">
         <div class="nge-usercard-name">{{ appState.loggedInUser.name }}</div>
         <div class="nge-usercard-email">{{ appState.loggedInUser.email }}</div>
+        <div class="nge-usercard-created">Joined {{ appState.loggedInUser.created.toLocaleDateString() }}</div>
         <!--div class="nge-usercard-date">joined MM/DD/YYYY</div-->
       </div>
     </div>
@@ -71,6 +72,8 @@ export default Vue.extend({
   padding: 15px;
 }
 .nge-usercard-info {
+  display: grid;
+  grid-row-gap: 5px;
   padding: 5px;
   padding-left: 15px;
 }
@@ -79,6 +82,9 @@ export default Vue.extend({
 }
 .nge-usercard-email {
   font-style: italic;
+}
+.nge-usercard-created {
+  font-size: 9pt;
 }
 /*.nge-usercard-edits-table {
   display: grid;
