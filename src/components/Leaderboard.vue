@@ -17,7 +17,7 @@
             <div>Name</div>
             <div>Edits</div>
           </div>
-          <div v-for="(entry, index) of appState.leaderboardEntries" :key="entry.name"
+          <div v-for="(entry, index) of appState.leaderboardEntries" :key="'entry' + index"
             :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
             <div class="nge-leaderboard-rank">{{index+1}}</div>
             <div class="nge-leaderboard-name">{{entry.name}}</div>
