@@ -264,8 +264,8 @@ export default Vue.extend({
 }
 
 #extensionBar .resetDataset {
-  background-image: url('images/return.svg');
-  background-size: 60%;
+  background-image: url('images/reset.svg');
+  background-size: 70%;
 }
 
 #extensionBar .toggleControls {
