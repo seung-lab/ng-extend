@@ -2,7 +2,7 @@
   <div class="nge-getting-started">
     <div class="nge-gs-links">
       <div class="nge-gs-link">
-        <a href="https://www.youtube-nocookie.com/embed/PzSC3yxs1To" target="_blank">Welcome video</a>
+        <a href="https://www.youtube-nocookie.com/embed/LH4iovmbv3c" target="_blank">Welcome video</a>
       </div>
       <div class="nge-gs-link">
         <a href="https://docs.google.com/document/d/1imS4s8Bfl6KaGHbIlDNus6EdFNuX8dVtCHvyiyDY1Wc/edit" target="_blank">Quick Start</a>

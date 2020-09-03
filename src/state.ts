@@ -134,7 +134,7 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       description: 'A practice dataset. Cell edits are visible to all, but user mistakes don\'t matter here.',
       color: '#E6C760',
       defaultPerspectiveZoomFactor: 79,
-      defaultPosition: {x: 158581, y: 72226, z: 2189},
+      defaultPosition: {x: 158581 / 2, y: 72226 / 2, z: 2189},
       layers: [
         {
           type: 'image',
@@ -170,7 +170,7 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       name: 'Production',
       description: 'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
       defaultPerspectiveZoomFactor: 79,
-      defaultPosition: {x: 158581, y: 72226, z: 2189},
+      defaultPosition: {x: 158581 / 2, y: 72226 / 2, z: 2189},
       layers: [
         {
           type: 'image',
