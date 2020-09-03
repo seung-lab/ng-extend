@@ -13,6 +13,9 @@ import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-c
 interface LoggedInUser {
   name: string;
   email: string;
+  id: number;
+  joinDate: string;
+  admin: boolean;
 }
 
 interface LayerDescription {
@@ -45,6 +48,10 @@ export interface LeaderboardEntry {
 export enum LeaderboardTimespan {
   Daily = 0,
   Weekly = 6
+}
+
+export interface UserInfo {
+  editsToday: number, editsThisWeek: number, editsAllTime: number
 }
 
 export interface ActionsMenuItem {
@@ -96,6 +103,7 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   showDatasetChooser: boolean = false;
   showCellChooser: boolean = false;
   showResetConfirm: boolean = false;
+  showAdminPanel: boolean = false;
 
   activeDataset: DatasetDescription|null = null;
   activeCells: CellDescription[] = [];
@@ -107,7 +115,8 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   leaderboardEntries: LeaderboardEntry[] = [];
   leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
   leaderboardLoaded: boolean = false;
-  
+  userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
+
   introductionStep: number = parseInt(localStorage.getItem('nge-introduction-step') || '0');
 
   viewer: ViewerState = {
@@ -411,8 +420,11 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
 
       let res = await authFetch(`${authURL}/auth/api/v1/user/me`);
       let user = await res.json();
-      let {name, email} = user;
-      this.loggedInUser = {name, email};
+      let {name, email, id, created, admin} = user;
+      const createdTime = new Date(created);
+      const joinDate = createdTime.toLocaleDateString('en-US');
+      this.loggedInUser = {name, email, id, joinDate, admin};
+      this.updateUserInfo();
     } else {
       this.loggedInUser = null;
     }
@@ -442,6 +454,7 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   @action
   async loopUpdateLeaderboard() {
     await this.updateLeaderboard();
+    await this.updateUserInfo();
     await new Promise(() => setTimeout(this.loopUpdateLeaderboard, 20000));
   }
 
@@ -466,6 +479,15 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
     this.leaderboardLoaded = false;
     this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
     return this.updateLeaderboard();
+  }
+
+  @action
+  async updateUserInfo() {
+    if (!this.loggedInUser) return;
+    const url = config.leaderboardURL + '/userInfo?userID=' + this.loggedInUser!.id;
+    fetch(url).then(result => result.json()).then(async (json) => {
+      this.userInfo = json;
+    });
   }
 }
 

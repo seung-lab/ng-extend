@@ -63,6 +63,10 @@
           </template>
         </dropdown-list>
         <div class="ng-extend-spacer"></div>
+        <template v-if="appState.loggedInUser.admin">
+          <button @click="showAdminPanel()" class="adminPanel iconBtn" title="Admin dashboard"></button>
+          <div class="ng-extend-spacer"></div>
+        </template>
       </template>
 
       <button @click="appState.toggleSidePanel()" class="toggleControls iconBtn" :class="{open: appState.viewer.sidebar.open}" title="Toggle controls"></button>
@@ -141,6 +145,9 @@ export default Vue.extend({
     },
     resetDataset() {
       this.appState.showResetConfirm = true;
+    },
+    showAdminPanel() {
+      this.appState.showAdminPanel = true;
     },
     clickAction(item: ActionsMenuItem) {
       this.$root.$emit("closeDropdowns");
@@ -265,6 +272,11 @@ export default Vue.extend({
 
 #extensionBar .resetDataset {
   background-image: url('images/reset.svg');
+  background-size: 70%;
+}
+
+#extensionBar .adminPanel {
+  background-image: url('images/admin.svg');
   background-size: 70%;
 }
 

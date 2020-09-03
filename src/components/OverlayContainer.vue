@@ -4,6 +4,8 @@
 
     <reset-confirm-dialog v-if="appState.showResetConfirm" @hide="appState.showResetConfirm=false"/>
 
+    <admin-panel v-if="appState.showAdminPanel" @hide="appState.showAdminPanel=false"/>
+
     <modal-overlay v-if="appState.loggedInUser === null">
       <div>You are not logged in. Refresh the page if you do not see a google login pop-up.</div>
     </modal-overlay>
@@ -14,6 +16,7 @@
 import Vue from "vue";
 import ModalOverlay from "components/ModalOverlay.vue";
 import ResetConfirmDialog from "components/ResetConfirmDialog.vue";
+import AdminPanel from "components/AdminPanel.vue"
 import {storeProxy} from "../state";
 
 export default Vue.extend({
@@ -22,7 +25,7 @@ export default Vue.extend({
       appState: storeProxy
     }
   },
-  components: { ResetConfirmDialog, ModalOverlay }
+  components: { ResetConfirmDialog, ModalOverlay, AdminPanel }
 });
 </script>
 

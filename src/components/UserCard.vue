@@ -7,26 +7,26 @@
       <div class="nge-usercard-info">
         <div class="nge-usercard-name">{{ appState.loggedInUser.name }}</div>
         <div class="nge-usercard-email">{{ appState.loggedInUser.email }}</div>
-        <!--div class="nge-usercard-date">joined MM/DD/YYYY</div-->
+        <div class="nge-usercard-date">joined {{ appState.loggedInUser.joinDate }}</div>
       </div>
     </div>
-    <!--div class="nge-usercard-edits">
-      <div class="nge-usercard-edits-title">Fixes</div>
+    <div class="nge-usercard-edits" v-if="appState.userInfo">
+      <div class="nge-usercard-edits-title">Edits</div>
       <div class="nge-usercard-edits-table">
         <div class="nge-usercard-edits-section">
           <div class="nge-usercard-edits-timespan">Day</div>
-          <div class="nge-usercard-edits-count">N/A</div>
+          <div class="nge-usercard-edits-count">{{ appState.userInfo.editsToday }}</div>
         </div>
         <div class="nge-usercard-edits-section">
           <div class="nge-usercard-edits-timespan">Week</div>
-          <div class="nge-usercard-edits-count">N/A</div>
+          <div class="nge-usercard-edits-count">{{ appState.userInfo.editsThisWeek }}</div>
         </div>
         <div class="nge-usercard-edits-section">
           <div class="nge-usercard-edits-timespan">All Time</div>
-          <div class="nge-usercard-edits-count">N/A</div>
+          <div class="nge-usercard-edits-count">{{ appState.userInfo.editsAllTime }}</div>
         </div>
       </div>
-    </div-->
+    </div>
     <div class="nge-usercard-controls">
       <button class="nge-usercard-logout" @click="appState.logout">Log Out</button>
     </div>
@@ -61,37 +61,54 @@ export default Vue.extend({
 </script>
 
 <style>
-/*.nge-usercard {
+.nge-usercard {
   display: grid;
   grid-template-rows: auto auto;
-}*/
+  color: var(--color-small-text);
+}
 .nge-usercard-profile {
   display: grid;
   grid-template-columns: auto auto;
-  padding: 15px;
+  padding: 20px;
 }
 .nge-usercard-info {
-  padding: 5px;
-  padding-left: 15px;
+  padding-left: 30px;
+  padding-right: 20px;
 }
 .nge-usercard-name {
-  font-size: 1.3em;
+  font-size: 1.5em;
+  font-weight: bold;
 }
-.nge-usercard-email {
+.nge-usercard-email, .nge-usercard-date {
   font-style: italic;
+  padding-top: 3px;
 }
-/*.nge-usercard-edits-table {
-  display: grid;
-  grid-template-columns: auto auto auto;
-}*/
 .nge-usercard-avatar {
-  background-color: var(--color-light-bg);
+  background-color: var(--color-medium-bg);
   border-radius: 5px;
-  height: 60px;
+  width: 80px;
+  height: 80px;
 }
 .nge-usercard-avatar-image {
   filter: hue-rotate(var(--avatar-hue-rotate));
-  padding: 5px;
+  padding: 15px;
+}
+.nge-usercard-edits {
+  padding: 0px 20px 10px 20px;
+}
+.nge-usercard-edits-title {
+  padding-bottom: 10px;
+  font-weight: bold;
+  border-bottom: solid 1px var(--color-light-bg);
+}
+.nge-usercard-edits-table {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  padding-top: 10px;
+}
+.nge-usercard-edits-count {
+  font-size: 1.2em;
+  font-weight: bold;
 }
 .ng-extend button.nge-usercard-logout {
   width: 100%;
