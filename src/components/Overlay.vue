@@ -1,5 +1,5 @@
 <template>
-  <div class="nge-overlay" @click.stop.prevent @mousedown.stop.prevent>
+  <div class="nge-overlay" @click.stop @mousedown.stop>
     <slot></slot>
   </div>
 </template>

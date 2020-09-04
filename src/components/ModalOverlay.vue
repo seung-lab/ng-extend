@@ -1,5 +1,5 @@
 <template>
-  <div class="nge-overlay-blocker" @click.stop.prevent="$emit('hide')" @mousedown.stop.prevent>
+  <div class="nge-overlay-blocker" @click.stop="$emit('hide')" @mousedown.stop>
     <overlay class="modal overlay-content">
       <slot></slot>
     </overlay>

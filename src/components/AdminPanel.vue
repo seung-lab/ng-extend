@@ -35,10 +35,10 @@ export default Vue.extend({
     rollback() {
       const userIDInput = <HTMLInputElement>document.getElementById("rollbackUserID");
       const userID = userIDInput.value;
-      if (confirm("Rollback user " + userID + "?")) { //TODO get the name of the user
-        console.log("Rollback user", userID); //TODO
+      if (confirm("Rollback user " + userID + "?")) { //TODO get the name of the user from the leaderboard
+        console.log("Rollback user", userID); //TODO send a rollback request with the current authtoken to the proctor
+        userIDInput.value = "";
       }
-      userIDInput.value = "";
     }
   }
 });
