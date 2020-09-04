@@ -3,8 +3,8 @@
     <div class="adminPanelContent">
       <div class="title">Admin Dashboard</div>
       <div class="section">
-        <p>User list: <a href="https://globalv1.flywire-daf.com/auth/api/v1/user" target="_blank">https://globalv1.flywire-daf.com/auth/api/v1/user</a></p>
-        <div>Rollback user ID:
+        <p><a href="https://globalv1.flywire-daf.com/auth/api/v1/user" target="_blank">User list</a></p>
+        <div>Rollback training edits for user ID:
           <input type="text" id="rollbackUserID">
           <button class="rollbackButton" @click="rollback()">Rollback</button>
         </div>
@@ -35,8 +35,8 @@ export default Vue.extend({
     rollback() {
       const userIDInput = <HTMLInputElement>document.getElementById("rollbackUserID");
       const userID = userIDInput.value;
-      if (confirm("Rollback user " + userID + "?")) { //TODO get the name of the user from the leaderboard
-        console.log("Rollback user", userID); //TODO send a rollback request with the current authtoken to the proctor
+      if (userID != "" && !isNaN(Number(userID))) {
+        storeProxy.rollbackUserID(userID);
         userIDInput.value = "";
       }
     }
