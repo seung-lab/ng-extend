@@ -1,4 +1,5 @@
 export default interface Config {
   linkShortenerURL: string,
-  leaderboardURL: string
+  leaderboardURL: string,
+  proctorURL: string
 }

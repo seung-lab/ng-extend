@@ -1,4 +1,5 @@
 {
     "linkShortenerURL": "https://globalv1.flywire-daf.com/nglstate/post",
-    "leaderboardURL": "https://pyrdev.eyewire.org/pyr-backend"
+    "leaderboardURL": "https://pyrdev.eyewire.org/flywire-leaderboard",
+    "proctorURL": "https://pyrdev.eyewire.org/flywire-proctor"
 }

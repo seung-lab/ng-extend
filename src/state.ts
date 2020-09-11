@@ -492,17 +492,22 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
 
   @action
   async rollbackUserID(userID: string) {
-    const existingToken = localStorage.getItem('auth_token');
     const existingAuthURL = localStorage.getItem('auth_url');
-
-    if (existingToken && existingAuthURL) {
+    if (existingAuthURL) {
       const authURL = new URL(existingAuthURL).origin;
       const res = await authFetch(`${authURL}/auth/api/v1/user?id=${userID}`);
       const json = await res.json();
+      if (json.length !== 1) {
+        alert('Could not find user for ID ' + userID);
+        return;
+      }
       const name = json[0].name;
       const email = json[0].email;
-      if (confirm("Rollback training edits for user " + name + " (" + email + ")?")) {
-        console.log("Rollback user", userID); //TODO send a rollback request with the current authtoken to the proctor
+      if (confirm('Rollback training edits for user ' + name + ' (' + email + ')?')) {
+        const rollbackURL = config.proctorURL + '/rollback?user_id=' + userID;
+        const rollbackRes = await authFetch(rollbackURL);
+        const rollbackJSON = await rollbackRes.text();
+        alert(rollbackJSON);
       }
     }
   }
