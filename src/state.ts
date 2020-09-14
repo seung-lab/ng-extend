@@ -167,6 +167,27 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       ]
     },
     {
+      name: 'Testing',
+      description: 'Take the test! (Use this dataset for the test to gain entry to Production, after practicing in the Sandbox.)',
+      color: '#E6C760',
+      defaultPerspectiveZoomFactor: 79,
+      defaultPosition: {x: 158581, y: 72226, z: 2189},
+      layers: [
+        {
+          type: 'image',
+          source:
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
+        },
+        {
+          name: 'testing-segmentation-FOR TEST TAKING ONLY',
+          type: 'segmentation_with_graph',
+          source:
+              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_arv0',
+          defaultSelected: true,
+        }
+      ]
+    },
+    {
       name: 'Production',
       description: 'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
       defaultPerspectiveZoomFactor: 79,
