@@ -1,6 +1,7 @@
 {
   "extends": "./third_party/neuroglancer/tsconfig.json",
   "compilerOptions": {
+    "noUnusedLocals": false,
     "baseUrl": ".",
     "paths": {
       "*": ["*"],

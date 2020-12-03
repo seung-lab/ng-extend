@@ -1,5 +1,5 @@
 <template>
-  <div class="introduction" v-if="appState.finishedLoading && appState.activeDataset && appState.activeDataset.name === 'Sandbox'">
+  <div class="introduction" v-if="appState.finishedLoading && appState.activeDataset && appState.activeDataset.name !== 'Production' && appState.trainingActive">
     <transition name="tooltip">
       <introduction-step v-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first" :last="activeStep.last"
         v-on:next="next" v-on:back="back" v-on:exitIntro="exitIntro"></introduction-step>
@@ -23,6 +23,7 @@ export default Vue.extend({
   },
   computed: {
     activeStep() {
+      console.log('introudction step');
       const step = storeProxy.introductionStep;
 
       if (step < steps.length) {

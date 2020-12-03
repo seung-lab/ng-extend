@@ -118,6 +118,7 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
 
   introductionStep: number = parseInt(localStorage.getItem('nge-introduction-step') || '0');
+  trainingActive: boolean = false;
 
   viewer: ViewerState = {
     layers: [],
@@ -328,6 +329,35 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
     }
 
     return false;
+  }
+
+  @action
+  async startTraining() {
+    this.introductionStep = 0;
+    this.trainingActive = true;
+    this.selectDataset(this.datasets[1]);
+  }
+
+  @action
+  async loadState(url: string) {
+    if (viewer) {
+      authFetch(url).then(res => res.json()).then(response => {
+        // if (overrideDataset && overrideDataset === 'testing') {
+
+        const currentViewerState = viewer!.state.toJSON();
+
+        let i = 0;
+        for (let layer of currentViewerState.layers) {
+          console.log(response.layers[i], layer);
+          response.layers[i].name = layer.name;
+          response.layers[i].source = layer.source;
+          i++;
+        }
+
+        viewer!.state.restoreState(response);
+        // this.loadActiveDataset();
+      });
+    }
   }
 
   @action

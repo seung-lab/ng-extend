@@ -20,7 +20,7 @@
         <a href="https://flywire.ai/support.html" target="_blank">Support</a>
       </div>
       <div class="nge-gs-link">
-        <button @click="appState.introductionStep = 0">Restart Tutorial</button>
+        <button @click="appState.startTraining">Start Training</button>
       </div>
     </div>
   </div>

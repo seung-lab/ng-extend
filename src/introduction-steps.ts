@@ -15,7 +15,7 @@ interface InsideElementPostition {
 
 export interface Step {
   title?: string, text?: string, html?: string,
-      position: NextToElementPostition|InsideElementPostition, modal?: boolean,
+      position: NextToElementPostition|InsideElementPostition, modal?: boolean, noborder?: boolean, state?: string,
       video?: string, videoBeingPreloaded?: boolean,
       videoCache?: HTMLVideoElement,
 }
@@ -40,110 +40,75 @@ const OVER_3D = {
 
 export const steps: Step[] = [
   {
-    html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
-      src="https://www.youtube-nocookie.com/embed/LH4iovmbv3c?rel=0"
-      frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
+    text: 'Neuroscience needs your help to reverse engineer a brain!',
     position: MIDDLE,
     modal: true,
+    noborder: false,
+    state: 'https://globalv1.flywire-daf.com/nglstate/6676691388727296',
   },
   {
-    text:
-        'Welcome to the Sandbox! This is a place to play and get acquainted with fly neurons. Have fun learning and exploring. No real data will be harmed!',
+    text: 'Let’s say you want to figure out how an alien spaceship works after it has crashed to earth. One good approach could be to trace all the wiring of its systems. [Graphic of spaceship, zoom into tangled wires.] Likewise, we could start to reverse engineer a brain if we could trace the circuits formed by its neurons, which you can think of as wires.',
     position: MIDDLE,
   },
   {
-    text:
-        ' If you get stuck, you can click here to return to the default Sandbox view.',
-    position: {element: '.resetDataset', side: 'bottom'}
+    text: '[Movie of activity in neural circuits.] You might have seen cartoon neurons like this before, but in reality we don’t know how most of the brain is wired. Real brains are densely packed with almost no space between neurons. [Skip? The best way to follow neuronal wiring is to slice brain tissue, image it under a high-powered electron microscope, then image another slice and try to follow the cross sections of neurons from slice to slice.] [Advantage of including this here: can use mouse movies.]',
+    position: MIDDLE,
   },
   {
-    text:
-        'The 2D view shows one slice of a whole sliced fly brain. Two neurons have been preselected, with their cross sections highlighted in color.',
-    position: OVER_2D,
+    text: 'Here’s the brain of a fruit fly, which is about the biggest brain that science could currently hope to trace all the wiring in. [Zoom from fly pic into brain outline, from front.] A fruit fly’s brain may not be much bigger than a grain of table salt, but it contains about 100,000 neurons, and has some surprising similarities to ours, with circuits that let the fly see, smell, hear, taste, feel pain, make decisions, and even remember things. Mapping the whole fly brain would be a big milestone in science, that could teach us fundamental principles about how our own brains work. But we need your help to crowdsource this effort! FlyWire brings together gamers, scientists and a powerful artificial intelligence to try to find neurons in a whole fly brain.',
+    position: MIDDLE,
   },
   {
-    text:
-        'The 3D view shows the same preselected neurons. Here you can see the 2D cross-section intersecting with the 3D model.',
+    text: 'Here’s the dataset we’ll use, a fly brain cut into about 7000 slices [list credits]. You’re looking at slice #4000, viewed from the front of the fly.',
+    state: 'https://globalv1.flywire-daf.com/nglstate/5025045457928192',
+    position: {element: '.neuroglancer-position-widget-input-container', side: 'bottom'},
+  },
+  {
+    text: 'Try zooming in and out. CTRL + SCROLL to zoom. (Different devices’ trackpads or mice have different ways of scrolling - try Googling yours if you’re not sure.)',
     position: OVER_3D,
   },
+
   {
-    text:
-        'You can toggle the 2D plane on and off here for easier navigation. Try it!',
-    position: {
-      element: '.perspective-panel-show-slice-views',
-      side: 'bottom',
-    }
-  },
-  {
-    video:
-        'https://storage.googleapis.com/flywire-frontend/videos/rotate-3d.mp4',
+    text: '[Pop-up with arrow towards a membrane, or a pic of membrane with arrow drawn:] In this zoomed-in view, you see a cross section through the brain’s densely packed cells. The thick dark lines are the outer membranes that surround each cell.',
     position: OVER_3D,
   },
+
   {
-    video: 'https://storage.googleapis.com/flywire-frontend/videos/zoom-3d.mp4',
+    text: '[Pop-up with pic of nucleus:] Membranes can also be found inside cells, surrounding structures like the nucleus (where DNA is found),',
     position: OVER_3D,
   },
+
   {
-    video: 'https://storage.googleapis.com/flywire-frontend/videos/zoom-2d.mp4',
-    position: OVER_2D,
-  },
-  {
-    video:
-        'https://storage.googleapis.com/flywire-frontend/videos/center-3d.mp4',
+    text: '[Pop-up with pic of mitochondrion] ... and mitochondria (which produce energy for the cell).',
     position: OVER_3D,
   },
+
   {
-    video:
-        'https://storage.googleapis.com/flywire-frontend/videos/center-2d.mp4',
-    position: OVER_2D,
-  },
-  {
-    video: 'https://storage.googleapis.com/flywire-frontend/videos/pan-2d.mp4',
-    position: OVER_2D,
-  },
-  {
-    video: 'https://storage.googleapis.com/flywire-frontend/videos/pan-3d.mp4',
+    text: '[Pop-up:] Take a look around! CLICK + DRAG to pan [Chris:Do we need to consider moving the pop-up too? Could maybe even lock features at certain points, like prevent scrolling while first learning to zoom, etc.], or RIGHT CLICK to jump to any location.',
     position: OVER_3D,
   },
+
+
   {
-    video:
-        'https://storage.googleapis.com/flywire-frontend/videos/add-remove.mp4',
-    position: OVER_2D,
+    text: '[Pop-up with arrow towards left hamburger menu:] You don’t need to memorize these commands, just click here for a reminder. Then you can open a separate tab with a list of basic commands by selecting “Cheatsheet”.',
+    position: {element: '.toggleSidebarButton', side: 'right'},
   },
+
   {
-    html:
-        'Check out the <b>Quick Start Guide</b> if you need a refresher. Use the <b>Cheatsheet</b> for additional commands.',
-    position: {
-      element: '.nge-gs-link:nth-child(2)',
-      side: 'right',
-      offset: {x: -25, y: 0},
-    }
+    text: '[Pop-up with link to region with all segments in color:] The AI tried to find all outer cell membranes, to fill in possible cells. This process is called “segmentation” since it produces segments of cells.',
+    position: OVER_3D,
   },
+
   {
-    html:
-        'Take the <b>Self-guided training</b> when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset.',
-    position: {
-      element: '.nge-gs-link:nth-child(3)',
-      side: 'right',
-      offset: {x: -25, y: 0},
-    }
-  },
-  {
-    html:
-        'Join the <b>Slack Forum</b> to interact with the FlyWire community! You can learn tips and tricks, give suggestions, and meet other FlyWire enthusiasts!',
-    position: {
-      element: '.nge-gs-link:nth-child(5)',
-      side: 'right',
-      offset: {x: -25, y: 0},
-    }
-  },
-  {
-    html:
-        'You finished the tutorial! You can restart the tutorial at any time.',
-    position: {
-      element: '.nge-gs-link:nth-child(7)',
-      side: 'right',
-      offset: {x: -25, y: 0},
-    }
+    text: '[Pop-up:] This 2D slice shows cross-sections of example cells in color. Neurons are 3D objects branched like trees, that can span thousands of slices. In this slice, the pink neuron happened to have a branch sliced lengthwise, the thicker green one was sliced across, and the blue one had branches diving in and out of the slice, appearing in three places here.',
+    position: OVER_3D,
+    state: 'https://globalv1.flywire-daf.com/nglstate/6298169545588736',
   },
 ];
+
+// set in-between states
+for (const [i, step] of steps.entries()) {
+  if (i > 0 && step.state === undefined) {
+    step.state = steps[i-1].state;
+  }
+}

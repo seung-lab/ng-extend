@@ -4,7 +4,7 @@
     <div class="ng-extend introductionStepAnchor" :class="computedStep.cssClass" :style="{left: computedStep.left, top: computedStep.top}">
       <div class="arrow"></div>
 
-      <div v-if="!inExitConfirm" class="chip" :class="{modal: computedStep.modal}" :style="chipBounds">
+      <div v-if="!inExitConfirm" class="chip" :class="{modal: computedStep.modal, noborder: computedStep.noborder}" :style="chipBounds">
         <button class="exit" @click="inExitConfirm = true">×</button>
         <div class="title" v-if="computedStep.title">{{ computedStep.title }}</div>
         <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline :src="computedStep.video"></video>
@@ -44,6 +44,7 @@ interface ComputedStep {
   top: string,
   cssClass?: string,
   modal: boolean,
+  noborder: boolean,
   videoCache?: HTMLVideoElement,
 }
 
@@ -66,13 +67,21 @@ export default Vue.extend({
     }
   },
   created() {
+    console.log('step created');
     this.updateChipPosition();
   },
   mounted() {
+    console.log('step mounted');
     window.addEventListener('resize', () => {
       this.chipBounds = {top: 'auto', left: 'auto', 'width': 'auto'};
       this.updateChipPosition();
     });
+
+    if (this.step.state) {
+      console.log('step has a state');
+      console.log('load state testing');
+      this.appState.loadState(this.step.state);
+    }
   },
   methods: {
     updateChipPosition() {
@@ -110,7 +119,7 @@ export default Vue.extend({
 
       this.chipBounds = {top: 'auto', left: 'auto', 'width': 'inherit'};
 
-      if (!step.modal) {
+      if (!step.noborder) {
         this.chipBounds['width'] = '350px';
       }
 
@@ -125,6 +134,7 @@ export default Vue.extend({
         top,
         cssClass,
         modal: step.modal || false,
+        noborder: step.noborder || false,
       }
 
       this.$nextTick(function () {
@@ -240,7 +250,7 @@ export default Vue.extend({
   padding: 8px 8px 20px 8px;
 }
 
-.chip.modal {
+.chip.noborder {
   padding-top: 0;
   padding-left: 0;
   padding-right: 0;
