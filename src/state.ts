@@ -505,10 +505,11 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   @action
   async updateUserInfo() {
     if (!this.loggedInUser) return;
-    const url = config.leaderboardURL + '/userInfo?userID=' + this.loggedInUser!.id;
+    //TODO fix the user info (fetch # edits)
+    /*const url = config.leaderboardURL + '/userInfo?userID=' + this.loggedInUser!.id;
     fetch(url).then(result => result.json()).then(async (json) => {
       this.userInfo = json;
-    });
+    });*/
   }
 
   @action
