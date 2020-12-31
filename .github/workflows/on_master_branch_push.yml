@@ -35,7 +35,7 @@ jobs:
         env: ${{ steps.get_branch.outputs.branch }}
         desc: Setting up staging deployment for ${{ steps.get_branch.outputs.branch }}
     - name: deploy to gcloud
-      uses: actions-hub/gcloud@271.0.0
+      uses: actions-hub/gcloud@master
       env:
         PROJECT_ID: seung-lab
         APPLICATION_CREDENTIALS: ${{ secrets.SA_GOOGLE_APPS_DEPLOY }}
