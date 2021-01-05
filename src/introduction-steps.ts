@@ -102,7 +102,7 @@ export const steps: Step[] = [
   {
     text: '[Pop-up:] This 2D slice shows cross-sections of example cells in color. Neurons are 3D objects branched like trees, that can span thousands of slices. In this slice, the pink neuron happened to have a branch sliced lengthwise, the thicker green one was sliced across, and the blue one had branches diving in and out of the slice, appearing in three places here.',
     position: OVER_3D,
-    state: 'https://globalv1.flywire-daf.com/nglstate/6298169545588736',
+    state: 'https://globalv1.flywire-daf.com/nglstate/6312595619315712',
   },
 ];
 
