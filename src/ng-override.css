@@ -28,3 +28,7 @@
 input.rounded-input {
     outline: none;
 }
+
+.segment-set-widget button {
+    margin: 1px;
+}
