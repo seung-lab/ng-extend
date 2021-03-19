@@ -178,13 +178,14 @@ import Config from './config';
 
 class ExtendViewer extends Viewer {
   constructor(public display: DisplayContext) {
-    super(display, {
-      showLayerDialog: false,
-      showUIControls: true,
-      showPanelBorders: true,
-      defaultLayoutSpecification: 'xy-3d',
-    });
-
+    super(
+        display, {
+          showLayerDialog: false,
+          showUIControls: true,
+          showPanelBorders: true,
+          defaultLayoutSpecification: 'xy-3d',
+        },
+        310);
     storeProxy.loadedViewer = true;
     authTokenShared!.changed.add(() => {
       storeProxy.fetchLoggedInUser();
