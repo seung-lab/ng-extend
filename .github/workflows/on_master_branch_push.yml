@@ -27,7 +27,7 @@ jobs:
       run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / - | tr _ -)"
     - run: echo ${{ steps.get_branch.outputs.branch }}
     - name: start deployment
-      uses: bobheadxi/deployments@v.0.4.3
+      uses: bobheadxi/deployments@master
       id: deployment
       with:
         step: start
@@ -42,7 +42,7 @@ jobs:
       with:
         args: app deploy appengine/frontend/app.yaml --promote --version ${{ steps.get_branch.outputs.branch }}
     - name: update deployment status
-      uses: bobheadxi/deployments@v.0.4.3
+      uses: bobheadxi/deployments@master
       if: always()
       with:
         step: finish
