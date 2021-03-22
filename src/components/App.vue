@@ -54,8 +54,7 @@ export default Vue.extend({
 }
 
 #content {
-  display: grid;
-  grid-template-columns: min-content auto;
+  display: flex;
   flex: 1;
 }
 
