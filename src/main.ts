@@ -97,34 +97,36 @@ function observeSegmentSelect(targetNode: Element) {
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
 
-  const createChangelogButton = (segmentIDString:
-                                     string): HTMLButtonElement => {
-    // Button for the user to copy a segment's ID
-    const changelogButton = document.createElement('button');
-    changelogButton.className = 'nge-segment-changelog-button';
-    changelogButton.title = `Show changelog for Segment: ${segmentIDString}`;
-    changelogButton.innerHTML = '💡';
-    changelogButton.addEventListener('click', async () => {
-      // changelogButton.disabled = true;
+  const createChangelogButton =
+      (segmentIDString: string, dataset: string): HTMLButtonElement => {
+        // Button for the user to copy a segment's ID
+        const changelogButton = document.createElement('button');
+        changelogButton.className = 'nge-segment-changelog-button';
+        changelogButton.title =
+            `Show changelog for Segment: ${segmentIDString}`;
+        changelogButton.innerHTML = '💡';
+        changelogButton.addEventListener('click', async () => {
+          // changelogButton.disabled = true;
+          const request =
+              `https://prodv1.flywire-daf.com/segmentation/api/v1/table/${
+                  dataset}/root/${
+                  segmentIDString}/tabular_change_log?disp=True`;
 
-      const request =
-          `https://prodv1.flywire-daf.com/segmentation/api/v1/table/fly_v31/root/${
-              segmentIDString}/tabular_change_log?disp=True`;
-
-      const params = `location=no,toolbar=no,menubar=no,left=0,top=0`;
-      window.open(request, `Changelog for ${segmentIDString}`, params)
-      /* make fetch request
-      try {
-        const response = await fetch(request);
-        const body = await response.text();
-        changelogButton.disabled = false;
-      } catch (e) {
-        changelogButton.disabled = false;
-        throw e;
-      }*/
-    });
-    return changelogButton;
-  };
+          const params =
+              `location=no,toolbar=no,menubar=no,width=620,left=0,top=0`;
+          window.open(request, `Changelog for ${segmentIDString}`, params)
+          /* make fetch request
+          try {
+            const response = await fetch(request);
+            const body = await response.text();
+            changelogButton.disabled = false;
+          } catch (e) {
+            changelogButton.disabled = false;
+            throw e;
+          }*/
+        });
+        return changelogButton;
+      };
 
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
@@ -138,10 +140,12 @@ function observeSegmentSelect(targetNode: Element) {
       }
 
       buttonList.forEach(item => {
-        let segmentIDString =
-            item.querySelector('.segment-button')!.textContent!;
+        const segmentIDString =
+            (<HTMLElement>item.querySelector('.segment-button')).dataset.segId!;
+        const datasetString = item.dataset.dataset!;
         if (!item.querySelector('.nge-segment-changelog-button')) {
-          item.appendChild(createChangelogButton(segmentIDString));
+          item.appendChild(
+              createChangelogButton(segmentIDString, datasetString));
         }
       });
     }
