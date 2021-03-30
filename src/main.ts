@@ -24,6 +24,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   mergeTopBars();
   storeProxy.loopUpdateLeaderboard();
   disableNGErrMsg();
+  liveNeuroglancerInjection();
 
 
   app.$nextTick(() => {
@@ -87,6 +88,95 @@ function makeExtendViewer() {
   }
 }
 
+function observeSegmentSelect(targetNode: Element) {
+  // Select the node that will be observed for mutations
+  if (!targetNode) {
+    return;
+  }
+
+  // Options for the observer (which mutations to observe)
+  const config = {childList: true, subtree: true};
+
+  const createChangelogButton =
+      (segmentIDString: string, dataset: string): HTMLButtonElement => {
+        // Button for the user to copy a segment's ID
+        const changelogButton = document.createElement('button');
+        changelogButton.className = 'nge-segment-changelog-button';
+        changelogButton.title =
+            `Show changelog for Segment: ${segmentIDString}`;
+        changelogButton.innerHTML = '💡';
+        changelogButton.addEventListener('click', async () => {
+          // changelogButton.disabled = true;
+          const request =
+              `https://prodv1.flywire-daf.com/segmentation/api/v1/table/${
+                  dataset}/root/${
+                  segmentIDString}/tabular_change_log?disp=True`;
+
+          const params =
+              `location=no,toolbar=no,menubar=no,width=620,left=0,top=0`;
+          window.open(request, `Changelog for ${segmentIDString}`, params)
+          /* make fetch request
+          try {
+            const response = await fetch(request);
+            const body = await response.text();
+            changelogButton.disabled = false;
+          } catch (e) {
+            changelogButton.disabled = false;
+            throw e;
+          }*/
+        });
+        return changelogButton;
+      };
+
+  const updateSegmentSelectItem = function(item: HTMLElement) {
+    if (item.classList) {
+      let buttonList: Element|HTMLElement[] = [];
+      if (item.classList.contains('segment-div')) {
+        buttonList = [item];
+      } else if (
+          item.classList.contains('neuroglancer-tab-content') &&
+          item.classList.contains('segmentation-dropdown')) {
+        buttonList = Array.from(item.querySelectorAll('.segment-div'));
+      }
+
+      buttonList.forEach(item => {
+        const segmentIDString =
+            (<HTMLElement>item.querySelector('.segment-button')).dataset.segId!;
+        const datasetString = item.dataset.dataset!;
+        if (!item.querySelector('.nge-segment-changelog-button')) {
+          item.appendChild(
+              createChangelogButton(segmentIDString, datasetString));
+        }
+      });
+    }
+  };
+
+  // Callback function to execute when mutations are observed
+  const detectMutation = function(mutationsList: MutationRecord[]) {
+    console.log('Segment ID Added');
+    mutationsList.forEach(mutation => {
+      mutation.addedNodes.forEach(updateSegmentSelectItem);
+    });
+  };
+
+  // Create an observer instance linked to the callback function
+  const observer = new MutationObserver(detectMutation);
+
+  // Start observing the target node for configured mutations
+  observer.observe(targetNode, config);
+
+  // Convert existing items
+  targetNode.querySelectorAll('.segment-div').forEach(updateSegmentSelectItem);
+}
+
+function liveNeuroglancerInjection() {
+  const watchNode = document.querySelector('#content');
+  if (!watchNode) {
+    return;
+  }
+  observeSegmentSelect(watchNode);
+}
+
 import {authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 
@@ -97,8 +187,8 @@ class ExtendViewer extends Viewer {
       showUIControls: true,
       showPanelBorders: true,
       defaultLayoutSpecification: 'xy-3d',
+      minSidePanelSize: 310
     });
-
     storeProxy.loadedViewer = true;
     authTokenShared!.changed.add(() => {
       storeProxy.fetchLoggedInUser();
