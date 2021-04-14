@@ -48,7 +48,6 @@
       </dropdown-list>
 
       <div class="ng-extend-spacer"></div>
-      <div class="ng-extend-spacer"></div>
 
       <template v-if="appState.activeDataset && appState.activeDataset.name === 'Sandbox'">
         <button @click="resetDataset()" class="resetDataset iconBtn" title="Restore default neurons"></button>
