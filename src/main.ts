@@ -50,13 +50,25 @@ function mergeTopBars() {
   const ngTopBar = document.getElementById('neuroglancerViewer')!.children[0];
   const topBarVueParent = document.getElementById('insertNGTopBar')!;
   topBarVueParent.appendChild(ngTopBar);
-  const buttons = ngTopBar.querySelectorAll('div.neuroglancer-icon-button');
+  const buttons =
+      ngTopBar.querySelectorAll('div.neuroglancer-icon-button:not(.unmerged)');
   for (const button of buttons) {
     const htmlButton = <HTMLElement>button;
     const text = htmlButton.title;
     const click = () => htmlButton.click();
     storeProxy.actionsMenuItems.push({text: text, click: click});
     button.remove();
+  }
+  const undobreak = document.createElement('div');
+  undobreak.classList.add('ng-extend-spacer');
+  const redobreak = undobreak.cloneNode();
+  const undo = ngTopBar.querySelector('#neuroglancer-undo-button');
+  if (undo) {
+    undo.parentNode!.insertBefore(undobreak, undo.nextSibling);
+  }
+  const redo = ngTopBar.querySelector('#neuroglancer-redo-button');
+  if (redo) {
+    redo.parentNode!.insertBefore(redobreak, redo.nextSibling);
   }
 }
 

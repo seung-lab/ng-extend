@@ -223,6 +223,14 @@ export default Vue.extend({
   position: relative;
   top: 1.5px;
 }
+#extensionBar div.unmerged:hover {
+  background-color: var(--color-light-bg);
+}
+#extensionBar div.unmerged {
+  width: 40px;
+  height: 40px;
+  border-radius: unset;
+}
 
 #extensionBar button.ng-saver.busy, #extensionBar button.ng-saver.busy:hover {
   background: grey !important;
