@@ -1,14 +1,14 @@
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
-import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {ImageUserLayer} from 'neuroglancer/image_user_layer';
 import {SingletonLayerGroupViewer} from 'neuroglancer/layer_groups_layout';
+import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {StatusMessage} from 'neuroglancer/status';
-import {Uint64} from 'neuroglancer/util/uint64';
 import {vec3} from 'neuroglancer/util/geom';
+import {Uint64} from 'neuroglancer/util/uint64';
 import {Viewer} from 'neuroglancer/viewer';
-import {config} from './main';
-
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
+
+import {config} from './main';
 
 interface LoggedInUser {
   name: string;
@@ -19,26 +19,22 @@ interface LoggedInUser {
 }
 
 interface LayerDescription {
-  source: string,
-  type: 'image'|'segmentation'|'segmentation_with_graph',
-  name?: string,
-  defaultSelected?: boolean,
+  source: string, type: 'image'|'segmentation'|'segmentation_with_graph',
+      name?: string, defaultSelected?: boolean,
 }
 
 export interface Vector3 {
-  x: number,
-  y: number,
-  z: number,
+  x: number, y: number, z: number,
 }
 
 export interface DatasetDescription {
-  name: string, description: string, color?: string, 
-  layers: LayerDescription[], curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number, defaultPosition?: Vector3,
+  name: string, description: string, color?: string, layers: LayerDescription[],
+      curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number,
+      defaultPosition?: Vector3,
 }
 
 export interface CellDescription {
-  id: string,
-  default?: boolean,
+  id: string, default?: boolean,
 }
 
 export interface LeaderboardEntry {
@@ -55,11 +51,10 @@ export interface UserInfo {
 }
 
 export interface ActionsMenuItem {
-  text: string,
-  click(): void
+  text: string, click(): void
 }
 
-export let viewer: Viewer | undefined;
+export let viewer: Viewer|undefined;
 
 function getLayerPanel(viewer: Viewer) {
   const groupViewerSingleton = viewer.layout.container.component;
@@ -87,19 +82,23 @@ function getLayerByName(name: string) {
 }
 
 export interface ViewerState {
-  layers: string[],
-  selectedLayer: string|undefined,
-  sidebar: {
+  layers: string[], selectedLayer: string|undefined, sidebar: {
     open: boolean,
     width: number,
   }
-};
+}
+;
 
 
-export class AppStore extends createModule({strict: false, enableLocalWatchers: true,}) {
+export class AppStore extends createModule
+({
+  strict: false,
+  enableLocalWatchers: true,
+}) {
   sidebarOpen = false;
 
-  loggedInUser: LoggedInUser|null|undefined = undefined; // undefined = fetchLoggedInUser hasn't returned yet 
+  loggedInUser: LoggedInUser|null|undefined =
+      undefined;  // undefined = fetchLoggedInUser hasn't returned yet
   showDatasetChooser: boolean = false;
   showCellChooser: boolean = false;
   showResetConfirm: boolean = false;
@@ -117,7 +116,8 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   leaderboardLoaded: boolean = false;
   userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
 
-  introductionStep: number = parseInt(localStorage.getItem('nge-introduction-step') || '0');
+  introductionStep: number =
+      parseInt(localStorage.getItem('nge-introduction-step') || '0');
 
   viewer: ViewerState = {
     layers: [],
@@ -131,7 +131,8 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   datasets: DatasetDescription[] = [
     {
       name: 'Sandbox',
-      description: 'A practice dataset. Cell edits are visible to all, but user mistakes don\'t matter here.',
+      description:
+          'A practice dataset. Cell edits are visible to all, but user mistakes don\'t matter here.',
       color: '#E6C760',
       defaultPerspectiveZoomFactor: 79,
       defaultPosition: {x: 158581, y: 72226, z: 2189},
@@ -157,18 +158,16 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
           id: '720575940637436173',
         },
         {
-          id: "720575940615251979",
+          id: '720575940615251979',
           default: true,
         },
-        {
-          id: "720575940610453042",
-          default: true
-        },
+        {id: '720575940610453042', default: true},
       ]
     },
     {
       name: 'Testing',
-      description: 'Take the test! (Use this dataset for the test to gain entry to Production, after practicing in the Sandbox.)',
+      description:
+          'Take the test! (Use this dataset for the test to gain entry to Production, after practicing in the Sandbox.)',
       color: '#E6C760',
       defaultPerspectiveZoomFactor: 79,
       defaultPosition: {x: 158581, y: 72226, z: 2189},
@@ -189,7 +188,8 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
     },
     {
       name: 'Production',
-      description: 'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
+      description:
+          'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
       defaultPerspectiveZoomFactor: 79,
       defaultPosition: {x: 158581, y: 72226, z: 2189},
       layers: [
@@ -207,13 +207,10 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       ],
       curatedCells: [
         {
-          id: "720575940621039145",
+          id: '720575940621039145',
           default: true,
         },
-        {
-          id: "720575940626877799",
-          default: true
-        },
+        {id: '720575940626877799', default: true},
       ]
     }
   ];
@@ -227,17 +224,21 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   @action
   async initializeViewer(v: Viewer) {
     viewer = v;
-    
+
     const layerPanel = getLayerPanel(v)!;
     layerPanel.selectedLayer.changed.add(() => {
-      this.viewer.selectedLayer = layerPanel.selectedLayer.layer ? layerPanel.selectedLayer.layer.name : undefined;
+      this.viewer.selectedLayer = layerPanel.selectedLayer.layer ?
+          layerPanel.selectedLayer.layer.name :
+          undefined;
       this.viewer.sidebar.open = layerPanel.selectedLayer.visible;
-      // size has it's own changed signal but size changes also trigger selectedLayer.changed
+      // size has it's own changed signal but size changes also trigger
+      // selectedLayer.changed
       this.viewer.sidebar.width = layerPanel.selectedLayer.size.value;
     });
 
     v.layerManager.layersChanged.add(() => {
-      this.viewer.layers = v.layerManager.managedLayers.map((layer) => layer.name);
+      this.viewer.layers =
+          v.layerManager.managedLayers.map((layer) => layer.name);
     });
   }
 
@@ -354,8 +355,10 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   @action
   async set2dPosition({x, y, z}: Vector3) {
     if (viewer) {
-      viewer.navigationState.position.setVoxelCoordinates(vec3.fromValues(x, y, z));
-      // viewer.navigationState.position.spatialCoordinatesValid = false; TODO what was this for? seems to cause issues
+      viewer.navigationState.position.setVoxelCoordinates(
+          vec3.fromValues(x, y, z));
+      // viewer.navigationState.position.spatialCoordinatesValid = false; TODO
+      // what was this for? seems to cause issues
     }
   }
 
@@ -375,12 +378,15 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       this.set2dPosition(dataset.defaultPosition);
     }
     if (dataset.defaultPerspectiveZoomFactor !== undefined) {
-      viewer.perspectiveNavigationState.zoomFactor.value = dataset.defaultPerspectiveZoomFactor;
+      viewer.perspectiveNavigationState.zoomFactor.value =
+          dataset.defaultPerspectiveZoomFactor;
     }
 
     for (let layerDesc of dataset.layers) {
-      const layerName = layerDesc.name ? layerDesc.name : `${dataset.name}-${layerDesc.type}`;
-      const layerWithSpec = viewer.layerSpecification.getLayer(layerName, layerDesc);
+      const layerName =
+          layerDesc.name ? layerDesc.name : `${dataset.name}-${layerDesc.type}`;
+      const layerWithSpec =
+          viewer.layerSpecification.getLayer(layerName, layerDesc);
       viewer.layerManager.addManagedLayer(layerWithSpec);
 
       const {layer} = layerWithSpec;
@@ -390,7 +396,8 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       }
 
       if (layer instanceof ImageUserLayer) {
-        await layer.multiscaleSource; // wait because there is an error if both layers load at the same time?
+        await layer.multiscaleSource;  // wait because there is an error if both
+                                       // layers load at the same time?
       } else if (layer instanceof SegmentationUserLayer) {
         if (dataset.curatedCells) {
           for (let cell of dataset.curatedCells) {
@@ -410,6 +417,8 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       }
     }
 
+    viewer.differ.purgeHistory();
+    viewer.differ.ignoreChanges();
     return true;
   }
 
@@ -423,7 +432,8 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
 
     for (const {layer} of layers) {
       if (layer instanceof SegmentationUserLayer) {
-        layer.displayState.rootSegments.add(new Uint64().parseString(cell.id, 10));
+        layer.displayState.rootSegments.add(
+            new Uint64().parseString(cell.id, 10));
         return true;
       }
     }
@@ -505,10 +515,10 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
   @action
   async updateUserInfo() {
     if (!this.loggedInUser) return;
-    //TODO fix the user info (fetch # edits)
-    /*const url = config.leaderboardURL + '/userInfo?userID=' + this.loggedInUser!.id;
-    fetch(url).then(result => result.json()).then(async (json) => {
-      this.userInfo = json;
+    // TODO fix the user info (fetch # edits)
+    /*const url = config.leaderboardURL + '/userInfo?userID=' +
+    this.loggedInUser!.id; fetch(url).then(result => result.json()).then(async
+    (json) => { this.userInfo = json;
     });*/
   }
 
@@ -525,7 +535,9 @@ export class AppStore extends createModule({strict: false, enableLocalWatchers: 
       }
       const name = json[0].name;
       const email = json[0].email;
-      if (confirm('Rollback training edits for user ' + name + ' (' + email + ')?')) {
+      if (confirm(
+              'Rollback training edits for user ' + name + ' (' + email +
+              ')?')) {
         const rollbackURL = config.proctorURL + '/rollback?user_id=' + userID;
         const rollbackRes = await authFetch(rollbackURL);
         const rollbackJSON = await rollbackRes.text();

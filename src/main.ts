@@ -29,6 +29,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   app.$nextTick(() => {
     storeProxy.finishedLoading = true;
+    repositionUndoRedo();
   });
 });
 
@@ -50,7 +51,8 @@ function mergeTopBars() {
   const ngTopBar = document.getElementById('neuroglancerViewer')!.children[0];
   const topBarVueParent = document.getElementById('insertNGTopBar')!;
   topBarVueParent.appendChild(ngTopBar);
-  const buttons = ngTopBar.querySelectorAll('div.neuroglancer-icon-button');
+  const buttons =
+      ngTopBar.querySelectorAll('div.neuroglancer-icon-button:not(.unmerged)');
   for (const button of buttons) {
     const htmlButton = <HTMLElement>button;
     const text = htmlButton.title;
@@ -85,6 +87,23 @@ function makeExtendViewer() {
   } catch (error) {
     StatusMessage.showMessage(`Error: ${error.message}`);
     throw error;
+  }
+}
+
+function repositionUndoRedo() {
+  const dcButton = document.getElementById('datasetChooser');
+  const undobreak = document.createElement('div');
+  undobreak.classList.add('ng-extend-spacer');
+  const redobreak = undobreak.cloneNode();
+  const undo = document.querySelector('#neuroglancer-undo-button');
+  const redo = document.querySelector('#neuroglancer-redo-button');
+  if (redo && dcButton) {
+    dcButton.parentNode!.insertBefore(redo, dcButton.nextSibling);
+    redo.parentNode!.insertBefore(redobreak, redo);
+  }
+  if (undo && dcButton) {
+    dcButton.parentNode!.insertBefore(undo, dcButton.nextSibling);
+    undo.parentNode!.insertBefore(undobreak, undo);
   }
 }
 

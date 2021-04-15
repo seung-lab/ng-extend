@@ -48,7 +48,6 @@
       </dropdown-list>
 
       <div class="ng-extend-spacer"></div>
-      <div class="ng-extend-spacer"></div>
 
       <template v-if="appState.activeDataset && appState.activeDataset.name === 'Sandbox'">
         <button @click="resetDataset()" class="resetDataset iconBtn" title="Restore default neurons"></button>
@@ -222,6 +221,14 @@ export default Vue.extend({
   padding: 7px 18px;
   position: relative;
   top: 1.5px;
+}
+#extensionBar div.unmerged:hover {
+  background-color: var(--color-light-bg);
+}
+#extensionBar div.unmerged {
+  width: 40px;
+  height: 40px;
+  border-radius: unset;
 }
 
 #extensionBar button.ng-saver.busy, #extensionBar button.ng-saver.busy:hover {
