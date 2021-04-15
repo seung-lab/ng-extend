@@ -96,14 +96,14 @@ function repositionUndoRedo() {
   undobreak.classList.add('ng-extend-spacer');
   const redobreak = undobreak.cloneNode();
   const undo = document.querySelector('#neuroglancer-undo-button');
-  if (undo && dcButton) {
-    dcButton.parentNode!.insertBefore(undo, dcButton.nextSibling);
-    undo.parentNode!.insertBefore(undobreak, undo);
-  }
   const redo = document.querySelector('#neuroglancer-redo-button');
   if (redo && dcButton) {
     dcButton.parentNode!.insertBefore(redo, dcButton.nextSibling);
     redo.parentNode!.insertBefore(redobreak, redo);
+  }
+  if (undo && dcButton) {
+    dcButton.parentNode!.insertBefore(undo, dcButton.nextSibling);
+    undo.parentNode!.insertBefore(undobreak, undo);
   }
 }
 
