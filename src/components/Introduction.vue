@@ -47,8 +47,8 @@ export default Vue.extend({
         if (stepIndex > 0 && stepIndex < steps.length) {
           const nextStep = steps[stepIndex];
 
-          if (nextStep.video && !nextStep.videoBeingPreloaded) {
-            nextStep.videoBeingPreloaded = true;
+          if (nextStep.video && !nextStep.preloading) {
+            nextStep.preloading = true;
             fetch(nextStep.video).then((res) => {
               return res.blob();
             }).then((blob) => {

@@ -116,7 +116,8 @@ export class AppStore extends createModule
   leaderboardLoaded: boolean = false;
   userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
 
-  introductionStep: number = parseInt(localStorage.getItem('nge-introduction-step') || '0');
+  introductionStep: number =
+      parseInt(localStorage.getItem('nge-introduction-step') || '0');
   trainingActive: boolean = false;
 
   viewer: ViewerState = {
@@ -347,11 +348,13 @@ export class AppStore extends createModule
         const currentViewerState = viewer!.state.toJSON();
 
         let i = 0;
-        for (let layer of currentViewerState.layers) {
-          console.log(response.layers[i], layer);
-          response.layers[i].name = layer.name;
-          response.layers[i].source = layer.source;
-          i++;
+        if (response.layers) {
+          for (let layer of currentViewerState.layers) {
+            console.log(response.layers[i], layer);
+            response.layers[i].name = layer.name;
+            response.layers[i].source = layer.source;
+            i++;
+          }
         }
 
         viewer!.state.restoreState(response);
