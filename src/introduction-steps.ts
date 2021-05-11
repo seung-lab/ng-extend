@@ -206,20 +206,35 @@ export const steps:
           {
             text:
                 `24. The AI is pretty advanced, but it’s not perfect. For example, this branch looks like it was accidentally cut off, since it ends sharply. That’s why FlyWire needs human players: you’ll correct the mistakes the AI made, to help reconstruct complete neurons. `,
+            /*position: {
+              element: `.neuroglancer-layer-group-viewer > div:nth-child(2)`,
+              x: 0.75,
+              y: 0.6,
+              // side: `bottom`,
+            },*/
             position: OVER_3D,
             state: `https://globalv1.flywire-daf.com/nglstate/5375534351515648`,
           },
           {
-            position: OVER_3D,
-          },
-          {
             text: `25. You’ll look for missing pieces to add,`,
+            /*position: {
+              element: `.neuroglancer-layer-group-viewer > div:nth-child(2)`,
+              x: 0.75,
+              y: 0.6,
+              // side: `bottom`,
+            },*/
             position: OVER_3D,
             state: `https://globalv1.flywire-daf.com/nglstate/6501434258358272`,
           },
           {
             text:
                 `26. ... and incorrect pieces to cut off. If enough players join, we hope to proofread every neuron to achieve a complete wiring diagram of the fly brain.`,
+            /*position: {
+              element: `.neuroglancer-layer-group-viewer > div:nth-child(2)`,
+              x: 0.75,
+              y: 0.6,
+              // side: `bottom`,
+            },*/
             position: OVER_3D,
           },
           {
