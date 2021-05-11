@@ -55,7 +55,7 @@ export const steps:
             html:
                 `<img style="height: 300px" src="images/tutorial/01 action potential side sterling.gif">`,
             text:
-                `1. Neuroscience needs your help to trace all the wiring of a brain! The brain is composed of neurons, branched cells that pass electrical and chemical signals to each other and support cells called glia. Mapping neuronal circuits can help us understand how the brain works. `,
+                `1. Neuroscience needs your help to trace all the wiring of a brain! The brain is composed of neurons, branched cells that pass electrical and chemical signals to each other (and support cells called glia). Mapping neuronal circuits can help us understand how the brain works. `,
             position: MIDDLE,
             state: 'https://globalv1.flywire-daf.com/nglstate/5993558939009024'
           },
@@ -113,7 +113,9 @@ export const steps:
             state: `https://globalv1.flywire-daf.com/nglstate/5430608985587712`,
             position: {
               element: `.neuroglancer-position-widget-input-container`,
-              side: `bottom`
+              side: `bottom`,
+              x: 3,
+              // y: 5,
             },
           },
           {
@@ -178,48 +180,51 @@ export const steps:
           {
             text:
                 `19. Click here to show the 3D view of these reconstructed neurons.`,
+            state: `https://globalv1.flywire-daf.com/nglstate/6590394842218496`,
+            position: {
+              element:
+                  `#neuroglancerViewer > div:nth-child(1) > div:nth-child(1) > div.neuroglancer-layer-group-viewer > div:nth-child(2) > div > div > button:nth-child(2) > div`,
+              side: `bottom`,
+            },
+          },
+          {
+            text: `20. In the 3D view, CLICK + DRAG to rotate.`,
             position: OVER_3D,
           },
           {
-            position: OVER_3D,
-            state: `https://globalv1.flywire-daf.com/nglstate/6590394842218496`
-          },
-          {
-            text: `21. In the 3D view, CLICK + DRAG to rotate.`,
+            text: `21. CTRL + SCROLL to zoom.`,
             position: OVER_3D,
           },
           {
-            text: `22. CTRL + SCROLL to zoom.`,
+            text: `22. RIGHT CLICK any location to center there`,
             position: OVER_3D,
           },
           {
-            text: `23. RIGHT CLICK any location to center there`,
+            text: `23. SHIFT + CLICK & DRAG to pan`,
             position: OVER_3D,
           },
           {
-            text: `24. SHIFT + CLICK & DRAG to pan`,
-            position: OVER_3D,
-          },
-          {
+            text:
+                `24. The AI is pretty advanced, but it’s not perfect. For example, this branch looks like it was accidentally cut off, since it ends sharply. That’s why FlyWire needs human players: you’ll correct the mistakes the AI made, to help reconstruct complete neurons. `,
             position: OVER_3D,
             state: `https://globalv1.flywire-daf.com/nglstate/5375534351515648`,
           },
           {
             position: OVER_3D,
+          },
+          {
+            text: `25. You’ll look for missing pieces to add,`,
+            position: OVER_3D,
             state: `https://globalv1.flywire-daf.com/nglstate/6501434258358272`,
           },
           {
-            text: `27. You’ll look for missing pieces to add,`,
+            text:
+                `26. ... and incorrect pieces to cut off. If enough players join, we hope to proofread every neuron to achieve a complete wiring diagram of the fly brain.`,
             position: OVER_3D,
           },
           {
             text:
-                `28. ... and incorrect pieces to cut off. If enough players join, we hope to proofread every neuron to achieve a complete wiring diagram of the fly brain.`,
-            position: OVER_3D,
-          },
-          {
-            text:
-                `29. Explore these cells a bit using the navigation commands you’ve learned. Note that they each have only one “cell body”, like a balloon on a string.`,
+                `27. Explore these cells a bit using the navigation commands you’ve learned. Note that they each have only one “cell body”, like a balloon on a string.`,
             position: OVER_3D,
           }
         ];
