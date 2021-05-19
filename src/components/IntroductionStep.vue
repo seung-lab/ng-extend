@@ -8,7 +8,7 @@
         <button class="exit" @click="inExitConfirm = true">×</button>
         <div class="title" v-if="computedStep.title">{{ computedStep.title }}</div>
         <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline :src="computedStep.video"></video>
-        <img v-if="computedStep.image" :src="computedStep.image">
+        <img class="image" v-if="computedStep.image" :src="computedStep.image">
         <div class="text" v-if="computedStep.text">{{ computedStep.text }}</div>
         <div class="html" v-if="computedStep.html" v-html="computedStep.html"></div>
         <div class="buttonContainer">
@@ -266,6 +266,10 @@ export default Vue.extend({
 
 .chip video {
   width: 100%;
+}
+
+.chip .image {
+  max-width: 300px;
 }
 
 .ng-extend .chip .buttonContainer {
