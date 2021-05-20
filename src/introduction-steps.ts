@@ -107,12 +107,11 @@ export const steps: Step[] = [
     text: ` 8. Here’s the dataset we’ll use,
           a fly brain cut into about 7000 slices.You’re looking at slice #4000,
           viewed from the front of the fly.`,
-    state: ` https:  // globalv1.flywire-daf.com/nglstate/5430608985587712`,
+    state: `https://globalv1.flywire-daf.com/nglstate/5430608985587712`,
     position: {
       element: `.neuroglancer-position-widget-input-container`,
       side: `bottom`,
-      x: 3,
-      // y: 5,
+      offset: {x: 60, y: 0}
     },
   },
   {
@@ -209,13 +208,13 @@ export const steps: Step[] = [
   {
     text:
         `24. The AI is pretty advanced, but it’s not perfect. For example, this branch looks like it was accidentally cut off, since it ends sharply. That’s why FlyWire needs human players: you’ll correct the mistakes the AI made, to help reconstruct complete neurons. `,
-    /*position: {
-      element: `.neuroglancer-layer-group-viewer > div:nth-child(2)`,
-      x: 0.75,
-      y: 0.6,
-      // side: `bottom`,
-    },*/
-    position: OVER_3D,
+    position: {
+      element:
+          `#neuroglancerViewer > div:nth-child(1) > div:nth-child(1) > div.neuroglancer-layer-group-viewer > div:nth-child(2) > div:nth-child(2)`,
+      // offset: {x: 1000, y: 500},
+      side: `top`,
+    },
+    // position: OVER_3D,
     state: `https://globalv1.flywire-daf.com/nglstate/5375534351515648`,
   },
   {
