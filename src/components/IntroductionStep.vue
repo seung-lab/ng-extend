@@ -103,7 +103,7 @@ export default Vue.extend({
           const {x: xOff, y: yOff} = step.position.offset || {x: 0, y: 0};
 
           if (step.position.side === 'right') {
-            left = `${rect.right + xOff}px`;
+            left = `${rect.right - xOff}px`;
             top = `${rect.top + rect.height / 2 + yOff}px`;
           } else if (step.position.side === 'left') {
             left = `${rect.left + xOff}px`;
@@ -111,6 +111,9 @@ export default Vue.extend({
           } else if (step.position.side === 'bottom') {
             left = `${rect.left + rect.width / 2 + xOff}px`;
             top = `${rect.bottom + yOff}px`;
+          } else if (step.position.side === 'top') {
+            left = `${rect.left + rect.width / 2 + xOff}px`;
+            top = `${rect.top - yOff}px`;
           }
         } else {
           cssClass = 'center';
@@ -234,6 +237,14 @@ export default Vue.extend({
   top: 12px !important;
 }
 
+.introductionStepAnchor.top .arrow {
+  border-top: 12px solid var(--color-flywire-dark-green);
+  top: -12px;
+}
+
+.introductionStepAnchor.top .chip {
+  bottom: 12px !important;
+}
 .chip {
   position: absolute;
   width: max-content;
