@@ -181,7 +181,7 @@ export class AppStore extends createModule
           name: 'testing-segmentation-FOR TEST TAKING ONLY',
           type: 'segmentation_with_graph',
           source:
-              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_arv0',
+              'graphene://https://minnie.microns-daf.com/segmentation/table/fly_training_v2',
           defaultSelected: true,
         }
       ]

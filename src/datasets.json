@@ -37,7 +37,7 @@
       },
       {
         "type": "segmentation_with_graph",
-        "source": "graphene://https://prodv1.flywire-daf.com/segmentation/table/fly_arv0"
+        "source": "graphene://https://minnie.microns-daf.com/segmentation/table/fly_training_v2"
       }
     ]
   }
