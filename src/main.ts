@@ -117,7 +117,7 @@ function observeSegmentSelect(targetNode: Element) {
   const config = {childList: true, subtree: true};
 
   const createChangelogButton =
-      (segmentIDString: string, dataset: string): HTMLButtonElement => {
+      (segmentIDString: string, queryurl: string): HTMLButtonElement => {
         // Button for the user to copy a segment's ID
         const changelogButton = document.createElement('button');
         changelogButton.className = 'nge-segment-changelog-button';
@@ -127,9 +127,7 @@ function observeSegmentSelect(targetNode: Element) {
         changelogButton.addEventListener('click', async () => {
           // changelogButton.disabled = true;
           const request =
-              `https://prodv1.flywire-daf.com/segmentation/api/v1/table/${
-                  dataset}/root/${
-                  segmentIDString}/tabular_change_log?disp=True`;
+              `${queryurl}${segmentIDString}/tabular_change_log?disp=True`;
 
           const params =
               `location=no,toolbar=no,menubar=no,width=620,left=0,top=0`;
@@ -161,10 +159,13 @@ function observeSegmentSelect(targetNode: Element) {
       buttonList.forEach(item => {
         const segmentIDString =
             (<HTMLElement>item.querySelector('.segment-button')).dataset.segId!;
-        const datasetString = item.dataset.dataset!;
         if (!item.querySelector('.nge-segment-changelog-button')) {
-          item.appendChild(
-              createChangelogButton(segmentIDString, datasetString));
+          item.appendChild(createChangelogButton(
+              segmentIDString,
+              `${
+                  new URL(item.dataset.source!)
+                      .origin}/segmentation/api/v1/table/${
+                  item.dataset.dataset}/root/`));
         }
       });
     }
