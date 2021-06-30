@@ -10,7 +10,7 @@
         <div class="nge-usercard-date">joined {{ appState.loggedInUser.joinDate }}</div>
       </div>
     </div>
-    <div class="nge-usercard-edits" v-if="appState.userInfo">
+    <!--div class="nge-usercard-edits" v-if="appState.userInfo">
       <div class="nge-usercard-edits-title">Edits</div>
       <div class="nge-usercard-edits-table">
         <div class="nge-usercard-edits-section">
@@ -26,7 +26,7 @@
           <div class="nge-usercard-edits-count">{{ appState.userInfo.editsAllTime }}</div>
         </div>
       </div>
-    </div>
+    </div-->
     <div class="nge-usercard-controls">
       <button class="nge-usercard-logout" @click="appState.logout">Log Out</button>
     </div>
