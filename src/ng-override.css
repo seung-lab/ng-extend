@@ -51,3 +51,7 @@ div.segment-div > button.segment-copy-button, div.segment-div > button.nge-segme
     padding-right: 2px;
     padding-left: 2px;
 }
+
+.neuroglancer-minimizable-group {
+    flex: unset;
+}
