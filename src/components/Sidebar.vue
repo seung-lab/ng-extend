@@ -3,7 +3,7 @@
     <!--<button class="nge-sidebar-hide-button" @click="setVisible(false);">&lt;</button>-->
     <getting-started />
     <leaderboard />
-    <chatbox v-if="enableChat" />
+    <chatbox />
   </div>
 </template>
 
