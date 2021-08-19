@@ -8,6 +8,7 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {Viewer} from 'neuroglancer/viewer';
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
 
+import getChatSocket from './chat_socket';
 import {config} from './main';
 
 interface LoggedInUser {
@@ -44,6 +45,25 @@ export interface LeaderboardEntry {
 export enum LeaderboardTimespan {
   Daily = 0,
   Weekly = 6
+}
+
+interface ServerMessage {
+  type: string,
+  name: string,
+  message: string
+}
+
+export interface ChatMessage {
+  type: string,
+  name: string,
+  time: string | undefined,
+  dateTime: Date | undefined,
+  parts: MessagePart[] | undefined
+}
+
+interface MessagePart {
+  type: string,
+  text: string
 }
 
 export interface UserInfo {
@@ -114,6 +134,7 @@ export class AppStore extends createModule
   leaderboardEntries: LeaderboardEntry[] = [];
   leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
   leaderboardLoaded: boolean = false;
+  chatMessages: ChatMessage[] = [];
   userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
 
   introductionStep: number =
@@ -510,6 +531,90 @@ export class AppStore extends createModule
     this.leaderboardLoaded = false;
     this.leaderboardEntries.splice(0, this.leaderboardEntries.length);
     return this.updateLeaderboard();
+  }
+
+  @action async joinChat() {
+    const ws = getChatSocket();
+    ws.onmessage = (event) => {
+      this.handleMessage(event.data);
+    };
+
+    await this.fetchLoggedInUser();
+
+    const joinMessage = JSON.stringify({
+      type: 'join',
+      name: this.loggedInUser ? this.loggedInUser.name : 'Guest'
+    });
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(joinMessage);
+    } else {
+      ws.onopen = () => {
+        ws.send(joinMessage);
+      };
+    }
+  }
+
+  @action async handleMessage(message: any) {
+    const messageParsed: ServerMessage = JSON.parse(message);
+    const type = messageParsed.type;
+    const messageText = messageParsed.message;
+    const name = messageParsed.name;
+    const dateTime = new Date();
+    const time = dateTime.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
+    const parts: MessagePart[] = [];
+
+    if (type === 'message') {
+      // add timestamp if it has been a while since the last message
+      function isCloseTo(timeA: Date|undefined, timeB: Date|undefined): boolean {
+        if (!timeA || !timeB) return false;
+        const diff = timeB.valueOf() - timeA.valueOf();
+        return diff < 1000 * 60 * 10; // 10 minutes in milliseconds
+      }
+      let addTime = true;
+      if (this.chatMessages.length > 0) {
+        const lastMessage = this.chatMessages[this.chatMessages.length - 1];
+        if (lastMessage.type.startsWith('message') && isCloseTo(lastMessage.dateTime, dateTime)) {
+          addTime = false;
+        }
+      }
+      if (addTime) {
+        const timeInfo: ChatMessage = { type: 'time', name: name, time: time, dateTime: dateTime, parts: undefined };
+        this.chatMessages.push(timeInfo);
+      }
+
+      // first part of message is sender's name
+      const namePart: MessagePart = {
+        type: 'sender',
+        text: name
+      };
+      parts.push(namePart);
+
+      // split message up into plain text and links
+      const messageParts = messageText.split(/(https?:\/\/\S+)/);
+      for (let i = 0; i < messageParts.length; i++) {
+        const messagePart: MessagePart = {
+          type: i % 2 === 0 ? 'text' : 'link',
+          text: messageParts[i]
+        }
+        parts.push(messagePart);
+      }
+    }
+
+    const messageObj: ChatMessage = {
+      type: type,
+      name: name,
+      dateTime: dateTime,
+      time: time,
+      parts: parts
+    };
+
+    this.chatMessages.push(messageObj);
+
+    // scroll to bottom of message box (once vue updates the page)
+    Vue.nextTick(() => {
+      const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+      messageBox.scrollTo(0, messageBox.scrollHeight);
+    });
   }
 
   @action
