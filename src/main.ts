@@ -13,6 +13,7 @@ import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/d
 
 import {setupVueApp} from './vueapp';
 import {storeProxy} from './state';
+import {connectChatSocket} from './chat_socket';
 import './config';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -23,6 +24,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   storeProxy.initializeViewer(viewer);
   mergeTopBars();
   storeProxy.loopUpdateLeaderboard();
+  connectChatSocket();
+  storeProxy.joinChat();
   disableNGErrMsg();
   liveNeuroglancerInjection();
 

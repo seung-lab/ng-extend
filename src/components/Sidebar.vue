@@ -3,6 +3,7 @@
     <!--<button class="nge-sidebar-hide-button" @click="setVisible(false);">&lt;</button>-->
     <getting-started />
     <leaderboard />
+    <chatbox v-if="enableChat" />
   </div>
 </template>
 
@@ -11,14 +12,16 @@ import Vue from "vue";
 
 import { storeProxy } from "../state";
 import Leaderboard from "components/Leaderboard.vue";
+import Chatbox from "components/Chatbox.vue";
 import GettingStarted from "components/GettingStarted.vue";
 
 export default Vue.extend({
-  components: { Leaderboard, GettingStarted },
+  components: { Leaderboard, Chatbox, GettingStarted },
   data: () => {
     return {
       appState: storeProxy,
-      visible: localStorage.getItem("visible") !== "false"
+      visible: localStorage.getItem("visible") !== "false",
+      showChat: localStorage.getItem("chatVisible") !== "false"
     };
   },
   methods: {
@@ -26,11 +29,24 @@ export default Vue.extend({
       localStorage.setItem("visible", visible.toString());
       this.visible = visible;
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
+    },
+    setChatVisible(visible: boolean) {
+      localStorage.setItem("chatVisible", visible.toString());
+      this.showChat = visible;
+    },
+    getSidebarItems(): string {
+      if (this.showChat) {
+        return "both";
+      }
+      return "lb-only";
     }
   },
   mounted() {
     this.$root.$on("toggleSidebar", () => {
       this.setVisible(!this.visible);
+    });
+    this.$root.$on("toggleChat", () => {
+      this.setChatVisible(!this.showChat);
     });
   }
 });
@@ -53,6 +69,14 @@ export default Vue.extend({
 .nge-sidebar:not(.visible) {
   width: 0px;
   opacity: 0%;
+}
+
+.nge-sidebar.both {
+  grid-template-rows: 50% auto;
+}
+
+.nge-sidebar.lb-only {
+  grid-template-rows: auto min-content;
 }
 
 .nge-sidebar {
