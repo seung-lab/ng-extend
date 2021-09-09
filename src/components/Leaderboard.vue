@@ -1,9 +1,9 @@
 <template>
-  <div class="nge-leaderboard">
+  <div class="nge-leaderboard" v-show="!minimized">
     <div class="nge-leaderboard-titlebar">
       <div class="nge-sidebar-section-title">Top Editors</div>
     </div>
-    <div class="nge-leaderboard-content" v-show="!minimized">
+    <div class="nge-leaderboard-content">
       <div class="nge-leaderboard-timeselect">
         <div class="nge-leaderboard-timeselect-filler"></div>
         <button v-for="timespan of getTimespanNames()" :key="timespan" :class="'nge-sidebar-button ' + timespan"

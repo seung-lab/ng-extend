@@ -68,8 +68,8 @@
       </simplebar>
       <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
         <img src="images/chevron.svg" width="15" style="transform: rotate(90deg);" />
-        <input type="text" id="chatMessage" size="18" />
-        <button type="submit">Submit</button>
+        <input type="text" id="chatMessage" size="17" />
+        <button type="submit">⮚</button>
       </form>
     </div>
   </div>
