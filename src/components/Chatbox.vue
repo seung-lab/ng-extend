@@ -67,9 +67,9 @@
         </div>
       </simplebar>
       <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
-        <img src="images/chevron.svg" width="15" style="transform: rotate(90deg);" />
-        <input type="text" id="chatMessage" size="17" />
-        <button type="submit">⮚</button>
+        <div class="nge-chatbox-messageprompt"><img src="images/chevron.svg" width="15" style="transform: rotate(90deg);" /></div>
+        <div class="nge-chatbox-inputbox"><input type="text" id="chatMessage" /></div>
+        <div><button type="submit"><img src="images/send.svg" width="15" /></button></div>
       </form>
     </div>
   </div>
@@ -192,13 +192,20 @@ export default Vue.extend({
 .nge-chatbox-sendmessage {
   align-self: end;
   z-index: 90;
+  display: grid;
+  grid-template-columns: min-content auto min-content;
+  padding-top: 5px;
+}
+.nge-chatbox-messageprompt {
+  padding-top: 5px;
 }
 .nge-chatbox-sendmessage button {
   padding: 5px !important;
 }
-.nge-chatbox-sendmessage > input {
+.nge-chatbox-inputbox > input {
   color: #fff;
   background-color: #111;
-  border-width: 0px;
+  max-width: 150px;
+  /*border-width: 0px;*/
 }
 </style> 
