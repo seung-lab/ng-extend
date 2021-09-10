@@ -29,6 +29,7 @@ export default Vue.extend({
       localStorage.setItem("visible", visible.toString());
       this.visible = visible;
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
+      /*(<HTMLElement>document.querySelector("#statusContainer")).classList.toggle("shifted", visible);*/
     },
     setChatVisible(visible: boolean) {
       localStorage.setItem("chatVisible", visible.toString());
@@ -117,5 +118,9 @@ export default Vue.extend({
 
 .simplebar-scrollbar.simplebar-visible:before {
   background-color: #999;
+}
+
+#statusContainer/*.shifted*/ {
+  left: 200px;
 }
 </style>
