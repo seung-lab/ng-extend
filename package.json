@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "direct-vuex": "^0.7.3",
+    "reconnecting-websocket": "^4.4.0",
     "simplebar-vue": "^1.4.0",
     "vue": "^2.6.10",
     "vue-loader": "^15.7.1",

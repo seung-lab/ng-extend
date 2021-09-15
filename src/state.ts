@@ -7,6 +7,7 @@ import {vec3} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {Viewer} from 'neuroglancer/viewer';
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
+import ReconnectingWebSocket from 'reconnecting-websocket';
 
 import getChatSocket from './chat_socket';
 import {config} from './main';
@@ -134,6 +135,7 @@ export class AppStore extends createModule
   leaderboardEntries: LeaderboardEntry[] = [];
   leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
   leaderboardLoaded: boolean = false;
+  joinedChat: boolean = false;
   chatMessages: ChatMessage[] = [];
   userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
 
@@ -533,7 +535,18 @@ export class AppStore extends createModule
     return this.updateLeaderboard();
   }
 
-  @action async joinChat() {
+  @action
+  async sendJoinMessage(ws: ReconnectingWebSocket) {
+    const joinMessage = JSON.stringify({
+      type: this.joinedChat ? 'rejoin' : 'join',
+      name: this.loggedInUser ? this.loggedInUser.name : 'Guest'
+    });
+    ws.send(joinMessage);
+    this.joinedChat = true;
+  }
+
+  @action
+  async joinChat() {
     const ws = getChatSocket();
     ws.onmessage = (event) => {
       this.handleMessage(event.data);
@@ -541,20 +554,17 @@ export class AppStore extends createModule
 
     await this.fetchLoggedInUser();
 
-    const joinMessage = JSON.stringify({
-      type: 'join',
-      name: this.loggedInUser ? this.loggedInUser.name : 'Guest'
-    });
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(joinMessage);
+      this.sendJoinMessage(ws);
     } else {
       ws.onopen = () => {
-        ws.send(joinMessage);
+        this.sendJoinMessage(ws);
       };
     }
   }
 
-  @action async handleMessage(message: any) {
+  @action
+  async handleMessage(message: any) {
     const messageParsed: ServerMessage = JSON.parse(message);
     const type = messageParsed.type;
     const messageText = messageParsed.message;
