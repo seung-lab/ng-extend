@@ -39,6 +39,10 @@
               <div class="nge-chatbox-info-content">{{message.name}} left chat.</div>
             </div>
 
+            <div class="nge-chatbox-info" v-if="message.type === 'disconnected'">
+              <div class="nge-chatbox-info-content">Your message was not sent because you were disconnected from chat. Try reloading the page.</div>
+            </div>
+
             <div class="nge-chatbox-time" v-if="message.type === 'time'">{{message.time}}</div>
 
             <div
@@ -101,7 +105,12 @@ export default Vue.extend({
       messageEl.value = "";
       if (message.trim() !== "") {
         const messageObj = { type: "message", message: message };
-        getChatSocket().send(JSON.stringify(messageObj));
+        const socket = getChatSocket();
+        if (socket.readyState === socket.OPEN) {
+          socket.send(JSON.stringify(messageObj));
+        } else {
+          this.appState.handleMessage('{"type":"disconnected"}');
+        }
       }
     },
     getPlace(name: string): string {
