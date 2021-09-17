@@ -29,7 +29,6 @@ export default Vue.extend({
       localStorage.setItem("visible", visible.toString());
       this.visible = visible;
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
-      /*(<HTMLElement>document.querySelector("#statusContainer")).classList.toggle("shifted", visible);*/
       this.shiftStatusBars();
     },
     setChatVisible(visible: boolean) {
