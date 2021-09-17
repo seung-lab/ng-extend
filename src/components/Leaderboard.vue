@@ -96,7 +96,6 @@ export default Vue.extend({
   background-color: #111;
   display: grid;
   grid-template-rows: min-content auto;
-  overflow: hidden; /* fixes issue with ng use of scrollIntoView */
 }
 
 .nge-leaderboard-content {

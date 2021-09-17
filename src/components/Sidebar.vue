@@ -59,6 +59,7 @@ export default Vue.extend({
   height: 100%;
   transition: all 0.25s;
   transition-property: opacity, width;
+  overflow: hidden; /* fixes issue with simplebar and ng use of scrollIntoView */
 }
 
 .nge-sidebar.visible {
