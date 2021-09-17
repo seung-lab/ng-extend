@@ -30,6 +30,7 @@ export default Vue.extend({
       this.visible = visible;
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
       /*(<HTMLElement>document.querySelector("#statusContainer")).classList.toggle("shifted", visible);*/
+      this.shiftStatusBars();
     },
     setChatVisible(visible: boolean) {
       localStorage.setItem("chatVisible", visible.toString());
@@ -40,9 +41,22 @@ export default Vue.extend({
         return "both";
       }
       return "lb-only";
+    },
+    shiftStatusBars() {
+      const oldStyle = document.head.querySelector("#shiftStatusBars");
+      if (oldStyle) {
+        oldStyle.remove();
+      }
+      if (this.visible) {
+        const styleSheet = document.createElement("style");
+        styleSheet.id = "shiftStatusBars";
+        styleSheet.innerText = "#statusContainer { left: 200px; }";
+        document.head.appendChild(styleSheet);
+      }
     }
   },
   mounted() {
+    this.shiftStatusBars();
     this.$root.$on("toggleSidebar", () => {
       this.setVisible(!this.visible);
     });
@@ -119,9 +133,5 @@ export default Vue.extend({
 
 .simplebar-scrollbar.simplebar-visible:before {
   background-color: #999;
-}
-
-#statusContainer/*.shifted*/ {
-  left: 200px;
 }
 </style>
