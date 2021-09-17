@@ -19,7 +19,7 @@
     </div>
     <div class="nge-chatbox-content" v-show="!minimized">
       <div class="nge-chatbox-filler"></div>
-      <simplebar class="nge-chatbox-scroll" data-simplebar-auto-hide="false">
+      <div class="nge-chatbox-scroll" data-simplebar-auto-hide="false" style="overflow-y: scroll;">
         <div class="nge-chatbox-messages">
           <span
             class="nge-chatbox-item"
@@ -69,7 +69,7 @@
             </div>
           </span>
         </div>
-      </simplebar>
+      </div> <!--/simplebar-->
       <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
         <div class="nge-chatbox-messageprompt"><img src="images/chevron.svg" width="15" style="transform: rotate(90deg);" /></div>
         <div class="nge-chatbox-inputbox"><input type="text" id="chatMessage" /></div>
