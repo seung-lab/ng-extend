@@ -31,15 +31,31 @@
     <div class="ng-extend-spacer"></div>
 
     <template v-if="appState.loadedViewer">
-      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="datasetChooser" width="220px" hover="Choose dataset">
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="imageDatasetChooser" hover="Choose image">
         <template #chooserTitle>
-          <span :style="{color: appState.activeDataset ? appState.activeDataset.color : undefined}">
-            {{ appState.activeDataset ? "Dataset: " + appState.activeDataset.name : "Choose Dataset" }}
+          <span :style="{color: appState.activeImageDataset ? appState.activeImageDataset.color : undefined}">
+            {{ appState.activeImageDataset ? "Image: " + appState.activeImageDataset.name : "Choose Image" }}
           </span>
         </template>
         <template #listItems>
-          <li v-for="dataset of datasets" :key="dataset.name" :class="'nge-dataset-button' + (dataset === activeDataset ? ' selected' : '')">
-            <div @click="selectDataset(dataset)">
+          <li v-for="dataset of imageDatasets" :key="dataset.name" :class="'nge-dataset-button' + (dataset === activeImageDataset ? ' selected' : '')">
+            <div @click="selectImageDataset(dataset)">
+              <div class="nge-dataset-button-name">{{ dataset.name }}</div>
+              <div class="nge-dataset-button-description">{{ dataset.description }}</div>
+            </div>
+          </li>
+        </template>
+      </dropdown-list>
+      <div class="ng-extend-spacer"></div>
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="segmentationDatasetChooser" width="220px" hover="Choose dataset">
+        <template #chooserTitle>
+          <span :style="{color: appState.activeSegmentationDataset ? appState.activeSegmentationDataset.color : undefined}">
+            {{ appState.activeSegmentationDataset ? "Dataset: " + appState.activeSegmentationDataset.name : "Choose Dataset" }}
+          </span>
+        </template>
+        <template #listItems>
+          <li v-for="dataset of segmentationDatasets" :key="dataset.name" :class="'nge-dataset-button' + (dataset === activeSegmentationDataset ? ' selected' : '')">
+            <div @click="selectSegmentationDataset(dataset)">
               <div class="nge-dataset-button-name">{{ dataset.name }}</div>
               <div class="nge-dataset-button-description">{{ dataset.description }}</div>
             </div>
@@ -49,7 +65,7 @@
 
       <div class="ng-extend-spacer"></div>
 
-      <template v-if="appState.activeDataset && appState.activeDataset.name === 'Sandbox'">
+      <template v-if="appState.activeSegmentationDataset && appState.activeSegmentationDataset.name === 'Sandbox'">
         <button @click="resetDataset()" class="resetDataset iconBtn" title="Restore default neurons"></button>
         <div class="ng-extend-spacer"></div>
       </template>
@@ -102,16 +118,22 @@ export default Vue.extend({
   },
   computed: {
     cells() {
-      return (storeProxy.activeDataset && storeProxy.activeDataset.curatedCells) || [];
+      return (storeProxy.activeSegmentationDataset && storeProxy.activeSegmentationDataset.curatedCells) || [];
     },
     activeCells() {
       return storeProxy.activeCells;
     },
-    datasets() {
-      return storeProxy.datasets;
+    imageDatasets() {
+      return storeProxy.imageDatasets;
     },
-    activeDataset() {
-      return storeProxy.activeDataset;
+    segmentationDatasets() {
+      return storeProxy.segmentationDatasets;
+    },
+    activeImageDataset() {
+      return storeProxy.activeImageDataset;
+    },
+    activeSegmentationDataset() {
+      return storeProxy.activeSegmentationDataset;
     }
   },
   methods: {
@@ -133,8 +155,17 @@ export default Vue.extend({
       this.$root.$emit("toggleSidebar");
       this.showSidebar = !this.showSidebar;
     },
-    selectDataset: async function(dataset: DatasetDescription) {
-      const success = await this.appState.selectDataset(dataset);
+    selectImageDataset: async function(dataset: DatasetDescription) {
+      const success = await this.appState.selectImageDataset(dataset);
+
+      if (success) {
+        this.$root.$emit("closeDropdowns");
+      } else {
+        console.warn("cannot select dataset because viewer is not yet created");
+      }
+    },
+    selectSegmentationDataset: async function(dataset: DatasetDescription) {
+      const success = await this.appState.selectSegmentationDataset(dataset);
 
       if (success) {
         this.$root.$emit("closeDropdowns");
@@ -155,8 +186,9 @@ export default Vue.extend({
   },
   mounted() {
     this.$root.$on("confirmReset", () => {
-      if (this.appState.activeDataset) {
-        this.appState.selectDataset(this.appState.activeDataset);
+      if (this.appState.activeImageDataset && this.appState.activeSegmentationDataset) {
+        this.appState.selectImageDataset(this.appState.activeImageDataset);
+        this.appState.selectSegmentationDataset(this.appState.activeSegmentationDataset);
       }
 
       if (viewer) {
