@@ -125,7 +125,8 @@ export class AppStore extends createModule
   showResetConfirm: boolean = false;
   showAdminPanel: boolean = false;
 
-  activeDataset: DatasetDescription|null = null;
+  activeImageDataset: DatasetDescription|null = null;
+  activeSegmentationDataset: DatasetDescription|null = null;
   activeCells: CellDescription[] = [];
 
   loadedViewer: boolean = false;
@@ -151,7 +152,40 @@ export class AppStore extends createModule
     }
   };
 
-  datasets: DatasetDescription[] = [
+  imageDatasets: DatasetDescription[] = [
+    {
+      name: 'Original',
+      description:
+          'The beloved classic',
+      color: '#E6C760',
+      defaultPerspectiveZoomFactor: 79,
+      defaultPosition: {x: 158581, y: 72226, z: 2189},
+      layers: [
+        {
+          type: 'image',
+          source:
+              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
+        }
+      ]
+    },
+    {
+      name: 'New',
+      description:
+          'New and exciting',
+      color: '#E6C760',
+      defaultPerspectiveZoomFactor: 79,
+      defaultPosition: {x: 158581, y: 72226, z: 2189},
+      layers: [
+        {
+          type: 'image',
+          source:
+              'precomputed://matrix://fafbv14-em/aligned/v1'
+        }
+      ]
+    }
+  ]
+
+  segmentationDatasets: DatasetDescription[] = [
     {
       name: 'Sandbox',
       description:
@@ -161,12 +195,7 @@ export class AppStore extends createModule
       defaultPosition: {x: 158581, y: 72226, z: 2189},
       layers: [
         {
-          type: 'image',
-          source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
-        },
-        {
-          name: 'sandbox-segmentation-FOR PRACTICE ONLY',
+          name: 'Sandbox-segmentation-FOR PRACTICE ONLY',
           type: 'segmentation_with_graph',
           source:
               'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26',
@@ -196,12 +225,7 @@ export class AppStore extends createModule
       defaultPosition: {x: 158581, y: 72226, z: 2189},
       layers: [
         {
-          type: 'image',
-          source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
-        },
-        {
-          name: 'testing-segmentation-FOR TEST TAKING ONLY',
+          name: 'Testing-segmentation-FOR TEST TAKING ONLY',
           type: 'segmentation_with_graph',
           source:
               'graphene://https://minnie.microns-daf.com/segmentation/table/fly_training_v2',
@@ -216,11 +240,6 @@ export class AppStore extends createModule
       defaultPerspectiveZoomFactor: 79,
       defaultPosition: {x: 158581, y: 72226, z: 2189},
       layers: [
-        {
-          type: 'image',
-          source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
-        },
         {
           type: 'segmentation_with_graph',
           source:
@@ -270,26 +289,30 @@ export class AppStore extends createModule
     const numberOfLayers = viewer!.layerManager.managedLayers.length;
 
     if (numberOfLayers > 0) {
-      const firstLayerName =
+      const firstImageLayerName =
           viewer!.layerManager.managedLayers[0].name.split('-')[0];
-      for (let dataset of this.datasets) {
-        if (dataset.name === firstLayerName) {
-          // TODO, should check to see the layers are correct
-          this.activeDataset = dataset;
+      for (let dataset of this.imageDatasets) {
+        if (dataset.name === firstImageLayerName) {
+          this.activeImageDataset = dataset;
+          break;
+        }
+      }
+      const firstSegmentationLayerName =
+          viewer!.layerManager.managedLayers[1].name.split('-')[0];
+      for (let dataset of this.segmentationDatasets) {
+        if (dataset.name === firstSegmentationLayerName) {
+          this.activeSegmentationDataset = dataset;
           break;
         }
       }
     } else {
       // load sandbox with default view state
-      if (this.datasets.length) {
-        for (let dataset of this.datasets) {
-          if (dataset.name === 'Sandbox') {
-            this.selectDataset(dataset);
-          }
-        }
+      if (this.segmentationDatasets.length) {
+        this.selectImageDataset(this.imageDatasets[0]);
+        this.selectSegmentationDataset(this.segmentationDatasets[0]); //sandbox
       } else {
         StatusMessage.showTemporaryMessage(
-            `There are no datasets avaliable.`, 10000, {color: 'yellow'});
+            `There are no datasets available.`, 10000, {color: 'yellow'});
       }
     }
 
@@ -313,7 +336,7 @@ export class AppStore extends createModule
       return false;
     }
 
-    if (!this.activeDataset || !this.activeDataset.curatedCells) {
+    if (!this.activeSegmentationDataset || !this.activeSegmentationDataset.curatedCells) {
       return false;
     }
 
@@ -333,7 +356,7 @@ export class AppStore extends createModule
 
         for (let segment of layer.displayState.rootSegments) {
           console.log('we have a segment: ', segment.toString());
-          for (let cell of this.activeDataset.curatedCells) {
+          for (let cell of this.activeSegmentationDataset.curatedCells) {
             if (segment.toString() === cell.id) {
               console.log('segment confirmed curated', cell.id);
               this.activeCells.push(cell);
@@ -386,16 +409,44 @@ export class AppStore extends createModule
   }
 
   @action
-  async selectDataset(dataset: DatasetDescription) {
+  async selectImageDataset(dataset: DatasetDescription) {
     if (!viewer) {
       return false;
     }
 
-    viewer.layerManager.clear();
+    this.activeImageDataset = dataset;
+    return this.selectDataset({dataset: dataset, replaceLayer: "image"});
+  }
+
+  @action
+  async selectSegmentationDataset(dataset: DatasetDescription) {
+    if (!viewer) {
+      return false;
+    }
+
+    this.activeSegmentationDataset = dataset;
+    return this.selectDataset({dataset: dataset, replaceLayer: "segmentation"});
+  }
+
+  @action
+  async selectDataset(data: {dataset: DatasetDescription, replaceLayer: string}) {
+    if (!viewer) {
+      return false;
+    }
+
+    const dataset = data.dataset;
+    const replaceLayer = data.replaceLayer;
+    let replacedLayerPos = 0;
+    for (const layer of viewer.layerManager.managedLayers) {
+      if (layer.name.includes(replaceLayer)) {
+        viewer.layerManager.removeManagedLayer(layer);
+        break;
+      }
+      replacedLayerPos++;
+    }
+    //viewer.layerManager.clear();
     viewer.navigationState.reset();
     viewer.perspectiveNavigationState.reset();
-
-    this.activeDataset = dataset;
 
     if (dataset.defaultPosition) {
       this.set2dPosition(dataset.defaultPosition);
@@ -439,6 +490,8 @@ export class AppStore extends createModule
         this.refreshActiveCells();
       }
     }
+
+    viewer.layerManager.reorderManagedLayer(viewer.layerManager.managedLayers.length - 1, replacedLayerPos);
 
     viewer.differ.purgeHistory();
     viewer.differ.ignoreChanges();
