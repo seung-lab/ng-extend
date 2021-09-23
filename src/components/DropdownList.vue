@@ -1,5 +1,5 @@
 <template>
-  <div class="dropdownList" :class="{ open: isActive }" :style="{width: width}" @mousedown.stop.prevent>
+  <div class="dropdownList" :class="{ open: isActive }" :style="{width: width, 'min-width': width}" @mousedown.stop.prevent>
     <template v-if="type === 'chooser'">
       <div class="dropdownChooser" @click="toggleVisible" :title="hover">
         <div class="dropdownChooserLabel">
