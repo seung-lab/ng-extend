@@ -31,7 +31,7 @@
     <div class="ng-extend-spacer"></div>
 
     <template v-if="appState.loadedViewer">
-      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="imageDatasetChooser" hover="Choose image">
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="imageDatasetChooser" width="180px" hover="Choose image">
         <template #chooserTitle>
           <span :style="{color: appState.activeImageDataset ? appState.activeImageDataset.color : undefined}">
             {{ appState.activeImageDataset ? "Image: " + appState.activeImageDataset.name : "Choose Image" }}
