@@ -1,7 +1,7 @@
 <template>
-  <div class="dropdownList" :class="{ open: isActive }" @mousedown.stop.prevent>
+  <div class="dropdownList" :class="{ open: isActive }" :style="{width: width}" @mousedown.stop.prevent>
     <template v-if="type === 'chooser'">
-      <div class="dropdownChooser" :style="{width: width}" @click="toggleVisible" :title="hover">
+      <div class="dropdownChooser" @click="toggleVisible" :title="hover">
         <div class="dropdownChooserLabel">
           <div class="dropdownChooserTitle"><slot name="chooserTitle"></slot></div>
           <div class="dropdownChooserArrow"></div>
@@ -146,6 +146,7 @@ export default Vue.extend({
 }
 
 .dropdownMenu {
+  min-width: 100%;
   position: absolute;
   right: 0;
   top: 40px;
@@ -156,7 +157,7 @@ export default Vue.extend({
 }
 
 .dropdownMenu.chooser {
-  top: 4px;
+  top: 3px;
 }
 
 .dropdownMenu > li > button, .dropdownMenu > li > div {
@@ -177,6 +178,7 @@ export default Vue.extend({
 }
 
 .dropdownChooser {
+  width: 100%;
   border-radius: 5px;
   border: 1px solid var(--color-border);
   overflow: hidden;
