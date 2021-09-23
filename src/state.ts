@@ -157,7 +157,6 @@ export class AppStore extends createModule
       name: 'Original',
       description:
           'The beloved classic',
-      color: '#E6C760',
       defaultPerspectiveZoomFactor: 79,
       defaultPosition: {x: 158581, y: 72226, z: 2189},
       layers: [
@@ -172,7 +171,6 @@ export class AppStore extends createModule
       name: 'New',
       description:
           'New and exciting',
-      color: '#E6C760',
       defaultPerspectiveZoomFactor: 79,
       defaultPosition: {x: 158581, y: 72226, z: 2189},
       layers: [
@@ -308,7 +306,7 @@ export class AppStore extends createModule
     } else {
       // load sandbox with default view state
       if (this.segmentationDatasets.length) {
-        this.selectImageDataset(this.imageDatasets[0]);
+        await this.selectImageDataset(this.imageDatasets[0]);
         this.selectSegmentationDataset(this.segmentationDatasets[0]); //sandbox
       } else {
         StatusMessage.showTemporaryMessage(
