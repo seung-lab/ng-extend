@@ -154,23 +154,9 @@ export class AppStore extends createModule
 
   imageDatasets: DatasetDescription[] = [
     {
-      name: 'Original',
+      name: 'Princeton Campus',
       description:
-          'The beloved classic',
-      defaultPerspectiveZoomFactor: 79,
-      defaultPosition: {x: 158581, y: 72226, z: 2189},
-      layers: [
-        {
-          type: 'image',
-          source:
-              'precomputed://gs://microns-seunglab/drosophila_v0/alignment/image_rechunked'
-        }
-      ]
-    },
-    {
-      name: 'New',
-      description:
-          'New and exciting',
+          'On-premise storage with lower performance elsewhere',
       defaultPerspectiveZoomFactor: 79,
       defaultPosition: {x: 158581, y: 72226, z: 2189},
       layers: [
@@ -178,6 +164,20 @@ export class AppStore extends createModule
           type: 'image',
           source:
               'precomputed://matrix://fafbv14-em/aligned/v1'
+        }
+      ]
+    },
+    {
+      name: 'BOSSDB: East Coast',
+      description:
+          'AWS storage by JHU/APL',
+      defaultPerspectiveZoomFactor: 79,
+      defaultPosition: {x: 158581, y: 72226, z: 2189},
+      layers: [
+        {
+          type: 'image',
+          source:
+              'precomputed://https://bossdb-open-data.s3.amazonaws.com/flywire/fafbv14'
         }
       ]
     }
