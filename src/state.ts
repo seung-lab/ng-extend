@@ -433,15 +433,6 @@ export class AppStore extends createModule
     }
 
     const dataset = data.dataset;
-    const replaceLayer = data.replaceLayer;
-    let replacedLayerPos = 0;
-    for (const layer of viewer.layerManager.managedLayers) {
-      if (layer.name.includes(replaceLayer)) {
-        viewer.layerManager.removeManagedLayer(layer);
-        break;
-      }
-      replacedLayerPos++;
-    }
     //viewer.layerManager.clear();
     viewer.navigationState.reset();
     viewer.perspectiveNavigationState.reset();
@@ -489,6 +480,15 @@ export class AppStore extends createModule
       }
     }
 
+    const replaceLayer = data.replaceLayer;
+    let replacedLayerPos = 0;
+    for (const layer of viewer.layerManager.managedLayers) {
+      if (layer.name.includes(replaceLayer) && !layer.name.includes(dataset.name)) {
+        viewer.layerManager.removeManagedLayer(layer);
+        break;
+      }
+      replacedLayerPos++;
+    }
     viewer.layerManager.reorderManagedLayer(viewer.layerManager.managedLayers.length - 1, replacedLayerPos);
 
     viewer.differ.purgeHistory();
