@@ -11,6 +11,7 @@ import ReconnectingWebSocket from 'reconnecting-websocket';
 
 import getChatSocket from './chat_socket';
 import {config} from './main';
+import {ImageLayerDescription, SegmentationLayerDescription, CellDescription, Vector3} from './config';
 
 interface LoggedInUser {
   name: string;
@@ -18,25 +19,6 @@ interface LoggedInUser {
   id: number;
   joinDate: string;
   admin: boolean;
-}
-
-interface LayerDescription {
-  source: string, type: 'image'|'segmentation'|'segmentation_with_graph',
-      name?: string, defaultSelected?: boolean,
-}
-
-export interface Vector3 {
-  x: number, y: number, z: number,
-}
-
-export interface DatasetDescription {
-  name: string, description: string, color?: string, layers: LayerDescription[],
-      curatedCells?: CellDescription[], defaultPerspectiveZoomFactor?: number,
-      defaultPosition?: Vector3,
-}
-
-export interface CellDescription {
-  id: string, default?: boolean,
 }
 
 export interface LeaderboardEntry {
@@ -108,7 +90,6 @@ export interface ViewerState {
     width: number,
   }
 }
-;
 
 
 export class AppStore extends createModule
@@ -125,8 +106,8 @@ export class AppStore extends createModule
   showResetConfirm: boolean = false;
   showAdminPanel: boolean = false;
 
-  activeImageDataset: DatasetDescription|null = null;
-  activeSegmentationDataset: DatasetDescription|null = null;
+  activeImageLayer: ImageLayerDescription|null = null;
+  activeSegmentationLayer: SegmentationLayerDescription|null = null;
   activeCells: CellDescription[] = [];
 
   loadedViewer: boolean = false;
@@ -151,109 +132,6 @@ export class AppStore extends createModule
       width: 0,
     }
   };
-
-  imageDatasets: DatasetDescription[] = [
-    {
-      name: 'Princeton Campus',
-      description:
-          'On-premise storage with lower performance elsewhere',
-      defaultPerspectiveZoomFactor: 79,
-      defaultPosition: {x: 158581, y: 72226, z: 2189},
-      layers: [
-        {
-          type: 'image',
-          source:
-              'precomputed://matrix://fafbv14-em/aligned/v1'
-        }
-      ]
-    },
-    {
-      name: 'BOSSDB: East Coast',
-      description:
-          'AWS storage by JHU/APL',
-      defaultPerspectiveZoomFactor: 79,
-      defaultPosition: {x: 158581, y: 72226, z: 2189},
-      layers: [
-        {
-          type: 'image',
-          source:
-              'precomputed://https://bossdb-open-data.s3.amazonaws.com/flywire/fafbv14'
-        }
-      ]
-    }
-  ]
-
-  segmentationDatasets: DatasetDescription[] = [
-    {
-      name: 'Sandbox',
-      description:
-          'A practice dataset. Cell edits are visible to all, but user mistakes don\'t matter here.',
-      color: '#E6C760',
-      defaultPerspectiveZoomFactor: 79,
-      defaultPosition: {x: 158581, y: 72226, z: 2189},
-      layers: [
-        {
-          name: 'Sandbox-segmentation-FOR PRACTICE ONLY',
-          type: 'segmentation_with_graph',
-          source:
-              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26',
-          defaultSelected: true,
-        }
-      ],
-      curatedCells: [
-        {
-          id: '720575940625416797',
-        },
-        {
-          id: '720575940637436173',
-        },
-        {
-          id: '720575940615251979',
-          default: true,
-        },
-        {id: '720575940610453042', default: true},
-      ]
-    },
-    {
-      name: 'Testing',
-      description:
-          'Take the test! (Use this dataset for the test to gain entry to Production, after practicing in the Sandbox.)',
-      color: '#E6C760',
-      defaultPerspectiveZoomFactor: 79,
-      defaultPosition: {x: 158581, y: 72226, z: 2189},
-      layers: [
-        {
-          name: 'Testing-segmentation-FOR TEST TAKING ONLY',
-          type: 'segmentation_with_graph',
-          source:
-              'graphene://https://minnie.microns-daf.com/segmentation/table/fly_training_v2',
-          defaultSelected: true,
-        }
-      ]
-    },
-    {
-      name: 'Production',
-      description:
-          'The "real" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.',
-      defaultPerspectiveZoomFactor: 79,
-      defaultPosition: {x: 158581, y: 72226, z: 2189},
-      layers: [
-        {
-          type: 'segmentation_with_graph',
-          source:
-              'graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31',
-          defaultSelected: true,
-        }
-      ],
-      curatedCells: [
-        {
-          id: '720575940621039145',
-          default: true,
-        },
-        {id: '720575940626877799', default: true},
-      ]
-    }
-  ];
 
   static $watch = {
     introductionStep(newVal: number) {
@@ -289,25 +167,24 @@ export class AppStore extends createModule
     if (numberOfLayers > 0) {
       const firstImageLayerName =
           viewer!.layerManager.managedLayers[0].name.split('-')[0];
-      for (let dataset of this.imageDatasets) {
+      for (let dataset of config.imageLayers) {
         if (dataset.name === firstImageLayerName) {
-          this.activeImageDataset = dataset;
+          this.activeImageLayer = dataset;
           break;
         }
       }
       const firstSegmentationLayerName =
           viewer!.layerManager.managedLayers[1].name.split('-')[0];
-      for (let dataset of this.segmentationDatasets) {
+      for (let dataset of config.segmentationLayers) {
         if (dataset.name === firstSegmentationLayerName) {
-          this.activeSegmentationDataset = dataset;
+          this.activeSegmentationLayer = dataset;
           break;
         }
       }
     } else {
       // load sandbox with default view state
-      if (this.segmentationDatasets.length) {
-        await this.selectImageDataset(this.imageDatasets[0]);
-        this.selectSegmentationDataset(this.segmentationDatasets[0]); //sandbox
+      if (config.segmentationLayers.length) {
+        this.selectSandboxLayers();
       } else {
         StatusMessage.showTemporaryMessage(
             `There are no datasets available.`, 10000, {color: 'yellow'});
@@ -329,12 +206,23 @@ export class AppStore extends createModule
   }
 
   @action
+  async selectSandboxLayers() {
+    if (!viewer) {
+      return false;
+    }
+    viewer.layerManager.clear();
+    await this.selectImageLayer(config.imageLayers[0]);
+    this.selectSegmentationLayer(config.segmentationLayers[0]);
+    return true;
+  }
+
+  @action
   async refreshActiveCells() {
     if (!viewer) {
       return false;
     }
 
-    if (!this.activeSegmentationDataset || !this.activeSegmentationDataset.curatedCells) {
+    if (!this.activeSegmentationLayer || !this.activeSegmentationLayer.curatedCells) {
       return false;
     }
 
@@ -354,7 +242,7 @@ export class AppStore extends createModule
 
         for (let segment of layer.displayState.rootSegments) {
           console.log('we have a segment: ', segment.toString());
-          for (let cell of this.activeSegmentationDataset.curatedCells) {
+          for (let cell of this.activeSegmentationLayer.curatedCells) {
             if (segment.toString() === cell.id) {
               console.log('segment confirmed curated', cell.id);
               this.activeCells.push(cell);
@@ -379,9 +267,10 @@ export class AppStore extends createModule
   async selectActiveLayer(name: string) {
     const layerPanel = getLayerPanel(viewer!)!;
     const layer = getLayerByName(name);
-
+    console.log('selecting layer', layer);
     if (layer) {
       layerPanel.selectedLayer.layer = layer;
+      console.log('selected layer', layer);
     }
   }
 
@@ -401,90 +290,77 @@ export class AppStore extends createModule
     if (viewer) {
       viewer.navigationState.position.setVoxelCoordinates(
           vec3.fromValues(x, y, z));
-      // viewer.navigationState.position.spatialCoordinatesValid = false; TODO
-      // what was this for? seems to cause issues
+      // viewer.navigationState.position.spatialCoordinatesValid = false; // TODO what was this for? seems to cause issues
     }
   }
 
   @action
-  async selectImageDataset(dataset: DatasetDescription) {
+  async selectImageLayer(layer: ImageLayerDescription) {
     if (!viewer) {
       return false;
     }
 
-    this.activeImageDataset = dataset;
-    return this.selectDataset({dataset: dataset, replaceLayer: "image"});
+    this.activeImageLayer = layer;
+    return this.selectLayer(layer);
   }
 
   @action
-  async selectSegmentationDataset(dataset: DatasetDescription) {
+  async selectSegmentationLayer(layer: SegmentationLayerDescription) {
     if (!viewer) {
       return false;
     }
 
-    this.activeSegmentationDataset = dataset;
-    return this.selectDataset({dataset: dataset, replaceLayer: "segmentation"});
+    this.activeSegmentationLayer = layer;
+    return this.selectLayer(layer);
   }
 
   @action
-  async selectDataset(data: {dataset: DatasetDescription, replaceLayer: string}) {
+  async selectLayer(layer: ImageLayerDescription|SegmentationLayerDescription) {
     if (!viewer) {
       return false;
     }
 
-    const dataset = data.dataset;
-    //viewer.layerManager.clear();
     viewer.navigationState.reset();
     viewer.perspectiveNavigationState.reset();
 
-    if (dataset.defaultPosition) {
-      this.set2dPosition(dataset.defaultPosition);
+    if (layer.defaultPosition) {
+      this.set2dPosition(layer.defaultPosition);
     }
-    if (dataset.defaultPerspectiveZoomFactor !== undefined) {
+    if (layer.defaultPerspectiveZoomFactor !== undefined) {
       viewer.perspectiveNavigationState.zoomFactor.value =
-          dataset.defaultPerspectiveZoomFactor;
+      layer.defaultPerspectiveZoomFactor;
     }
 
-    for (let layerDesc of dataset.layers) {
-      const layerName =
-          layerDesc.name ? layerDesc.name : `${dataset.name}-${layerDesc.type}`;
-      const layerWithSpec =
-          viewer.layerSpecification.getLayer(layerName, layerDesc);
-      viewer.layerManager.addManagedLayer(layerWithSpec);
+    const layerName = layer.layerName ? layer.layerName : `${layer.name}-${layer.type}`;
+    const layerWithSpec = viewer.layerSpecification.getLayer(layerName, layer);
+    viewer.layerManager.addManagedLayer(layerWithSpec);
 
-      const {layer} = layerWithSpec;
+    const addedLayer = layerWithSpec.layer;
 
-      if (layerDesc.defaultSelected) {
-        this.selectActiveLayer(layerName);
-      }
-
-      if (layer instanceof ImageUserLayer) {
-        await layer.multiscaleSource;  // wait because there is an error if both
-                                       // layers load at the same time?
-      } else if (layer instanceof SegmentationUserLayer) {
-        if (dataset.curatedCells) {
-          for (let cell of dataset.curatedCells) {
-            if (cell.default) {
-              this.selectCell(cell);
-            }
+    if (addedLayer instanceof ImageUserLayer) {
+      await addedLayer.multiscaleSource; // wait because there is an error if both layers load at the same time?
+    } else if (addedLayer instanceof SegmentationUserLayer) {
+      this.selectActiveLayer(layerName);
+      if ("curatedCells" in layer && layer.curatedCells) {
+        for (let cell of layer.curatedCells) {
+          if (cell.default) {
+            this.selectCell(cell);
           }
         }
-
-        await layer.multiscaleSource;
-        console.log('root segments callback 1');
-        layer.displayState.rootSegments.changed.add(() => {
-          console.log('root segments changed 1');
-          this.refreshActiveCells();
-        });
-        this.refreshActiveCells();
       }
+
+      await addedLayer.multiscaleSource;
+      addedLayer.displayState.rootSegments.changed.add(() => {
+        this.refreshActiveCells();
+      });
+      this.refreshActiveCells();
     }
 
-    const replaceLayer = data.replaceLayer;
     let replacedLayerPos = 0;
-    for (const layer of viewer.layerManager.managedLayers) {
-      if (layer.name.includes(replaceLayer) && !layer.name.includes(dataset.name)) {
-        viewer.layerManager.removeManagedLayer(layer);
+    for (const existingLayer of viewer.layerManager.managedLayers) {
+      const sameType = (existingLayer.layer instanceof ImageUserLayer) === (addedLayer instanceof ImageUserLayer);
+      if (sameType && !existingLayer.name.includes(layer.name)) {
+        viewer.layerManager.removeManagedLayer(existingLayer);
         break;
       }
       replacedLayerPos++;

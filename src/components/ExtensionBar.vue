@@ -31,33 +31,33 @@
     <div class="ng-extend-spacer"></div>
 
     <template v-if="appState.loadedViewer">
-      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="imageDatasetChooser" width="240px" hover="Choose image">
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="imageLayerChooser" width="240px" hover="Choose image">
         <template #chooserTitle>
-          <span :style="{color: appState.activeImageDataset ? appState.activeImageDataset.color : undefined}">
-            {{ appState.activeImageDataset ? "Image: " + appState.activeImageDataset.name : "Choose Image" }}
+          <span :style="{color: appState.activeImageLayer ? appState.activeImageLayer.color : undefined}">
+            {{ appState.activeImageLayer ? "Image: " + appState.activeImageLayer.name : "Choose Image" }}
           </span>
         </template>
         <template #listItems>
-          <li v-for="dataset of imageDatasets" :key="dataset.name" :class="'nge-dataset-button' + (dataset === activeImageDataset ? ' selected' : '')">
-            <div @click="selectImageDataset(dataset)">
-              <div class="nge-dataset-button-name">{{ dataset.name }}</div>
-              <div class="nge-dataset-button-description">{{ dataset.description }}</div>
+          <li v-for="layer of imageLayers" :key="layer.name" :class="'nge-dataset-button' + (layer === activeImageLayer ? ' selected' : '')">
+            <div @click="selectImageLayer(layer)">
+              <div class="nge-dataset-button-name">{{ layer.name }}</div>
+              <div class="nge-dataset-button-description">{{ layer.description }}</div>
             </div>
           </li>
         </template>
       </dropdown-list>
       <div class="ng-extend-spacer"></div>
-      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="segmentationDatasetChooser" width="220px" hover="Choose dataset">
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="segmentationLayerChooser" width="220px" hover="Choose dataset">
         <template #chooserTitle>
-          <span :style="{color: appState.activeSegmentationDataset ? appState.activeSegmentationDataset.color : undefined}">
-            {{ appState.activeSegmentationDataset ? "Dataset: " + appState.activeSegmentationDataset.name : "Choose Dataset" }}
+          <span :style="{color: appState.activeSegmentationLayer ? appState.activeSegmentationLayer.color : undefined}">
+            {{ appState.activeSegmentationLayer ? "Dataset: " + appState.activeSegmentationLayer.name : "Choose Dataset" }}
           </span>
         </template>
         <template #listItems>
-          <li v-for="dataset of segmentationDatasets" :key="dataset.name" :class="'nge-dataset-button' + (dataset === activeSegmentationDataset ? ' selected' : '')">
-            <div @click="selectSegmentationDataset(dataset)">
-              <div class="nge-dataset-button-name">{{ dataset.name }}</div>
-              <div class="nge-dataset-button-description">{{ dataset.description }}</div>
+          <li v-for="layer of segmentationLayers" :key="layer.name" :class="'nge-dataset-button' + (layer === activeSegmentationLayer ? ' selected' : '')">
+            <div @click="selectSegmentationLayer(layer)">
+              <div class="nge-dataset-button-name">{{ layer.name }}</div>
+              <div class="nge-dataset-button-description">{{ layer.description }}</div>
             </div>
           </li>
         </template>
@@ -65,8 +65,8 @@
 
       <div class="ng-extend-spacer"></div>
 
-      <template v-if="appState.activeSegmentationDataset && appState.activeSegmentationDataset.name === 'Sandbox'">
-        <button @click="resetDataset()" class="resetDataset iconBtn" title="Restore default neurons"></button>
+      <template v-if="appState.activeSegmentationLayer && appState.activeSegmentationLayer.name === 'Sandbox'">
+        <button @click="resetSandbox()" class="resetSandbox iconBtn" title="Restore default neurons"></button>
         <div class="ng-extend-spacer"></div>
       </template>
 
@@ -102,11 +102,13 @@
 
 <script lang="ts">
 import Vue from "vue";
-import { storeProxy, viewer, CellDescription, DatasetDescription, ActionsMenuItem } from "../state";
+import { storeProxy, viewer, ActionsMenuItem } from "../state";
+import { config } from '../main';
 
 import DropdownList from "components/DropdownList.vue";
 import Stopwatch from "components/Stopwatch.vue";
 import UserCard from "components/UserCard.vue";
+import { ImageLayerDescription, SegmentationLayerDescription, CellDescription } from "src/config";
 
 export default Vue.extend({
   components: { DropdownList, Stopwatch, UserCard },
@@ -118,22 +120,22 @@ export default Vue.extend({
   },
   computed: {
     cells() {
-      return (storeProxy.activeSegmentationDataset && storeProxy.activeSegmentationDataset.curatedCells) || [];
+      return (storeProxy.activeSegmentationLayer && storeProxy.activeSegmentationLayer.curatedCells) || [];
     },
     activeCells() {
       return storeProxy.activeCells;
     },
-    imageDatasets() {
-      return storeProxy.imageDatasets;
+    imageLayers() {
+      return config.imageLayers;
     },
-    segmentationDatasets() {
-      return storeProxy.segmentationDatasets;
+    segmentationLayers() {
+      return config.segmentationLayers;
     },
-    activeImageDataset() {
-      return storeProxy.activeImageDataset;
+    activeImageLayer() {
+      return storeProxy.activeImageLayer;
     },
-    activeSegmentationDataset() {
-      return storeProxy.activeSegmentationDataset;
+    activeSegmentationLayer() {
+      return storeProxy.activeSegmentationLayer;
     }
   },
   methods: {
@@ -155,25 +157,25 @@ export default Vue.extend({
       this.$root.$emit("toggleSidebar");
       this.showSidebar = !this.showSidebar;
     },
-    selectImageDataset: async function(dataset: DatasetDescription) {
-      const success = await this.appState.selectImageDataset(dataset);
+    selectImageLayer: async function(layer: ImageLayerDescription) {
+      const success = await this.appState.selectImageLayer(layer);
 
       if (success) {
         this.$root.$emit("closeDropdowns");
       } else {
-        console.warn("cannot select dataset because viewer is not yet created");
+        console.warn("cannot select layer because viewer is not yet created");
       }
     },
-    selectSegmentationDataset: async function(dataset: DatasetDescription) {
-      const success = await this.appState.selectSegmentationDataset(dataset);
+    selectSegmentationLayer: async function(layer: SegmentationLayerDescription) {
+      const success = await this.appState.selectSegmentationLayer(layer);
 
       if (success) {
         this.$root.$emit("closeDropdowns");
       } else {
-        console.warn("cannot select dataset because viewer is not yet created");
+        console.warn("cannot select layer because viewer is not yet created");
       }
     },
-    resetDataset() {
+    resetSandbox() {
       this.appState.showResetConfirm = true;
     },
     showAdminPanel() {
@@ -186,10 +188,7 @@ export default Vue.extend({
   },
   mounted() {
     this.$root.$on("confirmReset", () => {
-      if (this.appState.activeImageDataset && this.appState.activeSegmentationDataset) {
-        this.appState.selectImageDataset(this.appState.activeImageDataset);
-        this.appState.selectSegmentationDataset(this.appState.activeSegmentationDataset);
-      }
+      this.appState.selectSandboxLayers();
 
       if (viewer) {
         viewer.layout.reset();
@@ -309,7 +308,7 @@ export default Vue.extend({
   background-size: 70%;
 }
 
-#extensionBar .resetDataset {
+#extensionBar .resetSandbox {
   background-image: url('images/reset.svg');
   background-size: 70%;
 }
