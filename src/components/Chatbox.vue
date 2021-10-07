@@ -80,12 +80,12 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import {defineComponent} from "vue";
 import simplebar from "simplebar-vue";
 import "simplebar/dist/simplebar.min.css";
 import { storeProxy } from "../state";
 import getChatSocket from "../chat_socket";
-export default Vue.extend({
+export default defineComponent({
   components: {
     simplebar
   },

@@ -13,13 +13,13 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import {defineComponent} from "vue";
 import ModalOverlay from "components/ModalOverlay.vue";
 import ResetConfirmDialog from "components/ResetConfirmDialog.vue";
 import AdminPanel from "components/AdminPanel.vue"
 import {storeProxy} from "../state";
 
-export default Vue.extend({
+export default defineComponent({
   data() {
     return {
       appState: storeProxy

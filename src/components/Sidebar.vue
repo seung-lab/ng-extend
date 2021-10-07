@@ -8,14 +8,14 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import {defineComponent} from "vue";
 
 import { storeProxy } from "../state";
 import Leaderboard from "components/Leaderboard.vue";
 import Chatbox from "components/Chatbox.vue";
 import GettingStarted from "components/GettingStarted.vue";
 
-export default Vue.extend({
+export default defineComponent({
   components: { Leaderboard, Chatbox, GettingStarted },
   data: () => {
     return {

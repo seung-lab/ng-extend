@@ -26,12 +26,12 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import {defineComponent} from "vue";
 import { storeProxy, viewer } from "../state";
 
 let uuid = 0;
 
-export default Vue.extend({
+export default defineComponent({
   props: ['dropdownGroup', 'type', 'width', 'hover'],
   data() {
     return {

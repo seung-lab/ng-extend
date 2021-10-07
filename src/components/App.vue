@@ -17,7 +17,7 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import {defineComponent} from "vue";
 import ExtensionBar from "components/ExtensionBar.vue";
 import OverlayContainer from "components/OverlayContainer.vue";
 import Sidebar from "components/Sidebar.vue";
@@ -25,7 +25,7 @@ import NGSidebarHeader from "components/NGSidebarHeader.vue";
 import Introduction from "components/Introduction.vue";
 import {storeProxy} from "../state";
 
-export default Vue.extend({
+export default defineComponent({
   components: { ExtensionBar, OverlayContainer, Sidebar, NGSidebarHeader, Introduction },
   data: () => {
     return {

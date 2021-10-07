@@ -1,17 +1,27 @@
-import {store, Vue} from "./state";
+import {createApp, defineComponent} from 'vue';
+import {store} from "./state";
 import App from 'components/App.vue';
+/*const App = defineComponent({
+  components: {},
+  data: () => {
+    return {
+      greeting: "hello",
+    }
+  }
+});*/
 
 export function setupVueApp() {
-  Vue.directive('visible', function(el, binding) {
-    el.style.visibility = !!binding.value ? 'visible' : 'hidden';
+  const app = createApp(App);
+
+  app.directive('visible', {
+    beforeMount(el, binding) {
+      el.style.visibility = !!binding.value ? 'visible' : 'hidden';
+    }
   });
 
-  const app = new Vue({
-    store,
-    render: h => h(App),
-  });
-  
-  app.$mount('#vueApp');
+  app.use(store);
+
+  app.mount('#vueApp');
 
   return app;
 }

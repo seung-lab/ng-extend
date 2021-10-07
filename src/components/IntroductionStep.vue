@@ -29,7 +29,7 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import {defineComponent} from "vue";
 import { storeProxy } from "../state";
 import { Step, isNextToElementPostition } from "../introduction-steps";
 
@@ -47,7 +47,7 @@ interface ComputedStep {
   videoCache?: HTMLVideoElement,
 }
 
-export default Vue.extend({
+export default defineComponent({
   props: {
     step: Object as () => Step,
     first: Boolean,
@@ -76,7 +76,7 @@ export default Vue.extend({
   },
   methods: {
     updateChipPosition() {
-      const step = this.step;
+      const step = this.step!;
 
       let left = '';
       let top = '';

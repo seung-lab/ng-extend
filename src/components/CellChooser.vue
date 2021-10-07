@@ -8,12 +8,12 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import {defineComponent} from "vue";
 import {storeProxy} from "../state";
 import {CellDescription} from "../config";
 import Overlay from "components/Overlay.vue";
 
-export default Vue.extend({
+export default defineComponent({
   data() {
     return {
       appState: storeProxy

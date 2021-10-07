@@ -101,7 +101,7 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import {defineComponent} from "vue";
 import { storeProxy, viewer, ActionsMenuItem } from "../state";
 import { config } from '../main';
 
@@ -110,7 +110,7 @@ import Stopwatch from "components/Stopwatch.vue";
 import UserCard from "components/UserCard.vue";
 import { ImageLayerDescription, SegmentationLayerDescription, CellDescription } from "src/config";
 
-export default Vue.extend({
+export default defineComponent({
   components: { DropdownList, Stopwatch, UserCard },
   data() {
     return {

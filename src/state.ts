@@ -6,6 +6,7 @@ import {StatusMessage} from 'neuroglancer/status';
 import {vec3} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {Viewer} from 'neuroglancer/viewer';
+import Vue from 'vue';
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
 import ReconnectingWebSocket from 'reconnecting-websocket';
 
@@ -589,15 +590,14 @@ export class AppStore extends createModule
   }
 }
 
-import Vue from 'vue';
-import Vuex from 'vuex';
-Vue.use(Vuex);
+import {createStore} from 'vuex';
 
-export const store = new Vuex.Store({
+export const store = createStore({
   modules: {...extractVuexModule(AppStore)},
 });
 
 export const storeProxy = createProxy(store, AppStore);
+
 export {
   Vue
 };  // vue app needs to be instantiated from this modified VueConstructor

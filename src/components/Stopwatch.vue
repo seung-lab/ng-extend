@@ -10,11 +10,11 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue";
+import {defineComponent} from "vue";
 
 import { storeProxy } from "../state";
 
-export default Vue.extend({
+export default defineComponent({
   data: () => {
     return {
       appState: storeProxy,
