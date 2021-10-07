@@ -2,5 +2,99 @@
     "linkShortenerURL": "https://globalv1.flywire-daf.com/nglstate/post",
     "leaderboardURL": "https://pyrdev.eyewire.org/flywire-leaderboard",
     "chatURL": "wss://pyrdev.eyewire.org/chat",
-    "proctorURL": "https://pyrdev.eyewire.org/flywire-proctor"
+    "proctorURL": "https://pyrdev.eyewire.org/flywire-proctor",
+    "imageLayers": [
+        {
+            "name": "Princeton Campus",
+            "description": "On-premise storage with lower performance elsewhere",
+            "source": "precomputed://matrix://fafbv14-em/aligned/v1",
+            "type": "image",
+            "defaultPerspectiveZoomFactor": 79,
+            "defaultPosition": {
+                "x": 158581,
+                "y": 72226,
+                "z": 2189
+            }
+        },
+        {
+            "name": "BOSSDB: East Coast",
+            "description": "AWS storage by JHU/APL",
+            "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/flywire/fafbv14",
+            "type": "image",
+            "defaultPerspectiveZoomFactor": 79,
+            "defaultPosition": {
+                "x": 158581,
+                "y": 72226,
+                "z": 2189
+            }
+        }
+    ],
+    "segmentationLayers": [
+        {
+            "name": "Sandbox",
+            "description": "A practice dataset. Cell edits are visible to all, but user mistakes don't matter here.",
+            "source": "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26",
+            "layerName": "Sandbox-segmentation-FOR PRACTICE ONLY",
+            "type": "segmentation_with_graph",
+            "color": "#E6C760",
+            "defaultPerspectiveZoomFactor": 79,
+            "defaultPosition": {
+                "x": 158581,
+                "y": 72226,
+                "z": 2189
+            },
+            "curatedCells": [
+                {
+                    "id": "720575940625416797"
+                },
+                {
+                    "id": "720575940637436173"
+                },
+                {
+                    "id": "720575940615251979",
+                    "default": true
+                },
+                {
+                    "id": "720575940610453042",
+                    "default": true
+                }
+            ]
+        },
+        {
+            "name": "Testing",
+            "description": "Take the test! (Use this dataset for the test to gain entry to Production, after practicing in the Sandbox.)",
+            "source": "graphene://https://minnie.microns-daf.com/segmentation/table/fly_training_v2",
+            "layerName": "Testing-segmentation-FOR TEST TAKING ONLY",
+            "type": "segmentation_with_graph",
+            "color": "#E6C760",
+            "defaultPerspectiveZoomFactor": 79,
+            "defaultPosition": {
+                "x": 158581,
+                "y": 72226,
+                "z": 2189
+            }
+        },
+        {
+            "name": "Production",
+            "description": "The \"real\" dataset, accessible after you pass the test. Cell edits all contribute to one high quality dataset.",
+            "source": "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31",
+            "type": "segmentation_with_graph",
+            "defaultPerspectiveZoomFactor": 79,
+            "defaultPosition": {
+                "x": 158581,
+                "y": 72226,
+                "z": 2189
+            },
+            "curatedCells": [
+                {
+                    "id": "720575940621039145",
+                    "default": true
+                },
+                {
+                    "id": "720575940626877799",
+                    "default": true
+                }
+            ]
+        }
+    ]
 }
