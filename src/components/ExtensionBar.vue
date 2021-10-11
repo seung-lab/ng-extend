@@ -33,8 +33,8 @@
     <template v-if="appState.loadedViewer">
       <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="imageLayerChooser" width="240px" hover="Choose image">
         <template #chooserTitle>
-          <span :style="{color: appState.activeImageLayer ? appState.activeImageLayer.color : undefined}">
-            {{ appState.activeImageLayer ? "Image: " + appState.activeImageLayer.name : "Choose Image" }}
+          <span :style="{color: layerState.activeImageLayer ? layerState.activeImageLayer.color : undefined}">
+            {{ layerState.activeImageLayer ? "Image: " + layerState.activeImageLayer.name : "Choose Image" }}
           </span>
         </template>
         <template #listItems>
@@ -49,8 +49,8 @@
       <div class="ng-extend-spacer"></div>
       <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="segmentationLayerChooser" width="220px" hover="Choose dataset">
         <template #chooserTitle>
-          <span :style="{color: appState.activeSegmentationLayer ? appState.activeSegmentationLayer.color : undefined}">
-            {{ appState.activeSegmentationLayer ? "Dataset: " + appState.activeSegmentationLayer.name : "Choose Dataset" }}
+          <span :style="{color: layerState.activeSegmentationLayer ? layerState.activeSegmentationLayer.color : undefined}">
+            {{ layerState.activeSegmentationLayer ? "Dataset: " + layerState.activeSegmentationLayer.name : "Choose Dataset" }}
           </span>
         </template>
         <template #listItems>
@@ -65,7 +65,7 @@
 
       <div class="ng-extend-spacer"></div>
 
-      <template v-if="appState.activeSegmentationLayer && appState.activeSegmentationLayer.name === 'Sandbox'">
+      <template v-if="layerState.activeSegmentationLayer && layerState.activeSegmentationLayer.name === 'Sandbox'">
         <button @click="resetSandbox()" class="resetSandbox iconBtn" title="Restore default neurons"></button>
         <div class="ng-extend-spacer"></div>
       </template>
@@ -102,7 +102,7 @@
 
 <script lang="ts">
 import Vue from "vue";
-import { storeProxy, viewer, ActionsMenuItem } from "../state";
+import { storeProxy, layerProxy, viewer, ActionsMenuItem } from "../state";
 import { config } from '../main';
 
 import DropdownList from "components/DropdownList.vue";
@@ -115,15 +115,16 @@ export default Vue.extend({
   data() {
     return {
       appState: storeProxy,
+      layerState: layerProxy,
       showSidebar: localStorage.getItem("visible") !== "false"
     };
   },
   computed: {
     cells() {
-      return (storeProxy.activeSegmentationLayer && storeProxy.activeSegmentationLayer.curatedCells) || [];
+      return (layerProxy.activeSegmentationLayer && layerProxy.activeSegmentationLayer.curatedCells) || [];
     },
     activeCells() {
-      return storeProxy.activeCells;
+      return layerProxy.activeCells;
     },
     imageLayers() {
       return config.imageLayers;
@@ -132,10 +133,10 @@ export default Vue.extend({
       return config.segmentationLayers;
     },
     activeImageLayer() {
-      return storeProxy.activeImageLayer;
+      return layerProxy.activeImageLayer;
     },
     activeSegmentationLayer() {
-      return storeProxy.activeSegmentationLayer;
+      return layerProxy.activeSegmentationLayer;
     }
   },
   methods: {
@@ -145,7 +146,7 @@ export default Vue.extend({
     //   }
     // },
     selectCell: async function(cell: CellDescription) {
-      const success = await this.appState.selectCell(cell);
+      const success = await layerProxy.selectCell(cell);
 
       if (success) {
         // this.$emit('hide');
@@ -158,7 +159,7 @@ export default Vue.extend({
       this.showSidebar = !this.showSidebar;
     },
     selectImageLayer: async function(layer: ImageLayerDescription) {
-      const success = await this.appState.selectImageLayer(layer);
+      const success = await layerProxy.selectImageLayer(layer);
 
       if (success) {
         this.$root.$emit("closeDropdowns");
@@ -167,7 +168,7 @@ export default Vue.extend({
       }
     },
     selectSegmentationLayer: async function(layer: SegmentationLayerDescription) {
-      const success = await this.appState.selectSegmentationLayer(layer);
+      const success = await layerProxy.selectSegmentationLayer(layer);
 
       if (success) {
         this.$root.$emit("closeDropdowns");
@@ -188,7 +189,7 @@ export default Vue.extend({
   },
   mounted() {
     this.$root.$on("confirmReset", () => {
-      this.appState.selectSandboxLayers();
+      layerProxy.selectSandboxLayers();
 
       if (viewer) {
         viewer.layout.reset();
