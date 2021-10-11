@@ -187,8 +187,8 @@ export class LayerState extends createModule
       return false;
     }
 
-    viewer.navigationState.reset();
-    viewer.perspectiveNavigationState.reset();
+    //viewer.navigationState.reset();
+    //viewer.perspectiveNavigationState.reset();
 
     if (layer.defaultPosition) {
       this.set2dPosition(layer.defaultPosition);
