@@ -12,7 +12,7 @@ import {Viewer} from 'neuroglancer/viewer';
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
 
 import {setupVueApp} from './vueapp';
-import {storeProxy} from './state';
+import {layerProxy, storeProxy} from './state';
 import {connectChatSocket} from './chat_socket';
 import './config';
 
@@ -70,7 +70,7 @@ function setupViewer() {
   setDefaultInputEventBindings(viewer.inputEventBindings);
 
   viewer.loadFromJsonUrl().then(() => {
-    storeProxy.loadActiveDataset();
+    layerProxy.loadActiveDataset();
   });
   viewer.initializeSaver();
 

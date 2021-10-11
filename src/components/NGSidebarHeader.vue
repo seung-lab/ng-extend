@@ -12,7 +12,7 @@
 
 <script lang="ts">
 import Vue from "vue";
-import { storeProxy } from "../state";
+import { layerProxy, storeProxy } from "../state";
 
 
 export default Vue.extend({
@@ -24,7 +24,7 @@ export default Vue.extend({
   methods: {
       selectLayerChange() {
           if (this.appState.viewer.selectedLayer) {
-              this.appState.selectActiveLayer(this.appState.viewer.selectedLayer);
+              layerProxy.selectActiveLayer(this.appState.viewer.selectedLayer);
           }
       }
   }
