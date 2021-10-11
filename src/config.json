@@ -11,8 +11,8 @@
             "type": "image"
         },
         {
-            "name": "Baltimore",
-            "description": "EM images hosted by BossDB in Baltimore, USA",
+            "name": "Maryland",
+            "description": "EM images hosted by BossDB in Maryland, USA",
             "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/flywire/fafbv14",
             "type": "image"
         }
