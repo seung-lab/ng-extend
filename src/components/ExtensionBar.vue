@@ -34,7 +34,7 @@
       <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="imageLayerChooser" width="240px" hover="Choose image">
         <template #chooserTitle>
           <span :style="{color: layerState.activeImageLayer ? layerState.activeImageLayer.color : undefined}">
-            {{ layerState.activeImageLayer ? "Image: " + layerState.activeImageLayer.name : "Choose Image" }}
+            {{ layerState.activeImageLayer ? "Image server: " + layerState.activeImageLayer.name : "Choose Image" }}
           </span>
         </template>
         <template #listItems>
