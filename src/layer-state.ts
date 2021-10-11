@@ -158,6 +158,10 @@ export class LayerState extends createModule
       return false;
     }
 
+    if (this.activeImageLayer === layer) {
+      return true;
+    }
+
     this.activeImageLayer = layer;
     return this.selectLayer(layer);
   }
@@ -166,6 +170,10 @@ export class LayerState extends createModule
   async selectSegmentationLayer(layer: SegmentationLayerDescription) {
     if (!viewer) {
       return false;
+    }
+
+    if (this.activeSegmentationLayer === layer) {
+      return true;
     }
 
     this.activeSegmentationLayer = layer;
