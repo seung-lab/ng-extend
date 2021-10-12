@@ -5,15 +5,15 @@
     "proctorURL": "https://pyrdev.eyewire.org/flywire-proctor",
     "imageLayers": [
         {
-            "name": "Princeton",
-            "description": "EM images hosted on campus, slower elsewhere",
-            "source": "precomputed://matrix://fafbv14-em/aligned/v1",
-            "type": "image"
-        },
-        {
             "name": "Maryland",
             "description": "EM images hosted by BossDB in Maryland, USA",
             "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/flywire/fafbv14",
+            "type": "image"
+        },
+        {
+            "name": "Princeton",
+            "description": "EM images hosted on campus, slower elsewhere",
+            "source": "precomputed://matrix://fafbv14-em/aligned/v1",
             "type": "image"
         }
     ],

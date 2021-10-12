@@ -35,34 +35,31 @@ export class LayerState extends createModule
 
   @action
   async loadActiveDataset() {
-    console.log("LOAD ACTIVE DATASET");
     const numberOfLayers = viewer!.layerManager.managedLayers.length;
 
     if (numberOfLayers > 0) {
       const firstImageLayerName =
           viewer!.layerManager.managedLayers[0].name.split('-')[0];
       for (let layer of config.imageLayers) {
-        console.log("CHECK IMAGE", layer);
         if (layer.name === firstImageLayerName) {
           this.activeImageLayer = layer;
-          console.log("FOUND");
           break;
         }
       }
       const firstSegmentationLayerName =
           viewer!.layerManager.managedLayers[1].name.split('-')[0];
       for (let layer of config.segmentationLayers) {
-        console.log("CHECK SEGMENT", layer);
         if (layer.name === firstSegmentationLayerName) {
           this.activeSegmentationLayer = layer;
-          console.log("FOUND");
           break;
         }
       }
     } else {
       // load sandbox with default view state
       if (config.segmentationLayers.length) {
-        this.selectSandboxLayers();
+        viewer!.layerManager.clear();
+        await this.selectImageLayer(config.imageLayers[0]);
+        this.selectSegmentationLayer(config.segmentationLayers[0]);
       } else {
         StatusMessage.showTemporaryMessage(
             `There are no datasets available.`, 10000, {color: 'yellow'});
@@ -81,17 +78,6 @@ export class LayerState extends createModule
         this.refreshActiveCells();
       }
     }
-  }
-
-  @action
-  async selectSandboxLayers() {
-    if (!viewer) {
-      return false;
-    }
-    viewer.layerManager.clear();
-    await this.selectImageLayer(config.imageLayers[0]);
-    this.selectSegmentationLayer(config.segmentationLayers[0]);
-    return true;
   }
 
   @action
@@ -145,10 +131,8 @@ export class LayerState extends createModule
   async selectActiveLayer(name: string) {
     const layerPanel = getLayerPanel(viewer!)!;
     const layer = getLayerByName(name);
-    console.log('selecting layer', layer);
     if (layer) {
       layerPanel.selectedLayer.layer = layer;
-      console.log('selected layer', layer);
     }
   }
   
@@ -172,10 +156,6 @@ export class LayerState extends createModule
       return false;
     }
 
-    if (this.activeSegmentationLayer === layer) {
-      return true;
-    }
-
     this.activeSegmentationLayer = layer;
     return this.selectLayer(layer);
   }
@@ -190,13 +170,20 @@ export class LayerState extends createModule
   }
 
   @action
+  async resetViewer() {
+    if (!viewer) {
+      return false;
+    }
+    viewer.navigationState.reset();
+    viewer.perspectiveNavigationState.reset();
+    return true;
+  }
+
+  @action
   async selectLayer(layer: ImageLayerDescription|SegmentationLayerDescription) {
     if (!viewer) {
       return false;
     }
-
-    //viewer.navigationState.reset();
-    //viewer.perspectiveNavigationState.reset();
 
     if (layer.defaultPosition) {
       this.set2dPosition(layer.defaultPosition);
@@ -207,8 +194,19 @@ export class LayerState extends createModule
     }
 
     const layerName = layer.layerName ? layer.layerName : `${layer.name}-${layer.type}`;
+
+    let replacedLayer;
+    let replacedLayerPos = 0;
+    for (const existingLayer of viewer.layerManager.managedLayers) {
+      if ((existingLayer.layer instanceof ImageUserLayer) === (layer.type === "image")) {
+        replacedLayer = existingLayer;
+        break;
+      }
+      replacedLayerPos++;
+    }
+
     const layerWithSpec = viewer.layerSpecification.getLayer(layerName, layer);
-    viewer.layerManager.addManagedLayer(layerWithSpec);
+    viewer.layerManager.addManagedLayer(layerWithSpec, replacedLayerPos);
 
     const addedLayer = layerWithSpec.layer;
 
@@ -231,16 +229,10 @@ export class LayerState extends createModule
       this.refreshActiveCells();
     }
 
-    let replacedLayerPos = 0;
-    for (const existingLayer of viewer.layerManager.managedLayers) {
-      const sameType = (existingLayer.layer instanceof ImageUserLayer) === (addedLayer instanceof ImageUserLayer);
-      if (sameType && !existingLayer.name.includes(layer.name)) {
-        viewer.layerManager.removeManagedLayer(existingLayer);
-        break;
-      }
-      replacedLayerPos++;
+    if (replacedLayer) {
+      viewer.layerManager.removeManagedLayer(replacedLayer);
     }
-    viewer.layerManager.reorderManagedLayer(viewer.layerManager.managedLayers.length - 1, replacedLayerPos);
+    //viewer.layerManager.reorderManagedLayer(viewer.layerManager.managedLayers.length - 1, replacedLayerPos);
 
     viewer.differ.purgeHistory();
     viewer.differ.ignoreChanges();

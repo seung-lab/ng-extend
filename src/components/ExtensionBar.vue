@@ -189,7 +189,8 @@ export default Vue.extend({
   },
   mounted() {
     this.$root.$on("confirmReset", () => {
-      layerProxy.selectSandboxLayers();
+      layerProxy.resetViewer();
+      layerProxy.selectSegmentationLayer(config.segmentationLayers[0]);
 
       if (viewer) {
         viewer.layout.reset();
