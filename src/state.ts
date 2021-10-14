@@ -235,12 +235,11 @@ export class AppStore extends createModule
 
     await this.fetchLoggedInUser();
 
+    ws.onopen = () => {
+      this.sendJoinMessage(ws);
+    };
     if (ws.readyState === WebSocket.OPEN) {
       this.sendJoinMessage(ws);
-    } else {
-      ws.onopen = () => {
-        this.sendJoinMessage(ws);
-      };
     }
   }
 
