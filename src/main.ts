@@ -118,7 +118,32 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
-
+  const makeChangelogMenu =
+      (parent: HTMLElement, segmentIDString: string): ContextMenu => {
+        const contextMenu = new ContextMenu(parent);
+        const menu = contextMenu.element;
+        menu.classList.add('neuroglancer-layer-group-viewer-context-menu');
+        for (const [name, model] of <[string, string][]>[
+               [
+                 'Changelog',
+                 `https://prod.flywire-daf.com/progress/api/v1/query?rootid=${
+                     segmentIDString}`
+               ],
+             ]) {
+          // const widget = contextMenu.registerDisposer(new
+          // EnumSelectWidget(model));
+          const label = document.createElement('a');
+          label.style.display = 'flex';
+          label.style.flexDirection = 'row';
+          label.style.whiteSpace = 'nowrap';
+          label.textContent = name;
+          label.href = model;
+          // console.log(model);
+          // label.appendChild(widget.element);
+          menu.appendChild(label);
+        }
+        return contextMenu;
+      };
   const createChangelogButton =
       (segmentIDString: string, queryurl: string): HTMLButtonElement => {
         // Button for the user to copy a segment's ID
@@ -127,24 +152,20 @@ function observeSegmentSelect(targetNode: Element) {
         changelogButton.title =
             `Show changelog for Segment: ${segmentIDString}`;
         changelogButton.innerHTML = '💡';
-        changelogButton.addEventListener('click', async () => {
-          // changelogButton.disabled = true;
+        var cmenu = makeChangelogMenu(changelogButton, segmentIDString);
+        // console.log(cmenu);
+        changelogButton.addEventListener('click', (event: MouseEvent) => {
+          cmenu.show(event);
+        });
+        console.log(queryurl);
+        /*changelogButton.addEventListener('click', async () => {
           const request =
               `${queryurl}${segmentIDString}/tabular_change_log?disp=True`;
 
           const params =
               `location=no,toolbar=no,menubar=no,width=620,left=0,top=0`;
           window.open(request, `Changelog for ${segmentIDString}`, params)
-          /* make fetch request
-          try {
-            const response = await fetch(request);
-            const body = await response.text();
-            changelogButton.disabled = false;
-          } catch (e) {
-            changelogButton.disabled = false;
-            throw e;
-          }*/
-        });
+        });*/
         return changelogButton;
       };
 
@@ -202,6 +223,7 @@ function liveNeuroglancerInjection() {
 
 import {authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
+import {ContextMenu} from 'neuroglancer/ui/context_menu';
 
 class ExtendViewer extends Viewer {
   constructor(public display: DisplayContext) {
