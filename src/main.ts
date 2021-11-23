@@ -119,17 +119,24 @@ function observeSegmentSelect(targetNode: Element) {
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
   const makeChangelogMenu =
-      (parent: HTMLElement, segmentIDString: string): ContextMenu => {
+      (parent: HTMLElement, segmentIDString: string, dataset: string,
+       dsname: string): ContextMenu => {
         const contextMenu = new ContextMenu(parent);
         const menu = contextMenu.element;
         menu.classList.add('neuroglancer-layer-group-viewer-context-menu');
-        for (const [name, model] of <[string, string][]>[
-               [
-                 'Changelog',
-                 `https://prod.flywire-daf.com/progress/api/v1/query?rootid=${
-                     segmentIDString}`
-               ],
-             ]) {
+        const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
+        const host = 'https://prod.flywire-daf.com';
+        const menuOpt = [
+          ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
+        ];
+        if (dsname == 'fly_v31') {
+          menuOpt.push([
+            'Proofreading',
+            `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
+                paramStr}`
+          ])
+        }
+        for (const [name, model] of menuOpt) {
           // const widget = contextMenu.registerDisposer(new
           // EnumSelectWidget(model));
           const label = document.createElement('a');
@@ -137,7 +144,9 @@ function observeSegmentSelect(targetNode: Element) {
           label.style.flexDirection = 'row';
           label.style.whiteSpace = 'nowrap';
           label.textContent = name;
+          label.style.color = 'white';
           label.href = model;
+          label.target = '_blank';
           // console.log(model);
           // label.appendChild(widget.element);
           menu.appendChild(label);
@@ -145,19 +154,21 @@ function observeSegmentSelect(targetNode: Element) {
         return contextMenu;
       };
   const createChangelogButton =
-      (segmentIDString: string, queryurl: string): HTMLButtonElement => {
+      (segmentIDString: string, dataset: DOMStringMap): HTMLButtonElement => {
         // Button for the user to copy a segment's ID
         const changelogButton = document.createElement('button');
         changelogButton.className = 'nge-segment-changelog-button';
         changelogButton.title =
             `Show changelog for Segment: ${segmentIDString}`;
         changelogButton.innerHTML = '💡';
-        var cmenu = makeChangelogMenu(changelogButton, segmentIDString);
+        var cmenu = makeChangelogMenu(
+            changelogButton, segmentIDString, dataset.source!, dataset.dataset!
+        );
         // console.log(cmenu);
         changelogButton.addEventListener('click', (event: MouseEvent) => {
           cmenu.show(event);
         });
-        console.log(queryurl);
+        // console.log(queryurl);
         /*changelogButton.addEventListener('click', async () => {
           const request =
               `${queryurl}${segmentIDString}/tabular_change_log?disp=True`;
@@ -184,12 +195,8 @@ function observeSegmentSelect(targetNode: Element) {
         const segmentIDString =
             (<HTMLElement>item.querySelector('.segment-button')).dataset.segId!;
         if (!item.querySelector('.nge-segment-changelog-button')) {
-          item.appendChild(createChangelogButton(
-              segmentIDString,
-              `${
-                  new URL(item.dataset.source!)
-                      .origin}/segmentation/api/v1/table/${
-                  item.dataset.dataset}/root/`));
+          item.appendChild(
+              createChangelogButton(segmentIDString, item.dataset));
         }
       });
     }
