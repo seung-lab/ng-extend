@@ -119,8 +119,8 @@ function observeSegmentSelect(targetNode: Element) {
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
   const makeChangelogMenu =
-      (parent: HTMLElement, segmentIDString: string, dataset: string,
-       dsname: string): ContextMenu => {
+      (parent: HTMLElement, segmentIDString: string,
+       dataset: string): ContextMenu => {
         const contextMenu = new ContextMenu(parent);
         const menu = contextMenu.element;
         menu.classList.add('neuroglancer-layer-group-viewer-context-menu');
@@ -129,7 +129,7 @@ function observeSegmentSelect(targetNode: Element) {
         const menuOpt = [
           ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
         ];
-        if (dsname == 'fly_v31') {
+        if (dataset == 'fly_v31') {
           menuOpt.push([
             'Proofreading',
             `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
@@ -162,8 +162,7 @@ function observeSegmentSelect(targetNode: Element) {
             `Show changelog for Segment: ${segmentIDString}`;
         changelogButton.innerHTML = '💡';
         var cmenu = makeChangelogMenu(
-            changelogButton, segmentIDString, dataset.source!, dataset.dataset!
-        );
+            changelogButton, segmentIDString, dataset.dataset!);
         // console.log(cmenu);
         changelogButton.addEventListener('click', (event: MouseEvent) => {
           cmenu.show(event);
