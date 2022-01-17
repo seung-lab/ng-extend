@@ -55,3 +55,11 @@ div.segment-div > button.segment-copy-button, div.segment-div > button.nge-segme
 .neuroglancer-minimizable-group {
     flex: unset;
 }
+
+.nge-segment-management-field-coord {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: #aaa;
+  pointer-events: none;
+}

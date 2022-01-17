@@ -179,6 +179,56 @@ function observeSegmentSelect(targetNode: Element) {
         return changelogButton;
       };
 
+  const createManagementButton =
+      (toggle: HTMLParagraphElement): HTMLButtonElement => {
+        // Button for the user to copy a segment's ID
+        const button = document.createElement('button');
+        button.className = 'nge-segment-management-button';
+        button.title = `Toggle`;
+        button.innerHTML = '⬆️';
+        button.addEventListener('click', () => {
+          toggle.style.display =
+              toggle.style.display == 'none' ? 'block' : 'none';
+        });
+
+        return button;
+      };
+
+  const managementField = (segmentIDString: string, dataset: DOMStringMap):
+      HTMLParagraphElement => {
+        // Button for the user to copy a segment's ID
+        const field = document.createElement('p');
+        const input = document.createElement('input');
+        const anbtn = document.createElement('button');
+        const sbbtn = document.createElement('button');
+        anbtn.className = 'nge-segment-management-field-annotate';
+        anbtn.title = `Make submission point`;
+        anbtn.innerHTML = '⚬';
+        sbbtn.className = 'nge-segment-management-field-submit';
+        sbbtn.title = `Submit`;
+        sbbtn.innerHTML = '✔️';
+        input.classList.add('nge-segment-management-field-coord');
+        input.spellcheck = false;
+        input.autocomplete = 'off';
+        input.type = 'text';
+        input.disabled = true;
+        input.style.width = '29ch';
+        input.value = 'x,y,z';
+
+        anbtn.addEventListener(
+            'click',
+            () => {
+
+            });
+        sbbtn.addEventListener('click', () => {
+          segmentIDString;
+          dataset;
+        });
+        field.append(input, anbtn, sbbtn);
+        field.style.display = 'none';
+        return field;
+      };
+
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
       let buttonList: Element|HTMLElement[] = [];
@@ -196,6 +246,9 @@ function observeSegmentSelect(targetNode: Element) {
         if (!item.querySelector('.nge-segment-changelog-button')) {
           item.appendChild(
               createChangelogButton(segmentIDString, item.dataset));
+          const field = managementField(segmentIDString, item.dataset)
+          item.appendChild(createManagementButton(field));
+          item.appendChild(field);
         }
       });
     }
