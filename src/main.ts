@@ -1,4 +1,5 @@
 require('neuroglancer/ui/default_viewer.css');
+require('./widgets/seg_management.css');
 require('./main.css');
 
 import 'neuroglancer/sliceview/chunk_format_handlers';
@@ -128,6 +129,13 @@ function observeSegmentSelect(targetNode: Element) {
         const host = 'https://prod.flywire-daf.com';
         const menuOpt = [
           ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
+          [
+            'Submit', `#`,
+            (e: MouseEvent) => {
+              e.preventDefault();
+              new SubmitDialog((<any>window).viewer, segmentIDString)
+            }
+          ],
         ];
         if (dataset == 'fly_v31') {
           menuOpt.push([
@@ -136,19 +144,22 @@ function observeSegmentSelect(targetNode: Element) {
                 paramStr}`
           ])
         }
-        for (const [name, model] of menuOpt) {
+        for (const [name, model, action] of menuOpt) {
           // const widget = contextMenu.registerDisposer(new
           // EnumSelectWidget(model));
           const label = document.createElement('a');
           label.style.display = 'flex';
           label.style.flexDirection = 'row';
           label.style.whiteSpace = 'nowrap';
-          label.textContent = name;
+          label.textContent = `${name}`;
           label.style.color = 'white';
-          label.href = model;
+          label.href = `${model}`;
           label.target = '_blank';
           // console.log(model);
           // label.appendChild(widget.element);
+          if (action) {
+            label.addEventListener('click', <any>action!);
+          }
           menu.appendChild(label);
         }
         return contextMenu;
@@ -178,56 +189,56 @@ function observeSegmentSelect(targetNode: Element) {
         });*/
         return changelogButton;
       };
+  /*
+    const createManagementButton =
+        (toggle: HTMLParagraphElement): HTMLButtonElement => {
+          // Button for the user to copy a segment's ID
+          const button = document.createElement('button');
+          button.className = 'nge-segment-management-button';
+          button.title = `Toggle`;
+          button.innerHTML = '⬆️';
+          button.addEventListener('click', () => {
+            toggle.style.display =
+                toggle.style.display == 'none' ? 'block' : 'none';
+          });
 
-  const createManagementButton =
-      (toggle: HTMLParagraphElement): HTMLButtonElement => {
-        // Button for the user to copy a segment's ID
-        const button = document.createElement('button');
-        button.className = 'nge-segment-management-button';
-        button.title = `Toggle`;
-        button.innerHTML = '⬆️';
-        button.addEventListener('click', () => {
-          toggle.style.display =
-              toggle.style.display == 'none' ? 'block' : 'none';
-        });
+          return button;
+        };
 
-        return button;
-      };
+    const managementField = (segmentIDString: string, dataset: DOMStringMap):
+        HTMLParagraphElement => {
+          // Button for the user to copy a segment's ID
+          const field = document.createElement('p');
+          const input = document.createElement('input');
+          const anbtn = document.createElement('button');
+          const sbbtn = document.createElement('button');
+          anbtn.className = 'nge-segment-management-field-annotate';
+          anbtn.title = `Make submission point`;
+          anbtn.innerHTML = '⚬';
+          sbbtn.className = 'nge-segment-management-field-submit';
+          sbbtn.title = `Submit`;
+          sbbtn.innerHTML = '✔️';
+          input.classList.add('nge-segment-management-field-coord');
+          input.spellcheck = false;
+          input.autocomplete = 'off';
+          input.type = 'text';
+          input.disabled = true;
+          input.style.width = '29ch';
+          input.value = `x ,  y ,  z `;
 
-  const managementField = (segmentIDString: string, dataset: DOMStringMap):
-      HTMLParagraphElement => {
-        // Button for the user to copy a segment's ID
-        const field = document.createElement('p');
-        const input = document.createElement('input');
-        const anbtn = document.createElement('button');
-        const sbbtn = document.createElement('button');
-        anbtn.className = 'nge-segment-management-field-annotate';
-        anbtn.title = `Make submission point`;
-        anbtn.innerHTML = '⚬';
-        sbbtn.className = 'nge-segment-management-field-submit';
-        sbbtn.title = `Submit`;
-        sbbtn.innerHTML = '✔️';
-        input.classList.add('nge-segment-management-field-coord');
-        input.spellcheck = false;
-        input.autocomplete = 'off';
-        input.type = 'text';
-        input.disabled = true;
-        input.style.width = '29ch';
-        input.value = 'x,y,z';
-
-        anbtn.addEventListener(
-            'click',
-            () => {
-
-            });
-        sbbtn.addEventListener('click', () => {
-          segmentIDString;
-          dataset;
-        });
-        field.append(input, anbtn, sbbtn);
-        field.style.display = 'none';
-        return field;
-      };
+          anbtn.addEventListener('click', () => {
+            layerProxy.getSegmentationUserLayer();
+            // this.layer.tool.value = new ManagementMarkerTool(this.layer);
+          });
+          sbbtn.addEventListener('click', () => {
+            segmentIDString;
+            dataset;
+          });
+          field.append(input, anbtn, sbbtn);
+          field.style.display = 'none';
+          return field;
+        };
+  */
 
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
@@ -246,9 +257,9 @@ function observeSegmentSelect(targetNode: Element) {
         if (!item.querySelector('.nge-segment-changelog-button')) {
           item.appendChild(
               createChangelogButton(segmentIDString, item.dataset));
-          const field = managementField(segmentIDString, item.dataset)
-          item.appendChild(createManagementButton(field));
-          item.appendChild(field);
+          // const field = managementField(segmentIDString, item.dataset)
+          // item.appendChild(createManagementButton(field));
+          // item.appendChild(field);
         }
       });
     }
@@ -283,6 +294,7 @@ function liveNeuroglancerInjection() {
 import {authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
+import {SubmitDialog} from './widgets/seg_management';
 
 class ExtendViewer extends Viewer {
   constructor(public display: DisplayContext) {

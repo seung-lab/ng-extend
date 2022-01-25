@@ -1,11 +1,12 @@
-import {action, createModule} from 'vuex-class-component';
 import {ImageUserLayer} from 'neuroglancer/image_user_layer';
-import {vec3} from 'neuroglancer/util/geom';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {StatusMessage} from 'neuroglancer/status';
+import {vec3} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
-import {config} from './main';
+import {action, createModule} from 'vuex-class-component';
+
 import {CellDescription, ImageLayerDescription, SegmentationLayerDescription, Vector3} from './config';
+import {config} from './main';
 import {getLayerPanel, viewer} from './state';
 
 function getLayerByName(name: string) {
@@ -86,7 +87,8 @@ export class LayerState extends createModule
       return false;
     }
 
-    if (!this.activeSegmentationLayer || !this.activeSegmentationLayer.curatedCells) {
+    if (!this.activeSegmentationLayer ||
+        !this.activeSegmentationLayer.curatedCells) {
       return false;
     }
 
@@ -135,7 +137,7 @@ export class LayerState extends createModule
       layerPanel.selectedLayer.layer = layer;
     }
   }
-  
+
   @action
   async selectImageLayer(layer: ImageLayerDescription) {
     if (!viewer) {
@@ -160,12 +162,28 @@ export class LayerState extends createModule
     return this.selectLayer(layer);
   }
 
+  getSegmentationUserLayer() {
+    if (!viewer) {
+      return;
+    }
+    const layer = this.activeSegmentationLayer!;
+    const layerName = layer.layerName!;
+    const layerWithSpec = viewer.layerSpecification.getLayer(layerName, layer);
+    const addedLayer = layerWithSpec.layer;
+
+    if (addedLayer instanceof SegmentationUserLayer) {
+      return addedLayer;
+    }
+    return;
+  }
+
   @action
   async set2dPosition({x, y, z}: Vector3) {
     if (viewer) {
       viewer.navigationState.position.setVoxelCoordinates(
           vec3.fromValues(x, y, z));
-      // viewer.navigationState.position.spatialCoordinatesValid = false; // TODO what was this for? seems to cause issues
+      // viewer.navigationState.position.spatialCoordinatesValid = false; //
+      // TODO what was this for? seems to cause issues
     }
   }
 
@@ -190,15 +208,17 @@ export class LayerState extends createModule
     }
     if (layer.defaultPerspectiveZoomFactor !== undefined) {
       viewer.perspectiveNavigationState.zoomFactor.value =
-      layer.defaultPerspectiveZoomFactor;
+          layer.defaultPerspectiveZoomFactor;
     }
 
-    const layerName = layer.layerName ? layer.layerName : `${layer.name}-${layer.type}`;
+    const layerName =
+        layer.layerName ? layer.layerName : `${layer.name}-${layer.type}`;
 
     let replacedLayer;
     let replacedLayerPos = 0;
     for (const existingLayer of viewer.layerManager.managedLayers) {
-      if ((existingLayer.layer instanceof ImageUserLayer) === (layer.type === "image")) {
+      if ((existingLayer.layer instanceof ImageUserLayer) ===
+          (layer.type === 'image')) {
         replacedLayer = existingLayer;
         break;
       }
@@ -211,10 +231,11 @@ export class LayerState extends createModule
     const addedLayer = layerWithSpec.layer;
 
     if (addedLayer instanceof ImageUserLayer) {
-      await addedLayer.multiscaleSource; // wait because there is an error if both layers load at the same time?
+      await addedLayer.multiscaleSource;  // wait because there is an error if
+                                          // both layers load at the same time?
     } else if (addedLayer instanceof SegmentationUserLayer) {
       this.selectActiveLayer(layerName);
-      if ("curatedCells" in layer && layer.curatedCells) {
+      if ('curatedCells' in layer && layer.curatedCells) {
         for (let cell of layer.curatedCells) {
           if (cell.default) {
             this.selectCell(cell);
@@ -232,7 +253,8 @@ export class LayerState extends createModule
     if (replacedLayer) {
       viewer.layerManager.removeManagedLayer(replacedLayer);
     }
-    //viewer.layerManager.reorderManagedLayer(viewer.layerManager.managedLayers.length - 1, replacedLayerPos);
+    // viewer.layerManager.reorderManagedLayer(viewer.layerManager.managedLayers.length
+    // - 1, replacedLayerPos);
 
     viewer.differ.purgeHistory();
     viewer.differ.ignoreChanges();
