@@ -310,11 +310,8 @@ export class AppStore extends createModule
   @action
   async updateUserInfo() {
     if (!this.loggedInUser) return;
-    // TODO fix the user info (fetch # edits)
-    /*const url = config.leaderboardURL + '/userInfo?userID=' +
-    this.loggedInUser!.id; fetch(url).then(result => result.json()).then(async
-    (json) => { this.userInfo = json;
-    });*/
+    const url = config.leaderboardURL + '/userInfo?userID=' + this.loggedInUser!.id;
+    fetch(url).then(result => result.json()).then(async(json) => { this.userInfo = json; });
   }
 
   @action
