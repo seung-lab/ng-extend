@@ -7,18 +7,18 @@
       <div class="nge-usercard-info">
         <div class="nge-usercard-name">{{ appState.loggedInUser.name }}</div>
         <div class="nge-usercard-email">{{ appState.loggedInUser.email }}</div>
-        <div class="nge-usercard-date">joined {{ appState.loggedInUser.joinDate }}</div>
+        <div class="nge-usercard-date" v-if="appState.loggedInUser.joinDate !== '6/30/2020'">joined {{ appState.loggedInUser.joinDate }}</div>
       </div>
     </div>
     <div class="nge-usercard-edits" v-if="appState.userInfo">
-      <div class="nge-usercard-edits-title">Edits</div>
+      <div class="nge-usercard-edits-title">Edits in Production</div>
       <div class="nge-usercard-edits-table">
         <div class="nge-usercard-edits-section">
-          <div class="nge-usercard-edits-timespan">Day</div>
+          <div class="nge-usercard-edits-timespan">Today</div>
           <div class="nge-usercard-edits-count">{{ appState.userInfo.editsToday }}</div>
         </div>
         <div class="nge-usercard-edits-section">
-          <div class="nge-usercard-edits-timespan">Week</div>
+          <div class="nge-usercard-edits-timespan">Past 7 Days</div>
           <div class="nge-usercard-edits-count">{{ appState.userInfo.editsThisWeek }}</div>
         </div>
         <div class="nge-usercard-edits-section">
@@ -97,14 +97,17 @@ export default Vue.extend({
   padding: 0px 20px 10px 20px;
 }
 .nge-usercard-edits-title {
-  padding-bottom: 10px;
+  font-size: 1.2em;
   font-weight: bold;
   border-bottom: solid 1px var(--color-light-bg);
 }
 .nge-usercard-edits-table {
   display: grid;
   grid-template-columns: auto auto auto;
-  padding-top: 10px;
+  padding-top: 5px;
+}
+.nge-usercard-edits-timespan {
+  font-size: 0.9em;
 }
 .nge-usercard-edits-count {
   font-size: 1.2em;
