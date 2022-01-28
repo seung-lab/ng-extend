@@ -17,6 +17,9 @@
         <a href="https://join.slack.com/t/flywire-forum/shared_invite/zt-d6pyjonk-uC7_kjcjU~8c64t~Qid~oQ" target="_blank">Slack Forum</a>
       </div>
       <div class="nge-gs-link">
+        <a href="https://docs.google.com/document/d/1lbXy-cpFyNB47_qAJi-A53vyNRvYAl8KE0bfXm2PLrE/edit" target="_blank">Tools</a>
+      </div>
+      <div class="nge-gs-link">
         <a href="https://flywire.ai/support.html" target="_blank">Support</a>
       </div>
       <div class="nge-gs-link">
