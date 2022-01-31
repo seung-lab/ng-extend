@@ -130,7 +130,7 @@ function observeSegmentSelect(targetNode: Element) {
         const menuOpt = [
           ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
           [
-            'Submit', `#`,
+            'Mark complete', ``,
             (e: MouseEvent) => {
               e.preventDefault();
               new SubmitDialog((<any>window).viewer, segmentIDString)
@@ -145,8 +145,6 @@ function observeSegmentSelect(targetNode: Element) {
           ])
         }
         for (const [name, model, action] of menuOpt) {
-          // const widget = contextMenu.registerDisposer(new
-          // EnumSelectWidget(model));
           const label = document.createElement('a');
           label.style.display = 'flex';
           label.style.flexDirection = 'row';
@@ -155,8 +153,6 @@ function observeSegmentSelect(targetNode: Element) {
           label.style.color = 'white';
           label.href = `${model}`;
           label.target = '_blank';
-          // console.log(model);
-          // label.appendChild(widget.element);
           if (action) {
             label.addEventListener('click', <any>action!);
           }
@@ -168,77 +164,17 @@ function observeSegmentSelect(targetNode: Element) {
       (segmentIDString: string, dataset: DOMStringMap): HTMLButtonElement => {
         // Button for the user to copy a segment's ID
         const changelogButton = document.createElement('button');
-        changelogButton.className = 'nge-segment-changelog-button';
+        changelogButton.className = 'nge-segment-changelog-button lightbulb';
         changelogButton.title =
             `Show changelog for Segment: ${segmentIDString}`;
-        changelogButton.innerHTML = '💡';
+        changelogButton.innerHTML = '⠀';
         var cmenu = makeChangelogMenu(
             changelogButton, segmentIDString, dataset.dataset!);
-        // console.log(cmenu);
         changelogButton.addEventListener('click', (event: MouseEvent) => {
           cmenu.show(event);
         });
-        // console.log(queryurl);
-        /*changelogButton.addEventListener('click', async () => {
-          const request =
-              `${queryurl}${segmentIDString}/tabular_change_log?disp=True`;
-
-          const params =
-              `location=no,toolbar=no,menubar=no,width=620,left=0,top=0`;
-          window.open(request, `Changelog for ${segmentIDString}`, params)
-        });*/
         return changelogButton;
       };
-  /*
-    const createManagementButton =
-        (toggle: HTMLParagraphElement): HTMLButtonElement => {
-          // Button for the user to copy a segment's ID
-          const button = document.createElement('button');
-          button.className = 'nge-segment-management-button';
-          button.title = `Toggle`;
-          button.innerHTML = '⬆️';
-          button.addEventListener('click', () => {
-            toggle.style.display =
-                toggle.style.display == 'none' ? 'block' : 'none';
-          });
-
-          return button;
-        };
-
-    const managementField = (segmentIDString: string, dataset: DOMStringMap):
-        HTMLParagraphElement => {
-          // Button for the user to copy a segment's ID
-          const field = document.createElement('p');
-          const input = document.createElement('input');
-          const anbtn = document.createElement('button');
-          const sbbtn = document.createElement('button');
-          anbtn.className = 'nge-segment-management-field-annotate';
-          anbtn.title = `Make submission point`;
-          anbtn.innerHTML = '⚬';
-          sbbtn.className = 'nge-segment-management-field-submit';
-          sbbtn.title = `Submit`;
-          sbbtn.innerHTML = '✔️';
-          input.classList.add('nge-segment-management-field-coord');
-          input.spellcheck = false;
-          input.autocomplete = 'off';
-          input.type = 'text';
-          input.disabled = true;
-          input.style.width = '29ch';
-          input.value = `x ,  y ,  z `;
-
-          anbtn.addEventListener('click', () => {
-            layerProxy.getSegmentationUserLayer();
-            // this.layer.tool.value = new ManagementMarkerTool(this.layer);
-          });
-          sbbtn.addEventListener('click', () => {
-            segmentIDString;
-            dataset;
-          });
-          field.append(input, anbtn, sbbtn);
-          field.style.display = 'none';
-          return field;
-        };
-  */
 
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
@@ -254,13 +190,29 @@ function observeSegmentSelect(targetNode: Element) {
       buttonList.forEach(item => {
         const segmentIDString =
             (<HTMLElement>item.querySelector('.segment-button')).dataset.segId!;
-        if (!item.querySelector('.nge-segment-changelog-button')) {
-          item.appendChild(
-              createChangelogButton(segmentIDString, item.dataset));
+        let bulb =
+            item.querySelector('.nge-segment-changelog-button.lightbulb');
+        if (bulb == null) {
+          bulb = createChangelogButton(segmentIDString, item.dataset);
+          item.appendChild(bulb);
           // const field = managementField(segmentIDString, item.dataset)
           // item.appendChild(createManagementButton(field));
           // item.appendChild(field);
         }
+        fetch(
+            `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
+                segmentIDString}`,
+            {credentials: 'include'})
+            .then(response => response.json())
+            .then(data => {
+              if (Object.keys(data.valid).length) {
+                bulb!.classList.add('active');
+              }
+            })
+            .catch(() => {
+              bulb!.classList.add('outdated');
+              (<HTMLButtonElement>bulb).title = 'Outdated Segment';
+            });
       });
     }
   };

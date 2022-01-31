@@ -47,10 +47,6 @@ div.segment-div > .segment-color-selector {
     height: 23px;
 }
 
-div.segment-div > button.segment-copy-button, div.segment-div > button.nge-segment-changelog-button {
-    padding-right: 2px;
-    padding-left: 2px;
-}
 
 .neuroglancer-minimizable-group {
     flex: unset;

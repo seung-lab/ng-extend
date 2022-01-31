@@ -18,3 +18,21 @@ button.nge_segment {
   filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#0FB18B',endColorstr='#0292AE' , GradientType=1);
   border: none;
 }
+
+.lightbulb {
+  background-image: url('images/bulb.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+.lightbulb.active {
+  background-image: url('images/bulb_green.png');
+}
+
+.lightbulb.active {
+  background-image: url('images/bulb_green.png');
+}
+
+.lightbulb.outdated {
+  background-image: url('images/bulb_red.png');
+}

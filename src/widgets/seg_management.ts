@@ -21,6 +21,7 @@ import {AnnotationLayerState} from 'neuroglancer/annotation/frontend';
 import {CoordinateTransform} from 'neuroglancer/coordinate_transform';
 import {MouseSelectionState} from 'neuroglancer/layer';
 import {Overlay} from 'neuroglancer/overlay';
+import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {SegmentationUserLayerWithGraph} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {StatusMessage} from 'neuroglancer/status';
 import {trackableAlphaValue} from 'neuroglancer/trackable_alpha';
@@ -193,23 +194,32 @@ export class SubmitDialog extends Overlay {
     let {content} = this;
     content.style.overflow = 'visible';
     content.classList.add('ng-dark');
-
     const title = document.createElement('h1');
-    title.innerText = 'Submit Neuron';
     const descr = document.createElement('div');
-    descr.innerText = 'Select a representative point.';
-    descr.style.paddingBottom = '10px';
-    descr.style.maxWidth = '360px';
 
-    const viewSimple = document.createElement('div');
+    descr.style.paddingBottom = '10px';
+    descr.style.maxWidth = '480px';
+
+    const advanceTab = document.createElement('button');
+    advanceTab.innerHTML = 'Info';
+    advanceTab.type = 'button';
+    advanceTab.classList.add('special-button');
+    const viewAdvanc = document.createElement('div');
+    advanceTab.addEventListener('click', () => {
+      viewAdvanc.classList.toggle('ng-hidden');
+    });
     {
+      viewAdvanc.classList.add('ng-hidden');
       let out = vec3.fromValues(0, 0, 0);
       viewer.navigationState.position.getVoxelCoordinates(out);
       let id = this.insertField(
           {content: sid, fieldTitle: 'segmentID', disabled: true});
-      let x = this.insertField({content: out[0], fieldTitle: 'x'});
-      let y = this.insertField({content: out[1], fieldTitle: 'y'});
-      let z = this.insertField({content: out[2], fieldTitle: 'z'});
+      let x =
+          this.insertField({content: out[0], fieldTitle: 'x', disabled: true});
+      let y =
+          this.insertField({content: out[1], fieldTitle: 'y', disabled: true});
+      let z =
+          this.insertField({content: out[2], fieldTitle: 'z', disabled: true});
       let updateView = () => {
         viewer.navigationState.position.setVoxelCoordinates(
             this.htmlToVec3(x, y, z));
@@ -218,23 +228,61 @@ export class SubmitDialog extends Overlay {
       y.addEventListener('change', updateView);
       z.addEventListener('change', updateView);
 
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'nge_segment';
-      btn.addEventListener('click', () => {
+
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'nge_segment';
+      cancel.addEventListener('click', () => {
         // apiURL
-        window.open();
         this.dispose();
       });
-      btn.innerText = 'Submit';
-      btn.title = 'Submit';
-      viewSimple.append(
-          'Segment: ', id, br(), br(), 'x: ', x, ' y: ', y, ' z: ', z, br(),
-          br(), btn);
+      cancel.innerText = 'Submit';
+      cancel.title = 'Submit';
+      viewAdvanc.append(
+          'Segment: ', id, br(), br(), 'x: ', x, ' y: ', y, ' z: ', z, br());
     }
 
-    formMain.append(title, descr, viewSimple, br());
+    const sub = document.createElement('button');
+    sub.type = 'button';
+    sub.className = 'nge_segment';
+    sub.addEventListener('click', () => {
+      // apiURL
 
+      StatusMessage.showMessage(`Thank you for your assessment!`);
+
+      // window.open();
+      this.dispose();
+    });
+    sub.innerText = 'Yes';
+    sub.title = 'Submit neuron as complete.';
+
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'nge_segment';
+    cancel.addEventListener('click', () => {
+      // apiURL
+      this.dispose();
+    });
+    cancel.innerText = 'Cancel';
+    cancel.title = 'Cancel';
+
+    if (this.checkInSelectedSegment(sid)) {
+      title.innerText = 'Mark Complete';
+      descr.innerHTML = `To mark proofreading of this neuron as complete:
+    <ol>
+    <li>Are the crosshairs centered inside the nucleus? (Or if no soma is present, in a distinctive backbone?)</li>
+    <li>Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers? (For more information about proofreading, see <a href="https://drive.google.com/open?id=1GF4Nh8UPsECMAicaaTOqxxM5u1taO4fW">this tutorial</a>.)</li>
+    </ol>`;
+      formMain.append(
+          title, descr, br(), sub, ' ', cancel, br(), br(), advanceTab, br(),
+          viewAdvanc);
+    } else {
+      title.innerText = 'Error';
+      descr.innerHTML =
+          `The crosshairs are not centered inside the selected neuron`;
+      formMain.append(
+          title, descr, br(), cancel, br(), br(), advanceTab, br(), viewAdvanc);
+    }
     let modal = document.createElement('div');
     content.appendChild(modal);
 
@@ -266,12 +314,30 @@ export class SubmitDialog extends Overlay {
     // form.append(label || '', ': ', text);
     return text;
   }
+
+  private checkInSelectedSegment(sid: string) {
+    const layers = this.viewer!.layerManager.managedLayers;
+
+    for (const {layer} of layers) {
+      if (layer instanceof SegmentationUserLayer) {
+        console.log(layer.displayState.segmentSelectionState.selectedSegment
+                        .toString());
+        if (sid ==
+            layer.displayState.segmentSelectionState.selectedSegment
+                .toString()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 }
 
 /*form: HTMLElement, popupID?: string, content?:
 string, textId?: string, disabled = false, fieldTitle = '', btnName?: string,
 btnTitle?: string, btnAct?: EventListener, btnClass?: string, readonly = true,
 newLine = true */
+
 type FieldConfig = {
   content?: string|number,
   fieldTitle?: string,
