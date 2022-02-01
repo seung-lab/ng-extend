@@ -29,10 +29,10 @@ button.nge_segment {
   background-image: url('images/bulb_green.png');
 }
 
-.lightbulb.active {
-  background-image: url('images/bulb_green.png');
+.lightbulb.error {
+  background-image: url('images/bulb_gray.png');
 }
 
 .lightbulb.outdated {
-  background-image: url('images/bulb_gray.png');
+  background-image: url('images/bulb_red.png');
 }

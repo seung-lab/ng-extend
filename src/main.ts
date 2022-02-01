@@ -3,19 +3,20 @@ require('./widgets/seg_management.css');
 require('./main.css');
 
 import 'neuroglancer/sliceview/chunk_format_handlers';
-
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {disableContextMenu, disableWheel} from 'neuroglancer/ui/disable_default_actions';
 import {DisplayContext} from 'neuroglancer/display_context';
 import {StatusMessage} from 'neuroglancer/status';
 import {Viewer} from 'neuroglancer/viewer';
-
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
-
 import {setupVueApp} from './vueapp';
 import {layerProxy, storeProxy} from './state';
 import {connectChatSocket} from './chat_socket';
 import './config';
+import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
+import Config from './config';
+import {ContextMenu} from 'neuroglancer/ui/context_menu';
+// import {SubmitDialog} from './widgets/seg_management';
 
 window.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
@@ -129,13 +130,13 @@ function observeSegmentSelect(targetNode: Element) {
         const host = 'https://prod.flywire-daf.com';
         const menuOpt = [
           ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
-          [
+          /*[
             'Mark complete', ``,
             (e: MouseEvent) => {
               e.preventDefault();
               new SubmitDialog((<any>window).viewer, segmentIDString)
             }
-          ],
+          ],*/
         ];
         if (dataset == 'fly_v31') {
           menuOpt.push([
@@ -194,6 +195,7 @@ function observeSegmentSelect(targetNode: Element) {
             item.querySelector('.nge-segment-changelog-button.lightbulb');
         if (bulb == null) {
           bulb = createChangelogButton(segmentIDString, item.dataset);
+          bulb.classList.add('error');
           item.appendChild(bulb);
           // const field = managementField(segmentIDString, item.dataset)
           // item.appendChild(createManagementButton(field));
@@ -206,13 +208,14 @@ function observeSegmentSelect(targetNode: Element) {
             .then(response => response.json())
             .then(data => {
               if (Object.keys(data.valid).length) {
+                bulb!.classList.remove('error');
                 bulb!.classList.add('active');
               }
             })
-            .catch(() => {
-              bulb!.classList.add('outdated');
-              //(<HTMLButtonElement>bulb).title = 'Outdated Segment';
-            });
+            .catch(
+                () => {
+                    //(<HTMLButtonElement>bulb).title = 'Outdated Segment';
+                });
       });
     }
   };
@@ -242,12 +245,6 @@ function liveNeuroglancerInjection() {
   }
   observeSegmentSelect(watchNode);
 }
-
-import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
-import Config from './config';
-import {ContextMenu} from 'neuroglancer/ui/context_menu';
-import {SubmitDialog} from './widgets/seg_management';
-
 class ExtendViewer extends Viewer {
   constructor(public display: DisplayContext) {
     super(display, {
