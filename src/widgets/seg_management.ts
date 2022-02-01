@@ -16,169 +16,11 @@
 
 import 'neuroglancer/save_state/save_state.css';
 
-import {annotationToJson, AnnotationType, LocalAnnotationSource, Point, restoreAnnotation} from 'neuroglancer/annotation';
-import {AnnotationLayerState} from 'neuroglancer/annotation/frontend';
-import {CoordinateTransform} from 'neuroglancer/coordinate_transform';
-import {MouseSelectionState} from 'neuroglancer/layer';
 import {Overlay} from 'neuroglancer/overlay';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
-import {SegmentationUserLayerWithGraph} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {StatusMessage} from 'neuroglancer/status';
-import {trackableAlphaValue} from 'neuroglancer/trackable_alpha';
-import {WatchableRefCounted} from 'neuroglancer/trackable_value';
-import {Tool} from 'neuroglancer/ui/tool';
-import {serializeColor, TrackableRGB} from 'neuroglancer/util/color';
-import {RefCounted} from 'neuroglancer/util/disposable';
 import {vec3} from 'neuroglancer/util/geom';
-import {NullarySignal} from 'neuroglancer/util/signal';
 import {Viewer} from 'neuroglancer/viewer';
-
-
-const ANNOTATION_COLOR_JSON_KEY = 'color';
-const PATH_OBJECT_JSON_KEY = 'pathObject';
-
-// const PATH_SOURCE_JSON_KEY = 'source';
-const PATH_TARGET_JSON_KEY = 'target';
-// const HAS_PATH_JSON_KEY = 'hasPath';
-const ANNOTATION_PATH_JSON_KEY = 'annotationPath';
-
-export class PathFinderState extends RefCounted {
-  PositionMarker: PositionMarker;
-  annotationLayerState =
-      this.registerDisposer(new WatchableRefCounted<AnnotationLayerState>());
-  pathAnnotationColor = new TrackableRGB(vec3.fromValues(1.0, 1.0, 0.0));
-  changed = new NullarySignal();
-
-  constructor(transform: CoordinateTransform) {
-    super();
-    const annotationSource = this.registerDisposer(new LocalAnnotationSource());
-    this.PositionMarker =
-        this.registerDisposer(new PositionMarker(annotationSource));
-    this.annotationLayerState.value = new AnnotationLayerState({
-      transform,
-      source: annotationSource.addRef(),
-      fillOpacity: trackableAlphaValue(1.0),
-      color: this.pathAnnotationColor,
-    });
-    this.registerDisposer(
-        this.PositionMarker.changed.add(this.changed.dispatch));
-    this.registerDisposer(
-        this.pathAnnotationColor.changed.add(this.changed.dispatch));
-  }
-
-  restoreState(x: any) {
-    this.pathAnnotationColor.restoreState(x[ANNOTATION_COLOR_JSON_KEY]);
-    this.PositionMarker.restoreState(x[PATH_OBJECT_JSON_KEY]);
-  }
-
-  toJSON() {
-    return {
-      [ANNOTATION_COLOR_JSON_KEY]:
-          serializeColor(this.pathAnnotationColor.value),
-      //[POSITION_MARK_JSON_KEY]: this.PositionMarker.toJSON()
-    };
-  }
-}
-
-class PositionMarker extends RefCounted {
-  private _target: Point|undefined;
-  changed = new NullarySignal();
-
-  constructor(private annotationSource: LocalAnnotationSource) {
-    super();
-  }
-
-  ready() {
-    return this._target !== undefined;
-  }
-
-  get target() {
-    return this._target;
-  }
-
-  addTarget(annotation: Point) {
-    if (!this.ready()) {
-      this._target = annotation;
-      this.annotationSource.add(this.target!);
-      this.changed.dispatch();
-    }
-  }
-
-  clear() {
-    this.annotationSource.clear();
-    this._target = undefined;
-    this.changed.dispatch();
-  }
-
-  restoreState(specification: any) {
-    if (specification[ANNOTATION_PATH_JSON_KEY] !== undefined) {
-      this.annotationSource.restoreState(
-          specification[ANNOTATION_PATH_JSON_KEY].annotations, undefined);
-    }
-    if (specification[PATH_TARGET_JSON_KEY] !== undefined) {
-      this._target =
-          <Point>restoreAnnotation(specification[PATH_TARGET_JSON_KEY]);
-    }
-    this.changed.dispatch();
-  }
-
-  toJSON() {
-    const x: any = {
-      [ANNOTATION_PATH_JSON_KEY]: this.annotationSource.toJSON(),
-    };
-    if (this._target) {
-      x[PATH_TARGET_JSON_KEY] = annotationToJson(this._target);
-    }
-    return x;
-  }
-}
-export class ManagementMarkerTool extends Tool {
-  constructor(private layer: SegmentationUserLayerWithGraph) {
-    super();
-  }
-
-  private get pathBetweenSupervoxels() {
-    return this.layer.pathFinderState.pathBetweenSupervoxels;
-  }
-
-  trigger(mouseState: MouseSelectionState) {
-    if (mouseState.active) {
-      const {segmentSelectionState} = this.layer.displayState;
-      if (segmentSelectionState.hasSelectedSegment) {
-        if (this.pathBetweenSupervoxels.ready()) {
-          StatusMessage.showTemporaryMessage(
-              'A source and target have already been selected.', 7000);
-        } else if (!this.layer.displayState.rootSegments.has(
-                       segmentSelectionState.selectedSegment)) {
-          StatusMessage.showTemporaryMessage(
-              'The selected supervoxel is of an unselected segment', 7000);
-        } else {
-          const annotation: Point = {
-            id: '',
-            segments: [
-              segmentSelectionState.rawSelectedSegment.clone(),
-              segmentSelectionState.selectedSegment.clone()
-            ],
-            point: vec3.transformMat4(
-                vec3.create(),
-                this.layer.manager.layerSelectedValues.mouseState.position,
-                this.layer.transform.inverse),
-            type: AnnotationType.POINT,
-          };
-          this.pathBetweenSupervoxels.addSourceOrTarget(annotation);
-        }
-      }
-    }
-  }
-
-  description = `select source & target supervoxel to find a path between`;
-
-  toJSON() {
-    // Don't register the tool, it's not that important
-    return;
-  }
-}
-
 export class SubmitDialog extends Overlay {
   constructor(public viewer: Viewer, sid: string) {
     super();
@@ -190,24 +32,19 @@ export class SubmitDialog extends Overlay {
       return;
     }
 
-    let formMain = document.createElement('form');
     let {content} = this;
     content.style.overflow = 'visible';
     content.classList.add('ng-dark');
+    let formMain = document.createElement('form');
     const title = document.createElement('h1');
     const descr = document.createElement('div');
-
     descr.style.paddingBottom = '10px';
     descr.style.maxWidth = '480px';
 
-    const advanceTab = document.createElement('button');
-    advanceTab.innerHTML = 'Info';
-    advanceTab.type = 'button';
-    advanceTab.classList.add('special-button');
     const viewAdvanc = document.createElement('div');
-    advanceTab.addEventListener('click', () => {
+    let advancedViewToggle = () => {
       viewAdvanc.classList.toggle('ng-hidden');
-    });
+    };
     {
       viewAdvanc.classList.add('ng-hidden');
       let out = vec3.fromValues(0, 0, 0);
@@ -242,29 +79,32 @@ export class SubmitDialog extends Overlay {
           'Segment: ', id, br(), br(), 'x: ', x, ' y: ', y, ' z: ', z, br());
     }
 
-    const sub = document.createElement('button');
-    sub.type = 'button';
-    sub.className = 'nge_segment';
-    sub.addEventListener('click', () => {
-      // apiURL
-
-      StatusMessage.showMessage(`Thank you for your assessment!`);
-
-      // window.open();
-      this.dispose();
+    const advanceTab = this.makeButton({
+      innerHTML: 'Info',
+      classList: ['special-button'],
+      click: advancedViewToggle,
     });
-    sub.innerText = 'Yes';
-    sub.title = 'Submit neuron as complete.';
 
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.className = 'nge_segment';
-    cancel.addEventListener('click', () => {
-      // apiURL
-      this.dispose();
+    const sub = this.makeButton({
+      innerText: 'Yes',
+      classList: ['nge_segment'],
+      title: 'Submit neuron as complete.',
+      click: () => {
+        // apiURL
+        StatusMessage.showMessage(`Thank you for your assessment!`);
+        // window.open();
+        this.dispose();
+      },
     });
-    cancel.innerText = 'Cancel';
-    cancel.title = 'Cancel';
+
+    const cancel = this.makeButton({
+      innerText: 'Cancel',
+      classList: ['nge_segment'],
+      title: 'Cancel',
+      click: () => {
+        this.dispose();
+      },
+    });
 
     if (this.checkInSelectedSegment(sid)) {
       title.innerText = 'Mark Complete';
@@ -283,11 +123,10 @@ export class SubmitDialog extends Overlay {
       formMain.append(
           title, descr, br(), cancel, br(), br(), advanceTab, br(), viewAdvanc);
     }
+
     let modal = document.createElement('div');
     content.appendChild(modal);
-
     modal.appendChild(formMain);
-
     modal.onblur = () => this.dispose();
     modal.focus();
   }
@@ -299,6 +138,18 @@ export class SubmitDialog extends Overlay {
     let zv = parseInt(z.value, 10);
     return vec3.fromValues(xv, yv, zv);
   }
+
+  private makeButton = (config: any) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    let {innerHTML, innerText, classList, click, title} = config;
+    if (innerHTML) button.innerHTML = innerHTML;
+    if (innerText) button.innerText = innerText;
+    if (classList) button.classList.add(classList);
+    if (click) button.addEventListener('click', click);
+    if (title) button.title = title;
+    return button;
+  };
 
   private insertField(config: FieldConfig) {
     // const {form} = config;

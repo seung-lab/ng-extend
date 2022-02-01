@@ -199,10 +199,10 @@ function observeSegmentSelect(targetNode: Element) {
           // item.appendChild(createManagementButton(field));
           // item.appendChild(field);
         }
-        fetch(
+        authFetch(
             `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
                 segmentIDString}`,
-            {credentials: 'include'})
+            {credentials: 'same-origin'})
             .then(response => response.json())
             .then(data => {
               if (Object.keys(data.valid).length) {
@@ -211,7 +211,7 @@ function observeSegmentSelect(targetNode: Element) {
             })
             .catch(() => {
               bulb!.classList.add('outdated');
-              (<HTMLButtonElement>bulb).title = 'Outdated Segment';
+              //(<HTMLButtonElement>bulb).title = 'Outdated Segment';
             });
       });
     }
@@ -243,7 +243,7 @@ function liveNeuroglancerInjection() {
   observeSegmentSelect(watchNode);
 }
 
-import {authTokenShared} from 'neuroglancer/authentication/frontend';
+import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {SubmitDialog} from './widgets/seg_management';
