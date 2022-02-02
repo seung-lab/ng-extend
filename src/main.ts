@@ -195,6 +195,7 @@ function observeSegmentSelect(targetNode: Element) {
             item.querySelector('.nge-segment-changelog-button.lightbulb');
         if (bulb == null) {
           bulb = createChangelogButton(segmentIDString, item.dataset);
+          (<HTMLButtonElement>bulb).title = 'This segment is unproofread';
           bulb.classList.add('error');
           item.appendChild(bulb);
           // const field = managementField(segmentIDString, item.dataset)
@@ -207,15 +208,16 @@ function observeSegmentSelect(targetNode: Element) {
             {credentials: 'same-origin'})
             .then(response => response.json())
             .then(data => {
+              bulb!.classList.remove('error');
               if (Object.keys(data.valid).length) {
-                bulb!.classList.remove('error');
+                (<HTMLButtonElement>bulb).title =
+                    'This segment has been proofread';
                 bulb!.classList.add('active');
               }
             })
-            .catch(
-                () => {
-                    //(<HTMLButtonElement>bulb).title = 'Outdated Segment';
-                });
+            .catch(() => {
+              (<HTMLButtonElement>bulb).title = 'Cannot connect to server';
+            });
       });
     }
   };
