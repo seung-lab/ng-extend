@@ -16,7 +16,7 @@ import './config';
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
-import {SubmitDialog} from './widgets/seg_management';
+// import {SubmitDialog} from './widgets/seg_management';
 
 window.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
