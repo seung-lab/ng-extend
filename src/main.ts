@@ -16,7 +16,7 @@ import './config';
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
-// import {SubmitDialog} from './widgets/seg_management';
+import {SubmitDialog} from './widgets/seg_management';
 
 window.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
@@ -130,13 +130,13 @@ function observeSegmentSelect(targetNode: Element) {
         const host = 'https://prod.flywire-daf.com';
         const menuOpt = [
           ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
-          /*[
-            'Mark complete', ``,
+          [
+            /*'Mark complete', ``,
             (e: MouseEvent) => {
               e.preventDefault();
               new SubmitDialog((<any>window).viewer, segmentIDString)
-            }
-          ],*/
+            }*/
+          ],
         ];
         if (dataset == 'fly_v31') {
           menuOpt.push([

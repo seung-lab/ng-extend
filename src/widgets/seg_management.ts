@@ -16,11 +16,14 @@
 
 import 'neuroglancer/save_state/save_state.css';
 
+import {authFetch} from 'neuroglancer/authentication/frontend';
 import {Overlay} from 'neuroglancer/overlay';
-import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
+import {SegmentationUserLayerWithGraph} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {StatusMessage} from 'neuroglancer/status';
 import {vec3} from 'neuroglancer/util/geom';
+import {Uint64} from 'neuroglancer/util/uint64';
 import {Viewer} from 'neuroglancer/viewer';
+
 export class SubmitDialog extends Overlay {
   constructor(public viewer: Viewer, sid: string) {
     super();
@@ -106,29 +109,35 @@ export class SubmitDialog extends Overlay {
       },
     });
 
-    if (this.checkInSelectedSegment(sid)) {
-      title.innerText = 'Mark Complete';
-      descr.innerHTML = `To mark proofreading of this neuron as complete:
+    const layer = <SegmentationUserLayerWithGraph>this.viewer.layerManager
+                      .managedLayers[1]
+                      .layer;
+    this.isCoordInRoot(layer, Uint64.parseString(sid)).then(valid => {
+      if (valid) {
+        title.innerText = 'Mark Complete';
+        descr.innerHTML = `To mark proofreading of this neuron as complete:
     <ol>
     <li>Are the crosshairs centered inside the nucleus? (Or if no soma is present, in a distinctive backbone?)</li>
     <li>Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers? (For more information about proofreading, see <a href="https://drive.google.com/open?id=1GF4Nh8UPsECMAicaaTOqxxM5u1taO4fW">this tutorial</a>.)</li>
     </ol>`;
-      formMain.append(
-          title, descr, br(), sub, ' ', cancel, br(), br(), advanceTab, br(),
-          viewAdvanc);
-    } else {
-      title.innerText = 'Error';
-      descr.innerHTML =
-          `The crosshairs are not centered inside the selected neuron`;
-      formMain.append(
-          title, descr, br(), cancel, br(), br(), advanceTab, br(), viewAdvanc);
-    }
+        formMain.append(
+            title, descr, br(), sub, ' ', cancel, br(), br(), advanceTab, br(),
+            viewAdvanc);
+      } else {
+        title.innerText = 'Error';
+        descr.innerHTML =
+            `The crosshairs are not centered inside the selected neuron`;
+        formMain.append(
+            title, descr, br(), cancel, br(), br(), advanceTab, br(),
+            viewAdvanc);
+      }
 
-    let modal = document.createElement('div');
-    content.appendChild(modal);
-    modal.appendChild(formMain);
-    modal.onblur = () => this.dispose();
-    modal.focus();
+      let modal = document.createElement('div');
+      content.appendChild(modal);
+      modal.appendChild(formMain);
+      modal.onblur = () => this.dispose();
+      modal.focus();
+    });
   }
 
   private htmlToVec3(
@@ -166,21 +175,28 @@ export class SubmitDialog extends Overlay {
     return text;
   }
 
-  private checkInSelectedSegment(sid: string) {
-    const layers = this.viewer!.layerManager.managedLayers;
-
-    for (const {layer} of layers) {
-      if (layer instanceof SegmentationUserLayer) {
-        console.log(layer.displayState.segmentSelectionState.selectedSegment
-                        .toString());
-        if (sid ==
-            layer.displayState.segmentSelectionState.selectedSegment
-                .toString()) {
-          return true;
-        }
-      }
+  async isCoordInRoot(layer: SegmentationUserLayerWithGraph, source: Uint64):
+      Promise<Boolean> {
+    if (layer == null) return false;
+    /* Note: It looks like if the segment is selected, the segment id is
+     * returned instead of the supervoxel id */
+    // get supervoxel at coordinates at center of bbox
+    const selection = layer.getValueAt(
+        this.viewer.navigationState.position.spatialCoordinates,
+        this.viewer.mouseState);
+    if (!Uint64.compare(source, selection)) {
+      // if we have segment id instead of supervoxel id and it matches return
+      // true we have to test otherwise cause we can't tell if its a segment id
+      // or supervoxel id directly
+      return true;
     }
-    return false;
+    // get root of supervoxel
+    const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
+        String(selection)}/root?int64_as_str=1`);
+    const jsonResp = await response.json();
+    const root_id = Uint64.parseString(jsonResp['root_id']);
+    // compare this root id with the one that initiated the check
+    return !Uint64.compare(source, root_id);
   }
 }
 
