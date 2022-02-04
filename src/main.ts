@@ -135,7 +135,8 @@ function observeSegmentSelect(targetNode: Element) {
             'Mark complete', ``,
             (e: MouseEvent) => {
               e.preventDefault();
-              if (parent.classList.contains('error')) {
+              // cannot gurantee that outdated neuron will throw error
+              if (0 && parent.classList.contains('error')) {
                 StatusMessage.showMessage(
                     `Error: Mark Complete is not avaliable.`,
                     {color: '#ff0000'});
