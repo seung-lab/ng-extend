@@ -183,23 +183,13 @@ export class SubmitDialog extends Overlay {
         viewer.navigationState.position.spatialCoordinates,
         new MouseSelectionState());
 
-    console.log(`test1 ${source.toJSON()} == ${selection.toJSON()} ${
-        !Uint64.compare(source, selection)}`);
-        if (!Uint64.compare(source, selection)) {
-          // if we have segment id instead of supervoxel id and it matches
-          // return true we have to test otherwise cause we can't tell if its a
-          // segment id or supervoxel id directly
-          return true;
-        }
-        // get root of supervoxel
-        const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
-            String(selection)}/root?int64_as_str=1`);
-        const jsonResp = await response.json();
-        const root_id = Uint64.parseString(jsonResp['root_id']);
-        // compare this root id with the one that initiated the check
-    console.log(`test2 ${source.toJSON()} == ${root_id.toJSON()} ${
-        !Uint64.compare(source, root_id)}`);
-        return !Uint64.compare(source, root_id);
+    // get root of supervoxel
+    const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
+        String(selection)}/root?int64_as_str=1`);
+    const jsonResp = await response.json();
+    const root_id = Uint64.parseString(jsonResp['root_id']);
+    // compare this root id with the one that initiated the check
+    return !Uint64.compare(source, root_id);
   }
 }
 
