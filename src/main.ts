@@ -129,13 +129,19 @@ function observeSegmentSelect(targetNode: Element) {
         menu.classList.add('neuroglancer-layer-group-viewer-context-menu');
         const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
         const host = 'https://prod.flywire-daf.com';
-        const menuOpt = [
+        const menuOpt: (string|((e: MouseEvent) => void))[][] = [
           ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
           [
             'Mark complete', ``,
             (e: MouseEvent) => {
               e.preventDefault();
-              new SubmitDialog((<any>window).viewer, segmentIDString)
+              if (parent.classList.contains('error')) {
+                StatusMessage.showMessage(
+                    `Error: Mark Complete is not avaliable.`,
+                    {color: '#ff0000'});
+              } else {
+                new SubmitDialog((<any>window).viewer, segmentIDString);
+              }
             }
           ],
         ];
@@ -146,6 +152,15 @@ function observeSegmentSelect(targetNode: Element) {
                 paramStr}`
           ])
         }
+        /*if (parent.classList.contains('error')) {
+          menuOpt.push([
+            'Mark complete', ``,
+            (e: MouseEvent) => {
+              e.preventDefault();
+              new SubmitDialog((<any>window).viewer, segmentIDString)
+            }
+          ])
+        }*/
         for (const [name, model, action] of menuOpt) {
           const label = document.createElement('a');
           label.style.display = 'flex';

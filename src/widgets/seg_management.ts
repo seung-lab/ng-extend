@@ -29,7 +29,8 @@ export class SubmitDialog extends Overlay {
   constructor(public viewer: Viewer, sid: string) {
     super();
     const br = () => document.createElement('br');
-    // const apiURL = ``;
+    const apiURL =
+        `https://prod.flywire-daf.com/neurons/api/v1/mark_completion`;
 
     const existingDialog = document.getElementById('nge-submit');
     if (existingDialog) {
@@ -37,6 +38,8 @@ export class SubmitDialog extends Overlay {
     }
 
     let {content} = this;
+    let out = vec3.fromValues(0, 0, 0);
+    viewer.navigationState.position.getVoxelCoordinates(out);
     content.style.overflow = 'visible';
     content.classList.add('ng-dark');
     let formMain = document.createElement('form');
@@ -51,8 +54,6 @@ export class SubmitDialog extends Overlay {
     };
     {
       viewAdvanc.classList.add('ng-hidden');
-      let out = vec3.fromValues(0, 0, 0);
-      viewer.navigationState.position.getVoxelCoordinates(out);
       let id = this.insertField(
           {content: sid, fieldTitle: 'segmentID', disabled: true});
       let x =
@@ -74,7 +75,6 @@ export class SubmitDialog extends Overlay {
       cancel.type = 'button';
       cancel.className = 'nge_segment';
       cancel.addEventListener('click', () => {
-        // apiURL
         this.dispose();
       });
       cancel.innerText = 'Submit';
@@ -94,9 +94,14 @@ export class SubmitDialog extends Overlay {
       classList: ['nge_segment'],
       title: 'Submit neuron as complete.',
       click: () => {
-        // apiURL
-        StatusMessage.showMessage(`Thank you for your assessment!`);
-        // window.open();
+        authFetch(
+            `${apiURL}?valid_id=${sid}&location=${out.join(',')}`,
+            {method: 'GET' /*'PUT*/})
+            .then(
+                () => StatusMessage.showMessage(
+                    `Thank you for your assessment!`));
+
+        window.open(`${apiURL}?valid_id=${sid}&location=${out.join(',')}`);
         this.dispose();
       },
     });
