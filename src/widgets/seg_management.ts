@@ -178,38 +178,28 @@ export class SubmitDialog extends Overlay {
     if (mLayer == null) return false;
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
     const {viewer} = this;
-    // let test2 = vec3.fromValues(0, 0, 0);
-    // viewer.navigationState.position.getVoxelCoordinates(test2);
-    /* Note: It looks like if the segment is selected, the segment id is
-     * returned instead of the supervoxel id */
-    // get supervoxel at coordinates at center of bbox
-    /*viewer.mouseState.position =
-        viewer.navigationState.position.spatialCoordinates;
-    const selection = layer.getValueAt(
-        viewer.navigationState.position.spatialCoordinates,
-    viewer.mouseState);*/
+
     const selection = layer.getValueAt(
         viewer.navigationState.position.spatialCoordinates,
         new MouseSelectionState());
-    // selection must be a segment id, if it is a supervoxel, selection isn't
-    // a selected segment
-    let test = vec3.fromValues(0, 0, 0);
-    viewer.navigationState.position.getVoxelCoordinates(test);
-    console.log(`${selection.toJSON()} (${test})==>${source.toJSON()}`)
-    // return !Uint64.compare(source, selection);
-    if (!Uint64.compare(source, selection)) {
-      // if we have segment id instead of supervoxel id and it matches return
-      // true we have to test otherwise cause we can't tell if its a segment
-      // id or supervoxel id directly
-      return true;
-    }
-    // get root of supervoxel
-    const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
-        String(selection)}/root?int64_as_str=1`);
-    const jsonResp = await response.json();
-    const root_id = Uint64.parseString(jsonResp['root_id']);
-    // compare this root id with the one that initiated the check
-    return !Uint64.compare(source, root_id);
+
+    console.log(`test1 ${source.toJSON()} == ${selection.toJSON()} ${
+        !Uint64.compare(source, selection)}`);
+        if (!Uint64.compare(source, selection)) {
+          // if we have segment id instead of supervoxel id and it matches
+          // return true we have to test otherwise cause we can't tell if its a
+          // segment id or supervoxel id directly
+          return true;
+        }
+        // get root of supervoxel
+        const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
+            String(selection)}/root?int64_as_str=1`);
+        const jsonResp = await response.json();
+        const root_id = Uint64.parseString(jsonResp['root_id']);
+        // compare this root id with the one that initiated the check
+    console.log(`test2 ${source.toJSON()} == ${root_id.toJSON()} ${
+        !Uint64.compare(source, root_id)}`);
+        return !Uint64.compare(source, root_id);
   }
 }
 

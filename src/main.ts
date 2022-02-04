@@ -226,12 +226,7 @@ function observeSegmentSelect(targetNode: Element) {
   // Callback function to execute when mutations are observed
   const detectMutation = function(mutationsList: MutationRecord[]) {
     console.log('Segment ID Added');
-    // let test2 = vec3.fromValues(0, 0, 0);
-    //(<any>window).viewer.navigationState.position.getVoxelCoordinates(test2);
-    // console.log(test2);
-    // console.log(
-    //(<any>window).viewer.navigationState.position.spatialCoordinates);
-    console.log((<any>window).viewer.mouseState.position);
+
     mutationsList.forEach(mutation => {
       mutation.addedNodes.forEach(updateSegmentSelectItem);
     });
