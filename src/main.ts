@@ -16,7 +16,8 @@ import './config';
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
-// import {SubmitDialog} from './widgets/seg_management';
+import {SubmitDialog} from './widgets/seg_management';
+// import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
@@ -131,11 +132,11 @@ function observeSegmentSelect(targetNode: Element) {
         const menuOpt = [
           ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
           [
-            /*'Mark complete', ``,
+            'Mark complete', ``,
             (e: MouseEvent) => {
               e.preventDefault();
               new SubmitDialog((<any>window).viewer, segmentIDString)
-            }*/
+            }
           ],
         ];
         if (dataset == 'fly_v31') {
@@ -225,6 +226,12 @@ function observeSegmentSelect(targetNode: Element) {
   // Callback function to execute when mutations are observed
   const detectMutation = function(mutationsList: MutationRecord[]) {
     console.log('Segment ID Added');
+    // let test2 = vec3.fromValues(0, 0, 0);
+    //(<any>window).viewer.navigationState.position.getVoxelCoordinates(test2);
+    // console.log(test2);
+    // console.log(
+    //(<any>window).viewer.navigationState.position.spatialCoordinates);
+    console.log((<any>window).viewer.mouseState.position);
     mutationsList.forEach(mutation => {
       mutation.addedNodes.forEach(updateSegmentSelectItem);
     });
