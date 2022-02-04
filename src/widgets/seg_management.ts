@@ -16,6 +16,7 @@
 
 import 'neuroglancer/save_state/save_state.css';
 
+import {authFetch} from 'neuroglancer/authentication/frontend';
 import {MouseSelectionState} from 'neuroglancer/layer';
 import {Overlay} from 'neuroglancer/overlay';
 import {SegmentationUserLayerWithGraph} from 'neuroglancer/segmentation_user_layer_with_graph';
@@ -109,29 +110,32 @@ export class SubmitDialog extends Overlay {
       },
     });
 
-    if (this.isCoordInRoot(Uint64.parseString(sid))) {
-      title.innerText = 'Mark Complete';
-      descr.innerHTML = `To mark proofreading of this neuron as complete:
+    this.isCoordInRoot(Uint64.parseString(sid)).then(valid => {
+      if (valid) {
+        title.innerText = 'Mark Complete';
+        descr.innerHTML = `To mark proofreading of this neuron as complete:
     <ol>
     <li>Are the crosshairs centered inside the nucleus? (Or if no soma is present, in a distinctive backbone?)</li>
     <li>Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers? (For more information about proofreading, see <a href="https://drive.google.com/open?id=1GF4Nh8UPsECMAicaaTOqxxM5u1taO4fW">this tutorial</a>.)</li>
     </ol>`;
-      formMain.append(
-          title, descr, br(), sub, ' ', cancel, br(), br(), advanceTab, br(),
-          viewAdvanc);
-    } else {
-      title.innerText = 'Error';
-      descr.innerHTML =
-          `The crosshairs are not centered inside the selected neuron`;
-      formMain.append(
-          title, descr, br(), cancel, br(), br(), advanceTab, br(), viewAdvanc);
-    }
+        formMain.append(
+            title, descr, br(), sub, ' ', cancel, br(), br(), advanceTab, br(),
+            viewAdvanc);
+      } else {
+        title.innerText = 'Error';
+        descr.innerHTML =
+            `The crosshairs are not centered inside the selected neuron`;
+        formMain.append(
+            title, descr, br(), cancel, br(), br(), advanceTab, br(),
+            viewAdvanc);
+      }
 
-    let modal = document.createElement('div');
-    content.appendChild(modal);
-    modal.appendChild(formMain);
-    modal.onblur = () => this.dispose();
-    modal.focus();
+      let modal = document.createElement('div');
+      content.appendChild(modal);
+      modal.appendChild(formMain);
+      modal.onblur = () => this.dispose();
+      modal.focus();
+    });
   }
 
   private htmlToVec3(
@@ -169,7 +173,7 @@ export class SubmitDialog extends Overlay {
     return text;
   }
 
-  private isCoordInRoot(source: Uint64): Boolean {
+  async isCoordInRoot(source: Uint64): Promise<Boolean> {
     const mLayer = this.viewer.selectedLayer.layer;
     if (mLayer == null) return false;
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
@@ -187,12 +191,25 @@ export class SubmitDialog extends Overlay {
     const selection = layer.getValueAt(
         viewer.navigationState.position.spatialCoordinates,
         new MouseSelectionState());
-    // selection must be a segment id, if it is a supervoxel, selection isn't a
-    // selected segment
+    // selection must be a segment id, if it is a supervoxel, selection isn't
+    // a selected segment
     let test = vec3.fromValues(0, 0, 0);
     viewer.navigationState.position.getVoxelCoordinates(test);
     console.log(`${selection.toJSON()} (${test})==>${source.toJSON()}`)
-    return !Uint64.compare(source, selection);
+    // return !Uint64.compare(source, selection);
+    if (!Uint64.compare(source, selection)) {
+      // if we have segment id instead of supervoxel id and it matches return
+      // true we have to test otherwise cause we can't tell if its a segment
+      // id or supervoxel id directly
+      return true;
+    }
+    // get root of supervoxel
+    const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
+        String(selection)}/root?int64_as_str=1`);
+    const jsonResp = await response.json();
+    const root_id = Uint64.parseString(jsonResp['root_id']);
+    // compare this root id with the one that initiated the check
+    return !Uint64.compare(source, root_id);
   }
 }
 
