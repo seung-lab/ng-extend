@@ -94,6 +94,9 @@
           <li v-for="item of appState.actionsMenuItems" :key="item.text">
             <button @click="clickAction(item)">{{ item.text }}</button>
           </li>
+          <li>
+            <button @click="toggleBrainMesh()">Toggle Brain Mesh</button>
+          </li>
         </template>
       </dropdown-list>
     </template>
@@ -185,6 +188,9 @@ export default Vue.extend({
     clickAction(item: ActionsMenuItem) {
       this.$root.$emit("closeDropdowns");
       item.click();
+    },
+    toggleBrainMesh() {
+      layerProxy.toggleBrainMesh();
     }
   },
   mounted() {
