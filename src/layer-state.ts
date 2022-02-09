@@ -257,4 +257,21 @@ export class LayerState extends createModule
 
     return false;
   }
+
+  @action
+  async toggleBrainMesh() {
+    if (!viewer) {
+      return false;
+    }
+    const layerName = config.brainMeshURL.split("/").pop()!;
+    const brainMeshLayer = getLayerByName(layerName);
+    if (brainMeshLayer) {
+      viewer.layerManager.removeManagedLayer(brainMeshLayer);
+    }
+    else {
+      const layerWithSpec = viewer.layerSpecification.getLayer(layerName, config.brainMeshURL);
+      viewer.layerManager.addManagedLayer(layerWithSpec);
+    }
+    return true;
+  }
 }

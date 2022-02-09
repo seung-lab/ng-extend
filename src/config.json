@@ -84,5 +84,6 @@
                 }
             ]
         }
-    ]
+    ],
+    "brainMeshURL": "precomputed://https://spine.janelia.org/files/eric/jfrc_mesh_test"
 }

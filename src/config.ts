@@ -4,7 +4,8 @@ export default interface Config {
   chatURL: string,
   proctorURL: string,
   imageLayers: ImageLayerDescription[],
-  segmentationLayers: SegmentationLayerDescription[]
+  segmentationLayers: SegmentationLayerDescription[],
+  brainMeshURL: string
 }
 
 export interface Vector3 {
