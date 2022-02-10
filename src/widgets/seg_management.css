@@ -36,3 +36,12 @@ button.nge_segment {
 .lightbulb.outdated {
   background-image: url('images/bulb_black.png');
 }
+
+a:link {
+  color: rgba(15, 177, 139, 1);
+}
+
+/* visited link */
+a:visited {
+  color: rgba(11, 167, 151, 1);
+}

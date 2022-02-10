@@ -95,32 +95,8 @@ export class SubmitDialog extends Overlay {
       classList: ['nge_segment'],
       title: 'Submit neuron as complete.',
       click: () => {
-        /*
-        const form =
-            <HTMLFormElement>document.getElementById('nge-form-smanagement') ||
-            document.createElement('form');
-        form.id = 'nge-form-smanagement';
-        form.method = 'get';
-        form.action = `${apiURL}?valid_id=${sid}&location=${out.join(',')}`;
-        form.target = '_blank';
-        form.onsubmit = () => {
-          StatusMessage.showMessage(`Thank you for your assessment!`);
-          // form.remove();
-        };
-        this.hiddenInput(form, 'valid_id', sid);
-        this.hiddenInput(form, 'location', out.join(','));
-        this.hiddenInput(form, 'submit', 't');
-        document.body.append(form);
-        form.requestSubmit();
-         */
-        authFetch(
-            `${apiURL}?valid_id=${sid}&location=${out.join(',')}&submit=t`,
-            {method: 'GET' /*'PUT*/})
-            .then(
-                () => StatusMessage.showMessage(
-                    `Thank you for your assessment!`));
-
         window.open(`${apiURL}?valid_id=${sid}&location=${out.join(',')}`);
+        StatusMessage.showMessage(`Thank you for your assessment!`);
         this.dispose();
       }
     });
@@ -140,7 +116,7 @@ export class SubmitDialog extends Overlay {
         descr.innerHTML = `To mark proofreading of this neuron as complete:
     <ol>
     <li>Are the crosshairs centered inside the nucleus? (Or if no soma is present, in a distinctive backbone?)</li>
-    <li>Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers? (For more information about proofreading, see <a href="https://drive.google.com/open?id=1GF4Nh8UPsECMAicaaTOqxxM5u1taO4fW">this tutorial</a>.)</li>
+    <li>Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers? (For more information about proofreading, see <a class="nge-sm-link" target='_blank' href="https://drive.google.com/open?id=1GF4Nh8UPsECMAicaaTOqxxM5u1taO4fW">this tutorial</a>.)</li>
     </ol>`;
         formMain.append(
             title, descr, br(), sub, ' ', cancel, br(), br(), advanceTab, br(),
