@@ -17,6 +17,7 @@ import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {SubmitDialog} from './widgets/seg_management';
+import {SegmentationUserLayerWithGraph} from 'third_party/neuroglancer/src/neuroglancer/segmentation_user_layer_with_graph';
 // import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -121,6 +122,16 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
+  const getTimeStamp = async (segmentIDString: string) => {
+    const mLayer = (<any>window).viewer.selectedLayer.layer;
+    if (mLayer == null) return;
+    const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
+    const timestamps = await authFetch(
+        `${layer.chunkedGraphUrl}/root_timestamps`,
+        {method: 'POST', body: JSON.stringify({node_ids: [segmentIDString]})});
+    const ts = await timestamps.json();
+    return ts.timestamp[0];
+  };
   const makeChangelogMenu =
       (parent: HTMLElement, segmentIDString: string,
        dataset: string): ContextMenu => {
@@ -129,19 +140,24 @@ function observeSegmentSelect(targetNode: Element) {
         menu.classList.add('neuroglancer-layer-group-viewer-context-menu');
         const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
         const host = 'https://prod.flywire-daf.com';
+        let timestamp: number|undefined;
         const menuOpt: (string|((e: MouseEvent) => void))[][] = [
           ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
           [
             'Mark complete', ``,
-            (e: MouseEvent) => {
+            async (e: MouseEvent) => {
               e.preventDefault();
+              if (timestamp == undefined) {
+                timestamp = await getTimeStamp(segmentIDString);
+              }
               // cannot gurantee that outdated neuron will throw error
               if (0 && parent.classList.contains('error')) {
                 StatusMessage.showMessage(
                     `Error: Mark Complete is not avaliable.`,
                     {color: '#ff0000'});
               } else {
-                new SubmitDialog((<any>window).viewer, segmentIDString);
+                new SubmitDialog(
+                    (<any>window).viewer, segmentIDString, timestamp!);
               }
             }
           ],

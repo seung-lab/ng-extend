@@ -26,7 +26,8 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {Viewer} from 'neuroglancer/viewer';
 
 export class SubmitDialog extends Overlay {
-  constructor(public viewer: Viewer, sid: string) {
+  constructor(
+      public viewer: Viewer, public sid: string, public timestamp: number) {
     super();
     const br = () => document.createElement('br');
     const apiURL =
@@ -84,7 +85,7 @@ export class SubmitDialog extends Overlay {
     }
 
     const advanceTab = this.makeButton({
-      innerHTML: 'Info',
+      innerHTML: '▼ Info',
       classList: ['special-button'],
       click: advancedViewToggle,
     });
@@ -94,8 +95,26 @@ export class SubmitDialog extends Overlay {
       classList: ['nge_segment'],
       title: 'Submit neuron as complete.',
       click: () => {
+        /*
+        const form =
+            <HTMLFormElement>document.getElementById('nge-form-smanagement') ||
+            document.createElement('form');
+        form.id = 'nge-form-smanagement';
+        form.method = 'get';
+        form.action = `${apiURL}?valid_id=${sid}&location=${out.join(',')}`;
+        form.target = '_blank';
+        form.onsubmit = () => {
+          StatusMessage.showMessage(`Thank you for your assessment!`);
+          // form.remove();
+        };
+        this.hiddenInput(form, 'valid_id', sid);
+        this.hiddenInput(form, 'location', out.join(','));
+        this.hiddenInput(form, 'submit', 't');
+        document.body.append(form);
+        form.requestSubmit();
+         */
         authFetch(
-            `${apiURL}?valid_id=${sid}&location=${out.join(',')}`,
+            `${apiURL}?valid_id=${sid}&location=${out.join(',')}&submit=t`,
             {method: 'GET' /*'PUT*/})
             .then(
                 () => StatusMessage.showMessage(
@@ -103,7 +122,7 @@ export class SubmitDialog extends Overlay {
 
         window.open(`${apiURL}?valid_id=${sid}&location=${out.join(',')}`);
         this.dispose();
-      },
+      }
     });
 
     const cancel = this.makeButton({
@@ -115,7 +134,7 @@ export class SubmitDialog extends Overlay {
       },
     });
 
-    this.isCoordInRoot(Uint64.parseString(sid)).then(valid => {
+    this.isCoordInRoot().then(valid => {
       if (valid) {
         title.innerText = 'Mark Complete';
         descr.innerHTML = `To mark proofreading of this neuron as complete:
@@ -151,6 +170,14 @@ export class SubmitDialog extends Overlay {
     return vec3.fromValues(xv, yv, zv);
   }
 
+  /*private hiddenInput = (form: HTMLElement, key: string, value: string) => {
+    let input = document.createElement('input');
+    input.value = value;
+    input.name = key;
+    input.type = 'hidden';
+    form.appendChild(input);
+  };*/
+
   private makeButton = (config: any) => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -165,10 +192,10 @@ export class SubmitDialog extends Overlay {
 
   private insertField(config: FieldConfig) {
     // const {form} = config;
-    let {content, fieldTitle, disabled} = config;
+    let {content, fieldTitle, disabled, type} = config;
 
     let text = document.createElement('input');
-    text.type = 'number';
+    text.type = type || 'number';
     text.value = `${content || ''}`;
     text.size = 33;
     text.title = fieldTitle || '';
@@ -178,7 +205,9 @@ export class SubmitDialog extends Overlay {
     return text;
   }
 
-  async isCoordInRoot(source: Uint64): Promise<Boolean> {
+  async isCoordInRoot(): Promise<Boolean> {
+    const source = Uint64.parseString(this.sid);
+    const timestamp = this.timestamp;
     const mLayer = this.viewer.selectedLayer.layer;
     if (mLayer == null) return false;
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
@@ -190,7 +219,7 @@ export class SubmitDialog extends Overlay {
 
     // get root of supervoxel
     const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
-        String(selection)}/root?int64_as_str=1`);
+        String(selection)}/root?int64_as_str=1&timestamp=${timestamp}`);
     const jsonResp = await response.json();
     const root_id = Uint64.parseString(jsonResp['root_id']);
     // compare this root id with the one that initiated the check
@@ -207,4 +236,5 @@ type FieldConfig = {
   content?: string|number,
   fieldTitle?: string,
   disabled?: boolean
+  type?: string
 };
