@@ -85,5 +85,6 @@
             ]
         }
     ],
-    "brainMeshURL": "precomputed://https://spine.janelia.org/files/eric/jfrc_mesh_test"
+    "brainMeshURL": "precomputed://https://spine.janelia.org/files/eric/jfrc_mesh_test",
+    "brainMeshOpacity": 0.2
 }
