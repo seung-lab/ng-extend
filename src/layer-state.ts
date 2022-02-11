@@ -8,6 +8,7 @@ import {action, createModule} from 'vuex-class-component';
 import {CellDescription, ImageLayerDescription, SegmentationLayerDescription, Vector3} from './config';
 import {config} from './main';
 import {getLayerPanel, viewer} from './state';
+import {packColor} from 'neuroglancer/util/color';
 
 function getLayerByName(name: string) {
   if (!viewer) {
@@ -299,6 +300,8 @@ export class LayerState extends createModule
           if (layer instanceof SegmentationUserLayer) {
             layer.displayState.rootSegments.add(Uint64.ONE);
             layer.displayState.objectAlpha.value = config.brainMeshOpacity;
+            const segmentColor = new Uint64(packColor(vec3.fromValues(0.5, 0.5, 0.5)));
+            layer.displayState.segmentStatedColors.set(Uint64.ONE, segmentColor);
           }
         }
       });
