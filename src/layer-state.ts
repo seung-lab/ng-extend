@@ -271,17 +271,15 @@ export class LayerState extends createModule
     else {
       const layerWithSpec = viewer.layerSpecification.getLayer(layerName, config.brainMeshURL);
       viewer.layerManager.addManagedLayer(layerWithSpec);
-      console.log("layerWithSpec", layerWithSpec);
-      const layer = layerWithSpec.layer; //is null but should be an instance of SegmentationUserLayer
-      console.log("layer", layer);
-
-      if (layer instanceof SegmentationUserLayer) {
-        console.log("SELECT CELL", layer)
-        layer.displayState.rootSegments.add(Uint64.ONE);
-      }
-      else {
-        console.log("layer", layer);
-      }
+      layerWithSpec.readyStateChanged.add(() => {
+        if (layerWithSpec.isReady()) {
+          const layer = layerWithSpec.layer;
+          if (layer instanceof SegmentationUserLayer) {
+            layer.displayState.rootSegments.add(Uint64.ONE);
+            layer.displayState.objectAlpha.value = config.brainMeshOpacity;
+          }
+        }
+      });
     }
     return true;
   }

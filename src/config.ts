@@ -5,7 +5,8 @@ export default interface Config {
   proctorURL: string,
   imageLayers: ImageLayerDescription[],
   segmentationLayers: SegmentationLayerDescription[],
-  brainMeshURL: string
+  brainMeshURL: string,
+  brainMeshOpacity: number
 }
 
 export interface Vector3 {
