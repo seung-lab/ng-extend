@@ -157,7 +157,8 @@ function observeSegmentSelect(targetNode: Element) {
                     {color: '#ff0000'});
               } else {
                 new SubmitDialog(
-                    (<any>window).viewer, segmentIDString, timestamp!);
+                    (<any>window).viewer, segmentIDString, timestamp!,
+                    storeProxy.loggedInUser!.id);
               }
             }
           ],
@@ -235,25 +236,40 @@ function observeSegmentSelect(targetNode: Element) {
           // item.appendChild(createManagementButton(field));
           // item.appendChild(field);
         }
-        authFetch(
-            `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
-                segmentIDString}`,
-            {credentials: 'same-origin'})
-            .then(response => response.json())
-            .then(data => {
-              bulb!.classList.remove('error');
-              if (Object.keys(data.valid).length) {
-                (<HTMLButtonElement>bulb).title =
-                    'This segment has been proofread';
-                bulb!.classList.add('active');
-              }
-            })
-            .catch(() => {
-              (<HTMLButtonElement>bulb).title = 'Cannot connect to server';
-            });
+        checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString);
       });
     }
   };
+
+  const checkTime = 120000;
+  const checkVisibleTime = 30000;
+  const checkBulbStatus =
+      function(bulb: HTMLButtonElement, sid: string) {
+    const view = bulb.getBoundingClientRect();
+    if (!view.height || !view.width) {
+      // not visible
+      setTimeout(checkBulbStatus, checkVisibleTime, bulb, sid);
+    } else {
+      authFetch(
+          `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
+              sid}`,
+          {credentials: 'same-origin'})
+          .then(response => response.json())
+          .then(data => {
+            bulb.classList.remove('error');
+            if (Object.keys(data.valid).length) {
+              bulb.title = 'This segment has been proofread';
+              bulb.classList.add('active');
+            }
+          })
+          .catch(() => {
+            bulb.title = 'Cannot connect to server';
+          })
+          .finally(() => {
+            setTimeout(checkBulbStatus, checkTime, bulb, sid);
+          });
+    }
+  }
 
   // Callback function to execute when mutations are observed
   const detectMutation = function(mutationsList: MutationRecord[]) {

@@ -27,7 +27,8 @@ import {Viewer} from 'neuroglancer/viewer';
 
 export class SubmitDialog extends Overlay {
   constructor(
-      public viewer: Viewer, public sid: string, public timestamp: number) {
+      public viewer: Viewer, public sid: string, public timestamp: number,
+      public userID: number) {
     super();
     const br = () => document.createElement('br');
     const apiURL =
