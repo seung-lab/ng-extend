@@ -96,7 +96,8 @@ export class SubmitDialog extends Overlay {
       classList: ['nge_segment'],
       title: 'Submit neuron as complete.',
       click: () => {
-        window.open(`${apiURL}?valid_id=${sid}&location=${out.join(',')}`);
+        window.open(
+            `${apiURL}?valid_id=${sid}&location=${out.join(',')}&submit=1`);
         StatusMessage.showMessage(`Thank you for your assessment!`);
         this.dispose();
       }
