@@ -162,6 +162,11 @@ function observeSegmentSelect(targetNode: Element) {
               }
             }
           ],
+          [
+            'Cell information',
+            `${host}/neurons/api/v1/cell_information?filter_by=root_id&filter_string=${
+                paramStr}`
+          ],
         ];
         if (dataset == 'fly_v31') {
           menuOpt.push([
