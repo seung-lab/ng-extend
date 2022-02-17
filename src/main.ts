@@ -142,18 +142,18 @@ function observeSegmentSelect(targetNode: Element) {
         const host = 'https://prod.flywire-daf.com';
         let timestamp: number|undefined;
         const menuOpt: (string|((e: MouseEvent) => void))[][] = [
-          ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
+          ['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
           [
-            'Mark complete', ``,
+            'Mark Complete', ``,
             async (e: MouseEvent) => {
               e.preventDefault();
               if (timestamp == undefined) {
                 timestamp = await getTimeStamp(segmentIDString);
               }
               // cannot gurantee that outdated neuron will throw error
-              if (0 && parent.classList.contains('error')) {
+              if (parent.classList.contains('error')) {
                 StatusMessage.showMessage(
-                    `Error: Mark Complete is not avaliable.`,
+                    `Error: Cannot Mark Complete is not avaliable. Please re-select the segment for the most updated version.`,
                     {color: '#ff0000'});
               } else {
                 new SubmitDialog(
@@ -163,8 +163,8 @@ function observeSegmentSelect(targetNode: Element) {
             }
           ],
           [
-            'Cell information',
-            `${host}/neurons/api/v1/cell_information?filter_by=root_id&filter_string=${
+            'Cell Identification',
+            `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
                 paramStr}`
           ],
         ];
@@ -234,7 +234,6 @@ function observeSegmentSelect(targetNode: Element) {
             item.querySelector('.nge-segment-changelog-button.lightbulb');
         if (bulb == null) {
           bulb = createChangelogButton(segmentIDString, item.dataset);
-          (<HTMLButtonElement>bulb).title = 'This segment is unproofread';
           bulb.classList.add('error');
           item.appendChild(bulb);
           // const field = managementField(segmentIDString, item.dataset)
@@ -263,12 +262,23 @@ function observeSegmentSelect(targetNode: Element) {
           .then(data => {
             bulb.classList.remove('error');
             if (Object.keys(data.valid).length) {
-              bulb.title = 'This segment has been proofread';
+              bulb.title =
+                  'Green: This segment has been proofread. Click for cell information menu.';
               bulb.classList.add('active');
+            } else {
+              bulb.title =
+                  'Yellow: This segment is unproofread. Click for cell information menu.';
             }
           })
-          .catch(() => {
-            bulb.title = 'Cannot connect to server';
+          .catch((reason) => {
+            if (reason.status == '401') {
+              bulb.title =
+                  'Black: This segment is outdated. Click for cell information menu.';
+              bulb.classList.add('outdated');
+            } else {
+              bulb.title =
+                  'Gray: Cannot connect to server. Click for cell information menu.';
+            }
           })
           .finally(() => {
             setTimeout(checkBulbStatus, checkTime, bulb, sid);
