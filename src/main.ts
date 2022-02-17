@@ -163,7 +163,7 @@ function observeSegmentSelect(targetNode: Element) {
                 // cannot gurantee that outdated neuron will throw error
                 if (parent.classList.contains('error')) {
                   StatusMessage.showMessage(
-                      `Error: Cannot Mark Complete is not avaliable. Please re-select the segment for the most updated version.`,
+                      `Error: Mark Complete is not avaliable. Please re-select the segment for the most updated version.`,
                       {color: '#ff0000'});
                 } else {
                   new SubmitDialog(

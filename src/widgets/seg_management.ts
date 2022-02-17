@@ -119,7 +119,8 @@ export class SubmitDialog extends Overlay {
     <ol>
     <li>Are the crosshairs centered inside the nucleus? (Or if no soma is present, in a distinctive backbone?)</li>
     <li>Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers? (For more information about proofreading, see <a class="nge-sm-link" target='_blank' href="https://drive.google.com/open?id=1GF4Nh8UPsECMAicaaTOqxxM5u1taO4fW">this tutorial</a>.)</li>
-    </ol>`;
+    </ol>
+    <p>If you disagree that this neuron's backbones have been completed, please email <a href="mailto:flywire@princeton.edu">flywire@princeton.edu</a>.</p>`;
         formMain.append(
             title, descr, br(), sub, ' ', cancel, br(), br(), advanceTab, br(),
             viewAdvanc);
