@@ -1,20 +1,24 @@
 require('neuroglancer/ui/default_viewer.css');
+require('./widgets/seg_management.css');
 require('./main.css');
 
 import 'neuroglancer/sliceview/chunk_format_handlers';
-
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {disableContextMenu, disableWheel} from 'neuroglancer/ui/disable_default_actions';
 import {DisplayContext} from 'neuroglancer/display_context';
 import {StatusMessage} from 'neuroglancer/status';
 import {Viewer} from 'neuroglancer/viewer';
-
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
-
 import {setupVueApp} from './vueapp';
 import {layerProxy, storeProxy} from './state';
 import {connectChatSocket} from './chat_socket';
 import './config';
+import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
+import Config from './config';
+import {ContextMenu} from 'neuroglancer/ui/context_menu';
+import {SubmitDialog} from './widgets/seg_management';
+import {SegmentationUserLayerWithGraph} from 'third_party/neuroglancer/src/neuroglancer/segmentation_user_layer_with_graph';
+// import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
@@ -118,6 +122,16 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
+  const getTimeStamp = async (segmentIDString: string) => {
+    const mLayer = (<any>window).viewer.selectedLayer.layer;
+    if (mLayer == null) return;
+    const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
+    const timestamps = await authFetch(
+        `${layer.chunkedGraphUrl}/root_timestamps`,
+        {method: 'POST', body: JSON.stringify({node_ids: [segmentIDString]})});
+    const ts = await timestamps.json();
+    return ts.timestamp[0];
+  };
   const makeChangelogMenu =
       (parent: HTMLElement, segmentIDString: string,
        dataset: string): ContextMenu => {
@@ -126,29 +140,57 @@ function observeSegmentSelect(targetNode: Element) {
         menu.classList.add('neuroglancer-layer-group-viewer-context-menu');
         const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
         const host = 'https://prod.flywire-daf.com';
-        const menuOpt = [
-          ['Changelog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
-        ];
+        let timestamp: number|undefined;
+        let menuOpt: (string|((e: MouseEvent) => void))[][] =
+            [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
+
+        // If production data set
         if (dataset == 'fly_v31') {
-          menuOpt.push([
-            'Proofreading',
-            `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
-                paramStr}`
-          ])
+          menuOpt = [
+            ...menuOpt,
+            [
+              'Proofreading Contributors',
+              `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
+                  paramStr}`
+            ],
+            [
+              'Mark Complete', ``,
+              async (e: MouseEvent) => {
+                e.preventDefault();
+                if (timestamp == undefined) {
+                  timestamp = await getTimeStamp(segmentIDString);
+                }
+                // cannot gurantee that outdated neuron will throw error
+                if (parent.classList.contains('error')) {
+                  StatusMessage.showError(
+                      `Error: Mark Complete is not avaliable. Please re-select the segment for the most updated version.`);
+                } else {
+                  new SubmitDialog(
+                      (<any>window).viewer, segmentIDString, timestamp!,
+                      storeProxy.loggedInUser!.id);
+                }
+              }
+            ],
+            [
+              'Cell Identification',
+              `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
+                  paramStr}`
+            ],
+          ];
         }
-        for (const [name, model] of menuOpt) {
-          // const widget = contextMenu.registerDisposer(new
-          // EnumSelectWidget(model));
+
+        for (const [name, model, action] of menuOpt) {
           const label = document.createElement('a');
           label.style.display = 'flex';
           label.style.flexDirection = 'row';
           label.style.whiteSpace = 'nowrap';
-          label.textContent = name;
+          label.textContent = `${name}`;
           label.style.color = 'white';
-          label.href = model;
+          label.href = `${model}`;
           label.target = '_blank';
-          // console.log(model);
-          // label.appendChild(widget.element);
+          if (action) {
+            label.addEventListener('click', <any>action!);
+          }
           menu.appendChild(label);
         }
         return contextMenu;
@@ -157,25 +199,15 @@ function observeSegmentSelect(targetNode: Element) {
       (segmentIDString: string, dataset: DOMStringMap): HTMLButtonElement => {
         // Button for the user to copy a segment's ID
         const changelogButton = document.createElement('button');
-        changelogButton.className = 'nge-segment-changelog-button';
+        changelogButton.className = 'nge-segment-changelog-button lightbulb';
         changelogButton.title =
             `Show changelog for Segment: ${segmentIDString}`;
-        changelogButton.innerHTML = '💡';
+        changelogButton.innerHTML = '⠀';
         var cmenu = makeChangelogMenu(
             changelogButton, segmentIDString, dataset.dataset!);
-        // console.log(cmenu);
         changelogButton.addEventListener('click', (event: MouseEvent) => {
           cmenu.show(event);
         });
-        // console.log(queryurl);
-        /*changelogButton.addEventListener('click', async () => {
-          const request =
-              `${queryurl}${segmentIDString}/tabular_change_log?disp=True`;
-
-          const params =
-              `location=no,toolbar=no,menubar=no,width=620,left=0,top=0`;
-          window.open(request, `Changelog for ${segmentIDString}`, params)
-        });*/
         return changelogButton;
       };
 
@@ -193,17 +225,62 @@ function observeSegmentSelect(targetNode: Element) {
       buttonList.forEach(item => {
         const segmentIDString =
             (<HTMLElement>item.querySelector('.segment-button')).dataset.segId!;
-        if (!item.querySelector('.nge-segment-changelog-button')) {
-          item.appendChild(
-              createChangelogButton(segmentIDString, item.dataset));
+        let bulb =
+            item.querySelector('.nge-segment-changelog-button.lightbulb');
+        if (bulb == null) {
+          bulb = createChangelogButton(segmentIDString, item.dataset);
+          bulb.classList.add('error');
+          item.appendChild(bulb);
+          (<HTMLButtonElement>bulb).title = 'Click for cell information menu.';
+        }
+        if (item.dataset.dataset == 'fly_v31') {
+          checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString);
         }
       });
     }
   };
 
+  const checkTime = 120000;
+  const checkVisibleTime = 30000;
+  const checkBulbStatus =
+      function(bulb: HTMLButtonElement, sid: string) {
+    const view = bulb.getBoundingClientRect();
+    if (!view.height || !view.width) {
+      // not visible
+      setTimeout(checkBulbStatus, checkVisibleTime, bulb, sid);
+    } else {
+      const menuText = 'Click for cell information menu.';
+      authFetch(
+          `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
+              sid}`,
+          {credentials: 'same-origin'})
+          .then(response => response.json())
+          .then(data => {
+            bulb.classList.remove('error');
+            if (Object.keys(data.valid).length) {
+              bulb.title = `This segment is marked as proofread. ${menuText}`;
+              bulb.classList.add('active');
+            } else {
+              bulb.title =
+                  `This segment is not marked as proofread. ${menuText}`;
+            }
+          })
+          .catch((reason) => {
+            if (reason.status == '401') {
+              bulb.title = `This segment is outdated. ${menuText}`;
+              bulb.classList.add('outdated');
+            }
+          })
+          .finally(() => {
+            setTimeout(checkBulbStatus, checkTime, bulb, sid);
+          });
+    }
+  }
+
   // Callback function to execute when mutations are observed
   const detectMutation = function(mutationsList: MutationRecord[]) {
     console.log('Segment ID Added');
+
     mutationsList.forEach(mutation => {
       mutation.addedNodes.forEach(updateSegmentSelectItem);
     });
@@ -226,11 +303,6 @@ function liveNeuroglancerInjection() {
   }
   observeSegmentSelect(watchNode);
 }
-
-import {authTokenShared} from 'neuroglancer/authentication/frontend';
-import Config from './config';
-import {ContextMenu} from 'neuroglancer/ui/context_menu';
-
 class ExtendViewer extends Viewer {
   constructor(public display: DisplayContext) {
     super(display, {
