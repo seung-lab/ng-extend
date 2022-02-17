@@ -85,6 +85,6 @@
             ]
         }
     ],
-    "brainMeshURL": "precomputed://https://spine.janelia.org/files/eric/jfrc_mesh_test",
+    "brainMeshURL": "precomputed://gs://flywire_neuropil_meshes/whole_neuropil/brain_mesh_v141.surf",
     "brainMeshOpacity": 0.2
 }
