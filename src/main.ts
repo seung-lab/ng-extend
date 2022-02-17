@@ -141,49 +141,45 @@ function observeSegmentSelect(targetNode: Element) {
         const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
         const host = 'https://prod.flywire-daf.com';
         let timestamp: number|undefined;
-        const menuOpt: (string|((e: MouseEvent) => void))[][] = [
-          ['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`],
-          [
-            'Mark Complete', ``,
-            async (e: MouseEvent) => {
-              e.preventDefault();
-              if (timestamp == undefined) {
-                timestamp = await getTimeStamp(segmentIDString);
-              }
-              // cannot gurantee that outdated neuron will throw error
-              if (parent.classList.contains('error')) {
-                StatusMessage.showMessage(
-                    `Error: Cannot Mark Complete is not avaliable. Please re-select the segment for the most updated version.`,
-                    {color: '#ff0000'});
-              } else {
-                new SubmitDialog(
-                    (<any>window).viewer, segmentIDString, timestamp!,
-                    storeProxy.loggedInUser!.id);
-              }
-            }
-          ],
-          [
-            'Cell Identification',
-            `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
-                paramStr}`
-          ],
-        ];
+        let menuOpt: (string|((e: MouseEvent) => void))[][] =
+            [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
+
+        // If production data set
         if (dataset == 'fly_v31') {
-          menuOpt.push([
-            'Proofreading',
-            `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
-                paramStr}`
-          ])
+          menuOpt = [
+            ...menuOpt,
+            [
+              'Proofreading',
+              `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
+                  paramStr}`
+            ],
+            [
+              'Mark Complete', ``,
+              async (e: MouseEvent) => {
+                e.preventDefault();
+                if (timestamp == undefined) {
+                  timestamp = await getTimeStamp(segmentIDString);
+                }
+                // cannot gurantee that outdated neuron will throw error
+                if (parent.classList.contains('error')) {
+                  StatusMessage.showMessage(
+                      `Error: Cannot Mark Complete is not avaliable. Please re-select the segment for the most updated version.`,
+                      {color: '#ff0000'});
+                } else {
+                  new SubmitDialog(
+                      (<any>window).viewer, segmentIDString, timestamp!,
+                      storeProxy.loggedInUser!.id);
+                }
+              }
+            ],
+            [
+              'Cell Identification',
+              `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
+                  paramStr}`
+            ],
+          ];
         }
-        /*if (parent.classList.contains('error')) {
-          menuOpt.push([
-            'Mark complete', ``,
-            (e: MouseEvent) => {
-              e.preventDefault();
-              new SubmitDialog((<any>window).viewer, segmentIDString)
-            }
-          ])
-        }*/
+
         for (const [name, model, action] of menuOpt) {
           const label = document.createElement('a');
           label.style.display = 'flex';
@@ -236,11 +232,11 @@ function observeSegmentSelect(targetNode: Element) {
           bulb = createChangelogButton(segmentIDString, item.dataset);
           bulb.classList.add('error');
           item.appendChild(bulb);
-          // const field = managementField(segmentIDString, item.dataset)
-          // item.appendChild(createManagementButton(field));
-          // item.appendChild(field);
+          (<HTMLButtonElement>bulb).title = 'Click for cell information menu.';
         }
-        checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString);
+        if (item.dataset.dataset == 'fly_v31') {
+          checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString);
+        }
       });
     }
   };
@@ -254,6 +250,7 @@ function observeSegmentSelect(targetNode: Element) {
       // not visible
       setTimeout(checkBulbStatus, checkVisibleTime, bulb, sid);
     } else {
+      const menuText = 'Click for cell information menu.';
       authFetch(
           `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
               sid}`,
@@ -262,22 +259,17 @@ function observeSegmentSelect(targetNode: Element) {
           .then(data => {
             bulb.classList.remove('error');
             if (Object.keys(data.valid).length) {
-              bulb.title =
-                  'Green: This segment has been proofread. Click for cell information menu.';
+              bulb.title = `This segment is marked as proofread. ${menuText}`;
               bulb.classList.add('active');
             } else {
               bulb.title =
-                  'Yellow: This segment is unproofread. Click for cell information menu.';
+                  `This segment is not marked as proofread. ${menuText}`;
             }
           })
           .catch((reason) => {
             if (reason.status == '401') {
-              bulb.title =
-                  'Black: This segment is outdated. Click for cell information menu.';
+              bulb.title = `This segment is outdated. ${menuText}`;
               bulb.classList.add('outdated');
-            } else {
-              bulb.title =
-                  'Gray: Cannot connect to server. Click for cell information menu.';
             }
           })
           .finally(() => {
