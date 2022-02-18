@@ -1,5 +1,5 @@
 <template>
-  <div class="introduction" v-if="appState.finishedLoading && appState.activeDataset && appState.activeDataset.name === 'Sandbox'">
+  <div class="introduction" v-if="appState.finishedLoading && layerState.activeSegmentationLayer && layerState.activeSegmentationLayer.name === 'Sandbox'">
     <transition name="tooltip">
       <introduction-step v-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first" :last="activeStep.last"
         v-on:next="next" v-on:back="back" v-on:exitIntro="exitIntro"></introduction-step>
@@ -9,7 +9,7 @@
 
 <script lang="ts">
 import Vue from "vue";
-import { storeProxy } from "../state";
+import { storeProxy, layerProxy } from "../state";
 import {steps} from "../introduction-steps";
 
 import IntroductionStep from "components/IntroductionStep.vue";
@@ -19,6 +19,7 @@ export default Vue.extend({
   data: () => {
     return {
       appState: storeProxy,
+      layerState: layerProxy,
     }
   },
   computed: {
