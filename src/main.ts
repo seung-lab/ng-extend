@@ -149,7 +149,7 @@ function observeSegmentSelect(targetNode: Element) {
           menuOpt = [
             ...menuOpt,
             [
-              'Proofreading Contributors',
+              'Proofreading Details',
               `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
                   paramStr}`
             ],
