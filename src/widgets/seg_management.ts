@@ -98,7 +98,7 @@ export class SubmitDialog extends Overlay {
       click: () => {
         window.open(
             `${apiURL}?valid_id=${sid}&location=${out.join(',')}&submit=1`);
-        StatusMessage.showMessage(`Thank you for your assessment!`);
+        StatusMessage.showTemporaryMessage(`Thank you for your assessment!`);
         this.dispose();
       }
     });
