@@ -149,12 +149,12 @@ function observeSegmentSelect(targetNode: Element) {
           menuOpt = [
             ...menuOpt,
             [
-              'Proofreading Details',
+              'Cell Completion Details',
               `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
                   paramStr}`
             ],
             [
-              'Mark Complete', ``,
+              'Mark Cell As Complete', ``,
               async (e: MouseEvent) => {
                 e.preventDefault();
                 if (timestamp == undefined) {

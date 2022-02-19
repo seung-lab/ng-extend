@@ -94,7 +94,7 @@ export class SubmitDialog extends Overlay {
     const sub = this.makeButton({
       innerText: 'Yes',
       classList: ['nge_segment'],
-      title: 'Submit neuron as complete.',
+      title: 'Submit cell as complete.',
       click: () => {
         window.open(
             `${apiURL}?valid_id=${sid}&location=${out.join(',')}&submit=1`);
@@ -115,19 +115,19 @@ export class SubmitDialog extends Overlay {
     this.isCoordInRoot().then(valid => {
       if (valid) {
         title.innerText = 'Mark Complete';
-        descr.innerHTML = `To mark proofreading of this neuron as complete:
+        descr.innerHTML = `To mark proofreading of this cell as complete:
     <ol>
     <li>Are the crosshairs centered inside the nucleus? (Or if no soma is present, in a distinctive backbone?)</li>
     <li>Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers? (For more information about proofreading, see <a class="nge-sm-link" target='_blank' href="https://drive.google.com/open?id=1GF4Nh8UPsECMAicaaTOqxxM5u1taO4fW">this tutorial</a>.)</li>
     </ol>
-    <p>If you disagree that this neuron's backbones have been completed, please email <a href="mailto:flywire@princeton.edu">flywire@princeton.edu</a>.</p>`;
+    <p>If you disagree that this cell's backbones have been completed, please email <a href="mailto:flywire@princeton.edu">flywire@princeton.edu</a>.</p>`;
         formMain.append(
             title, descr, br(), sub, ' ', cancel, br(), br(), advanceTab, br(),
             viewAdvanc);
       } else {
         title.innerText = 'Error';
         descr.innerHTML =
-            `The crosshairs are not centered inside the selected neuron`;
+            `The crosshairs are not centered inside the selected cell.`;
         formMain.append(
             title, descr, br(), cancel, br(), br(), advanceTab, br(),
             viewAdvanc);
