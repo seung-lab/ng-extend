@@ -1,5 +1,6 @@
 require('neuroglancer/ui/default_viewer.css');
 require('./widgets/seg_management.css');
+require('./widgets/loader.css');
 require('./main.css');
 
 import 'neuroglancer/sliceview/chunk_format_handlers';
@@ -18,6 +19,7 @@ import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {SubmitDialog} from './widgets/seg_management';
 import {SegmentationUserLayerWithGraph} from 'third_party/neuroglancer/src/neuroglancer/segmentation_user_layer_with_graph';
+import {Loader} from './widgets/loader';
 // import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -157,13 +159,15 @@ function observeSegmentSelect(targetNode: Element) {
               'Mark Cell As Complete', ``,
               async (e: MouseEvent) => {
                 e.preventDefault();
+                let spinner = new Loader();
                 if (timestamp == undefined) {
                   timestamp = await getTimeStamp(segmentIDString);
                 }
+                spinner.dispose();
                 // cannot gurantee that outdated neuron will throw error
                 if (parent.classList.contains('error')) {
                   StatusMessage.showError(
-                      `Error: Mark Complete is not avaliable. Please re-select the segment for the most updated version.`);
+                      `Error: Mark Complete is not available. Please re-select the segment for the most updated version.`);
                 } else {
                   new SubmitDialog(
                       (<any>window).viewer, segmentIDString, timestamp!,
