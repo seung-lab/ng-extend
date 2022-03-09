@@ -62,12 +62,12 @@ export class CellIdDialog extends SubmitDialog {
         .then(valid => {
           if (valid) {
             this.title.innerText = 'Submit Cell Identification';
-            this.description.innerHTML = `Submit Cell Indentification`;
-            this.infoField = this.insertField({
-              content: '',
-              fieldTitle: 'Enter Cell Identification',
-              type: 'textarea'
-            });
+            this.description.innerHTML =
+                `<p>Enter name(s) of this cell including any synonyms or abbreviations and source of name, if known.</p>
+            <p>All information is helpful; if you're not certain, just add "putative" or "resembles" or describe your level of certainty.</p>
+            <p>Example 1: putative giant fiber neuron, giant fibre neuron (Power 1948), GF, GFN.</p>
+            <p>Example 2: X9238J (new cell type named in ongoing Smith lab project)</p>`;
+            this.infoField = this.insertField({content: '', type: 'textarea'});
             this.infoField.classList.add('rounded-input', 'large');
             this.form.append(
                 this.title, this.description, br(), this.infoField, br(), br(),
