@@ -38,7 +38,7 @@ export class CellIdDialog extends SubmitDialog {
       title: 'Submit cell identification.',
       click: () => {
         if (this.infoField.value.length) {
-          window.open(`${apiURL}?valid_id=${this.sid}&location=${
+          window.open(`${apiURL}?valid_id=${this.sid}&submit=1&location=${
               this.coords.join(
                   ',')}&tag=${encodeURIComponent(this.infoField.value)}`);
           StatusMessage.showTemporaryMessage(`Thank you for your assessment!`);
