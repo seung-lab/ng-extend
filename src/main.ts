@@ -148,20 +148,14 @@ function observeSegmentSelect(targetNode: Element) {
         let menuOpt: (string|((e: MouseEvent) => void))[][] =
             [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
 
-        const handleDialogOpen =
-            async (e: MouseEvent, onError: Function, onSuccess: Function) => {
+        const handleDialogOpen = async (e: MouseEvent, callback: Function) => {
           e.preventDefault();
           let spinner = new Loader();
           if (timestamp == undefined) {
             timestamp = await getTimeStamp(segmentIDString);
           }
           spinner.dispose();
-          // cannot gurantee that outdated neuron will throw error
-          if (parent.classList.contains('error')) {
-            onError();
-          } else {
-            onSuccess();
-          }
+          callback(parent.classList.contains('error'));
         };
 
         // If production data set
@@ -177,17 +171,11 @@ function observeSegmentSelect(targetNode: Element) {
               'Mark Cell As Complete',
               ``,
               (e: MouseEvent) => {
-                handleDialogOpen(
-                    e,
-                    () => {
-                      StatusMessage.showError(
-                          `Error: Mark Complete is not available. Please re-select the segment for the most updated version.`);
-                    },
-                    () => {
-                      new SubmitDialog(
-                          (<any>window).viewer, segmentIDString, timestamp!,
-                          storeProxy.loggedInUser!.id);
-                    });
+                handleDialogOpen(e, (err: boolean) => {
+                  new SubmitDialog(
+                      (<any>window).viewer, segmentIDString, timestamp!,
+                      storeProxy.loggedInUser!.id, err);
+                });
               },
             ],
             [
@@ -199,17 +187,11 @@ function observeSegmentSelect(targetNode: Element) {
               'Submit Cell Information',
               ``,
               (e: MouseEvent) => {
-                handleDialogOpen(
-                    e,
-                    () => {
-                      StatusMessage.showError(
-                          `Error: Submit Cell Information is not available. Please re-select the segment for the most updated version.`);
-                    },
-                    () => {
-                      new CellIdDialog(
-                          (<any>window).viewer, segmentIDString, timestamp!,
-                          storeProxy.loggedInUser!.id);
-                    });
+                handleDialogOpen(e, (err: boolean) => {
+                  new CellIdDialog(
+                      (<any>window).viewer, segmentIDString, timestamp!,
+                      storeProxy.loggedInUser!.id, err);
+                });
               },
             ],
           ];

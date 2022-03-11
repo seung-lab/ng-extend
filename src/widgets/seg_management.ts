@@ -34,7 +34,7 @@ export class SubmitDialog extends Overlay {
   protected infoTab: HTMLButtonElement;
   constructor(
       public viewer: Viewer, public sid: string, public timestamp: number,
-      public userID: number) {
+      public userID: number, public error = false) {
     super();
     const br = () => document.createElement('br');
 
@@ -85,10 +85,24 @@ export class SubmitDialog extends Overlay {
       classList: ['special-button'],
       click: advancedViewToggle,
     });
-    this.AddContent()
+    this.AddContent();
   }
 
   protected AddContent() {
+    const cancel = this.makeButton({
+      innerText: 'Cancel',
+      classList: ['nge_segment'],
+      title: 'Cancel',
+      click: () => {
+        this.dispose();
+      },
+    });
+    if (this.error) {
+      this.erroredPopup(
+          `Mark Complete is not available. Please re-select the segment for the most updated version.`,
+          cancel);
+      return;
+    }
     const br = () => document.createElement('br');
     const apiURL =
         `https://prod.flywire-daf.com/neurons/api/v1/mark_completion`;
@@ -102,15 +116,6 @@ export class SubmitDialog extends Overlay {
         StatusMessage.showTemporaryMessage(`Thank you for your assessment!`);
         this.dispose();
       }
-    });
-
-    const cancel = this.makeButton({
-      innerText: 'Cancel',
-      classList: ['nge_segment'],
-      title: 'Cancel',
-      click: () => {
-        this.dispose();
-      },
     });
 
     this.isCoordInRoot()
@@ -127,25 +132,24 @@ export class SubmitDialog extends Overlay {
             this.form.append(
                 this.title, this.description, br(), sub, ' ', cancel, br(),
                 br(), this.infoTab, br(), this.infoView);
-          } else {
-            this.title.innerText = 'Error';
-            this.description.innerHTML =
-                `The crosshairs are not centered inside the selected cell.`;
-            this.form.append(
-                this.title, this.description, br(), cancel, br(), br(),
-                this.infoTab, br(), this.infoView);
-          }
 
-          let modal = document.createElement('div');
-          this.content.appendChild(modal);
-          modal.appendChild(this.form);
-          modal.onblur = () => this.dispose();
-          modal.focus();
+            let modal = document.createElement('div');
+            this.content.appendChild(modal);
+            modal.appendChild(this.form);
+            modal.onblur = () => this.dispose();
+            modal.focus();
+          } else
+            this.erroredPopup(
+                `The crosshairs are not centered inside the selected cell.`,
+                cancel);
         })
         .catch(() => {
-          StatusMessage.showError(
-              `Error: Mark Complete is not available. Please check your network connection or refresh the page.`);
-          this.dispose();
+          /*StatusMessage.showError(
+              `Error: Mark Complete is not available. Please check your network
+          connection or refresh the page.`); this.dispose();*/
+          this.erroredPopup(
+              `Mark Complete is not available. Please check your network connection or refresh the page.`,
+              cancel);
         });
   }
 
@@ -166,6 +170,22 @@ export class SubmitDialog extends Overlay {
     input.type = 'hidden';
     form.appendChild(input);
   };*/
+
+  protected erroredPopup = (msg: string, cancel: HTMLButtonElement) => {
+    const br = () => document.createElement('br');
+    this.title.innerText = 'Error';
+    this.description.innerHTML = msg;
+
+    this.form.append(
+        this.title, this.description, br(), cancel, br(), br(), this.infoTab,
+        br(), this.infoView);
+
+    let modal = document.createElement('div');
+    this.content.appendChild(modal);
+    modal.appendChild(this.form);
+    modal.onblur = () => this.dispose();
+    modal.focus();
+  };
 
   protected makeButton = (config: any) => {
     const button = document.createElement('button');

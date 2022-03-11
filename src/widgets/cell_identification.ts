@@ -24,11 +24,25 @@ export class CellIdDialog extends SubmitDialog {
   infoField: HTMLInputElement|HTMLTextAreaElement;
   constructor(
       public viewer: Viewer, public sid: string, public timestamp: number,
-      public userID: number) {
-    super(viewer, sid, timestamp, userID);
+      public userID: number, public error = true) {
+    super(viewer, sid, timestamp, userID, error);
   }
 
   AddContent() {
+    const cancel = this.makeButton({
+      innerText: 'Cancel',
+      classList: ['nge_segment'],
+      title: 'Cancel',
+      click: () => {
+        this.dispose();
+      },
+    });
+    if (this.error) {
+      this.erroredPopup(
+          `Submit Cell Information is not available. Please re-select the segment for the most updated version.`,
+          cancel);
+      return;
+    }
     const br = () => document.createElement('br');
     const apiURL =
         `https://prod.flywire-daf.com/neurons/api/v1/submit_cell_identification`;
@@ -44,18 +58,10 @@ export class CellIdDialog extends SubmitDialog {
           StatusMessage.showTemporaryMessage(`Thank you for your assessment!`);
           this.dispose();
         } else {
-          StatusMessage.showError(`Text cannot be empty!`);
+          // StatusMessage.showError(`Text cannot be empty!`);
+          StatusMessage.showTemporaryMessage(`Text cannot be empty!`);
         }
       }
-    });
-
-    const cancel = this.makeButton({
-      innerText: 'Cancel',
-      classList: ['nge_segment'],
-      title: 'Cancel',
-      click: () => {
-        this.dispose();
-      },
     });
 
     this.isCoordInRoot()
@@ -73,25 +79,34 @@ export class CellIdDialog extends SubmitDialog {
                 this.title, this.description, br(), this.infoField, br(), br(),
                 sub, ' ', cancel, br(), br(), this.infoTab, br(),
                 this.infoView);
+
+            let modal = document.createElement('div');
+            this.content.appendChild(modal);
+            modal.appendChild(this.form);
+            modal.onblur = () => this.dispose();
+            modal.focus();
           } else {
-            this.title.innerText = 'Error';
-            this.description.innerHTML =
-                `The crosshairs are not centered inside the selected cell.`;
-            this.form.append(
-                this.title, this.description, br(), cancel, br(), br(),
-                this.infoTab, br(), this.infoView);
+            this.erroredPopup(
+                `The crosshairs are not centered inside the selected cell.`,
+                cancel);
           }
+        })
+        .catch(() => {
+          /*StatusMessage.showError(
+              `Error: Submit Cell Identification is not available. Please check
+          your network connection or refresh the page.`); this.dispose();*/
+          this.title.innerText = 'Error';
+          this.description.innerHTML =
+              `Submit Cell Identification is not available. Please check your network connection or refresh the page.`;
+          this.form.append(
+              this.title, this.description, br(), cancel, br(), br(),
+              this.infoTab, br(), this.infoView);
 
           let modal = document.createElement('div');
           this.content.appendChild(modal);
           modal.appendChild(this.form);
           modal.onblur = () => this.dispose();
           modal.focus();
-        })
-        .catch(() => {
-          StatusMessage.showError(
-              `Error: Submit Cell Identification is not available. Please check your network connection or refresh the page.`);
-          this.dispose();
         });
   }
 }
