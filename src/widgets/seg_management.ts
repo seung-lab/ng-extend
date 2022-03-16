@@ -26,13 +26,17 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {Viewer} from 'neuroglancer/viewer';
 
 export class SubmitDialog extends Overlay {
+  protected form: HTMLFormElement;
+  protected title: HTMLHeadingElement;
+  protected description: HTMLDivElement;
+  protected infoView: HTMLDivElement;
+  protected coords: vec3;
+  protected infoTab: HTMLButtonElement;
   constructor(
       public viewer: Viewer, public sid: string, public timestamp: number,
-      public userID: number) {
+      public userID: number, public error = false) {
     super();
     const br = () => document.createElement('br');
-    const apiURL =
-        `https://prod.flywire-daf.com/neurons/api/v1/mark_completion`;
 
     const existingDialog = document.getElementById('nge-submit');
     if (existingDialog) {
@@ -40,30 +44,30 @@ export class SubmitDialog extends Overlay {
     }
 
     let {content} = this;
-    let out = vec3.fromValues(0, 0, 0);
-    viewer.navigationState.position.getVoxelCoordinates(out);
+    this.coords = vec3.fromValues(0, 0, 0);
+    viewer.navigationState.position.getVoxelCoordinates(this.coords);
     content.style.overflow = 'visible';
     content.classList.add('ng-dark');
-    let formMain = document.createElement('form');
-    const title = document.createElement('h1');
-    const descr = document.createElement('div');
-    descr.style.paddingBottom = '10px';
-    descr.style.maxWidth = '480px';
+    this.form = document.createElement('form');
+    this.title = document.createElement('h1');
+    this.description = document.createElement('div');
+    this.description.style.paddingBottom = '10px';
+    this.description.style.maxWidth = '480px';
 
-    const viewAdvanc = document.createElement('div');
+    this.infoView = document.createElement('div');
     let advancedViewToggle = () => {
-      viewAdvanc.classList.toggle('ng-hidden');
+      this.infoView.classList.toggle('ng-hidden');
     };
     {
-      viewAdvanc.classList.add('ng-hidden');
+      this.infoView.classList.add('ng-hidden');
       let id = this.insertField(
           {content: sid, fieldTitle: 'segmentID', disabled: true});
-      let x =
-          this.insertField({content: out[0], fieldTitle: 'x', disabled: true});
-      let y =
-          this.insertField({content: out[1], fieldTitle: 'y', disabled: true});
-      let z =
-          this.insertField({content: out[2], fieldTitle: 'z', disabled: true});
+      let x = this.insertField(
+          {content: this.coords[0], fieldTitle: 'x', disabled: true});
+      let y = this.insertField(
+          {content: this.coords[1], fieldTitle: 'y', disabled: true});
+      let z = this.insertField(
+          {content: this.coords[2], fieldTitle: 'z', disabled: true});
       let updateView = () => {
         viewer.navigationState.position.setVoxelCoordinates(
             this.htmlToVec3(x, y, z));
@@ -72,37 +76,19 @@ export class SubmitDialog extends Overlay {
       y.addEventListener('change', updateView);
       z.addEventListener('change', updateView);
 
-
-      const cancel = document.createElement('button');
-      cancel.type = 'button';
-      cancel.className = 'nge_segment';
-      cancel.addEventListener('click', () => {
-        this.dispose();
-      });
-      cancel.innerText = 'Submit';
-      cancel.title = 'Submit';
-      viewAdvanc.append(
+      this.infoView.append(
           'Segment: ', id, br(), br(), 'x: ', x, ' y: ', y, ' z: ', z, br());
     }
 
-    const advanceTab = this.makeButton({
+    this.infoTab = this.makeButton({
       innerHTML: '▼ Info',
       classList: ['special-button'],
       click: advancedViewToggle,
     });
+    this.AddContent();
+  }
 
-    const sub = this.makeButton({
-      innerText: 'Yes',
-      classList: ['nge_segment'],
-      title: 'Submit cell as complete.',
-      click: () => {
-        window.open(
-            `${apiURL}?valid_id=${sid}&location=${out.join(',')}&submit=1`);
-        StatusMessage.showTemporaryMessage(`Thank you for your assessment!`);
-        this.dispose();
-      }
-    });
-
+  protected AddContent() {
     const cancel = this.makeButton({
       innerText: 'Cancel',
       classList: ['nge_segment'],
@@ -111,44 +97,66 @@ export class SubmitDialog extends Overlay {
         this.dispose();
       },
     });
+    if (this.error) {
+      this.erroredPopup(
+          `Mark Complete is not available. Please re-select the segment for the most updated version.`,
+          cancel);
+      return;
+    }
+    const br = () => document.createElement('br');
+    const apiURL =
+        `https://prod.flywire-daf.com/neurons/api/v1/mark_completion`;
+    const sub = this.makeButton({
+      innerText: 'Yes',
+      classList: ['nge_segment'],
+      title: 'Submit cell as complete.',
+      click: () => {
+        window.open(`${apiURL}?valid_id=${this.sid}&location=${
+            this.coords.join(',')}&submit=1`);
+        StatusMessage.showTemporaryMessage(`Thank you for your assessment!`);
+        this.dispose();
+      }
+    });
 
     this.isCoordInRoot()
         .then(valid => {
           if (valid) {
-            title.innerText = 'Mark Complete';
-            descr.innerHTML = `To mark proofreading of this cell as complete:
+            this.title.innerText = 'Mark Complete';
+            this.description.innerHTML =
+                `To mark proofreading of this cell as complete:
     <ol>
     <li>Are the crosshairs centered inside the nucleus? (Or if no soma is present, in a distinctive backbone?)</li>
     <li>Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers? (For more information about proofreading, see <a class="nge-sm-link" target='_blank' href="https://drive.google.com/open?id=1GF4Nh8UPsECMAicaaTOqxxM5u1taO4fW">this tutorial</a>.)</li>
     </ol>
     <p>If you disagree that this cell's backbones have been completed, please email <a href="mailto:flywire@princeton.edu">flywire@princeton.edu</a>.</p>`;
-            formMain.append(
-                title, descr, br(), sub, ' ', cancel, br(), br(), advanceTab,
-                br(), viewAdvanc);
-          } else {
-            title.innerText = 'Error';
-            descr.innerHTML =
-                `The crosshairs are not centered inside the selected cell.`;
-            formMain.append(
-                title, descr, br(), cancel, br(), br(), advanceTab, br(),
-                viewAdvanc);
-          }
+            this.form.append(
+                this.title, this.description, br(), sub, ' ', cancel, br(),
+                br(), this.infoTab, br(), this.infoView);
 
-          let modal = document.createElement('div');
-          content.appendChild(modal);
-          modal.appendChild(formMain);
-          modal.onblur = () => this.dispose();
-          modal.focus();
+            let modal = document.createElement('div');
+            this.content.appendChild(modal);
+            modal.appendChild(this.form);
+            modal.onblur = () => this.dispose();
+            modal.focus();
+          } else
+            this.erroredPopup(
+                `The crosshairs are not centered inside the selected cell.`,
+                cancel);
         })
         .catch(() => {
-          StatusMessage.showError(
-              `Error: Mark Complete is not available. Please check your network connection or refresh the page.`);
-          this.dispose();
+          /*StatusMessage.showError(
+              `Error: Mark Complete is not available. Please check your network
+          connection or refresh the page.`); this.dispose();*/
+          this.erroredPopup(
+              `Mark Complete is not available. Please check your network connection or refresh the page.`,
+              cancel);
         });
   }
 
   private htmlToVec3(
-      x: HTMLInputElement, y: HTMLInputElement, z: HTMLInputElement) {
+      x: HTMLInputElement|HTMLTextAreaElement,
+      y: HTMLInputElement|HTMLTextAreaElement,
+      z: HTMLInputElement|HTMLTextAreaElement) {
     let xv = parseInt(x.value, 10);
     let yv = parseInt(y.value, 10);
     let zv = parseInt(z.value, 10);
@@ -163,7 +171,23 @@ export class SubmitDialog extends Overlay {
     form.appendChild(input);
   };*/
 
-  private makeButton = (config: any) => {
+  protected erroredPopup = (msg: string, cancel: HTMLButtonElement) => {
+    const br = () => document.createElement('br');
+    this.title.innerText = 'Error';
+    this.description.innerHTML = msg;
+
+    this.form.append(
+        this.title, this.description, br(), cancel, br(), br(), this.infoTab,
+        br(), this.infoView);
+
+    let modal = document.createElement('div');
+    this.content.appendChild(modal);
+    modal.appendChild(this.form);
+    modal.onblur = () => this.dispose();
+    modal.focus();
+  };
+
+  protected makeButton = (config: any) => {
     const button = document.createElement('button');
     button.type = 'button';
     let {innerHTML, innerText, classList, click, title} = config;
@@ -175,22 +199,26 @@ export class SubmitDialog extends Overlay {
     return button;
   };
 
-  private insertField(config: FieldConfig) {
+  protected insertField(config: FieldConfig) {
     // const {form} = config;
     let {content, fieldTitle, disabled, type} = config;
 
-    let text = document.createElement('input');
-    text.type = type || 'number';
+    let text =
+        document.createElement(type == 'textarea' ? 'textarea' : 'input');
+    if (type != 'textarea') {
+      (<HTMLInputElement>text).type = type || 'number';
+      (<HTMLInputElement>text).size = 33;
+    }
     text.value = `${content || ''}`;
-    text.size = 33;
     text.title = fieldTitle || '';
     text.disabled = !!disabled;
+
 
     // form.append(label || '', ': ', text);
     return text;
   }
 
-  async isCoordInRoot(): Promise<Boolean> {
+  protected async isCoordInRoot(): Promise<Boolean> {
     const source = Uint64.parseString(this.sid);
     const timestamp = this.timestamp;
     const mLayer = this.viewer.selectedLayer.layer;

@@ -1,5 +1,6 @@
 require('neuroglancer/ui/default_viewer.css');
 require('./widgets/seg_management.css');
+require('./widgets/cell_identification.css');
 require('./widgets/loader.css');
 require('./main.css');
 
@@ -20,6 +21,7 @@ import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {SubmitDialog} from './widgets/seg_management';
 import {SegmentationUserLayerWithGraph} from 'third_party/neuroglancer/src/neuroglancer/segmentation_user_layer_with_graph';
 import {Loader} from './widgets/loader';
+import {CellIdDialog} from './widgets/cell_identification';
 // import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -146,6 +148,16 @@ function observeSegmentSelect(targetNode: Element) {
         let menuOpt: (string|((e: MouseEvent) => void))[][] =
             [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
 
+        const handleDialogOpen = async (e: MouseEvent, callback: Function) => {
+          e.preventDefault();
+          let spinner = new Loader();
+          if (timestamp == undefined) {
+            timestamp = await getTimeStamp(segmentIDString);
+          }
+          spinner.dispose();
+          callback(parent.classList.contains('error'));
+        };
+
         // If production data set
         if (dataset == 'fly_v31') {
           menuOpt = [
@@ -156,29 +168,31 @@ function observeSegmentSelect(targetNode: Element) {
                   paramStr}`
             ],
             [
-              'Mark Cell As Complete', ``,
-              async (e: MouseEvent) => {
-                e.preventDefault();
-                let spinner = new Loader();
-                if (timestamp == undefined) {
-                  timestamp = await getTimeStamp(segmentIDString);
-                }
-                spinner.dispose();
-                // cannot gurantee that outdated neuron will throw error
-                if (parent.classList.contains('error')) {
-                  StatusMessage.showError(
-                      `Error: Mark Complete is not available. Please re-select the segment for the most updated version.`);
-                } else {
+              'Mark Cell As Complete',
+              ``,
+              (e: MouseEvent) => {
+                handleDialogOpen(e, (err: boolean) => {
                   new SubmitDialog(
                       (<any>window).viewer, segmentIDString, timestamp!,
-                      storeProxy.loggedInUser!.id);
-                }
-              }
+                      storeProxy.loggedInUser!.id, err);
+                });
+              },
             ],
             [
               'Cell Identification',
               `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
                   paramStr}`
+            ],
+            [
+              'Submit Cell Information',
+              ``,
+              (e: MouseEvent) => {
+                handleDialogOpen(e, (err: boolean) => {
+                  new CellIdDialog(
+                      (<any>window).viewer, segmentIDString, timestamp!,
+                      storeProxy.loggedInUser!.id, err);
+                });
+              },
             ],
           ];
         }
