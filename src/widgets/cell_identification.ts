@@ -39,7 +39,7 @@ export class CellIdDialog extends SubmitDialog {
     });
     if (this.error) {
       this.erroredPopup(
-          `Submit Cell Information is not available. Please re-select the segment for the most updated version.`,
+          `Submit Cell Identification is not available. Please re-select the segment for the most updated version.`,
           cancel);
       return;
     }
@@ -49,7 +49,7 @@ export class CellIdDialog extends SubmitDialog {
     const sub = this.makeButton({
       innerText: 'Submit',
       classList: ['nge_segment'],
-      title: 'Submit cell identification.',
+      title: 'Submit Cell Identification.',
       click: () => {
         if (this.infoField.value.length) {
           window.open(`${apiURL}?valid_id=${this.sid}&submit=1&location=${

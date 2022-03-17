@@ -184,7 +184,7 @@ function observeSegmentSelect(targetNode: Element) {
                   paramStr}`
             ],
             [
-              'Submit Cell Information',
+              'Submit Cell Identification',
               ``,
               (e: MouseEvent) => {
                 handleDialogOpen(e, (err: boolean) => {
@@ -249,7 +249,8 @@ function observeSegmentSelect(targetNode: Element) {
           bulb = createChangelogButton(segmentIDString, item.dataset);
           bulb.classList.add('error');
           item.appendChild(bulb);
-          (<HTMLButtonElement>bulb).title = 'Click for cell information menu.';
+          (<HTMLButtonElement>bulb).title =
+              'Click for Cell Identification menu.';
         }
         if (item.dataset.dataset == 'fly_v31') {
           checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString);
@@ -267,7 +268,7 @@ function observeSegmentSelect(targetNode: Element) {
       // not visible
       setTimeout(checkBulbStatus, checkVisibleTime, bulb, sid);
     } else {
-      const menuText = 'Click for cell information menu.';
+      const menuText = 'Click for Cell Identification menu.';
       authFetch(
           `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
               sid}`,
