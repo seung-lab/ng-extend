@@ -54,7 +54,7 @@ export const steps: Step[] = [
   {
     text:
         ' If you get stuck, you can click here to return to the default Sandbox view.',
-    position: {element: '.resetDataset', side: 'bottom'}
+    position: {element: '.resetSandbox', side: 'bottom'}
   },
   {
     text:
