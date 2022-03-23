@@ -249,8 +249,7 @@ function observeSegmentSelect(targetNode: Element) {
           bulb = createChangelogButton(segmentIDString, item.dataset);
           bulb.classList.add('error');
           item.appendChild(bulb);
-          (<HTMLButtonElement>bulb).title =
-              'Click for Cell Identification menu.';
+          (<HTMLButtonElement>bulb).title = 'Click for Cell Information menu.';
         }
         if (item.dataset.dataset == 'fly_v31') {
           checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString);
@@ -268,7 +267,7 @@ function observeSegmentSelect(targetNode: Element) {
       // not visible
       setTimeout(checkBulbStatus, checkVisibleTime, bulb, sid);
     } else {
-      const menuText = 'Click for Cell Identification menu.';
+      const menuText = 'Click for Cell Information menu.';
       authFetch(
           `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
               sid}`,
