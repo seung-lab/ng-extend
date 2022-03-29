@@ -337,6 +337,16 @@ export class AppStore extends createModule
       }
     }
   }
+
+  @action
+  async checkoutNeuron() {
+    const response = await authFetch(config.checkoutURL, { method: 'POST' });
+    const text = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, 'text/html');
+    const url = doc.getElementsByClassName("jumbotron")[0].getElementsByTagName("a")[0].href;
+    window.location.href = url;
+  }
 }
 
 import Vue from 'vue';
