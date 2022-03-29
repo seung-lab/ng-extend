@@ -31,6 +31,9 @@
     <div class="ng-extend-spacer"></div>
 
     <template v-if="appState.loadedViewer">
+      <button class="checkoutButton" @click="appState.checkoutNeuron()">Checkout</button>
+      <div class="ng-extend-spacer"></div>
+
       <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="imageLayerChooser" width="240px" hover="Choose image">
         <template #chooserTitle>
           <span :style="{color: layerState.activeImageLayer ? layerState.activeImageLayer.color : undefined}">
