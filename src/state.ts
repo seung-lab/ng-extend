@@ -340,12 +340,34 @@ export class AppStore extends createModule
 
   @action
   async checkoutNeuron() {
+    if (!viewer) {
+      return false;
+    }
+    console.log("Checking out neuron");
     const response = await authFetch(config.checkoutURL, { method: 'POST' });
     const text = await response.text();
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, 'text/html');
-    const url = doc.getElementsByClassName("jumbotron")[0].getElementsByTagName("a")[0].href;
-    window.location.href = url;
+    const container = doc.getElementsByClassName('container')[0];
+    const rootID = container.getElementsByTagName('p')[0].innerHTML.split(':')[1].trim();
+    console.log("Got neuron", rootID);
+    const coordsSpaced = container.getElementsByTagName('p')[3].innerHTML.split(':')[1].trim().slice(1, -1).split(" ");
+    const xyz = [];
+    for (const coord of coordsSpaced) {
+      if (coord !== "") {
+        xyz.push(parseInt(coord));
+      }
+    }
+
+    layerProxy.set2dPosition({x: xyz[0], y: xyz[1], z: xyz[2]});
+    viewer.perspectiveNavigationState.zoomFactor.value = 79; //TODO use production layer's defaultPerspectiveZoomFactor
+    layerProxy.clearSelectedCells();
+    layerProxy.selectCell({id: rootID});
+    console.log("Checked out neuron", rootID, "at coordinates", xyz);
+
+    /*const url = doc.getElementsByClassName('jumbotron')[0].getElementsByTagName('a')[0].href;
+    window.location.href = url;*/
+    return true;
   }
 }
 

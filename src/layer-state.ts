@@ -263,6 +263,23 @@ export class LayerState extends createModule
   }
 
   @action
+  async clearSelectedCells() {
+    if (!viewer) {
+      return false;
+    }
+
+    const layers = viewer.layerManager.managedLayers;
+
+    for (const {layer} of layers) {
+      if (layer instanceof SegmentationUserLayer) {
+        layer.displayState.rootSegments.clear();
+      }
+    }
+
+    return true;
+  }
+
+  @action
   async selectCell(cell: CellDescription) {
     if (!viewer) {
       return false;
