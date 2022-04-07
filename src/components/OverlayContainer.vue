@@ -6,6 +6,10 @@
 
     <admin-panel v-if="appState.showAdminPanel" @hide="appState.showAdminPanel=false"/>
 
+    <modal-overlay v-if="appState.checkingOutNeuron">
+      <div>Checking out neuron from Proofreading Drive. Please wait...</div>
+    </modal-overlay>
+
     <modal-overlay v-if="appState.loggedInUser === null">
       <div>You are not logged in. Refresh the page if you do not see a google login pop-up.</div>
     </modal-overlay>

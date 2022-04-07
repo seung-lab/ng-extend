@@ -31,11 +31,6 @@
     <div class="ng-extend-spacer"></div>
 
     <template v-if="appState.loadedViewer">
-      <template v-if="inProduction">
-        <button class="checkoutButton" @click="appState.checkoutNeuron()">Checkout</button>
-        <div class="ng-extend-spacer"></div>
-      </template>
-
       <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="imageLayerChooser" width="240px" hover="Choose image">
         <template #chooserTitle>
           <span :style="{color: layerState.activeImageLayer ? layerState.activeImageLayer.color : undefined}">
@@ -145,9 +140,6 @@ export default Vue.extend({
     },
     activeSegmentationLayer() {
       return layerProxy.activeSegmentationLayer;
-    },
-    inProduction() {
-      return layerProxy.activeSegmentationLayer && layerProxy.activeSegmentationLayer!.name!.startsWith("Production");
     }
   },
   methods: {
