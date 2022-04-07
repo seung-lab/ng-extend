@@ -348,22 +348,28 @@ export class AppStore extends createModule
     const response = await authFetch(config.checkoutURL, { method: 'POST' });
     const text = await response.text();
     const parser = new DOMParser();
-    const doc = parser.parseFromString(text, 'text/html');
-    const container = doc.getElementsByClassName('container')[0];
-    const rootID = container.getElementsByTagName('p')[0].innerHTML.split(':')[1].trim();
-    const coordsSpaced = container.getElementsByTagName('p')[3].innerHTML.split(':')[1].trim().slice(1, -1).split(" ");
-    const xyz = [];
-    for (const coord of coordsSpaced) {
-      if (coord !== "") {
-        xyz.push(parseInt(coord));
+    try {
+      const doc = parser.parseFromString(text, 'text/html');
+      const container = doc.getElementsByClassName('container')[0];
+      const rootID = container.getElementsByTagName('p')[0].innerHTML.split(':')[1].trim();
+      const coordsSpaced = container.getElementsByTagName('p')[3].innerHTML.split(':')[1].trim().slice(1, -1).split(" ");
+      const xyz = [];
+      for (const coord of coordsSpaced) {
+        if (coord !== "") {
+          xyz.push(parseInt(coord));
+        }
       }
-    }
 
-    layerProxy.set2dPosition({x: xyz[0], y: xyz[1], z: xyz[2]});
-    viewer.perspectiveNavigationState.zoomFactor.value = 79; //TODO use production layer's defaultPerspectiveZoomFactor
-    layerProxy.clearSelectedCells();
-    layerProxy.selectCell({id: rootID});
-    console.log("Checked out neuron", rootID, "at coordinates", xyz);
+      layerProxy.set2dPosition({x: xyz[0], y: xyz[1], z: xyz[2]});
+      viewer.perspectiveNavigationState.zoomFactor.value = 79; //TODO use production layer's defaultPerspectiveZoomFactor
+      layerProxy.clearSelectedCells();
+      layerProxy.selectCell({id: rootID});
+      console.log("Checked out neuron", rootID, "at coordinates", xyz);
+    }
+    catch (e) {
+      alert("Error checking out neuron from Proofreading Drive");
+    }
+    
     this.checkingOutNeuron = false;
     return true;
   }
