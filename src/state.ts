@@ -83,6 +83,7 @@ export class AppStore extends createModule
   showCellChooser: boolean = false;
   showResetConfirm: boolean = false;
   showAdminPanel: boolean = false;
+  checkingOutNeuron: boolean = false;
 
   loadedViewer: boolean = false;
   finishedLoading: boolean = false;
@@ -343,14 +344,13 @@ export class AppStore extends createModule
     if (!viewer) {
       return false;
     }
-    console.log("Checking out neuron");
+    this.checkingOutNeuron = true;
     const response = await authFetch(config.checkoutURL, { method: 'POST' });
     const text = await response.text();
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, 'text/html');
     const container = doc.getElementsByClassName('container')[0];
     const rootID = container.getElementsByTagName('p')[0].innerHTML.split(':')[1].trim();
-    console.log("Got neuron", rootID);
     const coordsSpaced = container.getElementsByTagName('p')[3].innerHTML.split(':')[1].trim().slice(1, -1).split(" ");
     const xyz = [];
     for (const coord of coordsSpaced) {
@@ -364,9 +364,7 @@ export class AppStore extends createModule
     layerProxy.clearSelectedCells();
     layerProxy.selectCell({id: rootID});
     console.log("Checked out neuron", rootID, "at coordinates", xyz);
-
-    /*const url = doc.getElementsByClassName('jumbotron')[0].getElementsByTagName('a')[0].href;
-    window.location.href = url;*/
+    this.checkingOutNeuron = false;
     return true;
   }
 }

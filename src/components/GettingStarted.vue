@@ -25,6 +25,11 @@
       <div class="nge-gs-link">
         <button @click="appState.introductionStep = 0">Restart Tutorial</button>
       </div>
+      <template v-if="inProduction">
+        <div class="nge-gs-link">
+          <button class="checkoutButton" @click="appState.checkoutNeuron()">Get Cell to Proofread</button> 
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -32,7 +37,7 @@
 <script lang="ts">
 import Vue from "vue";
 
-import { storeProxy } from "../state";
+import { layerProxy, storeProxy } from "../state";
 
 export default Vue.extend({
   data: () => {
@@ -40,6 +45,11 @@ export default Vue.extend({
       appState: storeProxy,
     }
   },
+  computed: {
+    inProduction() {
+      return layerProxy.activeSegmentationLayer && layerProxy.activeSegmentationLayer!.name!.startsWith("Production");
+    }
+  }
 });
 </script>
 
@@ -61,7 +71,7 @@ export default Vue.extend({
   padding-top: 1em;
 }
 .nge-gs-link {
-  margin-bottom: 1em;
+  margin-bottom: 0.5em;
 }
 .nge-gs-link > a {
   color: #fff;
