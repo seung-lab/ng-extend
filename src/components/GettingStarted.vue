@@ -27,7 +27,8 @@
       </div>
       <template v-if="inProduction">
         <div class="nge-gs-link">
-          <button class="checkoutButton" @click="appState.checkoutNeuron()">Get Cell to Proofread</button> 
+          <button class="checkoutButton" @click="appState.checkoutNeuron()">Get Cell to Proofread</button>
+          <button class="checkoutHelpButton" @click="appState.setShowCheckoutHelp(true)" title="Show help"></button>
         </div>
       </template>
     </div>
@@ -75,5 +76,11 @@ export default Vue.extend({
 }
 .nge-gs-link > a {
   color: #fff;
+}
+.nge-gs-link > .checkoutHelpButton {
+  background-image: url('images/question.svg');
+  width: 18px;
+  height: 18px;
+  background-size: 100%;
 }
 </style>

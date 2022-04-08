@@ -84,6 +84,7 @@ export class AppStore extends createModule
   showResetConfirm: boolean = false;
   showAdminPanel: boolean = false;
   checkingOutNeuron: boolean = false;
+  showCheckoutHelp: boolean = false;
 
   loadedViewer: boolean = false;
   finishedLoading: boolean = false;
@@ -337,6 +338,11 @@ export class AppStore extends createModule
         alert(rollbackJSON);
       }
     }
+  }
+
+  @action
+  async setShowCheckoutHelp(show: boolean) {
+    this.showCheckoutHelp = show;
   }
 
   @action
