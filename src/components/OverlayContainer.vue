@@ -10,6 +10,13 @@
       <div>Checking out neuron from Proofreading Drive. Please wait...</div>
     </modal-overlay>
 
+    <modal-overlay v-if="appState.showCheckoutHelp">
+      <div>"Get Cell to Proofread" moves you to a cell that needs proofreading, and deselects other cells.<br/>
+        Our Self-Guided Training provides proofreading instructions.<br/>
+        Use the Lightbulb menu to mark cell when complete.</div>
+      <div class="overlay-button"><button @click="appState.setShowCheckoutHelp(false)">OK</button></div>
+    </modal-overlay>
+
     <modal-overlay v-if="appState.loggedInUser === null">
       <div>You are not logged in. Refresh the page if you do not see a google login pop-up.</div>
     </modal-overlay>
@@ -40,5 +47,15 @@ export default Vue.extend({
   height: 100%;
   z-index: 100;
   pointer-events: none;
+}
+.overlay-button {
+  margin-top: 20px;
+  text-align: center;
+}
+.ng-extend .overlay-button > button {
+  width: 50px;
+  height: 30px;
+  border: 1px solid white !important;
+  border-radius: 5px;
 }
 </style>
