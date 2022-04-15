@@ -352,13 +352,10 @@ export class AppStore extends createModule
     }
     this.checkingOutNeuron = true;
     const response = await authFetch(config.checkoutURL, { method: 'POST' });
-    const text = await response.text();
-    const parser = new DOMParser();
+    const json = await response.json();
     try {
-      const doc = parser.parseFromString(text, 'text/html');
-      const container = doc.getElementsByClassName('container')[0];
-      const rootID = container.getElementsByTagName('p')[0].innerHTML.split(':')[1].trim();
-      const coordsSpaced = container.getElementsByTagName('p')[3].innerHTML.split(':')[1].trim().slice(1, -1).split(" ");
+      const rootID = json["root_id"];
+      const coordsSpaced = json["ngl_coordinates"].slice(1, -1).split(" ");
       const xyz = [];
       for (const coord of coordsSpaced) {
         if (coord !== "") {
