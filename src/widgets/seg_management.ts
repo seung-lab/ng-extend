@@ -20,10 +20,10 @@ import {authFetch} from 'neuroglancer/authentication/frontend';
 import {MouseSelectionState} from 'neuroglancer/layer';
 import {Overlay} from 'neuroglancer/overlay';
 import {SegmentationUserLayerWithGraph} from 'neuroglancer/segmentation_user_layer_with_graph';
-import {StatusMessage} from 'neuroglancer/status';
 import {vec3} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {Viewer} from 'neuroglancer/viewer';
+import {storeProxy} from '../state';
 
 export class SubmitDialog extends Overlay {
   protected form: HTMLFormElement;
@@ -113,7 +113,8 @@ export class SubmitDialog extends Overlay {
       click: () => {
         window.open(`${apiURL}?valid_id=${this.sid}&location=${
             this.coords.join(',')}&submit=1`);
-        StatusMessage.showTemporaryMessage(`Thank you for your assessment!`);
+        
+        storeProxy.showSubmittedCongrats = true;
         this.dispose();
       }
     });
@@ -128,7 +129,7 @@ export class SubmitDialog extends Overlay {
     <li>Are the crosshairs centered inside the nucleus? (Or if no soma is present, in a distinctive backbone?)</li>
     <li>Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers? (For more information about proofreading, see <a class="nge-sm-link" target='_blank' href="https://drive.google.com/open?id=1GF4Nh8UPsECMAicaaTOqxxM5u1taO4fW">this tutorial</a>.)</li>
     </ol>
-    <p>If you disagree that this cell's backbones have been completed, please email <a href="mailto:flywire@princeton.edu">flywire@princeton.edu</a>.</p>`;
+    <p>If you disagree that this cell's backbones have been completed, please email <a class="nge-sm-link" href="mailto:flywire@princeton.edu">flywire@princeton.edu</a>.</p>`;
             this.form.append(
                 this.title, this.description, br(), sub, ' ', cancel, br(),
                 br(), this.infoTab, br(), this.infoView);
