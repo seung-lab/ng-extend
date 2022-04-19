@@ -36,4 +36,8 @@ export default Vue.extend({
   background-color: lightgray;
   font-size: 1.25em;
 }
+
+.nge-overlay.modal.overlay-content {
+  overflow: visible;
+}
 </style>

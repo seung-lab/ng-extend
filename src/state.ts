@@ -85,6 +85,7 @@ export class AppStore extends createModule
   showAdminPanel: boolean = false;
   checkingOutNeuron: boolean = false;
   showCheckoutHelp: boolean = false;
+  showSubmittedCongrats: boolean = false;
 
   loadedViewer: boolean = false;
   finishedLoading: boolean = false;

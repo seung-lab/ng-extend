@@ -35,3 +35,7 @@
 .ng-extend .flex-fill {
   flex-grow: 1;
 }
+
+.nge-sm-link {
+  color: var(--color-small-text);
+}
