@@ -22,7 +22,7 @@
       </template>
       <template #text>
         <div>Congratulations!</div>
-        <div>Your cell has been marked as complete. Thank you for contributing to the drosophila connectome.</div>
+        <div>Your cell has been marked as complete. Thank you for contributing to the <em>Drosophila</em> connectome.</div>
       </template>
       <template #buttonCaption>ONWARD</template>
     </image-overlay>
