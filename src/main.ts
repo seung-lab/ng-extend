@@ -84,6 +84,7 @@ function setupViewer() {
 
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
+  viewer.showDefaultAnnotations.value = false;
 
   return viewer;
 }
