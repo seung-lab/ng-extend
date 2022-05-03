@@ -2,25 +2,25 @@
   <div class="nge-getting-started">
     <div class="nge-gs-links">
       <div class="nge-gs-link">
-        <a href="https://www.youtube-nocookie.com/embed/LH4iovmbv3c" target="_blank">Welcome video</a>
+        <a href="https://bit.ly/3s8ViUJ" target="_blank">Welcome video</a>
       </div>
       <div class="nge-gs-link">
-        <a href="https://docs.google.com/document/d/1imS4s8Bfl6KaGHbIlDNus6EdFNuX8dVtCHvyiyDY1Wc/edit" target="_blank">Quick Start</a>
+        <a href="https://bit.ly/3P6qXQz" target="_blank">Quick Start</a>
       </div>
       <div class="nge-gs-link">
-        <a href="https://docs.google.com/document/d/1ItdRpMybhx1ebjI41TQZDFIymfruk_GiZu4ztP6f3OM/edit" target="_blank">Self-guided training</a>
+        <a href="https://bit.ly/3OWi6AP" target="_blank">Self-guided training</a>
       </div>
       <div class="nge-gs-link">
-        <a href="https://docs.google.com/document/d/1tjy6axXvxVcfvrYiBbJsLTSx1Y3rTGI_HcXKETIqyiM/edit" target="_blank">Cheatsheet</a>
+        <a href="https://bit.ly/3kzb3jx" target="_blank">Cheatsheet</a>
       </div>
       <div class="nge-gs-link">
         <a href="https://join.slack.com/t/flywire-forum/shared_invite/zt-d6pyjonk-uC7_kjcjU~8c64t~Qid~oQ" target="_blank">Slack Forum</a>
       </div>
       <div class="nge-gs-link">
-        <a href="https://docs.google.com/document/d/1lbXy-cpFyNB47_qAJi-A53vyNRvYAl8KE0bfXm2PLrE/edit" target="_blank">Tools</a>
+        <a href="https://bit.ly/3kBLEFR" target="_blank">Tools</a>
       </div>
       <div class="nge-gs-link">
-        <a href="https://flywire.ai/support.html" target="_blank">Support</a>
+        <a href="https://bit.ly/3kCoZcw" target="_blank">Support</a>
       </div>
       <div class="nge-gs-link">
         <button @click="appState.introductionStep = 0">Restart Tutorial</button>
