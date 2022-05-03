@@ -21,7 +21,8 @@ import {Viewer} from 'neuroglancer/viewer';
 import {SubmitDialog} from './seg_management';
 
 export class CellReviewDialog extends SubmitDialog {
-  isComplete: HTMLInputElement;
+  isTrue: HTMLInputElement;
+  isFalse: HTMLInputElement;
   constructor(
       public viewer: Viewer, public sid: string, public timestamp: number,
       public userID: number, public error = true) {
@@ -50,11 +51,15 @@ export class CellReviewDialog extends SubmitDialog {
       classList: ['nge_segment'],
       title: 'Review Cell.',
       click: () => {
-        window.open(`${apiURL}?valid_id=${this.sid}&submit=1&location=${
-            this.coords.join(',')}&proofread_info=${
-            this.isComplete.checked ? 'TRUE' : 'FALSE'}`);
-        StatusMessage.showTemporaryMessage(`Thank you for your review!`);
-        this.dispose();
+        if (this.isTrue.checked || this.isFalse.checked) {
+          window.open(`${apiURL}?valid_id=${this.sid}&submit=1&location=${
+              this.coords.join(',')}&proofread_info=${
+              this.isTrue.checked ? 'TRUE' : 'FALSE'}`);
+          StatusMessage.showTemporaryMessage(`Thank you for your review!`);
+          this.dispose();
+        } else {
+          StatusMessage.showTemporaryMessage(`Please select a value.`);
+        }
       }
     });
 
@@ -63,15 +68,26 @@ export class CellReviewDialog extends SubmitDialog {
           if (valid) {
             this.title.innerText = 'Cell Review';
             this.description.innerHTML =
-                `<p>Check and submit if this cell is complete.</p>
-            <p>Uncheck and submit if this cell needs further review.</p>`;
-            this.isComplete = <HTMLInputElement>this.insertField(
-                {content: '', type: 'checkbox'});
-            this.isComplete.checked = true;
+                `<ol><li>1. Are the crosshairs centered inside a distinctive backbone?</li>
+            <li>Please select an option to indicate if tell cell is complete.</li></ol>`;
+            this.isTrue = <HTMLInputElement>this.insertField(
+                {content: 'true', type: 'radio'});
+            this.isTrue.id = 'complete';
+            const isTrue = document.createElement('label');
+            isTrue.innerText = 'Complete';
+            isTrue.htmlFor = this.isTrue.id;
+
+            this.isFalse = <HTMLInputElement>this.insertField(
+                {content: 'false', type: 'radio'});
+            this.isFalse.id = 'incomplete';
+            const isFalse = document.createElement('label');
+            isFalse.innerText = 'Incomplete';
+            isFalse.htmlFor = this.isFalse.id;
+
             this.form.append(
-                this.title, this.description, br(), this.isComplete, br(), br(),
-                sub, ' ', cancel, br(), br(), this.infoTab, br(),
-                this.infoView);
+                this.title, this.description, br(), this.isTrue, isTrue, br(),
+                this.isFalse, isFalse, br(), br(), sub, ' ', cancel, br(), br(),
+                this.infoTab, br(), this.infoView);
 
             let modal = document.createElement('div');
             this.content.appendChild(modal);
