@@ -6,7 +6,7 @@ require('./main.css');
 
 import 'neuroglancer/sliceview/chunk_format_handlers';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
-import {disableContextMenu, disableWheel} from 'neuroglancer/ui/disable_default_actions';
+import {disableWheel} from 'neuroglancer/ui/disable_default_actions';
 import {DisplayContext} from 'neuroglancer/display_context';
 import {StatusMessage} from 'neuroglancer/status';
 import {Viewer} from 'neuroglancer/viewer';
@@ -22,6 +22,7 @@ import {SubmitDialog} from './widgets/seg_management';
 import {SegmentationUserLayerWithGraph} from 'third_party/neuroglancer/src/neuroglancer/segmentation_user_layer_with_graph';
 import {Loader} from './widgets/loader';
 import {CellIdDialog} from './widgets/cell_identification';
+import {registerEventListener} from 'neuroglancer/util/disposable';
 // import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -90,7 +91,9 @@ function setupViewer() {
 }
 
 function makeExtendViewer() {
-  disableContextMenu();
+  registerEventListener(document.getElementById('neuroglancer-container')!, 'contextmenu', (e: Event) => {
+    e.preventDefault();
+  });
   disableWheel();
   try {
     let display =
