@@ -1,5 +1,5 @@
 <template>
-  <div class="nge-chatbox">
+  <div class="nge-chatbox" tabindex="1">
     <div class="nge-chatbox-title">
       <div>Chat</div>
       <button class="nge-chatbox-title-button" @click="toggleMinimized()">
