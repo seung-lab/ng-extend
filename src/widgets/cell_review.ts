@@ -66,10 +66,10 @@ export class CellReviewDialog extends SubmitDialog {
     this.isCoordInRoot()
         .then(valid => {
           if (valid) {
-            this.title.innerText = 'Cell Review';
+            this.title.innerText = 'Submit Cell Review';
             this.description.innerHTML =
-                `<ol><li>1. Are the crosshairs centered inside a distinctive backbone?</li>
-            <li>Please select an option to indicate if tell cell is complete.</li></ol>`;
+                `<ol><li>Are the crosshairs centered inside a distinctive backbone?</li>
+            <li>Please select an option to indicate if the cell is complete.</li></ol>`;
             this.isTrue = <HTMLInputElement>this.insertField(
                 {content: 'true', type: 'radio'});
             this.isTrue.id = 'complete';

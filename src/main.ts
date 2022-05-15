@@ -199,7 +199,7 @@ function observeSegmentSelect(targetNode: Element) {
           if (parent.classList.contains('active')) {
             menuOpt.push(
                 [
-                  'Cell Review',
+                  'Submit Cell Review',
                   ``,
                   (e: MouseEvent) => {
                     handleDialogOpen(e, (err: boolean) => {
