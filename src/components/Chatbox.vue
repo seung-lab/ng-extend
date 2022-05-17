@@ -104,7 +104,8 @@ export default Vue.extend({
       const message = messageEl.value;
       messageEl.value = "";
       if (message.trim() !== "") {
-        const messageObj = { type: "message", message: message };
+        const now = new Date();
+        const messageObj = { type: "message", message: message, timestamp: now };
         const socket = getChatSocket();
         if (socket.readyState === socket.OPEN) {
           socket.send(JSON.stringify(messageObj));

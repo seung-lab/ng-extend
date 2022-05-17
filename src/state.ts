@@ -27,6 +27,7 @@ export enum LeaderboardTimespan {
 interface ServerMessage {
   type: string,
   name: string,
+  timestamp: Date,
   message: string
 }
 
@@ -252,7 +253,8 @@ export class AppStore extends createModule
     const type = messageParsed.type;
     const messageText = messageParsed.message;
     const name = messageParsed.name;
-    const dateTime = new Date();
+    const dateTime = messageParsed.timestamp ? new Date(messageParsed.timestamp) : new Date();
+    console.log("datetime: ", dateTime);
     const time = dateTime.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
     const parts: MessagePart[] = [];
 
