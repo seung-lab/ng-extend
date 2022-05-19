@@ -73,6 +73,7 @@ export class CellReviewDialog extends SubmitDialog {
             this.isTrue = <HTMLInputElement>this.insertField(
                 {content: 'true', type: 'radio'});
             this.isTrue.id = 'complete';
+            this.isTrue.name = 'nge-cell-review';
             const isTrue = document.createElement('label');
             isTrue.innerText = 'Complete';
             isTrue.htmlFor = this.isTrue.id;
@@ -80,6 +81,7 @@ export class CellReviewDialog extends SubmitDialog {
             this.isFalse = <HTMLInputElement>this.insertField(
                 {content: 'false', type: 'radio'});
             this.isFalse.id = 'incomplete';
+            this.isFalse.name = 'nge-cell-review';
             const isFalse = document.createElement('label');
             isFalse.innerText = 'Incomplete';
             isFalse.htmlFor = this.isFalse.id;
