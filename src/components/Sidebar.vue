@@ -30,6 +30,9 @@ export default Vue.extend({
       this.visible = visible;
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
       this.shiftStatusBars();
+      if (visible) {
+        this.appState.unreadMessages = false;
+      }
     },
     setChatVisible(visible: boolean) {
       localStorage.setItem("chatVisible", visible.toString());

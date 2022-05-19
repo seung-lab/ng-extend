@@ -97,6 +97,7 @@ export class AppStore extends createModule
   leaderboardLoaded: boolean = false;
   joinedChat: boolean = false;
   chatMessages: ChatMessage[] = [];
+  unreadMessages: boolean = false;
   userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
 
   introductionStep: number =
@@ -254,7 +255,6 @@ export class AppStore extends createModule
     const messageText = messageParsed.message;
     const name = messageParsed.name;
     const dateTime = messageParsed.timestamp ? new Date(messageParsed.timestamp) : new Date();
-    console.log("datetime: ", dateTime);
     const time = dateTime.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
     const parts: MessagePart[] = [];
 
@@ -304,6 +304,11 @@ export class AppStore extends createModule
     };
 
     this.chatMessages.push(messageObj);
+
+    const sidebarVisible = localStorage.getItem("visible") !== "false";
+    if (!sidebarVisible) {
+      this.unreadMessages = true;
+    }
 
     // scroll to bottom of message box (once vue updates the page)
     Vue.nextTick(() => {
