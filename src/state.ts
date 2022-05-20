@@ -27,6 +27,7 @@ export enum LeaderboardTimespan {
 interface ServerMessage {
   type: string,
   name: string,
+  timestamp: Date,
   message: string
 }
 
@@ -83,6 +84,9 @@ export class AppStore extends createModule
   showCellChooser: boolean = false;
   showResetConfirm: boolean = false;
   showAdminPanel: boolean = false;
+  checkingOutNeuron: boolean = false;
+  showCheckoutHelp: boolean = false;
+  showSubmittedCongrats: boolean = false;
 
   loadedViewer: boolean = false;
   finishedLoading: boolean = false;
@@ -93,6 +97,7 @@ export class AppStore extends createModule
   leaderboardLoaded: boolean = false;
   joinedChat: boolean = false;
   chatMessages: ChatMessage[] = [];
+  unreadMessages: boolean = false;
   userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
 
   introductionStep: number =
@@ -249,7 +254,7 @@ export class AppStore extends createModule
     const type = messageParsed.type;
     const messageText = messageParsed.message;
     const name = messageParsed.name;
-    const dateTime = new Date();
+    const dateTime = messageParsed.timestamp ? new Date(messageParsed.timestamp) : new Date();
     const time = dateTime.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
     const parts: MessagePart[] = [];
 
@@ -300,6 +305,11 @@ export class AppStore extends createModule
 
     this.chatMessages.push(messageObj);
 
+    const sidebarVisible = localStorage.getItem("visible") !== "false";
+    if (!sidebarVisible) {
+      this.unreadMessages = true;
+    }
+
     // scroll to bottom of message box (once vue updates the page)
     Vue.nextTick(() => {
       const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
@@ -336,6 +346,43 @@ export class AppStore extends createModule
         alert(rollbackJSON);
       }
     }
+  }
+
+  @action
+  async setShowCheckoutHelp(show: boolean) {
+    this.showCheckoutHelp = show;
+  }
+
+  @action
+  async checkoutNeuron() {
+    if (!viewer) {
+      return false;
+    }
+    this.checkingOutNeuron = true;
+    const response = await authFetch(config.checkoutURL, { method: 'POST' });
+    const json = await response.json();
+    try {
+      const rootID = json["root_id"];
+      const coordsSpaced = json["ngl_coordinates"].slice(1, -1).split(" ");
+      const xyz = [];
+      for (const coord of coordsSpaced) {
+        if (coord !== "") {
+          xyz.push(parseInt(coord));
+        }
+      }
+
+      layerProxy.set2dPosition({x: xyz[0], y: xyz[1], z: xyz[2]});
+      viewer.perspectiveNavigationState.zoomFactor.value = 79; //TODO use production layer's defaultPerspectiveZoomFactor
+      layerProxy.clearSelectedCells();
+      layerProxy.selectCell({id: rootID});
+      console.log("Checked out neuron", rootID, "at coordinates", xyz);
+    }
+    catch (e) {
+      alert("Error checking out neuron from Proofreading Drive");
+    }
+    
+    this.checkingOutNeuron = false;
+    return true;
   }
 }
 

@@ -2,7 +2,13 @@
   <div id="extensionBar">
     <button class="toggleSidebarButton" @click="toggleSidebar()">
       <img
-        v-show="!showSidebar"
+        v-show="!showSidebar && appState.unreadMessages"
+        src="images/menu_notification.svg"
+        width="30"
+        title="Show sidebar"
+      />
+      <img
+        v-show="!showSidebar && !appState.unreadMessages"
         src="images/menu.svg"
         width="30"
         title="Show sidebar"
