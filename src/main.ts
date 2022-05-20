@@ -22,6 +22,7 @@ import {SubmitDialog} from './widgets/seg_management';
 import {SegmentationUserLayerWithGraph} from 'third_party/neuroglancer/src/neuroglancer/segmentation_user_layer_with_graph';
 import {Loader} from './widgets/loader';
 import {CellIdDialog} from './widgets/cell_identification';
+import {CellReviewDialog} from './widgets/cell_review';
 import {registerEventListener} from 'neuroglancer/util/disposable';
 // import {vec3} from 'neuroglancer/util/geom';
 
@@ -197,8 +198,23 @@ function observeSegmentSelect(targetNode: Element) {
                       storeProxy.loggedInUser!.id, err);
                 });
               },
-            ],
+            ]
           ];
+          if (parent.classList.contains('active')) {
+            menuOpt.push(
+                [
+                  'Submit Cell Review',
+                  ``,
+                  (e: MouseEvent) => {
+                    handleDialogOpen(e, (err: boolean) => {
+                      new CellReviewDialog(
+                          (<any>window).viewer, segmentIDString, timestamp!,
+                          storeProxy.loggedInUser!.id, err);
+                    });
+                  },
+                ],
+            );
+          }
         }
 
         for (const [name, model, action] of menuOpt) {
@@ -225,11 +241,12 @@ function observeSegmentSelect(targetNode: Element) {
         changelogButton.title =
             `Show changelog for Segment: ${segmentIDString}`;
         changelogButton.innerHTML = '⠀';
-        var cmenu = makeChangelogMenu(
+        let cmenu = makeChangelogMenu(
             changelogButton, segmentIDString, dataset.dataset!);
         changelogButton.addEventListener('click', (event: MouseEvent) => {
           cmenu.show(event);
         });
+        changelogButton.dataset.dataset = dataset.dataset!;
         return changelogButton;
       };
 
@@ -278,10 +295,17 @@ function observeSegmentSelect(targetNode: Element) {
           {credentials: 'same-origin'})
           .then(response => response.json())
           .then(data => {
-            bulb.classList.remove('error');
+            // const isActive = bulb.classList.contains('active');
+            bulb.classList.remove('error', 'outdated', 'active');
             if (Object.keys(data.valid).length) {
               bulb.title = `This segment is marked as proofread. ${menuText}`;
               bulb.classList.add('active');
+              // We need to recreate the menu
+              let cmenu = makeChangelogMenu(bulb, sid, bulb.dataset.dataset!);
+              bulb.removeEventListener('click', <any>bulb.onclick);
+              bulb.addEventListener('click', (event: MouseEvent) => {
+                cmenu.show(event);
+              });
             } else {
               bulb.title =
                   `This segment is not marked as proofread. ${menuText}`;
