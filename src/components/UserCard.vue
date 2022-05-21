@@ -11,7 +11,7 @@
       </div>
     </div>
     <div class="nge-usercard-edits">
-      <div class="nge-usercard-edits-title">Cells Submitted</div>
+      <div class="nge-usercard-edits-title">Cells Completed</div>
       <div class="nge-usercard-edits-table">
         <!--div class="nge-usercard-edits-section">
           <div class="nge-usercard-edits-timespan">Today</div>
@@ -111,7 +111,7 @@ export default Vue.extend({
   padding: 15px;
 }
 .nge-usercard-edits {
-  padding: 0px 20px 10px 20px;
+  padding: 0px 20px 20px 20px;
 }
 .nge-usercard-edits-title {
   font-size: 1.2em;
