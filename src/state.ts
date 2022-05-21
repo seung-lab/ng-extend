@@ -99,6 +99,7 @@ export class AppStore extends createModule
   chatMessages: ChatMessage[] = [];
   unreadMessages: boolean = false;
   userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
+  cellsSubmitted: number = 0;
 
   introductionStep: number =
       parseInt(localStorage.getItem('nge-introduction-step') || '0');
@@ -322,6 +323,8 @@ export class AppStore extends createModule
     if (!this.loggedInUser) return;
     const url = config.leaderboardURL + '/userInfo?userID=' + this.loggedInUser!.id;
     fetch(url).then(result => result.json()).then(async(json) => { this.userInfo = json; });
+    const statsURL = config.userStatsURL + '&user_id=' + this.loggedInUser!.id;
+    authFetch(statsURL).then(result => result.json()).then(async(json) => { this.cellsSubmitted = json["cells_submitted_all_time"]; });
   }
 
   @action

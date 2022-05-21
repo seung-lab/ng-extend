@@ -7,7 +7,8 @@ export default interface Config {
   segmentationLayers: SegmentationLayerDescription[],
   brainMeshURL: string,
   brainMeshOpacity: number,
-  checkoutURL: string
+  checkoutURL: string,
+  userStatsURL: string
 }
 
 export interface Vector3 {

@@ -10,6 +10,23 @@
         <div class="nge-usercard-date" v-if="appState.loggedInUser.joinDate !== '6/30/2020'">joined {{ appState.loggedInUser.joinDate }}</div>
       </div>
     </div>
+    <div class="nge-usercard-edits">
+      <div class="nge-usercard-edits-title">Cells Submitted</div>
+      <div class="nge-usercard-edits-table">
+        <!--div class="nge-usercard-edits-section">
+          <div class="nge-usercard-edits-timespan">Today</div>
+          <div class="nge-usercard-edits-count">{{ appState.userInfo.editsToday }}</div>
+        </div>
+        <div class="nge-usercard-edits-section">
+          <div class="nge-usercard-edits-timespan">Past 7 Days</div>
+          <div class="nge-usercard-edits-count">{{ appState.userInfo.editsThisWeek }}</div>
+        </div-->
+        <div class="nge-usercard-edits-section">
+          <!--div class="nge-usercard-edits-timespan">All Time</div-->
+          <div class="nge-usercard-edits-count">{{ appState.cellsSubmitted }}</div>
+        </div>
+      </div>
+    </div>
     <div class="nge-usercard-edits" v-if="appState.userInfo">
       <div class="nge-usercard-edits-title">Edits in Production</div>
       <div class="nge-usercard-edits-table">
