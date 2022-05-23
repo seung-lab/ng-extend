@@ -307,8 +307,15 @@ export class AppStore extends createModule
     this.chatMessages.push(messageObj);
 
     const sidebarVisible = localStorage.getItem("visible") !== "false";
-    if (!sidebarVisible) {
-      this.unreadMessages = true;
+    if (sidebarVisible) {
+      this.markLastMessageRead();
+    }
+    else if (type === "message") {
+      const lastReadMessageTime = localStorage.getItem("lastReadMessageTime");
+      const compareDate = new Date(dateTime.toString());
+      if (lastReadMessageTime === null || (compareDate > new Date(lastReadMessageTime))) {
+        this.unreadMessages = true;
+      }
     }
 
     // scroll to bottom of message box (once vue updates the page)
@@ -316,6 +323,15 @@ export class AppStore extends createModule
       const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
       messageBox.scrollTo(0, messageBox.scrollHeight);
     });
+  }
+
+  @action
+  async markLastMessageRead() {
+    this.unreadMessages = false;
+    if (this.chatMessages.length > 0) {
+      const lastMessage = this.chatMessages[this.chatMessages.length - 1];
+      localStorage.setItem("lastReadMessageTime", lastMessage.dateTime!.toString());
+    }
   }
 
   @action
