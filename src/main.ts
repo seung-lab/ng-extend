@@ -92,9 +92,11 @@ function setupViewer() {
 }
 
 function makeExtendViewer() {
-  registerEventListener(document.getElementById('neuroglancer-container')!, 'contextmenu', (e: Event) => {
-    e.preventDefault();
-  });
+  registerEventListener(
+      document.getElementById('neuroglancer-container')!, 'contextmenu',
+      (e: Event) => {
+        e.preventDefault();
+      });
   disableWheel();
   try {
     let display =
@@ -152,67 +154,55 @@ function observeSegmentSelect(targetNode: Element) {
         let timestamp: number|undefined;
         let menuOpt: (string|((e: MouseEvent) => void))[][] =
             [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
-
+        const cleanOverlays = () => {
+          const overlays = document.getElementsByClassName('nge-overlay');
+          [...overlays].forEach(function(element) {
+            try {
+              (<any>element).dispose();
+            } catch {
+            }
+          });
+        };
         const handleDialogOpen = async (e: MouseEvent, callback: Function) => {
           e.preventDefault();
           let spinner = new Loader();
           if (timestamp == undefined) {
             timestamp = await getTimeStamp(segmentIDString);
           }
+          cleanOverlays();
           spinner.dispose();
           callback(parent.classList.contains('error'));
         };
+        const currentTimeStamp = () => timestamp;
 
         // If production data set
         if (dataset == 'fly_v31') {
           menuOpt = [
+            [
+              'Connectivity',
+              `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field="${
+                  segmentIDString}"&cleft_thresh_field=50`,
+            ],
             ...menuOpt,
             [
               'Cell Completion Details',
               `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
                   paramStr}`
             ],
-            [
-              'Mark Cell As Complete',
-              ``,
-              (e: MouseEvent) => {
-                handleDialogOpen(e, (err: boolean) => {
-                  new SubmitDialog(
-                      (<any>window).viewer, segmentIDString, timestamp!,
-                      storeProxy.loggedInUser!.id, err);
-                });
-              },
-            ],
+            SubmitDialog.generateMenuOption(
+                handleDialogOpen, segmentIDString, currentTimeStamp),
             [
               'Cell Identification',
               `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
                   paramStr}`
             ],
-            [
-              'Submit Cell Identification',
-              ``,
-              (e: MouseEvent) => {
-                handleDialogOpen(e, (err: boolean) => {
-                  new CellIdDialog(
-                      (<any>window).viewer, segmentIDString, timestamp!,
-                      storeProxy.loggedInUser!.id, err);
-                });
-              },
-            ]
+            CellIdDialog.generateMenuOption(
+                handleDialogOpen, segmentIDString, currentTimeStamp),
           ];
           if (parent.classList.contains('active')) {
             menuOpt.push(
-                [
-                  'Submit Cell Review',
-                  ``,
-                  (e: MouseEvent) => {
-                    handleDialogOpen(e, (err: boolean) => {
-                      new CellReviewDialog(
-                          (<any>window).viewer, segmentIDString, timestamp!,
-                          storeProxy.loggedInUser!.id, err);
-                    });
-                  },
-                ],
+                CellReviewDialog.generateMenuOption(
+                    handleDialogOpen, segmentIDString, currentTimeStamp),
             );
           }
         }

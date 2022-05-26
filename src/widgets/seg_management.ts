@@ -113,7 +113,7 @@ export class SubmitDialog extends Overlay {
       click: () => {
         window.open(`${apiURL}?valid_id=${this.sid}&location=${
             this.coords.join(',')}&submit=1`);
-        
+
         storeProxy.showSubmittedCongrats = true;
         this.dispose();
       }
@@ -136,7 +136,9 @@ export class SubmitDialog extends Overlay {
 
             let modal = document.createElement('div');
             this.content.appendChild(modal);
+            modal.className = 'nge-overlay';
             modal.appendChild(this.form);
+            (<any>modal).dispose = () => this.dispose();
             modal.onblur = () => this.dispose();
             modal.focus();
           } else
@@ -239,6 +241,21 @@ export class SubmitDialog extends Overlay {
     // compare this root id with the one that initiated the check
     return !Uint64.compare(source, root_id);
   }
+
+  public static generateMenuOption =
+      (dialogOpen: Function, sis: string, timeCB: Function) => {
+        return [
+          'Mark Cell As Complete',
+          ``,
+          (e: MouseEvent) => {
+            dialogOpen(e, (err: boolean) => {
+              new SubmitDialog(
+                  (<any>window).viewer, sis, timeCB(),
+                  storeProxy.loggedInUser!.id, err);
+            });
+          },
+        ];
+      }
 }
 
 /*form: HTMLElement, popupID?: string, content?:
