@@ -19,6 +19,7 @@ import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {SubmitDialog} from './widgets/seg_management';
+import {FrictionDialog} from './widgets/check_proofread';
 import {SegmentationUserLayerWithGraph} from 'third_party/neuroglancer/src/neuroglancer/segmentation_user_layer_with_graph';
 import {Loader} from './widgets/loader';
 import {CellIdDialog} from './widgets/cell_identification';
@@ -262,7 +263,7 @@ function observeSegmentSelect(targetNode: Element) {
     }
   };
 
-  const checkTime = 120000;
+  const checkTime = 12000;
   const checkVisibleTime = 30000;
   const checkBulbStatus =
       function(bulb: HTMLButtonElement, sid: string) {
@@ -282,6 +283,16 @@ function observeSegmentSelect(targetNode: Element) {
             if (Object.keys(data.valid).length) {
               bulb.title = `This segment is marked as proofread. ${menuText}`;
               bulb.classList.add('active');
+
+              // If already proofread, asks for confirmation. Don't stack overlays
+              if (!(bulb.classList.contains('accepted') || document.getElementsByClassName('overlay').length)){
+                const dialogHandler=async (callback: Function) => {
+                  let spinner= new Loader()
+                  spinner.dispose()
+                  callback()
+                  }
+                  dialogHandler(() => {new FrictionDialog((<any>window).viewer,sid,bulb)})
+              }
             } else {
               bulb.title =
                   `This segment is not marked as proofread. ${menuText}`;
