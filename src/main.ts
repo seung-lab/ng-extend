@@ -179,9 +179,14 @@ function observeSegmentSelect(targetNode: Element) {
         if (dataset == 'fly_v31') {
           menuOpt = [
             [
+              'Cell Summary',
+              `${host}/dash/datastack/flywire_fafb_production/apps/fly_partners/?input_field=${
+                  segmentIDString}`,
+            ],
+            [
               'Connectivity',
-              `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field="${
-                  segmentIDString}"&cleft_thresh_field=50`,
+              `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field=${
+                  segmentIDString}&cleft_thresh_field=50`,
             ],
             ...menuOpt,
             [
