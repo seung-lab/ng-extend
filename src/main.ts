@@ -180,7 +180,7 @@ function observeSegmentSelect(targetNode: Element) {
           menuOpt = [
             [
               'Cell Summary',
-              `${host}/dash/datastack/flywire_fafb_production/apps/fly_partners/?input_field=${
+              `${host}/dash/datastack/flywire_fafb_production/apps/fly_summary/?input_field=${
                   segmentIDString}`,
             ],
             [
