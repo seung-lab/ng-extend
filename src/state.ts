@@ -307,8 +307,15 @@ export class AppStore extends createModule
     this.chatMessages.push(messageObj);
 
     const sidebarVisible = localStorage.getItem("visible") !== "false";
-    if (sidebarVisible) {
+    const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+    const scrollAtBottom = el.scrollTop + el.offsetHeight >= el.scrollHeight;
+    if (sidebarVisible && scrollAtBottom) {
       this.markLastMessageRead();
+      // scroll to bottom of message box (once vue updates the page)
+      Vue.nextTick(() => {
+        const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+        messageBox.scrollTo(0, messageBox.scrollHeight);
+      });
     }
     else if (type === "message") {
       const lastReadMessageTime = localStorage.getItem("lastReadMessageTime");
@@ -317,12 +324,6 @@ export class AppStore extends createModule
         this.unreadMessages = true;
       }
     }
-
-    // scroll to bottom of message box (once vue updates the page)
-    Vue.nextTick(() => {
-      const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
-      messageBox.scrollTo(0, messageBox.scrollHeight);
-    });
   }
 
   @action

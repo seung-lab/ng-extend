@@ -31,7 +31,11 @@ export default Vue.extend({
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
       this.shiftStatusBars();
       if (visible) {
-        this.appState.markLastMessageRead();
+        const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+        const scrollAtBottom = el.scrollTop + el.offsetHeight >= el.scrollHeight;
+        if (scrollAtBottom) {
+          this.appState.markLastMessageRead();
+        }
       }
     },
     setChatVisible(visible: boolean) {

@@ -70,6 +70,7 @@
           </span>
         </div>
       </simplebar>
+      <div class="nge-chatbox-unread" v-show="appState.unreadMessages" @click="scrollToBottom()">NEW MESSAGES</div>
       <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
         <div class="nge-chatbox-messageprompt"><img src="images/chevron.svg" width="15" style="transform: rotate(90deg);" /></div>
         <div class="nge-chatbox-inputbox"><input type="text" id="chatMessage" /></div>
@@ -139,7 +140,26 @@ export default Vue.extend({
       }
       this.expanded = !this.expanded;
       this.$root.$emit("toggleLeaderboard");
+    },
+    scrollToBottom() {
+      const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+      el.scrollTo(0, el.scrollHeight);
+    },
+    handleScroll() {
+      const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+      const scrollAtBottom = el.scrollTop + el.offsetHeight >= el.scrollHeight;
+      if (scrollAtBottom) {
+        this.appState.markLastMessageRead();
+      }
     }
+  },
+  mounted() {
+    const scrollEl = document.querySelector(".nge-chatbox-scroll .simplebar-content-wrapper")!;
+    scrollEl.addEventListener("scroll", this.handleScroll);
+  },
+  destroyed() {
+    const scrollEl = document.querySelector(".nge-chatbox-scroll .simplebar-content-wrapper")!;
+    scrollEl.removeEventListener("scroll", this.handleScroll);
   }
 });
 </script>
@@ -217,5 +237,14 @@ export default Vue.extend({
   background-color: #111;
   max-width: 150px;
   /*border-width: 0px;*/
+}
+.nge-chatbox-unread {
+  z-index: 90;
+  user-select: none;
+  background: var(--color-light-bg);
+  font-size: 0.9em;
+  text-align: center;
+  border-radius: 10px;
+  cursor: pointer;
 }
 </style> 
