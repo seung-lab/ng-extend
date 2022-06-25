@@ -18,6 +18,7 @@ import 'neuroglancer/save_state/save_state.css';
 
 import {StatusMessage} from 'neuroglancer/status';
 import {Viewer} from 'neuroglancer/viewer';
+import {storeProxy} from '../state';
 import {SubmitDialog} from './seg_management';
 
 export class CellIdDialog extends SubmitDialog {
@@ -82,7 +83,9 @@ export class CellIdDialog extends SubmitDialog {
 
             let modal = document.createElement('div');
             this.content.appendChild(modal);
+            modal.className = 'nge-overlay';
             modal.appendChild(this.form);
+            (<any>modal).dispose = () => this.dispose();
             modal.onblur = () => this.dispose();
             modal.focus();
           } else {
@@ -109,4 +112,19 @@ export class CellIdDialog extends SubmitDialog {
           modal.focus();
         });
   }
+
+  public static generateMenuOption =
+      (dialogOpen: Function, sis: string, timeCB: Function) => {
+        return [
+          'Submit Cell Identification',
+          ``,
+          (e: MouseEvent) => {
+            dialogOpen(e, (err: boolean) => {
+              new CellIdDialog(
+                  (<any>window).viewer, sis, timeCB(),
+                  storeProxy.loggedInUser!.id, err);
+            });
+          },
+        ];
+      }
 }
