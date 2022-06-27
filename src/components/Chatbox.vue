@@ -147,7 +147,7 @@ export default Vue.extend({
     },
     handleScroll() {
       const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
-      const scrollAtBottom = el.scrollTop + el.offsetHeight >= el.scrollHeight;
+      const scrollAtBottom = Math.ceil(el.scrollTop) + el.offsetHeight >= el.scrollHeight;
       if (scrollAtBottom) {
         this.appState.markLastMessageRead();
       }
