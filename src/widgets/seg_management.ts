@@ -33,8 +33,8 @@ export class SubmitDialog extends Overlay {
   protected coords: vec3;
   protected infoTab: HTMLButtonElement;
   constructor(
-      public viewer: Viewer, public sid: string, public timestamp: number,
-      public userID: number, public error = false) {
+      public viewer: Viewer, public host: string, public sid: string,
+      public timestamp: number, public userID: number, public error = false) {
     super();
     const br = () => document.createElement('br');
 
@@ -104,8 +104,7 @@ export class SubmitDialog extends Overlay {
       return;
     }
     const br = () => document.createElement('br');
-    const apiURL =
-        `https://prod.flywire-daf.com/neurons/api/v1/mark_completion`;
+    const apiURL = `${this.host}/neurons/api/v1/mark_completion`;
     const sub = this.makeButton({
       innerText: 'Yes',
       classList: ['nge_segment'],
@@ -243,14 +242,14 @@ export class SubmitDialog extends Overlay {
   }
 
   public static generateMenuOption =
-      (dialogOpen: Function, sis: string, timeCB: Function) => {
+      (dialogOpen: Function, host: string, sis: string, timeCB: Function) => {
         return [
           'Mark Cell As Complete',
           ``,
           (e: MouseEvent) => {
             dialogOpen(e, (err: boolean) => {
               new SubmitDialog(
-                  (<any>window).viewer, sis, timeCB(),
+                  (<any>window).viewer, host, sis, timeCB(),
                   storeProxy.loggedInUser!.id, err);
             });
           },
