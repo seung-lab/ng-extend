@@ -24,6 +24,7 @@ import {Loader} from './widgets/loader';
 import {CellIdDialog} from './widgets/cell_identification';
 import {CellReviewDialog} from './widgets/cell_review';
 import {registerEventListener} from 'neuroglancer/util/disposable';
+import {PartnersDialog} from './widgets/partners';
 // import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -195,19 +196,21 @@ function observeSegmentSelect(targetNode: Element) {
                   paramStr}`
             ],
             SubmitDialog.generateMenuOption(
-                handleDialogOpen, segmentIDString, currentTimeStamp),
+                handleDialogOpen, host, segmentIDString, currentTimeStamp),
             [
               'Cell Identification',
               `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
                   paramStr}`
             ],
             CellIdDialog.generateMenuOption(
-                handleDialogOpen, segmentIDString, currentTimeStamp),
+                handleDialogOpen, host, segmentIDString, currentTimeStamp),
+            PartnersDialog.generateMenuOption(
+                handleDialogOpen, host, segmentIDString, currentTimeStamp),
           ];
           if (parent.classList.contains('active')) {
             menuOpt.push(
                 CellReviewDialog.generateMenuOption(
-                    handleDialogOpen, segmentIDString, currentTimeStamp),
+                    handleDialogOpen, host, segmentIDString, currentTimeStamp),
             );
           }
         }
