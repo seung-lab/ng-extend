@@ -23,7 +23,7 @@ import {storeProxy} from '../state';
 
 import {SubmitDialog} from './seg_management';
 
-export class PartnersDialog extends SubmitDialog {
+export class SummaryDialog extends SubmitDialog {
   sidsList: string[];
   selectedSID: HTMLSelectElement;
   selection: HTMLTextAreaElement;
@@ -49,15 +49,14 @@ export class PartnersDialog extends SubmitDialog {
     segment for the most updated version.`, cancel); return;
     }*/
     const br = () => document.createElement('br');
-    const apiURL = `${
-        this.host}/dash/datastack/flywire_fafb_production/apps/fly_partners/`;
+    const apiURL =
+        `${this.host}/dash/datastack/flywire_fafb_production/apps/fly_summary/`;
     const sub = this.makeButton({
       innerText: 'Submit',
       classList: ['nge_segment'],
-      title: 'Submit Cell Identification.',
+      title: 'Query Cell Summary.',
       click: () => {
-        window.open(`${apiURL}?input_a=${this.sid}&input_b=${
-            this.selectedSID.value}&cleft_thresh_input=50`);
+        window.open(`${apiURL}?input_field=${this.sidsList.join(',')}`);
         this.dispose();
       }
     });
@@ -66,13 +65,17 @@ export class PartnersDialog extends SubmitDialog {
     if (mLayer == null) return;
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
     const changeDetect = () => {
-      this.sidsList = Array.from(this.selectedSID.selectedOptions)
-                          .map(option => option.value);
+      const sidsValues = Array.from(this.selectedSID.selectedOptions)
+                             .map(option => option.value);
+      sidsValues.unshift(this.sid);
+
+      this.sidsList = sidsValues;
       const sidsString = this.sidsList.join(', ');
-      this.selection.innerHTML = `Input B: ${sidsString}`;
+      this.selection.innerHTML = `Ids: ${sidsString}`;
     };
     this.selection = document.createElement('textarea');
     this.selectedSID = document.createElement('select');
+    this.selectedSID.appendChild(document.createElement('option'));
     for (const x of layer.displayState.rootSegments) {
       const option = document.createElement('option');
       option.value = x.toString();
@@ -81,17 +84,19 @@ export class PartnersDialog extends SubmitDialog {
         this.selectedSID.appendChild(option);
       }
     }
+    this.selectedSID.multiple = true;
     changeDetect();
     this.selectedSID.addEventListener('change', changeDetect);
 
     if (this.selectedSID.options.length != 0) {
-      this.title.innerText = 'Partners';
+      this.title.innerText = 'Cell Summary';
       this.description.innerHTML =
-          `<p>Choose which cell from your current list to query for synapses with the selected cell.</p>`;
+          `<p>Query summary information for one or more cells (Maximum of 20).</p>
+          <p>Hold the control (CTRL) key to add and remove ids.</p>`;
       this.form.append(
-          this.title, this.description, br(), 'Input A: ', this.sid, br(),
-          this.selection, br(), this.selectedSID, br(), br(), sub, ' ', cancel,
-          br(), br(), this.infoTab, br(), this.infoView);
+          this.title, this.description, br(), this.selection, br(),
+          this.selectedSID, br(), br(), sub, ' ', cancel, br(), br(),
+          this.infoTab, br(), this.infoView);
 
       let modal = document.createElement('div');
       this.content.appendChild(modal);
@@ -110,11 +115,11 @@ export class PartnersDialog extends SubmitDialog {
   public static generateMenuOption =
       (dialogOpen: Function, host: string, sis: string, timeCB: Function) => {
         return [
-          'Synapses with Partner',
+          'Cell Summary',
           ``,
           (e: MouseEvent) => {
             dialogOpen(e, (err: boolean) => {
-              new PartnersDialog(
+              new SummaryDialog(
                   (<any>window).viewer, host, sis, timeCB(),
                   storeProxy.loggedInUser!.id, err);
             });
