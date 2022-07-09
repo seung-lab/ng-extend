@@ -56,7 +56,8 @@ export class SummaryDialog extends SubmitDialog {
       classList: ['nge_segment'],
       title: 'Query Cell Summary.',
       click: () => {
-        window.open(`${apiURL}?input_field=${this.sidsList.join(',')}`);
+        window.open(`${apiURL}?timestamp_field=${this.timestamp}&input_field=${
+            this.sidsList.join(',')}`);
         this.dispose();
       }
     });
@@ -66,7 +67,8 @@ export class SummaryDialog extends SubmitDialog {
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
     const changeDetect = () => {
       const sidsValues = Array.from(this.selectedSID.selectedOptions)
-                             .map(option => option.value);
+                             .map(option => option.value)
+                             .filter(x => x !== '');
       sidsValues.unshift(this.sid);
 
       this.sidsList = sidsValues;

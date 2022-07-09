@@ -56,8 +56,8 @@ export class PartnersDialog extends SubmitDialog {
       classList: ['nge_segment'],
       title: 'Submit Cell Identification.',
       click: () => {
-        window.open(`${apiURL}?input_a=${this.sid}&input_b=${
-            this.selectedSID.value}&cleft_thresh_input=50`);
+        window.open(`${apiURL}?timestamp_field=${this.timestamp}&input_a=${
+            this.sid}&input_b=${this.selectedSID.value}&cleft_thresh_input=50`);
         this.dispose();
       }
     });
