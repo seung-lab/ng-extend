@@ -309,9 +309,14 @@ function observeSegmentSelect(targetNode: Element) {
       setTimeout(checkBulbStatus, checkVisibleTime, bulb, sid);
     } else {
       const menuText = 'Click for Cell Information menu.';
+      const rawTS = dsTimestamp();
+      const timestamp = rawTS ? `?timestamp=${rawTS}` : '';
+      console.log(
+          `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
+              sid}${timestamp}`);
       authFetch(
           `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
-              sid}`,
+              sid}${timestamp}`,
           {credentials: 'same-origin'})
           .then(response => response.json())
           .then(data => {
