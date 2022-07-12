@@ -126,7 +126,7 @@ export default Vue.extend({
 
 .nge-leaderboard-entries {
   display: grid;
-  grid-template-columns: auto minmax(auto, 70%) auto;
+  grid-template-columns: auto minmax(auto, 60%) auto;
   grid-auto-rows: min-content;
   overflow: auto;
 }
