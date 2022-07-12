@@ -19,7 +19,7 @@ import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {SubmitDialog} from './widgets/seg_management';
-import {SegmentationUserLayerWithGraph} from 'third_party/neuroglancer/src/neuroglancer/segmentation_user_layer_with_graph';
+import {SegmentationUserLayerWithGraph, SegmentationUserLayerWithGraphDisplayState} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {Loader} from './widgets/loader';
 import {CellIdDialog} from './widgets/cell_identification';
 import {CellReviewDialog} from './widgets/cell_review';
@@ -137,12 +137,24 @@ function observeSegmentSelect(targetNode: Element) {
     const mLayer = (<any>window).viewer.selectedLayer.layer;
     if (mLayer == null) return;
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
+    const displayState =
+        <SegmentationUserLayerWithGraphDisplayState>layer.displayState;
+
+    if (displayState.timestamp) return parseInt(displayState.timestamp.value);
+
     const timestamps = await authFetch(
         `${layer.chunkedGraphUrl}/root_timestamps`,
         {method: 'POST', body: JSON.stringify({node_ids: [segmentIDString]})});
     const ts = await timestamps.json();
     return ts.timestamp[0];
   };
+
+  const dsTimestamp = () => {
+    const mLayer = (<any>window).viewer.selectedLayer.layer;
+    if (mLayer == null) return;
+    return mLayer.layer.displayState.timestamp.value;
+  };
+
   const makeChangelogMenu =
       (parent: HTMLElement, segmentIDString: string,
        dataset: string): ContextMenu => {
@@ -151,7 +163,7 @@ function observeSegmentSelect(targetNode: Element) {
         menu.classList.add('neuroglancer-layer-group-viewer-context-menu');
         const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
         const host = 'https://prod.flywire-daf.com';
-        let timestamp: number|undefined;
+        let timestamp: number|undefined = dsTimestamp();
         let menuOpt: (string|((e: MouseEvent) => void))[][] =
             [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
         const cleanOverlays = () => {
@@ -174,32 +186,35 @@ function observeSegmentSelect(targetNode: Element) {
           callback(parent.classList.contains('error'));
         };
         const currentTimeStamp = () => timestamp;
-
+        // timestamp will change but because the menu opt is static, if it
+        // already exists then the user has defined a timestamp to use and the
+        // field should be added
+        const linkTS = timestamp ? `&timestamp_field=${timestamp}` : '';
         // If production data set
         if (dataset == 'fly_v31') {
           menuOpt = [
             [
               'Cell Summary',
               `${host}/dash/datastack/flywire_fafb_production/apps/fly_summary/?input_field=${
-                  segmentIDString}`,
+                  segmentIDString}${linkTS}`,
             ],
             [
               'Connectivity',
               `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field=${
-                  segmentIDString}&cleft_thresh_field=50`,
+                  segmentIDString}&cleft_thresh_field=50${linkTS}`,
             ],
             ...menuOpt,
             [
               'Cell Completion Details',
               `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
-                  paramStr}`
+                  paramStr}${linkTS}`
             ],
             SubmitDialog.generateMenuOption(
                 handleDialogOpen, segmentIDString, currentTimeStamp),
             [
               'Cell Identification',
               `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
-                  paramStr}`
+                  paramStr}${linkTS}`
             ],
             CellIdDialog.generateMenuOption(
                 handleDialogOpen, segmentIDString, currentTimeStamp),

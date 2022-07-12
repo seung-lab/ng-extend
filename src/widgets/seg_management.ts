@@ -112,7 +112,7 @@ export class SubmitDialog extends Overlay {
       title: 'Submit cell as complete.',
       click: () => {
         window.open(`${apiURL}?valid_id=${this.sid}&location=${
-            this.coords.join(',')}&submit=1`);
+            this.coords.join(',')}&submit=1${this.dsTimestamp()}`);
 
         storeProxy.showSubmittedCongrats = true;
         this.dispose();
@@ -241,6 +241,13 @@ export class SubmitDialog extends Overlay {
     // compare this root id with the one that initiated the check
     return !Uint64.compare(source, root_id);
   }
+
+  protected dsTimestamp =
+      () => {
+        const mLayer: any = this.viewer.selectedLayer.layer;
+        if (mLayer == null || mLayer.layer == null) return '';
+        return `&timestamp_field=${mLayer.layer.displayState.timestamp.value}`;
+      }
 
   public static generateMenuOption =
       (dialogOpen: Function, sis: string, timeCB: Function) => {

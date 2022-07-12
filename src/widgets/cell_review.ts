@@ -55,7 +55,7 @@ export class CellReviewDialog extends SubmitDialog {
         if (this.isTrue.checked || this.isFalse.checked) {
           window.open(`${apiURL}?valid_id=${this.sid}&submit=1&location=${
               this.coords.join(',')}&proofread_info=${
-              this.isTrue.checked ? 'TRUE' : 'FALSE'}`);
+              this.isTrue.checked ? 'TRUE' : 'FALSE'}${this.dsTimestamp()}`);
           StatusMessage.showTemporaryMessage(`Thank you for your review!`);
           this.dispose();
         } else {
