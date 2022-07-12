@@ -191,10 +191,8 @@ function observeSegmentSelect(targetNode: Element) {
         const linkTS = timestamp ? `&timestamp=${timestamp}` : '';
         const dashTS = timestamp ? `&timestamp_field=${timestamp}` : '';
 
-        menuOpt = [[
-          'ChangeLog',
-          `${host}/progress/api/v1/query?rootid=${paramStr}${linkTS}`
-        ]];
+        menuOpt =
+            [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
         // If production data set
         if (dataset == 'fly_v31') {
           menuOpt = [
@@ -293,7 +291,8 @@ function observeSegmentSelect(targetNode: Element) {
           (<HTMLButtonElement>bulb).title = 'Click for Cell Information menu.';
         }
         if (item.dataset.dataset == 'fly_v31') {
-          checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString);
+          // always force bulb status on creation
+          checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString, true);
         }
       });
     }
@@ -302,18 +301,15 @@ function observeSegmentSelect(targetNode: Element) {
   const checkTime = 120000;
   const checkVisibleTime = 30000;
   const checkBulbStatus =
-      function(bulb: HTMLButtonElement, sid: string) {
+      function(bulb: HTMLButtonElement, sid: string, force?: boolean) {
     const view = bulb.getBoundingClientRect();
-    if (!view.height || !view.width) {
+    if (!force && (!view.height || !view.width)) {
       // not visible
       setTimeout(checkBulbStatus, checkVisibleTime, bulb, sid);
     } else {
       const menuText = 'Click for Cell Information menu.';
       const rawTS = dsTimestamp();
       const timestamp = rawTS ? `?timestamp=${rawTS}` : '';
-      console.log(
-          `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
-              sid}${timestamp}`);
       authFetch(
           `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
               sid}${timestamp}`,
