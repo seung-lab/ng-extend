@@ -112,7 +112,7 @@ export class SubmitDialog extends Overlay {
       title: 'Submit cell as complete.',
       click: () => {
         window.open(`${apiURL}?valid_id=${this.sid}&location=${
-            this.coords.join(',')}&submit=1${this.dsTimestamp()}`);
+            this.coords.join(',')}&submit=1`);
 
         storeProxy.showSubmittedCongrats = true;
         this.dispose();

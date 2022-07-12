@@ -54,8 +54,8 @@ export class CellIdDialog extends SubmitDialog {
       click: () => {
         if (this.infoField.value.length) {
           window.open(`${apiURL}?valid_id=${this.sid}&submit=1&location=${
-              this.coords.join(',')}&tag=${
-              encodeURIComponent(this.infoField.value)}${this.dsTimestamp()}`);
+              this.coords.join(
+                  ',')}&tag=${encodeURIComponent(this.infoField.value)}`);
           StatusMessage.showTemporaryMessage(`Thank you for your assessment!`);
           this.dispose();
         } else {

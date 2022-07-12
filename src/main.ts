@@ -164,8 +164,7 @@ function observeSegmentSelect(targetNode: Element) {
         const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
         const host = 'https://prod.flywire-daf.com';
         let timestamp: number|undefined = dsTimestamp();
-        let menuOpt: (string|((e: MouseEvent) => void))[][] =
-            [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
+        let menuOpt: (string|((e: MouseEvent) => void))[][];
         const cleanOverlays = () => {
           const overlays = document.getElementsByClassName('nge-overlay');
           [...overlays].forEach(function(element) {
@@ -189,19 +188,25 @@ function observeSegmentSelect(targetNode: Element) {
         // timestamp will change but because the menu opt is static, if it
         // already exists then the user has defined a timestamp to use and the
         // field should be added
-        const linkTS = timestamp ? `&timestamp_field=${timestamp}` : '';
+        const linkTS = timestamp ? `&timestamp=${timestamp}` : '';
+        const dashTS = timestamp ? `&timestamp_field=${timestamp}` : '';
+
+        menuOpt = [[
+          'ChangeLog',
+          `${host}/progress/api/v1/query?rootid=${paramStr}${linkTS}`
+        ]];
         // If production data set
         if (dataset == 'fly_v31') {
           menuOpt = [
             [
               'Cell Summary',
               `${host}/dash/datastack/flywire_fafb_production/apps/fly_summary/?input_field=${
-                  segmentIDString}${linkTS}`,
+                  segmentIDString}${dashTS}`,
             ],
             [
               'Connectivity',
               `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field=${
-                  segmentIDString}&cleft_thresh_field=50${linkTS}`,
+                  segmentIDString}&cleft_thresh_field=50${dashTS}`,
             ],
             ...menuOpt,
             [
@@ -209,21 +214,26 @@ function observeSegmentSelect(targetNode: Element) {
               `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
                   paramStr}${linkTS}`
             ],
-            SubmitDialog.generateMenuOption(
-                handleDialogOpen, segmentIDString, currentTimeStamp),
             [
               'Cell Identification',
               `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
                   paramStr}${linkTS}`
             ],
-            CellIdDialog.generateMenuOption(
-                handleDialogOpen, segmentIDString, currentTimeStamp),
           ];
-          if (parent.classList.contains('active')) {
-            menuOpt.push(
-                CellReviewDialog.generateMenuOption(
-                    handleDialogOpen, segmentIDString, currentTimeStamp),
-            );
+          if (!timestamp) {
+            menuOpt = [
+              ...menuOpt,
+              SubmitDialog.generateMenuOption(
+                  handleDialogOpen, segmentIDString, currentTimeStamp),
+              CellIdDialog.generateMenuOption(
+                  handleDialogOpen, segmentIDString, currentTimeStamp),
+            ];
+            if (parent.classList.contains('active')) {
+              menuOpt.push(
+                  CellReviewDialog.generateMenuOption(
+                      handleDialogOpen, segmentIDString, currentTimeStamp),
+              );
+            }
           }
         }
 
