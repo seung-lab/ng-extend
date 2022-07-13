@@ -242,6 +242,13 @@ export class SubmitDialog extends Overlay {
     return !Uint64.compare(source, root_id);
   }
 
+  protected dsTimestamp =
+      () => {
+        const mLayer: any = this.viewer.selectedLayer.layer;
+        if (mLayer == null || mLayer.layer == null) return '';
+        return `&timestamp_field=${mLayer.layer.displayState.timestamp.value}`;
+      }
+
   public static generateMenuOption =
       (dialogOpen: Function, sis: string, timeCB: Function) => {
         return [
