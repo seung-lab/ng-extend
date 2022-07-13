@@ -223,7 +223,6 @@ export class SubmitDialog extends Overlay {
 
   protected async isCoordInRoot(): Promise<Boolean> {
     const source = Uint64.parseString(this.sid);
-    const timestamp = this.timestamp;
     const mLayer = this.viewer.selectedLayer.layer;
     if (mLayer == null) return false;
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
@@ -235,7 +234,7 @@ export class SubmitDialog extends Overlay {
 
     // get root of supervoxel
     const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
-        String(selection)}/root?int64_as_str=1&timestamp=${timestamp}`);
+        String(selection)}/root?int64_as_str=1`);
     const jsonResp = await response.json();
     const root_id = Uint64.parseString(jsonResp['root_id']);
     // compare this root id with the one that initiated the check
