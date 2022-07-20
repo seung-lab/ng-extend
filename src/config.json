@@ -5,15 +5,21 @@
     "proctorURL": "https://pyrdev.eyewire.org/flywire-proctor",
     "imageLayers": [
         {
-            "name": "Maryland",
+            "name": "Maryland (USA)",
             "description": "EM images hosted by BossDB in Maryland, USA",
             "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/flywire/fafbv14",
             "type": "image"
         },
         {
-            "name": "Princeton",
+            "name": "Princeton (USA)",
             "description": "EM images hosted on campus, slower elsewhere",
             "source": "precomputed://matrix://fafbv14-em/aligned/v1",
+            "type": "image"
+        },
+        {
+            "name": "Cambridge (UK)",
+            "description": "EM images hosted by the Jefferis Lab in Cambridge, UK",
+            "source": "precomputed://https://flyem.mrc-lmb.cam.ac.uk/images/flywire/",
             "type": "image"
         }
     ],
