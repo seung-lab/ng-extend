@@ -56,8 +56,8 @@
               >
                 <span
                   v-if="part.type === 'sender'"
-                  :class="'nge-chatbox-message-text sender ' + getPlace(message.name)"
-                >{{part.text}}:</span>
+                  :class="'nge-chatbox-message-text sender ' + message.rank"
+                >{{part.text}}{{getTrophy(message.name)}}:</span>
                 <span v-if="part.type === 'text'" class="nge-chatbox-message-text">{{part.text}}</span>
                 <a
                   v-if="part.type === 'link'"
@@ -85,7 +85,6 @@ import Vue from "vue";
 import simplebar from "simplebar-vue";
 import "simplebar/dist/simplebar.min.css";
 import { storeProxy } from "../state";
-import getChatSocket from "../chat_socket";
 export default Vue.extend({
   components: {
     simplebar
@@ -105,18 +104,11 @@ export default Vue.extend({
       const message = messageEl.value;
       messageEl.value = "";
       if (message.trim() !== "") {
-        const now = new Date();
-        const messageObj = { type: "message", message: message, timestamp: now };
-        const socket = getChatSocket();
-        if (socket.readyState === socket.OPEN) {
-          socket.send(JSON.stringify(messageObj));
-        } else {
-          this.appState.handleMessage('{"type":"disconnected"}');
-        }
+        this.appState.sendMessage(message);
       }
     },
-    getPlace(name: string): string {
-      const places: string[] = ["firstplace", "secondplace", "thirdplace"];
+    getTrophy(name: string): string {
+      const places: string[] = ["🥇", "🥈", "🥉"];
       for (let i = 0; i < places.length; i++) {
         if (
           storeProxy.leaderboardEntries.length > i &&
@@ -125,7 +117,7 @@ export default Vue.extend({
           return places[i];
         }
       }
-      return "normal";
+      return "";
     },
     toggleMinimized() {
       if (this.expanded) {
@@ -203,8 +195,14 @@ export default Vue.extend({
 .nge-chatbox-message-text.sender {
   font-weight: bold;
 }
-.nge-chatbox-message-text.sender.normal {
-  color: dodgerblue;
+.nge-chatbox-message-text.sender.admin {
+  color: #E6C760;
+}
+.nge-chatbox-message-text.sender.eyewirer {
+  color: #0292AE;
+}
+.nge-chatbox-message-text.sender.researcher {
+  color: #0FB18B;
 }
 .nge-chatbox-message-text {
   color: white;

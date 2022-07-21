@@ -19,7 +19,7 @@ import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {SubmitDialog} from './widgets/seg_management';
-import {SegmentationUserLayerWithGraph} from 'third_party/neuroglancer/src/neuroglancer/segmentation_user_layer_with_graph';
+import {SegmentationUserLayerWithGraph, SegmentationUserLayerWithGraphDisplayState} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {Loader} from './widgets/loader';
 import {CellIdDialog} from './widgets/cell_identification';
 import {CellReviewDialog} from './widgets/cell_review';
@@ -139,12 +139,24 @@ function observeSegmentSelect(targetNode: Element) {
     const mLayer = (<any>window).viewer.selectedLayer.layer;
     if (mLayer == null) return;
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
+    const displayState =
+        <SegmentationUserLayerWithGraphDisplayState>layer.displayState;
+
+    if (displayState.timestamp) return parseInt(displayState.timestamp.value);
+
     const timestamps = await authFetch(
         `${layer.chunkedGraphUrl}/root_timestamps`,
         {method: 'POST', body: JSON.stringify({node_ids: [segmentIDString]})});
     const ts = await timestamps.json();
     return ts.timestamp[0];
   };
+
+  const dsTimestamp = () => {
+    const mLayer = (<any>window).viewer.selectedLayer.layer;
+    if (mLayer == null) return;
+    return mLayer.layer.displayState.timestamp.value;
+  };
+
   const makeChangelogMenu =
       (parent: HTMLElement, segmentIDString: string,
        dataset: string): ContextMenu => {
@@ -153,9 +165,8 @@ function observeSegmentSelect(targetNode: Element) {
         menu.classList.add('neuroglancer-layer-group-viewer-context-menu');
         const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
         const host = 'https://prod.flywire-daf.com';
-        let timestamp: number|undefined;
-        let menuOpt: (string|((e: MouseEvent) => void))[][] =
-            [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
+        let timestamp: number|undefined = dsTimestamp();
+        let menuOpt: (string|((e: MouseEvent) => void))[][];
         const cleanOverlays = () => {
           const overlays = document.getElementsByClassName('nge-overlay');
           [...overlays].forEach(function(element) {
@@ -176,7 +187,14 @@ function observeSegmentSelect(targetNode: Element) {
           callback(parent.classList.contains('error'));
         };
         const currentTimeStamp = () => timestamp;
+        // timestamp will change but because the menu opt is static, if it
+        // already exists then the user has defined a timestamp to use and the
+        // field should be added
+        const linkTS = timestamp ? `&timestamp=${timestamp}` : '';
+        const dashTS = timestamp ? `&timestamp_field=${timestamp}` : '';
 
+        menuOpt =
+            [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
         // If production data set
         if (dataset == 'fly_v31') {
           menuOpt = [
@@ -185,31 +203,37 @@ function observeSegmentSelect(targetNode: Element) {
             [
               'Connectivity',
               `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field=${
-                  segmentIDString}&cleft_thresh_field=50`,
+                  segmentIDString}&cleft_thresh_field=50${dashTS}`,
             ],
             ...menuOpt,
             [
               'Cell Completion Details',
               `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
-                  paramStr}`
+                  paramStr}${linkTS}`
             ],
-            SubmitDialog.generateMenuOption(
-                handleDialogOpen, host, segmentIDString, currentTimeStamp),
             [
               'Cell Identification',
               `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
-                  paramStr}`
+                  paramStr}${linkTS}`
             ],
-            CellIdDialog.generateMenuOption(
-                handleDialogOpen, host, segmentIDString, currentTimeStamp),
             PartnersDialog.generateMenuOption(
                 handleDialogOpen, host, segmentIDString, currentTimeStamp),
           ];
-          if (parent.classList.contains('active')) {
-            menuOpt.push(
-                CellReviewDialog.generateMenuOption(
-                    handleDialogOpen, host, segmentIDString, currentTimeStamp),
-            );
+          if (!timestamp) {
+            menuOpt = [
+              ...menuOpt,
+              SubmitDialog.generateMenuOption(
+                  handleDialogOpen, host, segmentIDString, currentTimeStamp),
+              CellIdDialog.generateMenuOption(
+                  handleDialogOpen, host, segmentIDString, currentTimeStamp),
+            ];
+            if (parent.classList.contains('active')) {
+              menuOpt.push(
+                  CellReviewDialog.generateMenuOption(
+                      handleDialogOpen, host, segmentIDString,
+                      currentTimeStamp),
+              );
+            }
           }
         }
 
@@ -269,7 +293,8 @@ function observeSegmentSelect(targetNode: Element) {
           (<HTMLButtonElement>bulb).title = 'Click for Cell Information menu.';
         }
         if (item.dataset.dataset == 'fly_v31') {
-          checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString);
+          // always force bulb status on creation
+          checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString, true);
         }
       });
     }
@@ -278,16 +303,18 @@ function observeSegmentSelect(targetNode: Element) {
   const checkTime = 120000;
   const checkVisibleTime = 30000;
   const checkBulbStatus =
-      function(bulb: HTMLButtonElement, sid: string) {
+      function(bulb: HTMLButtonElement, sid: string, force?: boolean) {
     const view = bulb.getBoundingClientRect();
-    if (!view.height || !view.width) {
+    if (!force && (!view.height || !view.width)) {
       // not visible
       setTimeout(checkBulbStatus, checkVisibleTime, bulb, sid);
     } else {
       const menuText = 'Click for Cell Information menu.';
+      const rawTS = dsTimestamp();
+      const timestamp = rawTS ? `?timestamp=${rawTS}` : '';
       authFetch(
           `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
-              sid}`,
+              sid}${timestamp}`,
           {credentials: 'same-origin'})
           .then(response => response.json())
           .then(data => {

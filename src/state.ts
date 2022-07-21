@@ -6,6 +6,7 @@ import ReconnectingWebSocket from 'reconnecting-websocket';
 
 import getChatSocket from './chat_socket';
 import {config} from './main';
+//import {getLayerByName} from './layer-state'
 
 interface LoggedInUser {
   name: string;
@@ -27,6 +28,7 @@ export enum LeaderboardTimespan {
 interface ServerMessage {
   type: string,
   name: string,
+  rank: string | undefined,
   timestamp: Date,
   message: string
 }
@@ -34,6 +36,7 @@ interface ServerMessage {
 export interface ChatMessage {
   type: string,
   name: string,
+  rank: string | undefined,
   time: string | undefined,
   dateTime: Date | undefined,
   parts: MessagePart[] | undefined
@@ -233,6 +236,24 @@ export class AppStore extends createModule
   }
 
   @action
+  async sendMessage(message: string) {
+    const now = new Date();
+    const messageObj = {
+      name: this.loggedInUser ? this.loggedInUser.name : 'Guest',
+      userID: this.loggedInUser ? this.loggedInUser.id : '0',
+      type: "message",
+      message: message,
+      timestamp: now
+    };
+    const ws = getChatSocket();
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(messageObj));
+    } else {
+      this.handleMessage('{"type":"disconnected"}');
+    }
+  }
+
+  @action
   async joinChat() {
     const ws = getChatSocket();
     ws.onmessage = (event) => {
@@ -255,6 +276,7 @@ export class AppStore extends createModule
     const type = messageParsed.type;
     const messageText = messageParsed.message;
     const name = messageParsed.name;
+    const rank = messageParsed.rank;
     const dateTime = messageParsed.timestamp ? new Date(messageParsed.timestamp) : new Date();
     const time = dateTime.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
     const parts: MessagePart[] = [];
@@ -274,7 +296,7 @@ export class AppStore extends createModule
         }
       }
       if (addTime) {
-        const timeInfo: ChatMessage = { type: 'time', name: name, time: time, dateTime: dateTime, parts: undefined };
+        const timeInfo: ChatMessage = { type: 'time', name: name, rank: undefined, time: time, dateTime: dateTime, parts: undefined };
         this.chatMessages.push(timeInfo);
       }
 
@@ -299,6 +321,7 @@ export class AppStore extends createModule
     const messageObj: ChatMessage = {
       type: type,
       name: name,
+      rank: rank,
       dateTime: dateTime,
       time: time,
       parts: parts
@@ -396,6 +419,7 @@ export class AppStore extends createModule
       layerProxy.clearSelectedCells();
       layerProxy.selectCell({id: rootID});
       console.log("Checked out neuron", rootID, "at coordinates", xyz);
+      //this.createAnnotation(xyz, rootID);
     }
     catch (e) {
       alert("Error checking out neuron from Proofreading Drive");
@@ -404,6 +428,57 @@ export class AppStore extends createModule
     this.checkingOutNeuron = false;
     return true;
   }
+
+  /*createAnnotation(coords: number[], label: string) {
+    if (!viewer) {
+      return false;
+    }
+    const layerName = "current-cell-annotation";
+    let annoLayer = getLayerByName(layerName);
+    if (!annoLayer) {
+      const spec = {
+        "name": layerName,
+        "source": "graphene://https://minnie.microns-daf.com/segmentation/table/fly_training_v2",
+        "layerName": layerName,
+        "type": "annotation",
+        "color": "#E6C760"
+      };
+      const layerWithSpec = viewer.layerSpecification.getLayer(layerName, spec); //TODO annotation layer spec
+      viewer.layerManager.addManagedLayer(layerWithSpec);
+      annoLayer = layerWithSpec;
+    }
+
+    //TODO create annotation in annoLayer
+
+    /*
+      if (userLayer instanceof AnnotationUserLayer &&
+          userLayer.linkedSegmentationLayer.layerName !== undefined) {
+        const segLayer = userLayer.linkedSegmentationLayer.layer!.layer;
+        if (segLayer instanceof SegmentationUserLayer) {
+          if (isSegmentationUserLayerWithGraph(segLayer)) {
+            segLayer.getRootOfSelectedSupervoxel().then(rootSegment => {
+              userLayer.localAnnotations.get(userLayer.selectedAnnotation.value!.id)!.segments!
+                  .push(rootSegment);
+            });
+          }
+        }
+      }
+    * /
+
+    return true;
+
+    /*const annotation: Annotation = {
+      id: "",
+      description: associatedSegments[0].toString(),
+      segments: associatedSegments,
+      point: vec3.transformMat4(
+          vec3.create(), mouseState.position, graphOperationLayer.globalToObject),
+      type: AnnotationType.POINT,
+    };
+    const reference = layerProxy.activeSource.add(annotation, true);
+    layerProxy.selectedGraphOperationElement.value = {id: reference.id};
+    reference.dispose();* /
+  }*/
 }
 
 import Vue from 'vue';

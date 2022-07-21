@@ -17,6 +17,7 @@
 import 'neuroglancer/save_state/save_state.css';
 
 import {SegmentationUserLayerWithGraph} from 'neuroglancer/segmentation_user_layer_with_graph';
+import {StatusMessage} from 'neuroglancer/status';
 import {Viewer} from 'neuroglancer/viewer';
 
 import {storeProxy} from '../state';
@@ -24,9 +25,8 @@ import {storeProxy} from '../state';
 import {SubmitDialog} from './seg_management';
 
 export class SummaryDialog extends SubmitDialog {
-  sidsList: string[];
-  selectedSID: HTMLSelectElement;
-  selection: HTMLTextAreaElement;
+  sidsList: Set<string>;
+  sidContainer: HTMLDivElement;
   constructor(
       public viewer: Viewer, public host: string, public sid: string,
       public timestamp: number, public userID: number, public error = true) {
@@ -42,12 +42,6 @@ export class SummaryDialog extends SubmitDialog {
         this.dispose();
       },
     });
-    /*
-    if (this.error) {
-      this.erroredPopup(
-          `Submit Cell Identification is not available. Please re-select the
-    segment for the most updated version.`, cancel); return;
-    }*/
     const br = () => document.createElement('br');
     const apiURL =
         `${this.host}/dash/datastack/flywire_fafb_production/apps/fly_summary/`;
@@ -56,63 +50,68 @@ export class SummaryDialog extends SubmitDialog {
       classList: ['nge_segment'],
       title: 'Query Cell Summary.',
       click: () => {
-        window.open(`${apiURL}?timestamp_field=${this.timestamp}&input_field=${
-            this.sidsList.join(',')}`);
-        this.dispose();
+        if (this.sidsList.size > 0) {
+          window.open(
+              `${apiURL}?timestamp_field=${this.timestamp}&input_field=${
+                  Array.from(this.sidsList).slice(0, 20).join(',')}`);
+          this.dispose();
+        } else {
+          StatusMessage.showTemporaryMessage(`Please select at least one ID!`);
+        }
       }
     });
 
     const mLayer = this.viewer.selectedLayer.layer;
     if (mLayer == null) return;
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
-    const changeDetect = () => {
-      const sidsValues = Array.from(this.selectedSID.selectedOptions)
-                             .map(option => option.value)
-                             .filter(x => x !== '');
-      sidsValues.unshift(this.sid);
-
-      this.sidsList = sidsValues;
-      const sidsString = this.sidsList.join(', ');
-      this.selection.innerHTML = `Ids: ${sidsString}`;
+    const changeDetect = (e: Event) => {
+      const value = (<HTMLInputElement>e.target).value;
+      const checked = (<HTMLInputElement>e.target).checked;
+      if (checked) {
+        this.sidsList.add(value);
+      } else {
+        this.sidsList.delete(value);
+      }
     };
-    this.selection = document.createElement('textarea');
-    this.selectedSID = document.createElement('select');
-    this.selectedSID.appendChild(document.createElement('option'));
+    const sidEntry = (sid: string, initial: boolean = false) => {
+      const entry = document.createElement('div');
+      const label = document.createElement('label');
+      label.innerText = sid;
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.value = sid;
+      check.checked = initial;
+      check.addEventListener('change', changeDetect);
+      entry.append(label, ' ', check);
+      return entry;
+    };
+
+    this.sidsList = new Set<string>();
+    this.sidContainer = document.createElement('div');
     for (const x of layer.displayState.rootSegments) {
-      const option = document.createElement('option');
-      option.value = x.toString();
-      option.innerText = x.toString();
-      if (x.toString() != this.sid) {
-        this.selectedSID.appendChild(option);
+      const isSelector = x.toString() == this.sid;
+      const entry = sidEntry(x.toString(), isSelector);
+      this.sidContainer.appendChild(entry);
+      if (isSelector) {
+        this.sidsList.add(x.toString());
       }
     }
-    this.selectedSID.multiple = true;
-    changeDetect();
-    this.selectedSID.addEventListener('change', changeDetect);
 
-    if (this.selectedSID.options.length != 0) {
-      this.title.innerText = 'Cell Summary';
-      this.description.innerHTML =
-          `<p>Query summary information for one or more cells (Maximum of 20).</p>
-          <p>Hold the control (CTRL) key to add and remove ids.</p>`;
-      this.form.append(
-          this.title, this.description, br(), this.selection, br(),
-          this.selectedSID, br(), br(), sub, ' ', cancel, br(), br(),
-          this.infoTab, br(), this.infoView);
+    this.title.innerText = 'Cell Summary';
+    this.description.innerHTML =
+        `<p>Query summary information for one or more cells (Maximum of 20).</p>`;
+    this.form.append(
+        this.title, this.description, br(), this.sidContainer, br(), br(), sub,
+        ' ', cancel, br(), br(), this.infoTab, br(), this.infoView);
 
-      let modal = document.createElement('div');
-      this.content.appendChild(modal);
-      modal.className = 'nge-overlay';
-      modal.appendChild(this.form);
-      (<any>modal).dispose = () => this.dispose();
-      modal.onblur = () => this.dispose();
-      modal.focus();
-    } else {
-      this.erroredPopup(`Must have at least two segments selected.`, cancel);
-    }
+    let modal = document.createElement('div');
+    this.content.appendChild(modal);
+    modal.className = 'nge-overlay';
+    modal.appendChild(this.form);
+    (<any>modal).dispose = () => this.dispose();
+    modal.onblur = () => this.dispose();
+    modal.focus();
   }
-
-
 
   public static generateMenuOption =
       (dialogOpen: Function, host: string, sis: string, timeCB: Function) => {

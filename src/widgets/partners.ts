@@ -26,7 +26,6 @@ import {SubmitDialog} from './seg_management';
 export class PartnersDialog extends SubmitDialog {
   sidsList: string[];
   selectedSID: HTMLSelectElement;
-  selection: HTMLTextAreaElement;
   constructor(
       public viewer: Viewer, public host: string, public sid: string,
       public timestamp: number, public userID: number, public error = true) {
@@ -65,14 +64,8 @@ export class PartnersDialog extends SubmitDialog {
     const mLayer = this.viewer.selectedLayer.layer;
     if (mLayer == null) return;
     const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
-    const changeDetect = () => {
-      this.sidsList = Array.from(this.selectedSID.selectedOptions)
-                          .map(option => option.value);
-      const sidsString = this.sidsList.join(', ');
-      this.selection.innerHTML = `Input B: ${sidsString}`;
-    };
-    this.selection = document.createElement('textarea');
     this.selectedSID = document.createElement('select');
+    this.selectedSID.style.fontSize = 'inherit';
     for (const x of layer.displayState.rootSegments) {
       const option = document.createElement('option');
       option.value = x.toString();
@@ -81,8 +74,6 @@ export class PartnersDialog extends SubmitDialog {
         this.selectedSID.appendChild(option);
       }
     }
-    changeDetect();
-    this.selectedSID.addEventListener('change', changeDetect);
 
     if (this.selectedSID.options.length != 0) {
       this.title.innerText = 'Partners';
@@ -90,8 +81,8 @@ export class PartnersDialog extends SubmitDialog {
           `<p>Choose which cell from your current list to query for synapses with the selected cell.</p>`;
       this.form.append(
           this.title, this.description, br(), 'Input A: ', this.sid, br(),
-          this.selection, br(), this.selectedSID, br(), br(), sub, ' ', cancel,
-          br(), br(), this.infoTab, br(), this.infoView);
+          'Input B: ', this.selectedSID, br(), br(), sub, ' ', cancel, br(),
+          br(), this.infoTab, br(), this.infoView);
 
       let modal = document.createElement('div');
       this.content.appendChild(modal);
