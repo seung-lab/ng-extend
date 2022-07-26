@@ -85,15 +85,46 @@ export class SummaryDialog extends SubmitDialog {
       entry.append(label, ' ', check);
       return entry;
     };
+    const selectAll = (e: Event) => {
+      e.preventDefault();
+      Array.from(layer.displayState.rootSegments)
+          .forEach(x => this.sidsList.add(x.toString()));
+      Array.from(this.sidContainer.querySelectorAll('input'))
+          .splice(0, 20)
+          .forEach((x: HTMLInputElement) => x.checked = true);
+    };
+    const selectNone = (e: Event) => {
+      e.preventDefault();
+      this.sidsList.clear();
+      Array.from(this.sidContainer.querySelectorAll('input'))
+          .forEach((x: HTMLInputElement) => x.checked = false);
+    };
+
+    // make two buttons that allow you to select all or none
+    const selectAllButton = this.makeButton({
+      innerText: 'Select All',
+      classList: ['nge_segment'],
+      title: 'Select All',
+      click: selectAll,
+    });
+    const selectNoneButton = this.makeButton({
+      innerText: 'Select None',
+      classList: ['nge_segment'],
+      title: 'Select None',
+      click: selectNone,
+    });
 
     this.sidsList = new Set<string>();
     this.sidContainer = document.createElement('div');
+    this.sidContainer.classList.add('nge-sum-container');
     for (const x of layer.displayState.rootSegments) {
       const isSelector = x.toString() == this.sid;
       const entry = sidEntry(x.toString(), isSelector);
-      this.sidContainer.appendChild(entry);
       if (isSelector) {
+        this.sidContainer.insertBefore(entry, this.sidContainer.firstChild);
         this.sidsList.add(x.toString());
+      } else {
+        this.sidContainer.appendChild(entry);
       }
     }
 
@@ -101,8 +132,9 @@ export class SummaryDialog extends SubmitDialog {
     this.description.innerHTML =
         `<p>Query summary information for one or more cells (Maximum of 20).</p>`;
     this.form.append(
-        this.title, this.description, br(), this.sidContainer, br(), br(), sub,
-        ' ', cancel, br(), br(), this.infoTab, br(), this.infoView);
+        this.title, this.description, br(), selectAllButton, ' ',
+        selectNoneButton, br(), this.sidContainer, br(), br(), sub, ' ', cancel,
+        br(), br(), this.infoTab, br(), this.infoView);
 
     let modal = document.createElement('div');
     this.content.appendChild(modal);

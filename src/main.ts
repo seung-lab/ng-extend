@@ -1,5 +1,6 @@
 require('neuroglancer/ui/default_viewer.css');
 require('./widgets/seg_management.css');
+require('./widgets/summary.css');
 require('./widgets/cell_identification.css');
 require('./widgets/loader.css');
 require('./main.css');
