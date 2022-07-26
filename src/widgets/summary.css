@@ -1,0 +1,5 @@
+.nge-sum-container {
+    overflow-x: unset;
+    overflow-y: scroll;
+    max-height: 300px;
+}

@@ -24,9 +24,9 @@ import {SubmitDialog} from './seg_management';
 export class CellIdDialog extends SubmitDialog {
   infoField: HTMLInputElement|HTMLTextAreaElement;
   constructor(
-      public viewer: Viewer, public sid: string, public timestamp: number,
-      public userID: number, public error = true) {
-    super(viewer, sid, timestamp, userID, error);
+      public viewer: Viewer, public host: string, public sid: string,
+      public timestamp: number, public userID: number, public error = true) {
+    super(viewer, host, sid, timestamp, userID, error);
   }
 
   AddContent() {
@@ -45,8 +45,7 @@ export class CellIdDialog extends SubmitDialog {
       return;
     }
     const br = () => document.createElement('br');
-    const apiURL =
-        `https://prod.flywire-daf.com/neurons/api/v1/submit_cell_identification`;
+    const apiURL = `${this.host}/neurons/api/v1/submit_cell_identification`;
     const sub = this.makeButton({
       innerText: 'Submit',
       classList: ['nge_segment'],
@@ -114,14 +113,14 @@ export class CellIdDialog extends SubmitDialog {
   }
 
   public static generateMenuOption =
-      (dialogOpen: Function, sis: string, timeCB: Function) => {
+      (dialogOpen: Function, host: string, sis: string, timeCB: Function) => {
         return [
           'Submit Cell Identification',
           ``,
           (e: MouseEvent) => {
             dialogOpen(e, (err: boolean) => {
               new CellIdDialog(
-                  (<any>window).viewer, sis, timeCB(),
+                  (<any>window).viewer, host, sis, timeCB(),
                   storeProxy.loggedInUser!.id, err);
             });
           },
