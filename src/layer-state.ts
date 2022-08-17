@@ -10,7 +10,7 @@ import {config} from './main';
 import {getLayerPanel, viewer} from './state';
 import {packColor} from 'neuroglancer/util/color';
 
-function getLayerByName(name: string) {
+export function getLayerByName(name: string) {
   if (!viewer) {
     return undefined;
   }
@@ -269,9 +269,13 @@ export class LayerState extends createModule
     }
 
     const layers = viewer.layerManager.managedLayers;
+    const fullBrainLayerName = config.brainMeshURL.split("/").pop()!;
 
     for (const {layer} of layers) {
       if (layer instanceof SegmentationUserLayer) {
+        if (layer.name === fullBrainLayerName) {
+          continue; //don't clear full brain mesh
+        }
         layer.displayState.rootSegments.clear();
       }
     }
@@ -315,6 +319,7 @@ export class LayerState extends createModule
         if (layerWithSpec.isReady()) {
           const layer = layerWithSpec.layer;
           if (layer instanceof SegmentationUserLayer) {
+            layer.name = layerName;
             layer.displayState.rootSegments.add(Uint64.ONE);
             layer.displayState.objectAlpha.value = config.brainMeshOpacity;
             const segmentColor = new Uint64(packColor(vec3.fromValues(0.5, 0.5, 0.5)));
