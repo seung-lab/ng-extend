@@ -1,5 +1,6 @@
 require('neuroglancer/ui/default_viewer.css');
 require('./widgets/seg_management.css');
+require('./widgets/summary.css');
 require('./widgets/cell_identification.css');
 require('./widgets/loader.css');
 require('./main.css');
@@ -24,6 +25,8 @@ import {Loader} from './widgets/loader';
 import {CellIdDialog} from './widgets/cell_identification';
 import {CellReviewDialog} from './widgets/cell_review';
 import {registerEventListener} from 'neuroglancer/util/disposable';
+import {PartnersDialog} from './widgets/partners';
+import {SummaryDialog} from './widgets/summary';
 // import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -196,11 +199,8 @@ function observeSegmentSelect(targetNode: Element) {
         // If production data set
         if (dataset == 'fly_v31') {
           menuOpt = [
-            [
-              'Cell Summary',
-              `${host}/dash/datastack/flywire_fafb_production/apps/fly_summary/?input_field=${
-                  segmentIDString}${dashTS}`,
-            ],
+            SummaryDialog.generateMenuOption(
+                handleDialogOpen, host, segmentIDString, currentTimeStamp),
             [
               'Connectivity',
               `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field=${
@@ -217,19 +217,22 @@ function observeSegmentSelect(targetNode: Element) {
               `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
                   paramStr}${linkTS}`
             ],
+            PartnersDialog.generateMenuOption(
+                handleDialogOpen, host, segmentIDString, currentTimeStamp),
           ];
           if (!timestamp) {
             menuOpt = [
               ...menuOpt,
               SubmitDialog.generateMenuOption(
-                  handleDialogOpen, segmentIDString, currentTimeStamp),
+                  handleDialogOpen, host, segmentIDString, currentTimeStamp),
               CellIdDialog.generateMenuOption(
-                  handleDialogOpen, segmentIDString, currentTimeStamp),
+                  handleDialogOpen, host, segmentIDString, currentTimeStamp),
             ];
             if (parent.classList.contains('active')) {
               menuOpt.push(
                   CellReviewDialog.generateMenuOption(
-                      handleDialogOpen, segmentIDString, currentTimeStamp),
+                      handleDialogOpen, host, segmentIDString,
+                      currentTimeStamp),
               );
             }
           }

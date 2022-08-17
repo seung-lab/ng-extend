@@ -25,9 +25,9 @@ export class CellReviewDialog extends SubmitDialog {
   isTrue: HTMLInputElement;
   isFalse: HTMLInputElement;
   constructor(
-      public viewer: Viewer, public sid: string, public timestamp: number,
-      public userID: number, public error = true) {
-    super(viewer, sid, timestamp, userID, error);
+      public viewer: Viewer, public host: string, public sid: string,
+      public timestamp: number, public userID: number, public error = true) {
+    super(viewer, host, sid, timestamp, userID, error);
   }
 
   AddContent() {
@@ -46,7 +46,7 @@ export class CellReviewDialog extends SubmitDialog {
       return;
     }
     const br = () => document.createElement('br');
-    const apiURL = `https://prod.flywire-daf.com/neurons/api/v1/review_cell`;
+    const apiURL = `${this.host}/neurons/api/v1/review_cell`;
     const sub = this.makeButton({
       innerText: 'Submit',
       classList: ['nge_segment'],
@@ -122,14 +122,14 @@ export class CellReviewDialog extends SubmitDialog {
   }
 
   public static generateMenuOption =
-      (dialogOpen: Function, sis: string, timeCB: Function) => {
+      (dialogOpen: Function, host: string, sis: string, timeCB: Function) => {
         return [
           'Submit Cell Review',
           ``,
           (e: MouseEvent) => {
             dialogOpen(e, (err: boolean) => {
               new CellReviewDialog(
-                  (<any>window).viewer, sis, timeCB(),
+                  (<any>window).viewer, host, sis, timeCB(),
                   storeProxy.loggedInUser!.id, err);
             });
           },
