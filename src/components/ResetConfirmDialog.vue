@@ -1,23 +1,28 @@
 <template>
-  <modal-overlay id="resetConfirmDialog" @hide="$emit('hide')" class="list">
-    <div class="dialogContent">
+  <image-overlay id="resetConfirmDialog">
+    <template #image>
+      <img src="images/thinkingnurro.png" style="width: 95%; height: auto;">
+    </template>
+    <template #text>
       <div class="title">Reset FlyWire View</div>
       <div class="description">
-        <p>This will delete any cells you have selected<br>and reset your view to the default neurons.</p>
+        <p>This will delete any cells you have selected and reset your view to the default neurons.</p>
         <p>Are you sure you want to do this?</p>
       </div>
+    </template>
+    <template #buttons>
       <div class="actions">
         <button class="cancelButton" @click="cancel()">Cancel</button>
         <button class="confirmButton" @click="confirm()">Reset</button>
       </div>
-    </div>
-  </modal-overlay>
+    </template>
+  </image-overlay>
 </template>
 
 <script lang="ts">
 import Vue from "vue";
 import {storeProxy} from "../state";
-import ModalOverlay from "components/ModalOverlay.vue";
+import ImageOverlay from "./ImageOverlay.vue";
 
 export default Vue.extend({
   data() {
@@ -25,7 +30,7 @@ export default Vue.extend({
       appState: storeProxy
     }
   },
-  components: { ModalOverlay },
+  components: { ImageOverlay },
   methods: {
     cancel() {
       this.$emit("hide");
@@ -39,32 +44,23 @@ export default Vue.extend({
 </script>
 
 <style>
-.dialogContent {
-  display: grid;
-  padding: 30px;
+#resetConfirmDialog .dialogContent {
+    height: 300px;
 }
 
 .dialogContent .title {
-  font-size: 2em;
+  font-size: 1.5em;
 }
 
 .dialogContent .description {
-  white-space: nowrap;
-  padding-top: 20px;
-  padding-bottom: 30px;
-}
-
-.dialogContent .actions {
-  justify-self: center;
-  display: grid;
-  grid-auto-flow: column;
-  grid-column-gap: 20px;
+  font-size: 0.7em;
 }
 
 #resetConfirmDialog button {
   border-radius: 999px;
   width: 80px;
   height: 30px;
+  font-size: 0.8em;
 }
 
 .ng-extend button.cancelButton {

@@ -7,7 +7,8 @@
       <div class="textholder">
         <div class="text">
           <slot name="text"></slot>
-          <button v-if="hasButton" class="imgConfirmButton" @click="$emit('hide')"><slot name="buttonCaption"></slot></button>
+          <button v-if="hasButton" class="imgCloseButton" @click="$emit('hide')"><slot name="buttonCaption"></slot></button>
+          <slot name="buttons"></slot>
         </div>
       </div>
     </div>
@@ -33,7 +34,7 @@ export default Vue.extend({
   display: grid;
   grid-template-columns: 60% 40%;
   width: 800px;
-  height: 200px;
+  height: 250px;
 }
 
 .dialogContent .image > img {
@@ -56,49 +57,14 @@ export default Vue.extend({
   padding-bottom: 20px;
 }
 
-.dialogContent button.imgConfirmButton {
+.dialogContent button.imgCloseButton {
   font-size: 0.7em;
   padding: 10px;
   background: var(--gradient-highlight);
   border-radius: 10px;
 }
 
-.dialogContent button.imgConfirmButton:hover {
+.dialogContent button.imgCloseButton:hover {
   background: var(--gradient-highlight-hover);
 }
-
-/*.dialogContent .title {
-  font-size: 2em;
-}
-
-.dialogContent .description {
-  white-space: nowrap;
-  padding-top: 20px;
-  padding-bottom: 30px;
-}
-
-.dialogContent .actions {
-  justify-self: center;
-  display: grid;
-  grid-auto-flow: column;
-  grid-column-gap: 20px;
-}
-
-#resetConfirmDialog button {
-  border-radius: 999px;
-  width: 80px;
-  height: 30px;
-}
-
-.ng-extend button.cancelButton {
-  border: 1px solid var(--color-border);
-}
-
-.ng-extend button.confirmButton {
-  background: var(--gradient-highlight);
-}
-
-.ng-extend button.confirmButton:hover {
-  background: var(--gradient-highlight-hover);
-}*/
 </style>
