@@ -1,12 +1,15 @@
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import {SingletonLayerGroupViewer} from 'neuroglancer/layer_groups_layout';
 import {Viewer} from 'neuroglancer/viewer';
+import {AnnotationType} from 'neuroglancer/annotation';
+import {ManagedUserLayerWithSpecification} from 'neuroglancer/layer_specification';
+
 import {action, createModule, createProxy, extractVuexModule} from 'vuex-class-component';
 import ReconnectingWebSocket from 'reconnecting-websocket';
 
 import getChatSocket from './chat_socket';
 import {config} from './main';
-//import {getLayerByName} from './layer-state'
+import {getLayerByName} from './layer-state'
 
 interface LoggedInUser {
   name: string;
@@ -365,6 +368,18 @@ export class AppStore extends createModule
     fetch(url).then(result => result.json()).then(async(json) => { this.userInfo = json; });
     const statsURL = config.userStatsURL + '&user_id=' + this.loggedInUser!.id;
     authFetch(statsURL).then(result => result.json()).then(async(json) => { this.cellsSubmitted = json["cells_submitted_all_time"]; });
+
+    /*
+    const url = config.userStatsURL + "&user_id=" + this.loggedInUser!.id;
+    authFetch(url).then(result => result.json()).then(async(json) => {
+      this.userInfo = {
+        editsToday: json["edits_today"],
+        editsThisWeek: json["edits_past_week"],
+        editsAllTime: json["edits_all_time"]
+      };
+      this.cellsSubmitted = json["cells_submitted_all_time"];
+    });
+    */
   }
 
   @action
@@ -418,8 +433,8 @@ export class AppStore extends createModule
       viewer.perspectiveNavigationState.zoomFactor.value = 79; //TODO use production layer's defaultPerspectiveZoomFactor
       layerProxy.clearSelectedCells();
       layerProxy.selectCell({id: rootID});
+      this.createAnnotation({coords: xyz, label: rootID});
       console.log("Checked out neuron", rootID, "at coordinates", xyz);
-      //this.createAnnotation(xyz, rootID);
     }
     catch (e) {
       alert("Error checking out neuron from Proofreading Drive");
@@ -429,56 +444,33 @@ export class AppStore extends createModule
     return true;
   }
 
-  /*createAnnotation(coords: number[], label: string) {
+  @action
+  async createAnnotation(anno: {coords: number[], label: string}) {
     if (!viewer) {
       return false;
     }
     const layerName = "current-cell-annotation";
     let annoLayer = getLayerByName(layerName);
     if (!annoLayer) {
-      const spec = {
-        "name": layerName,
-        "source": "graphene://https://minnie.microns-daf.com/segmentation/table/fly_training_v2",
-        "layerName": layerName,
-        "type": "annotation",
-        "color": "#E6C760"
-      };
-      const layerWithSpec = viewer.layerSpecification.getLayer(layerName, spec); //TODO annotation layer spec
-      viewer.layerManager.addManagedLayer(layerWithSpec);
-      annoLayer = layerWithSpec;
+      const layerPanel = getLayerPanel(viewer!)!;
+      const manager = layerPanel.manager;
+      const layer = new ManagedUserLayerWithSpecification(layerName, {}, manager);
+      manager.initializeLayerFromSpec(layer, {type: "annotation", name: layer.name});
+      manager.add(layer);
+      annoLayer = layer;
     }
 
-    //TODO create annotation in annoLayer
-
-    /*
-      if (userLayer instanceof AnnotationUserLayer &&
-          userLayer.linkedSegmentationLayer.layerName !== undefined) {
-        const segLayer = userLayer.linkedSegmentationLayer.layer!.layer;
-        if (segLayer instanceof SegmentationUserLayer) {
-          if (isSegmentationUserLayerWithGraph(segLayer)) {
-            segLayer.getRootOfSelectedSupervoxel().then(rootSegment => {
-              userLayer.localAnnotations.get(userLayer.selectedAnnotation.value!.id)!.segments!
-                  .push(rootSegment);
-            });
-          }
-        }
-      }
-    * /
+    // thanks to https://github.com/ChrisRaven/FlyWire-Dock/blob/main/Dock.js
+    const annoSource = (<any>annoLayer.layer!).annotationLayerState.value.source;
+    annoSource.clear();
+    for (const oldRef of annoSource.references.values()) {
+      annoSource.delete(oldRef);
+    }
+    const ref = annoSource.add({point: anno.coords, type: AnnotationType.POINT});
+    annoSource.update(ref, {...ref.value, description: anno.label});
 
     return true;
-
-    /*const annotation: Annotation = {
-      id: "",
-      description: associatedSegments[0].toString(),
-      segments: associatedSegments,
-      point: vec3.transformMat4(
-          vec3.create(), mouseState.position, graphOperationLayer.globalToObject),
-      type: AnnotationType.POINT,
-    };
-    const reference = layerProxy.activeSource.add(annotation, true);
-    layerProxy.selectedGraphOperationElement.value = {id: reference.id};
-    reference.dispose();* /
-  }*/
+  }
 }
 
 import Vue from 'vue';
