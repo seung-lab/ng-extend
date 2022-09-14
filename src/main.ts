@@ -27,6 +27,7 @@ import {CellReviewDialog} from './widgets/cell_review';
 import {registerEventListener} from 'neuroglancer/util/disposable';
 import {PartnersDialog} from './widgets/partners';
 import {SummaryDialog} from './widgets/summary';
+import {Theming} from './themes/themes';
 // import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -90,7 +91,7 @@ function setupViewer() {
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
   viewer.showDefaultAnnotations.value = false;
-
+  // viewer
   return viewer;
 }
 
@@ -374,6 +375,7 @@ function liveNeuroglancerInjection() {
   observeSegmentSelect(watchNode);
 }
 class ExtendViewer extends Viewer {
+  theme = new Theming();
   constructor(public display: DisplayContext) {
     super(display, {
       showLayerDialog: false,

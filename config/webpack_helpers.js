@@ -17,7 +17,8 @@
 'use strict';
 
 const path = require('path');
-const originalWebpackHelpers = require('../third_party/neuroglancer/config/webpack_helpers');
+const originalWebpackHelpers =
+    require('../third_party/neuroglancer/config/webpack_helpers');
 const resolveReal = require('../third_party/neuroglancer/config/resolve_real');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
@@ -41,18 +42,15 @@ function modifyViewerOptions(options) {
   // neuroglancer.
   options.frontendModules = [resolveReal(__dirname, '../src/main.ts')];
 
-  options.frontendPlugins = [new VueLoaderPlugin(),
-    new CopyWebpackPlugin([{
-      'from': 'images',
-      'to': 'images'
-    }]),
-    new CopyWebpackPlugin([{
-      'from': 'src/config.json',
-      'to': 'src/config.json'
-    }])
+  options.frontendPlugins = [
+    new VueLoaderPlugin(),
+    new CopyWebpackPlugin([{'from': 'images', 'to': 'images'}]),
+    new CopyWebpackPlugin(
+        [{'from': 'src/config.json', 'to': 'src/config.json'}])
   ];
 
-  options.htmlPlugin = new HtmlWebpackPlugin({template: resolveReal(__dirname, '../src/index.html')});
+  options.htmlPlugin = new HtmlWebpackPlugin(
+      {template: resolveReal(__dirname, '../src/index.html')});
 
   options.resolveAliases = {
     'vue': resolveReal(__dirname, '../node_modules/vue/dist/vue.esm.js'),
@@ -62,16 +60,15 @@ function modifyViewerOptions(options) {
 }
 
 exports.getViewerConfigFromEnv = function(options, env) {
-  const res = originalWebpackHelpers.getViewerConfigFromEnv(modifyViewerOptions(options), env);
-  
+  const res = originalWebpackHelpers.getViewerConfigFromEnv(
+      modifyViewerOptions(options), env);
+
   const frontEndModule = res[0].module;
   const frontEndTsLoader = frontEndModule.rules[0].loader[0];
   frontEndTsLoader.options['appendTsSuffixTo'] = [/\.vue$/];
 
-  frontEndModule.rules.push({
-    test: /\.vue$/,
-    loader: 'vue-loader'
-  });
+  frontEndModule.rules.push({test: /\.vue$/, loader: 'vue-loader'});
+  frontEndModule.rules.push({test: /\.txt$/, loader: 'raw-loader'});
 
   return res;
 };

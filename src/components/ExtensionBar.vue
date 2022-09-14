@@ -115,7 +115,7 @@
 <script lang="ts">
 import Vue from "vue";
 import { storeProxy, layerProxy, viewer, ActionsMenuItem } from "../state";
-import { ThemesDialog } from "../widgets/themes";
+import { ThemesDialog } from "../themes/themes";
 import { config } from '../main';
 
 import DropdownList from "components/DropdownList.vue";
