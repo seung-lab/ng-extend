@@ -1,0 +1,28 @@
+.copy-all-segment-IDs-button, .segment-copy-button {
+  background-image: url('images/copy-icon-14.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  width: 30px;
+}
+
+.segment-copy-button.copy-visible-segment-IDs-button {
+  background-image: url('images/copy-visible-segs-icon-13.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  width: 60px;
+}
+
+.clear-button {
+  background-image: url('images/fw-x-icon-15.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  width: 30px;
+}
+
+
+.clear-button::after {
+  content: "" !important;
+}

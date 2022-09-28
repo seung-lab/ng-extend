@@ -23,14 +23,18 @@ import {SubmitDialog} from '../widgets/seg_management';
 
 export class Theming {
   setting: string;
-  themes: {[key: string]: string} = {
-    'KrzystofKruk': require('./custom/KrzystofKruk.txt').default
+  themes: {[key: string]: {style: string, description: string}} = {
+    'Nebula Mode': {
+      style: require('./custom/KrzystofKruk.txt').default,
+      description: 'Originally Designed by Krzystof Kruk'
+    }
   };
   constructor() {
     this.setting = localStorage.getItem('nge-theme_set') || 'Default';
     let style = document.getElementById('nge-custom-theme');
-    if (style && this.setting !== '') {
-      style.innerHTML = this.themes[this.setting];
+    const lsSetting = this.themes[this.setting];
+    if (style && lsSetting) {
+      style.innerHTML = lsSetting.style;
     }
   }
 }
@@ -67,7 +71,7 @@ export class ThemesDialog extends SubmitDialog {
           if (cssKey == 'Default') {
             style.innerHTML = '';
           } else {
-            style.innerHTML = theme.themes[cssKey];
+            style.innerHTML = theme.themes[cssKey].style;
           }
         }
         StatusMessage.showTemporaryMessage(`${cssKey} style Applied.`, 5000);
@@ -87,10 +91,11 @@ export class ThemesDialog extends SubmitDialog {
       option.innerText = x[0];
       this.themesList.appendChild(option);
     }
-    this.themesList.value = theme.setting;
+    this.themesList.value = theme.setting || 'Default';
 
     this.title.innerText = 'Themes';
-    this.description.innerHTML = `<p>Apply Custom CSS.</p>`;
+    this.description.innerHTML = `<p>Apply CSS.</p>`;
+    // ${theme.themes[theme.setting].description}
 
     this.form.append(
         this.title, this.description, br(), 'Selected: ', this.themesList, br(),

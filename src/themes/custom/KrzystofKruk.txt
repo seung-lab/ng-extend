@@ -1,7 +1,9 @@
+/* Nebula Mode */
 @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500&display=swap');
 :root {
---kk-background-color-button: #1b5ba7;
+//--kk-background-color-button: #1b5ba7;
+--kk-background-color-button: none;
 }
 input, select, textarea {
 border: 1px solid var(--kk-background-color-button);
@@ -131,7 +133,7 @@ padding: 0;
 margin: 0px;
 height: 27px;
 margin-bottom: -2px;
-width: 27px;
+width: 27px;`
 bottom: 0;
 }
 /* to hide scroll, which is visible because of margin: -2px in .segment-color-selector */
@@ -148,9 +150,9 @@ border: none;
 .neuroglancer-minimizable-group-fixed input[type="range"] {
 width: 110px;
 }
-.neuroglancer-render-scale-widget > canvas {
+/*.neuroglancer-render-scale-widget > canvas {
 filter: grayscale(100%);
-}
+}*/
 .neuroglancer-minimizable-group-fixed {
 padding: 2px;
 color: #bbb;
@@ -171,7 +173,7 @@ bottom: 5px;
 }
 .segment-set-widget button {
 border-radius: 5px;
-height: 22px;
+//height: 22px;
 margin: 0;
 }
 .clear-button,
@@ -289,4 +291,23 @@ padding: 0 20px;
 }
 .autocomplete-input {
 color: #777;
+}
+
+
+.lightbulb {
+  background-image: url('images/lightbulb-yellow.svg') !important;
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+.lightbulb.active {
+  background-image: url('images/lightbulb-green.svg') !important;
+}
+
+.lightbulb.error {
+  background-image: url('images/lightbulb-grey.svg') !important;
+}
+
+.lightbulb.outdated {
+  background-image: url('images/lightbulb-base.svg') !important;
 }

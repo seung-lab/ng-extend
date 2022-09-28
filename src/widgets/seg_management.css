@@ -36,3 +36,23 @@ button.nge_segment {
 .lightbulb.outdated {
   background-image: url('images/bulb_black.png');
 }
+
+/*
+.lightbulb {
+  background-image: url('images/lightbulb-yellow.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+.lightbulb.active {
+  background-image: url('images/lightbulb-green.svg');
+}
+
+.lightbulb.error {
+  background-image: url('images/lightbulb-grey.svg');
+}
+
+.lightbulb.outdated {
+  background-image: url('images/lightbulb-base.svg');
+}
+*/

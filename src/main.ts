@@ -1,5 +1,7 @@
 require('neuroglancer/ui/default_viewer.css');
 require('./widgets/seg_management.css');
+require('./widgets/icon_override.css');
+require('./widgets/lightbulbMenu.css');
 require('./widgets/summary.css');
 require('./widgets/cell_identification.css');
 require('./widgets/loader.css');
@@ -19,10 +21,10 @@ import './config';
 import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
-import {SubmitDialog} from './widgets/seg_management';
+// import {SubmitDialog} from './widgets/seg_management';
 import {SegmentationUserLayerWithGraph, SegmentationUserLayerWithGraphDisplayState} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {Loader} from './widgets/loader';
-import {CellIdDialog} from './widgets/cell_identification';
+// import {CellIdDialog} from './widgets/cell_identification';
 import {CellReviewDialog} from './widgets/cell_review';
 import {registerEventListener} from 'neuroglancer/util/disposable';
 import {PartnersDialog} from './widgets/partners';
@@ -91,9 +93,21 @@ function setupViewer() {
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
   viewer.showDefaultAnnotations.value = false;
+  replaceIcons();
   // viewer
   return viewer;
 }
+
+function replaceIcons() {
+  ['.copy-all-segment-IDs-button',
+   '.segment-copy-button.copy-visible-segment-IDs-button',
+   '.segment-copy-button']
+      .forEach((icon: any) => {
+        document.querySelectorAll(icon).forEach((el: any) => {
+          el.innerHTML = '';
+        });
+      });
+};
 
 function makeExtendViewer() {
   registerEventListener(
@@ -159,16 +173,68 @@ function observeSegmentSelect(targetNode: Element) {
     return mLayer.layer.displayState.timestamp.value;
   };
 
+  // Given an HTMLDivElement, generate a section with the title given by the
+  // title parameter and a button under the title with the text given by the
+  // button parameter
+  const generateSection =
+      (title: string, buttons: (string|((e: MouseEvent) => void))[][],
+       menuOpt: (string|((e: MouseEvent) => void))[][],
+       contentCB?: Function) => {
+        const section = document.createElement('div');
+        section.classList.add('nge-lb-section');
+        const sectionTitle = document.createElement('div');
+        sectionTitle.classList.add('nge-lb-section-title');
+        sectionTitle.innerText = title;
+
+        section.appendChild(sectionTitle);
+        if (contentCB) {
+          const sectionContent = document.createElement('div');
+          sectionContent.classList.add('nge-lb-section-content');
+          sectionContent.innerText = contentCB() || '';
+          section.appendChild(sectionContent);
+        }
+        for (const [name, classNames, action] of buttons) {
+          const sectionButton = document.createElement('button');
+          sectionButton.classList.add('nge-lb-section-button');
+          sectionButton.innerText = <string>name;
+          sectionButton.className += ' ' + classNames;
+          if (action) {
+            sectionButton.addEventListener('click', <any>action!);
+          }
+          section.appendChild(sectionButton);
+        }
+
+        for (const [name, model, action] of menuOpt) {
+          const label = document.createElement('a');
+          label.style.display = 'flex';
+          label.style.flexDirection = 'row';
+          label.style.whiteSpace = 'nowrap';
+          label.textContent = `${name}`;
+          label.style.color = 'white';
+          label.href = `${model}`;
+          label.target = '_blank';
+          if (action) {
+            label.addEventListener('click', <any>action!);
+          }
+          section.appendChild(label);
+        }
+        return section;
+      };
+
+  // this function needs to be refactored
   const makeChangelogMenu =
       (parent: HTMLElement, segmentIDString: string,
        dataset: string): ContextMenu => {
         const contextMenu = new ContextMenu(parent);
         const menu = contextMenu.element;
-        menu.classList.add('neuroglancer-layer-group-viewer-context-menu');
+        menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
+        menu.classList.add(
+            'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
         const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
         const host = 'https://prod.flywire-daf.com';
         let timestamp: number|undefined = dsTimestamp();
-        let menuOpt: (string|((e: MouseEvent) => void))[][];
+        let optGroup: any = {analysis: [], proofreading: []};
+
         const cleanOverlays = () => {
           const overlays = document.getElementsByClassName('nge-overlay');
           [...overlays].forEach(function(element) {
@@ -195,64 +261,69 @@ function observeSegmentSelect(targetNode: Element) {
         const linkTS = timestamp ? `&timestamp=${timestamp}` : '';
         const dashTS = timestamp ? `&timestamp_field=${timestamp}` : '';
 
-        menuOpt =
-            [['ChangeLog', `${host}/progress/api/v1/query?rootid=${paramStr}`]];
+        let changelog =
+            ['Change Log', `${host}/progress/api/v1/query?rootid=${paramStr}`];
         // If production data set
         if (dataset == 'fly_v31') {
-          menuOpt = [
-            SummaryDialog.generateMenuOption(
-                handleDialogOpen, host, segmentIDString, currentTimeStamp),
-            [
-              'Connectivity',
-              `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field=${
-                  segmentIDString}&cleft_thresh_field=50${dashTS}`,
-            ],
-            ...menuOpt,
-            [
-              'Cell Completion Details',
-              `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
-                  paramStr}${linkTS}`
-            ],
-            [
-              'Cell Identification',
-              `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
-                  paramStr}${linkTS}`
-            ],
-            PartnersDialog.generateMenuOption(
-                handleDialogOpen, host, segmentIDString, currentTimeStamp),
-          ];
+          optGroup.proofreading.push(SummaryDialog.generateMenuOption(
+              handleDialogOpen, host, segmentIDString, currentTimeStamp));
+          optGroup.analysis.push([
+            'Connectivity',
+            `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field=${
+                segmentIDString}&cleft_thresh_field=50${dashTS}`,
+          ]);
+          optGroup.proofreading.push(changelog);
+          optGroup.proofreading.push([
+            'Cell Completion Details',
+            `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
+                paramStr}${linkTS}`
+          ]);
+          /*
+          optGroup.proofreading.push([
+            'Cell Identification',
+            `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
+                paramStr}${linkTS}`
+          ]);
+          */
+          optGroup.analysis.push(PartnersDialog.generateMenuOption(
+              handleDialogOpen, host, segmentIDString, currentTimeStamp));
+
+          // the timestamp parameter is falsy if the user has defined a
+          // timestamp
           if (!timestamp) {
-            menuOpt = [
-              ...menuOpt,
-              SubmitDialog.generateMenuOption(
-                  handleDialogOpen, host, segmentIDString, currentTimeStamp),
-              CellIdDialog.generateMenuOption(
-                  handleDialogOpen, host, segmentIDString, currentTimeStamp),
-            ];
+            /*
+            optGroup.proofreading.push(SubmitDialog.generateMenuOption(
+                handleDialogOpen, host, segmentIDString, currentTimeStamp));
+            optGroup.proofreading.push(CellIdDialog.generateMenuOption(
+                handleDialogOpen, host, segmentIDString, currentTimeStamp));
+            */
             if (parent.classList.contains('active')) {
-              menuOpt.push(
+              optGroup.proofreading.push(
                   CellReviewDialog.generateMenuOption(
                       handleDialogOpen, host, segmentIDString,
                       currentTimeStamp),
               );
             }
           }
+        } else {
+          optGroup.proofreading.push(changelog);
         }
 
-        for (const [name, model, action] of menuOpt) {
-          const label = document.createElement('a');
-          label.style.display = 'flex';
-          label.style.flexDirection = 'row';
-          label.style.whiteSpace = 'nowrap';
-          label.textContent = `${name}`;
-          label.style.color = 'white';
-          label.href = `${model}`;
-          label.target = '_blank';
-          if (action) {
-            label.addEventListener('click', <any>action!);
-          }
-          menu.appendChild(label);
-        }
+        const br = () => document.createElement('br');
+        menu.append(
+            br(),
+            generateSection(
+                'Cell Identification', [['Identify']], [], () => {}),
+            br(), br(), generateSection('Analysis', [], optGroup.analysis),
+            br(), br(),
+            generateSection(
+                'Proofreading', [[
+                  'Complete',
+                  parent.classList.contains('active') ? 'green' : 'blue',
+
+                ]],
+                optGroup.proofreading),
+            br(), br());
         return contextMenu;
       };
   const createChangelogButton =
@@ -266,7 +337,10 @@ function observeSegmentSelect(targetNode: Element) {
         let cmenu = makeChangelogMenu(
             changelogButton, segmentIDString, dataset.dataset!);
         changelogButton.addEventListener('click', (event: MouseEvent) => {
-          cmenu.show(event);
+          cmenu.show(<MouseEvent>{
+            clientX: event.clientX - 200,
+            clientY: event.clientY
+          });
         });
         changelogButton.dataset.dataset = dataset.dataset!;
         return changelogButton;
@@ -282,6 +356,9 @@ function observeSegmentSelect(targetNode: Element) {
           item.classList.contains('segmentation-dropdown')) {
         buttonList = Array.from(item.querySelectorAll('.segment-div'));
       }
+
+      /*const element = document.querySelector('.segment-copy-button');
+      if (element) element.innerHTML = '';*/
 
       buttonList.forEach(item => {
         const segmentIDString =
@@ -329,7 +406,10 @@ function observeSegmentSelect(targetNode: Element) {
               let cmenu = makeChangelogMenu(bulb, sid, bulb.dataset.dataset!);
               bulb.removeEventListener('click', <any>bulb.onclick);
               bulb.addEventListener('click', (event: MouseEvent) => {
-                cmenu.show(event);
+                cmenu.show(<MouseEvent>{
+                  clientX: event.clientX - 200,
+                  clientY: event.clientY
+                });
               });
             } else {
               bulb.title =
@@ -351,6 +431,7 @@ function observeSegmentSelect(targetNode: Element) {
   // Callback function to execute when mutations are observed
   const detectMutation = function(mutationsList: MutationRecord[]) {
     console.log('Segment ID Added');
+    replaceIcons();
 
     mutationsList.forEach(mutation => {
       mutation.addedNodes.forEach(updateSegmentSelectItem);
