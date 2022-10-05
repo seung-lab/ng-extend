@@ -35,7 +35,7 @@ import {Theming} from './themes/themes';
 window.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
   const app = setupVueApp();
-  localStorage.setItem('neuroglancer-disableWhatsNew', '1');
+  localStorage.setItem('neuroglancer-disableWhatsNew', '0');
   const viewer = setupViewer();
   storeProxy.initializeViewer(viewer);
   mergeTopBars();
@@ -101,7 +101,7 @@ function setupViewer() {
 function replaceIcons() {
   ['.copy-all-segment-IDs-button',
    '.segment-copy-button.copy-visible-segment-IDs-button',
-   '.segment-copy-button']
+   '.segment-copy-button', '.neuroglancer-copy-button.neuroglancer-button']
       .forEach((icon: any) => {
         document.querySelectorAll(icon).forEach((el: any) => {
           el.innerHTML = '';

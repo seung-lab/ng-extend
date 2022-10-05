@@ -69,6 +69,7 @@ exports.getViewerConfigFromEnv = function(options, env) {
 
   frontEndModule.rules.push({test: /\.vue$/, loader: 'vue-loader'});
   frontEndModule.rules.push({test: /\.txt$/, loader: 'raw-loader'});
+  frontEndModule.rules.push({test: /\.tcss$/, loader: 'raw-loader'});
 
   return res;
 };

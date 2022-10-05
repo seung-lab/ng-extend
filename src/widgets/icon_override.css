@@ -1,5 +1,5 @@
 .copy-all-segment-IDs-button, .segment-copy-button {
-  background-image: url('images/copy-icon-14.svg');
+  background-image: url('images/default/copy-icon-14.svg');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -7,7 +7,7 @@
 }
 
 .segment-copy-button.copy-visible-segment-IDs-button {
-  background-image: url('images/copy-visible-segs-icon-13.svg');
+  background-image: url('images/default/copy-visible-segs-icon-13.svg');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -15,14 +15,33 @@
 }
 
 .clear-button {
-  background-image: url('images/fw-x-icon-15.svg');
+  background-image: url('images/default/fw-x-icon-15.svg');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
   width: 30px;
+  height: 21px;
 }
-
 
 .clear-button::after {
   content: "" !important;
+}
+
+.neuroglancer-copy-button.neuroglancer-button {
+  border-color: transparent;
+	background-image: url('images/default/copy-icon-14.svg') !important;
+  background-origin: content-box;
+  background-repeat: no-repeat;
+  width: 13px;
+}
+
+.neuroglancer-copy-button.neuroglancer-button:before {
+  content: "" !important;
+}
+
+.neuroglancer-voxel-size-widget {
+    vertical-align: center;
+    margin-right: 2px;
+    align-items: center;
+    display: inline-flex;
 }

@@ -25,7 +25,7 @@ export class Theming {
   setting: string;
   themes: {[key: string]: {style: string, description: string}} = {
     'Nebula Mode': {
-      style: require('./custom/KrzystofKruk.txt').default,
+      style: require('./custom/KrzystofKruk.tcss').default,
       description: 'Originally Designed by Krzystof Kruk'
     }
   };
