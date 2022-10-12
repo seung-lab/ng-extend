@@ -369,7 +369,8 @@ input.neuroglancer-color-widget {
 .segment-copy-button,
 .neuroglancer-copy-button.neuroglancer-button {
   border-color: transparent;
-	background-image: url('images/nebula/copy-icon-14.svg') !important;
+  background-color: transparent;
+  background-image: url('images/nebula/copy-icon-14.svg') !important;
   width: 13px;
 }
 
@@ -380,6 +381,11 @@ input.neuroglancer-color-widget {
 
 .clear-button {
   border-color: transparent;
-	background-image: url('images/nebula/copy-icon-14.svg') !important;
+	background-image: url('images/nebula/fw-x-icon-15.svg') !important;
   width: 13px;
+}
+
+.copy-visible-segment-IDs-button.segment-copy-pressed {
+  background-color: transparent;
+  background-image: url('images/nebula/copy-visible-segs-icon-click-12.svg') !important;
 }

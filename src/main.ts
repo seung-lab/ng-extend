@@ -1,5 +1,7 @@
 require('neuroglancer/ui/default_viewer.css');
 require('./widgets/seg_management.css');
+require('./widgets/custom_check.css');
+require('./widgets/custom_color.css');
 require('./widgets/icon_override.css');
 require('./widgets/lightbulbMenu.css');
 require('./widgets/summary.css');
@@ -30,6 +32,8 @@ import {registerEventListener} from 'neuroglancer/util/disposable';
 import {PartnersDialog} from './widgets/partners';
 import {SummaryDialog} from './widgets/summary';
 import {Theming} from './themes/themes';
+import {CustomCheck} from './widgets/custom_check';
+import {CustomColor} from './widgets/custom_color';
 // import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -363,6 +367,14 @@ function observeSegmentSelect(targetNode: Element) {
       buttonList.forEach(item => {
         const segmentIDString =
             (<HTMLElement>item.querySelector('.segment-button')).dataset.segId!;
+        item.querySelectorAll('input[type="color"]')
+            .forEach((colorbox: HTMLInputElement) => {
+              CustomColor.convertColor(colorbox);
+            });
+        item.querySelectorAll('input[type="checkbox"]')
+            .forEach((checkbox: HTMLInputElement) => {
+              CustomCheck.convertCheckbox(checkbox);
+            });
         let bulb =
             item.querySelector('.nge-segment-changelog-button.lightbulb');
         if (bulb == null) {
