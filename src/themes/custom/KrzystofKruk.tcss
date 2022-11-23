@@ -131,6 +131,14 @@ input[type="color"].color-special {
 	background-color: var(--kk-background-color-button);
 	padding: 5px;
 	color: white;
+	border: 0px;
+}
+
+.neuroglancer-graphoperation-toolbox button:hover {
+	background-color: #4D4F5B;
+}
+.neuroglancer-graphoperation-toolbox button:active {
+	background-color: #4DAF8C;
 }
 
 #path-finder-color-widget {
@@ -243,6 +251,14 @@ div.segment-div>.segment-checkbox {
 	width: 45px;
 	border-radius: 10px;
 	color: white;
+    margin-left: 4px;
+    border: 0px;
+}
+.neuroglancer-time-widget button:hover {
+	background-color: #4D4F5B;
+}
+.neuroglancer-time-widget button:active {
+	background-color: #4DAF8C;
 }
 
 #exportToCSVButton,
@@ -253,6 +269,17 @@ div.segment-div>.segment-checkbox {
 	border-radius: 20px;
 	color: white;
 	padding: 8px;
+    border: 0px;
+}
+#exportToCSVButton:hover,
+#exportToCSVButton+button:hover,
+.neuroglancer-coordinate-transform-widget button:hover {
+	background-color: #4D4F5B;
+}
+#exportToCSVButton:active,
+#exportToCSVButton+button:active,
+.neuroglancer-coordinate-transform-widget button:active {
+	background-color: #4DAF8C;
 }
 
 .top-buttons .segment-checkbox {
@@ -365,6 +392,10 @@ input.neuroglancer-color-widget {
 	background-image: url('images/lightbulb-base.svg') !important;
 }
 
+.lightbulb.unlabeled {
+	background-image: url('images/lightbulb-purple.svg') !important;
+}
+
 .copy-all-segment-IDs-button,
 .segment-copy-button,
 .neuroglancer-copy-button.neuroglancer-button {
@@ -388,4 +419,9 @@ input.neuroglancer-color-widget {
 .copy-visible-segment-IDs-button.segment-copy-pressed {
   background-color: transparent;
   background-image: url('images/nebula/copy-visible-segs-icon-click-12.svg') !important;
+}
+
+.flatpickr-input {
+	border: 1px solid white;
+	border-radius: 4px;
 }

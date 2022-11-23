@@ -37,6 +37,10 @@ button.nge_segment {
   background-image: url('images/bulb_black.png');
 }
 
+.lightbulb.unlabeled {
+  background-image: url('images/bulb_purple.png');
+}
+
 .segment-div {
   display: inline-flex;
   align-items: center;

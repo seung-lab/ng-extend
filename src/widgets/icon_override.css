@@ -1,4 +1,5 @@
 .copy-all-segment-IDs-button, .segment-copy-button {
+  content-visibility: hidden;
   background-image: url('images/default/b-copy-icon-14.svg');
   background-size: contain;
   background-repeat: no-repeat;
@@ -7,6 +8,7 @@
 }
 
 .segment-copy-button.copy-visible-segment-IDs-button {
+  content-visibility: hidden;
   background-image: url('images/default/b-copy-visible-segs-icon-13.svg');
   background-size: contain;
   background-repeat: no-repeat;
@@ -15,6 +17,7 @@
 }
 
 .clear-button {
+  content-visibility: hidden;
   background-image: url('images/default/b-fw-x-icon-15.svg');
   background-size: contain;
   background-repeat: no-repeat;
@@ -28,6 +31,7 @@
 }
 
 .neuroglancer-copy-button {
+  content-visibility: hidden;
   border-color: transparent;
 	background-image: url('images/default/b-copy-icon-14.svg') !important;
   background-origin: content-box;

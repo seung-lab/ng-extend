@@ -97,21 +97,24 @@ function setupViewer() {
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
   viewer.showDefaultAnnotations.value = false;
-  replaceIcons();
+  // replaceIcons();
+  CustomColor.convertColor(
+      <HTMLInputElement>document.getElementById('path-finder-color-widget'));
   // viewer
   return viewer;
 }
-
+/* replace with content-visibility: hidden
 function replaceIcons() {
   ['.copy-all-segment-IDs-button',
    '.segment-copy-button.copy-visible-segment-IDs-button',
-   '.segment-copy-button', '.neuroglancer-copy-button.neuroglancer-button']
-      .forEach((icon: any) => {
-        document.querySelectorAll(icon).forEach((el: any) => {
-          el.innerHTML = '';
-        });
-      });
-};
+   '.segment-copy-button',
+   '.neuroglancer-copy-button.neuroglancer-button',
+  ].forEach((icon: any) => {
+    document.querySelectorAll(icon).forEach((el: any) => {
+      el.innerHTML = '';
+    });
+  });
+};*/
 
 function makeExtendViewer() {
   registerEventListener(
@@ -385,65 +388,117 @@ function observeSegmentSelect(targetNode: Element) {
         }
         if (item.dataset.dataset == 'fly_v31') {
           // always force bulb status on creation
-          checkBulbStatus(<HTMLButtonElement>bulb, segmentIDString, true);
+          addBulbToDict(<HTMLButtonElement>bulb, segmentIDString);
         }
       });
     }
   };
 
+  let statusTimeout = 0;
   const checkTime = 120000;
-  const checkVisibleTime = 30000;
-  const checkBulbStatus =
-      function(bulb: HTMLButtonElement, sid: string, force?: boolean) {
-    const view = bulb.getBoundingClientRect();
-    if (!force && (!view.height || !view.width)) {
-      // not visible
-      setTimeout(checkBulbStatus, checkVisibleTime, bulb, sid);
-    } else {
-      const menuText = 'Click for Cell Information menu.';
-      const rawTS = dsTimestamp();
-      const timestamp = rawTS ? `?timestamp=${rawTS}` : '';
-      authFetch(
-          `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
-              sid}${timestamp}`,
-          {credentials: 'same-origin'})
-          .then(response => response.json())
-          .then(data => {
-            // const isActive = bulb.classList.contains('active');
-            bulb.classList.remove('error', 'outdated', 'active');
-            if (Object.keys(data.valid).length) {
-              bulb.title = `This segment is marked as proofread. ${menuText}`;
-              bulb.classList.add('active');
-              // We need to recreate the menu
-              let cmenu = makeChangelogMenu(bulb, sid, bulb.dataset.dataset!);
-              bulb.removeEventListener('click', <any>bulb.onclick);
-              bulb.addEventListener('click', (event: MouseEvent) => {
-                cmenu.show(<MouseEvent>{
-                  clientX: event.clientX - 200,
-                  clientY: event.clientY
-                });
-              });
-            } else {
-              bulb.title =
-                  `This segment is not marked as proofread. ${menuText}`;
-            }
-          })
-          .catch((reason) => {
-            if (reason.status == '401') {
+  const segmentStatusDict: {[key: string]: HTMLButtonElement} = {};
+  const addBulbToDict = function(bulb: HTMLButtonElement, sid: string) {
+    segmentStatusDict[sid] = bulb;
+    if (statusTimeout) clearTimeout(statusTimeout);
+    checkAllBulbs();
+    statusTimeout = setTimeout(checkAllBulbs, checkTime);
+  };
+  const checkAllBulbs = function(force?: boolean) {
+    const rawList = Object.keys(segmentStatusDict);
+    const querylist = force ? rawList : rawList.filter(sid => {
+      const view = segmentStatusDict[sid].getBoundingClientRect();
+      return view.height && view.width;
+    });
+    if (!querylist.length) {
+      return;
+    }
+
+    const menuText = 'Click for Cell Information menu.';
+    const rawTS = dsTimestamp();
+    const timestamp = rawTS ? `&timestamp=${rawTS}` : '';
+    const validList: any = [];
+
+    (<any>Promise)
+        .allSettled(querylist.map(
+            sid => authFetch(
+                `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
+                    sid}${timestamp}`,
+                {credentials: 'same-origin'})))
+        .then((results: any[]) => {
+          results.forEach((result, i) => {
+            const sid = querylist[i];
+            const bulb = segmentStatusDict[sid];
+            bulb.classList.remove('error', 'outdated', 'active', 'unlabeled');
+            if (result.status == 'rejected') {
               bulb.title = `This segment is outdated. ${menuText}`;
               bulb.classList.add('outdated');
+            } else {
+              validList.push(sid);
             }
-          })
-          .finally(() => {
-            setTimeout(checkBulbStatus, checkTime, bulb, sid);
           });
-    }
-  }
+          return validList;
+        })
+        .then((validList: string[]) => {
+          const queryparam = `&filter_string=${validList.join(',')}`;
+          return authFetch(
+              `https://prod.flywire-daf.com/neurons/api/v1/cell_identification?filter_by=root_id&as_json=1${
+                  timestamp}${queryparam}`,
+              {credentials: 'same-origin'});
+        })
+        .then((response: any) => response.json())
+        .then((data: any) => {
+          console.log(data);
+          const labeled: any = {};
+          Object.keys(data.pt_position).forEach((index: any) => {
+            labeled[data.pt_position[index]] = data.tag[index];
+          });
+
+          validList.forEach((sid: string) => {
+            const bulb = segmentStatusDict[sid];
+            const tag = labeled[sid];
+            if (tag) {
+              bulb.title = `This segment is marked as proofread. ${menuText}`;
+              bulb.classList.add('active');
+            } else {
+              bulb.title =
+                  `This segment is marked as proofread but unlabeled. ${
+                      menuText}`;
+              bulb.classList.add('unlabeled');
+            }
+            // We need to recreate the menu
+            let cmenu = makeChangelogMenu(bulb, sid, bulb.dataset.dataset!);
+            bulb.removeEventListener('click', <any>bulb.onclick);
+            bulb.addEventListener('click', (event: MouseEvent) => {
+              cmenu.show(<MouseEvent>{
+                clientX: event.clientX - 200,
+                clientY: event.clientY
+              });
+            });
+          });
+        });
+    /*.then(data => {
+      // const isActive = bulb.classList.contains('active');
+      if (Object.keys(data.valid).length) {
+
+      } else {
+        bulb.title = `This segment is not marked as proofread. ${menuText}`;
+      }
+    })
+    .catch((reason) => {
+      if (reason.status == '401') {
+        bulb.title = `This segment is outdated. ${menuText}`;
+        bulb.classList.add('outdated');
+      }
+    })
+    .finally(() => {
+      setTimeout(checkBulbStatus, checkTime, bulb, sid);
+    });*/
+  };
 
   // Callback function to execute when mutations are observed
   const detectMutation = function(mutationsList: MutationRecord[]) {
     console.log('Segment ID Added');
-    replaceIcons();
+    // replaceIcons();
 
     mutationsList.forEach(mutation => {
       mutation.addedNodes.forEach(updateSegmentSelectItem);
