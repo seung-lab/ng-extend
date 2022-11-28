@@ -24,6 +24,7 @@
   background-position: center;
   width: 30px;
   height: 21px;
+  vertical-align: bottom;
 }
 
 .clear-button::after {
@@ -41,6 +42,9 @@
 
 .segment-copy-pressed {
   background-color: #4DAF8C !important;
+}
+
+.copy-visible-segment-IDs-button.segment-copy-pressed {
   background-image: url('images/default/b-copy-visible-segs-icon-click-12.svg') !important;
 }
 

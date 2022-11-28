@@ -25,7 +25,7 @@ button.nge_segment {
   background-repeat: no-repeat;
 }
 
-.lightbulb.active {
+.lightbulb.complete {
   background-image: url('images/bulb_green.png');
 }
 

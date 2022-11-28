@@ -227,16 +227,6 @@ div.segment-div>.segment-checkbox {
 	height: 20px;
 }
 
-.clear-button {
-	position: relative;
-	bottom: -1px;
-}
-
-.clear-button::after {
-	position: relative;
-	bottom: 5px;
-}
-
 .eyes-symbol-for-button {
 	bottom: 9px;
 }
@@ -380,7 +370,7 @@ input.neuroglancer-color-widget {
 	background-repeat: no-repeat;
 }
 
-.lightbulb.active {
+.lightbulb.complete {
 	background-image: url('images/lightbulb-green.svg') !important;
 }
 

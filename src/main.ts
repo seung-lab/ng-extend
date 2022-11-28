@@ -20,20 +20,13 @@ import {setupVueApp} from './vueapp';
 import {layerProxy, storeProxy} from './state';
 import {connectChatSocket} from './chat_socket';
 import './config';
-import {authFetch, authTokenShared} from 'neuroglancer/authentication/frontend';
+import {authTokenShared} from 'neuroglancer/authentication/frontend';
 import Config from './config';
-import {ContextMenu} from 'neuroglancer/ui/context_menu';
-// import {SubmitDialog} from './widgets/seg_management';
-import {SegmentationUserLayerWithGraph, SegmentationUserLayerWithGraphDisplayState} from 'neuroglancer/segmentation_user_layer_with_graph';
-import {Loader} from './widgets/loader';
-// import {CellIdDialog} from './widgets/cell_identification';
-import {CellReviewDialog} from './widgets/cell_review';
 import {registerEventListener} from 'neuroglancer/util/disposable';
-import {PartnersDialog} from './widgets/partners';
-import {SummaryDialog} from './widgets/summary';
 import {Theming} from './themes/themes';
 import {CustomCheck} from './widgets/custom_check';
 import {CustomColor} from './widgets/custom_color';
+import {BulbService} from './widgets/bulb_service';
 // import {vec3} from 'neuroglancer/util/geom';
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -151,6 +144,8 @@ function repositionUndoRedo() {
 }
 
 function observeSegmentSelect(targetNode: Element) {
+  const viewer: ExtendViewer = (<any>window)['viewer'];
+  const bs = viewer.bulbService;
   // Select the node that will be observed for mutations
   if (!targetNode) {
     return;
@@ -158,200 +153,6 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
-  const getTimeStamp = async (segmentIDString: string) => {
-    const mLayer = (<any>window).viewer.selectedLayer.layer;
-    if (mLayer == null) return;
-    const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
-    const displayState =
-        <SegmentationUserLayerWithGraphDisplayState>layer.displayState;
-
-    if (displayState.timestamp) return parseInt(displayState.timestamp.value);
-
-    const timestamps = await authFetch(
-        `${layer.chunkedGraphUrl}/root_timestamps`,
-        {method: 'POST', body: JSON.stringify({node_ids: [segmentIDString]})});
-    const ts = await timestamps.json();
-    return ts.timestamp[0];
-  };
-
-  const dsTimestamp = () => {
-    const mLayer = (<any>window).viewer.selectedLayer.layer;
-    if (mLayer == null) return;
-    return mLayer.layer.displayState.timestamp.value;
-  };
-
-  // Given an HTMLDivElement, generate a section with the title given by the
-  // title parameter and a button under the title with the text given by the
-  // button parameter
-  const generateSection =
-      (title: string, buttons: (string|((e: MouseEvent) => void))[][],
-       menuOpt: (string|((e: MouseEvent) => void))[][],
-       contentCB?: Function) => {
-        const section = document.createElement('div');
-        section.classList.add('nge-lb-section');
-        const sectionTitle = document.createElement('div');
-        sectionTitle.classList.add('nge-lb-section-title');
-        sectionTitle.innerText = title;
-
-        section.appendChild(sectionTitle);
-        if (contentCB) {
-          const sectionContent = document.createElement('div');
-          sectionContent.classList.add('nge-lb-section-content');
-          sectionContent.innerText = contentCB() || '';
-          section.appendChild(sectionContent);
-        }
-        for (const [name, classNames, action] of buttons) {
-          const sectionButton = document.createElement('button');
-          sectionButton.classList.add('nge-lb-section-button');
-          sectionButton.innerText = <string>name;
-          sectionButton.className += ' ' + classNames;
-          if (action) {
-            sectionButton.addEventListener('click', <any>action!);
-          }
-          section.appendChild(sectionButton);
-        }
-
-        for (const [name, model, action] of menuOpt) {
-          const label = document.createElement('a');
-          label.style.display = 'flex';
-          label.style.flexDirection = 'row';
-          label.style.whiteSpace = 'nowrap';
-          label.textContent = `${name}`;
-          label.style.color = 'white';
-          label.href = `${model}`;
-          label.target = '_blank';
-          if (action) {
-            label.addEventListener('click', <any>action!);
-          }
-          section.appendChild(label);
-        }
-        return section;
-      };
-
-  // this function needs to be refactored
-  const makeChangelogMenu =
-      (parent: HTMLElement, segmentIDString: string,
-       dataset: string): ContextMenu => {
-        const contextMenu = new ContextMenu(parent);
-        const menu = contextMenu.element;
-        menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
-        menu.classList.add(
-            'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
-        const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
-        const host = 'https://prod.flywire-daf.com';
-        let timestamp: number|undefined = dsTimestamp();
-        let optGroup: any = {analysis: [], proofreading: []};
-
-        const cleanOverlays = () => {
-          const overlays = document.getElementsByClassName('nge-overlay');
-          [...overlays].forEach(function(element) {
-            try {
-              (<any>element).dispose();
-            } catch {
-            }
-          });
-        };
-        const handleDialogOpen = async (e: MouseEvent, callback: Function) => {
-          e.preventDefault();
-          let spinner = new Loader();
-          if (timestamp == undefined) {
-            timestamp = await getTimeStamp(segmentIDString);
-          }
-          cleanOverlays();
-          spinner.dispose();
-          callback(parent.classList.contains('error'));
-        };
-        const currentTimeStamp = () => timestamp;
-        // timestamp will change but because the menu opt is static, if it
-        // already exists then the user has defined a timestamp to use and the
-        // field should be added
-        const linkTS = timestamp ? `&timestamp=${timestamp}` : '';
-        const dashTS = timestamp ? `&timestamp_field=${timestamp}` : '';
-
-        let changelog =
-            ['Change Log', `${host}/progress/api/v1/query?rootid=${paramStr}`];
-        // If production data set
-        if (dataset == 'fly_v31') {
-          optGroup.proofreading.push(SummaryDialog.generateMenuOption(
-              handleDialogOpen, host, segmentIDString, currentTimeStamp));
-          optGroup.analysis.push([
-            'Connectivity',
-            `${host}/dash/datastack/flywire_fafb_production/apps/fly_connectivity/?input_field=${
-                segmentIDString}&cleft_thresh_field=50${dashTS}`,
-          ]);
-          optGroup.proofreading.push(changelog);
-          optGroup.proofreading.push([
-            'Cell Completion Details',
-            `${host}/neurons/api/v1/lookup_info?filter_by=root_id&filter_string=${
-                paramStr}${linkTS}`
-          ]);
-          /*
-          optGroup.proofreading.push([
-            'Cell Identification',
-            `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
-                paramStr}${linkTS}`
-          ]);
-          */
-          optGroup.analysis.push(PartnersDialog.generateMenuOption(
-              handleDialogOpen, host, segmentIDString, currentTimeStamp));
-
-          // the timestamp parameter is falsy if the user has defined a
-          // timestamp
-          if (!timestamp) {
-            /*
-            optGroup.proofreading.push(SubmitDialog.generateMenuOption(
-                handleDialogOpen, host, segmentIDString, currentTimeStamp));
-            optGroup.proofreading.push(CellIdDialog.generateMenuOption(
-                handleDialogOpen, host, segmentIDString, currentTimeStamp));
-            */
-            if (parent.classList.contains('active')) {
-              optGroup.proofreading.push(
-                  CellReviewDialog.generateMenuOption(
-                      handleDialogOpen, host, segmentIDString,
-                      currentTimeStamp),
-              );
-            }
-          }
-        } else {
-          optGroup.proofreading.push(changelog);
-        }
-
-        const br = () => document.createElement('br');
-        menu.append(
-            br(),
-            generateSection(
-                'Cell Identification', [['Identify']], [], () => {}),
-            br(), br(), generateSection('Analysis', [], optGroup.analysis),
-            br(), br(),
-            generateSection(
-                'Proofreading', [[
-                  'Complete',
-                  parent.classList.contains('active') ? 'green' : 'blue',
-
-                ]],
-                optGroup.proofreading),
-            br(), br());
-        return contextMenu;
-      };
-  const createChangelogButton =
-      (segmentIDString: string, dataset: DOMStringMap): HTMLButtonElement => {
-        // Button for the user to copy a segment's ID
-        const changelogButton = document.createElement('button');
-        changelogButton.className = 'nge-segment-changelog-button lightbulb';
-        changelogButton.title =
-            `Show changelog for Segment: ${segmentIDString}`;
-        changelogButton.innerHTML = '⠀';
-        let cmenu = makeChangelogMenu(
-            changelogButton, segmentIDString, dataset.dataset!);
-        changelogButton.addEventListener('click', (event: MouseEvent) => {
-          cmenu.show(<MouseEvent>{
-            clientX: event.clientX - 200,
-            clientY: event.clientY
-          });
-        });
-        changelogButton.dataset.dataset = dataset.dataset!;
-        return changelogButton;
-      };
 
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
@@ -381,125 +182,29 @@ function observeSegmentSelect(targetNode: Element) {
         let bulb =
             item.querySelector('.nge-segment-changelog-button.lightbulb');
         if (bulb == null) {
-          bulb = createChangelogButton(segmentIDString, item.dataset);
+          bulb = bs.createChangelogButton(segmentIDString, item.dataset);
           bulb.classList.add('error');
           item.appendChild(bulb);
           (<HTMLButtonElement>bulb).title = 'Click for Cell Information menu.';
         }
         if (item.dataset.dataset == 'fly_v31') {
           // always force bulb status on creation
-          addBulbToDict(<HTMLButtonElement>bulb, segmentIDString);
+          bs.addBulbToDict(<HTMLButtonElement>bulb, segmentIDString);
         }
       });
     }
-  };
-
-  let statusTimeout = 0;
-  const checkTime = 120000;
-  const segmentStatusDict: {[key: string]: HTMLButtonElement} = {};
-  const addBulbToDict = function(bulb: HTMLButtonElement, sid: string) {
-    segmentStatusDict[sid] = bulb;
-    if (statusTimeout) clearTimeout(statusTimeout);
-    checkAllBulbs();
-    statusTimeout = setTimeout(checkAllBulbs, checkTime);
-  };
-  const checkAllBulbs = function(force?: boolean) {
-    const rawList = Object.keys(segmentStatusDict);
-    const querylist = force ? rawList : rawList.filter(sid => {
-      const view = segmentStatusDict[sid].getBoundingClientRect();
-      return view.height && view.width;
-    });
-    if (!querylist.length) {
-      return;
-    }
-
-    const menuText = 'Click for Cell Information menu.';
-    const rawTS = dsTimestamp();
-    const timestamp = rawTS ? `&timestamp=${rawTS}` : '';
-    const validList: any = [];
-
-    (<any>Promise)
-        .allSettled(querylist.map(
-            sid => authFetch(
-                `https://prod.flywire-daf.com/neurons/api/v1/proofreading_status/root_id/${
-                    sid}${timestamp}`,
-                {credentials: 'same-origin'})))
-        .then((results: any[]) => {
-          results.forEach((result, i) => {
-            const sid = querylist[i];
-            const bulb = segmentStatusDict[sid];
-            bulb.classList.remove('error', 'outdated', 'active', 'unlabeled');
-            if (result.status == 'rejected') {
-              bulb.title = `This segment is outdated. ${menuText}`;
-              bulb.classList.add('outdated');
-            } else {
-              validList.push(sid);
-            }
-          });
-          return validList;
-        })
-        .then((validList: string[]) => {
-          const queryparam = `&filter_string=${validList.join(',')}`;
-          return authFetch(
-              `https://prod.flywire-daf.com/neurons/api/v1/cell_identification?filter_by=root_id&as_json=1${
-                  timestamp}${queryparam}`,
-              {credentials: 'same-origin'});
-        })
-        .then((response: any) => response.json())
-        .then((data: any) => {
-          console.log(data);
-          const labeled: any = {};
-          Object.keys(data.pt_position).forEach((index: any) => {
-            labeled[data.pt_position[index]] = data.tag[index];
-          });
-
-          validList.forEach((sid: string) => {
-            const bulb = segmentStatusDict[sid];
-            const tag = labeled[sid];
-            if (tag) {
-              bulb.title = `This segment is marked as proofread. ${menuText}`;
-              bulb.classList.add('active');
-            } else {
-              bulb.title =
-                  `This segment is marked as proofread but unlabeled. ${
-                      menuText}`;
-              bulb.classList.add('unlabeled');
-            }
-            // We need to recreate the menu
-            let cmenu = makeChangelogMenu(bulb, sid, bulb.dataset.dataset!);
-            bulb.removeEventListener('click', <any>bulb.onclick);
-            bulb.addEventListener('click', (event: MouseEvent) => {
-              cmenu.show(<MouseEvent>{
-                clientX: event.clientX - 200,
-                clientY: event.clientY
-              });
-            });
-          });
-        });
-    /*.then(data => {
-      // const isActive = bulb.classList.contains('active');
-      if (Object.keys(data.valid).length) {
-
-      } else {
-        bulb.title = `This segment is not marked as proofread. ${menuText}`;
-      }
-    })
-    .catch((reason) => {
-      if (reason.status == '401') {
-        bulb.title = `This segment is outdated. ${menuText}`;
-        bulb.classList.add('outdated');
-      }
-    })
-    .finally(() => {
-      setTimeout(checkBulbStatus, checkTime, bulb, sid);
-    });*/
   };
 
   // Callback function to execute when mutations are observed
   const detectMutation = function(mutationsList: MutationRecord[]) {
     console.log('Segment ID Added');
     // replaceIcons();
-
+    // TODO: this is not ideal, but it works for now  (maybe)
+    /*Array.from(document.querySelectorAll('.top-buttons .segment-checkbox'))
+        .forEach((item: any) => {
+          CustomCheck.convertCheckbox(item);
+        });
+*/
     mutationsList.forEach(mutation => {
       mutation.addedNodes.forEach(updateSegmentSelectItem);
     });
@@ -524,6 +229,7 @@ function liveNeuroglancerInjection() {
 }
 class ExtendViewer extends Viewer {
   theme = new Theming();
+  bulbService = new BulbService();
   constructor(public display: DisplayContext) {
     super(display, {
       showLayerDialog: false,

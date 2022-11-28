@@ -3,7 +3,7 @@
 </div>
 */
 export class CustomColor {
-  public static convertColor(input: HTMLInputElement|null) {
+  public static convertColor(input?: HTMLInputElement) {
     if (input) {
       // append a div to the parent of input before the input element
       const div = document.createElement('div');
