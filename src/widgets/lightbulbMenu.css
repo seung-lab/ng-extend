@@ -28,6 +28,7 @@ neuroglancer-layer-group-viewer-context-menu
   -webkit-border-radius : 14px;
   font-size : 14px;
   text-transform : uppercase;
+  cursor: pointer;
 }
 .blue
 {

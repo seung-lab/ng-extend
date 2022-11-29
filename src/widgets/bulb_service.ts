@@ -4,13 +4,16 @@ import JSONbigInt from 'json-bigint';
 import {authFetch} from 'neuroglancer/authentication/frontend';
 import {SegmentationUserLayerWithGraph, SegmentationUserLayerWithGraphDisplayState} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
+import {CellIdDialog} from './cell_identification';
 
 import {CellReviewDialog} from './cell_review';
 import {Loader} from './loader';
 import {PartnersDialog} from './partners';
+import {SubmitDialog} from './seg_management';
 import {SummaryDialog} from './summary';
 
 const JSONBS = JSONbigInt({storeAsString: true});
+const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void))[][];
 
 export class BulbService {
@@ -18,14 +21,14 @@ export class BulbService {
   checkTime = 120000;
   statuses: {
     [key: string]: {
-      element: HTMLButtonElement;
+      sid: string; element: HTMLButtonElement;
       state?: any;
       status: 'error' | 'outdated' | 'incomplete' | 'unlabeled' | 'complete'
     }
   } = {};
 
   addBulbToDict(bulb: HTMLButtonElement, sid: string) {
-    this.statuses[sid] = {element: bulb, status: 'error'};
+    this.statuses[sid] = {element: bulb, status: 'error', sid};
     this.checkTimeout(0);
   };
 
@@ -115,7 +118,7 @@ export class BulbService {
         })
         .then(() => {
           Object.values(this.statuses).forEach((segments) => {
-            const {element, status} = segments;
+            const {sid, element, status} = segments;
             let title = 'This segment is ';
             switch (status) {
               case 'error':
@@ -139,9 +142,8 @@ export class BulbService {
             if (status !== 'incomplete') element.classList.add(status);
             element.title = `${title} ${menuText}`;
             // We need to recreate the menu
-            const {dataset, segId} = element.dataset;
-            let cmenu =
-                this.makeChangelogMenu(element, segId!, dataset!, status);
+            const {dataset} = element.dataset;
+            let cmenu = this.makeChangelogMenu(element, sid, dataset!, status);
             element.removeEventListener('click', <any>element.onclick);
             element.addEventListener('click', (event: MouseEvent) => {
               cmenu.show(<MouseEvent>{
@@ -177,7 +179,7 @@ export class BulbService {
   // button parameter
   generateSection(
       title: string, buttons: InteracblesArray, menuOpt: InteracblesArray,
-      contentCB?: Function) {
+      contentCB?: Function, extraPadding?: boolean): HTMLDivElement {
     const section = document.createElement('div');
     section.classList.add('nge-lb-section');
     const sectionTitle = document.createElement('div');
@@ -197,10 +199,18 @@ export class BulbService {
       sectionButton.innerText = <string>name;
       sectionButton.className += ' ' + classNames;
       if (action) {
-        sectionButton.addEventListener('click', <any>action!);
+        if (typeof action === 'string') {
+          sectionButton.addEventListener('click', () => {
+            window.open(action, '_blank');
+          });
+        } else {
+          sectionButton.addEventListener('click', <any>action!);
+        }
       }
       section.appendChild(sectionButton);
-    }
+      section.appendChild(br());
+    };
+    if (extraPadding) section.appendChild(br());
 
     for (const [name, model, action] of menuOpt) {
       const label = document.createElement('a');
@@ -244,7 +254,8 @@ export class BulbService {
   // this function needs to be refactored
   makeChangelogMenu(
       parent: HTMLElement, segmentIDString: string, dataset: string,
-      status: string): ContextMenu {
+      status: 'error'|'outdated'|'incomplete'|'unlabeled'|
+      'complete'): ContextMenu {
     console.log(status);
     const contextMenu = new ContextMenu(parent);
     const menu = contextMenu.element;
@@ -318,7 +329,8 @@ export class BulbService {
         optGroup.proofreading.push(CellIdDialog.generateMenuOption(
             handleDialogOpen, host, segmentIDString, currentTimeStamp));
         */
-        if (parent.classList.contains('active')) {
+        if (parent.classList.contains('complete') ||
+            parent.classList.contains('unlabeled')) {
           optGroup.proofreading.push(
               CellReviewDialog.generateMenuOption(
                   handleDialogOpen, host, segmentIDString, currentTimeStamp),
@@ -329,17 +341,54 @@ export class BulbService {
       optGroup.proofreading.push(changelog);
     }
 
-    const br = () => document.createElement('br');
+    let markComplete = SubmitDialog.generateMenuOption(
+        handleDialogOpen, host, segmentIDString, currentTimeStamp);
+    let identify = CellIdDialog.generateMenuOption(
+        handleDialogOpen, host, segmentIDString, currentTimeStamp);
+
+    let cellIDButtons = status === 'complete' ?
+        [
+          [
+            'Details', 'blue',
+            `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
+                paramStr}${linkTS}`
+          ],
+          ['Add New Id', 'purple', identify[2]]
+        ] :
+        [['Identify', 'purple', identify[2]]];
+    let proofreadingButtons = status === 'incomplete' ?
+        [['Mark as Complete', 'green', markComplete[2]]] :
+        [];
+
+    if (timestamp) {
+      menu.append(
+          br(),
+          this.generateSection(
+              'Timestamp Segmentation Active', [], [],
+              () => `Certain Cell ID functions are
+                  disabled when a timestamp is active.`));
+      cellIDButtons = [];
+      proofreadingButtons = [];
+    }
     menu.append(
-        br(),
+        br(), this.generateSection('Cell Identification', cellIDButtons, []),
+        br(), this.generateSection('Analysis', [], optGroup.analysis), br(),
         this.generateSection(
-            'Cell Identification',
-            [['Details', 'blue'], ['Add New Id', 'purple']], [], () => {}),
-        br(), br(), this.generateSection('Analysis', [], optGroup.analysis),
-        br(), br(),
-        this.generateSection(
-            'Proofreading', [['Mark as Complete', 'green']],
-            optGroup.proofreading),
+            'Proofreading', proofreadingButtons, optGroup.proofreading,
+            () => {
+              switch (status) {
+                case 'error':
+                  return 'Unknown';
+                case 'outdated':
+                  return 'Outdated';
+                case 'unlabeled':
+                case 'complete':
+                  return 'Complete';
+                default:
+                  return '';
+              }
+            },
+            true),
         br(), br());
     return contextMenu;
   };
