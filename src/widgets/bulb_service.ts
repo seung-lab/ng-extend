@@ -119,22 +119,24 @@ export class BulbService {
         .then(() => {
           Object.values(this.statuses).forEach((segments) => {
             const {sid, element, status} = segments;
-            let title = 'This segment is ';
+            let title;
             switch (status) {
               case 'error':
-                title += 'not available.';
+                title = 'Status cannot be determined.';
                 break;
               case 'outdated':
-                title += 'outdated.';
+                title =
+                    'Black: Outdated cell segment. Remove and re-add it to get latest reconstruction.'
                 break;
               case 'incomplete':
-                title += 'not marked as proofread.';
+                title = 'Yellow: This neuron has not been proofread.';
                 break;
               case 'unlabeled':
-                title += 'marked as proofread but unlabeled.';
+                title =
+                    'Purple: This cell is proofread but unlabeled. Click to add an annotation.';
                 break;
               case 'complete':
-                title += 'marked as proofread.';
+                title = 'Green: This cell has been proofread and labeled.';
                 break;
             }
             element.classList.remove(
@@ -353,7 +355,7 @@ export class BulbService {
             `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
                 paramStr}${linkTS}`
           ],
-          ['Add New Id', 'purple', identify[2]]
+          ['Add New Identification', 'purple', identify[2]]
         ] :
         [['Identify', 'purple', identify[2]]];
     let proofreadingButtons = status === 'incomplete' ?

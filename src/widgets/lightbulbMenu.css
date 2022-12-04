@@ -19,6 +19,8 @@ neuroglancer-layer-group-viewer-context-menu
   font-size : 17px;
   font-family : Roboto;
   color : #EEEEEE;
+  padding-left: 20px;
+  padding-right: 40px;
 }
 .nge_lbmenu button {
   color : #EEEEEE;
@@ -26,9 +28,10 @@ neuroglancer-layer-group-viewer-context-menu
   border-radius : 14px;
   -moz-border-radius : 14px;
   -webkit-border-radius : 14px;
-  font-size : 14px;
   text-transform : uppercase;
   cursor: pointer;
+  font-size: 12px;
+  padding: 5px 20px;
 }
 .blue
 {
