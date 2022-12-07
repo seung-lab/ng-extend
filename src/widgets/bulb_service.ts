@@ -390,7 +390,7 @@ export class BulbService {
                   return '';
               }
             },
-            true),
+            false),
         br(), br());
     return contextMenu;
   };

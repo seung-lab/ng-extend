@@ -30,7 +30,8 @@ neuroglancer-layer-group-viewer-context-menu
   -webkit-border-radius : 14px;
   text-transform : uppercase;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 700;
   padding: 5px 20px;
 }
 .blue
@@ -40,6 +41,7 @@ neuroglancer-layer-group-viewer-context-menu
 .green
 {
   background : #35B769;
+  margin: 10px 0px !important;
 }
 .purple
 {
