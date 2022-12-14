@@ -47,6 +47,10 @@ neuroglancer-layer-group-viewer-context-menu
 {
   background : #A74FCC;
 }
+.nge-lb-section-content {
+  font-weight: 600;
+  margin: 10px 0px !important;
+}
 .border_button
 {
   border-color : #4C525D;

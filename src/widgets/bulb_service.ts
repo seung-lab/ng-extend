@@ -193,7 +193,7 @@ export class BulbService {
       const sectionContent = document.createElement('div');
       sectionContent.classList.add('nge-lb-section-content');
       sectionContent.innerText = contentCB() || '';
-      section.appendChild(sectionContent);
+      if (sectionContent.innerText !== '') section.appendChild(sectionContent);
     }
     for (const [name, classNames, action] of buttons) {
       const sectionButton = document.createElement('button');

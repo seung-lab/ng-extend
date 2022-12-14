@@ -24,9 +24,10 @@ import {SubmitDialog} from '../widgets/seg_management';
 export class Theming {
   setting: string;
   themes: {[key: string]: {style: string, description: string}} = {
+    'Default': {style: '', description: 'Default FlyWire Theme'},
     'Nebula Mode': {
       style: require('./custom/KrzystofKruk.tcss').default,
-      description: 'Originally Designed by Krzystof Kruk'
+      description: 'Originally designed by Krzystof Kruk'
     }
   };
   constructor() {
@@ -68,11 +69,7 @@ export class ThemesDialog extends SubmitDialog {
         let style = document.getElementById('nge-custom-theme');
         if (style) {
           localStorage.setItem('nge-theme_set', cssKey);
-          if (cssKey == 'Default') {
-            style.innerHTML = '';
-          } else {
-            style.innerHTML = theme.themes[cssKey].style;
-          }
+          style.innerHTML = theme.themes[cssKey].style;
         }
         StatusMessage.showTemporaryMessage(`${cssKey} style Applied.`, 5000);
         this.dispose();
@@ -80,10 +77,6 @@ export class ThemesDialog extends SubmitDialog {
     });
 
     this.themesList = document.createElement('select');
-    const def = document.createElement('option');
-    def.value = 'Default';
-    def.innerText = 'Default';
-    this.themesList.appendChild(def);
     this.themesList.style.fontSize = 'inherit';
     for (const x of Object.entries(theme.themes)) {
       const option = document.createElement('option');
@@ -92,14 +85,22 @@ export class ThemesDialog extends SubmitDialog {
       this.themesList.appendChild(option);
     }
     this.themesList.value = theme.setting || 'Default';
+    this.themesList.onchange = () => {
+      const cssKey = this.themesList.value;
+      let description = theme.themes[cssKey].description;
+      this.description.innerHTML = `<p>${description}</p>`;
+    };
 
     this.title.innerText = 'Themes';
-    this.description.innerHTML = `<p>Apply CSS.</p>`;
-    // ${theme.themes[theme.setting].description}
+    this.description.innerHTML =
+        `<p>${theme.themes[theme.setting].description}</p>`;
+
+    const instructions = document.createElement('div');
+    instructions.innerHTML = `<p>Change FlyWire Styling</p>`;
 
     this.form.append(
-        this.title, this.description, br(), 'Selected: ', this.themesList, br(),
-        br(), sub, ' ', cancel, br(), br());
+        this.title, instructions, br(), 'Selected: ', this.themesList, br(),
+        this.description, br(), sub, ' ', cancel, br(), br());
 
     let modal = document.createElement('div');
     this.content.appendChild(modal);

@@ -41,8 +41,8 @@
 	.st35{fill:none;stroke:#E1F5FF;stroke-width:10;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
 	.st36{fill:#AAB6EA;}
 	.st37{opacity:0.12;fill:#E1F5FF;}
-	.st38{fill:#F866D1;}
-	.st39{fill:none;stroke:#F866D1;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st38{fill:#B01FFF;}
+	.st39{fill:none;stroke:#B01FFF;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
 	.st40{opacity:0.1;fill:#9DDEFD;}
 	.st41{fill:#00CA6F;}
 	.st42{fill:none;stroke:#9DDEFD;stroke-width:22;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
@@ -61,7 +61,7 @@
 	.st55{fill:#EA009D;}
 	.st56{fill:#EEEEEE;stroke:#FFFFFF;stroke-width:4;stroke-linecap:round;stroke-miterlimit:10;}
 	.st57{fill:#111111;stroke:#94969B;stroke-miterlimit:10;}
-	.st58{fill:#E26AC9;stroke:#EEEEEE;stroke-width:3;stroke-miterlimit:10;}
+	.st58{fill:#B01FFF;stroke:#EEEEEE;stroke-width:3;stroke-miterlimit:10;}
 	.st59{fill:#2ECC71;stroke:#EEEEEE;stroke-width:3;stroke-miterlimit:10;}
 	.st60{fill:#849199;stroke:#EEEEEE;stroke-width:3;stroke-miterlimit:10;}
 </style>
