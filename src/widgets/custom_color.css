@@ -1,0 +1,16 @@
+div.special.color-input {
+  width: 27px;
+  height: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1px 4px 1px 2px;
+}
+
+input[type="color"].special {
+  border: 0 !important;
+  padding: 0 !important;
+  width: 200% !important;
+  height: 200% !important;
+  cursor: pointer;
+  transform: translate(-25%, -25%)
+}

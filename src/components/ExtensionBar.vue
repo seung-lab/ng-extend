@@ -101,6 +101,9 @@
             <button @click="clickAction(item)">{{ item.text }}</button>
           </li>
           <li>
+            <button @click="themesMenu()">Themes</button>
+          </li>
+          <li>
             <button @click="toggleBrainMesh()">Toggle Brain Mesh</button>
           </li>
         </template>
@@ -112,6 +115,7 @@
 <script lang="ts">
 import Vue from "vue";
 import { storeProxy, layerProxy, viewer, ActionsMenuItem } from "../state";
+import { ThemesDialog } from "../themes/themes";
 import { config } from '../main';
 
 import DropdownList from "components/DropdownList.vue";
@@ -197,6 +201,11 @@ export default Vue.extend({
     },
     toggleBrainMesh() {
       layerProxy.toggleBrainMesh();
+    },
+    themesMenu() {
+      if (viewer) {
+        new ThemesDialog(viewer, '', '', 0, 0,);
+      }
     }
   },
   mounted() {

@@ -1,0 +1,60 @@
+.copy-all-segment-IDs-button, .segment-copy-button {
+  content-visibility: hidden;
+  background-image: url('images/default/b-copy-icon-14.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  width: 30px;
+}
+
+.segment-copy-button.copy-visible-segment-IDs-button {
+  content-visibility: hidden;
+  background-image: url('images/default/b-copy-visible-segs-icon-13.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  width: 60px;
+}
+
+.clear-button {
+  content-visibility: hidden;
+  background-image: url('images/default/b-fw-x-icon-15.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  width: 30px;
+  height: 21px;
+  vertical-align: bottom;
+}
+
+.clear-button::after {
+  content: "" !important;
+}
+
+.neuroglancer-copy-button {
+  content-visibility: hidden;
+  border-color: transparent;
+	background-image: url('images/default/b-copy-icon-14.svg') !important;
+  background-origin: content-box;
+  background-repeat: no-repeat;
+  width: 13px;
+}
+
+.segment-copy-pressed {
+  background-color: #4DAF8C !important;
+}
+
+.copy-visible-segment-IDs-button.segment-copy-pressed {
+  background-image: url('images/default/b-copy-visible-segs-icon-click-12.svg') !important;
+}
+
+.neuroglancer-copy-button:before {
+  content: "" !important;
+}
+
+.neuroglancer-voxel-size-widget {
+    vertical-align: center;
+    margin-right: 2px;
+    align-items: center;
+    display: inline-flex;
+}

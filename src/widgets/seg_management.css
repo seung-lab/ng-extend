@@ -25,7 +25,7 @@ button.nge_segment {
   background-repeat: no-repeat;
 }
 
-.lightbulb.active {
+.lightbulb.complete {
   background-image: url('images/bulb_green.png');
 }
 
@@ -36,3 +36,31 @@ button.nge_segment {
 .lightbulb.outdated {
   background-image: url('images/bulb_black.png');
 }
+
+.lightbulb.unlabeled {
+  background-image: url('images/bulb_purple.png');
+}
+
+.segment-div {
+  display: inline-flex;
+  align-items: center;
+}
+/*
+.lightbulb {
+  background-image: url('images/lightbulb-yellow.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+.lightbulb.active {
+  background-image: url('images/lightbulb-green.svg');
+}
+
+.lightbulb.error {
+  background-image: url('images/lightbulb-grey.svg');
+}
+
+.lightbulb.outdated {
+  background-image: url('images/lightbulb-base.svg');
+}
+*/
