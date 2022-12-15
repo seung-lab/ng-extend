@@ -393,6 +393,12 @@ input.neuroglancer-color-widget {
   background-color: transparent;
   background-image: url('images/nebula/copy-icon-14.svg') !important;
   width: 13px;
+  height: 15px;
+  padding: 0px 5px;
+}
+
+.neuroglancer-position-widget .neuroglancer-copy-button.neuroglancer-button {
+  padding: 0px 5px;
 }
 
 .segment-copy-button.copy-visible-segment-IDs-button {

@@ -38,6 +38,19 @@
   background-origin: content-box;
   background-repeat: no-repeat;
   width: 13px;
+  height: 15px;
+}
+
+.neuroglancer-position-widget .neuroglancer-copy-button.neuroglancer-button {
+  padding: 0px 5px;
+}
+.neuroglancer-copy-button, 
+.neuroglancer-button {
+  cursor: pointer;
+}
+
+input.neuroglancer-position-widget-input {
+  vertical-align: unset !important;
 }
 
 .segment-copy-pressed {
