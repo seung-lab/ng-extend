@@ -27,7 +27,7 @@ export class Theming {
     'Default': {style: '', description: 'Default FlyWire Theme'},
     'Nebula Mode': {
       style: require('./custom/KrzystofKruk.tcss').default,
-      description: 'Originally designed by Krzystof Kruk'
+      description: 'Originally designed by Krzysztof Kruk'
     }
   };
   constructor() {
