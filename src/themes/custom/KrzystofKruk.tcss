@@ -9,7 +9,8 @@
 input,
 select,
 textarea {
-	border: 1px solid var(--kk-background-color-button);
+	/*border: 1px solid var(--kk-background-color-button);*/
+	border: 1px solid var(white);
 	margin-bottom: 1px;
 	background-color: #111;
 	color: #dddddd;
