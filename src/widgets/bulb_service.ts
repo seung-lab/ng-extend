@@ -65,7 +65,7 @@ export class BulbService {
     });
   }
 
-  checkBulbs(force?: boolean) {
+  async checkBulbs(force?: boolean) {
     const rawList = Object.keys(this.statuses);
     let querylist = force ? rawList : rawList.filter(sid => {
       const view = this.statuses[sid].element.getBoundingClientRect();
@@ -83,80 +83,87 @@ export class BulbService {
     const basepath = '/neurons/api/v1';
     const defaultParameters = 'filter_by=root_id&as_json=1&ignore_bad_ids=True';
 
-    authFetch(
-        `${host}${basepath}/cell_identification?${defaultParameters}${
-            timestamp}&filter_string=${querylist.join(',')}`,
-        {credentials: 'same-origin'})
-        .then((response: any) => response.text())
-        .then((data: any) => this.process(data, querylist, 'complete'))
-        .then((secondList: any) => {
-          querylist = secondList;
-          return authFetch(
-              `${host}${basepath}/proofreading_status?${defaultParameters}${
-                  timestamp}&filter_string=${querylist.join(',')}`,
-              {credentials: 'same-origin'});
-        })
-        .then((response: any) => response.text())
-        .then((data: any) => this.process(data, querylist, 'unlabeled'))
-        .then((remaining: any) => {
-          querylist = remaining;
-          const mLayer = (<any>window).viewer.selectedLayer.layer;
-          // if (mLayer == null) return;
-          const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
+    let secondaryIds = [];
+    let ternaryIds = [];
 
-          return authFetch(`${layer.chunkedGraphUrl}/is_latest_roots`, {
-            method: 'POST',
-            body: JSON.stringify({node_ids: querylist}),
-          });
-        })
-        .then((response: any) => response.json())
-        .then((data: any) => {
-          return querylist.forEach((sid, i) => {
-            this.statuses[sid].status =
-                (data.is_latest[i]) ? 'incomplete' : 'outdated';
-          });
-        })
-        .then(() => {
-          Object.values(this.statuses).forEach((segments) => {
-            const {sid, element, status} = segments;
-            let title;
-            switch (status) {
-              case 'error':
-                title = 'Status cannot be determined.';
-                break;
-              case 'outdated':
-                title =
-                    'Black: Outdated cell segment. Remove and re-add it to get latest reconstruction.'
-                break;
-              case 'incomplete':
-                title = 'Yellow: This neuron has not been proofread.';
-                break;
-              case 'unlabeled':
-                title =
-                    'Purple: This cell is proofread but unlabeled. Click to add an annotation.';
-                break;
-              case 'complete':
-                title = 'Green: This cell has been proofread and labeled.';
-                break;
-            }
-            element.classList.remove(
-                'error', 'outdated', 'unlabeled', 'complete');
-            if (status !== 'incomplete') element.classList.add(status);
-            element.title = `${title} ${menuText}`;
-            // We need to recreate the menu
-            const {dataset} = element.dataset;
-            let cmenu = this.makeChangelogMenu(element, sid, dataset!, status);
-            element.removeEventListener('click', <any>element.onclick);
-            element.addEventListener('click', (event: MouseEvent) => {
-              cmenu.show(<MouseEvent>{
-                clientX: event.clientX - 200,
-                clientY: event.clientY
-              });
+    try {
+      {
+        const cellId = await authFetch(
+            `${host}${basepath}/cell_identification?${defaultParameters}${
+                timestamp}&filter_string=${querylist.join(',')}`,
+            {credentials: 'same-origin'});
+        const rawCellId = await cellId.text();
+        secondaryIds = this.process(rawCellId, querylist, 'complete');
+      }
+
+      if (secondaryIds.length) {
+        const proofreadStatus = await authFetch(
+            `${host}${basepath}/proofreading_status?${defaultParameters}${
+                timestamp}&filter_string=${secondaryIds.join(',')}`,
+            {credentials: 'same-origin'});
+        const rawProofreadStatus = await proofreadStatus.text();
+        ternaryIds =
+            this.process(rawProofreadStatus, secondaryIds, 'unlabeled');
+      }
+
+      if (ternaryIds.length) {
+        const mLayer = (<any>window).viewer.selectedLayer.layer;
+        // if (mLayer == null) return;
+        const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
+
+        const outdatedStatusRequest =
+            await authFetch(`${layer.chunkedGraphUrl}/is_latest_roots`, {
+              method: 'POST',
+              body: JSON.stringify({node_ids: ternaryIds}),
             });
+        const outdatedStatus = await outdatedStatusRequest.json();
+        ternaryIds.forEach((sid: string, i: number) => {
+          this.statuses[sid].status =
+              (outdatedStatus.is_latest[i]) ? 'incomplete' : 'outdated';
+        });
+      }
+
+      Object.values(this.statuses).forEach((segments) => {
+        const {sid, element, status} = segments;
+        let title;
+        switch (status) {
+          case 'error':
+            title = 'Status cannot be determined.';
+            break;
+          case 'outdated':
+            title =
+                'Black: Outdated cell segment. Remove and re-add it to get latest reconstruction.'
+            break;
+          case 'incomplete':
+            title = 'Yellow: This neuron has not been proofread.';
+            break;
+          case 'unlabeled':
+            title =
+                'Purple: This cell is proofread but unlabeled. Click to add an annotation.';
+            break;
+          case 'complete':
+            title = 'Green: This cell has been proofread and labeled.';
+            break;
+        }
+        element.classList.remove('error', 'outdated', 'unlabeled', 'complete');
+        if (status !== 'incomplete') element.classList.add(status);
+        element.title = `${title} ${menuText}`;
+        // We need to recreate the menu
+        const {dataset} = element.dataset;
+        let cmenu = this.makeChangelogMenu(element, sid, dataset!, status);
+        element.removeEventListener('click', <any>element.onclick);
+        element.addEventListener('click', (event: MouseEvent) => {
+          cmenu.show(<MouseEvent>{
+            clientX: event.clientX - 200,
+            clientY: event.clientY
           });
-        })
-        .catch((e: any) => console.error(e))
-        .finally(() => this.checkTimeout());
+        });
+      });
+    } catch (e) {
+      console.error(e);
+    }
+
+    this.checkTimeout();
   };
 
   createChangelogButton(segmentIDString: string, dataset: DOMStringMap):
