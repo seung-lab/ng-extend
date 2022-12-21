@@ -65,6 +65,44 @@ export class BulbService {
     });
   }
 
+  updateStatuses() {
+    const menuText = 'Click for Cell Information menu.';
+    Object.values(this.statuses).forEach((segments) => {
+      const {sid, element, status} = segments;
+      let title;
+      switch (status) {
+        case 'error':
+          title = 'Status cannot be determined.';
+          break;
+        case 'outdated':
+          title =
+              'Black: Outdated cell segment. Remove and re-add it to get latest reconstruction.'
+          break;
+        case 'incomplete':
+          title = 'Yellow: This neuron has not been proofread.';
+          break;
+        case 'unlabeled':
+          title =
+              'Purple: This cell is proofread but unlabeled. Click to add an annotation.';
+          break;
+        case 'complete':
+          title = 'Green: This cell has been proofread and labeled.';
+          break;
+      }
+      element.classList.remove('error', 'outdated', 'unlabeled', 'complete');
+      if (status !== 'incomplete') element.classList.add(status);
+      element.title = `${title} ${menuText}`;
+      // We need to recreate the menu
+      const {dataset} = element.dataset;
+      let cmenu = this.makeChangelogMenu(element, sid, dataset!, status);
+      element.removeEventListener('click', <any>element.onclick);
+      element.addEventListener('click', (event: MouseEvent) => {
+        cmenu.show(
+            <MouseEvent>{clientX: event.clientX - 200, clientY: event.clientY});
+      });
+    });
+  }
+
   async checkBulbs(force?: boolean) {
     const rawList = Object.keys(this.statuses);
     let querylist = force ? rawList : rawList.filter(sid => {
@@ -75,7 +113,6 @@ export class BulbService {
       return;
     }
 
-    const menuText = 'Click for Cell Information menu.';
     const rawTS = this.getUserDefinedTimestamp();
     const timestamp = rawTS ? `&timestamp=${rawTS}` : '';
 
@@ -94,6 +131,7 @@ export class BulbService {
             {credentials: 'same-origin'});
         const rawCellId = await cellId.text();
         secondaryIds = this.process(rawCellId, querylist, 'complete');
+        this.updateStatuses();
       }
 
       if (secondaryIds.length) {
@@ -104,6 +142,7 @@ export class BulbService {
         const rawProofreadStatus = await proofreadStatus.text();
         ternaryIds =
             this.process(rawProofreadStatus, secondaryIds, 'unlabeled');
+        this.updateStatuses();
       }
 
       if (ternaryIds.length) {
@@ -121,44 +160,8 @@ export class BulbService {
           this.statuses[sid].status =
               (outdatedStatus.is_latest[i]) ? 'incomplete' : 'outdated';
         });
+        this.updateStatuses();
       }
-
-      Object.values(this.statuses).forEach((segments) => {
-        const {sid, element, status} = segments;
-        let title;
-        switch (status) {
-          case 'error':
-            title = 'Status cannot be determined.';
-            break;
-          case 'outdated':
-            title =
-                'Black: Outdated cell segment. Remove and re-add it to get latest reconstruction.'
-            break;
-          case 'incomplete':
-            title = 'Yellow: This neuron has not been proofread.';
-            break;
-          case 'unlabeled':
-            title =
-                'Purple: This cell is proofread but unlabeled. Click to add an annotation.';
-            break;
-          case 'complete':
-            title = 'Green: This cell has been proofread and labeled.';
-            break;
-        }
-        element.classList.remove('error', 'outdated', 'unlabeled', 'complete');
-        if (status !== 'incomplete') element.classList.add(status);
-        element.title = `${title} ${menuText}`;
-        // We need to recreate the menu
-        const {dataset} = element.dataset;
-        let cmenu = this.makeChangelogMenu(element, sid, dataset!, status);
-        element.removeEventListener('click', <any>element.onclick);
-        element.addEventListener('click', (event: MouseEvent) => {
-          cmenu.show(<MouseEvent>{
-            clientX: event.clientX - 200,
-            clientY: event.clientY
-          });
-        });
-      });
     } catch (e) {
       console.error(e);
     }
