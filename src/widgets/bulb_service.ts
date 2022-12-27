@@ -368,7 +368,8 @@ export class BulbService {
           ['Add New Identification', 'purple', identify[2]]
         ] :
         [['Identify', 'purple', identify[2]]];
-    let proofreadingButtons = status === 'incomplete' ?
+    let proofreadingButtons =
+        ['incomplete', 'unlabeled', 'complete'].includes(status) ?
         [['Mark as Complete', 'green', markComplete[2]]] :
         [];
 
