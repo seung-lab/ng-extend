@@ -106,6 +106,9 @@
           <li>
             <button @click="toggleBrainMesh()">Toggle Brain Mesh</button>
           </li>
+          <li>
+            <button @click="toggleBackgroundColor()">Toggle Background Color</button>
+          </li>
         </template>
       </dropdown-list>
     </template>
@@ -201,6 +204,23 @@ export default Vue.extend({
     },
     toggleBrainMesh() {
       layerProxy.toggleBrainMesh();
+    },
+    toggleBackgroundColor() {
+      if (!viewer) return;
+      let crossSectionColor = 0.5;
+      let perspectiveViewColor = 0;
+      if (viewer.perspectiveViewBackgroundColor.value[0] === 0) {
+        crossSectionColor = 1;
+        perspectiveViewColor = 1;
+      }
+      const crossSectionBackgroundColor = viewer.crossSectionBackgroundColor.value;
+      crossSectionBackgroundColor[0] = crossSectionColor;
+      crossSectionBackgroundColor[1] = crossSectionColor;
+      crossSectionBackgroundColor[2] = crossSectionColor;
+      const perspectiveViewBackgroundColor = viewer.perspectiveViewBackgroundColor.value;
+      perspectiveViewBackgroundColor[0] = perspectiveViewColor;
+      perspectiveViewBackgroundColor[1] = perspectiveViewColor;
+      perspectiveViewBackgroundColor[2] = perspectiveViewColor;
     },
     themesMenu() {
       if (viewer) {
