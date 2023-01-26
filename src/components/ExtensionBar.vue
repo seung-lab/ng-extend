@@ -259,7 +259,14 @@ export default Vue.extend({
       const a = document.createElement("a");
       const url = URL.createObjectURL(file);
       a.href = url;
-      a.download = "screenshot.png";
+      const now = new Date(); 
+      const datetime = now.getFullYear() + "-"
+                      + (now.getMonth() + 1)  + "-" 
+                      + now.getDate() + " "  
+                      + now.getHours() + "_"  
+                      + now.getMinutes() + "_" 
+                      + now.getSeconds();
+      a.download = "Flywire Screenshot " + datetime + ".png";
       document.body.appendChild(a);
       a.click();
       setTimeout(function() {
