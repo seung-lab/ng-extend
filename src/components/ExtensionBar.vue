@@ -109,6 +109,9 @@
           <li>
             <button @click="toggleBackgroundColor()">Toggle Background Color</button>
           </li>
+          <li>
+            <button @click="screenshot()">Take Screenshot</button>
+          </li>
         </template>
       </dropdown-list>
     </template>
@@ -231,6 +234,39 @@ export default Vue.extend({
           brainMeshLayer.layer.displayState.objectAlpha.value = !wasDark ? config.brainMeshOpacityDark : config.brainMeshOpacityLight;
         }
       }
+    },
+    screenshot() {
+      function dataURItoBlob(dataURI: string) {
+        // from https://stackoverflow.com/a/12300351
+        const byteString = atob(dataURI.split(",")[1]);
+        const mimeString = dataURI.split(",")[0].split(":")[1].split(";")[0]
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], {type: mimeString});
+        return blob;
+      }
+
+      if (!viewer) return;
+      const axisWasShown = viewer.showAxisLines.value;
+      viewer.showAxisLines.value = false;
+      viewer.display.draw();
+      const screenshotData = viewer.display.canvas.toDataURL();
+      const file = dataURItoBlob(screenshotData);
+      // from https://stackoverflow.com/a/30832210
+      const a = document.createElement("a");
+      const url = URL.createObjectURL(file);
+      a.href = url;
+      a.download = "screenshot.png";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() {
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);  
+      }, 0);
+      viewer.showAxisLines.value = axisWasShown;
     },
     themesMenu() {
       if (viewer) {
