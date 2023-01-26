@@ -236,6 +236,63 @@ export default Vue.extend({
       }
     },
     screenshot() {
+      function hexToRGB(hexStr: string) {
+          var color = {
+            r: parseInt(hexStr.substr(1, 2), 16),
+            g: parseInt(hexStr.substr(3, 2), 16),
+            b: parseInt(hexStr.substr(5, 2), 16),
+            a: parseInt(hexStr.substr(7, 2), 16),
+          }
+          return color;
+      }
+      function changeColorInUri(uriData: string, colorFrom: string, colorTo: string) {
+        // from https://stackoverflow.com/a/13419444
+        const img = document.createElement("img");
+        img.src = uriData;
+        //img.style.visibility = "hidden";
+        document.body.appendChild(img);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = img.scrollWidth;
+        canvas.height = img.scrollHeight;
+        console.log(img, canvas.width, canvas.height);
+
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+
+        img.parentNode!.removeChild(img);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        const rgbFrom = hexToRGB(colorFrom);
+        const rgbTo = hexToRGB(colorTo);
+
+        let r, g, b, a;
+        for(let x = 0, len = data.length; x < len; x += 4) {
+            r = data[x];
+            g = data[x + 1];
+            b = data[x + 2];
+            a = data[x + 3];
+
+            if((r === rgbFrom.r) &&
+              (g === rgbFrom.g) &&
+              (b === rgbFrom.b) &&
+              (a === rgbFrom.a)) {
+                data[x] = rgbTo.r;
+                data[x + 1] = rgbTo.g;
+                data[x + 2] = rgbTo.b;
+                data[x + 3] = rgbTo.a;
+            } 
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+
+        //TODO crop
+
+        return canvas.toDataURL();
+      }
+
       function dataURItoBlob(dataURI: string) {
         // from https://stackoverflow.com/a/12300351
         const byteString = atob(dataURI.split(",")[1]);
@@ -254,7 +311,9 @@ export default Vue.extend({
       viewer.showAxisLines.value = false;
       viewer.display.draw();
       const screenshotData = viewer.display.canvas.toDataURL();
-      const file = dataURItoBlob(screenshotData);
+      const bgColor = viewer.perspectiveViewBackgroundColor.value[0] === 0 ? "#000000ff" : "#ffffffff";
+      const screenshotDataClean = changeColorInUri(screenshotData, bgColor, "#00000000");
+      const file = dataURItoBlob(screenshotDataClean);
       // from https://stackoverflow.com/a/30832210
       const a = document.createElement("a");
       const url = URL.createObjectURL(file);
