@@ -125,6 +125,8 @@ import DropdownList from "components/DropdownList.vue";
 import Stopwatch from "components/Stopwatch.vue";
 import UserCard from "components/UserCard.vue";
 import { ImageLayerDescription, SegmentationLayerDescription, CellDescription } from "src/config";
+import { getLayerByName } from "../layer-state";
+import { SegmentationUserLayer } from "neuroglancer/segmentation_user_layer";
 
 export default Vue.extend({
   components: { DropdownList, Stopwatch, UserCard },
@@ -209,7 +211,8 @@ export default Vue.extend({
       if (!viewer) return;
       let crossSectionColor = 0.5;
       let perspectiveViewColor = 0;
-      if (viewer.perspectiveViewBackgroundColor.value[0] === 0) {
+      const wasDark = viewer.perspectiveViewBackgroundColor.value[0] === 0;
+      if (wasDark) {
         crossSectionColor = 1;
         perspectiveViewColor = 1;
       }
@@ -221,6 +224,13 @@ export default Vue.extend({
       perspectiveViewBackgroundColor[0] = perspectiveViewColor;
       perspectiveViewBackgroundColor[1] = perspectiveViewColor;
       perspectiveViewBackgroundColor[2] = perspectiveViewColor;
+      const layerName = config.brainMeshURL.split("/").pop()!;
+      const brainMeshLayer = getLayerByName(layerName);
+      if (brainMeshLayer) {
+        if (brainMeshLayer.layer instanceof SegmentationUserLayer) {
+          brainMeshLayer.layer.displayState.objectAlpha.value = !wasDark ? config.brainMeshOpacityDark : config.brainMeshOpacityLight;
+        }
+      }
     },
     themesMenu() {
       if (viewer) {

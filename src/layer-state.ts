@@ -319,7 +319,8 @@ export class LayerState extends createModule
           const layer = layerWithSpec.layer;
           if (layer instanceof SegmentationUserLayer) {
             layer.displayState.rootSegments.add(Uint64.ONE);
-            layer.displayState.objectAlpha.value = config.brainMeshOpacity;
+            const dark = viewer!.perspectiveViewBackgroundColor.value[0] === 0;
+            layer.displayState.objectAlpha.value = dark ? config.brainMeshOpacityDark : config.brainMeshOpacityLight;
             const segmentColor = new Uint64(packColor(vec3.fromValues(0.5, 0.5, 0.5)));
             layer.displayState.segmentStatedColors.set(Uint64.ONE, segmentColor);
           }

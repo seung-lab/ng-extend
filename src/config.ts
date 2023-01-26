@@ -6,7 +6,8 @@ export default interface Config {
   imageLayers: ImageLayerDescription[],
   segmentationLayers: SegmentationLayerDescription[],
   brainMeshURL: string,
-  brainMeshOpacity: number,
+  brainMeshOpacityDark: number,
+  brainMeshOpacityLight: number,
   checkoutURL: string,
   userStatsURL: string
 }

@@ -92,7 +92,8 @@
         }
     ],
     "brainMeshURL": "precomputed://gs://flywire_neuropil_meshes/whole_neuropil/brain_mesh_v141.surf",
-    "brainMeshOpacity": 0.2,
+    "brainMeshOpacityDark": 0.2,
+    "brainMeshOpacityLight": 0.04,
     "checkoutURL": "https://prod.flywire-daf.com/neurons/api/v1/proofreading_drive?as_json=1",
     "userStatsURL": "https://prod.flywire-daf.com/neurons/api/v1/user_statistics?as_json=1"
 }
