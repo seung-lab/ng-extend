@@ -120,30 +120,61 @@ export class BulbService {
     const basepath = '/neurons/api/v1';
     const defaultParameters = 'filter_by=root_id&as_json=1&ignore_bad_ids=True';
 
-    let secondaryIds = [];
     let ternaryIds = [];
 
     try {
       {
-        const cellId = await authFetch(
-            `${host}${basepath}/cell_identification?${defaultParameters}${
-                timestamp}&filter_string=${querylist.join(',')}`,
-            {credentials: 'same-origin'});
-        const rawCellId = await cellId.text();
-        secondaryIds = this.process(rawCellId, querylist, 'complete');
+        const cellInfo = await Promise.allSettled([
+          authFetch(
+              `${host}${basepath}/cell_identification?${defaultParameters}${
+                  timestamp}&filter_string=${querylist.join(',')}`,
+              {credentials: 'same-origin'}),
+          authFetch(
+              `${host}${basepath}/proofreading_status?${defaultParameters}${
+                  timestamp}&filter_string=${querylist.join(',')}`,
+              {credentials: 'same-origin'})
+        ]);
+
+        // const dataState: BulbService['statuses'] = {};
+        const rawCells: BulbService['statuses'] = {};
+        for (const cell of cellInfo) {
+          if (cell.status === 'fulfilled') {
+            const raw = await cell.value.text();
+            const data = JSONBS.parse(raw);
+            if (data.pt_root_id) {
+              const indicies = Object.keys(data.pt_root_id);
+              indicies.map((key: any) => {
+                const sid = data.pt_root_id[key];
+                if (!rawCells[sid]) rawCells[sid] = this.statuses[sid];
+                rawCells[sid].state =
+                    Object.keys(data).reduce((prev: any, curr: string) => {
+                      prev[curr] = data[curr][key];
+                      return prev;
+                    }, rawCells[sid].state || {});
+                const {tag, proofread} = rawCells[sid].state;
+                rawCells[sid].status = proofread === 't' ?
+                    (tag ? 'complete' : 'unlabeled') :
+                    'incomplete';
+              });
+            }
+          }
+        }
+        this.statuses = {...this.statuses, ...rawCells};
+        const values = Object.keys(rawCells);
+
+        ternaryIds = querylist.filter((sid: string) => {
+          return !values.includes(sid);
+        });
         this.updateStatuses();
       }
 
-      if (secondaryIds.length) {
-        const proofreadStatus = await authFetch(
-            `${host}${basepath}/proofreading_status?${defaultParameters}${
-                timestamp}&filter_string=${secondaryIds.join(',')}`,
-            {credentials: 'same-origin'});
+      /*if (secondaryIds.length) {
+        const proofreadStatus = await;
         const rawProofreadStatus = await proofreadStatus.text();
         ternaryIds =
             this.process(rawProofreadStatus, secondaryIds, 'unlabeled');
         this.updateStatuses();
-      }
+      }*/
 
       if (ternaryIds.length) {
         const mLayer = (<any>window).viewer.selectedLayer.layer;
