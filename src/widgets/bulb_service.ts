@@ -15,6 +15,24 @@ import {SummaryDialog} from './summary';
 const JSONBS = JSONbigInt({storeAsString: true});
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void))[][];
+const allSettled = function(promises: Promise<any>[]) {
+  let mappedPromises = promises.map((p) => {
+    return p
+        .then((value) => {
+          return {
+            status: 'fulfilled',
+            value,
+          };
+        })
+        .catch((reason) => {
+          return {
+            status: 'rejected',
+            reason,
+          };
+        });
+  });
+  return Promise.all(mappedPromises);
+};
 
 export class BulbService {
   timeout = 0;
@@ -124,7 +142,7 @@ export class BulbService {
 
     try {
       {
-        const cellInfo = await Promise.allSettled([
+        const cellInfo = await allSettled([
           authFetch(
               `${host}${basepath}/cell_identification?${defaultParameters}${
                   timestamp}&filter_string=${querylist.join(',')}`,
@@ -139,7 +157,8 @@ export class BulbService {
         const rawCells: BulbService['statuses'] = {};
         for (const cell of cellInfo) {
           if (cell.status === 'fulfilled') {
-            const raw = await cell.value.text();
+            const raw =
+                await (<{status: string; value: any;}>cell).value.text();
             const data = JSONBS.parse(raw);
             if (data.pt_root_id) {
               const indicies = Object.keys(data.pt_root_id);
@@ -168,13 +187,6 @@ export class BulbService {
         this.updateStatuses();
       }
 
-      /*if (secondaryIds.length) {
-        const proofreadStatus = await;
-        const rawProofreadStatus = await proofreadStatus.text();
-        ternaryIds =
-            this.process(rawProofreadStatus, secondaryIds, 'unlabeled');
-        this.updateStatuses();
-      }*/
 
       if (ternaryIds.length) {
         const mLayer = (<any>window).viewer.selectedLayer.layer;
