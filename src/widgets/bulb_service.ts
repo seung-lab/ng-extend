@@ -86,7 +86,7 @@ export class BulbService {
   updateStatuses() {
     const menuText = 'Click for Cell Information menu.';
     Object.values(this.statuses).forEach((segments) => {
-      const {sid, element, status} = segments;
+      const {sid, element, status, state} = segments;
       let title;
       switch (status) {
         case 'error':
@@ -112,7 +112,7 @@ export class BulbService {
       element.title = `${title} ${menuText}`;
       // We need to recreate the menu
       const {dataset} = element.dataset;
-      let cmenu = this.makeChangelogMenu(element, sid, dataset!, status);
+      let cmenu = this.makeChangelogMenu(element, sid, dataset!, status, state);
       element.removeEventListener('click', <any>element.onclick);
       element.addEventListener('click', (event: MouseEvent) => {
         cmenu.show(
@@ -309,8 +309,8 @@ export class BulbService {
   // this function needs to be refactored
   makeChangelogMenu(
       parent: HTMLElement, segmentIDString: string, dataset: string,
-      status: 'error'|'outdated'|'incomplete'|'unlabeled'|
-      'complete'): ContextMenu {
+      status: 'error'|'outdated'|'incomplete'|'unlabeled'|'complete',
+      state?: any): ContextMenu {
     console.log(status);
     const contextMenu = new ContextMenu(parent);
     const menu = contextMenu.element;
@@ -401,7 +401,8 @@ export class BulbService {
     let identify = CellIdDialog.generateMenuOption(
         handleDialogOpen, host, segmentIDString, currentTimeStamp);
 
-    let cellIDButtons = status === 'complete' ?
+    const {tag} = <any>(state || {});
+    let cellIDButtons = tag ?
         [
           [
             'Details', 'blue',
