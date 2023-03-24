@@ -1,11 +1,11 @@
 
 import JSONbigInt from 'json-bigint';
-
 import {authFetch} from 'neuroglancer/authentication/frontend';
 import {SegmentationUserLayerWithGraph, SegmentationUserLayerWithGraphDisplayState} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
-import {CellIdDialog} from './cell_identification';
 
+import {CellDetailDialog} from './cell_detail';
+import {CellIdDialog} from './cell_identification';
 import {CellReviewDialog} from './cell_review';
 import {Loader} from './loader';
 import {PartnersDialog} from './partners';
@@ -400,15 +400,14 @@ export class BulbService {
         handleDialogOpen, host, segmentIDString, currentTimeStamp);
     let identify = CellIdDialog.generateMenuOption(
         handleDialogOpen, host, segmentIDString, currentTimeStamp);
+    let details = CellDetailDialog.generateMenuOptionv2(
+        handleDialogOpen, host, segmentIDString, currentTimeStamp,
+        {...state, paramStr, linkTS});
 
     const {tag} = <any>(state || {});
     let cellIDButtons = tag ?
         [
-          [
-            'Details', 'blue',
-            `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
-                paramStr}${linkTS}`
-          ],
+          ['Details', 'blue', details[2]],
           ['Add New Identification', 'purple', identify[2]]
         ] :
         [['Identify', 'purple', identify[2]]];
