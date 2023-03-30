@@ -17,6 +17,9 @@
         <a href="https://join.slack.com/t/flywire-forum/shared_invite/zt-d6pyjonk-uC7_kjcjU~8c64t~Qid~oQ" target="_blank" title="For professional researchers only">Slack Forum</a>
       </div>
       <div class="nge-gs-link">
+        <a href="https://bit.ly/3P6qXQz" target="_blank">Codex</a>
+      </div>
+      <div class="nge-gs-link">
         <a href="https://bit.ly/3kBLEFR" target="_blank">Tools</a>
       </div>
       <div class="nge-gs-link">
