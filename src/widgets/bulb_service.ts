@@ -1,11 +1,11 @@
 
 import JSONbigInt from 'json-bigint';
-
 import {authFetch} from 'neuroglancer/authentication/frontend';
 import {SegmentationUserLayerWithGraph, SegmentationUserLayerWithGraphDisplayState} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
-import {CellIdDialog} from './cell_identification';
 
+import {CellDetailDialog} from './cell_detail';
+import {CellIdDialog} from './cell_identification';
 import {CellReviewDialog} from './cell_review';
 import {Loader} from './loader';
 import {PartnersDialog} from './partners';
@@ -15,6 +15,24 @@ import {SummaryDialog} from './summary';
 const JSONBS = JSONbigInt({storeAsString: true});
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void))[][];
+const allSettled = function(promises: Promise<any>[]) {
+  let mappedPromises = promises.map((p) => {
+    return p
+        .then((value) => {
+          return {
+            status: 'fulfilled',
+            value,
+          };
+        })
+        .catch((reason) => {
+          return {
+            status: 'rejected',
+            reason,
+          };
+        });
+  });
+  return Promise.all(mappedPromises);
+};
 
 export class BulbService {
   timeout = 0;
@@ -68,7 +86,7 @@ export class BulbService {
   updateStatuses() {
     const menuText = 'Click for Cell Information menu.';
     Object.values(this.statuses).forEach((segments) => {
-      const {sid, element, status} = segments;
+      const {sid, element, status, state} = segments;
       let title;
       switch (status) {
         case 'error':
@@ -94,7 +112,7 @@ export class BulbService {
       element.title = `${title} ${menuText}`;
       // We need to recreate the menu
       const {dataset} = element.dataset;
-      let cmenu = this.makeChangelogMenu(element, sid, dataset!, status);
+      let cmenu = this.makeChangelogMenu(element, sid, dataset!, status, state);
       element.removeEventListener('click', <any>element.onclick);
       element.addEventListener('click', (event: MouseEvent) => {
         cmenu.show(
@@ -120,30 +138,55 @@ export class BulbService {
     const basepath = '/neurons/api/v1';
     const defaultParameters = 'filter_by=root_id&as_json=1&ignore_bad_ids=True';
 
-    let secondaryIds = [];
     let ternaryIds = [];
 
     try {
       {
-        const cellId = await authFetch(
-            `${host}${basepath}/cell_identification?${defaultParameters}${
-                timestamp}&filter_string=${querylist.join(',')}`,
-            {credentials: 'same-origin'});
-        const rawCellId = await cellId.text();
-        secondaryIds = this.process(rawCellId, querylist, 'complete');
+        const cellInfo = await allSettled([
+          authFetch(
+              `${host}${basepath}/cell_identification?${defaultParameters}${
+                  timestamp}&filter_string=${querylist.join(',')}`,
+              {credentials: 'same-origin'}),
+          authFetch(
+              `${host}${basepath}/proofreading_status?${defaultParameters}${
+                  timestamp}&filter_string=${querylist.join(',')}`,
+              {credentials: 'same-origin'})
+        ]);
+
+        // const dataState: BulbService['statuses'] = {};
+        const rawCells: BulbService['statuses'] = {};
+        for (const cell of cellInfo) {
+          if (cell.status === 'fulfilled') {
+            const raw =
+                await (<{status: string; value: any;}>cell).value.text();
+            const data = JSONBS.parse(raw);
+            if (data.pt_root_id) {
+              const indicies = Object.keys(data.pt_root_id);
+              indicies.map((key: any) => {
+                const sid = data.pt_root_id[key];
+                if (!rawCells[sid]) rawCells[sid] = this.statuses[sid];
+                rawCells[sid].state =
+                    Object.keys(data).reduce((prev: any, curr: string) => {
+                      prev[curr] = data[curr][key];
+                      return prev;
+                    }, rawCells[sid].state || {});
+                const {tag, proofread} = rawCells[sid].state;
+                rawCells[sid].status = proofread === 't' ?
+                    (tag ? 'complete' : 'unlabeled') :
+                    'incomplete';
+              });
+            }
+          }
+        }
+        this.statuses = {...this.statuses, ...rawCells};
+        const values = Object.keys(rawCells);
+
+        ternaryIds = querylist.filter((sid: string) => {
+          return !values.includes(sid);
+        });
         this.updateStatuses();
       }
 
-      if (secondaryIds.length) {
-        const proofreadStatus = await authFetch(
-            `${host}${basepath}/proofreading_status?${defaultParameters}${
-                timestamp}&filter_string=${secondaryIds.join(',')}`,
-            {credentials: 'same-origin'});
-        const rawProofreadStatus = await proofreadStatus.text();
-        ternaryIds =
-            this.process(rawProofreadStatus, secondaryIds, 'unlabeled');
-        this.updateStatuses();
-      }
 
       if (ternaryIds.length) {
         const mLayer = (<any>window).viewer.selectedLayer.layer;
@@ -266,8 +309,8 @@ export class BulbService {
   // this function needs to be refactored
   makeChangelogMenu(
       parent: HTMLElement, segmentIDString: string, dataset: string,
-      status: 'error'|'outdated'|'incomplete'|'unlabeled'|
-      'complete'): ContextMenu {
+      status: 'error'|'outdated'|'incomplete'|'unlabeled'|'complete',
+      state?: any): ContextMenu {
     console.log(status);
     const contextMenu = new ContextMenu(parent);
     const menu = contextMenu.element;
@@ -357,14 +400,14 @@ export class BulbService {
         handleDialogOpen, host, segmentIDString, currentTimeStamp);
     let identify = CellIdDialog.generateMenuOption(
         handleDialogOpen, host, segmentIDString, currentTimeStamp);
+    let details = CellDetailDialog.generateMenuOptionv2(
+        handleDialogOpen, host, segmentIDString, currentTimeStamp,
+        {...state, paramStr, linkTS});
 
-    let cellIDButtons = status === 'complete' ?
+    const {tag} = <any>(state || {});
+    let cellIDButtons = tag ?
         [
-          [
-            'Details', 'blue',
-            `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
-                paramStr}${linkTS}`
-          ],
+          ['Details', 'blue', details[2]],
           ['Add New Identification', 'purple', identify[2]]
         ] :
         [['Identify', 'purple', identify[2]]];
