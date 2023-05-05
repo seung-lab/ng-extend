@@ -102,7 +102,8 @@ export class CellDetailDialog extends Overlay {
           `No existing identification can be found for this cell.`, cancel);
       return;
     }
-    const {tag, paramStr, linkTS} = <any>(this.stateInfo || {});
+    const {cell_id, paramStr, linkTS} = <any>(this.stateInfo || {});
+    const tags = cell_id;
     const br = () => document.createElement('br');
     const apiURL = `${this.host}/neurons/api/v1/cell_identification`;
     const sub = this.makeButton({
@@ -116,13 +117,26 @@ export class CellDetailDialog extends Overlay {
       }
     });
 
-    if (tag) {
+    if (tags && tags.length > 0) {
       this.title.innerText = 'Cell Identification';
-      this.infoField =
-          this.insertField({content: tag, type: 'textarea', disabled: true});
-      this.infoField.classList.add('rounded-input', 'large');
+
+      this.description = document.createElement('table');
+      let rows =
+          [{user_name: 'Marked by', tag: 'Cell Identification'}, ...tags];
+      rows.forEach((tag: any) => {
+        const row = document.createElement('tr');
+        const user = document.createElement('td');
+        const tagTD = document.createElement('td');
+        user.innerText = tag.user_name;
+        tagTD.innerText = tag.tag;
+        row.append(user, tagTD);
+        this.description.append(row);
+      });
+
+      this.description.classList.add(
+          'rounded-input', 'large', 'cell_identification');
       this.form.append(
-          this.title, this.infoField, br(), br(), sub, ' ', cancel);
+          this.title, this.description, br(), br(), sub, ' ', cancel);
 
       let modal = document.createElement('div');
       this.content.appendChild(modal);

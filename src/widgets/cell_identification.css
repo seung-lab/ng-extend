@@ -12,3 +12,12 @@
     background-color: transparent;
     color: white;
 }
+
+table.cell_identification {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.cell_identification th, .cell_identification td {
+    border: 1px solid #eeeeee;
+}
