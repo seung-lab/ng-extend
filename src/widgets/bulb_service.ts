@@ -138,18 +138,26 @@ export class BulbService {
     const basepath = '/neurons/api/v1';
     const defaultParameters = 'filter_by=root_id&as_json=1&ignore_bad_ids=True';
 
-    let ternaryIds = [];
+    let ternaryIds: any[] = [];
 
     try {
-      {
+      // TODO: this should be split into its own function later on
+      const chunkSize = 30;
+      const batches = [];
+      for (let i = 0; i < querylist.length; i += chunkSize) {
+        const chunk = querylist.slice(i, i + chunkSize);
+        batches.push(chunk);
+      }
+
+      for (const batch of batches) {
         const cellInfo = await allSettled([
           authFetch(
               `${host}${basepath}/cell_identification?${defaultParameters}${
-                  timestamp}&filter_string=${querylist.join(',')}`,
+                  timestamp}&filter_string=${batch.join(',')}`,
               {credentials: 'same-origin'}),
           authFetch(
               `${host}${basepath}/proofreading_status?${defaultParameters}${
-                  timestamp}&filter_string=${querylist.join(',')}`,
+                  timestamp}&filter_string=${batch.join(',')}`,
               {credentials: 'same-origin'})
         ]);
 
@@ -181,12 +189,13 @@ export class BulbService {
         this.statuses = {...this.statuses, ...rawCells};
         const values = Object.keys(rawCells);
 
-        ternaryIds = querylist.filter((sid: string) => {
-          return !values.includes(sid);
-        });
+        ternaryIds = [
+          ...ternaryIds, ...batch.filter((sid: string) => {
+            return !values.includes(sid);
+          })
+        ];
         this.updateStatuses();
       }
-
 
       if (ternaryIds.length) {
         const mLayer = (<any>window).viewer.selectedLayer.layer;
