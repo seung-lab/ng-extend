@@ -13,11 +13,21 @@
     color: white;
 }
 
-table.cell_identification {
+table.cell_identification.rounded-input.large {
     border-collapse: collapse;
-    width: 100%;
+    width: 600px;
+    height: 150px;
+    max-width: 600px;
+    max-height: 450px;
 }
 
-.cell_identification th, .cell_identification td {
-    border: 1px solid #eeeeee;
+.cell_identification td, .cell_identification th {
+    padding-left: 120px;
+}
+.cell_identification td:first-child, .cell_identification th:first-child {
+    padding-left: 0px;
+}
+
+.cell_identification tbody tr{
+    border-top: 1px solid #eeeeee77;
 }

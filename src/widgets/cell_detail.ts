@@ -121,17 +121,21 @@ export class CellDetailDialog extends Overlay {
       this.title.innerText = 'Cell Identification';
 
       this.description = document.createElement('table');
-      let rows =
-          [{user_name: 'Marked by', tag: 'Cell Identification'}, ...tags];
-      rows.forEach((tag: any) => {
+      /*let rows =
+          [{user_name: 'Marked by', tag: 'Cell Identification'}, ...tags];*/
+      let rows = [{tag: 'Label', user_name: 'Marked by'}, ...tags];
+      let thead = document.createElement('thead');
+      let tbody = document.createElement('tbody');
+      rows.forEach((tag: any, i: number) => {
         const row = document.createElement('tr');
-        const user = document.createElement('td');
-        const tagTD = document.createElement('td');
+        const user = document.createElement(`${i ? 'td' : 'th'}`);
+        const tagTD = document.createElement(`${i ? 'td' : 'th'}`);
         user.innerText = tag.user_name;
         tagTD.innerText = tag.tag;
-        row.append(user, tagTD);
-        this.description.append(row);
+        row.append(tagTD, user);
+        (i ? tbody : thead).append(row);
       });
+      this.description.append(thead, tbody);
 
       this.description.classList.add(
           'rounded-input', 'large', 'cell_identification');
