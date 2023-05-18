@@ -1,0 +1,37 @@
+:root {
+  --color-dark-bg: #212227;
+  --color-medium-bg: #33353c;
+  --color-light-bg: #4d505b;
+  --color-small-text: #eee;
+  --color-border: #a3b3bf;
+  --gradient-highlight: linear-gradient(-45deg, rgba(2, 146, 174, 0.88), rgba(15, 177, 139, 0.88));
+  --gradient-highlight-hover: linear-gradient(-45deg, rgba(2, 146, 174, 1), rgba(15, 177, 139, 1));
+  --color-flywire-dark-green: #0FB18B;
+}
+
+.ng-extend button {
+  display: inline-block;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-decoration: none;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  text-align: center;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  outline: none;
+  white-space: nowrap;
+}
+
+.ng-extend button:hover {
+  background-color: var(--color-light-bg);
+}
+
+.ng-extend .flex-fill {
+  flex-grow: 1;
+}
