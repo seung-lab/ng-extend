@@ -1,0 +1,48 @@
+{
+  "name": "ng-extend",
+  "description": "Example project that depends on neuroglancer.",
+  "main": "dist/module/main_module.js",
+  "engines": {
+    "node": ">=12"
+  },
+  "scripts": {
+    "generate-code": "node ./node_modules/neuroglancer/config/generate_code.js",
+    "build-min": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
+    "build": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
+    "build:watch": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=dev --serve --watch",
+    "dev-server": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=dev --serve --watch",
+    "dev-server-python": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-dev --serve --watch",
+    "build-module": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=module",
+    "build-python": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-min",
+    "build-python-min": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-min",
+    "build-python-dev": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-dev",
+    "test": "karma start ./node_modules/neuroglancer/config/karma.conf.js --single-run",
+    "test:watch": "karma start ./node_modules/neuroglancer/config/karma.conf.js --no-single-run",
+    "benchmark": "karma start ./node_modules/neuroglancer/config/karma.benchmark.js --single-run",
+    "benchmark:watch": "karma start ./node_modules/neuroglancer/config/karma.benchmark.js --no-single-run",
+    "prepublishOnly": "npm run test && npm run build-module",
+    "gulp": "gulp",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@babel/types": "^7.21.5",
+    "@types/jasmine": "^4.3.1",
+    "chokidar": "^3.5.1",
+    "colors": "^1.4.0",
+    "connect": "^3.7.0",
+    "esbuild-plugin-alias": "^0.2.1",
+    "esbuild-plugin-vue3": "^0.3.2",
+    "event-stream": "^4.0.1",
+    "faye-websocket": "^0.11.4",
+    "morgan": "^1.10.0",
+    "send": "^0.18.0",
+    "yargs": "^17.0.1"
+  },
+  "dependencies": {
+    "neuroglancer": "github:seung-lab/neuroglancer#cj-fix-imports-for-dep-proj",
+    "pinia": "^2.0.32",
+    "vue": "^3.2.47",
+    "vue-router": "^4.1.6"
+  }
+}

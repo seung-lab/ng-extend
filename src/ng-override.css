@@ -1,0 +1,61 @@
+.neuroglancer-layer-side-panel-title {
+    display: none;
+}
+
+.neuroglancer-layer-side-panel {
+    margin-top: 80px;
+}
+
+.neuroglancer-minimizable-group-title {
+    background-color: var(--color-medium-bg);
+    color: var(--color-small-text);
+    padding: 8px;
+    font-weight: bold;
+}
+
+.neuroglancer-viewer-top-row {
+    background-color: var(--color-dark-bg);
+}
+
+.ng-extend .overlay-content, .overlay-content.ng-dark {
+  background-color: var(--color-dark-bg);
+  color: var(--color-small-text);
+  border-radius: 20px;
+  outline: none;
+  min-width: max-content;
+}
+
+input.rounded-input {
+    outline: none;
+}
+
+div.segment-div > * {
+    margin: 1px;
+}
+
+div.segment-div > .segment-checkbox {
+    margin-bottom: 3px;
+}
+
+div.segment-div > .segment-color-selector {
+    border: none;
+    border-color: transparent;
+    -webkit-appearance: none;
+    background-color: transparent;
+    padding: 0;
+    margin: 0px;
+    height: 23px;
+}
+
+
+.neuroglancer-minimizable-group {
+    flex: unset;
+}
+
+.nge-segment-management-field-coord {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: #aaa;
+  pointer-events: none;
+}
