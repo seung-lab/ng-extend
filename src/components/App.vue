@@ -15,6 +15,10 @@ import ExtensionBar from "components/ExtensionBar.vue";
 @import "../common.css";
 /* @import "../ng-override.css"; */
 
+#vueMain > *:not(#content) {
+  font-family: 'Roboto', sans-serif;
+}
+
 #app, #content, #vueMain {
   display: flex;
   flex: 1;
@@ -23,6 +27,5 @@ import ExtensionBar from "components/ExtensionBar.vue";
 #vueMain {
   position: relative;
   flex-direction: column;
-  font-family: 'Roboto', sans-serif;
 }
 </style>

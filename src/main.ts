@@ -103,6 +103,10 @@ window.addEventListener('DOMContentLoaded', () => {
   const pinia = createPinia();
   const app = createApp(App);
   app.use(pinia);
+  app.directive('visible', function(el, binding) {
+    console.log('vis', el, binding);
+    el.style.visibility = !!binding.value ? 'visible' : 'hidden';
+  });
   app.mount('#app');
   // setTimeout(() => {
     const viewer = setupViewer();

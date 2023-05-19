@@ -22,7 +22,7 @@ login.update();
       <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown" hover="User profile">
           <template #buttonTitle>Hello</template>
           <template #listItems>
-            <div v-for="session in login.sessions">{{ session.url }} - {{ session.name }}</div>
+            <li v-for="session in login.sessions">{{ session.url }} - {{ session.name }}</li>
           </template>
         </dropdown-list>
     </template>

@@ -88,7 +88,6 @@ const isActive = ref(true);
 </script>
 
 <template>
-  <div>{{ uuid }}</div>
   <div class="dropdownList" :class="{ open: isActive }" @mousedown.stop.prevent>
     <button @click="toggleVisible"><slot name="buttonTitle"></slot></button>
     <ul v-visible="isActive" class="dropdownMenu">
@@ -123,4 +122,25 @@ const isActive = ref(true);
 </template>
 
 <style>
+.dropdownList {
+  position: relative;
+}
+
+.dropdownList > button {
+  width: 100%;
+  height: 100%;
+  padding: 0 4px;
+}
+
+.dropdownMenu {
+  min-width: 100%;
+  position: absolute;
+  right: 0;
+  top: 40px;
+  background-color: var(--color-dark-bg);
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
 </style>
