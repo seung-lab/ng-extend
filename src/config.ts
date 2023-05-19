@@ -23,7 +23,8 @@ export interface LayerDescription {
   layerName?: string,
   color?: string,
   defaultPerspectiveZoomFactor?: number,
-  defaultPosition?: Vector3
+  defaultPosition?: Vector3,
+  timestamp?: number
 }
 
 export interface CellDescription {

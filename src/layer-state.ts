@@ -3,6 +3,7 @@ import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {StatusMessage} from 'neuroglancer/status';
 import {vec3} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
+import {SegmentationUserLayerWithGraphDisplayState} from 'neuroglancer/segmentation_user_layer_with_graph';
 import {action, createModule} from 'vuex-class-component';
 
 import {CellDescription, ImageLayerDescription, SegmentationLayerDescription, Vector3} from './config';
@@ -235,6 +236,10 @@ export class LayerState extends createModule
       await addedLayer.multiscaleSource;  // wait because there is an error if
                                           // both layers load at the same time?
     } else if (addedLayer instanceof SegmentationUserLayer) {
+      if (layer.timestamp) {
+        const displayState = <SegmentationUserLayerWithGraphDisplayState>addedLayer.displayState;
+        displayState.timestamp.restoreState(layer.timestamp);
+      }
       this.selectActiveLayer(layerName);
       if ('curatedCells' in layer && layer.curatedCells) {
         for (let cell of layer.curatedCells) {
