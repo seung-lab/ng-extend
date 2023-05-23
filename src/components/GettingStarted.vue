@@ -1,31 +1,38 @@
 <template>
   <div class="nge-getting-started">
     <div class="nge-gs-links">
-      <div class="nge-gs-link">
+      <div class="nge-gs-link welcome">
         <a href="https://bit.ly/3s8ViUJ" target="_blank">Welcome video</a>
       </div>
-      <div class="nge-gs-link">
+      <div class="nge-gs-link howtouse">
+        <a href="https://blog.flywire.ai/2023/05/22/how-to-use-flywire-2/" target="_blank">How to Use FlyWire</a>
+      </div>
+      <div class="nge-gs-link quickstart">
         <a href="https://bit.ly/3P6qXQz" target="_blank">Quick Start</a>
       </div>
-      <div class="nge-gs-link">
-        <a href="https://bit.ly/3OWi6AP" target="_blank">Self-guided training</a>
-      </div>
-      <div class="nge-gs-link">
+      <template v-if="!inRelease">
+        <div class="nge-gs-link training">
+          <a href="https://bit.ly/3OWi6AP" target="_blank">Self-guided training</a>
+        </div>
+      </template>
+      <div class="nge-gs-link cheatsheet">
         <a href="https://bit.ly/3kzb3jx" target="_blank">Cheatsheet</a>
       </div>
-      <div class="nge-gs-link">
-        <a href="https://join.slack.com/t/flywire-forum/shared_invite/zt-d6pyjonk-uC7_kjcjU~8c64t~Qid~oQ" target="_blank" title="For professional researchers only">Slack Forum</a>
-      </div>
-      <div class="nge-gs-link">
+      <template v-if="!inRelease">
+        <div class="nge-gs-link slack">
+          <a href="https://join.slack.com/t/flywire-forum/shared_invite/zt-d6pyjonk-uC7_kjcjU~8c64t~Qid~oQ" target="_blank" title="For professional researchers only">Slack Forum</a>
+        </div>
+      </template>
+      <div class="nge-gs-link codex">
         <a href="https://codex.flywire.ai/" target="_blank">Codex</a>
       </div>
-      <div class="nge-gs-link">
+      <div class="nge-gs-link tools">
         <a href="https://bit.ly/3kBLEFR" target="_blank">Tools</a>
       </div>
-      <div class="nge-gs-link">
+      <div class="nge-gs-link support">
         <a href="https://bit.ly/3kCoZcw" target="_blank">Support</a>
       </div>
-      <div class="nge-gs-link">
+      <div class="nge-gs-link restart">
         <button @click="appState.introductionStep = 0">Restart Tutorial</button>
       </div>
       <template v-if="inProduction">
@@ -52,6 +59,9 @@ export default Vue.extend({
   computed: {
     inProduction() {
       return layerProxy.activeSegmentationLayer && layerProxy.activeSegmentationLayer!.name!.startsWith("Production");
+    },
+    inRelease() {
+      return layerProxy.activeSegmentationLayer && layerProxy.activeSegmentationLayer!.name!.startsWith("Release");
     }
   }
 });
