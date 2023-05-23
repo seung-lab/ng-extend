@@ -107,6 +107,9 @@ export default Vue.extend({
           top = `${step.position.y * rect.height + rect.top}px`;
         }
       }
+      else {
+        this.next();
+      }
 
       this.chipBounds = {top: 'auto', left: 'auto', 'width': 'inherit'};
 

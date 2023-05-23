@@ -1,5 +1,5 @@
 <template>
-  <div class="introduction" v-if="appState.finishedLoading && layerState.activeSegmentationLayer && layerState.activeSegmentationLayer.name === 'Sandbox'">
+  <div class="introduction" v-if="appState.finishedLoading && layerState.activeSegmentationLayer && (layerState.activeSegmentationLayer.name === 'Sandbox' || layerState.activeSegmentationLayer.name.startsWith('Release'))">
     <transition name="tooltip">
       <introduction-step v-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first" :last="activeStep.last"
         v-on:next="next" v-on:back="back" v-on:exitIntro="exitIntro"></introduction-step>

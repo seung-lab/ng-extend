@@ -114,7 +114,7 @@ export const steps: Step[] = [
     html:
         'Check out the <b>Quick Start Guide</b> if you need a refresher. Use the <b>Cheatsheet</b> for additional commands.',
     position: {
-      element: '.nge-gs-link:nth-child(2)',
+      element: '.nge-gs-link.quickstart',
       side: 'right',
       offset: {x: -25, y: 0},
     }
@@ -123,7 +123,7 @@ export const steps: Step[] = [
     html:
         'Take the <b>Self-guided training</b> when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset.',
     position: {
-      element: '.nge-gs-link:nth-child(3)',
+      element: '.nge-gs-link.training',
       side: 'right',
       offset: {x: -25, y: 0},
     }
@@ -132,7 +132,7 @@ export const steps: Step[] = [
     html:
         'Join the <b>Slack Forum</b> to interact with the FlyWire community! You can learn tips and tricks, give suggestions, and meet other FlyWire enthusiasts!',
     position: {
-      element: '.nge-gs-link:nth-child(5)',
+      element: '.nge-gs-link.slack',
       side: 'right',
       offset: {x: -25, y: 0},
     }
@@ -141,7 +141,7 @@ export const steps: Step[] = [
     html:
         'You finished the tutorial! You can restart the tutorial at any time.',
     position: {
-      element: '.nge-gs-link:nth-child(7)',
+      element: '.nge-gs-link.restart',
       side: 'right',
       offset: {x: -25, y: 0},
     }
