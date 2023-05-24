@@ -46,6 +46,16 @@ export default Vue.extend({
     maybePreload(stepIndex: number) {
         if (stepIndex > 0 && stepIndex < steps.length) {
           const nextStep = steps[stepIndex];
+          if (nextStep.position.element) {
+            //if it refers to missing element, remove step from the tutorial
+            const element = document.querySelector(nextStep.position.element);
+            if (!element) {
+              const index = steps.indexOf(nextStep, 0);
+              steps.splice(index, 1);
+              this.maybePreload(stepIndex);
+              return;
+            }
+          }
 
           if (nextStep.video && !nextStep.videoBeingPreloaded) {
             nextStep.videoBeingPreloaded = true;
