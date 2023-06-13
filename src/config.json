@@ -13,7 +13,7 @@
         {
             "name": "Princeton (USA)",
             "description": "EM images hosted on campus, slower elsewhere",
-            "source": "precomputed://matrix://fafbv14-em/aligned/v1",
+            "source": "precomputed://https://tigerdata.princeton.edu/sseung-archive/fafbv14-em/aligned/v1",
             "type": "image"
         },
         {
