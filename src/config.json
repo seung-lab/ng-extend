@@ -91,9 +91,9 @@
             ]
         },
         {
-            "name": "Release 630",
+            "name": "Public Release",
             "description": "The first FlyWire release. A frozen time point of the production dataset.",
-            "source": "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v31",
+            "source": "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/flywire_public",
             "type": "segmentation_with_graph",
             "defaultPerspectiveZoomFactor": 79,
             "defaultPosition": {
