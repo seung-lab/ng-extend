@@ -25,6 +25,29 @@
     ],
     "segmentationLayers": [
         {
+            "name": "Public Release",
+            "description": "The first FlyWire release. A frozen time point of the production dataset.",
+            "source": "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/flywire_public",
+            "type": "segmentation_with_graph",
+            "defaultPerspectiveZoomFactor": 79,
+            "defaultPosition": {
+                "x": 158581,
+                "y": 72226,
+                "z": 2189
+            },
+            "curatedCells": [
+                {
+                    "id": "720575940631693610",
+                    "default": true
+                },
+                {
+                    "id": "720575940605214636",
+                    "default": true
+                }
+            ],
+            "timestamp": "2023-03-21T08:10:01.000"
+        },
+        {
             "name": "Sandbox",
             "description": "A practice dataset. Cell edits are visible to all, but user mistakes don't matter here.",
             "source": "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/fly_v26",
@@ -89,29 +112,6 @@
                     "default": true
                 }
             ]
-        },
-        {
-            "name": "Public Release",
-            "description": "The first FlyWire release. A frozen time point of the production dataset.",
-            "source": "graphene://https://prodv1.flywire-daf.com/segmentation/1.0/flywire_public",
-            "type": "segmentation_with_graph",
-            "defaultPerspectiveZoomFactor": 79,
-            "defaultPosition": {
-                "x": 158581,
-                "y": 72226,
-                "z": 2189
-            },
-            "curatedCells": [
-                {
-                    "id": "720575940631693610",
-                    "default": true
-                },
-                {
-                    "id": "720575940605214636",
-                    "default": true
-                }
-            ],
-            "timestamp": "2023-03-21T08:10:01.000"
         }
     ],
     "brainMeshURL": "precomputed://gs://flywire_neuropil_meshes/whole_neuropil/brain_mesh_v141.surf",

@@ -58,7 +58,7 @@ export class LayerState extends createModule
         }
       }
     } else {
-      // load sandbox with default view state
+      // load first dataset with default view state
       if (config.segmentationLayers.length) {
         viewer!.layerManager.clear();
         await this.selectImageLayer(config.imageLayers[0]);
