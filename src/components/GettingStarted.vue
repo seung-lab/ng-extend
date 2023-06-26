@@ -18,11 +18,6 @@
       <div class="nge-gs-link cheatsheet">
         <a href="https://bit.ly/3kzb3jx" target="_blank">Cheatsheet</a>
       </div>
-      <template v-if="!inRelease">
-        <div class="nge-gs-link slack">
-          <a href="https://join.slack.com/t/flywire-forum/shared_invite/zt-d6pyjonk-uC7_kjcjU~8c64t~Qid~oQ" target="_blank" title="For professional researchers only">Slack Forum</a>
-        </div>
-      </template>
       <div class="nge-gs-link codex">
         <a href="https://codex.flywire.ai/" target="_blank">Codex</a>
       </div>

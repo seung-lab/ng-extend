@@ -101,6 +101,9 @@
             <button @click="clickAction(item)">{{ item.text }}</button>
           </li>
           <li>
+            <button @click="openSlack()">Slack Forum</button>
+          </li>
+          <li>
             <button @click="themesMenu()">Themes</button>
           </li>
           <li>
@@ -279,6 +282,9 @@ export default Vue.extend({
       if (viewer) {
         new ThemesDialog(viewer, '', '', 0, 0,);
       }
+    },
+    openSlack() {
+      window.open("https://join.slack.com/t/flywire-forum/shared_invite/zt-d6pyjonk-uC7_kjcjU~8c64t~Qid~oQ", "_blank");
     }
   },
   mounted() {

@@ -128,7 +128,7 @@ export const steps: Step[] = [
       offset: {x: -25, y: 0},
     }
   },
-  {
+  /*{
     html:
         'Join the <b>Slack Forum</b> to interact with the FlyWire community! You can learn tips and tricks, give suggestions, and meet other FlyWire enthusiasts!',
     position: {
@@ -136,7 +136,7 @@ export const steps: Step[] = [
       side: 'right',
       offset: {x: -25, y: 0},
     }
-  },
+  },*/
   {
     html:
         'You finished the tutorial! You can restart the tutorial at any time.',
