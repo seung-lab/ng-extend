@@ -197,7 +197,7 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Callback function to execute when mutations are observed
   const detectMutation = function(mutationsList: MutationRecord[]) {
-    console.log('Segment ID Added');
+    //console.log('Segment ID Added');
     // replaceIcons();
     // TODO: this is not ideal, but it works for now  (maybe)
     /*Array.from(document.querySelectorAll('.top-buttons .segment-checkbox'))

@@ -73,9 +73,9 @@ export class LayerState extends createModule
 
     for (const {layer} of layers) {
       if (layer instanceof SegmentationUserLayer) {
-        console.log('root segments callback 2');
+        //console.log('root segments callback 2');
         layer.displayState.rootSegments.changed.add(() => {
-          console.log('root segments changed! 2');
+          //console.log('root segments changed! 2');
           this.refreshActiveCells();
         });
         this.refreshActiveCells();
@@ -101,18 +101,18 @@ export class LayerState extends createModule
         let changes = false;
         // await layer.multiscaleSource!;
 
-        console.log('clearing active cells!');
+        //console.log('clearing active cells!');
         this.activeCells = [];
 
-        console.log('---- checking active');
+        //console.log('---- checking active');
 
-        console.log('active roots', layer.displayState.rootSegments);
+        //console.log('active roots', layer.displayState.rootSegments);
 
         for (let segment of layer.displayState.rootSegments) {
-          console.log('we have a segment: ', segment.toString());
+          //console.log('we have a segment: ', segment.toString());
           for (let cell of this.activeSegmentationLayer.curatedCells) {
             if (segment.toString() === cell.id) {
-              console.log('segment confirmed curated', cell.id);
+              //console.log('segment confirmed curated', cell.id);
               this.activeCells.push(cell);
               changes = true;
             }
