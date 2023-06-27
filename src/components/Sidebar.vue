@@ -2,7 +2,8 @@
   <div :class="'nge-sidebar' + (visible ? ' visible' : '')">
     <!--<button class="nge-sidebar-hide-button" @click="setVisible(false);">&lt;</button>-->
     <getting-started />
-    <leaderboard />
+    <!--<leaderboard />-->
+    <div></div>
     <chatbox />
   </div>
 </template>

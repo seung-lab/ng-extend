@@ -200,9 +200,12 @@ export class AppStore extends createModule
 
   @action
   async loopUpdateLeaderboard() {
+    //TODO restore
+    /*
     await this.updateLeaderboard();
     await this.updateUserInfo();
     await new Promise(() => setTimeout(this.loopUpdateLeaderboard, 20000));
+    */
   }
 
   @action
@@ -363,11 +366,14 @@ export class AppStore extends createModule
 
   @action
   async updateUserInfo() {
+    //TODO restore
+    /*
     if (!this.loggedInUser) return;
     const url = config.leaderboardURL + '/userInfo?userID=' + this.loggedInUser!.id;
     fetch(url).then(result => result.json()).then(async(json) => { this.userInfo = json; });
     const statsURL = config.userStatsURL + '&user_id=' + this.loggedInUser!.id;
     authFetch(statsURL).then(result => result.json()).then(async(json) => { this.cellsSubmitted = json["cells_submitted_all_time"]; });
+    */
 
     /*
     const url = config.userStatsURL + "&user_id=" + this.loggedInUser!.id;
