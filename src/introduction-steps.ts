@@ -41,7 +41,7 @@ const OVER_3D = {
 export const steps: Step[] = [
   {
     html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
-      src="https://www.youtube-nocookie.com/embed/LH4iovmbv3c?rel=0"
+      src="https://www.youtube-nocookie.com/embed/1pggsnH8eJg?rel=0"
       frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
     position: MIDDLE,
     modal: true,
