@@ -1,5 +1,5 @@
 :root {
-  --color-dark-bg: #212227;
+  --color-dark-bg: hsl(230 0% 14% / 1);
   --color-medium-bg: #33353c;
   --color-light-bg: #4d505b;
   --color-small-text: #eee;
@@ -7,6 +7,9 @@
   --gradient-highlight: linear-gradient(-45deg, rgba(2, 146, 174, 0.88), rgba(15, 177, 139, 0.88));
   --gradient-highlight-hover: linear-gradient(-45deg, rgba(2, 146, 174, 1), rgba(15, 177, 139, 1));
   --color-flywire-dark-green: #0FB18B;
+  --color-ng-selected: #8c8;
+  --color-ng-selected-faint: #88cc8838;
+  --color-ng-selected-less-faint: #88cc8852;
 }
 
 .ng-extend button {
@@ -30,6 +33,18 @@
 
 .ng-extend button:hover {
   background-color: var(--color-light-bg);
+}
+
+.ng-extend button:disabled {
+  opacity: 0.5 !important;
+}
+
+.ng-extend button.fill, .ng-extend button.fill:hover {
+  opacity: 1;
+  background-color: #0FB18B;
+  /* border: 1px solid #0c8468; */
+  padding: 5px;
+  border-radius: 5px;
 }
 
 .ng-extend .flex-fill {

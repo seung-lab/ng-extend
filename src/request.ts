@@ -8,5 +8,7 @@ export async function authFetch(url: string, token: string): Promise<any|undefin
     const contentType = res.headers.get("content-type");
     const message = await ((contentType === 'application/json') ? res.json() : res.text());
     return message;
+  } else {
+    
   }
 }

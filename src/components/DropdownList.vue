@@ -1,10 +1,29 @@
 <script setup lang="ts">
-import {ref} from 'vue';
-import {useDropdownListStore} from '../my-db';
-// import Vue from "vue";
-// import { storeProxy, viewer } from "../state";
+import {computed} from 'vue';
+import {useDropdownListStore} from '../store';
 
-const uuid = ref(useDropdownListStore().getDropdownId());
+const dropdownListStore = useDropdownListStore();
+
+const uuid = dropdownListStore.getDropdownId();
+
+const props = defineProps<{
+  dropdownGroup: string
+  id?: string,
+  bar?: number
+}>();
+
+function toggleVisible() {
+  dropdownListStore.activeDropdowns[props.dropdownGroup] = isActive.value ? undefined : uuid;
+}
+
+const isActive = computed(() => {
+  return dropdownListStore.activeDropdowns[props.dropdownGroup] === uuid;
+});
+
+
+// const props = {
+//   dropdownGroup: string;
+// }
 
 // export default Vue.extend({
 //   props: ['dropdownGroup', 'type', 'width', 'hover'],
@@ -79,16 +98,10 @@ const uuid = ref(useDropdownListStore().getDropdownId());
 //   }
 // });
 
-function toggleVisible() {
-  isActive.value = !isActive.value;
-}
-
-const isActive = ref(true);
-
 </script>
 
 <template>
-  <div class="dropdownList" :class="{ open: isActive }" @mousedown.stop.prevent>
+  <div class="dropdownList" :id="id" :class="{ open: isActive }">
     <button @click="toggleVisible"><slot name="buttonTitle"></slot></button>
     <ul v-visible="isActive" class="dropdownMenu">
         <slot name="listItems"></slot>
@@ -121,12 +134,13 @@ const isActive = ref(true);
   </div> -->
 </template>
 
-<style>
+<style scoped>
 .dropdownList {
   position: relative;
+  font-size: 10pt;
 }
 
-.dropdownList > button {
+.ng-extend .dropdownList > button {
   width: 100%;
   height: 100%;
   padding: 0 4px;
@@ -136,11 +150,13 @@ const isActive = ref(true);
   min-width: 100%;
   position: absolute;
   right: 0;
-  top: 40px;
+  top: 33px;
   background-color: var(--color-dark-bg);
-  border-radius: 5px;
-  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  border: 1px solid var(--color-light-bg);
   overflow: hidden;
+  z-index: 10;
 }
 
 </style>
+../store

@@ -40,7 +40,7 @@
     "yargs": "^17.0.1"
   },
   "dependencies": {
-    "neuroglancer": "github:seung-lab/neuroglancer#cj-fix-imports-for-dep-proj",
+    "neuroglancer": "github:seung-lab/neuroglancer#cj-ng-extend-base",
     "pinia": "^2.0.32",
     "vue": "^3.2.47",
     "vue-router": "^4.1.6"

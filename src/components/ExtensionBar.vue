@@ -1,48 +1,83 @@
 <script setup lang="ts">
+import {computed, onMounted, ref} from "vue";
+import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
-import {useLoginStore} from '../my-db';
+
+import {loginSession, useLoginStore, useVolumesStore} from '../store';
+
+import logoImage from '../CaveLogo-clear.png';
 
 const login = useLoginStore();
-window.addEventListener("storage", () => {
-  console.log('storage changed');
+window.addEventListener("middleauthlogin", () => {
   login.update();
 });
 login.update();
+
+const validLogins = computed(() => login.sessions.filter(x => x.status === undefined));
+const invalidLogins = computed(() => login.sessions.filter(x => x.status !== undefined));
+
+const {volumes} = useVolumesStore();
+
+onMounted(() => {
+  (document.querySelector('.ng-extend-logo > a > img')! as HTMLImageElement).src = logoImage;
+});
+
+const showModal = ref(false);
+
+function logout(session: loginSession) {
+  login.logout(session);
+}
+
 </script>
 
 <template>
+  <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://flywire.ai/" target="_blank">
-        <img src="https://ngl.flywire.ai/images/logo-filled.png" height=22 title="FlyWire">
+        <img src="insert-logo" title="Cave Explorer">
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
+    <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <template v-if="login.sessions.length > 0">
-      <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown" hover="User profile">
-          <template #buttonTitle>Hello</template>
+      <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
+          <template #buttonTitle>Logins ({{ login.sessions.length }})</template>
           <template #listItems>
-            <li v-for="session in login.sessions">{{ session.url }} - {{ session.name }}</li>
+            <li v-for="session of validLogins">
+              <div class="loginRow">
+                <div class="loginData">
+                  <div>{{ session.email }}</div>
+                  <div>{{ session.hostname }}</div>
+                </div>
+                <div class="logoutButton" @click="logout(session)"><span>Logout</span></div>
+              </div>
+            </li>
+            <li v-for="session in invalidLogins">
+              <div class="loginRow">
+                <div class="loginData expired">
+                  <div>{{ session.hostname }} - Expired</div>
+                </div>
+                <div class="logoutButton" @click="logout(session)"><span>Delete</span></div>
+              </div>
+            </li>
           </template>
         </dropdown-list>
     </template>
-     <!-- <template v-if="appState.loggedInUser">
-        <dropdown-list dropdown-group="extension-bar-right" id="loggedInUserDropdown" hover="User profile">
-          <template #buttonTitle></template>
-          <template #listItems>
-            <user-card></user-card>
-          </template>
-        </dropdown-list>
-        <div class="ng-extend-spacer"></div>
-        <template v-if="appState.loggedInUser.admin">
-          <button @click="showAdminPanel()" class="adminPanel iconBtn" title="Admin dashboard"></button>
-          <div class="ng-extend-spacer"></div>
-        </template>
-      </template> -->
   </div>
 </template>
 
 <style>
+.dropdownList:last-child .dropdownMenu {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+#extensionBar button {
+  font-size: 10pt;
+}
+
+
 #insertNGTopBar > div {
   width: 100%;
 }
@@ -61,115 +96,56 @@ login.update();
   align-items: center;
 }
 
-/*
-
-#extensionBar > button, #extensionBar > .dropdownList > button {
-  padding: 0 8px;
+#loginsDropdown li.none {
+  opacity: 0.5;
+  padding: 0 10px;
 }
 
-#extensionBar > .toggleSidebarButton {
-  width: 52px;
+#loginsDropdown li > div:last-child {
+  border-bottom: none;
+}
+
+#loginsDropdown li > div {
+  display: grid;
+  grid-template-columns: auto min-content;
+  border-bottom: 1px solid #4a4a4a;
+}
+
+#loginsDropdown .loginData {
+  display: grid;
+  white-space: nowrap;
+  padding: 10px;
+}
+
+#loginsDropdown .logoutButton {
+  display: grid;
+  align-content: center;
   justify-content: center;
+  padding-left: 10px;
+  padding-right: 10px;
+  opacity: 0;
 }
 
-.ng-extend-logo {
-  width: 110px;
-  padding-left: 20px;
-  padding-right: 20px;
+#loginsDropdown .loginRow:hover .logoutButton {
+ opacity: 0.25;
 }
 
-.ng-extend-logo > a {
-  height: 22px;
-}
-
-.ng-extend-spacer {
-  width: 10px;
-}
-
-#extensionBar button.ng-saver {
-  border: 1px solid var(--color-border);
-  color: unset;
-  font-weight: unset;
-  font-size: 0.9em;
-  padding: 7px 18px;
-  position: relative;
-  top: 1.5px;
-}
-#extensionBar div.unmerged:hover {
-  background-color: var(--color-light-bg);
-}
-#extensionBar div.unmerged {
-  width: 40px;
-  height: 40px;
-  border-radius: unset;
-}
-
-#extensionBar button.ng-saver.busy, #extensionBar button.ng-saver.busy:hover {
-  background: grey !important;
-}
-
-#extensionBar button.ng-saver.dirty {
-  border: unset;
-  background: var(--gradient-highlight);
-}
-
-#extensionBar button.ng-saver.dirty:hover {
-  background: var(--gradient-highlight-hover);
-}
-
-.nge-dataset-button {
+#loginsDropdown .loginRow:hover .logoutButton:hover {
+  opacity: 1;
+  background-color: #db4437;
   cursor: pointer;
 }
 
-.nge-dataset-button:hover {
-  background-color: var(--color-light-bg);
+#loginsDropdown li.header {
+  padding: 5px;
+  background-color: #ffffff1c;
 }
 
-.nge-dataset-button-name {
-  font-size: 1.3em;
+#loginsDropdown .loginData.expired {
+  opacity: 0.5;
 }
 
-.nge-dataset-button-description {
-  font-size: 0.8em;
-  padding-top: 10px;
+.ng-extend-logo > a, .ng-extend-logo > a > img {
+  height: 100%;
 }
-
-#extensionBar .iconBtn, #loggedInUserDropdown > button, #moreActions > button {
-  background-repeat: no-repeat;
-  background-position: center;
-  width: 40px;
-}
-
-#loggedInUserDropdown > button {
-  background-image: url('images/user.svg');
-  background-size: 60%;
-}
-
-#moreActions > button {
-  background-image: url('images/more.svg');
-  background-size: 70%;
-}
-
-#extensionBar .resetSandbox {
-  background-image: url('images/reset.svg');
-  background-size: 70%;
-}
-
-#extensionBar .adminPanel {
-  background-image: url('images/admin.svg');
-  background-size: 70%;
-}
-
-#extensionBar .toggleControls {
-  background-image: url('images/ng-controls.svg');
-  background-size: 50%;
-}
-
-#extensionBar .toggleControls.open {
-  background-color: var(--color-medium-bg);
-}
-
-#extensionBar .toggleControls.open:hover {
-  background-color: var(--color-light-bg);
-} */
 </style>

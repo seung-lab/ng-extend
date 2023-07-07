@@ -1,4 +1,4 @@
-.neuroglancer-layer-side-panel-title {
+/* .neuroglancer-layer-side-panel-title {
     display: none;
 }
 
@@ -11,19 +11,25 @@
     color: var(--color-small-text);
     padding: 8px;
     font-weight: bold;
-}
+} */
 
 .neuroglancer-viewer-top-row {
     background-color: var(--color-dark-bg);
+    margin-bottom: unset;
 }
 
 .ng-extend .overlay-content, .overlay-content.ng-dark {
-  background-color: var(--color-dark-bg);
+  /* background-color: var(--color-dark-bg); */
   color: var(--color-small-text);
-  border-radius: 20px;
+  border-radius: 10px;
   outline: none;
   min-width: max-content;
+
+  background-color: hsl(0 0% 10% / 1);
+  border: 1px solid hsl(0 0% 18% / 1);
 }
+
+/*
 
 input.rounded-input {
     outline: none;
@@ -58,4 +64,4 @@ div.segment-div > .segment-color-selector {
   box-shadow: none;
   color: #aaa;
   pointer-events: none;
-}
+} */
