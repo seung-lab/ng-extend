@@ -58,7 +58,7 @@ jobs:
       with:
         version: ${{ env.GITHUB_SHA }}
         deliverables: appengine/frontend/app.yaml
-        promote: true
+        promote: false
     - name: update deployment status
       uses: bobheadxi/deployments@v1
       if: always()
