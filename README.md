@@ -4,8 +4,6 @@ but using git submodule instead of npm because of https://github.com/google/neur
 Installation Instructions
 
 ```console
-$ git submodule init && git submodule update
 $ npm i
-$ cd third_party/neuroglancer/ && npm i && cd ../..
 $ npm run dev-server
 ```
