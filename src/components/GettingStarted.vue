@@ -30,12 +30,12 @@
       <div class="nge-gs-link restart">
         <button @click="appState.introductionStep = 0">Restart Tutorial</button>
       </div>
-      <template v-if="inProduction">
+      <!--template v-if="inProduction">
         <div class="nge-gs-link">
           <button class="checkoutButton" @click="appState.checkoutNeuron()">Get Cell to Proofread</button>
           <button class="checkoutHelpButton" @click="appState.setShowCheckoutHelp(true)" title="Show help"></button>
         </div>
-      </template>
+      </template-->
     </div>
   </div>
 </template>
