@@ -56,7 +56,7 @@ jobs:
     - id: deploy
       uses: google-github-actions/deploy-appengine@main
       with:
-        version: ${{ env.GITHUB_SHA }}
+        version: ${{ env.BRANCH_NAME_URL }}
         deliverables: appengine/frontend/app.yaml
         promote: false
     - name: update deployment status
