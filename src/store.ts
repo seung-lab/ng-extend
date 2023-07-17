@@ -7,6 +7,10 @@ import {MiddleAuthCredentialsProvider} from 'neuroglancer/datasource/middleauth/
 import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {responseJson} from 'neuroglancer/util/http_request';
 
+import {Config} from './config';
+
+declare const CONFIG: Config|undefined;
+
 export const useDropdownListStore = defineStore('dropdownlist', () => {
   let dropdownCount = 0;
 
@@ -167,13 +171,12 @@ export const useLayersStore = defineStore('layers', () => {
   return {initializeWithViewer, activeLayers, selectLayers};
 });
 
-const VOLUMES_URL = 'middleauth+https://global.daf-apis.com/info/api/v2/ngl_info';
-
 export const useVolumesStore = defineStore('volumes', () => {
   const volumes: Ref<Volume[]> = ref([]);
 
   (async () => {
-      const {url, credentialsProvider} = parseSpecialUrl(VOLUMES_URL, defaultCredentialsManager);
+      if (!CONFIG || !CONFIG.volumes_url) return;
+      const {url, credentialsProvider} = parseSpecialUrl(CONFIG.volumes_url, defaultCredentialsManager);
       const response = await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
 
         for (const [key, value] of Object.entries(response as any)) {
