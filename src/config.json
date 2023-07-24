@@ -80,7 +80,7 @@
         {
             "name": "Testing",
             "description": "Take the test! (Use this dataset for the test to gain entry to Production, after practicing in the Sandbox.)",
-            "source": "graphene://https://minnie.microns-daf.com/segmentation/table/fly_training_v2",
+            "source": "graphene://https://minnie.microns-daf.com/segmentation/table/fly_training_1",
             "layerName": "Testing-segmentation-FOR TEST TAKING ONLY",
             "type": "segmentation_with_graph",
             "color": "#E6C760",
