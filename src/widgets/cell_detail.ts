@@ -103,7 +103,7 @@ export class CellDetailDialog extends Overlay {
       return;
     }
     const {cell_id, paramStr, linkTS} = <any>(this.stateInfo || {});
-    const tags = cell_id;
+    const tags = cell_id.sort((a: any, b: any) => b.created - a.created);
     const br = () => document.createElement('br');
     const apiURL = `${this.host}/neurons/api/v1/cell_identification`;
     const sub = this.makeButton({
@@ -123,16 +123,20 @@ export class CellDetailDialog extends Overlay {
       this.description = document.createElement('table');
       /*let rows =
           [{user_name: 'Marked by', tag: 'Cell Identification'}, ...tags];*/
-      let rows = [{tag: 'Label', user_name: 'Marked by'}, ...tags];
+      let rows =
+          [{created: 'Created', tag: 'Label', user_name: 'Marked by'}, ...tags];
       let thead = document.createElement('thead');
       let tbody = document.createElement('tbody');
       rows.forEach((tag: any, i: number) => {
         const row = document.createElement('tr');
+        const created = document.createElement(`${i ? 'td' : 'th'}`);
         const user = document.createElement(`${i ? 'td' : 'th'}`);
         const tagTD = document.createElement(`${i ? 'td' : 'th'}`);
+        created.innerText =
+            (new Date(tag.created)).toLocaleString('en-US', {hour12: false});
         user.innerText = tag.user_name;
         tagTD.innerText = tag.tag;
-        row.append(tagTD, user);
+        row.append(created, tagTD, user);
         (i ? tbody : thead).append(row);
       });
       this.description.append(thead, tbody);
