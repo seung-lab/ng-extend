@@ -132,8 +132,9 @@ export class CellDetailDialog extends Overlay {
         const created = document.createElement(`${i ? 'td' : 'th'}`);
         const user = document.createElement(`${i ? 'td' : 'th'}`);
         const tagTD = document.createElement(`${i ? 'td' : 'th'}`);
-        created.innerText =
-            (new Date(tag.created)).toLocaleString('en-US', {hour12: false});
+        created.innerText = i ?
+            (new Date(tag.created)).toLocaleString('en-US', {hour12: false}) :
+            tag.created;
         user.innerText = tag.user_name;
         tagTD.innerText = tag.tag;
         row.append(created, tagTD, user);
