@@ -12,3 +12,22 @@
     background-color: transparent;
     color: white;
 }
+
+table.cell_identification.rounded-input.large {
+    border-collapse: collapse;
+    width: 600px;
+    height: 150px;
+    max-width: 600px;
+    max-height: 450px;
+}
+
+.cell_identification td, .cell_identification th {
+    padding-left: 120px;
+}
+.cell_identification td:first-child, .cell_identification th:first-child {
+    padding-left: 0px;
+}
+
+.cell_identification tbody tr{
+    border-top: 1px solid #eeeeee77;
+}

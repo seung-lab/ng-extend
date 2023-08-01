@@ -163,29 +163,59 @@ export class BulbService {
 
         // const dataState: BulbService['statuses'] = {};
         const rawCells: BulbService['statuses'] = {};
-        for (const cell of cellInfo) {
+
+        const keylist = ['cell_id', 'proofreading'];
+        const mappedResponse: any = {};
+        for (let i = 0; i < cellInfo.length; i++) {
+          const cell = cellInfo[i];
           if (cell.status === 'fulfilled') {
-            const raw =
-                await (<{status: string; value: any;}>cell).value.text();
-            const data = JSONBS.parse(raw);
-            if (data.pt_root_id) {
-              const indicies = Object.keys(data.pt_root_id);
-              indicies.map((key: any) => {
-                const sid = data.pt_root_id[key];
-                if (!rawCells[sid]) rawCells[sid] = this.statuses[sid];
-                rawCells[sid].state =
-                    Object.keys(data).reduce((prev: any, curr: string) => {
-                      prev[curr] = data[curr][key];
-                      return prev;
-                    }, rawCells[sid].state || {});
-                const {tag, proofread} = rawCells[sid].state;
-                rawCells[sid].status = proofread === 't' ?
-                    (tag ? 'complete' : 'unlabeled') :
-                    'incomplete';
-              });
-            }
+            mappedResponse[keylist[i]] = JSONBS.parse(
+                await (<{status: string; value: any;}>cell).value.text());
           }
         }
+
+        Object.entries(mappedResponse).forEach((pkvp: any) => {
+          const key = pkvp[0];
+          const data = pkvp[1];
+
+          if (data.pt_root_id) {
+            const states: any = {};
+            const props = Object.keys(data);
+            Object.entries(data.pt_root_id).forEach((kvp: any) => {
+              const obj: any = {};
+              const sid = kvp[1];
+              props.forEach((prop: string) => {
+                obj[prop] = data[prop][kvp[0]];
+              });
+              if (states[sid]) {
+                states[sid][key].push(obj);
+              } else {
+                states[sid] = {[key]: [obj]};
+              }
+            });
+            Object.entries(states).forEach((kvp: any) => {
+              const sid = kvp[0];
+              const state: any = kvp[1];
+              if (!rawCells[sid]) rawCells[sid] = this.statuses[sid];
+              rawCells[sid].state = {...rawCells[sid].state, ...state};
+              let tag = rawCells[sid].state.cell_id;
+              let proofread = rawCells[sid].state.proofreading;
+              if (tag && tag.length) {
+                tag = tag[tag.length - 1].tag;
+              }
+              if (proofread && proofread.length) {
+                proofread = proofread[proofread.length - 1].proofread;
+              }
+
+              rawCells[sid].status = proofread === 't' ?
+                  (tag ? 'complete' : 'unlabeled') :
+                  'incomplete';
+            });
+          }
+        });
+
+
+
         this.statuses = {...this.statuses, ...rawCells};
         const values = Object.keys(rawCells);
 
@@ -413,8 +443,8 @@ export class BulbService {
         handleDialogOpen, host, segmentIDString, currentTimeStamp,
         {...state, paramStr, linkTS});
 
-    const {tag} = <any>(state || {});
-    let cellIDButtons = tag ?
+    const {cell_id} = <any>(state || {});
+    let cellIDButtons = cell_id && cell_id.length ?
         [
           ['Details', 'blue', details[2]],
           ['Add New Identification', 'purple', identify[2]]

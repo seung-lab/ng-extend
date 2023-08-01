@@ -102,7 +102,8 @@ export class CellDetailDialog extends Overlay {
           `No existing identification can be found for this cell.`, cancel);
       return;
     }
-    const {tag, paramStr, linkTS} = <any>(this.stateInfo || {});
+    const {cell_id, paramStr, linkTS} = <any>(this.stateInfo || {});
+    const tags = cell_id.sort((a: any, b: any) => b.created - a.created);
     const br = () => document.createElement('br');
     const apiURL = `${this.host}/neurons/api/v1/cell_identification`;
     const sub = this.makeButton({
@@ -116,13 +117,35 @@ export class CellDetailDialog extends Overlay {
       }
     });
 
-    if (tag) {
+    if (tags && tags.length > 0) {
       this.title.innerText = 'Cell Identification';
-      this.infoField =
-          this.insertField({content: tag, type: 'textarea', disabled: true});
-      this.infoField.classList.add('rounded-input', 'large');
+
+      this.description = document.createElement('table');
+      /*let rows =
+          [{user_name: 'Marked by', tag: 'Cell Identification'}, ...tags];*/
+      let rows =
+          [{created: 'Created', tag: 'Label', user_name: 'Marked by'}, ...tags];
+      let thead = document.createElement('thead');
+      let tbody = document.createElement('tbody');
+      rows.forEach((tag: any, i: number) => {
+        const row = document.createElement('tr');
+        const created = document.createElement(`${i ? 'td' : 'th'}`);
+        const user = document.createElement(`${i ? 'td' : 'th'}`);
+        const tagTD = document.createElement(`${i ? 'td' : 'th'}`);
+        created.innerText = i ?
+            (new Date(tag.created)).toLocaleString('en-US', {hour12: false}) :
+            tag.created;
+        user.innerText = tag.user_name;
+        tagTD.innerText = tag.tag;
+        row.append(created, tagTD, user);
+        (i ? tbody : thead).append(row);
+      });
+      this.description.append(thead, tbody);
+
+      this.description.classList.add(
+          'rounded-input', 'large', 'cell_identification');
       this.form.append(
-          this.title, this.infoField, br(), br(), sub, ' ', cancel);
+          this.title, this.description, br(), br(), sub, ' ', cancel);
 
       let modal = document.createElement('div');
       this.content.appendChild(modal);
