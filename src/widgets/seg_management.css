@@ -41,6 +41,10 @@ button.nge_segment {
   background-image: url('images/bulb_purple.png');
 }
 
+.lightbulb.hidden {
+  display: none;
+}
+
 .segment-div {
   display: inline-flex;
   align-items: center;

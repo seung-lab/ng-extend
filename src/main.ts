@@ -191,6 +191,10 @@ function observeSegmentSelect(targetNode: Element) {
           // always force bulb status on creation
           bs.addBulbToDict(<HTMLButtonElement>bulb, segmentIDString);
         }
+        else if (item.dataset.dataset == 'flywire_public') {
+          // don't show bulbs in public release
+          bulb.classList.add('hidden');
+        }
       });
     }
   };
