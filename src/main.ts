@@ -13,7 +13,7 @@ import {DisplayContext} from 'neuroglancer/display_context';
 import {StatusMessage} from 'neuroglancer/status';
 import {registerEventListener} from 'neuroglancer/util/disposable';
 import 'neuroglancer/sliceview/chunk_format_handlers';
-import {SynapseProofread} from "./widgets/link_synapse_proofreading"
+import {ButtonService} from "./widgets/button_service"
 
 function mergeTopBars() {
   const ngTopBar = document.querySelector('.neuroglancer-viewer')!.children[0];
@@ -74,7 +74,7 @@ function makeExtendViewer() {
 
 function observeSegmentSelect(targetNode: Element) {
   const viewer: ExtendViewer = (<any>window)['viewer'];
-  const synapseProofread = viewer.synapseProofread;
+  const buttonService = viewer.buttonService;
   // Select the node that will be observed for mutations
   console.log(viewer, targetNode)
   if (!targetNode) {
@@ -88,12 +88,14 @@ function observeSegmentSelect(targetNode: Element) {
     if (item.classList) {
       if (item.classList.contains("neuroglancer-segment-list-entry")) {
         console.log(item)
-        const segmentIDString =
-            (<HTMLElement>item.getAttribute('data-id'));
-        console.log(segmentIDString)
-        let synapseProofreadButton = synapseProofread.createButton(segmentIDString)
-        item.appendChild(synapseProofreadButton);
-        (<HTMLButtonElement>synapseProofreadButton).title = 'Click for opening in Synapse Proofreading System';
+        let segmentIDString =
+            item.getAttribute('data-id');
+        if (segmentIDString) {
+          console.log(segmentIDString)
+          let button = buttonService.createButton(segmentIDString)
+          item.appendChild(button);
+          (<HTMLButtonElement>button).title = 'Click for opening in Synapse Proofreading System';
+        }
       }
     }
   };
@@ -133,14 +135,14 @@ function liveNeuroglancerInjection() {
 
 class ExtendViewer extends Viewer {
   // theme = new Theming();
-  synapseProofread = new SynapseProofread();
+  buttonService = new ButtonService();
   constructor(public display: DisplayContext) {
     super(display, {
       showLayerDialog: false,
       showUIControls: true,
       showPanelBorders: true,
-      defaultLayoutSpecification: 'xy-3d',
-      minSidePanelSize: 310
+      // defaultLayoutSpecification: 'xy-3d',
+      // minSidePanelSize: 310
     });
     // storeProxy.loadedViewer = true;
     // authTokenShared!.changed.add(() => {

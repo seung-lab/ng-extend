@@ -1,0 +1,70 @@
+button.nge_segment {
+  border-radius : 12px;
+  -moz-border-radius : 12px;
+  -webkit-border-radius : 12px;
+  max-height: 34px;
+  border-radius: 8px;
+  font-size: 16px;
+  padding: 8px 17px;
+  align-content: center;
+  cursor: pointer;
+  background : -moz-linear-gradient(17.04% -35.28% -45deg,rgba(15, 177, 139, 1) 0%,rgba(11, 167, 151, 1) 23.12%,rgba(4, 151, 168, 1) 67.21%,rgba(2, 146, 174, 1) 100%);
+  background : -webkit-linear-gradient(-45deg, rgba(15, 177, 139, 1) 0%, rgba(11, 167, 151, 1) 23.12%, rgba(4, 151, 168, 1) 67.21%, rgba(2, 146, 174, 1) 100%);
+  background : -webkit-gradient(linear,17.04% -35.28% ,82.96% 135.28% ,color-stop(0,rgba(15, 177, 139, 1) ),color-stop(0.2312,rgba(11, 167, 151, 1) ),color-stop(0.6721,rgba(4, 151, 168, 1) ),color-stop(1,rgba(2, 146, 174, 1) ));
+  background : -o-linear-gradient(-45deg, rgba(15, 177, 139, 1) 0%, rgba(11, 167, 151, 1) 23.12%, rgba(4, 151, 168, 1) 67.21%, rgba(2, 146, 174, 1) 100%);
+  background : -ms-linear-gradient(-45deg, rgba(15, 177, 139, 1) 0%, rgba(11, 167, 151, 1) 23.12%, rgba(4, 151, 168, 1) 67.21%, rgba(2, 146, 174, 1) 100%);
+  -ms-filter: "progid:DXImageTransform.Microsoft.gradient(startColorstr='#0FB18B', endColorstr='#0292AE' ,GradientType=0)";
+  background : linear-gradient(135deg, rgba(15, 177, 139, 1) 0%, rgba(11, 167, 151, 1) 23.12%, rgba(4, 151, 168, 1) 67.21%, rgba(2, 146, 174, 1) 100%);
+  filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#0FB18B',endColorstr='#0292AE' , GradientType=1);
+  border: none;
+}
+
+.lightbulb {
+  background-image: url('images/bulb.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+.lightbulb.complete {
+  background-image: url('images/bulb_green.png');
+}
+
+.lightbulb.error {
+  background-image: url('images/bulb_gray.png');
+}
+
+.lightbulb.outdated {
+  background-image: url('images/bulb_black.png');
+}
+
+.lightbulb.unlabeled {
+  background-image: url('images/bulb_purple.png');
+}
+
+.lightbulb.hidden {
+  display: none;
+}
+
+.segment-div {
+  display: inline-flex;
+  align-items: center;
+}
+/*
+.lightbulb {
+  background-image: url('images/lightbulb-yellow.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+.lightbulb.active {
+  background-image: url('images/lightbulb-green.svg');
+}
+
+.lightbulb.error {
+  background-image: url('images/lightbulb-grey.svg');
+}
+
+.lightbulb.outdated {
+  background-image: url('images/lightbulb-base.svg');
+}
+*/
