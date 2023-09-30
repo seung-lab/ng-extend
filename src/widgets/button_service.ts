@@ -1,5 +1,5 @@
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
-import {SubmitDialog} from './seg_management';
+// import {SubmitDialog} from './seg_management';
 
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void))[][];
@@ -39,7 +39,7 @@ export class ButtonService {
     button.addEventListener('click', (event: MouseEvent) => {
         // Redirect to Google.com when the button is clicked
         // window.open('https://www.google.com', '_blank');
-      let menu = this.makeMenu(button, segmentIDString, dataset,'error')
+      let menu = this.makeMenu(button, segmentIDString, dataset)
       menu.show(
           <MouseEvent>{clientX: event.clientX - 200, clientY: event.clientY}
       )
@@ -113,7 +113,7 @@ export class ButtonService {
   makeMenu(
       parent: HTMLElement, segmentIDString: string,
       dataset: string,
-      status: 'error'|'outdated'|'incomplete'|'unlabeled'|'complete',
+      // status: 'error'|'outdated'|'incomplete'|'unlabeled'|'complete',
       // state?: any
     ): ContextMenu {
     // console.log(status);
@@ -128,25 +128,25 @@ export class ButtonService {
     // console.log("timestamp:", timestamp)
     let optGroup: any = {analysis: [], proofreading: [], synapseProofreading: []};
 
-    const cleanOverlays = () => {
-      const overlays = document.getElementsByClassName('nge-overlay');
-      [...overlays].forEach(function(element) {
-        try {
-          (<any>element).dispose();
-        } catch {
-        }
-      });
-    };
-    const handleDialogOpen = async (e: MouseEvent) => { // callback: Function
-      e.preventDefault();
-      // let spinner = new Loader();
-      // if (timestamp == undefined) {
-      //   timestamp = await this.getTimeStamp(segmentIDString);
-      // }
-      cleanOverlays();
-      // spinner.dispose();
-      // callback(parent.classList.contains('error'));
-    };
+    // const cleanOverlays = () => {
+    //   const overlays = document.getElementsByClassName('nge-overlay');
+    //   [...overlays].forEach(function(element) {
+    //     try {
+    //       (<any>element).dispose();
+    //     } catch {
+    //     }
+    //   });
+    // };
+    // const handleDialogOpen = async (e: MouseEvent) => { // callback: Function
+    //   e.preventDefault();
+    //   // let spinner = new Loader();
+    //   // if (timestamp == undefined) {
+    //   //   timestamp = await this.getTimeStamp(segmentIDString);
+    //   // }
+    //   cleanOverlays();
+    //   // spinner.dispose();
+    //   // callback(parent.classList.contains('error'));
+    // };
     // const currentTimeStamp = () => "timestamp";//timestamp;
     // timestamp will change but because the menu opt is static, if it
     // already exists then the user has defined a timestamp to use and the
@@ -203,8 +203,8 @@ export class ButtonService {
     // }
       //
     optGroup.proofreading.push(changelog);
-    optGroup.proofreading.push(SubmitDialog.generateMenuOption(
-        handleDialogOpen, host, segmentIDString));
+    // optGroup.proofreading.push(SubmitDialog.generateMenuOption(
+    //     handleDialogOpen, host, segmentIDString));
     // optGroup.proofreading.push(changelog);
     // optGroup.proofreading.push([
     // 'Cell Identification',
@@ -216,9 +216,9 @@ export class ButtonService {
         `https://www.google.com/search?q=${segmentIDString}`
     ])
 
-    let markComplete = SubmitDialog.generateMenuOption(
-        handleDialogOpen, host, segmentIDString);
-    console.log("markcomplete: =======", markComplete)
+    // let markComplete = SubmitDialog.generateMenuOption(
+    //     handleDialogOpen, host, segmentIDString);
+    // console.log("markcomplete: =======", markComplete)
     // let identify = CellIdDialog.generateMenuOption(
     //     handleDialogOpen, host, segmentIDString, currentTimeStamp);
     // let details = CellDetailDialog.generateMenuOptionv2(
@@ -232,10 +232,10 @@ export class ButtonService {
     //       ['Add New Identification', 'purple', identify[2]]
     //     ] :
     //     [['Identify', 'purple', identify[2]]];
-    let proofreadingButtons =
-        ['incomplete', 'unlabeled', 'complete'].includes(status) ?
-        [['Mark as Complete', 'green', markComplete[2]]] : // :
-        [];
+    // let proofreadingButtons =
+    //     ['incomplete', 'unlabeled', 'complete'].includes(status) ?
+    //     [['Mark as Complete', 'green', markComplete[2]]] : // :
+    //     [];
 
     // if (timestamp) {
     //   menu.append(
@@ -250,24 +250,27 @@ export class ButtonService {
     menu.append(
         // br(), this.generateSection('Cell Identification', cellIDButtons, []),
         // br(), this.generateSection('Analysis', [], optGroup.analysis), br(),
-        this.generateSection(
-            'Proofreading', proofreadingButtons, optGroup.proofreading,
-            () => {
-              switch (status) {
-                case 'error':
-                  return 'Unknown';
-                case 'outdated':
-                  return 'Outdated';
-                case 'unlabeled':
-                case 'complete':
-                  return 'Complete';
-                default:
-                  return '';
-              }
-            },
-            false), br(),
+        // this.generateSection(
+        //     'Proofreading', proofreadingButtons, optGroup.proofreading,
+        //     () => {
+        //       switch (status) {
+        //         case 'error':
+        //           return 'Unknown';
+        //         case 'outdated':
+        //           return 'Outdated';
+        //         case 'unlabeled':
+        //         case 'complete':
+        //           return 'Complete';
+        //         default:
+        //           return '';
+        //       }
+        //     },
+        //     false), br(),
+        this.generateSection('Proofreading', [], optGroup.proofreading),
+        br(),
         this.generateSection('Synapses', [], optGroup.synapseProofreading),
-        br(), br());
+        br(),
+        br());
     return contextMenu;
   };
 }
