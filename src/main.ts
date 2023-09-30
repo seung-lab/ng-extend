@@ -76,7 +76,6 @@ function observeSegmentSelect(targetNode: Element) {
   const viewer: ExtendViewer = (<any>window)['viewer'];
   const buttonService = viewer.buttonService;
   // Select the node that will be observed for mutations
-  console.log(viewer, targetNode)
   if (!targetNode) {
     return;
   }
@@ -90,21 +89,15 @@ function observeSegmentSelect(targetNode: Element) {
   }
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
-      console.log(dataset)
       let buttonList: Element|HTMLElement[] = [];
       if (item.classList.contains("neuroglancer-segment-list-entry")) {
         buttonList = [item];
       }
-      console.log(buttonList)
-
       buttonList.forEach(item => {
-        console.log(item)
         const segmentIDString =
             item.getAttribute('data-id');
         if (segmentIDString) {
-          console.log(segmentIDString)
           let button = item.querySelector('.nge-segment-button.menu');
-          console.log(button)
           if (button == null) {
             button = buttonService.createButton(segmentIDString, dataset);
             button.classList.add('error')
