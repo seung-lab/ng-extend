@@ -83,20 +83,36 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
-
+  let datasetElement = (<HTMLElement>targetNode.querySelector('.neuroglancer-layer-item-label'));
+  let dataset = ""
+  if (dataset) {
+    dataset = datasetElement.innerText;
+  }
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
+      console.log(dataset)
+      let buttonList: Element|HTMLElement[] = [];
       if (item.classList.contains("neuroglancer-segment-list-entry")) {
+        buttonList = [item];
+      }
+      console.log(buttonList)
+
+      buttonList.forEach(item => {
         console.log(item)
-        let segmentIDString =
+        const segmentIDString =
             item.getAttribute('data-id');
         if (segmentIDString) {
           console.log(segmentIDString)
-          let button = buttonService.createButton(segmentIDString)
-          item.appendChild(button);
-          (<HTMLButtonElement>button).title = 'Click for opening in Synapse Proofreading System';
+          let button = item.querySelector('.nge-segment-button.menu');
+          console.log(button)
+          if (button == null) {
+            button = buttonService.createButton(segmentIDString, dataset);
+            button.classList.add('error')
+            item.appendChild(button);
+            (<HTMLButtonElement>button).title = 'Click for opening context menu';
+          }
         }
-      }
+      })
     }
   };
 
@@ -122,7 +138,7 @@ function observeSegmentSelect(targetNode: Element) {
   observer.observe(targetNode, config);
 
   // Convert existing items
-  targetNode.querySelectorAll('.segment-div').forEach(updateSegmentSelectItem);
+  targetNode.querySelectorAll('.neuroglancer-segment-list-entry').forEach(updateSegmentSelectItem);
 }
 
 function liveNeuroglancerInjection() {

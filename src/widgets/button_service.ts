@@ -5,11 +5,11 @@ const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void))[][];
 
 export class ButtonService {
-  createButton(segmentIDString: string):
+  createButton(segmentIDString: string, dataset: string):
       HTMLButtonElement {
     // Button for the user to copy a segment's ID
     const button = document.createElement('button');
-    button.className = 'nge-segment-synapse-proofread-button link';
+    button.className = 'nge-segment-button menu';
     button.title = `Open Segment: ${segmentIDString} in Synapse Proofreading System`;
     button.style.backgroundColor = 'transparent';
     button.style.border = 'none';
@@ -39,7 +39,7 @@ export class ButtonService {
     button.addEventListener('click', (event: MouseEvent) => {
         // Redirect to Google.com when the button is clicked
         // window.open('https://www.google.com', '_blank');
-      let menu = this.makeMenu(button, segmentIDString, 'error')
+      let menu = this.makeMenu(button, segmentIDString, dataset,'error')
       menu.show(
           <MouseEvent>{clientX: event.clientX - 200, clientY: event.clientY}
       )
@@ -112,7 +112,7 @@ export class ButtonService {
 
   makeMenu(
       parent: HTMLElement, segmentIDString: string,
-      // dataset: string,
+      dataset: string,
       status: 'error'|'outdated'|'incomplete'|'unlabeled'|'complete',
       // state?: any
     ): ContextMenu {
@@ -122,7 +122,7 @@ export class ButtonService {
     menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
     menu.classList.add(
         'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
-    // const paramStr = `${segmentIDString}`//&dataset=${dataset}&submit=true`;
+    const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
     const host = 'https://local.brain-wire-test.org';
     // let timestamp: number|undefined = this.getUserDefinedTimestamp();
     // console.log("timestamp:", timestamp)
@@ -154,8 +154,8 @@ export class ButtonService {
     // const linkTS = timestamp ? `&timestamp=${timestamp}` : '';
     // const dashTS = timestamp ? `&timestamp_field=${timestamp}` : '';
 
-    // let changelog =
-    //     ['Change Log', `${host}/progress/api/v1/query?rootid=${paramStr}`];
+    let changelog =
+        ['Change Log', `${host}/progress/api/v1/query?rootid=${paramStr}`];
     // If production data set
     // if (dataset == 'fly_v31') {
     //   optGroup.proofreading.push(SummaryDialog.generateMenuOption(
@@ -202,6 +202,7 @@ export class ButtonService {
     // optGroup.proofreading.push(changelog);
     // }
       //
+    optGroup.proofreading.push(changelog);
     optGroup.proofreading.push(SubmitDialog.generateMenuOption(
         handleDialogOpen, host, segmentIDString));
     // optGroup.proofreading.push(changelog);
