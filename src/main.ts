@@ -13,7 +13,11 @@ import {DisplayContext} from 'neuroglancer/display_context';
 import {StatusMessage} from 'neuroglancer/status';
 import {registerEventListener} from 'neuroglancer/util/disposable';
 import 'neuroglancer/sliceview/chunk_format_handlers';
-import {ButtonService} from "./widgets/button_service"
+import {ButtonService} from "./widgets/button_service";
+import {UrlHashBinding} from "neuroglancer/ui/url_hash_binding";
+import {bindTitle} from "neuroglancer/ui/title";
+
+declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 
 function mergeTopBars() {
   const ngTopBar = document.querySelector('.neuroglancer-viewer')!.children[0];
@@ -31,6 +35,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   app.mount('#app');
   const viewer = setupViewer();
+  // const viewer = setupDefaultViewer();
   initializeWithViewer(viewer);
   mergeTopBars();
   liveNeuroglancerInjection();
@@ -40,18 +45,29 @@ function setupViewer() {
   const viewer = (<any>window)['viewer'] = makeExtendViewer();
   setDefaultInputEventBindings(viewer.inputEventBindings);
 
-  // viewer.loadFromJsonUrl().then(() => {
-  //   layerProxy.loadActiveDataset();
-  // });
-  // viewer.initializeSaver();
+  // borrowed from setupDefaultViewer()
+  const hashBinding = viewer.registerDisposer(
+      new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
+        defaultFragment: typeof NEUROGLANCER_DEFAULT_STATE_FRAGMENT !== 'undefined' ?
+            NEUROGLANCER_DEFAULT_STATE_FRAGMENT :
+            undefined
+      }));
+  viewer.registerDisposer(hashBinding.parseError.changed.add(() => {
+    const {value} = hashBinding.parseError;
+    if (value !== undefined) {
+      const status = new StatusMessage();
+      status.setErrorMessage(`Error parsing state: ${value.message}`);
+      console.log('Error parsing state', value);
+    }
+    hashBinding.parseError;
+  }));
+  hashBinding.updateFromUrlHash();
+  console.log(hashBinding)
+  viewer.registerDisposer(bindTitle(viewer.title));
 
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
-  viewer.showDefaultAnnotations.value = false;
-  // replaceIcons();
-  // CustomColor.convertColor(
-  //     <HTMLInputElement>document.getElementById('path-finder-color-widget'));
-  // viewer
+
   return viewer;
 }
 
@@ -153,6 +169,7 @@ class ExtendViewer extends Viewer {
       // defaultLayoutSpecification: 'xy-3d',
       // minSidePanelSize: 310
     });
+  }
     // storeProxy.loadedViewer = true;
     // authTokenShared!.changed.add(() => {
     //   storeProxy.fetchLoggedInUser();
@@ -162,7 +179,7 @@ class ExtendViewer extends Viewer {
     // if (!this.jsonStateServer.value) {
     //   this.jsonStateServer.value = config.linkShortenerURL;
     // }
-  }
+
 
   // promptJsonStateServer(message: string): void {
   //   let json_server_input = prompt(message, config.linkShortenerURL);
