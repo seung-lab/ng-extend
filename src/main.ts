@@ -62,7 +62,6 @@ function setupViewer() {
     hashBinding.parseError;
   }));
   hashBinding.updateFromUrlHash();
-  console.log(hashBinding)
   viewer.registerDisposer(bindTitle(viewer.title));
 
   bindDefaultCopyHandler(viewer);
