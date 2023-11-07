@@ -13,7 +13,7 @@ skip_files:
 - ^(.*/)?\..*$
 - ^node_modules$
 
-service: brain=wire
+service: brain-wire
 
 handlers:
 # Handle the main page by serving the index page.
