@@ -8,16 +8,29 @@ import {useLayersStore} from 'src/store';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
-import {disableWheel} from 'neuroglancer/ui/disable_default_actions';
+import {disableContextMenu, disableWheel} from 'neuroglancer/ui/disable_default_actions';
 import {DisplayContext} from 'neuroglancer/display_context';
 import {StatusMessage} from 'neuroglancer/status';
-import {registerEventListener} from 'neuroglancer/util/disposable';
 import 'neuroglancer/sliceview/chunk_format_handlers';
 import {ButtonService} from "./widgets/button_service";
 import {UrlHashBinding} from "neuroglancer/ui/url_hash_binding";
 import {bindTitle} from "neuroglancer/ui/title";
+import {UserLayer, UserLayerConstructor, layerTypes} from "neuroglancer/layer";
+import {Tool, restoreTool} from 'neuroglancer/ui/tool';
+import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/util/json';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
+
+type CustomBinding = {
+  layer: string, tool: unknown, provider?: string,
+}
+
+type CustomBindings = {
+  [key: string]: CustomBinding|string
+};
+
+declare const CUSTOM_BINDINGS: CustomBindings|undefined;
+export const hasCustomBindings = typeof CUSTOM_BINDINGS !== 'undefined' && Object.keys(CUSTOM_BINDINGS).length > 0;
 
 function mergeTopBars() {
   const ngTopBar = document.querySelector('.neuroglancer-viewer')!.children[0];
@@ -46,6 +59,59 @@ function setupViewer() {
   setDefaultInputEventBindings(viewer.inputEventBindings);
 
   // borrowed from setupDefaultViewer()
+    const bindNonLayerSpecificTool = (obj: unknown, toolKey: string, desiredLayerType: UserLayerConstructor, desiredProvider?: string) => {
+    let previousTool: Tool<Object>|undefined;
+    let previousLayer: UserLayer|undefined;
+    if (typeof obj === 'string') {
+      obj = {'type': obj};
+    }
+    verifyObject(obj);
+    const type = verifyObjectProperty(obj, 'type', verifyString);
+    viewer.bindAction(`tool-${type}`, () => {
+      const acceptableLayers = viewer.layerManager.managedLayers.filter((managedLayer) => {
+        const correctLayerType = managedLayer.layer instanceof desiredLayerType;
+        if (desiredProvider && correctLayerType) {
+          for (const dataSource of managedLayer.layer?.dataSources || []) {
+            const protocol = viewer.dataSourceProvider.getProvider(dataSource.spec.url)[2];
+            if (protocol === desiredProvider) {
+              return true;
+            }
+          }
+          return false;
+        } else {
+          return correctLayerType;
+        }
+      });
+      if (acceptableLayers.length > 0) {
+        const firstLayer = acceptableLayers[0].layer;
+        if (firstLayer) {
+          if (firstLayer !== previousLayer) {
+            previousTool = restoreTool(firstLayer, obj);
+            previousLayer = firstLayer;
+          }
+          if (previousTool) {
+            viewer.activateTool(toolKey, previousTool);
+          }
+        }
+      }
+    });
+  }
+
+  if (hasCustomBindings) {
+    for (const [key, val] of Object.entries(CUSTOM_BINDINGS!)) {
+      if (typeof val === 'string') {
+        viewer.inputEventBindings.global.set(key, val);
+      } else {
+        viewer.inputEventBindings.global.set(key, `tool-${val.tool}`);
+        const layerConstructor = layerTypes.get(val.layer);
+        if (layerConstructor) {
+          const toolKey = key.charAt(key.length - 1).toUpperCase();
+          bindNonLayerSpecificTool(val.tool, toolKey, layerConstructor, val.provider);
+        }
+      }
+    }
+  }
+
   const hashBinding = viewer.registerDisposer(
       new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
         defaultFragment: typeof NEUROGLANCER_DEFAULT_STATE_FRAGMENT !== 'undefined' ?
@@ -71,11 +137,7 @@ function setupViewer() {
 }
 
 function makeExtendViewer() {
-  registerEventListener(
-      document.getElementById('neuroglancer-container')!, 'contextmenu',
-      (e: Event) => {
-        e.preventDefault();
-      });
+  disableContextMenu();
   disableWheel();
   try {
     let display =

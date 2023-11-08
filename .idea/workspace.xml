@@ -5,19 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="65f998b4-d6c9-4699-a64b-6531039184a3" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/widgets/button_service.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/widgets/seg_management.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/widgets/seg_management.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.github/workflows/on_dev_branch_push.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/on_dev_branch_push.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/ng-extend.json" beforeDir="false" afterPath="$PROJECT_DIR$/config/ng-extend.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/state_servers.json" beforeDir="false" afterPath="$PROJECT_DIR$/config/state_servers.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/ExtensionBar.vue" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/ExtensionBar.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/store.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/store.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -44,7 +33,7 @@
   "keyToString": {
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "WebServerToolWindowFactoryState": "false",
-    "git-widget-placeholder": "Merging lchtlab-cave",
+    "git-widget-placeholder": "lchtlab-cave",
     "last_opened_file_path": "/Users/jinhan/h01/ng-extend/src/widgets",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
