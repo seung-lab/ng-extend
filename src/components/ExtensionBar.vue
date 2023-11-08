@@ -34,7 +34,7 @@ function logout(session: loginSession) {
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
-      <a href="https://flywire.ai/" target="_blank">
+      <a href="https://h01-release.storage.googleapis.com/explore.html" target="_blank">
         <img src="insert-logo" title="Cave Explorer">
       </a>
     </div>

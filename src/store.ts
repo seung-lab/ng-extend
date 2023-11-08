@@ -148,6 +148,11 @@ export const useLayersStore = defineStore('layers', () => {
   function initializeWithViewer(v: Viewer) {
     viewer = v;
 
+    // set default values in settings
+    viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit.value = 2e9;
+    viewer.chunkQueueManager.capacities.systemMemory.sizeLimit.value = 3e9;
+
+    // viewer.layout.defaultSpecification = 'xy-3d' // not working
     viewer.displayDimensions.changed.add(() => {
       console.log('viewer.displayDimensions.changed', viewer!.displayDimensions.value);
     });
@@ -161,9 +166,9 @@ export const useLayersStore = defineStore('layers', () => {
     viewer.layerSpecification.restoreState(layers);
     viewer.navigationState.reset();
     viewer.coordinateSpace.restoreState({
-      x: [4e-9, 'm'],
-      y: [4e-9, 'm'],
-      z: [40e-9, 'm'],
+      x: [8e-9, 'm'],
+      y: [8e-9, 'm'],
+      z: [33e-9, 'm'],
     });
     return true;
   }

@@ -5,7 +5,19 @@ import 'neuroglancer/ui/default_viewer.css';
 
 import App from 'components/App.vue';
 import {useLayersStore} from 'src/store';
-import {setupDefaultViewer} from 'third_party/neuroglancer/ui/default_viewer_setup';
+import {Viewer} from 'neuroglancer/viewer';
+import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
+import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
+import {disableWheel} from 'neuroglancer/ui/disable_default_actions';
+import {DisplayContext} from 'neuroglancer/display_context';
+import {StatusMessage} from 'neuroglancer/status';
+import {registerEventListener} from 'neuroglancer/util/disposable';
+import 'neuroglancer/sliceview/chunk_format_handlers';
+import {ButtonService} from "./widgets/button_service";
+import {UrlHashBinding} from "neuroglancer/ui/url_hash_binding";
+import {bindTitle} from "neuroglancer/ui/title";
+
+declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 
 function mergeTopBars() {
   const ngTopBar = document.querySelector('.neuroglancer-viewer')!.children[0];
@@ -22,7 +34,158 @@ window.addEventListener('DOMContentLoaded', () => {
     el.style.visibility = !!binding.value ? 'visible' : 'hidden';
   });
   app.mount('#app');
-  const viewer = setupDefaultViewer();
+  const viewer = setupViewer();
+  // const viewer = setupDefaultViewer();
   initializeWithViewer(viewer);
   mergeTopBars();
+  liveNeuroglancerInjection();
 });
+
+function setupViewer() {
+  const viewer = (<any>window)['viewer'] = makeExtendViewer();
+  setDefaultInputEventBindings(viewer.inputEventBindings);
+
+  // borrowed from setupDefaultViewer()
+  const hashBinding = viewer.registerDisposer(
+      new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
+        defaultFragment: typeof NEUROGLANCER_DEFAULT_STATE_FRAGMENT !== 'undefined' ?
+            NEUROGLANCER_DEFAULT_STATE_FRAGMENT :
+            undefined
+      }));
+  viewer.registerDisposer(hashBinding.parseError.changed.add(() => {
+    const {value} = hashBinding.parseError;
+    if (value !== undefined) {
+      const status = new StatusMessage();
+      status.setErrorMessage(`Error parsing state: ${value.message}`);
+      console.log('Error parsing state', value);
+    }
+    hashBinding.parseError;
+  }));
+  hashBinding.updateFromUrlHash();
+  viewer.registerDisposer(bindTitle(viewer.title));
+
+  bindDefaultCopyHandler(viewer);
+  bindDefaultPasteHandler(viewer);
+
+  return viewer;
+}
+
+function makeExtendViewer() {
+  registerEventListener(
+      document.getElementById('neuroglancer-container')!, 'contextmenu',
+      (e: Event) => {
+        e.preventDefault();
+      });
+  disableWheel();
+  try {
+    let display =
+        new DisplayContext(document.getElementById('neuroglancer-container')!);
+    return new ExtendViewer(display);
+  } catch (error) {
+    StatusMessage.showMessage(`Error: ${error.message}`);
+    throw error;
+  }
+}
+
+function observeSegmentSelect(targetNode: Element) {
+  const viewer: ExtendViewer = (<any>window)['viewer'];
+  const buttonService = viewer.buttonService;
+  // Select the node that will be observed for mutations
+  if (!targetNode) {
+    return;
+  }
+
+  // Options for the observer (which mutations to observe)
+  const config = {childList: true, subtree: true};
+  let datasetElement = (<HTMLElement>targetNode.querySelector('.neuroglancer-layer-item-label'));
+  let dataset = ""
+  if (dataset) {
+    dataset = datasetElement.innerText;
+  }
+  const updateSegmentSelectItem = function(item: HTMLElement) {
+    if (item.classList) {
+      let buttonList: Element|HTMLElement[] = [];
+      if (item.classList.contains("neuroglancer-segment-list-entry")) {
+        buttonList = [item];
+      }
+      buttonList.forEach(item => {
+        const segmentIDString =
+            item.getAttribute('data-id');
+        if (segmentIDString) {
+          let button = item.querySelector('.nge-segment-button.menu');
+          if (button == null) {
+            button = buttonService.createButton(segmentIDString, dataset);
+            button.classList.add('error')
+            item.appendChild(button);
+            (<HTMLButtonElement>button).title = 'Click for opening context menu';
+          }
+        }
+      })
+    }
+  };
+
+  // Callback function to execute when mutations are observed
+  const detectMutation = function(mutationsList: MutationRecord[]) {
+    //console.log('Segment ID Added');
+    // replaceIcons();
+    // TODO: this is not ideal, but it works for now  (maybe)
+    /*Array.from(document.querySelectorAll('.top-buttons .segment-checkbox'))
+        .forEach((item: any) => {
+          CustomCheck.convertCheckbox(item);
+        });
+*/
+    mutationsList.forEach(mutation => {
+      mutation.addedNodes.forEach(updateSegmentSelectItem);
+    });
+  };
+
+  // Create an observer instance linked to the callback function
+  const observer = new MutationObserver(detectMutation);
+
+  // Start observing the target node for configured mutations
+  observer.observe(targetNode, config);
+
+  // Convert existing items
+  targetNode.querySelectorAll('.neuroglancer-segment-list-entry').forEach(updateSegmentSelectItem);
+}
+
+function liveNeuroglancerInjection() {
+  const watchNode = document.querySelector('#content');
+  if (!watchNode) {
+    return;
+  }
+  observeSegmentSelect(watchNode);
+}
+
+class ExtendViewer extends Viewer {
+  // theme = new Theming();
+  buttonService = new ButtonService();
+  constructor(public display: DisplayContext) {
+    super(display, {
+      showLayerDialog: false,
+      showUIControls: true,
+      showPanelBorders: true,
+      // defaultLayoutSpecification: 'xy-3d',
+      // minSidePanelSize: 310
+    });
+  }
+    // storeProxy.loadedViewer = true;
+    // authTokenShared!.changed.add(() => {
+    //   storeProxy.fetchLoggedInUser();
+    // });
+    // storeProxy.fetchLoggedInUser();
+
+    // if (!this.jsonStateServer.value) {
+    //   this.jsonStateServer.value = config.linkShortenerURL;
+    // }
+
+
+  // promptJsonStateServer(message: string): void {
+  //   let json_server_input = prompt(message, config.linkShortenerURL);
+  //   if (json_server_input !== null) {
+  //     this.jsonStateServer.value = json_server_input;
+  //   } else {
+  //     this.jsonStateServer.reset();
+  //   }
+  // }
+}

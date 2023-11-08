@@ -28,6 +28,7 @@
   "devDependencies": {
     "@babel/types": "^7.21.5",
     "@types/jasmine": "^4.3.1",
+    "@types/vue": "^2.0.0",
     "chokidar": "^3.5.1",
     "colors": "^1.4.0",
     "connect": "^3.7.0",
@@ -43,6 +44,8 @@
     "neuroglancer": "github:seung-lab/neuroglancer#8cc71b1b000d4cf65dcba2b8f69548172993ad3e",
     "pinia": "^2.0.32",
     "vue": "^3.2.47",
-    "vue-router": "^4.1.6"
+    "vue-loader": "^17.2.2",
+    "vue-router": "^4.1.6",
+    "vue-template-compiler": "^2.7.14"
   }
 }
