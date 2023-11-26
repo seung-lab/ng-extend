@@ -59,7 +59,7 @@ function setupViewer() {
   setDefaultInputEventBindings(viewer.inputEventBindings);
 
   // borrowed from setupDefaultViewer()
-    const bindNonLayerSpecificTool = (obj: unknown, toolKey: string, desiredLayerType: UserLayerConstructor, desiredProvider?: string) => {
+  const bindNonLayerSpecificTool = (obj: unknown, toolKey: string, desiredLayerType: UserLayerConstructor, desiredProvider?: string) => {
     let previousTool: Tool<Object>|undefined;
     let previousLayer: UserLayer|undefined;
     if (typeof obj === 'string') {

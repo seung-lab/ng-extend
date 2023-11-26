@@ -151,8 +151,14 @@ export const useLayersStore = defineStore('layers', () => {
     // set default values in settings
     viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit.value = 2e9;
     viewer.chunkQueueManager.capacities.systemMemory.sizeLimit.value = 3e9;
-
-    // viewer.layout.defaultSpecification = 'xy-3d' // not working
+    // viewer.showPerspectiveSliceViews.value = false;
+    // viewer.position.assign(313521.25, 181787.21875, 4311.5);
+    // viewer.position.value = { "x":313521.25, "y":181787.21875, "z":4311.5};
+    // viewer.crossSectionScale.value = 8.031913463326639;
+    // viewer.projectionOrientation = [-0.24557209014892578, 0.17511530220508575, 0.5259231328964233, 0.7952570915222168];
+    // viewer.projectionScale.value = 23218.557071742558;
+    // viewer.layerManager.getLayerByName("segmentation").
+    // viewer.layout.container.setSpecification('xy-3d');
     viewer.displayDimensions.changed.add(() => {
       console.log('viewer.displayDimensions.changed', viewer!.displayDimensions.value);
     });
