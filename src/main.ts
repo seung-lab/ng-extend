@@ -13,6 +13,7 @@ import {DisplayContext} from 'neuroglancer/display_context';
 import {StatusMessage} from 'neuroglancer/status';
 import 'neuroglancer/sliceview/chunk_format_handlers';
 import {ButtonService} from "./widgets/button_service";
+import {AnnotationService, Point3D} from "./widgets/annotation_service";
 import {UrlHashBinding} from "neuroglancer/ui/url_hash_binding";
 import {bindTitle} from "neuroglancer/ui/title";
 import {UserLayer, UserLayerConstructor, layerTypes} from "neuroglancer/layer";
@@ -152,6 +153,7 @@ function makeExtendViewer() {
 function observeSegmentSelect(targetNode: Element) {
   const viewer: ExtendViewer = (<any>window)['viewer'];
   const buttonService = viewer.buttonService;
+  const annotationService = viewer.annotationService;
   // Select the node that will be observed for mutations
   if (!targetNode) {
     return;
@@ -164,6 +166,7 @@ function observeSegmentSelect(targetNode: Element) {
   if (dataset) {
     dataset = datasetElement.innerText;
   }
+  console.log(dataset)
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
       let buttonList: Element|HTMLElement[] = [];
@@ -186,6 +189,38 @@ function observeSegmentSelect(targetNode: Element) {
     }
   };
 
+  const updateSelectionDetailsBody = function(item: HTMLElement) {
+    if (item.classList) {
+      let selectionList: Element|HTMLElement[] = [];
+      if (item.classList.contains("neuroglancer-annotation-list-entry")) {
+        selectionList = [item];
+      }
+      selectionList.forEach(item => {
+        const positionGrid = item.querySelector(".neuroglancer-annotation-position")
+        const isDataBounds = item.querySelector(".neuroglancer-annotation-description")?.textContent === "Data Bounds" ? true : false;
+        if (positionGrid && !isDataBounds) {
+          const coordElements = item.querySelectorAll(' .neuroglancer-annotation-coordinate');
+          let coordinates: Point3D[] = [];
+
+          for (let i = 0; i < coordElements?.length; i += 3){
+            const dimCoord: Point3D = {
+              x: coordElements[i].textContent?.trim() || '',
+              y: coordElements[i+1].textContent?.trim() || '',
+              z: coordElements[i+2].textContent?.trim() || ''
+            }
+            coordinates.push(dimCoord)
+          }
+
+          let distance = item.querySelector(".nge-selected-annotation.distance")
+          if (distance == null) {
+            distance = annotationService.calculateDistance(coordinates);
+            item.appendChild(distance);
+          }
+        }
+      })
+    }
+  }
+
   // Callback function to execute when mutations are observed
   const detectMutation = function(mutationsList: MutationRecord[]) {
     //console.log('Segment ID Added');
@@ -198,6 +233,7 @@ function observeSegmentSelect(targetNode: Element) {
 */
     mutationsList.forEach(mutation => {
       mutation.addedNodes.forEach(updateSegmentSelectItem);
+      mutation.addedNodes.forEach(updateSelectionDetailsBody)
     });
   };
 
@@ -209,6 +245,7 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Convert existing items
   targetNode.querySelectorAll('.neuroglancer-segment-list-entry').forEach(updateSegmentSelectItem);
+  targetNode.querySelectorAll('.neuroglancer-annotation-list-entry').forEach(updateSelectionDetailsBody);
 }
 
 function liveNeuroglancerInjection() {
@@ -222,6 +259,7 @@ function liveNeuroglancerInjection() {
 class ExtendViewer extends Viewer {
   // theme = new Theming();
   buttonService = new ButtonService();
+  annotationService = new AnnotationService();
   constructor(public display: DisplayContext) {
     super(display, {
       showLayerDialog: false,

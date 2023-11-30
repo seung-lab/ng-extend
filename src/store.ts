@@ -159,9 +159,6 @@ export const useLayersStore = defineStore('layers', () => {
     // viewer.projectionScale.value = 23218.557071742558;
     // viewer.layerManager.getLayerByName("segmentation").
     // viewer.layout.container.setSpecification('xy-3d');
-    viewer.displayDimensions.changed.add(() => {
-      console.log('viewer.displayDimensions.changed', viewer!.displayDimensions.value);
-    });
 
     viewer.layerManager.layersChanged.add(refreshLayers);
     refreshLayers();
