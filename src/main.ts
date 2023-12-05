@@ -192,14 +192,15 @@ function observeSegmentSelect(targetNode: Element) {
   const updateSelectionDetailsBody = function(item: HTMLElement) {
     if (item.classList) {
       let selectionList: Element|HTMLElement[] = [];
-      if (item.classList.contains("neuroglancer-annotation-list-entry")) {
+      if (item.classList.contains("neuroglancer-selection-details-layer")) { //neuroglancer-annotation-list-entry
         selectionList = [item];
       }
       selectionList.forEach(item => {
-        const positionGrid = item.querySelector(".neuroglancer-annotation-position")
-        const isDataBounds = item.querySelector(".neuroglancer-annotation-description")?.textContent === "Data Bounds" ? true : false;
-        if (positionGrid && !isDataBounds) {
-          const coordElements = item.querySelectorAll(' .neuroglancer-annotation-coordinate');
+        // const positionGrid = item.querySelector(".neuroglancer-selected-annotation-details-position")//.neuroglancer-annotation-position
+        const isDataBounds = false // item.querySelector(".neuroglancer-annotation-details-description")?.textContent === "Data Bounds" ? true : false; //.neuroglancer-annotation-description
+        if (!isDataBounds) {
+          const coordElements = item.querySelectorAll('.neuroglancer-selected-annotation-details-position-coord'); //.neuroglancer-annotation-coordinate
+          console.log(coordElements)
           let coordinates: Point3D[] = [];
 
           for (let i = 0; i < coordElements?.length; i += 3){
@@ -245,7 +246,7 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Convert existing items
   targetNode.querySelectorAll('.neuroglancer-segment-list-entry').forEach(updateSegmentSelectItem);
-  targetNode.querySelectorAll('.neuroglancer-annotation-list-entry').forEach(updateSelectionDetailsBody);
+  targetNode.querySelectorAll('.neuroglancer-selection-details-layer').forEach(updateSelectionDetailsBody);//neuroglancer-annotation-list-entry
 }
 
 function liveNeuroglancerInjection() {
