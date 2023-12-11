@@ -4,27 +4,32 @@ export interface Point3D {
     z: string;
 }
 
-function calculateDistanceInXYPlane(coordinates: Point3D[]): string {
+function calculateDistance(coordinates: Point3D[]): string {
     const point1: Point3D = coordinates[0];
     const point2: Point3D = coordinates[1];
     // Ignore the Z coordinate for XY plane distance
-    const dx = Number(point2.x) - Number(point1.x);
-    const dy = Number(point2.y) - Number(point1.y);
+    const dx = 8*(Number(point2.x) - Number(point1.x));
+    const dy = 8*(Number(point2.y) - Number(point1.y));
+    const dz = 33*(Number(point2.z) - Number(point1.z));
 
     // Calculate the distance using the Pythagorean theorem
-    const distance = Math.sqrt(dx * dx + dy * dy).toFixed(2);
+    const distanceXY = Math.sqrt(dx * dx + dy * dy).toFixed(2);
+    const distanceYZ: string = Math.sqrt(dy * dy + dz * dz).toFixed(2);
+    const distanceZX: string = Math.sqrt(dz * dz + dx * dx).toFixed(2);
 
-    return distance.toString();
+    return `Distance\nXY: ${distanceXY}nm, YZ: ${distanceYZ}nm, ZX: ${distanceZX}nm`;
 }
 export class AnnotationService {
     calculateDistance(coordinates: Point3D[]) {
-        const distance = document.createElement('span');
+        const distance = document.createElement('div');
         distance.className = 'nge-selected-annotation distance';
+        distance.style.gridColumn = 'dim / -1';
+        distance.style.textOverflow = 'ellipsis';
         console.log(coordinates)
         if (coordinates.length == 2) {
-            distance.innerText = `Distance: ${calculateDistanceInXYPlane(coordinates)}`
+            distance.innerText = calculateDistance(coordinates)
         }
-        return distance
+        return distance;
     }
 
 
