@@ -25,7 +25,6 @@ export class AnnotationService {
         distance.className = 'nge-selected-annotation distance';
         distance.style.gridColumn = 'dim / -1';
         distance.style.textOverflow = 'ellipsis';
-        console.log(coordinates)
         if (coordinates.length == 2) {
             distance.innerText = calculateDistance(coordinates)
         }
