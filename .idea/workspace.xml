@@ -5,8 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="65f998b4-d6c9-4699-a64b-6531039184a3" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/src/widgets/add_cube_annotation.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appengine/frontend/app.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/appengine/frontend/app.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/custom-keybinds.json" beforeDir="false" afterPath="$PROJECT_DIR$/config/custom-keybinds.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -41,6 +43,7 @@
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
     "prettierjs.PrettierConfiguration.Package": "/Users/jinhan/h01/ng-extend/node_modules/prettier",
+    "settings.editor.selected.configurable": "preferences.editor",
     "ts.external.directory.path": "/Applications/PyCharm.app/Contents/plugins/javascript-impl/jsLanguageServicesImpl/external",
     "vue.rearranger.settings.migration": "true"
   }
@@ -64,6 +67,8 @@
       <workItem from="1695053301453" duration="32704000" />
       <workItem from="1699548472351" duration="19246000" />
       <workItem from="1700883230902" duration="1940000" />
+      <workItem from="1702408914759" duration="26786000" />
+      <workItem from="1704213708122" duration="57371000" />
     </task>
     <servers />
   </component>
@@ -77,6 +82,11 @@
           <url>file://$PROJECT_DIR$/src/widgets/link_synapse_proofreading.ts</url>
           <line>7</line>
           <option name="timeStamp" value="1" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/third_party/neuroglancer/datasource/graphene/frontend.ts</url>
+          <line>2379</line>
+          <option name="timeStamp" value="2" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
