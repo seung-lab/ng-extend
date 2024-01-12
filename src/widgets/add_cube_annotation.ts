@@ -203,6 +203,7 @@ class AddCubeAnnotationTool extends LayerTool<SegmentationUserLayer> {
             };
 
             annotationReference.value = annotation;
+            this.cubeAnnotationState.source.add(annotation)
 
             const [element, elementColumnWidths] = makeAnnotationListElement(this.layer, annotation, this.cubeAnnotationState, template, globalDimensionIndices, localDimensionIndices);
             for (const [column, width] of elementColumnWidths.entries()) {
