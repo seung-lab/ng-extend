@@ -40,8 +40,10 @@
     "yargs": "^17.0.1"
   },
   "dependencies": {
-    "neuroglancer": "github:seung-lab/neuroglancer#8cc71b1b000d4cf65dcba2b8f69548172993ad3e",
+    "neuroglancer": "github:seung-lab/neuroglancer#737a902c8740ff37500ba0f2f658beacbbdd7c5a",
     "pinia": "^2.0.32",
+    "reconnecting-websocket": "^4.4.0",
+    "simplebar-vue": "^2.3.3",
     "vue": "^3.2.47",
     "vue-router": "^4.1.6"
   }

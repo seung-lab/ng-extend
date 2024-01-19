@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ExtensionBar from "components/ExtensionBar.vue";
+import Leaderboard from "components/Leaderboard.vue";
 </script>
 
 <template>
@@ -7,6 +8,7 @@ import ExtensionBar from "components/ExtensionBar.vue";
     <div class="ng-extend"><ExtensionBar /></div>
     <div id="content">
       <div id="neuroglancer-container"></div>
+      <Leaderboard class="ng-extend"></Leaderboard>
     </div>
   </div>
 </template>

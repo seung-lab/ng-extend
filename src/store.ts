@@ -1,4 +1,4 @@
-import {Ref, ref, reactive} from 'vue';
+import {Ref, ref, reactive, nextTick} from 'vue';
 import {defineStore} from 'pinia';
 
 import {Viewer} from 'neuroglancer/viewer';
@@ -7,6 +7,9 @@ import {MiddleAuthCredentialsProvider} from 'neuroglancer/datasource/middleauth/
 import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {responseJson} from 'neuroglancer/util/http_request';
 
+import ReconnectingWebSocket from 'reconnecting-websocket';
+
+import getChatSocket from './chat_socket';
 import {Config} from './config';
 
 declare const CONFIG: Config|undefined;
@@ -198,4 +201,243 @@ export const useVolumesStore = defineStore('volumes', () => {
   })();
 
   return {volumes};
+});
+
+export interface LeaderboardEntry {
+  name: string, score: number
+}
+
+export enum LeaderboardTimespan {
+  Daily = 0,
+  Weekly = 6
+}
+
+export interface UserInfo {
+  editsToday: number, editsThisWeek: number, editsAllTime: number
+}
+
+export const useStatsStore = defineStore('stats', () => {
+  let leaderboardLoaded: boolean = false;
+  let leaderboardEntries: LeaderboardEntry[] = [];
+  let leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
+  let userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
+  let cellsSubmitted: number = 0;
+
+  function setLeaderboardTimespan(ts: LeaderboardTimespan) {
+    leaderboardTimespan = ts;
+  }
+
+  async function loopUpdateLeaderboard() {
+    await updateLeaderboard();
+    await updateUserInfo();
+    await new Promise(() => setTimeout(loopUpdateLeaderboard, 20000));
+  }
+
+  async function updateLeaderboard() {
+    if (!CONFIG) return;
+    const goalTimespan = leaderboardTimespan;
+    const url = CONFIG.leaderboard_url;
+    const queryUrl = url + '?days=' + leaderboardTimespan;
+    fetch(queryUrl).then(result => result.json()).then(async (json) => {
+      if (leaderboardTimespan != goalTimespan) return;
+      const newEntries = json.entries;
+      leaderboardEntries.splice(0, leaderboardEntries.length);
+      for (const entry of newEntries) {
+        leaderboardEntries.push(entry);
+      }
+      leaderboardLoaded = true;
+    });
+  }
+
+  async function resetLeaderboard() {
+    leaderboardLoaded = false;
+    leaderboardEntries.splice(0, leaderboardEntries.length);
+    return updateLeaderboard();
+  }
+
+  async function updateUserInfo() {
+    //TODO restore
+    /*
+    if (!this.loggedInUser) return;
+    const url = config.leaderboardURL + '/userInfo?userID=' + this.loggedInUser!.id;
+    fetch(url).then(result => result.json()).then(async(json) => { this.userInfo = json; });
+    const statsURL = config.userStatsURL + '&user_id=' + this.loggedInUser!.id;
+    authFetch(statsURL).then(result => result.json()).then(async(json) => { this.cellsSubmitted = json["cells_submitted_all_time"]; });
+    */
+
+    /*
+    const url = config.userStatsURL + "&user_id=" + this.loggedInUser!.id;
+    authFetch(url).then(result => result.json()).then(async(json) => {
+      this.userInfo = {
+        editsToday: json["edits_today"],
+        editsThisWeek: json["edits_past_week"],
+        editsAllTime: json["edits_all_time"]
+      };
+      this.cellsSubmitted = json["cells_submitted_all_time"];
+    });
+    */
+  }
+
+  return {leaderboardLoaded, leaderboardEntries, setLeaderboardTimespan, resetLeaderboard};
+});
+
+interface ServerMessage {
+  type: string,
+  name: string,
+  rank: string | undefined,
+  timestamp: Date,
+  message: string
+}
+
+export interface ChatMessage {
+  type: string,
+  name: string,
+  rank: string | undefined,
+  time: string | undefined,
+  dateTime: Date | undefined,
+  parts: MessagePart[] | undefined
+}
+
+interface MessagePart {
+  type: string,
+  text: string
+}
+
+export const useChatStore = defineStore('chat', () => {
+  let joinedChat: boolean = false;
+  let chatMessages: ChatMessage[] = [];
+  let unreadMessages: boolean = false;
+
+  //const login = useLoginStore(); //TODO
+  const loggedInUser = {"name": "test", "id": "0"}
+
+  function sendJoinMessage(ws: ReconnectingWebSocket) {
+    const joinMessage = JSON.stringify({
+      type: joinedChat ? 'rejoin' : 'join',
+      name: loggedInUser ? loggedInUser.name : 'Guest'
+    });
+    ws.send(joinMessage);
+    joinedChat = true;
+  }
+
+  function sendMessage(message: string) {
+    const now = new Date();
+    const messageObj = {
+      name: loggedInUser ? loggedInUser.name : 'Guest',
+      userID: loggedInUser ? loggedInUser.id : '0',
+      type: "message",
+      message: message,
+      timestamp: now
+    };
+    const ws = getChatSocket();
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(messageObj));
+    } else {
+      handleMessage('{"type":"disconnected"}');
+    }
+  }
+
+  async function joinChat() {
+    const ws = getChatSocket();
+    ws.onmessage = (event) => {
+      handleMessage(event.data);
+    };
+
+    //await this.fetchLoggedInUser(); //TODO wait for login
+
+    ws.onopen = () => {
+      sendJoinMessage(ws);
+    };
+    if (ws.readyState === WebSocket.OPEN) {
+      sendJoinMessage(ws);
+    }
+  }
+
+  function handleMessage(message: any) {
+    const messageParsed: ServerMessage = JSON.parse(message);
+    const type = messageParsed.type;
+    const messageText = messageParsed.message;
+    const name = messageParsed.name;
+    const rank = messageParsed.rank;
+    const dateTime = messageParsed.timestamp ? new Date(messageParsed.timestamp) : new Date();
+    const time = dateTime.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'});
+    const parts: MessagePart[] = [];
+
+    if (type === 'message') {
+      // add timestamp if it has been a while since the last message
+      function isCloseTo(timeA: Date|undefined, timeB: Date|undefined): boolean {
+        if (!timeA || !timeB) return false;
+        const diff = timeB.valueOf() - timeA.valueOf();
+        return diff < 1000 * 60 * 10; // 10 minutes in milliseconds
+      }
+      let addTime = true;
+      if (chatMessages.length > 0) {
+        const lastMessage = chatMessages[chatMessages.length - 1];
+        if (lastMessage.type.startsWith('message') && isCloseTo(lastMessage.dateTime, dateTime)) {
+          addTime = false;
+        }
+      }
+      if (addTime) {
+        const timeInfo: ChatMessage = { type: 'time', name: name, rank: undefined, time: time, dateTime: dateTime, parts: undefined };
+        chatMessages.push(timeInfo);
+      }
+
+      // first part of message is sender's name
+      const namePart: MessagePart = {
+        type: 'sender',
+        text: name
+      };
+      parts.push(namePart);
+
+      // split message up into plain text and links
+      const messageParts = messageText.split(/(https?:\/\/\S+)/);
+      for (let i = 0; i < messageParts.length; i++) {
+        const messagePart: MessagePart = {
+          type: i % 2 === 0 ? 'text' : 'link',
+          text: messageParts[i]
+        }
+        parts.push(messagePart);
+      }
+    }
+
+    const messageObj: ChatMessage = {
+      type: type,
+      name: name,
+      rank: rank,
+      dateTime: dateTime,
+      time: time,
+      parts: parts
+    };
+
+    chatMessages.push(messageObj);
+
+    const sidebarVisible = localStorage.getItem("visible") !== "false";
+    const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+    const scrollAtBottom = el.scrollTop + el.offsetHeight >= el.scrollHeight;
+    if (sidebarVisible && scrollAtBottom) {
+      markLastMessageRead();
+      // scroll to bottom of message box (once vue updates the page)
+      nextTick(() => {
+        const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+        messageBox.scrollTo(0, messageBox.scrollHeight);
+      });
+    }
+    else if (type === "message") {
+      const lastReadMessageTime = localStorage.getItem("lastReadMessageTime");
+      const compareDate = new Date(dateTime.toString());
+      if (lastReadMessageTime === null || (compareDate > new Date(lastReadMessageTime))) {
+        unreadMessages = true;
+      }
+    }
+  }
+
+  function markLastMessageRead() {
+    unreadMessages = false;
+    if (chatMessages.length > 0) {
+      const lastMessage = chatMessages[chatMessages.length - 1];
+      localStorage.setItem("lastReadMessageTime", lastMessage.dateTime!.toString());
+    }
+  }
+
+  return {chatMessages, unreadMessages, sendMessage, markLastMessageRead};
 });
