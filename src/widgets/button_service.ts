@@ -210,10 +210,10 @@ export class ButtonService {
     // `${host}/neurons/api/v1/cell_identification?filter_by=root_id&filter_string=${
     //     paramStr}`
     // ]);
-    optGroup.synapseProofreading.push([
-        'Synapse Proofreading',
-        `https://www.google.com/search?q=${segmentIDString}`
-    ])
+    // optGroup.synapseProofreading.push([
+    //     'Synapse Proofreading',
+    //     `https://www.google.com/search?q=${segmentIDString}`
+    // ])
 
     // let markComplete = SubmitDialog.generateMenuOption(
     //     handleDialogOpen, host, segmentIDString);
@@ -267,8 +267,8 @@ export class ButtonService {
         //     false), br(),
         this.generateSection('Proofreading', [], optGroup.proofreading),
         br(),
-        this.generateSection('Synapses', [], optGroup.synapseProofreading),
-        br(),
+        // this.generateSection('Synapses', [], optGroup.synapseProofreading),
+        // br(),
         br());
     return contextMenu;
   };
