@@ -7,7 +7,7 @@ declare const CONFIG: Config|undefined;
 let ws: ReconnectingWebSocket|null = null;
 
 export function connectChatSocket() {
-  if (!CONFIG) return null;
+  if (!CONFIG) return;
   ws = new ReconnectingWebSocket(CONFIG.chat_url);
 }
 

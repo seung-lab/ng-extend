@@ -7,7 +7,7 @@ import Leaderboard from "components/Leaderboard.vue";
   <div id="vueMain">
     <div class="ng-extend"><ExtensionBar /></div>
     <div id="content">
-      <div id="neuroglancer-container"></div>
+      <div id="neuroglancer-container" style="width: 0;"></div>
       <Leaderboard class="ng-extend"></Leaderboard>
     </div>
   </div>

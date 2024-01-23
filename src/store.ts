@@ -278,7 +278,7 @@ export const useStatsStore = defineStore('stats', () => {
     */
   }
 
-  return {leaderboardLoaded, leaderboardEntries, setLeaderboardTimespan, resetLeaderboard};
+  return {leaderboardLoaded, leaderboardEntries, setLeaderboardTimespan, resetLeaderboard, loopUpdateLeaderboard};
 });
 
 interface ServerMessage {
@@ -439,5 +439,5 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return {chatMessages, unreadMessages, sendMessage, markLastMessageRead};
+  return {chatMessages, unreadMessages, sendMessage, markLastMessageRead, joinChat};
 });

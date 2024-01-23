@@ -4,7 +4,8 @@ import {createPinia} from 'pinia';
 import 'neuroglancer/ui/default_viewer.css';
 
 import App from 'components/App.vue';
-import {useLayersStore} from 'src/store';
+import {useLayersStore, useStatsStore, useChatStore} from 'src/store';
+import {connectChatSocket} from 'src/chat_socket';
 import {setupDefaultViewer} from 'third_party/neuroglancer/ui/default_viewer_setup';
 
 function mergeTopBars() {
@@ -25,4 +26,9 @@ window.addEventListener('DOMContentLoaded', () => {
   const viewer = setupDefaultViewer();
   initializeWithViewer(viewer);
   mergeTopBars();
+  const {loopUpdateLeaderboard} = useStatsStore();
+  loopUpdateLeaderboard();
+  connectChatSocket();
+  const {joinChat} = useChatStore();
+  joinChat();
 });
