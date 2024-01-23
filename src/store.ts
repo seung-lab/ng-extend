@@ -218,7 +218,7 @@ export interface UserInfo {
 
 export const useStatsStore = defineStore('stats', () => {
   let leaderboardLoaded: boolean = false;
-  let leaderboardEntries: LeaderboardEntry[] = [];
+  let leaderboardEntries: LeaderboardEntry[] = reactive([]);
   let leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
   let userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
   let cellsSubmitted: number = 0;
@@ -305,7 +305,7 @@ interface MessagePart {
 
 export const useChatStore = defineStore('chat', () => {
   let joinedChat: boolean = false;
-  let chatMessages: ChatMessage[] = [];
+  let chatMessages: ChatMessage[] = reactive([]);
   let unreadMessages: boolean = false;
 
   //const login = useLoginStore(); //TODO
