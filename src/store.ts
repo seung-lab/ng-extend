@@ -217,11 +217,11 @@ export interface UserInfo {
 }
 
 export const useStatsStore = defineStore('stats', () => {
-  let leaderboardLoaded: boolean = false;
+  let leaderboardLoaded: Ref<boolean> = ref(false);
   let leaderboardEntries: LeaderboardEntry[] = reactive([]);
   let leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
-  let userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
-  let cellsSubmitted: number = 0;
+  //let userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
+  //let cellsSubmitted: number = 0;
 
   function setLeaderboardTimespan(ts: LeaderboardTimespan) {
     leaderboardTimespan = ts;
@@ -245,12 +245,12 @@ export const useStatsStore = defineStore('stats', () => {
       for (const entry of newEntries) {
         leaderboardEntries.push(entry);
       }
-      leaderboardLoaded = true;
+      leaderboardLoaded.value = true;
     });
   }
 
   async function resetLeaderboard() {
-    leaderboardLoaded = false;
+    leaderboardLoaded.value = false;
     leaderboardEntries.splice(0, leaderboardEntries.length);
     return updateLeaderboard();
   }
@@ -306,7 +306,7 @@ interface MessagePart {
 export const useChatStore = defineStore('chat', () => {
   let joinedChat: boolean = false;
   let chatMessages: ChatMessage[] = reactive([]);
-  let unreadMessages: boolean = false;
+  let unreadMessages: Ref<boolean> = ref(false);
 
   //const login = useLoginStore(); //TODO
   const loggedInUser = {"name": "test", "id": "0"}
@@ -426,13 +426,13 @@ export const useChatStore = defineStore('chat', () => {
       const lastReadMessageTime = localStorage.getItem("lastReadMessageTime");
       const compareDate = new Date(dateTime.toString());
       if (lastReadMessageTime === null || (compareDate > new Date(lastReadMessageTime))) {
-        unreadMessages = true;
+        unreadMessages.value = true;
       }
     }
   }
 
   function markLastMessageRead() {
-    unreadMessages = false;
+    unreadMessages.value = false;
     if (chatMessages.length > 0) {
       const lastMessage = chatMessages[chatMessages.length - 1];
       localStorage.setItem("lastReadMessageTime", lastMessage.dateTime!.toString());

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import {onMounted, onUnmounted} from "vue";
-
+import {storeToRefs} from "pinia";
 import {useChatStore, useStatsStore} from '../store';
 
-const {chatMessages, unreadMessages, sendMessage, markLastMessageRead} = useChatStore();
-const {leaderboardEntries} = useStatsStore();
+const store = useChatStore();
+const {chatMessages, unreadMessages} = storeToRefs(store);
+const {sendMessage, markLastMessageRead} = store;
+const {leaderboardEntries} = storeToRefs(useStatsStore());
 
 onMounted(() => {
     const scrollEl = document.querySelector(".nge-chatbox-scroll .simplebar-content-wrapper")!;
@@ -30,7 +32,7 @@ function submitMessage() {
 function getTrophy(name: string): string {
     const places: string[] = ["🥇", "🥈", "🥉"];
     for (let i = 0; i < places.length; i++) {
-        if (leaderboardEntries.length > i && leaderboardEntries[i].name === name) {
+        if (leaderboardEntries.value.length > i && leaderboardEntries.value[i].name === name) {
             return places[i];
         }
     }
@@ -136,12 +138,20 @@ function handleScroll() {
 
 <style>
 .nge-chatbox {
+    position: absolute;
+    width: 250px;
+    height: 300px;
+    bottom: 10px;
+    left: 10px;
+    border-radius: 25px;
+    box-shadow: inset 0 0 20px 3px #a46fe2;
+    background-color: #00000099;
     z-index: 80; /* over top of leaderboard simplebar */
     display: grid;
     grid-template-rows: min-content auto;
 }
 .nge-chatbox-title {
-    background-color: #000;
+    /*background-color: #000;*/
     font-size: 1.15em;
     padding: 10px;
     display: grid;
@@ -157,7 +167,7 @@ function handleScroll() {
 .nge-chatbox-content {
     display: grid;
     grid-template-rows: auto minmax(auto, min-content) min-content;
-    background-color: #111;
+    /*background-color: #111;*/
 }
 .nge-chatbox-messages {
     font-size: 0.75em;

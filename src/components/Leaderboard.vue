@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import {onMounted} from "vue";
-
+import {storeToRefs} from "pinia";
 import {useStatsStore, LeaderboardTimespan} from '../store';
 
-const {leaderboardLoaded, leaderboardEntries, setLeaderboardTimespan, resetLeaderboard} = useStatsStore();
+const store = useStatsStore();
+const {leaderboardLoaded, leaderboardEntries} = storeToRefs(store);
+const {setLeaderboardTimespan, resetLeaderboard} = store;
 
 let timespan: string|null = localStorage.getItem("timespan");
 

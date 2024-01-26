@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ExtensionBar from "components/ExtensionBar.vue";
 import Leaderboard from "components/Leaderboard.vue";
+import Chatbox from "components/Chatbox.vue";
 </script>
 
 <template>
@@ -10,6 +11,7 @@ import Leaderboard from "components/Leaderboard.vue";
       <div id="neuroglancer-container" style="width: 0;"></div>
       <Leaderboard class="ng-extend"></Leaderboard>
     </div>
+    <Chatbox class="ng-extend"></Chatbox>
   </div>
 </template>
 
