@@ -5,7 +5,7 @@ import DropdownList from "components/DropdownList.vue";
 
 import {loginSession, useLoginStore, useVolumesStore} from '../store';
 
-import logoImage from '../CaveLogo-clear.png';
+import logoImage from '../images/CaveLogo-clear.png';
 
 const login = useLoginStore();
 window.addEventListener("middleauthlogin", () => {

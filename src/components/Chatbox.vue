@@ -3,12 +3,22 @@ import {onMounted, onUnmounted} from "vue";
 import {storeToRefs} from "pinia";
 import {useChatStore, useStatsStore} from '../store';
 
+import sendImage from '../images/send.svg';
+import chevronImage from '../images/chevron.svg';
+
 const store = useChatStore();
 const {chatMessages, unreadMessages} = storeToRefs(store);
 const {sendMessage, markLastMessageRead} = store;
 const {leaderboardEntries} = storeToRefs(useStatsStore());
 
+function encodeSVG(svg: string) {
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
 onMounted(() => {
+    (document.querySelector(".nge-chatbox-messageprompt > img")! as HTMLImageElement).src = encodeSVG(chevronImage);
+    (document.querySelector(".nge-chatbox-submit > button > img")! as HTMLImageElement).src = encodeSVG(sendImage);
+
     const scrollEl = document.querySelector(".nge-chatbox-scroll .simplebar-content-wrapper")!;
     scrollEl.addEventListener("scroll", handleScroll);
 });
@@ -128,9 +138,9 @@ function handleScroll() {
         </simplebar>
         <div class="nge-chatbox-unread" v-show="unreadMessages" @click="scrollToBottom()">NEW MESSAGES</div>
         <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
-          <div class="nge-chatbox-messageprompt"><img src="images/chevron.svg" width="15" style="transform: rotate(90deg);" /></div>
+          <div class="nge-chatbox-messageprompt"><img src="insert-svg" width="15" style="transform: rotate(90deg);" /></div>
           <div class="nge-chatbox-inputbox"><input type="text" id="chatMessage" /></div>
-          <div><button type="submit"><img src="images/send.svg" width="15" /></button></div>
+          <div class="nge-chatbox-submit"><button type="submit"><img src="insert-svg" width="15" /></button></div>
         </form>
       </div>
     </div>
