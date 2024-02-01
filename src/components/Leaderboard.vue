@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import simplebar from "simplebar-vue";
+import "simplebar-core/dist/simplebar.css";
 import {onMounted} from "vue";
 import {storeToRefs} from "pinia";
 import {useStatsStore, LeaderboardTimespan} from '../store';
@@ -90,6 +92,7 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
   background-color: #111;
   display: grid;
   grid-template-rows: min-content auto;
+  font-family: sans-serif;
 }
 
 .nge-leaderboard-content {
@@ -162,5 +165,34 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
 
 .nge-leaderboard-loading {
   text-align: center;
+}
+
+.nge-sidebar-button {
+  background-color: #222;
+  padding: 5px;
+}
+
+.nge-sidebar-section-title {
+  background-color: #111;
+  font-size: 1.15em;
+  padding-top: 0.75em;
+  padding-bottom: 0.75em;
+  text-align: center;
+}
+
+.firstplace {
+  color: gold;
+}
+
+.secondplace {
+  color: silver;
+}
+
+.thirdplace {
+  color: #cd7f32;
+}
+
+.simplebar-scrollbar.simplebar-visible:before {
+  background-color: #999;
 }
 </style>

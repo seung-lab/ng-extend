@@ -220,8 +220,8 @@ export const useStatsStore = defineStore('stats', () => {
   let leaderboardLoaded: Ref<boolean> = ref(false);
   let leaderboardEntries: LeaderboardEntry[] = reactive([]);
   let leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
-  //let userInfo: UserInfo = {editsToday: 0, editsThisWeek: 0, editsAllTime: 0};
-  //let cellsSubmitted: number = 0;
+  let userInfo: UserInfo = reactive({editsToday: 0, editsThisWeek: 0, editsAllTime: 0});
+  let cellsSubmitted: Ref<number> = ref(0);
 
   function setLeaderboardTimespan(ts: LeaderboardTimespan) {
     leaderboardTimespan = ts;
@@ -256,29 +256,16 @@ export const useStatsStore = defineStore('stats', () => {
   }
 
   async function updateUserInfo() {
-    //TODO restore
-    /*
-    if (!this.loggedInUser) return;
-    const url = config.leaderboardURL + '/userInfo?userID=' + this.loggedInUser!.id;
-    fetch(url).then(result => result.json()).then(async(json) => { this.userInfo = json; });
-    const statsURL = config.userStatsURL + '&user_id=' + this.loggedInUser!.id;
-    authFetch(statsURL).then(result => result.json()).then(async(json) => { this.cellsSubmitted = json["cells_submitted_all_time"]; });
-    */
-
-    /*
-    const url = config.userStatsURL + "&user_id=" + this.loggedInUser!.id;
-    authFetch(url).then(result => result.json()).then(async(json) => {
-      this.userInfo = {
-        editsToday: json["edits_today"],
-        editsThisWeek: json["edits_past_week"],
-        editsAllTime: json["edits_all_time"]
-      };
-      this.cellsSubmitted = json["cells_submitted_all_time"];
-    });
-    */
+    if (!CONFIG) return;
+    const userID = 0; //TODO loggedInUser.id
+    const url = CONFIG.leaderboard_url + '/userInfo?userID=' + userID;
+    fetch(url).then(result => result.json()).then(async(json) => { userInfo = json; });
+    const statsURL = CONFIG.user_stats_url + '&user_id=' + userID;
+    fetch(statsURL).then(result => result.json()).then(async(json) => { cellsSubmitted = json["cells_submitted_all_time"]; });
   }
 
-  return {leaderboardLoaded, leaderboardEntries, setLeaderboardTimespan, resetLeaderboard, loopUpdateLeaderboard};
+  return {leaderboardLoaded, leaderboardEntries, userInfo, cellsSubmitted, 
+          setLeaderboardTimespan, resetLeaderboard, loopUpdateLeaderboard};
 });
 
 interface ServerMessage {
