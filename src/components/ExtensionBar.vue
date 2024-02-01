@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed, onMounted, ref} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
+import UserProfile from "components/UserProfile.vue";
 import DropdownList from "components/DropdownList.vue";
 
 import {loginSession, useLoginStore, useVolumesStore} from '../store';
@@ -22,7 +23,8 @@ onMounted(() => {
   (document.querySelector('.ng-extend-logo > a > img')! as HTMLImageElement).src = logoImage;
 });
 
-const showModal = ref(false);
+const showVolumes = ref(false);
+const showUserProfile = ref(false);
 
 function logout(session: loginSession) {
   login.logout(session);
@@ -31,7 +33,8 @@ function logout(session: loginSession) {
 </script>
 
 <template>
-  <volumes-overlay v-visible="showModal" @hide="showModal = false" />
+  <volumes-overlay v-visible="showVolumes" @hide="showVolumes = false" />
+  <user-profile v-visible="showUserProfile" @hide="showUserProfile = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://flywire.ai/" target="_blank">
@@ -39,7 +42,8 @@ function logout(session: loginSession) {
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
-    <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
+    <button v-if="volumes.length" @click="showVolumes = true">Volumes ({{ volumes.length }})</button>
+    <button @click="showUserProfile = true">User</button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
           <template #buttonTitle>Logins ({{ login.sessions.length }})</template>

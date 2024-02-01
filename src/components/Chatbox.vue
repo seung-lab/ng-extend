@@ -12,7 +12,7 @@ const {sendMessage, markLastMessageRead} = store;
 const {leaderboardEntries} = storeToRefs(useStatsStore());
 
 function encodeSVG(svg: string) {
-  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
 onMounted(() => {
@@ -66,9 +66,9 @@ function handleScroll() {
 
 <template>
     <div class="nge-chatbox" tabindex="1">
-      <div class="nge-chatbox-title">
+      <!--<div class="nge-chatbox-title">
         <div>Chat</div>
-        <!--<button class="nge-chatbox-title-button" @click="toggleMinimized()">
+        <button class="nge-chatbox-title-button" @click="toggleMinimized()">
           <img v-show="!minimized" src="images/minimize.svg" width="15" title="Minimize" />
           <img v-show="minimized" src="images/chevron.svg" width="15" title="Restore" />
         </button>
@@ -81,8 +81,8 @@ function handleScroll() {
             style="transform: rotate(180deg);"
             title="Restore"
           />
-        </button>-->
-      </div>
+        </button>
+      </div>-->
       <div class="nge-chatbox-content">
         <div class="nge-chatbox-filler"></div>
         <simplebar class="nge-chatbox-scroll" data-simplebar-auto-hide="false">
@@ -154,11 +154,11 @@ function handleScroll() {
     bottom: 10px;
     left: 10px;
     border-radius: 25px;
-    box-shadow: inset 0 0 20px 3px #a46fe2;
+    box-shadow: inset 0 0 20px 3px #a46fe2, 0 0 4px #a46fe2;
     background-color: #00000099;
     z-index: 80; /* over top of leaderboard simplebar */
-    display: grid;
-    grid-template-rows: min-content auto;
+    /*display: grid;
+    grid-template-rows: min-content auto;*/
 }
 .nge-chatbox-title {
     /*background-color: #000;*/
@@ -177,7 +177,7 @@ function handleScroll() {
 .nge-chatbox-content {
     display: grid;
     grid-template-rows: auto minmax(auto, min-content) min-content;
-    /*background-color: #111;*/
+    height: inherit;
 }
 .nge-chatbox-messages {
     font-size: 0.75em;
