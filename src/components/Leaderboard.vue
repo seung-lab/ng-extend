@@ -5,6 +5,8 @@ import {onMounted} from "vue";
 import {storeToRefs} from "pinia";
 import {useStatsStore, LeaderboardTimespan} from '../store';
 
+import nurroImage from '../images/flying nurro.png';
+
 const store = useStatsStore();
 const {leaderboardLoaded, leaderboardEntries} = storeToRefs(store);
 const {setLeaderboardTimespan, resetLeaderboard} = store;
@@ -13,6 +15,7 @@ let timespan: string|null = localStorage.getItem("timespan");
 
 onMounted(() => {
     selectButton(timespan || "Weekly");
+    (document.querySelector('.nge-leaderboard-headerimage > img')! as HTMLImageElement).src = nurroImage;
 });
 
 function getPlace(index: number): string {
@@ -55,6 +58,7 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
 
 <template>
   <div class="nge-leaderboard">
+    <div class="nge-leaderboard-headerimage"><img src="insert-logo" title="Nurro"></div>
     <div class="nge-leaderboard-titlebar">
       <div class="nge-sidebar-section-title">Top Editors</div>
     </div>
@@ -91,8 +95,12 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
   width: 200px;
   background-color: #111;
   display: grid;
-  grid-template-rows: min-content auto;
+  grid-template-rows: min-content min-content auto;
   font-family: sans-serif;
+}
+
+.nge-leaderboard-headerimage > img {
+  width: 200px;
 }
 
 .nge-leaderboard-content {
