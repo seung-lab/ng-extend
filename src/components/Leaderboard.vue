@@ -5,7 +5,7 @@ import {onMounted} from "vue";
 import {storeToRefs} from "pinia";
 import {useStatsStore, LeaderboardTimespan} from '../store';
 
-import nurroImage from '../images/flying nurro.png';
+import nurroImage from '../images/confetti nurro.png';
 
 const store = useStatsStore();
 const {leaderboardLoaded, leaderboardEntries} = storeToRefs(store);
