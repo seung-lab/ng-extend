@@ -14,7 +14,6 @@ import {AnnotationDisplayState, AnnotationLayerState} from 'neuroglancer/annotat
 import {getDefaultAnnotationListBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {MouseEventBinder} from 'neuroglancer/util/mouse_bindings';
 import {removeChildren} from "neuroglancer/util/dom";
-import {BoundingBox} from "neuroglancer/coordinate_transform";
 import {RenderLayerRole} from "neuroglancer/renderlayer";
 import {LoadedDataSubsource} from "neuroglancer/layer_data_source";
 import {vec3} from "neuroglancer/util/geom";
@@ -23,51 +22,45 @@ import {RefCounted} from "neuroglancer/util/disposable";
 import {Trackable} from "neuroglancer/util/trackable";
 import {verifyOptionalObjectProperty} from "neuroglancer/util/json";
 import {NullarySignal} from "neuroglancer/util/signal";
+import {StatusMessage} from "neuroglancer/status";
 
 const ADD_CUBE_TOOL_ID = "annotateCustomCube";
-
 const ADD_CUBE_EVENT_MAP = EventActionMap.fromObject({
     'at:shift?+enter': {action: 'submit'},
     'at:shift?+control+mousedown0': {action: 'add-point'},
 });
-
 const CUBESIZE_JSON_KEY = "cubeSize";
 const MOUSEPOSITION_JSON_KEY = "mousePosition";
 
-// function verifyCubeSizeValue(value: string): string {
-//     if (value.split(/,\s*/).length !== 3) {
-//         throw new Error(`Expected sizes of x,y,z, but missing one or few dimensions: ${JSON.stringify(value)}.`);
-//     }
-//     return value
-// }
-
-function verifyFloat32Array(obj: any): Float32Array {
-    if (!(obj instanceof Float32Array)) {
+function verifyFloat32Array(obj: string): Float32Array {
+    const parts = obj.split(',').map(part => parseFloat(part.trim()));
+    if (parts.length >= 1 && parts.every(part => !isNaN(part))) {
+        return new Float32Array(parts);
+    } else {
+        StatusMessage.showMessage('Invalid input format. Expected format: number,number,number');
         throw new Error(`It is not a type of Float32Array.`)
     }
-    return obj
 }
 
-const calculateBoundingBox = (centroid: Float32Array, size: Float32Array) => {
-    console.log(centroid, size)
+const calculateBoundingBox = (mousePoint: Float32Array, cubeSize: Float32Array) => {
     // Calculate half sizes
-    const halfx = size[0] / 2;
-    const halfy = size[1] / 2;
-    const halfz = size[2] / 2;
+    const halfx = 1000 / 8 * cubeSize[0] / 2;
+    const halfy = 1000 / 8 * cubeSize[1] / 2;
+    const halfz = 1000 / 33 * cubeSize[2] / 2;
 
     // Calculate lower bounds
     const lowerBounds = Float32Array.of
     (
-        centroid[0] - halfx, centroid[1] - halfy,
-        centroid[2] - halfz);
+        mousePoint[0] - halfx, mousePoint[1] - halfy,
+        mousePoint[2] - halfz);
 
     // Calculate upper bounds
     const upperBounds = Float32Array.of
     (
-        centroid[0] + halfx, centroid[1] + halfy,
-        centroid[2] + halfz);
+        mousePoint[0] + halfx, mousePoint[1] + halfy,
+        mousePoint[2] + halfz);
 
-    return {lowerBounds: Float64Array.from(lowerBounds), upperBounds: Float64Array.from(upperBounds)};
+    return {lowerBounds: Float32Array.from(lowerBounds), upperBounds: Float32Array.from(upperBounds)};
 }
 
 function makeColoredAnnotationState(
@@ -106,7 +99,6 @@ function getGraphLoadedSubsource(layer: SegmentationUserLayer) {
         if (loadState === undefined || loadState.error !== undefined) continue;
         for (const subsource of loadState.subsources) {
             if (subsource.enabled) {
-                console.log(subsource.subsourceEntry.id)
                 if (subsource.subsourceEntry.id === 'graph') {
                     return subsource;
                 }
@@ -120,8 +112,6 @@ class AddCubeAnnotationState extends RefCounted implements Trackable {
     changed = new NullarySignal();
     cubeSize = new TrackableValue<Float32Array>(Float32Array.of(5, 5, 5), verifyFloat32Array);
     mousePosition = new TrackableValue<Float32Array>(Float32Array.of(0, 0, 0), verifyFloat32Array);
-    // mousePositionField: TextInputWidget<Float32Array> = new TextInputWidget<Float32Array>(this.mousePosition);
-
 
     constructor() {
         super();
@@ -139,7 +129,7 @@ class AddCubeAnnotationState extends RefCounted implements Trackable {
     }
 
     toJSON() {
-        const { cubeSize, mousePosition } = this;
+        const {cubeSize, mousePosition} = this;
         return {
             [CUBESIZE_JSON_KEY]: cubeSize.toJSON(),
             [MOUSEPOSITION_JSON_KEY]: mousePosition.toJSON(),
@@ -149,7 +139,7 @@ class AddCubeAnnotationState extends RefCounted implements Trackable {
     restoreState(x: any) {
         verifyOptionalObjectProperty(
             x, CUBESIZE_JSON_KEY, value => {
-                this.cubeSize.restoreState(value);
+                this.cubeSize.restoreState(verifyFloat32Array(value));
             }
         );
         verifyOptionalObjectProperty(
@@ -172,38 +162,21 @@ class AddCubeAnnotationTool extends LayerTool<SegmentationUserLayer> {
     activate(activation: ToolActivation<this>) {
         const {layer} = this;
         const {cubeSize, mousePosition} = this.addCubeAnnotationState;
-        // Ensure we use the same segmentationGroupState while activated.
         const {body, header} = makeToolActivationStatusMessageWithHeader(activation);
         header.textContent = 'Add cube';
         body.classList.add('tool-status', 'add-cube');
 
         const submitAction = () => {
-            updateAnnotationElements();
+            if (cubeSize.value instanceof Float32Array && mousePosition.value instanceof Float32Array) {
+                updateAnnotationElements();
+            }
         }
 
         const cubeSizeWidget = activation.registerDisposer(new TextInputWidget(cubeSize))
-        console.log(cubeSizeWidget.model.value)
         const label = document.createElement("cube-size");
-        label.appendChild(document.createTextNode('set size'));
+        label.appendChild(document.createTextNode('set size (micron)'));
         label.appendChild(cubeSizeWidget.element)
         body.appendChild(label)
-
-        cubeSizeWidget.element.addEventListener('input', (async () => {
-            const inputString = cubeSizeWidget.element.value;
-            const parts = inputString.split(',').map(part => parseFloat(part.trim()));
-            if (parts.length >= 1 && parts.every(part => !isNaN(part))) {
-                const newSize = new Float32Array(parts);
-                cubeSize.value = newSize; // This will update cubeSize and should trigger any associated reactions
-                console.log(cubeSize.value)
-                cubeSize.changed.dispatch();
-            } else {
-                console.error('Invalid input format. Expected format: number,number,number');
-            }
-        }));
-
-        cubeSize.changed.add(() => {
-            cubeSizeWidget.model.value = cubeSize.value;
-        });
 
         // mouse position
         const mousePositionWidget = activation.registerDisposer(new TextInputWidget(mousePosition))
@@ -221,21 +194,20 @@ class AddCubeAnnotationTool extends LayerTool<SegmentationUserLayer> {
             }
         }));
 
-        body.appendChild(makeIcon({
-          text: 'Clear',
-          title: 'Clear Values',
-          onClick: () => {
-              this.addCubeAnnotationState.cubeSize.reset();
-              this.addCubeAnnotationState.mousePosition.reset();
-          }
-        }));
+        // body.appendChild(makeIcon({
+        //     text: 'Clear',
+        //     title: 'Clear Values',
+        //     onClick: () => {
+        //         this.addCubeAnnotationState.cubeSize.reset();
+        //         this.addCubeAnnotationState.mousePosition.reset();
+        //     }
+        // }));
 
         const annotationElements = document.createElement('div');
         annotationElements.classList.add('cube-annotations');
         body.appendChild(annotationElements);
 
         const bindings = getDefaultAnnotationListBindings();
-        console.log(bindings)
         this.registerDisposer(new MouseEventBinder(annotationElements, bindings));
 
         const updateAnnotationElements = () => {
@@ -246,16 +218,15 @@ class AddCubeAnnotationTool extends LayerTool<SegmentationUserLayer> {
             this.cubeAnnotationState = annotationGroup;
 
             // annotation
-            const box: BoundingBox = calculateBoundingBox(mousePosition.value, cubeSize.value)
+            const box = calculateBoundingBox(mousePosition.value, cubeSize.value)
             // Create annotation
             const annotationId = makeAnnotationId()
             const annotation: Annotation = {
                 id: annotationId,
-                // description: 'addcustomcube',
                 pointA: new Float32Array(box.lowerBounds),
                 pointB: new Float32Array(box.upperBounds),
                 type: AnnotationType.AXIS_ALIGNED_BOUNDING_BOX,
-                properties: []//layer.source.prtoperties.map(x => x.default),
+                properties: []
             };
             this.cubeAnnotationState.source.add(annotation);
         };
@@ -268,7 +239,6 @@ class AddCubeAnnotationTool extends LayerTool<SegmentationUserLayer> {
         });
 
         const setMousePosition = (position: Float32Array) => {
-            console.log(position, cubeSize)
             mousePosition.value = position;
             mousePosition.changed.dispatch();
         };
@@ -289,7 +259,6 @@ class AddCubeAnnotationTool extends LayerTool<SegmentationUserLayer> {
 
 export function registerAnnotateCubeTool() {
     registerTool(SegmentationUserLayer, ADD_CUBE_TOOL_ID, layer => {
-        console.log("register tool")
         return new AddCubeAnnotationTool(layer, true)
     })
 }
