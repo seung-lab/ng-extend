@@ -38,7 +38,7 @@ function logout(session: loginSession) {
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://flywire.ai/" target="_blank">
-        <img src="insert-logo" title="Cave Explorer">
+        <img src="insert-logo" title="Pyr">
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>

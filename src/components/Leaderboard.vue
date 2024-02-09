@@ -3,7 +3,8 @@ import simplebar from "simplebar-vue";
 import "simplebar-core/dist/simplebar.css";
 import {onMounted} from "vue";
 import {storeToRefs} from "pinia";
-import {useStatsStore, LeaderboardTimespan} from '../store';
+import {useStatsStore, LeaderboardTimespan} from "../store";
+import HologramPanel from "components/HologramPanel.vue";
 
 import nurroImage from '../images/confetti nurro.png';
 
@@ -15,7 +16,7 @@ let timespan: string|null = localStorage.getItem("timespan");
 
 onMounted(() => {
     selectButton(timespan || "Weekly");
-    (document.querySelector('.nge-leaderboard-headerimage > img')! as HTMLImageElement).src = nurroImage;
+    (document.querySelector(".nge-leaderboard-headerimage > img")! as HTMLImageElement).src = nurroImage;
 });
 
 function getPlace(index: number): string {
@@ -57,46 +58,59 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
 </script>
 
 <template>
-  <div class="nge-leaderboard">
-    <div class="nge-leaderboard-headerimage"><img src="insert-logo" title="Nurro"></div>
-    <div class="nge-leaderboard-titlebar">
-      <div class="nge-sidebar-section-title">Top Editors</div>
-    </div>
-    <div class="nge-leaderboard-content">
-      <div class="nge-leaderboard-timeselect">
-        <div class="nge-leaderboard-timeselect-filler"></div>
-        <button v-for="timespan of getTimespanNames()" :key="timespan" :class="'nge-sidebar-button ' + timespan"
-        :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="selectButton(timespan)">{{timespan}}</button>
-        <div class="nge-leaderboard-timeselect-filler"></div>
-      </div>
-      <simplebar data-simplebar-auto-hide="false">
-        <div class="nge-leaderboard-entries">
-          <div class="nge-leaderboard-row nge-leaderboard-header">
-            <div>Rank</div>
-            <div>Name</div>
-            <div>Edits</div>
-          </div>
-          <div v-for="(entry, index) of leaderboardEntries" :key="'entry' + index"
-            :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
-            <div class="nge-leaderboard-rank">{{index+1}}</div>
-            <div class="nge-leaderboard-name">{{entry.name}}</div>
-            <div class="nge-leaderboard-score">{{entry.score}}</div>
-          </div>
+  <hologram-panel class="nge-leaderboard-hologram">
+    <div class="nge-leaderboard">
+      <div class="nge-leaderboard-headerimage"><img src="insert-logo" title="Nurro"></div>
+      <div class="nge-leaderboard-titlebar">Top Editors</div>
+      <div class="nge-leaderboard-content">
+        <div class="nge-leaderboard-timeselect">
+          <div class="nge-leaderboard-timeselect-filler"></div>
+          <button v-for="timespan of getTimespanNames()" :key="timespan" :class="'nge-sidebar-button ' + timespan"
+          :title="'Switch to ' + timespan.toLowerCase() + ' leaderboard'" @click="selectButton(timespan)">{{timespan}}</button>
+          <div class="nge-leaderboard-timeselect-filler"></div>
         </div>
-      </simplebar>
-      <div class="nge-leaderboard-loading" v-show="!leaderboardLoaded">Loading...</div>
-      <div class="nge-leaderboard-loading" v-show="leaderboardLoaded && leaderboardEntries.length === 0">No edits yet... why not make one?</div>
+        <div class="nge-leaderboard-scroll">
+          <simplebar data-simplebar-auto-hide="false">
+            <div class="nge-leaderboard-entries">
+              <div class="nge-leaderboard-row nge-leaderboard-header">
+                <div>Rank</div>
+                <div>Name</div>
+                <div>Edits</div>
+              </div>
+              <div v-for="(entry, index) of leaderboardEntries" :key="'entry' + index"
+                :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
+                <div class="nge-leaderboard-rank">{{index+1}}</div>
+                <div class="nge-leaderboard-name">{{entry.name}}</div>
+                <div class="nge-leaderboard-score">{{entry.score}}</div>
+              </div>
+            </div>
+          </simplebar>
+        </div>
+        <div class="nge-leaderboard-loading" v-show="!leaderboardLoaded">Loading...</div>
+        <div class="nge-leaderboard-loading" v-show="leaderboardLoaded && leaderboardEntries.length === 0">No edits yet... why not make one?</div>
+      </div>
     </div>
-  </div>
+  </hologram-panel>
 </template>
 
 <style>
+.nge-leaderboard-hologram {
+  top: 45px;
+  bottom: 10px;
+  right: 10px;
+  width: 250px;
+  height: 700px;
+}
+
 .nge-leaderboard {
-  width: 200px;
-  background-color: #111;
   display: grid;
   grid-template-rows: min-content min-content auto;
   font-family: sans-serif;
+  height: inherit;
+}
+
+.nge-leaderboard-headerimage {
+  margin: auto;
 }
 
 .nge-leaderboard-headerimage > img {
@@ -108,7 +122,15 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
   grid-template-rows: min-content auto auto;
 }
 
+.nge-leaderboard-titlebar {
+  font-size: 1.15em;
+  padding-top: 0.75em;
+  padding-bottom: 0.75em;
+  text-align: center;
+}
+
 .nge-leaderboard-timeselect {
+  background-color: #111;
   display: grid;
   grid-template-columns: 5% 45% 45% 5%;
 }
@@ -136,13 +158,17 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
   overflow: auto;
 }
 
+.nge-leaderboard-scroll {
+  overflow: auto;
+}
+
 .nge-leaderboard-row {
   display: contents;
 }
 
 .nge-leaderboard-row > div {
-  padding-top: 0.5em;
-  padding-bottom: 0.5em;
+  padding-top: 0.8em;
+  padding-bottom: 0.8em;
   padding-left: 0.4em;
   font-size: 0.9em;
 }
@@ -153,7 +179,7 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
 }
 
 .rowOdd > div {
-  background-color: #222;
+  background-color: #2226;
 }
 
 .nge-leaderboard-rank {
@@ -178,14 +204,6 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
 .nge-sidebar-button {
   background-color: #222;
   padding: 5px;
-}
-
-.nge-sidebar-section-title {
-  background-color: #111;
-  font-size: 1.15em;
-  padding-top: 0.75em;
-  padding-bottom: 0.75em;
-  text-align: center;
 }
 
 .firstplace {
