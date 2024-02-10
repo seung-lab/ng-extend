@@ -130,7 +130,7 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
 }
 
 .nge-leaderboard-timeselect {
-  background-color: #111;
+  /*background-color: #111;*/
   display: grid;
   grid-template-columns: 5% 45% 45% 5%;
 }
