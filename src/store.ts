@@ -31,6 +31,7 @@ export interface loginSession {
   key: string,
   name: string,
   email: string,
+  id: number,
   hostname: string,
   status?: number,
 }
@@ -69,6 +70,9 @@ export const useLoginStore = defineStore('login', () => {
       if (!dataString) { return; }
       const data = JSON.parse(dataString);
       const {hostname} = new URL(data.url);
+      if (hostname !== "https://global.daf-apis.com/sticky_auth") {
+        continue;
+      }
 
       try {
         const res = await fetch(data.url + '/api/v1/user/me', {
@@ -83,6 +87,7 @@ export const useLoginStore = defineStore('login', () => {
             key,
             name: message.name,
             email: message.email,
+            id: message.id,
             hostname,
           });
         } else {
@@ -90,6 +95,7 @@ export const useLoginStore = defineStore('login', () => {
             key,
             name: '',
             email: '',
+            id: 0,
             hostname,
             status: res.status,
           });
@@ -295,8 +301,8 @@ export const useChatStore = defineStore('chat', () => {
   let chatMessages: ChatMessage[] = reactive([]);
   let unreadMessages: Ref<boolean> = ref(false);
 
-  //const login = useLoginStore(); //TODO
-  const loggedInUser = {"name": "test", "id": "0"}
+  const {sessions} = useLoginStore();
+  const loggedInUser = sessions[0];
 
   function sendJoinMessage(ws: ReconnectingWebSocket) {
     const joinMessage = JSON.stringify({
@@ -311,8 +317,8 @@ export const useChatStore = defineStore('chat', () => {
     const now = new Date();
     const messageObj = {
       name: loggedInUser ? loggedInUser.name : 'Guest',
-      userID: loggedInUser ? loggedInUser.id : '0',
-      type: "message",
+      userID: loggedInUser ? loggedInUser.id : 0,
+      type: 'message',
       message: message,
       timestamp: now
     };
