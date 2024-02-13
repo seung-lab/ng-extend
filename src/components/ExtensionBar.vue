@@ -6,7 +6,12 @@ import DropdownList from "components/DropdownList.vue";
 
 import {loginSession, useLoginStore, useVolumesStore} from '../store';
 
-import logoImage from '../images/pyr-logo.png';
+import logoGemImage from '../images/pyr icon.svg';
+import logoTextImage from '../images/pyr wordmark.svg';
+
+function encodeSVG(svg: string) {
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
 
 const login = useLoginStore();
 window.addEventListener("middleauthlogin", () => {
@@ -20,7 +25,8 @@ const invalidLogins = computed(() => login.sessions.filter(x => x.status !== und
 const {volumes} = useVolumesStore();
 
 onMounted(() => {
-  (document.querySelector('.ng-extend-logo > a > img')! as HTMLImageElement).src = logoImage;
+  (document.querySelector('.pyr-logo-gem')! as HTMLImageElement).src = encodeSVG(logoGemImage);
+  (document.querySelector('.pyr-logo-text')! as HTMLImageElement).src = encodeSVG(logoTextImage);
 });
 
 const showVolumes = ref(false);
@@ -37,8 +43,9 @@ function logout(session: loginSession) {
   <user-profile v-visible="showUserProfile" @hide="showUserProfile = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
-      <a href="https://flywire.ai/" target="_blank">
-        <img src="insert-logo" title="Pyr">
+      <a href="https://pyr.ai/" target="_blank">
+        <img class="pyr-logo-gem" src="insert-logo" title="Pyr" width="20">
+        <img class="pyr-logo-text" src="insert-logo" title="Pyr" width="60">
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>

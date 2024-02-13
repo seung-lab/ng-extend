@@ -2,8 +2,6 @@
 import {onMounted, onUnmounted} from "vue";
 import {storeToRefs} from "pinia";
 import {useChatStore, useStatsStore} from '../store';
-import simplebar from "simplebar-vue";
-import "simplebar-core/dist/simplebar.css";
 import HologramPanel from "components/HologramPanel.vue";
 
 //import sendImage from '../images/send.svg';
@@ -22,12 +20,12 @@ onMounted(() => {
     //(document.querySelector(".nge-chatbox-messageprompt > img")! as HTMLImageElement).src = encodeSVG(chevronImage);
     //(document.querySelector(".nge-chatbox-submit > button > img")! as HTMLImageElement).src = encodeSVG(sendImage);
 
-    const scrollEl = document.querySelector(".nge-chatbox-scroll .simplebar-content-wrapper")!;
+    const scrollEl = document.querySelector(".nge-chatbox-scroll")!;
     scrollEl.addEventListener("scroll", handleScroll);
 });
 
 onUnmounted(() => {
-    const scrollEl = document.querySelector(".nge-chatbox-scroll .simplebar-content-wrapper")!;
+    const scrollEl = document.querySelector(".nge-chatbox-scroll")!;
     scrollEl.removeEventListener("scroll", handleScroll);
 });
 
@@ -70,26 +68,9 @@ function handleScroll() {
 <template>
   <hologram-panel class="nge-chatbox-hologram">
     <div class="nge-chatbox" tabindex="1">
-      <!--<div class="nge-chatbox-title">
-        <div>Chat</div>
-        <button class="nge-chatbox-title-button" @click="toggleMinimized()">
-          <img v-show="!minimized" src="images/minimize.svg" width="15" title="Minimize" />
-          <img v-show="minimized" src="images/chevron.svg" width="15" title="Restore" />
-        </button>
-        <button class="nge-chatbox-title-button" @click="toggleExpanded()">
-          <img v-show="!expanded" src="images/expand.svg" width="15" title="Expand" />
-          <img
-            v-show="expanded"
-            src="images/chevron.svg"
-            width="15"
-            style="transform: rotate(180deg);"
-            title="Restore"
-          />
-        </button>
-      </div>-->
-      <div class="nge-chatbox-content">
-        <div class="nge-chatbox-filler"></div>
-        <simplebar class="nge-chatbox-scroll" data-simplebar-auto-hide="false">
+      <div class="nge-chatbox-filler"></div>
+      <div class="nge-chatbox-grid">
+        <div class="nge-chatbox-scroll">
           <div class="nge-chatbox-messages">
             <span
               class="nge-chatbox-item"
@@ -100,21 +81,21 @@ function handleScroll() {
                 <div class="nge-chatbox-info-content">{{message.name}}</div>
                 <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
               </div>
-  
+
               <div class="nge-chatbox-info" v-if="message.type === 'join'">
                 <div class="nge-chatbox-info-content">{{message.name}} joined chat.</div>
               </div>
-  
+
               <div class="nge-chatbox-info" v-if="message.type === 'leave'">
                 <div class="nge-chatbox-info-content">{{message.name}} left chat.</div>
               </div>
-  
+
               <div class="nge-chatbox-info" v-if="message.type === 'disconnected'">
                 <div class="nge-chatbox-info-content">Your message was not sent because you were disconnected from chat. Try reloading the page.</div>
               </div>
-  
+
               <div class="nge-chatbox-time" v-if="message.type === 'time'">{{message.time}}</div>
-  
+
               <div
                 class="nge-chatbox-message"
                 v-if="message.type === 'message'"
@@ -127,7 +108,7 @@ function handleScroll() {
                   <span
                     v-if="part.type === 'sender'"
                     :class="'nge-chatbox-message-text sender ' + message.rank"
-                  >{{part.text}}{{getTrophy(message.name)}}:</span>
+                  >{{part.text}}{{getTrophy(message.name)}}: </span>
                   <span v-if="part.type === 'text'" class="nge-chatbox-message-text">{{part.text}}</span>
                   <a
                     v-if="part.type === 'link'"
@@ -139,14 +120,14 @@ function handleScroll() {
               </div>
             </span>
           </div>
-        </simplebar>
-        <div class="nge-chatbox-unread" v-show="unreadMessages" @click="scrollToBottom()">NEW MESSAGES</div>
-        <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
-          <!--<div class="nge-chatbox-messageprompt"><img src="insert-svg" width="15" style="transform: rotate(90deg);" /></div>-->
-          <div class="nge-chatbox-inputbox"><input type="text" id="chatMessage" placeholder=">"/></div>
-          <!--<div class="nge-chatbox-submit"><button type="submit"><img src="insert-svg" width="15" /></button></div>-->
-        </form>
+        </div>
       </div>
+      <div class="nge-chatbox-unread" v-show="unreadMessages" @click="scrollToBottom()">NEW MESSAGES</div>
+      <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
+        <!--<div class="nge-chatbox-messageprompt"><img src="insert-svg" width="15" style="transform: rotate(90deg);" /></div>-->
+        <div class="nge-chatbox-inputbox"><input type="text" id="chatMessage" placeholder=">"/></div>
+        <!--<div class="nge-chatbox-submit"><button type="submit"><img src="insert-svg" width="15" /></button></div>-->
+      </form>
     </div>
   </hologram-panel>
 </template>
@@ -159,10 +140,7 @@ function handleScroll() {
     left: 10px;
 }
 .nge-chatbox {
-    z-index: 80; /* over top of leaderboard simplebar */
-    height: inherit;
-    /*display: grid;
-    grid-template-rows: min-content auto;*/
+    min-height: 0;
 }
 .nge-chatbox-title {
     /*background-color: #000;*/
@@ -178,10 +156,11 @@ function handleScroll() {
     padding-left: 10px;
     padding-right: 10px;
 }
-.nge-chatbox-content {
+.nge-chatbox-grid {
     display: grid;
-    grid-template-rows: auto minmax(auto, min-content) min-content;
-    height: inherit;
+    height: 250px;
+}
+.nge-chatbox-scroll {
     overflow: auto;
 }
 .nge-chatbox-messages {
@@ -238,11 +217,10 @@ function handleScroll() {
 }
 .nge-chatbox-inputbox > input {
     color: #fff;
-    background-color: #111;
-    width: 200px;
-    /*
-    max-width: 150px;
-    border-width: 0px;*/
+    background-color: #2226;
+    width: 220px;
+    border: 1px solid #01ffffba;
+    border-radius: 4px;
 }
 .nge-chatbox-unread {
     z-index: 90;

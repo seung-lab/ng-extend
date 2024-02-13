@@ -3,9 +3,11 @@
 let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
 let elem: HTMLElement;
 
+//TODO load position from localstorage
+
 function clickHeader(event: MouseEvent) {
     event.preventDefault();
-    elem = (event.target as HTMLElement).parentElement!.parentElement!;
+    elem = (event.target as HTMLElement).parentElement!;
     pos3 = event.clientX;
     pos4 = event.clientY;
     document.onmouseup = release;
@@ -25,15 +27,14 @@ function drag(e: MouseEvent) {
 function release() {
     document.onmouseup = null;
     document.onmousemove = null;
+    //TODO save position
 }
 </script>
 
 <template>
   <div class="pyr-hologram-panel">
-    <div class="pyr-hologram-content">
-        <div class="pyr-hologram-header" @mousedown="clickHeader"></div>
-        <slot></slot>
-    </div>
+    <div class="pyr-hologram-header" @mousedown="clickHeader"></div>
+    <slot></slot>
     <!--<div class="pyr-hologram-border"></div>-->
   </div>
 </template>
@@ -46,6 +47,8 @@ function release() {
   overflow: hidden;
   font-size: 13px;
   z-index: 50;
+  display: grid;
+  grid-template-rows: min-content auto;
   /*border-radius: 10px;
   box-shadow: 0 0 5px #a46fe2aa;
   backdrop-filter: blur(5px);*/
@@ -56,17 +59,19 @@ function release() {
   border-right: none;
   backdrop-filter: blur(2px);
 }
-.pyr-hologram-content {
-  position: absolute;
-  width: inherit;
-  height: inherit;
-}
+
 .pyr-hologram-header {
   cursor: move;
   height: 20px;
   /*border: 2px solid #a46fe2aa;*/
 }
-/*.pyr-hologram-border {
+/*
+.pyr-hologram-content {
+  position: absolute;
+  width: inherit;
+  height: inherit;
+}
+.pyr-hologram-border {
   border-radius: 10px;
   box-shadow: inset 0 0 30px 3px #a46fe2aa;
   position: relative;

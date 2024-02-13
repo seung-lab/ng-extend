@@ -405,13 +405,13 @@ export const useChatStore = defineStore('chat', () => {
     chatMessages.push(messageObj);
 
     const sidebarVisible = localStorage.getItem("visible") !== "false";
-    const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+    const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll');
     const scrollAtBottom = el.scrollTop + el.offsetHeight >= el.scrollHeight;
     if (sidebarVisible && scrollAtBottom) {
       markLastMessageRead();
       // scroll to bottom of message box (once vue updates the page)
       nextTick(() => {
-        const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+        const messageBox = <HTMLElement>document.querySelector('.nge-chatbox-scroll');
         messageBox.scrollTo(0, messageBox.scrollHeight);
       });
     }

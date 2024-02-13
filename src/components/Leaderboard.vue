@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import simplebar from "simplebar-vue";
-import "simplebar-core/dist/simplebar.css";
 import {onMounted} from "vue";
 import {storeToRefs} from "pinia";
 import {useStatsStore, LeaderboardTimespan} from "../store";
@@ -70,21 +68,19 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
           <div class="nge-leaderboard-timeselect-filler"></div>
         </div>
         <div class="nge-leaderboard-scroll">
-          <simplebar data-simplebar-auto-hide="false">
-            <div class="nge-leaderboard-entries">
-              <div class="nge-leaderboard-row nge-leaderboard-header">
-                <div>Rank</div>
-                <div>Name</div>
-                <div>Edits</div>
-              </div>
-              <div v-for="(entry, index) of leaderboardEntries" :key="'entry' + index"
-                :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
-                <div class="nge-leaderboard-rank">{{index+1}}</div>
-                <div class="nge-leaderboard-name">{{entry.name}}</div>
-                <div class="nge-leaderboard-score">{{entry.score}}</div>
-              </div>
+          <div class="nge-leaderboard-entries">
+            <div class="nge-leaderboard-row nge-leaderboard-header">
+              <div>Rank</div>
+              <div>Name</div>
+              <div>Edits</div>
             </div>
-          </simplebar>
+            <div v-for="(entry, index) of leaderboardEntries" :key="'entry' + index"
+              :class="'nge-leaderboard-row row' + (((index+1) % 2) ? 'Odd' : 'Even') + getPlace(index)">
+              <div class="nge-leaderboard-rank">{{index+1}}</div>
+              <div class="nge-leaderboard-name">{{entry.name}}</div>
+              <div class="nge-leaderboard-score">{{entry.score}}</div>
+            </div>
+          </div>
         </div>
         <div class="nge-leaderboard-loading" v-show="!leaderboardLoaded">Loading...</div>
         <div class="nge-leaderboard-loading" v-show="leaderboardLoaded && leaderboardEntries.length === 0">No edits yet... why not make one?</div>
@@ -106,7 +102,7 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
   display: grid;
   grid-template-rows: min-content min-content auto;
   font-family: sans-serif;
-  height: inherit;
+  min-height: 0;
 }
 
 .nge-leaderboard-headerimage {
@@ -120,6 +116,7 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
 .nge-leaderboard-content {
   display: grid;
   grid-template-rows: min-content auto auto;
+  min-height: 0;
 }
 
 .nge-leaderboard-titlebar {
