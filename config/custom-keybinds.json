@@ -10,7 +10,7 @@
     "provider": "graphene"
   },
   "keyt": {
-    "layer": "segmentation",
+    "layer": "annotation",
     "tool": "annotateCustomCube"
   }
 }
