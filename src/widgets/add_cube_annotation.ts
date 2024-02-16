@@ -1,32 +1,23 @@
 import {LayerTool, makeToolActivationStatusMessageWithHeader, registerTool, ToolActivation} from "neuroglancer/ui/tool";
-// import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeIcon} from "neuroglancer/widget/icon";
 import {EventActionMap} from "neuroglancer/util/mouse_bindings";
 import {TextInputWidget} from "neuroglancer/widget/text_input";
 import {TrackableValue} from "neuroglancer/trackable_value";
 import {
     Annotation,
-    LocalAnnotationSource,
     makeAnnotationId,
     AnnotationType,
 } from "neuroglancer/annotation";
-import {AnnotationDisplayState, AnnotationLayerState} from 'neuroglancer/annotation/annotation_layer_state';
+import {AnnotationLayerState} from 'neuroglancer/annotation/annotation_layer_state';
 import {getDefaultAnnotationListBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {MouseEventBinder} from 'neuroglancer/util/mouse_bindings';
 import {removeChildren} from "neuroglancer/util/dom";
-import {RenderLayerRole} from "neuroglancer/renderlayer";
-import {LoadedDataSubsource} from "neuroglancer/layer_data_source";
-import {vec3} from "neuroglancer/util/geom";
-// import {TrackableBoolean} from "neuroglancer/trackable_boolean";
 import {RefCounted} from "neuroglancer/util/disposable";
 import {Trackable} from "neuroglancer/util/trackable";
 import {verifyOptionalObjectProperty} from "neuroglancer/util/json";
 import {NullarySignal} from "neuroglancer/util/signal";
 import {StatusMessage} from "neuroglancer/status";
 import {AnnotationUserLayer} from "neuroglancer/annotation/user_layer";
-// import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
-// import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
-// import {makeAnnotationListElement} from 'neuroglancer/ui/annotations';
 
 const ADD_CUBE_TOOL_ID = "annotateCustomCube";
 const ADD_CUBE_EVENT_MAP = EventActionMap.fromObject({
@@ -65,55 +56,6 @@ const calculateBoundingBox = (mousePoint: Float32Array, cubeSize: Float32Array) 
         mousePoint[2] + halfz);
 
     return {lowerBounds: Float32Array.from(lowerBounds), upperBounds: Float32Array.from(upperBounds)};
-}
-
-function makeColoredAnnotationState(
-    layer: AnnotationUserLayer, loadedSubsource: LoadedDataSubsource,
-    subsubsourceId: string, color: vec3, readonly = false) {
-    const {subsourceEntry} = loadedSubsource;
-    const source = new LocalAnnotationSource(loadedSubsource.loadedDataSource.transform, [], []);
-    // const source = new AnnotationSource();
-    source.readonly = readonly;
-    const displayState = new AnnotationDisplayState();
-    displayState.color.value.set(color);
-    console.log(loadedSubsource, source, displayState)
-    // displayState.relationshipStates.set('associated segments', {
-    //     segmentationState: new WatchableValue(layer.displayState),
-    //     showMatches: new TrackableBoolean(false),
-    // });
-
-    const state = new AnnotationLayerState({
-        localPosition: layer.localPosition,
-        transform: loadedSubsource.getRenderLayerTransform(),
-        source,
-        displayState,
-        dataSource: loadedSubsource.loadedDataSource.layerDataSource,
-        subsourceIndex: loadedSubsource.subsourceIndex,
-        subsourceId: subsourceEntry.id,
-        subsubsourceId,
-        role: RenderLayerRole.ANNOTATION,
-    });
-    console.log(layer)
-    layer.addAnnotationLayerState(state, loadedSubsource);
-    console.log(state)
-    return state;
-}
-
-function getDefaultLoadedSubsource(layer: AnnotationUserLayer) {
-
-    for (const dataSource of layer.dataSources) {
-        console.log(dataSource)
-        const {loadState} = dataSource;
-        if (loadState === undefined || loadState.error !== undefined) continue;
-        for (const subsource of loadState.subsources) {
-            if (subsource.enabled) {
-                if (subsource.subsourceEntry.id === 'default') {
-                    return subsource;
-                }
-            }
-        }
-    }
-    return undefined;
 }
 
 class AddCubeAnnotationState extends RefCounted implements Trackable {
@@ -158,7 +100,6 @@ class AddCubeAnnotationState extends RefCounted implements Trackable {
     }
 }
 
-// class AddCubeAnnotationTool extends LayerTool<SegmentationUserLayer> {
 class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
     cubeAnnotationState: AnnotationLayerState;
     annotation: Annotation;
@@ -203,15 +144,6 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
             }
         }));
 
-        // body.appendChild(makeIcon({
-        //     text: 'Clear',
-        //     title: 'Clear Values',
-        //     onClick: () => {
-        //         this.addCubeAnnotationState.cubeSize.reset();
-        //         this.addCubeAnnotationState.mousePosition.reset();
-        //     }
-        // }));
-
         const annotationElements = document.createElement('div');
         annotationElements.classList.add('cube-annotations');
         body.appendChild(annotationElements);
@@ -221,15 +153,6 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
 
         const updateAnnotationElements = () => {
             removeChildren(annotationElements);
-            // const maxColumnWidths = [0, 0, 0];
-            // const globalDimensionIndices = [0, 1, 2];
-            // const localDimensionIndices: number[] = [0, 1, 2];
-            // const template = '[symbol] 2ch [dim] var(--neuroglancer-column-0-width) [dim] var(--neuroglancer-column-1-width) [dim] var(--neuroglancer-column-2-width) [delete] min-content';
-
-            const loadedSubsource =  getDefaultLoadedSubsource(layer)!;
-            const YELLOW_COLOR = vec3.fromValues(1, 1, 0);
-            const annotationGroup = makeColoredAnnotationState(layer, loadedSubsource, "addcustomcube", YELLOW_COLOR, false);
-            this.cubeAnnotationState = annotationGroup;
 
             // annotation
             const box = calculateBoundingBox(mousePosition.value, cubeSize.value)
@@ -242,23 +165,8 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
                 type: AnnotationType.AXIS_ALIGNED_BOUNDING_BOX,
                 properties: []
             };
-            this.cubeAnnotationState.source.add(annotation);
-            // this.cubeAnnotationState.disposed();
-            // layer.updateAttachedAnnotationLayerStates();
-            // layer.addAnnotationLayerState(this.cubeAnnotationState, loadedSubsource)
-            // layer.annotations.add()
-            // console.log(this.cubeAnnotationState)
+            layer.localAnnotations?.add(annotation);
 
-            // const [element, elementColumnWidths] = makeAnnotationListElement(this.layer, annotation, this.cubeAnnotationState, template, globalDimensionIndices, localDimensionIndices);
-            // for (const [column, width] of elementColumnWidths.entries()) {
-            //     maxColumnWidths[column] = width;
-            // }
-            // console.log(element, elementColumnWidths)
-            // annotationElements.appendChild(element);
-            //
-            // for (const [column, width] of maxColumnWidths.entries()) {
-            //     annotationElements.style.setProperty(`--neuroglancer-column-${column}-width`, `${width + 2}ch`);
-            // }
         };
 
         activation.bindInputEventMap(ADD_CUBE_EVENT_MAP);
@@ -288,9 +196,6 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
 }
 
 export function registerAnnotateCubeTool() {
-    // registerTool(SegmentationUserLayer, ADD_CUBE_TOOL_ID, layer => {
-    //     return new AddCubeAnnotationTool(layer, true)
-    // })
     registerTool(AnnotationUserLayer, ADD_CUBE_TOOL_ID, layer => {
         return new AddCubeAnnotationTool(layer, true)
     })
