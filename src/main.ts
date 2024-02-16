@@ -20,6 +20,7 @@ import {UserLayer, UserLayerConstructor, layerTypes} from "neuroglancer/layer";
 import {Tool, restoreTool} from 'neuroglancer/ui/tool';
 import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/util/json';
 import {registerAnnotateCubeTool} from "./widgets/add_cube_annotation";
+import {getLayerScales} from "./widgets/widget_utils.tx";
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 
@@ -216,7 +217,9 @@ function observeSegmentSelect(targetNode: Element) {
 
           let distance = item.querySelector(".nge-selected-annotation.distance")
           if (distance == null) {
-            distance = annotationService.calculateDistance(coordinates);
+            const viewer: ExtendViewer = (<any>window)['viewer'];
+            const scales = getLayerScales(viewer.coordinateSpace)
+            distance = annotationService.calculateDistance(coordinates, scales);
             item.appendChild(distance);
           }
         }

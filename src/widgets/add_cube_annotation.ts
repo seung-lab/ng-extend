@@ -18,7 +18,7 @@ import {verifyOptionalObjectProperty} from "neuroglancer/util/json";
 import {NullarySignal} from "neuroglancer/util/signal";
 import {StatusMessage} from "neuroglancer/status";
 import {AnnotationUserLayer} from "neuroglancer/annotation/user_layer";
-import {formatScaleWithUnit} from "neuroglancer/util/si_units";
+import {getLayerScales} from "./widget_utils.tx";
 
 const ADD_CUBE_TOOL_ID = "annotateCustomCube";
 const ADD_CUBE_EVENT_MAP = EventActionMap.fromObject({
@@ -59,19 +59,9 @@ const calculateBoundingBox = (mousePoint: Float32Array, cubeSize: Float32Array, 
     return {lowerBounds: Float32Array.from(lowerBounds), upperBounds: Float32Array.from(upperBounds)};
 }
 
-const getLayerScales = (layer: AnnotationUserLayer) => {
-    let scales = new Float32Array(layer.manager.root.coordinateSpace.value.scales.length);
-
-    for (let i=0; i < layer.manager.root.coordinateSpace.value.scales.length; i++) {
-        const {scale} = formatScaleWithUnit(layer.manager.root.coordinateSpace.value.scales[i], layer.manager.root.coordinateSpace.value.units[i])
-        scales[i] = parseFloat(scale);
-    }
-    return scales
-}
-
 class AddCubeAnnotationState extends RefCounted implements Trackable {
     changed = new NullarySignal();
-    cubeSize = new TrackableValue<Float32Array>(Float32Array.of(5, 5, 5), verifyFloat32Array);
+    cubeSize = new TrackableValue<Float32Array>(Float32Array.of(1, 1, 1), verifyFloat32Array);
     mousePosition = new TrackableValue<Float32Array>(Float32Array.of(0, 0, 0), verifyFloat32Array);
 
     constructor() {
@@ -127,7 +117,7 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
         header.textContent = 'Add cube';
         body.classList.add('tool-status', 'add-cube');
 
-        const scales = getLayerScales(layer);
+        const scales = getLayerScales(layer.manager.root.coordinateSpace);
 
         const submitAction = () => {
             if (cubeSize.value instanceof Float32Array && mousePosition.value instanceof Float32Array) {
