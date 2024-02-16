@@ -18,6 +18,7 @@ import {verifyOptionalObjectProperty} from "neuroglancer/util/json";
 import {NullarySignal} from "neuroglancer/util/signal";
 import {StatusMessage} from "neuroglancer/status";
 import {AnnotationUserLayer} from "neuroglancer/annotation/user_layer";
+import {formatScaleWithUnit} from "neuroglancer/util/si_units";
 
 const ADD_CUBE_TOOL_ID = "annotateCustomCube";
 const ADD_CUBE_EVENT_MAP = EventActionMap.fromObject({
@@ -37,11 +38,11 @@ function verifyFloat32Array(obj: string): Float32Array {
     }
 }
 
-const calculateBoundingBox = (mousePoint: Float32Array, cubeSize: Float32Array) => {
+const calculateBoundingBox = (mousePoint: Float32Array, cubeSize: Float32Array, scales: Float32Array) => {
     // Calculate half sizes
-    const halfx = 1000 / 8 * cubeSize[0] / 2;
-    const halfy = 1000 / 8 * cubeSize[1] / 2;
-    const halfz = 1000 / 33 * cubeSize[2] / 2;
+    const halfx = 1000 / scales[0] * cubeSize[0] / 2;
+    const halfy = 1000 / scales[1] * cubeSize[1] / 2;
+    const halfz = 1000 / scales[2] * cubeSize[2] / 2;
 
     // Calculate lower bounds
     const lowerBounds = Float32Array.of
@@ -56,6 +57,16 @@ const calculateBoundingBox = (mousePoint: Float32Array, cubeSize: Float32Array) 
         mousePoint[2] + halfz);
 
     return {lowerBounds: Float32Array.from(lowerBounds), upperBounds: Float32Array.from(upperBounds)};
+}
+
+const getLayerScales = (layer: AnnotationUserLayer) => {
+    let scales = new Float32Array(layer.manager.root.coordinateSpace.value.scales.length);
+
+    for (let i=0; i < layer.manager.root.coordinateSpace.value.scales.length; i++) {
+        const {scale} = formatScaleWithUnit(layer.manager.root.coordinateSpace.value.scales[i], layer.manager.root.coordinateSpace.value.units[i])
+        scales[i] = parseFloat(scale);
+    }
+    return scales
 }
 
 class AddCubeAnnotationState extends RefCounted implements Trackable {
@@ -116,6 +127,8 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
         header.textContent = 'Add cube';
         body.classList.add('tool-status', 'add-cube');
 
+        const scales = getLayerScales(layer);
+
         const submitAction = () => {
             if (cubeSize.value instanceof Float32Array && mousePosition.value instanceof Float32Array) {
                 updateAnnotationElements();
@@ -155,7 +168,7 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
             removeChildren(annotationElements);
 
             // annotation
-            const box = calculateBoundingBox(mousePosition.value, cubeSize.value)
+            const box = calculateBoundingBox(mousePosition.value, cubeSize.value, scales)
             // Create annotation
             const annotationId = makeAnnotationId()
             const annotation: Annotation = {
@@ -177,7 +190,11 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
         });
 
         const setMousePosition = (position: Float32Array) => {
-            mousePosition.value = position;
+            let flooredPosition = new Float32Array(position.length);
+            for (let i = 0; i < position.length; i++) {
+                flooredPosition[i] = Math.floor(position[i])
+            }
+            mousePosition.value = flooredPosition;
             mousePosition.changed.dispatch();
         };
 

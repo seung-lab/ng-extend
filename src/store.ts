@@ -168,11 +168,11 @@ export const useLayersStore = defineStore('layers', () => {
     if (!viewer) return;
     viewer.layerSpecification.restoreState(layers);
     viewer.navigationState.reset();
-    viewer.coordinateSpace.restoreState({
-      x: [8e-9, 'm'],
-      y: [8e-9, 'm'],
-      z: [33e-9, 'm'],
-    });
+    // viewer.coordinateSpace.restoreState({
+    //   x: [8e-9, 'm'],
+    //   y: [8e-9, 'm'],
+    //   z: [33e-9, 'm'],
+    // });
     return true;
   }
 
