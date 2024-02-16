@@ -8,5 +8,9 @@
     "layer": "segmentation",
     "tool": "grapheneMulticutSegments",
     "provider": "graphene"
+  },
+  "keyt": {
+    "layer": "annotation",
+    "tool": "annotateCustomCube"
   }
 }
