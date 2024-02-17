@@ -51,12 +51,12 @@ function getTrophy(name: string): string {
 }
 
 function scrollToBottom() {
-    const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+    const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll');
     el.scrollTo(0, el.scrollHeight);
 }
 
 function handleScroll() {
-    const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+    const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll');
     const scrollAtBottom = Math.ceil(el.scrollTop) + el.offsetHeight >= el.scrollHeight;
     if (scrollAtBottom) {
         markLastMessageRead();
@@ -66,7 +66,7 @@ function handleScroll() {
 </script>
 
 <template>
-  <hologram-panel class="nge-chatbox-hologram">
+  <hologram-panel class="nge-chatbox-hologram" id="chatbox-hologram">
     <div class="nge-chatbox" tabindex="1">
       <div class="nge-chatbox-filler"></div>
       <div class="nge-chatbox-grid">
@@ -122,12 +122,12 @@ function handleScroll() {
           </div>
         </div>
       </div>
-      <div class="nge-chatbox-unread" v-show="unreadMessages" @click="scrollToBottom()">NEW MESSAGES</div>
       <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
         <!--<div class="nge-chatbox-messageprompt"><img src="insert-svg" width="15" style="transform: rotate(90deg);" /></div>-->
         <div class="nge-chatbox-inputbox"><input type="text" id="chatMessage" placeholder=">"/></div>
         <!--<div class="nge-chatbox-submit"><button type="submit"><img src="insert-svg" width="15" /></button></div>-->
       </form>
+      <div class="nge-chatbox-unread" v-show="unreadMessages" @click="scrollToBottom()">NEW MESSAGES</div>
     </div>
   </hologram-panel>
 </template>
@@ -230,5 +230,7 @@ function handleScroll() {
     text-align: center;
     border-radius: 10px;
     cursor: pointer;
+    position: relative;
+    top: -50px;
 }
 </style> 

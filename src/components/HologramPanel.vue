@@ -1,13 +1,26 @@
 <script setup lang="ts">
+import {onMounted, ref} from "vue";
 // Based on https://www.w3schools.com/howto/howto_js_draggable.asp
 let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
 let elem: HTMLElement;
 
-//TODO load position from localstorage
+const root = ref(null);
+
+onMounted(() => {
+    elem = root.value! as HTMLElement;
+    const id = elem.id;
+    const left = localStorage.getItem(id + " left");
+    if (left) {
+        elem.style.left = left;
+    }
+    const top = localStorage.getItem(id + " top");
+    if (top) {
+        elem.style.top = top;
+    }
+});
 
 function clickHeader(event: MouseEvent) {
     event.preventDefault();
-    elem = (event.target as HTMLElement).parentElement!;
     pos3 = event.clientX;
     pos4 = event.clientY;
     document.onmouseup = release;
@@ -20,19 +33,22 @@ function drag(e: MouseEvent) {
     pos2 = pos4 - e.clientY;
     pos3 = e.clientX;
     pos4 = e.clientY;
-    elem.style.top = (elem.offsetTop - pos2) + "px";
     elem.style.left = (elem.offsetLeft - pos1) + "px";
+    elem.style.top = (elem.offsetTop - pos2) + "px";
 }
 
 function release() {
     document.onmouseup = null;
     document.onmousemove = null;
-    //TODO save position
+    
+    const id = (root.value! as HTMLElement).id;
+    localStorage.setItem(id + " left", elem.style.left);
+    localStorage.setItem(id + " top", elem.style.top);
 }
 </script>
 
 <template>
-  <div class="pyr-hologram-panel">
+  <div class="pyr-hologram-panel" ref="root">
     <div class="pyr-hologram-header" @mousedown="clickHeader"></div>
     <slot></slot>
     <!--<div class="pyr-hologram-border"></div>-->

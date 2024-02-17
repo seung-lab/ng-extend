@@ -56,7 +56,7 @@ function setButtonHighlighted(timespan: string|null, highlighted: boolean) {
 </script>
 
 <template>
-  <hologram-panel class="nge-leaderboard-hologram">
+  <hologram-panel class="nge-leaderboard-hologram" id="leaderboard-hologram">
     <div class="nge-leaderboard">
       <div class="nge-leaderboard-headerimage"><img src="insert-logo" title="Nurro"></div>
       <div class="nge-leaderboard-titlebar">Top Editors</div>
