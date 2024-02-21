@@ -229,6 +229,9 @@ export const useStatsStore = defineStore('stats', () => {
   let userInfo: UserInfo = reactive({editsToday: 0, editsThisWeek: 0, editsAllTime: 0});
   let cellsSubmitted: Ref<number> = ref(0);
 
+  const {sessions} = useLoginStore();
+  const loggedInUser = sessions[0];
+
   function setLeaderboardTimespan(ts: LeaderboardTimespan) {
     leaderboardTimespan = ts;
   }
@@ -263,7 +266,8 @@ export const useStatsStore = defineStore('stats', () => {
 
   async function updateUserInfo() {
     if (!CONFIG) return;
-    const userID = 0; //TODO loggedInUser.id
+    if (!loggedInUser) return;
+    const userID = loggedInUser.id;
     const url = CONFIG.leaderboard_url + '/userInfo?userID=' + userID;
     fetch(url).then(result => result.json()).then(async(json) => { userInfo = json; });
     const statsURL = CONFIG.user_stats_url + '&user_id=' + userID;
