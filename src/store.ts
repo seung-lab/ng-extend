@@ -70,7 +70,7 @@ export const useLoginStore = defineStore('login', () => {
       if (!dataString) { return; }
       const data = JSON.parse(dataString);
       const {hostname} = new URL(data.url);
-      if (hostname !== "https://global.daf-apis.com/sticky_auth") {
+      if (hostname !== "global.daf-apis.com") {
         continue;
       }
 
@@ -157,9 +157,9 @@ export const useLayersStore = defineStore('layers', () => {
   function initializeWithViewer(v: Viewer) {
     viewer = v;
 
-    viewer.displayDimensions.changed.add(() => {
+    /*viewer.displayDimensions.changed.add(() => {
       console.log('viewer.displayDimensions.changed', viewer!.displayDimensions.value);
-    });
+    });*/
 
     viewer.layerManager.layersChanged.add(refreshLayers);
     refreshLayers();

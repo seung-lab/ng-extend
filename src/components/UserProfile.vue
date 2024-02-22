@@ -1,18 +1,18 @@
 <script setup lang="ts">
+    import {onMounted} from "vue";
     import ModalOverlay from "components/ModalOverlay.vue";
 
-    //TODO
-    //import {useLoginStore} from "../store";
-    //const {sessions} = useLoginStore();
-    //const loggedInUser = sessions[0];
-    const loggedInUser = {"name": "Kai Kuehner", "email": "kaikuehner@gmail.com"}
+    import {useLoginStore, useStatsStore} from "../store";
+    const {userInfo, cellsSubmitted} = useStatsStore();
+    const login = useLoginStore();
 
-    /*
-    import {useStatsStore} from "../store";
-    const statsStore = useStatsStore();
+    let loggedInUser = {name: "Guest", email: ""};
 
-    const {activeLayers, selectLayers} = statsStore;
-    */
+    onMounted(async () => {
+        await login.update();
+        loggedInUser = login.sessions[0];
+    });
+
     const emit = defineEmits({
         hide: null,
     });
@@ -27,20 +27,20 @@
                 <div>Edits</div>
                 <div>Cells</div>
                 <div class="nge-user-profile-subgrid">
-                  <div>Today</div>
-                  <div>Past 7 Days</div>
-                  <div>All Time</div>
-                  <div>0</div>
-                  <div>0</div>
-                  <div>0</div>
+                    <div>Today</div>
+                    <div>Past 7 Days</div>
+                    <div>All Time</div>
+                    <div>{{userInfo.editsToday}}</div>
+                    <div>{{userInfo.editsThisWeek}}</div>
+                    <div>{{userInfo.editsAllTime}}</div>
                 </div>
                 <div class="nge-user-profile-subgrid">
-                  <div>Today</div>
-                  <div>Past 7 Days</div>
-                  <div>All Time</div>
-                  <div>0</div>
-                  <div>0</div>
-                  <div>0</div>
+                    <div>Today</div>
+                    <div>Past 7 Days</div>
+                    <div>All Time</div>
+                    <div>0</div>
+                    <div>0</div>
+                    <div>{{cellsSubmitted}}</div>
                 </div>
             </div>
         </div>
@@ -49,7 +49,7 @@
 
 <style scoped>
 .userProfile {
-  font-size: .9em;
+    font-size: .9em;
 }
 
 .nge-user-profile-grid {
