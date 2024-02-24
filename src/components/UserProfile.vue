@@ -1,28 +1,23 @@
 <script setup lang="ts">
-    import {onMounted} from "vue";
-    import ModalOverlay from "components/ModalOverlay.vue";
+import {storeToRefs} from "pinia";
+import ModalOverlay from "components/ModalOverlay.vue";
 
-    import {useLoginStore, useStatsStore} from "../store";
-    const {userInfo, cellsSubmitted} = useStatsStore();
-    const login = useLoginStore();
+import {useLoginStore, useStatsStore} from "../store";
+const {userInfo, cellsSubmitted} = storeToRefs(useStatsStore());
+const {sessions} = storeToRefs(useLoginStore());
 
-    let loggedInUser = {name: "Guest", email: ""};
-
-    onMounted(async () => {
-        await login.update();
-        loggedInUser = login.sessions[0];
-    });
-
-    const emit = defineEmits({
-        hide: null,
-    });
+const emit = defineEmits({
+    hide: null,
+});
 </script>
 
 <template>
     <modal-overlay class="userProfile" @hide="emit('hide')">
         <button class="exit" @click="emit('hide')">×</button>
         <div class="content">
-            <div class="header"><div class="title">{{loggedInUser.name}} &lt;{{loggedInUser.email}}&gt;</div></div>
+            <div class="header">
+                <div class="title" v-if="sessions.length > 0">{{sessions[0].name}} &lt;{{sessions[0].email}}&gt;</div>
+            </div>
             <div class="nge-user-profile-grid">
                 <div>Edits</div>
                 <div>Cells</div>
