@@ -14,28 +14,29 @@ const emit = defineEmits({
 <template>
     <modal-overlay class="userProfile" @hide="emit('hide')">
         <button class="exit" @click="emit('hide')">×</button>
-        <div class="content">
-            <div class="header">
-                <div class="title" v-if="sessions.length > 0">{{sessions[0].name}} &lt;{{sessions[0].email}}&gt;</div>
+        <div class="content nge-user-profile-content">
+            <div class="header" v-if="sessions.length > 0">
+                <div class="title">{{sessions[0].name}}</div>
+                <div class="email">{{sessions[0].email}}</div>
             </div>
             <div class="nge-user-profile-grid">
-                <div>Edits</div>
-                <div>Cells</div>
+                <div class="nge-user-profile-grid-header">Edits</div>
+                <div class="nge-user-profile-grid-header">Cells</div>
                 <div class="nge-user-profile-subgrid">
-                    <div>Today</div>
-                    <div>Past 7 Days</div>
-                    <div>All Time</div>
-                    <div>{{userInfo.editsToday}}</div>
-                    <div>{{userInfo.editsThisWeek}}</div>
-                    <div>{{userInfo.editsAllTime}}</div>
+                    <div class="nge-user-profile-timespan">Today</div>
+                    <div class="nge-user-profile-timespan">Past 7 Days</div>
+                    <div class="nge-user-profile-timespan">All Time</div>
+                    <div class="nge-user-profile-count">{{userInfo.editsToday}}</div>
+                    <div class="nge-user-profile-count">{{userInfo.editsThisWeek}}</div>
+                    <div class="nge-user-profile-count">{{userInfo.editsAllTime}}</div>
                 </div>
                 <div class="nge-user-profile-subgrid">
-                    <div>Today</div>
-                    <div>Past 7 Days</div>
-                    <div>All Time</div>
-                    <div>0</div>
-                    <div>0</div>
-                    <div>{{cellsSubmitted}}</div>
+                    <div class="nge-user-profile-timespan">Today</div>
+                    <div class="nge-user-profile-timespan">Past 7 Days</div>
+                    <div class="nge-user-profile-timespan">All Time</div>
+                    <div class="nge-user-profile-count">0</div>
+                    <div class="nge-user-profile-count">0</div>
+                    <div class="nge-user-profile-count">{{cellsSubmitted}}</div>
                 </div>
             </div>
         </div>
@@ -47,14 +48,41 @@ const emit = defineEmits({
     font-size: .9em;
 }
 
+.nge-user-profile-content {
+    width: 500px;
+    padding: 50px;
+}
+
+.header {
+    padding-bottom: 30px;
+}
+
+.email {
+    font-style: italic;
+}
+
 .nge-user-profile-grid {
     display: grid;
     grid-template-columns: 50% 50%;
 }
 
+.nge-user-profile-grid-header {
+    padding-bottom: 20px;
+    font-size: 1.6em;
+}
+
 .nge-user-profile-subgrid {
     display: grid;
     grid-template-columns: 33% 33% 34%;
+}
+
+.nge-user-profile-timespan {
+    font-size: 0.8em;
+    padding-bottom: 7px;
+}
+
+.nge-user-profile-count {
+    font-size: 1.2em;
 }
 
 </style>
