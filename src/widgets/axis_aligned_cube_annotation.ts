@@ -20,8 +20,8 @@ import {StatusMessage} from "neuroglancer/status";
 import {AnnotationUserLayer} from "neuroglancer/annotation/user_layer";
 import {getLayerScales} from "./widget_utils.tx";
 
-const ADD_CUBE_TOOL_ID = "annotateCustomCube";
-const ADD_CUBE_EVENT_MAP = EventActionMap.fromObject({
+const AXIS_ALIGNED_CUBE_TOOL_ID = "axisAlignedCubeAnnotationTool";
+const AXIS_ALIGNED_CUBE_EVENT_MAP = EventActionMap.fromObject({
     'at:shift?+enter': {action: 'submit'},
     'at:shift?+control+mousedown0': {action: 'add-point'},
 });
@@ -59,7 +59,7 @@ const calculateBoundingBox = (mousePoint: Float32Array, cubeSize: Float32Array, 
     return {lowerBounds: Float32Array.from(lowerBounds), upperBounds: Float32Array.from(upperBounds)};
 }
 
-class AddCubeAnnotationState extends RefCounted implements Trackable {
+class AxisAlignedCubeAnnotationState extends RefCounted implements Trackable {
     changed = new NullarySignal();
     cubeSize = new TrackableValue<Float32Array>(Float32Array.of(1, 1, 1), verifyFloat32Array);
     mousePosition = new TrackableValue<Float32Array>(Float32Array.of(0, 0, 0), verifyFloat32Array);
@@ -101,18 +101,18 @@ class AddCubeAnnotationState extends RefCounted implements Trackable {
     }
 }
 
-class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
+class AxisAlignedCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
     cubeAnnotationState: AnnotationLayerState;
     annotation: Annotation;
-    addCubeAnnotationState = new AddCubeAnnotationState();
+    axisAlignedCubeAnnotationState = new AxisAlignedCubeAnnotationState();
 
     toJSON(): any {
-        return ADD_CUBE_TOOL_ID;
+        return AXIS_ALIGNED_CUBE_TOOL_ID;
     }
 
     activate(activation: ToolActivation<this>) {
         const {layer} = this;
-        const {cubeSize, mousePosition} = this.addCubeAnnotationState;
+        const {cubeSize, mousePosition} = this.axisAlignedCubeAnnotationState;
         const {body, header} = makeToolActivationStatusMessageWithHeader(activation);
         header.textContent = 'Add cube';
         body.classList.add('tool-status', 'add-cube');
@@ -172,7 +172,7 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
 
         };
 
-        activation.bindInputEventMap(ADD_CUBE_EVENT_MAP);
+        activation.bindInputEventMap(AXIS_ALIGNED_CUBE_EVENT_MAP);
 
         activation.bindAction('submit', event => {
             event.stopPropagation();
@@ -203,8 +203,8 @@ class AddCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
 }
 
 export function registerAnnotateCubeTool() {
-    registerTool(AnnotationUserLayer, ADD_CUBE_TOOL_ID, layer => {
-        return new AddCubeAnnotationTool(layer, true)
+    registerTool(AnnotationUserLayer, AXIS_ALIGNED_CUBE_TOOL_ID, layer => {
+        return new AxisAlignedCubeAnnotationTool(layer, true)
     })
 }
 
