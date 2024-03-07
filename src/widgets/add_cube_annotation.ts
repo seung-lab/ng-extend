@@ -18,7 +18,7 @@ import {verifyOptionalObjectProperty} from "neuroglancer/util/json";
 import {NullarySignal} from "neuroglancer/util/signal";
 import {StatusMessage} from "neuroglancer/status";
 import {AnnotationUserLayer} from "neuroglancer/annotation/user_layer";
-import {getLayerScales} from "./widget_utils.tx";
+import {getLayerScales} from "./widget_utils";
 
 const ADD_CUBE_TOOL_ID = "annotateCustomCube";
 const ADD_CUBE_EVENT_MAP = EventActionMap.fromObject({

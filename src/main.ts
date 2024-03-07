@@ -20,7 +20,7 @@ import {UserLayer, UserLayerConstructor, layerTypes} from "neuroglancer/layer";
 import {Tool, restoreTool} from 'neuroglancer/ui/tool';
 import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/util/json';
 import {registerAnnotateCubeTool} from "./widgets/add_cube_annotation";
-import {getLayerScales} from "./widgets/widget_utils.tx";
+import {getLayerScales} from "./widgets/widget_utils";
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 
