@@ -19,8 +19,8 @@ import {bindTitle} from "neuroglancer/ui/title";
 import {UserLayer, UserLayerConstructor, layerTypes} from "neuroglancer/layer";
 import {Tool, restoreTool} from 'neuroglancer/ui/tool';
 import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/util/json';
-import {registerAnnotateCubeTool} from "./widgets/axis_aligned_cube_annotation";
 import {getLayerScales} from "./widgets/widget_utils.tx";
+import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 
@@ -136,7 +136,7 @@ function setupViewer() {
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
 
-  registerAnnotateCubeTool();
+  registerFreeRotateCubeAnnotationTool();
 
   return viewer;
 }
