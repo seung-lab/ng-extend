@@ -53,7 +53,7 @@
         </template>
       </dropdown-list>
       <div class="ng-extend-spacer"></div>
-      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="segmentationLayerChooser" width="220px" hover="Choose dataset">
+      <dropdown-list type="chooser" dropdown-group="extension-bar-right" id="segmentationLayerChooser" width="240px" hover="Choose dataset">
         <template #chooserTitle>
           <span :style="{color: layerState.activeSegmentationLayer ? layerState.activeSegmentationLayer.color : undefined}">
             {{ layerState.activeSegmentationLayer ? "Dataset: " + layerState.activeSegmentationLayer.name : "Choose Dataset" }}
