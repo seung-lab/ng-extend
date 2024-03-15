@@ -1,0 +1,4 @@
+.git
+.gitignore
+.gcloudignore
+node_modules/
