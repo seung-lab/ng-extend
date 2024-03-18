@@ -11,6 +11,6 @@
   },
   "keyt": {
     "layer": "annotation",
-    "tool": "annotateCustomCube"
+    "tool": "freeRotateCubeAnnotationTool"
   }
 }

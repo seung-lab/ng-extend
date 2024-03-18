@@ -19,8 +19,8 @@ import {bindTitle} from "neuroglancer/ui/title";
 import {UserLayer, UserLayerConstructor, layerTypes} from "neuroglancer/layer";
 import {Tool, restoreTool} from 'neuroglancer/ui/tool';
 import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/util/json';
-import {registerAnnotateCubeTool} from "./widgets/add_cube_annotation";
 import {getLayerScales} from "./widgets/widget_utils";
+import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 
@@ -136,7 +136,7 @@ function setupViewer() {
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
 
-  registerAnnotateCubeTool();
+  registerFreeRotateCubeAnnotationTool();
 
   return viewer;
 }
@@ -202,8 +202,21 @@ function observeSegmentSelect(targetNode: Element) {
       selectionList.forEach(item => {
         const positionGrid = item.querySelector(".neuroglancer-annotation-position")
         const isDataBounds = item.querySelector(".neuroglancer-annotation-description")?.textContent === "Data Bounds" ? true : false;
+
         if (positionGrid && !isDataBounds) {
-          const coordElements = item.querySelectorAll('.neuroglancer-annotation-coordinate');
+          const icon = item.querySelector(".neuroglancer-annotation-icon")?.textContent;
+          let type = "unknown";
+          if (icon == '❑') { // box
+            type = 'box';
+          } else if (icon == 'ꕹ') { // line
+            type = "line";
+          } else if (icon == '⚬') { // point
+            type = "point";
+          } else if (icon == '◎') { // ellipsoid
+            type = "ellipsoid";
+          }
+          const coordElements = item.querySelectorAll(' .neuroglancer-annotation-coordinate');
+
           let coordinates: Point3D[] = [];
 
           for (let i = 0; i < coordElements?.length; i += 3){
@@ -219,7 +232,7 @@ function observeSegmentSelect(targetNode: Element) {
           if (distance == null) {
             const viewer: ExtendViewer = (<any>window)['viewer'];
             const scales = getLayerScales(viewer.coordinateSpace)
-            distance = annotationService.calculateDistance(coordinates, scales);
+            distance = annotationService.calculateDistance(type, coordinates, scales);
             item.appendChild(distance);
           }
         }
