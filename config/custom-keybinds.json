@@ -9,10 +9,6 @@
     "tool": "grapheneMulticutSegments",
     "provider": "graphene"
   },
-//  "keyt": {
-//    "layer": "annotation",
-//    "tool": "axisAlignedCubeAnnotationTool"
-//  },
   "keyt": {
     "layer": "annotation",
     "tool": "freeRotateCubeAnnotationTool"
