@@ -202,7 +202,19 @@ function observeSegmentSelect(targetNode: Element) {
       selectionList.forEach(item => {
         const positionGrid = item.querySelector(".neuroglancer-annotation-position")
         const isDataBounds = item.querySelector(".neuroglancer-annotation-description")?.textContent === "Data Bounds" ? true : false;
+
         if (positionGrid && !isDataBounds) {
+          const icon = item.querySelector(".neuroglancer-annotation-icon")?.textContent;
+          let type = "unknown";
+          if (icon == '❑') { // box
+            type = 'box';
+          } else if (icon == 'ꕹ') { // line
+            type = "line";
+          } else if (icon == '⚬') { // point
+            type = "point";
+          } else if (icon == '◎') { // ellipsoid
+            type = "ellipsoid";
+          }
           const coordElements = item.querySelectorAll(' .neuroglancer-annotation-coordinate');
           let coordinates: Point3D[] = [];
 
@@ -219,7 +231,7 @@ function observeSegmentSelect(targetNode: Element) {
           if (distance == null) {
             const viewer: ExtendViewer = (<any>window)['viewer'];
             const scales = getLayerScales(viewer.coordinateSpace)
-            distance = annotationService.calculateDistance(coordinates, scales);
+            distance = annotationService.calculateDistance(type, coordinates, scales);
             item.appendChild(distance);
           }
         }
