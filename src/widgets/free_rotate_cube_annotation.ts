@@ -84,9 +84,6 @@ function rotateVertex(vertex: number[], angleRad: number) {
 }
 
 function rotatedCubeEdges(centroid: Float32Array, size: Float32Array, angleDeg: Number, scales: Float32Array) {
-    console.log(centroid)
-    console.log(size)
-    console.log(angleDeg)
     const angleRad = Number(angleDeg) * Math.PI / 180;
     const halfX = 1000 / scales[0] * size[0] / 2;
     const halfY = 1000 / scales[1] * size[1] / 2;
@@ -192,7 +189,6 @@ class FreeRotateCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
         const scales = getLayerScales(layer.manager.root.coordinateSpace);
 
         const submitAction = () => {
-            console.log(rotationAngle, rotationAngle.value)
             if (cubeSize.value instanceof Float32Array && mousePosition.value instanceof Float32Array) {
                 updateAnnotationElements();
             }
@@ -236,9 +232,7 @@ class FreeRotateCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
 
         const updateAnnotationElements = () => {
             removeChildren(annotationElements);
-            console.log(rotationAngle, rotationAngle.value)
             const edges = rotatedCubeEdges(mousePosition.value, cubeSize.value, rotationAngle.value, scales);
-            console.log(edges);
             for (const edge of edges) {
 
                 const line: Annotation = {
