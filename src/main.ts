@@ -6,7 +6,7 @@ import 'neuroglancer/ui/default_viewer.css';
 import App from 'components/App.vue';
 import {useLayersStore} from 'src/store';
 // import {setupDefaultViewer} from 'third_party/neuroglancer/ui/default_viewer_setup';
-import { liveNeuroglancerInjection, setupExtendedViewer } from './ExtendedViewerMain';
+import { liveNeuroglancerInjection, setupExtendedViewer } from './ExtendedViewer';
 
 function mergeTopBars() {
   const ngTopBar = document.querySelector('.neuroglancer-viewer')!.children[0];

@@ -28,6 +28,7 @@ type CustomBinding = {
 declare const CUSTOM_BINDINGS: CustomBindings|undefined;
 export const hasCustomBindings = typeof CUSTOM_BINDINGS !== 'undefined' && Object.keys(CUSTOM_BINDINGS).length > 0;
 
+//this is literally copy pasted from default_viewer_setup with the only change being that it takes in a viewer instead of creating one itself
 export function setupParentViewer(viewer : Viewer) {
     
     setDefaultInputEventBindings(viewer.inputEventBindings);
