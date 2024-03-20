@@ -33,6 +33,8 @@ type CustomBindings = {
 };
 
 declare const CUSTOM_BINDINGS: CustomBindings|undefined;
+
+declare const DATASETS: { [key: string]: string};
 export const hasCustomBindings = typeof CUSTOM_BINDINGS !== 'undefined' && Object.keys(CUSTOM_BINDINGS).length > 0;
 
 function mergeTopBars() {
@@ -165,12 +167,6 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
-  let datasetElement = (<HTMLElement>targetNode.querySelector('.neuroglancer-layer-item-label'));
-  let dataset = ""
-  if (dataset) {
-    dataset = datasetElement.innerText;
-  }
-  console.log(dataset)
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
       let buttonList: Element|HTMLElement[] = [];
@@ -183,6 +179,10 @@ function observeSegmentSelect(targetNode: Element) {
         if (segmentIDString) {
           let button = item.querySelector('.nge-segment-button.menu');
           if (button == null) {
+            const viewer: ExtendViewer = (<any>window)['viewer'];
+            const layerName = viewer.selectedLayer.layer?.name || 'default';
+            const dataset = DATASETS[layerName];
+
             button = buttonService.createButton(segmentIDString, dataset);
             button.classList.add('error')
             item.appendChild(button);
