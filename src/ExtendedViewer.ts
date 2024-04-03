@@ -76,7 +76,7 @@ function observeSegmentSelect(targetNode : Element) {
     const detectMutation = function(mutationsList: MutationRecord[]) {
   
       mutationsList.forEach(mutation => {
-        mutation.addedNodes.forEach(placeLightbulb);
+        mutation.addedNodes.forEach(placeLightbulb)
       });
     };
   

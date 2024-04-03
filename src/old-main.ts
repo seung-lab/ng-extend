@@ -19,7 +19,7 @@ class ExtendViewer extends Viewer {
     super(display, {
       showLayerDialog: false,
       showUIControls: true,
-      // defaultLayoutSpecification: 'xy-3d',
+      // defaultLayoutSpecification: ' xy-3d',
       // minSidePanelSize: 310
     });
     // storeProxy.loadedViewer = true;
