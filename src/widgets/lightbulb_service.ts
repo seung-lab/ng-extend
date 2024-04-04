@@ -3,6 +3,8 @@ import { cancellableFetchSpecialOk, parseSpecialUrl } from 'third_party/neurogla
 import { defaultCredentialsManager } from "neuroglancer/credentials_provider/default_manager";
 import { responseJson } from "neuroglancer/util/http_request";
 
+import * as lightbulbBase from "../images/lightbulb-base.svg"
+
 // import {SubmitDialog} from './seg_management';
 
 const br = () => document.createElement('br');
@@ -42,8 +44,11 @@ export class LightBulbService {
     // icon.setAttribute('height', '20');
     // icon.setAttribute('viewBox', '0 0 20 20');
 
-    const icon = document.createElement("img")//('http://www.w3.org/2000/svg', 'svg');
-    icon.src = "/Users/alexmalakov/Documents/GitHub/ng-extend/images/Users/alexmalakov/Documents/GitHub/ng-extend/images/lightbulb-base.svg"
+    console.log("BULB "+lightbulbBase)
+    console.log("BULBBUOBUBO")
+    const icon = document.createElement("img") as HTMLImageElement//('http://www.w3.org/2000/svg', 'svg');
+    // icon.src = lightbulbBase.default
+    icon.src = "../images/bulb.png"
 
     // const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     // const path = document.createElement("img")//('http://www.w3.org/2000/svg', 'svg');
@@ -97,16 +102,8 @@ export class LightBulbService {
   menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
   menu.classList.add(
       'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
-  const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
-  const host = 'https://local.brain-wire-test.org';
   // let timestamp: number|undefined = this.getUserDefinedTimestamp();
   // console.log("timestamp:", timestamp)
-  let optGroup: any = {analysis: [], proofreading: [], synapseProofreading: []};
-
-  let changelog =
-      ['Change Log', `${host}/progress/api/v1/query?rootid=${paramStr}`];
-
-  optGroup.proofreading.push(changelog);
   menu.append(
       br(),
       this.generateSection(segmentIDString),
