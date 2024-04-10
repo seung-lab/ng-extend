@@ -62,7 +62,7 @@ function observeSegmentSelect(targetNode : Element) {
           if (segmentIDString) {
             let bulb = item.querySelector('.nge-lightbulb-section.menu');
             if (bulb == null) {
-              bulb = lightbulb.createButton(segmentIDString, dataset);
+              bulb = lightbulb.createButton(segmentIDString);
               bulb.classList.add('error')
               item.appendChild(bulb);
               (<HTMLButtonElement>bulb).title = 'Click for opening context menu';
