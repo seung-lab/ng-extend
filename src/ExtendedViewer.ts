@@ -56,13 +56,16 @@ function observeSegmentSelect(targetNode : Element) {
         if (item.classList.contains("neuroglancer-segment-list-entry")) {
           buttonList = [item];
         }
+
         buttonList.forEach(item => {
           const segmentIDString =
               item.getAttribute('data-id');
+
           if (segmentIDString) {
             let bulb = item.querySelector('.nge-lightbulb-section.menu');
             if (bulb == null) {
               bulb = lightbulb.createButton(segmentIDString);
+              
               bulb.classList.add('error')
               item.appendChild(bulb);
               (<HTMLButtonElement>bulb).title = 'Click for opening context menu';
@@ -75,9 +78,11 @@ function observeSegmentSelect(targetNode : Element) {
     // Callback function to execute when mutations are observed
     const detectMutation = function(mutationsList: MutationRecord[]) {
   
+      lightbulb.wipeSegments();
       mutationsList.forEach(mutation => {
         mutation.addedNodes.forEach(placeLightbulb)
       });
+      lightbulb.colorBulbs();
     };
   
     // Create an observer instance linked to the callback function
