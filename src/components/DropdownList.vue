@@ -1,25 +1,24 @@
 <script setup lang="ts">
-import {computed} from 'vue';
-import {useDropdownListStore} from '../store';
+import { useDropdownListStore } from "#src/store.js";
+import { computed } from "vue";
 
 const dropdownListStore = useDropdownListStore();
-
 const uuid = dropdownListStore.getDropdownId();
-
 const props = defineProps<{
-  dropdownGroup: string
-  id?: string,
-  bar?: number
+  dropdownGroup: string;
+  id?: string;
+  bar?: number;
 }>();
 
 function toggleVisible() {
-  dropdownListStore.activeDropdowns[props.dropdownGroup] = isActive.value ? undefined : uuid;
+  dropdownListStore.activeDropdowns[props.dropdownGroup] = isActive.value
+    ? undefined
+    : uuid;
 }
 
 const isActive = computed(() => {
   return dropdownListStore.activeDropdowns[props.dropdownGroup] === uuid;
 });
-
 
 // const props = {
 //   dropdownGroup: string;
@@ -43,7 +42,7 @@ const isActive = computed(() => {
 //      For most of the page, document.body will get the event. When the viewer panel is clicked,
 //      however, it will stop the click event's propagation.
 //      The viewer is not created immediately on page load, and it may be replaced if the user
-//      changes their view. So we wait until the viewer has loaded (by wrapping the dropdown in a 
+//      changes their view. So we wait until the viewer has loaded (by wrapping the dropdown in a
 //      <template v-if="appState.loadedViewer">), then wait one more frame for the panel to be added
 //      (by using setTimeout with delay 0). Then we can add the event listener.
 //      We need to repeat this whenever the viewer layout is changed (and the dropdown is created after
@@ -58,7 +57,7 @@ const isActive = computed(() => {
 
 //     //Add mousedown handler to initial viewer panels
 //     this.addPanelClickHandlers();
-    
+
 //     //Add mousedown handler to new viewer panels whenever they update
 //     viewer!.layout.changed.add(() => {
 //       setTimeout(() => this.addPanelClickHandlers());
@@ -97,17 +96,18 @@ const isActive = computed(() => {
 //     }
 //   }
 // });
-
 </script>
 
 <template>
   <div class="dropdownList" :id="id" :class="{ open: isActive }">
-    <button @click="toggleVisible"><slot name="buttonTitle"></slot></button>
+    <button @click="toggleVisible">
+      <slot name="buttonTitle"></slot>
+    </button>
     <ul v-visible="isActive" class="dropdownMenu">
-        <slot name="listItems"></slot>
+      <slot name="listItems"></slot>
     </ul>
   </div>
-  
+
   <!-- <div class="dropdownList" :class="{ open: isActive }" :style="{width: width, 'min-width': width}" @mousedown.stop.prevent>
     <template v-if="type === 'chooser'">
       <div class="dropdownChooser" @click="toggleVisible" :title="hover">
@@ -124,14 +124,14 @@ const isActive = computed(() => {
         <slot name="listItems"></slot>
       </ul>
     </template>
-    <template v-else>
+<template v-else>
       <button @click="toggleVisible" :title="hover"><slot name="buttonTitle"></slot></button>
       <ul v-visible="isActive" class="dropdownMenu">
         <slot name="listItems"></slot>
       </ul>
       <div class="dropdownArrow" v-visible="isActive"></div>
     </template>
-  </div> -->
+</div> -->
 </template>
 
 <style scoped>
@@ -140,7 +140,7 @@ const isActive = computed(() => {
   font-size: 10pt;
 }
 
-.ng-extend .dropdownList > button {
+.ng-extend .dropdownList>button {
   width: 100%;
   height: 100%;
   padding: 0 4px;
@@ -157,6 +157,4 @@ const isActive = computed(() => {
   overflow: hidden;
   z-index: 10;
 }
-
 </style>
-../store
