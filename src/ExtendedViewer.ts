@@ -78,11 +78,9 @@ function observeSegmentSelect(targetNode : Element) {
     // Callback function to execute when mutations are observed
     const detectMutation = function(mutationsList: MutationRecord[]) {
   
-      lightbulb.wipeSegments();
       mutationsList.forEach(mutation => {
         mutation.addedNodes.forEach(placeLightbulb)
       });
-      lightbulb.colorBulbs();
     };
   
     // Create an observer instance linked to the callback function

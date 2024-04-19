@@ -1,10 +1,8 @@
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import { cancellableFetchSpecialOk, parseSpecialUrl } from 'third_party/neuroglancer/util/special_protocol_request';
 import { defaultCredentialsManager } from "neuroglancer/credentials_provider/default_manager";
-import { responseJson } from "neuroglancer/util/http_request";
 import {makeIcon} from 'neuroglancer/widget/icon';
-
-
+import {responseJson } from 'third_party/neuroglancer/util/http_request';
 import JSONbigInt from 'json-bigint';
 import './bulb.css';
 import lightbulbBase from "../images/lightbulb-base.svg";
@@ -12,33 +10,33 @@ import lightbulbBase from "../images/lightbulb-base.svg";
 const br = () => document.createElement('br');
 const JSONBS = JSONbigInt({storeAsString: true});
 
-// function responseJsonCustom(response: Response): Promise<any> {
-//   return JSONBS.parse(JSON.stringify(response.json()));
-// }
+function responseJsonString(response: Response): Promise<any> {
+  return response.text()
+}
 
+//timer refresh
 export class LightBulbService {
 
+  timeout = 0;
+  checkTime = 120000;
   statuses: {
     [key: string]: {
-      sid: string; element: HTMLButtonElement;
+      sid: string; element: HTMLElement; button: HTMLButtonElement;
       // state?: any;
-      // status: 'error' | 'outdated' | 'incomplete' | 'unlabeled' | 'complete'
+      status: 'error' | 'deselected' | 'outdated' | 'incomplete' | 'unlabeled' | 'complete'
     }
   } = {};
 
-  wipeSegments(): void {
-    this.statuses = {};
-  }
-
   colorBulbs(): void {
-    var sidstring = ""
+
+    console.log("COLORING BULBS <___---------");
+
+    var sidstring = "";
     Object.values(this.statuses).forEach((segments) => {
-      const {sid} = segments
-      sidstring += sid + ','
+      const {sid} = segments;
+      sidstring += sid + ',';
 
     });
-
-    // console.log("SIDSTRING:" + sidstring);
 
     if(sidstring.length == 0) {
       return;
@@ -49,52 +47,60 @@ export class LightBulbService {
     //swap icon
     (async () => {
       const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
-          'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + 	'720575941614811349,720575941575526745', //720575941553301220
+          'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + sidstring, //720575941553301220
           // 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/' + '720575941575526745', //720575941553301220
           defaultCredentialsManager,
       );  
 
       // JSONBS.parse(await (  < {status: string; value: any;} >cell) .value.text())
       try {
-        const value = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJson).then((val : string) => {
-          console.log("val: ");
-          console.log(val)
-          console.log(typeof (val))
+        const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString).then((val : string) => {
           return val;
-        }) ));
-        console.log("GOT VALUE")
-        console.log(value)
+        })));
+
+        console.log(nodeStatuses)
+
+        for(let nodeIndex in nodeStatuses["index"]) {
+          // console.log("TEST: + " + nodeStatuses["pt_root_id"][nodeIndex]);
+          // console.log(this.statuses)
+          // const element = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"]
+          if (nodeStatuses["proofread"][nodeIndex] === "t") {
+            console.log("SETTING " + nodeStatuses["pt_root_id"][nodeIndex] + " to green")
+            this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"].className = "neuroglancer-icon-bulb-base green"//purple - proofread but unlabeled
+          } else {
+            this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"].className = "neuroglancer-icon-bulb-base yellow"
+          }
+          console.log("CHANGED CLASS NAME");
+        }
+
       } catch(e) {
         console.log("FALIED TO GET VALUE")
         console.log(e.message)
       }
-      
-      
-      /*await cancellableFetchSpecialOk(credentialsProvider, parsedUrl, {}, responseJson).then((res) => {
-        
-        console.log(res)
-        const json = JSON.stringify(res) //parse me :)
-        // console.log(res)
-        console.log(json + " JSON <-----------" + ", SID" + sidstring);
-        console.log(res["index"]);
-        console.log(res[""])
-
-        // for(let index in res["index"]) {
-          // console.log("TEST: + " + res["pt_root_id"][index]);
-          // const element = this.statuses[res["pt_root_id"][index]]["element"]
-          // if (res["proofread"][index] === "t") {
-          //   element.className = "neuroglancer-icon-bulb-base green"//purple - proofread but unlabeled
-          // } else {
-          //   element.className = "neuroglancer-icon-bulb-base"
-          // }
-        // }
-      });*/
     })();
+
+    this.checkTimeout();
   }
+
+
+  checkTimeout(time: number = this.checkTime) {
+    clearTimeout(this.timeout);
+    const boundCheck = this.colorBulbs.bind(this);
+    this.timeout = window.setTimeout(boundCheck, time);
+  }
+
+  stopTimeout() {
+    clearTimeout(this.timeout);
+  }
+
 
   createButton(segmentIDString: string):
       HTMLButtonElement {
     
+
+    if(segmentIDString in this.statuses) {
+      return this.statuses[segmentIDString]["button"]
+    }
     // Button for the user to copy a segment's ID
     const bulb = document.createElement('button');
 
@@ -106,30 +112,12 @@ export class LightBulbService {
     bulb.style.cursor = "pointer";
 
     //set default icon
-    let element: HTMLElement;
-    element = makeIcon({svg: lightbulbBase});
-    element.className = "neuroglancer-icon-bulb-base" //spacign between lines is changing
+    let iconElement: HTMLElement;
+    iconElement = makeIcon({svg: lightbulbBase});
+    iconElement.className = "neuroglancer-icon-bulb-base purple" //spacign between lines is changing
+    console.log("MAKING BUTTON FOR: " + segmentIDString);
     
-    bulb.appendChild(element);
-
-    if(!(segmentIDString in this.statuses)) {
-      this.statuses[segmentIDString] = {sid: segmentIDString , element: bulb};
-    }
-
-    //swap icon
-    // (async () => {
-    //   const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
-    //       'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/' + segmentIDString, //720575941553301220
-    //       defaultCredentialsManager,
-    //   );  
-    //   await cancellableFetchSpecialOk(credentialsProvider, parsedUrl, {}, responseJson).then((res) => {
-    //     if (res["proofread"]["0"] === "t") { //green - proofread and cell identified, black - outdated, 
-    //       element.className += " green"//purple - proofread but unlabeled
-    //     } else {
-    //       element.className += " yellow"
-    //     }
-    //   });
-    // })();
+    bulb.appendChild(iconElement);
 
     bulb.addEventListener('click', (event: MouseEvent) => {
       let menu = this.makeMenu(bulb, segmentIDString)
@@ -138,6 +126,12 @@ export class LightBulbService {
       )
     });
 
+    if(!(segmentIDString in this.statuses)) {
+      this.statuses[segmentIDString] = {sid: segmentIDString , element: iconElement,button: bulb, status: "error"};
+    }
+
+    this.checkTimeout(0);
+
     return bulb;
   };
 
@@ -145,17 +139,17 @@ export class LightBulbService {
     const popup_body = document.createElement('div');
 
     // const url = "https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/";
-    //https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=<COMMA SEPERATED VALUES>
+    // https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=<COMMA SEPERATED VALUES>
 
-    // (async () => {
-    //     const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
-    //         'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/' + segmentIDString, //720575941553301220
-    //         defaultCredentialsManager,
-    //     );  
-    //     await cancellableFetchSpecialOk(credentialsProvider, parsedUrl, {}, responseJson).then((res) => {
-    //         popup_body.textContent = "Segment information: " + JSON.stringify(res); //replace with json bigint
-    //     });
-    // })();
+    (async () => {
+        const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
+            'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/' + segmentIDString, //720575941553301220
+            defaultCredentialsManager,
+        );  
+        await cancellableFetchSpecialOk(credentialsProvider, parsedUrl, {}, responseJson).then((res) => {
+            popup_body.textContent = "Segment information: " + JSON.stringify(res); //replace with json bigint
+        });
+    })();
     
     return popup_body;
   }
