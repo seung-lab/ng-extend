@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import {computed, onMounted, ref} from "vue";
-import VolumesOverlay from "components/VolumesOverlay.vue";
-import DropdownList from "components/DropdownList.vue";
-
-import {loginSession, useLoginStore, useVolumesStore} from '../store';
-
-import logoImage from '../CaveLogo-clear.png';
+import { computed, onMounted, ref } from "vue";
+import VolumesOverlay from "#src/components/VolumesOverlay.vue";
+import DropdownList from "#src/components/DropdownList.vue";
+import { loginSession, useLoginStore, useVolumesStore } from "#src/store.js";
+import logoImage from "#src/CaveLogo-clear.png";
 
 const login = useLoginStore();
 window.addEventListener("middleauthlogin", () => {
@@ -13,13 +11,19 @@ window.addEventListener("middleauthlogin", () => {
 });
 login.update();
 
-const validLogins = computed(() => login.sessions.filter(x => x.status === undefined));
-const invalidLogins = computed(() => login.sessions.filter(x => x.status !== undefined));
+const validLogins = computed(() =>
+  login.sessions.filter((x) => x.status === undefined)
+);
+const invalidLogins = computed(() =>
+  login.sessions.filter((x) => x.status !== undefined)
+);
 
-const {volumes} = useVolumesStore();
+const { volumes } = useVolumesStore();
 
 onMounted(() => {
-  (document.querySelector('.ng-extend-logo > a > img')! as HTMLImageElement).src = logoImage;
+  (
+    document.querySelector(".ng-extend-logo > a > img")! as HTMLImageElement
+  ).src = logoImage;
 });
 
 const showModal = ref(false);
@@ -27,7 +31,6 @@ const showModal = ref(false);
 function logout(session: loginSession) {
   login.logout(session);
 }
-
 </script>
 
 <template>
@@ -35,34 +38,40 @@ function logout(session: loginSession) {
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://flywire.ai/" target="_blank">
-        <img src="insert-logo" title="Cave Explorer">
+        <img src="insert-logo" title="Cave Explorer" />
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
-    <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
+    <button v-if="volumes.length" @click="showModal = true">
+      Volumes ({{ volumes.length }})
+    </button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
-          <template #buttonTitle>Logins ({{ login.sessions.length }})</template>
-          <template #listItems>
-            <li v-for="session of validLogins">
-              <div class="loginRow">
-                <div class="loginData">
-                  <div>{{ session.email }}</div>
-                  <div>{{ session.hostname }}</div>
-                </div>
-                <div class="logoutButton" @click="logout(session)"><span>Logout</span></div>
+        <template #buttonTitle>Logins ({{ login.sessions.length }})</template>
+        <template #listItems>
+          <li v-for="session of validLogins">
+            <div class="loginRow">
+              <div class="loginData">
+                <div>{{ session.email }}</div>
+                <div>{{ session.hostname }}</div>
               </div>
-            </li>
-            <li v-for="session in invalidLogins">
-              <div class="loginRow">
-                <div class="loginData expired">
-                  <div>{{ session.hostname }} - Expired</div>
-                </div>
-                <div class="logoutButton" @click="logout(session)"><span>Delete</span></div>
+              <div class="logoutButton" @click="logout(session)">
+                <span>Logout</span>
               </div>
-            </li>
-          </template>
-        </dropdown-list>
+            </div>
+          </li>
+          <li v-for="session in invalidLogins">
+            <div class="loginRow">
+              <div class="loginData expired">
+                <div>{{ session.hostname }} - Expired</div>
+              </div>
+              <div class="logoutButton" @click="logout(session)">
+                <span>Delete</span>
+              </div>
+            </div>
+          </li>
+        </template>
+      </dropdown-list>
     </template>
   </div>
 </template>
@@ -77,8 +86,7 @@ function logout(session: loginSession) {
   font-size: 10pt;
 }
 
-
-#insertNGTopBar > div {
+#insertNGTopBar>div {
   width: 100%;
 }
 
@@ -90,7 +98,7 @@ function logout(session: loginSession) {
   z-index: 30;
 }
 
-#extensionBar > * {
+#extensionBar>* {
   height: 100%;
   display: flex;
   align-items: center;
@@ -101,11 +109,11 @@ function logout(session: loginSession) {
   padding: 0 10px;
 }
 
-#loginsDropdown li > div:last-child {
+#loginsDropdown li>div:last-child {
   border-bottom: none;
 }
 
-#loginsDropdown li > div {
+#loginsDropdown li>div {
   display: grid;
   grid-template-columns: auto min-content;
   border-bottom: 1px solid #4a4a4a;
@@ -127,7 +135,7 @@ function logout(session: loginSession) {
 }
 
 #loginsDropdown .loginRow:hover .logoutButton {
- opacity: 0.25;
+  opacity: 0.25;
 }
 
 #loginsDropdown .loginRow:hover .logoutButton:hover {
@@ -145,7 +153,8 @@ function logout(session: loginSession) {
   opacity: 0.5;
 }
 
-.ng-extend-logo > a, .ng-extend-logo > a > img {
+.ng-extend-logo>a,
+.ng-extend-logo>a>img {
   height: 100%;
 }
 </style>

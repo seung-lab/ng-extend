@@ -1,15 +1,39 @@
 {
-  "extends": "./node_modules/neuroglancer/tsconfig.json",
   "compilerOptions": {
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedParameters": false,
+    "noUnusedLocals": true,
+    "preserveConstEnums": true,
+    "experimentalDecorators": true,
+    "alwaysStrict": true,
+    "allowJs": true,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    // "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "moduleResolution": "bundler",
+    "incremental": true,
+    "resolveJsonModule": true,
+    "target": "es2020",
+    "newLine": "LF",
     "baseUrl": ".",
+    "lib": ["dom", "webworker", "es2020", "dom.iterable"],
+    "typeRoots": [],
+    "module": "ESNext",
     "paths": {
-      "*": ["*"],
-      "neuroglancer/*": ["third_party/neuroglancer/*"],
       "components/*": ["src/components/*"],
-      "jpgjs": ["node_modules/neuroglancer/third_party/jpgjs/jpg.js"],
     }
   },
   "exclude": [
-    "vue-project"
+    "node_modules",
+    "dist",
+    "templates",
+    "examples",
+    "config",
+    "tests",
   ]
 }

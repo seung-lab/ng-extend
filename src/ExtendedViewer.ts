@@ -1,42 +1,39 @@
-import 'neuroglancer/ui/default_viewer.css';
-import { Viewer } from 'third_party/neuroglancer/viewer';
+// import 'neuroglancer/ui/default_viewer.css';
+// import { Viewer } from "neuroglancer/unstable/viewer.js";
 import { LightBulbService } from './widgets/lightbulb_service';
-import { DisplayContext } from 'third_party/neuroglancer/display_context';
-import { setupParentViewer } from './extend_viewer_setup';
-import { disableContextMenu, disableWheel } from 'third_party/neuroglancer/ui/disable_default_actions';
-import { StatusMessage } from 'third_party/neuroglancer/status';
+// import { DisplayContext } from 'neuroglancer/unstable/display_context.js';
+// import { setupParentViewer } from './extend_viewer_setup';
+// import { disableContextMenu, disableWheel } from 'neuroglancer/unstable/ui/disable_default_actions.js';
+// import { StatusMessage } from 'neuroglancer/unstable/status.js';
 
 
-export function setupExtendedViewer() {
-    let viewer = (<any>window)['viewer'] = makeExtendViewer();
-    return setupParentViewer(viewer);
-} 
+// export function setupExtendedViewer() {
+//     let viewer = (<any>window)['viewer'] = makeExtendViewer();
+//     return setupParentViewer(viewer);
+// } 
 
-function makeExtendViewer() {
-  disableContextMenu();
-  disableWheel();
-  try {
-    let display =
-        new DisplayContext(document.getElementById('neuroglancer-container')!);
-    return new ExtendViewer(display);
-  } catch (error) {
-    StatusMessage.showMessage(`Error: ${error.message}`);
-    throw error;
-  }
-}
+// function makeExtendViewer() {
+//   disableContextMenu();
+//   disableWheel();
+//   try {
+//     let display =
+//         new DisplayContext(document.getElementById('neuroglancer-container')!);
+//     return new ExtendViewer(display);
+//   } catch (error) {
+//     StatusMessage.showMessage(`Error: ${error.message}`);
+//     throw error;
+//   }
+// }
 
-export function liveNeuroglancerInjection() {
+export function liveNeuroglancerInjection(lightbulb : LightBulbService) {
     const watchNode = document.querySelector('#content');
   if (!watchNode) {
     return;
   }
-  observeSegmentSelect(watchNode);
+  observeSegmentSelect(watchNode, lightbulb);
 }
 
-function observeSegmentSelect(targetNode : Element) {
-    const viewer: ExtendViewer = (<any>window)['viewer'];
-    const lightbulb = viewer.lightbulb;
-  
+function observeSegmentSelect(targetNode : Element, lightbulb : LightBulbService) {  
     // Select the node that will be observed for mutations
     if (!targetNode) {
       return;
@@ -91,15 +88,15 @@ function observeSegmentSelect(targetNode : Element) {
   }
 
 
-class ExtendViewer extends Viewer {
+// class ExtendViewer extends Viewer {
 
-    lightbulb = new LightBulbService();
+//     lightbulb = new LightBulbService();
   
-    constructor(public display: DisplayContext) {
-      super(display, {
-        showLayerDialog: false,
-        showUIControls: true,
-        showPanelBorders: true
-      });
-    }
-  }
+//     constructor(public display: DisplayContext) {
+//       super(display, {
+//         showLayerDialog: false,
+//         showUIControls: true,
+//         showPanelBorders: true
+//       });
+//     }
+//   }

@@ -1,50 +1,43 @@
 {
   "name": "ng-extend",
-  "description": "Example project that depends on neuroglancer.",
-  "main": "dist/module/main_module.js",
-  "engines": {
-    "node": ">=12"
-  },
+  "version": "0.0.0",
+  "private": true,
+  "description": "Test of a vite project that depends on Neuroglancer.",
   "scripts": {
-    "generate-code": "node ./node_modules/neuroglancer/config/generate_code.js",
-    "build-min": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
-    "build": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
-    "build:watch": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=dev --serve --watch",
-    "dev-server": "node ./node_modules/neuroglancer/config/esbuild-cli.js --define CONFIG=$(cat config/ng-extend.json | tr -d ' \t\n\r') --define STATE_SERVERS=$(cat config/state_servers.json | tr -d ' \t\n\r') --define CUSTOM_BINDINGS=$(cat config/custom-keybinds.json | tr -d ' \t\n\r') --config=dev --serve --watch",
-    "dev-server-python": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-dev --serve --watch",
-    "build-module": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=module",
-    "build-python": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-min",
-    "build-python-min": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-min",
-    "build-python-dev": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-dev",
-    "test": "karma start ./node_modules/neuroglancer/config/karma.conf.js --single-run",
-    "test:watch": "karma start ./node_modules/neuroglancer/config/karma.conf.js --no-single-run",
-    "benchmark": "karma start ./node_modules/neuroglancer/config/karma.benchmark.js --single-run",
-    "benchmark:watch": "karma start ./node_modules/neuroglancer/config/karma.benchmark.js --no-single-run",
-    "prepublishOnly": "npm run test && npm run build-module",
-    "gulp": "gulp",
-    "lint": "eslint . --ext .ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/json-bigint": "^1.0.1",
-    "@babel/types": "^7.21.5",
-    "@types/jasmine": "^4.3.1",
-    "chokidar": "^3.5.1",
-    "colors": "^1.4.0",
-    "connect": "^3.7.0",
-    "esbuild-plugin-alias": "^0.2.1",
-    "esbuild-plugin-vue3": "^0.3.2",
-    "event-stream": "^4.0.1",
-    "faye-websocket": "^0.11.4",
-    "morgan": "^1.10.0",
-    "send": "^0.18.0",
-    "yargs": "^17.0.1"
+    "build": "webpack",
+    "dev-server": "webpack serve"
   },
   "dependencies": {
-    "neuroglancer": "github:seung-lab/neuroglancer#737a902c8740ff37500ba0f2f658beacbbdd7c5a",
     "json-bigint": "^1.0.0",
-    "pinia": "^2.0.32",
-    "vue": "^3.2.47",
-    "vue-router": "^4.1.6"
+    "neuroglancer": "github:seung-lab/neuroglancer#cj-spelunker-ng-extend-v3",
+    "pinia": "^2.1.7",
+    "svg-inline-loader": "^0.8.2",
+    "vue": "^3.4.21"
+  },
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 Firefox versions",
+    "last 2 Safari versions"
+  ],
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/json-bigint": "^1.0.1",
+    "css-loader": "^6.10.0",
+    "esbuild-loader": "^4.0.3",
+    "file-loader": "^6.2.0",
+    "html-webpack-plugin": "^5.6.0",
+    "style-loader": "^3.3.4",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.4.5",
+    "vue-loader": "^17.4.2",
+    "vue-template-compiler": "^2.7.16",
+    "webpack": "^5.90.3",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.0.2"
+  },
+  "type": "module",
+  "imports": {
+    "#src/*.js": "./src/*.ts",
+    "#src/*": "./src/*"
   }
 }

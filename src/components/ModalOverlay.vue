@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // import Vue from "vue";
 
-import Overlay from "components/Overlay.vue";
+import Overlay from "#src/components/Overlay.vue";
 
 // export default Vue.extend({
 //   components: { Overlay }
@@ -24,7 +24,7 @@ import Overlay from "components/Overlay.vue";
   z-index: 99;
   top: 0;
   left: 0;
-  background-color: rgba(0,0,0,0.8);
+  background-color: rgba(0, 0, 0, 0.8);
   pointer-events: initial;
 }
 

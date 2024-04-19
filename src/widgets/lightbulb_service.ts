@@ -1,11 +1,11 @@
-import {ContextMenu} from 'neuroglancer/ui/context_menu';
-import { cancellableFetchSpecialOk, parseSpecialUrl } from 'third_party/neuroglancer/util/special_protocol_request';
-import { defaultCredentialsManager } from "neuroglancer/credentials_provider/default_manager";
-import {makeIcon} from 'neuroglancer/widget/icon';
-import {responseJson } from 'third_party/neuroglancer/util/http_request';
+import {ContextMenu} from 'neuroglancer/unstable/ui/context_menu.js';
+import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/unstable/util/special_protocol_request.js';
+import { defaultCredentialsManager } from "neuroglancer/unstable/credentials_provider/default_manager.js";
+import {makeIcon} from 'neuroglancer/unstable/widget/icon.js';
+import {responseJson } from 'neuroglancer/unstable/util/http_request.js';
 import JSONbigInt from 'json-bigint';
 import './bulb.css';
-import lightbulbBase from "../images/lightbulb-base.svg";
+import lightbulbBase from "#src/images/lightbulb-base.svg";
 
 const br = () => document.createElement('br');
 const JSONBS = JSONbigInt({storeAsString: true});
