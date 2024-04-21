@@ -5,7 +5,7 @@ import {makeIcon} from 'neuroglancer/unstable/widget/icon.js';
 import {responseJson } from 'neuroglancer/unstable/util/http_request.js';
 import JSONbigInt from 'json-bigint';
 import './bulb.css';
-import lightbulbBase from "#src/images/lightbulb-base.svg";
+import lightbulbBase from '!svg-inline-loader!#src/images/lightbulb-base.svg';
 
 const br = () => document.createElement('br');
 const JSONBS = JSONbigInt({storeAsString: true});

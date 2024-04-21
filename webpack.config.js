@@ -59,11 +59,7 @@ export default {
             loader: "file-loader",
           },
         ],
-      },
-      {
-        test: /\.svg$/,
-        loader: 'svg-inline-loader',
-      },
+      }
     ],
   },
   devServer: {
