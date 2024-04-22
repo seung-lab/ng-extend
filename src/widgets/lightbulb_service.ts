@@ -1,35 +1,49 @@
-import {ContextMenu} from 'neuroglancer/unstable/ui/context_menu.js';
+
+
+
+
+
+
+
+
+
+import { ContextMenu } from 'neuroglancer/unstable/ui/context_menu.js';
 import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/unstable/util/special_protocol_request.js';
 import { defaultCredentialsManager } from "neuroglancer/unstable/credentials_provider/default_manager.js";
-import {makeIcon} from 'neuroglancer/unstable/widget/icon.js';
-import {responseJson } from 'neuroglancer/unstable/util/http_request.js';
+import { makeIcon } from 'neuroglancer/unstable/widget/icon.js';
+// import { responseJson } from 'neuroglancer/unstable/util/http_request.js';
 import JSONbigInt from 'json-bigint';
+
+/* TODO: Can we set color by adjusting the fill of an element in the SVG? */
 import './bulb.css';
-import lightbulbBase from '!svg-inline-loader!#src/images/lightbulb-base.svg';
+import lightbulb_base_svg from '!svg-inline-loader!#src/images/lightbulb-base.svg';
+// import lightbulb_purple_svg from '!svg-inline-loader!#src/images/lightbulb-purple.svg';
+import lightbulb_green_svg from '!svg-inline-loader!#src/images/lightbulb-green.svg';
+import lightbulb_yellow_svg from '!svg-inline-loader!#src/images/lightbulb-yellow.svg';
 
 const br = () => document.createElement('br');
 const JSONBS = JSONbigInt({storeAsString: true});
 
+/* Alternate to responseJson, which would break segmetn IDs */
 function responseJsonString(response: Response): Promise<any> {
   return response.text()
 }
 
-//timer refresh
 export class LightBulbService {
 
   timeout = 0;
   checkTime = 120000;
   statuses: {
     [key: string]: {
-      sid: string; element: HTMLElement; button: HTMLButtonElement;
+      sid: string;
+      element: HTMLElement;
+      button: HTMLButtonElement;
       // state?: any;
       status: 'error' | 'deselected' | 'outdated' | 'incomplete' | 'unlabeled' | 'complete'
     }
   } = {};
 
   colorBulbs(): void {
-
-    console.log("COLORING BULBS <___---------");
 
     var sidstring = "";
     Object.values(this.statuses).forEach((segments) => {
@@ -47,12 +61,10 @@ export class LightBulbService {
     //swap icon
     (async () => {
       const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
-          'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + sidstring, //720575941553301220
-          // 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/' + '720575941575526745', //720575941553301220
+          'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + sidstring,
           defaultCredentialsManager,
       );  
 
-      // JSONBS.parse(await (  < {status: string; value: any;} >cell) .value.text())
       try {
         const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString).then((val : string) => {
           return val;
@@ -61,21 +73,22 @@ export class LightBulbService {
         console.log(nodeStatuses)
 
         for(let nodeIndex in nodeStatuses["index"]) {
-          // console.log("TEST: + " + nodeStatuses["pt_root_id"][nodeIndex]);
-          // console.log(this.statuses)
-          // const element = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"]
+          let button = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["button"]
+          button.innerHTML = ''
           if (nodeStatuses["proofread"][nodeIndex] === "t") {
-            console.log("SETTING " + nodeStatuses["pt_root_id"][nodeIndex] + " to green")
-            this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"].className = "neuroglancer-icon-bulb-base green"//purple - proofread but unlabeled
+            console.log("Setting " + nodeStatuses["pt_root_id"][nodeIndex] + " to green")
+
+            // This might be the approach if we used CSS instead of icons?
+            // this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"].className = "neuroglancer-icon-bulb-base green"
+            button.appendChild(makeIcon({svg: lightbulb_green_svg}))
           } else {
-            this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"].className = "neuroglancer-icon-bulb-base yellow"
+            console.log("Setting " + nodeStatuses["pt_root_id"][nodeIndex] + " to yellow")
+            button.appendChild(makeIcon({svg: lightbulb_yellow_svg}))
           }
-          console.log("CHANGED CLASS NAME");
         }
 
       } catch(e) {
-        console.log("FALIED TO GET VALUE")
-        console.log(e.message)
+        console.log("Failed to fetch value" + e.message)
       }
     })();
 
@@ -94,32 +107,32 @@ export class LightBulbService {
   }
 
 
-  createButton(segmentIDString: string):
-      HTMLButtonElement {
-    
-
+  createButton(segmentIDString: string): HTMLButtonElement {
     if(segmentIDString in this.statuses) {
       return this.statuses[segmentIDString]["button"]
     }
     // Button for the user to copy a segment's ID
     const bulb = document.createElement('button');
 
-    bulb.className = 'nge-lightbulb menu';
+    bulb.className = 'lightbulb menu';
     bulb.style.backgroundColor = 'transparent';
     bulb.style.color = 'green'
     bulb.style.border = 'none';
     bulb.style.boxShadow = 'none';
     bulb.style.cursor = "pointer";
+    bulb.style.height = '16px'
+    bulb.style.width = '16px'
 
     //set default icon
     let iconElement: HTMLElement;
-    iconElement = makeIcon({svg: lightbulbBase});
-    iconElement.className = "neuroglancer-icon-bulb-base purple" //spacign between lines is changing
-    console.log("MAKING BUTTON FOR: " + segmentIDString);
+    iconElement = makeIcon({svg: lightbulb_base_svg});
+    // for a CSS-based approach?
+    // iconElement.className = "neuroglancer-icon-bulb-base";
     
     bulb.appendChild(iconElement);
 
     bulb.addEventListener('click', (event: MouseEvent) => {
+      // TODO: Make sure we destroy the menu as well
       let menu = this.makeMenu(bulb, segmentIDString)
       menu.show(
           <MouseEvent>{clientX: event.clientX - 200, clientY: event.clientY}
@@ -143,41 +156,41 @@ export class LightBulbService {
 
     (async () => {
         const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
-            'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/' + segmentIDString, //720575941553301220
+            'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/' + segmentIDString,
             defaultCredentialsManager,
-        );  
-        await cancellableFetchSpecialOk(credentialsProvider, parsedUrl, {}, responseJson).then((res) => {
-            popup_body.textContent = "Segment information: " + JSON.stringify(res); //replace with json bigint
-        });
+        );
+        const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString).then((val : string) => {
+          return val;
+        })));
+
+        popup_body.textContent = "Segment infoirmation: " + JSONBS.stringify(nodeStatuses);
     })();
-    
+
     return popup_body;
   }
 
-  makeMenu(
-    parent: HTMLElement, segmentIDString: string,
-  ): ContextMenu {
-  const contextMenu = new ContextMenu(parent);
-  const menu = contextMenu.element;
-  menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
-  menu.classList.add(
-      'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
+  makeMenu(parent: HTMLElement, segmentIDString: string): ContextMenu {
+    const contextMenu = new ContextMenu(parent);
+    const menu = contextMenu.element;
+    menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
+    menu.classList.add(
+        'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
 
-  menu.append(
-      br(),
-      this.generateSection(segmentIDString),
-      br(),
-      br());
-  return contextMenu;
+    menu.append(
+        br(),
+        this.generateSection(segmentIDString),
+        br(),
+        br());
+    return contextMenu;
   }
 }
 
 export function liveNeuroglancerInjection(lightbulb : LightBulbService) {
   const watchNode = document.querySelector('#content');
-if (!watchNode) {
-  return;
-}
-observeSegmentSelect(watchNode, lightbulb);
+  if (!watchNode) {
+    return;
+  }
+  observeSegmentSelect(watchNode, lightbulb);
 }
 
 function observeSegmentSelect(targetNode : Element, lightbulb : LightBulbService) {  

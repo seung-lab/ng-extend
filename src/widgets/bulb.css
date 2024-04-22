@@ -19,3 +19,33 @@
   .neuroglancer-icon-bulb-base.purple {
     fill: purple;
   }
+
+
+  .lightbulb {
+    background-image: url('#src/images/lightbulb-base.svg');
+    background-size: contain;
+    background-repeat: no-repeat;
+    width: 16px;
+    height: 16px;
+  }
+  
+  .lightbulb.complete {
+    background-image: url('#src/images/lightbulb-green.svg');
+  }
+  
+  .lightbulb.error {
+    background-image: url('#src/images/lightbulb-base.svg');
+  }
+  
+  .lightbulb.outdated {
+    background-image: url('#src/images/lightbulb-yellow.svg');
+  }
+  
+  .lightbulb.unlabeled {
+    background-image: url('#src/images/lightbulb-purple.svg');
+  }
+  
+  .lightbulb.hidden {
+    display: none;
+  }
+  
