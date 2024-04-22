@@ -48,7 +48,7 @@
 	.st42{fill:none;stroke:#9DDEFD;stroke-width:22;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
 	.st43{fill:#111111;}
 	.st44{fill:none;stroke:#EEEEEE;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
-	.st45{fill:none;stroke:#EEEEEE;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st45{stroke:#EEEEEE;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
 	.st46{fill:#111111;stroke:#5671C0;stroke-miterlimit:10;}
 	.st47{fill:#C35650;}
 	.st48{fill:#693AA0;stroke:#EEEEEE;stroke-width:3;stroke-miterlimit:10;}

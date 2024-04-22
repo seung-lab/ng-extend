@@ -1,12 +1,3 @@
-
-
-
-
-
-
-
-
-
 import { ContextMenu } from 'neuroglancer/unstable/ui/context_menu.js';
 import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/unstable/util/special_protocol_request.js';
 import { defaultCredentialsManager } from "neuroglancer/unstable/credentials_provider/default_manager.js";
@@ -18,8 +9,8 @@ import JSONbigInt from 'json-bigint';
 import './bulb.css';
 import lightbulb_base_svg from '!svg-inline-loader!#src/images/lightbulb-base.svg';
 // import lightbulb_purple_svg from '!svg-inline-loader!#src/images/lightbulb-purple.svg';
-import lightbulb_green_svg from '!svg-inline-loader!#src/images/lightbulb-green.svg';
-import lightbulb_yellow_svg from '!svg-inline-loader!#src/images/lightbulb-yellow.svg';
+// import lightbulb_green_svg from '!svg-inline-loader!#src/images/lightbulb-green.svg';
+// import lightbulb_yellow_svg from '!svg-inline-loader!#src/images/lightbulb-yellow.svg';
 
 const br = () => document.createElement('br');
 const JSONBS = JSONbigInt({storeAsString: true});
@@ -73,17 +64,18 @@ export class LightBulbService {
         console.log(nodeStatuses)
 
         for(let nodeIndex in nodeStatuses["index"]) {
-          let button = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["button"]
-          button.innerHTML = ''
+          let elem = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"]
+          // let button = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["button"]
           if (nodeStatuses["proofread"][nodeIndex] === "t") {
-            console.log("Setting " + nodeStatuses["pt_root_id"][nodeIndex] + " to green")
-
             // This might be the approach if we used CSS instead of icons?
-            // this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"].className = "neuroglancer-icon-bulb-base green"
-            button.appendChild(makeIcon({svg: lightbulb_green_svg}))
+            // button.appendChild(makeIcon({svg: lightbulb_green_svg}))
+            elem.className = "neuroglancer-icon-bulb-base green";
+            // button.className = "neuroglancer-icon bulb-base green";
+
           } else {
             console.log("Setting " + nodeStatuses["pt_root_id"][nodeIndex] + " to yellow")
-            button.appendChild(makeIcon({svg: lightbulb_yellow_svg}))
+            // button.appendChild(makeIcon({svg: lightbulb_yellow_svg}))
+            elem.className = "neuroglancer-icon-bulb-base yellow"
           }
         }
 
@@ -127,7 +119,7 @@ export class LightBulbService {
     let iconElement: HTMLElement;
     iconElement = makeIcon({svg: lightbulb_base_svg});
     // for a CSS-based approach?
-    // iconElement.className = "neuroglancer-icon-bulb-base";
+    iconElement.className = "neuroglancer-icon-bulb-base";
     
     bulb.appendChild(iconElement);
 
