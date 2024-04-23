@@ -2,16 +2,11 @@ import { ContextMenu } from 'neuroglancer/unstable/ui/context_menu.js';
 import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/unstable/util/special_protocol_request.js';
 import { defaultCredentialsManager } from "neuroglancer/unstable/credentials_provider/default_manager.js";
 import { makeIcon } from 'neuroglancer/unstable/widget/icon.js';
-// import { responseJson } from 'neuroglancer/unstable/util/http_request.js';
 import JSONbigInt from 'json-bigint';
 
-/* TODO: Can we set color by adjusting the fill of an element in the SVG? */
-import './bulb.css';
 
+import './bulb.css';
 import lightbulb_base_svg from '!svg-inline-loader!#src/images/lightbulb-base.svg';
-// import lightbulb_purple_svg from '!svg-inline-loader!#src/images/lightbulb-purple.svg';
-// import lightbulb_green_svg from '!svg-inline-loader!#src/images/lightbulb-green.svg';
-// import lightbulb_yellow_svg from '!svg-inline-loader!#src/images/lightbulb-yellow.svg';
 
 const br = () => document.createElement('br');
 const JSONBS = JSONbigInt({storeAsString: true});
@@ -27,68 +22,141 @@ export class LightBulbService {
   checkTime = 120000;
   statuses: {
     [key: string]: {
-      sid: string;
-      element: HTMLElement;
-      button: HTMLButtonElement;
-      // state?: any;
+      sid: string; //root id
+      element: HTMLElement; //svg image
+      button: HTMLButtonElement; //button containing element with svg image
+      //error: something is wrong
+      //deselected: not sure yet
+      //outdated: placeholder or not proofread or identified
+      //incomplete: not proofread but identified
+      //unlabeled: proofread but not identified
+      //complete: both
       status: 'error' | 'deselected' | 'outdated' | 'incomplete' | 'unlabeled' | 'complete'
     }
   } = {};
 
-  colorBulbs(): void {
+  checkNodeStatuses(): void {
 
     var sidstring = "";
     Object.values(this.statuses).forEach((segments) => {
       const {sid} = segments;
       sidstring += sid + ',';
-
     });
 
-    if(sidstring.length == 0) {
+    if(sidstring.length == 0)
       return;
-    };
 
     sidstring = sidstring.slice(0,-1);
 
-    //swap icon
-    (async () => {
+
+    (async () => { //proofreading status
       const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
           'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + sidstring,
           defaultCredentialsManager,
       );  
-
       try {
-        const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString).then((val : string) => {
-          return val;
-        })));
+        const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
 
-        console.log(nodeStatuses)
-
+        //for each node returned from the service
         for(let nodeIndex in nodeStatuses["index"]) {
-          let elem = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"]
-          // let button = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["button"]
-          if (nodeStatuses["proofread"][nodeIndex] === "t") {
-            elem.className = "neuroglancer-icon bulb green";
+          let rootid = nodeStatuses["pt_root_id"][nodeIndex]
 
-          } else {
-            console.log("Setting " + nodeStatuses["pt_root_id"][nodeIndex] + " to yellow")
-            // button.appendChild(makeIcon({svg: lightbulb_yellow_svg}))
-            elem.className = "neuroglancer-icon bulb yellow"
+          if (nodeStatuses["proofread"][nodeIndex] === "t" 
+                  && this.statuses[rootid]["status"] === 'outdated') {
+
+            //if proofread and marked as outdated, mark as unlabeled
+            this.statuses[rootid]["status"] = "unlabeled";
+          } else if(nodeStatuses["proofread"][nodeIndex] === "t" 
+                  && this.statuses[rootid]["status"] === 'incomplete'){
+
+            //if proofread and marked as incomplete, mark as complete
+            this.statuses[rootid]["status"] = "complete";
+          
+          } else if(nodeStatuses["proofread"][nodeIndex] !== "t" 
+                  && this.statuses[rootid]["status"] === "unlabeled"){
+            
+            //if not proofread and marked as unlabeled, mark as outdated (our info has changed)
+            this.statuses[rootid]["status"] = 'outdated'
           }
         }
-
       } catch(e) {
-        console.log("Failed to fetch value" + e.message)
+        console.log("Failed to fetch info" + e.message)
       }
+      //update colors based on new information
+      this.colorBulbs();
     })();
 
+    (async () => { //cell identification status
+      const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
+          'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + sidstring,
+          defaultCredentialsManager,
+      );  
+      try {
+        const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
+
+        //for each node returned from the service
+        for(let nodeIndex in nodeStatuses["index"]) {
+          let rootid = nodeStatuses["pt_root_id"][nodeIndex]
+
+          if (nodeStatuses["valid"][nodeIndex] === "t" 
+                  && this.statuses[rootid]["status"] === 'outdated') {
+
+            //if cell is identified and marked as outdated, mark as incomplete
+            this.statuses[rootid]["status"] = "incomplete";
+          } else if(nodeStatuses["valid"][nodeIndex] === "t" 
+                  && this.statuses[rootid]["status"] === 'unlabeled'){
+
+            //if cell is identified and marked as unlabeled, mark as complete
+            this.statuses[rootid]["status"] = "complete";
+          } else if(nodeStatuses["valid"][nodeIndex] !== "t" 
+                  && this.statuses[rootid]["status"] === "incomplete"){
+            
+            //if cell is not identified and marked as incomplete, mark as outdated (our info has changed)
+            this.statuses[rootid]["status"] = 'outdated'
+          }
+        }
+      } catch(e) {
+        console.log("Failed to fetch info" + e.message)
+      }
+
+      //update colors based on new information
+      this.colorBulbs();
+    })();
+
+    //check to see if our info has changed after waiting <timeout> seconds
     this.checkTimeout();
+  }
+
+  colorBulbs() {
+    Object.values(this.statuses).forEach((segments) => {
+      //for each root id that is selected, color it's bulb based on its status
+      const {sid} = segments;
+      switch(this.statuses[sid]["status"]) {
+        case 'error':
+          this.statuses[sid]["element"].className = "neuroglancer-icon bulb red";
+          break;
+        case 'outdated':
+          this.statuses[sid]["element"].className = "neuroglancer-icon bulb";
+          break;
+        case 'incomplete':
+          this.statuses[sid]["element"].className = "neuroglancer-icon bulb yellow";
+          break;
+        case 'unlabeled':
+          this.statuses[sid]["element"].className = "neuroglancer-icon bulb purple";
+          break;
+        case 'complete':
+          this.statuses[sid]["element"].className = "neuroglancer-icon bulb green";
+          break;
+        //TODO??? case unselected
+      }
+      
+    });
   }
 
 
   checkTimeout(time: number = this.checkTime) {
     clearTimeout(this.timeout);
-    const boundCheck = this.colorBulbs.bind(this);
+    const boundCheck = this.checkNodeStatuses.bind(this);
     this.timeout = window.setTimeout(boundCheck, time);
   }
 
@@ -98,13 +166,15 @@ export class LightBulbService {
 
 
   createButton(segmentIDString: string): HTMLButtonElement {
+
+    //don't recreate existing buttons
     if(segmentIDString in this.statuses) {
       return this.statuses[segmentIDString]["button"]
     }
-    // Button for the user to copy a segment's ID
+
+    // button for the user to copy a segment's ID
     const bulb = document.createElement('button');
 
-    // bulb.className = 'lightbulb menu';
     bulb.style.backgroundColor = 'transparent';
     bulb.style.color = 'green'
     bulb.style.border = 'none';
@@ -113,15 +183,15 @@ export class LightBulbService {
     bulb.style.height = '16px'
     bulb.style.width = '16px'
 
-    //set default icon
+    //set button's lightbulb icon to the initial one
     let iconElement: HTMLElement;
     iconElement = makeIcon({svg: lightbulb_base_svg});
-    // for a CSS-based approach?
     iconElement.className = "neuroglancer-icon bulb";
+    //fix svg icon to allow for css based styling
     (iconElement.firstElementChild as SVGElement).style.fill = "unset";
-    
     bulb.appendChild(iconElement);
 
+    //add event listner :)
     bulb.addEventListener('click', (event: MouseEvent) => {
       // TODO: Make sure we destroy the menu as well
       let menu = this.makeMenu(bulb, segmentIDString)
@@ -130,10 +200,7 @@ export class LightBulbService {
       )
     });
 
-    if(!(segmentIDString in this.statuses)) {
-      this.statuses[segmentIDString] = {sid: segmentIDString , element: iconElement,button: bulb, status: "error"};
-    }
-
+    this.statuses[segmentIDString] = {sid: segmentIDString , element: iconElement,button: bulb, status: "outdated"};
     this.checkTimeout(0);
 
     return bulb;

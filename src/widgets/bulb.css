@@ -20,6 +20,10 @@
     fill: purple;
   }
 
+  .bulb.red {
+    fill: red;
+  }
+
 
   .lightbulb {
     background-image: url('#src/images/lightbulb-base.svg');
