@@ -1,4 +1,4 @@
-.neuroglancer-icon-bulb-base {
+.bulb {
     width: 16px;
     height: 16px;
     fill: transparent;
@@ -8,15 +8,15 @@
     stroke-linejoin: round;
   }
 
-  .neuroglancer-icon-bulb-base.green {
+  .bulb.green {
     fill: green;
   }
 
-  .neuroglancer-icon-bulb-base.yellow {
+  .bulb.yellow {
     fill: yellow;
   }
 
-  .neuroglancer-icon-bulb-base.purple {
+  .bulb.purple {
     fill: purple;
   }
 

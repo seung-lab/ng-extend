@@ -7,6 +7,7 @@ import JSONbigInt from 'json-bigint';
 
 /* TODO: Can we set color by adjusting the fill of an element in the SVG? */
 import './bulb.css';
+
 import lightbulb_base_svg from '!svg-inline-loader!#src/images/lightbulb-base.svg';
 // import lightbulb_purple_svg from '!svg-inline-loader!#src/images/lightbulb-purple.svg';
 // import lightbulb_green_svg from '!svg-inline-loader!#src/images/lightbulb-green.svg';
@@ -67,15 +68,12 @@ export class LightBulbService {
           let elem = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["element"]
           // let button = this.statuses[nodeStatuses["pt_root_id"][nodeIndex]]["button"]
           if (nodeStatuses["proofread"][nodeIndex] === "t") {
-            // This might be the approach if we used CSS instead of icons?
-            // button.appendChild(makeIcon({svg: lightbulb_green_svg}))
-            elem.className = "neuroglancer-icon-bulb-base green";
-            // button.className = "neuroglancer-icon bulb-base green";
+            elem.className = "neuroglancer-icon bulb green";
 
           } else {
             console.log("Setting " + nodeStatuses["pt_root_id"][nodeIndex] + " to yellow")
             // button.appendChild(makeIcon({svg: lightbulb_yellow_svg}))
-            elem.className = "neuroglancer-icon-bulb-base yellow"
+            elem.className = "neuroglancer-icon bulb yellow"
           }
         }
 
@@ -106,7 +104,7 @@ export class LightBulbService {
     // Button for the user to copy a segment's ID
     const bulb = document.createElement('button');
 
-    bulb.className = 'lightbulb menu';
+    // bulb.className = 'lightbulb menu';
     bulb.style.backgroundColor = 'transparent';
     bulb.style.color = 'green'
     bulb.style.border = 'none';
@@ -119,7 +117,8 @@ export class LightBulbService {
     let iconElement: HTMLElement;
     iconElement = makeIcon({svg: lightbulb_base_svg});
     // for a CSS-based approach?
-    iconElement.className = "neuroglancer-icon-bulb-base";
+    iconElement.className = "neuroglancer-icon bulb";
+    (iconElement.firstElementChild as SVGElement).style.fill = "unset";
     
     bulb.appendChild(iconElement);
 
