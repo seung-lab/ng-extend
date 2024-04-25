@@ -7,6 +7,7 @@ import JSONbigInt from 'json-bigint';
 
 import './bulb.css';
 import lightbulb_base_svg from '!svg-inline-loader!#src/images/lightbulb-base.svg';
+import { NullarySignal } from 'neuroglancer/unstable/util/signal.js';
 
 const br = () => document.createElement('br');
 const JSONBS = JSONbigInt({storeAsString: true});
@@ -206,21 +207,15 @@ export class LightBulbService {
     return bulb;
   };
 
-  generateSection(segmentIDString : string) : HTMLDivElement{
+  generateSection(segmentIDString : string, queryURL: string) : HTMLDivElement{
     const popup_body = document.createElement('div');
-
-    // const url = "https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/";
-    // https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=<COMMA SEPERATED VALUES>
 
     (async () => {
         const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
-            'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/' + segmentIDString,
+            queryURL + segmentIDString,
             defaultCredentialsManager,
         );
-        const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString).then((val : string) => {
-          return val;
-        })));
-
+        const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
         popup_body.textContent = "Segment infoirmation: " + JSONBS.stringify(nodeStatuses);
     })();
 
@@ -228,7 +223,7 @@ export class LightBulbService {
   }
 
   makeMenu(parent: HTMLElement, segmentIDString: string): ContextMenu {
-    const contextMenu = new ContextMenu(parent);
+    let contextMenu : ContextMenu | undefined = new ContextMenu(parent);
     const menu = contextMenu.element;
     menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
     menu.classList.add(
@@ -236,9 +231,16 @@ export class LightBulbService {
 
     menu.append(
         br(),
-        this.generateSection(segmentIDString),
+        this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/'),
+        br(),
+        br(),
+        this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string='),
         br(),
         br());
+    
+    const signal = new NullarySignal();
+    signal.add(() => {contextMenu = undefined}) //absolutely no idea if this will work but this is my best guess for right now???
+    contextMenu.closed = signal;
     return contextMenu;
   }
 }
