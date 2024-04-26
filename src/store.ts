@@ -1,5 +1,5 @@
 import {Ref, ref, reactive, nextTick} from 'vue';
-import {defineStore} from 'pinia';
+import {defineStore, storeToRefs} from 'pinia';
 
 import {Viewer} from 'neuroglancer/viewer';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
@@ -229,9 +229,7 @@ export const useStatsStore = defineStore('stats', () => {
   let userInfo: UserInfo = reactive({editsToday: 0, editsThisWeek: 0, editsAllTime: 0});
   let cellsSubmitted: Ref<number> = ref(0);
 
-  const {sessions} = useLoginStore();
-  const loggedInUser = sessions[0];
-
+  const {sessions} = storeToRefs(useLoginStore());
   function setLeaderboardTimespan(ts: LeaderboardTimespan) {
     leaderboardTimespan = ts;
   }
@@ -266,12 +264,17 @@ export const useStatsStore = defineStore('stats', () => {
 
   async function updateUserInfo() {
     if (!CONFIG) return;
+    const loggedInUser = sessions.value[0];
     if (!loggedInUser) return;
     const userID = loggedInUser.id;
     const url = CONFIG.leaderboard_url + '/userInfo?userID=' + userID;
-    fetch(url).then(result => result.json()).then(async(json) => { userInfo = json; });
-    const statsURL = CONFIG.user_stats_url + '&user_id=' + userID;
-    fetch(statsURL).then(result => result.json()).then(async(json) => { cellsSubmitted = json["cells_submitted_all_time"]; });
+    fetch(url).then(result => result.json()).then(async(json) => { 
+      userInfo.editsAllTime = json.editsAllTime; 
+      userInfo.editsThisWeek = json.editsThisWeek; 
+      userInfo.editsToday = json.editsToday; 
+    });
+    //const statsURL = CONFIG.user_stats_url + '&user_id=' + userID;
+    //fetch(statsURL).then(result => result.json()).then(async(json) => { cellsSubmitted = json["cells_submitted_all_time"]; });
   }
 
   return {leaderboardLoaded, leaderboardEntries, userInfo, cellsSubmitted, 
@@ -305,10 +308,10 @@ export const useChatStore = defineStore('chat', () => {
   let chatMessages: ChatMessage[] = reactive([]);
   let unreadMessages: Ref<boolean> = ref(false);
 
-  const {sessions} = useLoginStore();
-  const loggedInUser = sessions[0];
+  const {sessions} = storeToRefs(useLoginStore());
 
   function sendJoinMessage(ws: ReconnectingWebSocket) {
+    const loggedInUser = sessions.value[0];
     const joinMessage = JSON.stringify({
       type: joinedChat ? 'rejoin' : 'join',
       name: loggedInUser ? loggedInUser.name : 'Guest'
@@ -318,6 +321,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function sendMessage(message: string) {
+    const loggedInUser = sessions.value[0];
     const now = new Date();
     const messageObj = {
       name: loggedInUser ? loggedInUser.name : 'Guest',

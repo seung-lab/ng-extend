@@ -4,7 +4,8 @@ import VolumesOverlay from "components/VolumesOverlay.vue";
 import UserProfile from "components/UserProfile.vue";
 import DropdownList from "components/DropdownList.vue";
 
-import {loginSession, useLoginStore, useVolumesStore} from '../store';
+import {loginSession, useLoginStore, useVolumesStore, useStatsStore, useChatStore} from '../store';
+import {connectChatSocket} from '../chat_socket';
 
 import logoGemImage from '../images/pyr icon.svg';
 import logoTextImage from '../images/pyr wordmark.svg';
@@ -13,11 +14,19 @@ function encodeSVG(svg: string) {
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
+function initLoginServices() {
+  const {loopUpdateLeaderboard} = useStatsStore();
+  loopUpdateLeaderboard();
+  connectChatSocket();
+  const {joinChat} = useChatStore();
+  joinChat();
+}
+
 const login = useLoginStore();
 window.addEventListener("middleauthlogin", () => {
   login.update();
 });
-login.update();
+login.update().then(() => initLoginServices());
 
 const validLogins = computed(() => login.sessions.filter(x => x.status === undefined));
 const invalidLogins = computed(() => login.sessions.filter(x => x.status !== undefined));
