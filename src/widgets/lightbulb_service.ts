@@ -2,12 +2,14 @@ import { ContextMenu } from 'neuroglancer/unstable/ui/context_menu.js';
 import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/unstable/util/special_protocol_request.js';
 import { defaultCredentialsManager } from "neuroglancer/unstable/credentials_provider/default_manager.js";
 import { makeIcon } from 'neuroglancer/unstable/widget/icon.js';
+// import {vec3} from 'neuroglancer/unstable/util/geom.js';
 import JSONbigInt from 'json-bigint';
+// import {Position} from 'neuroglancer/unstable/navigation_state.js'
 
 
 import './bulb.css';
 import lightbulb_base_svg from '!svg-inline-loader!#src/images/lightbulb-base.svg';
-import { NullarySignal } from 'neuroglancer/unstable/util/signal.js';
+import { Viewer } from 'neuroglancer/unstable/viewer.js';
 
 const br = () => document.createElement('br');
 const JSONBS = JSONbigInt({storeAsString: true});
@@ -21,11 +23,13 @@ export class LightBulbService {
 
   timeout = 0;
   checkTime = 120000;
+  viewer : Viewer;
   statuses: {
     [key: string]: {
       sid: string; //root id
       element: HTMLElement; //svg image
       button: HTMLButtonElement; //button containing element with svg image
+      menu: ContextMenu | null;
       //error: something is wrong
       //deselected: not sure yet
       //outdated: placeholder or not proofread or identified
@@ -35,6 +39,10 @@ export class LightBulbService {
       status: 'error' | 'deselected' | 'outdated' | 'incomplete' | 'unlabeled' | 'complete'
     }
   } = {};
+
+  constructor(viewer : Viewer) {
+    this.viewer = viewer;
+  }
 
   checkNodeStatuses(): void {
 
@@ -168,6 +176,9 @@ export class LightBulbService {
 
   createButton(segmentIDString: string): HTMLButtonElement {
 
+        
+    // const pos = new Position("a");
+
     //don't recreate existing buttons
     if(segmentIDString in this.statuses) {
       return this.statuses[segmentIDString]["button"]
@@ -201,7 +212,7 @@ export class LightBulbService {
       )
     });
 
-    this.statuses[segmentIDString] = {sid: segmentIDString , element: iconElement,button: bulb, status: "outdated"};
+    this.statuses[segmentIDString] = {sid: segmentIDString , element: iconElement,button: bulb, menu: null, status: "outdated"};
     this.checkTimeout(0);
 
     return bulb;
@@ -222,9 +233,38 @@ export class LightBulbService {
     return popup_body;
   }
 
+  //https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/mark_completion?location=500,500,700&valid_id=123455
+
+  generateLink(linkStart : string, segmentIDString : string, linkMessage : string) : HTMLAnchorElement {
+    const coords = this.viewer.navigationState.position.value;
+    let coordsString = ""
+    coords.forEach(coord => {
+      coordsString += Math.round(coord) + ","
+    });
+    coordsString = coordsString.slice(0,-1);
+
+
+    const link = document.createElement('a');
+    link.href = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
+    link.text = linkMessage;
+    return link;
+  }
+
   makeMenu(parent: HTMLElement, segmentIDString: string): ContextMenu {
-    let contextMenu : ContextMenu | undefined = new ContextMenu(parent);
+
+    let contextMenu : ContextMenu;
+    if(this.statuses[segmentIDString]["menu"] === null) {
+      console.log("NEW MENU");
+      contextMenu = new ContextMenu(parent);
+      this.statuses[segmentIDString]["menu"] = contextMenu;
+    } else {
+      console.log("OLD MENU");
+      contextMenu = (this.statuses[segmentIDString]["menu"] as ContextMenu);
+    }
+    
     const menu = contextMenu.element;
+    menu.innerHTML = "";
+
     menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
     menu.classList.add(
         'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
@@ -233,14 +273,15 @@ export class LightBulbService {
         br(),
         this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/'),
         br(),
+        this.generateLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/mark_completion?",segmentIDString, "mark cell as complete"),
+        br(),
         br(),
         this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string='),
         br(),
+        this.generateLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/submit_cell_identification?",segmentIDString, "identify cell"),
+        br(),
         br());
-    
-    const signal = new NullarySignal();
-    signal.add(() => {contextMenu = undefined}) //absolutely no idea if this will work but this is my best guess for right now???
-    contextMenu.closed = signal;
+
     return contextMenu;
   }
 }

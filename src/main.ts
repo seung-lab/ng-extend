@@ -25,6 +25,6 @@ window.addEventListener("DOMContentLoaded", () => {
   initializeWithViewer(viewer);
   mergeTopBars();
 
-  const lightbulb : LightBulbService = new LightBulbService();
+  const lightbulb : LightBulbService = new LightBulbService(viewer);
   liveNeuroglancerInjection(lightbulb);
 });
