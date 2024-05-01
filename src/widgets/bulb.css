@@ -1,7 +1,7 @@
 .bulb {
     width: 16px;
     height: 16px;
-    fill: transparent;
+    fill: black;
     stroke: white;
     stroke-width: 2;
     stroke-linecap: round;
@@ -24,6 +24,9 @@
     fill: red;
   }
 
+  .bulb.gray {
+    fill: gray;
+  }
 
   .lightbulb {
     background-image: url('#src/images/lightbulb-base.svg');

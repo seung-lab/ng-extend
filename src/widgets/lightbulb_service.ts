@@ -31,12 +31,12 @@ export class LightBulbService {
       button: HTMLButtonElement; //button containing element with svg image
       menu: ContextMenu | null;
       //error: something is wrong
-      //deselected: not sure yet
+      //noinfo: neither proofread or identified
       //outdated: placeholder or not proofread or identified
       //incomplete: not proofread but identified
       //unlabeled: proofread but not identified
       //complete: both
-      status: 'error' | 'deselected' | 'outdated' | 'incomplete' | 'unlabeled' | 'complete'
+      status: 'error' | 'noinfo' | 'outdated' | 'incomplete' | 'unlabeled' | 'complete'
     }
   } = {};
 
@@ -71,7 +71,8 @@ export class LightBulbService {
           let rootid = nodeStatuses["pt_root_id"][nodeIndex]
 
           if (nodeStatuses["proofread"][nodeIndex] === "t" 
-                  && this.statuses[rootid]["status"] === 'outdated') {
+                  && (this.statuses[rootid]["status"] === 'outdated' 
+                  || this.statuses[rootid]["status"] === 'noinfo')) {
 
             //if proofread and marked as outdated, mark as unlabeled
             this.statuses[rootid]["status"] = "unlabeled";
@@ -85,13 +86,26 @@ export class LightBulbService {
                   && this.statuses[rootid]["status"] === "unlabeled"){
             
             //if not proofread and marked as unlabeled, mark as outdated (our info has changed)
-            this.statuses[rootid]["status"] = 'outdated'
+            this.statuses[rootid]["status"] = 'outdated';
+          } else if(nodeStatuses["proofread"][nodeIndex] !== "t" 
+                  && this.statuses[rootid]["status"] === "outdated") {
+
+            //if not proofread or identified
+            this.statuses[rootid]["status"] = 'noinfo';
           }
         }
       } catch(e) {
         console.log("Failed to fetch info" + e.message)
       }
       //update colors based on new information
+
+      Object.values(this.statuses).forEach((segments) => {
+        const {sid} = segments;
+        console.log(this.statuses[sid]["status"] + ", " + sid)
+        if(this.statuses[sid]["status"] === "outdated") {
+          this.statuses[sid]["status"] = "noinfo";
+        }
+      });
       this.colorBulbs();
     })();
 
@@ -108,7 +122,8 @@ export class LightBulbService {
           let rootid = nodeStatuses["pt_root_id"][nodeIndex]
 
           if (nodeStatuses["valid"][nodeIndex] === "t" 
-                  && this.statuses[rootid]["status"] === 'outdated') {
+                  && (this.statuses[rootid]["status"] === 'outdated'
+                  || this.statuses[rootid]["status"] === 'noinfo')) {
 
             //if cell is identified and marked as outdated, mark as incomplete
             this.statuses[rootid]["status"] = "incomplete";
@@ -122,11 +137,24 @@ export class LightBulbService {
             
             //if cell is not identified and marked as incomplete, mark as outdated (our info has changed)
             this.statuses[rootid]["status"] = 'outdated'
-          }
+          } else if(nodeStatuses["valid"][nodeIndex] !== "t" 
+                  && this.statuses[rootid]["status"] === "outdated"){
+            
+            //if cell is not identified and marked as incomplete, mark as outdated (our info has changed)
+            console.log("SETTING NOINFO");
+            this.statuses[rootid]["status"] = 'noinfo'
+          } 
         }
       } catch(e) {
         console.log("Failed to fetch info" + e.message)
       }
+
+      Object.values(this.statuses).forEach((segments) => {
+        const {sid} = segments;
+        if(this.statuses[sid]["status"] === "outdated") {
+          this.statuses[sid]["status"] = "noinfo";
+        }
+      });
 
       //update colors based on new information
       this.colorBulbs();
@@ -145,6 +173,7 @@ export class LightBulbService {
           this.statuses[sid]["element"].className = "neuroglancer-icon bulb red";
           break;
         case 'outdated':
+          console.log("OUTDATED");
           this.statuses[sid]["element"].className = "neuroglancer-icon bulb";
           break;
         case 'incomplete':
@@ -155,6 +184,10 @@ export class LightBulbService {
           break;
         case 'complete':
           this.statuses[sid]["element"].className = "neuroglancer-icon bulb green";
+          break;
+        case 'noinfo':
+          console.log("NO INFO");
+          this.statuses[sid]["element"].className = "neuroglancer-icon bulb gray";
           break;
         //TODO??? case unselected
       }
@@ -247,6 +280,7 @@ export class LightBulbService {
     const link = document.createElement('a');
     link.href = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
     link.text = linkMessage;
+    link.target = "_blank";
     return link;
   }
 
