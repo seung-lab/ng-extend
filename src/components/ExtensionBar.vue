@@ -91,6 +91,7 @@ function logout(session: loginSession) {
 }
 
 #extensionBar {
+  width: 100vw;
   display: flex;
   height: 40px;
   align-items: center;
