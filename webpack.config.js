@@ -59,7 +59,7 @@ export default {
             loader: "file-loader",
           },
         ],
-      }
+      },
     ],
   },
   devServer: {
