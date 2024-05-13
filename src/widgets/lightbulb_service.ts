@@ -251,7 +251,7 @@ export class LightBulbService {
     return bulb;
   };
 
-  generateSection(segmentIDString : string, queryURL: string) : HTMLDivElement{
+  generateSection(segmentIDString : string, queryURL: string, parseJson : Function) : HTMLDivElement{
     const popup_body = document.createElement('div');
 
     (async () => {
@@ -260,7 +260,7 @@ export class LightBulbService {
             defaultCredentialsManager,
         );
         const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
-        popup_body.textContent = "Segment infoirmation: " + JSONBS.stringify(nodeStatuses);
+        popup_body.textContent = parseJson(nodeStatuses);
     })();
 
     return popup_body;
@@ -303,14 +303,28 @@ export class LightBulbService {
     menu.classList.add(
         'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
 
+    const parseCompletion = function(response : any) : String {
+      if(response["valid"]["0"] === "t" && response["proofread"]["0"] === "t") {
+        return "the cell has been proofread"
+      }
+      return "the cell has not been proofread";
+    }
+
+    const parseIdentification = function(response : any) : String {
+      if(response["valid"]["0"] === "t") {
+        return "the cell has been identified as a " + response["tag"]["0"] + ", " + response["tag2"]["0"];
+      }
+      return "the cell has not been identified"
+    }
+
     menu.append(
         br(),
-        this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/'),
+        this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/', parseCompletion),
         br(),
         this.generateLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/mark_completion?",segmentIDString, "mark cell as complete"),
         br(),
         br(),
-        this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string='),
+        this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=',parseIdentification),
         br(),
         this.generateLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/submit_cell_identification?",segmentIDString, "identify cell"),
         br(),
