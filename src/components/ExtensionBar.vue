@@ -9,7 +9,7 @@ import {connectChatSocket} from '../chat_socket';
 
 import logoGemImage from '../images/pyr-icon.png';
 import logoTextImage from '../images/pyr-logo-wordmark.png';
-import userProfileSVG from '../images/user.svg';
+import userProfileImage from '../images/user.png';
 
 function encodeSVG(svg: string) {
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
@@ -37,7 +37,7 @@ const {volumes} = useVolumesStore();
 onMounted(() => {
   (document.querySelector('.pyr-logo-gem')! as HTMLImageElement).src = logoGemImage;
   (document.querySelector('.pyr-logo-text')! as HTMLImageElement).src = logoTextImage;
-  (document.querySelector('.user-profile-img')! as HTMLImageElement).src = encodeSVG(userProfileSVG);
+  (document.querySelector('.user-profile-img')! as HTMLImageElement).src = userProfileImage;
 });
 
 const showVolumes = ref(false);
@@ -55,14 +55,14 @@ function logout(session: loginSession) {
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://pyr.ai/" target="_blank">
-        <img class="pyr-logo-gem" src="insert-logo" title="Pyr" width="20">
-        <img class="pyr-logo-text" src="insert-logo" title="Pyr" width="60">
+        <img class="pyr-logo-gem" src="insert-img" title="Pyr" width="20">
+        <img class="pyr-logo-text" src="insert-img" title="Pyr" width="60">
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <button v-if="volumes.length" @click="showVolumes = true">Volumes ({{ volumes.length }})</button>
     <button @click="showUserProfile = true">
-      <img class="user-profile-img" src="insert-logo" title="User Profile" width="30">
+      <img class="user-profile-img" src="insert-img" title="User Profile" height="15">
     </button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
