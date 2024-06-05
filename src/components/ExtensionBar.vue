@@ -177,6 +177,6 @@ function logout(session: loginSession) {
 }
 .pyr-logo-gem {
   padding-left: 15px;
-  padding-right: 8px;
+  padding-right: 12px;
 }
 </style>
