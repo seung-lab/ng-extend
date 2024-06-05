@@ -7,8 +7,9 @@ import DropdownList from "components/DropdownList.vue";
 import {loginSession, useLoginStore, useVolumesStore, useStatsStore, useChatStore} from '../store';
 import {connectChatSocket} from '../chat_socket';
 
-import logoGemImage from '../images/pyr icon.svg';
-import logoTextImage from '../images/pyr wordmark.svg';
+import logoGemImage from '../images/pyr-icon.png';
+import logoTextImage from '../images/pyr-logo-wordmark.png';
+import userProfileSVG from '../images/user.svg';
 
 function encodeSVG(svg: string) {
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
@@ -34,8 +35,9 @@ const invalidLogins = computed(() => login.sessions.filter(x => x.status !== und
 const {volumes} = useVolumesStore();
 
 onMounted(() => {
-  (document.querySelector('.pyr-logo-gem')! as HTMLImageElement).src = encodeSVG(logoGemImage);
-  (document.querySelector('.pyr-logo-text')! as HTMLImageElement).src = encodeSVG(logoTextImage);
+  (document.querySelector('.pyr-logo-gem')! as HTMLImageElement).src = logoGemImage;
+  (document.querySelector('.pyr-logo-text')! as HTMLImageElement).src = logoTextImage;
+  (document.querySelector('.user-profile-img')! as HTMLImageElement).src = encodeSVG(userProfileSVG);
 });
 
 const showVolumes = ref(false);
@@ -59,7 +61,9 @@ function logout(session: loginSession) {
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <button v-if="volumes.length" @click="showVolumes = true">Volumes ({{ volumes.length }})</button>
-    <button @click="showUserProfile = true">User</button>
+    <button @click="showUserProfile = true">
+      <img class="user-profile-img" src="insert-logo" title="User Profile" width="30">
+    </button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
           <template #buttonTitle>Logins ({{ login.sessions.length }})</template>
@@ -165,7 +169,10 @@ function logout(session: loginSession) {
   opacity: 0.5;
 }
 
-.ng-extend-logo > a, .ng-extend-logo > a > img {
+/*.ng-extend-logo > a, .ng-extend-logo > a > img {
   height: 100%;
+}*/
+.ng-extend-logo {
+  padding-right: 20px;
 }
 </style>
