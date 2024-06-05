@@ -55,8 +55,8 @@ function logout(session: loginSession) {
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://pyr.ai/" target="_blank">
-        <img class="pyr-logo-gem" src="insert-img" title="Pyr" width="20">
-        <img class="pyr-logo-text" src="insert-img" title="Pyr" width="60">
+        <img class="pyr-logo-gem" src="insert-img" title="Pyr" width="15">
+        <img class="pyr-logo-text" src="insert-img" title="Pyr" width="40">
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
@@ -174,5 +174,9 @@ function logout(session: loginSession) {
 }*/
 .ng-extend-logo {
   padding-right: 20px;
+}
+.pyr-logo-gem {
+  padding-left: 15px;
+  padding-right: 8px;
 }
 </style>
