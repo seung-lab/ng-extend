@@ -26,9 +26,9 @@ const emit = defineEmits({
                     <div class="nge-user-profile-timespan">Today</div>
                     <div class="nge-user-profile-timespan">Past 7 Days</div>
                     <div class="nge-user-profile-timespan">All Time</div>
-                    <div class="nge-user-profile-count">{{userInfo.editsToday}}</div>
-                    <div class="nge-user-profile-count">{{userInfo.editsThisWeek}}</div>
-                    <div class="nge-user-profile-count">{{userInfo.editsAllTime}}</div>
+                    <div class="nge-user-profile-count">{{userInfo.editsToday}} ({{userInfo.mergesToday}} | {{userInfo.splitsToday}})</div>
+                    <div class="nge-user-profile-count">{{userInfo.editsThisWeek}} ({{userInfo.mergesThisWeek}} | {{userInfo.splitsThisWeek}})</div>
+                    <div class="nge-user-profile-count">{{userInfo.editsAllTime}} ({{userInfo.mergesAllTime}} | {{userInfo.splitsAllTime}})</div>
                 </div>
                 <div class="nge-user-profile-subgrid">
                     <div class="nge-user-profile-timespan">Today</div>

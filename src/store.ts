@@ -219,14 +219,20 @@ export enum LeaderboardTimespan {
 }
 
 export interface UserInfo {
-  editsToday: number, editsThisWeek: number, editsAllTime: number
+  editsToday: number, editsThisWeek: number, editsAllTime: number,
+  mergesToday: number, mergesThisWeek: number, mergesAllTime: number,
+  splitsToday: number, splitsThisWeek: number, splitsAllTime: number
 }
 
 export const useStatsStore = defineStore('stats', () => {
   let leaderboardLoaded: Ref<boolean> = ref(false);
   let leaderboardEntries: LeaderboardEntry[] = reactive([]);
   let leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
-  let userInfo: UserInfo = reactive({editsToday: 0, editsThisWeek: 0, editsAllTime: 0});
+  let userInfo: UserInfo = reactive({
+    editsToday: 0, editsThisWeek: 0, editsAllTime: 0,
+    mergesToday: 0, mergesThisWeek: 0, mergesAllTime: 0,
+    splitsToday: 0, splitsThisWeek: 0, splitsAllTime: 0
+  });
   let cellsSubmitted: Ref<number> = ref(0);
 
   const {sessions} = storeToRefs(useLoginStore());
@@ -269,9 +275,15 @@ export const useStatsStore = defineStore('stats', () => {
     const userID = loggedInUser.id;
     const url = CONFIG.leaderboard_url + '/userInfo?userID=' + userID;
     fetch(url).then(result => result.json()).then(async(json) => { 
-      userInfo.editsAllTime = json.editsAllTime; 
-      userInfo.editsThisWeek = json.editsThisWeek; 
-      userInfo.editsToday = json.editsToday; 
+      userInfo.editsAllTime = json.editsAllTime;
+      userInfo.editsThisWeek = json.editsThisWeek;
+      userInfo.editsToday = json.editsToday;
+      userInfo.mergesAllTime = json.mergesAllTime;
+      userInfo.mergesThisWeek = json.mergesThisWeek;
+      userInfo.mergesToday = json.mergesToday;
+      userInfo.splitsAllTime = json.splitsAllTime;
+      userInfo.splitsThisWeek = json.splitsThisWeek;
+      userInfo.splitsToday = json.splitsToday;
     });
     //const statsURL = CONFIG.user_stats_url + '&user_id=' + userID;
     //fetch(statsURL).then(result => result.json()).then(async(json) => { cellsSubmitted = json["cells_submitted_all_time"]; });
