@@ -4,6 +4,7 @@ import { defaultCredentialsManager } from "neuroglancer/unstable/credentials_pro
 import { makeIcon } from 'neuroglancer/unstable/widget/icon.js';
 // import {vec3} from 'neuroglancer/unstable/util/geom.js';
 import JSONbigInt from 'json-bigint';
+import {Uint64} from 'neuroglancer/unstable/util/uint64.js';
 // import {Position} from 'neuroglancer/unstable/navigation_state.js'
 
 
@@ -331,6 +332,26 @@ export class LightBulbService {
         br());
 
     return contextMenu;
+  }
+
+  async isCoordInRoot(rootID : string): Promise<Boolean> {
+    const source = Uint64.parseString(rootID);
+    const mLayer = this.viewer.selectedLayer.layer;
+    if (mLayer == null) return false;
+    const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
+    const {viewer} = this;
+  
+    const selection = layer.getValueAt(
+        viewer.navigationState.position.spatialCoordinates,
+        new MouseSelectionState());
+  
+    // get root of supervoxel
+    const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
+        String(selection)}/root?int64_as_str=1`);
+    const jsonResp = await response.json();
+    const root_id = Uint64.parseString(jsonResp['root_id']);
+    // compare this root id with the one that initiated the check
+    return !Uint64.compare(source, root_id);
   }
 }
 
