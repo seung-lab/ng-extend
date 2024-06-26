@@ -168,12 +168,30 @@ export const useLayersStore = defineStore('layers', () => {
     if (!viewer) return;
     viewer.layerSpecification.restoreState(layers);
     viewer.navigationState.reset();
-    viewer.coordinateSpace.restoreState({
-      x: [8e-9, 'm'],
-      y: [8e-9, 'm'],
-      z: [33e-9, 'm'],
-    });
-    return true;
+    const imageLayer = viewer.layerManager.managedLayers.filter(
+      (x) => x.name === "img"
+    )[0];
+    if (imageLayer) {
+      const stopListening = imageLayer.readyStateChanged.add(() => {
+        if (imageLayer.isReady() && imageLayer.layer) {
+          const { dataSources } = imageLayer.layer;
+          stopListening();
+          if (dataSources.length) {
+            const { loadState } = dataSources[0];
+            if (loadState && !loadState.error) {
+              const { scales } = loadState.transform.outputSpace.value;
+              viewer!.coordinateSpace.restoreState({
+                // x: [scales[0], "m"],
+                // y: [scales[1], "m"],
+                x: [8e-9, 'm'],
+                y: [8e-9, 'm'],
+                z: [scales[2], "m"],
+              });
+            }
+          }
+        }
+      });
+    }
   }
 
   return {initializeWithViewer, activeLayers, selectLayers};
