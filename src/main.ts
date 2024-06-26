@@ -167,12 +167,39 @@ function observeSegmentSelect(targetNode: Element) {
 
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
+
+  const getLocalServerURL = () => {
+    const localUrl = viewer.layerManager.managedLayers
+        .filter(x => x.layer?.dataSources[0]?.spec.url.includes("middleauth"))
+        .map(x => x.layer?.dataSources[0].spec.url)[0];
+
+    if (localUrl) {
+      const cleanUrl = localUrl.replace('graphene://middleauth+', '');
+      try {
+        const baseUrl = new URL(cleanUrl);
+        const protocol = baseUrl.protocol;
+        const host = baseUrl.host;
+        const pathname = baseUrl.pathname.split('/segmentation')[0]; // Stops before '/segmentation'
+
+        const finalUrl = `${protocol}//${host}${pathname}`;
+        return finalUrl; // Return the formatted URL
+      } catch (error) {
+        console.error("Error processing URL: ", error); // Provide error feedback
+        return '';
+      }
+    } else {
+      console.log("No URL found that includes 'middleauth'.");
+      return '';
+    }
+  };
+
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
       let buttonList: Element|HTMLElement[] = [];
       if (item.classList.contains("neuroglancer-segment-list-entry")) {
         buttonList = [item];
       }
+      const localServerURL = getLocalServerURL();
       buttonList.forEach(item => {
         const segmentIDString =
             item.getAttribute('data-id');
@@ -183,7 +210,7 @@ function observeSegmentSelect(targetNode: Element) {
             const layerName = viewer.selectedLayer.layer?.name || 'default';
             const dataset = DATASETS[layerName];
 
-            button = buttonService.createButton(segmentIDString, dataset);
+            button = buttonService.createButton(localServerURL, segmentIDString, dataset);
             button.classList.add('error')
             item.appendChild(button);
             (<HTMLButtonElement>button).title = 'Click for opening context menu';

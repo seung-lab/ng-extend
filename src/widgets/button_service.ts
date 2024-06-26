@@ -5,7 +5,7 @@ const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void))[][];
 
 export class ButtonService {
-  createButton(segmentIDString: string, dataset: string):
+  createButton(localServerURL: string, segmentIDString: string, dataset: string):
       HTMLButtonElement {
     // Button for the user to copy a segment's ID
     const button = document.createElement('button');
@@ -38,7 +38,7 @@ export class ButtonService {
     button.addEventListener('click', (event: MouseEvent) => {
         // Redirect to Google.com when the button is clicked
         // window.open('https://www.google.com', '_blank');
-      let menu = this.makeMenu(button, segmentIDString, dataset)
+      let menu = this.makeMenu(button, localServerURL, segmentIDString, dataset)
       menu.show(
           <MouseEvent>{clientX: event.clientX - 200, clientY: event.clientY}
       )
@@ -110,7 +110,9 @@ export class ButtonService {
   // };
 
   makeMenu(
-      parent: HTMLElement, segmentIDString: string,
+      parent: HTMLElement,
+      localServerURL: string,
+      segmentIDString: string,
       dataset: string,
       // status: 'error'|'outdated'|'incomplete'|'unlabeled'|'complete',
       // state?: any
@@ -122,7 +124,6 @@ export class ButtonService {
     menu.classList.add(
         'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
     const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
-    const host = 'https://local.brain-wire-test.org';
     // let timestamp: number|undefined = this.getUserDefinedTimestamp();
     // console.log("timestamp:", timestamp)
     let optGroup: any = {analysis: [], proofreading: [], synapseProofreading: []};
@@ -154,7 +155,7 @@ export class ButtonService {
     // const dashTS = timestamp ? `&timestamp_field=${timestamp}` : '';
 
     let changelog =
-        ['Change Log', `${host}/progress/api/v1/query?rootid=${paramStr}`];
+        ['Change Log', `${localServerURL}/progress/api/v1/query?rootid=${paramStr}`];
     // If production data set
     // if (dataset == 'fly_v31') {
     //   optGroup.proofreading.push(SummaryDialog.generateMenuOption(
