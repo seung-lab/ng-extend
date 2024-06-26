@@ -1,0 +1,36 @@
+.neuroglancer-layer-group-viewer-context-menu {
+    border-style: solid;
+    border-color: white;
+    border-width: 1px;
+    border-radius: 5px;
+    -webkit-border-radius: 10px;
+    font-size: 17px;
+    font-family: Roboto;
+    color: white;
+    padding: 5px;
+    padding-left: 20px;
+    padding-right: 40px;
+    margin: 30px 0px;
+}
+
+.neuroglancer-layer-group-viewer-context-menu-title-element {
+    font-size: 20px;
+    margin: 12px 0px;
+    text-transform: uppercase;
+}
+
+.neuroglancer-layer-group-viewer-context-menu-body-element {
+    font-size: 16px;
+    margin: 12px 0px;
+}
+
+.neuroglancer-layer-group-viewer-context-menu-button-element {
+    border-radius: 5px;
+    -webkit-border-radius: 10px;
+    color: white;
+    font-size: 13px;
+    font-family: Roboto;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 5px 20px;
+}

@@ -9,6 +9,7 @@ import {Uint64} from 'neuroglancer/unstable/util/uint64.js';
 
 
 import './bulb.css';
+import './menu.css';
 import lightbulb_base_svg from '!svg-inline-loader!#src/images/lightbulb-base.svg';
 import { Viewer } from 'neuroglancer/unstable/viewer.js';
 
@@ -252,8 +253,13 @@ export class LightBulbService {
     return bulb;
   };
 
-  generateSection(segmentIDString : string, queryURL: string, parseJson : Function) : HTMLDivElement{
+  generateSection(sectionTitle : string, segmentIDString : string, queryURL: string, parseJson : Function) : HTMLDivElement{
     const popup_body = document.createElement('div');
+    const title_div = document.createElement('div');
+    title_div.className = "neuroglancer-layer-group-viewer-context-menu-title-label"
+    title_div.textContent = sectionTitle;
+    const content_body = document.createElement('div');
+    content_body.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
 
     (async () => {
         const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
@@ -261,39 +267,54 @@ export class LightBulbService {
             defaultCredentialsManager,
         );
         const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
-        popup_body.textContent = parseJson(nodeStatuses);
+        content_body.textContent = parseJson(nodeStatuses);
     })();
 
+    popup_body.appendChild(title_div).appendChild(content_body);
     return popup_body;
   }
 
   //https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/mark_completion?location=500,500,700&valid_id=123455
 
-  generateLink(linkStart : string, segmentIDString : string, linkMessage : string) : HTMLAnchorElement {
-    const coords = this.viewer.navigationState.position.value;
-    let coordsString = ""
-    coords.forEach(coord => {
-      coordsString += Math.round(coord) + ","
+  generateButtonLink(linkStart : string, segmentIDString : string, linkMessage : string, color: string) : HTMLDivElement {
+    const button_holder = document.createElement('div');
+    const button_link = document.createElement('button');
+    button_link.textContent = linkMessage;
+    button_link.style.backgroundColor = color;
+
+    button_link.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
+    button_link.addEventListener("click", () => {
+
+      const coords = this.viewer.navigationState.position.value;
+      let coordsString = ""
+      coords.forEach(coord => {
+        coordsString += Math.round(coord) + ","
+      });
+      coordsString = coordsString.slice(0,-1);
+
+      const url = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
+      window.open(url, '_blank');
+
     });
-    coordsString = coordsString.slice(0,-1);
+
+    
 
 
-    const link = document.createElement('a');
-    link.href = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
-    link.text = linkMessage;
-    link.target = "_blank";
-    return link;
+    // const link = document.createElement('a');
+    // link.href = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
+    // link.text = linkMessage;
+    // link.target = "_blank";
+    button_holder.appendChild(button_link);
+    return button_holder;
   }
 
   makeMenu(parent: HTMLElement, segmentIDString: string): ContextMenu {
 
     let contextMenu : ContextMenu;
     if(this.statuses[segmentIDString]["menu"] === null) {
-      console.log("NEW MENU");
       contextMenu = new ContextMenu(parent);
       this.statuses[segmentIDString]["menu"] = contextMenu;
     } else {
-      console.log("OLD MENU");
       contextMenu = (this.statuses[segmentIDString]["menu"] as ContextMenu);
     }
     
@@ -306,53 +327,52 @@ export class LightBulbService {
 
     const parseCompletion = function(response : any) : String {
       if(response["valid"]["0"] === "t" && response["proofread"]["0"] === "t") {
-        return "the cell has been proofread"
+        return "proofread"
       }
-      return "the cell has not been proofread";
+      return "not proofread";
     }
 
     const parseIdentification = function(response : any) : String {
       if(response["valid"]["0"] === "t") {
-        return "the cell has been identified as a " + response["tag"]["0"] + ", " + response["tag2"]["0"];
+        return  response["tag"]["0"] + ", " + response["tag2"]["0"];
       }
-      return "the cell has not been identified"
+      return "not identified"
     }
 
     menu.append(
         br(),
-        this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/', parseCompletion),
+        this.generateSection("Cell Identification",segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=',parseIdentification),
+        this.generateButtonLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/submit_cell_identification?",segmentIDString, "identify cell", "purple"),
         br(),
-        this.generateLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/mark_completion?",segmentIDString, "mark cell as complete"),
         br(),
         br(),
-        this.generateSection(segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=',parseIdentification),
-        br(),
-        this.generateLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/submit_cell_identification?",segmentIDString, "identify cell"),
+        this.generateSection("Completion Status",segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/', parseCompletion),
+        this.generateButtonLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/mark_completion?",segmentIDString, "mark completion", "green"),
         br(),
         br());
 
     return contextMenu;
   }
 
-  async isCoordInRoot(rootID : string): Promise<Boolean> {
-    const source = Uint64.parseString(rootID);
-    const mLayer = this.viewer.selectedLayer.layer;
-    if (mLayer == null) return false;
-    const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
-    const {viewer} = this;
+  // async isCoordInRoot(rootID : string): Promise<Boolean> {
+  //   const source = Uint64.parseString(rootID);
+  //   const mLayer = this.viewer.selectedLayer.layer;
+  //   if (mLayer == null) return false;
+  //   const layer = <SegmentationUserLayerWithGraph>mLayer.layer;
+  //   const {viewer} = this;
   
-    const selection = layer.getValueAt(
-        viewer.navigationState.position.spatialCoordinates,
-        new MouseSelectionState());
+  //   const selection = layer.getValueAt(
+  //       viewer.navigationState.position.spatialCoordinates,
+  //       new MouseSelectionState());
   
-    // get root of supervoxel
-    const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
-        String(selection)}/root?int64_as_str=1`);
-    const jsonResp = await response.json();
-    const root_id = Uint64.parseString(jsonResp['root_id']);
-    // compare this root id with the one that initiated the check
-    return !Uint64.compare(source, root_id);
-  }
+  //   // get root of supervoxel
+  //   const response = await authFetch(`${layer.chunkedGraphUrl}/node/${
+  //       String(selection)}/root?int64_as_str=1`);
+  //   const jsonResp = await response.json();
+  //   const root_id = Uint64.parseString(jsonResp['root_id']);
+  //   // compare this root id with the one that initiated the check
+  //   return !Uint64.compare(source, root_id);
+  // }
 }
 
 export function liveNeuroglancerInjection(lightbulb : LightBulbService) {
