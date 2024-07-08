@@ -4,7 +4,6 @@ import { defaultCredentialsManager } from "neuroglancer/unstable/credentials_pro
 import { makeIcon } from 'neuroglancer/unstable/widget/icon.js';
 // import {vec3} from 'neuroglancer/unstable/util/geom.js';
 import JSONbigInt from 'json-bigint';
-import {Uint64} from 'neuroglancer/unstable/util/uint64.js';
 // import {Position} from 'neuroglancer/unstable/navigation_state.js'
 
 
@@ -21,10 +20,15 @@ function responseJsonString(response: Response): Promise<any> {
   return response.text()
 }
 
+
+// https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/info
+// {"cell_identification":true,"proofreading_status":true}
+
 export class LightBulbService {
 
   timeout = 0;
   checkTime = 120000;
+  dataset_url = "https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/";
   viewer : Viewer;
   statuses: {
     [key: string]: {
@@ -47,7 +51,6 @@ export class LightBulbService {
   }
 
   checkNodeStatuses(): void {
-
     var sidstring = "";
     Object.values(this.statuses).forEach((segments) => {
       const {sid} = segments;
@@ -61,8 +64,13 @@ export class LightBulbService {
 
 
     (async () => { //proofreading status
+
+      if(!await(this.checkServiceExists("proofreading_status"))) {
+        return;
+      }
+
       const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
-          'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + sidstring,
+          'middleauth+'+ this.dataset_url +'proofreading_status?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + sidstring,
           defaultCredentialsManager,
       );  
       try {
@@ -112,13 +120,18 @@ export class LightBulbService {
     })();
 
     (async () => { //cell identification status
+
+      if(!await(this.checkServiceExists("cell_identification"))) {
+        return;
+      }
+
       const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
-          'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + sidstring,
+          'middleauth+'+ this.dataset_url +'cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=' + sidstring,
           defaultCredentialsManager,
       );  
       try {
-        const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
 
+        const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
         //for each node returned from the service
         for(let nodeIndex in nodeStatuses["index"]) {
           let rootid = nodeStatuses["pt_root_id"][nodeIndex]
@@ -143,7 +156,6 @@ export class LightBulbService {
                   && this.statuses[rootid]["status"] === "outdated"){
             
             //if cell is not identified and marked as incomplete, mark as outdated (our info has changed)
-            console.log("SETTING NOINFO");
             this.statuses[rootid]["status"] = 'noinfo'
           } 
         }
@@ -175,7 +187,6 @@ export class LightBulbService {
           this.statuses[sid]["element"].className = "neuroglancer-icon bulb red";
           break;
         case 'outdated':
-          console.log("OUTDATED");
           this.statuses[sid]["element"].className = "neuroglancer-icon bulb";
           break;
         case 'incomplete':
@@ -188,13 +199,22 @@ export class LightBulbService {
           this.statuses[sid]["element"].className = "neuroglancer-icon bulb green";
           break;
         case 'noinfo':
-          console.log("NO INFO");
           this.statuses[sid]["element"].className = "neuroglancer-icon bulb gray";
           break;
         //TODO??? case unselected
       }
       
     });
+  }
+
+  
+  async checkServiceExists(service_name : string) : Promise<boolean> {
+    const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
+      'middleauth+'+ this.dataset_url +'info',
+      defaultCredentialsManager,
+    );
+
+    return JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)))[service_name];
   }
 
 
@@ -274,7 +294,7 @@ export class LightBulbService {
     return popup_body;
   }
 
-  //https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/mark_completion?location=500,500,700&valid_id=123455
+  // dataset_url/mark_completion?location=500,500,700&valid_id=123455
 
   generateButtonLink(linkStart : string, segmentIDString : string, linkMessage : string, color: string) : HTMLDivElement {
     const button_holder = document.createElement('div');
@@ -341,13 +361,13 @@ export class LightBulbService {
 
     menu.append(
         br(),
-        this.generateSection("Cell Identification",segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=',parseIdentification),
-        this.generateButtonLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/submit_cell_identification?",segmentIDString, "identify cell", "purple"),
+        this.generateSection("Cell Identification",segmentIDString, 'middleauth+' + this.dataset_url + 'cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=',parseIdentification),
+        this.generateButtonLink(this.dataset_url + "submit_cell_identification?",segmentIDString, "identify cell", "purple"),
         br(),
         br(),
         br(),
-        this.generateSection("Completion Status",segmentIDString, 'middleauth+https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/proofreading_status/root_id/', parseCompletion),
-        this.generateButtonLink("https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/mark_completion?",segmentIDString, "mark completion", "green"),
+        this.generateSection("Completion Status",segmentIDString, 'middleauth+' + this.dataset_url + 'proofreading_status/root_id/', parseCompletion),
+        this.generateButtonLink(this.dataset_url + "mark_completion?",segmentIDString, "mark completion", "green"),
         br(),
         br());
 
