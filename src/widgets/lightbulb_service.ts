@@ -36,6 +36,8 @@ export class LightBulbService {
       element: HTMLElement; //svg image
       button: HTMLButtonElement; //button containing element with svg image
       menu: ContextMenu | null;
+      identification_menu: ContextMenu | null;
+      proofreading_menu: ContextMenu | null; //maybe revert to a single meny for the whole class?
       //error: something is wrong
       //noinfo: neither proofread or identified
       //outdated: placeholder or not proofread or identified
@@ -267,7 +269,7 @@ export class LightBulbService {
       )
     });
 
-    this.statuses[segmentIDString] = {sid: segmentIDString , element: iconElement,button: bulb, menu: null, status: "outdated"};
+    this.statuses[segmentIDString] = {sid: segmentIDString , element: iconElement,button: bulb, menu: null, identification_menu:null, proofreading_menu:null, status: "outdated"};
     this.checkTimeout(0);
 
     return bulb;
@@ -296,24 +298,26 @@ export class LightBulbService {
 
   // dataset_url/mark_completion?location=500,500,700&valid_id=123455
 
-  generateButtonLink(linkStart : string, segmentIDString : string, linkMessage : string, color: string) : HTMLDivElement {
+  generateButtonLink(parent : HTMLElement,segmentIDString : string, menuType : string, makeMenuSections : Function, makeSubmitableContent : Function, buttonMessage : string, color: string) : HTMLDivElement {
     const button_holder = document.createElement('div');
     const button_link = document.createElement('button');
-    button_link.textContent = linkMessage;
+    button_link.textContent = buttonMessage;
     button_link.style.backgroundColor = color;
 
     button_link.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
-    button_link.addEventListener("click", () => {
+    button_link.addEventListener("click", (event: MouseEvent) => {
 
-      const coords = this.viewer.navigationState.position.value;
-      let coordsString = ""
-      coords.forEach(coord => {
-        coordsString += Math.round(coord) + ","
-      });
-      coordsString = coordsString.slice(0,-1);
+      // const coords = this.viewer.navigationState.position.value;
+      // let coordsString = ""
+      // coords.forEach(coord => {
+      //   coordsString += Math.round(coord) + ","
+      // });
+      // coordsString = coordsString.slice(0,-1);
 
-      const url = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
-      window.open(url, '_blank');
+      // const url = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
+      // window.open(url, '_blank');
+      let menu = this.makeSubmissionMenu(parent, segmentIDString, menuType, makeMenuSections, makeSubmitableContent);
+      menu.show(<MouseEvent>{clientX: event.clientX - 200, clientY: event.clientY});
 
     });
 
@@ -362,14 +366,166 @@ export class LightBulbService {
     menu.append(
         br(),
         this.generateSection("Cell Identification",segmentIDString, 'middleauth+' + this.dataset_url + 'cell_identification?filter_by=root_id&as_json=1&ignore_bad_ids=True&filter_string=',parseIdentification),
-        this.generateButtonLink(this.dataset_url + "submit_cell_identification?",segmentIDString, "identify cell", "purple"),
+        this.generateButtonLink(parent,segmentIDString, "identification_menu", this.generateIdentificationSection, this.generateIdentificationButtons,"identify cell", "purple"),
         br(),
         br(),
         br(),
         this.generateSection("Completion Status",segmentIDString, 'middleauth+' + this.dataset_url + 'proofreading_status/root_id/', parseCompletion),
-        this.generateButtonLink(this.dataset_url + "mark_completion?",segmentIDString, "mark completion", "green"),
+        this.generateButtonLink(parent, segmentIDString, "proofreading_menu", this.generateProofreadingSection, this.generateProofreadingButtons, "mark completion", "green"),
         br(),
         br());
+
+    return contextMenu;
+  }
+
+
+  generateIdentificationSection() : HTMLDivElement{
+    const text_holder = document.createElement('div');
+    const title_div = document.createElement('div');
+    title_div.className = "neuroglancer-layer-group-viewer-context-menu-title-label";
+    title_div.textContent = "Submit Cell Identification";
+
+    const content_body = document.createElement('form');
+    content_body.style.maxWidth = "480px";
+    content_body.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+
+    const p1 = document.createElement('p');
+    p1.textContent = "Enter name(s) of this cell including any synonyms or abbreviations and source of name, if known.";
+    const p2 = document.createElement('p');
+    p2.textContent = "All information is helpful; if you're not certain, just add \"putative\" or \"resembles\" or describe your level of certainty.";
+    const p3 = document.createElement('p');
+    p3.textContent = "Example 1: putative giant fiber neuron, giant fibre neuron (Power 1948), GF, GFN.";
+    const p4 = document.createElement('p');
+    p4.textContent = "Example 2: X9238J (new cell type named in ongoing Smith lab project)";
+
+    content_body.appendChild(p1).appendChild(p2).appendChild(p3).appendChild(p4);
+
+    // text_holder.appendChild(title_div).appendChild(content_body);
+    text_holder.appendChild(title_div);
+    text_holder.appendChild(content_body);
+    return text_holder;
+  }
+
+  generateIdentificationButtons(parent : ContextMenu) : HTMLDivElement{
+    const content = document.createElement('div')
+    const button_holder = document.createElement('div');
+    button_holder.style.display = "flex";
+
+    const text_box = document.createElement('textarea');
+    text_box.style.width = "480px";
+    text_box.style.height = "120px";
+    content.appendChild(text_box);
+
+    const button_submit = document.createElement('button');
+    const button_cancel = document.createElement('button');
+
+    button_submit.textContent = "submit";
+    button_submit.style.backgroundColor = "rgb(15 177 139)";
+    button_cancel.textContent = "cancel";
+    button_cancel.style.backgroundColor = "rgb(15 177 139)";
+
+    button_submit.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
+    button_submit.addEventListener("click", () => {
+      console.log("THIS WILL SUBMIT " + text_box.value);
+    });
+
+    button_cancel.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
+    button_cancel.addEventListener("click", () => {
+      parent.hide();
+    });
+    button_cancel.style.marginLeft = "5px";
+
+    button_holder.appendChild(button_submit);
+    button_holder.appendChild(button_cancel);
+    content.appendChild(button_holder)
+
+    return content;
+  }
+
+
+  generateProofreadingSection() : HTMLDivElement{
+    const text_holder = document.createElement('div');
+    const title_div = document.createElement('div');
+    title_div.className = "neuroglancer-layer-group-viewer-context-menu-title-label";
+    title_div.textContent = "Mark Complete";
+
+    const content_body = document.createElement('div');
+    content_body.style.maxWidth = "480px";
+    content_body.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+    content_body.textContent = "To mark proofreading of this cell as complete:"
+    const listElem = document.createElement('ol');
+    listElem.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+    const item1 = document.createElement('li');
+    item1.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+    item1.textContent = "Are the crosshairs centered inside a distinctive backbone?";
+    const item2 = document.createElement('li');
+    item2.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+    item2.textContent = "Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers?"
+    listElem.appendChild(item1).appendChild(item2);
+
+    content_body.appendChild(listElem);
+    // text_holder.appendChild(title_div).appendChild(content_body);
+    text_holder.appendChild(title_div);
+    text_holder.appendChild(content_body);
+    return text_holder;
+  }
+
+  generateProofreadingButtons(parent : ContextMenu) : HTMLDivElement{
+    const button_holder = document.createElement('div');
+    button_holder.style.display = "flex";
+
+    const button_submit = document.createElement('button');
+    const button_cancel = document.createElement('button');
+
+    button_submit.textContent = "submit";
+    button_submit.style.backgroundColor = "rgb(15 177 139)";
+    button_cancel.textContent = "cancel";
+    button_cancel.style.backgroundColor = "rgb(15 177 139)";
+
+    button_submit.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
+    button_submit.addEventListener("click", () => {
+      console.log("THIS WILL SUBMIT");
+    });
+
+    button_cancel.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
+    button_cancel.addEventListener("click", () => {
+      parent.hide();
+    });
+    button_cancel.style.marginLeft = "5px";
+
+    button_holder.appendChild(button_submit);
+    button_holder.appendChild(button_cancel);
+    return button_holder;
+  }
+
+  makeSubmissionMenu(parent: HTMLElement, segmentIDString : string, menuType : string, makeSection : Function, createSubmissionContent: Function) : ContextMenu{
+    console.log("STATUS: SID" + segmentIDString);
+
+    let contextMenu : ContextMenu;
+    if(menuType !== "proofreading_menu" && menuType !== "identification_menu") {
+      throw new Error("this menu does not exist and cannot be created");
+    }
+    if(this.statuses[segmentIDString][menuType] === null) {
+      contextMenu = new ContextMenu(parent);
+      this.statuses[segmentIDString][menuType] = contextMenu;
+    } else {
+      contextMenu = (this.statuses[segmentIDString][menuType] as ContextMenu);
+    }
+    
+    const menu = contextMenu.element;
+    menu.innerHTML = "";
+
+    menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
+    menu.classList.add(
+        'neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
+
+    menu.append(
+        br(),
+        makeSection(),
+        br(),
+        br(),
+        createSubmissionContent(contextMenu),
+        br(),);
 
     return contextMenu;
   }

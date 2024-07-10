@@ -14,13 +14,15 @@
 }
 
 .neuroglancer-layer-group-viewer-context-menu-title-element {
-    font-size: 20px;
+    font-size: 25px;
+    font-weight: bold;
     margin: 12px 0px;
     text-transform: uppercase;
 }
 
 .neuroglancer-layer-group-viewer-context-menu-body-element {
     font-size: 16px;
+    font-weight: normal;
     margin: 12px 0px;
 }
 
