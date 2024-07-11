@@ -389,16 +389,30 @@ export class LightBulbService {
     content_body.style.maxWidth = "480px";
     content_body.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
 
-    const p1 = document.createElement('p');
-    p1.textContent = "Enter name(s) of this cell including any synonyms or abbreviations and source of name, if known.";
-    const p2 = document.createElement('p');
-    p2.textContent = "All information is helpful; if you're not certain, just add \"putative\" or \"resembles\" or describe your level of certainty.";
-    const p3 = document.createElement('p');
-    p3.textContent = "Example 1: putative giant fiber neuron, giant fibre neuron (Power 1948), GF, GFN.";
-    const p4 = document.createElement('p');
-    p4.textContent = "Example 2: X9238J (new cell type named in ongoing Smith lab project)";
+    const content_str = "Enter name(s) of this cell including any synonyms or abbreviations "
+              + "and source of name, if known.\nAll information is helpful; if you're not certain,"
+              + " just add \"putative\" or \"resembles\" or describe your level of certainty."
+              + "\nExample 1: putative giant fiber neuron, giant fibre neuron (Power 1948), GF,"
+              + " GFN.\nExample 2: X9238J (new cell type named in ongoing Smith lab project)";
 
-    content_body.appendChild(p1).appendChild(p2).appendChild(p3).appendChild(p4);
+    let nextLine = -1;
+    while(true) {
+
+      const paragraph = document.createElement("p");
+      paragraph.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+
+      const newNextLine = content_str.indexOf("\n", nextLine+1);
+      
+      if(newNextLine == -1) {
+        paragraph.textContent = content_str.substring(nextLine);
+        content_body.appendChild(paragraph);
+        break;
+      }
+      paragraph.textContent = content_str.substring(nextLine, newNextLine);
+      content_body.appendChild(paragraph);
+      nextLine = newNextLine;
+    }
+
 
     // text_holder.appendChild(title_div).appendChild(content_body);
     text_holder.appendChild(title_div);
@@ -449,22 +463,35 @@ export class LightBulbService {
     title_div.className = "neuroglancer-layer-group-viewer-context-menu-title-label";
     title_div.textContent = "Mark Complete";
 
+    const content_str = "To mark proofreading of this cell as complete:"
+              +"\n - 1: Are the crosshairs centered inside a distinctive"
+              + "backbone?\n - 2: Has each backbone been examined or proofread, "
+              + "showing no remaining obvious truncations or accidental mergers?";
+
+      
     const content_body = document.createElement('div');
     content_body.style.maxWidth = "480px";
     content_body.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
-    content_body.textContent = "To mark proofreading of this cell as complete:"
-    const listElem = document.createElement('ol');
-    listElem.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
-    const item1 = document.createElement('li');
-    item1.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
-    item1.textContent = "Are the crosshairs centered inside a distinctive backbone?";
-    const item2 = document.createElement('li');
-    item2.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
-    item2.textContent = "Has each backbone been examined or proofread, showing no remaining obvious truncations or accidental mergers?"
-    listElem.appendChild(item1).appendChild(item2);
 
-    content_body.appendChild(listElem);
-    // text_holder.appendChild(title_div).appendChild(content_body);
+    let nextLine = -1;
+    while(true) {
+
+      const paragraph = document.createElement("p");
+      paragraph.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+
+      const newNextLine = content_str.indexOf("\n", nextLine+1);
+      
+      if(newNextLine == -1) {
+        paragraph.textContent = content_str.substring(nextLine);
+        content_body.appendChild(paragraph);
+        break;
+      }
+      paragraph.textContent = content_str.substring(nextLine, newNextLine);
+      content_body.appendChild(paragraph);
+      nextLine = newNextLine;
+    }
+
+    text_holder.appendChild(title_div).appendChild(content_body);
     text_holder.appendChild(title_div);
     text_holder.appendChild(content_body);
     return text_holder;
