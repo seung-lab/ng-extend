@@ -105,12 +105,6 @@ function confirmSelection() {
       const { source, ngl_image_name, name, type } = x!;
 
       let sourceAsArray = Array.isArray(source) ? source : [source];
-
-      sourceAsArray = sourceAsArray.map((x) => {
-        const [first, ...rest] = x.split('://');
-        // TEMP
-        return (x.startsWith('graphene') || x.includes('skeletoncache')) ? `${first}://middleauth+${rest.join('://')}` : x;
-      });
       return {
         name: ngl_image_name || name,
         source: sourceAsArray,

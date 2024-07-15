@@ -155,7 +155,7 @@ export const useLayersStore = defineStore("layers", () => {
       }
       const dataSources = layer.layer.dataSources;
       for (const source of dataSources) {
-        activeLayers.add(source.spec.url.replace("middleauth+", ""));
+        activeLayers.add(source.spec.url);
       }
     }
   }
