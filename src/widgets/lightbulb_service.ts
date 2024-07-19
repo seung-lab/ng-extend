@@ -211,12 +211,23 @@ export class LightBulbService {
 
   
   async checkServiceExists(service_name : string) : Promise<boolean> {
+    // return true;
     const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
       'middleauth+'+ this.dataset_url +'info',
       defaultCredentialsManager,
     );
 
     return JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)))[service_name];
+  }
+
+  async getFromInfoJson(information_json_link : string) : Promise<string> {
+
+    const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
+      'middleauth+'+ this.dataset_url +'info',
+      defaultCredentialsManager,
+    );
+
+    return JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider, parsedUrl, {}, responseJsonString)))[information_json_link];
   }
 
 
@@ -316,7 +327,7 @@ export class LightBulbService {
 
       // const url = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
       // window.open(url, '_blank');
-      let menu = this.makeSubmissionMenu(parent, segmentIDString, menuType, makeMenuSections, makeSubmitableContent);
+      let menu = this.makeSubmissionMenu(this, parent, segmentIDString, menuType, makeMenuSections, makeSubmitableContent);
       menu.show(<MouseEvent>{clientX: event.clientX - 200, clientY: event.clientY});
 
     });
@@ -379,7 +390,7 @@ export class LightBulbService {
   }
 
 
-  generateIdentificationSection() : HTMLDivElement{
+  generateIdentificationSection(self : LightBulbService) : HTMLDivElement{
     const text_holder = document.createElement('div');
     const title_div = document.createElement('div');
     title_div.className = "neuroglancer-layer-group-viewer-context-menu-title-label";
@@ -395,24 +406,26 @@ export class LightBulbService {
               + "\nExample 1: putative giant fiber neuron, giant fibre neuron (Power 1948), GF,"
               + " GFN.\nExample 2: X9238J (new cell type named in ongoing Smith lab project)";
 
-    let nextLine = -1;
-    while(true) {
+    const alternate_content_str = "Enter the name of this cell and press submit.\nFor more information on how to submit"
+              + " cell identification, please review the guide:";
 
-      const paragraph = document.createElement("p");
-      paragraph.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+    
 
-      const newNextLine = content_str.indexOf("\n", nextLine+1);
-      
-      if(newNextLine == -1) {
-        paragraph.textContent = content_str.substring(nextLine);
-        content_body.appendChild(paragraph);
-        break;
+    (async () => {
+      const betterContent = await self.getFromInfoJson("cell_identification_help");
+      if(betterContent != null) {
+        content_body.innerHTML = "";
+        self.generateSubmissionSectionHTML(alternate_content_str, content_body);
+
+        const link_elem = document.createElement('a');
+        link_elem.href = betterContent
+        link_elem.text = "guide";
+        link_elem.target = "_blank";
+
+        content_body.appendChild(link_elem);
       }
-      paragraph.textContent = content_str.substring(nextLine, newNextLine);
-      content_body.appendChild(paragraph);
-      nextLine = newNextLine;
-    }
-
+    })();
+    self.generateSubmissionSectionHTML(content_str, content_body);
 
     // text_holder.appendChild(title_div).appendChild(content_body);
     text_holder.appendChild(title_div);
@@ -457,7 +470,7 @@ export class LightBulbService {
   }
 
 
-  generateProofreadingSection() : HTMLDivElement{
+  generateProofreadingSection(self : LightBulbService) : HTMLDivElement{
     const text_holder = document.createElement('div');
     const title_div = document.createElement('div');
     title_div.className = "neuroglancer-layer-group-viewer-context-menu-title-label";
@@ -468,28 +481,29 @@ export class LightBulbService {
               + "backbone?\n - 2: Has each backbone been examined or proofread, "
               + "showing no remaining obvious truncations or accidental mergers?";
 
-      
-    const content_body = document.createElement('div');
+    const alternate_content_str = "Before marking a cell as complete, make sure each backbone has been thoroughly examined\n for more information, please review the guide:"
+
+          
+    const content_body = document.createElement('form');
     content_body.style.maxWidth = "480px";
     content_body.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
 
-    let nextLine = -1;
-    while(true) {
+    (async () => {
+      const betterContent = await self.getFromInfoJson("proofreading_help");
+      if(betterContent != null) {
+        content_body.innerHTML = "";
+        self.generateSubmissionSectionHTML(alternate_content_str, content_body);
 
-      const paragraph = document.createElement("p");
-      paragraph.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+        const link_elem = document.createElement('a');
+        link_elem.href = betterContent
+        link_elem.text = "guide";
+        link_elem.target = "_blank";
 
-      const newNextLine = content_str.indexOf("\n", nextLine+1);
-      
-      if(newNextLine == -1) {
-        paragraph.textContent = content_str.substring(nextLine);
-        content_body.appendChild(paragraph);
-        break;
+        content_body.appendChild(link_elem);
       }
-      paragraph.textContent = content_str.substring(nextLine, newNextLine);
-      content_body.appendChild(paragraph);
-      nextLine = newNextLine;
-    }
+    })();
+
+    self.generateSubmissionSectionHTML(content_str, content_body);
 
     text_holder.appendChild(title_div).appendChild(content_body);
     text_holder.appendChild(title_div);
@@ -525,7 +539,30 @@ export class LightBulbService {
     return button_holder;
   }
 
-  makeSubmissionMenu(parent: HTMLElement, segmentIDString : string, menuType : string, makeSection : Function, createSubmissionContent: Function) : ContextMenu{
+  generateSubmissionSectionHTML(content : string, content_body : HTMLFormElement) : HTMLFormElement{
+
+    let nextLine = -1;
+    while(true) {
+
+      const paragraph = document.createElement("p");
+      paragraph.className = "neuroglancer-layer-group-viewer-context-menu-body-element";
+
+      const newNextLine = content.indexOf("\n", nextLine+1);
+      
+      if(newNextLine == -1) {
+        paragraph.textContent = content.substring(nextLine);
+        content_body.appendChild(paragraph);
+        break;
+      }
+      paragraph.textContent = content.substring(nextLine, newNextLine);
+      content_body.appendChild(paragraph);
+      nextLine = newNextLine;
+    }
+
+    return content_body
+  }
+
+  makeSubmissionMenu(self : LightBulbService, parent: HTMLElement, segmentIDString : string, menuType : string, makeSection : Function, createSubmissionContent: Function) : ContextMenu{
     console.log("STATUS: SID" + segmentIDString);
 
     let contextMenu : ContextMenu;
@@ -548,7 +585,7 @@ export class LightBulbService {
 
     menu.append(
         br(),
-        makeSection(),
+        makeSection(self),
         br(),
         br(),
         createSubmissionContent(contextMenu),
@@ -586,7 +623,7 @@ export function liveNeuroglancerInjection(lightbulb : LightBulbService) {
   observeSegmentSelect(watchNode, lightbulb);
 }
 
-function observeSegmentSelect(targetNode : Element, lightbulb : LightBulbService) {  
+function observeSegmentSelect(targetNode : Element, lightbulb : LightBulbService) {
   // Select the node that will be observed for mutations
   if (!targetNode) {
     return;
