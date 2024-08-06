@@ -39,6 +39,10 @@ const emit = defineEmits({
                     <div class="nge-user-profile-count">{{cellsSubmitted}}</div>
                 </div>
             </div>
+            <div class="nge-user-profile-badges">
+                <div class="nge-user-profile-badges-label">Badges</div>
+                <div class="nge-user-profile-badges-box"></div>
+            </div>
         </div>
     </modal-overlay>
 </template>
@@ -85,4 +89,13 @@ const emit = defineEmits({
     font-size: 1.2em;
 }
 
+.nge-user-profile-badges {
+    margin-top: 20px;
+}
+
+.nge-user-profile-badges-box {
+    height: 100px;
+    border: 1px solid #01ffffba;
+    border-radius: 20px;
+}
 </style>
