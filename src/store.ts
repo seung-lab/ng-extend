@@ -131,11 +131,12 @@ export interface Volume {
 }
 
 interface Layer {
-  source: string;
+  source: string[];
   ngl_image_name?: string;
   name: string;
   description: string;
   type: string;
+  skeleton_source?: string;
 }
 
 export const useLayersStore = defineStore("layers", () => {
@@ -154,7 +155,7 @@ export const useLayersStore = defineStore("layers", () => {
       }
       const dataSources = layer.layer.dataSources;
       for (const source of dataSources) {
-        activeLayers.add(source.spec.url.replace("middleauth+", ""));
+        activeLayers.add(source.spec.url);
       }
     }
   }
@@ -226,13 +227,16 @@ export const useVolumesStore = defineStore("volumes", () => {
         description: (value as any).description,
         image_layers: (value as any).image_layers.map((x: any) => {
           x.type = "image";
-          x.source = x.image_source;
+          x.source = [x.image_source];
           return x;
         }),
         segmentation_layers: (value as any).segmentation_layers.map(
           (x: any) => {
             x.type = "segmentation";
-            x.source = x.segmentation_source;
+            x.source = [x.segmentation_source];
+            if (x.skeleton_source) {
+              x.source.push(x.skeleton_source);
+            }
             return x;
           }
         ),

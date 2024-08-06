@@ -18,14 +18,14 @@ const activeVolumes = computed(() => {
   for (const volume of volumes) {
     for (const image_layer of volume.image_layers) {
       for (const layer of activeLayers) {
-        if (image_layer.source === layer) {
+        if (image_layer.source[0] === layer) {
           res.add(volume.name);
         }
       }
     }
     for (const segmentation_layer of volume.segmentation_layers) {
       for (const layer of activeLayers) {
-        if (segmentation_layer.source === layer) {
+        if (segmentation_layer.source[0] === layer) {
           res.add(volume.name);
         }
       }
@@ -53,7 +53,7 @@ const selectedImageLayer = computed(() => {
   const volume = selectedVolume.value;
   if (volume) {
     for (const layer of volume.image_layers) {
-      if (layer.source === selectedImageSource.value) {
+      if (layer.source[0] === selectedImageSource.value) {
         return layer;
       }
     }
@@ -64,7 +64,7 @@ const selectedSegmentationLayer = computed(() => {
   const volume = selectedVolume.value;
   if (volume) {
     for (const layer of volume.segmentation_layers) {
-      if (layer.source === selectedSegmentationSource.value) {
+      if (layer.source[0] === selectedSegmentationSource.value) {
         return layer;
       }
     }
@@ -78,14 +78,14 @@ function selectVolume(name: string) {
   let defaultSelectedSegmentation: string | undefined = undefined;
   if (volume) {
     for (const layer of volume.image_layers.slice().reverse()) {
-      defaultSelectedImage = layer.source;
-      if (activeLayers.has(layer.source)) {
+      defaultSelectedImage = layer.source[0];
+      if (activeLayers.has(layer.source[0])) {
         break;
       }
     }
     for (const layer of volume.segmentation_layers.slice().reverse()) {
-      defaultSelectedSegmentation = layer.source;
-      if (activeLayers.has(layer.source)) {
+      defaultSelectedSegmentation = layer.source[0];
+      if (activeLayers.has(layer.source[0])) {
         break;
       }
     }
@@ -96,19 +96,18 @@ function selectVolume(name: string) {
 const canConfirm = computed(() => {
   return selectedSegmentationLayer.value !== undefined
     && selectedImageLayer.value !== undefined
-    && (!(activeLayers.has(selectedImageLayer.value.source))
-      || !(activeLayers.has(selectedSegmentationLayer.value.source)));
+    && (!(activeLayers.has(selectedImageLayer.value.source[0]))
+      || !(activeLayers.has(selectedSegmentationLayer.value.source[0])));
 });
 function confirmSelection() {
   if (canConfirm.value) {
     const layers = [selectedImageLayer.value, selectedSegmentationLayer.value].map(x => {
       const { source, ngl_image_name, name, type } = x!;
-      const [first, ...rest] = source.split('://');
-      // TEMP
-      const sourceWithCredentials = source.startsWith('graphene') ? `${first}://middleauth+${rest.join('://')}` : source;
+
+      let sourceAsArray = Array.isArray(source) ? source : [source];
       return {
         name: ngl_image_name || name,
-        source: sourceWithCredentials,
+        source: sourceAsArray,
         type,
         tab: 'source'
       }
@@ -132,9 +131,9 @@ function confirmSelection() {
         <div class="layerSplit">
           <div class="layers">
             <div>Select Image Source</div>
-            <div v-for="layer of selectedVolume.image_layers" @click="selectedImageSource = layer.source" :class="{
+            <div v-for="layer of selectedVolume.image_layers" @click="selectedImageSource = layer.source[0]" :class="{
               selected: layer.source === selectedImageLayer?.source,
-              active: activeLayers.has(layer.source)
+              active: activeLayers.has(layer.source[0])
             }">
               <div>{{ layer.name }}</div>
               <div class="description">{{ layer.description }}</div>
@@ -142,12 +141,13 @@ function confirmSelection() {
           </div>
           <div class="layers">
             <div>Select Segmentation</div>
-            <div v-for="layer of selectedVolume.segmentation_layers" @click="selectedSegmentationSource = layer.source"
-              :class="{
+            <div v-for="layer of selectedVolume.segmentation_layers"
+              @click="selectedSegmentationSource = layer.source[0]" :class="{
                 selected: layer.source === selectedSegmentationLayer?.source,
-                active: activeLayers.has(layer.source)
+                active: activeLayers.has(layer.source[0])
               }">
               <div>{{ layer.name }}</div>
+              <div class="additionalSources" v-if="layer.skeleton_source">Additional sources: skeletons</div>
               <div class="description">{{ layer.description }}</div>
             </div>
           </div>
@@ -249,6 +249,12 @@ function confirmSelection() {
 .description {
   font-size: 14px;
   opacity: 0.5;
+}
+
+.additionalSources {
+  font-size: 11px;
+  font-style: italic;
+  opacity: 0.7;
 }
 
 .layerSplit {
