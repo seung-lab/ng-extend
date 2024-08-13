@@ -7,7 +7,9 @@
       "neuroglancer/*": ["third_party/neuroglancer/*"],
       "components/*": ["src/components/*"],
       "jpgjs": ["node_modules/neuroglancer/third_party/jpgjs/jpg.js"],
-    }
+    },
+    "resolveJsonModule": true,
+    "esModuleInterop": true
   },
   "exclude": [
     "vue-project"

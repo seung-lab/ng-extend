@@ -3,7 +3,7 @@ import {storeToRefs} from "pinia";
 import ModalOverlay from "components/ModalOverlay.vue";
 
 import {useLoginStore, useStatsStore} from "../store";
-const {userInfo, cellsSubmitted} = storeToRefs(useStatsStore());
+const {userInfo, cellsSubmitted, userBadges} = storeToRefs(useStatsStore());
 const {sessions} = storeToRefs(useLoginStore());
 
 const emit = defineEmits({
@@ -41,7 +41,14 @@ const emit = defineEmits({
             </div>
             <div class="nge-user-profile-badges">
                 <div class="nge-user-profile-badges-label">Badges</div>
-                <div class="nge-user-profile-badges-box"></div>
+                <div class="nge-user-profile-badges-box">
+                    <div class="nge-user-profile-badge" v-for="badge of userBadges">
+                        <div class="nge-user-profile-badge-name">{{ badge.name }}</div>
+                        <div class="nge-user-profile-badge-img">
+                            <img :src="'images/badges/' + badge.image + '.png'" :title="badge.description" height="80">
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </modal-overlay>
@@ -97,5 +104,7 @@ const emit = defineEmits({
     height: 100px;
     border: 1px solid #01ffffba;
     border-radius: 20px;
+    display: grid;
+    grid-template-columns: auto auto auto auto auto;
 }
 </style>

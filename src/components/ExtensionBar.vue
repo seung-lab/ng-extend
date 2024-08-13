@@ -77,7 +77,7 @@ function logout(session: loginSession) {
                 <div class="logoutButton" @click="logout(session)"><span>Logout</span></div>
               </div>
             </li>
-            <li v-for="session in invalidLogins">
+            <li v-for="session of invalidLogins">
               <div class="loginRow">
                 <div class="loginData expired">
                   <div>{{ session.hostname }} - Expired</div>

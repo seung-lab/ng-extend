@@ -11,6 +11,7 @@ import ReconnectingWebSocket from 'reconnecting-websocket';
 
 import getChatSocket from './chat_socket';
 import {Config} from './config';
+import badges from './badges.json';
 
 declare const CONFIG: Config|undefined;
 
@@ -234,6 +235,7 @@ export const useStatsStore = defineStore('stats', () => {
     splitsToday: 0, splitsThisWeek: 0, splitsAllTime: 0
   });
   let cellsSubmitted: Ref<number> = ref(0);
+  let userBadges = reactive(badges);
 
   const {sessions} = storeToRefs(useLoginStore());
   function setLeaderboardTimespan(ts: LeaderboardTimespan) {
@@ -289,7 +291,7 @@ export const useStatsStore = defineStore('stats', () => {
     //fetch(statsURL).then(result => result.json()).then(async(json) => { cellsSubmitted = json["cells_submitted_all_time"]; });
   }
 
-  return {leaderboardLoaded, leaderboardEntries, userInfo, cellsSubmitted, 
+  return {leaderboardLoaded, leaderboardEntries, userInfo, cellsSubmitted, userBadges,
           setLeaderboardTimespan, resetLeaderboard, loopUpdateLeaderboard};
 });
 

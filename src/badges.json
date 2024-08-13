@@ -1,0 +1,17 @@
+{
+    "10edits": {
+        "name": "10 Edits",
+        "description": "Awarded for making 10 edits.",
+        "image": "edits10"
+    },
+    "100edits": {
+        "name": "100 Edits",
+        "description": "Awarded for making 100 edits.",
+        "image": "edits100"
+    },
+    "1000000edits": {
+        "name": "1,000,000 Edits",
+        "image": "edits1000000",
+        "description": "Awarded for making 1 million edits."
+    }
+}
