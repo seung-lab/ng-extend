@@ -1,10 +1,22 @@
 <script setup lang="ts">
+import {onMounted} from "vue";
 import {storeToRefs} from "pinia";
 import ModalOverlay from "components/ModalOverlay.vue";
 
 import {useLoginStore, useStatsStore} from "../store";
 const {userInfo, cellsSubmitted, userBadges} = storeToRefs(useStatsStore());
 const {sessions} = storeToRefs(useLoginStore());
+
+import badges from "../badges";
+
+onMounted(() => {
+    console.log(badges);
+    const badgeImageEls = document.querySelectorAll('.nge-user-profile-badge-img');
+    for (const badgeImageEl of badgeImageEls) {
+        const badgeName: any = (badgeImageEl as HTMLElement).dataset.badge;
+        (badgeImageEl as HTMLImageElement).src = badges[badgeName];
+    }
+});
 
 const emit = defineEmits({
     hide: null,
@@ -44,9 +56,7 @@ const emit = defineEmits({
                 <div class="nge-user-profile-badges-box">
                     <div class="nge-user-profile-badge" v-for="badge of userBadges">
                         <div class="nge-user-profile-badge-name">{{ badge.name }}</div>
-                        <div class="nge-user-profile-badge-img">
-                            <img :src="'images/badges/' + badge.image + '.png'" :title="badge.description" height="80">
-                        </div>
+                        <img class="nge-user-profile-badge-img" :data-badge="badge.image" :title="badge.description" height="80">
                     </div>
                 </div>
             </div>
