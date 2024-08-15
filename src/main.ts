@@ -25,6 +25,12 @@ window.addEventListener("DOMContentLoaded", () => {
   initializeWithViewer(viewer);
   mergeTopBars();
 
-  const lightbulb : LightBulbService = new LightBulbService(viewer);
+  const layerStore = useLayersStore();
+
+  const { activeLayers } = layerStore;
+
+  const graphineLayer = [...activeLayers].filter(x => x.startsWith("graphene"))[0]
+  const segmentation_name = graphineLayer.substring(graphineLayer.indexOf("/table/") + 7)
+  const lightbulb : LightBulbService = new LightBulbService(viewer, segmentation_name);
   liveNeuroglancerInjection(lightbulb);
 });

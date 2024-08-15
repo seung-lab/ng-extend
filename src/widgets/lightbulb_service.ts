@@ -24,11 +24,21 @@ function responseJsonString(response: Response): Promise<any> {
 // https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/info
 // {"cell_identification":true,"proofreading_status":true}
 
+
+//https://global.daf-apis.com/info/api/v2/ngl_info
+
+//cave.fancy-fly.com/ +neurons/api/v1/datastack      name = brain and nerve cord
+
+//https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/
+
+
 export class LightBulbService {
 
   timeout = 0;
   checkTime = 120000;
-  dataset_url = "https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/";
+  //'graphene://middleauth+https://cave.fanc-fly.com/segmentation/table/wclee_fly_cns_001'
+  dataset_url = ""//= "https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/";
+  // dataset_url = "https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/";
   viewer : Viewer;
   statuses: {
     [key: string]: {
@@ -48,11 +58,48 @@ export class LightBulbService {
     }
   } = {};
 
-  constructor(viewer : Viewer) {
+  constructor(viewer : Viewer, segmentation_name : string) {
     this.viewer = viewer;
+    (async () =>  {
+      // this.dataset_url = this.getDatasetURL(segmentation_name);
+      const name = await this.getDatasetName(segmentation_name);
+      this.dataset_url = "https://cave.fanc-fly.com/neurons/api/v1/datastack/" + name + "/";
+      
+      this.checkTimeout(0);
+    })();
+  }
+
+  async findDatasetURL(dataset_name : string) : Promise<string>{
+
+    const dataset_name_query_url = "https://global.daf-apis.com/info/api/v2/ngl_info";
+    
+    const {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
+      'middleauth+'+ dataset_name_query_url,
+      defaultCredentialsManager,
+    );
+
+    const all_response_datasets = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
+    return all_response_datasets[dataset_name]["segmentation_layers"][0]["name"];
+  
+  }
+
+  async getDatasetName(segmentation_name : string) : Promise<string>{
+    const json_query_url = "https://global.daf-apis.com/sticky_auth/api/v1/service/pychunkedgraph/table/" + segmentation_name + "/dataset?middle_auth_url=global.daf-apis.com%2Fsticky_auth";
+
+    let {url: parsedUrl, credentialsProvider} = parseSpecialUrl(
+      'middleauth+'+ json_query_url,
+      defaultCredentialsManager,
+    );
+    const dataset_name = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
+
+    return this.findDatasetURL(dataset_name)
   }
 
   checkNodeStatuses(): void {
+    if(this.dataset_url === "") {
+      return;
+    }
+
     var sidstring = "";
     Object.values(this.statuses).forEach((segments) => {
       const {sid} = segments;
@@ -77,7 +124,6 @@ export class LightBulbService {
       );  
       try {
         const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
-
         //for each node returned from the service
         for(let nodeIndex in nodeStatuses["index"]) {
           let rootid = nodeStatuses["pt_root_id"][nodeIndex]
@@ -135,9 +181,9 @@ export class LightBulbService {
 
         const nodeStatuses = JSONBS.parse(await(cancellableFetchSpecialOk(credentialsProvider,parsedUrl,{},responseJsonString)));
         //for each node returned from the service
-        for(let nodeIndex in nodeStatuses["index"]) {
-          let rootid = nodeStatuses["pt_root_id"][nodeIndex]
 
+        for(let nodeIndex in nodeStatuses["id"]) {
+          let rootid = nodeStatuses["pt_root_id"][nodeIndex]
           if (nodeStatuses["valid"][nodeIndex] === "t" 
                   && (this.statuses[rootid]["status"] === 'outdated'
                   || this.statuses[rootid]["status"] === 'noinfo')) {
@@ -162,7 +208,7 @@ export class LightBulbService {
           } 
         }
       } catch(e) {
-        console.log("Failed to fetch info" + e.message)
+        console.log("Failed to fetch info " + e)
       }
 
       Object.values(this.statuses).forEach((segments) => {
@@ -281,7 +327,10 @@ export class LightBulbService {
     });
 
     this.statuses[segmentIDString] = {sid: segmentIDString , element: iconElement,button: bulb, menu: null, identification_menu:null, proofreading_menu:null, status: "outdated"};
-    this.checkTimeout(0);
+
+    if(this.dataset_url !== "") {
+      this.checkTimeout(0);
+    }
 
     return bulb;
   };
