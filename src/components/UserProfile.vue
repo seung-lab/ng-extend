@@ -10,8 +10,7 @@ const {sessions} = storeToRefs(useLoginStore());
 import badges from "../badges";
 
 onMounted(() => {
-    console.log(badges);
-    const badgeImageEls = document.querySelectorAll('.nge-user-profile-badge-img');
+    const badgeImageEls = document.querySelectorAll('.nge-user-profile-badge-img > img');
     for (const badgeImageEl of badgeImageEls) {
         const badgeName: any = (badgeImageEl as HTMLElement).dataset.badge;
         (badgeImageEl as HTMLImageElement).src = badges[badgeName];
@@ -52,11 +51,13 @@ const emit = defineEmits({
                 </div>
             </div>
             <div class="nge-user-profile-badges">
-                <div class="nge-user-profile-badges-label">Badges</div>
+                <div class="nge-user-profile-badges-label">Achievements</div>
                 <div class="nge-user-profile-badges-box">
                     <div class="nge-user-profile-badge" v-for="badge of userBadges">
+                        <div class="nge-user-profile-badge-img">
+                            <img :data-badge="badge.image" :title="badge.description" height="80">
+                        </div>
                         <div class="nge-user-profile-badge-name">{{ badge.name }}</div>
-                        <img class="nge-user-profile-badge-img" :data-badge="badge.image" :title="badge.description" height="80">
                     </div>
                 </div>
             </div>
@@ -110,11 +111,51 @@ const emit = defineEmits({
     margin-top: 20px;
 }
 
+.nge-user-profile-badges-label {
+    font-size: 20px;
+    padding-top: 20px;
+    padding-bottom: 10px;
+}
+
 .nge-user-profile-badges-box {
     height: 100px;
-    border: 1px solid #01ffffba;
-    border-radius: 20px;
     display: grid;
     grid-template-columns: auto auto auto auto auto;
 }
+
+@keyframes fadeInAnimation {
+    0% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.animate-hide {
+    opacity: 0 !important;
+}
+
+.animate-fade-in {
+    animation: fadeInAnimation ease 3s;
+    animation-fill-mode: forwards;
+}
+
+.nge-user-profile-badge {
+    display: grid;
+    grid-template-rows: auto auto;
+}
+
+.nge-user-profile-badge-img {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nge-user-profile-badge-name {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 </style>

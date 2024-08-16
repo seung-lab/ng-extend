@@ -47,6 +47,25 @@ function logout(session: loginSession) {
   login.logout(session);
 }
 
+function openUserProfile() {
+  showUserProfile.value = true;
+  const badgeEls = document.querySelectorAll('.nge-user-profile-badge');
+  let i = 0;
+  const delay = 300;
+  for (const badgeEl of badgeEls) {
+    badgeEl.classList.add('animate-hide');
+    setTimeout(function() {
+      badgeEl.classList.remove('animate-hide');
+      badgeEl.classList.add('animate-fade-in');
+      //reset animation
+      (badgeEl as HTMLElement).style.animation = 'none';
+      (badgeEl as HTMLElement).offsetHeight;
+      (badgeEl as HTMLElement).style.animation = '';
+    }, i * delay);
+    i++;
+  }
+}
+
 </script>
 
 <template>
@@ -61,7 +80,7 @@ function logout(session: loginSession) {
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <button v-if="volumes.length" @click="showVolumes = true">Volumes ({{ volumes.length }})</button>
-    <button @click="showUserProfile = true">
+    <button @click="openUserProfile()">
       <img class="user-profile-img" src="insert-img" title="User Profile" height="15">
     </button>
     <template v-if="login.sessions.length > 0">

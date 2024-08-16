@@ -1,3 +1,9 @@
+/*
+TODO:
+This should be replaced with just copying the images folder.
+But the build system has to be rewritten for that, and not just use neuroglancer's
+*/
+
 import edits10 from './images/badges/edits10.png';
 import edits100 from './images/badges/edits100.png';
 import edits1000000 from './images/badges/edits1000000.png';
