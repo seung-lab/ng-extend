@@ -104,11 +104,9 @@
       const layers = [selectedImageLayer.value, selectedSegmentationLayer.value].map(x => {
         const {source, ngl_image_name, name, type} = x!;
         const [first, ...rest] = source.split('://');
-        // TEMP
-        const sourceWithCredentials = source.startsWith('graphene') ? `${first}://middleauth+${rest.join('://')}` : source;
         return {
           name: ngl_image_name || name,
-          source: sourceWithCredentials,
+          source: source,
           type,
           tab: 'source'
         }
