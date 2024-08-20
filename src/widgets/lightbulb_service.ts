@@ -20,16 +20,15 @@ function responseJsonString(response: Response): Promise<any> {
   return response.text()
 }
 
-
 // https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/info
-// {"cell_identification":true,"proofreading_status":true}
 
+// {"cell_identification":true,"proofreading_status":true}
 
 //https://global.daf-apis.com/info/api/v2/ngl_info
 
 //cave.fancy-fly.com/ +neurons/api/v1/datastack      name = brain and nerve cord
 
-//https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/
+// https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/
 
 
 export class LightBulbService {
@@ -482,15 +481,15 @@ export class LightBulbService {
     return text_holder;
   }
 
-  generateIdentificationButtons(parent : ContextMenu) : HTMLDivElement{
+  generateIdentificationButtons(self : LightBulbService, parent : ContextMenu, segmentIDString : string) : HTMLDivElement{
     const content = document.createElement('div')
     const button_holder = document.createElement('div');
     button_holder.style.display = "flex";
 
-    const text_box = document.createElement('textarea');
-    text_box.style.width = "480px";
-    text_box.style.height = "120px";
-    content.appendChild(text_box);
+    // const text_box = document.createElement('textarea');
+    // text_box.style.width = "480px";
+    // text_box.style.height = "120px";
+    // content.appendChild(text_box);
 
     const button_submit = document.createElement('button');
     const button_cancel = document.createElement('button');
@@ -502,7 +501,17 @@ export class LightBulbService {
 
     button_submit.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
     button_submit.addEventListener("click", () => {
-      console.log("THIS WILL SUBMIT " + text_box.value);
+
+        const coords = self.viewer.navigationState.position.value;
+        let coordsString = ""
+        coords.forEach(coord => {
+          coordsString += Math.round(coord) + ","
+        });
+        coordsString = coordsString.slice(0,-1);
+  
+        const linkStart = "https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/submit_cell_identification?";
+        const url = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
+        window.open(url, '_blank');
     });
 
     button_cancel.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
@@ -560,7 +569,7 @@ export class LightBulbService {
     return text_holder;
   }
 
-  generateProofreadingButtons(parent : ContextMenu) : HTMLDivElement{
+  generateProofreadingButtons(self : LightBulbService, parent : ContextMenu, segmentIDString : string) : HTMLDivElement{
     const button_holder = document.createElement('div');
     button_holder.style.display = "flex";
 
@@ -574,7 +583,16 @@ export class LightBulbService {
 
     button_submit.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
     button_submit.addEventListener("click", () => {
-      console.log("THIS WILL SUBMIT");
+      const coords = self.viewer.navigationState.position.value;
+        let coordsString = ""
+        coords.forEach(coord => {
+          coordsString += Math.round(coord) + ","
+        });
+        coordsString = coordsString.slice(0,-1);
+  
+        const linkStart = "https://cave.fanc-fly.com/neurons/api/v1/datastack/brain_and_nerve_cord/mark_completion?";
+        const url = linkStart + "location=" + coordsString + "&valid_id=" + segmentIDString;
+        window.open(url, '_blank');
     });
 
     button_cancel.className = "neuroglancer-layer-group-viewer-context-menu-button-element"
@@ -637,7 +655,7 @@ export class LightBulbService {
         makeSection(self),
         br(),
         br(),
-        createSubmissionContent(contextMenu),
+        createSubmissionContent(self, contextMenu, segmentIDString),
         br(),);
 
     return contextMenu;
