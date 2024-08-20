@@ -4,7 +4,7 @@ import VolumesOverlay from "components/VolumesOverlay.vue";
 import UserProfile from "components/UserProfile.vue";
 import DropdownList from "components/DropdownList.vue";
 
-import {loginSession, useLoginStore, useVolumesStore, useStatsStore, useChatStore} from '../store';
+import {loginSession, useLoginStore, useVolumesStore, useStatsStore, useChatStore, useLayersStore} from '../store';
 import {connectChatSocket} from '../chat_socket';
 
 import logoGemImage from '../images/pyr-icon.png';
@@ -33,6 +33,8 @@ const validLogins = computed(() => login.sessions.filter(x => x.status === undef
 const invalidLogins = computed(() => login.sessions.filter(x => x.status !== undefined));
 
 const {volumes} = useVolumesStore();
+
+const {checkout} = useLayersStore();
 
 onMounted(() => {
   (document.querySelector('.pyr-logo-gem')! as HTMLImageElement).src = logoGemImage;
@@ -79,6 +81,7 @@ function openUserProfile() {
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
+    <button @click="checkout()">Checkout</button>
     <button v-if="volumes.length" @click="showVolumes = true">Volumes ({{ volumes.length }})</button>
     <button @click="openUserProfile()">
       <img class="user-profile-img" src="insert-img" title="User Profile" height="15">

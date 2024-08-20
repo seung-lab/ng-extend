@@ -138,6 +138,7 @@ export const useLayersStore = defineStore('layers', () => {
   const activeLayers: Set<string> = reactive(new Set());
 
   let viewer: Viewer|undefined = undefined;
+  const {sessions} = storeToRefs(useLoginStore());
 
   function refreshLayers() {
     if (!viewer) return;
@@ -178,7 +179,18 @@ export const useLayersStore = defineStore('layers', () => {
     return true;
   }
 
-  return {initializeWithViewer, activeLayers, selectLayers};
+  async function checkout() {
+    if (!CONFIG) return;
+    const loggedInUser = sessions.value[0];
+    if (!loggedInUser) return;
+    const userID = loggedInUser.id;
+    const url = CONFIG.checkout_url + "/checkout?userID=" + userID;
+    fetch(url).then(result => result.json()).then(async (json) => {
+      alert(json.rootID);
+    });
+  }
+
+  return {initializeWithViewer, activeLayers, selectLayers, checkout};
 });
 
 export const useVolumesStore = defineStore('volumes', () => {
