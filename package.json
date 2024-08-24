@@ -10,7 +10,7 @@
     "build-min": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
     "build": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
     "build:watch": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=dev --serve --watch",
-    "dev-server": "node ./node_modules/neuroglancer/config/esbuild-cli.js --define CONFIG=$(cat config/ng-extend.json | tr -d ' \t\n\r') --define STATE_SERVERS=$(cat config/state_servers.json | tr -d ' \t\n\r') --define CUSTOM_BINDINGS=$(cat config/custom-keybinds.json | tr -d ' \t\n\r') --define DATASETS=$(cat config/datastack-dataset.json | tr -d ' \t\n\n') --config=dev --serve --watch",
+    "dev-server": "node ./node_modules/neuroglancer/config/esbuild-cli.js --define CONFIG=$(cat config/ng-extend.json | tr -d ' \t\n\r') --define STATE_SERVERS=$(cat config/state_servers.json | tr -d ' \t\n\r') --define CUSTOM_BINDINGS=$(cat config/custom-keybinds.json | tr -d ' \t\n\r') --define DATASETS=$(cat config/datastack-dataset.json | tr -d ' \t\n\n') --define DEFAULT_SETTINGS=$(cat config/default-settings.json | tr -d ' \t\n\n') --config=dev --serve --watch",
     "dev-server-python": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-dev --serve --watch",
     "build-module": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=module",
     "build-python": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=python-min",

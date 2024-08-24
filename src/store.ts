@@ -8,8 +8,11 @@ import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/spec
 import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config} from './config';
+import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
+import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 
 declare const CONFIG: Config|undefined;
+declare const DEFAULT_SETTINGS: {  [key: string]: any }
 
 export const useDropdownListStore = defineStore('dropdownlist', () => {
   let dropdownCount = 0;
@@ -151,15 +154,7 @@ export const useLayersStore = defineStore('layers', () => {
     // set default values in settings
     viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit.value = 2e9;
     viewer.chunkQueueManager.capacities.systemMemory.sizeLimit.value = 3e9;
-    // viewer.showPerspectiveSliceViews.value = false;
-    // viewer.position.assign(313521.25, 181787.21875, 4311.5);
-    // viewer.position.value = { "x":313521.25, "y":181787.21875, "z":4311.5};
-    // viewer.crossSectionScale.value = 8.031913463326639;
-    // viewer.projectionOrientation = [-0.24557209014892578, 0.17511530220508575, 0.5259231328964233, 0.7952570915222168];
-    // viewer.projectionScale.value = 23218.557071742558;
-    // viewer.layerManager.getLayerByName("segmentation").
-    // viewer.layout.container.setSpecification('xy-3d');
-
+    viewer.layout.restoreState('xy-3d');
     viewer.layerManager.layersChanged.add(refreshLayers);
     refreshLayers();
   }
@@ -168,29 +163,26 @@ export const useLayersStore = defineStore('layers', () => {
     if (!viewer) return;
     viewer.layerSpecification.restoreState(layers);
     viewer.navigationState.reset();
-    const imageLayer = viewer.layerManager.managedLayers.filter(
-      (x) => x.name === "img"
+
+    const segmentationLayer = viewer.layerManager.managedLayers.filter(
+        (x) => x.layer instanceof SegmentationUserLayer
     )[0];
-    if (imageLayer) {
-      const stopListening = imageLayer.readyStateChanged.add(() => {
-        if (imageLayer.isReady() && imageLayer.layer) {
-          const { dataSources } = imageLayer.layer;
-          stopListening();
-          if (dataSources.length) {
-            const { loadState } = dataSources[0];
-            if (loadState && !loadState.error) {
-              const { scales } = loadState.transform.outputSpace.value;
-              viewer!.coordinateSpace.restoreState({
-                // x: [scales[0], "m"],
-                // y: [scales[1], "m"],
-                x: [8e-9, 'm'],
-                y: [8e-9, 'm'],
-                z: [scales[2], "m"],
-              });
-            }
-          }
-        }
+    if (segmentationLayer) {
+      const segmentationLayerName = segmentationLayer.name;
+      const SETTINGS = DEFAULT_SETTINGS[segmentationLayerName]
+      viewer!.coordinateSpace.restoreState({
+        x: [SETTINGS.dimensions[0], "m"],
+        y: [SETTINGS.dimensions[1], "m"],
+        z: [SETTINGS.dimensions[2], "m"],
       });
+
+      const position = parsePositionString(SETTINGS.position, 3);
+      if (position !== undefined) {
+        viewer!.navigationState.position.value = position;
+      }
+      viewer!.crossSectionScale.value = SETTINGS.crossSectionScale;
+      viewer!.projectionScale.value = SETTINGS.projectionScale;
+      viewer!.projectionOrientation.restoreState(SETTINGS.projectionOrientation);
     }
   }
 
