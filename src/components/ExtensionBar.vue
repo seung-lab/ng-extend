@@ -4,7 +4,8 @@ import VolumesOverlay from "#src/components/VolumesOverlay.vue";
 import UserProfile from "#src/components/UserProfile.vue";
 import DropdownList from "#src/components/DropdownList.vue";
 import { loginSession, useLoginStore, useVolumesStore } from "#src/store.js";
-import logoImage from "#src/CaveLogo-clear.png";
+import logoGemImage from '#src/images/pyr-icon.png';
+import logoTextImage from '#src/images/pyr-logo-wordmark.png';
 
 const login = useLoginStore();
 window.addEventListener("middleauthlogin", () => {
@@ -22,9 +23,9 @@ const invalidLogins = computed(() =>
 const { volumes } = useVolumesStore();
 
 onMounted(() => {
-  (
-    document.querySelector(".ng-extend-logo > a > img")! as HTMLImageElement
-  ).src = logoImage;
+  (document.querySelector('.pyr-logo-gem')! as HTMLImageElement).src = logoGemImage;
+  (document.querySelector('.pyr-logo-text')! as HTMLImageElement).src = logoTextImage;
+  // (document.querySelector('.user-profile-img')! as HTMLImageElement).src = userProfileImage;
 });
 
 const showVolumes = ref(false);
@@ -40,8 +41,9 @@ function logout(session: loginSession) {
   <user-profile v-visible="showUserProfile" @hide="showUserProfile = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
-      <a href="https://flywire.ai/" target="_blank">
-        <img src="insert-logo" title="Cave Explorer" />
+      <a href="https://pyr.ai/" target="_blank">
+        <img class="pyr-logo-gem" src="insert-img" title="Pyr" width="15">
+        <img class="pyr-logo-text" src="insert-img" title="Pyr" width="40">
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
@@ -91,6 +93,7 @@ function logout(session: loginSession) {
 
 #extensionBar button {
   font-size: 10pt;
+  padding: 0 10px;
 }
 
 #insertNGTopBar>div {
@@ -163,8 +166,12 @@ function logout(session: loginSession) {
   opacity: 0.75;
 }
 
-.ng-extend-logo>a,
-.ng-extend-logo>a>img {
-  height: 100%;
+.ng-extend-logo {
+  padding-right: 20px;
+}
+
+.pyr-logo-gem {
+  padding-left: 15px;
+  padding-right: 12px;
 }
 </style>
