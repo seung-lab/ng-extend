@@ -1,4 +1,10 @@
 {
   "volumes_url": "middleauth+https://global.daf-apis.com/info/api/v2/ngl_info",
-  "volumes_enabled": ["Zheng CA3"]
+  "volumes_enabled": ["Zheng CA3"],
+  "volumes_default": {
+    "name": "Zheng CA3",
+    "image": "zheng_ca3",
+    "segmentation": "zheng_ca3"
+  },
+  "leaderboard_url": "https://pyrdev.eyewire.org/flywire-leaderboard"
 }
