@@ -47,9 +47,9 @@ function logout(session: loginSession) {
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
-    <button v-if="volumes.length" @click="showVolumes = true">
+    <!-- <button v-if="volumes.length" @click="showVolumes = true">
       Volumes ({{ volumes.length }})
-    </button>
+    </button> -->
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
         <template v-if="login.sessions.length === 1" #buttonTitle>👤 {{ validLogins[0].name }}</template>
