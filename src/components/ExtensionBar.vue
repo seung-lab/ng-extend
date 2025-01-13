@@ -26,7 +26,7 @@ onMounted(() => {
   ).src = logoImage;
 });
 
-const showModal = ref(false);
+const showVolumes = ref(false);
 
 function logout(session: loginSession) {
   login.logout(session);
@@ -34,7 +34,7 @@ function logout(session: loginSession) {
 </script>
 
 <template>
-  <volumes-overlay v-visible="showModal" @hide="showModal = false" />
+  <volumes-overlay v-visible="showVolumes" @hide="showVolumes = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://flywire.ai/" target="_blank">
@@ -42,12 +42,13 @@ function logout(session: loginSession) {
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
-    <button v-if="volumes.length" @click="showModal = true">
+    <button v-if="volumes.length" @click="showVolumes = true">
       Volumes ({{ volumes.length }})
     </button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
-        <template #buttonTitle>Logins ({{ login.sessions.length }})</template>
+        <template v-if="login.sessions.length === 1" #buttonTitle>👤 {{ validLogins[0].name }}</template>
+        <template v-else #buttonTitle>Logins ({{ login.sessions.length }})</template>
         <template #listItems>
           <li v-for="session of validLogins">
             <div class="loginRow">
@@ -55,7 +56,7 @@ function logout(session: loginSession) {
                 <div>{{ session.email }}</div>
                 <div>{{ session.hostname }}</div>
               </div>
-              <div class="logoutButton" @click="logout(session)">
+              <div class="logoutButton button" @click="logout(session)">
                 <span>Logout</span>
               </div>
             </div>
@@ -121,28 +122,27 @@ function logout(session: loginSession) {
 }
 
 #loginsDropdown .loginData {
-  display: grid;
   white-space: nowrap;
-  padding: 10px;
 }
 
-#loginsDropdown .logoutButton {
+#loginsDropdown .button {
+  cursor: pointer;
+}
+
+#loginsDropdown .loginRow>* {
+  padding: 10px;
   display: grid;
   align-content: center;
   justify-content: center;
-  padding-left: 10px;
-  padding-right: 10px;
-  opacity: 0;
+
 }
 
-#loginsDropdown .loginRow:hover .logoutButton {
-  opacity: 0.25;
+#loginsDropdown .loginRow>*:hover {
+  background-color: #ffffff33;
 }
 
 #loginsDropdown .loginRow:hover .logoutButton:hover {
-  opacity: 1;
   background-color: #db4437;
-  cursor: pointer;
 }
 
 #loginsDropdown li.header {
@@ -151,7 +151,7 @@ function logout(session: loginSession) {
 }
 
 #loginsDropdown .loginData.expired {
-  opacity: 0.5;
+  opacity: 0.75;
 }
 
 .ng-extend-logo>a,

@@ -1,16 +1,10 @@
 <script setup lang="ts">
-// import Vue from "vue";
-
 import Overlay from "#src/components/Overlay.vue";
-
-// export default Vue.extend({
-//   components: { Overlay }
-// });
 </script>
 
 <template>
   <div class="nge-overlay-blocker" @click.stop="$emit('hide')" @mousedown.stop>
-    <overlay class="modal overlay-content">
+    <overlay class="modal overlay-content nge-overlay-content">
       <slot></slot>
     </overlay>
   </div>
@@ -28,12 +22,11 @@ import Overlay from "#src/components/Overlay.vue";
   pointer-events: initial;
 }
 
-.nge-overlay-content {
+.ng-extend .modal.overlay-content.nge-overlay-content {
   min-width: 250px;
 }
 
 .nge-overlay-content .title {
-  background-color: lightgray;
   font-size: 1.25em;
 }
 

@@ -30,6 +30,7 @@ export const useDropdownListStore = defineStore("dropdownlist", () => {
 });
 
 export interface loginSession {
+  id: number;
   key: string;
   name: string;
   email: string;
@@ -91,14 +92,17 @@ export const useLoginStore = defineStore("login", () => {
           const message = await (contentType === "application/json"
             ? res.json()
             : res.text());
+          const { id, name, email } = message;
           newSessions.push({
+            id,
             key,
-            name: message.name,
-            email: message.email,
+            name,
+            email,
             hostname,
           });
         } else {
           newSessions.push({
+            id: 0,
             key,
             name: "",
             email: "",
@@ -174,8 +178,11 @@ export const useLayersStore = defineStore("layers", () => {
     refreshLayers();
   }
 
-  async function selectLayers(layers: any[]) {
+  async function selectLayers(layers: Layer[]) {
     if (!viewer) return;
+    layers = layers.map((x) => {
+      return { ...x, name: `${x.name} (${x.type})` };
+    });
     viewer.layerSpecification.restoreState(layers);
     viewer.navigationState.reset();
     const imageLayer = viewer.layerManager.managedLayers.filter(
@@ -210,6 +217,7 @@ export const useVolumesStore = defineStore("volumes", () => {
 
   (async () => {
     if (!CONFIG || !CONFIG.volumes_url) return;
+
     const { url, credentialsProvider } = parseSpecialUrl(
       CONFIG.volumes_url,
       defaultCredentialsManager
@@ -244,6 +252,32 @@ export const useVolumesStore = defineStore("volumes", () => {
           }
         ),
       });
+    }
+
+    const layerStore = useLayersStore();
+
+    if (
+      layerStore.activeLayers.size === 0 ||
+      (layerStore.activeLayers.size === 1 && layerStore.activeLayers.has(""))
+    ) {
+      if (CONFIG.volumes_default) {
+        const volume = volumes.value.find(
+          (x) => x.name === CONFIG.volumes_default?.name
+        );
+
+        if (volume) {
+          const imageLayer = volume.image_layers.find(
+            (x) => x.name === CONFIG.volumes_default?.image
+          );
+          const segmentationLayer = volume.segmentation_layers.find(
+            (x) => x.name === CONFIG.volumes_default?.segmentation
+          );
+
+          if (imageLayer && segmentationLayer) {
+            layerStore.selectLayers([imageLayer, segmentationLayer]);
+          }
+        }
+      }
     }
   })();
 
