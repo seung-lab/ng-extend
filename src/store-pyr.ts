@@ -1,4 +1,4 @@
-import { Ref, ref, reactive } from "vue";
+import { Ref, ref, reactive, watch } from "vue";
 import { defineStore, storeToRefs } from "pinia";
 import { useLoginStore } from "#src/store.js";
 import { Config } from "#src/config.js";
@@ -44,7 +44,6 @@ export const useStatsStore = defineStore("stats", () => {
   });
   let cellsSubmitted: Ref<number> = ref(0);
 
-  const { sessions } = storeToRefs(useLoginStore());
   function setLeaderboardTimespan(ts: LeaderboardTimespan) {
     leaderboardTimespan = ts;
   }
@@ -54,6 +53,14 @@ export const useStatsStore = defineStore("stats", () => {
     await updateUserInfo();
     await new Promise(() => setTimeout(loopUpdateLeaderboard, 20000));
   }
+
+  const { update } = useLoginStore();
+  const { sessions } = storeToRefs(useLoginStore());
+
+  watch(sessions, async () => {
+    await updateUserInfo();
+  });
+  update();
 
   async function updateLeaderboard() {
     if (!CONFIG) return;
@@ -83,8 +90,8 @@ export const useStatsStore = defineStore("stats", () => {
     if (!CONFIG) return;
     const loggedInUser = sessions.value[0];
     if (!loggedInUser) return;
-    const userID = loggedInUser.id;
-    const url = CONFIG.leaderboard_url + "/userInfo?userID=" + userID;
+    // const userID = loggedInUser.id;
+    const url = `${CONFIG.leaderboard_url}/userInfo?userID=${loggedInUser.id}`;
     fetch(url)
       .then((result) => result.json())
       .then(async (json) => {
