@@ -1,6 +1,6 @@
 runtime: python312
 
-service: ngextend
+service: pyr-ca3-ngextend
 
 handlers:
   # Handle the main page by serving the index page.
