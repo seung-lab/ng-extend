@@ -6,6 +6,8 @@ import App from "#src/components/App.vue";
 import { useLayersStore } from "#src/store.js";
 import { useStatsStore } from "#src/store-pyr.ts";
 
+const newState = location.hash === "";
+
 function mergeTopBars() {
   const ngTopBar = document.querySelector(".neuroglancer-viewer")!.children[0];
   const topBarVueParent = document.getElementById("insertNGTopBar")!;
@@ -22,6 +24,9 @@ window.addEventListener("DOMContentLoaded", () => {
   });
   app.mount("#app");
   const viewer = setupDefaultViewer();
+  if (newState) {
+    viewer.layout.container.setSpecification("xy-3d");
+  }
   initializeWithViewer(viewer);
   mergeTopBars();
 
