@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import VolumesOverlay from "#src/components/VolumesOverlay.vue";
 import UserProfile from "#src/components/UserProfile.vue";
 import DropdownList from "#src/components/DropdownList.vue";
-import { loginSession, useLoginStore, useVolumesStore } from "#src/store.js";
+import { loginSession, useLoginStore } from "#src/store.js";
 import logoGemImage from '#src/images/pyr-icon.png';
 import logoTextImage from '#src/images/pyr-logo-wordmark.png';
 

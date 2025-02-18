@@ -3,7 +3,7 @@ import { setupDefaultViewer } from "neuroglancer/unstable/ui/default_viewer_setu
 import { createPinia } from "pinia";
 import { createApp } from "vue";
 import App from "#src/components/App.vue";
-import { useLayersStore } from "#src/store.js";
+import { useLayersStore, useVolumesStore } from "#src/store.js";
 import { useStatsStore } from "#src/store-pyr.ts";
 
 const newState = location.hash === "";
@@ -28,6 +28,8 @@ window.addEventListener("DOMContentLoaded", () => {
     viewer.layout.container.setSpecification("xy-3d");
   }
   initializeWithViewer(viewer);
+  const { loadVolumes } = useVolumesStore();
+  loadVolumes(viewer);
   mergeTopBars();
 
   const { loopUpdateLeaderboard } = useStatsStore();

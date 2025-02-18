@@ -7,7 +7,6 @@ import { MiddleAuthCredentialsProvider } from "neuroglancer/unstable/kvstore/mid
 
 import { Config } from "#src/config.ts";
 import { getHttpSource } from "neuroglancer/unstable/datasource/graphene/base.js";
-import { KvStoreContext } from "neuroglancer/unstable/kvstore/context.js";
 
 declare const CONFIG: Config | undefined;
 
@@ -215,10 +214,9 @@ export const useLayersStore = defineStore("layers", () => {
 export const useVolumesStore = defineStore("volumes", () => {
   const volumes: Ref<Volume[]> = ref([]);
 
-  (async () => {
+  async function loadVolumes(viewer: Viewer) {
     if (!CONFIG || !CONFIG.volumes_url) return;
-    const kvStoreContext = new KvStoreContext(); // TEMP
-    // const { kvStoreContext } = viewer.dataSourceProvider.sharedKvStoreContext;
+    const { kvStoreContext } = viewer.dataSourceProvider.sharedKvStoreContext;
     const httpSource = getHttpSource(kvStoreContext, CONFIG.volumes_url);
     const { fetchOkImpl, baseUrl } = httpSource;
     const response = await fetchOkImpl(baseUrl).then((response) =>
@@ -275,7 +273,7 @@ export const useVolumesStore = defineStore("volumes", () => {
         }
       }
     }
-  })();
+  }
 
-  return { volumes };
+  return { loadVolumes, volumes };
 });
