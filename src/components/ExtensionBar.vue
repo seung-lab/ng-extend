@@ -20,7 +20,7 @@ const invalidLogins = computed(() =>
   login.sessions.filter((x) => x.status !== undefined)
 );
 
-const { volumes } = useVolumesStore();
+// const { volumes } = useVolumesStore();
 
 onMounted(() => {
   (document.querySelector('.pyr-logo-gem')! as HTMLImageElement).src = logoGemImage;
