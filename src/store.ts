@@ -2,15 +2,12 @@ import { Ref, ref, reactive } from "vue";
 import { defineStore } from "pinia";
 
 import { Viewer } from "neuroglancer/unstable/viewer.js";
-import { defaultCredentialsManager } from "neuroglancer/unstable/credentials_provider/default_manager.js";
-import { MiddleAuthCredentialsProvider } from "neuroglancer/unstable/datasource/middleauth/credentials_provider.js";
-import {
-  cancellableFetchSpecialOk,
-  parseSpecialUrl,
-} from "neuroglancer/unstable/util/special_protocol_request.js";
-import { responseJson } from "neuroglancer/unstable/util/http_request.js";
+import { getDefaultCredentialsManager } from "neuroglancer/unstable/credentials_provider/default_manager.js";
+import { MiddleAuthCredentialsProvider } from "neuroglancer/unstable/kvstore/middleauth/credentials_provider.js";
 
 import { Config } from "#src/config.ts";
+import { getHttpSource } from "neuroglancer/unstable/datasource/graphene/base.js";
+import { KvStoreContext } from "neuroglancer/unstable/kvstore/context.js";
 
 declare const CONFIG: Config | undefined;
 
@@ -37,6 +34,8 @@ export interface loginSession {
   hostname: string;
   status?: number;
 }
+
+const defaultCredentialsManager = getDefaultCredentialsManager();
 
 export const useLoginStore = defineStore("login", () => {
   const TOKEN_PREFIX = "auth_token_v2_";
@@ -195,7 +194,8 @@ export const useLayersStore = defineStore("layers", () => {
           stopListening();
           if (dataSources.length) {
             const { loadState } = dataSources[0];
-            if (loadState && !loadState.error) {
+            if (loadState !== undefined && loadState.error === undefined) {
+              loadState;
               const { scales } = loadState.transform.outputSpace.value;
               viewer!.coordinateSpace.restoreState({
                 x: [scales[0], "m"],
@@ -217,16 +217,12 @@ export const useVolumesStore = defineStore("volumes", () => {
 
   (async () => {
     if (!CONFIG || !CONFIG.volumes_url) return;
-
-    const { url, credentialsProvider } = parseSpecialUrl(
-      CONFIG.volumes_url,
-      defaultCredentialsManager
-    );
-    const response = await cancellableFetchSpecialOk(
-      credentialsProvider,
-      url,
-      {},
-      responseJson
+    const kvStoreContext = new KvStoreContext(); // TEMP
+    // const { kvStoreContext } = viewer.dataSourceProvider.sharedKvStoreContext;
+    const httpSource = getHttpSource(kvStoreContext, CONFIG.volumes_url);
+    const { fetchOkImpl, baseUrl } = httpSource;
+    const response = await fetchOkImpl(baseUrl).then((response) =>
+      response.json()
     );
 
     for (const [key, value] of Object.entries(response as any)) {
