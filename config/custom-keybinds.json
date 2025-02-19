@@ -8,5 +8,14 @@
     "layer": "segmentation",
     "tool": "grapheneMulticutSegments",
     "provider": "graphene"
-  }
+  },
+  "keyf": {
+    "layer": "segmentation",
+    "tool": "grapheneFindPath",
+    "provider": "graphene"
+  },
+  "keyx": false,
+  "control+shift+keyx": "clear-segments",
+  "bracketleft": "select-previous",
+  "bracketright": "select-next"
 }
