@@ -8,7 +8,7 @@
     "dev-server": "webpack serve"
   },
   "dependencies": {
-    "neuroglancer": "github:seung-lab/neuroglancer#650835a843579c2f6effef088642392c9a8d00d7",
+    "neuroglancer": "github:seung-lab/neuroglancer#5d8a322f80b799f48a264beb19468d14dd29b126",
     "pinia": "^2.1.7",
     "vue": "^3.4.21"
   },
