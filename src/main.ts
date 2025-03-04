@@ -25,7 +25,9 @@ window.addEventListener("DOMContentLoaded", () => {
   app.mount("#app");
   const viewer = setupDefaultViewer();
   if (newState) {
-    viewer.layout.container.setSpecification("xy-3d");
+    setTimeout(() => {
+      viewer.layout.container.setSpecification("xy-3d");
+    }, 0);
   }
   initializeWithViewer(viewer);
   const { loadVolumes } = useVolumesStore();
