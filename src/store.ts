@@ -5,7 +5,7 @@ import { Viewer } from "neuroglancer/unstable/viewer.js";
 import { getDefaultCredentialsManager } from "neuroglancer/unstable/credentials_provider/default_manager.js";
 import { MiddleAuthCredentialsProvider } from "neuroglancer/unstable/kvstore/middleauth/credentials_provider.js";
 
-import { Config } from "#src/config.ts";
+import { Config } from "#src/config.js";
 import { getHttpSource } from "neuroglancer/unstable/datasource/graphene/base.js";
 
 declare const CONFIG: Config | undefined;
