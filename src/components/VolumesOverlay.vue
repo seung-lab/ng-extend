@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ModalOverlay from "#src/components/ModalOverlay.vue";
-import { ref, Ref, computed } from 'vue';
+import { ref, Ref, computed, onMounted, onUnmounted } from 'vue';
 import { useVolumesStore, useLayersStore } from '#src/store.js';
 const volumeStore = useVolumesStore();
 const layerStore = useLayersStore();
@@ -114,6 +114,23 @@ function confirmSelection() {
     emit('hide');
   }
 }
+
+const keyupEventlistener: (this: Window, ev: KeyboardEvent) => any = (evt) => {
+  if (evt.key === "Enter") {
+    confirmSelection();
+  }
+  if (evt.key === "Escape") {
+    emit('hide');
+  }
+}
+
+onMounted(() => {
+  window.addEventListener("keyup", keyupEventlistener);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("keyup", keyupEventlistener);
+});
 </script>
 
 <template>

@@ -34,7 +34,7 @@ function logout(session: loginSession) {
 </script>
 
 <template>
-  <volumes-overlay v-visible="showVolumes" @hide="showVolumes = false" />
+  <volumes-overlay v-if="showVolumes" @hide="showVolumes = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://flywire.ai/" target="_blank">
