@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { isNextToElementPostition, type Step } from '#src/store-pyr.js';
 import { useLayersStore } from '#src/store.js';
+import { marked } from 'marked';
 import { nextTick, onMounted, ref, useTemplateRef } from 'vue';
 
 const layerStore = useLayersStore();
@@ -46,7 +47,7 @@ const computedStep = ref<ComputedStep>({
 
 const chipBounds = ref({ top: 'auto', left: 'auto', width: 'inherit' });
 
-function updateChipPosition() {
+async function updateChipPosition() {
     const step = props.step;
 
     let left = '';
@@ -88,14 +89,19 @@ function updateChipPosition() {
         chipBounds.value.width = '350px';
     }
 
+    let html = step.html;
+
+    if (step.text) {
+        html = await marked.parse(step.text);
+    }
+
     computedStep.value = {
         first: props.first,
         last: props.last,
         title: step.title,
         video: step.video,
         image: step.image,
-        text: step.text,
-        html: step.html,
+        html,
         left,
         top,
         cssClass,
@@ -164,7 +170,6 @@ onMounted(() => {
                 <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline
                     :src="computedStep.video"></video>
                 <img class="image" v-if="computedStep.image" :src="computedStep.image">
-                <div class="text" v-if="computedStep.text">{{ computedStep.text }}</div>
                 <div class="html" v-if="computedStep.html" v-html="computedStep.html"></div>
                 <div class="buttonContainer">
                     <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>

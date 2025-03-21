@@ -8,6 +8,7 @@
     "dev-server": "webpack serve"
   },
   "dependencies": {
+    "marked": "^15.0.7",
     "neuroglancer": "github:seung-lab/neuroglancer#4a27ed47ebea434f1804cffbb60a4fe5bd471b66",
     "pinia": "^2.1.7",
     "vue": "^3.5.13"
