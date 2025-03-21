@@ -10,7 +10,7 @@
   "dependencies": {
     "neuroglancer": "github:seung-lab/neuroglancer#4a27ed47ebea434f1804cffbb60a4fe5bd471b66",
     "pinia": "^2.1.7",
-    "vue": "^3.4.21"
+    "vue": "^3.5.13"
   },
   "browserslist": [
     "last 2 Chrome versions",

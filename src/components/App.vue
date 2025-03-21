@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import ExtensionBar from "#src/components/ExtensionBar.vue";
+import Tutorial from "#src/components/Tutorial.vue";
 </script>
 
 <template>
   <div id="vueMain">
     <div class="ng-extend">
+      <Tutorial />
       <ExtensionBar />
     </div>
     <div id="content">

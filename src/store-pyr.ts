@@ -119,3 +119,47 @@ export const useStatsStore = defineStore("stats", () => {
     loopUpdateLeaderboard,
   };
 });
+
+interface NextToElementPostition {
+  element: string;
+  side: "top" | "left" | "bottom" | "right";
+  offset?: { x: number; y: number };
+}
+
+export function isNextToElementPostition(
+  position: NextToElementPostition | InsideElementPostition
+): position is NextToElementPostition {
+  return (position as NextToElementPostition).side !== undefined;
+}
+
+interface InsideElementPostition {
+  element: string;
+  x: number;
+  y: number;
+}
+
+export interface Step {
+  title?: string;
+  text?: string;
+  html?: string;
+  position: NextToElementPostition | InsideElementPostition;
+  modal?: boolean;
+  noborder?: boolean;
+  state?: string;
+  video?: string;
+  image?: string;
+  preloading?: boolean;
+  videoCache?: HTMLVideoElement;
+}
+
+export const useTutorialStore = defineStore("tutorial", () => {
+  const tutorialStep: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-step`) ?? "0")
+  );
+  watch(tutorialStep, () => {
+    localStorage.setItem(`nge-tutorial-step`, `${tutorialStep.value}`);
+  });
+  return {
+    tutorialStep,
+  };
+});

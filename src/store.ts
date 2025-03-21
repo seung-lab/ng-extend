@@ -162,6 +162,17 @@ export const useLayersStore = defineStore("layers", () => {
     }
   }
 
+  async function loadState(url: string) {
+    if (!viewer) return;
+    const { kvStoreContext } = viewer.dataSourceProvider.sharedKvStoreContext;
+    const httpSource = getHttpSource(kvStoreContext, url);
+    const { fetchOkImpl, baseUrl } = httpSource;
+    const response = await fetchOkImpl(baseUrl).then((response) =>
+      response.json()
+    );
+    viewer!.state.restoreState(response);
+  }
+
   function initializeWithViewer(v: Viewer) {
     viewer = v;
 
@@ -208,7 +219,7 @@ export const useLayersStore = defineStore("layers", () => {
     }
   }
 
-  return { initializeWithViewer, activeLayers, selectLayers };
+  return { initializeWithViewer, activeLayers, selectLayers, loadState };
 });
 
 export const useVolumesStore = defineStore("volumes", () => {

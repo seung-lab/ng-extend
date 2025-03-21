@@ -4,7 +4,7 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import App from "#src/components/App.vue";
 import { useLayersStore, useVolumesStore } from "#src/store.js";
-import { useStatsStore } from "#src/store-pyr.ts";
+import { useStatsStore } from "#src/store-pyr.js";
 
 const newState = location.hash === "";
 

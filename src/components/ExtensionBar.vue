@@ -6,8 +6,11 @@ import DropdownList from "#src/components/DropdownList.vue";
 import { loginSession, useLoginStore } from "#src/store.js";
 import logoGemImage from '#src/images/pyr-icon.png';
 import logoTextImage from '#src/images/pyr-logo-wordmark.png';
+import { useTutorialStore } from "#src/store-pyr.js";
+import { storeToRefs } from "pinia";
 
 const login = useLoginStore();
+const { tutorialStep } = storeToRefs(useTutorialStore());
 window.addEventListener("middleauthlogin", () => {
   login.update();
 });
@@ -63,6 +66,9 @@ function logout(session: loginSession) {
               </div>
               <div class="viewProfileButton button" @click="showUserProfile = true">
                 <span>Profile</span>
+              </div>
+              <div class="logoutButton button" @click="tutorialStep = 0">
+                <span>Reset Tutorial</span>
               </div>
               <div class="logoutButton button" @click="logout(session)">
                 <span>Logout</span>
