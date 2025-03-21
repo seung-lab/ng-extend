@@ -192,13 +192,13 @@ onMounted(() => {
 
 <style scoped>
 .nge-overlay-blocker {
-    z-index: inherit;
+    z-index: 89;
 }
 
 .introductionStepAnchor {
     position: absolute;
     z-index: 90;
-    filter: drop-shadow(0 8px 4px rgba(0, 0, 0, 0.25));
+    /* filter: drop-shadow(0 8px 4px rgba(0, 0, 0, 0.25)); overwrites backdrop-filter*/
 }
 
 .introductionStepAnchor.left>*,
@@ -242,16 +242,22 @@ onMounted(() => {
 .chip {
     position: absolute;
     width: max-content;
-    background-color: var(--color-flywire-dark-green);
     color: var(--color-small-text);
     padding: 30px;
     padding-bottom: 20px;
-    border-radius: 4px;
+    border-radius: 20px;
     display: grid;
     justify-items: center;
     font-size: 16px;
     font-weight: 300;
     grid-row-gap: 15px;
+
+    border: 5px solid #0000ff00;
+    border-left: 5px solid #a46fe2ba;
+    border-right: none;
+    background: linear-gradient(90deg, #53317a86, #653c933d);
+    /* background: linear-gradient(90deg, #a46fe285, #a46fe252); */
+    backdrop-filter: blur(4px);
 }
 
 .hasVideo .chip:not(.exitConfirm) {
