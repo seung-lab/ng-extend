@@ -101,27 +101,31 @@ function logout(session: loginSession) {
         </li>
         <li>
           <div class="logoutButton button">
-            <span>Proofreading Guide</span>
+            <span><a target="_blank"
+                href="https://blog.pyr.ai/2024/12/20/proofreading-101-climb-into-spelunker/">Proofreading
+                Guide</a></span>
           </div>
         </li>
         <li>
           <div class="logoutButton button">
-            <span>Merge</span>
+            <span><a target="_blank" href="https://youtu.be/48GS9Sizrvw">Merge</a></span>
           </div>
         </li>
         <li>
           <div class="logoutButton button">
-            <span>Split</span>
+            <span><a target="_blank" href="https://youtu.be/DB6wmQWGsck">Split</a></span>
           </div>
         </li>
         <li>
           <div class="logoutButton button">
-            <span>Find path</span>
+            <span><a target="_blank" href="https://youtu.be/CGooeAhSryg">Find path</a></span>
           </div>
         </li>
         <li>
           <div class="logoutButton button">
-            <span>Advanced Videos</span>
+            <span><a target="_blank"
+                href="https://www.youtube.com/playlist?list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud">Advanced
+                Videos</a></span>
           </div>
         </li>
         <li>
@@ -144,6 +148,14 @@ function logout(session: loginSession) {
   white-space: nowrap;
 }
 
+#hamburger li:hover {
+  background-color: #ffffff33;
+}
+
+#hamburger li a {
+  color: unset;
+  text-decoration: unset;
+}
 
 .dropdownList:last-child .dropdownMenu {
   border-top-right-radius: 0;
