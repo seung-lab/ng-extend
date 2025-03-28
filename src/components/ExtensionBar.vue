@@ -67,9 +67,6 @@ function logout(session: loginSession) {
               <div class="viewProfileButton button" @click="showUserProfile = true">
                 <span>Profile</span>
               </div>
-              <div class="logoutButton button" @click="tutorialStep = 0">
-                <span>Reset Tutorial</span>
-              </div>
               <div class="logoutButton button" @click="logout(session)">
                 <span>Logout</span>
               </div>
@@ -87,11 +84,67 @@ function logout(session: loginSession) {
           </li>
         </template>
       </dropdown-list>
+
     </template>
+    <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
+      <template #buttonTitle>☰</template>
+      <template #listItems>
+        <li>
+          <div class="logoutButton button" @click="tutorialStep = 0">
+            <span>Reset Tutorial</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span>Quickstart Guide</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span>Proofreading Guide</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span>Merge</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span>Split</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span>Find path</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span>Advanced Videos</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span>Cells to Map</span>
+          </div>
+        </li>
+      </template>
+    </dropdown-list>
   </div>
 </template>
 
 <style>
+#hamburger li {
+  padding: 10px;
+  cursor: pointer;
+  display: grid;
+  justify-content: center;
+  align-content: center;
+  white-space: nowrap;
+}
+
+
 .dropdownList:last-child .dropdownMenu {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
