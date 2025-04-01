@@ -1,3 +1,4 @@
 {
-  "volumes_url": "middleauth+https://global.daf-apis.com/info/api/v2/ngl_info"
+  "volumes_url": "middleauth+https://global.daf-apis.com/info/api/v2/ngl_info",
+  "leaderboard_url": "https://pyrdev.eyewire.org/eyewire2-leaderboard"
 }

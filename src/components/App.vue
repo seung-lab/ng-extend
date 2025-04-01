@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import ExtensionBar from "#src/components/ExtensionBar.vue";
+import Leaderboard from "#src/components/Leaderboard.vue";
 </script>
 
 <template>
   <div id="vueMain">
     <div class="ng-extend">
       <ExtensionBar />
+      <Leaderboard class="ng-extend"></Leaderboard>
     </div>
     <div id="content">
       <div id="neuroglancer-container"></div>

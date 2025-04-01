@@ -4,6 +4,7 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import App from "#src/components/App.vue";
 import { useLayersStore, useVolumesStore } from "#src/store.js";
+import { useStatsStore } from "#src/store-pyr.js";
 
 function mergeTopBars() {
   const ngTopBar = document.querySelector(".neuroglancer-viewer")!.children[0];
@@ -25,4 +26,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const { loadVolumes } = useVolumesStore();
   loadVolumes(viewer);
   mergeTopBars();
+
+  const { loopUpdateLeaderboard } = useStatsStore();
+  loopUpdateLeaderboard();
 });
