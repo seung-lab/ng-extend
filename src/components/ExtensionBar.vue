@@ -96,6 +96,11 @@ function logout(session: loginSession) {
         </li>
         <li>
           <div class="logoutButton button">
+            <span><a target="_blank" href="https://forum.eyewire.org">Forum</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
             <span>Quickstart Guide</span>
           </div>
         </li>
