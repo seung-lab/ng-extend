@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import VolumesOverlay from "#src/components/VolumesOverlay.vue";
+import UserProfile from "#src/components/UserProfile.vue";
 import DropdownList from "#src/components/DropdownList.vue";
 import { loginSession, useLoginStore, useVolumesStore } from "#src/store.js";
 import logoImage from "#src/CaveLogo-clear.png";
@@ -32,6 +33,7 @@ onMounted(() => {
 });
 
 const showVolumes = ref(false);
+const showUserProfile = ref(false);
 
 function logout(session: loginSession) {
   login.logout(session);
@@ -40,6 +42,7 @@ function logout(session: loginSession) {
 
 <template>
   <volumes-overlay v-if="showVolumes" @hide="showVolumes = false" />
+  <user-profile v-visible="showUserProfile" @hide="showUserProfile = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://flywire.ai/" target="_blank">
@@ -60,6 +63,9 @@ function logout(session: loginSession) {
               <div class="loginData">
                 <div>{{ session.email }}</div>
                 <div>{{ session.hostname }}</div>
+              </div>
+              <div class="viewProfileButton button" @click="showUserProfile = true">
+                <span>Profile</span>
               </div>
               <div class="logoutButton button" @click="logout(session)">
                 <span>Logout</span>
@@ -196,7 +202,6 @@ function logout(session: loginSession) {
 
 #loginsDropdown li>div {
   display: grid;
-  grid-template-columns: auto min-content;
   border-bottom: 1px solid #4a4a4a;
 }
 
