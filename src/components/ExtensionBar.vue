@@ -4,6 +4,11 @@ import VolumesOverlay from "#src/components/VolumesOverlay.vue";
 import DropdownList from "#src/components/DropdownList.vue";
 import { loginSession, useLoginStore, useVolumesStore } from "#src/store.js";
 import logoImage from "#src/CaveLogo-clear.png";
+import { useStatsStore } from "#src/store-pyr.js";
+import { storeToRefs } from "pinia";
+const store = useStatsStore();
+const { showLeaderboard } = storeToRefs(store);
+
 
 const login = useLoginStore();
 window.addEventListener("middleauthlogin", () => {
@@ -47,7 +52,7 @@ function logout(session: loginSession) {
     </button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
-        <template v-if="login.sessions.length === 1" #buttonTitle>👤 {{ validLogins[0].name }}</template>
+        <template v-if="login.sessions.length === 1" #buttonTitle>{{ validLogins[0].name }}</template>
         <template v-else #buttonTitle>Logins ({{ login.sessions.length }})</template>
         <template #listItems>
           <li v-for="session of validLogins">
@@ -74,17 +79,91 @@ function logout(session: loginSession) {
         </template>
       </dropdown-list>
     </template>
+    <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
+      <template #buttonTitle>☰</template>
+      <template #listItems>
+        <li v-if="showLeaderboard === false">
+          <div class="logoutButton button">
+            <span @click="showLeaderboard = true">Show Leaderboard</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank" href="https://forum.eyewire.org">Forum</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span>Quickstart Guide</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank"
+                href="https://blog.pyr.ai/2024/12/20/proofreading-101-climb-into-spelunker/">Proofreading
+                Guide</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank" href="https://youtu.be/48GS9Sizrvw">Merge Guide</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank" href="https://youtu.be/DB6wmQWGsck">Split Guide</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank" href="https://youtu.be/CGooeAhSryg">Find path Guide</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank"
+                href="https://www.youtube.com/playlist?list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud">Advanced
+                Videos</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span>Cells to Map</span>
+          </div>
+        </li>
+      </template>
+    </dropdown-list>
   </div>
 </template>
 
 <style>
+#hamburger li {
+  padding: 10px;
+  cursor: pointer;
+  display: grid;
+  justify-content: center;
+  align-content: center;
+  white-space: nowrap;
+}
+
+#hamburger li:hover {
+  background-color: #ffffff33;
+}
+
+#hamburger li a {
+  color: unset;
+  text-decoration: unset;
+}
+
 .dropdownList:last-child .dropdownMenu {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-#extensionBar button {
+#extensionBar>button,
+#extensionBar>div>button {
   font-size: 10pt;
+  padding: 0 10px;
 }
 
 #insertNGTopBar>div {

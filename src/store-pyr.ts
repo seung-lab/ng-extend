@@ -27,7 +27,28 @@ export interface UserInfo {
   splitsAllTime: number;
 }
 
+function localStorageRef<T>(key: string, initial: T, parse: (x: string) => T) {
+  const initialValue = parse(localStorage.getItem(key) ?? `${initial}`);
+  const res = ref(initialValue);
+  watch(res, () => {
+    localStorage.setItem(key, `${res.value}`);
+  });
+  return res;
+}
+
+const tutorialStep: Ref<number> = ref(
+  parseInt(localStorage.getItem(`nge-tutorial-step`) ?? "0")
+);
+watch(tutorialStep, () => {
+  localStorage.setItem(`nge-tutorial-step`, `${tutorialStep.value}`);
+});
+
 export const useStatsStore = defineStore("stats", () => {
+  let showLeaderboard = localStorageRef(
+    "showLeaderboard",
+    true,
+    (x) => x === "true"
+  );
   let leaderboardLoaded: Ref<boolean> = ref(false);
   let leaderboardEntries: LeaderboardEntry[] = reactive([]);
   let leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
@@ -110,6 +131,7 @@ export const useStatsStore = defineStore("stats", () => {
   }
 
   return {
+    showLeaderboard,
     leaderboardLoaded,
     leaderboardEntries,
     userInfo,

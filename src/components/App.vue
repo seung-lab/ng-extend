@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import ExtensionBar from "#src/components/ExtensionBar.vue";
 import Leaderboard from "#src/components/Leaderboard.vue";
+import { useStatsStore } from "#src/store-pyr.js";
+import { storeToRefs } from "pinia";
+const store = useStatsStore();
+const { showLeaderboard } = storeToRefs(store);
 </script>
 
 <template>
   <div id="vueMain">
     <div class="ng-extend">
       <ExtensionBar />
-      <Leaderboard class="ng-extend"></Leaderboard>
+      <Leaderboard v-if="showLeaderboard" @hide="showLeaderboard = false"></Leaderboard>
     </div>
     <div id="content">
       <div id="neuroglancer-container"></div>

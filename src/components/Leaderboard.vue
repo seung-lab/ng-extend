@@ -59,6 +59,7 @@ function setButtonHighlighted(timespan: string | null, highlighted: boolean) {
 <template>
     <hologram-panel class="nge-leaderboard-hologram" id="leaderboard-hologram">
         <div class="nge-leaderboard">
+            <button class="exit" @click="$emit('hide')">×</button>
             <!-- <div class="nge-leaderboard-headerimage"><img src="insert-logo" title="Nurro"></div> -->
             <div class="nge-leaderboard-titlebar">Top Editors</div>
             <div class="nge-leaderboard-content">
@@ -93,7 +94,27 @@ function setButtonHighlighted(timespan: string | null, highlighted: boolean) {
     </hologram-panel>
 </template>
 
-<style>
+<style scoped>
+.ng-extend button.exit {
+    position: absolute;
+    right: 0;
+    border: none;
+    padding: 0;
+    opacity: 0.75;
+    transition: opacity 0.2s;
+    font-size: 22px;
+    line-height: 22px;
+    font-weight: 300;
+    width: 22px;
+    margin: 6px 6px 0 0;
+    z-index: 1;
+}
+
+.ng-extend button.exit:hover {
+    background-color: initial;
+    opacity: 1;
+}
+
 .nge-leaderboard-hologram {
     top: 45px;
     bottom: 10px;
