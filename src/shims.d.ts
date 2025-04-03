@@ -16,3 +16,8 @@ declare module "*.jpeg" {
 declare module "*.jpg" {
   export default "" as string;
 }
+
+declare module "*?raw" {
+  const value: string;
+  export default value;
+}

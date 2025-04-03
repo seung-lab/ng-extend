@@ -4,7 +4,8 @@ import VolumesOverlay from "#src/components/VolumesOverlay.vue";
 import UserProfile from "#src/components/UserProfile.vue";
 import DropdownList from "#src/components/DropdownList.vue";
 import { loginSession, useLoginStore, useVolumesStore } from "#src/store.js";
-import logoImage from "#src/CaveLogo-clear.png";
+import logoImage from "#src/eyewire-logo.svg?raw";
+
 import { useStatsStore } from "#src/store-pyr.js";
 import { storeToRefs } from "pinia";
 const store = useStatsStore();
@@ -28,8 +29,8 @@ const { volumes } = useVolumesStore();
 
 onMounted(() => {
   (
-    document.querySelector(".ng-extend-logo > a > img")! as HTMLImageElement
-  ).src = logoImage;
+    document.querySelector(".ng-extend-logo > a > .logo")! as HTMLElement
+  ).innerHTML = logoImage;
 });
 
 const showVolumes = ref(false);
@@ -45,8 +46,8 @@ function logout(session: loginSession) {
   <user-profile v-visible="showUserProfile" @hide="showUserProfile = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
-      <a href="https://flywire.ai/" target="_blank">
-        <img src="insert-logo" title="Cave Explorer" />
+      <a href="https://eyewire.ai/" target="_blank">
+        <div class="logo"></div>
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
@@ -238,8 +239,7 @@ function logout(session: loginSession) {
   opacity: 0.75;
 }
 
-.ng-extend-logo>a,
-.ng-extend-logo>a>img {
-  height: 100%;
+.ng-extend-logo>a>.logo {
+  width: 40px;
 }
 </style>
