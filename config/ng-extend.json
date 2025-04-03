@@ -1,10 +1,6 @@
 {
   "volumes_url": "middleauth+https://global.daf-apis.com/info/api/v2/ngl_info",
   "volumes_enabled": ["stroeh_mouse_retina"],
-  "volumes_default": {
-    "name": "stroeh_mouse_retina",
-    "image": "stroeh_mouse_retina",
-    "segmentation": "stroeh_mouse_retina"
-  },
+  "default_state": "middleauth+https://global.daf-apis.com/nglstate/api/v1/6646116310319104",
   "leaderboard_url": "https://pyrdev.eyewire.org/eyewire2-leaderboard"
 }

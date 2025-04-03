@@ -7,6 +7,7 @@ import { MiddleAuthCredentialsProvider } from "neuroglancer/unstable/kvstore/mid
 
 import { Config } from "#src/config.js";
 import { getHttpSource } from "neuroglancer/unstable/datasource/graphene/base.js";
+import { verifyObject } from "neuroglancer/unstable/util/json.js";
 
 declare const CONFIG: Config | undefined;
 
@@ -254,23 +255,14 @@ export const useVolumesStore = defineStore("volumes", () => {
       layerStore.activeLayers.size === 0 ||
       (layerStore.activeLayers.size === 1 && layerStore.activeLayers.has(""))
     ) {
-      if (CONFIG.volumes_default) {
-        const volume = volumes.value.find(
-          (x) => x.name === CONFIG.volumes_default?.name
+      if (CONFIG.default_state) {
+        const httpSource = getHttpSource(kvStoreContext, CONFIG.default_state);
+        const { fetchOkImpl, baseUrl } = httpSource;
+        const response = await fetchOkImpl(baseUrl).then((response) =>
+          response.json()
         );
-
-        if (volume) {
-          const imageLayer = volume.image_layers.find(
-            (x) => x.name === CONFIG.volumes_default?.image
-          );
-          const segmentationLayer = volume.segmentation_layers.find(
-            (x) => x.name === CONFIG.volumes_default?.segmentation
-          );
-
-          if (imageLayer && segmentationLayer) {
-            layerStore.selectLayers([imageLayer, segmentationLayer]);
-          }
-        }
+        verifyObject(response);
+        viewer.state.restoreState(response);
       }
     }
   }
