@@ -31,7 +31,8 @@ export const steps: Step[] = [
   //1 -- full screen 3D - button option to skip to keyboard commands - state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
   {
     text: `
-We’re a commnunity  of researchers, citizen scientists, and engineers from around the world working to map the brain. 
+We’re a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. 
+
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
     image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bannervF.png?raw=true",
     position: MIDDLE,
