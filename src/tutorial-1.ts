@@ -40,7 +40,7 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
   //2 + image 2
   {
     text: `
-To create a dataset, an animal brain was sectioned, imaged at nanoscale, stacked, and segmented into 3D neural reconstructions using a combination of human ingeneuity and AI.
+To create a connectomics dataset, a brain was sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI..
 
 Imagine the image stack like a 3D printer: once the 2D images are layered on top of each other, the 3D takes form.`,
     position: MIDDLE,
@@ -49,11 +49,11 @@ Imagine the image stack like a 3D printer: once the 2D images are layered on top
   //4 -- button says "how does it work"
   {
     text: `
-**Button should say "How does it work??**
+**Button should say "How does it work?**
 
 Connectomics allows us to see all the way down to the synaptic connections between neurons. 
 
-Although the AI's automatic reconstructions are impressive, it still makes many mistakes, missing huge branches and fusing cells together. That's why we need YOU!
+Although AI reconstructions are impressive, there are still makes many mistakes. The AI misses huge branches and fuses cells together. That's why we need YOU!
 
 The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck. Ready to get started?`,
     position: MIDDLE,
