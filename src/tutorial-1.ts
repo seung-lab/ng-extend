@@ -114,6 +114,7 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+    state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/4718500091265024",
   },
   //12 - over 2D - ng view middleauth+https://global.daf-apis.com/nglstate/api/v1/5216018583519232
   {
