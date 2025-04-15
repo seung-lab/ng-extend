@@ -39,7 +39,7 @@ As our commnunity pieces together these structures, we'll begin to uncover a roa
   //2 + image 2
   {
     text: `
-To create our dataset, an animal bain was sectioned into thin slices. 
+To create our dataset, an animal brain was sectioned into thin slices. 
 
 An image of each slice was taken using an electron microscope.`,
     position: OVER_3D,
