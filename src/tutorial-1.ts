@@ -102,11 +102,6 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056",
   },
-  //10
-  {
-    text: `There are many challenges like this that arise when mapping the brain - that’s why we need YOU. Your human insight is more powerful than an AI.`,
-    position: OVER_3D,
-  },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
   {
