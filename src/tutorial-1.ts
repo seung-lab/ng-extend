@@ -173,11 +173,6 @@ Hit next to reveal the answer.`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
   },
-
-  {
-    video: `https://storage.googleapis.com/flywire-frontend/videos/rotate-3d.mp4`,
-    position: OVER_3D,
-  },
   {
     text: 'Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. Check out this menu for guides, tutorials, and more resources.',
   image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/rika-success.png?raw=true",
