@@ -31,43 +31,37 @@ export const steps: Step[] = [
   //1 -- full screen 3D - button option to skip to keyboard commands - state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
   {
     text: `
-The brain is composes of neurons, branched cells that pass signals to each other.
-
-As our commnunity pieces together these structures, we'll begin to uncover a roadmap to the brain. Join us!`,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/600px-fancy-tutorial.jpg?raw=true",
+We’re a global commnunity  of researchers, citizen scientists, and engineers from around the world working to piece together the 3D structure of neurons. 
+Together, we're charting new connectomics maps that transform our understanding of of the brain. Join us!`,
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/tutorial-1-2.png?raw=true",
     position: OVER_3D,
   },
   //2 + image 2
   {
     text: `
-To create our dataset, an animal brain was sectioned into thin slices. 
+To create our dataset, an animal brain was sectioned, imaged at nanoscale, stacked, and segmented into 3D neural reconstructions using a combination of human ingeneuity and AI.
 
-An image of each slice was taken using an electron microscope.`,
+Imagine the image stack like a 3D printer: once the 2D images are layered on top of each other, the 3D takes form.`,
     position: OVER_3D,
-  },
-  //3
-  {
-    text: `
-The images were stacked to create a digital representation of the brain. 
-
-Imagine the image stack like a 3D printer - once the 2D images are layered on top of each other, a 3D model can emerge.`,
-    position: OVER_3D,
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg?raw=true",
   },
   //4 -- button says "how does it work"
   {
     text: `
-Recent improvements in image processing and AI allow us to quickly create high fidelity 3D reconstructions of neurons in the brain, allowing us to see all the way down to the synaptic connections between neurons. 
+Connectomics allows us to see all the way down to the synaptic connections between neurons. 
 
-Although the AI's automatic reconstructions are impressive, it's not perfect. That's why we need YOU!
+Although the AI's automatic reconstructions are impressive, it still makes many mistakes, missing huge branches and fusing cells together. That's why we need YOU!
 
 The flexibility of the human mind and big-picture thinking enables humans to problem solve when the AI gets stuck.`,
     position: OVER_3D,
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial.jpg?raw=true",
   },
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
     text: `
 Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software we use to map them.`,
     position: OVER_3D,
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
   },
   //6 - gif reuse 3D click+ drag
   {
