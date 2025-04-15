@@ -98,7 +98,7 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
     position: OVER_3D,
     image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5342128805773312",
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
