@@ -39,7 +39,7 @@ Together, we're charting new connectomics maps that transform our understanding 
   //2 + image 2
   {
     text: `
-To create our dataset, an animal brain was sectioned, imaged at nanoscale, stacked, and segmented into 3D neural reconstructions using a combination of human ingeneuity and AI.
+To create a dataset, an animal brain was sectioned, imaged at nanoscale, stacked, and segmented into 3D neural reconstructions using a combination of human ingeneuity and AI.
 
 Imagine the image stack like a 3D printer: once the 2D images are layered on top of each other, the 3D takes form.`,
     position: MIDDLE,
