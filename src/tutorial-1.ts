@@ -184,12 +184,9 @@ Hit next to reveal the answer.`,
     },
   },
   {
-    text: "Take the **Self-guided training** when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset.  
-      For Science!",
-    position: {
-      element: ".nge-gs-link.training",
-      side: "right",
-      offset: { x: -25, y: 0 },
+    text: "Take the **Self-guided training** when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset. Email us support@eyewire.ai with any questions. Thanks for being a part of the neuroscience community! For Science!",
+    position: MIDDLE,
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
     },
   },
 ];
