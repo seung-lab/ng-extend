@@ -149,7 +149,7 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
   },
   //15 - 2D right click center gif
   {
-    text: `This also works in 3D.`,
+    text: `Right click to recenter`,
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
