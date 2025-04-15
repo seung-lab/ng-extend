@@ -33,7 +33,7 @@ export const steps: Step[] = [
     text: `
 We’re a global commnunity  of researchers, citizen scientists, and engineers from around the world working to piece together the 3D structure of neurons. 
 Together, we're charting new connectomics maps that transform our understanding of of the brain. Join us!`,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/microns-ng-banner.png?raw=true",
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bannervF.png?raw=true",
     position: MIDDLE,
   },
   //2 + image 2
