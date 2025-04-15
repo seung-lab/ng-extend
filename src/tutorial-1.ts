@@ -40,9 +40,7 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
   //2 + image 2
   {
     text: `
-To create a connectomics dataset, a brain was sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI..
-
-Imagine the image stack like a 3D printer: once the 2D images are layered on top of each other, the 3D takes form.`,
+To create a connectomics dataset, we start with a brain. It is sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI.`,
     position: MIDDLE,
     image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg?raw=true",
   },
