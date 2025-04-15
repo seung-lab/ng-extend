@@ -198,7 +198,7 @@ In the future we'll learn how to fuse these branches together and fix the cell. 
     position: {
       element: "#hamburger > button",
       side: "bottom",
-      offset: { x: -25, y: 25 },
+      offset: { x: 0, y: 0 },
     },
   },
   {
