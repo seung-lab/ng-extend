@@ -178,7 +178,7 @@ Hit next to reveal the answer.`,
     text: `Bravo! We found the continuation!`,
     position: MIDDLE,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro%20balloons.png?raw=true",
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bravo-nurro.png?raw=true",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
   },
