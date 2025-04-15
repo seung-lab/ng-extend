@@ -48,13 +48,15 @@ Imagine the image stack like a 3D printer: once the 2D images are layered on top
   //4 -- button says "how does it work"
   {
     text: `
+**Button should say "How does it work??**
+
 Connectomics allows us to see all the way down to the synaptic connections between neurons. 
 
 Although the AI's automatic reconstructions are impressive, it still makes many mistakes, missing huge branches and fusing cells together. That's why we need YOU!
 
-The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck.`,
+The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck. Ready to get started?`,
     position: MIDDLE,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial.jpg?raw=true",
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial-2.jpg?raw=true",
   },
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
