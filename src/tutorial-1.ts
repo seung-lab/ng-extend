@@ -87,6 +87,7 @@ Right click on the neuron to center view at that point. **See if you can find a 
 
 Don’t worry if you can’t find it - the Next button will take you there.`,
     position: OVER_3D,
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro.png?raw=true",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6175014098305024",
   },
@@ -94,6 +95,7 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
   {
     text: `There it is! This flat edge reveals a mistake by the AI. It missed a branch! Let’s see if we can find it.`,
     position: OVER_3D,
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial.png?raw=true",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056",
   },
