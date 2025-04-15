@@ -194,11 +194,11 @@ In the future we'll learn how to fuse these branches together and fix the cell. 
     position: OVER_3D,
   },
   {
-    text: "Check out the **Quick Start Guide** if you need a refresher. Use the <b>Cheatsheet</b> for additional commands.",
+    text: "Check out this menu for guides, tutorials, and more resources.",
     position: {
-      element: ".nge-gs-link.quickstart",
-      side: "right",
-      offset: { x: -25, y: 0 },
+      element: "#hamburger > button",
+      side: "bottom",
+      offset: { x: -25, y: 25 },
     },
   },
   {
