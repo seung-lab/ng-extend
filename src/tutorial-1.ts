@@ -21,7 +21,7 @@ const OVER_3D = {
 export const steps: Step[] = [
   {
     html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
-        src="https://www.youtube-nocookie.com/embed/goL_WA3Wjtc?rel=0"
+        src="https://youtu.be/tnoIdea7Wmo?si=xiJSTIQyr_Q5XDo3"
         frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
     position: MIDDLE,
     modal: true,
@@ -39,7 +39,7 @@ As our commnunity pieces together these structures, we'll begin to uncover a roa
   //2 + image 2
   {
     text: `
-To create our dataset, an animal bain was sectioned into thin slices. 
+To create our dataset, an animal brain was sectioned into thin slices. 
 
 An image of each slice was taken using an electron microscope.`,
     position: OVER_3D,
