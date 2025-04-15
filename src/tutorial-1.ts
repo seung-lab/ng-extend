@@ -34,7 +34,8 @@ export const steps: Step[] = [
 Welcome! We’re a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. 
 
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bannervF.png?raw=true",
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bannervF.png?raw=true",
     position: MIDDLE,
   },
   //2 + image 2
@@ -42,7 +43,8 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
     text: `
 To create a connectomics dataset, we start with a brain. It is sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI.`,
     position: MIDDLE,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg?raw=true",
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg?raw=true",
   },
   //4 -- button says "how does it work"
   {
@@ -55,14 +57,16 @@ Although AI reconstructions are impressive, there are still makes many mistakes.
 
 The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck. Ready to get started?`,
     position: MIDDLE,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial-2.jpg?raw=true",
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial-2.jpg?raw=true",
   },
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
     text: `
 Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software we use to map them.`,
     position: MIDDLE,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
   },
   //6 - gif reuse 3D click+ drag
   {
@@ -86,7 +90,8 @@ Right click on the neuron to center view at any point. **See if you can find a y
 
 Don’t worry if you can’t find it - the Next button will take you there.`,
     position: OVER_3D,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro-2.png?raw=true",
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro-2.png?raw=true",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6174910415110144",
   },
@@ -96,7 +101,8 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
     
     It missed a branch! Let’s see if we can find it.`,
     position: OVER_3D,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5342128805773312",
   },
@@ -110,11 +116,13 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
   {
     text: `Click this button to move from 4 panel view to split screen. You will not ever need the 4 panel view.`,
     position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div:nth-child(2) > div > div:nth-child(1) > div:nth-child(1) > div.neuroglancer-data-panel-layout-controls > button:nth-child(2) > div",
+      element:
+        "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div:nth-child(2) > div > div:nth-child(1) > div:nth-child(1) > div.neuroglancer-data-panel-layout-controls > button:nth-child(2) > div",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
-    state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/4718500091265024",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4718500091265024",
   },
   //12 - over 2D - ng view middleauth+https://global.daf-apis.com/nglstate/api/v1/5216018583519232
   {
@@ -169,14 +177,16 @@ Hit next to reveal the answer.`,
   {
     text: `Bravo! We found the continuation!`,
     position: MIDDLE,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro%20balloons.png?raw=true"
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro%20balloons.png?raw=true",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
   },
   {
-    text: 'Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. Check out this menu for guides, tutorials, and more resources.',
-  image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/rika-success.png?raw=true",
-  
+    text: "Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. Check out this menu for guides, tutorials, and more resources.",
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/rika-success.png?raw=true",
+
     position: {
       element: "#hamburger > button",
       side: "bottom",
@@ -186,7 +196,7 @@ Hit next to reveal the answer.`,
   {
     text: "Take the **Self-guided training** when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset. Email us support@eyewire.ai with any questions. Thanks for being a part of the neuroscience community! For Science!",
     position: MIDDLE,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
-    },
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
   },
 ];
