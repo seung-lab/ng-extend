@@ -21,7 +21,7 @@ const OVER_3D = {
 export const steps: Step[] = [
   {
     html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
-        src="https://youtu.be/tnoIdea7Wmo?si=xiJSTIQyr_Q5XDo3"
+        src="https://www.youtube.com/embed/tnoIdea7Wmo?si=xiJSTIQyr_Q5XDo3"
         frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
     position: MIDDLE,
     modal: true,
@@ -34,6 +34,7 @@ export const steps: Step[] = [
 The brain is composes of neurons, branched cells that pass signals to each other.
 
 As our commnunity pieces together these structures, we'll begin to uncover a roadmap to the brain. Join us!`,
+    image: "https://drive.google.com/drive-viewer/AKGpihYdqZZqZfKr-DFGpZgUXtlcq3mJgNHCNLECQZFaB7lVEZr5C49lGNYr6Yizn-qxNOSQsUx3a-kc1to2wBai8mfOlcIO2sfl8Sw=w2930-h1578-rw-v1",
     position: OVER_3D,
   },
   //2 + image 2
