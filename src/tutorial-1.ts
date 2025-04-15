@@ -34,7 +34,7 @@ export const steps: Step[] = [
 The brain is composes of neurons, branched cells that pass signals to each other.
 
 As our commnunity pieces together these structures, we'll begin to uncover a roadmap to the brain. Join us!`,
-    image: "https://raw.githubusercontent.com/seung-lab/ng-extend/3603c75a88986b1a76601cddd574f1bb5f3dd026/src/images/microns-multimodal-freshfactor-sterling%20(1).jpg",
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/600px-fancy-tutorial.jpg?raw=true",
     position: OVER_3D,
   },
   //2 + image 2
