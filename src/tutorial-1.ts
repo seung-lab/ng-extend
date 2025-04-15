@@ -84,13 +84,13 @@ CLICK + DRAG to rotate it.`,
   //8 - right click - find annotation middleauth+https://global.daf-apis.com/nglstate/api/v1/6175014098305024
   {
     text: `
-Right click on the neuron to center view at that point. **See if you can find a yellow annotation at the end of one of the branches and zoom in on it.**
+Right click on the neuron to center view at any point. **See if you can find a yellow annotation at the end of one of the branches and zoom in on it.**
 
 Don’t worry if you can’t find it - the Next button will take you there.`,
     position: OVER_3D,
     image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro-2.png?raw=true",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6175014098305024",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6174910415110144",
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
