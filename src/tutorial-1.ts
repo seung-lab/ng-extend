@@ -52,7 +52,7 @@ Connectomics allows us to see all the way down to the synaptic connections betwe
 
 Although the AI's automatic reconstructions are impressive, it still makes many mistakes, missing huge branches and fusing cells together. That's why we need YOU!
 
-The flexibility of the human mind and big-picture thinking enables humans to problem solve when the AI gets stuck.`,
+The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck.`,
     position: MIDDLE,
     image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial.jpg?raw=true",
   },
