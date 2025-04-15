@@ -87,15 +87,17 @@ Right click on the neuron to center view at that point. **See if you can find a 
 
 Don’t worry if you can’t find it - the Next button will take you there.`,
     position: OVER_3D,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro.png?raw=true",
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro-2.png?raw=true",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6175014098305024",
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
-    text: `There it is! This flat edge reveals a mistake by the AI. It missed a branch! Let’s see if we can find it.`,
+    text: `There it is! This flat edge reveals a mistake by the AI. 
+    
+    It missed a branch! Let’s see if we can find it.`,
     position: OVER_3D,
-    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial.png?raw=true",
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056",
   },
@@ -113,7 +115,11 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
   //11a - point to split screen icon (xy-3d layout)
   {
     text: `Click this button to move from 4 panel view to split screen. You will not ever need the 4 panel view.`,
-    position: OVER_3D,
+    position: {
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div:nth-child(2) > div > div:nth-child(1) > div:nth-child(1) > div.neuroglancer-data-panel-layout-controls > button:nth-child(2) > div",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
   },
   //12 - over 2D - ng view middleauth+https://global.daf-apis.com/nglstate/api/v1/5216018583519232
   {
