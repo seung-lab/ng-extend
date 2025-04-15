@@ -60,7 +60,7 @@ The flexibility and big-picture thinking of the human mind enables humans to sol
   {
     text: `
 Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software we use to map them.`,
-    position: OVER_3D,
+    position: MIDDLE,
     image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
   },
   //6 - gif reuse 3D click+ drag
