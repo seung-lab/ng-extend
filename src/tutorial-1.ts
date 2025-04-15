@@ -126,56 +126,44 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
     text: `This grey stuff is a 2D electron microscope image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
   },
   //13 - gif
   {
-    text: `Hold your mouse over the black and press COMMA and PERIOD to step through the slices.`,
+    text: `Hold your mouse over the black and press COMMA and PERIOD to step through the slices.
+    
+    Don't worry if you lose the neuron - the Next button in this section resets this view.`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
   },
   //14 - 2D control + scroll gif
   {
-    text: `Hold your cursor over 2D and CTRL + Scroll to zoom`,
+    text: `Hold your cursor over 2D and CTRL + Scroll to zoom in and out`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
   },
   //15 - 2D right click center gif
   {
     text: `This also works in 3D.`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
   },
-  //16 - 2D click and drag to pan gif
-  {
-    text: `Hold your mouse over 2D to use this command. The control is Shift + Click and drag in 3D.`,
-    position: OVER_2D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
-  },
+
   //17 - position center of page - ensure location is  middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
   {
-    text: `The big black empty space is an imaging defect, which happens occasionally when you are snapping at the nanoscale. It caused the AI to make a mistake.`,
+    text: `The big black empty space is an imaging defect, which happens occasionally when you are snapping at the nanoscale. It caused the AI to make a mistake and disconnect a dendrite.`,
     position: MIDDLE,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
   },
   //18 -  middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408
   {
-    text: `To fix it, we need to scroll past the defect and find where the branch continues.`,
-    position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
-  },
-  //19 -
-  {
-    text: `
-Scroll to find the continuation. 
-
-This is a tutorial so we dropped a hint. There is an annotation point in the continuation segment. See what happens when you double click it 2D segment. 
+    text: `To fix it, we need to scroll past the defect and find where the branch continues.
+    
+    This is a tutorial so we dropped a hint. There is an annotation point in the continuation segment. See what happens when you double click it 2D segment. 
 
 Hit next to reveal the answer.`,
     position: MIDDLE,
@@ -184,11 +172,9 @@ Hit next to reveal the answer.`,
   },
   //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
   {
-    text: `
-Bravo! We found the continuation!
-
-In the future we'll learn how to fuse these branches together and fix the cell. For now, feel free to click around and explore or hit Next Tutorial for a tour of the interface.`,
+    text: `Bravo! We found the continuation!`,
     position: MIDDLE,
+    image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro%20balloons.png?raw=true"
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
   },
@@ -198,7 +184,9 @@ In the future we'll learn how to fuse these branches together and fix the cell. 
     position: OVER_3D,
   },
   {
-    text: "Check out this menu for guides, tutorials, and more resources.",
+    text: 'Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. Check out this menu for guides, tutorials, and more resources.',
+  image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/rika-success.png?raw=true",
+  
     position: {
       element: "#hamburger > button",
       side: "bottom",
@@ -206,7 +194,8 @@ In the future we'll learn how to fuse these branches together and fix the cell. 
     },
   },
   {
-    text: "Take the **Self-guided training** when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset.",
+    text: "Take the **Self-guided training** when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset.  
+      For Science!",
     position: {
       element: ".nge-gs-link.training",
       side: "right",
