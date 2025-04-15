@@ -1,7 +1,7 @@
 import { Step } from "./store-pyr";
 
 const MIDDLE = {
-  element: "body",
+  element: "image",
   x: 0.5,
   y: 0.5,
 };
