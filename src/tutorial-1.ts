@@ -34,7 +34,7 @@ export const steps: Step[] = [
 We’re a global commnunity  of researchers, citizen scientists, and engineers from around the world working to piece together the 3D structure of neurons. 
 Together, we're charting new connectomics maps that transform our understanding of of the brain. Join us!`,
     image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/tutorial-1-2.png?raw=true",
-    position: OVER_3D,
+    position: MIDDLE,
   },
   //2 + image 2
   {
@@ -42,7 +42,7 @@ Together, we're charting new connectomics maps that transform our understanding 
 To create our dataset, an animal brain was sectioned, imaged at nanoscale, stacked, and segmented into 3D neural reconstructions using a combination of human ingeneuity and AI.
 
 Imagine the image stack like a 3D printer: once the 2D images are layered on top of each other, the 3D takes form.`,
-    position: OVER_3D,
+    position: MIDDLE,
     image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg?raw=true",
   },
   //4 -- button says "how does it work"
@@ -53,7 +53,7 @@ Connectomics allows us to see all the way down to the synaptic connections betwe
 Although the AI's automatic reconstructions are impressive, it still makes many mistakes, missing huge branches and fusing cells together. That's why we need YOU!
 
 The flexibility of the human mind and big-picture thinking enables humans to problem solve when the AI gets stuck.`,
-    position: OVER_3D,
+    position: MIDDLE,
     image: "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial.jpg?raw=true",
   },
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
