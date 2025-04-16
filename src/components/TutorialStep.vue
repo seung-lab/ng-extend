@@ -148,20 +148,24 @@ async function updateChipPosition() {
     });
 }
 
+const ready = ref(false);
 
-
-onMounted(() => {
+onMounted(async () => {
+    const startT = performance.now();
     console.log("test propo", props.step.state);
     if (props.step.state) {
-        loadState(props.step.state);
+        console.log('loading state');
+        await loadState(props.step.state);
     }
+    console.log('updating position', performance.now() - startT);
     updateChipPosition();
+    ready.value = true;
 });
 
 </script>
 
 <template>
-    <div ref="root" class="introductionStep" :class="{ hasVideo: computedStep.video !== undefined }">
+    <div v-if="ready" ref="root" class="introductionStep" :class="{ hasVideo: computedStep.video !== undefined }">
         <div v-if="computedStep.modal" class="nge-overlay-blocker" @mousedown.stop.prevent></div>
         <div class="ng-extend introductionStepAnchor" :class="computedStep.cssClass"
             :style="{ left: computedStep.left, top: computedStep.top }">
