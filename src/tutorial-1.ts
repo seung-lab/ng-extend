@@ -195,7 +195,7 @@ Hit next to reveal the answer.`,
   {
     text: `Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. 
       
-Check out this menu for guides, tutorials, and more resources.`,
+Check out this top right menu for guides, tutorials, and more resources.`,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/rika-success.png?raw=true",
 
@@ -207,10 +207,12 @@ Check out this menu for guides, tutorials, and more resources.`,
   },
   {
     text: `Researchers: take the **Self-guided training** when you are ready to learn more and gain access to the production dataset! LINK
-Citizen scientists: 
+    
+Citizen scientists: For more information on EyeWire II and to join the waitlist, visit [this blog](https://blog.eyewire.org/announcing-eyewire-ii/).
+
 Email support at eyewire.ai with any questions. 
   
-Thanks for being a part of the neuroscience community! For Science!`,
+Thanks for being a part of the neuroscience community. For Science!`,
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
