@@ -101,13 +101,13 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
   {
     text: `There it is! This flat edge reveals a mistake by the AI.
 
-    It missed a branch. Let's see if we can find it.`,
+It missed a branch. Let's see if we can find it.`,
     
     position: OVER_3D,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5342128805773312",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6365957824970752",
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
@@ -136,9 +136,9 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
   },
   //13 - gif
   {
-    text: `Hold your mouse over the black and press COMMA and PERIOD to step through the slices.
+    text: `Hold your mouse over the EM and press COMMA and PERIOD to step through the slices.
     
-    Don't worry if you lose the neuron - the Next button in this section resets this view.`,
+Don't worry if you lose the neuron - the Next button in this section resets this view.`,
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
