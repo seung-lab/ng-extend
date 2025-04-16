@@ -37,7 +37,7 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/main-banner-vF.jpg?raw=true",
     position: MIDDLE,
-    width: "1000px"
+    width: "1000px",
     state: 
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4594033348313088",
   },
@@ -136,16 +136,16 @@ Hit Next to load split screen view.`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4718500091265024",
   },
-  //12 - over 2D - ng view middleauth+https://global.daf-apis.com/nglstate/api/v1/5216018583519232
+  //12 - over 2D - added EM to 3D and zoomed view
   {
     text: `This grey stuff is an electron microscope aka EM image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6156322132197376",
   },
   //13 - gif
   {
-    text: `Hold your mouse over the EM and press COMMA and PERIOD to step through the slices.
+    text: `Press COMMA and PERIOD to step through the EM slices.
     
 Don't worry if you lose the neuron - the Next button in this section resets this view.`,
     position: OVER_2D,
@@ -154,7 +154,7 @@ Don't worry if you lose the neuron - the Next button in this section resets this
   },
   //14 - 2D control + scroll gif
   {
-    text: `Hold your cursor over 2D and CTRL + Scroll to zoom in and out`,
+    text: `Hold your cursor over black and white EM and CTRL + Scroll to zoom in and out`,
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
