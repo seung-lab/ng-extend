@@ -38,6 +38,8 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/main-banner-vF.jpg?raw=true",
     position: MIDDLE,
     width: "1000px"
+    state: 
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4594033348313088",
   },
   //2 + image 2
   {
