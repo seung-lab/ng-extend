@@ -35,7 +35,7 @@ Welcome! We’re a community  of researchers, citizen scientists, and engineers 
 
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bannervF.png?raw=true",
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/main-banner-vF.jpg?raw=true",
     position: MIDDLE,
     width: "1000px"
   },
