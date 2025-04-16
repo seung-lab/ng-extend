@@ -55,7 +55,7 @@ To create a connectomics dataset, we start with a brain. It is sectioned, imaged
 
 Connectomics allows us to see all the way down to the synaptic connections between neurons. 
 
-Although AI reconstructions are impressive, there are still makes many mistakes. The AI misses huge branches and fuses cells together. That's why we need YOU!
+Although AI reconstructions are impressive, there are still many mistakes. The AI misses huge branches and fuses cells together. That's why we need YOU!
 
 The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck. Ready to get started?`,
     position: MIDDLE,
