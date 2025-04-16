@@ -189,7 +189,9 @@ Hit next to reveal the answer.`,
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
   },
   {
-    text: "Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. Check out this menu for guides, tutorials, and more resources.",
+    text: `Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. 
+      
+Check out this menu for guides, tutorials, and more resources.`,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/rika-success.png?raw=true",
 
@@ -200,9 +202,14 @@ Hit next to reveal the answer.`,
     },
   },
   {
-    text: "Take the **Self-guided training** when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset. Email us support@eyewire.ai with any questions. Thanks for being a part of the neuroscience community! For Science!",
+    text: `Researchers: take the **Self-guided training** when you are ready to learn more and gain access to the production dataset! LINK
+Citizen scientists: 
+Email support at eyewire.ai with any questions. 
+  
+Thanks for being a part of the neuroscience community! For Science!`,
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
+    size: "600px"
   },
 ];
