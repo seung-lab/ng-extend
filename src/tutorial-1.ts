@@ -110,6 +110,7 @@ It missed a branch. Let's see if we can find it.`,
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6365957824970752",
+    width: "200px"
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
