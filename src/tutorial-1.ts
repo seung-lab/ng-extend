@@ -214,6 +214,6 @@ Thanks for being a part of the neuroscience community! For Science!`,
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
-    size: "600px"
+    width: "600px"
   },
 ];
