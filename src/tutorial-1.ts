@@ -137,7 +137,7 @@ It missed a branch. Let's see if we can find it.`,
     text: `This grey stuff is an electron microscope aka EM image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
   },
   //13 - gif
   {
@@ -146,21 +146,21 @@ It missed a branch. Let's see if we can find it.`,
 Don't worry if you lose the neuron - the Next button in this section resets this view.`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
   },
   //14 - 2D control + scroll gif
   {
     text: `Hold your cursor over 2D and CTRL + Scroll to zoom in and out`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
   },
   //15 - 2D right click center gif
   {
     text: `Right click to recenter`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
   },
 
   //17 - position center of page - ensure location is  middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
