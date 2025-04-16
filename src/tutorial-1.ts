@@ -190,7 +190,7 @@ Hit next to reveal the answer.`,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bravo-nurro.png?raw=true",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5114308439572480",
   },
   {
     text: `Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. 
