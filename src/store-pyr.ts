@@ -150,6 +150,7 @@ export interface Step {
   image?: string;
   preloading?: boolean;
   videoCache?: HTMLVideoElement;
+  width?: string;
 }
 
 export const useTutorialStore = defineStore("tutorial", () => {

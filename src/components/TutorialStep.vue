@@ -89,6 +89,10 @@ async function updateChipPosition() {
         chipBounds.value.width = '350px';
     }
 
+    if (step.width) {
+        chipBounds.value.width = step.width;
+    }
+
     let html = step.html;
 
     if (step.text) {
@@ -276,7 +280,8 @@ onMounted(() => {
     font-size: 22px;
 }
 
-.chip video {
+.chip video,
+.chip .image {
     width: 100%;
 }
 
