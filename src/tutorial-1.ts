@@ -60,7 +60,8 @@ Although AI reconstructions are impressive, there are still makes many mistakes.
 The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck. Ready to get started?`,
     position: MIDDLE,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial-2.jpg?raw=true",
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapse-wide.png?raw=true",
+    width: "500px"
   },
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
@@ -69,6 +70,7 @@ Welcome to the Sandbox! This is a place to play and get acquainted with neurons 
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
+    width: "500px"
   },
   //6 - gif reuse 3D click+ drag
   {
@@ -91,11 +93,11 @@ CLICK + DRAG to rotate it.`,
 Right click on the neuron to center view at any point. **See if you can find a yellow annotation at the end of one of the branches and zoom in on it.**
 
 Don’t worry if you can’t find it - the Next button will take you there.`,
-    position: OVER_3D,
+    position: OVER_3D, 
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro-2.png?raw=true",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5541447634780160",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5162363620687872",
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
