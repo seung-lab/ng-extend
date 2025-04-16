@@ -66,7 +66,7 @@ The flexibility and big-picture thinking of the human mind enables humans to sol
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
     text: `
-Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software we use to map them.`,
+Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them.`,
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
@@ -120,7 +120,9 @@ It missed a branch. Let's see if we can find it.`,
   },
   //11a - point to split screen icon (xy-3d layout)
   {
-    text: `Click this button to move from 4 panel view to split screen. You will not ever need the 4 panel view.`,
+    text: `Click this button to move from 4 panel view to split screen. You will not need the 4 panel view.
+    
+    Hit Next to load split screen view.`,
     position: {
       element:
         "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div:nth-child(2) > div > div:nth-child(1) > div:nth-child(1) > div.neuroglancer-data-panel-layout-controls > button:nth-child(2) > div",
@@ -132,7 +134,7 @@ It missed a branch. Let's see if we can find it.`,
   },
   //12 - over 2D - ng view middleauth+https://global.daf-apis.com/nglstate/api/v1/5216018583519232
   {
-    text: `This grey stuff is a 2D electron microscope image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
+    text: `This grey stuff is an electron microscope aka EM image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
