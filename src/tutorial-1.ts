@@ -77,7 +77,9 @@ Welcome to the Sandbox! This is a place to play and get acquainted with neurons 
     text: `
 This is a 3D neuron that has been mapped by AI. 
 
-CLICK + DRAG to rotate it.`,
+CLICK + DRAG to rotate it.
+
+Note that this box won't go away when you click outside it :)`,
     position: OVER_3D,
   },
   //7 - gif reuse 3D CNTRL+SCROLL
