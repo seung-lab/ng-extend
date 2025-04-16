@@ -241,14 +241,15 @@ onMounted(() => {
 
 .chip {
     position: absolute;
-    width: max-content;
+    width: auto;
+    max-width: 80vw;
     color: var(--color-small-text);
     padding: 30px;
     padding-bottom: 20px;
     border-radius: 20px;
     display: grid;
     justify-items: center;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 300;
     grid-row-gap: 15px;
 
@@ -257,7 +258,7 @@ onMounted(() => {
     border-right: none;
     background: linear-gradient(90deg, #53317a86, #653c933d);
     /* background: linear-gradient(90deg, #a46fe285, #a46fe252); */
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(6px);
 }
 
 .hasVideo .chip:not(.exitConfirm) {
