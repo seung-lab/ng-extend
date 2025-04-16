@@ -37,6 +37,7 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bannervF.png?raw=true",
     position: MIDDLE,
+    width: "1000px"
   },
   //2 + image 2
   {
@@ -45,6 +46,7 @@ To create a connectomics dataset, we start with a brain. It is sectioned, imaged
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg?raw=true",
+    width: "500px"
   },
   //4 -- button says "how does it work"
   {
@@ -59,6 +61,7 @@ The flexibility and big-picture thinking of the human mind enables humans to sol
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial-2.jpg?raw=true",
+    width: "600px"
   },
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
@@ -67,6 +70,7 @@ Welcome to the Sandbox! This is a place to play and get acquainted with neurons 
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
+    width: "800px"
   },
   //6 - gif reuse 3D click+ drag
   {
