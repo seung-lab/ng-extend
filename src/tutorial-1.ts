@@ -101,9 +101,10 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
-    text: `There it is! This flat edge reveals a mistake by the AI. 
+    text: `There it is! This flat edge reveals a mistake by the AI.
+
+    It missed a branch. Let's see if we can find it.`,
     
-    It missed a branch! Let’s see if we can find it.`,
     position: OVER_3D,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
