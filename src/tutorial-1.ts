@@ -124,7 +124,7 @@ It missed a branch. Let's see if we can find it.`,
   {
     text: `Click this button to move from 4 panel view to split screen. You will not need the 4 panel view.
     
-    Hit Next to load split screen view.`,
+Hit Next to load split screen view.`,
     position: {
       element:
         "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div:nth-child(2) > div > div:nth-child(1) > div:nth-child(1) > div.neuroglancer-data-panel-layout-controls > button:nth-child(2) > div",
