@@ -31,7 +31,7 @@ export const steps: Step[] = [
   //1 -- full screen 3D - button option to skip to keyboard commands - state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
   {
     text: `
-Welcome! We’re a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. 
+Welcome! We’re a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
 
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
     image:
