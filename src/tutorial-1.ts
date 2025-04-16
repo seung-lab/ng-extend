@@ -19,15 +19,15 @@ const OVER_3D = {
 };
 
 export const steps: Step[] = [
-  {
-    html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
-        src="https://www.youtube.com/embed/tnoIdea7Wmo?si=xiJSTIQyr_Q5XDo3"
-        frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
-    position: MIDDLE,
-    modal: true,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
-  },
+ // {
+ //   html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
+ //       src="https://www.youtube.com/embed/tnoIdea7Wmo?si=xiJSTIQyr_Q5XDo3"
+ //       frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
+ //   position: MIDDLE,
+ //   modal: true,
+ //   state:
+ //     "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+ // },
   //1 -- full screen 3D - button option to skip to keyboard commands - state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
   {
     text: `
