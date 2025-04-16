@@ -99,7 +99,7 @@ Don’t worry if you can’t find it - the Next button will take you there.`,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro-2.png?raw=true",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4708711659470848",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
