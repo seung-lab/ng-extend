@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import ExtensionBar from "#src/components/ExtensionBar.vue";
 import Tutorial from "#src/components/Tutorial.vue";
+
+import { loaded } from "#src/store.js";
 </script>
 
 <template>
   <div id="vueMain">
-    <div class="ng-extend">
+    <div v-if="loaded" class="ng-extend">
       <Tutorial />
       <ExtensionBar />
     </div>

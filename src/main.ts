@@ -1,9 +1,9 @@
 import "neuroglancer";
 import { setupDefaultViewer } from "neuroglancer/unstable/ui/default_viewer_setup.js";
 import { createPinia } from "pinia";
-import { createApp } from "vue";
+import { createApp, nextTick } from "vue";
 import App from "#src/components/App.vue";
-import { useLayersStore, useVolumesStore } from "#src/store.js";
+import { loaded, useLayersStore, useVolumesStore } from "#src/store.js";
 import { useStatsStore } from "#src/store-pyr.js";
 
 const newState = location.hash === "";
@@ -32,7 +32,12 @@ window.addEventListener("DOMContentLoaded", () => {
   initializeWithViewer(viewer);
   const { loadVolumes } = useVolumesStore();
   loadVolumes(viewer);
-  mergeTopBars();
+  loaded.value = true;
+
+  nextTick(() => {
+    // need to wait for loaded to be applied
+    mergeTopBars();
+  });
 
   const { loopUpdateLeaderboard } = useStatsStore();
   loopUpdateLeaderboard();

@@ -10,6 +10,8 @@ import { getHttpSource } from "neuroglancer/unstable/datasource/graphene/base.js
 
 declare const CONFIG: Config | undefined;
 
+export const loaded = ref(false);
+
 export const useDropdownListStore = defineStore("dropdownlist", () => {
   let dropdownCount = 0;
 
@@ -174,14 +176,15 @@ export const useLayersStore = defineStore("layers", () => {
   }
 
   function initializeWithViewer(v: Viewer) {
+    console.log("initializeWithViewer");
     viewer = v;
 
-    viewer.displayDimensions.changed.add(() => {
-      console.log(
-        "viewer.displayDimensions.changed",
-        viewer!.displayDimensions.value
-      );
-    });
+    // viewer.displayDimensions.changed.add(() => {
+    //   console.log(
+    //     "viewer.displayDimensions.changed",
+    //     viewer!.displayDimensions.value
+    //   );
+    // });
 
     viewer.layerManager.layersChanged.add(refreshLayers);
     refreshLayers();
@@ -205,7 +208,6 @@ export const useLayersStore = defineStore("layers", () => {
           if (dataSources.length) {
             const { loadState } = dataSources[0];
             if (loadState !== undefined && loadState.error === undefined) {
-              loadState;
               const { scales } = loadState.transform.outputSpace.value;
               viewer!.coordinateSpace.restoreState({
                 x: [scales[0], "m"],
