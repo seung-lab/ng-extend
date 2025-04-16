@@ -111,7 +111,7 @@ It missed a branch. Let's see if we can find it.`,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6365957824970752",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
     width: "200px"
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
@@ -176,7 +176,7 @@ Don't worry if you lose the neuron - the Next button in this section resets this
   {
     text: `To fix it, we need to scroll past the defect and find where the branch continues.
     
-    This is a tutorial so we dropped a hint. There is an annotation point in the continuation segment. See what happens when you double click it 2D segment. 
+This is a tutorial so we dropped a hint. There is an annotation point in the continuation segment. See what happens when you double click it in the image layer. 
 
 Hit next to reveal the answer.`,
     position: MIDDLE,
