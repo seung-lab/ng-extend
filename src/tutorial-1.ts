@@ -35,7 +35,9 @@ Now that you've gotten familiar with the basics, let's take a deeper dive into t
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/wheres nurro.png?raw=true",
     position: MIDDLE,
-    width: "1000px"
+    width: "1000px",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
   //2 + image 2
   {
