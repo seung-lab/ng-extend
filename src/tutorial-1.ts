@@ -42,10 +42,9 @@ Now that you've gotten familiar with the basics, let's take a deeper dive into t
   //2 + image 2
   {
     text: `
-To create a connectomics dataset, we start with a brain. It is sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI.`,
-    position: MIDDLE,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg?raw=true",
+These COORDINATES show your location in space. You can click here to COPY them.
+
+CTRL+V anywhere on the interface to PASTE in copied coordinates.`,
     width: "500px",
     position: {
       element: ".neuroglancericon",
