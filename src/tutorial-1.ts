@@ -33,7 +33,7 @@ export const steps: Step[] = [
     text: `
 Now that you've gotten familiar with the basics, let's take a deeper dive into the interface.`,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bannervF.png?raw=true",
+      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/wheres nurro.png?raw=true",
     position: MIDDLE,
     width: "1000px"
   },
