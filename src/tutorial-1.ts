@@ -62,6 +62,7 @@ You can RIGHT-CLICK to SELECT any layer.  You can LEFT-CLICK to SHOW/HIDE an
       element: ".neuroglancer-layer-item-value-container",
       side: "bottom",
       offset: { x: 0, y: 0 },
+    },
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial-2.jpg?raw=true",
   },
