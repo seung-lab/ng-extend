@@ -210,7 +210,7 @@ Check out this top right menu for guides, tutorials, and more resources.`,
   {
     text: `Researchers: take the **Self-guided training** when you are ready to learn more and gain access to the production dataset! LINK
     
-Citizen scientists: For more information on EyeWire II and to join the waitlist, visit [this blog](https://blog.eyewire.org/announcing-eyewire-ii/).
+Citizen scientists: [Unlock access](https://blog.eyewire.org/how-to-access-the-eyewire-ii-dataset/) to start mapping neurons in Eyewire II!
 
 Email support at eyewire.ai with any questions. 
   
