@@ -46,7 +46,12 @@ To create a connectomics dataset, we start with a brain. It is sectioned, imaged
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg?raw=true",
-    width: "500px"
+    width: "500px",
+    position: {
+      element: ".neuroglancericon",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
   },
   //4 -- button says "how does it work"
   {
