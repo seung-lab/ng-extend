@@ -30,8 +30,9 @@ export const steps: Step[] = [
  // },
   //1 -- full screen 3D - button option to skip to keyboard commands - state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
   {
+    title: `Welcome!`
     text: `
-Welcome! We’re a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
+We’re a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
 
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
     image:
@@ -68,11 +69,12 @@ The flexibility and big-picture thinking of the human mind enables humans to sol
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
     text: `
-Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them.`,
+Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them. The sandbox uses data from the MICrONS project. The cell behind this box is a pyramidal neuron from mouse visual cortex.`,
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
-    width: "500px"
+    width: "500px",
+    state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/5789745012539392"
   },
   //6 - gif reuse 3D click+ drag
   {
