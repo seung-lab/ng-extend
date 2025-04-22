@@ -84,7 +84,7 @@ This TOOLBOX corresponds with your current LAYER.
 You can see the name of the selected layer in this green box.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
-      side: "bottom",
+      side: "left",
       offset: { x: 0, y: 0 },
     },
   //6 - gif reuse 3D click+ drag
