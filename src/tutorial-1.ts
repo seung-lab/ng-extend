@@ -59,7 +59,7 @@ This LAYER has a green border to indicate it is currently selected.
 
 You can RIGHT-CLICK to SELECT any layer.  You can LEFT-CLICK to SHOW/HIDE any layer.`,
     position: {
-      element: ".neuroglancer-layer-item-value-container",
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
