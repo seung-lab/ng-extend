@@ -119,7 +119,8 @@ If we add more cells, their IDs will appear here as well. `,
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
-      state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
+      state: 
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
     },
   },
   //7 -- Layer Toolbox Tabs "Render"
@@ -130,7 +131,8 @@ RENDER is another important tab. Here you can adjust the visualization of your c
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
-      state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
+      state: 
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
     },
   },
   //7 - gif reuse 3D CNTRL+SCROLL
