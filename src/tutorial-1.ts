@@ -47,7 +47,7 @@ These COORDINATES show your location in space. You can click here to COPY them.
 CTRL+V anywhere on the interface to PASTE in copied coordinates.`,
     width: "500px",
     position: {
-      element: ".neuroglancer-icon",
+      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
