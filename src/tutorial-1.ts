@@ -88,6 +88,8 @@ You can see the name of the selected layer in this green box as well as the laye
       side: "left",
       offset: { x: 0, y: 0 },
     },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
   //6 -- Layer Toolbox cont.
   {
