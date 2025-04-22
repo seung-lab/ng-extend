@@ -90,7 +90,7 @@ You can see the name of the selected layer in this green box as well as the laye
   //6 -- Layer Toolbox cont.
   {
     text: `
-This layer type is SEG or "segmentation layer" which shows the 3D model as well as the coloring in 2D.
+This layer type is SEG or "segmentation layer" which shows the 3D model.
 
 Other layer types include IMG which indicates the EM image layer, and ANN for annotation layer.`,
     position: {
@@ -101,13 +101,33 @@ Other layer types include IMG which indicates the EM image layer, and ANN for an
   //6 -- Layer Toolbox Tabs
   {
     text: `
-These TABS . 
+These TABS correspond to your selected layer. 
 
-You can see the name of the selected layer in this green box.`,
+We are currently in the "Seg." tab which shows the segment ID for our visible cell. `,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
+    },
+  //6 -- Layer Toolbox Tabs cont.
+  {
+    text: `
+If we add more cells, their IDs will appear here as well. `,
+    position: {
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      side: "left",
+      offset: { x: 0, y: 0 },
+      state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
+    },
+  //7 -- Layer Toolbox Tabs "Render"
+  {
+    text: `
+RENDER is another important tab. Here you can adjust the visualization of your cell. Try it! We'll restore the default view in the next slide.`,
+    position: {
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      side: "left",
+      offset: { x: 0, y: 0 },
+      state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
     },
   //7 - gif reuse 3D CNTRL+SCROLL
   {
