@@ -28,7 +28,7 @@ export const steps: Step[] = [
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   }, */
-  //1 -- full screen 3D - button option to skip to keyboard commands - state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
+  //1 -- introducing interface -- state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
   {
     text: `
 Now that you've gotten familiar with the basics, let's take a deeper dive into the interface.`,
@@ -40,12 +40,23 @@ Now that you've gotten familiar with the basics, let's take a deeper dive into t
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
-  //2 + image 2
+  //2 Coordinates
   {
     text: `
-These COORDINATES show your location in space. You can click here to COPY them.
+These COORDINATES show your location in space. Click here to COPY them.`,
+    width: "500px",
+    position: {
+      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+  //2 Coordinates
+  {
+    text: `
+We've jumped you to a new location. 
 
-CTRL+V anywhere on the interface to PASTE in copied coordinates.`,
+CTRL+V anywhere on the interface to PASTE in copied coordinates. This will jump us back to the previous location.`,
     width: "500px",
     position: {
       element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
@@ -64,8 +75,6 @@ You can RIGHT-CLICK to SELECT any layer.  You can LEFT-CLICK to SHOW/HIDE an
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapses-tutorial-2.jpg?raw=true",
   },
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
