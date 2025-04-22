@@ -87,6 +87,7 @@ You can see the name of the selected layer in this green box as well as the laye
       side: "left",
       offset: { x: 0, y: 0 },
     },
+  },
   //6 -- Layer Toolbox cont.
   {
     text: `
@@ -98,6 +99,7 @@ Other layer types include IMG which indicates the EM image layer, and ANN for an
       side: "left",
       offset: { x: 0, y: 0 },
     },
+  },
   //6 -- Layer Toolbox Tabs
   {
     text: `
@@ -109,6 +111,7 @@ We are currently in the "Seg." tab which shows the segment ID for our visible ce
       side: "left",
       offset: { x: 0, y: 0 },
     },
+  },
   //6 -- Layer Toolbox Tabs cont.
   {
     text: `
@@ -119,6 +122,7 @@ If we add more cells, their IDs will appear here as well. `,
       offset: { x: 0, y: 0 },
       state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
     },
+  },
   //7 -- Layer Toolbox Tabs "Render"
   {
     text: `
@@ -129,6 +133,7 @@ RENDER is another important tab. Here you can adjust the visualization of your c
       offset: { x: 0, y: 0 },
       state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
     },
+  },
   //7 - gif reuse 3D CNTRL+SCROLL
   {
     text: `CNTRL+SCROLL to zoom in and out.`,
