@@ -51,7 +51,7 @@ These COORDINATES show your location in space. Click here to COPY them.`,
       offset: { x: 0, y: 0 },
     },
   },
-  //2 Coordinates
+  //2 Coordinates part 2
   {
     text: `
 We've jumped you to a new location. 
@@ -64,7 +64,7 @@ CTRL+V anywhere on the interface to PASTE in copied coordinates. This will jump 
       offset: { x: 0, y: 0 },
     },
   },
-  //4 -- button says "how does it work"
+  //4 -- Using layers
   {
     text: `
 This LAYER has a green border to indicate it is currently selected.
@@ -76,14 +76,17 @@ You can RIGHT-CLICK to SELECT any layer.  You can LEFT-CLICK to SHOW/HIDE an
       offset: { x: 0, y: 0 },
     },
   },
-  //5 -- this is the box that #1 jumps to if user clicks to skip to commands
+  //5 -- Layer Toolbox
   {
     text: `
-Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software we use to map them.`,
-    position: MIDDLE,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
-  },
+This TOOLBOX corresponds with your current LAYER. 
+
+You can see the name of the selected layer in this green box.`,
+    position: {
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
   //6 - gif reuse 3D click+ drag
   {
     text: `
