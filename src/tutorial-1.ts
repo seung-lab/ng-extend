@@ -51,7 +51,7 @@ These COORDINATES show your location in space. Click here to COPY them.`,
       offset: { x: 0, y: 0 },
     },
   },
-  //2 Coordinates part 2
+  //3 Coordinates part 2
   {
     text: `
 We've jumped you to a new location. 
@@ -81,20 +81,34 @@ You can RIGHT-CLICK to SELECT any layer.  You can LEFT-CLICK to SHOW/HIDE an
     text: `
 This TOOLBOX corresponds with your current LAYER. 
 
+You can see the name of the selected layer in this green box as well as the layer type.`,
+    position: {
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+  //6 -- Layer Toolbox cont.
+  {
+    text: `
+This layer type is SEG or "segmentation layer" which shows the 3D model as well as the coloring in 2D.
+
+Other layer types include IMG which indicates the EM image layer, and ANN for annotation layer.`,
+    position: {
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+  //6 -- Layer Toolbox Tabs
+  {
+    text: `
+These TABS . 
+
 You can see the name of the selected layer in this green box.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
     },
-  //6 - gif reuse 3D click+ drag
-  {
-    text: `
-This is a 3D neuron that has been mapped by AI. 
-
-CLICK + DRAG to rotate it.`,
-    position: OVER_3D,
-  },
   //7 - gif reuse 3D CNTRL+SCROLL
   {
     text: `CNTRL+SCROLL to zoom in and out.`,
