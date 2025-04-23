@@ -63,7 +63,7 @@ CTRL+V anywhere on the interface to PASTE in copied coordinates. This will jump 
       offset: { x: 0, y: 0 },
     },
     state:
-    "#!middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
+      "#!middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
   },
   //4 -- Using layers
   {
