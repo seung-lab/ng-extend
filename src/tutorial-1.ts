@@ -39,7 +39,7 @@ Now that you've gotten familiar with the basics, let's take a deeper dive into t
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
-  //2 Coordinates
+  //2 -- Coordinates
   {
     text: `
 These COORDINATES show your location in space. Click here to COPY them.`,
@@ -50,7 +50,7 @@ These COORDINATES show your location in space. Click here to COPY them.`,
       offset: { x: 0, y: 0 },
     },
   },
-  //3 Coordinates part 2
+  //3 -- Coordinates part 2
   {
     text: `
 We've jumped you to a new location. 
@@ -73,6 +73,18 @@ This LAYER has a green border to indicate it is currently selected.
 You can RIGHT-CLICK to SELECT any layer.  You can LEFT-CLICK to SHOW/HIDE any layer.`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+    //4.1 -- Deleted Layers
+  {
+    text: `
+If you accidentally click the "X" when attempting to select a layer, you can open the layers panel here to recover it!
+
+Try not to click the 🗑️ icon or it will be gone forever 😭.`,
+    position: {
+      element: "#insertNGTopBar > div > div:nth-child(6)",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
@@ -130,7 +142,9 @@ If we add more cells, their IDs will appear here as well. `,
   //7 -- Layer Toolbox Tabs "Render"
   {
     text: `
-RENDER is another important tab. Here you can adjust the visualization of your cell. Try it! We'll restore the default view in the next slide.`,
+RENDER is another important tab. Here you can alter the visualization of your cell. 
+
+Try it! We'll restore the default view in the next slide.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
@@ -144,7 +158,7 @@ RENDER is another important tab. Here you can adjust the visualization of your c
     text: `
 Let's try adding a new layer.
 
-RIGHT-CLICK the "+" to add an ANNOTATION LAYER.`,
+CLICK the "+" to add an ANNOTATION LAYER.`,
     width: "500px",
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
@@ -155,9 +169,9 @@ RIGHT-CLICK the "+" to add an ANNOTATION LAYER.`,
   //8 -- Annotation layer double check
   {
     text: `
-Did you select the correct layer? Your new layer should say ANNOTATION LAYER. 
+Oops, I forgot 🙈! LEFT-CLICK adds a NEW LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
 
-If it says NEW LAYER, use the trashcan icon to remove it and RIGHT-CLICK to add an ANNOTATION LAYER.`,
+That's okay, it's an easy fix! Use the 🗑️ to remove the NEW LAYER and then RIGHT-CLICK the "+" to add an ANNOTATION LAYER.`,
     width: "500px",
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(4)",
@@ -170,7 +184,7 @@ If it says NEW LAYER, use the trashcan icon to remove it and RIGHT-CLICK to add 
     text: `
 Let's take a look at the Annotation Layer Panel.
 
-The ANNOTATIONS tab is our most important tab here. Select is now.`,
+The ANNOTATIONS tab is our most important tab here. Select it now.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
