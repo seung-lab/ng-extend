@@ -70,13 +70,24 @@ CTRL+V anywhere on the interface to PASTE in copied coordinates. This will jump 
     text: `
 This LAYER has a green border to indicate it is currently selected.
 
-You can RIGHT-CLICK to SELECT any layer.  You can LEFT-CLICK to SHOW/HIDE any layer.`,
+You can CLICK to SHOW/HIDE any layer. Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "2." Try both ways!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
   },
+    //4.1 -- Using layers
+  {
+    text: `
+To SELECT a layer, you must RIGHT-CLICK it.  Try selecting the IMG layer.`,
+    position: {
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(2)",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+
     //5 -- Deleted Layers
   {
     text: `
@@ -193,7 +204,7 @@ The ANNOTATIONS tab is our most important tab here. Select it now.`,
       offset: { x: 0, y: 0 },
     },
     state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5451570511609856",
   },
   //14 -- Add annotation point
   {
@@ -206,13 +217,50 @@ Click the "○" button to select the single point annotation. ⚠️You must alw
       side: "left",
       offset: { x: 0, y: 0 },
     },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
   //20 -- Add annotation point pt. 2
   {
     text: `CTRL+Click anywhere on the cell to place your annotation points. Try placing a few!`,
     position: OVER_3D,
+  },
+  //21 -- Learn more about annotations
+  {
+    text: `
+If you'd like to learn more about annotation points, you can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank"> watch this video</a> after you finish the tutorial.`,
+    position: MIDDLE,
+  },
+  //22
+  {
+    text: `
+Now you have a basic understanding of the EyeWire II interface! For additional training you can find more resources under the hamburger menu.`,
+    position: {
+      element: "#hamburger > button",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+  },
+  //23
+  {
+    text: `
+Check out the help menu here as well. You can also press "H" on your keyboard.`,
+    position: {
+      element: "#insertNGTopBar > div > div:nth-child(11)",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+  {
+    text: `
+The help menu is pre-computed, and some instructions can be a little difficult to understand at first glance. 
+
+The YELLOW TEXT indicates a KEYBOARD or MOUSE COMMAND. The WHITE TEXT indicates the ACTION that will be taken.`,
+    position: {
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-side-panel-titlebar",
+      side: "right",
+      offset: { x: 0, y: 0 },
+    },
+    state: 
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5414723718742016",
   },
   {
     text: "Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. Check out this menu for guides, tutorials, and more resources.",
