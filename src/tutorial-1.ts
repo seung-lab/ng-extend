@@ -139,36 +139,45 @@ RENDER is another important tab. Here you can adjust the visualization of your c
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
-  //7 - gif reuse 3D CNTRL+SCROLL
-  {
-    text: `CNTRL+SCROLL to zoom in and out.`,
-    position: OVER_3D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
-  },
-  //8 - right click - find annotation middleauth+https://global.daf-apis.com/nglstate/api/v1/6175014098305024
+  //7 -- Add annotation layer
   {
     text: `
-Right click on the neuron to center view at any point. **See if you can find a yellow annotation at the end of one of the branches and zoom in on it.**
+Let's try adding a new layer.
 
-Don’t worry if you can’t find it - the Next button will take you there.`,
-    position: OVER_3D,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro-2.png?raw=true",
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5541447634780160",
+RIGHT-CLICK the "+" to add an ANNOTATION LAYER.`,
+    width: "500px",
+    position: {
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
   },
-  //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
+  //8 -- Annotation layer double check
   {
-    text: `There it is! This flat edge reveals a mistake by the AI.
+    text: `
+Did you select the correct layer? Your new layer should say ANNOTATION LAYER. 
 
-    It missed a branch. Let's see if we can find it.`,
-    
-    position: OVER_3D,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5342128805773312",
+If it says NEW LAYER, use the trashcan icon to remove it and RIGHT-CLICK to add an ANNOTATION LAYER.`,
+    width: "500px",
+    position: {
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(4)",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+  //9 -- Annotation Layer Panel
+  {
+    text: `
+Let's take a look at the Annotation Layer Panel.
+
+The ANNOTATIONS tab is our most important tab here. Select is now.`,
+    position: {
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    state: 
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
