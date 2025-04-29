@@ -39,6 +39,30 @@ Now that you've gotten familiar with the basics, let's take a deeper dive into t
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
+  //1.2 -- Note
+  {
+    text: `
+During this tutorial, you may make a mistake, accidentally delete something or become lost. Don't worry, just keep moving. We will restore the workspace within 1 or 2 slides.`,
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
+    position: MIDDLE,
+    width: "400px",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+  },
+  //1.3 -- Hover states
+  {
+    text: `
+Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text areas that you see on screen. The text may take a few seconds to load.
+
+If you get confused in the future, hovering may help!`,
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
+    position: MIDDLE,
+    width: "400px",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+  },
   //2 -- Coordinates
   {
     text: `
@@ -49,6 +73,8 @@ These COORDINATES show your location in space. Click here to COPY them.`,
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+     state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
   //3 -- Coordinates part 2
   {
@@ -65,17 +91,36 @@ CTRL+V anywhere on the interface to PASTE in copied coordinates. This will jump 
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
   },
+  //3.1 -- Coordinates part 3
+  {
+    text: `
+You can also adjust the x, y, and z COORDINATES individually. Click into the X coordinate and paste something new, then press ENTER. 
+
+Don't worry if you fly off screen. We'll readjust in the next slide!`,
+    width: "500px",
+    position: {
+      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
+  },
   //4 -- Using layers
   {
     text: `
 This LAYER has a green border to indicate it is currently selected.
 
-You can CLICK to SHOW/HIDE any layer. Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "2." Try both ways!`,
+You can CLICK to SHOW/HIDE any layer. 
+
+Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "2." Try both ways!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+      state:
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
     //4.1 -- Using layers
   {
@@ -93,7 +138,7 @@ To SELECT a layer, you must RIGHT-CLICK it.  Try selecting the IMG layer.`,
     text: `
 If you accidentally click the "X" when attempting to select a layer, you can open the layers panel here to recover it!
 
-Try not to click the 🗑️ icon or it will be gone forever 😭.`,
+Try not to accidentally click the 🗑️ icon or the layer will be gone forever 😭.`,
     position: {
       element: "#insertNGTopBar > div > div:nth-child(6)",
       side: "bottom",
@@ -167,9 +212,9 @@ Try it! We'll restore the default view in the next slide.`,
   //11 -- Add annotation layer
   {
     text: `
-Let's try adding a new layer.
+Let's try adding an ANNOTATION LAYER.
 
-CLICK the "+" to add an ANNOTATION LAYER.`,
+CLICK the "+" to it.`,
     width: "500px",
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
@@ -182,7 +227,7 @@ CLICK the "+" to add an ANNOTATION LAYER.`,
   //12 -- Annotation layer double check
   {
     text: `
-Oops, I forgot 🙈! LEFT-CLICK adds a NEW LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
+Oops, I forgot 🙈! LEFT-CLICK adds a BLANK LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
 
 That's okay, it's an easy fix! Use the 🗑️ to remove the NEW LAYER and then RIGHT-CLICK the "+" to add an ANNOTATION LAYER.`,
     width: "500px",
