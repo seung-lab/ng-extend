@@ -77,7 +77,7 @@ You can RIGHT-CLICK to SELECT any layer.  You can LEFT-CLICK to SHOW/HIDE an
       offset: { x: 0, y: 0 },
     },
   },
-    //4.1 -- Deleted Layers
+    //5 -- Deleted Layers
   {
     text: `
 If you accidentally click the "X" when attempting to select a layer, you can open the layers panel here to recover it!
@@ -89,7 +89,7 @@ Try not to click the 🗑️ icon or it will be gone forever 😭.`,
       offset: { x: 0, y: 0 },
     },
   },
-  //5 -- Layer Toolbox
+  //6 -- Layer Toolbox
   {
     text: `
 This TOOLBOX corresponds with your current LAYER. 
@@ -103,7 +103,7 @@ You can see the name of the selected layer in this green box as well as the laye
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
-  //6 -- Layer Toolbox cont.
+  //7 -- Layer Toolbox cont.
   {
     text: `
 This layer type is SEG or "segmentation layer" which shows the 3D model.
@@ -115,7 +115,7 @@ Other layer types include IMG which indicates the EM image layer, and ANN for an
       offset: { x: 0, y: 0 },
     },
   },
-  //6 -- Layer Toolbox Tabs
+  //8 -- Layer Toolbox Tabs
   {
     text: `
 These TABS correspond to your selected layer. 
@@ -127,7 +127,7 @@ We are currently in the "Seg." tab which shows the segment ID for our visible ce
       offset: { x: 0, y: 0 },
     },
   },
-  //6 -- Layer Toolbox Tabs cont.
+  //9 -- Layer Toolbox Tabs cont.
   {
     text: `
 If we add more cells, their IDs will appear here as well. `,
@@ -139,7 +139,7 @@ If we add more cells, their IDs will appear here as well. `,
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
   },
-  //7 -- Layer Toolbox Tabs "Render"
+  //10 -- Layer Toolbox Tabs "Render"
   {
     text: `
 RENDER is another important tab. Here you can alter the visualization of your cell. 
@@ -153,7 +153,7 @@ Try it! We'll restore the default view in the next slide.`,
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
-  //7 -- Add annotation layer
+  //11 -- Add annotation layer
   {
     text: `
 Let's try adding a new layer.
@@ -168,7 +168,7 @@ CLICK the "+" to add an ANNOTATION LAYER.`,
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
-  //8 -- Annotation layer double check
+  //12 -- Annotation layer double check
   {
     text: `
 Oops, I forgot 🙈! LEFT-CLICK adds a NEW LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
@@ -181,7 +181,7 @@ That's okay, it's an easy fix! Use the 🗑️ to remove the NEW LAYER and then 
       offset: { x: 0, y: 0 },
     },
   },
-  //9 -- Annotation Layer Panel
+  //13 -- Annotation Layer Panel
   {
     text: `
 Let's take a look at the Annotation Layer Panel.
@@ -195,81 +195,24 @@ The ANNOTATIONS tab is our most important tab here. Select it now.`,
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
-  //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
+  //14 -- Add annotation point
+  {
+    text: `
+The most common action in this panel is adding an annotation point. 
 
-  {
-    text: `Hit SPACE to bring up a split screen view that reveals the electron microscope image data from which these neurons were reconstructed.`,
-    position: OVER_3D,
-  },
-  //11a - point to split screen icon (xy-3d layout)
-  {
-    text: `Click this button to move from 4 panel view to split screen. You will not ever need the 4 panel view.`,
+Click the "○" button to select the single point annotation. ⚠️You must always choose an annotation type after creating a new annotation layer.`,
     position: {
-      element:
-        "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div:nth-child(2) > div > div:nth-child(1) > div:nth-child(1) > div.neuroglancer-data-panel-layout-controls > button:nth-child(2) > div",
-      side: "bottom",
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
+      side: "left",
       offset: { x: 0, y: 0 },
     },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4718500091265024",
+    state: 
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
-  //12 - over 2D - ng view middleauth+https://global.daf-apis.com/nglstate/api/v1/5216018583519232
+  //20 -- Add annotation point pt. 2
   {
-    text: `This grey stuff is a 2D electron microscope image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
-    position: OVER_2D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
-  },
-  //13 - gif
-  {
-    text: `Hold your mouse over the black and press COMMA and PERIOD to step through the slices.
-    
-    Don't worry if you lose the neuron - the Next button in this section resets this view.`,
-    position: OVER_2D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
-  },
-  //14 - 2D control + scroll gif
-  {
-    text: `Hold your cursor over 2D and CTRL + Scroll to zoom in and out`,
-    position: OVER_2D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
-  },
-  //15 - 2D right click center gif
-  {
-    text: `Right click to recenter`,
-    position: OVER_2D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5348370668322816",
-  },
-
-  //17 - position center of page - ensure location is  middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
-  {
-    text: `The big black empty space is an imaging defect, which happens occasionally when you are snapping at the nanoscale. It caused the AI to make a mistake and disconnect a dendrite.`,
-    position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
-  },
-  //18 -  middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408
-  {
-    text: `To fix it, we need to scroll past the defect and find where the branch continues.
-    
-    This is a tutorial so we dropped a hint. There is an annotation point in the continuation segment. See what happens when you double click it 2D segment. 
-
-Hit next to reveal the answer.`,
-    position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5250067188416512",
-  },
-  //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
-  {
-    text: `Bravo! We found the continuation!`,
-    position: MIDDLE,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bravo-nurro.png?raw=true",
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
+    text: `CTRL+Click anywhere on the cell to place your annotation points. Try placing a few!`,
+    position: OVER_3D,
   },
   {
     text: "Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. Check out this menu for guides, tutorials, and more resources.",
