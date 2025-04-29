@@ -165,6 +165,8 @@ CLICK the "+" to add an ANNOTATION LAYER.`,
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+    state: 
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
   //8 -- Annotation layer double check
   {
