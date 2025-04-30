@@ -382,9 +382,10 @@ Great! Click the "○" button to select the single point annotation.
   },
   //20 -- Putting it all together
   {
-    text: `Oh great, I finally found that very important memo from our collaborators! 
+    text: `
+Oh great, I finally found that very important memo from our collaborators! 
     
-    It was buried in a different pile of papers along with some suspicious looking cat hair and a file called "KITTY WORLD DOMINATION TOP SECRET." I wonder what that could mean 🤔.
+It was buried in a different pile of papers along with some suspicious looking cat hair and a file called "KITTY WORLD DOMINATION TOP SECRET." I wonder what that could mean 🤔.
     
 Can you help out with this final task? Here's what I need:
 <ol>
