@@ -247,7 +247,7 @@ CLICK the "+" to it.`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 7 },
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
@@ -262,7 +262,7 @@ That's okay, it's an easy fix! Hover on NEW LAYER, and click the "X" to remove i
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(4)",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 7 },
     },
   },
    //5 -- Layers menu
@@ -274,7 +274,7 @@ Click here to view all the layers currently available in our workspace.`,
     position: {
       element: "#insertNGTopBar > div > div:nth-child(6)",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 7 },
     },
   },
     //5 -- Layers menu, reveal
@@ -284,8 +284,8 @@ You can see here that the NEW LAYER is available, but not visible in our workspa
 
 CLICK the EYE to reveal it!`,
     position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-layer-list-panel-items > div:nth-child(3)",
-      side: "bottom",
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-layer-list-panel-items > div:nth-child(3) > div:nth-child(3) > div:nth-child(2)",
+      side: "right",
       offset: { x: 0, y: 0 },
     },
   },
@@ -294,23 +294,25 @@ CLICK the EYE to reveal it!`,
     text: `
 Great job! Since this layer has no further use to us, let's DELETE it PERMANENTLY. Hover over it and click the 🗑️ to DELETE.`,
     position: {
-      element: "#insertNGTopBar > div > div:nth-child(6)",
-      side: "bottom",
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-layer-list-panel-items > div:nth-child(3)",
+      side: "right",
       offset: { x: 0, y: 0 },
     },
   },
   //5 -- Deleted Layers
   {
     text: `
-⚠️<em>Be very careful with the 🗑️ function! Any trashed layers are UNRECOVERABLE.</em>`,
+⚠️Be very careful with the 🗑️ function! Any trashed layers are UNRECOVERABLE.`,
     position: MIDDLE,
+    state: 
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
-   //5 -- Deleted Layers
+   //5 -- Share to save
   {
     text: `
 It's recommended to hit the SHARE button to save your work at frequent intervals in case you accidentally delete something important! 
 
-Click SHARE to copy the link to clipboard, and then PASTE the link in a location convenient to you.`,
+⚠️SHARE only copies the link to your clipboard, to save it you must PASTE the link in a location convenient to you.`,
     position: {
       element: "#insertNGTopBar > div > div:nth-child(4) > div",
       side: "bottom",
