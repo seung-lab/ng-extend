@@ -99,9 +99,9 @@ One of our collaborators would like us to check out a precise location on this c
 The X coordinate for our new location is 456789. Click onto this number to type it in. Press "Enter" to jump to the new location.`,
     width: "500px",
     position: {
-      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
+      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div:nth-child(1) > div:nth-child(1) > input",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 5 },
     },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
@@ -109,11 +109,11 @@ The X coordinate for our new location is 456789. Click onto this number to type 
     //3.1 -- Coordinates part 3
   {
     text: `
-Oh sorry, that wasn't right! I got the number mixed up with my cat's latest vet bill 😿. Now we're lost in neuron space!
+Oh sorry, that wasn't right! I got the coordinates mixed up with my cat's latest vet bill 😿. Now we're lost in neuron space!
 
 That's okay, remember that we COPIED the coorinates for the cells soma. PASTE them anywhere in the interface and we'll jump back to the right spot.`,
     width: "500px",
-    position: OVER_3D,
+    position: MIDDLE,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6180235000152064",
   },
@@ -122,13 +122,9 @@ That's okay, remember that we COPIED the coorinates for the cells soma. PASTE th
     text: `
 Great! We're back in view of our cell again. 
 
-Let's explore our cell a bit further.`,
+Let's keep investigating.`,
     width: "500px",
-    position: {
-      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
+    position: MIDDLE,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
   },
@@ -137,7 +133,7 @@ Let's explore our cell a bit further.`,
     text: `
 This LAYER has a green border to indicate it is currently selected.
 
-You can CLICK to SHOW/HIDE any layer. 
+You can CLICK on it to SHOW or HIDE the layer. 
 
 Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "1." Try both ways!`,
     position: {
@@ -163,7 +159,7 @@ To SELECT a layer, you must RIGHT-CLICK it.  Try selecting this layer.`,
     text: `
 Look here! This SIDE PANEL opened up when the layer was selected.
 
-You can see the name of the selected layer in this green box as well as the layer type in dark green.`,
+You can see the NAME of the selected layer in this GREEN BOX as well as the LAYER TYPE in DARK GREEN.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
@@ -222,18 +218,6 @@ Try it! We'll restore the default view in the next slide.`,
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
-   //5 -- Deleted Layers
-  {
-    text: `
-If you accidentally click the "X" when attempting to select a layer, you can open the layers panel here to recover it!
-
-Try not to accidentally click the 🗑️ icon or the layer will be gone forever 😭.`,
-    position: {
-      element: "#insertNGTopBar > div > div:nth-child(6)",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-  },
   //11 -- Add annotation layer
   {
     text: `
@@ -254,13 +238,79 @@ CLICK the "+" to it.`,
     text: `
 Oops, I forgot 🙈! LEFT-CLICK adds a BLANK LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
 
-That's okay, it's an easy fix! Use the 🗑️ to remove the NEW LAYER and then RIGHT-CLICK the "+" to add an ANNOTATION LAYER.`,
+That's okay, it's an easy fix! Use the "X" to remove the NEW LAYER.`,
     width: "500px",
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(4)",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+  },
+   //5 -- Deleted Layers
+  {
+    text: `
+Our NEW LAYER was removed, but it was not deleted permanently!
+
+Click here to view all the layers currently available in our workspace.`,
+    position: {
+      element: "#insertNGTopBar > div > div:nth-child(6)",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+    //5 -- Deleted Layers
+  {
+    text: `
+You can see here that the NEW LAYER is available, but not visible in our workspace.
+
+CLICK the EYE to reveal it!`,
+    position: {
+      element: "#insertNGTopBar > div > div:nth-child(6)",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+   //5 -- Deleted Layers
+  {
+    text: `
+Great job! Since this layer has no further use to us, let's DELETE it PERMANENTLY. Hover over it and click the 🗑️ to DELETE.
+
+⚠️Be very careful with the 🗑️ function! Any trashed layers are UNRECOVERABLE.`,
+    position: {
+      element: "#insertNGTopBar > div > div:nth-child(6)",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+   //5 -- Deleted Layers
+  {
+    text: `
+It's recommended to hit the SHARE button to save your work at frequent intervals in case you accidentally delete something important! 
+
+Click SHARE to copy the link to clipboard, and then PASTE the link in a location convenient to you.`,
+    position: {
+      element: "#insertNGTopBar > div > div:nth-child(4) > div",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+  //11 -- Add annotation layer
+   {
+    text: `
+Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forgot, hover over the bar below.
+
+<details>
+    <summary>Details</summary>
+    RIGHT-CLICK the "+" button to add an ANNOTATION LAYER.
+</details>`,
+    width: "500px",
+    position: {
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+    state: 
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
   //13 -- Annotation Layer Panel
   {
