@@ -225,6 +225,8 @@ If we add more cells, their IDs will appear here as well. `,
     text: `
 RENDER is another important tab. Here you can alter the visualization of your cell. 
 
+We've opened the 2D view so you can see how the render controls affect the 2D as well.
+
 Try it! We'll restore the default view in the next slide.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
@@ -232,7 +234,8 @@ Try it! We'll restore the default view in the next slide.`,
       offset: { x: 0, y: 0 },
     },
     state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
+        //"middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
+    "middleauth+https://global.daf-apis.com/nglstate/api/v1/5352335057354752",
   },
   //16 -- Add annotation layer
   {
