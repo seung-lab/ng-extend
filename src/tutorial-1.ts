@@ -147,7 +147,7 @@ This LAYER has a green border to indicate it is currently selected.`,
     //10 -- Using layers, select
   {
     text: `
-To SELECT this layer, you must <strong>RIGHT</strong>-CLICK it.  
+<strong>RIGHT-CLICK</strong> to select this layer instead.  
 
 If you did it correctly you will see a green border!`,
     position: {
@@ -187,7 +187,7 @@ You can see the NAME of the selected layer in this <span style="color: white; ba
   //12 -- Layer Toolbox cont.
   {
     text: `
-This layer type is <span style="color: white; background-color: #184e1c; font-weight: bold;">SEG</span> or "segmentation layer" which shows the 3D model.
+This layer type is <span style="color: white; background-color: #184e1c; font-weight: bold;">seg</span> or "segmentation layer" which shows the 3D model.
 
 Other layer types include IMG which indicates the EM image layer, and ANN for annotation layer.`,
     position: {
@@ -223,7 +223,7 @@ If we add more cells, their IDs will appear here as well. `,
   //15 -- Layer Toolbox Tabs "Render"
   {
     text: `
-RENDER is another important tab. Here you can alter the visualization of your cell. 
+<span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Render</span> is another important tab. Here you can alter the visualization of your cell. 
 
 We've opened the 2D view so you can see how the render controls affect the 2D as well.
 
