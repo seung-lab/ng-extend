@@ -171,7 +171,7 @@ Pressing the LAYER NUMBER on your keyboard also works. In this case the number i
     text: `
 Look here! This SIDE PANEL opened up when the layer was selected.
 
-You can see the NAME of the selected layer in this GREEN BOX as well as the LAYER TYPE in DARK GREEN.`,
+You can see the NAME of the selected layer in this <span style="color: white; background-color: green;">GREEN BOX</span> as well as the LAYER TYPE in <span style="color: white; background-color: darkgreen;">DARK GREEN</span>.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
