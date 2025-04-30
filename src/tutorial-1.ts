@@ -98,7 +98,7 @@ Click here to COPY our current location.`,
     text: `
 One of our collaborators would like us to check out a precise location on this cell. 
 
-The X coordinate for our new location is 456789. <em>Click onto this number and type it in</em>. Press "Enter" to jump to the new location.`,
+The X coordinate for our new location is 456789. <strong>Click onto this number and type it in</strong>. Press "Enter" to jump to the new location.`,
     width: "500px",
     position: {
       element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div:nth-child(1) > div:nth-child(1) > input",
@@ -113,9 +113,9 @@ The X coordinate for our new location is 456789. <em>Click onto this number and 
     text: `
 Oh sorry, that wasn't right! That was the amount owed on my cat's latest vet bill 😿. Now we're lost in neuron space!
 
-That's okay, remember that we COPIED the coorinates for the cells soma. 
+That's okay, remember that we COPIED the coorinates for the cell's soma. 
 
-<em>CTRL+V to PASTE them anywhere in the interface</em> and we'll jump back to the right spot.`,
+<strong>CTRL+V anywhere in the interface to PASTE them</strong> and we'll jump back to the right spot.`,
     width: "500px",
     position: MIDDLE,
     state:
@@ -135,23 +135,31 @@ Let's keep investigating.`,
   //9 -- Using layers, show/hide
   {
     text: `
-This LAYER has a green border to indicate it is currently selected.
-
-You can CLICK on it to SHOW or HIDE the layer. 
-
-Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "1." Try both ways!`,
+This LAYER has a green border to indicate it is currently selected.`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(2)",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
       state:
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5701904861495296",
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
     //10 -- Using layers, select
   {
     text: `
-To SELECT a layer, you must RIGHT-CLICK it.  Try selecting this layer.`,
+To SELECT this layer, you must <em>RIGHT</em>-CLICK it.  If you did it correctly you will see a green border!`,
+    position: {
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+  },
+   //10 -- Using layers, select
+  {
+    text: `
+LEFT-CLICK on they layer to SHOW or HIDE it. 
+
+Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "2." Try both ways!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
