@@ -175,19 +175,19 @@ Try both ways!`,
     text: `
 Look here! This SIDE PANEL opened up when the layer was selected.
 
-You can see the NAME of the selected layer in this <span style="color: white; background-color: green;">GREEN BOX</span> as well as the LAYER TYPE in <span style="color: white; background-color: darkgreen;">DARK GREEN</span>.`,
+You can see the NAME of the selected layer in this <span style="color: white; background-color: green;">GREEN BOX</span> as well as the LAYER TYPE in <span style="color: white; background-color: #184e1c; font-weight: bold;">DARK GREEN</span>.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
     },
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
   },
   //12 -- Layer Toolbox cont.
   {
     text: `
-This layer type is SEG or "segmentation layer" which shows the 3D model.
+This layer type is <span style="color: white; background-color: #184e1c; font-weight: bold;">SEG</span> or "segmentation layer" which shows the 3D model.
 
 Other layer types include IMG which indicates the EM image layer, and ANN for annotation layer.`,
     position: {
@@ -201,7 +201,7 @@ Other layer types include IMG which indicates the EM image layer, and ANN for an
     text: `
 These TABS correspond to your selected layer. 
 
-We are currently in the "Seg." tab which shows the segment ID for our visible cell. `,
+We are currently in the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Seg.</span> tab which shows the segment ID for our visible cell. `,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
