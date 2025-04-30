@@ -53,7 +53,7 @@ During this tutorial, you may make a mistake, accidentally delete something or b
   //1.3 -- Hover states
   {
     text: `
-Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text areas that you see on screen. The text may take a few seconds to load.
+Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text areas that you see at the top of the screen. The text may take a few seconds to load.
 
 If you get confused in the future, hovering may help!`,
     image:
@@ -111,7 +111,7 @@ The X coordinate for our new location is 456789. Click onto this number to type 
     text: `
 Oh sorry, that wasn't right! I got the coordinates mixed up with my cat's latest vet bill 😿. Now we're lost in neuron space!
 
-That's okay, remember that we COPIED the coorinates for the cells soma. PASTE them anywhere in the interface and we'll jump back to the right spot.`,
+That's okay, remember that we COPIED the coorinates for the cells soma. CTRL+V to PASTE them anywhere in the interface and we'll jump back to the right spot.`,
     width: "500px",
     position: MIDDLE,
     state:
@@ -126,7 +126,7 @@ Let's keep investigating.`,
     width: "500px",
     position: MIDDLE,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5701904861495296",
   },
   //4 -- Using layers
   {
@@ -238,7 +238,7 @@ CLICK the "+" to it.`,
     text: `
 Oops, I forgot 🙈! LEFT-CLICK adds a BLANK LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
 
-That's okay, it's an easy fix! Use the "X" to remove the NEW LAYER.`,
+That's okay, it's an easy fix! Hover on NEW LAYER, and click the "X" to remove it.`,
     width: "500px",
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(4)",
@@ -265,7 +265,7 @@ You can see here that the NEW LAYER is available, but not visible in our workspa
 
 CLICK the EYE to reveal it!`,
     position: {
-      element: "#insertNGTopBar > div > div:nth-child(6)",
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-layer-list-panel-items > div:nth-child(3)",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
@@ -273,14 +273,18 @@ CLICK the EYE to reveal it!`,
    //5 -- Deleted Layers
   {
     text: `
-Great job! Since this layer has no further use to us, let's DELETE it PERMANENTLY. Hover over it and click the 🗑️ to DELETE.
-
-⚠️Be very careful with the 🗑️ function! Any trashed layers are UNRECOVERABLE.`,
+Great job! Since this layer has no further use to us, let's DELETE it PERMANENTLY. Hover over it and click the 🗑️ to DELETE.`,
     position: {
       element: "#insertNGTopBar > div > div:nth-child(6)",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+  },
+  //5 -- Deleted Layers
+  {
+    text: `
+⚠️Be very careful with the 🗑️ function! Any trashed layers are UNRECOVERABLE.`,
+    position: MIDDLE,
   },
    //5 -- Deleted Layers
   {
@@ -297,10 +301,10 @@ Click SHARE to copy the link to clipboard, and then PASTE the link in a location
   //11 -- Add annotation layer
    {
     text: `
-Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forgot, hover over the bar below.
+Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forgot, click below to reveal the answer.
 
 <details>
-    <summary>Details</summary>
+    <summary>Answer</summary>
     RIGHT-CLICK the "+" button to add an ANNOTATION LAYER.
 </details>`,
     width: "500px",
@@ -317,7 +321,19 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
     text: `
 Let's take a look at the Annotation Layer Panel.
 
-The ANNOTATIONS tab is our most important tab here. Select it now.`,
+Let's give our tab another name. Click into the GREEN BOX here and DELETE the current text. TYPE IN new text. Let's call it "Tutorial"`,
+    position: {
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    state: 
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5451570511609856",
+  },
+    //13 -- Annotation Layer Panel
+  {
+    text: `
+Now it's time to add some annotations! Select the ANNOTATION TAB to begin`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
@@ -329,11 +345,9 @@ The ANNOTATIONS tab is our most important tab here. Select it now.`,
   //14 -- Add annotation point
   {
     text: `
-The most common action in this panel is adding an annotation point. 
+Great! Click the "○" button to select the single point annotation. 
 
-Click the "○" button to select the single point annotation. 
-
-⚠️You must always choose an annotation type after creating a new annotation layer.`,
+⚠️<em>You must always choose an annotation type after creating a new annotation layer.</em>`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div.neuroglancer-tab-content.neuroglancer-annotations-tab > div > div.neuroglancer-annotation-toolbox",
       side: "left",
@@ -345,10 +359,34 @@ Click the "○" button to select the single point annotation.
     text: `CTRL+Click anywhere on the cell to place your annotation points. Try placing a few!`,
     position: OVER_3D,
   },
+  //20 -- Putting it all together
+  {
+    text: `Oh great, I finally found that very important memo from our collaborators! It was buried in a different pile of papers along with some suspicious looking cat hair and a file called "KITTY WORLD DOMINATION TOP SECRET." I wonder what that could mean 🤔.
+    
+Can you help out with this final task? Here's what I need:
+<ol>
+  <li>Jump to this location: 87298, 52545, 998</li>
+  <li>Add a new annotation layer. Rename it "Top Secret Location"</li>
+  <li>Open the 2 panel view</li>
+  <li>There is a missing branch here! scroll until you find it.</li>
+  <li>Add an annotation point to show where the branch should continue.</li>
+</ol>
+
+Click "next" once you've completed this task!`,
+    position: MIDDLE,
+  },
   //21 -- Learn more about annotations
   {
     text: `
-If you'd like to learn more about annotation points, you can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank"> watch this video</a> after you finish the tutorial.`,
+Optional: Add a description an tag to your annotation point. Skip to the next slide if you prefer not to complete this task!
+
+You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank"> watch this video</a> to learn about adding descriptions and tags.`,
+    position: MIDDLE,
+  },
+  //21 -- Learn more about annotations
+  {
+    text: `
+If you'd like to recieve a special badge for finishing this tutorial, click the "Share" button to copy your link,  and then <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank">fill out this form</a>.`,
     position: MIDDLE,
   },
   //22
@@ -373,9 +411,9 @@ Check out the help menu here as well. You can also press "H" on your keyboard.`,
   },
   {
     text: `
-The help menu is pre-computed, and some instructions can be a little difficult to understand at first glance. 
+The help menu is auto-computed, and some instructions can be a little difficult to understand at first glance.
 
-The YELLOW TEXT indicates a KEYBOARD or MOUSE COMMAND. The WHITE TEXT indicates the ACTION that will be taken.`,
+Note that the YELLOW TEXT indicates a KEYBOARD or MOUSE COMMAND. The WHITE TEXT indicates the ACTION that will be taken.`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-side-panel-titlebar",
       side: "right",
