@@ -4,12 +4,22 @@
   --color-light-bg: #4d505b;
   --color-small-text: #eee;
   --color-border: #a3b3bf;
-  --gradient-highlight: linear-gradient(-45deg, rgba(2, 146, 174, 0.88), rgba(15, 177, 139, 0.88));
-  --gradient-highlight-hover: linear-gradient(-45deg, rgba(2, 146, 174, 1), rgba(15, 177, 139, 1));
-  --color-flywire-dark-green: #0FB18B;
+  --gradient-highlight: linear-gradient(
+    -45deg,
+    rgba(2, 146, 174, 0.88),
+    rgba(15, 177, 139, 0.88)
+  );
+  --gradient-highlight-hover: linear-gradient(
+    -45deg,
+    rgba(2, 146, 174, 1),
+    rgba(15, 177, 139, 1)
+  );
+  --color-flywire-dark-green: #0fb18b;
   --color-ng-selected: #8c8;
   --color-ng-selected-faint: #88cc8838;
   --color-ng-selected-less-faint: #88cc8852;
+
+  --color-pyr-purple: #a46fe2ba;
 }
 
 .ng-extend button {
@@ -39,9 +49,10 @@
   opacity: 0.5 !important;
 }
 
-.ng-extend button.fill, .ng-extend button.fill:hover {
+.ng-extend button.fill,
+.ng-extend button.fill:hover {
   opacity: 1;
-  background-color: #0FB18B;
+  background-color: #0fb18b;
   /* border: 1px solid #0c8468; */
   padding: 5px;
   border-radius: 5px;

@@ -113,7 +113,34 @@ async function updateChipPosition() {
         noborder: step.noborder || false,
     }
 
-    nextTick(function () {
+    {
+        await nextTick();
+
+        const el = root.value!.querySelector('.chip');
+        if (!el) return;
+        let rect = el.getBoundingClientRect();
+
+        if (isNextToElementPostition(step.position)) {
+            if (step.position.side === 'right') {
+                // left = `${rect.right - xOff}px`;
+                // top = `${rect.top + rect.height / 2 + yOff}px`;
+            } else if (step.position.side === 'left') {
+                // left = `${rect.left + xOff}px`;
+                // top = `${rect.top + rect.height / 2 + yOff}px`;
+                chipBounds.value.left = `${-rect.width - 12}px`;
+            } else if (step.position.side === 'bottom') {
+                // left = `${rect.left + rect.width / 2 + xOff}px`;
+                // top = `${rect.bottom + yOff}px`;
+            } else if (step.position.side === 'top') {
+                //     left = `${rect.left + rect.width / 2 + xOff}px`;
+                //     top = `${rect.top - yOff}px`;
+                // }
+            }
+        }
+    }
+
+    {
+        await nextTick();
         const el = root.value!.querySelector('.chip');
         if (el) {
             const rect = el.getBoundingClientRect();
@@ -145,7 +172,7 @@ async function updateChipPosition() {
                 chipBounds.value.top = `${clampHeight(window.innerHeight - rect.bottom)}px`;
             }
         }
-    });
+    }
 }
 
 const ready = ref(false);
@@ -230,7 +257,7 @@ onMounted(async () => {
 }
 
 .introductionStepAnchor.right .arrow {
-    border-right: 12px solid var(--color-flywire-dark-green);
+    border-right: 12px solid var(--color-pyr-purple);
     right: -12px;
 }
 
@@ -239,12 +266,21 @@ onMounted(async () => {
 }
 
 .introductionStepAnchor.bottom .arrow {
-    border-bottom: 12px solid var(--color-flywire-dark-green);
+    border-bottom: 12px solid var(--color-pyr-purple);
     bottom: -12px;
 }
 
 .introductionStepAnchor.bottom .chip {
     top: 12px !important;
+}
+
+.introductionStepAnchor.left .arrow {
+    border-left: 12px solid var(--color-pyr-purple);
+    left: -12px;
+}
+
+.introductionStepAnchor.left .chip {
+    left: -12 !important;
 }
 
 .chip {
