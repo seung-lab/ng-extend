@@ -39,7 +39,7 @@ Now that you've gotten familiar with the basics, let's take a deeper dive into t
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
-  //1.2 -- Note
+  //2 -- Making mistakes
   {
     text: `
 During this tutorial, you may make a mistake, accidentally delete something or become lost. Don't worry, just keep moving. We will restore the workspace within 1 or 2 slides.`,
@@ -50,7 +50,7 @@ During this tutorial, you may make a mistake, accidentally delete something or b
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
-  //1.3 -- Hover states
+  //3 -- Hover states
   {
     text: `
 Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text areas that you see at the top of the screen. The text may take a few seconds to load.
@@ -63,7 +63,7 @@ If you get confused in the future, hovering may help!`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
-  //1.2 -- Axis
+  //4 -- Adding Axis
   {
     text: `
 Right now we are centered in the cell's soma. <strong>Press the "A" key</strong> to reveal the axis lines. 
@@ -76,7 +76,7 @@ You may want to show or hide the axes at different points during your workflow. 
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
-  //2 -- Coordinates
+  //5 -- Coordinates pt 1
   {
     text: `
 Let's explore a bit! But before we do, we'd like to be able to easily return to the soma in case we get lost. 
@@ -91,7 +91,7 @@ Click here to COPY our current location.`,
      state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
-  //3.1 -- Coordinates part 3
+  //6 -- Coordinates pt 2
   {
     text: `
 One of our collaborators would like us to check out a precise location on this cell. 
@@ -106,7 +106,7 @@ The X coordinate for our new location is 456789. Click onto this number to type 
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
   },
-    //3.1 -- Coordinates part 3
+    //7 -- Coordinates pt 3
   {
     text: `
 Oh sorry, that wasn't right! I got the coordinates mixed up with my cat's latest vet bill 😿. Now we're lost in neuron space!
@@ -117,7 +117,7 @@ That's okay, remember that we COPIED the coorinates for the cells soma. CTRL+V t
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6180235000152064",
   },
-  //3 -- Coordinates part 2
+  //8 -- Coordinates pt 4
   {
     text: `
 Great! We're back in view of our cell again. 
@@ -128,7 +128,7 @@ Let's keep investigating.`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5701904861495296",
   },
-  //4 -- Using layers
+  //9 -- Using layers, show/hide
   {
     text: `
 This LAYER has a green border to indicate it is currently selected.
@@ -144,7 +144,7 @@ Pressing the LAYER NUMBER on your keyboard also works. In this case the number i
       state:
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/5701904861495296",
   },
-    //4.1 -- Using layers
+    //10 -- Using layers, select
   {
     text: `
 To SELECT a layer, you must RIGHT-CLICK it.  Try selecting this layer.`,
@@ -154,7 +154,7 @@ To SELECT a layer, you must RIGHT-CLICK it.  Try selecting this layer.`,
       offset: { x: 0, y: 0 },
     },
   },
-  //6 -- Layer Toolbox
+  //11 -- Layer Toolbox
   {
     text: `
 Look here! This SIDE PANEL opened up when the layer was selected.
@@ -168,7 +168,7 @@ You can see the NAME of the selected layer in this GREEN BOX as well as the LAYE
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
-  //7 -- Layer Toolbox cont.
+  //12 -- Layer Toolbox cont.
   {
     text: `
 This layer type is SEG or "segmentation layer" which shows the 3D model.
@@ -180,7 +180,7 @@ Other layer types include IMG which indicates the EM image layer, and ANN for an
       offset: { x: 0, y: 0 },
     },
   },
-  //8 -- Layer Toolbox Tabs
+  //13 -- Layer Toolbox Tabs
   {
     text: `
 These TABS correspond to your selected layer. 
@@ -192,7 +192,7 @@ We are currently in the "Seg." tab which shows the segment ID for our visible ce
       offset: { x: 0, y: 0 },
     },
   },
-  //9 -- Layer Toolbox Tabs cont.
+  //14 -- Layer Toolbox Tabs cont.
   {
     text: `
 If we add more cells, their IDs will appear here as well. `,
@@ -204,7 +204,7 @@ If we add more cells, their IDs will appear here as well. `,
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
   },
-  //10 -- Layer Toolbox Tabs "Render"
+  //15 -- Layer Toolbox Tabs "Render"
   {
     text: `
 RENDER is another important tab. Here you can alter the visualization of your cell. 
@@ -218,7 +218,7 @@ Try it! We'll restore the default view in the next slide.`,
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
-  //11 -- Add annotation layer
+  //16 -- Add annotation layer
   {
     text: `
 Let's try adding an ANNOTATION LAYER.
@@ -233,7 +233,7 @@ CLICK the "+" to it.`,
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
-  //12 -- Annotation layer double check
+  //17 -- Remove new layer
   {
     text: `
 Oops, I forgot 🙈! LEFT-CLICK adds a BLANK LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
@@ -246,7 +246,7 @@ That's okay, it's an easy fix! Hover on NEW LAYER, and click the "X" to remove i
       offset: { x: 0, y: 0 },
     },
   },
-   //5 -- Deleted Layers
+   //5 -- Layers menu
   {
     text: `
 Our NEW LAYER was removed, but it was not deleted permanently!
@@ -258,7 +258,7 @@ Click here to view all the layers currently available in our workspace.`,
       offset: { x: 0, y: 0 },
     },
   },
-    //5 -- Deleted Layers
+    //5 -- Layers menu, reveal
   {
     text: `
 You can see here that the NEW LAYER is available, but not visible in our workspace.
@@ -270,7 +270,7 @@ CLICK the EYE to reveal it!`,
       offset: { x: 0, y: 0 },
     },
   },
-   //5 -- Deleted Layers
+   //5 -- Layers menu, delete
   {
     text: `
 Great job! Since this layer has no further use to us, let's DELETE it PERMANENTLY. Hover over it and click the 🗑️ to DELETE.`,
@@ -283,7 +283,7 @@ Great job! Since this layer has no further use to us, let's DELETE it PERMANENTL
   //5 -- Deleted Layers
   {
     text: `
-⚠️Be very careful with the 🗑️ function! Any trashed layers are UNRECOVERABLE.`,
+⚠️<em>Be very careful with the 🗑️ function! Any trashed layers are UNRECOVERABLE.</em>`,
     position: MIDDLE,
   },
    //5 -- Deleted Layers
