@@ -57,7 +57,7 @@ Many elements in the interface have hover states with help text. Try hovering yo
 
 If you get confused in the future, hovering may help!`,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
+      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/nurro-at-home600.png?raw=true",
     position: MIDDLE,
     width: "400px",
     state:
