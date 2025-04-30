@@ -42,7 +42,9 @@ Now that you've gotten familiar with the basics, let's take a deeper dive into t
   //2 -- Making mistakes
   {
     text: `
-During this tutorial, you may make a mistake, accidentally delete something or become lost. Don't worry, just keep moving. We will restore the workspace within 1 or 2 slides.`,
+During this tutorial, you may make a mistake, accidentally delete something or become lost. 
+
+You can step backwards in the tutorial to retry. If you are still lost, just keep going and we will restore the workspace within 1 or 2 slides.`,
     image:
       "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
     position: MIDDLE,
@@ -53,7 +55,7 @@ During this tutorial, you may make a mistake, accidentally delete something or b
   //3 -- Hover states
   {
     text: `
-Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text areas that you see at the top of the screen. The text may take a few seconds to load.
+Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text at the top of the screen. The help text may need a few seconds to load.
 
 If you get confused in the future, hovering may help!`,
     image:
@@ -68,9 +70,9 @@ If you get confused in the future, hovering may help!`,
     text: `
 Right now we are centered in the cell's soma. <strong>Press the "A" key</strong> to reveal the axis lines. 
 
-These lines converge at the point we are centered on and represent the x, y, and z planes of our image data.
+These lines converge at the point we are centered on and represent the volume's x, y, and z dimensions.
 
-You may want to show or hide the axes at different points during your workflow. <strong>Press "A" again</strong> to remove them.`,
+<strong>Press "A" again</strong> to remove them. Many of our keyboard commands act as a toggle switch between SHOW and HIDE.`,
     width: "500px",
     position: OVER_3D,
     state:
@@ -86,7 +88,7 @@ Click here to COPY our current location.`,
     position: {
       element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
       side: "bottom",
-      offset: { x: 0, y: 5 },
+      offset: { x: 0, y: 7 },
     },
      state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
@@ -96,22 +98,24 @@ Click here to COPY our current location.`,
     text: `
 One of our collaborators would like us to check out a precise location on this cell. 
 
-The X coordinate for our new location is 456789. Click onto this number to type it in. Press "Enter" to jump to the new location.`,
+The X coordinate for our new location is 456789. <em>Click onto this number and type it in</em>. Press "Enter" to jump to the new location.`,
     width: "500px",
     position: {
       element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div:nth-child(1) > div:nth-child(1) > input",
       side: "bottom",
-      offset: { x: 0, y: 5 },
+      offset: { x: 0, y: 7 },
     },
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
     //7 -- Coordinates pt 3
   {
     text: `
-Oh sorry, that wasn't right! I got the coordinates mixed up with my cat's latest vet bill 😿. Now we're lost in neuron space!
+Oh sorry, that wasn't right! That was the amount owed on my cat's latest vet bill 😿. Now we're lost in neuron space!
 
-That's okay, remember that we COPIED the coorinates for the cells soma. CTRL+V to PASTE them anywhere in the interface and we'll jump back to the right spot.`,
+That's okay, remember that we COPIED the coorinates for the cells soma. 
+
+<em>CTRL+V to PASTE them anywhere in the interface</em> and we'll jump back to the right spot.`,
     width: "500px",
     position: MIDDLE,
     state:
@@ -126,7 +130,7 @@ Let's keep investigating.`,
     width: "500px",
     position: MIDDLE,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5701904861495296",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   //9 -- Using layers, show/hide
   {
