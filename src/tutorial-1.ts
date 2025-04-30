@@ -115,29 +115,14 @@ That's okay, remember that we COPIED the coorinates for the cells soma. PASTE th
     width: "500px",
     position: OVER_3D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6180235000152064",
   },
   //3 -- Coordinates part 2
   {
     text: `
-We've jumped you to a new location. 
+Great! We're back in view of our cell again. 
 
-CTRL+V anywhere on the interface to PASTE in copied coordinates. This will jump us back to the previous location.`,
-    width: "500px",
-    position: {
-      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
-  },
-  //3.1 -- Coordinates part 3
-  {
-    text: `
-You can also adjust the x, y, and z COORDINATES individually. Click into the X coordinate and paste something new, then press ENTER. 
-
-Don't worry if you fly off screen. We'll readjust in the next slide!`,
+Let's explore our cell a bit further.`,
     width: "500px",
     position: {
       element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
@@ -154,34 +139,21 @@ This LAYER has a green border to indicate it is currently selected.
 
 You can CLICK to SHOW/HIDE any layer. 
 
-Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "2." Try both ways!`,
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-      state:
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
-  },
-    //4.1 -- Using layers
-  {
-    text: `
-To SELECT a layer, you must RIGHT-CLICK it.  Try selecting the IMG layer.`,
+Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "1." Try both ways!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(2)",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+      state:
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5701904861495296",
   },
-
-    //5 -- Deleted Layers
+    //4.1 -- Using layers
   {
     text: `
-If you accidentally click the "X" when attempting to select a layer, you can open the layers panel here to recover it!
-
-Try not to accidentally click the 🗑️ icon or the layer will be gone forever 😭.`,
+To SELECT a layer, you must RIGHT-CLICK it.  Try selecting this layer.`,
     position: {
-      element: "#insertNGTopBar > div > div:nth-child(6)",
+      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
@@ -189,9 +161,9 @@ Try not to accidentally click the 🗑️ icon or the layer will be gone forever
   //6 -- Layer Toolbox
   {
     text: `
-This TOOLBOX corresponds with your current LAYER. 
+Look here! This SIDE PANEL opened up when the layer was selected.
 
-You can see the name of the selected layer in this green box as well as the layer type.`,
+You can see the name of the selected layer in this green box as well as the layer type in dark green.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
@@ -249,6 +221,18 @@ Try it! We'll restore the default view in the next slide.`,
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
+  },
+   //5 -- Deleted Layers
+  {
+    text: `
+If you accidentally click the "X" when attempting to select a layer, you can open the layers panel here to recover it!
+
+Try not to accidentally click the 🗑️ icon or the layer will be gone forever 😭.`,
+    position: {
+      element: "#insertNGTopBar > div > div:nth-child(6)",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
   },
   //11 -- Add annotation layer
   {
