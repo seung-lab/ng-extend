@@ -71,7 +71,7 @@ These COORDINATES show your location in space. Click here to COPY them.`,
     position: {
       element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 20 },
     },
      state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
