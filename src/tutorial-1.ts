@@ -37,7 +37,7 @@ Now that you've gotten familiar with the basics, let's take a deeper dive into t
     position: MIDDLE,
     width: "400px",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6285307952496640",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   //1.2 -- Note
   {
@@ -48,7 +48,7 @@ During this tutorial, you may make a mistake, accidentally delete something or b
     position: MIDDLE,
     width: "400px",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6285307952496640",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   //1.3 -- Hover states
   {
@@ -61,12 +61,27 @@ If you get confused in the future, hovering may help!`,
     position: MIDDLE,
     width: "400px",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6285307952496640",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  //1.2 -- Axis
+  {
+    text: `
+Right now we are centered in the cell's soma. Press the "A" key to reveal the axis lines. 
+
+These lines converge at the point we are centered on and represent the x, y, and z planes of our image data.
+
+You may want to show or hide the axes at different points during your workflow. Press "A" again to remove them.`,
+    width: "500px",
+    position: OVER_3D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   //2 -- Coordinates
   {
     text: `
-These COORDINATES show your location in space. Click here to COPY them.`,
+Let's explore a bit! But before we do, we'd like to be able to easily return to the soma in case we get lost. 
+
+Click here to COPY our current location.`,
     width: "500px",
     position: {
       element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
@@ -74,7 +89,33 @@ These COORDINATES show your location in space. Click here to COPY them.`,
       offset: { x: 0, y: 5 },
     },
      state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6285307952496640",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  //3.1 -- Coordinates part 3
+  {
+    text: `
+One of our collaborators would like us to check out a precise location on this cell. 
+
+The X coordinate for our new location is 456789. Click onto this number to type it in. Press "Enter" to jump to the new location.`,
+    width: "500px",
+    position: {
+      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
+      side: "bottom",
+      offset: { x: 0, y: 0 },
+    },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
+  },
+    //3.1 -- Coordinates part 3
+  {
+    text: `
+Oh sorry, that wasn't right! I got the number mixed up with my cat's latest vet bill 😿. Now we're lost in neuron space!
+
+That's okay, remember that we COPIED the coorinates for the cells soma. PASTE them anywhere in the interface and we'll jump back to the right spot.`,
+    width: "500px",
+    position: OVER_3D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5766780040511488",
   },
   //3 -- Coordinates part 2
   {
