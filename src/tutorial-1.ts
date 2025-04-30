@@ -149,7 +149,7 @@ This LAYER has a green border to indicate it is currently selected.`,
     text: `
 <strong>RIGHT-CLICK</strong> to select this layer instead.  
 
-If you did it correctly you will see a green border!`,
+If you did it correctly it will have a green border!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
@@ -285,7 +285,7 @@ You can see here that the NEW LAYER is available, but not visible in our workspa
 CLICK the EYE to reveal it!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-layer-list-panel-items > div:nth-child(3) > div:nth-child(3) > div:nth-child(2)",
-      side: "right",
+      side: "bottom",
       offset: { x: 0, y: 0 },
     },
   },
@@ -332,7 +332,7 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 7 },
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
@@ -344,7 +344,7 @@ Let's take a look at the Annotation Layer Panel.
 
 Let's give our tab another name. Click into the GREEN BOX here and DELETE the current text. TYPE IN new text. Let's call it "Tutorial"`,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
     },
@@ -361,7 +361,7 @@ Now it's time to add some annotations! Select the ANNOTATION TAB to begin`,
       offset: { x: 0, y: 0 },
     },
     state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5451570511609856",
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5934606860681216",
   },
   //14 -- Add annotation point
   {
@@ -382,7 +382,9 @@ Great! Click the "○" button to select the single point annotation.
   },
   //20 -- Putting it all together
   {
-    text: `Oh great, I finally found that very important memo from our collaborators! It was buried in a different pile of papers along with some suspicious looking cat hair and a file called "KITTY WORLD DOMINATION TOP SECRET." I wonder what that could mean 🤔.
+    text: `Oh great, I finally found that very important memo from our collaborators! 
+    
+    It was buried in a different pile of papers along with some suspicious looking cat hair and a file called "KITTY WORLD DOMINATION TOP SECRET." I wonder what that could mean 🤔.
     
 Can you help out with this final task? Here's what I need:
 <ol>
@@ -394,7 +396,7 @@ Can you help out with this final task? Here's what I need:
 </ol>
 
 Click "next" once you've completed this task!`,
-    position: MIDDLE,
+    position: OVER_3D,
   },
   //21 -- Learn more about annotations
   {
@@ -402,13 +404,13 @@ Click "next" once you've completed this task!`,
 Optional: Add a description an tag to your annotation point. Skip to the next slide if you prefer not to complete this task!
 
 You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank"> watch this video</a> to learn about adding descriptions and tags.`,
-    position: MIDDLE,
+    position: OVER_3D,
   },
   //21 -- Learn more about annotations
   {
     text: `
 If you'd like to recieve a special badge for finishing this tutorial, click the "Share" button to copy your link,  and then <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank">fill out this form</a>.`,
-    position: MIDDLE,
+    position: OVER_3D,
   },
   //22
   {
