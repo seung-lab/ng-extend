@@ -66,11 +66,11 @@ If you get confused in the future, hovering may help!`,
   //1.2 -- Axis
   {
     text: `
-Right now we are centered in the cell's soma. Press the "A" key to reveal the axis lines. 
+Right now we are centered in the cell's soma. <strong>Press the "A" key</strong> to reveal the axis lines. 
 
 These lines converge at the point we are centered on and represent the x, y, and z planes of our image data.
 
-You may want to show or hide the axes at different points during your workflow. Press "A" again to remove them.`,
+You may want to show or hide the axes at different points during your workflow. <strong>Press "A" again</strong> to remove them.`,
     width: "500px",
     position: OVER_3D,
     state:
