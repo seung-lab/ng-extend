@@ -142,12 +142,14 @@ This LAYER has a green border to indicate it is currently selected.`,
       offset: { x: 0, y: 0 },
     },
       state:
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5077771186339840",
   },
     //10 -- Using layers, select
   {
     text: `
-To SELECT this layer, you must <em>RIGHT</em>-CLICK it.  If you did it correctly you will see a green border!`,
+To SELECT this layer, you must <strong>RIGHT</strong>-CLICK it.  
+
+If you did it correctly you will see a green border!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
@@ -159,7 +161,9 @@ To SELECT this layer, you must <em>RIGHT</em>-CLICK it.  If you did it corre
     text: `
 LEFT-CLICK on they layer to SHOW or HIDE it. 
 
-Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "2." Try both ways!`,
+Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "2." 
+
+Try both ways!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
@@ -178,7 +182,7 @@ You can see the NAME of the selected layer in this <span style="color: white; ba
       offset: { x: 0, y: 0 },
     },
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   //12 -- Layer Toolbox cont.
   {
