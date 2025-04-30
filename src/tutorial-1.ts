@@ -37,7 +37,7 @@ Now that you've gotten familiar with the basics, let's take a deeper dive into t
     position: MIDDLE,
     width: "400px",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6285307952496640",
   },
   //1.2 -- Note
   {
@@ -48,7 +48,7 @@ During this tutorial, you may make a mistake, accidentally delete something or b
     position: MIDDLE,
     width: "400px",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6285307952496640",
   },
   //1.3 -- Hover states
   {
@@ -61,7 +61,7 @@ If you get confused in the future, hovering may help!`,
     position: MIDDLE,
     width: "400px",
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6285307952496640",
   },
   //2 -- Coordinates
   {
@@ -74,7 +74,7 @@ These COORDINATES show your location in space. Click here to COPY them.`,
       offset: { x: 0, y: 20 },
     },
      state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6285307952496640",
   },
   //3 -- Coordinates part 2
   {
@@ -178,7 +178,7 @@ These TABS correspond to your selected layer.
 
 We are currently in the "Seg." tab which shows the segment ID for our visible cell. `,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
       offset: { x: 0, y: 0 },
     },
@@ -188,7 +188,7 @@ We are currently in the "Seg." tab which shows the segment ID for our visible ce
     text: `
 If we add more cells, their IDs will appear here as well. `,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(4) > div:nth-child(2) > span",
       side: "left",
       offset: { x: 0, y: 0 },
     },
@@ -202,7 +202,7 @@ RENDER is another important tab. Here you can alter the visualization of your ce
 
 Try it! We'll restore the default view in the next slide.`,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
       offset: { x: 0, y: 0 },
     },
@@ -256,9 +256,11 @@ The ANNOTATIONS tab is our most important tab here. Select it now.`,
     text: `
 The most common action in this panel is adding an annotation point. 
 
-Click the "○" button to select the single point annotation. ⚠️You must always choose an annotation type after creating a new annotation layer.`,
+Click the "○" button to select the single point annotation. 
+
+⚠️You must always choose an annotation type after creating a new annotation layer.`,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
+      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div.neuroglancer-tab-content.neuroglancer-annotations-tab > div > div.neuroglancer-annotation-toolbox",
       side: "left",
       offset: { x: 0, y: 0 },
     },
