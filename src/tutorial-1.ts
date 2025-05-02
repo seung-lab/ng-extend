@@ -174,9 +174,9 @@ If you did it correctly it will have a green border!`,
    //10 -- Using layers, select
   {
     text: `
-LEFT-CLICK on they layer to SHOW or HIDE it. 
+<strong>LEFT-CLICK</strong> on they layer to SHOW or HIDE it. 
 
-Pressing the LAYER NUMBER on your keyboard also works. In this case the number is "2." 
+<strong>Pressing the LAYER NUMBER</strong> on your keyboard also works. In this case the number is "2." 
 
 Try both ways!`,
     position: {
@@ -257,7 +257,7 @@ Try it! We'll restore the default view in the next slide.`,
     text: `
 Let's try adding an ANNOTATION LAYER.
 
-CLICK the "+" to it.`,
+<strong>CLICK the "+" to add it.</strong>`,
     width: "500px",
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
@@ -272,7 +272,7 @@ CLICK the "+" to it.`,
     text: `
 Oops, I forgot 🙈! LEFT-CLICK adds a BLANK LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
 
-That's okay, it's an easy fix! Hover on NEW LAYER, and click the "X" to remove it.`,
+That's okay, it's an easy fix! <strong>Hover on NEW LAYER, and click the "X" to remove it.</strong>`,
     width: "500px",
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(4)",
@@ -301,7 +301,7 @@ CLICK the EYE to reveal it!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-layer-list-panel-items > div:nth-child(3) > div:nth-child(3) > div:nth-child(2)",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 7 },
     },
   },
    //5 -- Layers menu, delete
@@ -317,7 +317,7 @@ Great job! Since this layer has no further use to us, let's DELETE it PERMANENTL
   //5 -- Deleted Layers
   {
     text: `
-⚠️Be very careful with the 🗑️ function! Any trashed layers are UNRECOVERABLE.`,
+⚠️<em>Be very careful with the</em> 🗑️ <em>function! Any trashed layers are UNRECOVERABLE.</em>`,
     position: MIDDLE,
     state: 
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
@@ -327,11 +327,11 @@ Great job! Since this layer has no further use to us, let's DELETE it PERMANENTL
     text: `
 It's recommended to hit the SHARE button to save your work at frequent intervals in case you accidentally delete something important! 
 
-⚠️SHARE only copies the link to your clipboard, to save it you must PASTE the link in a location convenient to you.`,
+⚠️<em>SHARE only copies the link to your clipboard, to save it you must PASTE the link in a location convenient to you.</em>`,
     position: {
       element: "#insertNGTopBar > div > div:nth-child(4) > div",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 7 },
     },
   },
   //11 -- Add annotation layer
@@ -341,7 +341,7 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
 
 <details>
     <summary>Answer</summary>
-    RIGHT-CLICK the "+" button to add an ANNOTATION LAYER.
+    <strong>RIGHT-CLICK the "+" button</strong> to add an ANNOTATION LAYER.
 </details>`,
     width: "500px",
     position: {
@@ -357,7 +357,7 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
     text: `
 Let's take a look at the Annotation Layer Panel.
 
-Let's give our tab another name. Click into the GREEN BOX here and DELETE the current text. TYPE IN new text. Let's call it "Tutorial"`,
+Let's give our tab another name. Click into the <span style="color: white; background-color: green;">GREEN BOX</span> here and <strong>DELETE the current text. TYPE IN new text.</strong> Let's call it "Tutorial."`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
@@ -369,7 +369,7 @@ Let's give our tab another name. Click into the GREEN BOX here and DELETE the cu
     //13 -- Annotation Layer Panel
   {
     text: `
-Now it's time to add some annotations! Select the ANNOTATION TAB to begin`,
+Now it's time to add some annotations! Select the <span style="color: white; background-color: #184e1c; font-weight: bold;">Annotations</span> tab to begin.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
@@ -387,8 +387,10 @@ Great! Click the "○" button to select the single point annotation.
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div.neuroglancer-tab-content.neuroglancer-annotations-tab > div > div.neuroglancer-annotation-toolbox",
       side: "left",
-      offset: { x: 0, y: 0 },
+      offset: { x: -2, y: 0 },
     },
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5377501518888960",
   },
   //20 -- Add annotation point pt. 2
   {
@@ -404,7 +406,7 @@ It was buried in a different pile of papers along with some suspicious looking c
     
 Can you help out with this final task? Here's what I need:
 <ol>
-  <li>Jump to this location: 87298, 52545, 998</li>
+  <li>Go to this location: 87298, 52545, 998</li>
   <li>Add a new annotation layer. Rename it "Top Secret Location"</li>
   <li>Open the 2 panel view</li>
   <li>There is a missing branch here! scroll until you find it.</li>
@@ -413,11 +415,12 @@ Can you help out with this final task? Here's what I need:
 
 Click "next" once you've completed this task!`,
     position: OVER_3D,
+    state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/4777677526401024",
   },
   //21 -- Learn more about annotations
   {
     text: `
-Optional: Add a description an tag to your annotation point. Skip to the next slide if you prefer not to complete this task!
+Optional: Add a description and tag to your annotation point. <em>Skip to the next slide if you prefer not to complete this task!</em>
 
 You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank"> watch this video</a> to learn about adding descriptions and tags.`,
     position: OVER_3D,
@@ -425,7 +428,7 @@ You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0
   //21 -- Learn more about annotations
   {
     text: `
-If you'd like to recieve a special badge for finishing this tutorial, click the "Share" button to copy your link,  and then <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank">fill out this form</a>.`,
+If you'd like to recieve a special badge for finishing this tutorial, click the "Share" button to copy your link,  and then <a href="https://docs.google.com/forms/d/1GBgMt4MCivS1R0HchK3WsJg2Kf1R5G8wyyshnGaucVM/edit" target="_blank">fill out this form</a>.`,
     position: OVER_3D,
   },
   //22
@@ -445,7 +448,7 @@ Check out the help menu here as well. You can also press "H" on your keyboard.`,
     position: {
       element: "#insertNGTopBar > div > div:nth-child(11)",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 7 },
     },
   },
   {
