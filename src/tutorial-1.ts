@@ -369,7 +369,7 @@ Let's give our tab another name. Click into the <span style="color: white; backg
     //13 -- Annotation Layer Panel
   {
     text: `
-Now it's time to add some annotations! Select the <span style="color: white; background-color: #184e1c; font-weight: bold;">Annotations</span> tab to begin.`,
+Now it's time to add some annotations! Select the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Annotations</span> tab to begin.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
