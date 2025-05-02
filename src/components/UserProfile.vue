@@ -3,9 +3,11 @@ import { storeToRefs } from "pinia";
 import ModalOverlay from "#src/components/ModalOverlay.vue";
 
 import { useLoginStore } from "#src/store.js";
-import { useStatsStore } from "#src/store-pyr.js";
+import { useStatsStore, useBadgesStore } from "#src/store-pyr.js";
 const { userInfo, cellsSubmitted } = useStatsStore();
 const { sessions } = storeToRefs(useLoginStore());
+
+const { earnedBadges } = useBadgesStore();
 
 const emit = defineEmits({
     hide: null,
@@ -43,11 +45,50 @@ const emit = defineEmits({
                     <div class="nge-user-profile-count">{{ cellsSubmitted }}</div>
                 </div>
             </div>
+            <div class="badgesHeader">Achievements</div>
+            <div class="badges">
+                <div class="badge" v-for="(badge, index) of earnedBadges" :style="{
+                    'background-image': 'url(' +
+                        badge.url + ')'
+                }">
+                    <div class="name">{{ badge.name }}</div>
+                </div>
+            </div>
         </div>
     </modal-overlay>
 </template>
 
 <style scoped>
+.badgesHeader {
+    padding: 20px 0;
+}
+
+.badges {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, 75px);
+}
+
+.badge {
+    width: 75px;
+    height: 75px;
+    background-size: contain;
+    display: grid;
+    justify-items: center;
+    align-items: center;
+}
+
+.badge .name {
+    /* visibility: hidden; */
+    opacity: 0;
+    color: white;
+    transition: opacity 200ms;
+}
+
+.badge:hover .name {
+    opacity: 1;
+    /* visibility: visible; */
+}
+
 .userProfile {
     font-size: .9em;
 }

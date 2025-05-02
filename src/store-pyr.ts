@@ -166,6 +166,61 @@ interface MessagePart {
   text: string;
 }
 
+interface Badge {
+  name: string;
+  url: string;
+}
+
+interface BadgeDefinition extends Badge {
+  name: string;
+  url: string;
+  requirements: {
+    edits?: number;
+    cells?: number;
+  };
+}
+
+const badgeDefinitions: BadgeDefinition[] = [
+  {
+    name: "Needle",
+    url: "https://storage.googleapis.com/eyewire2/assets/badges/needle.png",
+    requirements: { edits: 10 },
+  },
+];
+
+for (let i = 1; i < 20; i++) {
+  badgeDefinitions.push({
+    name: `bugspray ${i}`,
+    url: `https://storage.googleapis.com/eyewire2/assets/badges/bugspray.png?${i}`,
+    requirements: { edits: i },
+  });
+}
+
+export const useBadgesStore = defineStore("badges", () => {
+  const { userInfo } = useStatsStore();
+
+  const earnedBadges: Badge[] = reactive([]);
+
+  watch(userInfo, () => {
+    console.log("user info changed", userInfo);
+    for (const definition of badgeDefinitions) {
+      const { name, url, requirements } = definition;
+      if (
+        requirements.edits !== undefined &&
+        userInfo.editsAllTime >= requirements.edits
+      ) {
+        if (earnedBadges.find((x) => x.url === url)) continue;
+        earnedBadges.push({
+          name,
+          url,
+        });
+      }
+    }
+  });
+
+  return { earnedBadges };
+});
+
 export const useChatStore = defineStore("chat", () => {
   let showChat = localStorageRef("showChat", true, (x) => x === "true");
   let joinedChat: boolean = false;
