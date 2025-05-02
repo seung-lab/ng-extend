@@ -57,7 +57,7 @@ You can step backwards in the tutorial to retry. If you are still lost, just kee
     text: `
 The mouse and keyboard commands explained in this tutorial are based on the QWERTY keyboard layout. 
 
-If you are using another country's keyboard layout, you can <a href="https://kbdlayout.info/features/languages" target="blank>"use this resource</a> to translate the correct keys for your layout. 
+If you are using another country's keyboard layout, you can <a href="https://kbdlayout.info/features/languages" target="blank">use this resource</a> to translate the correct keys for your layout. 
 
 Here's a <a href="https://kbdlayout.info/kbdus" target="blank">quick link to the QWERTY keyboard</a> as well.`,
     image:
