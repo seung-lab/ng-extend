@@ -2,5 +2,6 @@
   "volumes_url": "middleauth+https://global.daf-apis.com/info/api/v2/ngl_info",
   "volumes_enabled": ["stroeh_mouse_retina"],
   "default_state": "middleauth+https://global.daf-apis.com/nglstate/api/v1/6646116310319104",
-  "leaderboard_url": "https://pyrdev.eyewire.org/eyewire2-leaderboard"
+  "leaderboard_url": "https://pyrdev.eyewire.org/eyewire2-leaderboard",
+  "chat_url": "wss://pyrdev.eyewire.org/chat"
 }

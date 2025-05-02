@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import Chatbox from "#src/Chatbox.vue";
 import ExtensionBar from "#src/components/ExtensionBar.vue";
 import Leaderboard from "#src/components/Leaderboard.vue";
-import { useStatsStore } from "#src/store-pyr.js";
+import { useChatStore, useStatsStore } from "#src/store-pyr.js";
 import { storeToRefs } from "pinia";
-const store = useStatsStore();
-const { showLeaderboard } = storeToRefs(store);
+const { showLeaderboard } = storeToRefs(useStatsStore());
+const { showChat } = storeToRefs(useChatStore());
 </script>
 
 <template>
@@ -16,6 +17,7 @@ const { showLeaderboard } = storeToRefs(store);
     <div id="content">
       <div id="neuroglancer-container"></div>
     </div>
+    <Chatbox v-if="showChat" @hide="showChat = false" class="ng-extend"></Chatbox>
   </div>
 </template>
 

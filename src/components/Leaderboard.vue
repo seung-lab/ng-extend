@@ -95,26 +95,6 @@ function setButtonHighlighted(timespan: string | null, highlighted: boolean) {
 </template>
 
 <style scoped>
-.ng-extend button.exit {
-    position: absolute;
-    right: 0;
-    border: none;
-    padding: 0;
-    opacity: 0.75;
-    transition: opacity 0.2s;
-    font-size: 22px;
-    line-height: 22px;
-    font-weight: 300;
-    width: 22px;
-    margin: 6px 6px 0 0;
-    z-index: 1;
-}
-
-.ng-extend button.exit:hover {
-    background-color: initial;
-    opacity: 1;
-}
-
 .nge-leaderboard-hologram {
     top: 45px;
     bottom: 10px;

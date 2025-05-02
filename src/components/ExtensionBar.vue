@@ -6,10 +6,11 @@ import DropdownList from "#src/components/DropdownList.vue";
 import { loginSession, useLoginStore, useVolumesStore } from "#src/store.js";
 import logoImage from "#src/eyewire-logo.svg?raw";
 
-import { useStatsStore } from "#src/store-pyr.js";
+import { useChatStore, useStatsStore } from "#src/store-pyr.js";
 import { storeToRefs } from "pinia";
-const store = useStatsStore();
-const { showLeaderboard } = storeToRefs(store);
+const { showLeaderboard } = storeToRefs(useStatsStore());
+const { showChat } = storeToRefs(useChatStore());
+
 
 
 const login = useLoginStore();
@@ -89,9 +90,14 @@ function logout(session: loginSession) {
     <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
       <template #buttonTitle>☰</template>
       <template #listItems>
+        <li v-if="showChat === false">
+          <div @click="showChat = true" class="logoutButton button">
+            <span>Show Chat</span>
+          </div>
+        </li>
         <li v-if="showLeaderboard === false">
-          <div class="logoutButton button">
-            <span @click="showLeaderboard = true">Show Leaderboard</span>
+          <div @click="showLeaderboard = true" class="logoutButton button">
+            <span>Show Leaderboard</span>
           </div>
         </li>
         <li>

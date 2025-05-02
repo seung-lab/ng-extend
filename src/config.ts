@@ -5,4 +5,5 @@ export type Config = {
   default_state?: string;
 
   leaderboard_url: string;
+  chat_url: string;
 };

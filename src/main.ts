@@ -4,7 +4,11 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import App from "#src/components/App.vue";
 import { useLayersStore, useVolumesStore } from "#src/store.js";
-import { useStatsStore } from "#src/store-pyr.js";
+import {
+  connectChatSocket,
+  useChatStore,
+  useStatsStore,
+} from "#src/store-pyr.js";
 
 function mergeTopBars() {
   const ngTopBar = document.querySelector(".neuroglancer-viewer")!.children[0];
@@ -29,4 +33,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const { loopUpdateLeaderboard } = useStatsStore();
   loopUpdateLeaderboard();
+  connectChatSocket();
+  const { joinChat } = useChatStore();
+  joinChat();
 });

@@ -20,7 +20,6 @@ onMounted(() => {
 });
 
 function clickHeader(event: MouseEvent) {
-    event.preventDefault();
     pos3 = event.clientX;
     pos4 = event.clientY;
     document.onmouseup = release;
@@ -28,7 +27,6 @@ function clickHeader(event: MouseEvent) {
 }
 
 function drag(e: MouseEvent) {
-    e.preventDefault();
     pos1 = pos3 - e.clientX;
     pos2 = pos4 - e.clientY;
     pos3 = e.clientX;
@@ -80,6 +78,26 @@ function release() {
     cursor: move;
     height: 20px;
     /*border: 2px solid #a46fe2aa;*/
+}
+
+.pyr-hologram-panel button.exit {
+    position: absolute;
+    right: 0;
+    border: none;
+    padding: 0;
+    opacity: 0.75;
+    transition: opacity 0.2s;
+    font-size: 22px;
+    line-height: 22px;
+    font-weight: 300;
+    width: 22px;
+    margin: 6px 6px 0 0;
+    z-index: 1;
+}
+
+.ng-extend button.exit:hover {
+    background-color: initial;
+    opacity: 1;
 }
 
 /*
