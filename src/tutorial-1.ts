@@ -52,6 +52,21 @@ You can step backwards in the tutorial to retry. If you are still lost, just kee
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
+  //2 -- Making mistakes
+  {
+    text: `
+The mouse and keyboard commands explained in this tutorial are based on the QWERTY keyboard layout. 
+
+If you are using another country's keyboard layout, you can <a href="https://kbdlayout.info/features/languages" target="blank>"use this resource</a> to translate the correct keys for your layout. 
+
+Here's a <a href="https://kbdlayout.info/kbdus" target="blank">quick link to the QWERTY keyboard</a> as well.`,
+    image:
+      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
+    position: MIDDLE,
+    width: "400px",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
   //3 -- Hover states
   {
     text: `
