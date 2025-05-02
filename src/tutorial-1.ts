@@ -387,7 +387,7 @@ Great! Click the "○" button to select the single point annotation.
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div.neuroglancer-tab-content.neuroglancer-annotations-tab > div > div.neuroglancer-annotation-toolbox",
       side: "left",
-      offset: { x: -2, y: 0 },
+      offset: { x: 0, y: 2 },
     },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5377501518888960",
