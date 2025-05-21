@@ -87,12 +87,17 @@ function release() {
     transition: opacity 0.2s; */
     z-index: 1;
     margin: 0 5px 0 0;
+    opacity: 0.25;
+}
+
+.pyr-hologram-panel .hologram-controls:hover {
+    opacity: 1;
 }
 
 .pyr-hologram-panel .hologram-controls button {
     border: none;
     padding: 0;
-    opacity: 0.75;
+    opacity: 0.6;
     transition: opacity 0.2s;
     font-size: 22px;
     line-height: 22px;
