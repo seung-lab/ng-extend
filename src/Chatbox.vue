@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, useTemplateRef } from "vue";
+import { nextTick, onMounted, onUnmounted, useTemplateRef, watch, WatchHandle } from "vue";
 import { storeToRefs } from "pinia";
 import { useChatStore, useStatsStore } from '#src/store-pyr.js';
 import HologramPanel from "#src/components/HologramPanel.vue";
@@ -10,7 +10,7 @@ import HologramPanel from "#src/components/HologramPanel.vue";
 const scrollEl = useTemplateRef<HTMLElement>('scrollEl');
 
 const store = useChatStore();
-const { chatMessages, unreadMessages } = storeToRefs(store);
+const { chatMessages, unreadMessages, minimizeChat } = storeToRefs(store);
 const { sendMessage, markLastMessageRead } = store;
 const { leaderboardEntries } = storeToRefs(useStatsStore());
 
@@ -18,16 +18,51 @@ const { leaderboardEntries } = storeToRefs(useStatsStore());
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }*/
 
+let stopWatchingMessages: WatchHandle | undefined = undefined;
+
+let scrollAtBottom = true;
+
 onMounted(() => {
     //(document.querySelector(".nge-chatbox-messageprompt > img")! as HTMLImageElement).src = encodeSVG(chevronImage);
     //(document.querySelector(".nge-chatbox-submit > button > img")! as HTMLImageElement).src = encodeSVG(sendImage);
 
     scrollEl.value?.addEventListener("scroll", handleScroll);
+
+    console.log("mounted");
+
+    stopWatchingMessages = watch(store.chatMessages, (newValue) => {
+        console.log("other watch");
+        const lastMessage = newValue[newValue.length - 1];
+        if (!lastMessage) return;
+        const { type, dateTime } = lastMessage;
+        console.log('scrollAtBottom', scrollAtBottom);
+        if (scrollAtBottom) {
+            // markLastMessageRead();
+            // scroll to bottom of message box (once vue updates the page)
+            nextTick(scrollToBottom);
+        } else if (type === "message") {
+            const lastReadMessageTime = localStorage.getItem("lastReadMessageTime");
+            const compareDate = new Date(dateTime.toString());
+            if (
+                lastReadMessageTime === null ||
+                compareDate > new Date(lastReadMessageTime)
+            ) {
+                unreadMessages.value = true;
+            }
+        }
+    });
+
+    scrollToBottom();
 });
 
 onUnmounted(() => {
+    console.log('unmount!');
     // const scrollEl = document.querySelector(".nge-chatbox-scroll")!;
     scrollEl.value?.removeEventListener("scroll", handleScroll);
+
+    if (stopWatchingMessages) {
+        stopWatchingMessages();
+    }
 });
 
 function submitMessage() {
@@ -52,6 +87,7 @@ function getTrophy(name: string): string {
 }
 
 function scrollToBottom() {
+    console.log('scroll to bottom');
     const el = scrollEl.value;
     if (el) {
         el.scrollTo(0, el.scrollHeight);
@@ -59,9 +95,10 @@ function scrollToBottom() {
 }
 
 function handleScroll() {
+    console.log('handleScroll');
     const el = scrollEl.value;
     if (el) {
-        const scrollAtBottom = Math.ceil(el.scrollTop) + el.offsetHeight >= el.scrollHeight;
+        scrollAtBottom = Math.ceil(el.scrollTop) + el.offsetHeight >= el.scrollHeight;
         if (scrollAtBottom) {
             markLastMessageRead();
         }
@@ -72,8 +109,11 @@ function handleScroll() {
 
 <template>
     <hologram-panel class="nge-chatbox-hologram" id="chatbox-hologram">
-        <div class="nge-chatbox" tabindex="1">
+        <div class="hologram-controls">
             <button class="exit" @click="$emit('hide')">×</button>
+            <button class="minimize" @click="minimizeChat = !minimizeChat">–</button>
+        </div>
+        <div class="nge-chatbox" :class="{ minimized: minimizeChat }" tabindex="1">
             <div class="nge-chatbox-filler"></div>
             <div class="nge-chatbox-grid">
                 <div ref="scrollEl" class="nge-chatbox-scroll">
@@ -108,7 +148,7 @@ function handleScroll() {
                                             getTrophy(message.name) }}:
                                     </span>
                                     <span v-if="part.type === 'text'" class="nge-chatbox-message-text">{{ part.text
-                                        }}</span>
+                                    }}</span>
                                     <a v-if="part.type === 'link'" class="nge-chatbox-message-text" target="_blank"
                                         :href="part.text">{{ part.text }}</a>
                                 </span>
@@ -130,13 +170,18 @@ function handleScroll() {
 <style>
 .nge-chatbox-hologram {
     width: 250px;
-    height: 300px;
-    bottom: 10px;
-    left: 10px;
 }
+
+/* .nge-chatbox-hologram.minimized {
+    height: 22px;
+} */
 
 .nge-chatbox {
     min-height: 0;
+}
+
+.nge-chatbox.minimized {
+    display: none;
 }
 
 .nge-chatbox-title {
@@ -159,7 +204,6 @@ function handleScroll() {
 .nge-chatbox-grid {
     display: grid;
     height: 250px;
-    margin-top: 16px;
 }
 
 .nge-chatbox-scroll {
@@ -168,7 +212,6 @@ function handleScroll() {
 
 .nge-chatbox-messages {
     font-size: 0.75em;
-    padding-top: 10px;
     padding-left: 15px;
     padding-right: 15px;
 }

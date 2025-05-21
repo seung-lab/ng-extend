@@ -67,7 +67,7 @@ function release() {
   box-shadow: 0 0 5px #a46fe2aa;
   backdrop-filter: blur(5px);*/
     background: linear-gradient(90deg, #01ffff36, #01ffff14);
-    border-radius: 20px;
+    border-radius: 15px;
     border: 5px solid #0000ff00;
     border-left: 5px solid #01ffffba;
     border-right: none;
@@ -80,9 +80,16 @@ function release() {
     /*border: 2px solid #a46fe2aa;*/
 }
 
-.pyr-hologram-panel button.exit {
-    position: absolute;
-    right: 0;
+.pyr-hologram-panel .hologram-controls {
+    display: flex;
+    flex-direction: row-reverse;
+    /* opacity: 0.75;
+    transition: opacity 0.2s; */
+    z-index: 1;
+    margin: 0 5px 0 0;
+}
+
+.pyr-hologram-panel .hologram-controls button {
     border: none;
     padding: 0;
     opacity: 0.75;
@@ -91,11 +98,9 @@ function release() {
     line-height: 22px;
     font-weight: 300;
     width: 22px;
-    margin: 6px 6px 0 0;
-    z-index: 1;
 }
 
-.ng-extend button.exit:hover {
+.pyr-hologram-panel .hologram-controls button:hover {
     background-color: initial;
     opacity: 1;
 }

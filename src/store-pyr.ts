@@ -1,4 +1,4 @@
-import { Ref, ref, reactive, watch, nextTick } from "vue";
+import { Ref, ref, reactive, watch } from "vue";
 import { defineStore, storeToRefs } from "pinia";
 import { useLoginStore } from "#src/store.js";
 import { Config } from "#src/config.js";
@@ -157,7 +157,7 @@ export interface ChatMessage {
   name: string;
   rank: string | undefined;
   time: string | undefined;
-  dateTime: Date | undefined;
+  dateTime: Date;
   parts: MessagePart[] | undefined;
 }
 
@@ -168,8 +168,20 @@ interface MessagePart {
 
 export const useChatStore = defineStore("chat", () => {
   let showChat = localStorageRef("showChat", true, (x) => x === "true");
+  let minimizeChat = localStorageRef(
+    "minimizeChat",
+    false,
+    (x) => x === "true"
+  );
   let joinedChat: boolean = false;
   let chatMessages: ChatMessage[] = reactive([]);
+
+  console.log("chatMessages1", chatMessages);
+
+  watch(chatMessages, () => {
+    console.log("we got a chat message!");
+  });
+
   let unreadMessages: Ref<boolean> = ref(false);
 
   const { sessions } = storeToRefs(useLoginStore());
@@ -293,28 +305,6 @@ export const useChatStore = defineStore("chat", () => {
     };
 
     chatMessages.push(messageObj);
-
-    const el = <HTMLElement>document.querySelector(".nge-chatbox-scroll");
-    const scrollAtBottom = el.scrollTop + el.offsetHeight >= el.scrollHeight;
-    if (showChat.value && scrollAtBottom) {
-      markLastMessageRead();
-      // scroll to bottom of message box (once vue updates the page)
-      nextTick(() => {
-        const messageBox = <HTMLElement>(
-          document.querySelector(".nge-chatbox-scroll")
-        );
-        messageBox.scrollTo(0, messageBox.scrollHeight);
-      });
-    } else if (type === "message") {
-      const lastReadMessageTime = localStorage.getItem("lastReadMessageTime");
-      const compareDate = new Date(dateTime.toString());
-      if (
-        lastReadMessageTime === null ||
-        compareDate > new Date(lastReadMessageTime)
-      ) {
-        unreadMessages.value = true;
-      }
-    }
   }
 
   function markLastMessageRead() {
@@ -335,6 +325,7 @@ export const useChatStore = defineStore("chat", () => {
     markLastMessageRead,
     joinChat,
     showChat,
+    minimizeChat,
   };
 });
 
