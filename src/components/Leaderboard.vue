@@ -8,7 +8,7 @@ import HologramPanel from "#src/components/HologramPanel.vue";
 import { LeaderboardTimespan, useStatsStore } from "#src/store-pyr.js";
 
 const store = useStatsStore();
-const { leaderboardLoaded, leaderboardEntries } = storeToRefs(store);
+const { leaderboardLoaded, leaderboardEntries, minimizeLeaderboard } = storeToRefs(store);
 const { setLeaderboardTimespan, resetLeaderboard } = store;
 
 let timespan: string | null = localStorage.getItem("timespan");
@@ -57,9 +57,9 @@ function setButtonHighlighted(timespan: string | null, highlighted: boolean) {
 </script>
 
 <template>
-    <hologram-panel class="nge-leaderboard-hologram" id="leaderboard-hologram">
+    <hologram-panel class="nge-leaderboard-hologram" id="leaderboard-hologram"
+        @minimize="minimizeLeaderboard = !minimizeLeaderboard" :minimized="minimizeLeaderboard">
         <div class="nge-leaderboard">
-            <button class="exit" @click="$emit('hide')">×</button>
             <!-- <div class="nge-leaderboard-headerimage"><img src="insert-logo" title="Nurro"></div> -->
             <div class="nge-leaderboard-titlebar">Top Editors</div>
             <div class="nge-leaderboard-content">
@@ -97,10 +97,8 @@ function setButtonHighlighted(timespan: string | null, highlighted: boolean) {
 <style scoped>
 .nge-leaderboard-hologram {
     top: 45px;
-    bottom: 10px;
-    right: 10px;
     width: 250px;
-    height: 700px;
+    max-height: 700px;
 }
 
 .nge-leaderboard {
@@ -108,6 +106,10 @@ function setButtonHighlighted(timespan: string | null, highlighted: boolean) {
     grid-template-rows: min-content min-content auto;
     font-family: sans-serif;
     min-height: 0;
+}
+
+.minimized .nge-leaderboard {
+    display: none;
 }
 
 .nge-leaderboard-headerimage {
@@ -126,7 +128,6 @@ function setButtonHighlighted(timespan: string | null, highlighted: boolean) {
 
 .nge-leaderboard-titlebar {
     font-size: 1.15em;
-    padding-top: 0.75em;
     padding-bottom: 0.75em;
     text-align: center;
 }

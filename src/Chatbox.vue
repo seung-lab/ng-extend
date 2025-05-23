@@ -26,7 +26,8 @@ onMounted(() => {
     //(document.querySelector(".nge-chatbox-messageprompt > img")! as HTMLImageElement).src = encodeSVG(chevronImage);
     //(document.querySelector(".nge-chatbox-submit > button > img")! as HTMLImageElement).src = encodeSVG(sendImage);
 
-    scrollEl.value?.addEventListener("scroll", handleScroll);
+    console.log('scrollEl.value', scrollEl);
+    scrollEl.value?.addEventListener("mousewheel", handleScroll);
 
     console.log("mounted");
 
@@ -58,7 +59,7 @@ onMounted(() => {
 onUnmounted(() => {
     console.log('unmount!');
     // const scrollEl = document.querySelector(".nge-chatbox-scroll")!;
-    scrollEl.value?.removeEventListener("scroll", handleScroll);
+    scrollEl.value?.removeEventListener("scroll touchmove mousewheel", handleScroll);
 
     if (stopWatchingMessages) {
         stopWatchingMessages();
@@ -87,39 +88,59 @@ function getTrophy(name: string): string {
 }
 
 function scrollToBottom() {
-    console.log('scroll to bottom');
+    // console.log('scroll to bottom');
     const el = scrollEl.value;
     if (el) {
-        el.scrollTo(0, el.scrollHeight);
+        // el.scroll(0, 1);
+        // el.scrollTo(0, el.scrollHeight);
     }
 }
 
-function handleScroll() {
-    console.log('handleScroll');
+function handleScroll(evt: WheelEvent) {
+    evt.preventDefault();
+    console.log('evt', evt);
     const el = scrollEl.value;
+
+
     if (el) {
-        scrollAtBottom = Math.ceil(el.scrollTop) + el.offsetHeight >= el.scrollHeight;
+        el.scrollTop -= evt.deltaY;
+
+        // console.log('handleScroll bottom', Math.ceil(el.scrollTop) + el.offsetHeight - el.scrollHeight);
+        scrollAtBottom = Math.ceil(el.scrollTop) + el.offsetHeight >= el.scrollHeight - 50;
         if (scrollAtBottom) {
+            // console.log("we are at bottom");
             markLastMessageRead();
         }
+
+        // console.log('bottom?', scrollAtBottom);
     }
 }
 
+// const loop = () => {
+//     // console.log("loop bottom", scrollAtBottom);
+//     if (scrollAtBottom) {
+//         scrollToBottom();
+//     }
+//     requestAnimationFrame(loop);
+// }
+// requestAnimationFrame(loop);
+
+
+/*
+        @minimize="() => { scrollToBottom(); nextTick(scrollToBottom); minimizeChat = !minimizeChat; }"
+        :minimized="minimizeChat">
+*/
 </script>
 
 <template>
-    <hologram-panel class="nge-chatbox-hologram" id="chatbox-hologram">
-        <div class="hologram-controls">
-            <button class="exit" @click="$emit('hide')">×</button>
-            <button class="minimize" @click="minimizeChat = !minimizeChat">–</button>
-        </div>
-        <div class="nge-chatbox" :class="{ minimized: minimizeChat }" tabindex="1">
+    <hologram-panel class="nge-chatbox-hologram" id="chatbox-hologram"
+        @minimize="() => { minimizeChat = !minimizeChat; }" :minimized="minimizeChat">
+        <div class="nge-chatbox" tabindex="1">
             <div class="nge-chatbox-filler"></div>
             <div class="nge-chatbox-grid">
                 <div ref="scrollEl" class="nge-chatbox-scroll">
                     <div class="nge-chatbox-messages">
-                        <span class="nge-chatbox-item" v-for="(message, index) of chatMessages"
-                            :key="'message' + index">
+                        <div class="nge-chatbox-item" v-for="(message, index) of chatMessages" :key="'message' + index">
                             <div class="nge-chatbox-info" v-if="message.type === 'users'">
                                 <div class="nge-chatbox-info-content">{{ message.name }}</div>
                                 <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
@@ -153,15 +174,12 @@ function handleScroll() {
                                         :href="part.text">{{ part.text }}</a>
                                 </span>
                             </div>
-                        </span>
+                        </div>
                     </div>
                 </div>
             </div>
-            <form class="nge-chatbox-sendmessage" @submit.prevent="submitMessage" autocomplete="off">
-                <!--<div class="nge-chatbox-messageprompt"><img src="insert-svg" width="15" style="transform: rotate(90deg);" /></div>-->
-                <div class="nge-chatbox-inputbox"><input type="text" id="chatMessage" placeholder=">" /></div>
-                <!--<div class="nge-chatbox-submit"><button type="submit"><img src="insert-svg" width="15" /></button></div>-->
-            </form>
+            <div class="nge-chatbox-inputbox"><input type="text" id="chatMessage" placeholder=">"
+                    @keyup.enter="submitMessage" autocomplete="off" /></div>
             <div class="nge-chatbox-unread" v-show="unreadMessages" @click="scrollToBottom()">NEW MESSAGES</div>
         </div>
     </hologram-panel>
@@ -178,10 +196,18 @@ function handleScroll() {
 
 .nge-chatbox {
     min-height: 0;
+    /* transition: height 1s;
+    height: 250px; */
 }
 
-.nge-chatbox.minimized {
-    display: none;
+.nge-chatbox-grid {
+    display: grid;
+    height: 250px;
+    transition: height 200ms;
+}
+
+.minimized .nge-chatbox-grid {
+    height: 15px;
 }
 
 .nge-chatbox-title {
@@ -201,13 +227,13 @@ function handleScroll() {
     padding-right: 10px;
 }
 
-.nge-chatbox-grid {
-    display: grid;
-    height: 250px;
-}
-
 .nge-chatbox-scroll {
     overflow: auto;
+    transform: scaleY(-1);
+}
+
+.nge-chatbox-item {
+    transform: scaleY(-1);
 }
 
 .nge-chatbox-messages {
@@ -220,6 +246,7 @@ function handleScroll() {
     overflow-wrap: break-word;
     padding-top: 0.5em;
     padding-bottom: 0.15em;
+    /* transform: scaleY(-1); */
 }
 
 .nge-chatbox-message-text.sender {
@@ -258,27 +285,25 @@ function handleScroll() {
     align-self: end;
     z-index: 90;
     display: grid;
-    grid-template-columns: min-content auto min-content;
     padding-top: 5px;
     padding-left: 10px;
     padding-right: 10px;
     padding-bottom: 12px;
 }
 
-.nge-chatbox-messageprompt {
-    padding-top: 5px;
-}
-
-.nge-chatbox-sendmessage button {
-    padding: 5px !important;
+.nge-chatbox-inputbox {
+    padding: 0 10px;
 }
 
 .nge-chatbox-inputbox>input {
+    width: 100%;
+    box-sizing: border-box;
     color: #fff;
-    background-color: #2226;
-    width: 220px;
-    border: 1px solid #01ffffba;
+    background-color: #00000052;
     border-radius: 4px;
+    outline: none;
+    border: none;
+    padding: 5px;
 }
 
 .nge-chatbox-unread {

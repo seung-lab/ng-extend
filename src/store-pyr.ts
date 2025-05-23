@@ -50,6 +50,11 @@ export const useStatsStore = defineStore("stats", () => {
     true,
     (x) => x === "true"
   );
+  let minimizeLeaderboard = localStorageRef(
+    "minimizeLeaderboard",
+    false,
+    (x) => x === "true"
+  );
   let leaderboardLoaded: Ref<boolean> = ref(false);
   let leaderboardEntries: LeaderboardEntry[] = reactive([]);
   let leaderboardTimespan: LeaderboardTimespan = LeaderboardTimespan.Weekly;
@@ -134,6 +139,7 @@ export const useStatsStore = defineStore("stats", () => {
 
   return {
     showLeaderboard,
+    minimizeLeaderboard,
     leaderboardLoaded,
     leaderboardEntries,
     userInfo,
@@ -257,7 +263,7 @@ export const useChatStore = defineStore("chat", () => {
       }
       let addTime = true;
       if (chatMessages.length > 0) {
-        const lastMessage = chatMessages[chatMessages.length - 1];
+        const lastMessage = chatMessages[0];
         if (
           lastMessage.type.startsWith("message") &&
           isCloseTo(lastMessage.dateTime, dateTime)
@@ -274,7 +280,7 @@ export const useChatStore = defineStore("chat", () => {
           dateTime: dateTime,
           parts: undefined,
         };
-        chatMessages.push(timeInfo);
+        chatMessages.unshift(timeInfo);
       }
 
       // first part of message is sender's name
@@ -304,7 +310,7 @@ export const useChatStore = defineStore("chat", () => {
       parts: parts,
     };
 
-    chatMessages.push(messageObj);
+    chatMessages.unshift(messageObj);
   }
 
   function markLastMessageRead() {

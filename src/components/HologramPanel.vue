@@ -4,6 +4,12 @@ import { onMounted, ref } from "vue";
 let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
 let elem: HTMLElement;
 
+const bottom = true;
+
+const props = defineProps<{
+    minimized?: boolean
+}>();
+
 const root = ref(null);
 
 onMounted(() => {
@@ -15,7 +21,11 @@ onMounted(() => {
     }
     const top = localStorage.getItem(id + " top");
     if (top) {
-        elem.style.top = top;
+        if (bottom) {
+            elem.style.bottom = top;
+        } else {
+            elem.style.top = top;
+        }
     }
 });
 
@@ -32,7 +42,13 @@ function drag(e: MouseEvent) {
     pos3 = e.clientX;
     pos4 = e.clientY;
     elem.style.left = (elem.offsetLeft - pos1) + "px";
-    elem.style.top = (elem.offsetTop - pos2) + "px";
+
+    if (bottom) {
+        const rect = elem.getBoundingClientRect();
+        elem.style.bottom = (document.documentElement.clientHeight - (rect.bottom - pos2)) + "px";
+    } else {
+        elem.style.top = (elem.offsetTop - pos2) + "px";
+    }
 }
 
 function release() {
@@ -41,12 +57,21 @@ function release() {
 
     const id = (root.value! as HTMLElement).id;
     localStorage.setItem(id + " left", elem.style.left);
-    localStorage.setItem(id + " top", elem.style.top);
+    if (bottom) {
+        localStorage.setItem(id + " top", elem.style.bottom);
+
+    } else {
+        localStorage.setItem(id + " top", elem.style.top);
+    }
 }
 </script>
 
 <template>
-    <div class="pyr-hologram-panel" ref="root" @mousedown="clickHeader">
+    <div class="pyr-hologram-panel" ref="root" @mousedown="clickHeader" :class="{ minimized: props.minimized }">
+        <div class="hologram-controls">
+            <button class="exit" @click="$emit('hide')">×</button>
+            <button class="minimize" @click="$emit('minimize')">–</button>
+        </div>
         <!-- <div class="pyr-hologram-header"></div> -->
         <slot></slot>
         <!--<div class="pyr-hologram-border"></div>-->
@@ -59,19 +84,19 @@ function release() {
     background-color: #00000099;
     font-family: sans-serif;
     overflow: hidden;
-    font-size: 13px;
+    font-size: 15px;
     z-index: 50;
     display: grid;
     grid-template-rows: min-content auto;
     /*border-radius: 10px;
   box-shadow: 0 0 5px #a46fe2aa;
   backdrop-filter: blur(5px);*/
-    background: linear-gradient(90deg, #01ffff36, #01ffff14);
+    background: hsl(180deg 100% 10% / 80%);
     border-radius: 15px;
-    border: 5px solid #0000ff00;
+    border: 5px solid transparent;
     border-left: 5px solid #01ffffba;
     border-right: none;
-    backdrop-filter: blur(2px);
+    backdrop-filter: blur(6px);
 }
 
 .pyr-hologram-header {
