@@ -7,7 +7,8 @@ let elem: HTMLElement;
 const bottom = true;
 
 const props = defineProps<{
-    minimized?: boolean
+    minimized?: boolean,
+    title?: string,
 }>();
 
 const root = ref(null);
@@ -67,18 +68,162 @@ function release() {
 </script>
 
 <template>
-    <div class="pyr-hologram-panel" ref="root" @mousedown="clickHeader" :class="{ minimized: props.minimized }">
-        <div class="hologram-controls">
+    <div class="hoverBuffer" ref="root" @mousedown="clickHeader" :class="{ minimized: props.minimized }">
+        <div class="topBar">
+            <div v-if="props.title" class="title">{{ props.title }}</div>
+            <div class="controls">
+                <button class="exit" @click="$emit('hide')">×</button>
+                <button class="minimize" @click="$emit('minimize')">–</button>
+            </div>
+        </div>
+        <div class="hologram">
+            <slot></slot>
+        </div>
+    </div>
+
+    <!-- <div class="pyr-hologram-panel" ref="root" @mousedown="clickHeader" :class="{ minimized: props.minimized }"> -->
+    <!-- <div class="hologram-controls">
             <button class="exit" @click="$emit('hide')">×</button>
             <button class="minimize" @click="$emit('minimize')">–</button>
-        </div>
-        <!-- <div class="pyr-hologram-header"></div> -->
-        <slot></slot>
-        <!--<div class="pyr-hologram-border"></div>-->
-    </div>
+        </div> -->
+    <!-- <div class="pyr-hologram-header"></div> -->
+    <!-- <slot></slot> -->
+    <!--<div class="pyr-hologram-border"></div>-->
+    <!-- </div> -->
 </template>
 
 <style>
+.hoverBuffer {
+    z-index: 50;
+    position: relative;
+    display: grid;
+    padding: 5px;
+    padding-top: 25px;
+    cursor: pointer;
+}
+
+/* .hoverBuffer:active .hologram { TODO, shuffles the layout
+    border: 1px solid #00ff807b;
+} */
+
+.hologram {
+    backdrop-filter: blur(2px);
+    display: grid;
+    align-items: center;
+    max-width: 22em;
+    position: relative;
+    color: #fff;
+    background: linear-gradient(90deg, #01ffff36, #01ffff14);
+    background-clip: padding-box;
+    border-radius: 5px;
+    white-space: pre-wrap;
+    grid-row-gap: 10px;
+}
+
+.hologram:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    margin: -3px;
+    border-radius: inherit;
+    background: linear-gradient(to bottom, #00ff81, #00e0ff);
+    transition: clip-path 0.2s;
+    clip-path: polygon(0px 0px,
+            15px 0px,
+            15px 6px,
+            6px 6px,
+            6px calc(100% - 6px),
+            15px calc(100% - 6px),
+            15px 100%,
+            0px 100%);
+}
+
+.hoverBuffer:not(:hover) .hologram:before {
+    clip-path: polygon(0px 0px,
+            0px 0px,
+            0px 4px,
+            4px 4px,
+            4px calc(100% - 4px),
+            0px calc(100% - 4px),
+            0px 100%,
+            0px 100%);
+}
+
+.hoverBuffer:not(:hover) div.title,
+.hoverBuffer:not(:hover) div.controls {
+    opacity: 0;
+}
+
+.topBar {
+    position: relative;
+    top: 0;
+    left: 0;
+    display: flex;
+    translate: 0% -50%;
+    margin-top: -15px;
+    text-transform: uppercase;
+    color: hsl(150 100% 70% / 1);
+    font-weight: bolder;
+    font-size: 15px;
+    transition: opacity 0.2s;
+}
+
+.controls {
+    display: flex;
+    flex-direction: row-reverse;
+    flex-grow: 1;
+    /* opacity: 0.75;
+    transition: opacity 0.2s; */
+    /* z-index: 1; */
+    /* margin: 0 5px 0 0; */
+    /* opacity: 0.25; */
+}
+
+/* .controls:hover {
+    opacity: 1;
+} */
+
+.controls button {
+    border: none;
+    padding: 0;
+    /* opacity: 0.6; */
+    transition: opacity 0.2s;
+    /* font-size: 22px; */
+    line-height: 22px;
+    font-weight: 300;
+    width: 22px;
+}
+
+.controls button:hover {
+    background-color: initial;
+    opacity: 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .pyr-hologram-panel {
     position: absolute;
     background-color: #00000099;

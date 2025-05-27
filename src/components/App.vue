@@ -6,13 +6,16 @@ import { useChatStore, useStatsStore } from "#src/store-pyr.js";
 import { storeToRefs } from "pinia";
 const { showLeaderboard } = storeToRefs(useStatsStore());
 const { showChat } = storeToRefs(useChatStore());
+
+showLeaderboard;
+Leaderboard;
 </script>
 
 <template>
   <div id="vueMain">
     <div class="ng-extend">
       <ExtensionBar />
-      <Leaderboard v-if="showLeaderboard" @hide="showLeaderboard = false"></Leaderboard>
+      <!-- <Leaderboard v-if="showLeaderboard" @hide="showLeaderboard = false"></Leaderboard> -->
     </div>
     <div id="content">
       <div id="neuroglancer-container"></div>

@@ -98,7 +98,7 @@ function scrollToBottom() {
 
 function handleScroll(evt: WheelEvent) {
     evt.preventDefault();
-    console.log('evt', evt);
+    // console.log('evt', evt);
     const el = scrollEl.value;
 
 
@@ -134,46 +134,43 @@ function handleScroll(evt: WheelEvent) {
 
 <template>
     <hologram-panel class="nge-chatbox-hologram" id="chatbox-hologram"
-        @minimize="() => { minimizeChat = !minimizeChat; }" :minimized="minimizeChat">
+        @minimize="() => { minimizeChat = !minimizeChat; }" :minimized="minimizeChat" title="Chat">
         <div class="nge-chatbox" tabindex="1">
-            <div class="nge-chatbox-filler"></div>
-            <div class="nge-chatbox-grid">
-                <div ref="scrollEl" class="nge-chatbox-scroll">
-                    <div class="nge-chatbox-messages">
-                        <div class="nge-chatbox-item" v-for="(message, index) of chatMessages" :key="'message' + index">
-                            <div class="nge-chatbox-info" v-if="message.type === 'users'">
-                                <div class="nge-chatbox-info-content">{{ message.name }}</div>
-                                <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
-                            </div>
+            <div ref="scrollEl" class="nge-chatbox-scroll">
+                <div class="nge-chatbox-messages">
+                    <div class="nge-chatbox-item" v-for="(message, index) of chatMessages" :key="'message' + index">
+                        <div class="nge-chatbox-info" v-if="message.type === 'users'">
+                            <div class="nge-chatbox-info-content">{{ message.name }}</div>
+                            <div class="nge-chatbox-info-content">Type !help to see available commands.</div>
+                        </div>
 
-                            <div class="nge-chatbox-info" v-if="message.type === 'join'">
-                                <div class="nge-chatbox-info-content">{{ message.name }} joined chat.</div>
-                            </div>
+                        <div class="nge-chatbox-info" v-if="message.type === 'join'">
+                            <div class="nge-chatbox-info-content">{{ message.name }} joined chat.</div>
+                        </div>
 
-                            <div class="nge-chatbox-info" v-if="message.type === 'leave'">
-                                <div class="nge-chatbox-info-content">{{ message.name }} left chat.</div>
-                            </div>
+                        <div class="nge-chatbox-info" v-if="message.type === 'leave'">
+                            <div class="nge-chatbox-info-content">{{ message.name }} left chat.</div>
+                        </div>
 
-                            <div class="nge-chatbox-info" v-if="message.type === 'disconnected'">
-                                <div class="nge-chatbox-info-content">Your message was not sent because you were
-                                    disconnected from chat. Try reloading the page.</div>
-                            </div>
+                        <div class="nge-chatbox-info" v-if="message.type === 'disconnected'">
+                            <div class="nge-chatbox-info-content">Your message was not sent because you were
+                                disconnected from chat. Try reloading the page.</div>
+                        </div>
 
-                            <div class="nge-chatbox-time" v-if="message.type === 'time'">{{ message.time }}</div>
+                        <div class="nge-chatbox-time" v-if="message.type === 'time'">{{ message.time }}</div>
 
-                            <div class="nge-chatbox-message" v-if="message.type === 'message'" :title="message.time">
-                                <span v-for="(part, partIndex) of message.parts"
-                                    :key="'messagepart' + index + '-' + partIndex">
-                                    <span v-if="part.type === 'sender'"
-                                        :class="'nge-chatbox-message-text sender ' + message.rank">{{ part.text }}{{
-                                            getTrophy(message.name) }}:
-                                    </span>
-                                    <span v-if="part.type === 'text'" class="nge-chatbox-message-text">{{ part.text
-                                    }}</span>
-                                    <a v-if="part.type === 'link'" class="nge-chatbox-message-text" target="_blank"
-                                        :href="part.text">{{ part.text }}</a>
+                        <div class="nge-chatbox-message" v-if="message.type === 'message'" :title="message.time">
+                            <span v-for="(part, partIndex) of message.parts"
+                                :key="'messagepart' + index + '-' + partIndex">
+                                <span v-if="part.type === 'sender'"
+                                    :class="'nge-chatbox-message-text sender ' + message.rank">{{ part.text }}{{
+                                        getTrophy(message.name) }}:
                                 </span>
-                            </div>
+                                <span v-if="part.type === 'text'" class="nge-chatbox-message-text">{{ part.text
+                                }}</span>
+                                <a v-if="part.type === 'link'" class="nge-chatbox-message-text" target="_blank"
+                                    :href="part.text">{{ part.text }}</a>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -195,18 +192,19 @@ function handleScroll(evt: WheelEvent) {
 } */
 
 .nge-chatbox {
-    min-height: 0;
+    /* min-height: 0; */
     /* transition: height 1s;
     height: 250px; */
-}
 
-.nge-chatbox-grid {
     display: grid;
     height: 250px;
     transition: height 200ms;
+
+    grid-template-rows: auto min-content;
+    padding: 10px;
 }
 
-.minimized .nge-chatbox-grid {
+.minimized .nge-chatbox {
     height: 15px;
 }
 
@@ -238,8 +236,6 @@ function handleScroll(evt: WheelEvent) {
 
 .nge-chatbox-messages {
     font-size: 0.75em;
-    padding-left: 15px;
-    padding-right: 15px;
 }
 
 .nge-chatbox-message {
@@ -289,10 +285,6 @@ function handleScroll(evt: WheelEvent) {
     padding-left: 10px;
     padding-right: 10px;
     padding-bottom: 12px;
-}
-
-.nge-chatbox-inputbox {
-    padding: 0 10px;
 }
 
 .nge-chatbox-inputbox>input {
