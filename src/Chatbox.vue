@@ -10,7 +10,7 @@ import HologramPanel from "#src/components/HologramPanel.vue";
 const scrollEl = useTemplateRef<HTMLElement>('scrollEl');
 
 const store = useChatStore();
-const { chatMessages, unreadMessages, minimizeChat } = storeToRefs(store);
+const { chatMessages, unreadMessages, minimizeChat, locked } = storeToRefs(store);
 const { sendMessage, markLastMessageRead } = store;
 const { leaderboardEntries } = storeToRefs(useStatsStore());
 
@@ -133,8 +133,8 @@ function handleScroll(evt: WheelEvent) {
 </script>
 
 <template>
-    <hologram-panel class="nge-chatbox-hologram" id="chatbox-hologram"
-        @minimize="() => { minimizeChat = !minimizeChat; }" :minimized="minimizeChat" title="Chat">
+    <hologram-panel class="nge-chatbox-hologram" id="chatbox-hologram" @minimize="minimizeChat = !minimizeChat"
+        :minimized="minimizeChat" @lock="locked = !locked" :locked="locked" title="Chat">
         <div class="nge-chatbox" tabindex="1">
             <div ref="scrollEl" class="nge-chatbox-scroll">
                 <div class="nge-chatbox-messages">
@@ -167,7 +167,7 @@ function handleScroll(evt: WheelEvent) {
                                         getTrophy(message.name) }}:
                                 </span>
                                 <span v-if="part.type === 'text'" class="nge-chatbox-message-text">{{ part.text
-                                }}</span>
+                                    }}</span>
                                 <a v-if="part.type === 'link'" class="nge-chatbox-message-text" target="_blank"
                                     :href="part.text">{{ part.text }}</a>
                             </span>

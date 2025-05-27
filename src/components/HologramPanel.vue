@@ -9,6 +9,7 @@ const bottom = true;
 const props = defineProps<{
     minimized?: boolean,
     title?: string,
+    locked?: boolean,
 }>();
 
 const root = ref(null);
@@ -38,6 +39,8 @@ function clickHeader(event: MouseEvent) {
 }
 
 function drag(e: MouseEvent) {
+    if (props.locked) return;
+
     pos1 = pos3 - e.clientX;
     pos2 = pos4 - e.clientY;
     pos3 = e.clientX;
@@ -68,12 +71,17 @@ function release() {
 </script>
 
 <template>
-    <div class="hoverBuffer" ref="root" @mousedown="clickHeader" :class="{ minimized: props.minimized }">
+    <div class="hoverBuffer" ref="root" @mousedown="clickHeader"
+        :class="{ minimized: props.minimized, locked: props.locked === true }">
         <div class="topBar">
             <div v-if="props.title" class="title">{{ props.title }}</div>
             <div class="controls">
                 <button class="exit" @click="$emit('hide')">×</button>
                 <button class="minimize" @click="$emit('minimize')">–</button>
+                <button v-if="props.locked !== undefined" class="lock" @click="$emit('lock')">
+                    <template v-if="props.locked">🔒</template>
+                    <template v-else>🔓</template>
+                </button>
             </div>
         </div>
         <div class="hologram">
@@ -95,10 +103,9 @@ function release() {
 <style>
 .hoverBuffer {
     z-index: 50;
-    position: relative;
+    position: absolute;
     display: grid;
     padding: 5px;
-    padding-top: 25px;
     cursor: pointer;
 }
 
@@ -113,7 +120,7 @@ function release() {
     max-width: 22em;
     position: relative;
     color: #fff;
-    background: linear-gradient(90deg, #01ffff36, #01ffff14);
+    background: hsl(180deg 100% 10% / 80%);
     background-clip: padding-box;
     border-radius: 5px;
     white-space: pre-wrap;
@@ -141,7 +148,8 @@ function release() {
             0px 100%);
 }
 
-.hoverBuffer:not(:hover) .hologram:before {
+.hoverBuffer:not(:hover) .hologram:before,
+.hoverBuffer.locked .hologram:before {
     clip-path: polygon(0px 0px,
             0px 0px,
             0px 4px,
@@ -152,20 +160,19 @@ function release() {
             0px 100%);
 }
 
-.hoverBuffer:not(:hover) div.title,
-.hoverBuffer:not(:hover) div.controls {
+.hoverBuffer:not(:active) .topBar:not(:hover) {
     opacity: 0;
 }
 
+.topBar .title,
+.topBar .controls button {
+    backdrop-filter: brightness(0.5);
+}
+
 .topBar {
-    position: relative;
-    top: 0;
-    left: 0;
     display: flex;
-    translate: 0% -50%;
-    margin-top: -15px;
     text-transform: uppercase;
-    color: hsl(150 100% 70% / 1);
+    color: var(--hologram-green);
     font-weight: bolder;
     font-size: 15px;
     transition: opacity 0.2s;
@@ -175,6 +182,8 @@ function release() {
     display: flex;
     flex-direction: row-reverse;
     flex-grow: 1;
+    user-select: none;
+    ;
     /* opacity: 0.75;
     transition: opacity 0.2s; */
     /* z-index: 1; */
@@ -275,8 +284,9 @@ function release() {
     width: 22px;
 }
 
-.pyr-hologram-panel .hologram-controls button:hover {
-    background-color: initial;
+.hoverBuffer .controls button:hover {
+    background-color: var(--hologram-green);
+    color: black;
     opacity: 1;
 }
 

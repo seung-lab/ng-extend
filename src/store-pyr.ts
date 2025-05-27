@@ -179,6 +179,7 @@ export const useChatStore = defineStore("chat", () => {
     false,
     (x) => x === "true"
   );
+  let locked = localStorageRef("lockedChat", false, (x) => x === "true");
   let joinedChat: boolean = false;
   let chatMessages: ChatMessage[] = reactive([]);
 
@@ -332,6 +333,7 @@ export const useChatStore = defineStore("chat", () => {
     joinChat,
     showChat,
     minimizeChat,
+    locked,
   };
 });
 
