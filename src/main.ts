@@ -2,6 +2,7 @@ import {createApp} from 'vue';
 import {createPinia} from 'pinia';
 
 import 'neuroglancer/ui/default_viewer.css';
+import './widgets/lightbulb_menu.css';
 
 import App from 'components/App.vue';
 import {useLayersStore} from 'src/store';

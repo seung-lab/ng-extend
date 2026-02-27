@@ -1,0 +1,173 @@
+/* ─── Lightbulb / Segment Button ──────────────────────────────────────────── */
+
+/** The three-dot button injected per segment row */
+.nge-lb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  transition: opacity 0.15s, background-color 0.15s;
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+.nge-lb-btn:hover {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Status colours for the button icon */
+.nge-lb-btn.nge-lb-complete svg path {
+  fill: #4caf50; /* green */
+}
+
+.nge-lb-btn.nge-lb-incomplete svg path {
+  fill: #9e9e9e; /* grey */
+}
+
+.nge-lb-btn.nge-lb-error svg path {
+  fill: #f44336; /* red */
+}
+
+/* Pulsing animation while fetching status */
+@keyframes nge-lb-pulse {
+  0%   { opacity: 0.3; }
+  50%  { opacity: 0.9; }
+  100% { opacity: 0.3; }
+}
+
+.nge-lb-btn.nge-lb-loading svg path {
+  fill: #bdbdbd;
+  animation: nge-lb-pulse 1.2s ease-in-out infinite;
+}
+
+/* ─── Context Menu ─────────────────────────────────────────────────────────── */
+
+.nge_lbmenu {
+  min-width: 240px;
+  padding: 6px 0;
+  background: #2a2a2a;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  color: #e0e0e0;
+  font-size: 13px;
+}
+
+.nge-lb-section {
+  padding: 8px 14px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.nge-lb-section:last-child {
+  border-bottom: none;
+}
+
+.nge-lb-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a8a8a;
+  margin-bottom: 6px;
+}
+
+.nge-lb-status-line {
+  font-size: 13px;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+/* ─── Buttons inside menu ──────────────────────────────────────────────────── */
+
+.nge-lb-section-button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background-color 0.1s;
+}
+
+.nge-lb-section-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.nge-lb-section-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mark Complete button — accent green */
+.nge-lb-toggle-btn {
+  border-color: rgba(76, 175, 80, 0.4);
+  color: #81c784;
+}
+
+.nge-lb-toggle-btn:hover {
+  background-color: rgba(76, 175, 80, 0.2);
+}
+
+/* Save Cell Type button — accent blue */
+.nge-lb-save-btn {
+  border-color: rgba(33, 150, 243, 0.4);
+  color: #64b5f6;
+}
+
+.nge-lb-save-btn:hover {
+  background-color: rgba(33, 150, 243, 0.2);
+}
+
+/* ─── Cell Type inputs ─────────────────────────────────────────────────────── */
+
+.nge-lb-select,
+.nge-lb-text-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 12px;
+  padding: 5px 8px;
+  margin-bottom: 6px;
+  outline: none;
+  /* Allow the select to shrink on narrow menus */
+  max-width: 212px;
+}
+
+.nge-lb-select:focus,
+.nge-lb-text-input:focus {
+  border-color: rgba(33, 150, 243, 0.6);
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.15);
+}
+
+.nge-lb-text-input::placeholder {
+  color: #666;
+}
+
+/* ─── Links in menu ────────────────────────────────────────────────────────── */
+
+.nge-lb-section a {
+  display: flex;
+  flex-direction: row;
+  white-space: nowrap;
+  color: #64b5f6;
+  text-decoration: none;
+  font-size: 12px;
+  padding: 4px 0;
+  transition: color 0.1s;
+}
+
+.nge-lb-section a:hover {
+  color: #90caf9;
+  text-decoration: underline;
+}

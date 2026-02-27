@@ -2,6 +2,7 @@
 import {computed, onMounted, ref} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
+import UserProfilePanel from "components/UserProfilePanel.vue";
 
 import {loginSession, useLoginStore, useVolumesStore} from '../store';
 
@@ -23,6 +24,7 @@ onMounted(() => {
 });
 
 const showModal = ref(false);
+const showProfile = ref(false);
 
 function logout(session: loginSession) {
   login.logout(session);
@@ -32,6 +34,7 @@ function logout(session: loginSession) {
 
 <template>
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
+  <user-profile-panel v-if="showProfile" @hide="showProfile = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://h01-release.storage.googleapis.com/explore.html" target="_blank">
@@ -40,6 +43,7 @@ function logout(session: loginSession) {
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
+    <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn">My Profile</button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
           <template #buttonTitle>Logins ({{ login.sessions.length }})</template>

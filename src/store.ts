@@ -189,6 +189,45 @@ export const useLayersStore = defineStore('layers', () => {
   return {initializeWithViewer, activeLayers, selectLayers};
 });
 
+// ─── User Stats Store ────────────────────────────────────────────────────────
+// Populated by the external user-profile repo via setStats().
+// Call `useUserStatsStore().setStats({...})` from the profile integration to
+// wire in live edit counts and cells-submitted totals.
+
+export interface UserStats {
+  editsToday: number;
+  mergesToday: number;
+  splitsToday: number;
+  editsThisWeek: number;
+  mergesThisWeek: number;
+  splitsThisWeek: number;
+  editsAllTime: number;
+  mergesAllTime: number;
+  splitsAllTime: number;
+  cellsSubmitted: number;
+}
+
+export const useUserStatsStore = defineStore('userStats', () => {
+  const stats: Ref<UserStats> = ref({
+    editsToday: 0,
+    mergesToday: 0,
+    splitsToday: 0,
+    editsThisWeek: 0,
+    mergesThisWeek: 0,
+    splitsThisWeek: 0,
+    editsAllTime: 0,
+    mergesAllTime: 0,
+    splitsAllTime: 0,
+    cellsSubmitted: 0,
+  });
+
+  function setStats(partial: Partial<UserStats>) {
+    Object.assign(stats.value, partial);
+  }
+
+  return {stats, setStats};
+});
+
 export const useVolumesStore = defineStore('volumes', () => {
   const volumes: Ref<Volume[]> = ref([]);
 
