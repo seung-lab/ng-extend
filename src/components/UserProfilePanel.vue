@@ -176,8 +176,10 @@ const emit = defineEmits({hide: null});
 }
 
 .nge-profile-split {
-  font-size: 0.8em;
+  display: block;
+  font-size: 0.75em;
   color: #9e9e9e;
+  white-space: nowrap;
 }
 
 /* ── Badges ────────────────────────────────────── */
