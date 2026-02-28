@@ -43,6 +43,17 @@ function logout(session: loginSession) {
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
+    <div class="nge-status-legend">
+      <div class="nge-legend-item">
+        <span class="nge-legend-pip nge-legend-pip--complete"></span> Complete+labeled
+      </div>
+      <div class="nge-legend-item">
+        <span class="nge-legend-pip nge-legend-pip--unlabeled"></span> Complete, no label
+      </div>
+      <div class="nge-legend-item">
+        <span class="nge-legend-pip nge-legend-pip--incomplete"></span> Incomplete
+      </div>
+    </div>
     <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn">My Profile</button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">

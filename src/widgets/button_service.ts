@@ -10,34 +10,15 @@ export class ButtonService {
       localServerURL: string, segmentIDString: string,
       dataset: string): HTMLButtonElement {
     const button = document.createElement('button');
-    button.className = 'nge-segment-button nge-lb-btn menu nge-lb-loading';
+    button.className = 'nge-segment-button nge-lb-btn nge-lb-incomplete menu';
     button.title = `Cell ${segmentIDString}`;
     button.style.cssText =
-        'background:transparent;border:none;box-shadow:none;cursor:pointer;padding:0 2px;';
+        'background:transparent;border:none;box-shadow:none;cursor:pointer;padding:0 2px;display:flex;align-items:center;justify-content:center;';
 
-    // Three-dot SVG icon
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    icon.setAttribute('width', '20');
-    icon.setAttribute('height', '20');
-    icon.setAttribute('viewBox', '0 0 20 20');
+    // Dots icon (visible on hover) + status pip
+    button.innerHTML = '<span class="nge-lb-dots">⋯</span><span class="nge-lb-pip"></span>';
 
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute(
-        'd',
-        'M3.936,7.979c-1.116,0-2.021,0.905-2.021,2.021s0.905,2.021,2.021,2.021S5.957,' +
-            '11.116,5.957,10S5.052,7.979,3.936,7.979z M3.936,11.011c-0.558,0-1.011-0.452-1.011' +
-            '-1.011s0.453-1.011,1.011-1.011S4.946,9.441,4.946,10S4.494,11.011,3.936,11.011z ' +
-            'M16.064,7.979c-1.116,0-2.021,0.905-2.021,2.021s0.905,2.021,2.021,2.021s2.021-0.905,' +
-            '2.021-2.021S17.181,7.979,16.064,7.979z M16.064,11.011c-0.559,0-1.011-0.452-1.011' +
-            '-1.011s0.452-1.011,1.011-1.011S17.075,9.441,17.075,10S16.623,11.011,16.064,11.011z ' +
-            'M10,7.979c-1.116,0-2.021,0.905-2.021,2.021S8.884,12.021,10,12.021s2.021-0.905,' +
-            '2.021-2.021S11.116,7.979,10,7.979z M10,11.011c-0.558,0-1.011-0.452-1.011-1.011' +
-            'S9.442,8.989,10,8.989S11.011,9.441,11.011,10S10.558,11.011,10,11.011z');
-    path.setAttribute('fill', 'currentColor');
-    icon.appendChild(path);
-    button.appendChild(icon);
-
-    // Async: fetch CAVE status and tint the button dot accordingly
+    // Async: fetch CAVE status and update the pip accordingly
     this._refreshButtonStatus(button, localServerURL, segmentIDString);
 
     button.addEventListener('click', (event: MouseEvent) => {
@@ -48,28 +29,27 @@ export class ButtonService {
     return button;
   }
 
-  /** Fetches the current cell status and updates the button's CSS class. */
+  /** Fetches the current cell status and updates the button's pip CSS class. */
   private async _refreshButtonStatus(
       button: HTMLButtonElement, localServerURL: string,
       segmentIDString: string): Promise<void> {
-    button.classList.remove(
-        'nge-lb-loading', 'nge-lb-complete', 'nge-lb-incomplete', 'nge-lb-error');
-    button.classList.add('nge-lb-loading');
     try {
       const status = await getCellStatus(localServerURL, segmentIDString);
-      button.classList.remove('nge-lb-loading');
+      button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete');
       if (status === null) {
-        button.classList.add('nge-lb-error');
-      } else if (status.isComplete) {
+        button.classList.add('nge-lb-incomplete');
+      } else if (status.complete && status.cellType) {
         button.classList.add('nge-lb-complete');
+      } else if (status.complete && !status.cellType) {
+        button.classList.add('nge-lb-done-unlabeled');
       } else {
         button.classList.add('nge-lb-incomplete');
       }
       // Stash status on the element so the menu can read it without re-fetching
       (button as any)._cellStatus = status;
     } catch {
-      button.classList.remove('nge-lb-loading');
-      button.classList.add('nge-lb-error');
+      button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete');
+      button.classList.add('nge-lb-incomplete');
     }
   }
 

@@ -4,18 +4,13 @@ import ModalOverlay from 'components/ModalOverlay.vue';
 
 import {useLoginStore, useUserStatsStore} from '../store';
 import {BADGE_DEFINITIONS} from '../widgets/badge_definitions';
+import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 
 const {sessions} = storeToRefs(useLoginStore());
 const {stats} = storeToRefs(useUserStatsStore());
 
-// Load all badge images via Vite's glob import (eager = bundled at build time)
-// Each entry: { default: resolvedUrl }
-const badgeImages = import.meta.glob<{default: string}>(
-    '../assets/badges/*.png', {eager: true});
-
 function getBadgeUrl(imageKey: string): string {
-  const entry = badgeImages[`../assets/badges/${imageKey}.png`];
-  return entry?.default ?? '';
+  return BADGE_IMAGE_MAP[imageKey] ?? '';
 }
 
 function isBadgeEarned(editThreshold: number): boolean {
@@ -27,7 +22,8 @@ const emit = defineEmits({hide: null});
 </script>
 
 <template>
-  <modal-overlay class="nge-profile-modal" @hide="emit('hide')">
+  <!-- id ensures old instances are replaced; v-if on parent handles lifecycle in production -->
+  <modal-overlay id="nge-profile-modal" class="nge-profile-modal" @hide="emit('hide')">
     <button class="nge-profile-exit" @click="emit('hide')">×</button>
 
     <div class="nge-profile-content">

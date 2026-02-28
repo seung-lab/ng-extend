@@ -171,3 +171,72 @@
   color: #90caf9;
   text-decoration: underline;
 }
+
+/* ── Status pip on segment buttons ── */
+.nge-lb-btn {
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 5px;
+  height: 26px;
+  opacity: 1 !important;
+}
+
+.nge-lb-btn .nge-lb-dots {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.neuroglancer-segment-list-entry:hover .nge-lb-btn .nge-lb-dots,
+.nge-lb-btn:focus .nge-lb-dots {
+  opacity: 1;
+}
+
+.nge-lb-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: block;
+  flex-shrink: 0;
+  margin: 0 auto;
+}
+
+/* Cell status states */
+.nge-lb-btn.nge-lb-incomplete .nge-lb-pip {
+  background: #666;
+}
+.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-pip {
+  background: #F0A030;
+  box-shadow: 0 0 4px #F0A03088;
+}
+.nge-lb-btn.nge-lb-complete .nge-lb-pip {
+  background: #4CAF50;
+  box-shadow: 0 0 5px #4CAF5088;
+}
+
+/* Tint the dots text to match status */
+.nge-lb-btn.nge-lb-complete .nge-lb-dots     { color: #4CAF50; }
+.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #F0A030; }
+.nge-lb-btn.nge-lb-incomplete .nge-lb-dots   { color: #999; }
+
+/* ── Status legend in extension bar ── */
+.nge-status-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  color: #999;
+  padding: 0 10px;
+}
+.nge-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.nge-legend-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.nge-legend-pip--complete     { background: #4CAF50; box-shadow: 0 0 4px #4CAF5088; }
+.nge-legend-pip--unlabeled    { background: #F0A030; box-shadow: 0 0 3px #F0A03088; }
+.nge-legend-pip--incomplete   { background: #666; }
