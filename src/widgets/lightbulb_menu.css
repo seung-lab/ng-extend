@@ -138,10 +138,23 @@
   color: #e0e0e0;
   font-size: 12px;
   padding: 5px 8px;
+  padding-left: 8px; /* override browser-default select indent */
   margin-bottom: 6px;
   outline: none;
   /* Allow the select to shrink on narrow menus */
   max-width: 212px;
+}
+
+.nge-lb-select {
+  /* Remove native OS chrome so padding matches the text input exactly */
+  -webkit-appearance: none;
+  appearance: none;
+  /* Custom dropdown arrow */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+  cursor: pointer;
 }
 
 .nge-lb-select:focus,

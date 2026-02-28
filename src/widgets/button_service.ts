@@ -183,7 +183,7 @@ export class ButtonService {
         if (cachedStatus) cachedStatus.isComplete = willBeComplete;
         this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
       } else {
-        toggleBtn.textContent = 'Error — try again';
+        toggleBtn.textContent = !localServerURL ? 'No CAVE server configured' : 'Error — try again';
       }
       toggleBtn.disabled = false;
     });
@@ -244,7 +244,8 @@ export class ButtonService {
       saveTypeBtn.textContent = 'Saving…';
       const ok = await saveCellType(
           localServerURL, segmentIDString, cellType, cachedStatus?.cellTypeAnnotationId);
-      saveTypeBtn.textContent = ok ? 'Saved ✓' : 'Error — retry';
+      saveTypeBtn.textContent = ok ? 'Saved ✓' :
+          (!localServerURL ? 'No CAVE server configured' : 'Error — retry');
       saveTypeBtn.disabled = false;
       if (ok && cachedStatus) cachedStatus.cellType = cellType;
     });
