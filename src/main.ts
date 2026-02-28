@@ -282,8 +282,25 @@ function observeSegmentSelect(targetNode: Element) {
         });
 */
     mutationsList.forEach(mutation => {
-      mutation.addedNodes.forEach(updateSegmentSelectItem);
-      mutation.addedNodes.forEach(updateSelectionDetailsBody)
+      mutation.addedNodes.forEach(node => {
+        updateSegmentSelectItem(node as HTMLElement);
+        // Also process any segment entries nested inside a newly-added container
+        // (the whole panel can be added at once, so the entry itself may not be
+        //  a direct addedNode).
+        if ((node as Element).querySelectorAll) {
+          (node as Element)
+              .querySelectorAll('.neuroglancer-segment-list-entry')
+              .forEach(el => updateSegmentSelectItem(el as HTMLElement));
+        }
+      });
+      mutation.addedNodes.forEach(node => {
+        updateSelectionDetailsBody(node as HTMLElement);
+        if ((node as Element).querySelectorAll) {
+          (node as Element)
+              .querySelectorAll('.neuroglancer-annotation-list-entry')
+              .forEach(el => updateSelectionDetailsBody(el as HTMLElement));
+        }
+      });
     });
   };
 
