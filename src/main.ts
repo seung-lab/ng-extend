@@ -215,6 +215,9 @@ function observeSegmentSelect(targetNode: Element) {
             button.classList.add('error')
             item.appendChild(button);
             (<HTMLButtonElement>button).title = 'Click for opening context menu';
+            // Inject a placeholder badge immediately; it will be updated once the
+            // async CAVE status fetch completes inside _refreshButtonStatus.
+            buttonService.updateLabelBadge(item as HTMLElement, null);
           }
         }
       })

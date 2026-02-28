@@ -217,6 +217,35 @@
 .nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #F0A030; }
 .nge-lb-btn.nge-lb-incomplete .nge-lb-dots   { color: #999; }
 
+/* ── Label badge in the neuroglancer name/label column ── */
+.nge-label-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-right: 5px;
+  white-space: nowrap;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.nge-label-badge--complete {
+  color: #4CAF50;
+  background: rgba(76, 175, 80, 0.15);
+}
+
+.nge-label-badge--unlabeled {
+  color: #F0A030;
+  background: rgba(240, 160, 48, 0.12);
+}
+
+.nge-label-badge--incomplete {
+  color: #777;
+  /* no background — keep it subtle */
+}
+
 /* ── Status legend in extension bar ── */
 .nge-status-legend {
   display: flex;

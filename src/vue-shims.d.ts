@@ -4,3 +4,14 @@ declare module '*.vue' {
     const component: DefineComponent<any, {}, any>
     export default component
 }
+
+/** Allow importing PNG (and other image) files as data-URL strings via esbuild. */
+declare module '*.png' {
+  const value: string;
+  export default value;
+}
+
+declare module '*.jpg' {
+  const value: string;
+  export default value;
+}

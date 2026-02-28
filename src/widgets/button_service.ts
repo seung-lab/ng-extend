@@ -3,7 +3,7 @@ import {RETINAL_CELL_TYPES} from '../config';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
 
 const br = () => document.createElement('br');
-type InteracblesArray = (string|((e: MouseEvent) => void))[][];
+type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
 
 export class ButtonService {
   createButton(
@@ -38,18 +38,55 @@ export class ButtonService {
       button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete');
       if (status === null) {
         button.classList.add('nge-lb-incomplete');
-      } else if (status.complete && status.cellType) {
+      } else if (status.isComplete && status.cellType) {
         button.classList.add('nge-lb-complete');
-      } else if (status.complete && !status.cellType) {
+      } else if (status.isComplete && !status.cellType) {
         button.classList.add('nge-lb-done-unlabeled');
       } else {
         button.classList.add('nge-lb-incomplete');
       }
       // Stash status on the element so the menu can read it without re-fetching
       (button as any)._cellStatus = status;
+      // Sync the label-column badge
+      const row = button.closest('.neuroglancer-segment-list-entry') as HTMLElement | null;
+      if (row) this.updateLabelBadge(row, status);
     } catch {
       button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete');
       button.classList.add('nge-lb-incomplete');
+    }
+  }
+
+  /**
+   * Injects or updates the coloured label badge in the neuroglancer
+   * segment-name cell for the given segment row.
+   *
+   * Call immediately after appending the button to the DOM (with status=null
+   * to show a loading placeholder), and again once the status fetch resolves.
+   */
+  updateLabelBadge(row: HTMLElement, status: CellStatus|null): void {
+    const nameSpan =
+        row.querySelector('.neuroglancer-segment-list-entry-name') as HTMLElement|null;
+    if (!nameSpan) return;
+
+    let badge = nameSpan.querySelector('.nge-label-badge') as HTMLElement|null;
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'nge-label-badge';
+      nameSpan.prepend(badge);
+    }
+
+    if (!status || !status.isComplete) {
+      badge.className = 'nge-label-badge nge-label-badge--incomplete';
+      badge.textContent = '—';
+      badge.title = status === null ? 'Fetching status…' : 'Incomplete';
+    } else if (status.isComplete && status.cellType) {
+      badge.className = 'nge-label-badge nge-label-badge--complete';
+      badge.textContent = `✓ ${status.cellType}`;
+      badge.title = `Complete: ${status.cellType}`;
+    } else {
+      badge.className = 'nge-label-badge nge-label-badge--unlabeled';
+      badge.textContent = '⚠ No type';
+      badge.title = 'Complete but no cell type set';
     }
   }
 
