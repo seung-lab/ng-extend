@@ -247,6 +247,35 @@ export const useUserStatsStore = defineStore('userStats', () => {
   return {stats, setStats};
 });
 
+// ─── User Preferences Store ───────────────────────────────────────────────────
+// Persists flag emoji + bio to localStorage so they survive page reloads.
+
+const PREFS_KEY = 'nge_prefs_v1';
+
+export interface UserPreferences {
+  flag: string;   // flag emoji e.g. "🇺🇸"
+  bio: string;    // free-text, capped at 280 chars in the UI
+}
+
+export const useUserPreferencesStore = defineStore('userPrefs', () => {
+  const prefs: Ref<UserPreferences> = ref({ flag: '', bio: '' });
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(PREFS_KEY);
+      if (raw) Object.assign(prefs.value, JSON.parse(raw));
+    } catch { /* ignore parse errors */ }
+  }
+
+  function save(partial: Partial<UserPreferences>) {
+    Object.assign(prefs.value, partial);
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+  }
+
+  load(); // hydrate from localStorage on store init
+  return { prefs, save };
+});
+
 export const useVolumesStore = defineStore('volumes', () => {
   const volumes: Ref<Volume[]> = ref([]);
 

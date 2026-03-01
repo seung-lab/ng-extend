@@ -4,6 +4,8 @@ import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
 import UserProfilePanel from "components/UserProfilePanel.vue";
 import WeeklyRecapPanel from "components/WeeklyRecapPanel.vue";
+import LeaderboardPanel from "components/LeaderboardPanel.vue";
+import SettingsPanel from "components/SettingsPanel.vue";
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore} from '../store';
 import {storeToRefs} from 'pinia';
@@ -30,6 +32,8 @@ const { stats } = storeToRefs(useUserStatsStore());
 const showModal = ref(false);
 const showProfile = ref(false);
 const showRecap = ref(false);
+const showLeaderboard = ref(false);
+const showSettings = ref(false);
 
 function logout(session: loginSession) {
   login.logout(session);
@@ -41,6 +45,8 @@ function logout(session: loginSession) {
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <user-profile-panel v-if="showProfile" @hide="showProfile = false" />
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
+  <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
+  <settings-panel v-if="showSettings" @hide="showSettings = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://h01-release.storage.googleapis.com/explore.html" target="_blank">
@@ -67,6 +73,12 @@ function logout(session: loginSession) {
     <button v-if="login.sessions.length > 0"
             class="nge-recap-btn" title="Your Week in Science"
             @click="showRecap = true">📊</button>
+    <button v-if="login.sessions.length > 0"
+            class="nge-lb-btn" title="Leaderboard"
+            @click="showLeaderboard = true">🏆</button>
+    <button v-if="login.sessions.length > 0"
+            class="nge-settings-btn" title="Profile Settings"
+            @click="showSettings = true">⚙️</button>
     <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn">My Profile</button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
@@ -201,6 +213,22 @@ function logout(session: loginSession) {
 }
 
 .nge-recap-btn:hover {
+  opacity: 1;
+}
+
+.nge-lb-btn,
+.nge-settings-btn {
+  font-size: 14px;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+}
+
+.nge-lb-btn:hover,
+.nge-settings-btn:hover {
   opacity: 1;
 }
 </style>

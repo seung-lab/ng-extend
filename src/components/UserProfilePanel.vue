@@ -1,14 +1,36 @@
 <script setup lang="ts">
-import {ref} from 'vue';
+import {ref, onMounted} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
-import {useLoginStore, useUserStatsStore} from '../store';
+import {useLoginStore, useUserStatsStore, useUserPreferencesStore} from '../store';
 import {BADGE_DEFINITIONS, BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
+import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
 
 const {sessions} = storeToRefs(useLoginStore());
-const {stats} = storeToRefs(useUserStatsStore());
+const statsStore = useUserStatsStore();
+const {stats} = storeToRefs(statsStore);
+const {prefs} = storeToRefs(useUserPreferencesStore());
+
+// Seed demo stats when no real data has been pushed yet
+onMounted(() => {
+  if (stats.value.editsAllTime === 0) {
+    const amy = DEMO_USERS[0];
+    statsStore.setStats({
+      editsAllTime:    amy.stats.editsAllTime,
+      mergesAllTime:   amy.stats.mergesAllTime,
+      splitsAllTime:   amy.stats.splitsAllTime,
+      editsThisWeek:   amy.stats.editsThisWeek,
+      editsThisMonth:  amy.stats.editsThisMonth,
+      cellsSubmitted:  amy.stats.cellsSubmitted,
+      currentStreak:   amy.stats.currentStreak,
+      longestStreak:   amy.stats.longestStreak,
+      communityEditsThisWeek:  DEMO_COMMUNITY_EDITS_WEEK,
+      communityEditsThisMonth: DEMO_COMMUNITY_EDITS_MONTH,
+    });
+  }
+});
 
 function getBadgeUrl(imageKey: string): string {
   return BADGE_IMAGE_MAP[imageKey] ?? '';
@@ -39,10 +61,14 @@ const emit = defineEmits({hide: null});
       </div>
 
       <div class="nge-profile-content">
-        <!-- Header: name + email -->
+        <!-- Header: flag + name + email + bio -->
         <div class="nge-profile-header" v-if="sessions.length > 0">
-          <div class="nge-profile-name">{{ sessions[0].name }}</div>
+          <div class="nge-profile-name-row">
+            <span class="nge-profile-flag" v-if="prefs.flag">{{ prefs.flag }}</span>
+            <div class="nge-profile-name">{{ sessions[0].name }}</div>
+          </div>
           <div class="nge-profile-email">{{ sessions[0].email }}</div>
+          <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
         </div>
 
         <!-- Stats grid: Edits | Cells -->
@@ -272,6 +298,18 @@ const emit = defineEmits({hide: null});
   padding-bottom: 28px;
 }
 
+.nge-profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nge-profile-flag {
+  font-size: 1.4em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .nge-profile-name {
   font-size: 1.4em;
   font-weight: 600;
@@ -281,6 +319,14 @@ const emit = defineEmits({hide: null});
   font-style: italic;
   color: #9e9e9e;
   font-size: 0.9em;
+}
+
+.nge-profile-bio {
+  font-size: 0.82em;
+  color: #aaa;
+  margin-top: 6px;
+  line-height: 1.4;
+  font-style: italic;
 }
 
 /* ── Stats grid ─────────────────────────────────── */

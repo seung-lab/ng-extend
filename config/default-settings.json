@@ -34,5 +34,19 @@
       -0.09560522437095642
     ],
     "projectionScale": 32237.35182935765
+  },
+  "minnie65_public": {
+    "dimensions": [8e-9, 8e-9, 4e-8],
+    "position": [240000.0, 210000.0, 2050.0],
+    "crossSectionScale": 5.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 30000.0
+  },
+  "minnie65_public_v117": {
+    "dimensions": [8e-9, 8e-9, 4e-8],
+    "position": [240000.0, 210000.0, 2050.0],
+    "crossSectionScale": 5.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 30000.0
   }
 }

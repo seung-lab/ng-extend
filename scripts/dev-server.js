@@ -21,6 +21,34 @@ for (const [name, file] of Object.entries(defines)) {
   args.push(`${name}=${content}`);
 }
 
+// ── MICrONS minnie65_public default state ──────────────────────────────────
+// Loads as the initial neuroglancer view when no URL hash is present.
+// Image source: public BossDB S3 bucket (no auth required).
+// Segmentation: CAVE-backed graphene server (middleauth login gates edits,
+//   but browsing and segment selection work without credentials).
+const micronState = JSON.stringify({
+  dimensions: { x: [8e-9, 'm'], y: [8e-9, 'm'], z: [4e-8, 'm'] },
+  position: [240000, 210000, 2050],
+  crossSectionScale: 5,
+  projectionScale: 30000,
+  projectionOrientation: [0, 0, 0, 1],
+  layers: [
+    {
+      type: 'image',
+      source: 'precomputed://s3://bossdb-open-data/iarpa_microns/minnie/minnie65/em',
+      name: 'em',
+    },
+    {
+      type: 'segmentation',
+      source: 'graphene://https://minnie.microns-daf.com/segmentation/table/minnie65_public_v117',
+      name: 'minnie65_public',
+    },
+  ],
+  layout: 'xy-3d',
+});
+// esbuild --define expects a JS expression; JSON.stringify wraps the value in quotes.
+args.push('--define', `NEUROGLANCER_DEFAULT_STATE_FRAGMENT=${JSON.stringify(micronState)}`);
+
 args.push('--config=dev', '--serve', '--watch');
 
 console.log('Starting dev server...');
