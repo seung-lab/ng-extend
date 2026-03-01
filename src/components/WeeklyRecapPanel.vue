@@ -250,18 +250,19 @@ const currentFact = computed<string>(() => {
 @keyframes ngeRecapMaterialize {
   0% {
     opacity: 0;
-    transform: translateY(14px) scale(0.96);
+    transform: translate(-50%, -50%) translateY(14px) scale(0.96);
     filter: blur(8px) brightness(2);
     box-shadow: 0 0 60px rgba(74, 158, 255, 0.5), 0 0 120px rgba(74, 158, 255, 0.15);
   }
   35% {
     opacity: 1;
+    transform: translate(-50%, -50%);
     filter: blur(0.5px) brightness(1.15);
     box-shadow: 0 0 20px rgba(74, 158, 255, 0.15);
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translate(-50%, -50%);
     filter: blur(0px) brightness(1);
     box-shadow: none;
   }
