@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import {ref, computed} from 'vue';
+import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {DEMO_USERS, DemoUser} from '../data/demo-users';
 import {BADGE_DEFINITIONS} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
+import {useUserPreferencesStore} from '../store';
+
+const {prefs} = storeToRefs(useUserPreferencesStore());
 
 type Tab = 'week' | 'month' | 'alltime';
 const activeTab    = ref<Tab>('alltime');
@@ -104,7 +108,8 @@ const emit = defineEmits({hide: null});
                   <span v-else class="nge-lb-rank-num">{{ idx + 1 }}</span>
                 </td>
                 <td class="nge-lb-td">
-                  <span class="nge-lb-flag">{{ user.flag }}</span>
+                  <!-- Use live prefs flag for the logged-in user's row -->
+                  <span class="nge-lb-flag">{{ user.id === 'amy' ? (prefs.flag || user.flag) : user.flag }}</span>
                   <span class="nge-lb-name">{{ user.name }}</span>
                   <span v-if="user.id === 'amy'" class="nge-lb-you-tag">you</span>
                   <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak"

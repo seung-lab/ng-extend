@@ -43,7 +43,7 @@ function logout(session: loginSession) {
 
 <template>
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
-  <user-profile-panel v-if="showProfile" @hide="showProfile = false" />
+  <user-profile-panel v-if="showProfile" @hide="showProfile = false" @open-settings="showSettings = true" />
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
