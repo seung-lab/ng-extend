@@ -6,8 +6,8 @@ import {BADGE_DEFINITIONS} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 
 type Tab = 'week' | 'month' | 'alltime';
-const activeTab     = ref<Tab>('alltime');
-const selectedUser  = ref<DemoUser | null>(null);
+const activeTab    = ref<Tab>('alltime');
+const selectedUser = ref<DemoUser | null>(null);
 const selectedBadgeId = ref<number | null>(null);
 
 // Sort demo users by the active tab's edit metric
@@ -18,18 +18,13 @@ const rankedUsers = computed(() => {
   return [...DEMO_USERS].sort((a, b) => b.stats[key] - a.stats[key]);
 });
 
-// Rank of Amy (id='amy') in current sort — for "you" highlight
-const amyRank = computed(() =>
-  rankedUsers.value.findIndex(u => u.id === 'amy') + 1,
-);
-
 function editCountForTab(user: DemoUser): number {
   if (activeTab.value === 'week')  return user.stats.editsThisWeek;
   if (activeTab.value === 'month') return user.stats.editsThisMonth;
   return user.stats.editsAllTime;
 }
 
-// Badges logic (mirrors UserProfilePanel)
+// Badges helpers
 function isBadgeEarned(editThreshold: number, editsAllTime: number): boolean {
   if (editThreshold === 0) return false;
   return editsAllTime >= editThreshold;
@@ -39,12 +34,11 @@ function getBadgeUrl(imageKey: string): string {
   return BADGE_IMAGE_MAP[imageKey] ?? '';
 }
 
-// Top earned badge for leaderboard row
+// Top earned badge for the leaderboard row (highest threshold)
 function topBadge(user: DemoUser) {
-  const earned = BADGE_DEFINITIONS
+  return BADGE_DEFINITIONS
     .filter(b => b.editThreshold > 0 && user.stats.editsAllTime >= b.editThreshold)
-    .sort((a, b) => b.editThreshold - a.editThreshold);
-  return earned[0] ?? null;
+    .sort((a, b) => b.editThreshold - a.editThreshold)[0] ?? null;
 }
 
 function selectUser(user: DemoUser) {
@@ -70,28 +64,23 @@ const emit = defineEmits({hide: null});
   <modal-overlay id="nge-lb-modal" class="nge-lb-modal" @hide="emit('hide')">
     <div class="nge-lb-shell">
 
-      <!-- ── LIST VIEW ──────────────────────────────── -->
+      <!-- ── LIST VIEW ─────────────────────────────────── -->
       <template v-if="!selectedUser">
-        <!-- Header -->
+
         <div class="nge-lb-topbar">
           <span class="nge-lb-title">🏆 Leaderboard</span>
           <button class="nge-lb-exit" @click="emit('hide')">×</button>
         </div>
 
-        <!-- Tabs -->
         <div class="nge-lb-tabs">
-          <button
-            class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'alltime' }"
-            @click="activeTab = 'alltime'">All Time</button>
-          <button
-            class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'month' }"
-            @click="activeTab = 'month'">This Month</button>
-          <button
-            class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'week' }"
-            @click="activeTab = 'week'">This Week</button>
+          <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'alltime' }"
+                  @click="activeTab = 'alltime'">All Time</button>
+          <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'month' }"
+                  @click="activeTab = 'month'">Month</button>
+          <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'week' }"
+                  @click="activeTab = 'week'">Week</button>
         </div>
 
-        <!-- Table -->
         <div class="nge-lb-content">
           <table class="nge-lb-table">
             <thead>
@@ -99,8 +88,7 @@ const emit = defineEmits({hide: null});
                 <th class="nge-lb-th nge-lb-th--rank">#</th>
                 <th class="nge-lb-th">Name</th>
                 <th class="nge-lb-th nge-lb-th--num">Edits</th>
-                <th class="nge-lb-th nge-lb-th--num">Cells</th>
-                <th class="nge-lb-th nge-lb-th--badge">Top Badge</th>
+                <th class="nge-lb-th nge-lb-th--badge">★</th>
               </tr>
             </thead>
             <tbody>
@@ -119,15 +107,13 @@ const emit = defineEmits({hide: null});
                   <span class="nge-lb-flag">{{ user.flag }}</span>
                   <span class="nge-lb-name">{{ user.name }}</span>
                   <span v-if="user.id === 'amy'" class="nge-lb-you-tag">you</span>
-                  <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak" :title="`${user.stats.currentStreak}-day streak`">
+                  <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak"
+                        :title="`${user.stats.currentStreak}-day streak`">
                     🔥{{ user.stats.currentStreak }}
                   </span>
                 </td>
                 <td class="nge-lb-td nge-lb-td--num">
                   {{ editCountForTab(user).toLocaleString() }}
-                </td>
-                <td class="nge-lb-td nge-lb-td--num">
-                  {{ user.stats.cellsSubmitted.toLocaleString() }}
                 </td>
                 <td class="nge-lb-td nge-lb-td--badge">
                   <img
@@ -145,16 +131,16 @@ const emit = defineEmits({hide: null});
         </div>
       </template>
 
-      <!-- ── DETAIL VIEW ─────────────────────────────── -->
+      <!-- ── DETAIL VIEW ────────────────────────────────── -->
       <template v-else>
-        <!-- Back bar -->
+
         <div class="nge-lb-topbar">
           <button class="nge-lb-back" @click="selectedUser = null">← Back</button>
           <button class="nge-lb-exit" @click="emit('hide')">×</button>
         </div>
 
         <div class="nge-lb-content nge-lb-detail">
-          <!-- Profile header -->
+
           <div class="nge-lb-detail-header">
             <div class="nge-lb-detail-name-row">
               <span class="nge-lb-detail-flag">{{ selectedUser.flag }}</span>
@@ -163,11 +149,15 @@ const emit = defineEmits({hide: null});
             <div class="nge-lb-detail-bio" v-if="selectedUser.bio">{{ selectedUser.bio }}</div>
           </div>
 
-          <!-- Stats grid -->
+          <!-- Stats grid (2-column) -->
           <div class="nge-lb-detail-grid">
             <div class="nge-lb-detail-stat">
               <div class="nge-lb-detail-stat-val">{{ selectedUser.stats.editsAllTime.toLocaleString() }}</div>
-              <div class="nge-lb-detail-stat-lbl">Edits All Time</div>
+              <div class="nge-lb-detail-stat-lbl">All-Time Edits</div>
+            </div>
+            <div class="nge-lb-detail-stat">
+              <div class="nge-lb-detail-stat-val">{{ selectedUser.stats.cellsSubmitted.toLocaleString() }}</div>
+              <div class="nge-lb-detail-stat-lbl">Cells</div>
             </div>
             <div class="nge-lb-detail-stat">
               <div class="nge-lb-detail-stat-val">{{ selectedUser.stats.mergesAllTime.toLocaleString() }}</div>
@@ -176,10 +166,6 @@ const emit = defineEmits({hide: null});
             <div class="nge-lb-detail-stat">
               <div class="nge-lb-detail-stat-val">{{ selectedUser.stats.splitsAllTime.toLocaleString() }}</div>
               <div class="nge-lb-detail-stat-lbl">Splits</div>
-            </div>
-            <div class="nge-lb-detail-stat">
-              <div class="nge-lb-detail-stat-val">{{ selectedUser.stats.cellsSubmitted.toLocaleString() }}</div>
-              <div class="nge-lb-detail-stat-lbl">Cells</div>
             </div>
             <div class="nge-lb-detail-stat">
               <div class="nge-lb-detail-stat-val">{{ selectedUser.stats.editsThisWeek.toLocaleString() }}</div>
@@ -256,6 +242,7 @@ const emit = defineEmits({hide: null});
               <button class="nge-lb-detail-badge-card-close" @click.stop="selectedBadgeId = null">×</button>
             </div>
           </Transition>
+
         </div>
       </template>
 
@@ -268,13 +255,23 @@ const emit = defineEmits({hide: null});
   font-size: 0.9em;
 }
 
-/* ── Sci-fi materialize ── */
+/* ── Sidebar override ──────────────────────────────────────────────────────
+   Neuroglancer's .overlay-content has position:absolute; top:50%; left:50%;
+   transform:translate(-50%,-50%). We override those with !important to pin
+   the panel to the right edge of the screen as a full-height sidebar.       */
 .nge-lb-modal :deep(.nge-overlay) {
-  position: relative;
+  right:  0    !important;
+  top:    0    !important;
+  left:   auto !important;
+  bottom: 0    !important;
+  transform: none !important;
+  width: 360px;
   overflow: hidden;
-  animation: ngeLbMaterialize 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+  border-left: 1px solid rgba(74, 158, 255, 0.14);
+  animation: ngeLbSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Scanline sweep on open */
 .nge-lb-modal :deep(.nge-overlay::before) {
   content: '';
   position: absolute;
@@ -288,25 +285,24 @@ const emit = defineEmits({hide: null});
     rgba(74, 158, 255, 0.5) 85%,
     transparent 100%
   );
-  animation: ngeLbScan 0.52s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: ngeLbScan 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   z-index: 100;
   pointer-events: none;
 }
 
-@keyframes ngeLbMaterialize {
+/* Slide in from the right — no centering transform needed for sidebar */
+@keyframes ngeLbSlideIn {
   0% {
-    opacity: 0; transform: translate(-50%, -50%) translateY(14px) scale(0.96);
-    filter: blur(8px) brightness(2);
-    box-shadow: 0 0 60px rgba(74, 158, 255, 0.5), 0 0 120px rgba(74, 158, 255, 0.15);
-  }
-  35% {
-    opacity: 1; transform: translate(-50%, -50%);
-    filter: blur(0.5px) brightness(1.15);
-    box-shadow: 0 0 20px rgba(74, 158, 255, 0.15);
+    opacity: 0;
+    transform: translateX(40px);
+    filter: blur(4px);
+    box-shadow: -8px 0 40px rgba(74, 158, 255, 0.2);
   }
   100% {
-    opacity: 1; transform: translate(-50%, -50%);
-    filter: blur(0px) brightness(1); box-shadow: none;
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+    box-shadow: -4px 0 30px rgba(74, 158, 255, 0.08);
   }
 }
 
@@ -316,12 +312,12 @@ const emit = defineEmits({hide: null});
   100% { top: 100%; opacity: 0; }
 }
 
-/* ── Shell ── */
+/* ── Shell — fills the full sidebar height ── */
 .nge-lb-shell {
   display: flex;
   flex-direction: column;
-  width: 580px;
-  max-height: 88vh;
+  width: 360px;
+  height: 100%;
 }
 
 /* ── Top bar ── */
@@ -331,11 +327,11 @@ const emit = defineEmits({hide: null});
   align-items: center;
   padding: 14px 16px 10px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .nge-lb-title {
-  font-size: 1.1em;
+  font-size: 1.05em;
   font-weight: 600;
   color: #e0e0e0;
 }
@@ -366,18 +362,17 @@ const emit = defineEmits({hide: null});
 /* ── Tabs ── */
 .nge-lb-tabs {
   display: flex;
-  gap: 0;
-  padding: 10px 16px 0;
+  padding: 10px 14px 0;
   flex-shrink: 0;
 }
 
 .nge-lb-tab {
   flex: 1;
   padding: 7px 0;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: #888;
-  font-size: 0.82em;
+  font-size: 0.8em;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
@@ -387,73 +382,65 @@ const emit = defineEmits({hide: null});
 .nge-lb-tab + .nge-lb-tab { border-left: none; }
 
 .nge-lb-tab--active {
-  background: rgba(74,158,255,0.16);
-  border-color: rgba(74,158,255,0.4);
-  color: rgba(160,220,255,0.95);
+  background: rgba(74, 158, 255, 0.16);
+  border-color: rgba(74, 158, 255, 0.4);
+  color: rgba(160, 220, 255, 0.95);
   font-weight: 600;
 }
 
-/* ── Scrollable content area ── */
+/* ── Scrollable content ── */
 .nge-lb-content {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
-  padding: 12px 0 16px;
+  padding: 10px 0 16px;
 }
 
 /* ── Table ── */
 .nge-lb-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88em;
+  font-size: 0.86em;
 }
 
 .nge-lb-th {
-  padding: 6px 12px;
+  padding: 5px 10px;
   text-align: left;
-  color: #666;
-  font-size: 0.78em;
+  color: #555;
+  font-size: 0.75em;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.nge-lb-th--rank  { width: 40px; text-align: center; }
-.nge-lb-th--num   { width: 80px; text-align: right; }
-.nge-lb-th--badge { width: 64px; text-align: center; }
+.nge-lb-th--rank  { width: 34px; text-align: center; }
+.nge-lb-th--num   { width: 62px; text-align: right; }
+.nge-lb-th--badge { width: 36px; text-align: center; }
 
 .nge-lb-row {
   cursor: pointer;
   transition: background 0.12s;
 }
 
-.nge-lb-row:hover {
-  background: rgba(255,255,255,0.04);
-}
-
-.nge-lb-row--you {
-  background: rgba(74,158,255,0.06);
-}
-
-.nge-lb-row--you:hover {
-  background: rgba(74,158,255,0.11);
-}
+.nge-lb-row:hover              { background: rgba(255, 255, 255, 0.04); }
+.nge-lb-row--you               { background: rgba(74, 158, 255, 0.06); }
+.nge-lb-row--you:hover         { background: rgba(74, 158, 255, 0.11); }
 
 .nge-lb-td {
-  padding: 9px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   vertical-align: middle;
 }
 
 .nge-lb-td--rank {
   text-align: center;
-  font-size: 1.15em;
+  font-size: 1.1em;
   line-height: 1;
 }
 
 .nge-lb-rank-num {
   color: #555;
-  font-size: 0.9em;
+  font-size: 0.88em;
 }
 
 .nge-lb-td--num {
@@ -467,8 +454,8 @@ const emit = defineEmits({hide: null});
 }
 
 .nge-lb-flag {
-  font-size: 1.15em;
-  margin-right: 7px;
+  font-size: 1.1em;
+  margin-right: 6px;
   vertical-align: middle;
 }
 
@@ -479,43 +466,41 @@ const emit = defineEmits({hide: null});
 
 .nge-lb-you-tag {
   display: inline-block;
-  margin-left: 7px;
-  padding: 1px 6px;
-  background: rgba(74,158,255,0.15);
-  border: 1px solid rgba(74,158,255,0.35);
+  margin-left: 6px;
+  padding: 1px 5px;
+  background: rgba(74, 158, 255, 0.15);
+  border: 1px solid rgba(74, 158, 255, 0.35);
   border-radius: 9px;
-  font-size: 0.7em;
-  color: rgba(160,220,255,0.9);
+  font-size: 0.68em;
+  color: rgba(160, 220, 255, 0.9);
   vertical-align: middle;
   font-weight: 600;
   letter-spacing: 0.04em;
 }
 
 .nge-lb-streak {
-  margin-left: 8px;
-  font-size: 0.8em;
+  margin-left: 6px;
+  font-size: 0.76em;
   color: #f5a623;
   vertical-align: middle;
 }
 
 .nge-lb-badge-img {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   vertical-align: middle;
 }
 
-.nge-lb-badge-none {
-  color: #444;
-}
+.nge-lb-badge-none { color: #444; }
 
 /* ── Detail view ── */
 .nge-lb-detail {
-  padding: 20px 24px 24px;
+  padding: 18px 20px 24px;
 }
 
 .nge-lb-detail-header {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .nge-lb-detail-name-row {
@@ -531,47 +516,47 @@ const emit = defineEmits({hide: null});
 }
 
 .nge-lb-detail-name {
-  font-size: 1.5em;
+  font-size: 1.35em;
   font-weight: 700;
   color: #e8e8e8;
 }
 
 .nge-lb-detail-bio {
-  font-size: 0.85em;
-  color: #888;
+  font-size: 0.82em;
+  color: #777;
   font-style: italic;
   margin-top: 6px;
   line-height: 1.4;
 }
 
-/* Detail stats grid */
+/* Detail stats: 2-column grid */
 .nge-lb-detail-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-bottom: 18px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 .nge-lb-detail-stat {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 9px 11px;
 }
 
 .nge-lb-detail-stat-val {
-  font-size: 1.25em;
+  font-size: 1.2em;
   font-weight: 700;
   color: #e0e0e0;
   font-variant-numeric: tabular-nums;
 }
 
 .nge-lb-detail-stat-lbl {
-  font-size: 0.72em;
-  color: #666;
+  font-size: 0.7em;
+  color: #555;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 /* Detail streak */
@@ -579,34 +564,34 @@ const emit = defineEmits({hide: null});
   display: flex;
   align-items: baseline;
   gap: 5px;
-  margin-bottom: 18px;
-  padding: 10px 14px;
-  background: rgba(245,166,35,0.07);
-  border: 1px solid rgba(245,166,35,0.18);
+  margin-bottom: 16px;
+  padding: 9px 12px;
+  background: rgba(245, 166, 35, 0.07);
+  border: 1px solid rgba(245, 166, 35, 0.18);
   border-radius: 8px;
-  font-size: 0.9em;
+  font-size: 0.88em;
 }
 
 .nge-lb-detail-streak-flame { font-size: 1.1em; }
-.nge-lb-detail-streak-count { font-size: 1.3em; font-weight: 700; color: #f5a623; }
+.nge-lb-detail-streak-count { font-size: 1.25em; font-weight: 700; color: #f5a623; }
 .nge-lb-detail-streak-unit  { color: #888; font-size: 0.85em; }
 .nge-lb-detail-streak-sep   { color: #444; }
 .nge-lb-detail-streak-best  { color: #bbb; font-size: 0.85em; }
 
 /* Detail badges */
 .nge-lb-detail-badges-label {
-  font-size: 1.1em;
+  font-size: 1em;
   font-weight: 600;
+  padding-top: 14px;
   padding-bottom: 10px;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 16px;
-  margin-bottom: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 8px;
 }
 
 .nge-lb-detail-badges-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
 .nge-lb-detail-badge {
@@ -618,13 +603,8 @@ const emit = defineEmits({hide: null});
   transition: transform 0.15s;
 }
 
-.nge-lb-detail-badge:not(.nge-lb-detail-badge--locked) {
-  cursor: pointer;
-}
-
-.nge-lb-detail-badge:not(.nge-lb-detail-badge--locked):hover {
-  transform: scale(1.08);
-}
+.nge-lb-detail-badge:not(.nge-lb-detail-badge--locked) { cursor: pointer; }
+.nge-lb-detail-badge:not(.nge-lb-detail-badge--locked):hover { transform: scale(1.08); }
 
 .nge-lb-detail-badge--selected .nge-lb-detail-badge-img {
   filter: drop-shadow(0 0 6px rgba(100, 180, 255, 0.75));
@@ -634,21 +614,21 @@ const emit = defineEmits({hide: null});
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
 }
 
 .nge-lb-detail-badge-icon {
-  width: 54px;
-  height: 54px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
 }
 
 .nge-lb-detail-badge-mystery {
-  width: 48px;
-  height: 48px;
-  background: rgba(255,255,255,0.05);
-  border: 2px dashed rgba(255,255,255,0.15);
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px dashed rgba(255, 255, 255, 0.15);
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
   display: flex;
   align-items: center;
@@ -656,92 +636,61 @@ const emit = defineEmits({hide: null});
 }
 
 .nge-lb-detail-badge-mystery-q {
-  font-size: 1.3em;
+  font-size: 1.1em;
   font-weight: 700;
-  color: rgba(255,255,255,0.2);
+  color: rgba(255, 255, 255, 0.2);
   font-style: italic;
   line-height: 1;
 }
 
 .nge-lb-detail-badge-name {
-  font-size: 0.68em;
+  font-size: 0.62em;
   color: #bbb;
-  margin-top: 4px;
+  margin-top: 3px;
   line-height: 1.2;
-  max-width: 72px;
+  max-width: 60px;
   word-break: break-word;
 }
 
-.nge-lb-detail-badge-name--locked {
-  color: #444;
-  letter-spacing: 0.05em;
-}
+.nge-lb-detail-badge-name--locked { color: #444; }
 
 /* Badge detail card */
 .nge-lb-detail-badge-card {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   margin-top: 14px;
-  padding: 12px 14px;
-  background: rgba(100,180,255,0.08);
-  border: 1px solid rgba(100,180,255,0.22);
+  padding: 10px 12px;
+  background: rgba(100, 180, 255, 0.08);
+  border: 1px solid rgba(100, 180, 255, 0.22);
   border-radius: 8px;
   position: relative;
 }
 
 .nge-lb-detail-badge-card-icon {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
   flex-shrink: 0;
 }
 
 .nge-lb-detail-badge-card-body { flex: 1; min-width: 0; }
 
-.nge-lb-detail-badge-card-name {
-  font-weight: 600;
-  font-size: 1em;
-  margin-bottom: 3px;
-}
-
-.nge-lb-detail-badge-card-desc {
-  font-size: 0.85em;
-  color: #ccc;
-  margin-bottom: 3px;
-}
-
-.nge-lb-detail-badge-card-thresh {
-  font-size: 0.75em;
-  color: rgba(100,180,255,0.7);
-}
+.nge-lb-detail-badge-card-name  { font-weight: 600; font-size: 0.92em; margin-bottom: 2px; }
+.nge-lb-detail-badge-card-desc  { font-size: 0.8em; color: #ccc; margin-bottom: 2px; }
+.nge-lb-detail-badge-card-thresh { font-size: 0.72em; color: rgba(100, 180, 255, 0.7); }
 
 .nge-lb-detail-badge-card-close {
   position: absolute;
-  top: 6px;
-  right: 10px;
-  background: none;
-  border: none;
-  color: #666;
-  font-size: 1.1em;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
+  top: 5px; right: 9px;
+  background: none; border: none;
+  color: #666; font-size: 1.1em; cursor: pointer; padding: 0; line-height: 1;
 }
 
 .nge-lb-detail-badge-card-close:hover { color: #ccc; }
 
-.lb-badge-detail-enter-active {
-  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.lb-badge-detail-leave-active {
-  transition: all 0.15s ease-in;
-}
-
+.lb-badge-detail-enter-active { transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.lb-badge-detail-leave-active { transition: all 0.15s ease-in; }
 .lb-badge-detail-enter-from,
-.lb-badge-detail-leave-to {
-  opacity: 0;
-  transform: translateY(8px) scale(0.96);
-}
+.lb-badge-detail-leave-to { opacity: 0; transform: translateY(8px) scale(0.96); }
 </style>

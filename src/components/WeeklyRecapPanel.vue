@@ -222,7 +222,6 @@ const currentFact = computed<string>(() => {
 
 /* ── Sci-fi materialize ── */
 .nge-recap-modal :deep(.nge-overlay) {
-  position: relative;
   overflow: hidden;
   animation: ngeRecapMaterialize 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
 }

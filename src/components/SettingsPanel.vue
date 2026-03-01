@@ -98,7 +98,6 @@ const emit = defineEmits({hide: null});
 
 /* ── Sci-fi materialize (shared pattern) ── */
 .nge-settings-modal :deep(.nge-overlay) {
-  position: relative;
   overflow: hidden;
   animation: ngeSettingsMaterialize 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
