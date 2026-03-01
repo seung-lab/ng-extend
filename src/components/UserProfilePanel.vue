@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import {ref} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
 import {useLoginStore, useUserStatsStore} from '../store';
-import {BADGE_DEFINITIONS} from '../widgets/badge_definitions';
+import {BADGE_DEFINITIONS, BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 
 const {sessions} = storeToRefs(useLoginStore());
@@ -18,13 +19,20 @@ function isBadgeEarned(editThreshold: number): boolean {
   return (stats.value.editsAllTime ?? 0) >= editThreshold;
 }
 
+// Badge click tooltip
+const selectedBadge = ref<BadgeDefinition | null>(null);
+
+function onBadgeClick(badge: BadgeDefinition) {
+  if (!isBadgeEarned(badge.editThreshold)) return;
+  selectedBadge.value = selectedBadge.value?.id === badge.id ? null : badge;
+}
+
 const emit = defineEmits({hide: null});
 </script>
 
 <template>
-  <!-- id ensures old instances are replaced; v-if on parent handles lifecycle in production -->
   <modal-overlay id="nge-profile-modal" class="nge-profile-modal" @hide="emit('hide')">
-    <!-- Shell: positions the × outside the scroll area -->
+    <!-- Shell: pop-in animation + positions × outside scroll area -->
     <div class="nge-profile-shell">
       <div class="nge-profile-topbar">
         <button class="nge-profile-exit" @click="emit('hide')">×</button>
@@ -83,10 +91,14 @@ const emit = defineEmits({hide: null});
               v-for="badge in BADGE_DEFINITIONS"
               :key="badge.id"
               class="nge-profile-badge"
-              :class="{ 'nge-profile-badge--locked': !isBadgeEarned(badge.editThreshold) }"
+              :class="{
+                'nge-profile-badge--locked': !isBadgeEarned(badge.editThreshold),
+                'nge-profile-badge--selected': selectedBadge?.id === badge.id,
+              }"
               :title="isBadgeEarned(badge.editThreshold)
-                ? badge.name + ' — ' + badge.description
+                ? badge.name + ' — click to learn more'
                 : '??? (locked — keep editing to reveal!)'"
+              @click="onBadgeClick(badge)"
             >
               <!-- Earned: show real badge image + name -->
               <template v-if="isBadgeEarned(badge.editThreshold)">
@@ -111,6 +123,25 @@ const emit = defineEmits({hide: null});
               </template>
             </div>
           </div>
+
+          <!-- Badge detail card (appears on click) -->
+          <Transition name="badge-detail">
+            <div v-if="selectedBadge" class="nge-profile-badge-detail">
+              <img
+                :src="getBadgeUrl(selectedBadge.imageKey)"
+                :alt="selectedBadge.name"
+                class="nge-profile-badge-detail-icon"
+              />
+              <div class="nge-profile-badge-detail-body">
+                <div class="nge-profile-badge-detail-name">{{ selectedBadge.name }}</div>
+                <div class="nge-profile-badge-detail-desc">{{ selectedBadge.description }}</div>
+                <div class="nge-profile-badge-detail-threshold">
+                  Unlocked at {{ selectedBadge.editThreshold.toLocaleString() }} edits
+                </div>
+              </div>
+              <button class="nge-profile-badge-detail-close" @click.stop="selectedBadge = null">×</button>
+            </div>
+          </Transition>
         </div>
 
         <!-- Hook: user profile repo connects here via useUserStatsStore().setStats({...}) -->
@@ -124,11 +155,19 @@ const emit = defineEmits({hide: null});
   font-size: 0.9em;
 }
 
-/* ── Shell: separates × from scrollable content ── */
+/* ── Shell: pop-in entrance + separates × from scroll ── */
 .nge-profile-shell {
   display: flex;
   flex-direction: column;
   max-height: 88vh;
+  animation: ngeProfilePop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes ngeProfilePop {
+  0%   { opacity: 0; transform: scale(0.80) translateY(-12px); }
+  60%  { opacity: 1; transform: scale(1.03) translateY(0); }
+  80%  { transform: scale(0.985); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
 .nge-profile-topbar {
@@ -233,11 +272,19 @@ const emit = defineEmits({hide: null});
   align-items: center;
   text-align: center;
   cursor: default;
-  transition: transform 0.1s;
+  transition: transform 0.15s;
+}
+
+.nge-profile-badge:not(.nge-profile-badge--locked) {
+  cursor: pointer;
 }
 
 .nge-profile-badge:not(.nge-profile-badge--locked):hover {
-  transform: scale(1.06);
+  transform: scale(1.08);
+}
+
+.nge-profile-badge--selected .nge-profile-badge-img {
+  filter: drop-shadow(0 0 6px rgba(100, 180, 255, 0.75));
 }
 
 .nge-profile-badge-img {
@@ -246,6 +293,7 @@ const emit = defineEmits({hide: null});
   justify-content: center;
   width: 60px;
   height: 60px;
+  transition: filter 0.15s;
 }
 
 .nge-profile-badge-icon {
@@ -271,7 +319,6 @@ const emit = defineEmits({hide: null});
   font-weight: 700;
   color: rgba(255, 255, 255, 0.2);
   font-style: italic;
-  /* counter-rotate so the ? reads upright inside the rotated diamond */
   line-height: 1;
 }
 
@@ -287,5 +334,77 @@ const emit = defineEmits({hide: null});
 .nge-profile-badge-name--locked {
   color: #444;
   letter-spacing: 0.05em;
+}
+
+/* ── Badge detail card ──────────────────────────── */
+.nge-profile-badge-detail {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: rgba(100, 180, 255, 0.08);
+  border: 1px solid rgba(100, 180, 255, 0.22);
+  border-radius: 8px;
+  position: relative;
+}
+
+.nge-profile-badge-detail-icon {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.nge-profile-badge-detail-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.nge-profile-badge-detail-name {
+  font-weight: 600;
+  font-size: 1em;
+  margin-bottom: 3px;
+}
+
+.nge-profile-badge-detail-desc {
+  font-size: 0.85em;
+  color: #ccc;
+  margin-bottom: 3px;
+}
+
+.nge-profile-badge-detail-threshold {
+  font-size: 0.75em;
+  color: rgba(100, 180, 255, 0.7);
+}
+
+.nge-profile-badge-detail-close {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 1.1em;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.nge-profile-badge-detail-close:hover {
+  color: #ccc;
+}
+
+/* Badge detail transition */
+.badge-detail-enter-active {
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.badge-detail-leave-active {
+  transition: all 0.15s ease-in;
+}
+.badge-detail-enter-from,
+.badge-detail-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
 }
 </style>
