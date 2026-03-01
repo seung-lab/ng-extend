@@ -213,19 +213,64 @@ const currentFact = computed<string>(() => {
   font-size: 0.9em;
 }
 
-/* ── Shell: same spring pop-in as UserProfilePanel ── */
+/* ── Shell: flex structure (animation on the overlay panel itself) ── */
 .nge-recap-shell {
   display: flex;
   flex-direction: column;
   max-height: 88vh;
-  animation: ngeRecapPop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-@keyframes ngeRecapPop {
-  0%   { opacity: 0; transform: scale(0.80) translateY(-12px); }
-  60%  { opacity: 1; transform: scale(1.03) translateY(0); }
-  80%  { transform: scale(0.985); }
-  100% { opacity: 1; transform: scale(1); }
+/* ── Sci-fi materialize ── */
+.nge-recap-modal :deep(.nge-overlay) {
+  position: relative;
+  overflow: hidden;
+  animation: ngeRecapMaterialize 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.nge-recap-modal :deep(.nge-overlay::before) {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(74, 158, 255, 0.5) 15%,
+    rgba(160, 220, 255, 1) 50%,
+    rgba(74, 158, 255, 0.5) 85%,
+    transparent 100%
+  );
+  animation: ngeRecapScan 0.52s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  z-index: 100;
+  pointer-events: none;
+}
+
+@keyframes ngeRecapMaterialize {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+    filter: blur(8px) brightness(2);
+    box-shadow: 0 0 60px rgba(74, 158, 255, 0.5), 0 0 120px rgba(74, 158, 255, 0.15);
+  }
+  35% {
+    opacity: 1;
+    filter: blur(0.5px) brightness(1.15);
+    box-shadow: 0 0 20px rgba(74, 158, 255, 0.15);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px) brightness(1);
+    box-shadow: none;
+  }
+}
+
+@keyframes ngeRecapScan {
+  0%   { top: 0%;   opacity: 1; }
+  85%  { opacity: 0.4; }
+  100% { top: 100%; opacity: 0; }
 }
 
 .nge-recap-topbar {

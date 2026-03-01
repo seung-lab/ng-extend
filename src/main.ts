@@ -333,7 +333,7 @@ class ExtendViewer extends Viewer {
       showUIControls: true,
       showPanelBorders: true,
       // defaultLayoutSpecification: 'xy-3d',
-      // minSidePanelSize: 310
+      // minSidePanelSize: 310  // not in ViewerOptions type
     });
   }
     // storeProxy.loadedViewer = true;
