@@ -83,6 +83,28 @@ const emit = defineEmits({hide: null});
           </div>
         </div>
 
+        <!-- Streak row -->
+        <div class="nge-profile-streak"
+             v-if="stats.currentStreak > 0 || stats.longestStreak > 0">
+          <div class="nge-profile-streak-label">Editing Streak</div>
+          <div class="nge-profile-streak-values">
+            <div class="nge-profile-streak-current">
+              <span class="nge-profile-streak-flame">🔥</span>
+              <span class="nge-profile-streak-count">{{ stats.currentStreak }}</span>
+              <span class="nge-profile-streak-unit">
+                day{{ stats.currentStreak === 1 ? '' : 's' }} current
+              </span>
+            </div>
+            <div class="nge-profile-streak-best" v-if="stats.longestStreak > 0">
+              <span class="nge-profile-streak-best-label">Best:</span>
+              <span class="nge-profile-streak-best-count">{{ stats.longestStreak }}</span>
+              <span class="nge-profile-streak-unit">
+                day{{ stats.longestStreak === 1 ? '' : 's' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <!-- Badges -->
         <div class="nge-profile-badges">
           <div class="nge-profile-badges-label">Badges</div>
@@ -249,6 +271,69 @@ const emit = defineEmits({hide: null});
   font-size: 0.75em;
   color: #9e9e9e;
   white-space: nowrap;
+}
+
+/* ── Streak row ─────────────────────────────────── */
+.nge-profile-streak {
+  margin-bottom: 24px;
+  padding: 12px 14px;
+  background: rgba(245, 166, 35, 0.07);
+  border: 1px solid rgba(245, 166, 35, 0.18);
+  border-radius: 8px;
+}
+
+.nge-profile-streak-label {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.nge-profile-streak-values {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.nge-profile-streak-current {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.nge-profile-streak-flame {
+  font-size: 1.3em;
+  line-height: 1;
+}
+
+.nge-profile-streak-count {
+  font-size: 1.6em;
+  font-weight: 700;
+  color: #f5a623;
+  line-height: 1;
+}
+
+.nge-profile-streak-unit {
+  font-size: 0.78em;
+  color: #9e9e9e;
+}
+
+.nge-profile-streak-best {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.85em;
+}
+
+.nge-profile-streak-best-label {
+  color: #666;
+}
+
+.nge-profile-streak-best-count {
+  color: #bbb;
+  font-weight: 600;
 }
 
 /* ── Badges ────────────────────────────────────── */

@@ -3,8 +3,10 @@ import {computed, onMounted, ref} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
 import UserProfilePanel from "components/UserProfilePanel.vue";
+import WeeklyRecapPanel from "components/WeeklyRecapPanel.vue";
 
-import {loginSession, useLoginStore, useVolumesStore} from '../store';
+import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore} from '../store';
+import {storeToRefs} from 'pinia';
 
 import logoImage from '../CaveLogo-clear.png';
 
@@ -23,8 +25,11 @@ onMounted(() => {
   (document.querySelector('.ng-extend-logo > a > img')! as HTMLImageElement).src = logoImage;
 });
 
+const { stats } = storeToRefs(useUserStatsStore());
+
 const showModal = ref(false);
 const showProfile = ref(false);
+const showRecap = ref(false);
 
 function logout(session: loginSession) {
   login.logout(session);
@@ -35,6 +40,7 @@ function logout(session: loginSession) {
 <template>
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <user-profile-panel v-if="showProfile" @hide="showProfile = false" />
+  <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://h01-release.storage.googleapis.com/explore.html" target="_blank">
@@ -54,6 +60,13 @@ function logout(session: loginSession) {
         <span class="nge-legend-pip nge-legend-pip--incomplete"></span> Incomplete
       </div>
     </div>
+    <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
+         class="nge-streak-chip" title="Your current editing streak">
+      🔥 {{ stats.currentStreak }}
+    </div>
+    <button v-if="login.sessions.length > 0"
+            class="nge-recap-btn" title="Your Week in Science"
+            @click="showRecap = true">📊</button>
     <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn">My Profile</button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
@@ -162,5 +175,32 @@ function logout(session: loginSession) {
 
 .ng-extend-logo > a, .ng-extend-logo > a > img {
   height: 100%;
+}
+
+.nge-streak-chip {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f5a623;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.nge-recap-btn {
+  font-size: 14px;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+}
+
+.nge-recap-btn:hover {
+  opacity: 1;
 }
 </style>

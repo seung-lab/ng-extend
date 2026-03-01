@@ -205,6 +205,17 @@ export interface UserStats {
   mergesAllTime: number;
   splitsAllTime: number;
   cellsSubmitted: number;
+  // Monthly stats
+  editsThisMonth: number;
+  mergesThisMonth: number;
+  splitsThisMonth: number;
+  // Streak — consecutive calendar days with ≥1 edit (merge OR split counts)
+  currentStreak: number;
+  longestStreak: number;
+  lastEditDate: string;       // ISO date string e.g. "2026-03-01"
+  // Community totals — dataset-wide aggregate from CAVE ChunkedGraph
+  communityEditsThisWeek: number;
+  communityEditsThisMonth: number;
 }
 
 export const useUserStatsStore = defineStore('userStats', () => {
@@ -219,6 +230,14 @@ export const useUserStatsStore = defineStore('userStats', () => {
     mergesAllTime: 0,
     splitsAllTime: 0,
     cellsSubmitted: 0,
+    editsThisMonth: 0,
+    mergesThisMonth: 0,
+    splitsThisMonth: 0,
+    currentStreak: 0,
+    longestStreak: 0,
+    lastEditDate: '',
+    communityEditsThisWeek: 0,
+    communityEditsThisMonth: 0,
   });
 
   function setStats(partial: Partial<UserStats>) {
