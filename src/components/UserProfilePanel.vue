@@ -24,79 +24,97 @@ const emit = defineEmits({hide: null});
 <template>
   <!-- id ensures old instances are replaced; v-if on parent handles lifecycle in production -->
   <modal-overlay id="nge-profile-modal" class="nge-profile-modal" @hide="emit('hide')">
-    <button class="nge-profile-exit" @click="emit('hide')">×</button>
-
-    <div class="nge-profile-content">
-      <!-- Header: name + email -->
-      <div class="nge-profile-header" v-if="sessions.length > 0">
-        <div class="nge-profile-name">{{ sessions[0].name }}</div>
-        <div class="nge-profile-email">{{ sessions[0].email }}</div>
+    <!-- Shell: positions the × outside the scroll area -->
+    <div class="nge-profile-shell">
+      <div class="nge-profile-topbar">
+        <button class="nge-profile-exit" @click="emit('hide')">×</button>
       </div>
 
-      <!-- Stats grid: Edits | Cells -->
-      <div class="nge-profile-grid">
-        <!-- Edits column -->
-        <div>
-          <div class="nge-profile-col-header">Edits</div>
-          <div class="nge-profile-subgrid">
-            <div class="nge-profile-timespan">Today</div>
-            <div class="nge-profile-timespan">Past 7 Days</div>
-            <div class="nge-profile-timespan">All Time</div>
-            <div class="nge-profile-count">
-              {{ stats.editsToday }}
-              <span class="nge-profile-split">({{ stats.mergesToday }} | {{ stats.splitsToday }})</span>
+      <div class="nge-profile-content">
+        <!-- Header: name + email -->
+        <div class="nge-profile-header" v-if="sessions.length > 0">
+          <div class="nge-profile-name">{{ sessions[0].name }}</div>
+          <div class="nge-profile-email">{{ sessions[0].email }}</div>
+        </div>
+
+        <!-- Stats grid: Edits | Cells -->
+        <div class="nge-profile-grid">
+          <!-- Edits column -->
+          <div>
+            <div class="nge-profile-col-header">Edits</div>
+            <div class="nge-profile-subgrid">
+              <div class="nge-profile-timespan">Today</div>
+              <div class="nge-profile-timespan">Past 7 Days</div>
+              <div class="nge-profile-timespan">All Time</div>
+              <div class="nge-profile-count">
+                {{ stats.editsToday }}
+                <span class="nge-profile-split">({{ stats.mergesToday }} | {{ stats.splitsToday }})</span>
+              </div>
+              <div class="nge-profile-count">
+                {{ stats.editsThisWeek }}
+                <span class="nge-profile-split">({{ stats.mergesThisWeek }} | {{ stats.splitsThisWeek }})</span>
+              </div>
+              <div class="nge-profile-count">
+                {{ stats.editsAllTime }}
+                <span class="nge-profile-split">({{ stats.mergesAllTime }} | {{ stats.splitsAllTime }})</span>
+              </div>
             </div>
-            <div class="nge-profile-count">
-              {{ stats.editsThisWeek }}
-              <span class="nge-profile-split">({{ stats.mergesThisWeek }} | {{ stats.splitsThisWeek }})</span>
-            </div>
-            <div class="nge-profile-count">
-              {{ stats.editsAllTime }}
-              <span class="nge-profile-split">({{ stats.mergesAllTime }} | {{ stats.splitsAllTime }})</span>
+          </div>
+
+          <!-- Cells column -->
+          <div>
+            <div class="nge-profile-col-header">Cells</div>
+            <div class="nge-profile-subgrid">
+              <div class="nge-profile-timespan">Today</div>
+              <div class="nge-profile-timespan">Past 7 Days</div>
+              <div class="nge-profile-timespan">All Time</div>
+              <div class="nge-profile-count">0</div>
+              <div class="nge-profile-count">0</div>
+              <div class="nge-profile-count">{{ stats.cellsSubmitted }}</div>
             </div>
           </div>
         </div>
 
-        <!-- Cells column -->
-        <div>
-          <div class="nge-profile-col-header">Cells</div>
-          <div class="nge-profile-subgrid">
-            <div class="nge-profile-timespan">Today</div>
-            <div class="nge-profile-timespan">Past 7 Days</div>
-            <div class="nge-profile-timespan">All Time</div>
-            <div class="nge-profile-count">0</div>
-            <div class="nge-profile-count">0</div>
-            <div class="nge-profile-count">{{ stats.cellsSubmitted }}</div>
-          </div>
-        </div>
-      </div>
+        <!-- Badges -->
+        <div class="nge-profile-badges">
+          <div class="nge-profile-badges-label">Badges</div>
+          <div class="nge-profile-badges-grid">
+            <div
+              v-for="badge in BADGE_DEFINITIONS"
+              :key="badge.id"
+              class="nge-profile-badge"
+              :class="{ 'nge-profile-badge--locked': !isBadgeEarned(badge.editThreshold) }"
+              :title="isBadgeEarned(badge.editThreshold)
+                ? badge.name + ' — ' + badge.description
+                : '??? (locked — keep editing to reveal!)'"
+            >
+              <!-- Earned: show real badge image + name -->
+              <template v-if="isBadgeEarned(badge.editThreshold)">
+                <div class="nge-profile-badge-img">
+                  <img
+                    :src="getBadgeUrl(badge.imageKey)"
+                    :alt="badge.name"
+                    class="nge-profile-badge-icon"
+                  />
+                </div>
+                <div class="nge-profile-badge-name">{{ badge.name }}</div>
+              </template>
 
-      <!-- Badges -->
-      <div class="nge-profile-badges">
-        <div class="nge-profile-badges-label">Badges</div>
-        <div class="nge-profile-badges-grid">
-          <div
-            v-for="badge in BADGE_DEFINITIONS"
-            :key="badge.id"
-            class="nge-profile-badge"
-            :class="{ 'nge-profile-badge--locked': !isBadgeEarned(badge.editThreshold) }"
-            :title="isBadgeEarned(badge.editThreshold)
-              ? badge.name + ' — ' + badge.description
-              : badge.name + ' (locked: ' + badge.editThreshold.toLocaleString() + ' edits)'"
-          >
-            <div class="nge-profile-badge-img">
-              <img
-                :src="getBadgeUrl(badge.imageKey)"
-                :alt="badge.name"
-                class="nge-profile-badge-icon"
-              />
+              <!-- Locked: mystery diamond placeholder -->
+              <template v-else>
+                <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-mystery">
+                    <span class="nge-profile-badge-mystery-q">?</span>
+                  </div>
+                </div>
+                <div class="nge-profile-badge-name nge-profile-badge-name--locked">???</div>
+              </template>
             </div>
-            <div class="nge-profile-badge-name">{{ badge.name }}</div>
           </div>
         </div>
-      </div>
 
-      <!-- Hook: user profile repo connects here via useUserStatsStore().setStats({...}) -->
+        <!-- Hook: user profile repo connects here via useUserStatsStore().setStats({...}) -->
+      </div>
     </div>
   </modal-overlay>
 </template>
@@ -106,10 +124,21 @@ const emit = defineEmits({hide: null});
   font-size: 0.9em;
 }
 
+/* ── Shell: separates × from scrollable content ── */
+.nge-profile-shell {
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+}
+
+.nge-profile-topbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 12px 0;
+  flex-shrink: 0;
+}
+
 .nge-profile-exit {
-  position: absolute;
-  top: 10px;
-  right: 14px;
   background: none;
   border: none;
   color: #aaa;
@@ -125,10 +154,11 @@ const emit = defineEmits({hide: null});
 
 .nge-profile-content {
   width: 540px;
-  max-height: 80vh;
   overflow-y: auto;
-  padding: 40px 50px 30px;
+  padding: 16px 50px 30px;
   box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
 }
 
 .nge-profile-header {
@@ -206,13 +236,8 @@ const emit = defineEmits({hide: null});
   transition: transform 0.1s;
 }
 
-.nge-profile-badge:hover {
+.nge-profile-badge:not(.nge-profile-badge--locked):hover {
   transform: scale(1.06);
-}
-
-.nge-profile-badge--locked {
-  opacity: 0.28;
-  filter: grayscale(100%);
 }
 
 .nge-profile-badge-img {
@@ -229,6 +254,27 @@ const emit = defineEmits({hide: null});
   object-fit: contain;
 }
 
+/* Mystery placeholder — diamond shape matching badge outline */
+.nge-profile-badge-mystery {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px dashed rgba(255, 255, 255, 0.15);
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nge-profile-badge-mystery-q {
+  font-size: 1.3em;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.2);
+  font-style: italic;
+  /* counter-rotate so the ? reads upright inside the rotated diamond */
+  line-height: 1;
+}
+
 .nge-profile-badge-name {
   font-size: 0.68em;
   color: #bbb;
@@ -238,7 +284,8 @@ const emit = defineEmits({hide: null});
   word-break: break-word;
 }
 
-.nge-profile-badge--locked .nge-profile-badge-name {
-  color: #666;
+.nge-profile-badge-name--locked {
+  color: #444;
+  letter-spacing: 0.05em;
 }
 </style>

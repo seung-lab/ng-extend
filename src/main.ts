@@ -209,7 +209,7 @@ function observeSegmentSelect(targetNode: Element) {
           if (button == null) {
             const viewer: ExtendViewer = (<any>window)['viewer'];
             const layerName = viewer.selectedLayer.layer?.name || 'default';
-            const dataset = DATASETS[layerName];
+            const dataset = (typeof DATASETS !== 'undefined' && DATASETS) ? (DATASETS[layerName] ?? '') : '';
 
             button = buttonService.createButton(localServerURL, segmentIDString, dataset);
             button.classList.add('error')
