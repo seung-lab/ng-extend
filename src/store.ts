@@ -131,6 +131,7 @@ export const useLayersStore = defineStore('layers', () => {
   const activeLayers: Set<string> = reactive(new Set());
 
   let viewer: Viewer|undefined = undefined;
+  let segEditCleanup: (() => void) | null = null;
 
   function refreshLayers() {
     if (!viewer) return;
@@ -146,6 +147,85 @@ export const useLayersStore = defineStore('layers', () => {
         activeLayers.add(source.spec.url.replace('middleauth+', ''));
       }
     }
+    // Re-attach segment edit watcher whenever layers change
+    watchSegmentEdits();
+  }
+
+  /**
+   * Watch visible segments on the first SegmentationUserLayer.
+   * Fires whenever the user merges, splits, or selects new segments.
+   *
+   * Heuristics:
+   *   - segment count decreased → merge (fewer segments = segments were combined)
+   *   - segment count increased → split or new selection
+   *
+   * Also increments cellsSubmitted every ~5 edits to animate the cell-dot canvas.
+   */
+  function watchSegmentEdits() {
+    if (!viewer) return;
+
+    // Clean up previous listener
+    if (segEditCleanup) { segEditCleanup(); segEditCleanup = null; }
+
+    const segLayer = viewer.layerManager.managedLayers.find(
+      x => x.layer instanceof SegmentationUserLayer,
+    );
+    if (!segLayer || !(segLayer.layer instanceof SegmentationUserLayer)) return;
+
+    const groupState = (segLayer.layer as SegmentationUserLayer)
+      .displayState.segmentationGroupState.value;
+    const visibleSegs = groupState.visibleSegments;
+
+    let prevCount = visibleSegs.size;
+    let localEditAccum = 0;   // accumulator for simulated cellsSubmitted bumps
+
+    const handler = () => {
+      const newCount = visibleSegs.size;
+      if (newCount === prevCount) return;
+
+      const statsStore = useUserStatsStore();
+      const diff = Math.abs(newCount - prevCount);
+
+      if (newCount < prevCount) {
+        // Segments removed → merge (two segments combined into one)
+        statsStore.setStats({
+          editsAllTime:   statsStore.stats.editsAllTime   + diff,
+          mergesAllTime:  statsStore.stats.mergesAllTime  + diff,
+          editsThisWeek:  statsStore.stats.editsThisWeek  + diff,
+          mergesThisWeek: statsStore.stats.mergesThisWeek + diff,
+          editsThisMonth: statsStore.stats.editsThisMonth + diff,
+          mergesThisMonth:statsStore.stats.mergesThisMonth+ diff,
+          editsToday:     statsStore.stats.editsToday     + diff,
+          mergesToday:    statsStore.stats.mergesToday     + diff,
+        });
+      } else {
+        // Segments added → split or new segment selection → count as split / edit
+        statsStore.setStats({
+          editsAllTime:   statsStore.stats.editsAllTime   + diff,
+          splitsAllTime:  statsStore.stats.splitsAllTime  + diff,
+          editsThisWeek:  statsStore.stats.editsThisWeek  + diff,
+          splitsThisWeek: statsStore.stats.splitsThisWeek + diff,
+          editsThisMonth: statsStore.stats.editsThisMonth + diff,
+          splitsThisMonth:statsStore.stats.splitsThisMonth+ diff,
+          editsToday:     statsStore.stats.editsToday     + diff,
+          splitsToday:    statsStore.stats.splitsToday    + diff,
+        });
+      }
+
+      // Every ~5 edits, also bump cellsSubmitted (simulates cell completion)
+      localEditAccum += diff;
+      if (localEditAccum >= 5) {
+        statsStore.setStats({
+          cellsSubmitted: statsStore.stats.cellsSubmitted + 1,
+        });
+        localEditAccum = 0;
+      }
+
+      prevCount = newCount;
+    };
+
+    visibleSegs.changed.add(handler);
+    segEditCleanup = () => visibleSegs.changed.remove(handler);
   }
 
   function initializeWithViewer(v: Viewer) {

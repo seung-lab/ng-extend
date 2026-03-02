@@ -96,8 +96,9 @@ function drawCells() {
   const completed   = Math.min(stats.value.cellsSubmitted, 400);
   const estimated   = Math.round(stats.value.editsAllTime / 30);
   const contributed = Math.min(Math.max(0, estimated - stats.value.cellsSubmitted), 250);
+  const todayEdits  = Math.min(stats.value.editsToday, 80); // today's edits in amber
 
-  if (completed === 0 && contributed === 0) {
+  if (completed === 0 && contributed === 0 && todayEdits === 0) {
     ctx.fillStyle = 'rgba(100, 130, 160, 0.3)';
     ctx.font = '9.5px system-ui, sans-serif';
     ctx.textAlign = 'center';
@@ -152,10 +153,40 @@ function drawCells() {
       ctx.fill();
     }
   }
+
+  // Today's edits — amber/green dots with glow (drawn on top so they pop)
+  const rngToday = seededRNG(77 + todayEdits); // seed changes as count grows
+  for (let i = 0; i < todayEdits; i++) {
+    const x = bL + inset + rngToday() * (bW - 2 * inset);
+    const y = bT + inset + rngToday() * (bH - 2 * inset);
+    // Glow
+    const grd = ctx.createRadialGradient(x, y, 0, x, y, 7);
+    grd.addColorStop(0, 'rgba(120, 255, 160, 0.45)');
+    grd.addColorStop(1, 'rgba(120, 255, 160, 0)');
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+    // Dot
+    ctx.beginPath();
+    ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(120, 255, 160, 0.95)';
+    ctx.fill();
+  }
 }
 
-// Pulse the canvas when new cells are submitted (real-time feedback)
+// Pulse the canvas when new cells are submitted or edits happen today
 watch(() => stats.value.cellsSubmitted, (newVal, oldVal) => {
+  if (newVal > oldVal) {
+    nextTick(() => {
+      cellCanvas.value?.classList.add('nge-canvas-pulse');
+      setTimeout(() => cellCanvas.value?.classList.remove('nge-canvas-pulse'), 700);
+    });
+  }
+});
+
+// Also pulse on today's edits (segment interactions)
+watch(() => stats.value.editsToday, (newVal, oldVal) => {
   if (newVal > oldVal) {
     nextTick(() => {
       cellCanvas.value?.classList.add('nge-canvas-pulse');
@@ -390,6 +421,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <span class="nge-profile-viz-legend-lbl">completed</span>
                 <span class="nge-profile-viz-dot nge-profile-viz-dot--contributed"></span>
                 <span class="nge-profile-viz-legend-lbl">contributed</span>
+                <span class="nge-profile-viz-dot nge-profile-viz-dot--today"></span>
+                <span class="nge-profile-viz-legend-lbl">today</span>
               </div>
               <div class="nge-profile-viz-count">
                 {{ stats.cellsSubmitted.toLocaleString() }} cells submitted
@@ -862,6 +895,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 .nge-profile-viz-dot--completed  { background: rgba(120, 200, 255, 0.9); }
 .nge-profile-viz-dot--contributed { background: rgba(100,160,255,0.22); border: 1px solid rgba(100,160,255,0.45); }
+.nge-profile-viz-dot--today       { background: rgba(120, 255, 160, 0.9); }
 .nge-profile-viz-legend-lbl { font-size: 0.66em; color: #444; margin-right: 5px; }
 
 .nge-profile-viz-count { font-size: 0.68em; color: #444; text-align: center; }
