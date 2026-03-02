@@ -54,7 +54,7 @@ const micronState = JSON.stringify({
     },
     {
       type: 'segmentation',
-      source: 'graphene://https://minnie.microns-daf.com/segmentation/table/minnie65_public_v117',
+      source: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/minnie65_public_v117',
       name: 'minnie65_public',
       segments: SEED_SEGMENTS,
     },

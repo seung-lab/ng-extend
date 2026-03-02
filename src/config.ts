@@ -8,14 +8,34 @@ export type Config = {
 // caveServer is auto-detected from the middleauth layer URL in the viewer.
 // ─────────────────────────────────────────────────────────────────────────────
 export const EYEWIRE_II_CAVE_CONFIG = {
-  /** Hard-code CAVE server URL here if auto-detection fails, else leave empty. */
-  caveServerOverride: '',
+  /**
+   * Hard-coded CAVE server URL fallback used when auto-detection from a
+   * middleauth layer URL fails (e.g. bare graphene:// URLs in dev).
+   */
+  caveServerOverride: 'https://minnie.microns-daf.com',
 
-  /** Annotation table that stores "cell complete" flags. Ask your CAVE admin. */
-  cellStatusTable: 'cell_status',
+  /**
+   * Per-dataset CAVE server URLs, keyed by neuroglancer layer name.
+   * Used as second-priority fallback after middleauth auto-detection.
+   */
+  caveServerByDataset: {
+    minnie65_public:          'https://minnie.microns-daf.com',
+    minnie65_public_v117:     'https://minnie.microns-daf.com',
+    eyewire_ii:               'https://global.brain-wire-test.org',
+  } as Record<string, string>,
 
-  /** Annotation table that stores cell type labels. Ask your CAVE admin. */
-  cellTypeTable: 'cell_type',
+  /**
+   * Annotation table for "cell complete" flags.
+   * Using _dev suffix tables for testing — these must be created on the CAVE
+   * server before use. Switch to 'cell_status' for production.
+   */
+  cellStatusTable: 'cell_status_dev',
+
+  /**
+   * Annotation table for cell type labels.
+   * Using _dev suffix tables for testing. Switch to 'cell_type' for production.
+   */
+  cellTypeTable: 'cell_type_dev',
 
   /** CAVE datastack name for Eyewire II. Confirm with your team. */
   datastack: 'eyewire_ii',

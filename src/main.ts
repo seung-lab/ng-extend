@@ -5,7 +5,7 @@ import 'neuroglancer/ui/default_viewer.css';
 import './widgets/lightbulb_menu.css';
 
 import App from 'components/App.vue';
-import {useLayersStore} from 'src/store';
+import {useLayersStore, useSegmentAnnotationStore} from 'src/store';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
@@ -169,29 +169,12 @@ function observeSegmentSelect(targetNode: Element) {
   // Options for the observer (which mutations to observe)
   const config = {childList: true, subtree: true};
 
-  const getLocalServerURL = () => {
-    const localUrl = viewer.layerManager.managedLayers
-        .filter(x => x.layer?.dataSources[0]?.spec.url.includes("middleauth"))
-        .map(x => x.layer?.dataSources[0].spec.url)[0];
-
-    if (localUrl) {
-      const cleanUrl = localUrl.replace('graphene://middleauth+', '');
-      try {
-        const baseUrl = new URL(cleanUrl);
-        const protocol = baseUrl.protocol;
-        const host = baseUrl.host;
-        const pathname = baseUrl.pathname.split('/segmentation')[0]; // Stops before '/segmentation'
-
-        const finalUrl = `${protocol}//${host}${pathname}`;
-        return finalUrl; // Return the formatted URL
-      } catch (error) {
-        console.error("Error processing URL: ", error); // Provide error feedback
-        return '';
-      }
-    } else {
-      console.log("No URL found that includes 'middleauth'.");
-      return '';
-    }
+  // Derives the CAVE server base URL from the active layers, with fallback
+  // to per-dataset config and global override. Keeps UI buttons working even
+  // when the layer URL lacks a middleauth+ prefix (e.g. in dev).
+  const getLocalServerURL = (): string => {
+    const {getCaveServerUrl} = useLayersStore();
+    return getCaveServerUrl();
   };
 
   const updateSegmentSelectItem = function(item: HTMLElement) {
@@ -205,6 +188,9 @@ function observeSegmentSelect(targetNode: Element) {
         const segmentIDString =
             item.getAttribute('data-id');
         if (segmentIDString) {
+          // Track this as the active segment for the annotation panel
+          useSegmentAnnotationStore().setActiveSegId(segmentIDString, localServerURL);
+
           let button = item.querySelector('.nge-segment-button.menu');
           if (button == null) {
             const viewer: ExtendViewer = (<any>window)['viewer'];

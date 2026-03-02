@@ -6,8 +6,10 @@ import UserProfilePanel from "components/UserProfilePanel.vue";
 import WeeklyRecapPanel from "components/WeeklyRecapPanel.vue";
 import LeaderboardPanel from "components/LeaderboardPanel.vue";
 import SettingsPanel from "components/SettingsPanel.vue";
+import AnnotationPanel from "components/AnnotationPanel.vue";
 
-import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore} from '../store';
+import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore} from '../store';
+import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
 
 import logoImage from '../CaveLogo-clear.png';
@@ -28,6 +30,7 @@ onMounted(() => {
 });
 
 const { stats } = storeToRefs(useUserStatsStore());
+const { activeSegId } = storeToRefsAnnot(useSegmentAnnotationStore());
 
 const showModal = ref(false);
 const showProfile = ref(false);
@@ -42,6 +45,7 @@ function logout(session: loginSession) {
 </script>
 
 <template>
+  <annotation-panel />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <user-profile-panel v-if="showProfile" @hide="showProfile = false" @open-settings="showSettings = true" />
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />

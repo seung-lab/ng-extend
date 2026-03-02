@@ -7,7 +7,7 @@ import {MiddleAuthCredentialsProvider} from 'neuroglancer/datasource/middleauth/
 import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {responseJson} from 'neuroglancer/util/http_request';
 
-import {Config} from './config';
+import {Config, EYEWIRE_II_CAVE_CONFIG} from './config';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 
@@ -266,7 +266,40 @@ export const useLayersStore = defineStore('layers', () => {
     }
   }
 
-  return {initializeWithViewer, activeLayers, selectLayers};
+  /**
+   * Derives the CAVE server base URL from the active neuroglancer state.
+   * Priority:
+   *   1. middleauth+ layer URL auto-extraction (production)
+   *   2. EYEWIRE_II_CAVE_CONFIG.caveServerByDataset keyed by layer name (dev)
+   *   3. EYEWIRE_II_CAVE_CONFIG.caveServerOverride (last resort)
+   */
+  function getCaveServerUrl(): string {
+    if (!viewer) return EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
+
+    // 1. Try to extract from a middleauth-wrapped datasource URL
+    for (const ml of viewer.layerManager.managedLayers) {
+      const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (url.includes('middleauth')) {
+        const clean = url.replace('graphene://middleauth+', '');
+        try {
+          const u = new URL(clean);
+          return `${u.protocol}//${u.host}${u.pathname.split('/segmentation')[0]}`;
+        } catch { /* ignore */ }
+      }
+    }
+
+    // 2. Fall back to per-dataset config
+    for (const ml of viewer.layerManager.managedLayers) {
+      const layerName = ml.name ?? '';
+      const fromConfig = EYEWIRE_II_CAVE_CONFIG.caveServerByDataset?.[layerName];
+      if (fromConfig) return fromConfig;
+    }
+
+    // 3. Global override
+    return EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
+  }
+
+  return {initializeWithViewer, activeLayers, selectLayers, getCaveServerUrl};
 });
 
 // ─── User Stats Store ────────────────────────────────────────────────────────
@@ -354,6 +387,43 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
 
   load(); // hydrate from localStorage on store init
   return { prefs, save };
+});
+
+// ─── Segment Annotation Store ─────────────────────────────────────────────────
+// Tracks the currently-selected segment ID and its CAVE annotation status.
+// Populated by main.ts (DOM observer) when a segment list entry appears.
+
+export interface SegmentAnnotation {
+  segId: string;
+  isComplete: boolean;
+  cellType: string;
+  annotationId?: number;
+  cellTypeAnnotationId?: number;
+  loading: boolean;
+  error: string;
+}
+
+export const useSegmentAnnotationStore = defineStore('segAnnotation', () => {
+  const activeSegId  = ref<string | null>(null);
+  const caveUrl      = ref<string>('');
+  const annotation   = ref<SegmentAnnotation | null>(null);
+
+  function setActiveSegId(id: string | null, cave?: string) {
+    activeSegId.value = id;
+    if (cave !== undefined) caveUrl.value = cave;
+    if (id === null) { annotation.value = null; return; }
+    // Reset to loading state so the panel shows a spinner
+    annotation.value = {
+      segId: id, isComplete: false, cellType: '',
+      loading: true, error: '',
+    };
+  }
+
+  function setAnnotation(a: SegmentAnnotation | null) {
+    annotation.value = a;
+  }
+
+  return { activeSegId, caveUrl, annotation, setActiveSegId, setAnnotation };
 });
 
 export const useVolumesStore = defineStore('volumes', () => {
