@@ -426,6 +426,544 @@ export const useSegmentAnnotationStore = defineStore('segAnnotation', () => {
   return { activeSegId, caveUrl, annotation, setActiveSegId, setAnnotation };
 });
 
+// ─── Cell History Store ──────────────────────────────────────────────────────
+// Tracks every cell the user has completed, ID'd, or interacted with.
+// Persists to localStorage so it survives page reloads.
+
+const CELL_HISTORY_KEY = 'nge_cell_history_v1';
+
+export interface CellHistoryEntry {
+  segId: string;
+  isComplete: boolean;
+  cellType: string;
+  /** Viewer position at time of annotation — used for jump-to-cell. */
+  position: [number, number, number];
+  /** ISO timestamp of last update. */
+  updatedAt: string;
+  /** User-assigned nickname (displayed instead of segId when set). */
+  nickname?: string;
+  /** Favorite flag — favorite cells appear at the top of the list. */
+  isFavorite?: boolean;
+}
+
+export const useCellHistoryStore = defineStore('cellHistory', () => {
+  const cells = ref<CellHistoryEntry[]>([]);
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(CELL_HISTORY_KEY);
+      if (raw) cells.value = JSON.parse(raw);
+    } catch { /* ignore parse errors */ }
+  }
+
+  function persist() {
+    localStorage.setItem(CELL_HISTORY_KEY, JSON.stringify(cells.value));
+  }
+
+  /** Add or update a cell entry. */
+  function upsert(entry: Partial<CellHistoryEntry> & { segId: string }) {
+    const idx = cells.value.findIndex(c => c.segId === entry.segId);
+    const now = new Date().toISOString();
+    if (idx >= 0) {
+      // Merge fields — don't overwrite existing data with empty values
+      const existing = cells.value[idx];
+      cells.value[idx] = {
+        ...existing,
+        ...entry,
+        cellType: entry.cellType || existing.cellType,
+        position: entry.position || existing.position,
+        updatedAt: now,
+      };
+    } else {
+      cells.value.unshift({
+        segId: entry.segId,
+        isComplete: entry.isComplete ?? false,
+        cellType: entry.cellType ?? '',
+        position: entry.position ?? [0, 0, 0],
+        updatedAt: now,
+        nickname: entry.nickname,
+        isFavorite: entry.isFavorite,
+      });
+    }
+    // Sort: favorites first, then by most recent
+    cells.value.sort((a, b) => {
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+    persist();
+  }
+
+  /** Toggle favorite status for a cell. */
+  function toggleFavorite(segId: string) {
+    const cell = cells.value.find(c => c.segId === segId);
+    if (cell) {
+      cell.isFavorite = !cell.isFavorite;
+      // Re-sort
+      cells.value.sort((a, b) => {
+        if (a.isFavorite && !b.isFavorite) return -1;
+        if (!a.isFavorite && b.isFavorite) return 1;
+        return b.updatedAt.localeCompare(a.updatedAt);
+      });
+      persist();
+    }
+  }
+
+  /** Set a nickname for a cell. */
+  function setNickname(segId: string, name: string) {
+    const cell = cells.value.find(c => c.segId === segId);
+    if (cell) {
+      cell.nickname = name.trim() || undefined;
+      persist();
+    }
+  }
+
+  /** Lookup a nickname by segment ID (used globally to replace segID display). */
+  function getNickname(segId: string): string | undefined {
+    const cell = cells.value.find(c => c.segId === segId);
+    return cell?.nickname;
+  }
+
+  /** Navigate the viewer to a cell and select it.
+   *  If `positionOverride` is given, jump there instead of the cell history position. */
+  function jumpToCell(segId: string, positionOverride?: [number, number, number]) {
+    const entry = cells.value.find(c => c.segId === segId);
+    const viewer: any = (window as any)['viewer'];
+    if (!viewer) return;
+
+    // Use override position (e.g. from help request) or fall back to cell history
+    const pos = positionOverride ?? entry?.position;
+    if (pos && (pos[0] || pos[1] || pos[2])) {
+      try {
+        viewer.navigationState.position.value = Float32Array.from(pos);
+      } catch (e) {
+        console.warn('[cellHistory] Could not set position:', e);
+      }
+    }
+
+    // Select the segment in the first segmentation layer
+    try {
+      const segLayer = viewer.layerManager.managedLayers.find(
+        (x: any) => x.layer?.constructor?.name?.includes('Segmentation'),
+      );
+      if (segLayer?.layer) {
+        const groupState = segLayer.layer.displayState?.segmentationGroupState?.value;
+        if (groupState) {
+          // Parse the segment ID as a Uint64
+          const Uint64 = groupState.visibleSegments.hashTable?.emptyValue?.constructor;
+          if (Uint64) {
+            const seg = Uint64.parseString(segId);
+            if (!groupState.visibleSegments.has(seg)) {
+              groupState.visibleSegments.add(seg);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[cellHistory] Could not select segment:', e);
+    }
+  }
+
+  load(); // hydrate on store init
+
+  // Seed with demo data if empty (real minnie65 segIDs)
+  if (cells.value.length === 0) {
+    const now = Date.now();
+    const SEED: Array<Partial<CellHistoryEntry> & { segId: string }> = [
+      { segId: '864691135445639570', isComplete: true, cellType: 'L2/3 Pyramidal',
+        position: [120320, 103936, 21360], isFavorite: true },
+      { segId: '864691135158265390', isComplete: true, cellType: 'L2/3 Pyramidal',
+        position: [119040, 104448, 21280] },
+      { segId: '864691135697404831', isComplete: false, cellType: 'L2/3 Pyramidal',
+        position: [121600, 102912, 21440] },
+      { segId: '864691136239802390', isComplete: true, cellType: 'L4 Spiny Stellate',
+        position: [118784, 105984, 21200] },
+      { segId: '864691135213953920', isComplete: false, cellType: 'L5 Thick-Tufted',
+        position: [120064, 106496, 21120] },
+      { segId: '864691135158296972', isComplete: true, cellType: 'L5 Slender-Tufted',
+        position: [119808, 103168, 21520] },
+      { segId: '864691134884741468', isComplete: false, cellType: '',
+        position: [121856, 105472, 21040] },
+      { segId: '864691135697405836', isComplete: true, cellType: 'PV+ Basket Cell',
+        position: [118528, 104960, 21360], isFavorite: true },
+      { segId: '864691135158267390', isComplete: false, cellType: 'SST+ Martinotti',
+        position: [120576, 102400, 21600] },
+      { segId: '864691136239803118', isComplete: true, cellType: 'VIP+ Bipolar',
+        position: [119296, 105216, 21480] },
+      { segId: '864691135158265120', isComplete: false, cellType: '',
+        position: [121344, 104192, 21240] },
+    ];
+    SEED.forEach((s, i) => {
+      cells.value.push({
+        segId: s.segId,
+        isComplete: s.isComplete ?? false,
+        cellType: s.cellType ?? '',
+        position: s.position ?? [0, 0, 0],
+        updatedAt: new Date(now - i * 3600000 * 3).toISOString(),
+        nickname: s.nickname,
+        isFavorite: s.isFavorite,
+      });
+    });
+    cells.value.sort((a, b) => {
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+    persist();
+  }
+
+  return { cells, upsert, jumpToCell, toggleFavorite, setNickname, getNickname };
+});
+
+// ── Help requests (second-opinion) ────────────────────────────────────────────
+const HELP_REQUESTS_KEY = 'nge_help_requests_v1';
+
+export interface HelpRequest {
+  id: string;
+  segId: string;
+  position: [number, number, number];
+  note: string;
+  /** Issue category: extension, merge, black spill, doublecheck */
+  issueType: string;
+  createdAt: string;
+  resolved: boolean;
+  /** Cell type guess at time of request */
+  cellType?: string;
+  nickname?: string;
+}
+
+export const useHelpRequestStore = defineStore('helpRequests', () => {
+  const requests = ref<HelpRequest[]>([]);
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(HELP_REQUESTS_KEY);
+      if (raw) requests.value = JSON.parse(raw);
+    } catch {}
+  }
+
+  function persist() {
+    localStorage.setItem(HELP_REQUESTS_KEY, JSON.stringify(requests.value));
+  }
+
+  function add(req: Omit<HelpRequest, 'id' | 'createdAt' | 'resolved'>) {
+    requests.value.unshift({
+      ...req,
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      createdAt: new Date().toISOString(),
+      resolved: false,
+    });
+    persist();
+  }
+
+  function resolve(id: string) {
+    const r = requests.value.find(x => x.id === id);
+    if (r) { r.resolved = true; persist(); }
+  }
+
+  function remove(id: string) {
+    requests.value = requests.value.filter(x => x.id !== id);
+    persist();
+  }
+
+  const pending = ref<HelpRequest[]>([]);
+  // Keep a reactive computed-like ref
+  function refreshPending() {
+    pending.value = requests.value.filter(x => !x.resolved);
+  }
+
+  load();
+  refreshPending();
+  return { requests, pending, add, resolve, remove, refreshPending };
+});
+
+// ── Proofreading Queue ─────────────────────────────────────────────────────
+// Loads a queue of segments to review from a published Google Sheet (CSV).
+// Users cycle through items, mark them reviewed, and track session progress.
+
+const QUEUE_REVIEWED_KEY = 'nge_queue_reviewed_v1';
+const QUEUE_SHEET_KEY    = 'nge_queue_sheet_url_v1';
+
+export interface QueueItem {
+  segId: string;
+  index: string;              // e.g. "B1", "B2"
+  nucCoords: string;          // nucleus coordinates "x, y, z"
+  somaCoords: string;         // soma coordinates "x, y, z"
+  finalSegId: string;         // final segment ID after proofreading
+  finalNucId: string;         // final nucleus ID
+  notes: string;
+}
+
+export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => {
+  const items       = ref<QueueItem[]>([]);
+  const currentIdx  = ref(0);
+  const proofread   = ref<Set<string>>(new Set());   // formerly "reviewed"
+  const loading     = ref(false);
+  const error       = ref('');
+  const sheetUrl    = ref('');
+  const sessionStart = Date.now();
+
+  // Per-item local edits (soma coords, final seg id, annotation) keyed by segId
+  const localEdits = ref<Record<string, { somaCoords?: string; finalSegId?: string; annotation?: string }>>(
+    {});
+
+  // Persist proofread set, sheet URL, and local edits
+  function loadLocal() {
+    try {
+      const raw = localStorage.getItem(QUEUE_REVIEWED_KEY);
+      if (raw) proofread.value = new Set(JSON.parse(raw));
+    } catch {}
+    try {
+      const url = localStorage.getItem(QUEUE_SHEET_KEY);
+      if (url) sheetUrl.value = url;
+    } catch {}
+    try {
+      const edits = localStorage.getItem('nge_queue_edits_v1');
+      if (edits) localEdits.value = JSON.parse(edits);
+    } catch {}
+  }
+
+  function persistProofread() {
+    localStorage.setItem(QUEUE_REVIEWED_KEY, JSON.stringify([...proofread.value]));
+  }
+
+  function persistEdits() {
+    localStorage.setItem('nge_queue_edits_v1', JSON.stringify(localEdits.value));
+  }
+
+  function persistSheetUrl() {
+    localStorage.setItem(QUEUE_SHEET_KEY, sheetUrl.value);
+  }
+
+  /** Get local edits for a segment, merged with sheet data. */
+  function getEdits(segId: string) {
+    return localEdits.value[segId] || {};
+  }
+
+  /** Save local edit for a specific field. */
+  function setEdit(segId: string, field: 'somaCoords' | 'finalSegId' | 'annotation', value: string) {
+    if (!localEdits.value[segId]) localEdits.value[segId] = {};
+    localEdits.value[segId][field] = value;
+    persistEdits();
+  }
+
+  /** Check if item has soma coords (from sheet or local edit) — i.e. "claimed". */
+  function isClaimed(item: QueueItem): boolean {
+    const coords = item.somaCoords || getEdits(item.segId).somaCoords || '';
+    return coords.trim().length > 0;
+  }
+
+  /** Check if item can be marked proofread (has soma + final seg id). */
+  function canComplete(item: QueueItem): boolean {
+    const edits = getEdits(item.segId);
+    const hasSoma = (item.somaCoords || edits.somaCoords || '').trim().length > 0;
+    const hasFinal = (item.finalSegId || edits.finalSegId || '').trim().length > 0;
+    return hasSoma && hasFinal;
+  }
+
+  /** Parse CSV text into rows (handles quoted fields). */
+  function parseCsv(text: string): string[][] {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"' && text[i + 1] === '"') { field += '"'; i++; }
+        else if (ch === '"') { inQuotes = false; }
+        else { field += ch; }
+      } else {
+        if (ch === '"') { inQuotes = true; }
+        else if (ch === ',') { row.push(field.trim()); field = ''; }
+        else if (ch === '\n' || ch === '\r') {
+          if (ch === '\r' && text[i + 1] === '\n') i++;
+          row.push(field.trim()); field = '';
+          if (row.some(f => f)) rows.push(row);
+          row = [];
+        } else { field += ch; }
+      }
+    }
+    row.push(field.trim());
+    if (row.some(f => f)) rows.push(row);
+    return rows;
+  }
+
+  /**
+   * Fetch and parse a published Google Sheet CSV.
+   * Finds the header row dynamically (looks for "Segment ID" in any row).
+   * Expected columns: Index, Nuc Coords, Soma Coords, Segment ID,
+   *                   Final SegID, Final NucID, Notes
+   */
+  async function loadFromSheet(url?: string) {
+    const sheetSource = url || sheetUrl.value;
+    if (!sheetSource) { error.value = 'No sheet URL configured'; return; }
+
+    loading.value = true;
+    error.value = '';
+
+    try {
+      // Convert share URL to CSV export URL
+      let csvUrl = sheetSource;
+      const match = sheetSource.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (match) {
+        // Extract gid if present (for multi-tab sheets)
+        const gidMatch = sheetSource.match(/gid=(\d+)/);
+        const gid = gidMatch ? gidMatch[1] : '0';
+        csvUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv&gid=${gid}`;
+      }
+
+      const res = await fetch(csvUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      const rows = parseCsv(text);
+      if (rows.length < 2) { error.value = 'Sheet is empty'; loading.value = false; return; }
+
+      // Find header row dynamically — look for a row containing "segment"
+      let headerIdx = 0;
+      for (let i = 0; i < Math.min(rows.length, 10); i++) {
+        const lower = rows[i].map(c => c.toLowerCase());
+        if (lower.some(c => c.includes('segment'))) { headerIdx = i; break; }
+      }
+
+      const header = rows[headerIdx].map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      const col = (name: string) =>
+        header.findIndex(h => h.includes(name));
+
+      const iIndex    = col('index');
+      const iNuc      = col('nuccoord') >= 0 ? col('nuccoord') : col('nuc');
+      const iSoma     = col('somacoord') >= 0 ? col('somacoord') : col('soma');
+      const iSeg      = col('segmentid') >= 0 ? col('segmentid') : col('segment');
+      const iFinal    = col('finalseg');
+      const iFinalNuc = col('finalnuc');
+      const iNotes    = col('note');
+
+      if (iSeg < 0) { error.value = 'Could not find "Segment ID" column'; loading.value = false; return; }
+
+      const parsed: QueueItem[] = [];
+      for (let r = headerIdx + 1; r < rows.length; r++) {
+        const row = rows[r];
+        const segId = (row[iSeg] || '').trim();
+        if (!segId || !/^\d+$/.test(segId)) continue;
+
+        parsed.push({
+          segId,
+          index:      (iIndex >= 0 ? row[iIndex] : '') || '',
+          nucCoords:  cleanCoord(iNuc >= 0 ? row[iNuc] : ''),
+          somaCoords: cleanCoord(iSoma >= 0 ? row[iSoma] : ''),
+          finalSegId: (iFinal >= 0 ? row[iFinal] : '') || '',
+          finalNucId: (iFinalNuc >= 0 ? row[iFinalNuc] : '') || '',
+          notes:      (iNotes >= 0 ? row[iNotes] : '') || '',
+        });
+      }
+
+      items.value = parsed;
+      if (url) { sheetUrl.value = url; persistSheetUrl(); }
+    } catch (e: any) {
+      error.value = e.message || 'Failed to load sheet';
+    }
+    loading.value = false;
+  }
+
+  /** Clean a coordinate string — strip dashes and whitespace-only values. */
+  function cleanCoord(s: string): string {
+    const trimmed = s.trim();
+    return (trimmed === '-' || trimmed === '') ? '' : trimmed;
+  }
+
+  // ── Navigation ──────────────────────────────────────────────────────────
+  function currentItem(): QueueItem | null {
+    return items.value[currentIdx.value] ?? null;
+  }
+
+  function next() {
+    if (items.value.length === 0) return;
+    currentIdx.value = (currentIdx.value + 1) % items.value.length;
+    navigateToCurrentItem();
+  }
+
+  function prev() {
+    if (items.value.length === 0) return;
+    currentIdx.value = (currentIdx.value - 1 + items.value.length) % items.value.length;
+    navigateToCurrentItem();
+  }
+
+  function jumpToIndex(idx: number) {
+    if (idx >= 0 && idx < items.value.length) {
+      currentIdx.value = idx;
+      navigateToCurrentItem();
+    }
+  }
+
+  function nextUnproofread() {
+    if (items.value.length === 0) return;
+    for (let i = 1; i <= items.value.length; i++) {
+      const idx = (currentIdx.value + i) % items.value.length;
+      if (!proofread.value.has(items.value[idx].segId)) {
+        currentIdx.value = idx;
+        navigateToCurrentItem();
+        return;
+      }
+    }
+  }
+
+  function navigateToCurrentItem() {
+    const item = currentItem();
+    if (!item) return;
+    const edits = getEdits(item.segId);
+    // Prefer local edits soma, then sheet soma, then nuc coords
+    const coordStr = edits.somaCoords || item.somaCoords || item.nucCoords || '';
+    const pos = parseCoordString(coordStr);
+    const historyStore = useCellHistoryStore();
+    // Always jump to segment (selects it), position is optional
+    historyStore.jumpToCell(item.segId, pos[0] || pos[1] || pos[2] ? pos : undefined);
+  }
+
+  /** Parse "x, y, z" coordinate string into a tuple. */
+  function parseCoordString(s: string): [number, number, number] {
+    if (!s) return [0, 0, 0];
+    const parts = s.split(',').map(p => parseInt(p.trim(), 10) || 0);
+    return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+  }
+
+  function markProofread(segId?: string) {
+    const id = segId || currentItem()?.segId;
+    if (id) { proofread.value.add(id); persistProofread(); }
+  }
+
+  function unmarkProofread(segId: string) {
+    proofread.value.delete(segId);
+    persistProofread();
+  }
+
+  function clearProofread() {
+    proofread.value.clear();
+    persistProofread();
+  }
+
+  // ── Computed-like helpers ───────────────────────────────────────────────
+  function proofreadCount(): number { return proofread.value.size; }
+  function totalCount(): number { return items.value.length; }
+  function pendingCount(): number {
+    return items.value.filter(i => !proofread.value.has(i.segId)).length;
+  }
+  function sessionMinutes(): number {
+    return Math.floor((Date.now() - sessionStart) / 60000);
+  }
+
+  loadLocal();
+  // Auto-load if we have a saved sheet URL
+  if (sheetUrl.value) loadFromSheet();
+
+  return {
+    items, currentIdx, proofread, loading, error, sheetUrl, localEdits,
+    loadFromSheet, currentItem, next, prev, jumpToIndex, nextUnproofread,
+    navigateToCurrentItem, markProofread, unmarkProofread, clearProofread,
+    proofreadCount, totalCount, pendingCount, sessionMinutes,
+    getEdits, setEdit, isClaimed, canComplete,
+  };
+});
+
 export const useVolumesStore = defineStore('volumes', () => {
   const volumes: Ref<Volume[]> = ref([]);
 

@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
-import { useUserStatsStore } from '../store';
+import { useUserStatsStore, useCellHistoryStore } from '../store';
 import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
 
 const { stats } = storeToRefs(useUserStatsStore());
@@ -88,6 +88,34 @@ const currentFact = computed<string>(() => {
   );
   return SCIENCE_FACTS[weekNo % SCIENCE_FACTS.length];
 });
+
+// ── Cell activity this week ──────────────────────────────────────────────
+const historyStore = useCellHistoryStore();
+
+const mondayStart = computed<Date>(() => {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  const mon = new Date(now);
+  mon.setDate(now.getDate() + diffToMon);
+  mon.setHours(0, 0, 0, 0);
+  return mon;
+});
+
+const cellsThisWeek = computed(() =>
+  historyStore.cells.filter(c => new Date(c.updatedAt) >= mondayStart.value)
+);
+const cellsCompleted = computed(() => cellsThisWeek.value.filter(c => c.isComplete));
+const cellsIdentified = computed(() => cellsThisWeek.value.filter(c => c.cellType));
+
+function truncateId(id: string): string {
+  return id.length > 12 ? id.slice(0, 6) + '…' + id.slice(-4) : id;
+}
+
+function jumpToCell(segId: string) {
+  historyStore.jumpToCell(segId);
+  emit('hide');
+}
 </script>
 
 <template>
@@ -159,6 +187,40 @@ const currentFact = computed<string>(() => {
           </div>
         </div>
 
+        <!-- Cell activity this week -->
+        <div class="nge-recap-section nge-recap-cells" v-if="cellsThisWeek.length > 0">
+          <div class="nge-recap-section-label">Cell Activity</div>
+          <div class="nge-recap-month-grid">
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num nge-recap-cells-complete">{{ cellsCompleted.length }}</div>
+              <div class="nge-recap-month-key">completed</div>
+            </div>
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num nge-recap-cells-id">{{ cellsIdentified.length }}</div>
+              <div class="nge-recap-month-key">identified</div>
+            </div>
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num">{{ cellsThisWeek.length }}</div>
+              <div class="nge-recap-month-key">touched</div>
+            </div>
+          </div>
+          <div class="nge-recap-cell-list" v-if="cellsThisWeek.length > 0">
+            <div
+              v-for="cell in cellsThisWeek.slice(0, 8)"
+              :key="cell.segId"
+              class="nge-recap-cell-row"
+              @click="jumpToCell(cell.segId)"
+            >
+              <span class="nge-recap-cell-pip" :class="{
+                'nge-recap-cell-pip--done': cell.isComplete,
+                'nge-recap-cell-pip--typed': !cell.isComplete && cell.cellType,
+              }">{{ cell.isComplete ? '✓' : cell.cellType ? '🏷' : '○' }}</span>
+              <span class="nge-recap-cell-name">{{ truncateId(cell.segId) }}</span>
+              <span class="nge-recap-cell-type" v-if="cell.cellType">{{ cell.cellType }}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Community pulse -->
         <div class="nge-recap-section nge-recap-community"
              v-if="stats.communityEditsThisWeek > 0">
@@ -226,52 +288,35 @@ const currentFact = computed<string>(() => {
   animation: ngeRecapMaterialize 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.nge-recap-modal :deep(.nge-overlay::before) {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(74, 158, 255, 0.5) 15%,
-    rgba(160, 220, 255, 1) 50%,
-    rgba(74, 158, 255, 0.5) 85%,
-    transparent 100%
-  );
-  animation: ngeRecapScan 0.52s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  z-index: 100;
-  pointer-events: none;
-}
+/* Scanline removed — holographic border glow handled by ModalOverlay */
 
 @keyframes ngeRecapMaterialize {
   0% {
     opacity: 0;
     transform: translate(-50%, -50%) translateY(14px) scale(0.96);
-    filter: blur(8px) brightness(2);
-    box-shadow: 0 0 60px rgba(74, 158, 255, 0.5), 0 0 120px rgba(74, 158, 255, 0.15);
+    filter: blur(10px) brightness(2.5);
+    box-shadow: 0 0 80px rgba(0, 180, 255, 0.5), 0 0 160px rgba(0, 180, 255, 0.15);
   }
-  35% {
-    opacity: 1;
+  30% {
+    opacity: 0.8;
     transform: translate(-50%, -50%);
-    filter: blur(0.5px) brightness(1.15);
-    box-shadow: 0 0 20px rgba(74, 158, 255, 0.15);
+    filter: blur(1px) brightness(1.2);
+    box-shadow: 0 0 30px rgba(0, 180, 255, 0.15);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.998);
+    filter: blur(0) brightness(1.05);
   }
   100% {
     opacity: 1;
     transform: translate(-50%, -50%);
-    filter: blur(0px) brightness(1);
+    filter: blur(0) brightness(1);
     box-shadow: none;
   }
 }
 
-@keyframes ngeRecapScan {
-  0%   { top: 0%;   opacity: 1; }
-  85%  { opacity: 0.4; }
-  100% { top: 100%; opacity: 0; }
-}
+/* (scanline keyframe removed — using ModalOverlay holographic effects) */
 
 .nge-recap-topbar {
   display: flex;
@@ -294,12 +339,16 @@ const currentFact = computed<string>(() => {
 
 /* ── Scrollable content ── */
 .nge-recap-content {
-  width: 480px;
+  width: 580px;
   overflow-y: auto;
+  scrollbar-width: none;         /* Firefox */
   padding: 8px 44px 32px;
   box-sizing: border-box;
   flex: 1;
   min-height: 0;
+}
+.nge-recap-content::-webkit-scrollbar {
+  display: none;                 /* Chrome / Safari */
 }
 
 /* ── Hero header ── */
@@ -441,6 +490,49 @@ const currentFact = computed<string>(() => {
   font-size: 0.7em;
   color: #666;
   margin-top: 2px;
+}
+
+/* ── Cell activity ── */
+.nge-recap-cells-complete { color: #7f8 !important; }
+.nge-recap-cells-id { color: #f5a623 !important; }
+
+.nge-recap-cell-list {
+  margin-top: 10px;
+}
+
+.nge-recap-cell-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.82em;
+  transition: background 0.12s;
+}
+
+.nge-recap-cell-row:hover {
+  background: rgba(74, 158, 255, 0.08);
+}
+
+.nge-recap-cell-pip { width: 16px; text-align: center; flex-shrink: 0; }
+.nge-recap-cell-pip--done { color: #7f8; }
+.nge-recap-cell-pip--typed { color: #f5a623; }
+
+.nge-recap-cell-name {
+  flex: 1;
+  color: rgba(74, 158, 255, 0.8);
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nge-recap-cell-type {
+  flex-shrink: 0;
+  font-size: 0.9em;
+  color: #9e9e9e;
+  font-style: italic;
 }
 
 /* ── Community pulse ── */

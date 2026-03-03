@@ -102,46 +102,30 @@ const emit = defineEmits({hide: null});
   animation: ngeSettingsMaterialize 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.nge-settings-modal :deep(.nge-overlay::before) {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(74, 158, 255, 0.5) 15%,
-    rgba(160, 220, 255, 1) 50%,
-    rgba(74, 158, 255, 0.5) 85%,
-    transparent 100%
-  );
-  animation: ngeSettingsScan 0.52s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  z-index: 100;
-  pointer-events: none;
-}
+/* Scanline removed — holographic border glow handled by ModalOverlay */
 
 @keyframes ngeSettingsMaterialize {
   0% {
     opacity: 0; transform: translate(-50%, -50%) translateY(14px) scale(0.96);
-    filter: blur(8px) brightness(2);
-    box-shadow: 0 0 60px rgba(74, 158, 255, 0.5), 0 0 120px rgba(74, 158, 255, 0.15);
+    filter: blur(10px) brightness(2.5);
+    box-shadow: 0 0 80px rgba(0, 180, 255, 0.5), 0 0 160px rgba(0, 180, 255, 0.15);
   }
-  35% {
-    opacity: 1; transform: translate(-50%, -50%);
-    filter: blur(0.5px) brightness(1.15);
-    box-shadow: 0 0 20px rgba(74, 158, 255, 0.15);
+  30% {
+    opacity: 0.8; transform: translate(-50%, -50%);
+    filter: blur(1px) brightness(1.2);
+    box-shadow: 0 0 30px rgba(0, 180, 255, 0.15);
+  }
+  60% {
+    opacity: 1; transform: translate(-50%, -50%) scale(0.998);
+    filter: blur(0) brightness(1.05);
   }
   100% {
     opacity: 1; transform: translate(-50%, -50%);
-    filter: blur(0px) brightness(1); box-shadow: none;
+    filter: blur(0) brightness(1); box-shadow: none;
   }
 }
 
-@keyframes ngeSettingsScan {
-  0%   { top: 0%;   opacity: 1; }
-  85%  { opacity: 0.4; }
-  100% { top: 100%; opacity: 0; }
-}
+/* (scanline keyframe removed — using ModalOverlay holographic effects) */
 
 /* ── Shell ── */
 .nge-settings-shell {

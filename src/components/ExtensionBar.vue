@@ -7,8 +7,13 @@ import WeeklyRecapPanel from "components/WeeklyRecapPanel.vue";
 import LeaderboardPanel from "components/LeaderboardPanel.vue";
 import SettingsPanel from "components/SettingsPanel.vue";
 import AnnotationPanel from "components/AnnotationPanel.vue";
+import LoginModal from "components/LoginModal.vue";
+import HelpRequestsPanel from "components/HelpRequestsPanel.vue";
+import ProofreadingQueuePanel from "components/ProofreadingQueuePanel.vue";
+import CommandPalette from "components/CommandPalette.vue";
+import AchievementToast from "components/AchievementToast.vue";
 
-import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore} from '../store';
+import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore} from '../store';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
 
@@ -31,12 +36,17 @@ onMounted(() => {
 
 const { stats } = storeToRefs(useUserStatsStore());
 const { activeSegId } = storeToRefsAnnot(useSegmentAnnotationStore());
+const helpStore = useHelpRequestStore();
+const queueStore = useProofreadingQueueStore();
 
 const showModal = ref(false);
 const showProfile = ref(false);
 const showRecap = ref(false);
 const showLeaderboard = ref(false);
 const showSettings = ref(false);
+const showHelp = ref(false);
+const showQueue = ref(false);
+const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
 
 function logout(session: loginSession) {
   login.logout(session);
@@ -45,7 +55,20 @@ function logout(session: loginSession) {
 </script>
 
 <template>
+  <login-modal />
   <annotation-panel />
+  <achievement-toast />
+  <command-palette
+    ref="cmdPalette"
+    @open-profile="showProfile = true"
+    @open-recap="showRecap = true"
+    @open-leaderboard="showLeaderboard = true"
+    @open-settings="showSettings = true"
+    @open-help="showHelp = true"
+    @open-queue="showQueue = true"
+  />
+  <help-requests-panel v-if="showHelp" @hide="showHelp = false" />
+  <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <user-profile-panel v-if="showProfile" @hide="showProfile = false" @open-settings="showSettings = true" />
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
@@ -61,10 +84,10 @@ function logout(session: loginSession) {
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div class="nge-status-legend">
       <div class="nge-legend-item">
-        <span class="nge-legend-pip nge-legend-pip--complete"></span> Complete+labeled
+        <span class="nge-legend-pip nge-legend-pip--complete"></span> Completed
       </div>
       <div class="nge-legend-item">
-        <span class="nge-legend-pip nge-legend-pip--unlabeled"></span> Complete, no label
+        <span class="nge-legend-pip nge-legend-pip--annotated"></span> Annotated
       </div>
       <div class="nge-legend-item">
         <span class="nge-legend-pip nge-legend-pip--incomplete"></span> Incomplete
@@ -74,12 +97,26 @@ function logout(session: loginSession) {
          class="nge-streak-chip" title="Your current editing streak">
       🔥 {{ stats.currentStreak }}
     </div>
+    <button class="nge-cmd-trigger" title="Command Palette (Ctrl+K)"
+            @click="cmdPalette?.open()">
+      <kbd>⌘K</kbd>
+    </button>
     <button v-if="login.sessions.length > 0"
             class="nge-recap-btn" title="Your Week in Science"
             @click="showRecap = true">📊</button>
     <button v-if="login.sessions.length > 0"
             class="nge-lb-btn" title="Leaderboard"
             @click="showLeaderboard = true">🏆</button>
+    <button v-if="login.sessions.length > 0"
+            class="nge-queue-btn" title="Quest Board"
+            @click="showQueue = true">
+      🧠<span v-if="queueStore.pendingCount()" class="nge-queue-badge">{{ queueStore.pendingCount() }}</span>
+    </button>
+    <button v-if="login.sessions.length > 0"
+            class="nge-help-btn" title="Second Opinion Requests"
+            @click="showHelp = true">
+      🔍<span v-if="helpStore.pending.length" class="nge-help-badge">{{ helpStore.pending.length }}</span>
+    </button>
     <button v-if="login.sessions.length > 0"
             class="nge-settings-btn" title="Profile Settings"
             @click="showSettings = true">⚙️</button>
@@ -232,7 +269,85 @@ function logout(session: loginSession) {
 }
 
 .nge-lb-btn:hover,
+.nge-help-btn:hover,
 .nge-settings-btn:hover {
   opacity: 1;
+}
+
+.nge-queue-btn {
+  font-size: 14px;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+  position: relative;
+}
+.nge-queue-btn:hover { opacity: 1; }
+
+.nge-queue-badge {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  background: #7c4dff;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 8px;
+  min-width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  padding: 0 3px;
+}
+
+.nge-help-btn {
+  font-size: 14px;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+  position: relative;
+}
+
+.nge-help-badge {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  background: #f5a623;
+  color: #000;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 8px;
+  min-width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  padding: 0 3px;
+}
+
+.nge-cmd-trigger {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+.nge-cmd-trigger:hover { opacity: 0.9; }
+.nge-cmd-trigger kbd {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #888;
+  font-family: inherit;
+  letter-spacing: 0.03em;
 }
 </style>

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import {ref, onMounted, onUnmounted, watch, nextTick} from 'vue';
+import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
-import {useLoginStore, useUserStatsStore, useUserPreferencesStore} from '../store';
+import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
@@ -14,6 +14,8 @@ const statsStore  = useUserStatsStore();
 const {stats}     = storeToRefs(statsStore);
 const prefsStore  = useUserPreferencesStore();
 const {prefs}     = storeToRefs(prefsStore);
+const historyStore = useCellHistoryStore();
+const {cells: cellHistory} = storeToRefs(historyStore);
 
 // ── Local state ───────────────────────────────────────────────────────────────
 const closing        = ref(false);
@@ -22,7 +24,43 @@ const showFlagPicker = ref(false);
 const cellCanvas     = ref<HTMLCanvasElement | null>(null);
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
-const QUICK_FLAGS = ['🇺🇸','🇬🇧','🇨🇦','🇩🇪','🇫🇷','🇯🇵','🇰🇷','🇨🇳','🇧🇷','🇮🇳','🇦🇺','🇳🇬','🇹🇼','🇵🇹','🇩🇰','🇸🇦'];
+// All country flags A-Z (ISO 3166-1 alpha-2, sorted alphabetically)
+const ALL_FLAGS = [
+  '🇦🇫','🇦🇱','🇩🇿','🇦🇸','🇦🇩','🇦🇴','🇦🇬','🇦🇷','🇦🇲','🇦🇺',
+  '🇦🇹','🇦🇿','🇧🇸','🇧🇭','🇧🇩','🇧🇧','🇧🇾','🇧🇪','🇧🇿','🇧🇯',
+  '🇧🇹','🇧🇴','🇧🇦','🇧🇼','🇧🇷','🇧🇳','🇧🇬','🇧🇫','🇧🇮','🇰🇭',
+  '🇨🇲','🇨🇦','🇨🇻','🇨🇫','🇹🇩','🇨🇱','🇨🇳','🇨🇴','🇰🇲','🇨🇬',
+  '🇨🇩','🇨🇷','🇭🇷','🇨🇺','🇨🇾','🇨🇿','🇩🇰','🇩🇯','🇩🇲','🇩🇴',
+  '🇪🇨','🇪🇬','🇸🇻','🇬🇶','🇪🇷','🇪🇪','🇸🇿','🇪🇹','🇫🇯','🇫🇮',
+  '🇫🇷','🇬🇦','🇬🇲','🇬🇪','🇩🇪','🇬🇭','🇬🇷','🇬🇩','🇬🇹','🇬🇳',
+  '🇬🇼','🇬🇾','🇭🇹','🇭🇳','🇭🇺','🇮🇸','🇮🇳','🇮🇩','🇮🇷','🇮🇶',
+  '🇮🇪','🇮🇱','🇮🇹','🇨🇮','🇯🇲','🇯🇵','🇯🇴','🇰🇿','🇰🇪','🇰🇮',
+  '🇰🇵','🇰🇷','🇰🇼','🇰🇬','🇱🇦','🇱🇻','🇱🇧','🇱🇸','🇱🇷','🇱🇾',
+  '🇱🇮','🇱🇹','🇱🇺','🇲🇬','🇲🇼','🇲🇾','🇲🇻','🇲🇱','🇲🇹','🇲🇭',
+  '🇲🇷','🇲🇺','🇲🇽','🇫🇲','🇲🇩','🇲🇨','🇲🇳','🇲🇪','🇲🇦','🇲🇿',
+  '🇲🇲','🇳🇦','🇳🇷','🇳🇵','🇳🇱','🇳🇿','🇳🇮','🇳🇪','🇳🇬','🇲🇰',
+  '🇳🇴','🇴🇲','🇵🇰','🇵🇼','🇵🇦','🇵🇬','🇵🇾','🇵🇪','🇵🇭','🇵🇱',
+  '🇵🇹','🇶🇦','🇷🇴','🇷🇺','🇷🇼','🇰🇳','🇱🇨','🇻🇨','🇼🇸','🇸🇲',
+  '🇸🇹','🇸🇦','🇸🇳','🇷🇸','🇸🇨','🇸🇱','🇸🇬','🇸🇰','🇸🇮','🇸🇧',
+  '🇸🇴','🇿🇦','🇸🇸','🇪🇸','🇱🇰','🇸🇩','🇸🇷','🇸🇪','🇨🇭','🇸🇾',
+  '🇹🇼','🇹🇯','🇹🇿','🇹🇭','🇹🇱','🇹🇬','🇹🇴','🇹🇹','🇹🇳','🇹🇷',
+  '🇹🇲','🇹🇻','🇺🇬','🇺🇦','🇦🇪','🇬🇧','🇺🇸','🇺🇾','🇺🇿','🇻🇺',
+  '🇻🇪','🇻🇳','🇾🇪','🇿🇲','🇿🇼',
+];
+
+/** Convert flag emoji to ISO 3166-1 alpha-2 code (🇺🇸 → 'us'). */
+function emojiToCode(emoji: string): string {
+  const pts = [...emoji];
+  if (pts.length < 2) return '';
+  return pts.slice(0, 2).map(c => String.fromCharCode((c.codePointAt(0)! - 0x1F1E6) + 97)).join('');
+}
+
+/** Get a flag image URL from an emoji flag. Returns '' for non-flag emoji like 🌐. */
+function flagImgUrl(emoji: string): string {
+  const code = emojiToCode(emoji);
+  if (!code || code.length !== 2) return '';
+  return `https://flagcdn.com/w40/${code}.png`;
+}
 
 function setFlag(f: string) {
   prefsStore.save({flag: f});
@@ -52,7 +90,7 @@ function drawCells() {
   const canvas = cellCanvas.value;
   if (!canvas) return;
 
-  const W = 260, H = 290;
+  const W = 270, H = 310;
   const dpr = window.devicePixelRatio || 1;
   canvas.width  = W * dpr;
   canvas.height = H * dpr;
@@ -89,7 +127,7 @@ function drawCells() {
 
   // Dataset label bottom-right
   ctx.fillStyle = 'rgba(74, 158, 255, 0.28)';
-  ctx.font = '8px system-ui, sans-serif';
+  ctx.font = '9px system-ui, sans-serif';
   ctx.textAlign = 'right';
   ctx.fillText('minnie65', bR - 2, bB - 3);
 
@@ -100,7 +138,7 @@ function drawCells() {
 
   if (completed === 0 && contributed === 0 && todayEdits === 0) {
     ctx.fillStyle = 'rgba(100, 130, 160, 0.3)';
-    ctx.font = '9.5px system-ui, sans-serif';
+    ctx.font = '11px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Start editing to map cells', W / 2, H / 2 + 4);
     return;
@@ -241,6 +279,64 @@ function onBadgeClick(badge: BadgeDefinition) {
   selectedBadge.value = selectedBadge.value?.id === badge.id ? null : badge;
 }
 
+// ── Achievement countdown ─────────────────────────────────────────────────────
+const nextAchievement = computed(() => {
+  const allTime = stats.value.editsAllTime ?? 0;
+  const sorted = [...BADGE_DEFINITIONS].filter(b => b.editThreshold > 0).sort((a, b) => a.editThreshold - b.editThreshold);
+  const next = sorted.find(b => allTime < b.editThreshold);
+  if (!next) return null;
+  const prev = sorted[sorted.indexOf(next) - 1]?.editThreshold ?? 0;
+  const remaining = next.editThreshold - allTime;
+  const pct = Math.min(100, Math.round(((allTime - prev) / (next.editThreshold - prev)) * 100));
+  return { name: next.name, threshold: next.editThreshold, remaining, pct };
+});
+
+// ── Cell history helpers ──────────────────────────────────────────────────────
+const completedCells = computed(() => cellHistory.value.filter(c => c.isComplete));
+const identifiedCells = computed(() => cellHistory.value.filter(c => c.cellType && !c.isComplete));
+
+function truncateId(id: string): string {
+  return id.length > 14 ? '…' + id.slice(-12) : id;
+}
+
+function cellStatusIcon(cell: CellHistoryEntry): string {
+  if (cell.isComplete && cell.cellType) return '✓';
+  if (cell.isComplete) return '✓';
+  if (cell.cellType) return '🏷';
+  return '○';
+}
+
+function cellStatusClass(cell: CellHistoryEntry): string {
+  if (cell.isComplete) return 'nge-cell-status--complete';
+  if (cell.cellType) return 'nge-cell-status--typed';
+  return 'nge-cell-status--pending';
+}
+
+function handleJumpToCell(segId: string) {
+  historyStore.jumpToCell(segId);
+  handleClose();
+}
+
+function promptNickname(segId: string) {
+  const cell = cellHistory.value.find(c => c.segId === segId);
+  const current = cell?.nickname ?? '';
+  const name = window.prompt('Name this cell:', current);
+  if (name !== null) {
+    historyStore.setNickname(segId, name);
+  }
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 // ── Close animation ───────────────────────────────────────────────────────────
 function handleClose() {
   if (closing.value) return;
@@ -266,11 +362,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         <button class="nge-profile-exit" @click="handleClose">×</button>
       </div>
 
-      <!-- ── Two-column body ────────────────────────────────── -->
+      <!-- ── Three-column body ──────────────────────────────── -->
       <div class="nge-profile-body">
 
-        <!-- Left: scrollable stats & badges -->
-        <div class="nge-profile-content">
+        <!-- LEFT: stats + recent cells -->
+        <div class="nge-profile-col nge-profile-col--left">
 
           <!-- Header -->
           <div class="nge-profile-header" v-if="sessions.length > 0">
@@ -283,15 +379,18 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   :class="{ 'nge-profile-flag--active': showFlagPicker }"
                   @click="showFlagPicker = !showFlagPicker"
                   title="Click to change flag"
-                >{{ prefs.flag || '🌐' }}</button>
+                >
+                  <img v-if="flagImgUrl(prefs.flag || '')" :src="flagImgUrl(prefs.flag)" class="nge-flag-img" />
+                  <span v-else>🌐</span>
+                </button>
                 <Transition name="nge-flag-picker">
                   <div v-if="showFlagPicker" class="nge-profile-flag-picker">
                     <button
-                      v-for="f in QUICK_FLAGS" :key="f"
+                      v-for="f in ALL_FLAGS" :key="f"
                       class="nge-profile-flag-opt"
                       :class="{ 'nge-profile-flag-opt--active': prefs.flag === f }"
                       @click="setFlag(f)"
-                    >{{ f }}</button>
+                    ><img :src="flagImgUrl(f)" class="nge-flag-img nge-flag-img--picker" /></button>
                   </div>
                 </Transition>
               </div>
@@ -332,47 +431,71 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-profile-section-label">▌ Cells</div>
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col">
-                <div class="nge-profile-stat-label">All Time</div>
+                <div class="nge-profile-stat-label">Completed</div>
                 <div class="nge-profile-stat-val nge-profile-stat-val--hero">
-                  {{ stats.cellsSubmitted.toLocaleString() }}
+                  {{ completedCells.length.toLocaleString() }}
                 </div>
-                <div class="nge-profile-stat-sub">submitted</div>
+                <div class="nge-profile-stat-sub">proofread</div>
               </div>
               <div class="nge-profile-stat-col">
-                <div class="nge-profile-stat-label">Today</div>
-                <div class="nge-profile-stat-val">0</div>
-                <div class="nge-profile-stat-sub">—</div>
+                <div class="nge-profile-stat-label">Identified</div>
+                <div class="nge-profile-stat-val">{{ identifiedCells.length.toLocaleString() }}</div>
+                <div class="nge-profile-stat-sub">typed only</div>
               </div>
               <div class="nge-profile-stat-col">
-                <div class="nge-profile-stat-label">Past 7d</div>
-                <div class="nge-profile-stat-val">0</div>
-                <div class="nge-profile-stat-sub">—</div>
+                <div class="nge-profile-stat-label">Total</div>
+                <div class="nge-profile-stat-val">{{ cellHistory.length.toLocaleString() }}</div>
+                <div class="nge-profile-stat-sub">touched</div>
               </div>
+            </div>
+
+            <!-- Cell history list -->
+            <div class="nge-cell-list" v-if="cellHistory.length > 0">
+              <div class="nge-cell-list-header">
+                <span>Recent cells — click to jump</span>
+              </div>
+              <div class="nge-cell-list-scroll">
+                <div
+                  v-for="cell in cellHistory.slice(0, 50)"
+                  :key="cell.segId"
+                  class="nge-cell-row"
+                  :title="cell.nickname ? `${cell.nickname} (${cell.segId})` : `Jump to ${cell.segId}`"
+                >
+                  <button
+                    class="nge-cell-fav"
+                    :class="{ 'nge-cell-fav--active': cell.isFavorite }"
+                    @click.stop="historyStore.toggleFavorite(cell.segId)"
+                    title="Toggle favorite"
+                  >{{ cell.isFavorite ? '★' : '☆' }}</button>
+                  <span class="nge-cell-pip" :class="cellStatusClass(cell)">{{ cellStatusIcon(cell) }}</span>
+                  <span class="nge-cell-id" @click="handleJumpToCell(cell.segId)">
+                    {{ cell.nickname || truncateId(cell.segId) }}
+                  </span>
+                  <span class="nge-cell-type" v-if="cell.cellType" @click="handleJumpToCell(cell.segId)">{{ cell.cellType }}</span>
+                  <span class="nge-cell-time" @click="handleJumpToCell(cell.segId)">{{ relativeTime(cell.updatedAt) }}</span>
+                  <button
+                    class="nge-cell-rename"
+                    @click.stop="promptNickname(cell.segId)"
+                    title="Rename this cell"
+                  >✎</button>
+                </div>
+              </div>
+            </div>
+            <div class="nge-cell-empty" v-else>
+              Select segments and mark complete or set cell type to build your history.
             </div>
           </div>
 
-          <!-- Streak -->
-          <div class="nge-profile-section nge-profile-section--streak"
-               v-if="stats.currentStreak > 0 || stats.longestStreak > 0">
-            <div class="nge-profile-section-label nge-profile-section-label--amber">▌ Streak</div>
-            <div class="nge-profile-streak-row">
-              <div class="nge-profile-streak-current">
-                <span class="nge-profile-streak-flame">🔥</span>
-                <span class="nge-profile-streak-count">{{ stats.currentStreak }}</span>
-                <span class="nge-profile-streak-unit">day{{ stats.currentStreak === 1 ? '' : 's' }} current</span>
-              </div>
-              <div class="nge-profile-streak-best" v-if="stats.longestStreak > 0">
-                <span class="nge-profile-streak-best-label">Best</span>
-                <span class="nge-profile-streak-best-val">{{ stats.longestStreak }}d</span>
-              </div>
-            </div>
-          </div>
+        </div><!-- end left column -->
+
+        <!-- CENTER: badges + streak + countdown -->
+        <div class="nge-profile-col nge-profile-col--center">
 
           <!-- Badges -->
           <div class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-section-label">▌ Badges</div>
             <div class="nge-profile-badges-hint" v-if="selectedBadge">
-              ← badge detail on the right · click again to dismiss
+              badge detail on the right · click again to dismiss
             </div>
             <div class="nge-profile-badges-grid">
               <div
@@ -406,10 +529,44 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-        </div><!-- end .nge-profile-content -->
+          <!-- Streak -->
+          <div class="nge-profile-section nge-profile-section--streak"
+               v-if="stats.currentStreak > 0 || stats.longestStreak > 0">
+            <div class="nge-profile-section-label nge-profile-section-label--amber">▌ Streak</div>
+            <div class="nge-profile-streak-row">
+              <div class="nge-profile-streak-current">
+                <span class="nge-profile-streak-flame">🔥</span>
+                <span class="nge-profile-streak-count">{{ stats.currentStreak }}</span>
+                <span class="nge-profile-streak-unit">day{{ stats.currentStreak === 1 ? '' : 's' }} current</span>
+              </div>
+              <div class="nge-profile-streak-best" v-if="stats.longestStreak > 0">
+                <span class="nge-profile-streak-best-label">Best</span>
+                <span class="nge-profile-streak-best-val">{{ stats.longestStreak }}d</span>
+              </div>
+            </div>
+          </div>
 
-        <!-- Right: cell canvas  ↔  badge detail -->
-        <div class="nge-profile-viz">
+          <!-- Achievement countdown -->
+          <div class="nge-profile-section nge-profile-section--countdown" v-if="nextAchievement">
+            <div class="nge-profile-section-label nge-profile-section-label--green">▌ Next Achievement</div>
+            <div class="nge-profile-countdown-row">
+              <div class="nge-profile-countdown-name">{{ nextAchievement.name }}</div>
+              <div class="nge-profile-countdown-remaining">{{ nextAchievement.remaining.toLocaleString() }} edits to go</div>
+            </div>
+            <div class="nge-profile-countdown-track">
+              <div class="nge-profile-countdown-fill" :style="{ width: nextAchievement.pct + '%' }"></div>
+            </div>
+            <div class="nge-profile-countdown-labels">
+              <span>{{ (nextAchievement.threshold - nextAchievement.remaining).toLocaleString() }}</span>
+              <span>{{ nextAchievement.pct }}%</span>
+              <span>{{ nextAchievement.threshold.toLocaleString() }}</span>
+            </div>
+          </div>
+
+        </div><!-- end center column -->
+
+        <!-- RIGHT: cell canvas  <->  badge detail -->
+        <div class="nge-profile-col nge-profile-col--right">
           <Transition name="nge-viz-swap" mode="out-in">
 
             <!-- Canvas view (default) -->
@@ -449,7 +606,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
 
           </Transition>
-        </div>
+        </div><!-- end right column -->
 
       </div><!-- end .nge-profile-body -->
     </div>
@@ -471,24 +628,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Scanline sweep on open */
-.nge-profile-modal :deep(.nge-overlay::before) {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(74, 158, 255, 0.5) 15%,
-    rgba(160, 220, 255, 1) 50%,
-    rgba(74, 158, 255, 0.5) 85%,
-    transparent 100%
-  );
-  animation: ngeProfileScan 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  z-index: 100;
-  pointer-events: none;
-}
+/* Scanline removed — holographic border glow handled by ModalOverlay */
 
 /* Close animation — overrides materialize with higher specificity */
 .nge-profile-closing.nge-profile-modal :deep(.nge-overlay) {
@@ -496,8 +636,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 @keyframes ngeProfileMaterialize {
-  0%   { opacity: 0; transform: translate(-50%,-50%) scale(0.97); filter: blur(8px) brightness(2); box-shadow: 0 0 60px rgba(74,158,255,0.4); }
-  40%  { opacity: 1; transform: translate(-50%,-50%) scale(1.003); filter: blur(0.5px) brightness(1.12); }
+  0%   { opacity: 0; transform: translate(-50%,-50%) scale(0.97); filter: blur(10px) brightness(2.5); box-shadow: 0 0 80px rgba(0,180,255,0.5); }
+  30%  { opacity: 0.8; transform: translate(-50%,-50%) scale(1.003); filter: blur(1px) brightness(1.2); }
+  60%  { opacity: 1; transform: translate(-50%,-50%) scale(0.998); filter: blur(0) brightness(1.05); }
   100% { opacity: 1; transform: translate(-50%,-50%); filter: blur(0) brightness(1); box-shadow: none; }
 }
 
@@ -507,11 +648,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   100% { opacity: 0; transform: translate(-50%,-50%) scale(0.94); filter: blur(10px) brightness(2); }
 }
 
-@keyframes ngeProfileScan {
-  0%   { top: 0%;   opacity: 1; }
-  85%  { opacity: 0.4; }
-  100% { top: 100%; opacity: 0; }
-}
+/* (scanline keyframe removed — using ModalOverlay holographic effects) */
 
 /* Staggered section roll-in */
 @keyframes ngeSectionRollIn {
@@ -553,40 +690,49 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 .nge-profile-exit:hover { color: #fff; }
 
-/* ── Two-column body ── */
+/* ── Three-column body ── */
 .nge-profile-body {
   display: flex;
   flex: 1;
   min-height: 0;
 }
 
-/* ── Left column: scrollable content ── */
-.nge-profile-content {
-  width: 420px;
+/* ── Shared column base ── */
+.nge-profile-col {
   overflow-y: auto;
-  padding: 20px 36px 32px;
+  padding: 20px 24px 32px;
   box-sizing: border-box;
-  flex-shrink: 0;
-  /* Dark scrollbars */
   scrollbar-width: thin;
   scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
 }
+.nge-profile-col::-webkit-scrollbar        { width: 4px; }
+.nge-profile-col::-webkit-scrollbar-track  { background: rgba(255, 255, 255, 0.02); }
+.nge-profile-col::-webkit-scrollbar-thumb  { background: rgba(74, 158, 255, 0.2); border-radius: 2px; }
+.nge-profile-col::-webkit-scrollbar-thumb:hover { background: rgba(74, 158, 255, 0.4); }
 
-.nge-profile-content::-webkit-scrollbar        { width: 4px; }
-.nge-profile-content::-webkit-scrollbar-track  { background: rgba(255, 255, 255, 0.02); }
-.nge-profile-content::-webkit-scrollbar-thumb  { background: rgba(74, 158, 255, 0.2); border-radius: 2px; }
-.nge-profile-content::-webkit-scrollbar-thumb:hover { background: rgba(74, 158, 255, 0.4); }
+/* Left: stats + recent cells */
+.nge-profile-col--left {
+  width: 320px;
+  flex-shrink: 0;
+}
 
-/* ── Right column: visualization ── */
-.nge-profile-viz {
-  width: 268px;
+/* Center: badges + streak + countdown */
+.nge-profile-col--center {
+  width: 340px;
+  flex-shrink: 0;
+  border-left: 1px solid rgba(74, 158, 255, 0.08);
+  border-right: 1px solid rgba(74, 158, 255, 0.08);
+  background: rgba(74, 158, 255, 0.01);
+}
+
+/* Right: cells mapped visualization */
+.nge-profile-col--right {
+  width: 310px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px 16px;
-  border-left: 1px solid rgba(74, 158, 255, 0.08);
   background: rgba(74, 158, 255, 0.015);
   overflow: hidden;
 }
@@ -613,6 +759,10 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   flex-shrink: 0;
 }
 
+/* Flag images (cross-platform — Windows doesn't render flag emoji) */
+.nge-flag-img { width: 24px; height: 18px; object-fit: cover; border-radius: 2px; vertical-align: middle; }
+.nge-flag-img--picker { width: 28px; height: 20px; }
+
 .nge-profile-flag {
   background: none; border: none;
   font-size: 1.55em; line-height: 1; cursor: pointer; padding: 2px;
@@ -632,9 +782,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   border-radius: 8px;
   padding: 6px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.3) transparent;
 }
 
 .nge-profile-flag-opt {
@@ -722,11 +876,34 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 .nge-profile-section-label--amber { color: rgba(245, 166, 35, 0.65); }
 
+.nge-profile-section-label--green { color: rgba(127, 255, 136, 0.65); }
+
 /* Section roll-in delays */
-.nge-profile-section--edits   { animation: ngeSectionRollIn 0.2s ease-out 0.18s both; }
-.nge-profile-section--cells   { animation: ngeSectionRollIn 0.2s ease-out 0.24s both; }
-.nge-profile-section--streak  { animation: ngeSectionRollIn 0.2s ease-out 0.29s both; }
-.nge-profile-section--badges  { animation: ngeSectionRollIn 0.2s ease-out 0.33s both; }
+.nge-profile-section--edits     { animation: ngeSectionRollIn 0.2s ease-out 0.18s both; }
+.nge-profile-section--cells     { animation: ngeSectionRollIn 0.2s ease-out 0.24s both; }
+.nge-profile-section--streak    { animation: ngeSectionRollIn 0.2s ease-out 0.29s both; }
+.nge-profile-section--badges    { animation: ngeSectionRollIn 0.2s ease-out 0.33s both; }
+.nge-profile-section--countdown { animation: ngeSectionRollIn 0.2s ease-out 0.37s both; }
+
+/* ── Achievement countdown ── */
+.nge-profile-countdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.nge-profile-countdown-name { font-weight: 600; color: #ddd; font-size: 0.92em; }
+.nge-profile-countdown-remaining { font-size: 0.75em; color: #9e9e9e; }
+.nge-profile-countdown-track {
+  height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;
+}
+.nge-profile-countdown-fill {
+  height: 100%; background: linear-gradient(90deg, #7f8, #4a9eff); border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.nge-profile-countdown-labels {
+  display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.68em; color: #555;
+}
 
 /* ── Stat row ── */
 .nge-profile-stat-row {
@@ -806,7 +983,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 .nge-profile-badges-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
@@ -870,7 +1047,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-profile-viz-title {
-  font-size: 0.63em;
+  font-size: 0.78em;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.13em;
@@ -891,14 +1068,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: center;
 }
 .nge-profile-viz-dot {
-  display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
 }
 .nge-profile-viz-dot--completed  { background: rgba(120, 200, 255, 0.9); }
 .nge-profile-viz-dot--contributed { background: rgba(100,160,255,0.22); border: 1px solid rgba(100,160,255,0.45); }
 .nge-profile-viz-dot--today       { background: rgba(120, 255, 160, 0.9); }
-.nge-profile-viz-legend-lbl { font-size: 0.66em; color: #444; margin-right: 5px; }
+.nge-profile-viz-legend-lbl { font-size: 0.78em; color: #555; margin-right: 5px; }
 
-.nge-profile-viz-count { font-size: 0.68em; color: #444; text-align: center; }
+.nge-profile-viz-count { font-size: 0.85em; color: #666; text-align: center; font-weight: 600; }
 
 /* Badge detail in viz column */
 .nge-profile-viz-badge { justify-content: center; text-align: center; gap: 12px; }
@@ -931,4 +1108,133 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-viz-swap-leave-active { transition: all 0.12s ease-in; }
 .nge-viz-swap-enter-from   { opacity: 0; transform: translateX(12px); }
 .nge-viz-swap-leave-to     { opacity: 0; transform: translateX(-12px); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   CELL HISTORY LIST
+───────────────────────────────────────────────────────────────────────────── */
+.nge-cell-list {
+  margin-top: 16px;
+}
+
+.nge-cell-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.nge-cell-list-header span {
+  font-size: 0.68em;
+  color: rgba(74, 158, 255, 0.45);
+  font-style: italic;
+}
+
+.nge-cell-list-scroll {
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
+}
+
+.nge-cell-list-scroll::-webkit-scrollbar       { width: 3px; }
+.nge-cell-list-scroll::-webkit-scrollbar-track  { background: transparent; }
+.nge-cell-list-scroll::-webkit-scrollbar-thumb  { background: rgba(74, 158, 255, 0.2); border-radius: 2px; }
+
+.nge-cell-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #bcc;
+  font-size: 0.78em;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.nge-cell-row:hover {
+  background: rgba(74, 158, 255, 0.1);
+  color: #fff;
+}
+
+.nge-cell-pip {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  font-size: 0.9em;
+}
+
+.nge-cell-status--complete .nge-cell-pip,
+.nge-cell-pip.nge-cell-status--complete { color: #CE93D8; }
+.nge-cell-status--typed .nge-cell-pip,
+.nge-cell-pip.nge-cell-status--typed    { color: #4CAF50; }
+.nge-cell-status--pending .nge-cell-pip,
+.nge-cell-pip.nge-cell-status--pending  { color: #555; }
+
+.nge-cell-id {
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.92em;
+  color: #8bf;
+  flex-shrink: 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nge-cell-type {
+  flex: 1;
+  font-size: 0.85em;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.nge-cell-time {
+  flex-shrink: 0;
+  font-size: 0.8em;
+  color: #444;
+  white-space: nowrap;
+}
+
+.nge-cell-fav {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85em;
+  padding: 0 2px;
+  opacity: 0.3;
+  transition: opacity 0.12s;
+}
+.nge-cell-row:hover .nge-cell-fav { opacity: 0.6; }
+.nge-cell-fav--active { opacity: 1 !important; color: #f5a623; }
+
+.nge-cell-rename {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85em;
+  padding: 0 2px;
+  opacity: 0;
+  color: rgba(74, 158, 255, 0.6);
+  transition: opacity 0.12s;
+}
+.nge-cell-row:hover .nge-cell-rename { opacity: 0.6; }
+.nge-cell-rename:hover { opacity: 1 !important; }
+
+.nge-cell-empty {
+  margin-top: 12px;
+  font-size: 0.75em;
+  color: #444;
+  font-style: italic;
+  line-height: 1.5;
+}
 </style>

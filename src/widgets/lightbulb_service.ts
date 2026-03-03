@@ -49,6 +49,40 @@ export interface CellStatus {
   cellTypeAnnotationId?: number;
 }
 
+// ─── localStorage fallback for dev/testing ──────────────────────────────────
+// When CAVE dev tables don't exist yet, annotations are stored locally so the
+// full UI flow can be tested end-to-end.  Once real tables are created, the
+// CAVE API calls succeed and the fallback is never used.
+
+const LOCAL_ANNOTATION_KEY = 'nge_local_annotations_v1';
+
+interface LocalAnnotationStore {
+  [rootId: string]: {
+    isComplete: boolean;
+    cellType: string;
+  };
+}
+
+function getLocalAnnotations(): LocalAnnotationStore {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_ANNOTATION_KEY) || '{}');
+  } catch { return {}; }
+}
+
+function setLocalAnnotation(rootId: string, data: Partial<{isComplete: boolean; cellType: string}>) {
+  const store = getLocalAnnotations();
+  store[rootId] = { ...{isComplete: false, cellType: ''}, ...store[rootId], ...data };
+  localStorage.setItem(LOCAL_ANNOTATION_KEY, JSON.stringify(store));
+}
+
+function deleteLocalAnnotation(rootId: string, field: 'isComplete' | 'cellType') {
+  const store = getLocalAnnotations();
+  if (!store[rootId]) return;
+  if (field === 'isComplete') store[rootId].isComplete = false;
+  if (field === 'cellType') store[rootId].cellType = '';
+  localStorage.setItem(LOCAL_ANNOTATION_KEY, JSON.stringify(store));
+}
+
 // ─── Current viewer position helper ─────────────────────────────────────────
 
 function getViewerPosition(): [number, number, number] {
@@ -74,6 +108,7 @@ export async function getCellStatus(
   if (!caveServer) return null;
 
   const status: CellStatus = {isComplete: false};
+  let caveAvailable = false;
 
   // Check completion table
   try {
@@ -89,6 +124,7 @@ export async function getCellStatus(
         status.isComplete = true;
         status.annotationId = hit.id;
       }
+      caveAvailable = true;
     }
   } catch (e) {
     console.warn('[lightbulb] getCellStatus (completion):', e);
@@ -109,9 +145,23 @@ export async function getCellStatus(
         status.cellType = latest.tag;
         status.cellTypeAnnotationId = latest.id;
       }
+      caveAvailable = true;
     }
   } catch (e) {
     console.warn('[lightbulb] getCellStatus (cellType):', e);
+  }
+
+  // Fall back to localStorage if CAVE tables aren't reachable
+  if (!caveAvailable) {
+    console.info('[lightbulb] CAVE tables not available — using localStorage fallback');
+    const local = getLocalAnnotations()[rootId];
+    if (local) {
+      status.isComplete = local.isComplete;
+      status.cellType = local.cellType || '';
+      // Use negative IDs to signal "local" annotations
+      if (local.isComplete) status.annotationId = -1;
+      if (local.cellType) status.cellTypeAnnotationId = -1;
+    }
   }
 
   return status;
@@ -136,6 +186,11 @@ export async function setCellComplete(
 
   try {
     if (!complete && existingAnnotationId !== undefined) {
+      // Local annotation — just clear localStorage
+      if (existingAnnotationId < 0) {
+        deleteLocalAnnotation(rootId, 'isComplete');
+        return true;
+      }
       const res = await fetch(`${baseUrl}${existingAnnotationId}`,
           {method: 'DELETE', headers: authHeaders(caveServer)});
       return res.ok;
@@ -156,12 +211,16 @@ export async function setCellComplete(
         headers: authHeaders(caveServer),
         body: JSON.stringify(body),
       });
-      return res.ok;
+      if (res.ok) return true;
     }
   } catch (e) {
-    console.error('[lightbulb] setCellComplete:', e);
+    console.error('[lightbulb] setCellComplete — CAVE unavailable, using localStorage:', e);
   }
-  return false;
+
+  // localStorage fallback
+  setLocalAnnotation(rootId, {isComplete: complete});
+  console.info(`[lightbulb] Saved completion status locally for ${rootId}`);
+  return true;
 }
 
 /**
@@ -181,8 +240,8 @@ export async function saveCellType(
   const pos = getViewerPosition();
 
   try {
-    if (existingAnnotationId !== undefined) {
-      // Update existing row
+    if (existingAnnotationId !== undefined && existingAnnotationId >= 0) {
+      // Update existing CAVE row
       const body = {
         type: 'BoundText',
         pt: {position: pos},
@@ -194,9 +253,9 @@ export async function saveCellType(
         headers: authHeaders(caveServer),
         body: JSON.stringify(body),
       });
-      return res.ok;
-    } else {
-      // Create new row
+      if (res.ok) return true;
+    } else if (existingAnnotationId === undefined || existingAnnotationId < 0) {
+      // Create new CAVE row (or local annotation is being re-saved)
       const body = {
         annotations: [{
           type: 'BoundText',
@@ -210,10 +269,14 @@ export async function saveCellType(
         headers: authHeaders(caveServer),
         body: JSON.stringify(body),
       });
-      return res.ok;
+      if (res.ok) return true;
     }
   } catch (e) {
-    console.error('[lightbulb] saveCellType:', e);
+    console.error('[lightbulb] saveCellType — CAVE unavailable, using localStorage:', e);
   }
-  return false;
+
+  // localStorage fallback
+  setLocalAnnotation(rootId, {cellType});
+  console.info(`[lightbulb] Saved cell type locally for ${rootId}`);
+  return true;
 }

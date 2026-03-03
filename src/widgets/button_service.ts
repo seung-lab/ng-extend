@@ -1,6 +1,7 @@
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {RETINAL_CELL_TYPES} from '../config';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
+import {useHelpRequestStore} from '../store';
 
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
@@ -26,7 +27,38 @@ export class ButtonService {
       menu.show(<MouseEvent>{clientX: event.clientX - 200, clientY: event.clientY});
     });
 
+    // Listen for annotation changes from AnnotationPanel (or anywhere).
+    // The event carries the current status directly so we don't need to
+    // re-fetch from CAVE (which might miss localStorage-only annotations).
+    document.addEventListener('nge:seg-status-changed', (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail.segId === segmentIDString) {
+        if (detail.status) {
+          // Use the status from the event directly
+          this._applyStatus(button, detail.status as CellStatus);
+        } else {
+          // No status provided — re-fetch as fallback
+          this._refreshButtonStatus(button, localServerURL, segmentIDString);
+        }
+      }
+    });
+
     return button;
+  }
+
+  /** Apply a known status to the button pip + label badge (no fetch). */
+  private _applyStatus(button: HTMLButtonElement, status: CellStatus): void {
+    button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete', 'nge-lb-annotated');
+    if (status.isComplete) {
+      button.classList.add('nge-lb-complete');
+    } else if (status.cellType) {
+      button.classList.add('nge-lb-annotated');
+    } else {
+      button.classList.add('nge-lb-incomplete');
+    }
+    (button as any)._cellStatus = status;
+    const row = button.closest('.neuroglancer-segment-list-entry') as HTMLElement | null;
+    if (row) this.updateLabelBadge(row, status);
   }
 
   /** Fetches the current cell status and updates the button's pip CSS class. */
@@ -35,23 +67,14 @@ export class ButtonService {
       segmentIDString: string): Promise<void> {
     try {
       const status = await getCellStatus(localServerURL, segmentIDString);
-      button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete');
-      if (status === null) {
-        button.classList.add('nge-lb-incomplete');
-      } else if (status.isComplete && status.cellType) {
-        button.classList.add('nge-lb-complete');
-      } else if (status.isComplete && !status.cellType) {
-        button.classList.add('nge-lb-done-unlabeled');
+      if (status) {
+        this._applyStatus(button, status);
       } else {
+        button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete', 'nge-lb-annotated');
         button.classList.add('nge-lb-incomplete');
       }
-      // Stash status on the element so the menu can read it without re-fetching
-      (button as any)._cellStatus = status;
-      // Sync the label-column badge
-      const row = button.closest('.neuroglancer-segment-list-entry') as HTMLElement | null;
-      if (row) this.updateLabelBadge(row, status);
     } catch {
-      button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete');
+      button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete', 'nge-lb-annotated');
       button.classList.add('nge-lb-incomplete');
     }
   }
@@ -64,29 +87,48 @@ export class ButtonService {
    * to show a loading placeholder), and again once the status fetch resolves.
    */
   updateLabelBadge(row: HTMLElement, status: CellStatus|null): void {
-    const nameSpan =
-        row.querySelector('.neuroglancer-segment-list-entry-name') as HTMLElement|null;
-    if (!nameSpan) return;
-
-    let badge = nameSpan.querySelector('.nge-label-badge') as HTMLElement|null;
+    // Place badge directly after the segment ID (or nickname) for tight alignment,
+    // rather than in the name column which floats far right.
+    let badge = row.querySelector('.nge-label-badge') as HTMLElement|null;
     if (!badge) {
       badge = document.createElement('span');
       badge.className = 'nge-label-badge';
-      nameSpan.prepend(badge);
+      // Insert after nickname (if exists) or after ID element
+      const nickname = row.querySelector('.nge-segment-nickname');
+      const idEl = row.querySelector('.neuroglancer-segment-list-entry-id');
+      const anchor = nickname || idEl;
+      if (anchor && anchor.nextSibling) {
+        anchor.parentNode!.insertBefore(badge, anchor.nextSibling);
+      } else if (anchor) {
+        anchor.parentNode!.appendChild(badge);
+      } else {
+        // Fallback: put in name column
+        const nameSpan = row.querySelector('.neuroglancer-segment-list-entry-name');
+        if (nameSpan) nameSpan.prepend(badge);
+        else return;
+      }
     }
 
-    if (!status || !status.isComplete) {
+    if (!status) {
       badge.className = 'nge-label-badge nge-label-badge--incomplete';
       badge.textContent = '—';
-      badge.title = status === null ? 'Fetching status…' : 'Incomplete';
+      badge.title = 'Fetching status…';
     } else if (status.isComplete && status.cellType) {
       badge.className = 'nge-label-badge nge-label-badge--complete';
       badge.textContent = `✓ ${status.cellType}`;
       badge.title = `Complete: ${status.cellType}`;
+    } else if (status.isComplete) {
+      badge.className = 'nge-label-badge nge-label-badge--complete';
+      badge.textContent = '✓ Complete';
+      badge.title = 'Complete (no cell type set)';
+    } else if (status.cellType) {
+      badge.className = 'nge-label-badge nge-label-badge--annotated';
+      badge.textContent = `⊙ ${status.cellType}`;
+      badge.title = `Annotated: ${status.cellType}`;
     } else {
-      badge.className = 'nge-label-badge nge-label-badge--unlabeled';
-      badge.textContent = '⚠ No type';
-      badge.title = 'Complete but no cell type set';
+      badge.className = 'nge-label-badge nge-label-badge--incomplete';
+      badge.textContent = '—';
+      badge.title = 'Incomplete';
     }
   }
 
@@ -258,7 +300,76 @@ export class ButtonService {
         [['Change Log', `${localServerURL}/progress/api/v1/query?rootid=${paramStr}`,
           undefined]]);
 
-    menu.append(br(), completionSection, br(), cellTypeSection, br(), linksSection, br());
+    // ── Section 4: Ask for Help ───────────────────────────────────────────
+    const helpSection = document.createElement('div');
+    helpSection.classList.add('nge-lb-section');
+
+    const helpTitle = document.createElement('div');
+    helpTitle.classList.add('nge-lb-section-title');
+    helpTitle.textContent = 'Second Opinion';
+    helpSection.appendChild(helpTitle);
+
+    // Issue type chips
+    const issueTypes = ['Extension', 'Merge', 'Black Spill', 'Doublecheck'];
+    let selectedIssue = '';
+
+    const chipRow = document.createElement('div');
+    chipRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;';
+
+    for (const issue of issueTypes) {
+      const chip = document.createElement('button');
+      chip.className = 'nge-lb-chip';
+      chip.textContent = issue;
+      chip.addEventListener('click', () => {
+        chipRow.querySelectorAll('.nge-lb-chip').forEach(c =>
+          c.classList.remove('nge-lb-chip--active'));
+        chip.classList.add('nge-lb-chip--active');
+        selectedIssue = issue;
+      });
+      chipRow.appendChild(chip);
+    }
+    helpSection.appendChild(chipRow);
+
+    // Note input
+    const noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.placeholder = 'Optional note…';
+    noteInput.classList.add('nge-lb-text-input');
+    const stopK = (e: Event) => e.stopPropagation();
+    noteInput.addEventListener('keydown', stopK);
+    noteInput.addEventListener('keyup', stopK);
+    noteInput.addEventListener('keypress', stopK);
+    helpSection.appendChild(noteInput);
+
+    const helpBtn = document.createElement('button');
+    helpBtn.classList.add('nge-lb-section-button', 'nge-lb-help-btn');
+    helpBtn.textContent = '🔍 Ask for Help';
+    helpBtn.addEventListener('click', () => {
+      const helpStore = useHelpRequestStore();
+      // Get viewer position if available
+      let pos: [number, number, number] = [0, 0, 0];
+      try {
+        const viewer = (window as any)['viewer'];
+        if (viewer?.navigationState?.position) {
+          const p = viewer.navigationState.position.value;
+          pos = [Math.round(p[0]), Math.round(p[1]), Math.round(p[2])];
+        }
+      } catch {}
+      helpStore.add({
+        segId: segmentIDString,
+        position: pos,
+        note: noteInput.value.trim(),
+        issueType: selectedIssue || 'Doublecheck',
+        cellType: cachedStatus?.cellType,
+      });
+      helpBtn.textContent = '✓ Help Requested';
+      helpBtn.disabled = true;
+      helpBtn.style.color = '#7f8';
+      helpBtn.style.borderColor = 'rgba(127,255,136,0.3)';
+    });
+    helpSection.appendChild(helpBtn);
+
+    menu.append(br(), completionSection, br(), cellTypeSection, br(), helpSection, br(), linksSection, br());
     return contextMenu;
   }
 }

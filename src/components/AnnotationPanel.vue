@@ -6,12 +6,24 @@
  */
 import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useSegmentAnnotationStore, useUserStatsStore } from '../store';
+import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useHelpRequestStore } from '../store';
 import { getCellStatus, setCellComplete, saveCellType, CellStatus } from '../widgets/lightbulb_service';
 import { RETINAL_CELL_TYPES } from '../config';
 
 const annotStore = useSegmentAnnotationStore();
 const statsStore = useUserStatsStore();
+const historyStore = useCellHistoryStore();
+const helpStore = useHelpRequestStore();
+
+/** Get current viewer position for storing with the cell history entry. */
+function getViewerPosition(): [number, number, number] {
+  try {
+    const viewer = (window as any)['viewer'];
+    const pos = viewer?.navigationState?.position?.value;
+    if (pos && pos.length >= 3) return [Math.round(pos[0]), Math.round(pos[1]), Math.round(pos[2])];
+  } catch {}
+  return [0, 0, 0];
+}
 const { activeSegId, caveUrl, annotation } = storeToRefs(annotStore);
 
 const savingComplete  = ref(false);
@@ -20,8 +32,14 @@ const savedFlash      = ref(false);
 const customTypeInput = ref('');
 const showTypeMenu    = ref(false);
 
-// Short display ID — show last 6 chars so it fits in the panel
+// Short display ID — show nickname if set, otherwise truncated ID
+const nickname = computed(() => {
+  if (!activeSegId.value) return '';
+  return historyStore.getNickname(activeSegId.value) ?? '';
+});
+
 const shortId = computed(() => {
+  if (nickname.value) return nickname.value;
   const id = activeSegId.value ?? '';
   return id.length > 12 ? '…' + id.slice(-10) : id;
 });
@@ -91,6 +109,20 @@ async function toggleComplete() {
     if (willBeComplete) {
       statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
     }
+    // Record in cell history
+    historyStore.upsert({
+      segId: activeSegId.value!,
+      isComplete: willBeComplete,
+      cellType: annotation.value!.cellType,
+      position: getViewerPosition(),
+    });
+    // Notify sidebar buttons — pass current status so they don't re-fetch
+    document.dispatchEvent(new CustomEvent('nge:seg-status-changed', {
+      detail: {
+        segId: activeSegId.value,
+        status: { isComplete: annotation.value!.isComplete, cellType: annotation.value!.cellType },
+      },
+    }));
     flash();
   }
   savingComplete.value = false;
@@ -108,6 +140,20 @@ async function pickCellType(type: string) {
   );
   if (ok) {
     annotStore.setAnnotation({ ...annotation.value!, cellType: type });
+    // Record in cell history (cell type can be set independently of completion)
+    historyStore.upsert({
+      segId: activeSegId.value!,
+      isComplete: annotation.value!.isComplete,
+      cellType: type,
+      position: getViewerPosition(),
+    });
+    // Notify sidebar buttons — pass current status so they don't re-fetch
+    document.dispatchEvent(new CustomEvent('nge:seg-status-changed', {
+      detail: {
+        segId: activeSegId.value,
+        status: { isComplete: annotation.value!.isComplete, cellType: type },
+      },
+    }));
     flash();
   }
   savingType.value = false;
@@ -131,6 +177,29 @@ function copyId() {
 
 function dismiss() {
   annotStore.setActiveSegId(null);
+}
+
+// ── Second opinion / help request ───────────────────────────────────────────
+const HELP_ISSUE_TYPES = ['Extension', 'Merge', 'Black Spill', 'Doublecheck'];
+const showHelpInput = ref(false);
+const helpNote = ref('');
+const selectedIssue = ref('');
+
+function submitHelpRequest() {
+  if (!activeSegId.value || !selectedIssue.value) return;
+  helpStore.add({
+    segId: activeSegId.value,
+    position: getViewerPosition(),
+    note: helpNote.value.trim(),
+    issueType: selectedIssue.value,
+    cellType: annotation.value?.cellType,
+    nickname: historyStore.getNickname(activeSegId.value),
+  });
+  helpStore.refreshPending();
+  helpNote.value = '';
+  selectedIssue.value = '';
+  showHelpInput.value = false;
+  flash();
 }
 </script>
 
@@ -199,6 +268,36 @@ function dismiss() {
             <button class="nge-ann-btn nge-ann-btn--small" @click="saveCustomType">Save</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="nge-ann-divider" />
+
+    <!-- Second opinion -->
+    <div class="nge-ann-row nge-ann-row--help" v-if="!showHelpInput">
+      <button class="nge-ann-help-btn" @click="showHelpInput = true">
+        🔍 Ask for Second Opinion
+      </button>
+    </div>
+    <div class="nge-ann-help-form" v-else>
+      <div class="nge-ann-issue-label">What's the issue?</div>
+      <div class="nge-ann-issue-chips">
+        <button
+          v-for="t in HELP_ISSUE_TYPES" :key="t"
+          class="nge-ann-issue-chip"
+          :class="{ 'nge-ann-issue-chip--active': selectedIssue === t }"
+          @click="selectedIssue = selectedIssue === t ? '' : t"
+        >{{ t }}</button>
+      </div>
+      <textarea
+        v-model="helpNote"
+        class="nge-ann-help-note"
+        placeholder="Additional notes (optional)"
+        rows="2"
+      />
+      <div class="nge-ann-help-actions">
+        <button class="nge-ann-btn" :disabled="!selectedIssue" @click="submitHelpRequest">Submit</button>
+        <button class="nge-ann-btn nge-ann-btn--ghost" @click="showHelpInput = false; selectedIssue = ''">Cancel</button>
       </div>
     </div>
 
@@ -320,7 +419,7 @@ function dismiss() {
   font-weight: 600;
   font-size: 12px;
 }
-.nge-ann-status--complete   { color: #7f8; }
+.nge-ann-status--complete   { color: #CE93D8; }
 .nge-ann-status--inprogress { color: #aaa; }
 .nge-ann-status--loading    { color: #778; font-style: italic; }
 .nge-ann-status--error      { color: #f88; }
@@ -420,6 +519,88 @@ function dismiss() {
   outline: none;
 }
 .nge-ann-type-input:focus { border-color: rgba(100,180,255,0.5); }
+
+/* ── Help / second opinion ── */
+.nge-ann-row--help { justify-content: center; }
+
+.nge-ann-help-btn {
+  background: none;
+  border: 1px solid rgba(245, 166, 35, 0.25);
+  border-radius: 4px;
+  padding: 5px 14px;
+  color: #f5a623;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s;
+  width: 100%;
+}
+.nge-ann-help-btn:hover { background: rgba(245, 166, 35, 0.08); }
+
+.nge-ann-issue-label {
+  font-size: 10px;
+  color: #778;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.nge-ann-issue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.nge-ann-issue-chip {
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(245, 166, 35, 0.2);
+  background: rgba(245, 166, 35, 0.04);
+  color: #b89050;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.nge-ann-issue-chip:hover { background: rgba(245, 166, 35, 0.1); }
+.nge-ann-issue-chip--active {
+  background: rgba(245, 166, 35, 0.18);
+  border-color: rgba(245, 166, 35, 0.5);
+  color: #f5a623;
+  font-weight: 600;
+}
+
+.nge-ann-help-form {
+  padding: 6px 12px 10px;
+}
+
+.nge-ann-help-note {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(100, 180, 255, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cdd;
+  font-size: 11px;
+  resize: vertical;
+  outline: none;
+  font-family: inherit;
+}
+.nge-ann-help-note:focus { border-color: rgba(100, 180, 255, 0.5); }
+
+.nge-ann-help-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  justify-content: flex-end;
+}
+
+.nge-ann-btn--ghost {
+  background: none;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #888;
+}
+.nge-ann-btn--ghost:hover:not(:disabled) { color: #bbb; background: rgba(255,255,255,0.04); }
 
 /* ── Error ── */
 .nge-ann-error {

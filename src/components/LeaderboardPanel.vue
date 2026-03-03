@@ -10,7 +10,7 @@ import {useUserPreferencesStore} from '../store';
 const {prefs} = storeToRefs(useUserPreferencesStore());
 
 type Tab = 'week' | 'month' | 'alltime';
-const activeTab    = ref<Tab>('alltime');
+const activeTab    = ref<Tab>('week');
 const selectedUser = ref<DemoUser | null>(null);
 const selectedBadgeId = ref<number | null>(null);
 
@@ -61,6 +61,15 @@ function selectedBadgeDef() {
 
 const RANK_MEDAL: Record<number, string> = {1: '🥇', 2: '🥈', 3: '🥉'};
 
+/** Convert flag emoji to a CDN image URL (cross-platform, Windows compat). */
+function flagImgUrl(emoji: string): string {
+  const pts = [...emoji];
+  if (pts.length < 2) return '';
+  const code = pts.slice(0, 2).map(c => String.fromCharCode((c.codePointAt(0)! - 0x1F1E6) + 97)).join('');
+  if (!code || code.length !== 2) return '';
+  return `https://flagcdn.com/w40/${code}.png`;
+}
+
 const emit = defineEmits({hide: null});
 </script>
 
@@ -109,7 +118,7 @@ const emit = defineEmits({hide: null});
                 </td>
                 <td class="nge-lb-td">
                   <!-- Use live prefs flag for the logged-in user's row -->
-                  <span class="nge-lb-flag">{{ user.id === 'amy' ? (prefs.flag || user.flag) : user.flag }}</span>
+                  <img class="nge-lb-flag-img" :src="flagImgUrl(user.id === 'amy' ? (prefs.flag || user.flag) : user.flag)" />
                   <span class="nge-lb-name">{{ user.name }}</span>
                   <span v-if="user.id === 'amy'" class="nge-lb-you-tag">you</span>
                   <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak"
@@ -148,7 +157,7 @@ const emit = defineEmits({hide: null});
 
           <div class="nge-lb-detail-header">
             <div class="nge-lb-detail-name-row">
-              <span class="nge-lb-detail-flag">{{ selectedUser.flag }}</span>
+              <img class="nge-lb-flag-img nge-lb-flag-img--detail" :src="flagImgUrl(selectedUser.flag)" />
               <div class="nge-lb-detail-name">{{ selectedUser.name }}</div>
             </div>
             <div class="nge-lb-detail-bio" v-if="selectedUser.bio">{{ selectedUser.bio }}</div>
@@ -276,46 +285,29 @@ const emit = defineEmits({hide: null});
   animation: ngeLbSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Scanline sweep on open */
-.nge-lb-modal :deep(.nge-overlay::before) {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(74, 158, 255, 0.5) 15%,
-    rgba(160, 220, 255, 1) 50%,
-    rgba(74, 158, 255, 0.5) 85%,
-    transparent 100%
-  );
-  animation: ngeLbScan 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  z-index: 100;
-  pointer-events: none;
-}
+/* Scanline removed — holographic border glow handled by ModalOverlay */
 
 /* Slide in from the right — no centering transform needed for sidebar */
 @keyframes ngeLbSlideIn {
   0% {
     opacity: 0;
     transform: translateX(40px);
-    filter: blur(4px);
-    box-shadow: -8px 0 40px rgba(74, 158, 255, 0.2);
+    filter: blur(8px) brightness(2);
+    box-shadow: -8px 0 60px rgba(0, 180, 255, 0.4);
+  }
+  35% {
+    opacity: 1;
+    filter: blur(0.5px) brightness(1.15);
   }
   100% {
     opacity: 1;
     transform: translateX(0);
-    filter: blur(0);
-    box-shadow: -4px 0 30px rgba(74, 158, 255, 0.08);
+    filter: blur(0) brightness(1);
+    box-shadow: -4px 0 30px rgba(0, 150, 255, 0.06);
   }
 }
 
-@keyframes ngeLbScan {
-  0%   { top: 0%;   opacity: 1; }
-  85%  { opacity: 0.4; }
-  100% { top: 100%; opacity: 0; }
-}
+/* (scanline keyframe removed — using ModalOverlay holographic effects) */
 
 /* ── Shell — fills the full sidebar height ── */
 .nge-lb-shell {
@@ -458,10 +450,12 @@ const emit = defineEmits({hide: null});
   text-align: center;
 }
 
-.nge-lb-flag {
-  font-size: 1.1em;
-  margin-right: 6px;
-  vertical-align: middle;
+.nge-lb-flag-img {
+  width: 20px; height: 14px; object-fit: cover; border-radius: 2px;
+  margin-right: 6px; vertical-align: middle;
+}
+.nge-lb-flag-img--detail {
+  width: 32px; height: 22px;
 }
 
 .nge-lb-name {

@@ -20,7 +20,10 @@
 
 /* Status colours for the button icon */
 .nge-lb-btn.nge-lb-complete svg path {
-  fill: #4caf50; /* green */
+  fill: #CE93D8; /* purple — completed */
+}
+.nge-lb-btn.nge-lb-annotated svg path {
+  fill: #4caf50; /* green — annotated */
 }
 
 .nge-lb-btn.nge-lb-incomplete svg path {
@@ -167,6 +170,36 @@
   color: #666;
 }
 
+/* ─── Help / Second Opinion ────────────────────────────────────────────────── */
+.nge-lb-chip {
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #aaa;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.nge-lb-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ddd;
+}
+.nge-lb-chip--active {
+  background: rgba(255, 152, 0, 0.2);
+  border-color: rgba(255, 152, 0, 0.5);
+  color: #ffb74d;
+}
+
+/* Ask for Help button — accent orange */
+.nge-lb-help-btn {
+  border-color: rgba(255, 152, 0, 0.4);
+  color: #ffb74d;
+}
+.nge-lb-help-btn:hover {
+  background-color: rgba(255, 152, 0, 0.2);
+}
+
 /* ─── Links in menu ────────────────────────────────────────────────────────── */
 
 .nge-lb-section a {
@@ -216,47 +249,54 @@
 .nge-lb-btn.nge-lb-incomplete .nge-lb-pip {
   background: #666;
 }
-.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-pip {
-  background: #F0A030;
-  box-shadow: 0 0 4px #F0A03088;
-}
-.nge-lb-btn.nge-lb-complete .nge-lb-pip {
+.nge-lb-btn.nge-lb-annotated .nge-lb-pip {
   background: #4CAF50;
   box-shadow: 0 0 5px #4CAF5088;
 }
+.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-pip,
+.nge-lb-btn.nge-lb-complete .nge-lb-pip {
+  background: #CE93D8;
+  box-shadow: 0 0 5px #CE93D888;
+}
 
 /* Tint the dots text to match status */
-.nge-lb-btn.nge-lb-complete .nge-lb-dots     { color: #4CAF50; }
-.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #F0A030; }
+.nge-lb-btn.nge-lb-complete .nge-lb-dots,
+.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #CE93D8; }
+.nge-lb-btn.nge-lb-annotated .nge-lb-dots { color: #4CAF50; }
 .nge-lb-btn.nge-lb-incomplete .nge-lb-dots   { color: #999; }
 
-/* ── Label badge in the neuroglancer name/label column ── */
+/* ── Label badge — placed inline after segment ID/nickname ── */
 .nge-label-badge {
   display: inline-flex;
   align-items: center;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
-  padding: 1px 4px;
+  padding: 1px 5px;
   border-radius: 3px;
-  margin-right: 5px;
+  margin-left: 6px;
   white-space: nowrap;
   vertical-align: middle;
   flex-shrink: 0;
+  line-height: 1.4;
 }
 
 .nge-label-badge--complete {
+  color: #CE93D8;
+  background: rgba(206, 147, 216, 0.15);
+}
+
+.nge-label-badge--annotated {
   color: #4CAF50;
   background: rgba(76, 175, 80, 0.15);
 }
 
 .nge-label-badge--unlabeled {
-  color: #F0A030;
-  background: rgba(240, 160, 48, 0.12);
+  color: #CE93D8;
+  background: rgba(206, 147, 216, 0.1);
 }
 
 .nge-label-badge--incomplete {
-  color: #777;
-  /* no background — keep it subtle */
+  display: none; /* hide badge for incomplete — only show when status is set */
 }
 
 /* ── Status legend in extension bar ── */
@@ -279,6 +319,40 @@
   border-radius: 50%;
   display: inline-block;
 }
-.nge-legend-pip--complete     { background: #4CAF50; box-shadow: 0 0 4px #4CAF5088; }
-.nge-legend-pip--unlabeled    { background: #F0A030; box-shadow: 0 0 3px #F0A03088; }
+.nge-legend-pip--complete     { background: #CE93D8; box-shadow: 0 0 4px #CE93D888; }
+.nge-legend-pip--annotated    { background: #4CAF50; box-shadow: 0 0 4px #4CAF5088; }
+.nge-legend-pip--unlabeled    { background: #CE93D8; box-shadow: 0 0 3px #CE93D888; }
 .nge-legend-pip--incomplete   { background: #666; }
+
+/* ─── Segment nickname label ──────────────────────────────────────────────── */
+/* When set, the nickname becomes the primary label — the numeric ID collapses */
+.nge-segment-nickname {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f0c866;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: default;
+  margin-right: 4px;
+}
+.nge-segment-nickname::before {
+  content: '✦';
+  font-size: 7px;
+  opacity: 0.5;
+}
+
+/* Collapse the numeric ID when a nickname is present */
+.nge-id-collapsed {
+  max-width: 54px !important;
+  font-size: 9px !important;
+  opacity: 0.30 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
