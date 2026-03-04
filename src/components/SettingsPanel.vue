@@ -7,20 +7,55 @@ const prefsStore = useUserPreferencesStore();
 
 const draftFlag = ref('');
 const draftBio  = ref('');
+const draftToolbar = ref<string[]>([]);
 const saved      = ref(false);
 
 onMounted(() => {
   draftFlag.value = prefsStore.prefs.flag;
   draftBio.value  = prefsStore.prefs.bio;
+  const current = prefsStore.prefs.toolbarIcons;
+  draftToolbar.value = current.length > 0 ? [...current] : [...DEFAULT_ORDER];
 });
 
 function handleSave() {
   prefsStore.save({
     flag: draftFlag.value.trim(),
     bio:  draftBio.value.trim().slice(0, 280),
+    toolbarIcons: draftToolbar.value,
   });
   saved.value = true;
   setTimeout(() => { saved.value = false; }, 1800);
+}
+
+// ── Toolbar icon choices ──────────────────────────────────────
+const TOOLBAR_ICON_OPTIONS = [
+  { id: 'split', emoji: '✂️', label: 'Split Mode' },
+  { id: 'merge', emoji: '🔗', label: 'Merge Mode' },
+  { id: 'recap', emoji: '📊', label: 'Weekly Recap' },
+  { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard' },
+  { id: 'quest', emoji: '🧠', label: 'Quest Board' },
+  { id: 'help', emoji: '🔍', label: 'Help Requests' },
+  { id: 'feed', emoji: '📡', label: 'Activity Feed' },
+  { id: 'settings', emoji: '⚙️', label: 'Settings' },
+];
+
+const DEFAULT_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'help', 'feed', 'settings'];
+
+function isToolbarIconEnabled(id: string) {
+  return draftToolbar.value.includes(id);
+}
+
+function toggleToolbarIcon(id: string) {
+  const idx = draftToolbar.value.indexOf(id);
+  if (idx >= 0) {
+    draftToolbar.value.splice(idx, 1);
+  } else {
+    draftToolbar.value.push(id);
+  }
+}
+
+function resetToolbar() {
+  draftToolbar.value = [...DEFAULT_ORDER];
 }
 
 const QUICK_FLAGS = ['🇺🇸','🇬🇧','🇨🇦','🇩🇪','🇫🇷','🇯🇵','🇰🇷','🇨🇳','🇧🇷','🇮🇳','🇦🇺','🇳🇬','🇹🇼','🇵🇹','🇩🇰','🇸🇦'];
@@ -76,6 +111,25 @@ const emit = defineEmits({hide: null});
           <div class="nge-settings-charcount" :class="{ 'nge-settings-charcount--warn': draftBio.length > 250 }">
             {{ draftBio.length }} / 280
           </div>
+        </div>
+
+        <!-- Toolbar customization -->
+        <div class="nge-settings-section">
+          <label class="nge-settings-label">Toolbar Icons</label>
+          <p class="nge-settings-hint">Toggle which actions appear in your top bar.</p>
+          <div class="nge-settings-toolbar-grid">
+            <button
+              v-for="opt in TOOLBAR_ICON_OPTIONS"
+              :key="opt.id"
+              class="nge-settings-toolbar-item"
+              :class="{ 'nge-settings-toolbar-item--active': isToolbarIconEnabled(opt.id) }"
+              @click="toggleToolbarIcon(opt.id)"
+            >
+              <span class="nge-settings-toolbar-emoji">{{ opt.emoji }}</span>
+              <span class="nge-settings-toolbar-label">{{ opt.label }}</span>
+            </button>
+          </div>
+          <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
         </div>
 
         <!-- Actions -->
@@ -298,4 +352,60 @@ const emit = defineEmits({hide: null});
   background: rgba(255,255,255,0.1);
   color: #ccc;
 }
+
+/* Toolbar customization */
+.nge-settings-toolbar-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.nge-settings-toolbar-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #667;
+  font-family: inherit;
+  font-size: 0.82em;
+  cursor: pointer;
+  transition: all 0.12s;
+  opacity: 0.5;
+}
+
+.nge-settings-toolbar-item:hover {
+  opacity: 0.8;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nge-settings-toolbar-item--active {
+  opacity: 1;
+  border-color: rgba(74, 158, 255, 0.35);
+  background: rgba(74, 158, 255, 0.08);
+  color: #acd;
+}
+
+.nge-settings-toolbar-emoji {
+  font-size: 1.1em;
+}
+
+.nge-settings-toolbar-label {
+  font-weight: 500;
+}
+
+.nge-settings-toolbar-reset {
+  margin-top: 6px;
+  background: none;
+  border: none;
+  color: #556;
+  font-size: 0.72em;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color 0.12s;
+}
+.nge-settings-toolbar-reset:hover { color: #889; }
 </style>

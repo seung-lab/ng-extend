@@ -1,25 +1,56 @@
 <script setup lang="ts">
-import {ref, computed} from 'vue';
+import {ref, computed, onMounted} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {DEMO_USERS, DemoUser} from '../data/demo-users';
 import {BADGE_DEFINITIONS} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
-import {useUserPreferencesStore} from '../store';
+import {useUserPreferencesStore, useProofreadingBackendStore} from '../store';
 
 const {prefs} = storeToRefs(useUserPreferencesStore());
+const backendStore = useProofreadingBackendStore();
 
 type Tab = 'week' | 'month' | 'alltime';
-const activeTab    = ref<Tab>('week');
+const activeTab    = ref<Tab>('alltime');
 const selectedUser = ref<DemoUser | null>(null);
 const selectedBadgeId = ref<number | null>(null);
 
-// Sort demo users by the active tab's edit metric
+// Load real leaderboard from Supabase on mount
+onMounted(() => { backendStore.loadLeaderboard(); });
+
+// Convert Supabase user rows to DemoUser shape for display
+const supabaseUsers = computed<DemoUser[]>(() => {
+  return backendStore.leaderboard.map((u: any) => ({
+    id: u.id,
+    name: u.display_name || 'Anonymous',
+    flag: u.flag || '',
+    bio: '',
+    stats: {
+      editsAllTime: u.total_edits || 0,
+      mergesAllTime: u.total_merges || 0,
+      splitsAllTime: u.total_splits || 0,
+      editsThisWeek: u.total_edits || 0,
+      mergesThisWeek: u.total_merges || 0,
+      splitsThisWeek: u.total_splits || 0,
+      editsThisMonth: u.total_edits || 0,
+      mergesThisMonth: u.total_merges || 0,
+      splitsThisMonth: u.total_splits || 0,
+      cellsSubmitted: u.cells_completed || 0,
+      currentStreak: u.current_streak || 0,
+      longestStreak: u.longest_streak || 0,
+    },
+  }));
+});
+
+// Use Supabase users if available, otherwise fall back to demo data
+const userSource = computed(() => supabaseUsers.value.length > 0 ? supabaseUsers.value : DEMO_USERS);
+
+// Sort users by the active tab's edit metric
 const rankedUsers = computed(() => {
   const key = activeTab.value === 'week'  ? 'editsThisWeek'
             : activeTab.value === 'month' ? 'editsThisMonth'
                                           : 'editsAllTime';
-  return [...DEMO_USERS].sort((a, b) => b.stats[key] - a.stats[key]);
+  return [...userSource.value].sort((a, b) => b.stats[key] - a.stats[key]);
 });
 
 function editCountForTab(user: DemoUser): number {
@@ -109,7 +140,7 @@ const emit = defineEmits({hide: null});
                 v-for="(user, idx) in rankedUsers"
                 :key="user.id"
                 class="nge-lb-row"
-                :class="{ 'nge-lb-row--you': user.id === 'amy' }"
+                :class="{ 'nge-lb-row--you': user.id === 'amy' || user.id === backendStore.userId }"
                 @click="selectUser(user)"
               >
                 <td class="nge-lb-td nge-lb-td--rank">
@@ -118,9 +149,9 @@ const emit = defineEmits({hide: null});
                 </td>
                 <td class="nge-lb-td">
                   <!-- Use live prefs flag for the logged-in user's row -->
-                  <img class="nge-lb-flag-img" :src="flagImgUrl(user.id === 'amy' ? (prefs.flag || user.flag) : user.flag)" />
+                  <img class="nge-lb-flag-img" :src="flagImgUrl((user.id === 'amy' || user.id === backendStore.userId) ? (prefs.flag || user.flag) : user.flag)" />
                   <span class="nge-lb-name">{{ user.name }}</span>
-                  <span v-if="user.id === 'amy'" class="nge-lb-you-tag">you</span>
+                  <span v-if="user.id === 'amy' || user.id === backendStore.userId" class="nge-lb-you-tag">you</span>
                   <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak"
                         :title="`${user.stats.currentStreak}-day streak`">
                     🔥{{ user.stats.currentStreak }}

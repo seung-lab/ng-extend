@@ -1,4 +1,6 @@
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
+import {Uint64} from 'neuroglancer/util/uint64';
+import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {RETINAL_CELL_TYPES} from '../config';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
 import {useHelpRequestStore} from '../store';
@@ -110,25 +112,21 @@ export class ButtonService {
     }
 
     if (!status) {
-      badge.className = 'nge-label-badge nge-label-badge--incomplete';
-      badge.textContent = '—';
-      badge.title = 'Fetching status…';
-    } else if (status.isComplete && status.cellType) {
-      badge.className = 'nge-label-badge nge-label-badge--complete';
-      badge.textContent = `✓ ${status.cellType}`;
-      badge.title = `Complete: ${status.cellType}`;
-    } else if (status.isComplete) {
-      badge.className = 'nge-label-badge nge-label-badge--complete';
-      badge.textContent = '✓ Complete';
-      badge.title = 'Complete (no cell type set)';
+      badge.className = 'nge-label-badge';
+      badge.textContent = '';
+      badge.title = '';
     } else if (status.cellType) {
-      badge.className = 'nge-label-badge nge-label-badge--annotated';
-      badge.textContent = `⊙ ${status.cellType}`;
-      badge.title = `Annotated: ${status.cellType}`;
+      // Show cell type label (with completion indicator prefix)
+      badge.className = status.isComplete
+        ? 'nge-label-badge nge-label-badge--complete'
+        : 'nge-label-badge nge-label-badge--annotated';
+      badge.textContent = status.cellType;
+      badge.title = status.isComplete ? `Complete: ${status.cellType}` : status.cellType;
     } else {
-      badge.className = 'nge-label-badge nge-label-badge--incomplete';
-      badge.textContent = '—';
-      badge.title = 'Incomplete';
+      // No cell type — the pip color is sufficient, no text needed
+      badge.className = 'nge-label-badge';
+      badge.textContent = '';
+      badge.title = status.isComplete ? 'Complete' : '';
     }
   }
 
@@ -301,14 +299,82 @@ export class ButtonService {
     });
     cellTypeSection.appendChild(saveTypeBtn);
 
-    // ── Section 3: Links ──────────────────────────────────────────────────
+    // ── Section 3: Segment Color ─────────────────────────────────────────
+    const colorSection = document.createElement('div');
+    colorSection.classList.add('nge-lb-section');
+
+    const colorTitle = document.createElement('div');
+    colorTitle.classList.add('nge-lb-section-title');
+    colorTitle.textContent = 'Segment Color';
+    colorSection.appendChild(colorTitle);
+
+    const colorRow = document.createElement('div');
+    colorRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;';
+
+    // Preset color swatches
+    const PRESET_COLORS: [string, number, number, number][] = [
+      ['#ff4444', 1, 0.27, 0.27],   // red
+      ['#ff8800', 1, 0.53, 0],       // orange
+      ['#ffdd00', 1, 0.87, 0],       // yellow
+      ['#44ff44', 0.27, 1, 0.27],   // green
+      ['#00ddff', 0, 0.87, 1],       // cyan
+      ['#4488ff', 0.27, 0.53, 1],   // blue
+      ['#aa44ff', 0.67, 0.27, 1],   // purple
+      ['#ff44aa', 1, 0.27, 0.67],   // pink
+      ['#ffffff', 1, 1, 1],          // white
+    ];
+
+    for (const [hex, r, g, b] of PRESET_COLORS) {
+      const swatch = document.createElement('button');
+      swatch.className = 'nge-color-swatch';
+      swatch.style.cssText = `background:${hex};width:22px;height:22px;border-radius:4px;border:2px solid rgba(255,255,255,0.2);cursor:pointer;padding:0;`;
+      swatch.title = hex;
+      swatch.addEventListener('click', () => {
+        this._setSegmentColor(segmentIDString, r, g, b);
+        colorRow.querySelectorAll('.nge-color-swatch').forEach(s =>
+          (s as HTMLElement).style.borderColor = 'rgba(255,255,255,0.2)');
+        swatch.style.borderColor = '#fff';
+      });
+      colorRow.appendChild(swatch);
+    }
+
+    // Custom color input
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = '#44ff44';
+    colorInput.style.cssText = 'width:26px;height:22px;border:none;padding:0;cursor:pointer;background:transparent;';
+    colorInput.title = 'Custom color';
+    colorInput.addEventListener('input', () => {
+      const hex = colorInput.value;
+      const ri = parseInt(hex.slice(1, 3), 16) / 255;
+      const gi = parseInt(hex.slice(3, 5), 16) / 255;
+      const bi = parseInt(hex.slice(5, 7), 16) / 255;
+      this._setSegmentColor(segmentIDString, ri, gi, bi);
+    });
+    colorRow.appendChild(colorInput);
+
+    colorSection.appendChild(colorRow);
+
+    // Reset button
+    const resetColorBtn = document.createElement('button');
+    resetColorBtn.classList.add('nge-lb-section-button');
+    resetColorBtn.textContent = 'Reset to Default';
+    resetColorBtn.style.cssText = 'margin-top:6px;font-size:11px;color:#888;';
+    resetColorBtn.addEventListener('click', () => {
+      this._resetSegmentColor(segmentIDString);
+      colorRow.querySelectorAll('.nge-color-swatch').forEach(s =>
+        (s as HTMLElement).style.borderColor = 'rgba(255,255,255,0.2)');
+    });
+    colorSection.appendChild(resetColorBtn);
+
+    // ── Section 4: Links ──────────────────────────────────────────────────
     const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
     const linksSection = this.generateSection(
         'Links', [],
         [['Change Log', `${localServerURL}/progress/api/v1/query?rootid=${paramStr}`,
           undefined]]);
 
-    // ── Section 4: Ask for Help ───────────────────────────────────────────
+    // ── Section 5: Ask for Help ───────────────────────────────────────────
     const helpSection = document.createElement('div');
     helpSection.classList.add('nge-lb-section');
 
@@ -378,7 +444,48 @@ export class ButtonService {
     });
     helpSection.appendChild(helpBtn);
 
-    menu.append(br(), completionSection, br(), cellTypeSection, br(), helpSection, br(), linksSection, br());
+    menu.append(br(), completionSection, br(), cellTypeSection, br(), colorSection, br(), helpSection, br(), linksSection, br());
     return contextMenu;
+  }
+
+  /** Set a custom color for a segment via neuroglancer's segmentStatedColors map. */
+  private _setSegmentColor(segIdStr: string, r: number, g: number, b: number): void {
+    try {
+      const viewer: any = (window as any)['viewer'];
+      if (!viewer) return;
+      const segLayer = viewer.layerManager.managedLayers.find(
+        (x: any) => x.layer instanceof SegmentationUserLayer,
+      );
+      if (!segLayer?.layer) return;
+      const colorGroupState = (segLayer.layer as SegmentationUserLayer)
+        .displayState.segmentationColorGroupState.value;
+      const segmentStatedColors = colorGroupState.segmentStatedColors;
+      const segId = Uint64.parseString(segIdStr);
+      // Pack RGB into 24-bit integer (neuroglancer format: 0xBBGGRR)
+      const packed = (Math.round(r * 255)) |
+                     (Math.round(g * 255) << 8) |
+                     (Math.round(b * 255) << 16);
+      segmentStatedColors.set(segId, new Uint64(packed, 0));
+    } catch (e) {
+      console.warn('[buttonService] Failed to set segment color:', e);
+    }
+  }
+
+  /** Reset a segment's color back to the default hash-based color. */
+  private _resetSegmentColor(segIdStr: string): void {
+    try {
+      const viewer: any = (window as any)['viewer'];
+      if (!viewer) return;
+      const segLayer = viewer.layerManager.managedLayers.find(
+        (x: any) => x.layer instanceof SegmentationUserLayer,
+      );
+      if (!segLayer?.layer) return;
+      const colorGroupState = (segLayer.layer as SegmentationUserLayer)
+        .displayState.segmentationColorGroupState.value;
+      const segId = Uint64.parseString(segIdStr);
+      colorGroupState.segmentStatedColors.delete(segId);
+    } catch (e) {
+      console.warn('[buttonService] Failed to reset segment color:', e);
+    }
   }
 }

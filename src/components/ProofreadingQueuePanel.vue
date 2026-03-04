@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
-import { useProofreadingQueueStore, useCellHistoryStore } from '../store';
+import { useProofreadingQueueStore, useCellHistoryStore, useUserStatsStore } from '../store';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { EYEWIRE_II_CAVE_CONFIG } from '../config';
 
@@ -296,6 +296,10 @@ async function markProofreadAndNext() {
 
   queue.markProofread(item.segId);
 
+  // Track quest completion in daily log for streak chart
+  const statsStore = useUserStatsStore();
+  statsStore.logDailyQuestComplete();
+
   // In daily mode, stay on daily quests. In all mode, advance to next unproofread.
   if (viewMode.value === 'all') {
     queue.nextUnproofread();
@@ -326,6 +330,13 @@ const todayLabel = computed(() => {
   const d = new Date();
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 });
+
+function shareOnX() {
+  const text = encodeURIComponent(
+    `I just completed today's Brain Quest on EyeWire II! 🧠✨ ${dailyQuests.value.length} neurons proofread.\n\n#EyeWireII #neuroscience #citizenscience`
+  );
+  window.open(`https://x.com/intent/tweet?text=${text}`, '_blank', 'width=550,height=420');
+}
 </script>
 
 <template>
@@ -427,8 +438,29 @@ const todayLabel = computed(() => {
           </div>
 
           <!-- Daily complete celebration -->
-          <div v-if="dailyComplete" class="nge-quest-daily-done">
-            🎉 All daily quests complete! You're a star.
+          <div v-if="dailyComplete" class="nge-quest-celebration">
+            <div class="nge-quest-celebration-particles">
+              <span v-for="i in 12" :key="i" class="nge-quest-particle" :style="{ '--i': i }"></span>
+            </div>
+            <div class="nge-quest-celebration-badge">✦</div>
+            <div class="nge-quest-celebration-title">Quest Complete!</div>
+            <div class="nge-quest-celebration-sub">
+              You finished all {{ dailyQuests.length }} neurons for today.
+              <br/>The connectome thanks you!
+            </div>
+            <div class="nge-quest-celebration-actions">
+              <button class="nge-quest-celebration-btn nge-quest-celebration-btn--more"
+                      @click="viewMode = 'all'">
+                Take on More Quests
+              </button>
+              <button class="nge-quest-celebration-btn nge-quest-celebration-btn--close"
+                      @click="emit('hide')">
+                Close Board
+              </button>
+            </div>
+            <button class="nge-quest-share-btn" @click="shareOnX">
+              Share on 𝕏
+            </button>
           </div>
 
           <!-- Overall progress -->
@@ -769,15 +801,156 @@ const todayLabel = computed(() => {
 }
 .nge-quest-daily-pip-card--done .nge-quest-daily-pip-name { color: #7a8; }
 
-.nge-quest-daily-done {
+/* ══════════════════════════════════════════════
+   QUEST COMPLETE CELEBRATION
+   ══════════════════════════════════════════════ */
+
+.nge-quest-celebration {
   text-align: center;
+  padding: 20px 10px 16px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 10px;
+  background: radial-gradient(ellipse at center, rgba(255, 215, 0, 0.06) 0%, transparent 70%);
+  margin-bottom: 10px;
+  animation: nge-quest-celebrate-glow 3s ease-in-out infinite;
+}
+
+@keyframes nge-quest-celebrate-glow {
+  0%, 100% {
+    border-color: rgba(255, 215, 0, 0.2);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.05), inset 0 0 30px rgba(255, 215, 0, 0.02);
+  }
+  50% {
+    border-color: rgba(255, 215, 0, 0.4);
+    box-shadow: 0 0 40px rgba(255, 215, 0, 0.1), inset 0 0 50px rgba(255, 215, 0, 0.04);
+  }
+}
+
+.nge-quest-celebration-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.nge-quest-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 215, 0, 0.6);
+  animation: nge-quest-float 3s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.25s);
+  left: calc(var(--i) * 8% + 2%);
+  top: 80%;
+  box-shadow: 0 0 6px rgba(255, 215, 0, 0.4);
+}
+
+.nge-quest-particle:nth-child(even) {
+  background: rgba(180, 140, 255, 0.5);
+  box-shadow: 0 0 6px rgba(180, 140, 255, 0.3);
+  width: 3px;
+  height: 3px;
+}
+
+.nge-quest-particle:nth-child(3n) {
+  background: rgba(100, 200, 255, 0.5);
+  box-shadow: 0 0 6px rgba(100, 200, 255, 0.3);
+  width: 5px;
+  height: 5px;
+}
+
+@keyframes nge-quest-float {
+  0% { transform: translateY(0) scale(0); opacity: 0; }
+  10% { opacity: 1; transform: translateY(-10px) scale(1); }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(-120px) scale(0.3); opacity: 0; }
+}
+
+.nge-quest-celebration-badge {
+  font-size: 2.5em;
+  color: #ffd700;
+  text-shadow: 0 0 20px rgba(255, 215, 0, 0.6), 0 0 40px rgba(255, 215, 0, 0.2);
+  animation: nge-quest-badge-pulse 2s ease-in-out infinite;
+  margin-bottom: 6px;
+}
+
+@keyframes nge-quest-badge-pulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.1); filter: brightness(1.3); }
+}
+
+.nge-quest-celebration-title {
+  font-size: 1.3em;
+  font-weight: 800;
+  color: #ffd700;
+  text-shadow: 0 0 12px rgba(255, 215, 0, 0.4);
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.nge-quest-celebration-sub {
+  font-size: 0.78em;
+  color: #9ab;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.nge-quest-celebration-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.nge-quest-celebration-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
   font-size: 0.82em;
-  color: rgba(127, 255, 136, 0.8);
-  padding: 8px;
-  margin-bottom: 8px;
-  border: 1px solid rgba(127, 255, 136, 0.15);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+}
+
+.nge-quest-celebration-btn--more {
+  background: linear-gradient(135deg, #7c4dff, #651fff);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(124, 77, 255, 0.3);
+}
+.nge-quest-celebration-btn--more:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 4px 16px rgba(124, 77, 255, 0.4);
+}
+
+.nge-quest-celebration-btn--close {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #889;
+}
+.nge-quest-celebration-btn--close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #bbc;
+}
+
+.nge-quest-share-btn {
+  background: none;
+  border: 1px solid rgba(100, 180, 255, 0.2);
   border-radius: 6px;
-  background: rgba(127, 255, 136, 0.03);
+  color: rgba(100, 180, 255, 0.7);
+  font-size: 0.72em;
+  font-family: inherit;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nge-quest-share-btn:hover {
+  border-color: rgba(100, 180, 255, 0.5);
+  color: rgba(100, 180, 255, 1);
+  background: rgba(100, 180, 255, 0.06);
 }
 
 /* ══════════════════════════════════════════════

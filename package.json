@@ -42,7 +42,8 @@
     "yargs": "^17.0.1"
   },
   "dependencies": {
-      "neuroglancer": "github:seung-lab/neuroglancer#737a902c8740ff37500ba0f2f658beacbbdd7c5a",
+    "@supabase/supabase-js": "^2.98.0",
+    "neuroglancer": "github:seung-lab/neuroglancer#737a902c8740ff37500ba0f2f658beacbbdd7c5a",
     "pinia": "^2.0.32",
     "vue": "^3.2.47",
     "vue-loader": "^17.2.2",

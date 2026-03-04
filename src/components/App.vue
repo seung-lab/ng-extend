@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import ExtensionBar from "components/ExtensionBar.vue";
+import SplitMergeOverlay from "components/SplitMergeOverlay.vue";
 </script>
 
 <template>
   <div id="vueMain">
     <div class="ng-extend"><ExtensionBar /></div>
+    <SplitMergeOverlay />
     <div id="content">
       <div id="neuroglancer-container"></div>
     </div>

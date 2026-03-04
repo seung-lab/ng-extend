@@ -3,7 +3,7 @@ import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
-import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, CellHistoryEntry} from '../store';
+import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
@@ -16,6 +16,10 @@ const prefsStore  = useUserPreferencesStore();
 const {prefs}     = storeToRefs(prefsStore);
 const historyStore = useCellHistoryStore();
 const {cells: cellHistory} = storeToRefs(historyStore);
+
+// Refresh stats from Supabase when profile opens
+const backendStore = useProofreadingBackendStore();
+backendStore.loadUserStats();
 
 // ── Local state ───────────────────────────────────────────────────────────────
 const closing        = ref(false);
@@ -295,6 +299,29 @@ const nextAchievement = computed(() => {
 const completedCells = computed(() => cellHistory.value.filter(c => c.isComplete));
 const identifiedCells = computed(() => cellHistory.value.filter(c => c.cellType && !c.isComplete));
 
+// ── 14-day activity chart data ───────────────────────────────────────────────
+const last14Days = computed(() => {
+  const days: Array<{ date: string; label: string; edits: number; quests: number; total: number }> = [];
+  const log = statsStore.dailyLog;
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const entry = log.find((e: {date: string}) => e.date === dateStr);
+    const dayLabel = d.toLocaleDateString('en-US', { weekday: 'narrow' });
+    days.push({
+      date: dateStr,
+      label: i === 0 ? 'Today' : dayLabel,
+      edits: entry?.edits ?? 0,
+      quests: entry?.questsCompleted ?? 0,
+      total: (entry?.edits ?? 0) + (entry?.questsCompleted ?? 0),
+    });
+  }
+  return days;
+});
+
+const chartMax = computed(() => Math.max(1, ...last14Days.value.map(d => d.total)));
+
 function truncateId(id: string): string {
   return id.length > 12 ? id.slice(0, 5) + '…' + id.slice(-5) : id;
 }
@@ -546,11 +573,10 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Streak -->
-          <div class="nge-profile-section nge-profile-section--streak"
-               v-if="stats.currentStreak > 0 || stats.longestStreak > 0">
+          <!-- Streak + Activity Chart -->
+          <div class="nge-profile-section nge-profile-section--streak">
             <div class="nge-profile-section-label nge-profile-section-label--amber">▌ Streak</div>
-            <div class="nge-profile-streak-row">
+            <div class="nge-profile-streak-row" v-if="stats.currentStreak > 0 || stats.longestStreak > 0">
               <div class="nge-profile-streak-current">
                 <span class="nge-profile-streak-flame">🔥</span>
                 <span class="nge-profile-streak-count">{{ stats.currentStreak }}</span>
@@ -559,6 +585,41 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-profile-streak-best" v-if="stats.longestStreak > 0">
                 <span class="nge-profile-streak-best-label">Best</span>
                 <span class="nge-profile-streak-best-val">{{ stats.longestStreak }}d</span>
+              </div>
+            </div>
+
+            <!-- 14-day activity chart -->
+            <div class="nge-profile-activity-chart">
+              <div class="nge-profile-chart-label">Last 14 Days</div>
+              <div class="nge-profile-chart-bars">
+                <div
+                  v-for="day in last14Days"
+                  :key="day.date"
+                  class="nge-profile-chart-col"
+                  :title="`${day.date}: ${day.edits} edits, ${day.quests} quests`"
+                >
+                  <div class="nge-profile-chart-bar-wrap">
+                    <div
+                      v-if="day.quests > 0"
+                      class="nge-profile-chart-bar nge-profile-chart-bar--quest"
+                      :style="{ height: Math.max(2, (day.quests / chartMax) * 48) + 'px' }"
+                    ></div>
+                    <div
+                      v-if="day.edits > 0"
+                      class="nge-profile-chart-bar nge-profile-chart-bar--edit"
+                      :style="{ height: Math.max(2, (day.edits / chartMax) * 48) + 'px' }"
+                    ></div>
+                  </div>
+                  <div class="nge-profile-chart-day">{{ day.label }}</div>
+                </div>
+              </div>
+              <div class="nge-profile-chart-legend">
+                <span class="nge-profile-chart-legend-item">
+                  <span class="nge-profile-chart-legend-dot nge-profile-chart-legend-dot--edit"></span> Edits
+                </span>
+                <span class="nge-profile-chart-legend-item">
+                  <span class="nge-profile-chart-legend-dot nge-profile-chart-legend-dot--quest"></span> Quests
+                </span>
               </div>
             </div>
           </div>
@@ -973,6 +1034,100 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 .nge-profile-streak-best-label { color: #555; }
 .nge-profile-streak-best-val   { color: #888; font-weight: 600; }
+
+/* ── Activity chart ────────────────────────────────────────── */
+.nge-profile-activity-chart {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.nge-profile-chart-label {
+  font-size: 0.68em;
+  color: #556;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.nge-profile-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 64px;
+  padding-bottom: 16px;
+}
+
+.nge-profile-chart-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.nge-profile-chart-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 48px;
+  width: 100%;
+  gap: 1px;
+}
+
+.nge-profile-chart-bar {
+  width: 100%;
+  max-width: 12px;
+  border-radius: 2px 2px 0 0;
+  min-height: 0;
+  transition: height 0.3s ease;
+}
+
+.nge-profile-chart-bar--edit {
+  background: linear-gradient(to top, rgba(74, 158, 255, 0.5), rgba(74, 158, 255, 0.8));
+}
+
+.nge-profile-chart-bar--quest {
+  background: linear-gradient(to top, rgba(206, 147, 216, 0.5), rgba(206, 147, 216, 0.8));
+  border-radius: 2px;
+}
+
+.nge-profile-chart-day {
+  font-size: 0.55em;
+  color: #445;
+  margin-top: 3px;
+  white-space: nowrap;
+}
+
+.nge-profile-chart-legend {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.nge-profile-chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.62em;
+  color: #556;
+}
+
+.nge-profile-chart-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.nge-profile-chart-legend-dot--edit {
+  background: rgba(74, 158, 255, 0.7);
+}
+
+.nge-profile-chart-legend-dot--quest {
+  background: rgba(206, 147, 216, 0.7);
+}
 
 /* ── Badges ── */
 .nge-profile-badges-hint {

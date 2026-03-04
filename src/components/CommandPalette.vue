@@ -22,6 +22,7 @@ const emit = defineEmits({
   'open-settings': null,
   'open-help': null,
   'open-queue': null,
+  'open-feed': null,
 });
 
 const visible = ref(false);
@@ -143,6 +144,14 @@ function buildActions(): PaletteItem[] {
     category: 'navigate',
     icon: '🧠',
     action: () => emit('open-queue'),
+  });
+  items.push({
+    id: 'open-feed',
+    label: 'Activity Feed',
+    description: 'Live community proofreading activity',
+    category: 'navigate',
+    icon: '📡',
+    action: () => emit('open-feed'),
   });
   items.push({
     id: 'open-settings',

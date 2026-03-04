@@ -12,8 +12,9 @@ import HelpRequestsPanel from "components/HelpRequestsPanel.vue";
 import ProofreadingQueuePanel from "components/ProofreadingQueuePanel.vue";
 import CommandPalette from "components/CommandPalette.vue";
 import AchievementToast from "components/AchievementToast.vue";
+import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 
-import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore} from '../store';
+import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore} from '../store';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
 
@@ -21,7 +22,15 @@ import logoImage from '../CaveLogo-clear.png';
 
 const login = useLoginStore();
 window.addEventListener("middleauthlogin", () => {
-  login.update();
+  login.update().then(() => {
+    // Sync first valid session to Supabase backend
+    const session = login.sessions.find(s => s.status === undefined);
+    if (session?.email) {
+      const backend = useProofreadingBackendStore();
+      backend.syncUser(session.email, session.name || session.email.split('@')[0])
+        .then(() => backend.loadUserStats());
+    }
+  });
 });
 login.update();
 
@@ -46,10 +55,51 @@ const showLeaderboard = ref(false);
 const showSettings = ref(false);
 const showHelp = ref(false);
 const showQueue = ref(false);
+const showFeed = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
+const backendStore = useProofreadingBackendStore();
 
 function logout(session: loginSession) {
   login.logout(session);
+}
+
+// ── Toolbar icon definitions ──────────────────────────────────
+interface ToolbarIcon {
+  id: string;
+  emoji: string;
+  label: string;
+  action: () => void;
+  badge?: () => number;
+}
+
+const toolbarDefs = computed<ToolbarIcon[]>(() => [
+  { id: 'split', emoji: '✂️', label: 'Split Mode (C)', action: () => activateTool('multicut') },
+  { id: 'merge', emoji: '🔗', label: 'Merge Mode (M)', action: () => activateTool('merge') },
+  { id: 'recap', emoji: '📊', label: 'Your Week in Science', action: () => { showRecap.value = true; } },
+  { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard', action: () => { showLeaderboard.value = true; } },
+  { id: 'quest', emoji: '🧠', label: 'Quest Board', action: () => { showQueue.value = true; }, badge: () => queueStore.pendingCount() },
+  { id: 'help', emoji: '🔍', label: 'Second Opinion Requests', action: () => { showHelp.value = true; }, badge: () => helpStore.pending.length },
+  { id: 'feed', emoji: '📡', label: 'Activity Feed', action: () => { showFeed.value = true; } },
+  { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
+]);
+
+const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'help', 'feed', 'settings'];
+
+const visibleToolbar = computed(() => {
+  const prefs = useUserPreferencesStore().prefs;
+  const order = prefs.toolbarIcons.length > 0 ? prefs.toolbarIcons : DEFAULT_TOOLBAR_ORDER;
+  return order.map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
+});
+
+function activateTool(toolType: 'multicut' | 'merge') {
+  const viewer: any = (window as any)['viewer'];
+  if (!viewer) return;
+  // Dispatch the keyboard shortcut that neuroglancer uses for these tools
+  const key = toolType === 'multicut' ? 'c' : 'm';
+  const container = document.getElementById('neuroglancer-container');
+  if (container) {
+    container.dispatchEvent(new KeyboardEvent('keydown', { key, code: key === 'c' ? 'KeyC' : 'KeyM', bubbles: true }));
+  }
 }
 
 </script>
@@ -66,7 +116,9 @@ function logout(session: loginSession) {
     @open-settings="showSettings = true"
     @open-help="showHelp = true"
     @open-queue="showQueue = true"
+    @open-feed="showFeed = true"
   />
+  <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
   <help-requests-panel v-if="showHelp" @hide="showHelp = false" />
   <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
@@ -91,20 +143,14 @@ function logout(session: loginSession) {
               @click="cmdPalette?.open()">
         <kbd>⌘K</kbd>
       </button>
-      <button class="nge-icon-btn" title="Your Week in Science"
-              @click="showRecap = true">📊</button>
-      <button class="nge-icon-btn" title="Leaderboard"
-              @click="showLeaderboard = true">🏆</button>
-      <button class="nge-icon-btn nge-icon-btn--badge" title="Quest Board"
-              @click="showQueue = true">
-        🧠<span v-if="queueStore.pendingCount()" class="nge-queue-badge">{{ queueStore.pendingCount() }}</span>
-      </button>
-      <button class="nge-icon-btn nge-icon-btn--badge" title="Second Opinion Requests"
-              @click="showHelp = true">
-        🔍<span v-if="helpStore.pending.length" class="nge-help-badge">{{ helpStore.pending.length }}</span>
-      </button>
-      <button class="nge-icon-btn" title="Profile Settings"
-              @click="showSettings = true">⚙️</button>
+      <button
+        v-for="icon in visibleToolbar"
+        :key="icon.id"
+        class="nge-icon-btn"
+        :class="{ 'nge-icon-btn--badge': icon.badge && icon.badge() > 0 }"
+        :title="icon.label"
+        @click="icon.action()"
+      >{{ icon.emoji }}<span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge">{{ icon.badge() }}</span></button>
     </div>
     <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn">My Profile</button>
     <template v-if="login.sessions.length > 0">
@@ -258,28 +304,12 @@ function logout(session: loginSession) {
 }
 .nge-icon-btn--badge { position: relative; }
 
-.nge-queue-badge {
+.nge-toolbar-badge {
   position: absolute;
   top: 1px;
   right: 0;
   background: #7c4dff;
   color: #fff;
-  font-size: 8px;
-  font-weight: 700;
-  border-radius: 8px;
-  min-width: 13px;
-  height: 13px;
-  line-height: 13px;
-  text-align: center;
-  padding: 0 3px;
-}
-
-.nge-help-badge {
-  position: absolute;
-  top: 1px;
-  right: 0;
-  background: #f5a623;
-  color: #000;
   font-size: 8px;
   font-weight: 700;
   border-radius: 8px;

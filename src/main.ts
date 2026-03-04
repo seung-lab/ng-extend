@@ -5,7 +5,7 @@ import 'neuroglancer/ui/default_viewer.css';
 import './widgets/lightbulb_menu.css';
 
 import App from 'components/App.vue';
-import {useLayersStore, useSegmentAnnotationStore} from 'src/store';
+import {useLayersStore, useSegmentAnnotationStore, useSplitMergeOverlayStore} from 'src/store';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
@@ -413,6 +413,200 @@ function liveNeuroglancerInjection() {
     return;
   }
   observeSegmentSelect(watchNode);
+  observeSplitMergeTools();
+}
+
+/**
+ * Watch for graphene multicut / merge tool activation in neuroglancer's DOM.
+ * Updates useSplitMergeOverlayStore so Vue components can react.
+ */
+function observeSplitMergeTools() {
+  const store = useSplitMergeOverlayStore();
+  let rafId: number | null = null;
+  // Track previous merge statuses so we only fire flash on change
+  let prevMergeStatuses: string[] = [];
+  // Track previous point counts for multicut submit detection
+  let prevSinkCount = 0;
+  let prevSourceCount = 0;
+  let wasMulticutActive = false;
+  let wasMergeActive = false;
+  let hadPointsPlaced = false;
+
+  // Track NG status bar messages to capture split/merge errors
+  let lastStatusText = '';
+  let lastStatusTime = 0;
+  const STATUS_COOLDOWN_MS = 3000;
+
+  /** Scan #statusContainer for split/merge related errors/info */
+  function checkStatusMessages() {
+    if (!store.toolActive && !store.pendingClose) return;
+    if (store.resultFlash) return; // already showing a result
+
+    const statusContainer = document.getElementById('statusContainer');
+    if (!statusContainer) return;
+
+    for (const child of Array.from(statusContainer.children)) {
+      const el = child as HTMLElement;
+      if (el.style.display === 'none') continue;
+
+      const text = el.textContent?.trim() || '';
+      if (!text) continue;
+
+      // Cooldown: don't re-trigger same message within window
+      if (text === lastStatusText && Date.now() - lastStatusTime < STATUS_COOLDOWN_MS) continue;
+
+      const lower = text.toLowerCase();
+      // Only capture messages related to split/merge operations
+      const isRelevant = lower.includes('split') || lower.includes('merge') ||
+        lower.includes('multicut') || lower.includes('supervoxel') ||
+        lower.includes('segment');
+      if (!isRelevant) continue;
+
+      const cleanText = text.replace(/\s*dismiss\s*$/i, '').trim();
+      lastStatusText = text;
+      lastStatusTime = Date.now();
+
+      if (lower.includes('failed') || lower.includes('error')) {
+        store.showResult('error', cleanText, 6000);
+        store.submitting = false;
+      }
+      return; // one message per scan cycle
+    }
+  }
+
+  function scanToolState() {
+    // Don't scan during success-hold close animation
+    if (store.pendingClose) return;
+
+    const multicutEl = document.querySelector('.graphene-multicut');
+    const mergeEl = document.querySelector('.graphene-merge-segments');
+
+    if (multicutEl) {
+      store.setToolState('multicut');
+
+      // Detect active group from the indicator div
+      const indicator = multicutEl.querySelector('.activeGroupIndicator');
+      if (indicator) {
+        store.setActiveGroup(indicator.classList.contains('blueGroup') ? 'blue' : 'red');
+      }
+
+      // Read point counts from internal multicut state (sinks = red, sources = blue)
+      const viewer: any = (<any>window)['viewer'];
+      try {
+        const segLayer = viewer?.selectedLayer?.layer?.layer;
+        const gc = segLayer?.graphConnection?.value;
+        if (gc?.state?.multicutState) {
+          const ms = gc.state.multicutState;
+          const sinkCount = ms.sinks?.size ?? 0;
+          const sourceCount = ms.sources?.size ?? 0;
+          store.updatePointCounts(sinkCount, sourceCount);
+          if (sinkCount > 0 || sourceCount > 0) hadPointsPlaced = true;
+
+          // Detect submit: points reset to 0 means user submitted
+          if (wasMulticutActive &&
+              (prevSinkCount > 0 || prevSourceCount > 0) &&
+              sinkCount === 0 && sourceCount === 0) {
+            store.submitting = true;
+            store.setStatusMessage('Submitting split...');
+          }
+          prevSinkCount = sinkCount;
+          prevSourceCount = sourceCount;
+        }
+      } catch { /* fallback: leave counts as-is */ }
+
+      wasMulticutActive = true;
+      wasMergeActive = false;
+
+    } else if (mergeEl) {
+      store.setToolState('merge');
+      wasMulticutActive = false;
+      wasMergeActive = true;
+
+      // Count merge submissions
+      const submissions = mergeEl.querySelectorAll('.graphene-merge-segments-submission');
+      store.mergeSubmissionCount = submissions.length;
+
+      // Scrape per-submission status from .graphene-merge-segments-submission-status
+      const statusEls = mergeEl.querySelectorAll('.graphene-merge-segments-submission-status');
+      const currentStatuses: string[] = [];
+      statusEls.forEach(el => {
+        const text = (el.textContent || '').trim();
+        if (text) currentStatuses.push(text);
+      });
+
+      // Detect new status changes
+      if (currentStatuses.length > 0) {
+        const latest = currentStatuses[currentStatuses.length - 1];
+        const prevLatest = prevMergeStatuses.length > 0
+          ? prevMergeStatuses[prevMergeStatuses.length - 1] : '';
+
+        if (latest !== prevLatest) {
+          const lower = latest.toLowerCase();
+          if (lower === 'trying...' || lower === 'trying') {
+            store.submitting = true;
+            store.setStatusMessage('Merging segments...');
+          } else if (lower === 'done') {
+            store.showResult('success', 'Merge complete', 1500);
+          } else if (latest && lower !== 'trying...' && lower !== 'done') {
+            store.showResult('error', `Merge failed: ${latest}`, 5000);
+          }
+        }
+      }
+      prevMergeStatuses = currentStatuses;
+
+    } else {
+      // Tool DOM disappeared
+      if (wasMulticutActive) {
+        if (store.submitting || hadPointsPlaced) {
+          // Had points placed and tool disappeared — likely submitted
+          store.beginSuccessClose('Split complete');
+        } else {
+          // No points were ever placed — cancelled immediately
+          store.setToolState(null);
+        }
+        wasMulticutActive = false;
+        hadPointsPlaced = false;
+      } else if (wasMergeActive) {
+        // Merge tool exited — just close silently
+        // (merge successes/errors were already shown inline during session)
+        store.setToolState(null);
+        wasMergeActive = false;
+      } else {
+        store.setToolState(null);
+      }
+      prevSinkCount = 0;
+      prevSourceCount = 0;
+      hadPointsPlaced = false;
+      prevMergeStatuses = [];
+      lastStatusText = '';
+    }
+
+    // Check NG status bar for errors during tool use
+    checkStatusMessages();
+  }
+
+  // Debounce with requestAnimationFrame to avoid thrashing
+  function debouncedScan() {
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      scanToolState();
+    });
+  }
+
+  // Observe the entire content area for tool status changes
+  const container = document.querySelector('#content') || document.body;
+  const observer = new MutationObserver(debouncedScan);
+  observer.observe(container, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+
+  // Also poll periodically for point-count updates (annotations added
+  // inside the tool don't always trigger DOM mutations we can observe)
+  setInterval(scanToolState, 500);
 }
 
 class ExtendViewer extends Viewer {

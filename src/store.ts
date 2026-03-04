@@ -8,6 +8,7 @@ import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/spec
 import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG} from './config';
+import {supabase} from './supabase';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 
@@ -177,55 +178,85 @@ export const useLayersStore = defineStore('layers', () => {
     const visibleSegs = groupState.visibleSegments;
 
     let prevCount = visibleSegs.size;
-    let localEditAccum = 0;   // accumulator for simulated cellsSubmitted bumps
+    let localEditAccum = 0;
+    let pendingNetDiff = 0;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const EDIT_DEBOUNCE_MS = 1500;
 
     const handler = () => {
       const newCount = visibleSegs.size;
       if (newCount === prevCount) return;
 
-      const statsStore = useUserStatsStore();
-      const diff = Math.abs(newCount - prevCount);
-
-      if (newCount < prevCount) {
-        // Segments removed → merge (two segments combined into one)
-        statsStore.setStats({
-          editsAllTime:   statsStore.stats.editsAllTime   + diff,
-          mergesAllTime:  statsStore.stats.mergesAllTime  + diff,
-          editsThisWeek:  statsStore.stats.editsThisWeek  + diff,
-          mergesThisWeek: statsStore.stats.mergesThisWeek + diff,
-          editsThisMonth: statsStore.stats.editsThisMonth + diff,
-          mergesThisMonth:statsStore.stats.mergesThisMonth+ diff,
-          editsToday:     statsStore.stats.editsToday     + diff,
-          mergesToday:    statsStore.stats.mergesToday     + diff,
-        });
-      } else {
-        // Segments added → split or new segment selection → count as split / edit
-        statsStore.setStats({
-          editsAllTime:   statsStore.stats.editsAllTime   + diff,
-          splitsAllTime:  statsStore.stats.splitsAllTime  + diff,
-          editsThisWeek:  statsStore.stats.editsThisWeek  + diff,
-          splitsThisWeek: statsStore.stats.splitsThisWeek + diff,
-          editsThisMonth: statsStore.stats.editsThisMonth + diff,
-          splitsThisMonth:statsStore.stats.splitsThisMonth+ diff,
-          editsToday:     statsStore.stats.editsToday     + diff,
-          splitsToday:    statsStore.stats.splitsToday    + diff,
-        });
-      }
-
-      // Every ~5 edits, also bump cellsSubmitted (simulates cell completion)
-      localEditAccum += diff;
-      if (localEditAccum >= 5) {
-        statsStore.setStats({
-          cellsSubmitted: statsStore.stats.cellsSubmitted + 1,
-        });
-        localEditAccum = 0;
-      }
-
+      // Accumulate net segment change (merge = negative, split = positive)
+      pendingNetDiff += (newCount - prevCount);
       prevCount = newCount;
+
+      // Debounce: group rapid segment changes from a single merge/split
+      // into one edit event (visibleSegments.changed fires multiple times
+      // as root IDs update during a single graph operation)
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const net = pendingNetDiff;
+        pendingNetDiff = 0;
+        if (net === 0) return; // changes cancelled out
+
+        const statsStore = useUserStatsStore();
+        // Count as exactly 1 operation regardless of segment count change
+        if (net < 0) {
+          statsStore.setStats({
+            editsAllTime:   statsStore.stats.editsAllTime   + 1,
+            mergesAllTime:  statsStore.stats.mergesAllTime  + 1,
+            editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
+            mergesThisWeek: statsStore.stats.mergesThisWeek + 1,
+            editsThisMonth: statsStore.stats.editsThisMonth + 1,
+            mergesThisMonth:statsStore.stats.mergesThisMonth+ 1,
+            editsToday:     statsStore.stats.editsToday     + 1,
+            mergesToday:    statsStore.stats.mergesToday     + 1,
+          });
+        } else {
+          statsStore.setStats({
+            editsAllTime:   statsStore.stats.editsAllTime   + 1,
+            splitsAllTime:  statsStore.stats.splitsAllTime  + 1,
+            editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
+            splitsThisWeek: statsStore.stats.splitsThisWeek + 1,
+            editsThisMonth: statsStore.stats.editsThisMonth + 1,
+            splitsThisMonth:statsStore.stats.splitsThisMonth+ 1,
+            editsToday:     statsStore.stats.editsToday     + 1,
+            splitsToday:    statsStore.stats.splitsToday    + 1,
+          });
+        }
+
+        statsStore.logDailyEdit(net < 0 ? 'merge' : 'split');
+        localEditAccum += 1;
+        if (localEditAccum >= 5) {
+          statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
+          localEditAccum = 0;
+        }
+
+        // Log to Supabase with diff=1 (one operation)
+        try {
+          const backendStore = useProofreadingBackendStore();
+          if (backendStore.userId) {
+            const viewer: any = (window as any)['viewer'];
+            const pos = viewer?.navigationState?.position?.value;
+            const coords = pos ? `${pos[0]}, ${pos[1]}, ${pos[2]}` : null;
+            const operation = net < 0 ? 'merge' : 'split';
+            backendStore.logEdit({
+              operation,
+              coordinates: coords,
+              metadata: { net_segment_change: net, diff: 1 },
+            });
+            backendStore.postActivity(`${operation === 'merge' ? 'merged' : 'split'} segment`);
+          }
+        } catch { /* backend logging is non-critical */ }
+      }, EDIT_DEBOUNCE_MS);
     };
 
     visibleSegs.changed.add(handler);
-    segEditCleanup = () => visibleSegs.changed.remove(handler);
+    segEditCleanup = () => {
+      visibleSegs.changed.remove(handler);
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
   }
 
   function initializeWithViewer(v: Viewer) {
@@ -331,7 +362,27 @@ export interface UserStats {
   communityEditsThisMonth: number;
 }
 
+const STATS_KEY = 'nge_stats_v1';
+const DAILY_LOG_KEY = 'nge_daily_log_v1';
+
+export interface DailyLogEntry {
+  date: string;          // ISO date "2026-03-04"
+  edits: number;
+  merges: number;
+  splits: number;
+  cellsCompleted: number;
+  questsCompleted: number;
+}
+
 export const useUserStatsStore = defineStore('userStats', () => {
+  // Hydrate from localStorage so stats survive page refresh
+  const saved = (() => {
+    try {
+      const raw = localStorage.getItem(STATS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  })();
+
   const stats: Ref<UserStats> = ref({
     editsToday: 0,
     mergesToday: 0,
@@ -351,13 +402,72 @@ export const useUserStatsStore = defineStore('userStats', () => {
     lastEditDate: '',
     communityEditsThisWeek: 0,
     communityEditsThisMonth: 0,
+    ...saved,
   });
+
+  function persist() {
+    try { localStorage.setItem(STATS_KEY, JSON.stringify(stats.value)); } catch {}
+  }
 
   function setStats(partial: Partial<UserStats>) {
     Object.assign(stats.value, partial);
+    persist();
   }
 
-  return {stats, setStats};
+  // ── Daily activity log (last 30 days) ───────────────────────────
+  const dailyLog = ref<DailyLogEntry[]>([]);
+
+  function loadDailyLog() {
+    try {
+      const raw = localStorage.getItem(DAILY_LOG_KEY);
+      if (raw) dailyLog.value = JSON.parse(raw);
+    } catch {}
+  }
+
+  function persistDailyLog() {
+    try {
+      // Keep only last 30 days
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      dailyLog.value = dailyLog.value.filter(d => d.date >= cutoffStr);
+      localStorage.setItem(DAILY_LOG_KEY, JSON.stringify(dailyLog.value));
+    } catch {}
+  }
+
+  function getTodayLog(): DailyLogEntry {
+    const today = new Date().toISOString().slice(0, 10);
+    let entry = dailyLog.value.find(d => d.date === today);
+    if (!entry) {
+      entry = { date: today, edits: 0, merges: 0, splits: 0, cellsCompleted: 0, questsCompleted: 0 };
+      dailyLog.value.push(entry);
+    }
+    return entry;
+  }
+
+  function logDailyEdit(type: 'merge' | 'split') {
+    const entry = getTodayLog();
+    entry.edits++;
+    if (type === 'merge') entry.merges++;
+    else entry.splits++;
+    persistDailyLog();
+  }
+
+  function logDailyCellComplete() {
+    const entry = getTodayLog();
+    entry.cellsCompleted++;
+    persistDailyLog();
+  }
+
+  function logDailyQuestComplete() {
+    const entry = getTodayLog();
+    entry.questsCompleted++;
+    persistDailyLog();
+  }
+
+  loadDailyLog();
+
+  return {stats, setStats, dailyLog, logDailyEdit, logDailyCellComplete, logDailyQuestComplete};
 });
 
 // ─── User Preferences Store ───────────────────────────────────────────────────
@@ -368,10 +478,12 @@ const PREFS_KEY = 'nge_prefs_v1';
 export interface UserPreferences {
   flag: string;   // flag emoji e.g. "🇺🇸"
   bio: string;    // free-text, capped at 280 chars in the UI
+  /** Which toolbar icons to show, in order. Empty = show all defaults. */
+  toolbarIcons: string[];
 }
 
 export const useUserPreferencesStore = defineStore('userPrefs', () => {
-  const prefs: Ref<UserPreferences> = ref({ flag: '', bio: '' });
+  const prefs: Ref<UserPreferences> = ref({ flag: '', bio: '', toolbarIcons: [] });
 
   function load() {
     try {
@@ -1068,6 +1180,638 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
     navigateToCurrentItem, markProofread, unmarkProofread, clearProofread,
     proofreadCount, totalCount, pendingCount, sessionMinutes,
     getEdits, setEdit, isClaimed, canComplete, writeSomaCoordsToSheet,
+  };
+});
+
+/* ───────── Split / Merge Overlay Store ───────── */
+
+export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => {
+  const toolActive = ref<'multicut' | 'merge' | null>(null);
+  const activeGroup = ref<'red' | 'blue'>('red');
+  const redPointCount = ref(0);
+  const bluePointCount = ref(0);
+  const mergeSubmissionCount = ref(0);
+  const submitting = ref(false);
+  /** Status message scraped from neuroglancer's tool UI */
+  const statusMessage = ref('');
+  /** Result flash: 'success' | 'error' | '' */
+  const resultFlash = ref<'success' | 'error' | ''>('');
+  const resultText = ref('');
+  /** When true, bar holds visible in success/error state before closing */
+  const pendingClose = ref(false);
+  /** Which tool was active before pendingClose (for display) */
+  const closingTool = ref<'multicut' | 'merge' | null>(null);
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+  let closeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function setToolState(tool: 'multicut' | 'merge' | null) {
+    if (pendingClose.value) return; // don't interfere during close animation
+    if (tool !== toolActive.value) {
+      toolActive.value = tool;
+      if (tool === null) {
+        redPointCount.value = 0;
+        bluePointCount.value = 0;
+        mergeSubmissionCount.value = 0;
+        submitting.value = false;
+        statusMessage.value = '';
+      }
+    }
+  }
+
+  function setActiveGroup(group: 'red' | 'blue') {
+    activeGroup.value = group;
+  }
+
+  function updatePointCounts(red: number, blue: number) {
+    redPointCount.value = red;
+    bluePointCount.value = blue;
+  }
+
+  function setStatusMessage(msg: string) {
+    statusMessage.value = msg;
+  }
+
+  /** Show inline result on the bar (merge tool stays active after) */
+  function showResult(type: 'success' | 'error', text: string, durationMs = 4000) {
+    resultFlash.value = type;
+    resultText.value = text;
+    submitting.value = false;
+    statusMessage.value = '';
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => {
+      resultFlash.value = '';
+      resultText.value = '';
+    }, durationMs);
+  }
+
+  /** Hold bar in success state for 2.5s, then holographic exit */
+  function beginSuccessClose(text: string) {
+    closingTool.value = toolActive.value;
+    pendingClose.value = true;
+    resultFlash.value = 'success';
+    resultText.value = text;
+    submitting.value = false;
+    statusMessage.value = '';
+    if (closeTimer) clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => {
+      pendingClose.value = false;
+      toolActive.value = null;
+      closingTool.value = null;
+      resultFlash.value = '';
+      resultText.value = '';
+      redPointCount.value = 0;
+      bluePointCount.value = 0;
+      mergeSubmissionCount.value = 0;
+    }, 2500);
+  }
+
+  return {
+    toolActive, activeGroup, redPointCount, bluePointCount,
+    mergeSubmissionCount, submitting, statusMessage, resultFlash, resultText,
+    pendingClose, closingTool,
+    setToolState, setActiveGroup, updatePointCounts, setStatusMessage,
+    showResult, beginSuccessClose,
+  };
+});
+
+/* ───────── Proofreading Backend Store (Supabase) ───────── */
+
+export interface ProofreadingTask {
+  id: number;
+  segment_id: string;
+  dataset: string;
+  nucleus_coords: string | null;
+  soma_coords: string | null;
+  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'skipped';
+  assigned_to: string | null;
+  priority: number;
+  final_segment_id: string | null;
+  final_nucleus_id: string | null;
+  notes: string | null;
+  source_sheet_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EditLogEntry {
+  task_id?: number | null;
+  user_id?: string | null;
+  operation: string;
+  segment_before?: string | null;
+  segment_after?: string | null;
+  coordinates?: string | null;
+  metadata?: Record<string, any> | null;
+  dataset?: string;
+  success?: boolean;
+}
+
+export interface ActivityFeedItem {
+  id: number;
+  user_id: string | null;
+  user_name: string | null;
+  action: string;
+  segment_id: string | null;
+  timestamp: string;
+}
+
+export const useProofreadingBackendStore = defineStore('proofreadingBackend', () => {
+  const userId = ref<string | null>(null);
+  const userEmail = ref<string>('');
+  const userName = ref<string>('');
+  const tasks = ref<ProofreadingTask[]>([]);
+  const activeTaskId = ref<number | null>(null);
+  const activityFeed = ref<ActivityFeedItem[]>([]);
+  const loading = ref(false);
+  const error = ref('');
+
+  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  let feedSubscription: any = null;
+
+  // ── User sync ─────────────────────────────────────────────────────────
+  /** Upsert user from middleauth identity. Call after login. */
+  async function syncUser(email: string, displayName: string) {
+    userEmail.value = email;
+    userName.value = displayName;
+    try {
+      // Try to find existing user by email
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('middleauth_email', email)
+        .single();
+
+      if (existing) {
+        userId.value = existing.id;
+        // Update display name if changed
+        await supabase
+          .from('users')
+          .update({ display_name: displayName, updated_at: new Date().toISOString() })
+          .eq('id', existing.id);
+      } else {
+        // Create new user
+        const { data: newUser, error: insertErr } = await supabase
+          .from('users')
+          .insert({ middleauth_email: email, display_name: displayName })
+          .select('id')
+          .single();
+        if (insertErr) throw insertErr;
+        userId.value = newUser?.id ?? null;
+      }
+    } catch (e: any) {
+      console.warn('[backend] User sync failed:', e.message);
+    }
+  }
+
+  // ── Task management ───────────────────────────────────────────────────
+  /** Load tasks for a dataset, with optional status filter. */
+  async function loadTasks(dataset: string = 'eyewire_ii', statusFilter?: string) {
+    loading.value = true;
+    error.value = '';
+    try {
+      let query = supabase
+        .from('proofreading_tasks')
+        .select('*')
+        .eq('dataset', dataset)
+        .order('priority', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      if (statusFilter) {
+        query = query.eq('status', statusFilter);
+      }
+
+      const { data, error: fetchErr } = await query;
+      if (fetchErr) throw fetchErr;
+      tasks.value = data ?? [];
+    } catch (e: any) {
+      error.value = e.message || 'Failed to load tasks';
+      console.warn('[backend] loadTasks error:', e.message);
+    }
+    loading.value = false;
+  }
+
+  /** Claim a task — insert assignment, update task status, start heartbeat. */
+  async function claimTask(taskId: number) {
+    if (!userId.value) { error.value = 'Not logged in'; return false; }
+    try {
+      // Insert assignment
+      const { error: assignErr } = await supabase
+        .from('task_assignments')
+        .insert({
+          task_id: taskId,
+          user_id: userId.value,
+          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        });
+      if (assignErr) throw assignErr;
+
+      // Update task status
+      const { error: taskErr } = await supabase
+        .from('proofreading_tasks')
+        .update({ status: 'assigned', assigned_to: userId.value, updated_at: new Date().toISOString() })
+        .eq('id', taskId);
+      if (taskErr) throw taskErr;
+
+      activeTaskId.value = taskId;
+      startHeartbeat();
+
+      // Log to edit_log
+      await logEdit({ operation: 'claim_task', task_id: taskId });
+
+      // Post to activity feed
+      await postActivity(`claimed task #${taskId}`);
+
+      return true;
+    } catch (e: any) {
+      error.value = e.message || 'Failed to claim task';
+      console.warn('[backend] claimTask error:', e.message);
+      return false;
+    }
+  }
+
+  /** Release the currently active task (give up / skip). */
+  async function releaseTask() {
+    if (!activeTaskId.value || !userId.value) return;
+    const taskId = activeTaskId.value;
+    try {
+      // Mark assignment as released
+      await supabase
+        .from('task_assignments')
+        .update({ status: 'released', released_at: new Date().toISOString() })
+        .eq('task_id', taskId)
+        .eq('user_id', userId.value)
+        .eq('status', 'active');
+
+      // Set task back to pending
+      await supabase
+        .from('proofreading_tasks')
+        .update({ status: 'pending', assigned_to: null, updated_at: new Date().toISOString() })
+        .eq('id', taskId);
+
+      await logEdit({ operation: 'release_task', task_id: taskId });
+
+      activeTaskId.value = null;
+      stopHeartbeat();
+    } catch (e: any) {
+      console.warn('[backend] releaseTask error:', e.message);
+    }
+  }
+
+  /** Mark a task as completed with final segment/soma data. */
+  async function completeTask(taskId: number, finalSegId?: string, somaCoords?: string) {
+    if (!userId.value) return;
+    try {
+      const updates: any = {
+        status: 'completed',
+        updated_at: new Date().toISOString(),
+      };
+      if (finalSegId) updates.final_segment_id = finalSegId;
+      if (somaCoords) updates.soma_coords = somaCoords;
+
+      await supabase
+        .from('proofreading_tasks')
+        .update(updates)
+        .eq('id', taskId);
+
+      // Mark assignment as completed
+      await supabase
+        .from('task_assignments')
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('task_id', taskId)
+        .eq('user_id', userId.value)
+        .eq('status', 'active');
+
+      await logEdit({
+        operation: 'complete_task',
+        task_id: taskId,
+        metadata: { final_segment_id: finalSegId, soma_coords: somaCoords },
+      });
+
+      // Find segment_id for the feed
+      const task = tasks.value.find(t => t.id === taskId);
+      const segLabel = task?.segment_id ? `...${task.segment_id.slice(-4)}` : `#${taskId}`;
+      await postActivity(`completed ${segLabel}`);
+
+      if (activeTaskId.value === taskId) {
+        activeTaskId.value = null;
+        stopHeartbeat();
+      }
+
+      // Update user stats timestamp
+      await supabase
+        .from('users')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', userId.value);
+    } catch (e: any) {
+      console.warn('[backend] completeTask error:', e.message);
+    }
+  }
+
+  // ── Heartbeat — extends assignment expiry every 10 min ────────────────
+  function startHeartbeat() {
+    stopHeartbeat();
+    heartbeatInterval = setInterval(async () => {
+      if (!activeTaskId.value || !userId.value) return;
+      try {
+        await supabase
+          .from('task_assignments')
+          .update({ expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString() })
+          .eq('task_id', activeTaskId.value)
+          .eq('user_id', userId.value)
+          .eq('status', 'active');
+      } catch { /* heartbeat failure is non-fatal */ }
+    }, 10 * 60 * 1000); // every 10 minutes
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+  }
+
+  // ── Edit logging ──────────────────────────────────────────────────────
+  /** Log an edit operation to the audit trail + increment user stats + update streaks. */
+  async function logEdit(entry: EditLogEntry) {
+    try {
+      // Fire audit trail insert (non-blocking)
+      supabase.from('edit_log').insert({
+        task_id: entry.task_id ?? activeTaskId.value,
+        user_id: entry.user_id ?? userId.value,
+        operation: entry.operation,
+        segment_before: entry.segment_before ?? null,
+        segment_after: entry.segment_after ?? null,
+        coordinates: entry.coordinates ?? null,
+        metadata: entry.metadata ?? null,
+        dataset: entry.dataset ?? 'eyewire_ii',
+        success: entry.success ?? true,
+      }).then(null, () => {});
+
+      // Increment user stats in Supabase + calculate streak
+      if (!userId.value || !(entry.success ?? true)) return;
+      const op = entry.operation;
+      const diff = (entry.metadata as any)?.diff ?? 1;
+
+      // Single SELECT to get all stats we need
+      const { data: row } = await supabase.from('users')
+        .select('total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date')
+        .eq('id', userId.value).single();
+      if (!row) return;
+
+      const today = new Date().toISOString().slice(0, 10);
+      const updates: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+        last_edit_date: today,
+      };
+
+      // Increment operation-specific counters
+      if (op === 'merge') {
+        updates.total_edits = (row.total_edits || 0) + diff;
+        updates.total_merges = (row.total_merges || 0) + diff;
+      } else if (op === 'split') {
+        updates.total_edits = (row.total_edits || 0) + diff;
+        updates.total_splits = (row.total_splits || 0) + diff;
+      } else if (op === 'mark_complete') {
+        updates.cells_completed = (row.cells_completed || 0) + 1;
+      }
+
+      // Calculate streak: consecutive calendar days with edits
+      const lastDate = row.last_edit_date;
+      let streak = row.current_streak || 0;
+      let longest = row.longest_streak || 0;
+      if (lastDate !== today) {
+        // Different day — check if it's consecutive
+        const lastMs = lastDate ? new Date(lastDate + 'T00:00:00').getTime() : 0;
+        const todayMs = new Date(today + 'T00:00:00').getTime();
+        const dayGap = Math.round((todayMs - lastMs) / 86400000);
+        if (dayGap === 1) {
+          streak += 1; // consecutive day
+        } else if (dayGap > 1 || !lastDate) {
+          streak = 1; // streak broken, restart
+        }
+        longest = Math.max(longest, streak);
+        updates.current_streak = streak;
+        updates.longest_streak = longest;
+      }
+
+      await supabase.from('users').update(updates).eq('id', userId.value);
+
+      // Immediately update local stats store for instant UI feedback
+      const statsStore = useUserStatsStore();
+      const localUpdates: Record<string, any> = {};
+      if (updates.total_edits !== undefined) localUpdates.editsAllTime = updates.total_edits;
+      if (updates.total_merges !== undefined) localUpdates.mergesAllTime = updates.total_merges;
+      if (updates.total_splits !== undefined) localUpdates.splitsAllTime = updates.total_splits;
+      if (updates.cells_completed !== undefined) localUpdates.cellsSubmitted = updates.cells_completed;
+      if (updates.current_streak !== undefined) localUpdates.currentStreak = updates.current_streak;
+      if (updates.longest_streak !== undefined) localUpdates.longestStreak = updates.longest_streak;
+      localUpdates.lastEditDate = today;
+      statsStore.setStats(localUpdates);
+    } catch (e: any) {
+      console.warn('[backend] logEdit error:', e.message);
+    }
+  }
+
+  // ── Activity feed ─────────────────────────────────────────────────────
+  /** Post an action to the activity feed. */
+  async function postActivity(action: string, segmentId?: string) {
+    try {
+      await supabase.from('activity_feed').insert({
+        user_id: userId.value,
+        user_name: userName.value || userEmail.value?.split('@')[0] || 'Anonymous',
+        action,
+        segment_id: segmentId ?? null,
+      });
+    } catch (e: any) {
+      console.warn('[backend] postActivity error:', e.message);
+    }
+  }
+
+  /** Subscribe to realtime activity feed updates. */
+  function subscribeToFeed() {
+    if (feedSubscription) return; // already subscribed
+    // Load recent feed items
+    supabase
+      .from('activity_feed')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        if (data) activityFeed.value = data.reverse();
+      });
+
+    // Subscribe to new inserts
+    feedSubscription = supabase
+      .channel('activity_feed_realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'activity_feed',
+      }, (payload: any) => {
+        activityFeed.value.push(payload.new as ActivityFeedItem);
+        // Keep only last 100 items in memory
+        if (activityFeed.value.length > 100) {
+          activityFeed.value = activityFeed.value.slice(-100);
+        }
+      })
+      .subscribe();
+  }
+
+  /** Unsubscribe from realtime feed. */
+  function unsubscribeFromFeed() {
+    if (feedSubscription) {
+      supabase.removeChannel(feedSubscription);
+      feedSubscription = null;
+    }
+  }
+
+  // ── Import from Google Sheet (reuses parseCsv from queue store) ─────
+  /** Batch-import tasks from a Google Sheet CSV into Supabase. */
+  async function importFromGoogleSheet(url: string, dataset: string = 'eyewire_ii') {
+    loading.value = true;
+    error.value = '';
+    try {
+      // Convert to CSV export URL
+      let csvUrl = url;
+      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (match) {
+        const gidMatch = url.match(/gid=(\d+)/);
+        const gid = gidMatch ? gidMatch[1] : '0';
+        csvUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv&gid=${gid}`;
+      }
+
+      const res = await fetch(csvUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+
+      // Parse CSV lines (simple split — Google Sheets CSV export is well-formed)
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      if (lines.length < 2) { error.value = 'Sheet is empty'; loading.value = false; return; }
+
+      // Find header
+      let headerIdx = 0;
+      for (let i = 0; i < Math.min(lines.length, 10); i++) {
+        if (lines[i].toLowerCase().includes('segment')) { headerIdx = i; break; }
+      }
+
+      const header = lines[headerIdx].split(',').map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      const col = (name: string) => header.findIndex(h => h.includes(name));
+      const iSeg = col('segmentid') >= 0 ? col('segmentid') : col('segment');
+      const iNuc = col('nuccoord') >= 0 ? col('nuccoord') : col('nuc');
+      const iSoma = col('somacoord') >= 0 ? col('somacoord') : col('soma');
+      const iNotes = col('note');
+
+      if (iSeg < 0) { error.value = 'No "Segment ID" column found'; loading.value = false; return; }
+
+      const toInsert: any[] = [];
+      for (let r = headerIdx + 1; r < lines.length; r++) {
+        const fields = lines[r].split(',').map(f => f.trim());
+        const segId = fields[iSeg] || '';
+        if (!segId || !/^\d+$/.test(segId)) continue;
+
+        toInsert.push({
+          segment_id: segId,
+          dataset,
+          nucleus_coords: iNuc >= 0 ? fields[iNuc] || null : null,
+          soma_coords: iSoma >= 0 ? fields[iSoma] || null : null,
+          notes: iNotes >= 0 ? fields[iNotes] || null : null,
+          source_sheet_url: url,
+        });
+      }
+
+      if (toInsert.length === 0) { error.value = 'No valid segments found'; loading.value = false; return; }
+
+      // Batch insert (Supabase handles up to 1000 rows per insert)
+      const batchSize = 500;
+      for (let i = 0; i < toInsert.length; i += batchSize) {
+        const batch = toInsert.slice(i, i + batchSize);
+        const { error: insertErr } = await supabase.from('proofreading_tasks').insert(batch);
+        if (insertErr) throw insertErr;
+      }
+
+      console.info(`[backend] Imported ${toInsert.length} tasks from Google Sheet`);
+      // Reload tasks
+      await loadTasks(dataset);
+    } catch (e: any) {
+      error.value = e.message || 'Failed to import sheet';
+      console.warn('[backend] importFromGoogleSheet error:', e.message);
+    }
+    loading.value = false;
+  }
+
+  // ── Load user stats from Supabase → local store ──────────────────────
+  /** Hydrate local stats store from Supabase users table. Call after login. */
+  async function loadUserStats() {
+    if (!userId.value) return;
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date')
+        .eq('id', userId.value)
+        .single();
+      if (data) {
+        const statsStore = useUserStatsStore();
+        statsStore.setStats({
+          editsAllTime: data.total_edits || 0,
+          mergesAllTime: data.total_merges || 0,
+          splitsAllTime: data.total_splits || 0,
+          cellsSubmitted: data.cells_completed || 0,
+          currentStreak: data.current_streak || 0,
+          longestStreak: data.longest_streak || 0,
+          lastEditDate: data.last_edit_date || '',
+        });
+        console.info('[backend] Loaded user stats from Supabase');
+      }
+    } catch (e: any) {
+      console.warn('[backend] loadUserStats error:', e.message);
+    }
+  }
+
+  // ── Leaderboard: top users from Supabase ────────────────────────────
+  const leaderboard: Ref<any[]> = ref([]);
+
+  async function loadLeaderboard() {
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('id, display_name, flag, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak')
+        .order('total_edits', { ascending: false })
+        .limit(50);
+      if (data) {
+        leaderboard.value = data;
+      }
+    } catch (e: any) {
+      console.warn('[backend] loadLeaderboard error:', e.message);
+    }
+  }
+
+  // ── Sync user stats to Supabase ───────────────────────────────────────
+  /** Push local stats to the users table. Call periodically or on significant events. */
+  async function syncStats() {
+    if (!userId.value) return;
+    const statsStore = useUserStatsStore();
+    const prefsStore = useUserPreferencesStore();
+    try {
+      await supabase
+        .from('users')
+        .update({
+          total_edits: statsStore.stats.editsAllTime,
+          total_merges: statsStore.stats.mergesAllTime,
+          total_splits: statsStore.stats.splitsAllTime,
+          current_streak: statsStore.stats.currentStreak,
+          longest_streak: statsStore.stats.longestStreak,
+          last_edit_date: statsStore.stats.lastEditDate || null,
+          flag: prefsStore.prefs.flag,
+          bio: prefsStore.prefs.bio,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId.value);
+    } catch (e: any) {
+      console.warn('[backend] syncStats error:', e.message);
+    }
+  }
+
+  return {
+    userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
+    leaderboard,
+    syncUser, loadTasks, claimTask, releaseTask, completeTask,
+    logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
+    importFromGoogleSheet, syncStats, loadUserStats, loadLeaderboard,
   };
 });
 
