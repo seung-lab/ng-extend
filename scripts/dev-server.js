@@ -93,6 +93,36 @@ const DATASETS_CONFIG = {
       },
     ],
   },
+  pinky: {
+    dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] },
+    position: [73631, 63170, 344],
+    crossSectionScale: 1.1,
+    projectionScale: 10800,
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em',
+        name: 'img',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training3',
+          subsources: {
+            default: true,
+            mesh: true,
+            graph: true,
+          },
+          enableDefaultSubsources: true,
+        },
+        name: 'pinky_training3',
+        segments: [
+          '648518346354708544',
+          '648518346355322263',
+        ],
+      },
+    ],
+  },
 };
 
 const dataset = DATASETS_CONFIG[DATASET];

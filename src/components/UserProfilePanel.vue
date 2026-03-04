@@ -296,7 +296,7 @@ const completedCells = computed(() => cellHistory.value.filter(c => c.isComplete
 const identifiedCells = computed(() => cellHistory.value.filter(c => c.cellType && !c.isComplete));
 
 function truncateId(id: string): string {
-  return id.length > 14 ? '…' + id.slice(-12) : id;
+  return id.length > 12 ? id.slice(0, 5) + '…' + id.slice(-5) : id;
 }
 
 function cellStatusIcon(cell: CellHistoryEntry): string {
@@ -488,8 +488,25 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
         </div><!-- end left column -->
 
-        <!-- CENTER: badges + streak + countdown -->
+        <!-- CENTER: countdown + badges + streak -->
         <div class="nge-profile-col nge-profile-col--center">
+
+          <!-- Achievement countdown — moved to top of center column -->
+          <div class="nge-profile-section nge-profile-section--countdown" v-if="nextAchievement">
+            <div class="nge-profile-section-label nge-profile-section-label--green">▌ Next Achievement</div>
+            <div class="nge-profile-countdown-row">
+              <div class="nge-profile-countdown-name">{{ nextAchievement.name }}</div>
+              <div class="nge-profile-countdown-remaining">{{ nextAchievement.remaining.toLocaleString() }} edits to go</div>
+            </div>
+            <div class="nge-profile-countdown-track">
+              <div class="nge-profile-countdown-fill" :style="{ width: nextAchievement.pct + '%' }"></div>
+            </div>
+            <div class="nge-profile-countdown-labels">
+              <span>{{ (nextAchievement.threshold - nextAchievement.remaining).toLocaleString() }}</span>
+              <span>{{ nextAchievement.pct }}%</span>
+              <span>{{ nextAchievement.threshold.toLocaleString() }}</span>
+            </div>
+          </div>
 
           <!-- Badges -->
           <div class="nge-profile-section nge-profile-section--badges">
@@ -546,22 +563,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Achievement countdown -->
-          <div class="nge-profile-section nge-profile-section--countdown" v-if="nextAchievement">
-            <div class="nge-profile-section-label nge-profile-section-label--green">▌ Next Achievement</div>
-            <div class="nge-profile-countdown-row">
-              <div class="nge-profile-countdown-name">{{ nextAchievement.name }}</div>
-              <div class="nge-profile-countdown-remaining">{{ nextAchievement.remaining.toLocaleString() }} edits to go</div>
-            </div>
-            <div class="nge-profile-countdown-track">
-              <div class="nge-profile-countdown-fill" :style="{ width: nextAchievement.pct + '%' }"></div>
-            </div>
-            <div class="nge-profile-countdown-labels">
-              <span>{{ (nextAchievement.threshold - nextAchievement.remaining).toLocaleString() }}</span>
-              <span>{{ nextAchievement.pct }}%</span>
-              <span>{{ nextAchievement.threshold.toLocaleString() }}</span>
-            </div>
-          </div>
 
         </div><!-- end center column -->
 
@@ -1132,6 +1133,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-cell-list-scroll {
   max-height: 200px;
   overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
 }
@@ -1143,7 +1145,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-cell-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   padding: 5px 8px;
   background: none;
@@ -1154,6 +1156,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
+  overflow: hidden;
 }
 
 .nge-cell-row:hover {
@@ -1177,13 +1180,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 .nge-cell-id {
   font-family: ui-monospace, 'Cascadia Code', monospace;
-  font-size: 0.92em;
+  font-size: 0.88em;
   color: #8bf;
-  flex-shrink: 0;
+  flex: 1;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 130px;
 }
 
 .nge-cell-type {

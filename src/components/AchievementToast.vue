@@ -9,16 +9,17 @@
  */
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useUserStatsStore } from '../store';
+import { useUserStatsStore, useProofreadingQueueStore } from '../store';
 import { BADGE_DEFINITIONS, BadgeDefinition } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 
 const statsStore = useUserStatsStore();
 const { stats } = storeToRefs(statsStore);
+const queueStore = useProofreadingQueueStore();
 
 interface Toast {
   id: number;
-  type: 'badge' | 'streak' | 'cells' | 'edits';
+  type: 'badge' | 'streak' | 'cells' | 'edits' | 'quest';
   title: string;
   subtitle: string;
   icon: string;        // emoji or badge image URL
@@ -129,6 +130,52 @@ watch(() => stats.value.currentStreak, (newStreak) => {
   }
   prevStreak = newStreak;
 });
+
+// ── Daily Quest completion celebration ──────────────────────────────────
+let prevDailyDone = -1; // -1 = not yet initialized
+const DAILY_QUEST_COUNT = 3;
+
+/** Check if all 3 daily quests are proofread. */
+function dailyQuestsComplete(): number {
+  const total = queueStore.items.length;
+  if (total === 0) return 0;
+  // Replicate the daily quest selection logic from ProofreadingQueuePanel
+  const d = new Date();
+  const todayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const seedStr = todayKey + (queueStore.sheetUrl || '');
+  let h = 0;
+  for (let i = 0; i < seedStr.length; i++) h = ((h << 5) - h + seedStr.charCodeAt(i)) | 0;
+  const seed = Math.abs(h);
+
+  const startIdx = seed % total;
+  const indices: number[] = [];
+  for (let i = 0; i < total && indices.length < DAILY_QUEST_COUNT; i++) {
+    const idx = (startIdx + i) % total;
+    if (!queueStore.proofread.has(queueStore.items[idx].segId)) indices.push(idx);
+  }
+  for (let i = 0; i < total && indices.length < DAILY_QUEST_COUNT; i++) {
+    const idx = (startIdx + i) % total;
+    if (!indices.includes(idx)) indices.push(idx);
+  }
+  return indices.filter(idx => queueStore.proofread.has(queueStore.items[idx].segId)).length;
+}
+
+// Watch proofread set size changes
+watch(() => queueStore.proofread.size, () => {
+  if (!initialized || queueStore.items.length === 0) return;
+  const done = dailyQuestsComplete();
+  if (prevDailyDone < 0) { prevDailyDone = done; return; }
+  if (prevDailyDone < DAILY_QUEST_COUNT && done >= DAILY_QUEST_COUNT) {
+    addToast({
+      type: 'quest',
+      title: '🎉 Daily Quests Complete!',
+      subtitle: 'All 3 quests done — you\'re a neuroscience hero!',
+      icon: '🧠',
+      isImage: false,
+    });
+  }
+  prevDailyDone = done;
+});
 </script>
 
 <template>
@@ -207,6 +254,7 @@ watch(() => stats.value.currentStreak, (newStreak) => {
 .nge-toast--streak { border-color: rgba(245, 166, 35, 0.3); }
 .nge-toast--cells  { border-color: rgba(76, 175, 80, 0.3); }
 .nge-toast--edits  { border-color: rgba(74, 158, 255, 0.3); }
+.nge-toast--quest  { border-color: rgba(0, 200, 255, 0.35); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(0, 200, 255, 0.12); }
 
 /* ── Icon ── */
 .nge-toast-icon {
@@ -222,6 +270,7 @@ watch(() => stats.value.currentStreak, (newStreak) => {
 .nge-toast--badge .nge-toast-icon  { background: rgba(206, 147, 216, 0.1); }
 .nge-toast--streak .nge-toast-icon { background: rgba(245, 166, 35, 0.1); }
 .nge-toast--cells .nge-toast-icon  { background: rgba(76, 175, 80, 0.1); }
+.nge-toast--quest .nge-toast-icon  { background: rgba(0, 200, 255, 0.12); }
 
 .nge-toast-badge-img {
   width: 32px;
@@ -263,6 +312,7 @@ watch(() => stats.value.currentStreak, (newStreak) => {
 .nge-toast--badge .nge-toast-title  { color: #CE93D8; }
 .nge-toast--streak .nge-toast-title { color: #f5a623; }
 .nge-toast--cells .nge-toast-title  { color: #81C784; }
+.nge-toast--quest .nge-toast-title  { color: #00c8ff; }
 
 .nge-toast-subtitle {
   font-size: 11px;
@@ -285,6 +335,7 @@ watch(() => stats.value.currentStreak, (newStreak) => {
 .nge-toast--badge .nge-toast-progress  { background: rgba(206, 147, 216, 0.4); }
 .nge-toast--streak .nge-toast-progress { background: rgba(245, 166, 35, 0.4); }
 .nge-toast--cells .nge-toast-progress  { background: rgba(76, 175, 80, 0.4); }
+.nge-toast--quest .nge-toast-progress  { background: rgba(0, 200, 255, 0.4); }
 
 @keyframes nge-toast-countdown {
   from { width: 100%; }
@@ -313,6 +364,7 @@ watch(() => stats.value.currentStreak, (newStreak) => {
 .nge-toast--badge .nge-toast-particle  { background: rgba(206, 147, 216, 0.7); }
 .nge-toast--streak .nge-toast-particle { background: rgba(245, 166, 35, 0.7); }
 .nge-toast--cells .nge-toast-particle  { background: rgba(129, 199, 132, 0.7); }
+.nge-toast--quest .nge-toast-particle  { background: rgba(0, 200, 255, 0.7); }
 
 @keyframes nge-toast-sparkle {
   0%   { opacity: 1; transform: translate(0, 0) scale(1); }

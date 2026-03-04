@@ -139,7 +139,7 @@ function buildActions(): PaletteItem[] {
   items.push({
     id: 'open-queue',
     label: 'Quest Board',
-    description: queueStore.totalCount() ? `${queueStore.pendingCount()} of ${queueStore.totalCount()} quests remaining` : 'Load a quest sheet',
+    description: queueStore.totalCount() ? `${queueStore.proofreadCount()}/${queueStore.totalCount()} done · 3 daily quests` : 'Load a quest sheet',
     category: 'navigate',
     icon: '🧠',
     action: () => emit('open-queue'),
@@ -205,6 +205,37 @@ function buildActions(): PaletteItem[] {
             URL.revokeObjectURL(url);
           });
         }
+      } catch {}
+    },
+  });
+  items.push({
+    id: 'copy-position',
+    label: 'Copy Viewer Position',
+    description: 'Copy current x, y, z coordinates',
+    category: 'tool',
+    icon: '📍',
+    action: () => {
+      try {
+        const viewer = (window as any)['viewer'];
+        const pos = viewer?.navigationState?.position?.value;
+        if (pos) {
+          const s = `${Math.round(pos[0])}, ${Math.round(pos[1])}, ${Math.round(pos[2])}`;
+          navigator.clipboard.writeText(s);
+        }
+      } catch {}
+    },
+  });
+  items.push({
+    id: 'toggle-3d',
+    label: 'Toggle 3D Panel',
+    description: 'Show/hide the 3D perspective view',
+    category: 'tool',
+    icon: '🔲',
+    action: () => {
+      try {
+        const btn = document.querySelector('button[title*="3-d"]') as HTMLButtonElement
+          || document.querySelector('.neuroglancer-3d-button') as HTMLButtonElement;
+        if (btn) btn.click();
       } catch {}
     },
   });
@@ -501,7 +532,7 @@ defineExpose({ open, close, toggle });
   border: none;
   outline: none;
   color: #e0e4ec;
-  font-size: 15px;
+  font-size: 16px;
   font-family: inherit;
   caret-color: rgba(74, 158, 255, 0.8);
 }
@@ -528,7 +559,7 @@ defineExpose({ open, close, toggle });
 }
 
 .nge-cmd-category {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -565,7 +596,7 @@ defineExpose({ open, close, toggle });
 }
 
 .nge-cmd-item-label {
-  font-size: 13px;
+  font-size: 14px;
   color: #d0d4dc;
   white-space: nowrap;
   overflow: hidden;
@@ -574,7 +605,7 @@ defineExpose({ open, close, toggle });
 .nge-cmd-item--selected .nge-cmd-item-label { color: #fff; }
 
 .nge-cmd-item-desc {
-  font-size: 11px;
+  font-size: 12px;
   color: #555;
   white-space: nowrap;
   overflow: hidden;

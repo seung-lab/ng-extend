@@ -93,7 +93,52 @@ window.addEventListener('DOMContentLoaded', () => {
   initializeWithViewer(viewer);
   mergeTopBars();
   liveNeuroglancerInjection();
+
+  // Auto-select segmentation layer after viewer loads (fallback for when
+  // LoginModal doesn't fire — e.g. already authenticated or bypass).
+  autoSelectSegLayer(viewer);
 });
+
+/**
+ * Try to select the segmentation layer and open the Seg. tab.
+ * Retries a few times since layers may still be initializing.
+ */
+function autoSelectSegLayer(viewer: any, attempt = 0) {
+  if (attempt > 5) return; // give up after ~10s
+  setTimeout(() => {
+    try {
+      // Don't override if user already selected a layer
+      if (viewer.selectedLayer.layer && viewer.selectedLayer.visible) return;
+
+      const segLayer = viewer.layerManager.managedLayers.find(
+        (l: any) => {
+          const url = l.layer?.dataSources?.[0]?.spec?.url ?? '';
+          return url.includes('graphene') || url.includes('segmentation');
+        },
+      );
+      if (!segLayer) {
+        autoSelectSegLayer(viewer, attempt + 1);
+        return;
+      }
+      viewer.selectedLayer.layer = segLayer;
+      viewer.selectedLayer.visible = true;
+
+      // Click the Seg. tab after panel renders
+      setTimeout(() => {
+        const tabs = document.querySelectorAll(
+          '.neuroglancer-layer-side-panel-tab, .neuroglancer-tab-label, [data-tab]'
+        );
+        for (const tab of tabs) {
+          const text = tab.textContent?.trim();
+          if (text === 'Seg.' || text === 'Seg' || text === 'Segments') {
+            (tab as HTMLElement).click();
+            return;
+          }
+        }
+      }, 600);
+    } catch { autoSelectSegLayer(viewer, attempt + 1); }
+  }, 2000 * (attempt + 1)); // 2s, 4s, 6s, 8s, 10s
+}
 
 function setupViewer() {
   const viewer = (<any>window)['viewer'] = makeExtendViewer();
@@ -190,6 +235,24 @@ function makeExtendViewer() {
     StatusMessage.showMessage(`Error: ${error.message}`);
     throw error;
   }
+}
+
+/** Injects a small pip legend below the segment list (once). */
+function injectSegmentLegend() {
+  // Find the segment list container — the scrollable parent of segment entries
+  const entry = document.querySelector('.neuroglancer-segment-list-entry');
+  if (!entry) return;
+  const listContainer = entry.closest('.neuroglancer-segment-list')
+      ?? entry.parentElement;
+  if (!listContainer || listContainer.querySelector('.nge-seg-legend')) return;
+
+  const legend = document.createElement('div');
+  legend.className = 'nge-seg-legend';
+  legend.innerHTML =
+    '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--complete"></span>Done</span>' +
+    '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--annotated"></span>Labeled</span>' +
+    '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--incomplete"></span>Todo</span>';
+  listContainer.appendChild(legend);
 }
 
 function observeSegmentSelect(targetNode: Element) {
@@ -329,6 +392,8 @@ function observeSegmentSelect(targetNode: Element) {
         }
       });
     });
+    // Inject the status legend after the segment list when segments are present
+    injectSegmentLegend();
   };
 
   // Create an observer instance linked to the callback function

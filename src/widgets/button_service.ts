@@ -289,7 +289,15 @@ export class ButtonService {
       saveTypeBtn.textContent = ok ? 'Saved ✓' :
           (!localServerURL ? 'No CAVE server configured' : 'Error — retry');
       saveTypeBtn.disabled = false;
-      if (ok && cachedStatus) cachedStatus.cellType = cellType;
+      if (ok && cachedStatus) {
+        cachedStatus.cellType = cellType;
+        // Update pip/badge in the sidebar row
+        this._applyStatus(parent as HTMLButtonElement, cachedStatus);
+        // Notify AnnotationPanel and other listeners
+        document.dispatchEvent(new CustomEvent('nge:seg-status-changed', {
+          detail: { segId: segmentIDString, status: cachedStatus },
+        }));
+      }
     });
     cellTypeSection.appendChild(saveTypeBtn);
 
@@ -361,6 +369,7 @@ export class ButtonService {
         note: noteInput.value.trim(),
         issueType: selectedIssue || 'Doublecheck',
         cellType: cachedStatus?.cellType,
+        dataset,
       });
       helpBtn.textContent = '✓ Help Requested';
       helpBtn.disabled = true;

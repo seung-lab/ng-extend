@@ -630,6 +630,8 @@ export interface HelpRequest {
   /** Cell type guess at time of request */
   cellType?: string;
   nickname?: string;
+  /** Dataset/layer name this request belongs to (for cross-dataset filtering). */
+  dataset?: string;
 }
 
 export const useHelpRequestStore = defineStore('helpRequests', () => {
@@ -681,8 +683,15 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
 // Loads a queue of segments to review from a published Google Sheet (CSV).
 // Users cycle through items, mark them reviewed, and track session progress.
 
-const QUEUE_REVIEWED_KEY = 'nge_queue_reviewed_v1';
 const QUEUE_SHEET_KEY    = 'nge_queue_sheet_url_v1';
+
+/** Hash a sheet URL into a short suffix so each sheet gets its own storage keys. */
+function sheetKeyHash(url: string): string {
+  if (!url) return '_default';
+  let h = 0;
+  for (let i = 0; i < url.length; i++) h = ((h << 5) - h + url.charCodeAt(i)) | 0;
+  return '_' + Math.abs(h).toString(36);
+}
 
 export interface QueueItem {
   segId: string;
@@ -707,28 +716,32 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
   const localEdits = ref<Record<string, { somaCoords?: string; finalSegId?: string; annotation?: string }>>(
     {});
 
-  // Persist proofread set, sheet URL, and local edits
+  // Persist proofread set, sheet URL, and local edits — keyed per-sheet
+  // so different datasets (pinky vs minnie65) don't clobber each other.
+  function reviewedKey() { return 'nge_queue_reviewed' + sheetKeyHash(sheetUrl.value); }
+  function editsKey()    { return 'nge_queue_edits' + sheetKeyHash(sheetUrl.value); }
+
   function loadLocal() {
-    try {
-      const raw = localStorage.getItem(QUEUE_REVIEWED_KEY);
-      if (raw) proofread.value = new Set(JSON.parse(raw));
-    } catch {}
     try {
       const url = localStorage.getItem(QUEUE_SHEET_KEY);
       if (url) sheetUrl.value = url;
     } catch {}
     try {
-      const edits = localStorage.getItem('nge_queue_edits_v1');
+      const raw = localStorage.getItem(reviewedKey());
+      if (raw) proofread.value = new Set(JSON.parse(raw));
+    } catch {}
+    try {
+      const edits = localStorage.getItem(editsKey());
       if (edits) localEdits.value = JSON.parse(edits);
     } catch {}
   }
 
   function persistProofread() {
-    localStorage.setItem(QUEUE_REVIEWED_KEY, JSON.stringify([...proofread.value]));
+    localStorage.setItem(reviewedKey(), JSON.stringify([...proofread.value]));
   }
 
   function persistEdits() {
-    localStorage.setItem('nge_queue_edits_v1', JSON.stringify(localEdits.value));
+    localStorage.setItem(editsKey(), JSON.stringify(localEdits.value));
   }
 
   function persistSheetUrl() {
@@ -858,7 +871,21 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
       }
 
       items.value = parsed;
-      if (url) { sheetUrl.value = url; persistSheetUrl(); }
+      if (url && url !== sheetUrl.value) {
+        // Switching to a different sheet — save current, then load new sheet's data
+        sheetUrl.value = url;
+        persistSheetUrl();
+        // Load proofread/edits for the NEW sheet (keyed by URL hash)
+        try {
+          const raw = localStorage.getItem(reviewedKey());
+          proofread.value = raw ? new Set(JSON.parse(raw)) : new Set();
+        } catch { proofread.value = new Set(); }
+        try {
+          const edits = localStorage.getItem(editsKey());
+          localEdits.value = edits ? JSON.parse(edits) : {};
+        } catch { localEdits.value = {}; }
+        currentIdx.value = 0;
+      }
     } catch (e: any) {
       error.value = e.message || 'Failed to load sheet';
     }
@@ -941,6 +968,86 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
     persistProofread();
   }
 
+  // ── Google Sheets write-back ─────────────────────────────────────────
+
+  /**
+   * Write soma coordinates back to the Google Sheet for the given segment.
+   * Uses Google Sheets API v4 with an API key (sheet must be publicly editable,
+   * or the user must be signed into Google in this browser).
+   */
+  async function writeSomaCoordsToSheet(segId: string, coords: string) {
+    const source = sheetUrl.value;
+    if (!source) return;
+
+    // Extract spreadsheet ID
+    const idMatch = source.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (!idMatch) { console.warn('[quest] Cannot extract spreadsheet ID from URL'); return; }
+    const spreadsheetId = idMatch[1];
+    const gidMatch = source.match(/gid=(\d+)/);
+    const gid = gidMatch ? gidMatch[1] : '0';
+
+    // Find the row for this segId in our items array
+    const item = items.value.find(i => i.segId === segId);
+    if (!item) return;
+    const itemIdx = items.value.indexOf(item);
+
+    // We need to know the header row offset and soma column.
+    // Re-fetch the sheet to find the exact cell reference.
+    try {
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+      const res = await fetch(csvUrl);
+      if (!res.ok) { console.warn('[quest] Could not fetch sheet for write-back'); return; }
+      const text = await res.text();
+      const rows = parseCsv(text);
+
+      // Find header row
+      let headerIdx = 0;
+      for (let i = 0; i < Math.min(rows.length, 10); i++) {
+        const lower = rows[i].map(c => c.toLowerCase());
+        if (lower.some(c => c.includes('segment'))) { headerIdx = i; break; }
+      }
+
+      const header = rows[headerIdx].map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      const somaColIdx = header.findIndex(h => h.includes('somacoord') || h.includes('soma'));
+      if (somaColIdx < 0) { console.warn('[quest] No "Soma Coords" column found'); return; }
+
+      // Convert column index to letter (A, B, C, ... Z, AA, AB, etc.)
+      const colLetter = (idx: number) => {
+        let s = '';
+        let n = idx;
+        while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
+        return s;
+      };
+
+      // The data row is: headerIdx + 1 + itemIdx (0-based data rows)
+      // In the sheet, row numbers are 1-based
+      const sheetRow = headerIdx + 1 + itemIdx + 1; // +1 for header, +1 for 1-based
+      const cellRef = `${colLetter(somaColIdx)}${sheetRow}`;
+
+      // Try writing via Google Sheets API v4 (requires the sheet to be editable)
+      const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${cellRef}?valueInputOption=USER_ENTERED`;
+      const writeRes = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          range: cellRef,
+          majorDimension: 'ROWS',
+          values: [[coords]],
+        }),
+      });
+
+      if (writeRes.ok) {
+        console.info(`[quest] ✓ Soma coords written to sheet cell ${cellRef}`);
+      } else {
+        const errText = await writeRes.text().catch(() => '');
+        console.warn(`[quest] Sheet write failed (${writeRes.status}): ${errText}`);
+        console.info('[quest] Soma coords saved locally. To enable Google Sheets write-back, share the sheet with "anyone with the link can edit" and add a Google API key.');
+      }
+    } catch (e) {
+      console.warn('[quest] Sheet write-back error:', e);
+    }
+  }
+
   // ── Computed-like helpers ───────────────────────────────────────────────
   function proofreadCount(): number { return proofread.value.size; }
   function totalCount(): number { return items.value.length; }
@@ -960,7 +1067,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
     loadFromSheet, currentItem, next, prev, jumpToIndex, nextUnproofread,
     navigateToCurrentItem, markProofread, unmarkProofread, clearProofread,
     proofreadCount, totalCount, pendingCount, sessionMinutes,
-    getEdits, setEdit, isClaimed, canComplete,
+    getEdits, setEdit, isClaimed, canComplete, writeSomaCoordsToSheet,
   };
 });
 

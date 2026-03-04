@@ -82,44 +82,30 @@ function logout(session: loginSession) {
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
-    <div class="nge-status-legend">
-      <div class="nge-legend-item">
-        <span class="nge-legend-pip nge-legend-pip--complete"></span> Completed
-      </div>
-      <div class="nge-legend-item">
-        <span class="nge-legend-pip nge-legend-pip--annotated"></span> Annotated
-      </div>
-      <div class="nge-legend-item">
-        <span class="nge-legend-pip nge-legend-pip--incomplete"></span> Incomplete
-      </div>
-    </div>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
          class="nge-streak-chip" title="Your current editing streak">
       🔥 {{ stats.currentStreak }}
     </div>
-    <button class="nge-cmd-trigger" title="Command Palette (Ctrl+K)"
-            @click="cmdPalette?.open()">
-      <kbd>⌘K</kbd>
-    </button>
-    <button v-if="login.sessions.length > 0"
-            class="nge-recap-btn" title="Your Week in Science"
-            @click="showRecap = true">📊</button>
-    <button v-if="login.sessions.length > 0"
-            class="nge-lb-btn" title="Leaderboard"
-            @click="showLeaderboard = true">🏆</button>
-    <button v-if="login.sessions.length > 0"
-            class="nge-queue-btn" title="Quest Board"
-            @click="showQueue = true">
-      🧠<span v-if="queueStore.pendingCount()" class="nge-queue-badge">{{ queueStore.pendingCount() }}</span>
-    </button>
-    <button v-if="login.sessions.length > 0"
-            class="nge-help-btn" title="Second Opinion Requests"
-            @click="showHelp = true">
-      🔍<span v-if="helpStore.pending.length" class="nge-help-badge">{{ helpStore.pending.length }}</span>
-    </button>
-    <button v-if="login.sessions.length > 0"
-            class="nge-settings-btn" title="Profile Settings"
-            @click="showSettings = true">⚙️</button>
+    <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
+      <button class="nge-cmd-trigger" title="Command Palette (Ctrl+K)"
+              @click="cmdPalette?.open()">
+        <kbd>⌘K</kbd>
+      </button>
+      <button class="nge-icon-btn" title="Your Week in Science"
+              @click="showRecap = true">📊</button>
+      <button class="nge-icon-btn" title="Leaderboard"
+              @click="showLeaderboard = true">🏆</button>
+      <button class="nge-icon-btn nge-icon-btn--badge" title="Quest Board"
+              @click="showQueue = true">
+        🧠<span v-if="queueStore.pendingCount()" class="nge-queue-badge">{{ queueStore.pendingCount() }}</span>
+      </button>
+      <button class="nge-icon-btn nge-icon-btn--badge" title="Second Opinion Requests"
+              @click="showHelp = true">
+        🔍<span v-if="helpStore.pending.length" class="nge-help-badge">{{ helpStore.pending.length }}</span>
+      </button>
+      <button class="nge-icon-btn" title="Profile Settings"
+              @click="showSettings = true">⚙️</button>
+    </div>
     <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn">My Profile</button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
@@ -243,88 +229,63 @@ function logout(session: loginSession) {
   user-select: none;
 }
 
-.nge-recap-btn {
-  font-size: 14px;
-  padding: 0 8px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  opacity: 0.75;
-  transition: opacity 0.15s;
+/* ── Toolbar icon group ── */
+.nge-toolbar-icons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  height: 100%;
 }
 
-.nge-recap-btn:hover {
+.nge-icon-btn {
+  font-size: 14px;
+  width: 32px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+.nge-icon-btn:hover {
   opacity: 1;
+  background: rgba(255, 255, 255, 0.06);
 }
-
-.nge-lb-btn,
-.nge-settings-btn {
-  font-size: 14px;
-  padding: 0 8px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  opacity: 0.75;
-  transition: opacity 0.15s;
-}
-
-.nge-lb-btn:hover,
-.nge-help-btn:hover,
-.nge-settings-btn:hover {
-  opacity: 1;
-}
-
-.nge-queue-btn {
-  font-size: 14px;
-  padding: 0 8px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  opacity: 0.75;
-  transition: opacity 0.15s;
-  position: relative;
-}
-.nge-queue-btn:hover { opacity: 1; }
+.nge-icon-btn--badge { position: relative; }
 
 .nge-queue-badge {
   position: absolute;
-  top: 4px;
-  right: 2px;
+  top: 1px;
+  right: 0;
   background: #7c4dff;
   color: #fff;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   border-radius: 8px;
-  min-width: 14px;
-  height: 14px;
-  line-height: 14px;
+  min-width: 13px;
+  height: 13px;
+  line-height: 13px;
   text-align: center;
   padding: 0 3px;
 }
 
-.nge-help-btn {
-  font-size: 14px;
-  padding: 0 8px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  opacity: 0.75;
-  transition: opacity 0.15s;
-  position: relative;
-}
-
 .nge-help-badge {
   position: absolute;
-  top: 4px;
-  right: 2px;
+  top: 1px;
+  right: 0;
   background: #f5a623;
   color: #000;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   border-radius: 8px;
-  min-width: 14px;
-  height: 14px;
-  line-height: 14px;
+  min-width: 13px;
+  height: 13px;
+  line-height: 13px;
   text-align: center;
   padding: 0 3px;
 }
@@ -332,14 +293,16 @@ function logout(session: loginSession) {
 .nge-cmd-trigger {
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  height: 28px;
+  padding: 0 6px;
   background: none;
   border: none;
+  border-radius: 4px;
   cursor: pointer;
   opacity: 0.45;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, background 0.15s;
 }
-.nge-cmd-trigger:hover { opacity: 0.9; }
+.nge-cmd-trigger:hover { opacity: 0.9; background: rgba(255, 255, 255, 0.06); }
 .nge-cmd-trigger kbd {
   font-size: 10px;
   padding: 2px 7px;

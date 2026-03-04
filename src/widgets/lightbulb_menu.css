@@ -49,13 +49,13 @@
 /* ─── Context Menu ─────────────────────────────────────────────────────────── */
 
 .nge_lbmenu {
-  min-width: 240px;
+  min-width: 280px;
   padding: 6px 0;
   background: #2a2a2a;
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   color: #e0e0e0;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .nge-lb-section {
@@ -68,7 +68,7 @@
 }
 
 .nge-lb-section-title {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -77,7 +77,7 @@
 }
 
 .nge-lb-status-line {
-  font-size: 13px;
+  font-size: 14px;
   margin-bottom: 6px;
   font-weight: 500;
 }
@@ -92,8 +92,8 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   color: #e0e0e0;
-  font-size: 12px;
-  padding: 5px 10px;
+  font-size: 14px;
+  padding: 7px 11px;
   cursor: pointer;
   margin-bottom: 4px;
   transition: background-color 0.1s;
@@ -139,13 +139,13 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 4px;
   color: #e0e0e0;
-  font-size: 12px;
-  padding: 5px 8px;
-  padding-left: 8px; /* override browser-default select indent */
+  font-size: 14px;
+  padding: 7px 9px;
+  padding-left: 9px; /* override browser-default select indent */
   margin-bottom: 6px;
   outline: none;
   /* Allow the select to shrink on narrow menus */
-  max-width: 212px;
+  max-width: 230px;
 }
 
 .nge-lb-select {
@@ -172,12 +172,12 @@
 
 /* ─── Help / Second Opinion ────────────────────────────────────────────────── */
 .nge-lb-chip {
-  padding: 3px 8px;
+  padding: 4px 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.05);
   color: #aaa;
-  font-size: 10px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.12s;
 }
@@ -220,29 +220,37 @@
 
 /* ── Status pip on segment buttons ── */
 .nge-lb-btn {
-  flex-direction: column;
-  gap: 2px;
+  position: relative;
   padding: 2px 5px;
-  height: 26px;
+  height: 22px;
   opacity: 1 !important;
+  margin-left: auto;   /* Pin to right edge regardless of badge width */
+  flex-shrink: 0;
 }
 
+/* Dots overlay — absolutely positioned so they don't push the pip */
 .nge-lb-btn .nge-lb-dots {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
   transition: opacity 0.15s;
+  z-index: 1;
 }
 .neuroglancer-segment-list-entry:hover .nge-lb-btn .nge-lb-dots,
 .nge-lb-btn:focus .nge-lb-dots {
   opacity: 1;
 }
 
+/* Pip is centered in the button, unaffected by dots */
 .nge-lb-pip {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   display: block;
   flex-shrink: 0;
-  margin: 0 auto;
 }
 
 /* Cell status states */
@@ -269,14 +277,17 @@
 .nge-label-badge {
   display: inline-flex;
   align-items: center;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 1px 5px;
+  padding: 1px 6px;
   border-radius: 3px;
   margin-left: 6px;
   white-space: nowrap;
   vertical-align: middle;
-  flex-shrink: 0;
+  flex-shrink: 1;         /* Allow shrinking so pip stays aligned */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;       /* Cap badge width for long cell type names */
   line-height: 1.4;
 }
 
@@ -299,25 +310,30 @@
   display: none; /* hide badge for incomplete — only show when status is set */
 }
 
-/* ── Status legend in extension bar ── */
-.nge-status-legend {
+/* ── Status legend (below segment list) ── */
+.nge-seg-legend {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 10px;
-  color: #999;
-  padding: 0 10px;
+  justify-content: center;
+  gap: 14px;
+  padding: 6px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 2px;
 }
-.nge-legend-item {
+.nge-seg-legend-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  font-size: 11px;
+  color: #777;
+  letter-spacing: 0.02em;
 }
 .nge-legend-pip {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   display: inline-block;
+  flex-shrink: 0;
 }
 .nge-legend-pip--complete     { background: #CE93D8; box-shadow: 0 0 4px #CE93D888; }
 .nge-legend-pip--annotated    { background: #4CAF50; box-shadow: 0 0 4px #4CAF5088; }

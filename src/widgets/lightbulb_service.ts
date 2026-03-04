@@ -114,7 +114,8 @@ export async function getCellStatus(
   try {
     const url =
         `${caveServer}/annotation/api/v1/table/${cellStatusTable}/annotation/` +
-        `?filter_equal=root_id:${rootId}`;
+        `?filter_equal=pt_root_id:${rootId}`;
+    console.info(`[lightbulb] GET status → ${url}`);
     const res = await fetch(url, {headers: authHeaders(caveServer)});
     if (res.ok) {
       const data = await res.json();
@@ -125,16 +126,19 @@ export async function getCellStatus(
         status.annotationId = hit.id;
       }
       caveAvailable = true;
+    } else {
+      const errText = await res.text().catch(() => '');
+      console.warn(`[lightbulb] getCellStatus (completion) ${res.status}:`, errText);
     }
   } catch (e) {
-    console.warn('[lightbulb] getCellStatus (completion):', e);
+    console.warn('[lightbulb] getCellStatus (completion) network error:', e);
   }
 
   // Check cell-type table
   try {
     const url =
         `${caveServer}/annotation/api/v1/table/${cellTypeTable}/annotation/` +
-        `?filter_equal=root_id:${rootId}`;
+        `?filter_equal=pt_root_id:${rootId}`;
     const res = await fetch(url, {headers: authHeaders(caveServer)});
     if (res.ok) {
       const data = await res.json();
@@ -146,9 +150,12 @@ export async function getCellStatus(
         status.cellTypeAnnotationId = latest.id;
       }
       caveAvailable = true;
+    } else {
+      const errText = await res.text().catch(() => '');
+      console.warn(`[lightbulb] getCellStatus (cellType) ${res.status}:`, errText);
     }
   } catch (e) {
-    console.warn('[lightbulb] getCellStatus (cellType):', e);
+    console.warn('[lightbulb] getCellStatus (cellType) network error:', e);
   }
 
   // Fall back to localStorage if CAVE tables aren't reachable
@@ -191,8 +198,13 @@ export async function setCellComplete(
         deleteLocalAnnotation(rootId, 'isComplete');
         return true;
       }
+      console.info(`[lightbulb] DELETE completion → ${baseUrl}${existingAnnotationId}`);
       const res = await fetch(`${baseUrl}${existingAnnotationId}`,
           {method: 'DELETE', headers: authHeaders(caveServer)});
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.error(`[lightbulb] CAVE DELETE failed (${res.status}):`, errText);
+      }
       return res.ok;
     }
 
@@ -203,23 +215,29 @@ export async function setCellComplete(
           type: 'BoundText',
           pt: {position: pos},
           tag: 'complete',
-          root_id: parseInt(rootId, 10),
+          pt_root_id: rootId,
         }],
       };
+      console.info(`[lightbulb] POST completion → ${baseUrl}`, body);
       const res = await fetch(baseUrl, {
         method: 'POST',
         headers: authHeaders(caveServer),
         body: JSON.stringify(body),
       });
-      if (res.ok) return true;
+      if (res.ok) {
+        console.info(`[lightbulb] ✓ Completion saved to CAVE`);
+        return true;
+      }
+      const errText = await res.text().catch(() => '');
+      console.error(`[lightbulb] CAVE POST failed (${res.status}):`, errText);
     }
   } catch (e) {
-    console.error('[lightbulb] setCellComplete — CAVE unavailable, using localStorage:', e);
+    console.error('[lightbulb] setCellComplete — CAVE network error:', e);
   }
 
-  // localStorage fallback
+  // localStorage fallback — save locally so UI still works
   setLocalAnnotation(rootId, {isComplete: complete});
-  console.info(`[lightbulb] Saved completion status locally for ${rootId}`);
+  console.info(`[lightbulb] Saved completion locally for ${rootId} (CAVE unavailable)`);
   return true;
 }
 
@@ -246,14 +264,20 @@ export async function saveCellType(
         type: 'BoundText',
         pt: {position: pos},
         tag: cellType,
-        root_id: parseInt(rootId, 10),
+        pt_root_id: rootId,
       };
+      console.info(`[lightbulb] PUT cell type → ${baseUrl}${existingAnnotationId}`, body);
       const res = await fetch(`${baseUrl}${existingAnnotationId}`, {
         method: 'PUT',
         headers: authHeaders(caveServer),
         body: JSON.stringify(body),
       });
-      if (res.ok) return true;
+      if (res.ok) {
+        console.info(`[lightbulb] ✓ Cell type saved to CAVE (update)`);
+        return true;
+      }
+      const errText = await res.text().catch(() => '');
+      console.error(`[lightbulb] CAVE PUT failed (${res.status}):`, errText);
     } else if (existingAnnotationId === undefined || existingAnnotationId < 0) {
       // Create new CAVE row (or local annotation is being re-saved)
       const body = {
@@ -261,22 +285,28 @@ export async function saveCellType(
           type: 'BoundText',
           pt: {position: pos},
           tag: cellType,
-          root_id: parseInt(rootId, 10),
+          pt_root_id: rootId,
         }],
       };
+      console.info(`[lightbulb] POST cell type → ${baseUrl}`, body);
       const res = await fetch(baseUrl, {
         method: 'POST',
         headers: authHeaders(caveServer),
         body: JSON.stringify(body),
       });
-      if (res.ok) return true;
+      if (res.ok) {
+        console.info(`[lightbulb] ✓ Cell type saved to CAVE (create)`);
+        return true;
+      }
+      const errText = await res.text().catch(() => '');
+      console.error(`[lightbulb] CAVE POST failed (${res.status}):`, errText);
     }
   } catch (e) {
-    console.error('[lightbulb] saveCellType — CAVE unavailable, using localStorage:', e);
+    console.error('[lightbulb] saveCellType — CAVE network error:', e);
   }
 
-  // localStorage fallback
+  // localStorage fallback — save locally so UI still works
   setLocalAnnotation(rootId, {cellType});
-  console.info(`[lightbulb] Saved cell type locally for ${rootId}`);
+  console.info(`[lightbulb] Saved cell type locally for ${rootId} (CAVE unavailable)`);
   return true;
 }

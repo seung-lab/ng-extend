@@ -87,26 +87,31 @@ function hashSegId(segId: string): number {
   return Math.abs(h);
 }
 
-/** Map of segID → nickname, ensuring uniqueness within the current queue. */
+/** Map of segID → nickname, ensuring no word repeats within the visible set. */
 const nicknameMap = computed(() => {
   const map = new Map<string, string>();
-  const used = new Set<string>();
+  const usedNames = new Set<string>();
+  const usedWords = new Set<string>();  // No individual word reuse
 
   for (const item of queue.items) {
     let h = hashSegId(item.segId);
     let name = '';
-    // Try up to 50 offsets to avoid collision
-    for (let attempt = 0; attempt < 50; attempt++) {
-      const a = ARCHETYPES[(h + attempt) % ARCHETYPES.length];
-      const s = SPRITES[Math.abs(((h >>> 16) ^ (h * 7)) + attempt * 3) % SPRITES.length];
+    // Try up to 80 offsets to find a name with no shared words
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const a = ARCHETYPES[(h + attempt * 3) % ARCHETYPES.length];
+      const s = SPRITES[Math.abs(((h >>> 16) ^ (h * 7)) + attempt * 5) % SPRITES.length];
       const candidate = `${a} ${s}`;
-      if (!used.has(candidate)) {
+      if (!usedNames.has(candidate) && !usedWords.has(a) && !usedWords.has(s)) {
         name = candidate;
         break;
       }
     }
     if (!name) name = `Neuron ${item.segId.slice(-6)}`;
-    used.add(name);
+    usedNames.add(name);
+    // Track individual words so neither archetype nor sprite repeats
+    const [w1, w2] = name.split(' ');
+    if (w1) usedWords.add(w1);
+    if (w2) usedWords.add(w2);
     map.set(item.segId, name);
   }
   return map;
@@ -235,13 +240,31 @@ function loadSheet() {
 function goNext() { queue.next(); }
 function goPrev() { queue.prev(); }
 
+/** Validate soma coords: must be 3 comma-separated numbers (x, y, z). */
+function validateSomaCoords(input: string): { valid: boolean; error: string } {
+  const trimmed = input.trim();
+  if (!trimmed) return { valid: false, error: '' };
+  const parts = trimmed.split(',').map(s => s.trim());
+  if (parts.length !== 3) return { valid: false, error: 'Need 3 values: x, y, z' };
+  for (const p of parts) {
+    if (!/^-?\d+(\.\d+)?$/.test(p)) return { valid: false, error: `"${p}" is not a valid number` };
+  }
+  return { valid: true, error: '' };
+}
+
+const somaValidation = computed(() => validateSomaCoords(somaInput.value));
+
 /** Claim the cell by saving soma coords, then jump to segment. */
 function claimCell() {
   const item = current.value;
   if (!item) return;
   const coords = somaInput.value.trim();
   if (!coords) return;
+  const v = validateSomaCoords(coords);
+  if (!v.valid) return;
   queue.setEdit(item.segId, 'somaCoords', coords);
+  // Write soma coords back to Google Sheet
+  queue.writeSomaCoordsToSheet(item.segId, coords);
   queue.navigateToCurrentItem();
 }
 
@@ -447,14 +470,24 @@ const todayLabel = computed(() => {
 
             <!-- STEP 1: Claim — Enter Soma Coords -->
             <div class="nge-quest-field" v-if="!isProofread">
-              <label class="nge-quest-label">Soma Coords <span class="nge-quest-req">*</span></label>
+              <label class="nge-quest-label" title="Right-click on the nucleus in the viewer, then click the copy/paste icon at the top-left to copy coordinates">
+                Soma Coords <span class="nge-quest-req">*</span>
+                <span class="nge-quest-label-hint">ⓘ right-click nucleus → copy icon</span>
+              </label>
               <div class="nge-quest-field-row">
-                <input v-model="somaInput" class="nge-quest-input" placeholder="x, y, z"
+                <input v-model="somaInput"
+                  class="nge-quest-input"
+                  :class="{ 'nge-quest-input--error': somaInput.trim() && !somaValidation.valid }"
+                  placeholder="x, y, z"
+                  title="Right-click on the nucleus in the viewer, then click the copy/paste icon at the top-left to copy coordinates"
                   @keydown.stop @keyup.stop @keypress.stop
-                  @blur="somaInput.trim() && claimCell()" />
+                  @blur="somaInput.trim() && somaValidation.valid && claimCell()" />
                 <button v-if="!isClaimed" class="nge-quest-btn-claim" @click="claimCell"
-                        :disabled="!somaInput.trim()">Claim</button>
+                        :disabled="!somaInput.trim() || !somaValidation.valid">Claim</button>
                 <button v-else class="nge-quest-btn-jump" @click="queue.navigateToCurrentItem()">Jump</button>
+              </div>
+              <div class="nge-quest-field-error" v-if="somaInput.trim() && !somaValidation.valid && somaValidation.error">
+                {{ somaValidation.error }}
               </div>
             </div>
 
@@ -524,7 +557,7 @@ const todayLabel = computed(() => {
     0 0 120px rgba(0, 150, 255, 0.02),
     inset 0 0 40px rgba(0, 100, 200, 0.015);
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   color: #ccd;
   overflow: hidden;
   animation: nge-quest-glow 4s ease-in-out infinite;
@@ -984,7 +1017,26 @@ const todayLabel = computed(() => {
   transition: border-color 0.12s;
 }
 .nge-quest-input:focus { border-color: rgba(74, 158, 255, 0.4); }
+.nge-quest-input--error { border-color: rgba(255, 100, 100, 0.4) !important; }
+.nge-quest-input--error:focus { border-color: rgba(255, 100, 100, 0.6) !important; }
 .nge-quest-input::placeholder { color: #334; }
+
+.nge-quest-field-error {
+  font-size: 0.7em;
+  color: #f66;
+  margin-top: 3px;
+  padding-left: 2px;
+}
+
+.nge-quest-label-hint {
+  font-weight: 400;
+  font-size: 0.82em;
+  color: #556;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 6px;
+  cursor: help;
+}
 
 .nge-quest-btn-claim {
   padding: 6px 12px;

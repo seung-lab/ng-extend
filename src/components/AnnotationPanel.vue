@@ -24,6 +24,18 @@ function getViewerPosition(): [number, number, number] {
   } catch {}
   return [0, 0, 0];
 }
+
+/** Get current dataset/layer name for tagging help requests. */
+function getCurrentDataset(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (url.includes('graphene') || url.includes('segmentation')) return ml.name ?? '';
+    }
+  } catch {}
+  return '';
+}
 const { activeSegId, caveUrl, annotation } = storeToRefs(annotStore);
 
 const savingComplete  = ref(false);
@@ -194,6 +206,7 @@ function submitHelpRequest() {
     issueType: selectedIssue.value,
     cellType: annotation.value?.cellType,
     nickname: historyStore.getNickname(activeSegId.value),
+    dataset: getCurrentDataset(),
   });
   helpStore.refreshPending();
   helpNote.value = '';
@@ -320,7 +333,7 @@ function submitHelpRequest() {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6),
               0 0 0 1px rgba(100, 180, 255, 0.08);
   z-index: 500;
-  font-size: 12px;
+  font-size: 15px;
   color: #cdd;
   backdrop-filter: blur(8px);
   animation: nge-ann-slide-in 0.18s ease;
@@ -339,10 +352,10 @@ function submitHelpRequest() {
   padding: 8px 10px 8px 12px;
 }
 
-.nge-ann-brain { font-size: 14px; }
+.nge-ann-brain { font-size: 18px; }
 
 .nge-ann-title {
-  font-size: 11px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: rgba(100, 180, 255, 0.7);
@@ -351,7 +364,7 @@ function submitHelpRequest() {
 
 .nge-ann-id {
   font-family: monospace;
-  font-size: 11px;
+  font-size: 13px;
   color: #8bf;
   flex: 1;
   white-space: nowrap;
@@ -363,7 +376,7 @@ function submitHelpRequest() {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.5;
   padding: 0 2px;
   line-height: 1;
@@ -371,7 +384,7 @@ function submitHelpRequest() {
 .nge-ann-copy:hover { opacity: 1; }
 
 .nge-ann-saved {
-  font-size: 11px;
+  font-size: 12px;
   color: #7f8;
   animation: nge-ann-fade 1.2s ease forwards;
 }
@@ -408,7 +421,7 @@ function submitHelpRequest() {
 }
 
 .nge-ann-label {
-  font-size: 11px;
+  font-size: 13px;
   color: #778;
   min-width: 60px;
 }
@@ -417,7 +430,7 @@ function submitHelpRequest() {
 .nge-ann-status {
   flex: 1;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 14px;
 }
 .nge-ann-status--complete   { color: #CE93D8; }
 .nge-ann-status--inprogress { color: #aaa; }
@@ -426,12 +439,12 @@ function submitHelpRequest() {
 
 /* ── Buttons ── */
 .nge-ann-btn {
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 4px;
   border: 1px solid rgba(100, 180, 255, 0.3);
   background: rgba(100, 180, 255, 0.08);
   color: #8bf;
-  font-size: 11px;
+  font-size: 14px;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.12s, color 0.12s;
@@ -462,7 +475,7 @@ function submitHelpRequest() {
   border: 1px solid rgba(100, 180, 255, 0.25);
   background: rgba(100, 180, 255, 0.06);
   color: #aac;
-  font-size: 11px;
+  font-size: 14px;
   cursor: pointer;
   text-align: left;
 }
@@ -489,11 +502,11 @@ function submitHelpRequest() {
 .nge-ann-type-item {
   display: block;
   width: 100%;
-  padding: 6px 12px;
+  padding: 7px 12px;
   background: none;
   border: none;
   color: #bcc;
-  font-size: 11px;
+  font-size: 14px;
   text-align: left;
   cursor: pointer;
 }
@@ -510,12 +523,12 @@ function submitHelpRequest() {
 
 .nge-ann-type-input {
   flex: 1;
-  padding: 3px 8px;
+  padding: 4px 9px;
   border-radius: 4px;
   border: 1px solid rgba(100,180,255,0.25);
   background: rgba(255,255,255,0.05);
   color: #cdd;
-  font-size: 11px;
+  font-size: 13px;
   outline: none;
 }
 .nge-ann-type-input:focus { border-color: rgba(100,180,255,0.5); }
@@ -527,9 +540,9 @@ function submitHelpRequest() {
   background: none;
   border: 1px solid rgba(245, 166, 35, 0.25);
   border-radius: 4px;
-  padding: 5px 14px;
+  padding: 6px 14px;
   color: #f5a623;
-  font-size: 11px;
+  font-size: 14px;
   cursor: pointer;
   transition: background 0.12s;
   width: 100%;
@@ -537,7 +550,7 @@ function submitHelpRequest() {
 .nge-ann-help-btn:hover { background: rgba(245, 166, 35, 0.08); }
 
 .nge-ann-issue-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #778;
   margin-bottom: 6px;
   text-transform: uppercase;
@@ -552,12 +565,12 @@ function submitHelpRequest() {
 }
 
 .nge-ann-issue-chip {
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 12px;
   border: 1px solid rgba(245, 166, 35, 0.2);
   background: rgba(245, 166, 35, 0.04);
   color: #b89050;
-  font-size: 10px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.12s;
 }
@@ -581,7 +594,7 @@ function submitHelpRequest() {
   border: 1px solid rgba(100, 180, 255, 0.25);
   background: rgba(255, 255, 255, 0.04);
   color: #cdd;
-  font-size: 11px;
+  font-size: 14px;
   resize: vertical;
   outline: none;
   font-family: inherit;
@@ -605,7 +618,7 @@ function submitHelpRequest() {
 /* ── Error ── */
 .nge-ann-error {
   padding: 6px 12px 10px;
-  font-size: 10px;
+  font-size: 12px;
   color: #f88;
   opacity: 0.8;
 }
