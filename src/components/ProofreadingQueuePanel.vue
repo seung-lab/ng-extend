@@ -152,7 +152,7 @@ function dateSeed(dateStr: string): number {
 const baseDailyQuestIndices = computed(() => {
   const total = queue.items.length;
   if (total === 0) return [];
-  const seed = dateSeed(todayStr.value + (queue.sheetUrl || ''));
+  const seed = dateSeed(todayStr.value + (queue.sheetUrl || '') + ':gen' + resetGeneration.value);
   const indices: number[] = [];
 
   // Start from the seed offset, pick up to DAILY_QUEST_COUNT items
@@ -174,6 +174,9 @@ const baseDailyQuestIndices = computed(() => {
   }
   return indices;
 });
+
+/** Incremented on each reset to change the seed → different quests. */
+const resetGeneration = ref(0);
 
 /** Bonus quests added when user clicks "Take on More Quests". */
 const bonusQuestIndices = ref<number[]>([]);
@@ -539,10 +542,10 @@ function shareOnX() {
                 🧠 Take on Next Quest
               </button>
               <button v-else
-                      class="nge-quest-celebration-btn nge-quest-celebration-btn--allclear"
-                      @click="queue.clearProofread(); celebrationDismissed = true; bonusQuestIndices = []"
-                      title="All neurons proofread — click to reset and start over">
-                ✨ All {{ queue.items.length }} Done — Reset?
+                      class="nge-quest-celebration-btn nge-quest-celebration-btn--more"
+                      @click="queue.resetAll(); resetGeneration++; bonusQuestIndices = []; celebrationDismissed = true"
+                      title="Reset and get fresh quests">
+                ✨ New Quest!
               </button>
               <button class="nge-quest-celebration-btn nge-quest-celebration-btn--close"
                       @click="celebrationDismissed = true">
@@ -657,7 +660,7 @@ function shareOnX() {
           <!-- Footer -->
           <div class="nge-quest-footer">
             <button class="nge-quest-footer-btn" @click="queue.loadFromSheet()">↻ Reload</button>
-            <button class="nge-quest-footer-btn" @click="queue.clearProofread()">Reset</button>
+            <button class="nge-quest-footer-btn" @click="queue.resetAll(); resetGeneration++; bonusQuestIndices = []">Reset</button>
           </div>
         </div>
 

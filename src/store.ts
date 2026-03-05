@@ -1129,6 +1129,21 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
     persistProofread();
   }
 
+  /** Clear all local edits (soma coords, final seg ID, annotations). */
+  function clearLocalEdits() {
+    localEdits.value = {};
+    persistEdits();
+  }
+
+  /** Full reset: clear proofread set + local edits, jump to start. */
+  function resetAll() {
+    proofread.value.clear();
+    localEdits.value = {};
+    persistProofread();
+    persistEdits();
+    currentIdx.value = 0;
+  }
+
   // ── Google Sheets write-back ─────────────────────────────────────────
 
   /**
@@ -1226,7 +1241,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
   return {
     items, currentIdx, proofread, loading, error, sheetUrl, localEdits,
     loadFromSheet, currentItem, next, prev, jumpToIndex, nextUnproofread,
-    navigateToCurrentItem, markProofread, unmarkProofread, clearProofread,
+    navigateToCurrentItem, markProofread, unmarkProofread, clearProofread, clearLocalEdits, resetAll,
     proofreadCount, totalCount, pendingCount, sessionMinutes,
     getEdits, setEdit, isClaimed, canComplete, writeSomaCoordsToSheet,
   };
