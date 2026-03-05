@@ -24,7 +24,8 @@
     "prepublishOnly": "npm run test && npm run build-module",
     "gulp": "gulp",
     "lint": "eslint . --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy": "npm run build && npx vercel deploy dist/min --prod --yes --name eyewire-ii"
   },
   "devDependencies": {
     "@babel/types": "^7.21.5",
