@@ -6,6 +6,7 @@ import './widgets/lightbulb_menu.css';
 
 import App from 'components/App.vue';
 import {useLayersStore, useSegmentAnnotationStore, useSplitMergeOverlayStore} from 'src/store';
+import {exitGrapheneTool} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
@@ -97,6 +98,16 @@ window.addEventListener('DOMContentLoaded', () => {
   // Auto-select segmentation layer after viewer loads (fallback for when
   // LoginModal doesn't fire — e.g. already authenticated or bypass).
   autoSelectSegLayer(viewer);
+
+  // Escape key handler: exit split/merge tools
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const store = useSplitMergeOverlayStore();
+    if (!store.toolActive) return;
+    exitGrapheneTool();
+    e.preventDefault();
+    e.stopPropagation();
+  }, true); // capture phase to catch before NG
 });
 
 /**
@@ -112,6 +123,8 @@ function autoSelectSegLayer(viewer: any, attempt = 0) {
 
       const segLayer = viewer.layerManager.managedLayers.find(
         (l: any) => {
+          const typeName = l.layer?.constructor?.name ?? '';
+          if (typeName.includes('Segmentation')) return true;
           const url = l.layer?.dataSources?.[0]?.spec?.url ?? '';
           return url.includes('graphene') || url.includes('segmentation');
         },

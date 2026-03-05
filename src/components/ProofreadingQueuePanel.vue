@@ -332,6 +332,14 @@ async function markProofreadAndNext() {
 
   queue.markProofread(item.segId);
 
+  // Also ensure this cell appears in profile cell history (with annotation as cell type if set)
+  try {
+    const annotation = annotationInput.value.trim();
+    if (annotation) {
+      history.upsert({ segId: item.segId, cellType: annotation });
+    }
+  } catch { /* non-critical */ }
+
   // Track quest completion in daily log for streak chart
   const statsStore = useUserStatsStore();
   statsStore.logDailyQuestComplete();
@@ -532,8 +540,9 @@ function shareOnX() {
               </button>
               <button v-else
                       class="nge-quest-celebration-btn nge-quest-celebration-btn--allclear"
-                      disabled>
-                ✨ All Clear — No More Quests!
+                      @click="queue.clearProofread(); celebrationDismissed = true; bonusQuestIndices = []"
+                      title="All neurons proofread — click to reset and start over">
+                ✨ All {{ queue.items.length }} Done — Reset?
               </button>
               <button class="nge-quest-celebration-btn nge-quest-celebration-btn--close"
                       @click="celebrationDismissed = true">

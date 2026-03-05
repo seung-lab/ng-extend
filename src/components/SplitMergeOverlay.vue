@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useSplitMergeOverlayStore } from 'src/store';
+import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 
 const store = useSplitMergeOverlayStore();
 
@@ -60,6 +61,13 @@ function clearPoints() {
     if (icons[1]) (icons[1] as HTMLElement).click();
   }
 }
+
+/** Exit the current split/merge tool (cancel the operation). */
+function cancelTool() {
+  exitGrapheneTool();
+}
+
+// exitGrapheneTool is imported from ../widgets/graphene_tool_utils
 </script>
 
 <template>
@@ -111,7 +119,7 @@ function clearPoints() {
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
             <span class="nge-smo-key-hint"><kbd>G</kbd> Swap</span>
             <span class="nge-smo-key-hint"><kbd>Enter</kbd> Submit</span>
-            <span class="nge-smo-key-hint"><kbd>Esc</kbd> Cancel</span>
+            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit split mode"><kbd>Esc</kbd> Cancel</button>
           </div>
           <div class="nge-smo-loading-indicator" v-if="isSubmitting">
             <span class="nge-smo-spinner"></span>
@@ -128,7 +136,7 @@ function clearPoints() {
 
           <div class="nge-smo-actions" v-if="!isSubmitting">
             <span class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
-            <span class="nge-smo-key-hint"><kbd>Esc</kbd> Cancel</span>
+            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit merge mode"><kbd>Esc</kbd> Cancel</button>
           </div>
           <div class="nge-smo-loading-indicator" v-if="isSubmitting">
             <span class="nge-smo-spinner"></span>

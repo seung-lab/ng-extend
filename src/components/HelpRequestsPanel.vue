@@ -12,6 +12,10 @@ function currentDataset(): string {
   try {
     const viewer = (window as any)['viewer'];
     for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      // Check layer type name (works even if dataSources haven't loaded)
+      const typeName = ml.layer?.constructor?.name ?? '';
+      if (typeName.includes('Segmentation')) return ml.name ?? '';
+      // Fallback: check URL
       const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
       if (url.includes('graphene') || url.includes('segmentation')) return ml.name ?? '';
     }
@@ -48,14 +52,15 @@ const collapsedSections = ref<Set<string>>(new Set());
 
 const pendingByDataset = computed(() => {
   const groups = new Map<string, HelpRequest[]>();
+  const current = activeDataset.value;
   for (const req of pending.value) {
-    const ds = req.dataset || 'Unknown';
+    // Treat empty/missing dataset as belonging to current dataset
+    const ds = req.dataset || current || 'Unknown';
     if (!groups.has(ds)) groups.set(ds, []);
     groups.get(ds)!.push(req);
   }
   // Build ordered array: current dataset first, then others
   const result: DatasetGroup[] = [];
-  const current = activeDataset.value;
   // Current dataset section first
   if (current && groups.has(current)) {
     result.push({ dataset: current, label: current, isCurrent: true, requests: groups.get(current)! });
