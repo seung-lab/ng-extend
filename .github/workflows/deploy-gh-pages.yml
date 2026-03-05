@@ -1,0 +1,59 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - eyewire-ii-community
+
+# Allow only one concurrent deployment
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: >-
+          node ./node_modules/neuroglancer/config/esbuild-cli.js
+          --config=min --no-typecheck
+          --define CONFIG=$(cat config/ng-extend.json | tr -d ' \t\n\r')
+          --define STATE_SERVERS=$(cat config/state_servers.json | tr -d ' \t\n\r')
+          --define CUSTOM_BINDINGS=$(cat config/custom-keybinds.json | tr -d ' \t\n\r')
+          --define DATASETS=$(cat config/datastack-dataset.json | tr -d ' \t\n\r')
+          --define DEFAULT_SETTINGS=$(cat config/default-settings.json | tr -d ' \t\n\r')
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/min
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
