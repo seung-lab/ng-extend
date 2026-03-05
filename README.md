@@ -7,10 +7,10 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/login-window.mp4" alt="Holographic login window with animated neuron" width="400" autoplay loop muted></video>
-</p>
 
-https://github.com/user-attachments/assets/login-window.mp4
+https://github.com/seung-lab/ng-extend/raw/eyewire-ii-community/docs/login-window.mp4
+
+</p>
 
 A [neuroglancer](https://github.com/google/neuroglancer) overlay that transforms connectomics proofreading into a community-driven science game. Built on the [CAVE](https://github.com/CAVEconnectome) annotation framework, EyeWire II adds gamification, daily quests, annotation tools, and a holographic sci-fi interface — all without modifying neuroglancer core.
 

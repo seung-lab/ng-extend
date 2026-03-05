@@ -148,8 +148,8 @@ function dateSeed(dateStr: string): number {
   return Math.abs(h);
 }
 
-/** The 3 daily quest items (indices into queue.items). */
-const dailyQuestIndices = computed(() => {
+/** The initial 3 daily quest items (indices into queue.items). */
+const baseDailyQuestIndices = computed(() => {
   const total = queue.items.length;
   if (total === 0) return [];
   const seed = dateSeed(todayStr.value + (queue.sheetUrl || ''));
@@ -175,12 +175,29 @@ const dailyQuestIndices = computed(() => {
   return indices;
 });
 
+/** Bonus quests added when user clicks "Take on More Quests". */
+const bonusQuestIndices = ref<number[]>([]);
+
+/** Combined daily + bonus quest indices (the active quest set). */
+const dailyQuestIndices = computed(() => {
+  // Merge base daily with bonus, removing any duplicates
+  const seen = new Set(baseDailyQuestIndices.value);
+  const combined = [...baseDailyQuestIndices.value];
+  for (const idx of bonusQuestIndices.value) {
+    if (!seen.has(idx)) {
+      seen.add(idx);
+      combined.push(idx);
+    }
+  }
+  return combined;
+});
+
 const dailyQuests = computed(() =>
-  dailyQuestIndices.value.map(idx => queue.items[idx]),
+  dailyQuestIndices.value.map(idx => queue.items[idx]).filter(Boolean),
 );
 
 const dailyComplete = computed(() =>
-  dailyQuests.value.every(item => queue.proofread.has(item.segId)),
+  dailyQuests.value.length > 0 && dailyQuests.value.every(item => queue.proofread.has(item.segId)),
 );
 
 const dailyProgress = computed(() => {
@@ -189,9 +206,18 @@ const dailyProgress = computed(() => {
   return done;
 });
 
-// Re-show celebration when a new daily set completes
-watch(dailyComplete, (val) => {
-  if (val) celebrationDismissed.value = false;
+// Re-show celebration only when the BASE daily quests complete (not bonus)
+watch(() => {
+  const baseQuests = baseDailyQuestIndices.value.map(idx => queue.items[idx]).filter(Boolean);
+  return baseQuests.length > 0 && baseQuests.every(item => queue.proofread.has(item.segId));
+}, (val) => {
+  if (val && bonusQuestIndices.value.length === 0) celebrationDismissed.value = false;
+});
+
+/** Are there unproofread items in the queue that aren't in the current daily set? */
+const hasMoreUnproofread = computed(() => {
+  const activeSet = new Set(dailyQuestIndices.value);
+  return queue.items.some((item, idx) => !activeSet.has(idx) && !queue.proofread.has(item.segId));
 });
 
 /** Jump to a daily quest by its index in dailyQuests. */
@@ -310,9 +336,23 @@ async function markProofreadAndNext() {
   const statsStore = useUserStatsStore();
   statsStore.logDailyQuestComplete();
 
-  // In daily mode, stay on daily quests. In all mode, advance to next unproofread.
   if (viewMode.value === 'all') {
+    // All-tasks mode: advance to next unproofread globally
     queue.nextUnproofread();
+  } else {
+    // Daily mode: advance to the next uncompleted daily quest
+    const currentQuestIdx = dailyQuestIndices.value.indexOf(queue.currentIdx);
+    const activeIndices = dailyQuestIndices.value;
+    // Look for next uncompleted daily quest (wrapping around)
+    for (let i = 1; i <= activeIndices.length; i++) {
+      const nextIdx = (currentQuestIdx + i) % activeIndices.length;
+      const queueIdx = activeIndices[nextIdx];
+      if (queueIdx !== undefined && !queue.proofread.has(queue.items[queueIdx]?.segId)) {
+        queue.jumpToIndex(queueIdx);
+        return;
+      }
+    }
+    // All daily quests done — celebration will show
   }
 }
 
@@ -334,6 +374,24 @@ const celebrationDismissed = ref(false);
 
 function takeOnMoreQuests() {
   celebrationDismissed.value = true;
+
+  // Find the next unproofread item NOT already in the active daily set
+  const activeSet = new Set(dailyQuestIndices.value);
+  const total = queue.items.length;
+  if (total === 0) return;
+
+  // Search from a seeded start to spread out bonus quests
+  const seed = dateSeed(todayStr.value + 'bonus' + bonusQuestIndices.value.length);
+  for (let i = 0; i < total; i++) {
+    const idx = (seed + i) % total;
+    if (!activeSet.has(idx) && !queue.proofread.has(queue.items[idx].segId)) {
+      bonusQuestIndices.value.push(idx);
+      queue.jumpToIndex(idx);
+      return;
+    }
+  }
+
+  // All items are proofread or already in daily set — just go to next unproofread globally
   queue.nextUnproofread();
 }
 
@@ -467,13 +525,19 @@ function shareOnX() {
               <br/>The connectome thanks you!
             </div>
             <div class="nge-quest-celebration-actions">
-              <button class="nge-quest-celebration-btn nge-quest-celebration-btn--more"
+              <button v-if="hasMoreUnproofread"
+                      class="nge-quest-celebration-btn nge-quest-celebration-btn--more"
                       @click="takeOnMoreQuests">
-                Take on More Quests
+                🧠 Take on Next Quest
+              </button>
+              <button v-else
+                      class="nge-quest-celebration-btn nge-quest-celebration-btn--allclear"
+                      disabled>
+                ✨ All Clear — No More Quests!
               </button>
               <button class="nge-quest-celebration-btn nge-quest-celebration-btn--close"
-                      @click="emit('hide')">
-                Close Board
+                      @click="celebrationDismissed = true">
+                Continue
               </button>
             </div>
             <button class="nge-quest-share-btn" @click="shareOnX">
@@ -952,6 +1016,14 @@ function shareOnX() {
 .nge-quest-celebration-btn--close:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #bbc;
+}
+
+.nge-quest-celebration-btn--allclear {
+  background: linear-gradient(135deg, rgba(127, 255, 136, 0.08), rgba(0, 180, 255, 0.08));
+  border: 1px solid rgba(127, 255, 136, 0.2);
+  color: rgba(127, 255, 136, 0.7);
+  cursor: default;
+  font-weight: 600;
 }
 
 .nge-quest-share-btn {
