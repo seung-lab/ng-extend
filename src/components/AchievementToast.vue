@@ -12,10 +12,17 @@ import { storeToRefs } from 'pinia';
 import { useUserStatsStore, useProofreadingQueueStore } from '../store';
 import { BADGE_DEFINITIONS, BadgeDefinition } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
+import ConfettiCelebration from 'components/ConfettiCelebration.vue';
 
 const statsStore = useUserStatsStore();
 const { stats } = storeToRefs(statsStore);
 const queueStore = useProofreadingQueueStore();
+const confettiRef = ref<InstanceType<typeof ConfettiCelebration> | null>(null);
+
+/** Fire confetti with configurable palette and intensity. */
+function fireConfetti(palette = 'default', intensity = 1) {
+  confettiRef.value?.trigger(palette, intensity);
+}
 
 interface Toast {
   id: number;
@@ -79,9 +86,11 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
         icon: imgUrl || '🏅',
         isImage: !!imgUrl,
       });
+      // 🎊 Confetti for badge unlocks!
+      fireConfetti('purple', badge.editThreshold >= 1000 ? 2 : 1);
     }
   }
-  // Edit milestones (round numbers)
+  // Edit milestones (round numbers) — confetti scales with milestone size
   const editMilestones = [100, 500, 1000, 5000, 10000, 25000, 50000, 100000];
   for (const m of editMilestones) {
     if (prevEdits < m && newEdits >= m) {
@@ -92,6 +101,10 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
         icon: '⚡',
         isImage: false,
       });
+      // 🎊 Confetti intensity scales with milestone
+      const intensity = m >= 10000 ? 3 : m >= 1000 ? 2 : 1;
+      const palette = m >= 10000 ? 'rainbow' : m >= 1000 ? 'gold' : 'cyan';
+      fireConfetti(palette, intensity);
     }
   }
   prevEdits = newEdits;
@@ -109,6 +122,7 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
         icon: '🧠',
         isImage: false,
       });
+      fireConfetti('default', m >= 100 ? 2 : 1);
     }
   }
   prevCells = newCells;
@@ -126,6 +140,7 @@ watch(() => stats.value.currentStreak, (newStreak) => {
         icon: '🔥',
         isImage: false,
       });
+      fireConfetti('gold', m >= 30 ? 2 : 1);
     }
   }
   prevStreak = newStreak;
@@ -173,12 +188,14 @@ watch(() => queueStore.proofread.size, () => {
       icon: '🧠',
       isImage: false,
     });
+    fireConfetti('rainbow', 2);
   }
   prevDailyDone = done;
 });
 </script>
 
 <template>
+  <ConfettiCelebration ref="confettiRef" />
   <Teleport to="body">
     <div class="nge-toast-container">
       <TransitionGroup name="nge-toast">
