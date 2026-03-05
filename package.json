@@ -25,7 +25,7 @@
     "gulp": "gulp",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "deploy": "npm run build && npx vercel deploy dist/min --prod --yes --name eyewire-ii"
+    "deploy": "bash scripts/deploy-gh-pages.sh"
   },
   "devDependencies": {
     "@babel/types": "^7.21.5",
