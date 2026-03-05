@@ -442,13 +442,35 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-profile-section-label">▌ Edits</div>
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" v-for="(col, i) in [
-                {label:'Today',    val:stats.editsToday,    sub:`${stats.mergesToday} · ${stats.splitsToday}`},
-                {label:'Past 7d',  val:stats.editsThisWeek, sub:`${stats.mergesThisWeek} · ${stats.splitsThisWeek}`},
-                {label:'All Time', val:stats.editsAllTime,  sub:`${stats.mergesAllTime} · ${stats.splitsAllTime}`},
+                {label:'Today',    val:stats.editsToday,    merges:stats.mergesToday,    splits:stats.splitsToday},
+                {label:'Past 7d',  val:stats.editsThisWeek, merges:stats.mergesThisWeek, splits:stats.splitsThisWeek},
+                {label:'All Time', val:stats.editsAllTime,  merges:stats.mergesAllTime,  splits:stats.splitsAllTime},
               ]" :key="i">
                 <div class="nge-profile-stat-label">{{ col.label }}</div>
                 <div class="nge-profile-stat-val">{{ col.val.toLocaleString() }}</div>
-                <div class="nge-profile-stat-sub">{{ col.sub }}</div>
+                <div class="nge-profile-stat-breakdown">
+                  <span class="nge-profile-stat-bp" title="Merges">
+                    <svg class="nge-profile-stat-icon nge-profile-stat-icon--merge" viewBox="0 0 16 16" fill="none">
+                      <path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                      <circle cx="4" cy="2.5" r="1.5" fill="currentColor"/>
+                      <circle cx="12" cy="2.5" r="1.5" fill="currentColor"/>
+                      <circle cx="8" cy="13" r="1.5" fill="currentColor"/>
+                      <path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                    {{ col.merges }}
+                  </span>
+                  <span class="nge-profile-stat-bp" title="Splits">
+                    <svg class="nge-profile-stat-icon nge-profile-stat-icon--split" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                      <path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                      <circle cx="8" cy="2.5" r="1.5" fill="currentColor"/>
+                      <circle cx="4" cy="13" r="1.5" fill="currentColor"/>
+                      <circle cx="12" cy="13" r="1.5" fill="currentColor"/>
+                      <path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                    {{ col.splits }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1007,6 +1029,31 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
 }
+
+.nge-profile-stat-breakdown {
+  display: flex;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.nge-profile-stat-bp {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.92em;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-variant-numeric: tabular-nums;
+  color: #889;
+}
+
+.nge-profile-stat-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.nge-profile-stat-icon--merge { color: rgba(120, 200, 255, 0.9); }
+.nge-profile-stat-icon--split { color: rgba(255, 160, 100, 0.9); }
 
 /* ── Streak ── */
 .nge-profile-streak-row {

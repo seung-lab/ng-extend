@@ -184,6 +184,11 @@ const dailyProgress = computed(() => {
   return done;
 });
 
+// Re-show celebration when a new daily set completes
+watch(dailyComplete, (val) => {
+  if (val) celebrationDismissed.value = false;
+});
+
 /** Jump to a daily quest by its index in dailyQuests. */
 function selectDailyQuest(idx: number) {
   const queueIdx = dailyQuestIndices.value[idx];
@@ -319,6 +324,14 @@ function copySegId() {
   setTimeout(() => { copied.value = false; }, 1500);
 }
 
+/** Dismiss the celebration and advance to next unproofread quest. */
+const celebrationDismissed = ref(false);
+
+function takeOnMoreQuests() {
+  celebrationDismissed.value = true;
+  queue.nextUnproofread();
+}
+
 /** Jump to a specific item from the all-tasks list. */
 function jumpToItem(idx: number) {
   queue.jumpToIndex(idx);
@@ -438,7 +451,7 @@ function shareOnX() {
           </div>
 
           <!-- Daily complete celebration -->
-          <div v-if="dailyComplete" class="nge-quest-celebration">
+          <div v-if="dailyComplete && !celebrationDismissed" class="nge-quest-celebration">
             <div class="nge-quest-celebration-particles">
               <span v-for="i in 12" :key="i" class="nge-quest-particle" :style="{ '--i': i }"></span>
             </div>
@@ -450,7 +463,7 @@ function shareOnX() {
             </div>
             <div class="nge-quest-celebration-actions">
               <button class="nge-quest-celebration-btn nge-quest-celebration-btn--more"
-                      @click="viewMode = 'all'">
+                      @click="takeOnMoreQuests">
                 Take on More Quests
               </button>
               <button class="nge-quest-celebration-btn nge-quest-celebration-btn--close"

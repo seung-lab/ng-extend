@@ -21,18 +21,25 @@ import {storeToRefs} from 'pinia';
 import logoImage from '../CaveLogo-clear.png';
 
 const login = useLoginStore();
-window.addEventListener("middleauthlogin", () => {
-  login.update().then(() => {
-    // Sync first valid session to Supabase backend
-    const session = login.sessions.find(s => s.status === undefined);
-    if (session?.email) {
-      const backend = useProofreadingBackendStore();
+
+/** Sync the first valid login session to Supabase so userId is set. */
+function syncFirstSession() {
+  const session = login.sessions.find(s => s.status === undefined);
+  if (session?.email) {
+    const backend = useProofreadingBackendStore();
+    if (!backend.userId) {
       backend.syncUser(session.email, session.name || session.email.split('@')[0])
         .then(() => backend.loadUserStats());
     }
-  });
+  }
+}
+
+window.addEventListener("middleauthlogin", () => {
+  login.update().then(syncFirstSession);
 });
-login.update();
+
+// Also sync on initial load (user may already be logged in)
+login.update().then(syncFirstSession);
 
 const validLogins = computed(() => login.sessions.filter(x => x.status === undefined));
 const invalidLogins = computed(() => login.sessions.filter(x => x.status !== undefined));
@@ -67,14 +74,19 @@ function logout(session: loginSession) {
 interface ToolbarIcon {
   id: string;
   emoji: string;
+  svg?: string;
   label: string;
   action: () => void;
   badge?: () => number;
 }
 
+// Branch-style SVG icons for split & merge (must match profile icons)
+const SPLIT_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:16px;height:16px;vertical-align:middle"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.5" fill="currentColor"/><circle cx="4" cy="13" r="1.5" fill="currentColor"/><circle cx="12" cy="13" r="1.5" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+const MERGE_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:16px;height:16px;vertical-align:middle"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.5" fill="currentColor"/><circle cx="12" cy="2.5" r="1.5" fill="currentColor"/><circle cx="8" cy="13" r="1.5" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+
 const toolbarDefs = computed<ToolbarIcon[]>(() => [
-  { id: 'split', emoji: '✂️', label: 'Split Mode (C)', action: () => activateTool('multicut') },
-  { id: 'merge', emoji: '🔗', label: 'Merge Mode (M)', action: () => activateTool('merge') },
+  { id: 'split', emoji: '✂️', svg: SPLIT_SVG, label: 'Split Mode (C)', action: () => activateTool('multicut') },
+  { id: 'merge', emoji: '🔗', svg: MERGE_SVG, label: 'Merge Mode (M)', action: () => activateTool('merge') },
   { id: 'recap', emoji: '📊', label: 'Your Week in Science', action: () => { showRecap.value = true; } },
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard', action: () => { showLeaderboard.value = true; } },
   { id: 'quest', emoji: '🧠', label: 'Quest Board', action: () => { showQueue.value = true; }, badge: () => queueStore.pendingCount() },
@@ -94,11 +106,33 @@ const visibleToolbar = computed(() => {
 function activateTool(toolType: 'multicut' | 'merge') {
   const viewer: any = (window as any)['viewer'];
   if (!viewer) return;
-  // Dispatch the keyboard shortcut that neuroglancer uses for these tools
+
+  // 1. Select the segmentation layer (required for tool keybindings)
+  try {
+    const segLayer = viewer.layerManager?.managedLayers?.find(
+      (x: any) => x.layer?.constructor?.name?.includes('Segmentation'),
+    );
+    if (segLayer) {
+      viewer.selectedLayer.layer = segLayer;
+      viewer.selectedLayer.visible = true;
+    }
+  } catch { /* non-critical */ }
+
+  // 2. Dispatch keyboard shortcut to the viewer element where ng binds handlers
   const key = toolType === 'multicut' ? 'c' : 'm';
-  const container = document.getElementById('neuroglancer-container');
-  if (container) {
-    container.dispatchEvent(new KeyboardEvent('keydown', { key, code: key === 'c' ? 'KeyC' : 'KeyM', bubbles: true }));
+  const eventInit: KeyboardEventInit = {
+    key, code: key === 'c' ? 'KeyC' : 'KeyM',
+    bubbles: true, cancelable: true,
+  };
+  // Try viewer.element first (where global inputEventBindings live), then fallback
+  const targets = [
+    viewer.element,
+    viewer.display?.container,
+    document.getElementById('neuroglancer-container'),
+  ].filter(Boolean);
+  for (const el of targets) {
+    if (el instanceof HTMLElement) el.focus();
+    el.dispatchEvent(new KeyboardEvent('keydown', eventInit));
   }
 }
 
@@ -150,7 +184,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
         :class="{ 'nge-icon-btn--badge': icon.badge && icon.badge() > 0 }"
         :title="icon.label"
         @click="icon.action()"
-      >{{ icon.emoji }}<span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge">{{ icon.badge() }}</span></button>
+      ><span v-if="icon.svg" v-html="icon.svg"></span><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge">{{ icon.badge() }}</span></button>
     </div>
     <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn">My Profile</button>
     <template v-if="login.sessions.length > 0">

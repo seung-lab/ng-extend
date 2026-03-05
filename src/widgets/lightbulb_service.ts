@@ -231,7 +231,7 @@ export async function setCellComplete(
           const backend = useProofreadingBackendStore();
           if (backend.userId) {
             const p = getViewerPosition();
-            backend.logEdit({ operation: 'mark_complete', coordinates: `${p[0]}, ${p[1]}, ${p[2]}`, metadata: { root_id: rootId } });
+            backend.logEdit({ operation: 'mark_complete', segment_after: rootId, coordinates: `${p[0]}, ${p[1]}, ${p[2]}`, metadata: { root_id: rootId } });
             backend.postActivity(`marked ...${rootId.slice(-4)} complete`, rootId);
           }
         } catch { /* non-critical */ }
@@ -259,12 +259,28 @@ export async function setCellComplete(
   // localStorage fallback — save locally so UI still works
   setLocalAnnotation(rootId, {isComplete: complete});
   console.info(`[lightbulb] Saved completion locally for ${rootId} (CAVE unavailable)`);
+  // Update local cell history & stats so Profile UI reflects immediately
+  try {
+    const pos = getViewerPosition();
+    const historyStore = useCellHistoryStore();
+    historyStore.upsert({
+      segId: rootId,
+      isComplete: complete,
+      position: pos,
+    });
+    if (complete) {
+      const statsStore = useUserStatsStore();
+      statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
+      statsStore.logDailyCellComplete();
+    }
+  } catch { /* non-critical */ }
   // Log to Supabase regardless of CAVE/local path
   try {
     const backend = useProofreadingBackendStore();
     if (backend.userId) {
       backend.logEdit({
         operation: complete ? 'mark_complete' : 'unmark_complete',
+        segment_after: rootId,
         coordinates: (() => { const p = getViewerPosition(); return `${p[0]}, ${p[1]}, ${p[2]}`; })(),
         metadata: { root_id: rootId },
       });
@@ -313,7 +329,7 @@ export async function saveCellType(
         try {
           const backend = useProofreadingBackendStore();
           if (backend.userId) {
-            backend.logEdit({ operation: 'set_cell_type', metadata: { root_id: rootId, cell_type: cellType } });
+            backend.logEdit({ operation: 'set_cell_type', segment_after: rootId, metadata: { root_id: rootId, cell_type: cellType } });
             backend.postActivity(`labeled ...${rootId.slice(-4)} as ${cellType}`, rootId);
           }
         } catch { /* non-critical */ }
@@ -369,11 +385,20 @@ export async function saveCellType(
   // localStorage fallback — save locally so UI still works
   setLocalAnnotation(rootId, {cellType});
   console.info(`[lightbulb] Saved cell type locally for ${rootId} (CAVE unavailable)`);
+  // Update local cell history so Profile UI reflects immediately
+  try {
+    const historyStore = useCellHistoryStore();
+    historyStore.upsert({
+      segId: rootId,
+      cellType: cellType,
+      position: pos,
+    });
+  } catch { /* non-critical */ }
   // Log to Supabase regardless of CAVE/local path
   try {
     const backend = useProofreadingBackendStore();
     if (backend.userId) {
-      backend.logEdit({ operation: 'set_cell_type', metadata: { root_id: rootId, cell_type: cellType } });
+      backend.logEdit({ operation: 'set_cell_type', segment_after: rootId, metadata: { root_id: rootId, cell_type: cellType } });
       backend.postActivity(`labeled ...${rootId.slice(-4)} as ${cellType}`, rootId);
     }
   } catch { /* non-critical */ }

@@ -181,9 +181,24 @@ export const useLayersStore = defineStore('layers', () => {
     let localEditAccum = 0;
     let pendingNetDiff = 0;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const pendingRemoved = new Set<string>(); // specific segments removed during this operation
+    const pendingAdded   = new Set<string>(); // specific segments added during this operation
     const EDIT_DEBOUNCE_MS = 1500;
 
-    const handler = () => {
+    // Signal fires (segId, wasAdded) — track the specific segments involved
+    const handler = (changedId?: any, wasAdded?: boolean) => {
+      // Capture the specific segment IDs from the signal
+      try {
+        if (changedId != null) {
+          const ids = Array.isArray(changedId) ? changedId : [changedId];
+          for (const id of ids) {
+            const str = id.toString();
+            if (wasAdded) pendingAdded.add(str);
+            else pendingRemoved.add(str);
+          }
+        }
+      } catch { /* Uint64 toString may fail */ }
+
       const newCount = visibleSegs.size;
       if (newCount === prevCount) return;
 
@@ -198,6 +213,11 @@ export const useLayersStore = defineStore('layers', () => {
       debounceTimer = setTimeout(() => {
         const net = pendingNetDiff;
         pendingNetDiff = 0;
+        // Grab & clear the tracked segment IDs for this operation
+        const removedIds = pendingRemoved.size ? [...pendingRemoved].join(',') : null;
+        const addedIds   = pendingAdded.size   ? [...pendingAdded].join(',')   : null;
+        pendingRemoved.clear();
+        pendingAdded.clear();
         if (net === 0) return; // changes cancelled out
 
         const statsStore = useUserStatsStore();
@@ -243,6 +263,8 @@ export const useLayersStore = defineStore('layers', () => {
             const operation = net < 0 ? 'merge' : 'split';
             backendStore.logEdit({
               operation,
+              segment_before: removedIds,  // segments consumed/removed by the operation
+              segment_after: addedIds,     // segments produced/added by the operation
               coordinates: coords,
               metadata: { net_segment_change: net, diff: 1 },
             });
@@ -1332,16 +1354,23 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   async function syncUser(email: string, displayName: string) {
     userEmail.value = email;
     userName.value = displayName;
+    console.info('[backend] syncUser called for', email);
     try {
       // Try to find existing user by email
-      const { data: existing } = await supabase
+      const { data: existing, error: selectErr } = await supabase
         .from('users')
         .select('id')
         .eq('middleauth_email', email)
         .single();
 
+      if (selectErr && selectErr.code !== 'PGRST116') {
+        // PGRST116 = "no rows returned" (expected for new users)
+        console.warn('[backend] syncUser SELECT error:', selectErr.message);
+      }
+
       if (existing) {
         userId.value = existing.id;
+        console.info('[backend] syncUser: found existing user', existing.id);
         // Update display name if changed
         await supabase
           .from('users')
@@ -1349,6 +1378,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .eq('id', existing.id);
       } else {
         // Create new user
+        console.info('[backend] syncUser: creating new user for', email);
         const { data: newUser, error: insertErr } = await supabase
           .from('users')
           .insert({ middleauth_email: email, display_name: displayName })
@@ -1356,6 +1386,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .single();
         if (insertErr) throw insertErr;
         userId.value = newUser?.id ?? null;
+        console.info('[backend] syncUser: created user', userId.value);
       }
     } catch (e: any) {
       console.warn('[backend] User sync failed:', e.message);
@@ -1529,10 +1560,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Log an edit operation to the audit trail + increment user stats + update streaks. */
   async function logEdit(entry: EditLogEntry) {
     try {
+      const uid = entry.user_id ?? userId.value;
+      if (!uid) {
+        console.warn('[backend] logEdit skipped — no userId set (syncUser may not have run yet)');
+      }
       // Fire audit trail insert (non-blocking)
       supabase.from('edit_log').insert({
         task_id: entry.task_id ?? activeTaskId.value,
-        user_id: entry.user_id ?? userId.value,
+        user_id: uid,
         operation: entry.operation,
         segment_before: entry.segment_before ?? null,
         segment_after: entry.segment_after ?? null,
@@ -1540,7 +1575,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         metadata: entry.metadata ?? null,
         dataset: entry.dataset ?? 'eyewire_ii',
         success: entry.success ?? true,
-      }).then(null, () => {});
+      }).then(
+        ({ error }) => { if (error) console.warn('[backend] edit_log insert failed:', error.message); },
+        () => {},
+      );
 
       // Increment user stats in Supabase + calculate streak
       if (!userId.value || !(entry.success ?? true)) return;
