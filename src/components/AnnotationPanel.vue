@@ -8,6 +8,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useHelpRequestStore } from '../store';
 import { getCellStatus, setCellComplete, saveCellType, CellStatus } from '../widgets/lightbulb_service';
+import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
 import { RETINAL_CELL_TYPES } from '../config';
 
 const annotStore = useSegmentAnnotationStore();
@@ -48,6 +49,10 @@ const savedFlash      = ref(false);
 const customTypeInput = ref('');
 const showTypeMenu    = ref(false);
 
+// ── PCG change log (merge/split history for this segment) ──────────────────
+const changeLog = ref<ChangeLogSummary | null>(null);
+const changeLogLoading = ref(false);
+
 // Short display ID — show nickname if set, otherwise truncated ID
 const nickname = computed(() => {
   if (!activeSegId.value) return '';
@@ -74,12 +79,22 @@ const cellTypeLabel = computed(() =>
 // ── Fetch status from CAVE whenever the active segment changes ───────────────
 watch(activeSegId, async (id) => {
   if (!id) return;
+  changeLog.value = null;
+  changeLogLoading.value = true;
   annotStore.setAnnotation({
     segId: id, isComplete: false, cellType: '',
     loading: true, error: '',
   });
-  try {
-    const status: CellStatus | null = await getCellStatus(caveUrl.value, id);
+
+  // Fetch CAVE status and PCG change log in parallel
+  const [statusResult, logResult] = await Promise.allSettled([
+    getCellStatus(caveUrl.value, id),
+    getChangeLog(id),
+  ]);
+
+  // Handle CAVE status
+  if (statusResult.status === 'fulfilled') {
+    const status = statusResult.value;
     if (status) {
       annotStore.setAnnotation({
         segId: id,
@@ -96,12 +111,18 @@ watch(activeSegId, async (id) => {
         loading: false, error: 'No CAVE connection',
       });
     }
-  } catch (e) {
+  } else {
     annotStore.setAnnotation({
       segId: id, isComplete: false, cellType: '',
-      loading: false, error: String(e),
+      loading: false, error: String(statusResult.reason),
     });
   }
+
+  // Handle PCG change log
+  if (logResult.status === 'fulfilled') {
+    changeLog.value = logResult.value;
+  }
+  changeLogLoading.value = false;
 }, { immediate: true });
 
 // ── Actions ──────────────────────────────────────────────────────────────────
@@ -250,6 +271,36 @@ function submitHelpRequest() {
       >
         {{ savingComplete ? 'Saving…' : annotation?.isComplete ? 'Unmark' : 'Mark Complete' }}
       </button>
+    </div>
+
+    <!-- Edit history row (merge/split counts from PCG) -->
+    <div class="nge-ann-row nge-ann-row--edits" v-if="changeLog || changeLogLoading">
+      <span class="nge-ann-label">Edits</span>
+      <div class="nge-ann-edit-stats" v-if="changeLog">
+        <span class="nge-ann-edit-stat nge-ann-edit-stat--merge" title="Merges on this cell">
+          <svg class="nge-ann-edit-icon" viewBox="0 0 16 16" fill="none">
+            <path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="4" cy="2.5" r="1.5" fill="currentColor"/>
+            <circle cx="12" cy="2.5" r="1.5" fill="currentColor"/>
+            <path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          {{ changeLog.nMerges }}
+        </span>
+        <span class="nge-ann-edit-stat nge-ann-edit-stat--split" title="Splits on this cell">
+          <svg class="nge-ann-edit-icon" viewBox="0 0 16 16" fill="none">
+            <path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="8" cy="2.5" r="1.5" fill="currentColor"/>
+            <path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          {{ changeLog.nSplits }}
+        </span>
+        <span class="nge-ann-edit-contributors" v-if="Object.keys(changeLog.userInfo).length > 0"
+              :title="Object.keys(changeLog.userInfo).length + ' contributor(s)'">
+          👥 {{ Object.keys(changeLog.userInfo).length }}
+        </span>
+      </div>
+      <span class="nge-ann-edit-loading" v-else>loading…</span>
     </div>
 
     <!-- Cell type row -->
@@ -440,6 +491,41 @@ function submitHelpRequest() {
 .nge-ann-status--inprogress { color: #aaa; }
 .nge-ann-status--loading    { color: #778; font-style: italic; }
 .nge-ann-status--error      { color: #f88; }
+
+/* ── Edit stats (PCG merge/split counts) ── */
+.nge-ann-edit-stats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+}
+
+.nge-ann-edit-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.nge-ann-edit-stat--merge { color: #CE93D8; }
+.nge-ann-edit-stat--split { color: #f5a623; }
+
+.nge-ann-edit-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.nge-ann-edit-contributors {
+  font-size: 12px;
+  color: #778;
+  margin-left: auto;
+}
+
+.nge-ann-edit-loading {
+  font-size: 13px;
+  color: #778;
+  font-style: italic;
+}
 
 /* ── Buttons ── */
 .nge-ann-btn {
