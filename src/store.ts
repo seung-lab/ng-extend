@@ -247,6 +247,7 @@ export const useLayersStore = defineStore('layers', () => {
         }
 
         statsStore.logDailyEdit(net < 0 ? 'merge' : 'split');
+        statsStore.signalEdit(net < 0 ? 'merge' : 'split');
         localEditAccum += 1;
         if (localEditAccum >= 5) {
           statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
@@ -433,6 +434,17 @@ export const useUserStatsStore = defineStore('userStats', () => {
 
   function setStats(partial: Partial<UserStats>) {
     Object.assign(stats.value, partial);
+    // Guard: allTime must never be less than today/week/month
+    const s = stats.value;
+    s.editsAllTime   = Math.max(s.editsAllTime,   s.editsToday,  s.editsThisWeek,  s.editsThisMonth);
+    s.mergesAllTime  = Math.max(s.mergesAllTime,  s.mergesToday, s.mergesThisWeek, s.mergesThisMonth);
+    s.splitsAllTime  = Math.max(s.splitsAllTime,  s.splitsToday, s.splitsThisWeek, s.splitsThisMonth);
+    s.editsThisWeek  = Math.max(s.editsThisWeek,  s.editsToday);
+    s.editsThisMonth = Math.max(s.editsThisMonth, s.editsThisWeek);
+    s.mergesThisWeek = Math.max(s.mergesThisWeek, s.mergesToday);
+    s.mergesThisMonth= Math.max(s.mergesThisMonth,s.mergesThisWeek);
+    s.splitsThisWeek = Math.max(s.splitsThisWeek, s.splitsToday);
+    s.splitsThisMonth= Math.max(s.splitsThisMonth,s.splitsThisWeek);
     persist();
   }
 
@@ -489,7 +501,18 @@ export const useUserStatsStore = defineStore('userStats', () => {
 
   loadDailyLog();
 
-  return {stats, setStats, dailyLog, logDailyEdit, logDailyCellComplete, logDailyQuestComplete};
+  // ── Edit event signal for UI celebrations ───────────────────────
+  /** Brief reactive signal: set on merge/split, auto-clears after 2.5s. */
+  const recentEditEvent = ref<{type: 'merge' | 'split'; ts: number} | null>(null);
+  let editEventTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function signalEdit(type: 'merge' | 'split') {
+    recentEditEvent.value = {type, ts: Date.now()};
+    if (editEventTimer) clearTimeout(editEventTimer);
+    editEventTimer = setTimeout(() => { recentEditEvent.value = null; }, 2500);
+  }
+
+  return {stats, setStats, dailyLog, logDailyEdit, logDailyCellComplete, logDailyQuestComplete, recentEditEvent, signalEdit};
 });
 
 // ─── User Preferences Store ───────────────────────────────────────────────────
@@ -578,6 +601,8 @@ export interface CellHistoryEntry {
   nickname?: string;
   /** Favorite flag — favorite cells appear at the top of the list. */
   isFavorite?: boolean;
+  /** Dataset/layer name this cell belongs to (for filtering). */
+  dataset?: string;
 }
 
 export const useCellHistoryStore = defineStore('cellHistory', () => {
@@ -606,6 +631,7 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
         ...entry,
         cellType: entry.cellType || existing.cellType,
         position: entry.position || existing.position,
+        dataset: entry.dataset || existing.dataset,
         updatedAt: now,
       };
     } else {
@@ -617,6 +643,7 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
         updatedAt: now,
         nickname: entry.nickname,
         isFavorite: entry.isFavorite,
+        dataset: entry.dataset,
       });
     }
     // Sort: favorites first, then by most recent

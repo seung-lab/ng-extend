@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import { useHelpRequestStore, useCellHistoryStore, HelpRequest } from '../store';
 
@@ -19,7 +19,15 @@ function currentDataset(): string {
   return '';
 }
 
-const activeDataset = computed(() => currentDataset());
+// Use a ref (not computed) since window.viewer is not reactive.
+// Set on mount so it captures the current dataset at panel open time.
+const activeDataset = ref('');
+
+onMounted(() => {
+  activeDataset.value = currentDataset();
+  // Ensure help store data is fresh from localStorage
+  helpStore.refreshPending();
+});
 
 function isCrossDataset(req: HelpRequest): boolean {
   return !!req.dataset && !!activeDataset.value && req.dataset !== activeDataset.value;

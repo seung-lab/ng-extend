@@ -149,7 +149,10 @@ const emit = defineEmits({hide: null});
                 </td>
                 <td class="nge-lb-td">
                   <!-- Use live prefs flag for the logged-in user's row -->
-                  <img class="nge-lb-flag-img" :src="flagImgUrl((user.id === 'amy' || user.id === backendStore.userId) ? (prefs.flag || user.flag) : user.flag)" />
+                  <img v-if="flagImgUrl((user.id === 'amy' || user.id === backendStore.userId) ? (prefs.flag || user.flag) : user.flag)"
+                       class="nge-lb-flag-img"
+                       :src="flagImgUrl((user.id === 'amy' || user.id === backendStore.userId) ? (prefs.flag || user.flag) : user.flag)" />
+                  <span v-else class="nge-lb-flag-fallback">🌐</span>
                   <span class="nge-lb-name">{{ user.name }}</span>
                   <span v-if="user.id === 'amy' || user.id === backendStore.userId" class="nge-lb-you-tag">you</span>
                   <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak"
@@ -188,7 +191,8 @@ const emit = defineEmits({hide: null});
 
           <div class="nge-lb-detail-header">
             <div class="nge-lb-detail-name-row">
-              <img class="nge-lb-flag-img nge-lb-flag-img--detail" :src="flagImgUrl(selectedUser.flag)" />
+              <img v-if="flagImgUrl(selectedUser.flag)" class="nge-lb-flag-img nge-lb-flag-img--detail" :src="flagImgUrl(selectedUser.flag)" />
+              <span v-else class="nge-lb-flag-fallback nge-lb-flag-fallback--detail">🌐</span>
               <div class="nge-lb-detail-name">{{ selectedUser.name }}</div>
             </div>
             <div class="nge-lb-detail-bio" v-if="selectedUser.bio">{{ selectedUser.bio }}</div>
@@ -487,6 +491,15 @@ const emit = defineEmits({hide: null});
 }
 .nge-lb-flag-img--detail {
   width: 32px; height: 22px;
+}
+
+.nge-lb-flag-fallback {
+  font-size: 1em;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.nge-lb-flag-fallback--detail {
+  font-size: 1.5em;
 }
 
 .nge-lb-name {

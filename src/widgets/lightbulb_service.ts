@@ -84,6 +84,19 @@ function deleteLocalAnnotation(rootId: string, field: 'isComplete' | 'cellType')
   localStorage.setItem(LOCAL_ANNOTATION_KEY, JSON.stringify(store));
 }
 
+// ─── Current dataset helper ─────────────────────────────────────────────────
+
+function getCurrentDataset(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (url.includes('graphene') || url.includes('segmentation')) return ml.name ?? '';
+    }
+  } catch {}
+  return '';
+}
+
 // ─── Current viewer position helper ─────────────────────────────────────────
 
 function getViewerPosition(): [number, number, number] {
@@ -242,6 +255,7 @@ export async function setCellComplete(
             segId: rootId,
             isComplete: true,
             position: pos,
+            dataset: getCurrentDataset(),
           });
           const statsStore = useUserStatsStore();
           statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
@@ -267,6 +281,7 @@ export async function setCellComplete(
       segId: rootId,
       isComplete: complete,
       position: pos,
+      dataset: getCurrentDataset(),
     });
     if (complete) {
       const statsStore = useUserStatsStore();
@@ -340,6 +355,7 @@ export async function saveCellType(
             segId: rootId,
             cellType: cellType,
             position: pos,
+            dataset: getCurrentDataset(),
           });
         } catch { /* non-critical */ }
         return true;
@@ -371,6 +387,7 @@ export async function saveCellType(
             segId: rootId,
             cellType: cellType,
             position: pos,
+            dataset: getCurrentDataset(),
           });
         } catch { /* non-critical */ }
         return true;
@@ -392,6 +409,7 @@ export async function saveCellType(
       segId: rootId,
       cellType: cellType,
       position: pos,
+      dataset: getCurrentDataset(),
     });
   } catch { /* non-critical */ }
   // Log to Supabase regardless of CAVE/local path

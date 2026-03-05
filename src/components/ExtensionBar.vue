@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onMounted, ref} from "vue";
+import {computed, onMounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
 import UserProfilePanel from "components/UserProfilePanel.vue";
@@ -50,10 +50,20 @@ onMounted(() => {
   (document.querySelector('.ng-extend-logo > a > img')! as HTMLImageElement).src = logoImage;
 });
 
-const { stats } = storeToRefs(useUserStatsStore());
+const statsStore = useUserStatsStore();
+const { stats } = storeToRefs(statsStore);
 const { activeSegId } = storeToRefsAnnot(useSegmentAnnotationStore());
 const helpStore = useHelpRequestStore();
 const queueStore = useProofreadingQueueStore();
+
+// ── Merge/Split celebration animation ──────────────────────────
+const editCelebration = ref<'merge' | 'split' | null>(null);
+watch(() => statsStore.recentEditEvent, (ev) => {
+  if (ev) {
+    editCelebration.value = ev.type;
+    setTimeout(() => { editCelebration.value = null; }, 2200);
+  }
+});
 
 const showModal = ref(false);
 const showProfile = ref(false);
@@ -186,6 +196,16 @@ function activateTool(toolType: 'multicut' | 'merge') {
         @click="icon.action()"
       ><span v-if="icon.svg" v-html="icon.svg"></span><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge">{{ icon.badge() }}</span></button>
     </div>
+
+    <!-- Merge/Split celebration burst -->
+    <Transition name="nge-edit-burst">
+      <div v-if="editCelebration" class="nge-edit-celebration" :class="'nge-edit-celebration--' + editCelebration">
+        <span class="nge-edit-celebration-icon">{{ editCelebration === 'merge' ? '🔗' : '✂️' }}</span>
+        <span class="nge-edit-celebration-text">{{ editCelebration === 'merge' ? 'Merged!' : 'Split!' }}</span>
+        <span v-for="i in 8" :key="i" class="nge-edit-spark" :style="{ '--spark-i': i }"></span>
+      </div>
+    </Transition>
+
     <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn">My Profile</button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
@@ -376,5 +396,109 @@ function activateTool(toolType: 'multicut' | 'merge') {
   color: #888;
   font-family: inherit;
   letter-spacing: 0.03em;
+}
+
+/* ── Merge/Split celebration ─────────────────────────── */
+.nge-edit-celebration {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.nge-edit-celebration--merge {
+  background: linear-gradient(135deg, rgba(100, 200, 255, 0.25), rgba(80, 160, 255, 0.15));
+  border: 1px solid rgba(100, 200, 255, 0.45);
+  color: rgba(160, 230, 255, 0.95);
+  box-shadow: 0 0 20px rgba(100, 200, 255, 0.3), 0 0 40px rgba(100, 200, 255, 0.1);
+}
+
+.nge-edit-celebration--split {
+  background: linear-gradient(135deg, rgba(255, 170, 100, 0.25), rgba(255, 140, 60, 0.15));
+  border: 1px solid rgba(255, 170, 100, 0.45);
+  color: rgba(255, 210, 170, 0.95);
+  box-shadow: 0 0 20px rgba(255, 170, 100, 0.3), 0 0 40px rgba(255, 170, 100, 0.1);
+}
+
+.nge-edit-celebration-icon {
+  font-size: 1.2em;
+  animation: ngeEditBounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.nge-edit-celebration-text {
+  animation: ngeEditSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Spark particles */
+.nge-edit-spark {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  pointer-events: none;
+  animation: ngeEditSpark 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--spark-i) * 0.04s);
+}
+
+.nge-edit-celebration--merge .nge-edit-spark {
+  background: rgba(100, 200, 255, 0.9);
+  box-shadow: 0 0 6px rgba(100, 200, 255, 0.6);
+}
+
+.nge-edit-celebration--split .nge-edit-spark {
+  background: rgba(255, 170, 100, 0.9);
+  box-shadow: 0 0 6px rgba(255, 170, 100, 0.6);
+}
+
+@keyframes ngeEditBounce {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ngeEditSlideIn {
+  0% { opacity: 0; transform: translateX(-10px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ngeEditSpark {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(
+      calc(-50% + cos(calc(var(--spark-i) * 45deg)) * 30px),
+      calc(-50% + sin(calc(var(--spark-i) * 45deg)) * 20px)
+    ) scale(0);
+    opacity: 0;
+  }
+}
+
+/* Transition */
+.nge-edit-burst-enter-active {
+  animation: ngeEditAppear 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.nge-edit-burst-leave-active {
+  animation: ngeEditDisappear 0.5s cubic-bezier(0.55, 0, 1, 0.45) both;
+}
+
+@keyframes ngeEditAppear {
+  0% { opacity: 0; transform: scale(0.5) translateY(4px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes ngeEditDisappear {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.8) translateY(-6px); filter: blur(4px); }
 }
 </style>

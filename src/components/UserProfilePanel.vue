@@ -295,9 +295,30 @@ const nextAchievement = computed(() => {
   return { name: next.name, threshold: next.editThreshold, remaining, pct };
 });
 
+// ── Current dataset helper (for filtering cells) ────────────────────────────
+function getCurrentDataset(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (url.includes('graphene') || url.includes('segmentation')) return ml.name ?? '';
+    }
+  } catch {}
+  return '';
+}
+const currentDataset = ref('');
+onMounted(() => { currentDataset.value = getCurrentDataset(); });
+
 // ── Cell history helpers ──────────────────────────────────────────────────────
-const completedCells = computed(() => cellHistory.value.filter(c => c.isComplete));
-const identifiedCells = computed(() => cellHistory.value.filter(c => c.cellType && !c.isComplete));
+/** Filter cells by current dataset (if set). Cells without a dataset tag always show. */
+const filteredCellHistory = computed(() => {
+  const ds = currentDataset.value;
+  if (!ds) return cellHistory.value;
+  return cellHistory.value.filter(c => !c.dataset || c.dataset === ds);
+});
+
+const completedCells = computed(() => filteredCellHistory.value.filter(c => c.isComplete));
+const identifiedCells = computed(() => filteredCellHistory.value.filter(c => c.cellType && !c.isComplete));
 
 // ── 14-day activity chart data ───────────────────────────────────────────────
 const last14Days = computed(() => {
@@ -493,19 +514,20 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </div>
               <div class="nge-profile-stat-col">
                 <div class="nge-profile-stat-label">Total</div>
-                <div class="nge-profile-stat-val">{{ cellHistory.length.toLocaleString() }}</div>
+                <div class="nge-profile-stat-val">{{ filteredCellHistory.length.toLocaleString() }}</div>
                 <div class="nge-profile-stat-sub">touched</div>
               </div>
             </div>
 
             <!-- Cell history list -->
-            <div class="nge-cell-list" v-if="cellHistory.length > 0">
+            <div class="nge-cell-list" v-if="filteredCellHistory.length > 0">
               <div class="nge-cell-list-header">
                 <span>Recent cells — click to jump</span>
+                <span v-if="currentDataset" class="nge-cell-list-dataset" :title="'Filtered to ' + currentDataset">{{ currentDataset }}</span>
               </div>
               <div class="nge-cell-list-scroll">
                 <div
-                  v-for="cell in cellHistory.slice(0, 50)"
+                  v-for="cell in filteredCellHistory.slice(0, 50)"
                   :key="cell.segId"
                   class="nge-cell-row"
                   :title="cell.nickname ? `${cell.nickname} (${cell.segId})` : `Jump to ${cell.segId}`"
@@ -1330,6 +1352,17 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   font-size: 0.68em;
   color: rgba(74, 158, 255, 0.45);
   font-style: italic;
+}
+
+.nge-cell-list-dataset {
+  font-size: 0.62em !important;
+  font-style: normal !important;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(74, 158, 255, 0.08);
+  border: 1px solid rgba(74, 158, 255, 0.2);
+  color: rgba(74, 158, 255, 0.6) !important;
+  font-weight: 500;
 }
 
 .nge-cell-list-scroll {

@@ -34,9 +34,9 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
   {
     id: 2,
     name: 'Getting Started',
-    description: 'Reached 10 edits.',
+    description: 'Reached 5 edits.',
     imageKey: 'badge_2',
-    editThreshold: 10,
+    editThreshold: 5,
   },
   {
     id: 3,

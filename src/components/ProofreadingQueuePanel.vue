@@ -8,6 +8,11 @@ const queue = useProofreadingQueueStore();
 const history = useCellHistoryStore();
 const emit = defineEmits({ hide: null });
 
+// Always re-fetch the sheet when the Quest Board opens (picks up new segIDs)
+onMounted(() => {
+  if (queue.sheetUrl) queue.loadFromSheet();
+});
+
 const sheetInput = ref(queue.sheetUrl || '');
 
 // ── View mode: 'daily' (3 quests/day) or 'all' (full list) ──────────

@@ -1,10 +1,16 @@
 # ng-extend — EyeWire II Community Edition
 
 <p align="center">
-  <img src="docs/login-neuron.png" alt="Animated neuron login screen" width="360"/>
+  <img src="docs/neuron-render.png" alt="Stunning 3D neuron reconstruction from connectomics data" width="700"/>
   <br/>
-  <em>Holographic login with animated fluorescence-style pyramidal neuron</em>
+  <em>3D neuron reconstructions from connectomics data — the visual cortex mapped by citizen scientists</em>
 </p>
+
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/login-window.mp4" alt="Holographic login window with animated neuron" width="400" autoplay loop muted></video>
+</p>
+
+https://github.com/user-attachments/assets/login-window.mp4
 
 A [neuroglancer](https://github.com/google/neuroglancer) overlay that transforms connectomics proofreading into a community-driven science game. Built on the [CAVE](https://github.com/CAVEconnectome) annotation framework, EyeWire II adds gamification, daily quests, annotation tools, and a holographic sci-fi interface — all without modifying neuroglancer core.
 
@@ -35,6 +41,14 @@ npm run build                                # production build → dist/min/
 ---
 
 ## Features
+
+### User Profile
+
+<p align="center">
+  <img src="docs/profile.png" alt="User Profile with stats, badges, streak chart, and cells mapped" width="700"/>
+  <br/>
+  <em>Three-column profile: contribution stats, badges & streak, and cell visualization</em>
+</p>
 
 ### Holographic Sci-Fi Interface
 
@@ -112,6 +126,8 @@ A draggable floating panel that turns proofreading into structured daily mission
 **Achievement System** — 19 badge milestones from First Merge (1 edit) to Legend (250,000 edits), with animated holographic toast notifications on unlock. Streak milestones at 7, 14, 30, 60, 100, 200, and 365 days.
 
 **Second Opinion Requests** — flag any segment for community review with an issue category (Extension, Merge, Black Spill, Doublecheck). Reviewers can jump directly to the flagged cell.
+
+**Merge/Split Celebrations** — satisfying animated burst in the toolbar when a merge or split operation completes, with particle sparks and color-coded feedback.
 
 ### Command Palette
 
@@ -222,8 +238,8 @@ Edit `config/custom-keybinds.json`:
 | UI framework | Vue 3 + Pinia (state management) |
 | Bundler | esbuild (via neuroglancer's config) |
 | Viewer | neuroglancer (git submodule) |
-| Backend | CAVE annotation API + middleauth |
-| Persistence | localStorage (offline fallback) |
+| Backend | CAVE annotation API + Supabase + middleauth |
+| Persistence | localStorage (offline fallback) + Supabase (cloud) |
 
 ### How it works
 
@@ -234,6 +250,7 @@ Edit `config/custom-keybinds.json`:
 5. Clicking the button shows a context menu with completion/cell-type controls
 6. The floating `AnnotationPanel` surfaces when a segment is selected
 7. All data persists to CAVE API (with localStorage fallback)
+8. Supabase backend tracks edit logs, user stats, and activity feed
 
 ### Key files
 
@@ -241,15 +258,16 @@ Edit `config/custom-keybinds.json`:
 |------|---------|
 | `scripts/dev-server.js` | Dev server launcher with dataset switching and layer config |
 | `src/main.ts` | ExtendViewer class, DOM observer, segment injection, favicon |
-| `src/store.ts` | 10 Pinia stores (layers, stats, prefs, annotations, queue, etc.) |
+| `src/store.ts` | 10+ Pinia stores (layers, stats, prefs, annotations, queue, etc.) |
 | `src/config.ts` | CAVE config, per-dataset server URLs, cell type list |
+| `src/supabase.ts` | Supabase client for cloud persistence |
 
 ### Components (`src/components/`)
 
 | Component | Purpose |
 |-----------|---------|
 | `App.vue` | Root shell — renders ExtensionBar + neuroglancer container |
-| `ExtensionBar.vue` | Top bar: logo, volumes, status legend, streak, dashboard buttons |
+| `ExtensionBar.vue` | Top bar: logo, volumes, status legend, streak, dashboard buttons, merge/split celebration |
 | `LoginModal.vue` | Holographic login modal with animated neuron + multi-server auth |
 | `AnnotationPanel.vue` | Floating panel for selected segment — status, cell type, second opinion |
 | `ProofreadingQueuePanel.vue` | Quest Board — daily quests, nicknames, task list, progress tracking |
@@ -258,7 +276,8 @@ Edit `config/custom-keybinds.json`:
 | `LeaderboardPanel.vue` | Community rankings — All Time / Month / Week tabs, medal display |
 | `CommandPalette.vue` | Ctrl+K command palette — fuzzy search actions, cells, panels |
 | `HelpRequestsPanel.vue` | Second opinion requests — pending + resolved lists, jump-to-cell |
-| `SettingsPanel.vue` | Profile settings — flag emoji picker, bio textarea |
+| `SettingsPanel.vue` | Profile settings — flag emoji picker, bio textarea, toolbar customization |
+| `ActivityFeedPanel.vue` | Real-time activity feed from Supabase |
 | `AchievementToast.vue` | Badge unlock notification toast |
 | `ModalOverlay.vue` | Base modal wrapper — holographic particle backdrop, border glow |
 
@@ -268,12 +287,13 @@ Edit `config/custom-keybinds.json`:
 |-------|-----------|-------------|
 | `useLoginStore` | sessions[], active auth tokens | localStorage `auth_token_v2_*` |
 | `useLayersStore` | activeLayers, viewer ref, CAVE URL detection | Runtime |
-| `useUserStatsStore` | edits/merges/splits (day/week/month/all), streak | Runtime |
-| `useUserPreferencesStore` | flag emoji, bio | localStorage `nge_prefs_v1` |
+| `useUserStatsStore` | edits/merges/splits (day/week/month/all), streak, edit events | localStorage `nge_stats_v1` |
+| `useUserPreferencesStore` | flag emoji, bio, toolbar icons | localStorage `nge_prefs_v1` |
 | `useSegmentAnnotationStore` | activeSegId, CAVE URL, annotation state | Runtime |
-| `useCellHistoryStore` | cells[], favorites, nicknames, jumpToCell() | localStorage `nge_cell_history_v1` |
+| `useCellHistoryStore` | cells[], favorites, nicknames, dataset, jumpToCell() | localStorage `nge_cell_history_v1` |
 | `useHelpRequestStore` | requests[], pending[], add/resolve | localStorage `nge_help_requests_v1` |
 | `useProofreadingQueueStore` | items[], proofread Set, localEdits, CSV parser | localStorage `nge_queue_*` |
+| `useProofreadingBackendStore` | Supabase sync, edit logging, leaderboard, activity feed | Supabase |
 | `useVolumesStore` | volumes[] from CAVE API | Runtime |
 | `useDropdownListStore` | activeDropdowns, getDropdownId() | Runtime |
 
@@ -303,13 +323,15 @@ ng-extend reads and writes to two CAVE annotation tables:
 
 ---
 
-## Adding Screenshots
+## Screenshots
 
 To update the screenshots referenced in this README, save images to the `docs/` folder:
 
 | File | Content |
 |------|---------|
-| `docs/login-neuron.png` | The login modal showing the animated neuron |
+| `docs/neuron-render.png` | 3D neuron reconstruction render |
+| `docs/profile.png` | User profile panel |
+| `docs/login-window.mp4` | Login modal video |
 | `docs/quest-board.png` | Quest Board panel with daily quests and nicknames |
 | `docs/demo.gif` | Status pips and label badges in segment list |
 
