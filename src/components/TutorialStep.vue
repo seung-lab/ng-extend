@@ -324,7 +324,12 @@ onUnmounted(() => {
                 <span class="corner corner-bl"></span>
                 <span class="corner corner-br"></span>
                 <button class="exit" @click="inExitConfirm = true">×</button>
-                <div class="title" v-if="computedStep.title">{{ computedStep.title }}</div>
+                <div class="title" v-if="computedStep.title">
+                  <span v-for="(char, i) in computedStep.title.split('')" :key="i"
+                    class="title-letter"
+                    :style="{ animationDelay: (i * 0.06) + 's' }"
+                  >{{ char === ' ' ? '\u00A0' : char }}</span>
+                </div>
                 <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline
                     :src="computedStep.video"></video>
                 <img class="image" v-if="computedStep.image" :src="computedStep.image">
@@ -552,6 +557,21 @@ onUnmounted(() => {
 
 .chip .title {
     font-size: 22px;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+@keyframes letterReveal {
+    0% { opacity: 0; transform: translateY(8px) scale(0.8); }
+    60% { opacity: 1; transform: translateY(-2px) scale(1.05); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.title-letter {
+    display: inline-block;
+    opacity: 0;
+    animation: letterReveal 0.4s ease-out forwards;
 }
 
 .chip video,
@@ -628,29 +648,33 @@ onUnmounted(() => {
     color: #b0dfff;
 }
 
+/* Gentle balloon drift — smooth curves like a real balloon floating upward */
 @keyframes floatUp {
     0% {
-        transform: translateY(0) translateX(0);
+        transform: translateY(0) translateX(0) rotate(0deg);
         opacity: 1;
     }
-    15% {
-        transform: translateY(-16vh) translateX(30px);
+    10% {
+        transform: translateY(-10vh) translateX(8px) rotate(1deg);
     }
-    30% {
-        transform: translateY(-33vh) translateX(-20px);
+    25% {
+        transform: translateY(-25vh) translateX(15px) rotate(2deg);
     }
-    50% {
-        transform: translateY(-55vh) translateX(25px);
+    40% {
+        transform: translateY(-40vh) translateX(5px) rotate(-1deg);
+    }
+    55% {
+        transform: translateY(-55vh) translateX(-10px) rotate(-2deg);
     }
     70% {
-        transform: translateY(-77vh) translateX(-15px);
+        transform: translateY(-70vh) translateX(-5px) rotate(0deg);
     }
     85% {
         opacity: 1;
-        transform: translateY(-93vh) translateX(20px);
+        transform: translateY(-88vh) translateX(8px) rotate(1deg);
     }
     100% {
-        transform: translateY(-120vh) translateX(-10px);
+        transform: translateY(-120vh) translateX(3px) rotate(0deg);
         opacity: 0;
     }
 }
@@ -662,7 +686,7 @@ onUnmounted(() => {
     margin-left: -150px;
     width: 300px;
     z-index: 91;
-    animation: floatUp 6s ease-in-out forwards;
+    animation: floatUp 8s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
     pointer-events: none;
 }
 </style>

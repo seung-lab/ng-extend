@@ -189,7 +189,7 @@ Hit next to reveal the answer.`,
   },
   //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
   {
-    text: `Bravo! We found the continuation!`,
+    text: `Bravo! You found the continuation!`,
     position: {
       element: "body",
       x: 0.5,
