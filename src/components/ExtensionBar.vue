@@ -13,8 +13,10 @@ import ProofreadingQueuePanel from "components/ProofreadingQueuePanel.vue";
 import CommandPalette from "components/CommandPalette.vue";
 import AchievementToast from "components/AchievementToast.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
+// import ChatPanel from "components/ChatPanel.vue"; // TODO: enable after useChatStore is added
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore} from '../store';
+import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
 
@@ -73,8 +75,10 @@ const showSettings = ref(false);
 const showHelp = ref(false);
 const showQueue = ref(false);
 const showFeed = ref(false);
+const showChat = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
 const backendStore = useProofreadingBackendStore();
+const { tutorialStep } = storeToRefs(useTutorialStore());
 
 function logout(session: loginSession) {
   login.logout(session);
@@ -102,10 +106,11 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'quest', emoji: '🧠', label: 'Quest Board', action: () => { showQueue.value = true; }, badge: () => queueStore.pendingCount() },
   { id: 'help', emoji: '🔍', label: 'Second Opinion Requests', action: () => { showHelp.value = true; }, badge: () => helpStore.pending.length },
   { id: 'feed', emoji: '📡', label: 'Activity Feed', action: () => { showFeed.value = true; } },
+  { id: 'chat', emoji: '💬', label: 'Chat', action: () => { showChat.value = !showChat.value; } },
   { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
 ]);
 
-const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'help', 'feed', 'settings'];
+const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'help', 'feed', 'chat', 'settings'];
 
 const visibleToolbar = computed(() => {
   const prefs = useUserPreferencesStore().prefs;
@@ -170,6 +175,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
+  <!-- <chat-panel v-if="showChat" @hide="showChat = false" /> --> <!-- TODO: enable after useChatStore is added -->
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://h01-release.storage.googleapis.com/explore.html" target="_blank">
@@ -231,6 +237,43 @@ function activateTool(toolType: 'multicut' | 'merge') {
           </template>
         </dropdown-list>
     </template>
+    <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
+      <template #buttonTitle>☰</template>
+      <template #listItems>
+        <li>
+          <div class="logoutButton button" @click="tutorialStep = 0">
+            <span>Reset Tutorial</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank" href="https://forum.eyewire.org">Forum</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank"
+                href="https://blog.pyr.ai/2024/12/20/proofreading-101-climb-into-spelunker/">Proofreading
+                Guide</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank" href="https://youtu.be/48GS9Sizrvw">Merge</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank" href="https://youtu.be/DB6wmQWGsck">Split</a></span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button">
+            <span><a target="_blank" href="https://youtu.be/CGooeAhSryg">Find path</a></span>
+          </div>
+        </li>
+      </template>
+    </dropdown-list>
   </div>
 </template>
 
@@ -500,5 +543,24 @@ function activateTool(toolType: 'multicut' | 'merge') {
 @keyframes ngeEditDisappear {
   0% { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(0.8) translateY(-6px); filter: blur(4px); }
+}
+
+/* ── Hamburger menu ── */
+#hamburger li {
+  padding: 10px;
+  cursor: pointer;
+  display: grid;
+  justify-content: center;
+  align-content: center;
+  white-space: nowrap;
+}
+
+#hamburger li:hover {
+  background-color: #ffffff33;
+}
+
+#hamburger li a {
+  color: unset;
+  text-decoration: unset;
 }
 </style>

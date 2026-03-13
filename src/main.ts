@@ -5,7 +5,8 @@ import 'neuroglancer/ui/default_viewer.css';
 import './widgets/lightbulb_menu.css';
 
 import App from 'components/App.vue';
-import {useLayersStore, useSegmentAnnotationStore, useSplitMergeOverlayStore} from 'src/store';
+import {useLayersStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';
+import {useStatsStore} from './store-pyr';
 import {exitGrapheneTool} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
@@ -85,6 +86,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const app = createApp(App);
   app.use(pinia);
   const {initializeWithViewer} = useLayersStore();
+  const {loadVolumes} = useVolumesStore();
   app.directive('visible', function(el, binding) {
     el.style.visibility = !!binding.value ? 'visible' : 'hidden';
   });
@@ -92,8 +94,12 @@ window.addEventListener('DOMContentLoaded', () => {
   const viewer = setupViewer();
   // const viewer = setupDefaultViewer();
   initializeWithViewer(viewer);
+  loadVolumes(viewer);
   mergeTopBars();
   liveNeuroglancerInjection();
+
+  const {loopUpdateLeaderboard} = useStatsStore();
+  loopUpdateLeaderboard();
 
   // Auto-select segmentation layer after viewer loads (fallback for when
   // LoginModal doesn't fire — e.g. already authenticated or bypass).

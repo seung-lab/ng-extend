@@ -1,0 +1,68 @@
+/**
+ * @license
+ * Copyright 2016 Google Inc.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+.neuroglancer-image-dropdown {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 0px;
+}
+
+.neuroglancer-image-dropdown .neuroglancer-shader-code-widget {
+  flex-shrink: 0;
+  height: 8em;
+  border: 1px solid transparent;
+}
+
+.neuroglancer-image-dropdown-top-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.neuroglancer-image-layer-shader-overlay .neuroglancer-shader-code-widget {
+  width: 80vw;
+  height: 80vh;
+}
+
+.neuroglancer-selection-details-value-grid {
+  display: grid;
+  grid-auto-rows: auto;
+  font-family: monospace;
+  font-size: medium;
+  align-items: center;
+}
+
+.neuroglancer-selection-details-value-grid-dim {
+  grid-column: dim;
+  color: #ff6;
+}
+
+.neuroglancer-selection-details-value-grid-dim::after {
+  content: "=";
+  color: #aaa;
+}
+
+.neuroglancer-selection-details-value-grid-coord {
+  grid-column: coord;
+  color: #aaa;
+  margin-right: 1ch;
+}
+
+.neuroglancer-selection-details-value-grid-value {
+  grid-column: value;
+  user-select: text;
+}

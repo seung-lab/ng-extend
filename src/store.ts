@@ -29,6 +29,7 @@ export const useDropdownListStore = defineStore('dropdownlist', () => {
 });
 
 export interface loginSession {
+  id: number,
   key: string,
   name: string,
   email: string,
@@ -80,14 +81,17 @@ export const useLoginStore = defineStore('login', () => {
         if (res.status === 200) {
           const contentType = res.headers.get("content-type");
           const message = await ((contentType === 'application/json') ? res.json() : res.text());
+          const { id, name, email } = message;
           newSessions.push({
+            id,
             key,
-            name: message.name,
-            email: message.email,
+            name,
+            email,
             hostname,
           });
         } else {
           newSessions.push({
+            id: 0,
             key,
             name: '',
             email: '',
@@ -353,7 +357,32 @@ export const useLayersStore = defineStore('layers', () => {
     return EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
   }
 
-  return {initializeWithViewer, activeLayers, selectLayers, getCaveServerUrl};
+  async function loadState(url: string) {
+    if (!viewer) return;
+    try {
+      const {url: fetchUrl, credentialsProvider} = parseSpecialUrl(url, defaultCredentialsManager);
+      const response = await cancellableFetchSpecialOk(credentialsProvider, fetchUrl, {}, responseJson);
+      // Set layout first to avoid localPositionValid crashes during layout transitions
+      if (response.layout) {
+        const layoutName = typeof response.layout === 'string'
+          ? response.layout
+          : response.layout.type;
+        if (layoutName) {
+          try {
+            viewer!.layout.container.setSpecification(layoutName);
+          } catch (e) {
+            console.warn('loadState: setSpecification error (non-fatal):', e);
+          }
+          await new Promise(r => requestAnimationFrame(r));
+        }
+      }
+      viewer!.state.restoreState(response);
+    } catch (e) {
+      console.error('loadState failed:', e);
+    }
+  }
+
+  return {initializeWithViewer, activeLayers, selectLayers, getCaveServerUrl, loadState};
 });
 
 // ─── User Stats Store ────────────────────────────────────────────────────────
@@ -1898,28 +1927,52 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 export const useVolumesStore = defineStore('volumes', () => {
   const volumes: Ref<Volume[]> = ref([]);
 
-  (async () => {
+  async function loadVolumes(_viewer?: any) {
       if (!CONFIG || !CONFIG.volumes_url) return;
       const {url, credentialsProvider} = parseSpecialUrl(CONFIG.volumes_url, defaultCredentialsManager);
       const response = await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
 
         for (const [key, value] of Object.entries(response as any)) {
+          if (CONFIG.volumes_enabled && !CONFIG.volumes_enabled.includes(key)) {
+            continue;
+          }
           volumes.value.push({
             name: key,
             description: (value as any).description,
             image_layers: (value as any).image_layers.map((x: any) => {
               x.type = 'image';
-              x.source = x.image_source;
+              x.source = [x.image_source];
               return x;
             }),
             segmentation_layers: (value as any).segmentation_layers.map((x: any) => {
               x.type = 'segmentation';
-              x.source = x.segmentation_source;
+              x.source = [x.segmentation_source];
+              if (x.skeleton_source) {
+                x.source.push(x.skeleton_source);
+              }
               return x;
             }),
           });
         }
-  })();
 
-  return {volumes};
+        // Auto-select default volume if no layers loaded yet
+        const layerStore = useLayersStore();
+        if (layerStore.activeLayers.size === 0 || (layerStore.activeLayers.size === 1 && layerStore.activeLayers.has(''))) {
+          if (CONFIG.volumes_default) {
+            const volume = volumes.value.find(x => x.name === CONFIG.volumes_default?.name);
+            if (volume) {
+              const imageLayer = volume.image_layers.find(x => x.name === CONFIG.volumes_default?.image);
+              const segmentationLayer = volume.segmentation_layers.find(x => x.name === CONFIG.volumes_default?.segmentation);
+              if (imageLayer && segmentationLayer) {
+                layerStore.selectLayers([imageLayer, segmentationLayer]);
+              }
+            }
+          }
+        }
+  }
+
+  // Auto-load on store creation
+  loadVolumes();
+
+  return {loadVolumes, volumes};
 });

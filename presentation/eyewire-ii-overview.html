@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EyeWire II Community — Technical Overview</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --accent: #18cfff;
+    --accent2: #00dc96;
+    --accent3: #a78bfa;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --danger: #f87171;
+    --gold: #fbbf24;
+  }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; }
+
+  /* ── Slide Container ── */
+  .slides { width: 100%; height: 100%; position: relative; }
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    padding: 60px 80px;
+    opacity: 0; transform: translateX(40px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    pointer-events: none;
+  }
+  .slide.active { opacity: 1; transform: translateX(0); pointer-events: auto; }
+  .slide.prev { opacity: 0; transform: translateX(-40px); }
+
+  /* ── Typography ── */
+  h1 { font-size: 3.2em; font-weight: 900; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 16px; }
+  h2 { font-size: 2.2em; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 24px; }
+  h3 { font-size: 1.3em; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+  p { font-size: 1.15em; line-height: 1.7; color: var(--muted); max-width: 800px; }
+  .highlight { color: var(--accent); }
+  .highlight2 { color: var(--accent2); }
+  .highlight3 { color: var(--accent3); }
+  .gold { color: var(--gold); }
+
+  /* ── Grid Layouts ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; width: 100%; max-width: 1100px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; width: 100%; max-width: 1100px; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 20px; width: 100%; max-width: 1100px; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 28px;
+    text-align: left;
+  }
+  .card h4 { font-size: 1.1em; font-weight: 700; margin-bottom: 8px; }
+  .card p { font-size: 0.95em; line-height: 1.6; }
+  .card .icon { font-size: 2em; margin-bottom: 12px; display: block; }
+  .card-accent { border-left: 3px solid var(--accent); }
+  .card-green { border-left: 3px solid var(--accent2); }
+  .card-purple { border-left: 3px solid var(--accent3); }
+  .card-gold { border-left: 3px solid var(--gold); }
+
+  /* ── Stat Boxes ── */
+  .stat-box { text-align: center; padding: 20px; }
+  .stat-number { font-size: 3em; font-weight: 900; line-height: 1; }
+  .stat-label { font-size: 0.85em; color: var(--muted); margin-top: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
+
+  /* ── Lists ── */
+  ul { list-style: none; text-align: left; }
+  ul li { padding: 8px 0; font-size: 1.05em; color: var(--muted); position: relative; padding-left: 28px; }
+  ul li::before { content: ''; position: absolute; left: 0; top: 50%; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); transform: translateY(-50%); }
+  ul.green li::before { background: var(--accent2); }
+  ul.purple li::before { background: var(--accent3); }
+
+  /* ── Architecture diagram ── */
+  .arch-row { display: flex; gap: 16px; align-items: center; justify-content: center; margin: 10px 0; flex-wrap: wrap; }
+  .arch-box {
+    padding: 12px 24px; border-radius: 10px; font-weight: 600; font-size: 0.9em;
+    border: 1px solid rgba(255,255,255,0.1); text-align: center; min-width: 120px;
+  }
+  .arch-box-sm {
+    padding: 8px 14px; border-radius: 8px; font-weight: 500; font-size: 0.75em;
+    border: 1px solid rgba(255,255,255,0.08); text-align: center; min-width: 90px;
+  }
+  .arch-arrow { color: var(--muted); font-size: 1.4em; }
+  .arch-arrow-sm { color: var(--muted); font-size: 1em; }
+  .arch-vue { background: rgba(24,207,255,0.1); border-color: rgba(24,207,255,0.3); color: var(--accent); }
+  .arch-pinia { background: rgba(167,139,250,0.1); border-color: rgba(167,139,250,0.3); color: var(--accent3); }
+  .arch-ng { background: rgba(0,220,150,0.1); border-color: rgba(0,220,150,0.3); color: var(--accent2); }
+  .arch-api { background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.3); color: var(--gold); }
+  .arch-danger { background: rgba(248,113,113,0.08); border-color: rgba(248,113,113,0.25); color: var(--danger); }
+  .arch-label { font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; }
+
+  /* ── Table Schema ── */
+  .schema-table {
+    width: 100%; border-collapse: collapse; font-size: 0.8em;
+    background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden;
+  }
+  .schema-table th {
+    text-align: left; padding: 8px 12px; font-weight: 600;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    color: var(--accent); font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .schema-table td {
+    padding: 5px 12px; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.95em;
+  }
+  .schema-table tr:last-child td { border-bottom: none; }
+  .schema-table .type { color: var(--accent3); font-size: 0.85em; }
+  .schema-table .pk { color: var(--gold); }
+  .schema-table .fk { color: var(--accent2); }
+  .schema-card {
+    background: var(--surface); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px; padding: 16px; overflow: hidden;
+  }
+  .schema-card h4 {
+    font-size: 0.95em; font-weight: 700; margin-bottom: 10px; padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  /* ── Flow diagram ── */
+  .flow-container {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    width: 100%; max-width: 1100px;
+  }
+  .flow-row {
+    display: flex; gap: 12px; align-items: center; justify-content: center;
+    width: 100%; flex-wrap: wrap;
+  }
+  .flow-box {
+    padding: 10px 18px; border-radius: 10px; font-weight: 600; font-size: 0.82em;
+    text-align: center; position: relative;
+  }
+  .flow-arrow-down { color: var(--muted); font-size: 1.2em; }
+  .flow-arrow-right { color: var(--muted); font-size: 1em; margin: 0 4px; }
+  .flow-group {
+    border: 1px dashed rgba(255,255,255,0.12); border-radius: 14px;
+    padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; align-items: center;
+  }
+  .flow-group-label {
+    font-size: 0.65em; text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--muted); margin-bottom: 2px; font-weight: 600;
+  }
+
+  /* ── Nav ── */
+  .nav {
+    position: fixed; bottom: 24px; right: 32px; z-index: 100;
+    display: flex; gap: 12px; align-items: center;
+  }
+  .nav button {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text); padding: 10px 20px; border-radius: 8px; cursor: pointer;
+    font-family: 'Inter', sans-serif; font-size: 0.9em; font-weight: 500;
+    transition: all 0.2s;
+  }
+  .nav button:hover { background: rgba(255,255,255,0.12); }
+  .nav .counter { color: var(--muted); font-size: 0.85em; font-variant-numeric: tabular-nums; }
+  .subtitle { font-size: 1.3em; color: var(--muted); font-weight: 400; margin-bottom: 32px; }
+
+  /* ── Badge Row ── */
+  .badge-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+  .badge-pill {
+    padding: 6px 16px; border-radius: 20px; font-size: 0.8em; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  /* ── Code blocks ── */
+  .code {
+    background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; padding: 16px 20px; font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85em; line-height: 1.6; color: var(--muted); text-align: left;
+    max-width: 800px; width: 100%; overflow-x: auto;
+  }
+  .code .kw { color: var(--accent3); }
+  .code .fn { color: var(--accent); }
+  .code .str { color: var(--accent2); }
+  .code .cm { color: #4a5568; }
+
+  /* ── Tech tag pills ── */
+  .tech-tag {
+    display: inline-block; padding: 4px 12px; border-radius: 6px;
+    font-size: 0.75em; font-weight: 600; margin: 3px;
+  }
+
+  /* ── Divider ── */
+  .divider { width: 60px; height: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 2px; margin: 24px 0; }
+
+  /* ── Title slide glow ── */
+  .glow-bg {
+    position: absolute; width: 600px; height: 600px; border-radius: 50%;
+    filter: blur(120px); opacity: 0.12; pointer-events: none;
+  }
+  .glow-1 { background: var(--accent); top: -200px; right: -100px; }
+  .glow-2 { background: var(--accent2); bottom: -200px; left: -100px; }
+
+  /* ── Scrollable slide content ── */
+  .slide-scroll {
+    overflow-y: auto; max-height: calc(100vh - 120px); width: 100%;
+    display: flex; flex-direction: column; align-items: center; padding-bottom: 40px;
+  }
+</style>
+</head>
+<body>
+
+<div class="slides" id="slides">
+
+  <!-- ═══ SLIDE 1: Title ═══ -->
+  <div class="slide active" data-slide="0">
+    <div class="glow-bg glow-1"></div>
+    <div class="glow-bg glow-2"></div>
+    <h3>Introducing</h3>
+    <h1>EyeWire II <span class="highlight">Community</span></h1>
+    <p class="subtitle">A gamified neuroglancer extension for collaborative connectomics proofreading</p>
+    <div class="divider"></div>
+    <p style="text-align:center;">Vue 3 + Pinia &bull; Neuroglancer &bull; Supabase &bull; esbuild<br>
+    <span style="font-size:0.85em; color:#64748b;">Live at: amyleesterling.github.io/eyewire-ii</span></p>
+  </div>
+
+  <!-- ═══ SLIDE 2: Problem & Vision ═══ -->
+  <div class="slide" data-slide="1">
+    <h3>The Challenge</h3>
+    <h2>Connectomics Proofreading at Scale</h2>
+    <div class="grid-2" style="margin-top: 16px;">
+      <div class="card card-accent">
+        <span class="icon">🧩</span>
+        <h4>The Problem</h4>
+        <p>Automated segmentation of brain volumes produces millions of neurons, but errors remain. Proofreading requires expert humans reviewing 3D data — a massive coordination challenge.</p>
+      </div>
+      <div class="card card-green">
+        <span class="icon">🚀</span>
+        <h4>Our Solution</h4>
+        <p>Transform neuroglancer into a <strong>community-powered proofreading platform</strong> with gamification, task management, real-time collaboration, and progress tracking — inspired by the original EyeWire.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 3: Architecture Overview ═══ -->
+  <div class="slide" data-slide="2">
+    <h3>Architecture</h3>
+    <h2>System Overview</h2>
+    <div style="margin-top: 24px;">
+      <div class="arch-label" style="text-align:center;">User Interface</div>
+      <div class="arch-row">
+        <div class="arch-box arch-vue">19 Vue Components</div>
+        <div class="arch-box arch-vue">SplitMerge Overlay</div>
+        <div class="arch-box arch-vue">Brain Quest Panel</div>
+        <div class="arch-box arch-vue">Command Palette</div>
+      </div>
+      <div class="arch-row"><span class="arch-arrow">↕</span></div>
+      <div class="arch-label" style="text-align:center;">State Management</div>
+      <div class="arch-row">
+        <div class="arch-box arch-pinia">12 Pinia Stores</div>
+        <div class="arch-box arch-pinia">localStorage Persistence</div>
+        <div class="arch-box arch-pinia">Segment Edit Watcher</div>
+      </div>
+      <div class="arch-row"><span class="arch-arrow">↕</span></div>
+      <div class="arch-label" style="text-align:center;">Integration Layer</div>
+      <div class="arch-row">
+        <div class="arch-box arch-ng">Neuroglancer Viewer API</div>
+        <div class="arch-box arch-api">CAVE / PCG API</div>
+        <div class="arch-box arch-api">Supabase RealtimeDB</div>
+        <div class="arch-box arch-api">Google Sheets CSV</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 4: Deep Dive — Tech Stack ═══ -->
+  <div class="slide" data-slide="3">
+    <h3>Deep Dive</h3>
+    <h2>Tech Stack Breakdown</h2>
+    <div class="grid-2" style="margin-top: 16px;">
+      <div class="card card-accent">
+        <h4 style="color:var(--accent);">🖼️ Vue 3 + Composition API</h4>
+        <p>19 single-file components (.vue) using <code>&lt;script setup&gt;</code> with TypeScript. Reactive UI injected into neuroglancer's DOM via <strong>createApp().mount()</strong> targeting NG container elements. Components range from full panels (Leaderboard, Brain Quest, User Profile) to micro-widgets (Achievement Toast, Confetti Celebration).</p>
+        <div style="margin-top:10px;">
+          <span class="tech-tag arch-vue">SplitMergeOverlay</span>
+          <span class="tech-tag arch-vue">BrainQuestPanel</span>
+          <span class="tech-tag arch-vue">Leaderboard</span>
+          <span class="tech-tag arch-vue">ActivityFeed</span>
+          <span class="tech-tag arch-vue">CommandPalette</span>
+          <span class="tech-tag arch-vue">UserProfile</span>
+          <span class="tech-tag arch-vue">WeeklyRecap</span>
+          <span class="tech-tag arch-vue">Login</span>
+        </div>
+      </div>
+      <div class="card card-purple">
+        <h4 style="color:var(--accent3);">🧠 12 Pinia Stores</h4>
+        <p>Centralized state management — each store owns a domain of data and logic. Reactive refs auto-sync to the UI. Several stores persist to <strong>localStorage</strong> for offline-first behavior.</p>
+        <div style="margin-top:10px; font-size:0.85em; color:var(--muted); line-height:1.8;">
+          <strong style="color:var(--accent3);">splitMergeOverlay</strong> — tool state, points, results<br>
+          <strong style="color:var(--accent3);">proofreadingQueue</strong> — Brain Quest items, lineage<br>
+          <strong style="color:var(--accent3);">proofreadingBackend</strong> — Supabase CRUD, feed<br>
+          <strong style="color:var(--accent3);">cellHistory</strong> — segment nav, jump-to-cell<br>
+          <strong style="color:var(--accent3);">userStats</strong> — edits, streaks, badges<br>
+          <strong style="color:var(--accent3);">userPrefs</strong> — theme, settings, toggles<br>
+          <strong style="color:var(--accent3);">layers / volumes</strong> — dataset &amp; layer mgmt<br>
+          <strong style="color:var(--accent3);">login / helpRequests / segAnnotation</strong>
+        </div>
+      </div>
+      <div class="card card-green">
+        <h4 style="color:var(--accent2);">⚡ esbuild Bundler</h4>
+        <p>Blazing-fast builds in <strong>~1 second</strong>. Custom build script (<code>build-prod.js</code>) with <code>--define</code> flags for compile-time config (Supabase keys, dataset tables, feature flags). Output: single minified JS bundle injected as a Chrome extension content script.</p>
+        <p style="margin-top:8px; font-size:0.85em;"><strong>Dev mode:</strong> <code>npm run dev-server</code> with live reload via esbuild's serve API. Supports dataset override: <code>DATASET=flywire_sandbox</code></p>
+      </div>
+      <div class="card card-gold">
+        <h4 style="color:var(--gold);">🔌 Extension Architecture</h4>
+        <p>Chrome extension injects into neuroglancer pages. <strong>MutationObserver</strong> watches for NG DOM changes (tool panels, segments, layers). 500ms polling (<code>scanToolState</code>) detects graphene tool activation. Custom keybindings (C, M, G, Esc, Enter) intercept NG events for the overlay.</p>
+        <p style="margin-top:8px; font-size:0.85em;"><strong>11 widget services</strong> handle DOM injection, badge rendering, PCG queries, segment management, and annotation tools.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 5: Detailed Architecture Diagram ═══ -->
+  <div class="slide" data-slide="4">
+    <h3>Architecture</h3>
+    <h2>Detailed System Diagram</h2>
+    <div class="flow-container" style="margin-top: 16px;">
+      <!-- Row 1: Chrome Extension entry point -->
+      <div class="flow-row">
+        <div class="flow-group">
+          <div class="flow-group-label">Chrome Extension</div>
+          <div class="flow-row">
+            <div class="flow-box arch-danger" style="font-size:0.75em;">manifest.json<br><span style="font-size:0.85em; opacity:0.7;">content_script</span></div>
+            <span class="flow-arrow-right">→</span>
+            <div class="flow-box arch-ng" style="font-size:0.75em;">main.ts<br><span style="font-size:0.85em; opacity:0.7;">entry point</span></div>
+            <span class="flow-arrow-right">→</span>
+            <div class="flow-box arch-vue" style="font-size:0.75em;">createApp()<br><span style="font-size:0.85em; opacity:0.7;">Vue 3 mount</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-row"><span class="flow-arrow-down">↓</span></div>
+
+      <!-- Row 2: Vue UI + Pinia side by side -->
+      <div class="flow-row" style="gap: 20px;">
+        <div class="flow-group" style="flex:1;">
+          <div class="flow-group-label">Vue 3 Components (19)</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center;">
+            <div class="arch-box-sm arch-vue">ExtensionBar</div>
+            <div class="arch-box-sm arch-vue">SplitMergeOverlay</div>
+            <div class="arch-box-sm arch-vue">BrainQuestPanel</div>
+            <div class="arch-box-sm arch-vue">CommandPalette</div>
+            <div class="arch-box-sm arch-vue">Leaderboard</div>
+            <div class="arch-box-sm arch-vue">ActivityFeed</div>
+            <div class="arch-box-sm arch-vue">UserProfile</div>
+            <div class="arch-box-sm arch-vue">WeeklyRecap</div>
+            <div class="arch-box-sm arch-vue">Settings</div>
+            <div class="arch-box-sm arch-vue">Login</div>
+            <div class="arch-box-sm arch-vue">Volumes</div>
+            <div class="arch-box-sm arch-vue">+8 more</div>
+          </div>
+        </div>
+        <span class="arch-arrow" style="font-size:2em;">⇄</span>
+        <div class="flow-group" style="flex:1;">
+          <div class="flow-group-label">Pinia Stores (12)</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center;">
+            <div class="arch-box-sm arch-pinia">splitMergeOverlay</div>
+            <div class="arch-box-sm arch-pinia">proofreadingQueue</div>
+            <div class="arch-box-sm arch-pinia">proofreadingBackend</div>
+            <div class="arch-box-sm arch-pinia">cellHistory</div>
+            <div class="arch-box-sm arch-pinia">userStats</div>
+            <div class="arch-box-sm arch-pinia">layers</div>
+            <div class="arch-box-sm arch-pinia">volumes</div>
+            <div class="arch-box-sm arch-pinia">+5 more</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-row">
+        <span class="flow-arrow-down">↓</span>
+        <span style="color:var(--muted); font-size:0.7em; margin: 0 24px;">reactive data flow</span>
+        <span class="flow-arrow-down">↓</span>
+      </div>
+
+      <!-- Row 3: Widget Services + NG API -->
+      <div class="flow-row" style="gap: 20px;">
+        <div class="flow-group" style="flex:1;">
+          <div class="flow-group-label">Widget Services (11)</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center;">
+            <div class="arch-box-sm arch-ng">button_service</div>
+            <div class="arch-box-sm arch-ng">lightbulb_service</div>
+            <div class="arch-box-sm arch-ng">seg_management</div>
+            <div class="arch-box-sm arch-ng">pcg_service</div>
+            <div class="arch-box-sm arch-ng">graphene_tool_utils</div>
+            <div class="arch-box-sm arch-ng">badge_definitions</div>
+          </div>
+        </div>
+        <span class="arch-arrow" style="font-size:2em;">⇄</span>
+        <div class="flow-group" style="flex:1;">
+          <div class="flow-group-label">Neuroglancer Internals</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center;">
+            <div class="arch-box-sm arch-ng">viewer API</div>
+            <div class="arch-box-sm arch-ng">LayerManager</div>
+            <div class="arch-box-sm arch-ng">visibleSegments</div>
+            <div class="arch-box-sm arch-ng">NavigationState</div>
+            <div class="arch-box-sm arch-ng">Graphene Tools</div>
+            <div class="arch-box-sm arch-ng">DOM / MutationObserver</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-row"><span class="flow-arrow-down">↓ HTTP / WebSocket / CSV</span></div>
+
+      <!-- Row 4: External services -->
+      <div class="flow-row">
+        <div class="flow-group">
+          <div class="flow-group-label">External Services</div>
+          <div class="flow-row">
+            <div class="arch-box-sm arch-api">Supabase<br><span style="font-size:0.85em; opacity:0.7;">6 tables + Realtime</span></div>
+            <div class="arch-box-sm arch-api">CAVE API<br><span style="font-size:0.85em; opacity:0.7;">annotations</span></div>
+            <div class="arch-box-sm arch-api">PCG API<br><span style="font-size:0.85em; opacity:0.7;">segment history</span></div>
+            <div class="arch-box-sm arch-api">Google Sheets<br><span style="font-size:0.85em; opacity:0.7;">CSV export</span></div>
+            <div class="arch-box-sm arch-api">MiddleAuth<br><span style="font-size:0.85em; opacity:0.7;">Google SSO</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 6: Supabase Data Model ═══ -->
+  <div class="slide" data-slide="5">
+    <div class="slide-scroll">
+      <h3>Data Model</h3>
+      <h2>Supabase Tables</h2>
+      <div class="grid-3" style="margin-top: 16px; align-items: start;">
+        <!-- users table -->
+        <div class="schema-card" style="border-left: 3px solid var(--accent);">
+          <h4 style="color:var(--accent);">👤 users</h4>
+          <table class="schema-table">
+            <tr><td class="pk">id</td><td class="type">int8 PK</td></tr>
+            <tr><td>middleauth_email</td><td class="type">text</td></tr>
+            <tr><td>display_name</td><td class="type">text</td></tr>
+            <tr><td>flag</td><td class="type">text</td></tr>
+            <tr><td>total_edits</td><td class="type">int4</td></tr>
+            <tr><td>total_merges</td><td class="type">int4</td></tr>
+            <tr><td>total_splits</td><td class="type">int4</td></tr>
+            <tr><td>cells_completed</td><td class="type">int4</td></tr>
+            <tr><td>current_streak</td><td class="type">int4</td></tr>
+            <tr><td>longest_streak</td><td class="type">int4</td></tr>
+            <tr><td>last_edit_date</td><td class="type">date</td></tr>
+          </table>
+        </div>
+        <!-- edit_log table -->
+        <div class="schema-card" style="border-left: 3px solid var(--accent2);">
+          <h4 style="color:var(--accent2);">📝 edit_log</h4>
+          <table class="schema-table">
+            <tr><td class="pk">id</td><td class="type">int8 PK</td></tr>
+            <tr><td class="fk">user_id</td><td class="type">int8 FK</td></tr>
+            <tr><td class="fk">task_id</td><td class="type">int8 FK</td></tr>
+            <tr><td>operation</td><td class="type">text</td></tr>
+            <tr><td>segment_before</td><td class="type">text</td></tr>
+            <tr><td>segment_after</td><td class="type">text</td></tr>
+            <tr><td>coordinates</td><td class="type">text</td></tr>
+            <tr><td>dataset</td><td class="type">text</td></tr>
+            <tr><td>success</td><td class="type">bool</td></tr>
+            <tr><td>metadata</td><td class="type">jsonb</td></tr>
+            <tr><td>created_at</td><td class="type">timestamptz</td></tr>
+          </table>
+        </div>
+        <!-- activity_feed table -->
+        <div class="schema-card" style="border-left: 3px solid var(--accent3);">
+          <h4 style="color:var(--accent3);">📡 activity_feed</h4>
+          <table class="schema-table">
+            <tr><td class="pk">id</td><td class="type">int8 PK</td></tr>
+            <tr><td class="fk">user_id</td><td class="type">int8 FK</td></tr>
+            <tr><td>user_name</td><td class="type">text</td></tr>
+            <tr><td>action</td><td class="type">text</td></tr>
+            <tr><td>segment_id</td><td class="type">text</td></tr>
+            <tr><td>timestamp</td><td class="type">timestamptz</td></tr>
+          </table>
+          <p style="font-size:0.75em; margin-top:10px; color:var(--muted);">
+            <strong style="color:var(--accent3);">Realtime:</strong> Supabase postgres_changes subscription pushes INSERT events to all connected clients via WebSocket.
+          </p>
+        </div>
+        <!-- proofreading_tasks table -->
+        <div class="schema-card" style="border-left: 3px solid var(--gold);">
+          <h4 style="color:var(--gold);">🧠 proofreading_tasks</h4>
+          <table class="schema-table">
+            <tr><td class="pk">id</td><td class="type">int8 PK</td></tr>
+            <tr><td>segment_id</td><td class="type">text</td></tr>
+            <tr><td>dataset</td><td class="type">text</td></tr>
+            <tr><td>status</td><td class="type">text</td></tr>
+            <tr><td>priority</td><td class="type">int4</td></tr>
+            <tr><td class="fk">assigned_to</td><td class="type">int8 FK</td></tr>
+            <tr><td>nucleus_coords</td><td class="type">text</td></tr>
+            <tr><td>soma_coords</td><td class="type">text</td></tr>
+            <tr><td>final_segment_id</td><td class="type">text</td></tr>
+            <tr><td>notes</td><td class="type">text</td></tr>
+            <tr><td>source_sheet_url</td><td class="type">text</td></tr>
+          </table>
+        </div>
+        <!-- task_assignments table -->
+        <div class="schema-card" style="border-left: 3px solid var(--danger);">
+          <h4 style="color:var(--danger);">🔒 task_assignments</h4>
+          <table class="schema-table">
+            <tr><td class="pk">id</td><td class="type">int8 PK</td></tr>
+            <tr><td class="fk">task_id</td><td class="type">int8 FK</td></tr>
+            <tr><td class="fk">user_id</td><td class="type">int8 FK</td></tr>
+            <tr><td>status</td><td class="type">text</td></tr>
+            <tr><td>expires_at</td><td class="type">timestamptz</td></tr>
+            <tr><td>released_at</td><td class="type">timestamptz</td></tr>
+            <tr><td>completed_at</td><td class="type">timestamptz</td></tr>
+          </table>
+          <p style="font-size:0.75em; margin-top:10px; color:var(--muted);">
+            <strong style="color:var(--danger);">Heartbeat:</strong> 30-min expiry renewed every 10 min. Prevents stale locks from abandoned sessions.
+          </p>
+        </div>
+        <!-- help_requests table -->
+        <div class="schema-card" style="border-left: 3px solid #818cf8;">
+          <h4 style="color:#818cf8;">🆘 help_requests</h4>
+          <table class="schema-table">
+            <tr><td class="pk">id</td><td class="type">int8 PK</td></tr>
+            <tr><td class="fk">user_id</td><td class="type">int8 FK</td></tr>
+            <tr><td>segment_id</td><td class="type">text</td></tr>
+            <tr><td>dataset</td><td class="type">text</td></tr>
+            <tr><td>description</td><td class="type">text</td></tr>
+            <tr><td>status</td><td class="type">text</td></tr>
+            <tr><td>coordinates</td><td class="type">text</td></tr>
+            <tr><td>created_at</td><td class="type">timestamptz</td></tr>
+          </table>
+          <p style="font-size:0.75em; margin-top:10px; color:var(--muted);">
+            Powers the "Second Opinion" peer help system.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 7: Core Proofreading ═══ -->
+  <div class="slide" data-slide="6">
+    <h3>Core Features</h3>
+    <h2>Split &amp; Merge Tooling</h2>
+    <div class="grid-2" style="margin-top: 16px;">
+      <div>
+        <ul>
+          <li><strong>Split Mode (C)</strong> — Multicut with red/blue point groups, group swap (G), visual point counters</li>
+          <li><strong>Merge Mode (M)</strong> — Ctrl+Click point placement, Enter-to-submit, inline status feedback</li>
+          <li><strong>Holographic UI</strong> — Sci-fi materialization/exit animations, scanline overlays, edge glow</li>
+          <li><strong>Real-time feedback</strong> — Loading spinners, success celebrations, error messages with retry hints</li>
+          <li><strong>Combo counter</strong> — Tracks consecutive successful operations with escalating messages</li>
+        </ul>
+      </div>
+      <div>
+        <ul class="green">
+          <li><strong>Keyboard-first</strong> — C/M to activate, Esc to cancel, Enter to submit, G to swap groups</li>
+          <li><strong>Error recovery</strong> — Status bar scraping catches NG errors, displays in overlay</li>
+          <li><strong>Segment tracking</strong> — Watches visibleSegments.changed signal for merge/split detection</li>
+          <li><strong>Edit statistics</strong> — Every operation logged: merge/split counts, coordinates, segment IDs</li>
+          <li><strong>Supabase logging</strong> — segment_before/segment_after pairs for full audit trail</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 8: Brain Quest ═══ -->
+  <div class="slide" data-slide="7">
+    <h3>Task Management</h3>
+    <h2>🧠 Brain Quest</h2>
+    <div class="grid-3" style="margin-top: 16px;">
+      <div class="card card-accent">
+        <h4>Daily Quests</h4>
+        <p>3 cells per day selected from the Google Sheet queue. Seed-based randomization ensures everyone gets unique daily tasks. Full list mode available.</p>
+      </div>
+      <div class="card card-green">
+        <h4>Progress Tracking</h4>
+        <p>Per-cell: soma coordinates, final segment ID, annotation notes. Local edits persist across sessions. Proofread/pending status for each cell.</p>
+      </div>
+      <div class="card card-purple">
+        <h4>Cell Completion</h4>
+        <p>First-time confirmation explains what "completing a cell" means. Big celebration animation with expanding rings and particle burst on completion.</p>
+      </div>
+      <div class="card card-accent">
+        <h4>Segment Lineage</h4>
+        <p>When splits/merges create new segment IDs, they're automatically associated with the original quest cell. Navigate away and back — derived segments reload.</p>
+      </div>
+      <div class="card card-green">
+        <h4>Auto-Navigation</h4>
+        <p>Clicking a quest item sets viewer position and loads the segment into the segmentation layer. Works with soma coords, nuc coords, or position override.</p>
+      </div>
+      <div class="card card-purple">
+        <h4>Google Sheets Backend</h4>
+        <p>Loads quest data from any published Google Sheet CSV. Default: Pinky v3 training sheet. Supports write-back for soma coordinates.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 9: Gamification ═══ -->
+  <div class="slide" data-slide="8">
+    <h3>Engagement</h3>
+    <h2>Gamification System</h2>
+    <div class="grid-2" style="margin-top: 16px;">
+      <div>
+        <h4 style="color:var(--gold); margin-bottom: 16px;">18-Tier Badge System</h4>
+        <div class="badge-row">
+          <span class="badge-pill" style="background:rgba(180,180,180,0.1); border-color:rgba(180,180,180,0.3); color:#ccc;">First Merge (1)</span>
+          <span class="badge-pill" style="background:rgba(0,220,150,0.1); border-color:rgba(0,220,150,0.3); color:#00dc96;">Explorer (25)</span>
+          <span class="badge-pill" style="background:rgba(24,207,255,0.1); border-color:rgba(24,207,255,0.3); color:#18cfff;">Dendrite Detective (100)</span>
+        </div>
+        <div class="badge-row">
+          <span class="badge-pill" style="background:rgba(167,139,250,0.1); border-color:rgba(167,139,250,0.3); color:#a78bfa;">Axon Architect (500)</span>
+          <span class="badge-pill" style="background:rgba(251,191,36,0.1); border-color:rgba(251,191,36,0.3); color:#fbbf24;">Master Mapper (2,500)</span>
+          <span class="badge-pill" style="background:rgba(248,113,113,0.1); border-color:rgba(248,113,113,0.3); color:#f87171;">Connectomics Hero (100K)</span>
+        </div>
+        <ul style="margin-top: 20px;">
+          <li>Auto-triggered toast notifications with confetti</li>
+          <li>Streak tracking: 7d, 14d, 30d, 60d, 100d milestones</li>
+          <li>Cell completion milestones (10, 25, 50, 100, 250, 500, 1000)</li>
+        </ul>
+      </div>
+      <div>
+        <h4 style="color:var(--accent); margin-bottom: 16px;">Statistics Engine</h4>
+        <div class="grid-2" style="gap: 16px;">
+          <div class="stat-box"><div class="stat-number highlight">All-Time</div><div class="stat-label">edits, merges, splits</div></div>
+          <div class="stat-box"><div class="stat-number highlight2">Weekly</div><div class="stat-label">rolling period stats</div></div>
+          <div class="stat-box"><div class="stat-number highlight3">Monthly</div><div class="stat-label">progress tracking</div></div>
+          <div class="stat-box"><div class="stat-number gold">Daily</div><div class="stat-label">30-day activity log</div></div>
+        </div>
+        <p style="margin-top: 16px; font-size: 0.9em;">Stats persist locally and sync to Supabase. Weekly Recap panel shows contribution % vs. community total.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 10: Community Features ═══ -->
+  <div class="slide" data-slide="9">
+    <h3>Social</h3>
+    <h2>Community Features</h2>
+    <div class="grid-3" style="margin-top: 16px;">
+      <div class="card card-accent">
+        <span class="icon">🏆</span>
+        <h4>Leaderboard</h4>
+        <p>Ranked user stats by edits (week/month/all-time). Badge display next to each user. Pulls live data from Supabase.</p>
+      </div>
+      <div class="card card-green">
+        <span class="icon">📡</span>
+        <h4>Activity Feed</h4>
+        <p>Real-time community activity via Supabase RealtimeDB. See merges, splits, completions, and claims as they happen.</p>
+      </div>
+      <div class="card card-purple">
+        <span class="icon">🔍</span>
+        <h4>Second Opinion</h4>
+        <p>Peer help system for stuck cells. Cross-dataset detection. Jump-to-cell loads the segment automatically.</p>
+      </div>
+      <div class="card card-gold">
+        <span class="icon">👤</span>
+        <h4>User Profiles</h4>
+        <p>Country flag picker, bio (280 chars), personal dashboard with stats, badges earned, and cell history.</p>
+      </div>
+      <div class="card card-accent">
+        <span class="icon">📊</span>
+        <h4>Weekly Recap</h4>
+        <p>Your contribution summarized: edits, cells completed, streak status, and comparison to community averages.</p>
+      </div>
+      <div class="card card-green">
+        <span class="icon">⌨️</span>
+        <h4>Command Palette</h4>
+        <p>Fuzzy-search command bar (Ctrl+Shift+K). Quick access to every panel, tool, and action in the app.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 11: Supported Datasets ═══ -->
+  <div class="slide" data-slide="10">
+    <h3>Data</h3>
+    <h2>Supported Datasets</h2>
+    <div class="grid-2" style="margin-top: 24px; max-width: 900px;">
+      <div class="card card-accent">
+        <h4>🐭 Pinky (Default)</h4>
+        <p>IARPA MICrONS Pinky — mouse visual cortex. Graphene segmentation with pinky_training3 table. Current focus for community proofreading.</p>
+      </div>
+      <div class="card card-green">
+        <h4>🐭 Minnie65</h4>
+        <p>IARPA MICrONS Minnie — 65-column mouse visual cortex. Public v117 segmentation table. Extensive ground truth available.</p>
+      </div>
+      <div class="card card-purple">
+        <h4>🪰 FlyWire</h4>
+        <p>FAFB whole-brain Drosophila dataset. Sandbox environment for testing. Full connectome available.</p>
+      </div>
+      <div class="card card-gold">
+        <h4>🧬 Extensible</h4>
+        <p>Any Graphene-backed dataset can be loaded via Available Volumes. Brain Quest works with any Google Sheet queue.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 12: Backend ═══ -->
+  <div class="slide" data-slide="11">
+    <h3>Infrastructure</h3>
+    <h2>Backend &amp; API Integration</h2>
+    <div class="grid-2" style="margin-top: 16px;">
+      <div>
+        <h4 style="color:var(--gold); margin-bottom: 16px;">Supabase (6 Tables)</h4>
+        <ul>
+          <li><strong>users</strong> — profiles, stats, streaks, flags, bios</li>
+          <li><strong>edit_log</strong> — merge/split audit trail with segment IDs &amp; coordinates</li>
+          <li><strong>activity_feed</strong> — real-time community events via RealtimeDB</li>
+          <li><strong>proofreading_tasks</strong> — centralized task assignment with priority</li>
+          <li><strong>task_assignments</strong> — user locks with 30-min heartbeat renewal</li>
+          <li><strong>help_requests</strong> — peer assistance tracking per segment</li>
+        </ul>
+      </div>
+      <div>
+        <h4 style="color:var(--accent2); margin-bottom: 16px;">External APIs</h4>
+        <ul class="green">
+          <li><strong>CAVE API</strong> — Cell annotation (complete status, cell type), via MiddleAuth</li>
+          <li><strong>PCG (PyChunkedGraph)</strong> — Segment change logs for merge/split history</li>
+          <li><strong>Google Sheets</strong> — CSV export for Brain Quest queues, optional write-back</li>
+          <li><strong>Neuroglancer Viewer</strong> — Layer management, navigation, segment selection</li>
+        </ul>
+        <p style="margin-top: 16px; font-size: 0.9em;"><strong>Offline-first:</strong> All stats, history, preferences, and edits persist in localStorage. Backend sync is additive, never blocking.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 13: Numbers ═══ -->
+  <div class="slide" data-slide="12">
+    <h3>By the Numbers</h3>
+    <h2>Project Scale</h2>
+    <div class="grid-4" style="margin-top: 32px;">
+      <div class="stat-box"><div class="stat-number highlight">19</div><div class="stat-label">Vue Components</div></div>
+      <div class="stat-box"><div class="stat-number highlight2">12</div><div class="stat-label">Pinia Stores</div></div>
+      <div class="stat-box"><div class="stat-number highlight3">11</div><div class="stat-label">Widget Services</div></div>
+      <div class="stat-box"><div class="stat-number gold">18</div><div class="stat-label">Badge Tiers</div></div>
+    </div>
+    <div class="grid-4" style="margin-top: 8px;">
+      <div class="stat-box"><div class="stat-number highlight">6</div><div class="stat-label">Supabase Tables</div></div>
+      <div class="stat-box"><div class="stat-number highlight2">~1s</div><div class="stat-label">Build Time</div></div>
+      <div class="stat-box"><div class="stat-number highlight3">4+</div><div class="stat-label">Datasets Supported</div></div>
+      <div class="stat-box"><div class="stat-number gold">3</div><div class="stat-label">Daily Quests</div></div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 14: What's Next ═══ -->
+  <div class="slide" data-slide="13">
+    <h3>Roadmap</h3>
+    <h2>What's Next</h2>
+    <div class="grid-2" style="margin-top: 24px; max-width: 900px;">
+      <div class="card card-accent">
+        <h4>Near-term</h4>
+        <ul style="margin-top: 8px;">
+          <li>PCG-backed segment lineage tracking</li>
+          <li>Multi-user task assignment &amp; conflict resolution</li>
+          <li>Achievement notification sounds</li>
+          <li>Tutorial / onboarding flow</li>
+        </ul>
+      </div>
+      <div class="card card-green">
+        <h4>Long-term Vision</h4>
+        <ul class="green" style="margin-top: 8px;">
+          <li>AI-assisted proofreading suggestions</li>
+          <li>Community-wide progress dashboards</li>
+          <li>Cross-lab collaboration features</li>
+          <li>Public contribution leaderboard</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SLIDE 15: Demo ═══ -->
+  <div class="slide" data-slide="14">
+    <div class="glow-bg glow-1"></div>
+    <div class="glow-bg glow-2"></div>
+    <h3>Live</h3>
+    <h1>Demo Time <span class="highlight2">🧠</span></h1>
+    <div class="divider"></div>
+    <p style="text-align:center; font-size: 1.2em;">
+      <a href="https://amyleesterling.github.io/eyewire-ii/" target="_blank" style="color: var(--accent); text-decoration: none;">
+        amyleesterling.github.io/eyewire-ii
+      </a>
+    </p>
+    <p style="text-align:center; margin-top: 24px;">
+      Split &amp; Merge &bull; Brain Quest &bull; Leaderboard &bull; Activity Feed &bull; Badges
+    </p>
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <span class="counter" id="counter">1 / 15</span>
+  <button onclick="prevSlide()">← Prev</button>
+  <button onclick="nextSlide()">Next →</button>
+</div>
+
+<script>
+let current = 0;
+const slides = document.querySelectorAll('.slide');
+const total = slides.length;
+
+function showSlide(n) {
+  slides.forEach((s, i) => {
+    s.classList.remove('active', 'prev');
+    if (i === n) s.classList.add('active');
+    else if (i < n) s.classList.add('prev');
+  });
+  document.getElementById('counter').textContent = `${n + 1} / ${total}`;
+}
+
+function nextSlide() { if (current < total - 1) { current++; showSlide(current); } }
+function prevSlide() { if (current > 0) { current--; showSlide(current); } }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); prevSlide(); }
+});
+</script>
+</body>
+</html>

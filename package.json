@@ -1,10 +1,8 @@
 {
   "name": "ng-extend",
-  "description": "Example project that depends on neuroglancer.",
-  "main": "dist/module/main_module.js",
-  "engines": {
-    "node": ">=12"
-  },
+  "version": "0.0.0",
+  "private": true,
+  "description": "Test of a vite project that depends on Neuroglancer.",
   "scripts": {
     "generate-code": "node ./node_modules/neuroglancer/config/generate_code.js",
     "build-min": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
@@ -44,6 +42,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
+    "marked": "^15.0.7",
     "neuroglancer": "github:seung-lab/neuroglancer#737a902c8740ff37500ba0f2f658beacbbdd7c5a",
     "pinia": "^2.0.32",
     "vue": "^3.2.47",
