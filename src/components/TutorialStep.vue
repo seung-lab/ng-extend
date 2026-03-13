@@ -648,33 +648,56 @@ onUnmounted(() => {
     color: #b0dfff;
 }
 
-/* Gentle balloon drift — smooth curves like a real balloon floating upward */
+/* Balloon lift — starts slow (buoyancy building), gentle sway like wind,
+   slight bobbing from balloon physics, fades out at the top */
 @keyframes floatUp {
     0% {
         transform: translateY(0) translateX(0) rotate(0deg);
         opacity: 1;
     }
-    10% {
-        transform: translateY(-10vh) translateX(8px) rotate(1deg);
-    }
-    25% {
-        transform: translateY(-25vh) translateX(15px) rotate(2deg);
-    }
-    40% {
-        transform: translateY(-40vh) translateX(5px) rotate(-1deg);
-    }
-    55% {
-        transform: translateY(-55vh) translateX(-10px) rotate(-2deg);
-    }
-    70% {
-        transform: translateY(-70vh) translateX(-5px) rotate(0deg);
-    }
-    85% {
+    /* Slow start — balloons catching air */
+    5% {
+        transform: translateY(-2vh) translateX(2px) rotate(0.5deg);
         opacity: 1;
-        transform: translateY(-88vh) translateX(8px) rotate(1deg);
+    }
+    12% {
+        transform: translateY(-8vh) translateX(6px) rotate(1.5deg);
+    }
+    /* Rising — gentle pendulum sway */
+    20% {
+        transform: translateY(-16vh) translateX(12px) rotate(2deg);
+    }
+    28% {
+        transform: translateY(-24vh) translateX(8px) rotate(0.5deg);
+    }
+    36% {
+        transform: translateY(-32vh) translateX(-4px) rotate(-1.5deg);
+    }
+    44% {
+        transform: translateY(-41vh) translateX(-10px) rotate(-2deg);
+    }
+    52% {
+        transform: translateY(-50vh) translateX(-6px) rotate(-0.5deg);
+    }
+    60% {
+        transform: translateY(-58vh) translateX(5px) rotate(1deg);
+    }
+    68% {
+        transform: translateY(-66vh) translateX(10px) rotate(1.5deg);
+    }
+    76% {
+        transform: translateY(-75vh) translateX(4px) rotate(0deg);
+    }
+    84% {
+        transform: translateY(-84vh) translateX(-3px) rotate(-0.8deg);
+        opacity: 1;
+    }
+    92% {
+        transform: translateY(-95vh) translateX(2px) rotate(0deg);
+        opacity: 0.6;
     }
     100% {
-        transform: translateY(-120vh) translateX(3px) rotate(0deg);
+        transform: translateY(-115vh) translateX(0px) rotate(0deg);
         opacity: 0;
     }
 }
@@ -686,7 +709,8 @@ onUnmounted(() => {
     margin-left: -150px;
     width: 300px;
     z-index: 91;
-    animation: floatUp 8s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+    /* Ease-out gives the slow-start, accelerating-rise feel of helium balloons */
+    animation: floatUp 10s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
     pointer-events: none;
 }
 </style>
