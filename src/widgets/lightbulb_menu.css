@@ -56,8 +56,7 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   color: #e0e0e0;
   font-size: 15px;
-  /* Hidden for now — Brain Quest panel handles segment info */
-  display: none !important;
+  /* Re-enabled — lightbulb context menu for segment actions */
 }
 
 .nge-lb-section {

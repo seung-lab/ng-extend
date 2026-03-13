@@ -457,31 +457,63 @@ function jumpToItem(idx: number) {
   // Try jumpToCell first (sets position + adds to visible segments)
   history.jumpToCell(item.segId, pos);
 
-  // Also directly paste the segID into neuroglancer's segmentation layer as fallback
+  // Also directly paste the segID into neuroglancer's segmentation layer
+  // AND force-open the Seg layer panel so the user sees it
   try {
     const viewer: any = (window as any)['viewer'];
-    if (viewer) {
-      const layers = viewer.layerManager?.managedLayers;
-      if (layers) {
-        for (const ml of layers) {
-          const layer = ml.layer;
-          if (!layer) continue;
-          const isSeg = layer.type === 'segmentation' ||
-            ml.initialSpecification?.type === 'segmentation' ||
-            layer.constructor?.name?.includes('Segmentation');
-          if (!isSeg) continue;
-          const groupState = layer.displayState?.segmentationGroupState?.value;
-          if (!groupState) continue;
-          const Uint64 = groupState.visibleSegments?.hashTable?.emptyValue?.constructor;
-          if (Uint64) {
-            const seg = Uint64.parseString(item.segId);
-            if (!groupState.visibleSegments.has(seg)) {
-              groupState.visibleSegments.add(seg);
-            }
-          }
-          break;
+    if (!viewer) { console.warn('[BrainQuest] No viewer found'); return; }
+
+    const layers = viewer.layerManager?.managedLayers;
+    if (!layers) { console.warn('[BrainQuest] No managedLayers'); return; }
+
+    // Find the segmentation layer
+    let segManagedLayer: any = null;
+    for (const ml of layers) {
+      const layer = ml.layer;
+      if (!layer) continue;
+      const isSeg = layer.type === 'segmentation' ||
+        ml.initialSpecification?.type === 'segmentation' ||
+        layer.constructor?.name?.includes('Segmentation') ||
+        ml.name?.toLowerCase().includes('pinky') ||
+        ml.name?.toLowerCase().includes('seg');
+      if (!isSeg) continue;
+      segManagedLayer = ml;
+      break;
+    }
+
+    if (!segManagedLayer) {
+      console.warn('[BrainQuest] No segmentation layer found among', layers.length, 'layers');
+      return;
+    }
+
+    const layer = segManagedLayer.layer;
+    const groupState = layer?.displayState?.segmentationGroupState?.value;
+    if (groupState) {
+      const Uint64 = groupState.visibleSegments?.hashTable?.emptyValue?.constructor;
+      if (Uint64) {
+        const seg = Uint64.parseString(item.segId);
+        if (!groupState.visibleSegments.has(seg)) {
+          groupState.visibleSegments.add(seg);
+          console.info('[BrainQuest] Added segment', item.segId, 'to visibleSegments');
         }
+      } else {
+        console.warn('[BrainQuest] Uint64 constructor not found, trying string add');
+        // Fallback: try adding via the layer's segmentColorHash or direct state manipulation
+        try {
+          groupState.visibleSegments.add(groupState.visibleSegments.hashTable.emptyValue);
+        } catch (_) { /* ignore */ }
       }
+    } else {
+      console.warn('[BrainQuest] No segmentationGroupState on layer');
+    }
+
+    // Force-open the Seg layer panel so the user sees the segment
+    try {
+      viewer.selectedLayer.layer = segManagedLayer;
+      viewer.selectedLayer.visible = true;
+      console.info('[BrainQuest] Opened Seg layer panel for', segManagedLayer.name);
+    } catch (e2) {
+      console.warn('[BrainQuest] Could not open Seg layer panel:', e2);
     }
   } catch (e) {
     console.warn('[BrainQuest] fallback segID paste failed:', e);

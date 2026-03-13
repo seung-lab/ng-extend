@@ -160,10 +160,10 @@ function cancelTool() {
 <style scoped>
 .nge-split-merge-overlay {
   position: fixed;
-  bottom: 0;
+  bottom: 28px;  /* Above neuroglancer's status bar */
   left: 0;
   right: 0;
-  z-index: 90;
+  z-index: 9500;
   display: flex;
   align-items: center;
   gap: 16px;
