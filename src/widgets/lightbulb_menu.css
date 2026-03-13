@@ -56,6 +56,8 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   color: #e0e0e0;
   font-size: 15px;
+  /* Hidden for now — Brain Quest panel handles segment info */
+  display: none !important;
 }
 
 .nge-lb-section {
@@ -200,6 +202,24 @@
   background-color: rgba(255, 152, 0, 0.2);
 }
 
+/* Claim Cell button — accent amber/gold */
+.nge-lb-claim-btn {
+  border-color: rgba(255, 167, 38, 0.4);
+  color: #FFA726;
+}
+.nge-lb-claim-btn:hover {
+  background-color: rgba(255, 167, 38, 0.2);
+}
+
+/* Release Claim button — muted */
+.nge-lb-release-btn {
+  border-color: rgba(158, 158, 158, 0.3);
+  color: #aaa;
+}
+.nge-lb-release-btn:hover {
+  background-color: rgba(158, 158, 158, 0.15);
+}
+
 /* ─── Links in menu ────────────────────────────────────────────────────────── */
 
 .nge-lb-section a {
@@ -258,20 +278,29 @@
   background: #666;
 }
 .nge-lb-btn.nge-lb-annotated .nge-lb-pip {
-  background: #4CAF50;
+  background: #4CAF50;  /* green — typed but not completed */
   box-shadow: 0 0 5px #4CAF5088;
 }
-.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-pip,
+.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-pip {
+  background: #42A5F5;  /* blue — completed but not typed */
+  box-shadow: 0 0 5px #42A5F588;
+}
 .nge-lb-btn.nge-lb-complete .nge-lb-pip {
-  background: #CE93D8;
+  background: #CE93D8;  /* purple — completed AND typed */
   box-shadow: 0 0 5px #CE93D888;
+}
+/* Claimed indicator — ring around pip */
+.nge-lb-btn.nge-lb-claimed .nge-lb-pip {
+  outline: 2px solid #FFA726;
+  outline-offset: 1px;
 }
 
 /* Tint the dots text to match status */
-.nge-lb-btn.nge-lb-complete .nge-lb-dots,
-.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #CE93D8; }
+.nge-lb-btn.nge-lb-complete .nge-lb-dots { color: #CE93D8; }
+.nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #42A5F5; }
 .nge-lb-btn.nge-lb-annotated .nge-lb-dots { color: #4CAF50; }
-.nge-lb-btn.nge-lb-incomplete .nge-lb-dots   { color: #999; }
+.nge-lb-btn.nge-lb-incomplete .nge-lb-dots { color: #999; }
+.nge-lb-btn.nge-lb-claimed .nge-lb-dots { color: #FFA726; }
 
 /* ── Label badge — placed inline after segment ID/nickname ── */
 .nge-label-badge {

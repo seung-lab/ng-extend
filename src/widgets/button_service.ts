@@ -3,7 +3,7 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {RETINAL_CELL_TYPES} from '../config';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
-import {useHelpRequestStore} from '../store';
+import {useHelpRequestStore, useProofreadingBackendStore} from '../store';
 
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
@@ -48,15 +48,30 @@ export class ButtonService {
     return button;
   }
 
-  /** Apply a known status to the button pip + label badge (no fetch). */
+  /** Apply a known status to the button pip + label badge (no fetch).
+   *  States:
+   *    - incomplete (gray): no type, not complete
+   *    - annotated (green): cell type set but NOT complete
+   *    - done-unlabeled (blue): complete but NO cell type
+   *    - complete (purple): complete AND cell type set
+   */
   private _applyStatus(button: HTMLButtonElement, status: CellStatus): void {
-    button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete', 'nge-lb-annotated');
-    if (status.isComplete) {
-      button.classList.add('nge-lb-complete');
+    button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete', 'nge-lb-annotated', 'nge-lb-claimed');
+    if (status.isComplete && status.cellType) {
+      button.classList.add('nge-lb-complete');        // purple: both done
+    } else if (status.isComplete) {
+      button.classList.add('nge-lb-done-unlabeled');  // blue: completed but not typed
     } else if (status.cellType) {
-      button.classList.add('nge-lb-annotated');
+      button.classList.add('nge-lb-annotated');        // green: typed but not completed
     } else {
-      button.classList.add('nge-lb-incomplete');
+      button.classList.add('nge-lb-incomplete');        // gray: nothing set
+    }
+    // Check claim status
+    const backend = useProofreadingBackendStore();
+    const segId = button.title.replace('Cell ', '');
+    const claim = backend.isClaimedSegment(segId);
+    if (claim.claimed) {
+      button.classList.add('nge-lb-claimed');
     }
     (button as any)._cellStatus = status;
     const row = button.closest('.neuroglancer-segment-list-entry') as HTMLElement | null;
@@ -374,7 +389,76 @@ export class ButtonService {
         [['Change Log', `${localServerURL}/progress/api/v1/query?rootid=${paramStr}`,
           undefined]]);
 
-    // ── Section 5: Ask for Help ───────────────────────────────────────────
+    // ── Section 5: Claim Cell ────────────────────────────────────────────
+    const claimSection = document.createElement('div');
+    claimSection.classList.add('nge-lb-section');
+
+    const claimTitle = document.createElement('div');
+    claimTitle.classList.add('nge-lb-section-title');
+    claimTitle.textContent = 'Claim Cell';
+    claimSection.appendChild(claimTitle);
+
+    const backend = useProofreadingBackendStore();
+    const claimInfo = backend.isClaimedSegment(segmentIDString);
+
+    const claimStatus = document.createElement('div');
+    claimStatus.classList.add('nge-lb-status-line');
+    if (claimInfo.claimed) {
+      claimStatus.textContent = claimInfo.byMe ? '🔒 Claimed by you' : '🔒 Claimed by another player';
+    } else {
+      const remaining = backend.MAX_CLAIMS - backend.myActiveClaimCount();
+      claimStatus.textContent = backend.userId
+        ? `Available · ${remaining} claim${remaining !== 1 ? 's' : ''} left`
+        : 'Log in to claim cells';
+    }
+    claimSection.appendChild(claimStatus);
+
+    if (backend.userId) {
+      if (!claimInfo.claimed) {
+        // Claim button
+        const claimBtn = document.createElement('button');
+        claimBtn.classList.add('nge-lb-section-button', 'nge-lb-claim-btn');
+        claimBtn.textContent = '🔒 Claim Cell';
+        if (backend.myActiveClaimCount() >= backend.MAX_CLAIMS) {
+          claimBtn.disabled = true;
+          claimBtn.textContent = `Max ${backend.MAX_CLAIMS} claims reached`;
+        }
+        claimBtn.addEventListener('click', async () => {
+          claimBtn.disabled = true;
+          claimBtn.textContent = 'Claiming…';
+          const result = await backend.claimBySegment(segmentIDString);
+          if (result.ok) {
+            claimBtn.textContent = '✓ Claimed!';
+            claimBtn.style.color = '#fa4';
+            claimStatus.textContent = '🔒 Claimed by you';
+            // Set claim color (gold/amber)
+            this._setSegmentColor(segmentIDString, 1.0, 0.7, 0.2);
+            this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
+          } else {
+            claimBtn.textContent = result.reason || 'Claim failed';
+            claimBtn.disabled = false;
+          }
+        });
+        claimSection.appendChild(claimBtn);
+      } else if (claimInfo.byMe) {
+        // Release button
+        const releaseBtn = document.createElement('button');
+        releaseBtn.classList.add('nge-lb-section-button', 'nge-lb-release-btn');
+        releaseBtn.textContent = 'Release Claim';
+        releaseBtn.addEventListener('click', async () => {
+          releaseBtn.disabled = true;
+          releaseBtn.textContent = 'Releasing…';
+          await backend.releaseBySegment(segmentIDString);
+          releaseBtn.textContent = '✓ Released';
+          claimStatus.textContent = 'Available';
+          this._resetSegmentColor(segmentIDString);
+          this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
+        });
+        claimSection.appendChild(releaseBtn);
+      }
+    }
+
+    // ── Section 6: Ask for Help ───────────────────────────────────────────
     const helpSection = document.createElement('div');
     helpSection.classList.add('nge-lb-section');
 
@@ -444,7 +528,7 @@ export class ButtonService {
     });
     helpSection.appendChild(helpBtn);
 
-    menu.append(br(), completionSection, br(), cellTypeSection, br(), colorSection, br(), helpSection, br(), linksSection, br());
+    menu.append(br(), completionSection, br(), cellTypeSection, br(), colorSection, br(), claimSection, br(), helpSection, br(), linksSection, br());
     return contextMenu;
   }
 

@@ -160,7 +160,7 @@ function cancelTool() {
 <style scoped>
 .nge-split-merge-overlay {
   position: fixed;
-  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
   z-index: 90;
@@ -185,7 +185,7 @@ function cancelTool() {
     rgba(20, 14, 40, 0.92) 60%,
     rgba(30, 30, 180, 0.88) 100%
   );
-  border-bottom: 2px solid rgba(255, 60, 60, 0.5);
+  border-top: 2px solid rgba(255, 60, 60, 0.5);
   backdrop-filter: blur(8px);
 }
 
@@ -196,7 +196,7 @@ function cancelTool() {
     rgba(20, 14, 40, 0.92) 30%,
     rgba(20, 14, 40, 0.92) 100%
   );
-  border-bottom: 2px solid rgba(0, 220, 120, 0.5);
+  border-top: 2px solid rgba(0, 220, 120, 0.5);
   backdrop-filter: blur(8px);
 }
 
@@ -214,7 +214,7 @@ function cancelTool() {
     rgba(0, 180, 90, 0.90) 70%,
     rgba(0, 200, 100, 0.88) 100%
   ) !important;
-  border-bottom: 2px solid rgba(0, 255, 140, 0.7) !important;
+  border-top: 2px solid rgba(0, 255, 140, 0.7) !important;
   backdrop-filter: blur(8px);
   box-shadow: 0 0 30px rgba(0, 220, 120, 0.3), inset 0 0 20px rgba(0, 255, 140, 0.05);
   transition: background 0.4s ease, border-color 0.3s ease, box-shadow 0.4s ease;
@@ -227,20 +227,20 @@ function cancelTool() {
     rgba(160, 20, 20, 0.90) 50%,
     rgba(180, 30, 30, 0.92) 100%
   ) !important;
-  border-bottom: 2px solid rgba(255, 80, 80, 0.7) !important;
+  border-top: 2px solid rgba(255, 80, 80, 0.7) !important;
   backdrop-filter: blur(8px);
   box-shadow: 0 0 30px rgba(255, 60, 60, 0.3), inset 0 0 20px rgba(255, 80, 80, 0.05);
 }
 
 /* Inline flash on bar (merge mode — tool stays open) */
 .nge-split-merge-overlay.bar-inline-success {
-  border-bottom-color: rgba(0, 255, 140, 0.7) !important;
+  border-top-color: rgba(0, 255, 140, 0.7) !important;
   box-shadow: 0 0 20px rgba(0, 220, 120, 0.2);
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .nge-split-merge-overlay.bar-inline-error {
-  border-bottom-color: rgba(255, 80, 80, 0.7) !important;
+  border-top-color: rgba(255, 80, 80, 0.7) !important;
   box-shadow: 0 0 20px rgba(255, 60, 60, 0.2);
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
@@ -492,7 +492,7 @@ function cancelTool() {
 
 .nge-smo-result-flash {
   position: fixed;
-  top: 56px;
+  bottom: 56px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 91;

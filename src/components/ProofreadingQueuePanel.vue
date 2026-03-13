@@ -1,22 +1,58 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
-import { useProofreadingQueueStore, useCellHistoryStore, useUserStatsStore } from '../store';
+import { useProofreadingQueueStore, useCellHistoryStore, useUserStatsStore, useProofreadingBackendStore } from '../store';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { EYEWIRE_II_CAVE_CONFIG } from '../config';
 
 const queue = useProofreadingQueueStore();
 const history = useCellHistoryStore();
+const backend = useProofreadingBackendStore();
 const emit = defineEmits({ hide: null });
 
-// Always re-fetch the sheet when the Quest Board opens (picks up new segIDs)
+// Always re-fetch the sheet when the Brain Quest opens (picks up new segIDs)
 onMounted(() => {
   if (queue.sheetUrl) queue.loadFromSheet();
 });
 
 const sheetInput = ref(queue.sheetUrl || '');
 
-// ── View mode: 'daily' (3 quests/day) or 'all' (full list) ──────────
+// ── View mode: 'daily' (3 quests/day) or 'all' (full-screen overlay) ──────
 const viewMode = ref<'daily' | 'all'>('daily');
+
+// ── All-neurons search filter ──────────────────────────────────────────
+const allSearch = ref('');
+
+/** Filtered items for the All Neurons view */
+const filteredAllItems = computed(() => {
+  const q = allSearch.value.trim().toLowerCase();
+  if (!q) return queue.items.map((item, idx) => ({ item, idx }));
+  return queue.items
+    .map((item, idx) => ({ item, idx }))
+    .filter(({ item }) => {
+      const nick = getNickname(item.segId).toLowerCase();
+      return nick.includes(q) || item.segId.includes(q) || (item.notes || '').toLowerCase().includes(q);
+    });
+});
+
+/** Get claim info for a segment */
+function getClaimInfo(segId: string) {
+  return backend.isClaimedSegment(segId);
+}
+
+// ── Escape key to close panel (only when no split/merge tool is active) ──
+function handleEscape(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return;
+  // Don't interfere with split/merge escape handling
+  if (document.querySelector('.graphene-multicut') || document.querySelector('.graphene-merge-segments')) return;
+  if (viewMode.value === 'all') {
+    viewMode.value = 'daily';
+  } else {
+    emit('hide');
+  }
+}
+// Use regular (bubble) phase, not capture — let split/merge handler take priority
+onMounted(() => document.addEventListener('keydown', handleEscape));
+onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 
 // ── Draggable panel ─────────────────────────────────────────────────────
 const panelPos = ref({ x: 12, y: -12 });
@@ -406,10 +442,50 @@ function takeOnMoreQuests() {
   queue.nextUnproofread();
 }
 
-/** Jump to a specific item from the all-tasks list. */
+/** Jump to a specific item from the all-neurons list — load cell in viewer. */
 function jumpToItem(idx: number) {
   queue.jumpToIndex(idx);
-  viewMode.value = 'daily'; // switch back to card view to work on it
+  const item = queue.items[idx];
+  if (!item) return;
+
+  // Parse coordinates if available
+  const coordStr = item.somaCoords || item.nucCoords || '';
+  const parts = coordStr.split(',').map(s => parseFloat(s.trim()));
+  const pos: [number, number, number] | undefined =
+    parts.length === 3 && parts.every(n => !isNaN(n)) ? [parts[0], parts[1], parts[2]] : undefined;
+
+  // Try jumpToCell first (sets position + adds to visible segments)
+  history.jumpToCell(item.segId, pos);
+
+  // Also directly paste the segID into neuroglancer's segmentation layer as fallback
+  try {
+    const viewer: any = (window as any)['viewer'];
+    if (viewer) {
+      const layers = viewer.layerManager?.managedLayers;
+      if (layers) {
+        for (const ml of layers) {
+          const layer = ml.layer;
+          if (!layer) continue;
+          const isSeg = layer.type === 'segmentation' ||
+            ml.initialSpecification?.type === 'segmentation' ||
+            layer.constructor?.name?.includes('Segmentation');
+          if (!isSeg) continue;
+          const groupState = layer.displayState?.segmentationGroupState?.value;
+          if (!groupState) continue;
+          const Uint64 = groupState.visibleSegments?.hashTable?.emptyValue?.constructor;
+          if (Uint64) {
+            const seg = Uint64.parseString(item.segId);
+            if (!groupState.visibleSegments.has(seg)) {
+              groupState.visibleSegments.add(seg);
+            }
+          }
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[BrainQuest] fallback segID paste failed:', e);
+  }
 }
 
 /** Pretty date for daily header */
@@ -429,11 +505,11 @@ function shareOnX() {
 <template>
   <Teleport to="body">
     <Transition name="nge-quest" appear>
-      <div class="nge-quest-board" :style="panelStyle">
+      <div v-show="viewMode !== 'all'" class="nge-quest-board" :style="panelStyle">
 
         <div class="nge-quest-topbar" @mousedown="startDrag" :class="{ 'nge-quest-dragging': isDragging }">
           <div class="nge-quest-title">
-            <span class="nge-quest-icon">🧠</span> Quest Board
+            <span class="nge-quest-icon">🧠</span> Brain Quest
           </div>
           <div class="nge-quest-topbar-actions">
             <!-- View toggle: daily vs all -->
@@ -441,7 +517,7 @@ function shareOnX() {
               v-if="queue.items.length > 0"
               class="nge-quest-view-toggle"
               @click="viewMode = viewMode === 'daily' ? 'all' : 'daily'"
-              :title="viewMode === 'daily' ? 'View all tasks' : 'Back to daily quests'"
+              :title="viewMode === 'daily' ? 'View all cells' : 'Back to daily quests'"
             >{{ viewMode === 'daily' ? '☰' : '◆' }}</button>
             <button class="nge-quest-close" @click="emit('hide')">×</button>
           </div>
@@ -468,31 +544,6 @@ function shareOnX() {
         <!-- Loading state -->
         <div v-else-if="queue.loading" class="nge-quest-loading">
           Scanning neurons…
-        </div>
-
-        <!-- ═══════════════════════════════════════════════════════════
-             ALL TASKS VIEW — scrollable list of every neuron
-             ═══════════════════════════════════════════════════════════ -->
-        <div v-else-if="viewMode === 'all'" class="nge-quest-content">
-          <div class="nge-quest-all-header">
-            All Neurons · {{ queue.proofreadCount() }}/{{ queue.totalCount() }} done
-          </div>
-          <div
-            v-for="(item, idx) in queue.items"
-            :key="item.segId"
-            class="nge-quest-all-row"
-            :class="{
-              'nge-quest-all-row--done': queue.proofread.has(item.segId),
-              'nge-quest-all-row--current': queue.currentIdx === idx,
-            }"
-            @click="jumpToItem(idx)"
-          >
-            <span class="nge-quest-all-pip" :class="{
-              'nge-quest-all-pip--done': queue.proofread.has(item.segId),
-            }"></span>
-            <span class="nge-quest-all-name">{{ getNickname(item.segId) }}</span>
-            <span class="nge-quest-all-id">{{ truncateId(item.segId) }}</span>
-          </div>
         </div>
 
         <!-- ═══════════════════════════════════════════════════════════
@@ -664,6 +715,55 @@ function shareOnX() {
           </div>
         </div>
 
+      </div>
+    </Transition>
+
+    <!-- All Neurons — narrow side panel -->
+    <Transition name="nge-all-slide">
+      <div v-if="viewMode === 'all'" class="nge-all-side">
+        <div class="nge-all-topbar">
+          <div class="nge-all-title">{{ queue.proofreadCount() }}/{{ queue.totalCount() }}</div>
+          <input v-model="allSearch" class="nge-all-search" placeholder="Search…"
+            @keydown.stop @keyup.stop @keypress.stop />
+          <button class="nge-all-close" @click="viewMode = 'daily'">×</button>
+        </div>
+
+        <div class="nge-all-list">
+          <!-- Claimed -->
+          <template v-for="{ item, idx } in filteredAllItems.filter(x => getClaimInfo(x.item.segId).claimed || queue.isClaimed(x.item))" :key="'c-' + item.segId">
+            <div class="nge-all-row nge-all-row--claimed" :class="{ 'nge-all-row--active': queue.currentIdx === idx }" @click="jumpToItem(idx)">
+              <span class="nge-all-pip nge-all-pip--claimed"></span>
+              <div class="nge-all-info">
+                <span class="nge-all-name">{{ getNickname(item.segId) }}</span>
+                <span class="nge-all-segid">{{ item.segId }}</span>
+              </div>
+              <span class="nge-all-tag nge-all-tag--claimed">{{ getClaimInfo(item.segId).byMe ? 'You' : (getClaimInfo(item.segId).byName || 'Taken') }}</span>
+            </div>
+          </template>
+
+          <!-- Available -->
+          <template v-for="{ item, idx } in filteredAllItems.filter(x => !queue.proofread.has(x.item.segId) && !getClaimInfo(x.item.segId).claimed && !queue.isClaimed(x.item))" :key="'a-' + item.segId">
+            <div class="nge-all-row" :class="{ 'nge-all-row--active': queue.currentIdx === idx }" @click="jumpToItem(idx)">
+              <span class="nge-all-pip"></span>
+              <div class="nge-all-info">
+                <span class="nge-all-name">{{ getNickname(item.segId) }}</span>
+                <span class="nge-all-segid">{{ item.segId }}</span>
+              </div>
+            </div>
+          </template>
+
+          <!-- Completed -->
+          <template v-for="{ item, idx } in filteredAllItems.filter(x => queue.proofread.has(x.item.segId))" :key="'d-' + item.segId">
+            <div class="nge-all-row nge-all-row--done" :class="{ 'nge-all-row--active': queue.currentIdx === idx }" @click="jumpToItem(idx)">
+              <span class="nge-all-pip nge-all-pip--done"></span>
+              <div class="nge-all-info">
+                <span class="nge-all-name">{{ getNickname(item.segId) }}</span>
+                <span class="nge-all-segid">{{ item.segId }}</span>
+              </div>
+              <span class="nge-all-tag nge-all-tag--done">Done</span>
+            </div>
+          </template>
+        </div>
       </div>
     </Transition>
   </Teleport>
@@ -1082,66 +1182,174 @@ function shareOnX() {
 }
 
 /* ══════════════════════════════════════════════
-   ALL-TASKS LIST VIEW
+   ALL NEURONS — NARROW SIDE PANEL
    ══════════════════════════════════════════════ */
 
-.nge-quest-all-header {
-  font-size: 0.78em;
-  font-weight: 600;
-  color: rgba(0, 200, 255, 0.6);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(74, 158, 255, 0.08);
+.nge-all-side {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 220px;
+  z-index: 80;
+  background: linear-gradient(170deg, rgba(10, 16, 30, 0.97) 0%, rgba(8, 10, 20, 0.98) 100%);
+  border-right: 1px solid rgba(0, 180, 255, 0.15);
+  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  color: #ccd;
 }
 
-.nge-quest-all-row {
+.nge-all-topbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.12s;
-  border: 1px solid transparent;
-}
-.nge-quest-all-row:hover {
-  background: rgba(74, 158, 255, 0.05);
-}
-.nge-quest-all-row--current {
-  border-color: rgba(206, 147, 216, 0.2);
-  background: rgba(206, 147, 216, 0.04);
-}
-.nge-quest-all-row--done { opacity: 0.5; }
-
-.nge-quest-all-pip {
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.1);
+  background: rgba(74, 158, 255, 0.03);
   flex-shrink: 0;
-  width: 8px; height: 8px;
+}
+
+.nge-all-title {
+  font-size: 0.78em;
+  font-weight: 700;
+  color: rgba(0, 200, 255, 0.7);
+  white-space: nowrap;
+}
+
+.nge-all-search {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid rgba(74, 158, 255, 0.15);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #dde;
+  font-size: 0.78em;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.12s;
+}
+.nge-all-search:focus { border-color: rgba(74, 158, 255, 0.4); }
+.nge-all-search::placeholder { color: #445; }
+
+.nge-all-close {
+  background: none; border: none;
+  color: #556; font-size: 1.2em; cursor: pointer; padding: 0; line-height: 1;
+  transition: color 0.12s; flex-shrink: 0;
+}
+.nge-all-close:hover { color: #aab; }
+
+/* Scrollable list */
+.nge-all-list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.2) transparent;
+  padding: 4px 0;
+}
+
+/* Row */
+.nge-all-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-left: 2px solid transparent;
+}
+.nge-all-row:hover {
+  background: rgba(74, 158, 255, 0.06);
+}
+.nge-all-row--active {
+  background: rgba(206, 147, 216, 0.08);
+  border-left-color: #CE93D8;
+}
+.nge-all-row--done { opacity: 0.45; }
+.nge-all-row--claimed {
+  background: rgba(255, 180, 50, 0.03);
+}
+
+/* Pip */
+.nge-all-pip {
+  flex-shrink: 0;
+  width: 7px; height: 7px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.1);
   border: 1.5px solid rgba(255, 255, 255, 0.15);
 }
-.nge-quest-all-pip--done {
+.nge-all-pip--done {
   background: rgba(127, 255, 136, 0.3);
   border-color: rgba(127, 255, 136, 0.5);
 }
+.nge-all-pip--claimed {
+  background: rgba(255, 180, 50, 0.3);
+  border-color: rgba(255, 180, 50, 0.6);
+}
 
-.nge-quest-all-name {
-  font-size: 0.82em;
-  font-weight: 600;
-  color: #bbc;
+/* Info column (name + segID stacked) */
+.nge-all-info {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Name */
+.nge-all-name {
+  font-size: 0.82em;
+  font-weight: 500;
+  color: #bbc;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.nge-quest-all-id {
+.nge-all-segid {
   font-family: 'SF Mono', ui-monospace, 'Cascadia Code', monospace;
   font-size: 0.62em;
-  color: #445;
+  color: rgba(74, 158, 255, 0.35);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tags */
+.nge-all-tag {
   flex-shrink: 0;
+  font-size: 0.58em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.nge-all-tag--done {
+  background: rgba(127, 255, 136, 0.1);
+  color: #7f8;
+}
+.nge-all-tag--claimed {
+  background: rgba(255, 180, 50, 0.08);
+  color: #daa040;
+}
+
+/* Slide transition */
+.nge-all-slide-enter-active {
+  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+}
+.nge-all-slide-leave-active {
+  transition: transform 0.15s ease-in, opacity 0.15s ease-in;
+}
+.nge-all-slide-enter-from {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+.nge-all-slide-leave-to {
+  transform: translateX(-100%);
+  opacity: 0;
 }
 
 /* ══════════════════════════════════════════════

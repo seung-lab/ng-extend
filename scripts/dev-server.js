@@ -25,7 +25,7 @@ for (const [name, file] of Object.entries(defines)) {
 // Set DATASET=flywire_sandbox to use FlyWire sandbox instead of minnie65.
 //   npm run dev-server                          → minnie65 (default)
 //   DATASET=flywire_sandbox npm run dev-server  → FlyWire sandbox
-const DATASET = process.env.DATASET || 'minnie65';
+const DATASET = process.env.DATASET || 'pinky';
 
 const DATASETS_CONFIG = {
   minnie65: {

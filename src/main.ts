@@ -109,8 +109,14 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     const store = useSplitMergeOverlayStore();
-    if (!store.toolActive) return;
+    // Check both store state AND DOM for tool presence (DOM is ground truth)
+    const toolDomPresent = document.querySelector('.graphene-multicut') || document.querySelector('.graphene-merge-segments');
+    if (!store.toolActive && !toolDomPresent) return;
     exitGrapheneTool();
+    // Also sync store if DOM showed the tool
+    if (toolDomPresent && !store.toolActive) {
+      store.setToolState(null);
+    }
     e.preventDefault();
     e.stopPropagation();
   }, true); // capture phase to catch before NG

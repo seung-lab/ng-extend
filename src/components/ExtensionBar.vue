@@ -13,6 +13,7 @@ import ProofreadingQueuePanel from "components/ProofreadingQueuePanel.vue";
 import CommandPalette from "components/CommandPalette.vue";
 import AchievementToast from "components/AchievementToast.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
+import CellLibraryPanel from "components/CellLibraryPanel.vue";
 // import ChatPanel from "components/ChatPanel.vue"; // TODO: enable after useChatStore is added
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore} from '../store';
@@ -76,6 +77,7 @@ const showHelp = ref(false);
 const showQueue = ref(false);
 const showFeed = ref(false);
 const showChat = ref(false);
+const showCellLibrary = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
 const backendStore = useProofreadingBackendStore();
 const { tutorialStep } = storeToRefs(useTutorialStore());
@@ -103,14 +105,15 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'merge', emoji: '🔗', svg: MERGE_SVG, label: 'Merge Mode (M)', action: () => activateTool('merge') },
   { id: 'recap', emoji: '📊', label: 'Your Week in Science', action: () => { showRecap.value = true; } },
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard', action: () => { showLeaderboard.value = true; } },
-  { id: 'quest', emoji: '🧠', label: 'Quest Board', action: () => { showQueue.value = true; }, badge: () => queueStore.pendingCount() },
+  { id: 'quest', emoji: '🧠', label: 'Brain Quest', action: () => { showQueue.value = true; }, badge: () => queueStore.pendingCount() },
+  { id: 'cells', emoji: '🧬', label: 'Cell Library', action: () => { showCellLibrary.value = true; } },
   { id: 'help', emoji: '🔍', label: 'Second Opinion Requests', action: () => { showHelp.value = true; }, badge: () => helpStore.pending.length },
   { id: 'feed', emoji: '📡', label: 'Activity Feed', action: () => { showFeed.value = true; } },
   { id: 'chat', emoji: '💬', label: 'Chat', action: () => { showChat.value = !showChat.value; } },
   { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
 ]);
 
-const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'help', 'feed', 'chat', 'settings'];
+const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'cells', 'help', 'feed', 'chat', 'settings'];
 
 const visibleToolbar = computed(() => {
   const prefs = useUserPreferencesStore().prefs;
@@ -165,11 +168,13 @@ function activateTool(toolType: 'multicut' | 'merge') {
     @open-settings="showSettings = true"
     @open-help="showHelp = true"
     @open-queue="showQueue = true"
+    @open-cells="showCellLibrary = true"
     @open-feed="showFeed = true"
   />
   <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
   <help-requests-panel v-if="showHelp" @hide="showHelp = false" />
   <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
+  <cell-library-panel v-if="showCellLibrary" @hide="showCellLibrary = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <user-profile-panel v-if="showProfile" @hide="showProfile = false" @open-settings="showSettings = true" />
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />

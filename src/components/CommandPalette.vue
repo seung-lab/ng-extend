@@ -139,11 +139,19 @@ function buildActions(): PaletteItem[] {
   const queueStore = useProofreadingQueueStore();
   items.push({
     id: 'open-queue',
-    label: 'Quest Board',
+    label: 'Brain Quest',
     description: queueStore.totalCount() ? `${queueStore.proofreadCount()}/${queueStore.totalCount()} done · 3 daily quests` : 'Load a quest sheet',
     category: 'navigate',
     icon: '🧠',
     action: () => emit('open-queue'),
+  });
+  items.push({
+    id: 'open-cells',
+    label: 'Cell Library',
+    description: 'Browse all cells, claim and complete',
+    category: 'navigate',
+    icon: '🧬',
+    action: () => emit('open-cells'),
   });
   items.push({
     id: 'open-feed',

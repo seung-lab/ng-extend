@@ -734,9 +734,18 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
     // Select the segment in the first segmentation layer
     try {
       const segLayer = viewer.layerManager.managedLayers.find(
-        (x: any) => x.layer?.constructor?.name?.includes('Segmentation'),
+        (x: any) => {
+          const layer = x.layer;
+          if (!layer) return false;
+          // Check by type property first, fall back to constructor name
+          if (layer.type === 'segmentation') return true;
+          if (x.initialSpecification?.type === 'segmentation') return true;
+          return layer.constructor?.name?.includes('Segmentation');
+        },
       );
-      if (segLayer?.layer) {
+      if (!segLayer?.layer) {
+        console.warn('[cellHistory] No segmentation layer found');
+      } else {
         const groupState = segLayer.layer.displayState?.segmentationGroupState?.value;
         if (groupState) {
           // Parse the segment ID as a Uint64
@@ -746,7 +755,11 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
             if (!groupState.visibleSegments.has(seg)) {
               groupState.visibleSegments.add(seg);
             }
+          } else {
+            console.warn('[cellHistory] Could not find Uint64 constructor');
           }
+        } else {
+          console.warn('[cellHistory] No segmentationGroupState on layer');
         }
       }
     } catch (e) {
@@ -1519,7 +1532,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       await logEdit({ operation: 'claim_task', task_id: taskId });
 
       // Post to activity feed
-      await postActivity(`claimed task #${taskId}`);
+      const t = tasks.value.find(x => x.id === taskId);
+      const label = t?.segment_id ? `...${t.segment_id.slice(-4)}` : `#${taskId}`;
+      await postActivity(`claimed cell ${label}`);
 
       return true;
     } catch (e: any) {
@@ -1915,12 +1930,103 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
+  // ── Claim-by-segment helpers ──────────────────────────────────────────
+  const MAX_CLAIMS = 3;
+
+  /** How many active claims does the current user have? */
+  function myActiveClaimCount(): number {
+    if (!userId.value) return 0;
+    return tasks.value.filter(
+      t => t.assigned_to === userId.value && (t.status === 'assigned' || t.status === 'in_progress'),
+    ).length;
+  }
+
+  /** Is a specific segment claimed by the current user? */
+  function isMyClaimedSegment(segId: string): boolean {
+    if (!userId.value) return false;
+    return tasks.value.some(
+      t => t.segment_id === segId && t.assigned_to === userId.value &&
+           (t.status === 'assigned' || t.status === 'in_progress'),
+    );
+  }
+
+  /** Is a specific segment claimed by anyone? */
+  function isClaimedSegment(segId: string): {claimed: boolean; byMe: boolean; byName?: string} {
+    const task = tasks.value.find(
+      t => t.segment_id === segId && (t.status === 'assigned' || t.status === 'in_progress'),
+    );
+    if (!task) return { claimed: false, byMe: false };
+    return {
+      claimed: true,
+      byMe: task.assigned_to === userId.value,
+      byName: task.assigned_to && task.assigned_to !== userId.value ? task.assigned_to : undefined,
+    };
+  }
+
+  /** Claim a cell by segment ID. Enforces 3-cell limit. Creates task if needed. */
+  async function claimBySegment(segId: string): Promise<{ok: boolean; reason?: string}> {
+    if (!userId.value) return { ok: false, reason: 'Not logged in' };
+    if (myActiveClaimCount() >= MAX_CLAIMS) return { ok: false, reason: `Max ${MAX_CLAIMS} claims reached` };
+
+    // Check if already claimed
+    const existing = isClaimedSegment(segId);
+    if (existing.claimed) return { ok: false, reason: existing.byMe ? 'Already claimed by you' : 'Claimed by another player' };
+
+    try {
+      // Find or create the task in Supabase
+      let task = tasks.value.find(t => t.segment_id === segId);
+      if (!task) {
+        // Create task on-the-fly
+        const { data, error: insertErr } = await supabase
+          .from('proofreading_tasks')
+          .insert({ segment_id: segId, dataset: 'eyewire_ii', status: 'pending' })
+          .select('*')
+          .single();
+        if (insertErr) throw insertErr;
+        task = data;
+        tasks.value.push(data);
+      }
+
+      // Claim via existing mechanism
+      const ok = await claimTask(task!.id);
+      if (ok) {
+        // Reload tasks to get updated statuses
+        await loadTasks('eyewire_ii');
+        await postActivity(`claimed cell ...${segId.slice(-4)}`);
+        return { ok: true };
+      }
+      return { ok: false, reason: error.value || 'Claim failed' };
+    } catch (e: any) {
+      console.warn('[backend] claimBySegment error:', e.message);
+      return { ok: false, reason: e.message };
+    }
+  }
+
+  /** Release a claim by segment ID. */
+  async function releaseBySegment(segId: string): Promise<boolean> {
+    const task = tasks.value.find(
+      t => t.segment_id === segId && t.assigned_to === userId.value &&
+           (t.status === 'assigned' || t.status === 'in_progress'),
+    );
+    if (!task) return false;
+    // Temporarily set activeTaskId so releaseTask works
+    const prevActive = activeTaskId.value;
+    activeTaskId.value = task.id;
+    await releaseTask();
+    activeTaskId.value = prevActive;
+    await loadTasks('eyewire_ii');
+    return true;
+  }
+
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     leaderboard,
     syncUser, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, loadUserStats, loadLeaderboard,
+    // Claim-by-segment
+    claimBySegment, releaseBySegment, isMyClaimedSegment, isClaimedSegment, myActiveClaimCount,
+    MAX_CLAIMS,
   };
 });
 
