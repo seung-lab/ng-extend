@@ -73,7 +73,7 @@ onMounted(() => {
   setTimeout(() => { initialized = true; }, 8000);
 
   // Welcome sparkle — calcium-imaging shimmer on extension open
-  setTimeout(() => { confettiRef.value?.sparkle(1); }, 1500);
+  setTimeout(() => { confettiRef.value?.sparkle(2); }, 800);
 });
 
 // Watch for badge unlocks

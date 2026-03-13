@@ -115,16 +115,18 @@ function createSparkles(count: number) {
   const canvas = canvasRef.value;
   if (!canvas) return;
   for (let i = 0; i < count; i++) {
+    // Stagger spawn times so sparkles appear in waves, not all at once
+    const spawnDelay = Math.random() * 0.8; // 0–0.8 of lifecycle before starting
     sparkles.push({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
-      r: Math.random() * 2 + 0.5,
+      r: Math.random() * 3 + 1,            // bigger: 1–4px radius
       phase: Math.random() * Math.PI * 2,
-      speed: 0.02 + Math.random() * 0.04,
-      life: 0,
-      lifeSpeed: 0.005 + Math.random() * 0.008,
+      speed: 0.03 + Math.random() * 0.05,   // faster twinkle
+      life: -spawnDelay,                     // negative = waiting to appear
+      lifeSpeed: 0.008 + Math.random() * 0.01, // faster lifecycle
       color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
-      maxOpacity: 0.4 + Math.random() * 0.6,
+      maxOpacity: 0.7 + Math.random() * 0.3,  // brighter: 0.7–1.0
     });
   }
 }
@@ -138,32 +140,40 @@ function animateSparkles() {
   for (const s of sparkles) {
     s.life += s.lifeSpeed;
     if (s.life > 2) continue; // dead
+    if (s.life < 0) { alive = true; continue; } // waiting to spawn
     alive = true;
 
     // Bell curve: fade in 0→1, fade out 1→2
     const envelope = s.life <= 1 ? s.life : 2 - s.life;
     // Twinkle: rapid sin oscillation on top of envelope
-    const twinkle = 0.5 + 0.5 * Math.sin(s.phase + s.life * 60 * s.speed);
+    const twinkle = 0.5 + 0.5 * Math.sin(s.phase + s.life * 80 * s.speed);
     const alpha = envelope * twinkle * s.maxOpacity;
 
-    if (alpha <= 0.01) continue;
+    if (alpha <= 0.02) continue;
 
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    // Glow
+    // Outer glow — larger, softer
     ctx.shadowColor = s.color;
-    ctx.shadowBlur = s.r * 4;
+    ctx.shadowBlur = s.r * 8;
     ctx.fillStyle = s.color;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
     ctx.fill();
 
-    // Bright center
+    // Inner glow — second pass for extra brightness
+    ctx.shadowBlur = s.r * 3;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bright white center
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = alpha * 0.9;
     ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r * 0.4, 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, s.r * 0.35, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
