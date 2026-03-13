@@ -3,6 +3,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useProofreadingQueueStore, useCellHistoryStore, useUserStatsStore, useProofreadingBackendStore } from '../store';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { EYEWIRE_II_CAVE_CONFIG } from '../config';
+import { Uint64 } from 'neuroglancer/util/uint64';
 
 const queue = useProofreadingQueueStore();
 const history = useCellHistoryStore();
@@ -454,69 +455,66 @@ function jumpToItem(idx: number) {
   const pos: [number, number, number] | undefined =
     parts.length === 3 && parts.every(n => !isNaN(n)) ? [parts[0], parts[1], parts[2]] : undefined;
 
-  // Try jumpToCell first (sets position + adds to visible segments)
-  history.jumpToCell(item.segId, pos);
+  // Add the segment to the segmentation layer using the imported Uint64
+  const viewer: any = (window as any)['viewer'];
+  if (!viewer) { console.warn('[BrainQuest] No viewer found'); return; }
 
-  // Also directly paste the segID into neuroglancer's segmentation layer
-  // AND force-open the Seg layer panel so the user sees it
-  try {
-    const viewer: any = (window as any)['viewer'];
-    if (!viewer) { console.warn('[BrainQuest] No viewer found'); return; }
+  const layers = viewer.layerManager?.managedLayers;
+  if (!layers) { console.warn('[BrainQuest] No managedLayers'); return; }
 
-    const layers = viewer.layerManager?.managedLayers;
-    if (!layers) { console.warn('[BrainQuest] No managedLayers'); return; }
-
-    // Find the segmentation layer
-    let segManagedLayer: any = null;
-    for (const ml of layers) {
-      const layer = ml.layer;
-      if (!layer) continue;
-      const isSeg = layer.type === 'segmentation' ||
-        ml.initialSpecification?.type === 'segmentation' ||
-        layer.constructor?.name?.includes('Segmentation') ||
-        ml.name?.toLowerCase().includes('pinky') ||
-        ml.name?.toLowerCase().includes('seg');
-      if (!isSeg) continue;
+  // Find the segmentation layer (try SegmentationUserLayer class check first,
+  // then fall back to name/type heuristics)
+  let segManagedLayer: any = null;
+  for (const ml of layers) {
+    const layer = ml.layer;
+    if (!layer) continue;
+    // Check class name — most reliable for neuroglancer internals
+    const className = layer.constructor?.name || '';
+    if (className.includes('Segmentation') ||
+        layer.type === 'segmentation' ||
+        ml.initialSpecification?.type === 'segmentation') {
       segManagedLayer = ml;
       break;
     }
+  }
 
-    if (!segManagedLayer) {
-      console.warn('[BrainQuest] No segmentation layer found among', layers.length, 'layers');
-      return;
-    }
+  if (!segManagedLayer) {
+    console.warn('[BrainQuest] No segmentation layer found among', layers.length, 'layers');
+    return;
+  }
 
+  // Parse segID using the directly imported Uint64 class
+  try {
+    const seg = Uint64.parseString(item.segId);
     const layer = segManagedLayer.layer;
     const groupState = layer?.displayState?.segmentationGroupState?.value;
-    if (groupState) {
-      const Uint64 = groupState.visibleSegments?.hashTable?.emptyValue?.constructor;
-      if (Uint64) {
-        const seg = Uint64.parseString(item.segId);
-        if (!groupState.visibleSegments.has(seg)) {
-          groupState.visibleSegments.add(seg);
-          console.info('[BrainQuest] Added segment', item.segId, 'to visibleSegments');
-        }
-      } else {
-        console.warn('[BrainQuest] Uint64 constructor not found, trying string add');
-        // Fallback: try adding via the layer's segmentColorHash or direct state manipulation
-        try {
-          groupState.visibleSegments.add(groupState.visibleSegments.hashTable.emptyValue);
-        } catch (_) { /* ignore */ }
+    if (groupState?.visibleSegments) {
+      if (!groupState.visibleSegments.has(seg)) {
+        groupState.visibleSegments.add(seg);
       }
+      console.info('[BrainQuest] Added segment', item.segId, 'via imported Uint64');
     } else {
-      console.warn('[BrainQuest] No segmentationGroupState on layer');
-    }
-
-    // Force-open the Seg layer panel so the user sees the segment
-    try {
-      viewer.selectedLayer.layer = segManagedLayer;
-      viewer.selectedLayer.visible = true;
-      console.info('[BrainQuest] Opened Seg layer panel for', segManagedLayer.name);
-    } catch (e2) {
-      console.warn('[BrainQuest] Could not open Seg layer panel:', e2);
+      console.warn('[BrainQuest] No segmentationGroupState.visibleSegments');
     }
   } catch (e) {
-    console.warn('[BrainQuest] fallback segID paste failed:', e);
+    console.warn('[BrainQuest] Uint64.parseString failed for', item.segId, e);
+  }
+
+  // Navigate to position
+  if (pos && (pos[0] || pos[1] || pos[2])) {
+    try {
+      viewer.navigationState.position.value = Float32Array.from(pos);
+    } catch (e) {
+      console.warn('[BrainQuest] Could not set position:', e);
+    }
+  }
+
+  // Force-open the Seg layer panel so the user sees the segment
+  try {
+    viewer.selectedLayer.layer = segManagedLayer;
+    viewer.selectedLayer.visible = true;
+  } catch (e) {
+    console.warn('[BrainQuest] Could not open Seg layer panel:', e);
   }
 }
 
