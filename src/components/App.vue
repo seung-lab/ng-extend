@@ -2,13 +2,16 @@
 import ExtensionBar from "#src/components/ExtensionBar.vue";
 import Tutorial from "#src/components/Tutorial.vue";
 
-import { loaded } from "#src/store.js";
+import { loaded, useLoginStore } from "#src/store.js";
+import { storeToRefs } from "pinia";
+
+const { sessions } = storeToRefs(useLoginStore());
 </script>
 
 <template>
   <div id="vueMain">
     <div v-if="loaded" class="ng-extend">
-      <Tutorial />
+      <Tutorial v-if="sessions.length > 0" />
       <ExtensionBar />
     </div>
     <div id="content">
