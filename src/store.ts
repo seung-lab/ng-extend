@@ -172,7 +172,25 @@ export const useLayersStore = defineStore("layers", () => {
     const response = await fetchOkImpl(baseUrl).then((response) =>
       response.json()
     );
-    viewer!.state.restoreState(response);
+    // Set layout first to avoid localPositionValid crashes during layout transitions
+    if (response.layout) {
+      const layoutName = typeof response.layout === 'string'
+        ? response.layout
+        : response.layout.type;
+      if (layoutName) {
+        try {
+          viewer!.layout.container.setSpecification(layoutName);
+        } catch (e) {
+          console.warn('loadState: setSpecification error (non-fatal):', e);
+        }
+        await new Promise(r => requestAnimationFrame(r));
+      }
+    }
+    try {
+      viewer!.state.restoreState(response);
+    } catch (e) {
+      console.warn('loadState: restoreState error (non-fatal):', e);
+    }
   }
 
   function initializeWithViewer(v: Viewer) {

@@ -151,6 +151,10 @@ export interface Step {
   preloading?: boolean;
   videoCache?: HTMLVideoElement;
   width?: string;
+  nextLabel?: string;
+  spaceAdvances?: boolean;
+  clickAfterState?: string;
+  floatingImage?: string;
 }
 
 export const useTutorialStore = defineStore("tutorial", () => {

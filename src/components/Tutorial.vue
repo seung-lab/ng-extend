@@ -32,7 +32,7 @@ const exitIntro = () => {
 
 <template>
     <TutorialStep v-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
-        :last="activeStep.last" v-on:next="tutorialStep = tutorialStep + 1"
+        :last="activeStep.last" :stepIndex="activeStep.index" v-on:next="tutorialStep = tutorialStep + 1"
         v-on:back="tutorialStep = Math.max(0, tutorialStep - 1)" v-on:exitIntro="exitIntro" />
 </template>
 

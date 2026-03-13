@@ -30,13 +30,13 @@ export const steps: Step[] = [
  // },
   //1 -- full screen 3D - button option to skip to keyboard commands - state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
   {
-    title: `Welcome!`
+    title: `Welcome!`,
     text: `
 We’re a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
 
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/main-banner-vF.jpg?raw=true",
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/main-banner-vF.jpg",
     position: MIDDLE,
     width: "1000px",
     state: 
@@ -48,23 +48,22 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
 To create a connectomics dataset, we start with a brain. It is sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI.`,
     position: MIDDLE,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg?raw=true",
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg",
     width: "500px"
   },
-  //4 -- button says "how does it work"
+  //4
   {
     text: `
-**Button should say "How does it work?**
-
-Connectomics allows us to see all the way down to the synaptic connections between neurons. 
+Connectomics allows us to see all the way down to the synaptic connections between neurons.
 
 Although AI reconstructions are impressive, there are still many mistakes. The AI misses huge branches and fuses cells together. That's why we need YOU!
 
 The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck. Ready to get started?`,
     position: MIDDLE,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/synapse-wide.png?raw=true",
-    width: "500px"
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/synapse-wide.png",
+    width: "500px",
+    nextLabel: "Let's go!",
   },
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
@@ -72,9 +71,10 @@ The flexibility and big-picture thinking of the human mind enables humans to sol
 Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them. The sandbox uses data from the MICrONS project. The cell behind this box is a pyramidal neuron from mouse visual cortex.`,
     position: MIDDLE,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/sandbox-explosion.jpg?raw=true",
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/sandbox-explosion.jpg",
     width: "500px",
-    state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/5789745012539392"
+    state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/5789745012539392",
+    nextLabel: "ONWARD!",
   },
   //6 - gif reuse 3D click+ drag
   {
@@ -83,7 +83,7 @@ This is a 3D neuron that has been mapped by AI.
 
 CLICK + DRAG to rotate it.
 
-Note that this box won't go away when you click outside it :)`,
+This box won't go away when you click outside it.`,
     position: OVER_3D,
   },
   //7 - gif reuse 3D CNTRL+SCROLL
@@ -93,15 +93,21 @@ Note that this box won't go away when you click outside it :)`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
   },
-  //8 - right click - find annotation middleauth+https://global.daf-apis.com/nglstate/api/v1/6175014098305024
+  //8a - right click
   {
-    text: `
-Right click on the neuron to center view at any point. **See if you can find a yellow annotation at the end of one of the branches and zoom in on it.**
+    text: `Right click on the neuron to center view at any point.`,
+    position: OVER_3D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
+  },
+  //8b - find annotation
+  {
+    text: `**See if you can find a yellow annotation at the end of one of the branches and zoom in on it.**
 
 Don’t worry if you can’t find it - the Next button will take you there.`,
-    position: OVER_3D, 
+    position: OVER_3D,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/inspector-nurro-2.png?raw=true",
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/inspector-nurro-2.png",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
   },
@@ -113,7 +119,7 @@ It missed a branch. Let's see if we can find it.`,
     
     position: OVER_3D,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png?raw=true",
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
     width: "200px"
@@ -123,32 +129,26 @@ It missed a branch. Let's see if we can find it.`,
   {
     text: `Hit SPACE to bring up a split screen view that reveals the electron microscope image data from which these neurons were reconstructed.`,
     position: OVER_3D,
-  },
-  //11a - point to split screen icon (xy-3d layout)
-  {
-    text: `Click this button to move from 4 panel view to split screen. You will not need the 4 panel view.
-    
-Hit Next to load split screen view.`,
-    position: {
-      element:
-        "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div:nth-child(2) > div > div:nth-child(1) > div:nth-child(1) > div.neuroglancer-data-panel-layout-controls > button:nth-child(2) > div",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4718500091265024",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
+    spaceAdvances: true,
   },
-  //12 - over 2D - added EM to 3D and zoomed view
+  //12 - over 2D - EM cross section view
   {
-    text: `This grey stuff is an electron microscope aka EM image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
+    text: `This is an electron microscope (EM) image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
     position: OVER_2D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6156322132197376",
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+  },
+  //12a - split screen tip
+  {
+    text: `You're now in split screen view — EM on the left, 3D on the right. If you ever end up in 4 panel view, look for the ◫ button to get back to split screen.`,
+    position: OVER_2D,
   },
   //13 - gif
   {
-    text: `Press COMMA and PERIOD to step through the EM slices.
-    
+    text: `Move your cursor outside this box, then press COMMA and PERIOD to step through the EM slices. You can also hover your mouse over EM and scroll through images.
+
 Don't worry if you lose the neuron - the Next button in this section resets this view.`,
     position: OVER_2D,
     state:
@@ -179,8 +179,8 @@ Don't worry if you lose the neuron - the Next button in this section resets this
   //18 -  middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408
   {
     text: `To fix it, we need to scroll past the defect and find where the branch continues.
-    
-This is a tutorial so we dropped a hint. There is an annotation point in the continuation segment. See what happens when you double click it in the image layer. 
+
+This is a tutorial so we dropped a hint. Hit the comma key a few times until you get to an image past the black spill that does not have the cell colored in. There is an annotation point in the continuation segment. See what happens when you double click in 2D.
 
 Hit next to reveal the answer.`,
     position: MIDDLE,
@@ -190,19 +190,24 @@ Hit next to reveal the answer.`,
   //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
   {
     text: `Bravo! We found the continuation!`,
-    position: MIDDLE,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/bravo-nurro.png?raw=true",
+    position: {
+      element: "body",
+      x: 0.5,
+      y: 0.12,
+    },
+    floatingImage:
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/bravo-nurro.png",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5114308439572480",
   },
   {
-    text: `Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. 
-      
-Check out this top right menu for guides, tutorials, and more resources.`,
+    text: `Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore.`,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/rika-success.png?raw=true",
-
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/rika-success.png",
+    position: OVER_3D,
+  },
+  {
+    text: `Check out this top right menu for guides, tutorials, and more resources.`,
     position: {
       element: "#hamburger > button",
       side: "bottom",
@@ -219,7 +224,7 @@ Email support at eyewire.ai with any questions.
 Thanks for being a part of the neuroscience community. For Science!`,
     position: MIDDLE,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png",
     width: "600px"
   },
 ];
