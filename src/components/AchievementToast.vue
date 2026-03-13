@@ -59,6 +59,7 @@ let prevEdits = 0;
 let prevCells = 0;
 let prevStreak = 0;
 let initialized = false;
+let statsSeenNonZero = false; // Wait for real stats from server
 
 const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
 const CELL_MILESTONES = [10, 25, 50, 100, 250, 500, 1000];
@@ -68,13 +69,18 @@ onMounted(() => {
   prevEdits = stats.value.editsAllTime;
   prevCells = stats.value.cellsSubmitted;
   prevStreak = stats.value.currentStreak;
-  // Wait a beat before enabling watchers to avoid false triggers
-  setTimeout(() => { initialized = true; }, 2000);
+  // Wait for stats to settle — stats may load from server after mount
+  setTimeout(() => { initialized = true; }, 8000);
+
+  // Welcome sparkle — calcium-imaging shimmer on extension open
+  setTimeout(() => { confettiRef.value?.sparkle(1); }, 1500);
 });
 
 // Watch for badge unlocks
 watch(() => stats.value.editsAllTime, (newEdits) => {
   if (!initialized) { prevEdits = newEdits; return; }
+  // First real update after init — just capture baseline, don't celebrate
+  if (!statsSeenNonZero && newEdits > 0) { statsSeenNonZero = true; prevEdits = newEdits; return; }
   for (const badge of BADGE_DEFINITIONS) {
     if (badge.editThreshold <= 0) continue;
     if (prevEdits < badge.editThreshold && newEdits >= badge.editThreshold) {

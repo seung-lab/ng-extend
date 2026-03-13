@@ -2,10 +2,12 @@
 /**
  * ConfettiCelebration.vue
  * Full-screen confetti burst for milestone celebrations.
+ * Also supports a 'sparkle' mode — calcium-imaging–inspired tiny twinkling stars.
  * Uses a canvas for smooth 60fps animation with physics-based particles.
  *
  * Usage: call trigger() or trigger('gold') to fire a confetti burst.
- * Exposed via defineExpose so parent can call confettiRef.trigger().
+ *        call sparkle() to fire a calcium-imaging shimmer effect.
+ * Exposed via defineExpose so parent can call confettiRef.trigger() or .sparkle().
  */
 import { ref, onMounted, onUnmounted } from 'vue';
 
@@ -13,6 +15,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 let ctx: CanvasRenderingContext2D | null = null;
 let animFrame = 0;
 let particles: Particle[] = [];
+let sparkles: Sparkle[] = [];
 
 // Color palettes for different milestone types
 const PALETTES: Record<string, string[]> = {
@@ -80,64 +83,139 @@ function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, r: number
   ctx.fill();
 }
 
-function animate() {
-  if (!ctx || !canvasRef.value) return;
-  const canvas = canvasRef.value;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  let alive = false;
-  for (const p of particles) {
-    if (p.opacity <= 0) continue;
-    alive = true;
-
-    p.vy += p.gravity;
-    p.vx *= p.drag;
-    p.vy *= p.drag;
-    p.x += p.vx;
-    p.y += p.vy;
-    p.rotation += p.rotSpeed;
-
-    // Fade when below canvas center
-    if (p.y > canvas.height * 0.5) {
-      p.opacity -= p.fadeRate * 2;
-    }
-    // Kill if off-screen
-    if (p.y > canvas.height + 50) {
-      p.opacity = 0;
-      continue;
-    }
-
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(p.rotation);
-    ctx.globalAlpha = Math.max(0, p.opacity);
-    ctx.fillStyle = p.color;
-
-    if (p.shape === 'circle') {
-      ctx.beginPath();
-      ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (p.shape === 'star') {
-      drawStar(ctx, 0, 0, p.w / 2);
-    } else {
-      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-    }
-
-    ctx.restore();
-  }
-
-  if (alive) {
-    animFrame = requestAnimationFrame(animate);
-  } else {
-    particles = [];
-  }
-}
+/* animate() removed — animateSparkles() handles both confetti and sparkles */
 
 function resizeCanvas() {
   const canvas = canvasRef.value;
   if (!canvas) return;
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+}
+
+// ── Sparkle mode — calcium-imaging–inspired twinkling stars ─────────────────
+
+interface Sparkle {
+  x: number;
+  y: number;
+  r: number;       // radius
+  phase: number;    // twinkle phase offset
+  speed: number;    // twinkle speed
+  life: number;     // 0→1→0 lifecycle
+  lifeSpeed: number;
+  color: string;
+  maxOpacity: number;
+}
+
+const SPARKLE_COLORS = [
+  '#00e5ff', '#80deea', '#b2ebf2', '#ffffff', '#CE93D8',
+  '#e0f7fa', '#4dd0e1', '#a7ffeb', '#b9f6ca', '#fff9c4',
+];
+
+function createSparkles(count: number) {
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  for (let i = 0; i < count; i++) {
+    sparkles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: Math.random() * 2 + 0.5,
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.02 + Math.random() * 0.04,
+      life: 0,
+      lifeSpeed: 0.005 + Math.random() * 0.008,
+      color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
+      maxOpacity: 0.4 + Math.random() * 0.6,
+    });
+  }
+}
+
+function animateSparkles() {
+  if (!ctx || !canvasRef.value) return;
+  const canvas = canvasRef.value;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  let alive = false;
+  for (const s of sparkles) {
+    s.life += s.lifeSpeed;
+    if (s.life > 2) continue; // dead
+    alive = true;
+
+    // Bell curve: fade in 0→1, fade out 1→2
+    const envelope = s.life <= 1 ? s.life : 2 - s.life;
+    // Twinkle: rapid sin oscillation on top of envelope
+    const twinkle = 0.5 + 0.5 * Math.sin(s.phase + s.life * 60 * s.speed);
+    const alpha = envelope * twinkle * s.maxOpacity;
+
+    if (alpha <= 0.01) continue;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Glow
+    ctx.shadowColor = s.color;
+    ctx.shadowBlur = s.r * 4;
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bright center
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Also render confetti particles if any
+  for (const p of particles) {
+    if (p.opacity <= 0) continue;
+    alive = true;
+    p.vy += p.gravity;
+    p.vx *= p.drag;
+    p.vy *= p.drag;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.rotation += p.rotSpeed;
+    if (p.y > canvas.height * 0.5) p.opacity -= p.fadeRate * 2;
+    if (p.y > canvas.height + 50) { p.opacity = 0; continue; }
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rotation);
+    ctx.globalAlpha = Math.max(0, p.opacity);
+    ctx.fillStyle = p.color;
+    if (p.shape === 'circle') {
+      ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2); ctx.fill();
+    } else if (p.shape === 'star') {
+      drawStar(ctx, 0, 0, p.w / 2);
+    } else {
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    }
+    ctx.restore();
+  }
+
+  if (alive) {
+    animFrame = requestAnimationFrame(animateSparkles);
+  } else {
+    sparkles = [];
+    particles = [];
+    animFrame = 0;
+  }
+}
+
+/**
+ * Fire a calcium-imaging sparkle shimmer — tiny twinkling stars across the screen.
+ * @param intensity - particle count multiplier (1 = subtle, 2 = medium, 3 = dramatic)
+ */
+function sparkle(intensity: number = 1) {
+  resizeCanvas();
+  const count = Math.round(120 * intensity);
+  createSparkles(count);
+  if (!animFrame) {
+    animFrame = requestAnimationFrame(animateSparkles);
+  }
 }
 
 /**
@@ -151,7 +229,7 @@ function trigger(palette: string = 'default', intensity: number = 1) {
   const count = Math.round(80 * intensity);
   createParticles(count, colors);
   if (!animFrame) {
-    animFrame = requestAnimationFrame(animate);
+    animFrame = requestAnimationFrame(animateSparkles);
   }
 }
 
@@ -169,7 +247,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', resizeCanvas);
 });
 
-defineExpose({ trigger });
+defineExpose({ trigger, sparkle });
 </script>
 
 <template>
