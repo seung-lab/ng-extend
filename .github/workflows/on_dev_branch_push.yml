@@ -30,7 +30,7 @@ jobs:
       run: npm run typecheck
       continue-on-error: true
     - name: Build client bundles
-      run: npm run build
+      run: node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min --no-typecheck
     - run: cp -r ./dist/min appengine/frontend/static/
     - name: Get branch name (merge)
       if: github.event_name != 'pull_request'
