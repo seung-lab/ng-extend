@@ -2082,3 +2082,174 @@ export const useVolumesStore = defineStore('volumes', () => {
 
   return {loadVolumes, volumes};
 });
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Chat Store — Supabase Realtime Broadcast (no separate WebSocket server needed)
+// ════════════════════════════════════════════════════════════════════════════════
+
+export interface MessagePart {
+  type: 'text' | 'link' | 'sender';
+  text: string;
+}
+
+export interface ChatMessage {
+  type: 'message' | 'join' | 'leave' | 'disconnected' | 'time';
+  name: string;
+  rank: string;
+  time?: string;
+  dateTime: Date;
+  parts: MessagePart[];
+}
+
+/** Parse message text into parts (text + auto-detected links) */
+function parseMessageParts(name: string, text: string): MessagePart[] {
+  const parts: MessagePart[] = [{ type: 'sender', text: name }];
+  // Split on URLs
+  const urlRegex = /(https?:\/\/\S+)/g;
+  const segments = text.split(urlRegex);
+  for (const seg of segments) {
+    if (!seg) continue;
+    if (urlRegex.test(seg)) {
+      parts.push({ type: 'link', text: seg });
+    } else {
+      parts.push({ type: 'text', text: seg });
+    }
+    // Reset regex lastIndex since we reuse it
+    urlRegex.lastIndex = 0;
+  }
+  return parts;
+}
+
+function formatTime(d: Date): string {
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+export const useChatStore = defineStore('chat', () => {
+  const chatMessages = ref<ChatMessage[]>([]);
+  const connected = ref(false);
+  const unreadMessages = ref(false);
+
+  let channel: ReturnType<typeof supabase.channel> | null = null;
+  let lastMessageDate = '';
+
+  function addTimeSeparatorIfNeeded(date: Date) {
+    const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    if (dateStr !== lastMessageDate) {
+      lastMessageDate = dateStr;
+      chatMessages.value.push({
+        type: 'time',
+        name: '',
+        rank: '',
+        time: dateStr,
+        dateTime: date,
+        parts: [],
+      });
+    }
+  }
+
+  function connect() {
+    if (channel) return; // already connected
+
+    const backend = useProofreadingBackendStore();
+    const displayName = backend.userName || 'Anonymous';
+
+    channel = supabase.channel('eyewire-ii-chat', {
+      config: { broadcast: { self: true } },
+    });
+
+    channel
+      .on('broadcast', { event: 'message' }, (payload) => {
+        const { name, rank, text, timestamp } = payload.payload;
+        const date = new Date(timestamp);
+        addTimeSeparatorIfNeeded(date);
+        chatMessages.value.push({
+          type: 'message',
+          name,
+          rank: rank || 'player',
+          time: formatTime(date),
+          dateTime: date,
+          parts: parseMessageParts(name, text),
+        });
+        unreadMessages.value = true;
+      })
+      .on('broadcast', { event: 'join' }, (payload) => {
+        const { name } = payload.payload;
+        const now = new Date();
+        chatMessages.value.push({
+          type: 'join',
+          name,
+          rank: '',
+          time: formatTime(now),
+          dateTime: now,
+          parts: [{ type: 'text', text: `${name} joined the chat` }],
+        });
+      })
+      .on('broadcast', { event: 'leave' }, (payload) => {
+        const { name } = payload.payload;
+        const now = new Date();
+        chatMessages.value.push({
+          type: 'leave',
+          name,
+          rank: '',
+          time: formatTime(now),
+          dateTime: now,
+          parts: [{ type: 'text', text: `${name} left the chat` }],
+        });
+      })
+      .on('presence', { event: 'sync' }, () => {
+        // Could track online users here in the future
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          connected.value = true;
+          // Announce join
+          await channel!.send({
+            type: 'broadcast',
+            event: 'join',
+            payload: { name: displayName },
+          });
+          // Track presence
+          await channel!.track({ name: displayName, joined_at: new Date().toISOString() });
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          connected.value = false;
+        }
+      });
+  }
+
+  function sendMessage(text: string) {
+    if (!channel || !connected.value) return;
+    const backend = useProofreadingBackendStore();
+    const name = backend.userName || 'Anonymous';
+    channel.send({
+      type: 'broadcast',
+      event: 'message',
+      payload: {
+        name,
+        rank: 'player',
+        text,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+
+  function markRead() {
+    unreadMessages.value = false;
+  }
+
+  function disconnect() {
+    if (channel) {
+      const backend = useProofreadingBackendStore();
+      const name = backend.userName || 'Anonymous';
+      channel.send({
+        type: 'broadcast',
+        event: 'leave',
+        payload: { name },
+      });
+      supabase.removeChannel(channel);
+      channel = null;
+      connected.value = false;
+    }
+  }
+
+  return { chatMessages, connected, unreadMessages, connect, sendMessage, markRead, disconnect };
+});

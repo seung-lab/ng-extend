@@ -14,7 +14,7 @@ import CommandPalette from "components/CommandPalette.vue";
 import AchievementToast from "components/AchievementToast.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
-// import ChatPanel from "components/ChatPanel.vue"; // TODO: enable after useChatStore is added
+import ChatPanel from "components/ChatPanel.vue";
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore} from '../store';
 import {useTutorialStore} from '../store-pyr';
@@ -180,7 +180,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
-  <!-- <chat-panel v-if="showChat" @hide="showChat = false" /> --> <!-- TODO: enable after useChatStore is added -->
+  <chat-panel v-if="showChat" @hide="showChat = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <a href="https://h01-release.storage.googleapis.com/explore.html" target="_blank">
