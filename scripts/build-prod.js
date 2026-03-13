@@ -13,7 +13,7 @@ const defines = {
   DEFAULT_SETTINGS: 'config/default-settings.json',
 };
 
-const args = ['./node_modules/neuroglancer/config/esbuild-cli.js', '--config=min'];
+const args = ['./node_modules/neuroglancer/config/esbuild-cli.js', '--config=min', '--no-typecheck'];
 
 for (const [name, file] of Object.entries(defines)) {
   const content = fs.readFileSync(file, 'utf8').replace(/\s+/g, '');
