@@ -8,7 +8,6 @@ import LeaderboardPanel from "components/LeaderboardPanel.vue";
 import SettingsPanel from "components/SettingsPanel.vue";
 import AnnotationPanel from "components/AnnotationPanel.vue";
 import LoginModal from "components/LoginModal.vue";
-import HelpRequestsPanel from "components/HelpRequestsPanel.vue";
 import ProofreadingQueuePanel from "components/ProofreadingQueuePanel.vue";
 import CommandPalette from "components/CommandPalette.vue";
 import AchievementToast from "components/AchievementToast.vue";
@@ -74,11 +73,11 @@ const showProfile = ref(false);
 const showRecap = ref(false);
 const showLeaderboard = ref(false);
 const showSettings = ref(false);
-const showHelp = ref(false);
 const showQueue = ref(false);
 const showFeed = ref(false);
 const showChat = ref(false);
 const showCellLibrary = ref(false);
+const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
 const backendStore = useProofreadingBackendStore();
@@ -108,9 +107,9 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'recap', emoji: '📊', label: 'Your Week in Science', action: () => { showRecap.value = true; } },
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard', action: () => { showLeaderboard.value = true; } },
   { id: 'quest', emoji: '🧠', label: 'Brain Quest', action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
-  { id: 'cells', emoji: '🧬', label: 'Cell Library', action: () => { showCellLibrary.value = !showCellLibrary.value; } },
+  { id: 'cells', emoji: '🧬', label: 'Cell Library', action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
   { id: 'batch', emoji: '📦', label: 'Batch Processor', action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
-  { id: 'help', emoji: '🔍', label: 'Second Opinion Requests', action: () => { showHelp.value = true; }, badge: () => helpStore.pending.length },
+  { id: 'help', emoji: '🔍', label: 'Second Opinion Requests', action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => helpStore.pending.length },
   { id: 'feed', emoji: '📡', label: 'Activity Feed', action: () => { showFeed.value = true; } },
   { id: 'chat', emoji: '💬', label: 'Chat', action: () => { showChat.value = !showChat.value; } },
   { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
@@ -169,15 +168,15 @@ function activateTool(toolType: 'multicut' | 'merge') {
     @open-recap="showRecap = true"
     @open-leaderboard="showLeaderboard = true"
     @open-settings="showSettings = true"
-    @open-help="showHelp = true"
+    @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true"
     @open-queue="showQueue = true"
     @open-cells="showCellLibrary = true"
     @open-feed="showFeed = true"
   />
   <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
-  <help-requests-panel v-if="showHelp" @hide="showHelp = false" />
+  <!-- Help requests now live in Cell Library's Help tab -->
   <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
-  <cell-library-panel v-if="showCellLibrary" @hide="showCellLibrary = false" />
+  <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
   <batch-processor-panel v-if="showBatchProcessor" @hide="showBatchProcessor = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <user-profile-panel v-if="showProfile" @hide="showProfile = false" @open-settings="showSettings = true" />

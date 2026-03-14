@@ -91,6 +91,26 @@ CREATE TABLE activity_feed (
 
 CREATE INDEX idx_feed_time ON activity_feed(timestamp DESC);
 
+CREATE TABLE help_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  user_name TEXT,
+  segment_id TEXT NOT NULL,
+  position TEXT NOT NULL,
+  note TEXT DEFAULT '',
+  issue_type TEXT NOT NULL,
+  dataset TEXT DEFAULT 'eyewire_ii',
+  resolved BOOLEAN DEFAULT false,
+  resolved_at TIMESTAMPTZ,
+  resolved_by UUID REFERENCES users(id),
+  cell_type TEXT,
+  nickname TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_help_dataset ON help_requests(dataset, resolved);
+CREATE INDEX idx_help_time ON help_requests(created_at DESC);
+
 -- ═══════════════════════════════════════════
 -- ROW-LEVEL SECURITY
 -- ═══════════════════════════════════════════
@@ -120,6 +140,12 @@ CREATE POLICY "editlog_insert" ON edit_log FOR INSERT WITH CHECK (true);
 ALTER TABLE activity_feed ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "feed_select" ON activity_feed FOR SELECT USING (true);
 CREATE POLICY "feed_insert" ON activity_feed FOR INSERT WITH CHECK (true);
+
+ALTER TABLE help_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "help_select" ON help_requests FOR SELECT USING (true);
+CREATE POLICY "help_insert" ON help_requests FOR INSERT WITH CHECK (true);
+CREATE POLICY "help_update" ON help_requests FOR UPDATE USING (true);
+CREATE POLICY "help_delete" ON help_requests FOR DELETE USING (true);
 
 -- ═══════════════════════════════════════════
 -- AUTO-EXPIRY FUNCTION
@@ -155,3 +181,4 @@ $$ LANGUAGE plpgsql;
 ALTER PUBLICATION supabase_realtime ADD TABLE activity_feed;
 ALTER PUBLICATION supabase_realtime ADD TABLE proofreading_tasks;
 ALTER PUBLICATION supabase_realtime ADD TABLE task_assignments;
+ALTER PUBLICATION supabase_realtime ADD TABLE help_requests;

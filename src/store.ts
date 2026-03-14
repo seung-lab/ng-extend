@@ -11,6 +11,7 @@ import {Config, EYEWIRE_II_CAVE_CONFIG} from './config';
 import {supabase} from './supabase';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
+import {Uint64} from "neuroglancer/util/uint64";
 
 declare const CONFIG: Config|undefined;
 declare const DEFAULT_SETTINGS: {  [key: string]: any }
@@ -737,26 +738,20 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
         (x: any) => {
           const layer = x.layer;
           if (!layer) return false;
-          // Check by type property first, fall back to constructor name
-          if (layer.type === 'segmentation') return true;
-          if (x.initialSpecification?.type === 'segmentation') return true;
-          return layer.constructor?.name?.includes('Segmentation');
+          const className = layer.constructor?.name || '';
+          return className.includes('Segmentation') ||
+            layer.type === 'segmentation' ||
+            x.initialSpecification?.type === 'segmentation';
         },
       );
       if (!segLayer?.layer) {
         console.warn('[cellHistory] No segmentation layer found');
       } else {
         const groupState = segLayer.layer.displayState?.segmentationGroupState?.value;
-        if (groupState) {
-          // Parse the segment ID as a Uint64
-          const Uint64 = groupState.visibleSegments.hashTable?.emptyValue?.constructor;
-          if (Uint64) {
-            const seg = Uint64.parseString(segId);
-            if (!groupState.visibleSegments.has(seg)) {
-              groupState.visibleSegments.add(seg);
-            }
-          } else {
-            console.warn('[cellHistory] Could not find Uint64 constructor');
+        if (groupState?.visibleSegments) {
+          const seg = Uint64.parseString(segId);
+          if (!groupState.visibleSegments.has(seg)) {
+            groupState.visibleSegments.add(seg);
           }
         } else {
           console.warn('[cellHistory] No segmentationGroupState on layer');
@@ -818,8 +813,7 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
   return { cells, upsert, jumpToCell, toggleFavorite, setNickname, getNickname };
 });
 
-// ── Help requests (second-opinion) ────────────────────────────────────────────
-const HELP_REQUESTS_KEY = 'nge_help_requests_v1';
+// ── Help requests (second-opinion) — backed by Supabase with realtime ────────
 
 export interface HelpRequest {
   id: string;
@@ -835,51 +829,184 @@ export interface HelpRequest {
   nickname?: string;
   /** Dataset/layer name this request belongs to (for cross-dataset filtering). */
   dataset?: string;
+  /** Who created this request */
+  userName?: string;
+}
+
+/** Map Supabase row → HelpRequest interface */
+function rowToHelpRequest(row: any): HelpRequest {
+  return {
+    id: row.id,
+    segId: row.segment_id,
+    position: (() => { try { return JSON.parse(row.position); } catch { return [0, 0, 0]; } })(),
+    note: row.note ?? '',
+    issueType: row.issue_type,
+    createdAt: row.created_at,
+    resolved: !!row.resolved,
+    cellType: row.cell_type ?? undefined,
+    nickname: row.nickname ?? undefined,
+    dataset: row.dataset ?? undefined,
+    userName: row.user_name ?? undefined,
+  };
 }
 
 export const useHelpRequestStore = defineStore('helpRequests', () => {
   const requests = ref<HelpRequest[]>([]);
-
-  function load() {
-    try {
-      const raw = localStorage.getItem(HELP_REQUESTS_KEY);
-      if (raw) requests.value = JSON.parse(raw);
-    } catch {}
-  }
-
-  function persist() {
-    localStorage.setItem(HELP_REQUESTS_KEY, JSON.stringify(requests.value));
-  }
-
-  function add(req: Omit<HelpRequest, 'id' | 'createdAt' | 'resolved'>) {
-    requests.value.unshift({
-      ...req,
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      createdAt: new Date().toISOString(),
-      resolved: false,
-    });
-    persist();
-  }
-
-  function resolve(id: string) {
-    const r = requests.value.find(x => x.id === id);
-    if (r) { r.resolved = true; persist(); }
-  }
-
-  function remove(id: string) {
-    requests.value = requests.value.filter(x => x.id !== id);
-    persist();
-  }
-
   const pending = ref<HelpRequest[]>([]);
-  // Keep a reactive computed-like ref
+  let realtimeChannel: any = null;
+
   function refreshPending() {
     pending.value = requests.value.filter(x => !x.resolved);
   }
 
+  /** Load all help requests from Supabase. */
+  async function load() {
+    try {
+      const { data, error } = await supabase
+        .from('help_requests')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) {
+        console.warn('[helpRequests] Supabase load error:', error.message);
+        loadFromLocalStorage(); // fallback
+        return;
+      }
+      requests.value = (data ?? []).map(rowToHelpRequest);
+      refreshPending();
+    } catch (e) {
+      console.warn('[helpRequests] load failed, falling back to localStorage:', e);
+      loadFromLocalStorage();
+    }
+  }
+
+  /** Fallback: load from localStorage (migration period). */
+  function loadFromLocalStorage() {
+    try {
+      const raw = localStorage.getItem('nge_help_requests_v1');
+      if (raw) requests.value = JSON.parse(raw);
+      refreshPending();
+    } catch {}
+  }
+
+  /** Subscribe to realtime changes on help_requests table. */
+  function subscribe() {
+    if (realtimeChannel) return;
+    realtimeChannel = supabase
+      .channel('help_requests_realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'help_requests',
+      }, (payload: any) => {
+        const req = rowToHelpRequest(payload.new);
+        // Avoid duplicates (we may have already added it optimistically)
+        if (!requests.value.find(r => r.id === req.id)) {
+          requests.value.unshift(req);
+          refreshPending();
+        }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'help_requests',
+      }, (payload: any) => {
+        const updated = rowToHelpRequest(payload.new);
+        const idx = requests.value.findIndex(r => r.id === updated.id);
+        if (idx >= 0) {
+          requests.value[idx] = updated;
+          refreshPending();
+        }
+      })
+      .subscribe();
+  }
+
+  function unsubscribe() {
+    if (realtimeChannel) {
+      supabase.removeChannel(realtimeChannel);
+      realtimeChannel = null;
+    }
+  }
+
+  /** Add a new help request to Supabase. */
+  async function add(req: Omit<HelpRequest, 'id' | 'createdAt' | 'resolved'>) {
+    const backend = useProofreadingBackendStore();
+    const row = {
+      user_id: backend.userId || null,
+      user_name: backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous',
+      segment_id: req.segId,
+      position: JSON.stringify(req.position),
+      note: req.note || '',
+      issue_type: req.issueType,
+      dataset: req.dataset || 'eyewire_ii',
+      cell_type: req.cellType || null,
+      nickname: req.nickname || null,
+    };
+
+    const { data, error } = await supabase
+      .from('help_requests')
+      .insert(row)
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('[helpRequests] insert error:', error.message);
+      // Optimistic local fallback
+      requests.value.unshift({
+        ...req,
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        createdAt: new Date().toISOString(),
+        resolved: false,
+      });
+    } else if (data) {
+      const newReq = rowToHelpRequest(data);
+      if (!requests.value.find(r => r.id === newReq.id)) {
+        requests.value.unshift(newReq);
+      }
+    }
+    refreshPending();
+  }
+
+  /** Mark a help request as resolved in Supabase. */
+  async function resolve(id: string) {
+    const backend = useProofreadingBackendStore();
+    const { error } = await supabase
+      .from('help_requests')
+      .update({
+        resolved: true,
+        resolved_at: new Date().toISOString(),
+        resolved_by: backend.userId || null,
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.warn('[helpRequests] resolve error:', error.message);
+    }
+    // Optimistic update
+    const r = requests.value.find(x => x.id === id);
+    if (r) r.resolved = true;
+    refreshPending();
+  }
+
+  /** Remove a help request (delete from Supabase). */
+  async function remove(id: string) {
+    const { error } = await supabase
+      .from('help_requests')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.warn('[helpRequests] delete error:', error.message);
+    }
+    requests.value = requests.value.filter(x => x.id !== id);
+    refreshPending();
+  }
+
+  // Initialize: load from Supabase + subscribe to realtime
   load();
-  refreshPending();
-  return { requests, pending, add, resolve, remove, refreshPending };
+  subscribe();
+
+  return { requests, pending, add, resolve, remove, refreshPending, load, subscribe, unsubscribe };
 });
 
 // ── Proofreading Queue ─────────────────────────────────────────────────────

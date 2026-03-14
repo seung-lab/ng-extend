@@ -179,3 +179,84 @@ export async function getTabularChangeLog(rootId: string): Promise<EditLogEntry[
     return null;
   }
 }
+
+// ─── Root lineage endpoints ─────────────────────────────────────────────────
+
+/**
+ * Check which root IDs are still current (not superseded by edits).
+ *
+ * Endpoint: GET /segmentation/api/v1/table/{table}/is_latest_roots?root_ids=...
+ */
+export async function isLatestRoots(rootIds: string[]): Promise<Map<string, boolean> | null> {
+  const pcg = getPcgInfo();
+  if (!pcg || rootIds.length === 0) return null;
+
+  const url = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/is_latest_roots?root_ids=${rootIds.join(',')}`;
+  console.info(`[pcg] GET is_latest_roots → ${rootIds.length} IDs`);
+
+  try {
+    const res = await fetch(url, { headers: authHeaders(pcg.server) });
+    if (!res.ok) {
+      console.warn(`[pcg] is_latest_roots ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    // Response: { is_latest: [true, false, ...] } parallel to input order
+    const flags: boolean[] = data.is_latest ?? data ?? [];
+    const result = new Map<string, boolean>();
+    for (let i = 0; i < rootIds.length && i < flags.length; i++) {
+      result.set(rootIds[i], !!flags[i]);
+    }
+    return result;
+  } catch (e) {
+    console.warn('[pcg] is_latest_roots network error:', e);
+    return null;
+  }
+}
+
+/**
+ * Get the current root IDs for a set of (possibly stale) root IDs.
+ *
+ * Endpoint: POST /segmentation/api/v1/table/{table}/get_latest_roots
+ */
+export async function getLatestRoots(rootIds: string[]): Promise<Map<string, string> | null> {
+  const pcg = getPcgInfo();
+  if (!pcg || rootIds.length === 0) return null;
+
+  const url = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/get_latest_roots`;
+  console.info(`[pcg] POST get_latest_roots → ${rootIds.length} IDs`);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: authHeaders(pcg.server),
+      body: JSON.stringify({ root_ids: rootIds }),
+    });
+    if (!res.ok) {
+      console.warn(`[pcg] get_latest_roots ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    // Response: { old_id: new_id, ... } or { latest_root_ids: [...] }
+    const result = new Map<string, string>();
+    if (data.latest_root_ids && Array.isArray(data.latest_root_ids)) {
+      for (let i = 0; i < rootIds.length && i < data.latest_root_ids.length; i++) {
+        const newId = String(data.latest_root_ids[i]);
+        if (newId !== rootIds[i]) {
+          result.set(rootIds[i], newId);
+        }
+      }
+    } else {
+      // Object mapping format: { "oldId": "newId", ... }
+      for (const [oldId, newId] of Object.entries(data)) {
+        if (String(newId) !== oldId) {
+          result.set(oldId, String(newId));
+        }
+      }
+    }
+    return result;
+  } catch (e) {
+    console.warn('[pcg] get_latest_roots network error:', e);
+    return null;
+  }
+}

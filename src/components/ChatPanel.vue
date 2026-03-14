@@ -380,16 +380,16 @@ function toggleCollapse() {
   overflow: hidden;
 }
 
-/* Fade-to-transparent at top */
+/* Background gradient: opaque at bottom (contrast for text) → transparent at top */
 .nge-chat-fade {
   position: absolute;
-  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
-  height: 50%;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 40%, transparent 100%);
+  height: 100%;
+  background: linear-gradient(to top, rgba(8,10,20,0.88) 0%, rgba(8,10,20,0.65) 30%, rgba(8,10,20,0.3) 60%, transparent 100%);
   pointer-events: none;
-  z-index: 2;
+  z-index: 1;
 }
 
 .nge-chat-messages {
@@ -397,7 +397,9 @@ function toggleCollapse() {
   overflow-y: auto;
   display: flex;
   flex-direction: column-reverse;
-  padding: 2px 6px;
+  padding: 2px 8px;
+  position: relative;
+  z-index: 2;
 }
 
 .nge-chat-messages::-webkit-scrollbar { width: 2px; }
@@ -412,9 +414,9 @@ function toggleCollapse() {
 
 /* ── Message line — inline name + text ── */
 .nge-chat-msg {
-  padding: 1px 4px;
-  line-height: 1.35;
-  font-size: 11px;
+  padding: 2px 4px;
+  line-height: 1.4;
+  font-size: 13px;
 }
 .nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
 
@@ -422,8 +424,8 @@ function toggleCollapse() {
 
 .nge-chat-msg-name {
   font-weight: 600;
-  font-size: 11px;
-  margin-right: 3px;
+  font-size: 13px;
+  margin-right: 4px;
 }
 
 .nge-chat-msg-text {
@@ -434,14 +436,14 @@ function toggleCollapse() {
   color: #4a9eff;
   text-decoration: none;
   word-break: break-all;
-  font-size: 11px;
+  font-size: 13px;
 }
 .nge-chat-link:hover { text-decoration: underline; }
 
 /* System messages */
 .nge-chat-sys {
-  font-size: 9px;
-  color: #445;
+  font-size: 11px;
+  color: #556;
   font-style: italic;
   padding: 0 4px;
 }
@@ -453,8 +455,8 @@ function toggleCollapse() {
   padding: 2px 0;
 }
 .nge-chat-time-sep span {
-  font-size: 8px;
-  color: #445;
+  font-size: 10px;
+  color: #556;
   padding: 0 6px;
 }
 
@@ -491,9 +493,9 @@ function toggleCollapse() {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(100, 180, 255, 0.1);
   border-radius: 4px;
-  padding: 4px 8px;
+  padding: 5px 8px;
   color: #e0e4ec;
-  font-size: 11px;
+  font-size: 13px;
   font-family: inherit;
   outline: none;
   transition: border-color 0.12s;
@@ -507,7 +509,7 @@ function toggleCollapse() {
 .nge-chat-empty {
   text-align: center;
   padding: 16px 8px;
-  color: #445;
-  font-size: 10px;
+  color: #556;
+  font-size: 12px;
 }
 </style>

@@ -27,9 +27,10 @@ function currentDataset(): string {
 // Set on mount so it captures the current dataset at panel open time.
 const activeDataset = ref('');
 
-onMounted(() => {
+onMounted(async () => {
   activeDataset.value = currentDataset();
-  // Ensure help store data is fresh from localStorage
+  // Refresh from Supabase and recompute pending
+  await helpStore.load();
   helpStore.refreshPending();
 });
 

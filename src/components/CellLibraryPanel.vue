@@ -5,18 +5,66 @@ import {
   useProofreadingQueueStore,
   useLoginStore,
   useCellHistoryStore,
+  useHelpRequestStore,
   type ProofreadingTask,
+  type HelpRequest,
 } from '../store';
+import { isLatestRoots, getLatestRoots } from '../widgets/pcg_service';
 
+const props = defineProps<{ initialTab?: string }>();
 const emit = defineEmits({ hide: null });
 const backend = useProofreadingBackendStore();
 const queue = useProofreadingQueueStore();
 const login = useLoginStore();
 const history = useCellHistoryStore();
+const helpStore = useHelpRequestStore();
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed'>('mine');
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'help'>(
+  (props.initialTab as any) || 'mine',
+);
 const search = ref('');
+
+// ── Lineage resolution (stale root ID detection) ────────────────────
+const latestRootMap = ref<Map<string, string>>(new Map());
+const staleSet = ref<Set<string>>(new Set());
+const resolving = ref(false);
+
+async function resolveStaleRoots() {
+  // Collect segment IDs from claimed/in-progress cells
+  const claimedIds = cells.value
+    .filter(c => c.status === 'assigned' || c.status === 'in_progress')
+    .map(c => c.segId);
+  if (claimedIds.length === 0) return;
+
+  resolving.value = true;
+  try {
+    // Step 1: lightweight check — which IDs are stale?
+    const latest = await isLatestRoots(claimedIds);
+    if (!latest) { resolving.value = false; return; }
+
+    const staleIds = claimedIds.filter(id => latest.get(id) === false);
+    if (staleIds.length === 0) { resolving.value = false; return; }
+
+    // Step 2: resolve stale IDs to current root IDs
+    const resolved = await getLatestRoots(staleIds);
+    if (resolved) {
+      latestRootMap.value = resolved;
+      staleSet.value = new Set(staleIds);
+    }
+  } catch (e) {
+    console.warn('[cellLibrary] lineage resolution failed:', e);
+  }
+  resolving.value = false;
+}
+
+const copiedId = ref<string | null>(null);
+function copyId(id: string) {
+  navigator.clipboard.writeText(id).then(() => {
+    copiedId.value = id;
+    setTimeout(() => { copiedId.value = null; }, 1200);
+  });
+}
 
 // ── Data loading ─────────────────────────────────────────────────────
 onMounted(async () => {
@@ -28,6 +76,10 @@ onMounted(async () => {
     await queue.loadFromSheet();
   }
   loading.value = false;
+  // Fire-and-forget: resolve stale root IDs for claimed cells
+  resolveStaleRoots();
+  // Refresh help requests from Supabase
+  helpStore.load();
 });
 
 // ── Derived data ─────────────────────────────────────────────────────
@@ -57,6 +109,9 @@ const cells = computed(() => {
         assignedTo: task?.assigned_to ?? null,
         finalSegId: task?.final_segment_id ?? null,
         completedByName: null as string | null, // filled async
+        // Lineage resolution
+        currentSegId: latestRootMap.value.get(item.segId) || null,
+        isStale: staleSet.value.has(item.segId),
       };
     });
   }
@@ -73,6 +128,8 @@ const cells = computed(() => {
     assignedTo: t.assigned_to,
     finalSegId: t.final_segment_id,
     completedByName: null as string | null,
+    currentSegId: latestRootMap.value.get(t.segment_id) || null,
+    isStale: staleSet.value.has(t.segment_id),
   }));
 });
 
@@ -249,10 +306,6 @@ async function writeToSheetColumn(segId: string, columnPattern: string, value: s
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
-function truncateId(segId: string) {
-  return segId.length > 8 ? '...' + segId.slice(-6) : segId;
-}
-
 function statusLabel(status: string) {
   switch (status) {
     case 'pending': return 'available';
@@ -275,6 +328,35 @@ function statusClass(status: string) {
 
 const isMyClaim = (cell: typeof cells.value[0]) =>
   (cell.status === 'assigned' || cell.status === 'in_progress') && cell.assignedTo === backend.userId;
+
+// ── Help request helpers ────────────────────────────────────────────
+const showResolved = ref(false);
+const pendingHelp = computed(() => helpStore.requests.filter(r => !r.resolved));
+const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function jumpToReq(req: HelpRequest) {
+  history.jumpToCell(req.segId, req.position);
+}
+
+function resolveReq(req: HelpRequest) {
+  helpStore.resolve(req.id);
+  helpStore.refreshPending();
+}
+
+function removeReq(req: HelpRequest) {
+  helpStore.remove(req.id);
+  helpStore.refreshPending();
+}
 
 // ── Drag ─────────────────────────────────────────────────────────────
 const isDragging = ref(false);
@@ -325,6 +407,9 @@ const panelStyle = computed(() => ({
           <button :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
             Completed ({{ completedCount }})
           </button>
+          <button :class="{ active: filter === 'help', 'nge-cl-help-tab': true }" @click="filter = 'help'">
+            Help ({{ pendingHelp.length }})
+          </button>
         </div>
 
         <!-- Search -->
@@ -337,8 +422,74 @@ const panelStyle = computed(() => ({
           />
         </div>
 
+        <!-- ═══ HELP TAB ═══ -->
+        <div v-if="filter === 'help'" class="nge-cl-list">
+          <!-- Pending help requests -->
+          <div v-if="pendingHelp.length === 0 && resolvedHelp.length === 0" class="nge-cl-empty">
+            No help requests yet. Select a segment and click "Ask for Second Opinion" in the annotation panel.
+          </div>
+          <div v-else-if="pendingHelp.length === 0" class="nge-cl-no-results">No pending requests</div>
+
+          <div
+            v-for="req in pendingHelp"
+            :key="req.id"
+            class="nge-cl-row"
+          >
+            <div class="nge-cl-row-left">
+              <span class="nge-cl-pip nge-cl-status--help"></span>
+              <div class="nge-cl-row-info">
+                <div class="nge-cl-row-name" @click="copyId(req.segId)" :title="'Click to copy ' + req.segId">
+                  {{ req.segId }}
+                  <span v-if="copiedId === req.segId" class="nge-cl-copied">copied</span>
+                </div>
+                <div class="nge-cl-row-meta">
+                  <span class="nge-cl-badge nge-cl-status--help">{{ req.issueType }}</span>
+                  <span v-if="req.userName" class="nge-cl-notes">by {{ req.userName }}</span>
+                  <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
+                </div>
+                <div v-if="req.note" class="nge-cl-help-note">{{ req.note }}</div>
+              </div>
+            </div>
+            <div class="nge-cl-row-actions">
+              <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
+              <button class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(req)">Resolve</button>
+            </div>
+          </div>
+
+          <!-- Resolved section -->
+          <div v-if="resolvedHelp.length > 0" class="nge-cl-help-resolved-header" @click="showResolved = !showResolved">
+            <span class="nge-cl-help-resolved-arrow" :class="{ 'nge-cl-help-resolved-arrow--open': showResolved }">▸</span>
+            Resolved ({{ resolvedHelp.length }})
+          </div>
+          <template v-if="showResolved">
+            <div
+              v-for="req in resolvedHelp"
+              :key="req.id"
+              class="nge-cl-row nge-cl-row--done"
+            >
+              <div class="nge-cl-row-left">
+                <span class="nge-cl-pip" style="background: #556;"></span>
+                <div class="nge-cl-row-info">
+                  <div class="nge-cl-row-name" @click="copyId(req.segId)" :title="'Click to copy ' + req.segId">
+                    {{ req.segId }}
+                  </div>
+                  <div class="nge-cl-row-meta">
+                    <span class="nge-cl-badge" style="background: rgba(85,102,119,0.15); color: #889;">{{ req.issueType }}</span>
+                    <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="nge-cl-row-actions">
+                <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
+                <button class="nge-cl-btn nge-cl-btn--release" @click="removeReq(req)" title="Remove">×</button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- ═══ CELL TABS ═══ -->
         <!-- Loading -->
-        <div v-if="loading || backend.loading" class="nge-cl-loading">Loading cells...</div>
+        <div v-else-if="loading || backend.loading" class="nge-cl-loading">Loading cells...</div>
 
         <!-- Empty state -->
         <div v-else-if="cells.length === 0" class="nge-cl-empty">
@@ -365,13 +516,19 @@ const panelStyle = computed(() => ({
             <!-- Left: status pip + name -->
             <div class="nge-cl-row-left">
               <span class="nge-cl-pip" :class="statusClass(cell.status)"></span>
+              <span v-if="cell.isStale" class="nge-cl-stale-dot" title="Segment ID outdated — current ID shown below"></span>
               <div class="nge-cl-row-info">
-                <div class="nge-cl-row-name">
-                  {{ history.getNickname(cell.segId) || truncateId(cell.segId) }}
+                <div class="nge-cl-row-name" @click="copyId(cell.currentSegId || cell.segId)" :title="'Click to copy ' + (cell.currentSegId || cell.segId)">
+                  {{ history.getNickname(cell.segId) || cell.segId }}
+                  <span v-if="copiedId === (cell.currentSegId || cell.segId)" class="nge-cl-copied">copied</span>
                 </div>
                 <div class="nge-cl-row-meta">
                   <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
                   <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
+                </div>
+                <div v-if="cell.currentSegId && cell.currentSegId !== cell.segId" class="nge-cl-row-current" @click="copyId(cell.currentSegId)" title="Click to copy current ID">
+                  current: {{ cell.currentSegId }}
+                  <span v-if="copiedId === cell.currentSegId" class="nge-cl-copied">copied</span>
                 </div>
               </div>
             </div>
@@ -380,7 +537,7 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-row-actions">
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
-                @click="jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords)"
+                @click="jumpToCell(cell.currentSegId || cell.segId, cell.nucCoords || cell.somaCoords)"
                 title="Jump to segment"
               >↗</button>
 
@@ -550,6 +707,7 @@ const panelStyle = computed(() => ({
 .nge-cl-status--available { background: #4a6; }
 .nge-cl-status--claimed { background: #fa4; }
 .nge-cl-status--done { background: #4af; }
+.nge-cl-status--help { background: #f8a; }
 
 .nge-cl-row-info {
   min-width: 0;
@@ -587,6 +745,37 @@ const panelStyle = computed(() => ({
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.nge-cl-stale-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #333;
+  border: 1px solid #555;
+  flex-shrink: 0;
+  margin-left: -2px;
+}
+
+.nge-cl-row-current {
+  font-size: 0.65em;
+  color: #8bf;
+  margin-top: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nge-cl-row-current:hover { color: #adf; }
+
+.nge-cl-row-name { cursor: pointer; }
+.nge-cl-row-name:hover { color: #eef; }
+
+.nge-cl-copied {
+  font-size: 0.75em;
+  color: #4a6;
+  margin-left: 6px;
+  font-weight: 400;
 }
 
 /* Actions */
@@ -653,5 +842,50 @@ const panelStyle = computed(() => ({
   color: #fa4;
   background: rgba(255, 170, 68, 0.05);
   border-top: 1px solid rgba(255, 170, 68, 0.1);
+}
+
+/* Help tab */
+.nge-cl-help-tab.active {
+  background: rgba(255, 136, 170, 0.12);
+  color: #f8a;
+  border-color: rgba(255, 136, 170, 0.25);
+}
+.nge-cl-badge.nge-cl-status--help {
+  background: rgba(255, 136, 170, 0.15);
+  color: #f8a;
+}
+.nge-cl-help-note {
+  font-size: 0.72em;
+  color: #99a;
+  margin-top: 3px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.nge-cl-help-resolved-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 6px;
+  font-size: 0.72em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #667;
+  cursor: pointer;
+  user-select: none;
+}
+.nge-cl-help-resolved-header:hover { color: #889; }
+.nge-cl-help-resolved-arrow {
+  display: inline-block;
+  transition: transform 0.15s;
+  font-size: 0.9em;
+}
+.nge-cl-help-resolved-arrow--open {
+  transform: rotate(90deg);
 }
 </style>
