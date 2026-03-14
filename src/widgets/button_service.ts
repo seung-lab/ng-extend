@@ -34,9 +34,18 @@ export class ButtonService {
     // re-fetch from CAVE (which might miss localStorage-only annotations).
     document.addEventListener('nge:seg-status-changed', (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail.segId === segmentIDString) {
-        if (detail.status) {
-          // Use the status from the event directly
+      // Support both 'segId' and 'segmentId' keys for backwards compat
+      const eventSegId = detail.segId || detail.segmentId;
+      if (eventSegId === segmentIDString) {
+        if (detail.status === 'claimed') {
+          // Claim event — just add the claimed class, don't refetch CAVE
+          button.classList.add('nge-lb-claimed');
+        } else if (detail.status === 'released') {
+          // Release event — remove claimed class
+          button.classList.remove('nge-lb-claimed');
+          this._refreshButtonStatus(button, localServerURL, segmentIDString);
+        } else if (detail.status && typeof detail.status === 'object') {
+          // Full CellStatus object from annotation changes
           this._applyStatus(button, detail.status as CellStatus);
         } else {
           // No status provided — re-fetch as fallback
@@ -433,7 +442,10 @@ export class ButtonService {
             claimStatus.textContent = '🔒 Claimed by you';
             // Set claim color (gold/amber)
             this._setSegmentColor(segmentIDString, 1.0, 0.7, 0.2);
-            this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
+            // Immediately update pip so it reflects claimed state without waiting for CAVE
+            parent.classList.add('nge-lb-claimed');
+            // Notify other UI (e.g. Brain Quest panel) about the status change
+            document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'claimed' } }));
           } else {
             claimBtn.textContent = result.reason || 'Claim failed';
             claimBtn.disabled = false;
@@ -452,7 +464,8 @@ export class ButtonService {
           releaseBtn.textContent = '✓ Released';
           claimStatus.textContent = 'Available';
           this._resetSegmentColor(segmentIDString);
-          this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
+          parent.classList.remove('nge-lb-claimed');
+          document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'released' } }));
         });
         claimSection.appendChild(releaseBtn);
       }

@@ -264,7 +264,7 @@ const hasMoreUnproofread = computed(() => {
 function selectDailyQuest(idx: number) {
   const queueIdx = dailyQuestIndices.value[idx];
   if (queueIdx !== undefined) {
-    queue.jumpToIndex(queueIdx);
+    jumpToItem(queueIdx);
   }
 }
 
