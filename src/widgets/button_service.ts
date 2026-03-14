@@ -246,6 +246,18 @@ export class ButtonService {
         toggleBtn.textContent = willBeComplete ? 'Unmark Complete' : 'Mark Complete';
         if (cachedStatus) cachedStatus.isComplete = willBeComplete;
         this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
+
+        // Auto-release claim when marking complete
+        if (willBeComplete) {
+          const backend = useProofreadingBackendStore();
+          const claimInfo = backend.isClaimedSegment(segmentIDString);
+          if (claimInfo.claimed && claimInfo.byMe) {
+            await backend.releaseBySegment(segmentIDString);
+            parent.classList.remove('nge-lb-claimed');
+            this._resetSegmentColor(segmentIDString);
+            document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'released' } }));
+          }
+        }
       } else {
         toggleBtn.textContent = !localServerURL ? 'No CAVE server configured' : 'Error — try again';
       }
@@ -441,7 +453,7 @@ export class ButtonService {
             claimBtn.style.color = '#fa4';
             claimStatus.textContent = '🔒 Claimed by you';
             // Set claim color (gold/amber)
-            this._setSegmentColor(segmentIDString, 1.0, 0.7, 0.2);
+            this._setSegmentColor(segmentIDString, 1.0, 0.84, 0.0);  // golden #FFD700
             // Immediately update pip so it reflects claimed state without waiting for CAVE
             parent.classList.add('nge-lb-claimed');
             // Notify other UI (e.g. Brain Quest panel) about the status change

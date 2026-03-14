@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * ChatPanel.vue
- * Minimal, resizable community chat — stays open while mapping.
- * Three states: open (full), collapsed (header bar only), closed (hidden).
- * Transparent background so the viewer shows through.
+ * Ultra-minimal draggable community chat — stays open while mapping.
+ * Messages fade to transparent at top. No chrome except a tiny drag handle.
+ * Three states: open, collapsed (just input bar), closed (hidden).
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
@@ -20,9 +20,47 @@ const scrollContainer = ref<HTMLDivElement | null>(null);
 const isScrolledUp = ref(false);
 const collapsed = ref(false);
 
+// ── Drag state ──
+const panelEl = ref<HTMLDivElement | null>(null);
+const posX = ref<number | null>(null); // null = use CSS default (bottom-right)
+const posY = ref<number | null>(null);
+const isDragging = ref(false);
+let dragStart = { mx: 0, my: 0, px: 0, py: 0 };
+
+function startDrag(e: MouseEvent) {
+  if (isResizing.value) return;
+  isDragging.value = true;
+  const el = panelEl.value;
+  if (!el) return;
+  // If first drag, initialize position from current computed position
+  if (posX.value === null || posY.value === null) {
+    const rect = el.getBoundingClientRect();
+    posX.value = rect.left;
+    posY.value = rect.top;
+  }
+  dragStart = { mx: e.clientX, my: e.clientY, px: posX.value!, py: posY.value! };
+  document.addEventListener('mousemove', onDrag);
+  document.addEventListener('mouseup', stopDrag);
+  e.preventDefault();
+}
+
+function onDrag(e: MouseEvent) {
+  if (!isDragging.value) return;
+  const dx = e.clientX - dragStart.mx;
+  const dy = e.clientY - dragStart.my;
+  posX.value = Math.max(0, Math.min(window.innerWidth - 100, dragStart.px + dx));
+  posY.value = Math.max(0, Math.min(window.innerHeight - 40, dragStart.py + dy));
+}
+
+function stopDrag() {
+  isDragging.value = false;
+  document.removeEventListener('mousemove', onDrag);
+  document.removeEventListener('mouseup', stopDrag);
+}
+
 // ── Resize state ──
-const panelWidth = ref(320);
-const panelHeight = ref(360);
+const panelWidth = ref(280);
+const panelHeight = ref(200);
 const isResizing = ref(false);
 let resizeStart = { mx: 0, my: 0, w: 0, h: 0 };
 
@@ -32,13 +70,13 @@ function startResize(e: MouseEvent) {
   document.addEventListener('mousemove', onResize);
   document.addEventListener('mouseup', stopResize);
   e.preventDefault();
+  e.stopPropagation();
 }
 
 function onResize(e: MouseEvent) {
   if (!isResizing.value) return;
-  // Resize from top-left corner — dragging left increases width, dragging up increases height
-  panelWidth.value = Math.max(240, Math.min(600, resizeStart.w - (e.clientX - resizeStart.mx)));
-  panelHeight.value = Math.max(200, Math.min(700, resizeStart.h - (e.clientY - resizeStart.my)));
+  panelWidth.value = Math.max(180, Math.min(500, resizeStart.w - (e.clientX - resizeStart.mx)));
+  panelHeight.value = Math.max(100, Math.min(500, resizeStart.h - (e.clientY - resizeStart.my)));
 }
 
 function stopResize() {
@@ -46,6 +84,19 @@ function stopResize() {
   document.removeEventListener('mousemove', onResize);
   document.removeEventListener('mouseup', stopResize);
 }
+
+// ── Position style ──
+const positionStyle = computed(() => {
+  if (posX.value !== null && posY.value !== null) {
+    return {
+      left: posX.value + 'px',
+      top: posY.value + 'px',
+      right: 'auto',
+      bottom: 'auto',
+    };
+  }
+  return {}; // use CSS defaults (bottom-right)
+});
 
 // Connect on mount, mark read
 onMounted(() => {
@@ -57,6 +108,8 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('mousemove', onResize);
   document.removeEventListener('mouseup', stopResize);
+  document.removeEventListener('mousemove', onDrag);
+  document.removeEventListener('mouseup', stopDrag);
 });
 
 // Mark read when panel is visible and new messages arrive
@@ -76,13 +129,21 @@ const trophyMap = computed(() => {
   return map;
 });
 
+// ── Format name: "First L." ──
+function shortName(name: string): string {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+}
+
 // ── Rank-based name colors ──
 function rankColor(rank: string): string {
   switch (rank) {
     case 'admin': return '#E6C760';
     case 'eyewirer': return '#0292AE';
     case 'researcher': return '#0FB18B';
-    default: return '#c8d0e0';
+    default: return '#8899aa';
   }
 }
 
@@ -93,13 +154,6 @@ function send() {
   chatStore.sendMessage(text);
   messageInput.value = '';
   inputEl.value?.focus();
-}
-
-function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    send();
-  }
 }
 
 // ── Scroll handling (inverted scroll) ──
@@ -131,62 +185,65 @@ function toggleCollapse() {
 <template>
   <Teleport to="body">
     <div
+      ref="panelEl"
       class="nge-chat-float"
-      :class="{ 'nge-chat-float--collapsed': collapsed }"
-      :style="collapsed ? {} : { width: panelWidth + 'px', height: panelHeight + 'px' }"
+      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging }"
+      :style="{
+        ...(collapsed ? {} : { width: panelWidth + 'px', height: panelHeight + 'px' }),
+        ...positionStyle
+      }"
     >
       <!-- Resize handle (top-left corner) -->
       <div v-if="!collapsed" class="nge-chat-resize" @mousedown="startResize"></div>
 
-      <!-- Header bar -->
-      <div class="nge-chat-bar" @dblclick="toggleCollapse">
-        <span class="nge-chat-bar-dot" :class="{ 'nge-chat-bar-dot--on': connected }"></span>
-        <span class="nge-chat-bar-label">Chat</span>
-        <span v-if="collapsed && unreadMessages" class="nge-chat-bar-badge">{{ unreadMessages }}</span>
-        <span class="nge-chat-bar-spacer"></span>
-        <button class="nge-chat-bar-btn" @click="toggleCollapse" :title="collapsed ? 'Expand' : 'Collapse'">
+      <!-- Tiny drag/control strip -->
+      <div class="nge-chat-strip" @mousedown="startDrag" @dblclick="toggleCollapse">
+        <span class="nge-chat-strip-dot" :class="{ 'nge-chat-strip-dot--on': connected }"></span>
+        <span v-if="collapsed && unreadMessages" class="nge-chat-strip-badge">{{ unreadMessages }}</span>
+        <span class="nge-chat-strip-spacer"></span>
+        <button class="nge-chat-strip-btn" @click.stop="toggleCollapse" :title="collapsed ? 'Expand' : 'Collapse'">
           {{ collapsed ? '▲' : '▼' }}
         </button>
-        <button class="nge-chat-bar-btn" @click="emit('hide')" title="Close">×</button>
+        <button class="nge-chat-strip-btn" @click.stop="emit('hide')" title="Close">×</button>
       </div>
 
       <!-- Body (hidden when collapsed) -->
       <template v-if="!collapsed">
-        <!-- Message list -->
-        <div
-          class="nge-chat-messages"
-          ref="scrollContainer"
-          @scroll="handleScroll"
-        >
-          <div class="nge-chat-messages-inner">
-            <template v-for="(msg, i) in chatMessages" :key="i">
-              <div v-if="msg.type === 'time'" class="nge-chat-time-sep">
-                <span>{{ msg.time }}</span>
-              </div>
+        <!-- Message area with top fade -->
+        <div class="nge-chat-messages-wrap">
+          <div class="nge-chat-fade"></div>
+          <div
+            class="nge-chat-messages"
+            ref="scrollContainer"
+            @scroll="handleScroll"
+          >
+            <div class="nge-chat-messages-inner">
+              <template v-for="(msg, i) in chatMessages" :key="i">
+                <div v-if="msg.type === 'time'" class="nge-chat-time-sep">
+                  <span>{{ msg.time }}</span>
+                </div>
 
-              <div v-else-if="msg.type === 'join' || msg.type === 'leave' || msg.type === 'disconnected'"
-                   class="nge-chat-sys"
-                   :class="{ 'nge-chat-sys--warn': msg.type === 'disconnected' }">
-                {{ msg.type === 'join' ? '→' : msg.type === 'leave' ? '←' : '⚠' }}
-                {{ msg.parts[0]?.text || '' }}
-              </div>
+                <div v-else-if="msg.type === 'join' || msg.type === 'leave' || msg.type === 'disconnected'"
+                     class="nge-chat-sys"
+                     :class="{ 'nge-chat-sys--warn': msg.type === 'disconnected' }">
+                  {{ msg.type === 'join' ? '→' : msg.type === 'leave' ? '←' : '⚠' }}
+                  {{ msg.parts[0]?.text || '' }}
+                </div>
 
-              <div v-else-if="msg.type === 'message'" class="nge-chat-msg">
-                <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
-                <span class="nge-chat-msg-name" :style="{ color: rankColor(msg.rank) }">{{ msg.name }}</span>
-                <span class="nge-chat-msg-time">{{ msg.time }}</span>
-                <div class="nge-chat-msg-body">
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg">
+                  <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
+                  <span class="nge-chat-msg-name" :style="{ color: rankColor(msg.rank) }">{{ shortName(msg.name) }}</span>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <a v-else-if="part.type === 'link'" :href="part.text" target="_blank" rel="noopener" class="nge-chat-link">{{ part.text }}</a>
-                    <span v-else>{{ part.text }}</span>
+                    <span v-else class="nge-chat-msg-text">{{ part.text }}</span>
                   </template>
                 </div>
-              </div>
-            </template>
+              </template>
 
-            <div v-if="chatMessages.length === 0" class="nge-chat-empty">
-              No messages yet. Say hello!
+              <div v-if="chatMessages.length === 0" class="nge-chat-empty">
+                Say hello!
+              </div>
             </div>
           </div>
         </div>
@@ -213,9 +270,6 @@ function toggleCollapse() {
             autocomplete="off"
             :disabled="!connected"
           />
-          <button class="nge-chat-send" @click="send" :disabled="!connected || !messageInput.trim()" title="Send">
-            ➤
-          </button>
         </div>
       </template>
     </div>
@@ -223,7 +277,7 @@ function toggleCollapse() {
 </template>
 
 <style scoped>
-/* ── Floating container — pinned bottom-right ── */
+/* ── Floating container ── */
 .nge-chat-float {
   position: fixed;
   bottom: 36px;
@@ -231,19 +285,20 @@ function toggleCollapse() {
   z-index: 9000;
   display: flex;
   flex-direction: column;
-  background: rgba(10, 14, 24, 0.75);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(100, 180, 255, 0.12);
-  border-radius: 8px;
+  background: transparent;
+  border-radius: 6px;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   font-family: 'Inter', 'Roboto', sans-serif;
-  transition: width 0.2s, height 0.2s;
 }
 
 .nge-chat-float--collapsed {
   width: auto !important;
   height: auto !important;
+  background: rgba(10, 14, 24, 0.6);
+}
+
+.nge-chat-float--dragging {
+  user-select: none;
 }
 
 /* ── Resize handle — top-left corner ── */
@@ -251,169 +306,170 @@ function toggleCollapse() {
   position: absolute;
   top: 0;
   left: 0;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   cursor: nw-resize;
   z-index: 10;
 }
 .nge-chat-resize::after {
   content: '';
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 6px;
-  height: 6px;
-  border-top: 1.5px solid rgba(255, 255, 255, 0.2);
-  border-left: 1.5px solid rgba(255, 255, 255, 0.2);
+  top: 2px;
+  left: 2px;
+  width: 5px;
+  height: 5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-/* ── Header bar ── */
-.nge-chat-bar {
+/* ── Tiny control strip (drag handle + buttons) ── */
+.nge-chat-strip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  cursor: default;
+  gap: 4px;
+  padding: 2px 6px;
+  cursor: grab;
   user-select: none;
   flex-shrink: 0;
 }
+.nge-chat-strip:active { cursor: grabbing; }
 
-.nge-chat-bar-dot {
-  width: 6px;
-  height: 6px;
+.nge-chat-strip-dot {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: #555;
+  background: #444;
   flex-shrink: 0;
 }
-.nge-chat-bar-dot--on {
+.nge-chat-strip-dot--on {
   background: #0fb18b;
-  box-shadow: 0 0 5px rgba(15, 177, 139, 0.5);
+  box-shadow: 0 0 4px rgba(15, 177, 139, 0.5);
 }
 
-.nge-chat-bar-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #9aa;
-  letter-spacing: 0.03em;
-}
-
-.nge-chat-bar-badge {
+.nge-chat-strip-badge {
   background: #4a9eff;
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  padding: 0 5px;
-  border-radius: 8px;
-  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 6px;
+  min-width: 14px;
   text-align: center;
-  line-height: 16px;
+  line-height: 14px;
 }
 
-.nge-chat-bar-spacer { flex: 1; }
+.nge-chat-strip-spacer { flex: 1; }
 
-.nge-chat-bar-btn {
+.nge-chat-strip-btn {
   background: none;
   border: none;
-  color: #667;
-  font-size: 14px;
+  color: #556;
+  font-size: 12px;
   cursor: pointer;
-  padding: 0 3px;
+  padding: 0 2px;
   line-height: 1;
   transition: color 0.12s;
 }
-.nge-chat-bar-btn:hover { color: #ccc; }
+.nge-chat-strip-btn:hover { color: #aaa; }
 
-/* ── Messages ── */
-.nge-chat-messages {
+/* ── Messages wrapper with fade ── */
+.nge-chat-messages-wrap {
   flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Fade-to-transparent at top */
+.nge-chat-fade {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 40%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.nge-chat-messages {
+  height: 100%;
   overflow-y: auto;
   display: flex;
   flex-direction: column-reverse;
-  padding: 4px 6px;
-  min-height: 0;
+  padding: 2px 6px;
 }
 
-.nge-chat-messages::-webkit-scrollbar { width: 3px; }
+.nge-chat-messages::-webkit-scrollbar { width: 2px; }
 .nge-chat-messages::-webkit-scrollbar-track { background: transparent; }
-.nge-chat-messages::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 2px; }
+.nge-chat-messages::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 2px; }
 
 .nge-chat-messages-inner {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
 }
 
+/* ── Message line — inline name + text ── */
 .nge-chat-msg {
-  padding: 3px 6px;
-  border-radius: 4px;
-  line-height: 1.4;
+  padding: 1px 4px;
+  line-height: 1.35;
+  font-size: 11px;
 }
-.nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); }
+.nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
 
-.nge-chat-msg-trophy { font-size: 11px; margin-right: 2px; }
+.nge-chat-msg-trophy { font-size: 10px; margin-right: 1px; }
 
 .nge-chat-msg-name {
   font-weight: 600;
-  font-size: 12px;
-  margin-right: 4px;
+  font-size: 11px;
+  margin-right: 3px;
 }
 
-.nge-chat-msg-time {
-  font-size: 9px;
-  color: #445;
-  float: right;
-  margin-top: 2px;
-}
-
-.nge-chat-msg-body {
-  font-size: 12px;
+.nge-chat-msg-text {
   color: #b0b8c8;
-  word-break: break-word;
 }
 
 .nge-chat-link {
   color: #4a9eff;
   text-decoration: none;
   word-break: break-all;
+  font-size: 11px;
 }
 .nge-chat-link:hover { text-decoration: underline; }
 
 /* System messages */
 .nge-chat-sys {
-  font-size: 10px;
-  color: #556;
+  font-size: 9px;
+  color: #445;
   font-style: italic;
-  padding: 1px 6px;
+  padding: 0 4px;
 }
 .nge-chat-sys--warn { color: #c08030; }
 
 /* Time separator */
 .nge-chat-time-sep {
   text-align: center;
-  padding: 4px 0;
+  padding: 2px 0;
 }
 .nge-chat-time-sep span {
-  font-size: 9px;
+  font-size: 8px;
   color: #445;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 1px 8px;
-  border-radius: 8px;
+  padding: 0 6px;
 }
 
 /* New messages banner */
 .nge-chat-new-banner {
   position: absolute;
-  bottom: 40px;
+  bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(74, 158, 255, 0.85);
+  background: rgba(74, 158, 255, 0.8);
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  padding: 3px 12px;
-  border-radius: 10px;
+  padding: 2px 10px;
+  border-radius: 8px;
   cursor: pointer;
   z-index: 5;
 }
@@ -426,53 +482,32 @@ function toggleCollapse() {
 
 /* ── Input ── */
 .nge-chat-input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 3px 4px;
   flex-shrink: 0;
 }
 
 .nge-chat-input {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(100, 180, 255, 0.12);
-  border-radius: 6px;
-  padding: 5px 8px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(100, 180, 255, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
   color: #e0e4ec;
-  font-size: 12px;
+  font-size: 11px;
   font-family: inherit;
   outline: none;
   transition: border-color 0.12s;
+  box-sizing: border-box;
 }
-.nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.35); }
+.nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.3); }
 .nge-chat-input::placeholder { color: #445; }
 .nge-chat-input:disabled { opacity: 0.3; }
-
-.nge-chat-send {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: rgba(74, 158, 255, 0.12);
-  border: 1px solid rgba(74, 158, 255, 0.15);
-  color: #4a9eff;
-  font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.12s;
-}
-.nge-chat-send:hover:not(:disabled) { background: rgba(74, 158, 255, 0.25); color: #fff; }
-.nge-chat-send:disabled { opacity: 0.2; cursor: default; }
 
 /* Empty state */
 .nge-chat-empty {
   text-align: center;
-  padding: 30px 12px;
+  padding: 16px 8px;
   color: #445;
-  font-size: 12px;
+  font-size: 10px;
 }
 </style>

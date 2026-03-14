@@ -370,6 +370,13 @@ async function markProofreadAndNext() {
   const caveServer = EYEWIRE_II_CAVE_CONFIG.caveServerOverride || '';
   await setCellComplete(caveServer, item.segId, true);
 
+  // Auto-release claim when marking complete
+  const claimInfo = backend.isClaimedSegment(item.segId);
+  if (claimInfo.claimed && claimInfo.byMe) {
+    await backend.releaseBySegment(item.segId);
+    document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: item.segId, status: 'released' } }));
+  }
+
   queue.markProofread(item.segId);
 
   // Also ensure this cell appears in profile cell history (with annotation as cell type if set)
@@ -767,7 +774,8 @@ function shareOnX() {
                 <span class="nge-all-name">{{ getNickname(item.segId) }}</span>
                 <span class="nge-all-segid">{{ item.segId }}</span>
               </div>
-              <span class="nge-all-tag nge-all-tag--claimed">{{ getClaimInfo(item.segId).byMe ? 'You' : (getClaimInfo(item.segId).byName || 'Taken') }}</span>
+              <span v-if="getClaimInfo(item.segId).byMe" class="nge-all-tag nge-all-tag--mine">You</span>
+              <span v-else class="nge-all-tag nge-all-tag--claimed">{{ getClaimInfo(item.segId).byName || 'Taken' }}</span>
             </div>
           </template>
 
@@ -1364,6 +1372,10 @@ function shareOnX() {
 .nge-all-tag--claimed {
   background: rgba(255, 180, 50, 0.08);
   color: #daa040;
+}
+.nge-all-tag--mine {
+  background: rgba(255, 215, 0, 0.12);
+  color: #FFD700;
 }
 
 /* Slide transition */

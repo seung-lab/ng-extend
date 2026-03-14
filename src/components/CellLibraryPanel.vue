@@ -15,7 +15,7 @@ const login = useLoginStore();
 const history = useCellHistoryStore();
 
 const loading = ref(false);
-const filter = ref<'all' | 'available' | 'completed'>('all');
+const filter = ref<'mine' | 'all' | 'available' | 'completed'>('mine');
 const search = ref('');
 
 // ── Data loading ─────────────────────────────────────────────────────
@@ -78,7 +78,12 @@ const cells = computed(() => {
 
 const filteredCells = computed(() => {
   let list = cells.value;
-  if (filter.value === 'available') {
+  if (filter.value === 'mine') {
+    // My claimed cells first, then my completed cells
+    const myClaimed = list.filter(c => isMyClaim(c));
+    const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId);
+    list = [...myClaimed, ...myCompleted];
+  } else if (filter.value === 'available') {
     list = list.filter(c => c.status === 'pending');
   } else if (filter.value === 'completed') {
     list = list.filter(c => c.status === 'completed');
@@ -93,6 +98,8 @@ const filteredCells = computed(() => {
   }
   return list;
 });
+
+const myClaimCount = computed(() => cells.value.filter(c => isMyClaim(c)).length);
 
 const availableCount = computed(() => cells.value.filter(c => c.status === 'pending').length);
 const completedCount = computed(() => cells.value.filter(c => c.status === 'completed').length);
@@ -124,11 +131,19 @@ async function completeCell(cell: typeof cells.value[0]) {
   writeCompletionToSheet(cell.segId, backend.userName, cell.finalSegId || '', cell.somaCoords || '');
   // Log as mark_complete for stats
   await backend.logEdit({ operation: 'mark_complete', task_id: cell.taskId });
+  // Auto-release claim on complete
+  if (isMyClaim(cell)) {
+    await backend.releaseBySegment(cell.segId);
+    document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
+  }
   await backend.loadTasks('eyewire_ii');
 }
 
-async function releaseCell() {
-  await backend.releaseTask();
+async function releaseCell(cell: typeof cells.value[0]) {
+  if (!cell.segId) return;
+  await backend.releaseBySegment(cell.segId);
+  // Dispatch event so seg dot pips update
+  document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
   await backend.loadTasks('eyewire_ii');
 }
 
@@ -298,6 +313,9 @@ const panelStyle = computed(() => ({
 
         <!-- Filter tabs -->
         <div class="nge-cl-filters">
+          <button :class="{ active: filter === 'mine' }" @click="filter = 'mine'">
+            My Cells ({{ myClaimCount }})
+          </button>
           <button :class="{ active: filter === 'all' }" @click="filter = 'all'">
             All ({{ cells.length }})
           </button>
@@ -330,7 +348,10 @@ const panelStyle = computed(() => ({
 
         <!-- Cell list -->
         <div v-else class="nge-cl-list">
-          <div v-if="filteredCells.length === 0" class="nge-cl-no-results">No matching cells</div>
+          <div v-if="filteredCells.length === 0 && filter === 'mine'" class="nge-cl-no-results">
+            No claimed cells yet. Claim cells from the All or Available tabs!
+          </div>
+          <div v-else-if="filteredCells.length === 0" class="nge-cl-no-results">No matching cells</div>
 
           <div
             v-for="cell in filteredCells"
@@ -372,7 +393,7 @@ const panelStyle = computed(() => ({
               <button
                 v-if="isMyClaim(cell)"
                 class="nge-cl-btn nge-cl-btn--release"
-                @click="releaseCell()"
+                @click="releaseCell(cell)"
                 title="Release claim"
               >Release</button>
 

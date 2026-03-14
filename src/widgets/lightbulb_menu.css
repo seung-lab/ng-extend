@@ -201,13 +201,13 @@
   background-color: rgba(255, 152, 0, 0.2);
 }
 
-/* Claim Cell button — accent amber/gold */
+/* Claim Cell button — accent golden */
 .nge-lb-claim-btn {
-  border-color: rgba(255, 167, 38, 0.4);
-  color: #FFA726;
+  border-color: rgba(255, 215, 0, 0.4);
+  color: #FFD700;
 }
 .nge-lb-claim-btn:hover {
-  background-color: rgba(255, 167, 38, 0.2);
+  background-color: rgba(255, 215, 0, 0.2);
 }
 
 /* Release Claim button — muted */
@@ -290,7 +290,7 @@
 }
 /* Claimed indicator — ring around pip */
 .nge-lb-btn.nge-lb-claimed .nge-lb-pip {
-  outline: 2px solid #FFA726;
+  outline: 2px solid #FFD700;
   outline-offset: 1px;
 }
 
@@ -299,7 +299,7 @@
 .nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #42A5F5; }
 .nge-lb-btn.nge-lb-annotated .nge-lb-dots { color: #4CAF50; }
 .nge-lb-btn.nge-lb-incomplete .nge-lb-dots { color: #999; }
-.nge-lb-btn.nge-lb-claimed .nge-lb-dots { color: #FFA726; }
+.nge-lb-btn.nge-lb-claimed .nge-lb-dots { color: #FFD700; }
 
 /* ── Label badge — placed inline after segment ID/nickname ── */
 .nge-label-badge {
