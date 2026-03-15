@@ -93,9 +93,12 @@ const cells = computed(() => {
     taskMap.set(t.segment_id, t);
   }
 
+  const sheetSegIds = new Set<string>();
+
   // Use queue items as the base list (from the Google Sheet)
   if (queue.items.length > 0) {
-    return queue.items.map((item, idx) => {
+    const sheetCells = queue.items.map((item, idx) => {
+      sheetSegIds.add(item.segId);
       const task = taskMap.get(item.segId);
       return {
         segId: item.segId,
@@ -114,6 +117,26 @@ const cells = computed(() => {
         isStale: staleSet.value.has(item.segId),
       };
     });
+
+    // Include Supabase tasks not in the sheet (orphaned claims)
+    const extraTasks = backend.tasks
+      .filter(t => !sheetSegIds.has(t.segment_id))
+      .map(t => ({
+        segId: t.segment_id,
+        index: '',
+        nucCoords: t.nucleus_coords || '',
+        somaCoords: t.soma_coords || '',
+        notes: t.notes || '',
+        taskId: t.id,
+        status: t.status,
+        assignedTo: t.assigned_to,
+        finalSegId: t.final_segment_id,
+        completedByName: null as string | null,
+        currentSegId: latestRootMap.value.get(t.segment_id) || null,
+        isStale: staleSet.value.has(t.segment_id),
+      }));
+
+    return [...sheetCells, ...extraTasks];
   }
 
   // Fallback: use Supabase tasks directly

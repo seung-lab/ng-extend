@@ -17,39 +17,12 @@ onMounted(() => {
 
 const sheetInput = ref(queue.sheetUrl || '');
 
-// ── View mode: 'daily' (3 quests/day) or 'all' (full-screen overlay) ──────
-const viewMode = ref<'daily' | 'all'>('daily');
-
-// ── All-neurons search filter ──────────────────────────────────────────
-const allSearch = ref('');
-
-/** Filtered items for the All Neurons view */
-const filteredAllItems = computed(() => {
-  const q = allSearch.value.trim().toLowerCase();
-  if (!q) return queue.items.map((item, idx) => ({ item, idx }));
-  return queue.items
-    .map((item, idx) => ({ item, idx }))
-    .filter(({ item }) => {
-      const nick = getNickname(item.segId).toLowerCase();
-      return nick.includes(q) || item.segId.includes(q) || (item.notes || '').toLowerCase().includes(q);
-    });
-});
-
-/** Get claim info for a segment */
-function getClaimInfo(segId: string) {
-  return backend.isClaimedSegment(segId);
-}
-
 // ── Escape key to close panel (only when no split/merge tool is active) ──
 function handleEscape(e: KeyboardEvent) {
   if (e.key !== 'Escape') return;
   // Don't interfere with split/merge escape handling
   if (document.querySelector('.graphene-multicut') || document.querySelector('.graphene-merge-segments')) return;
-  if (viewMode.value === 'all') {
-    viewMode.value = 'daily';
-  } else {
-    emit('hide');
-  }
+  emit('hide');
 }
 // Use regular (bubble) phase, not capture — let split/merge handler take priority
 onMounted(() => document.addEventListener('keydown', handleEscape));
@@ -62,7 +35,6 @@ let dragStart = { mx: 0, my: 0, px: 0, py: 0 };
 
 function startDrag(e: MouseEvent) {
   if ((e.target as HTMLElement).closest('.nge-quest-close')) return;
-  if ((e.target as HTMLElement).closest('.nge-quest-view-toggle')) return;
   isDragging.value = true;
   dragStart = { mx: e.clientX, my: e.clientY, px: panelPos.value.x, py: panelPos.value.y };
   document.addEventListener('mousemove', onDrag);
@@ -391,24 +363,19 @@ async function markProofreadAndNext() {
   const statsStore = useUserStatsStore();
   statsStore.logDailyQuestComplete();
 
-  if (viewMode.value === 'all') {
-    // All-tasks mode: advance to next unproofread globally
-    queue.nextUnproofread();
-  } else {
-    // Daily mode: advance to the next uncompleted daily quest
-    const currentQuestIdx = dailyQuestIndices.value.indexOf(queue.currentIdx);
-    const activeIndices = dailyQuestIndices.value;
-    // Look for next uncompleted daily quest (wrapping around)
-    for (let i = 1; i <= activeIndices.length; i++) {
-      const nextIdx = (currentQuestIdx + i) % activeIndices.length;
-      const queueIdx = activeIndices[nextIdx];
-      if (queueIdx !== undefined && !queue.proofread.has(queue.items[queueIdx]?.segId)) {
-        queue.jumpToIndex(queueIdx);
-        return;
-      }
+  // Advance to the next uncompleted daily quest
+  const currentQuestIdx = dailyQuestIndices.value.indexOf(queue.currentIdx);
+  const activeIndices = dailyQuestIndices.value;
+  // Look for next uncompleted daily quest (wrapping around)
+  for (let i = 1; i <= activeIndices.length; i++) {
+    const nextIdx = (currentQuestIdx + i) % activeIndices.length;
+    const queueIdx = activeIndices[nextIdx];
+    if (queueIdx !== undefined && !queue.proofread.has(queue.items[queueIdx]?.segId)) {
+      queue.jumpToIndex(queueIdx);
+      return;
     }
-    // All daily quests done — celebration will show
   }
+  // All daily quests done — celebration will show
 }
 
 function truncateId(id: string): string {
@@ -542,20 +509,13 @@ function shareOnX() {
 <template>
   <Teleport to="body">
     <Transition name="nge-quest" appear>
-      <div v-show="viewMode !== 'all'" class="nge-quest-board" :style="panelStyle">
+      <div class="nge-quest-board" :style="panelStyle">
 
         <div class="nge-quest-topbar" @mousedown="startDrag" :class="{ 'nge-quest-dragging': isDragging }">
           <div class="nge-quest-title">
             <span class="nge-quest-icon">🧠</span> Brain Quest
           </div>
           <div class="nge-quest-topbar-actions">
-            <!-- View toggle: daily vs all -->
-            <button
-              v-if="queue.items.length > 0"
-              class="nge-quest-view-toggle"
-              @click="viewMode = viewMode === 'daily' ? 'all' : 'daily'"
-              :title="viewMode === 'daily' ? 'View all cells' : 'Back to daily quests'"
-            >{{ viewMode === 'daily' ? '☰' : '◆' }}</button>
             <button class="nge-quest-close" @click="emit('hide')">×</button>
           </div>
         </div>
@@ -755,55 +715,6 @@ function shareOnX() {
       </div>
     </Transition>
 
-    <!-- All Neurons — narrow side panel -->
-    <Transition name="nge-all-slide">
-      <div v-if="viewMode === 'all'" class="nge-all-side">
-        <div class="nge-all-topbar">
-          <div class="nge-all-title">{{ queue.proofreadCount() }}/{{ queue.totalCount() }}</div>
-          <input v-model="allSearch" class="nge-all-search" placeholder="Search…"
-            @keydown.stop @keyup.stop @keypress.stop />
-          <button class="nge-all-close" @click="viewMode = 'daily'">×</button>
-        </div>
-
-        <div class="nge-all-list">
-          <!-- Claimed -->
-          <template v-for="{ item, idx } in filteredAllItems.filter(x => getClaimInfo(x.item.segId).claimed || queue.isClaimed(x.item))" :key="'c-' + item.segId">
-            <div class="nge-all-row nge-all-row--claimed" :class="{ 'nge-all-row--active': queue.currentIdx === idx }" @click="jumpToItem(idx)">
-              <span class="nge-all-pip nge-all-pip--claimed"></span>
-              <div class="nge-all-info">
-                <span class="nge-all-name">{{ getNickname(item.segId) }}</span>
-                <span class="nge-all-segid">{{ item.segId }}</span>
-              </div>
-              <span v-if="getClaimInfo(item.segId).byMe" class="nge-all-tag nge-all-tag--mine">You</span>
-              <span v-else class="nge-all-tag nge-all-tag--claimed">{{ getClaimInfo(item.segId).byName || 'Taken' }}</span>
-            </div>
-          </template>
-
-          <!-- Available -->
-          <template v-for="{ item, idx } in filteredAllItems.filter(x => !queue.proofread.has(x.item.segId) && !getClaimInfo(x.item.segId).claimed && !queue.isClaimed(x.item))" :key="'a-' + item.segId">
-            <div class="nge-all-row" :class="{ 'nge-all-row--active': queue.currentIdx === idx }" @click="jumpToItem(idx)">
-              <span class="nge-all-pip"></span>
-              <div class="nge-all-info">
-                <span class="nge-all-name">{{ getNickname(item.segId) }}</span>
-                <span class="nge-all-segid">{{ item.segId }}</span>
-              </div>
-            </div>
-          </template>
-
-          <!-- Completed -->
-          <template v-for="{ item, idx } in filteredAllItems.filter(x => queue.proofread.has(x.item.segId))" :key="'d-' + item.segId">
-            <div class="nge-all-row nge-all-row--done" :class="{ 'nge-all-row--active': queue.currentIdx === idx }" @click="jumpToItem(idx)">
-              <span class="nge-all-pip nge-all-pip--done"></span>
-              <div class="nge-all-info">
-                <span class="nge-all-name">{{ getNickname(item.segId) }}</span>
-                <span class="nge-all-segid">{{ item.segId }}</span>
-              </div>
-              <span class="nge-all-tag nge-all-tag--done">Done</span>
-            </div>
-          </template>
-        </div>
-      </div>
-    </Transition>
   </Teleport>
 </template>
 
@@ -875,12 +786,6 @@ function shareOnX() {
   gap: 8px;
 }
 
-.nge-quest-view-toggle {
-  background: none; border: 1px solid rgba(74, 158, 255, 0.15);
-  color: #78a; font-size: 0.9em; cursor: pointer; padding: 2px 6px;
-  border-radius: 3px; transition: all 0.12s; line-height: 1;
-}
-.nge-quest-view-toggle:hover { color: #acd; border-color: rgba(74, 158, 255, 0.35); }
 
 .nge-quest-close {
   background: none; border: none;
@@ -1219,180 +1124,6 @@ function shareOnX() {
   flex: 1;
 }
 
-/* ══════════════════════════════════════════════
-   ALL NEURONS — NARROW SIDE PANEL
-   ══════════════════════════════════════════════ */
-
-.nge-all-side {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 220px;
-  z-index: 80;
-  background: linear-gradient(170deg, rgba(10, 16, 30, 0.97) 0%, rgba(8, 10, 20, 0.98) 100%);
-  border-right: 1px solid rgba(0, 180, 255, 0.15);
-  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.4);
-  display: flex;
-  flex-direction: column;
-  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-  font-size: 13px;
-  color: #ccd;
-}
-
-.nge-all-topbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(74, 158, 255, 0.1);
-  background: rgba(74, 158, 255, 0.03);
-  flex-shrink: 0;
-}
-
-.nge-all-title {
-  font-size: 0.78em;
-  font-weight: 700;
-  color: rgba(0, 200, 255, 0.7);
-  white-space: nowrap;
-}
-
-.nge-all-search {
-  flex: 1;
-  min-width: 0;
-  padding: 4px 8px;
-  border: 1px solid rgba(74, 158, 255, 0.15);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.03);
-  color: #dde;
-  font-size: 0.78em;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.12s;
-}
-.nge-all-search:focus { border-color: rgba(74, 158, 255, 0.4); }
-.nge-all-search::placeholder { color: #445; }
-
-.nge-all-close {
-  background: none; border: none;
-  color: #556; font-size: 1.2em; cursor: pointer; padding: 0; line-height: 1;
-  transition: color 0.12s; flex-shrink: 0;
-}
-.nge-all-close:hover { color: #aab; }
-
-/* Scrollable list */
-.nge-all-list {
-  flex: 1;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(74, 158, 255, 0.2) transparent;
-  padding: 4px 0;
-}
-
-/* Row */
-.nge-all-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  padding: 5px 10px;
-  cursor: pointer;
-  transition: background 0.1s;
-  border-left: 2px solid transparent;
-}
-.nge-all-row:hover {
-  background: rgba(74, 158, 255, 0.06);
-}
-.nge-all-row--active {
-  background: rgba(206, 147, 216, 0.08);
-  border-left-color: #CE93D8;
-}
-.nge-all-row--done { opacity: 0.45; }
-.nge-all-row--claimed {
-  background: rgba(255, 180, 50, 0.03);
-}
-
-/* Pip */
-.nge-all-pip {
-  flex-shrink: 0;
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1.5px solid rgba(255, 255, 255, 0.15);
-}
-.nge-all-pip--done {
-  background: rgba(127, 255, 136, 0.3);
-  border-color: rgba(127, 255, 136, 0.5);
-}
-.nge-all-pip--claimed {
-  background: rgba(255, 180, 50, 0.3);
-  border-color: rgba(255, 180, 50, 0.6);
-}
-
-/* Info column (name + segID stacked) */
-.nge-all-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-/* Name */
-.nge-all-name {
-  font-size: 0.82em;
-  font-weight: 500;
-  color: #bbc;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.nge-all-segid {
-  font-family: 'SF Mono', ui-monospace, 'Cascadia Code', monospace;
-  font-size: 0.62em;
-  color: rgba(74, 158, 255, 0.35);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Tags */
-.nge-all-tag {
-  flex-shrink: 0;
-  font-size: 0.58em;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-weight: 600;
-}
-.nge-all-tag--done {
-  background: rgba(127, 255, 136, 0.1);
-  color: #7f8;
-}
-.nge-all-tag--claimed {
-  background: rgba(255, 180, 50, 0.08);
-  color: #daa040;
-}
-.nge-all-tag--mine {
-  background: rgba(255, 215, 0, 0.12);
-  color: #FFD700;
-}
-
-/* Slide transition */
-.nge-all-slide-enter-active {
-  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
-}
-.nge-all-slide-leave-active {
-  transition: transform 0.15s ease-in, opacity 0.15s ease-in;
-}
-.nge-all-slide-enter-from {
-  transform: translateX(-100%);
-  opacity: 0;
-}
-.nge-all-slide-leave-to {
-  transform: translateX(-100%);
-  opacity: 0;
-}
 
 /* ══════════════════════════════════════════════
    PROGRESS, CARD, INPUTS (shared)

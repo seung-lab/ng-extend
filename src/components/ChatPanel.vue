@@ -22,7 +22,7 @@ const collapsed = ref(false);
 
 // ── Drag state ──
 const panelEl = ref<HTMLDivElement | null>(null);
-const posX = ref<number | null>(null); // null = use CSS default (bottom-right)
+const posX = ref<number | null>(null); // null = use CSS default (bottom-left)
 const posY = ref<number | null>(null);
 const isDragging = ref(false);
 let dragStart = { mx: 0, my: 0, px: 0, py: 0 };
@@ -147,6 +147,10 @@ function rankColor(rank: string): string {
   }
 }
 
+function msgTime(d: Date): string {
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
 // ── Send message ──
 function send() {
   const text = messageInput.value.trim();
@@ -231,6 +235,7 @@ function toggleCollapse() {
                 </div>
 
                 <div v-else-if="msg.type === 'message'" class="nge-chat-msg">
+                  <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
                   <span class="nge-chat-msg-name" :style="{ color: rankColor(msg.rank) }">{{ shortName(msg.name) }}</span>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
@@ -281,7 +286,7 @@ function toggleCollapse() {
 .nge-chat-float {
   position: fixed;
   bottom: 36px;
-  right: 8px;
+  left: 8px;
   z-index: 9000;
   display: flex;
   flex-direction: column;
@@ -420,6 +425,14 @@ function toggleCollapse() {
 }
 .nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
 
+.nge-chat-msg-time {
+  font-size: 9px;
+  color: #445;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+.nge-chat-msg:hover .nge-chat-msg-time { color: #667; }
+
 .nge-chat-msg-trophy { font-size: 10px; margin-right: 1px; }
 
 .nge-chat-msg-name {
@@ -484,14 +497,16 @@ function toggleCollapse() {
 
 /* ── Input ── */
 .nge-chat-input-wrap {
-  padding: 3px 4px;
+  padding: 4px 4px;
   flex-shrink: 0;
+  background: rgba(8, 10, 20, 0.92);
+  border-top: 1px solid rgba(100, 180, 255, 0.08);
 }
 
 .nge-chat-input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(100, 180, 255, 0.1);
+  background: rgba(20, 24, 40, 0.9);
+  border: 1px solid rgba(100, 180, 255, 0.15);
   border-radius: 4px;
   padding: 5px 8px;
   color: #e0e4ec;
@@ -502,7 +517,7 @@ function toggleCollapse() {
   box-sizing: border-box;
 }
 .nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.3); }
-.nge-chat-input::placeholder { color: #445; }
+.nge-chat-input::placeholder { color: #556; }
 .nge-chat-input:disabled { opacity: 0.3; }
 
 /* Empty state */
