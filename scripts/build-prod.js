@@ -131,3 +131,23 @@ args.push('--define', `NEUROGLANCER_DEFAULT_STATE_FRAGMENT=${JSON.stringify(stat
 
 console.log('Running esbuild...');
 execFileSync(process.execPath, args, { stdio: 'inherit' });
+
+// ── Copy badge center-art PNGs into build output ────────────────────────────
+const path = require('path');
+const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-art');
+// esbuild --config=min outputs to dist/min
+const OUT_DIR = path.join(__dirname, '..', 'dist', 'min', 'center-art');
+
+for (const track of ['building', 'exploration']) {
+  const srcDir = path.join(BADGE_ART, track);
+  const destDir = path.join(OUT_DIR, track);
+  if (fs.existsSync(srcDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+    for (const file of fs.readdirSync(srcDir)) {
+      if (file.endsWith('.png')) {
+        fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
+      }
+    }
+    console.log(`Copied ${track} badge art to ${destDir}`);
+  }
+}

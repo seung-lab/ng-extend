@@ -147,6 +147,24 @@ args.push('--define', `NEUROGLANCER_DEFAULT_STATE_FRAGMENT=${JSON.stringify(micr
 
 args.push('--config=dev', '--serve', '--watch');
 
+// ── Copy badge center-art PNGs into dev output ─────────────────────────────
+const path = require('path');
+const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-art');
+const DEV_OUT = path.join(__dirname, '..', 'dist', 'dev', 'center-art');
+for (const track of ['building', 'exploration']) {
+  const srcDir = path.join(BADGE_ART, track);
+  const destDir = path.join(DEV_OUT, track);
+  if (fs.existsSync(srcDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+    for (const file of fs.readdirSync(srcDir)) {
+      if (file.endsWith('.png')) {
+        fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
+      }
+    }
+    console.log(`Copied ${track} badge art → ${destDir}`);
+  }
+}
+
 console.log('Starting dev server...');
 const proc = spawn(process.execPath, args, { stdio: 'inherit', shell: false });
 proc.on('exit', code => process.exit(code ?? 0));
