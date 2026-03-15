@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="450" height="450" viewBox="0 0 450 450" role="img" aria-labelledby="exploration-compass-title exploration-compass-desc">
+  <title id="exploration-compass-title">Exploration badge: Compass</title>
+  <desc id="exploration-compass-desc">Compass is a scientific observation milestone on the exploration track.</desc>
+  <defs>
+    <linearGradient id="exploration-compass-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b586b"/>
+      <stop offset="100%" stop-color="#1d384f"/>
+    </linearGradient>
+    <linearGradient id="exploration-compass-shell" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#162e37"/>
+      <stop offset="100%" stop-color="#1e3853"/>
+    </linearGradient>
+    <radialGradient id="exploration-compass-core" cx="50%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#1b3948"/>
+      <stop offset="100%" stop-color="#232c35"/>
+    </radialGradient>
+    <radialGradient id="exploration-compass-halo" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#94d2ff" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#94d2ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="exploration-compass-plaque" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#203c4b"/>
+      <stop offset="100%" stop-color="#2e4e6b"/>
+    </linearGradient>
+    <clipPath id="exploration-compass-art-clip">
+      <circle cx="225" cy="225" r="94"/>
+    </clipPath>
+    <filter id="exploration-compass-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#000000" flood-opacity="0.42"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#6ac1ff" flood-opacity="0.22"/>
+    </filter>
+    <filter id="exploration-compass-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#6ac1ff" flood-opacity="0.72"/>
+    </filter>
+    <filter id="exploration-compass-soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#6ac1ff" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <rect width="450" height="450" fill="#070b12"/>
+  
+  <circle cx="225" cy="208" r="188" fill="url(#exploration-compass-halo)" opacity="0.24"/>
+  <g filter="url(#exploration-compass-shadow)">
+    <circle cx="225" cy="208" r="182" fill="url(#exploration-compass-metal)" stroke="#8ae9f5" stroke-width="6"/>
+    <circle cx="225" cy="208" r="156" fill="url(#exploration-compass-shell)" stroke="#7bdaf9" stroke-opacity="0.6" stroke-width="2.5"/>
+    <circle cx="225" cy="208" r="128" fill="url(#exploration-compass-core)" stroke="#e5fafd" stroke-opacity="0.28" stroke-width="2"/>
+  </g>
+  <g opacity="0.18" fill="none" stroke="#bbeefc" stroke-width="2.5">
+    <circle cx="225" cy="208" r="96"/>
+    <circle cx="225" cy="208" r="72"/>
+    <path d="M225 84V332M101 208H349"/>
+  </g>
+  <g filter="url(#exploration-compass-glow)" fill="none" stroke="#7bdaf9" stroke-width="5.5" stroke-linecap="round">
+    <path d="M 279.4 40.6 A 176 176 0 0 1 392.4 153.6"/>
+    <path d="M 392.4 262.4 A 176 176 0 0 1 279.4 375.4"/>
+    <path d="M 170.6 375.4 A 176 176 0 0 1 57.6 262.4"/>
+    <path d="M 57.6 153.6 A 176 176 0 0 1 170.6 40.6"/>
+    <path d="M 321.4 101.0 A 144 144 0 0 1 321.4 315.0" opacity="0.7"/>
+    <path d="M 128.6 315.0 A 144 144 0 0 1 128.6 101.0" opacity="0.7"/>
+  </g>
+  <g opacity="0.55" stroke="#d4f3fd" stroke-width="3" fill="none">
+    <path d="M225 54l7 14 14 7-14 7-7 14-7-14-14-7 14-7Z"/>
+    <path d="M362 123l5 10 10 5-10 5-5 10-5-10-10-5 10-5Z"/>
+    <path d="M95 286l5 10 10 5-10 5-5 10-5-10-10-5 10-5Z"/>
+  </g>
+  <g><circle cx="225.0" cy="38.0" r="5" fill="#d4f3fd" opacity="0.88"/><circle cx="345.2" cy="87.8" r="5" fill="#d4f3fd" opacity="0.65"/><circle cx="395.0" cy="208.0" r="5" fill="#d4f3fd" opacity="0.88"/><circle cx="345.2" cy="328.2" r="5" fill="#d4f3fd" opacity="0.65"/><circle cx="225.0" cy="378.0" r="5" fill="#d4f3fd" opacity="0.88"/><circle cx="104.8" cy="328.2" r="5" fill="#d4f3fd" opacity="0.65"/><circle cx="55.0" cy="208.0" r="5" fill="#d4f3fd" opacity="0.88"/><circle cx="104.8" cy="87.8" r="5" fill="#d4f3fd" opacity="0.65"/></g>
+  
+  <g clip-path="url(#exploration-compass-art-clip)" filter="url(#exploration-compass-soft)">
+    <image href="../center-art/exploration/compass.png" x="129" y="129" width="192" height="192" preserveAspectRatio="xMidYMid slice"/>
+  </g>
+  <circle cx="225" cy="225" r="96" fill="none" stroke="#7bdaf9" stroke-opacity="0.4" stroke-width="2"/>
+  <g transform="translate(146 32)" filter="url(#exploration-compass-soft)">
+    <rect x="0" y="0" width="158" height="30" rx="15" fill="url(#exploration-compass-plaque)" stroke="#7bdaf9" stroke-opacity="0.55"/>
+    <text x="79" y="20" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="2.4" fill="#d4f3fd">BADGE 8</text>
+  </g>
+  <g transform="translate(120 350)" filter="url(#exploration-compass-soft)">
+    <rect x="0" y="0" width="210" height="40" rx="20" fill="url(#exploration-compass-plaque)" stroke="#7bdaf9" stroke-opacity="0.6"/>
+    <text x="105" y="27" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="800" letter-spacing="4" fill="#f6fbff">COM</text>
+  </g>
+  <text x="225" y="413" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="3.2" fill="#d4f3fd" opacity="0.84">EXPLORATION</text>
+</svg>

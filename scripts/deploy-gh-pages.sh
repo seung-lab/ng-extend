@@ -15,8 +15,8 @@ git clone --depth 1 "$DEPLOY_REPO" "$DEPLOY_DIR"
 rm -rf "$DEPLOY_DIR"/*
 cp -r dist/min/* "$DEPLOY_DIR/"
 
-# Copy badge center-art PNGs
-BADGE_ART="../Documents/New project/static/badges/pyr/center-art"
+# Copy badge center-art PNGs (from in-repo static assets)
+BADGE_ART="static/badges/pyr/center-art"
 if [ -d "$BADGE_ART" ]; then
   echo "Copying badge center-art..."
   mkdir -p "$DEPLOY_DIR/center-art/building" "$DEPLOY_DIR/center-art/exploration"

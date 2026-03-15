@@ -245,8 +245,8 @@ const emit = defineEmits({hide: null});
             </span>
           </div>
 
-          <!-- Building Badges -->
-          <div class="nge-lb-detail-badges-label" style="color: #ffd08a;">Building Badges <span style="font-size: 0.75em; opacity: 0.6;">(edits)</span></div>
+          <!-- Edit Achievements -->
+          <div class="nge-lb-detail-badges-label" style="color: #ffd08a;">Edit Achievements</div>
           <div class="nge-lb-detail-badges-grid">
             <div
               v-for="badge in BUILDING_BADGES"
@@ -280,8 +280,8 @@ const emit = defineEmits({hide: null});
             </div>
           </div>
 
-          <!-- Exploration Badges -->
-          <div class="nge-lb-detail-badges-label" style="color: #90fff2;">Exploration Badges <span style="font-size: 0.75em; opacity: 0.6;">(cells)</span></div>
+          <!-- Cell Achievements -->
+          <div class="nge-lb-detail-badges-label" style="color: #90fff2;">Cell Achievements</div>
           <div class="nge-lb-detail-badges-grid">
             <div
               v-for="badge in EXPLORATION_BADGES"

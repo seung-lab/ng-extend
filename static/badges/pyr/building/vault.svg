@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="450" height="450" viewBox="0 0 450 450" role="img" aria-labelledby="building-vault-title building-vault-desc">
+  <title id="building-vault-title">Building badge: Vault</title>
+  <desc id="building-vault-desc">Vault anchors the structural side of the building track.</desc>
+  <defs>
+    <linearGradient id="building-vault-metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#624c63"/>
+      <stop offset="100%" stop-color="#343242"/>
+    </linearGradient>
+    <linearGradient id="building-vault-shell" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#30202b"/>
+      <stop offset="100%" stop-color="#41313e"/>
+    </linearGradient>
+    <radialGradient id="building-vault-core" cx="50%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#3f2431"/>
+      <stop offset="100%" stop-color="#2a2523"/>
+    </radialGradient>
+    <radialGradient id="building-vault-halo" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#d4bcbb" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#d4bcbb" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="building-vault-plaque" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#392b3d"/>
+      <stop offset="100%" stop-color="#46485e"/>
+    </linearGradient>
+    <clipPath id="building-vault-art-clip">
+      <circle cx="225" cy="225" r="94"/>
+    </clipPath>
+    <filter id="building-vault-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#000000" flood-opacity="0.42"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#c0abd1" flood-opacity="0.22"/>
+    </filter>
+    <filter id="building-vault-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#c0abd1" flood-opacity="0.72"/>
+    </filter>
+    <filter id="building-vault-soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#c0abd1" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <rect width="450" height="450" fill="#070b12"/>
+  
+    <circle cx="225" cy="208" r="186" fill="url(#building-vault-halo)" opacity="0.28"/>
+    <g filter="url(#building-vault-shadow)">
+      <polygon points="296.2,36.2 396.8,136.8 396.8,279.2 296.2,379.8 153.8,379.8 53.2,279.2 53.2,136.8 153.8,36.2" fill="url(#building-vault-metal)" stroke="#eda3bd" stroke-width="6"/>
+      <polygon points="288.1,55.6 377.4,144.9 377.4,271.1 288.1,360.4 161.9,360.4 72.6,271.1 72.6,144.9 161.9,55.6" fill="url(#building-vault-shell)" stroke="#dda2c2" stroke-opacity="0.58" stroke-width="2.6"/>
+      <path d="M170 42h110l18 18v30H152V60Z" fill="url(#building-vault-metal)" stroke="#eda3bd" stroke-width="4"/>
+      <path d="M190 356h70l16 16v18H174v-18Z" fill="url(#building-vault-metal)" stroke="#eda3bd" stroke-width="4"/>
+      <circle cx="225" cy="208" r="110" fill="url(#building-vault-core)" stroke="#fbebf0" stroke-opacity="0.3" stroke-width="2"/>
+    </g>
+    <g opacity="0.18" fill="none" stroke="#e9d3e2" stroke-width="3"><path d="M128 152 302 326M164 152 338 326M92 152 266 326M130 174H320M120 208H330M130 242H320" /></g>
+    <g filter="url(#building-vault-glow)" fill="none" stroke="#dda2c2" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M92 120 58 154v108l34 34"/>
+      <path d="M358 120 392 154v108l-34 34"/>
+      <path d="M150 84h42"/>
+      <path d="M258 84h42"/>
+      <path d="M172 332h106"/>
+    </g>
+    <g><circle cx="290.1" cy="50.9" r="4.5" fill="#f4e1eb" opacity="0.82"/><circle cx="382.1" cy="142.9" r="4.5" fill="#f4e1eb" opacity="0.82"/><circle cx="382.1" cy="273.1" r="4.5" fill="#f4e1eb" opacity="0.82"/><circle cx="290.1" cy="365.1" r="4.5" fill="#f4e1eb" opacity="0.82"/><circle cx="159.9" cy="365.1" r="4.5" fill="#f4e1eb" opacity="0.82"/><circle cx="67.9" cy="273.1" r="4.5" fill="#f4e1eb" opacity="0.82"/><circle cx="67.9" cy="142.9" r="4.5" fill="#f4e1eb" opacity="0.82"/><circle cx="159.9" cy="50.9" r="4.5" fill="#f4e1eb" opacity="0.82"/></g>
+  
+  <g clip-path="url(#building-vault-art-clip)" filter="url(#building-vault-soft)">
+    <image href="../center-art/building/vault.png" x="129" y="129" width="192" height="192" preserveAspectRatio="xMidYMid slice"/>
+  </g>
+  <circle cx="225" cy="225" r="96" fill="none" stroke="#dda2c2" stroke-opacity="0.4" stroke-width="2"/>
+  <g transform="translate(146 32)" filter="url(#building-vault-soft)">
+    <rect x="0" y="0" width="158" height="30" rx="15" fill="url(#building-vault-plaque)" stroke="#dda2c2" stroke-opacity="0.55"/>
+    <text x="79" y="20" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="2.4" fill="#f4e1eb">BADGE 40</text>
+  </g>
+  <g transform="translate(120 350)" filter="url(#building-vault-soft)">
+    <rect x="0" y="0" width="210" height="40" rx="20" fill="url(#building-vault-plaque)" stroke="#dda2c2" stroke-opacity="0.6"/>
+    <text x="105" y="27" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="800" letter-spacing="4" fill="#f9fbff">VAU</text>
+  </g>
+  <text x="225" y="413" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="3.2" fill="#f4e1eb" opacity="0.84">BUILDING</text>
+</svg>

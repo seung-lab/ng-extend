@@ -1,0 +1,2026 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-03-15T20:54:28.352Z",
+  "tracks": {
+    "building": {
+      "label": "Building",
+      "description": "Earned through edits",
+      "thresholdType": "edits",
+      "totalBadges": 100,
+      "maxThreshold": 1000000,
+      "curve": "cubic",
+      "badges": [
+        {
+          "sequence": 1,
+          "slug": "charcoal",
+          "code": "CHA",
+          "title": "Charcoal",
+          "description": "Charcoal marks the point where making starts with a mark on the page.",
+          "threshold": 1,
+          "svgPath": "static/badges/pyr/building/charcoal.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/charcoal.png"
+        },
+        {
+          "sequence": 2,
+          "slug": "stylus",
+          "code": "STY",
+          "title": "Stylus",
+          "description": "Stylus marks the point where making starts with a mark on the page.",
+          "threshold": 8,
+          "svgPath": "static/badges/pyr/building/stylus.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/stylus.png"
+        },
+        {
+          "sequence": 3,
+          "slug": "twine",
+          "code": "TWI",
+          "title": "Twine",
+          "description": "Twine anchors the structural side of the building track.",
+          "threshold": 27,
+          "svgPath": "static/badges/pyr/building/twine.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/twine.png"
+        },
+        {
+          "sequence": 4,
+          "slug": "play-dough",
+          "code": "PD",
+          "title": "Play Dough",
+          "description": "Play Dough expands the materials toolkit for advanced fabrication.",
+          "threshold": 64,
+          "svgPath": "static/badges/pyr/building/play-dough.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/play-dough.png"
+        },
+        {
+          "sequence": 5,
+          "slug": "mallet",
+          "code": "MAL",
+          "title": "Mallet",
+          "description": "Mallet is a core fabrication milestone on the building track.",
+          "threshold": 125,
+          "svgPath": "static/badges/pyr/building/mallet.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/mallet.png"
+        },
+        {
+          "sequence": 6,
+          "slug": "awl",
+          "code": "AWL",
+          "title": "Awl",
+          "description": "Awl is a core fabrication milestone on the building track.",
+          "threshold": 216,
+          "svgPath": "static/badges/pyr/building/awl.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/awl.png"
+        },
+        {
+          "sequence": 7,
+          "slug": "hammer",
+          "code": "HAM",
+          "title": "Hammer",
+          "description": "Hammer is a core fabrication milestone on the building track.",
+          "threshold": 343,
+          "svgPath": "static/badges/pyr/building/hammer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/hammer.png"
+        },
+        {
+          "sequence": 8,
+          "slug": "chisel",
+          "code": "CHI",
+          "title": "Chisel",
+          "description": "Chisel is a core fabrication milestone on the building track.",
+          "threshold": 512,
+          "svgPath": "static/badges/pyr/building/chisel.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/chisel.png"
+        },
+        {
+          "sequence": 9,
+          "slug": "wrench",
+          "code": "WRE",
+          "title": "Wrench",
+          "description": "Wrench is a core fabrication milestone on the building track.",
+          "threshold": 729,
+          "svgPath": "static/badges/pyr/building/wrench.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/wrench.png"
+        },
+        {
+          "sequence": 10,
+          "slug": "screwdriver",
+          "code": "SCR",
+          "title": "Screwdriver",
+          "description": "Screwdriver is a core fabrication milestone on the building track.",
+          "threshold": 1000,
+          "svgPath": "static/badges/pyr/building/screwdriver.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/screwdriver.png"
+        },
+        {
+          "sequence": 11,
+          "slug": "axe",
+          "code": "AXE",
+          "title": "Axe",
+          "description": "Axe is a core fabrication milestone on the building track.",
+          "threshold": 1331,
+          "svgPath": "static/badges/pyr/building/axe.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/axe.png"
+        },
+        {
+          "sequence": 12,
+          "slug": "nail",
+          "code": "NAI",
+          "title": "Nail",
+          "description": "Nail anchors the structural side of the building track.",
+          "threshold": 1728,
+          "svgPath": "static/badges/pyr/building/nail.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/nail.png"
+        },
+        {
+          "sequence": 13,
+          "slug": "bolt",
+          "code": "BOL",
+          "title": "Bolt",
+          "description": "Bolt anchors the structural side of the building track.",
+          "threshold": 2197,
+          "svgPath": "static/badges/pyr/building/bolt.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/bolt.png"
+        },
+        {
+          "sequence": 14,
+          "slug": "nut",
+          "code": "NUT",
+          "title": "Nut",
+          "description": "Nut anchors the structural side of the building track.",
+          "threshold": 2744,
+          "svgPath": "static/badges/pyr/building/nut.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/nut.png"
+        },
+        {
+          "sequence": 15,
+          "slug": "rope",
+          "code": "ROP",
+          "title": "Rope",
+          "description": "Rope anchors the structural side of the building track.",
+          "threshold": 3375,
+          "svgPath": "static/badges/pyr/building/rope.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/rope.png"
+        },
+        {
+          "sequence": 16,
+          "slug": "bucket",
+          "code": "BUC",
+          "title": "Bucket",
+          "description": "Bucket anchors the structural side of the building track.",
+          "threshold": 4096,
+          "svgPath": "static/badges/pyr/building/bucket.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/bucket.png"
+        },
+        {
+          "sequence": 17,
+          "slug": "trowel",
+          "code": "TRO",
+          "title": "Trowel",
+          "description": "Trowel is a core fabrication milestone on the building track.",
+          "threshold": 4913,
+          "svgPath": "static/badges/pyr/building/trowel.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/trowel.png"
+        },
+        {
+          "sequence": 18,
+          "slug": "shovel",
+          "code": "SHO",
+          "title": "Shovel",
+          "description": "Shovel is a core fabrication milestone on the building track.",
+          "threshold": 5832,
+          "svgPath": "static/badges/pyr/building/shovel.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/shovel.png"
+        },
+        {
+          "sequence": 19,
+          "slug": "pick-axe",
+          "code": "PA",
+          "title": "Pick Axe",
+          "description": "Pick Axe is a core fabrication milestone on the building track.",
+          "threshold": 6859,
+          "svgPath": "static/badges/pyr/building/pick-axe.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/pick-axe.png"
+        },
+        {
+          "sequence": 20,
+          "slug": "ladder",
+          "code": "LAD",
+          "title": "Ladder",
+          "description": "Ladder anchors the structural side of the building track.",
+          "threshold": 8000,
+          "svgPath": "static/badges/pyr/building/ladder.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/ladder.png"
+        },
+        {
+          "sequence": 21,
+          "slug": "wheelbarrow",
+          "code": "WHE",
+          "title": "Wheelbarrow",
+          "description": "Wheelbarrow anchors the structural side of the building track.",
+          "threshold": 9261,
+          "svgPath": "static/badges/pyr/building/wheelbarrow.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/wheelbarrow.png"
+        },
+        {
+          "sequence": 22,
+          "slug": "saw",
+          "code": "SAW",
+          "title": "Saw",
+          "description": "Saw is a core fabrication milestone on the building track.",
+          "threshold": 10648,
+          "svgPath": "static/badges/pyr/building/saw.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/saw.png"
+        },
+        {
+          "sequence": 23,
+          "slug": "hand-plane",
+          "code": "HP",
+          "title": "Hand Plane",
+          "description": "Hand Plane is a core fabrication milestone on the building track.",
+          "threshold": 12167,
+          "svgPath": "static/badges/pyr/building/hand-plane.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/hand-plane.png"
+        },
+        {
+          "sequence": 24,
+          "slug": "spokeshave",
+          "code": "SPO",
+          "title": "Spokeshave",
+          "description": "Spokeshave is a core fabrication milestone on the building track.",
+          "threshold": 13824,
+          "svgPath": "static/badges/pyr/building/spokeshave.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/spokeshave.png"
+        },
+        {
+          "sequence": 25,
+          "slug": "file",
+          "code": "FIL",
+          "title": "File",
+          "description": "File is a core fabrication milestone on the building track.",
+          "threshold": 15625,
+          "svgPath": "static/badges/pyr/building/file.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/file.png"
+        },
+        {
+          "sequence": 26,
+          "slug": "rasp",
+          "code": "RAS",
+          "title": "Rasp",
+          "description": "Rasp is a core fabrication milestone on the building track.",
+          "threshold": 17576,
+          "svgPath": "static/badges/pyr/building/rasp.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/rasp.png"
+        },
+        {
+          "sequence": 27,
+          "slug": "clamp",
+          "code": "CLA",
+          "title": "Clamp",
+          "description": "Clamp is a core fabrication milestone on the building track.",
+          "threshold": 19683,
+          "svgPath": "static/badges/pyr/building/clamp.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/clamp.png"
+        },
+        {
+          "sequence": 28,
+          "slug": "vise",
+          "code": "VIS",
+          "title": "Vise",
+          "description": "Vise is a core fabrication milestone on the building track.",
+          "threshold": 21952,
+          "svgPath": "static/badges/pyr/building/vise.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/vise.png"
+        },
+        {
+          "sequence": 29,
+          "slug": "tape-measure",
+          "code": "TM",
+          "title": "Tape Measure",
+          "description": "Tape Measure represents a fabrication milestone on the building track.",
+          "threshold": 24389,
+          "svgPath": "static/badges/pyr/building/tape-measure.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/tape-measure.png"
+        },
+        {
+          "sequence": 30,
+          "slug": "t-square",
+          "code": "TS",
+          "title": "T-Square",
+          "description": "T-Square is a core fabrication milestone on the building track.",
+          "threshold": 27000,
+          "svgPath": "static/badges/pyr/building/t-square.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/t-square.png"
+        },
+        {
+          "sequence": 31,
+          "slug": "leveler",
+          "code": "LEV",
+          "title": "Leveler",
+          "description": "Leveler supports precision and alignment in the building track.",
+          "threshold": 29791,
+          "svgPath": "static/badges/pyr/building/leveler.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/leveler.png"
+        },
+        {
+          "sequence": 32,
+          "slug": "plumb-bob",
+          "code": "PB",
+          "title": "Plumb Bob",
+          "description": "Plumb Bob is a core fabrication milestone on the building track.",
+          "threshold": 32768,
+          "svgPath": "static/badges/pyr/building/plumb-bob.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/plumb-bob.png"
+        },
+        {
+          "sequence": 33,
+          "slug": "laser-leveler",
+          "code": "LL",
+          "title": "Laser Leveler",
+          "description": "Laser Leveler supports precision and alignment in the building track.",
+          "threshold": 35937,
+          "svgPath": "static/badges/pyr/building/laser-leveler.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/laser-leveler.png"
+        },
+        {
+          "sequence": 34,
+          "slug": "brick",
+          "code": "BRI",
+          "title": "Brick",
+          "description": "Brick anchors the structural side of the building track.",
+          "threshold": 39304,
+          "svgPath": "static/badges/pyr/building/brick.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/brick.png"
+        },
+        {
+          "sequence": 35,
+          "slug": "column",
+          "code": "COL",
+          "title": "Column",
+          "description": "Column anchors the structural side of the building track.",
+          "threshold": 42875,
+          "svgPath": "static/badges/pyr/building/column.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/column.png"
+        },
+        {
+          "sequence": 36,
+          "slug": "arch",
+          "code": "ARC",
+          "title": "Arch",
+          "description": "Arch anchors the structural side of the building track.",
+          "threshold": 46656,
+          "svgPath": "static/badges/pyr/building/arch.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/arch.png"
+        },
+        {
+          "sequence": 37,
+          "slug": "corbel",
+          "code": "COR",
+          "title": "Corbel",
+          "description": "Corbel anchors the structural side of the building track.",
+          "threshold": 50653,
+          "svgPath": "static/badges/pyr/building/corbel.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/corbel.png"
+        },
+        {
+          "sequence": 38,
+          "slug": "rafter",
+          "code": "RAF",
+          "title": "Rafter",
+          "description": "Rafter anchors the structural side of the building track.",
+          "threshold": 54872,
+          "svgPath": "static/badges/pyr/building/rafter.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/rafter.png"
+        },
+        {
+          "sequence": 39,
+          "slug": "dome",
+          "code": "DOM",
+          "title": "Dome",
+          "description": "Dome anchors the structural side of the building track.",
+          "threshold": 59319,
+          "svgPath": "static/badges/pyr/building/dome.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/dome.png"
+        },
+        {
+          "sequence": 40,
+          "slug": "vault",
+          "code": "VAU",
+          "title": "Vault",
+          "description": "Vault anchors the structural side of the building track.",
+          "threshold": 64000,
+          "svgPath": "static/badges/pyr/building/vault.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/vault.png"
+        },
+        {
+          "sequence": 41,
+          "slug": "loom",
+          "code": "LOO",
+          "title": "Loom",
+          "description": "Loom anchors the structural side of the building track.",
+          "threshold": 68921,
+          "svgPath": "static/badges/pyr/building/loom.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/loom.png"
+        },
+        {
+          "sequence": 42,
+          "slug": "kiln",
+          "code": "KIL",
+          "title": "Kiln",
+          "description": "Kiln pushes building from handwork into powered systems.",
+          "threshold": 74088,
+          "svgPath": "static/badges/pyr/building/kiln.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/kiln.png"
+        },
+        {
+          "sequence": 43,
+          "slug": "bellows",
+          "code": "BEL",
+          "title": "Bellows",
+          "description": "Bellows pushes building from handwork into powered systems.",
+          "threshold": 79507,
+          "svgPath": "static/badges/pyr/building/bellows.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/bellows.png"
+        },
+        {
+          "sequence": 44,
+          "slug": "anvil",
+          "code": "ANV",
+          "title": "Anvil",
+          "description": "Anvil anchors the structural side of the building track.",
+          "threshold": 85184,
+          "svgPath": "static/badges/pyr/building/anvil.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/anvil.png"
+        },
+        {
+          "sequence": 45,
+          "slug": "forge",
+          "code": "FOR",
+          "title": "Forge",
+          "description": "Forge anchors the structural side of the building track.",
+          "threshold": 91125,
+          "svgPath": "static/badges/pyr/building/forge.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/forge.png"
+        },
+        {
+          "sequence": 46,
+          "slug": "catapult",
+          "code": "CAT",
+          "title": "Catapult",
+          "description": "Catapult pushes building from handwork into powered systems.",
+          "threshold": 97336,
+          "svgPath": "static/badges/pyr/building/catapult.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/catapult.png"
+        },
+        {
+          "sequence": 47,
+          "slug": "ox-drawn-plow",
+          "code": "ODP",
+          "title": "Ox-drawn Plow",
+          "description": "Ox-drawn Plow pushes building from handwork into powered systems.",
+          "threshold": 103823,
+          "svgPath": "static/badges/pyr/building/ox-drawn-plow.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/ox-drawn-plow.png"
+        },
+        {
+          "sequence": 48,
+          "slug": "pulley",
+          "code": "PUL",
+          "title": "Pulley",
+          "description": "Pulley anchors the structural side of the building track.",
+          "threshold": 110592,
+          "svgPath": "static/badges/pyr/building/pulley.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/pulley.png"
+        },
+        {
+          "sequence": 49,
+          "slug": "piston",
+          "code": "PIS",
+          "title": "Piston",
+          "description": "Piston pushes building from handwork into powered systems.",
+          "threshold": 117649,
+          "svgPath": "static/badges/pyr/building/piston.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/piston.png"
+        },
+        {
+          "sequence": 50,
+          "slug": "actuator",
+          "code": "ACT",
+          "title": "Actuator",
+          "description": "Actuator pushes building from handwork into powered systems.",
+          "threshold": 125000,
+          "svgPath": "static/badges/pyr/building/actuator.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/actuator.png"
+        },
+        {
+          "sequence": 51,
+          "slug": "electric-drill",
+          "code": "ED",
+          "title": "Electric Drill",
+          "description": "Electric Drill is a core fabrication milestone on the building track.",
+          "threshold": 132651,
+          "svgPath": "static/badges/pyr/building/electric-drill.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/electric-drill.png"
+        },
+        {
+          "sequence": 52,
+          "slug": "hand-drill",
+          "code": "HD",
+          "title": "Hand Drill",
+          "description": "Hand Drill is a core fabrication milestone on the building track.",
+          "threshold": 140608,
+          "svgPath": "static/badges/pyr/building/hand-drill.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/hand-drill.png"
+        },
+        {
+          "sequence": 53,
+          "slug": "hot-glue-gun",
+          "code": "HGG",
+          "title": "Hot Glue Gun",
+          "description": "Hot Glue Gun is a core fabrication milestone on the building track.",
+          "threshold": 148877,
+          "svgPath": "static/badges/pyr/building/hot-glue-gun.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/hot-glue-gun.png"
+        },
+        {
+          "sequence": 54,
+          "slug": "welding-torch",
+          "code": "WT",
+          "title": "Welding Torch",
+          "description": "Welding Torch is a core fabrication milestone on the building track.",
+          "threshold": 157464,
+          "svgPath": "static/badges/pyr/building/welding-torch.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/welding-torch.png"
+        },
+        {
+          "sequence": 55,
+          "slug": "rivet-gun",
+          "code": "RG",
+          "title": "Rivet Gun",
+          "description": "Rivet Gun is a core fabrication milestone on the building track.",
+          "threshold": 166375,
+          "svgPath": "static/badges/pyr/building/rivet-gun.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/rivet-gun.png"
+        },
+        {
+          "sequence": 56,
+          "slug": "workbench",
+          "code": "WOR",
+          "title": "Workbench",
+          "description": "Workbench anchors the structural side of the building track.",
+          "threshold": 175616,
+          "svgPath": "static/badges/pyr/building/workbench.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/workbench.png"
+        },
+        {
+          "sequence": 57,
+          "slug": "component-organizer",
+          "code": "CO",
+          "title": "Component Organizer",
+          "description": "Component Organizer marks the electronics stage of the building track.",
+          "threshold": 185193,
+          "svgPath": "static/badges/pyr/building/component-organizer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/component-organizer.png"
+        },
+        {
+          "sequence": 58,
+          "slug": "pcb-etching-kit",
+          "code": "PE",
+          "title": "PCB Etching Kit",
+          "description": "PCB Etching Kit marks the electronics stage of the building track.",
+          "threshold": 195112,
+          "svgPath": "static/badges/pyr/building/pcb-etching-kit.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/pcb-etching-kit.png"
+        },
+        {
+          "sequence": 59,
+          "slug": "breadboard",
+          "code": "BRE",
+          "title": "Breadboard",
+          "description": "Breadboard marks the electronics stage of the building track.",
+          "threshold": 205379,
+          "svgPath": "static/badges/pyr/building/breadboard.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/breadboard.png"
+        },
+        {
+          "sequence": 60,
+          "slug": "jumper-wires",
+          "code": "JW",
+          "title": "Jumper Wires",
+          "description": "Jumper Wires marks the electronics stage of the building track.",
+          "threshold": 216000,
+          "svgPath": "static/badges/pyr/building/jumper-wires.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/jumper-wires.png"
+        },
+        {
+          "sequence": 61,
+          "slug": "wire-strippers",
+          "code": "WS",
+          "title": "Wire Strippers",
+          "description": "Wire Strippers is a core fabrication milestone on the building track.",
+          "threshold": 226981,
+          "svgPath": "static/badges/pyr/building/wire-strippers.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/wire-strippers.png"
+        },
+        {
+          "sequence": 62,
+          "slug": "soldering-iron",
+          "code": "SI",
+          "title": "Soldering Iron",
+          "description": "Soldering Iron is a core fabrication milestone on the building track.",
+          "threshold": 238328,
+          "svgPath": "static/badges/pyr/building/soldering-iron.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/soldering-iron.png"
+        },
+        {
+          "sequence": 63,
+          "slug": "heat-shrink-tubing",
+          "code": "HST",
+          "title": "Heat Shrink Tubing",
+          "description": "Heat Shrink Tubing marks the point where making starts with a mark on the page.",
+          "threshold": 250047,
+          "svgPath": "static/badges/pyr/building/heat-shrink-tubing.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/heat-shrink-tubing.png"
+        },
+        {
+          "sequence": 64,
+          "slug": "power-supply",
+          "code": "PS",
+          "title": "Power Supply",
+          "description": "Power Supply pushes building from handwork into powered systems.",
+          "threshold": 262144,
+          "svgPath": "static/badges/pyr/building/power-supply.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/power-supply.png"
+        },
+        {
+          "sequence": 65,
+          "slug": "microcontroller",
+          "code": "MIC",
+          "title": "Microcontroller",
+          "description": "Microcontroller marks the electronics stage of the building track.",
+          "threshold": 274625,
+          "svgPath": "static/badges/pyr/building/microcontroller.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/microcontroller.png"
+        },
+        {
+          "sequence": 66,
+          "slug": "prototyping-shield",
+          "code": "PS",
+          "title": "Prototyping Shield",
+          "description": "Prototyping Shield marks the electronics stage of the building track.",
+          "threshold": 287496,
+          "svgPath": "static/badges/pyr/building/prototyping-shield.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/prototyping-shield.png"
+        },
+        {
+          "sequence": 67,
+          "slug": "rasberry-pi",
+          "code": "RP",
+          "title": "Rasberry Pi",
+          "description": "Rasberry Pi marks the electronics stage of the building track.",
+          "threshold": 300763,
+          "svgPath": "static/badges/pyr/building/rasberry-pi.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/rasberry-pi.png"
+        },
+        {
+          "sequence": 68,
+          "slug": "leds",
+          "code": "LED",
+          "title": "LEDs",
+          "description": "LEDs marks the electronics stage of the building track.",
+          "threshold": 314432,
+          "svgPath": "static/badges/pyr/building/leds.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/leds.png"
+        },
+        {
+          "sequence": 69,
+          "slug": "servo-motor",
+          "code": "SM",
+          "title": "Servo Motor",
+          "description": "Servo Motor marks the move from mechanisms to automation.",
+          "threshold": 328509,
+          "svgPath": "static/badges/pyr/building/servo-motor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/servo-motor.png"
+        },
+        {
+          "sequence": 70,
+          "slug": "stepper-motor",
+          "code": "SM",
+          "title": "Stepper Motor",
+          "description": "Stepper Motor marks the move from mechanisms to automation.",
+          "threshold": 343000,
+          "svgPath": "static/badges/pyr/building/stepper-motor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/stepper-motor.png"
+        },
+        {
+          "sequence": 71,
+          "slug": "dc-motor",
+          "code": "DM",
+          "title": "DC Motor",
+          "description": "DC Motor marks the move from mechanisms to automation.",
+          "threshold": 357911,
+          "svgPath": "static/badges/pyr/building/dc-motor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/dc-motor.png"
+        },
+        {
+          "sequence": 72,
+          "slug": "motor-driver",
+          "code": "MD",
+          "title": "Motor Driver",
+          "description": "Motor Driver marks the move from mechanisms to automation.",
+          "threshold": 373248,
+          "svgPath": "static/badges/pyr/building/motor-driver.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/motor-driver.png"
+        },
+        {
+          "sequence": 73,
+          "slug": "wheel-and-tire-kit",
+          "code": "WT",
+          "title": "Wheel And Tire Kit",
+          "description": "Wheel and Tire Kit represents a fabrication milestone on the building track.",
+          "threshold": 389017,
+          "svgPath": "static/badges/pyr/building/wheel-and-tire-kit.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/wheel-and-tire-kit.png"
+        },
+        {
+          "sequence": 74,
+          "slug": "ball-caster",
+          "code": "BC",
+          "title": "Ball Caster",
+          "description": "Ball Caster marks the move from mechanisms to automation.",
+          "threshold": 405224,
+          "svgPath": "static/badges/pyr/building/ball-caster.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/ball-caster.png"
+        },
+        {
+          "sequence": 75,
+          "slug": "track-system",
+          "code": "TRA",
+          "title": "Track System",
+          "description": "Track System marks the move from mechanisms to automation.",
+          "threshold": 421875,
+          "svgPath": "static/badges/pyr/building/track-system.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/track-system.png"
+        },
+        {
+          "sequence": 76,
+          "slug": "robot-chassis",
+          "code": "RC",
+          "title": "Robot Chassis",
+          "description": "Robot Chassis marks the move from mechanisms to automation.",
+          "threshold": 438976,
+          "svgPath": "static/badges/pyr/building/robot-chassis.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/robot-chassis.png"
+        },
+        {
+          "sequence": 77,
+          "slug": "claw",
+          "code": "CLA",
+          "title": "Claw",
+          "description": "Claw marks the move from mechanisms to automation.",
+          "threshold": 456533,
+          "svgPath": "static/badges/pyr/building/claw.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/claw.png"
+        },
+        {
+          "sequence": 78,
+          "slug": "gripper-kit",
+          "code": "GRI",
+          "title": "Gripper Kit",
+          "description": "Gripper Kit marks the move from mechanisms to automation.",
+          "threshold": 474552,
+          "svgPath": "static/badges/pyr/building/gripper-kit.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/gripper-kit.png"
+        },
+        {
+          "sequence": 79,
+          "slug": "robot-arm-kit",
+          "code": "RA",
+          "title": "Robot Arm Kit",
+          "description": "Robot Arm Kit marks the move from mechanisms to automation.",
+          "threshold": 493039,
+          "svgPath": "static/badges/pyr/building/robot-arm-kit.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/robot-arm-kit.png"
+        },
+        {
+          "sequence": 80,
+          "slug": "robotic-fabricator",
+          "code": "RF",
+          "title": "Robotic Fabricator",
+          "description": "Robotic Fabricator pushes building from handwork into powered systems.",
+          "threshold": 512000,
+          "svgPath": "static/badges/pyr/building/robotic-fabricator.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/robotic-fabricator.png"
+        },
+        {
+          "sequence": 81,
+          "slug": "3d-printer",
+          "code": "3P",
+          "title": "3D Printer",
+          "description": "3D Printer pushes building from handwork into powered systems.",
+          "threshold": 531441,
+          "svgPath": "static/badges/pyr/building/3d-printer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/3d-printer.png"
+        },
+        {
+          "sequence": 82,
+          "slug": "filament-spool",
+          "code": "FS",
+          "title": "Filament Spool",
+          "description": "Filament Spool expands the materials toolkit for advanced fabrication.",
+          "threshold": 551368,
+          "svgPath": "static/badges/pyr/building/filament-spool.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/filament-spool.png"
+        },
+        {
+          "sequence": 83,
+          "slug": "resin-vat",
+          "code": "RV",
+          "title": "Resin Vat",
+          "description": "Resin Vat expands the materials toolkit for advanced fabrication.",
+          "threshold": 571787,
+          "svgPath": "static/badges/pyr/building/resin-vat.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/resin-vat.png"
+        },
+        {
+          "sequence": 84,
+          "slug": "laser-cutter",
+          "code": "LC",
+          "title": "Laser Cutter",
+          "description": "Laser Cutter pushes building from handwork into powered systems.",
+          "threshold": 592704,
+          "svgPath": "static/badges/pyr/building/laser-cutter.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/laser-cutter.png"
+        },
+        {
+          "sequence": 85,
+          "slug": "cnc-router",
+          "code": "CR",
+          "title": "CNC Router",
+          "description": "CNC Router pushes building from handwork into powered systems.",
+          "threshold": 614125,
+          "svgPath": "static/badges/pyr/building/cnc-router.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/cnc-router.png"
+        },
+        {
+          "sequence": 86,
+          "slug": "milling-machine",
+          "code": "MM",
+          "title": "Milling Machine",
+          "description": "Milling Machine pushes building from handwork into powered systems.",
+          "threshold": 636056,
+          "svgPath": "static/badges/pyr/building/milling-machine.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/milling-machine.png"
+        },
+        {
+          "sequence": 87,
+          "slug": "drill-press",
+          "code": "DP",
+          "title": "Drill Press",
+          "description": "Drill Press is a core fabrication milestone on the building track.",
+          "threshold": 658503,
+          "svgPath": "static/badges/pyr/building/drill-press.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/drill-press.png"
+        },
+        {
+          "sequence": 88,
+          "slug": "bandsaw",
+          "code": "BAN",
+          "title": "Bandsaw",
+          "description": "Bandsaw is a core fabrication milestone on the building track.",
+          "threshold": 681472,
+          "svgPath": "static/badges/pyr/building/bandsaw.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/bandsaw.png"
+        },
+        {
+          "sequence": 89,
+          "slug": "table-saw",
+          "code": "TS",
+          "title": "Table Saw",
+          "description": "Table Saw is a core fabrication milestone on the building track.",
+          "threshold": 704969,
+          "svgPath": "static/badges/pyr/building/table-saw.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/table-saw.png"
+        },
+        {
+          "sequence": 90,
+          "slug": "lathe",
+          "code": "LAT",
+          "title": "Lathe",
+          "description": "Lathe pushes building from handwork into powered systems.",
+          "threshold": 729000,
+          "svgPath": "static/badges/pyr/building/lathe.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/lathe.png"
+        },
+        {
+          "sequence": 91,
+          "slug": "linear-rail",
+          "code": "LR",
+          "title": "Linear Rail",
+          "description": "Linear Rail pushes building from handwork into powered systems.",
+          "threshold": 753571,
+          "svgPath": "static/badges/pyr/building/linear-rail.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/linear-rail.png"
+        },
+        {
+          "sequence": 92,
+          "slug": "gearbox",
+          "code": "GEA",
+          "title": "Gearbox",
+          "description": "Gearbox pushes building from handwork into powered systems.",
+          "threshold": 778688,
+          "svgPath": "static/badges/pyr/building/gearbox.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/gearbox.png"
+        },
+        {
+          "sequence": 93,
+          "slug": "carbon-fiber",
+          "code": "CF",
+          "title": "Carbon Fiber",
+          "description": "Carbon Fiber expands the materials toolkit for advanced fabrication.",
+          "threshold": 804357,
+          "svgPath": "static/badges/pyr/building/carbon-fiber.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/carbon-fiber.png"
+        },
+        {
+          "sequence": 94,
+          "slug": "kevlar",
+          "code": "KEV",
+          "title": "Kevlar",
+          "description": "Kevlar expands the materials toolkit for advanced fabrication.",
+          "threshold": 830584,
+          "svgPath": "static/badges/pyr/building/kevlar.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/kevlar.png"
+        },
+        {
+          "sequence": 95,
+          "slug": "vacuum-tube",
+          "code": "VT",
+          "title": "Vacuum Tube",
+          "description": "Vacuum Tube marks the electronics stage of the building track.",
+          "threshold": 857375,
+          "svgPath": "static/badges/pyr/building/vacuum-tube.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/vacuum-tube.png"
+        },
+        {
+          "sequence": 96,
+          "slug": "transistor",
+          "code": "TRA",
+          "title": "Transistor",
+          "description": "Transistor marks the electronics stage of the building track.",
+          "threshold": 884736,
+          "svgPath": "static/badges/pyr/building/transistor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/transistor.png"
+        },
+        {
+          "sequence": 97,
+          "slug": "gantry-crane",
+          "code": "GC",
+          "title": "Gantry Crane",
+          "description": "Gantry Crane pushes building from handwork into powered systems.",
+          "threshold": 912673,
+          "svgPath": "static/badges/pyr/building/gantry-crane.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/gantry-crane.png"
+        },
+        {
+          "sequence": 98,
+          "slug": "robotic-welder",
+          "code": "RW",
+          "title": "Robotic Welder",
+          "description": "Robotic Welder marks the move from mechanisms to automation.",
+          "threshold": 941192,
+          "svgPath": "static/badges/pyr/building/robotic-welder.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/robotic-welder.png"
+        },
+        {
+          "sequence": 99,
+          "slug": "autonomous-assembly-cell",
+          "code": "AAC",
+          "title": "Autonomous Assembly Cell",
+          "description": "Autonomous Assembly Cell pushes building from handwork into powered systems.",
+          "threshold": 970299,
+          "svgPath": "static/badges/pyr/building/autonomous-assembly-cell.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/autonomous-assembly-cell.png"
+        },
+        {
+          "sequence": 100,
+          "slug": "microfactory",
+          "code": "MIC",
+          "title": "Microfactory",
+          "description": "Microfactory pushes building from handwork into powered systems.",
+          "threshold": 1000000,
+          "svgPath": "static/badges/pyr/building/microfactory.svg",
+          "centerArtPath": "static/badges/pyr/center-art/building/microfactory.png"
+        }
+      ]
+    },
+    "exploration": {
+      "label": "Exploration",
+      "description": "Earned through cell completions",
+      "thresholdType": "cells",
+      "totalBadges": 100,
+      "maxThreshold": 50000,
+      "curve": "cubic",
+      "badges": [
+        {
+          "sequence": 1,
+          "slug": "scroll",
+          "code": "SCR",
+          "title": "Scroll",
+          "description": "Scroll captures the record-keeping side of exploration.",
+          "threshold": 1,
+          "svgPath": "static/badges/pyr/exploration/scroll.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/scroll.png"
+        },
+        {
+          "sequence": 2,
+          "slug": "pencil",
+          "code": "PEN",
+          "title": "Pencil",
+          "description": "Pencil marks the first step in documenting what you discover.",
+          "threshold": 2,
+          "svgPath": "static/badges/pyr/exploration/pencil.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/pencil.png"
+        },
+        {
+          "sequence": 3,
+          "slug": "ink",
+          "code": "INK",
+          "title": "Ink",
+          "description": "Ink marks the first step in documenting what you discover.",
+          "threshold": 3,
+          "svgPath": "static/badges/pyr/exploration/ink.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/ink.png"
+        },
+        {
+          "sequence": 4,
+          "slug": "fountain-pen",
+          "code": "FP",
+          "title": "Fountain Pen",
+          "description": "Fountain Pen marks the first step in documenting what you discover.",
+          "threshold": 4,
+          "svgPath": "static/badges/pyr/exploration/fountain-pen.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/fountain-pen.png"
+        },
+        {
+          "sequence": 5,
+          "slug": "lab-notebook",
+          "code": "LN",
+          "title": "Lab Notebook",
+          "description": "Lab Notebook captures the record-keeping side of exploration.",
+          "threshold": 6,
+          "svgPath": "static/badges/pyr/exploration/lab-notebook.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/lab-notebook.png"
+        },
+        {
+          "sequence": 6,
+          "slug": "abacus",
+          "code": "ABA",
+          "title": "Abacus",
+          "description": "Abacus is a scientific observation milestone on the exploration track.",
+          "threshold": 11,
+          "svgPath": "static/badges/pyr/exploration/abacus.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/abacus.png"
+        },
+        {
+          "sequence": 7,
+          "slug": "map",
+          "code": "MAP",
+          "title": "Map",
+          "description": "Map captures the record-keeping side of exploration.",
+          "threshold": 17,
+          "svgPath": "static/badges/pyr/exploration/map.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/map.png"
+        },
+        {
+          "sequence": 8,
+          "slug": "compass",
+          "code": "COM",
+          "title": "Compass",
+          "description": "Compass is a scientific observation milestone on the exploration track.",
+          "threshold": 26,
+          "svgPath": "static/badges/pyr/exploration/compass.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/compass.png"
+        },
+        {
+          "sequence": 9,
+          "slug": "cairn",
+          "code": "CAI",
+          "title": "Cairn",
+          "description": "Cairn represents a discovery milestone on the exploration track.",
+          "threshold": 36,
+          "svgPath": "static/badges/pyr/exploration/cairn.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/cairn.png"
+        },
+        {
+          "sequence": 10,
+          "slug": "sextant",
+          "code": "SEX",
+          "title": "Sextant",
+          "description": "Sextant is a scientific observation milestone on the exploration track.",
+          "threshold": 50,
+          "svgPath": "static/badges/pyr/exploration/sextant.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/sextant.png"
+        },
+        {
+          "sequence": 11,
+          "slug": "astrolabe",
+          "code": "AST",
+          "title": "Astrolabe",
+          "description": "Astrolabe is a scientific observation milestone on the exploration track.",
+          "threshold": 67,
+          "svgPath": "static/badges/pyr/exploration/astrolabe.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/astrolabe.png"
+        },
+        {
+          "sequence": 12,
+          "slug": "sundial",
+          "code": "SUN",
+          "title": "Sundial",
+          "description": "Sundial represents a discovery milestone on the exploration track.",
+          "threshold": 86,
+          "svgPath": "static/badges/pyr/exploration/sundial.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/sundial.png"
+        },
+        {
+          "sequence": 13,
+          "slug": "globe",
+          "code": "GLO",
+          "title": "Globe",
+          "description": "Globe represents a discovery milestone on the exploration track.",
+          "threshold": 110,
+          "svgPath": "static/badges/pyr/exploration/globe.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/globe.png"
+        },
+        {
+          "sequence": 14,
+          "slug": "star-chart",
+          "code": "SC",
+          "title": "Star Chart",
+          "description": "Star Chart captures the record-keeping side of exploration.",
+          "threshold": 137,
+          "svgPath": "static/badges/pyr/exploration/star-chart.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/star-chart.png"
+        },
+        {
+          "sequence": 15,
+          "slug": "magnifying-glass",
+          "code": "MG",
+          "title": "Magnifying Glass",
+          "description": "Magnifying Glass represents a discovery milestone on the exploration track.",
+          "threshold": 169,
+          "svgPath": "static/badges/pyr/exploration/magnifying-glass.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/magnifying-glass.png"
+        },
+        {
+          "sequence": 16,
+          "slug": "fresnel-lens",
+          "code": "FL",
+          "title": "Fresnel Lens",
+          "description": "Fresnel Lens is a scientific observation milestone on the exploration track.",
+          "threshold": 205,
+          "svgPath": "static/badges/pyr/exploration/fresnel-lens.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/fresnel-lens.png"
+        },
+        {
+          "sequence": 17,
+          "slug": "telescope",
+          "code": "TEL",
+          "title": "Telescope",
+          "description": "Telescope is a scientific observation milestone on the exploration track.",
+          "threshold": 246,
+          "svgPath": "static/badges/pyr/exploration/telescope.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/telescope.png"
+        },
+        {
+          "sequence": 18,
+          "slug": "binoculars",
+          "code": "BIN",
+          "title": "Binoculars",
+          "description": "Binoculars is a scientific observation milestone on the exploration track.",
+          "threshold": 292,
+          "svgPath": "static/badges/pyr/exploration/binoculars.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/binoculars.png"
+        },
+        {
+          "sequence": 19,
+          "slug": "periscope",
+          "code": "PER",
+          "title": "Periscope",
+          "description": "Periscope is a scientific observation milestone on the exploration track.",
+          "threshold": 343,
+          "svgPath": "static/badges/pyr/exploration/periscope.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/periscope.png"
+        },
+        {
+          "sequence": 20,
+          "slug": "barometer",
+          "code": "BAR",
+          "title": "Barometer",
+          "description": "Barometer is a scientific observation milestone on the exploration track.",
+          "threshold": 400,
+          "svgPath": "static/badges/pyr/exploration/barometer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/barometer.png"
+        },
+        {
+          "sequence": 21,
+          "slug": "thermometer",
+          "code": "THE",
+          "title": "Thermometer",
+          "description": "Thermometer is a scientific observation milestone on the exploration track.",
+          "threshold": 463,
+          "svgPath": "static/badges/pyr/exploration/thermometer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/thermometer.png"
+        },
+        {
+          "sequence": 22,
+          "slug": "hygrometer",
+          "code": "HYG",
+          "title": "Hygrometer",
+          "description": "Hygrometer is a scientific observation milestone on the exploration track.",
+          "threshold": 532,
+          "svgPath": "static/badges/pyr/exploration/hygrometer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/hygrometer.png"
+        },
+        {
+          "sequence": 23,
+          "slug": "altimeter",
+          "code": "ALT",
+          "title": "Altimeter",
+          "description": "Altimeter is a scientific observation milestone on the exploration track.",
+          "threshold": 608,
+          "svgPath": "static/badges/pyr/exploration/altimeter.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/altimeter.png"
+        },
+        {
+          "sequence": 24,
+          "slug": "depth-gauge",
+          "code": "DG",
+          "title": "Depth Gauge",
+          "description": "Depth Gauge represents a discovery milestone on the exploration track.",
+          "threshold": 691,
+          "svgPath": "static/badges/pyr/exploration/depth-gauge.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/depth-gauge.png"
+        },
+        {
+          "sequence": 25,
+          "slug": "gyroscope",
+          "code": "GYR",
+          "title": "Gyroscope",
+          "description": "Gyroscope is a scientific observation milestone on the exploration track.",
+          "threshold": 781,
+          "svgPath": "static/badges/pyr/exploration/gyroscope.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/gyroscope.png"
+        },
+        {
+          "sequence": 26,
+          "slug": "accelerometer",
+          "code": "ACC",
+          "title": "Accelerometer",
+          "description": "Accelerometer is a scientific observation milestone on the exploration track.",
+          "threshold": 879,
+          "svgPath": "static/badges/pyr/exploration/accelerometer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/accelerometer.png"
+        },
+        {
+          "sequence": 27,
+          "slug": "multimeter",
+          "code": "MUL",
+          "title": "Multimeter",
+          "description": "Multimeter marks the computing layer behind advanced discovery.",
+          "threshold": 984,
+          "svgPath": "static/badges/pyr/exploration/multimeter.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/multimeter.png"
+        },
+        {
+          "sequence": 28,
+          "slug": "oscilloscope",
+          "code": "OSC",
+          "title": "Oscilloscope",
+          "description": "Oscilloscope marks the computing layer behind advanced discovery.",
+          "threshold": 1098,
+          "svgPath": "static/badges/pyr/exploration/oscilloscope.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/oscilloscope.png"
+        },
+        {
+          "sequence": 29,
+          "slug": "logic-analyzer",
+          "code": "LA",
+          "title": "Logic Analyzer",
+          "description": "Logic Analyzer marks the computing layer behind advanced discovery.",
+          "threshold": 1219,
+          "svgPath": "static/badges/pyr/exploration/logic-analyzer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/logic-analyzer.png"
+        },
+        {
+          "sequence": 30,
+          "slug": "digital-caliper",
+          "code": "DC",
+          "title": "Digital Caliper",
+          "description": "Digital Caliper represents a discovery milestone on the exploration track.",
+          "threshold": 1350,
+          "svgPath": "static/badges/pyr/exploration/digital-caliper.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/digital-caliper.png"
+        },
+        {
+          "sequence": 31,
+          "slug": "compound-microscope",
+          "code": "CM",
+          "title": "Compound Microscope",
+          "description": "Compound Microscope is a scientific observation milestone on the exploration track.",
+          "threshold": 1490,
+          "svgPath": "static/badges/pyr/exploration/compound-microscope.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/compound-microscope.png"
+        },
+        {
+          "sequence": 32,
+          "slug": "electron-microscope",
+          "code": "EM",
+          "title": "Electron Microscope",
+          "description": "Electron Microscope is a scientific observation milestone on the exploration track.",
+          "threshold": 1638,
+          "svgPath": "static/badges/pyr/exploration/electron-microscope.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/electron-microscope.png"
+        },
+        {
+          "sequence": 33,
+          "slug": "tomography",
+          "code": "TOM",
+          "title": "Tomography",
+          "description": "Tomography is a scientific observation milestone on the exploration track.",
+          "threshold": 1797,
+          "svgPath": "static/badges/pyr/exploration/tomography.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/tomography.png"
+        },
+        {
+          "sequence": 34,
+          "slug": "diamond-knife",
+          "code": "DK",
+          "title": "Diamond Knife",
+          "description": "Diamond Knife is a scientific observation milestone on the exploration track.",
+          "threshold": 1965,
+          "svgPath": "static/badges/pyr/exploration/diamond-knife.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/diamond-knife.png"
+        },
+        {
+          "sequence": 35,
+          "slug": "pipette",
+          "code": "PIP",
+          "title": "Pipette",
+          "description": "Pipette marks the computing layer behind advanced discovery.",
+          "threshold": 2144,
+          "svgPath": "static/badges/pyr/exploration/pipette.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/pipette.png"
+        },
+        {
+          "sequence": 36,
+          "slug": "test-tube",
+          "code": "TT",
+          "title": "Test Tube",
+          "description": "Test Tube is a scientific observation milestone on the exploration track.",
+          "threshold": 2333,
+          "svgPath": "static/badges/pyr/exploration/test-tube.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/test-tube.png"
+        },
+        {
+          "sequence": 37,
+          "slug": "petri-dish",
+          "code": "PD",
+          "title": "Petri Dish",
+          "description": "Petri Dish is a scientific observation milestone on the exploration track.",
+          "threshold": 2533,
+          "svgPath": "static/badges/pyr/exploration/petri-dish.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/petri-dish.png"
+        },
+        {
+          "sequence": 38,
+          "slug": "centrifuge",
+          "code": "CEN",
+          "title": "Centrifuge",
+          "description": "Centrifuge is a scientific observation milestone on the exploration track.",
+          "threshold": 2744,
+          "svgPath": "static/badges/pyr/exploration/centrifuge.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/centrifuge.png"
+        },
+        {
+          "sequence": 39,
+          "slug": "spectrometer",
+          "code": "SPE",
+          "title": "Spectrometer",
+          "description": "Spectrometer is a scientific observation milestone on the exploration track.",
+          "threshold": 2966,
+          "svgPath": "static/badges/pyr/exploration/spectrometer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/spectrometer.png"
+        },
+        {
+          "sequence": 40,
+          "slug": "chromatograph",
+          "code": "CHR",
+          "title": "Chromatograph",
+          "description": "Chromatograph is a scientific observation milestone on the exploration track.",
+          "threshold": 3200,
+          "svgPath": "static/badges/pyr/exploration/chromatograph.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/chromatograph.png"
+        },
+        {
+          "sequence": 41,
+          "slug": "seismograph",
+          "code": "SEI",
+          "title": "Seismograph",
+          "description": "Seismograph represents a discovery milestone on the exploration track.",
+          "threshold": 3446,
+          "svgPath": "static/badges/pyr/exploration/seismograph.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/seismograph.png"
+        },
+        {
+          "sequence": 42,
+          "slug": "geiger-counter",
+          "code": "GC",
+          "title": "Geiger Counter",
+          "description": "Geiger Counter is a scientific observation milestone on the exploration track.",
+          "threshold": 3704,
+          "svgPath": "static/badges/pyr/exploration/geiger-counter.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/geiger-counter.png"
+        },
+        {
+          "sequence": 43,
+          "slug": "magnetometer",
+          "code": "MAG",
+          "title": "Magnetometer",
+          "description": "Magnetometer is a scientific observation milestone on the exploration track.",
+          "threshold": 3975,
+          "svgPath": "static/badges/pyr/exploration/magnetometer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/magnetometer.png"
+        },
+        {
+          "sequence": 44,
+          "slug": "gravimeter",
+          "code": "GRA",
+          "title": "Gravimeter",
+          "description": "Gravimeter is a scientific observation milestone on the exploration track.",
+          "threshold": 4259,
+          "svgPath": "static/badges/pyr/exploration/gravimeter.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/gravimeter.png"
+        },
+        {
+          "sequence": 45,
+          "slug": "lidar",
+          "code": "LID",
+          "title": "LiDAR",
+          "description": "LiDAR extends what the exploration track can detect and map.",
+          "threshold": 4556,
+          "svgPath": "static/badges/pyr/exploration/lidar.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/lidar.png"
+        },
+        {
+          "sequence": 46,
+          "slug": "ultrasonic-sensor",
+          "code": "US",
+          "title": "Ultrasonic Sensor",
+          "description": "Ultrasonic Sensor extends what the exploration track can detect and map.",
+          "threshold": 4867,
+          "svgPath": "static/badges/pyr/exploration/ultrasonic-sensor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/ultrasonic-sensor.png"
+        },
+        {
+          "sequence": 47,
+          "slug": "infrared-sensor",
+          "code": "IS",
+          "title": "Infrared Sensor",
+          "description": "Infrared Sensor extends what the exploration track can detect and map.",
+          "threshold": 5191,
+          "svgPath": "static/badges/pyr/exploration/infrared-sensor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/infrared-sensor.png"
+        },
+        {
+          "sequence": 48,
+          "slug": "touch-sensor",
+          "code": "TS",
+          "title": "Touch Sensor",
+          "description": "Touch Sensor extends what the exploration track can detect and map.",
+          "threshold": 5530,
+          "svgPath": "static/badges/pyr/exploration/touch-sensor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/touch-sensor.png"
+        },
+        {
+          "sequence": 49,
+          "slug": "camera-module",
+          "code": "CM",
+          "title": "Camera Module",
+          "description": "Camera Module extends what the exploration track can detect and map.",
+          "threshold": 5882,
+          "svgPath": "static/badges/pyr/exploration/camera-module.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/camera-module.png"
+        },
+        {
+          "sequence": 50,
+          "slug": "thermal-camera",
+          "code": "TC",
+          "title": "Thermal Camera",
+          "description": "Thermal Camera extends what the exploration track can detect and map.",
+          "threshold": 6250,
+          "svgPath": "static/badges/pyr/exploration/thermal-camera.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/thermal-camera.png"
+        },
+        {
+          "sequence": 51,
+          "slug": "hyperspectral-camera",
+          "code": "HC",
+          "title": "Hyperspectral Camera",
+          "description": "Hyperspectral Camera extends what the exploration track can detect and map.",
+          "threshold": 6633,
+          "svgPath": "static/badges/pyr/exploration/hyperspectral-camera.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/hyperspectral-camera.png"
+        },
+        {
+          "sequence": 52,
+          "slug": "wi-fi-module",
+          "code": "WFM",
+          "title": "Wi-Fi Module",
+          "description": "Wi-Fi Module represents a discovery milestone on the exploration track.",
+          "threshold": 7030,
+          "svgPath": "static/badges/pyr/exploration/wi-fi-module.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/wi-fi-module.png"
+        },
+        {
+          "sequence": 53,
+          "slug": "gps-receiver",
+          "code": "GR",
+          "title": "GPS Receiver",
+          "description": "GPS Receiver represents the data-handling layer of exploration.",
+          "threshold": 7444,
+          "svgPath": "static/badges/pyr/exploration/gps-receiver.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/gps-receiver.png"
+        },
+        {
+          "sequence": 54,
+          "slug": "ros",
+          "code": "ROS",
+          "title": "ROS",
+          "description": "ROS marks autonomous exploration beyond direct human reach.",
+          "threshold": 7873,
+          "svgPath": "static/badges/pyr/exploration/ros.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/ros.png"
+        },
+        {
+          "sequence": 55,
+          "slug": "quadruped-robot",
+          "code": "QR",
+          "title": "Quadruped Robot",
+          "description": "Quadruped Robot marks autonomous exploration beyond direct human reach.",
+          "threshold": 8319,
+          "svgPath": "static/badges/pyr/exploration/quadruped-robot.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/quadruped-robot.png"
+        },
+        {
+          "sequence": 56,
+          "slug": "drone",
+          "code": "DRO",
+          "title": "Drone",
+          "description": "Drone marks autonomous exploration beyond direct human reach.",
+          "threshold": 8781,
+          "svgPath": "static/badges/pyr/exploration/drone.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/drone.png"
+        },
+        {
+          "sequence": 57,
+          "slug": "rover",
+          "code": "ROV",
+          "title": "Rover",
+          "description": "Rover marks autonomous exploration beyond direct human reach.",
+          "threshold": 9260,
+          "svgPath": "static/badges/pyr/exploration/rover.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/rover.png"
+        },
+        {
+          "sequence": 58,
+          "slug": "autonomous-underwater-vehicle-auv",
+          "code": "AUV",
+          "title": "Autonomous Underwater Vehicle (AUV)",
+          "description": "Autonomous Underwater Vehicle (AUV) marks autonomous exploration beyond direct human reach.",
+          "threshold": 9756,
+          "svgPath": "static/badges/pyr/exploration/autonomous-underwater-vehicle-auv.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/autonomous-underwater-vehicle-auv.png"
+        },
+        {
+          "sequence": 59,
+          "slug": "hydrophone",
+          "code": "HYD",
+          "title": "Hydrophone",
+          "description": "Hydrophone extends what the exploration track can detect and map.",
+          "threshold": 10269,
+          "svgPath": "static/badges/pyr/exploration/hydrophone.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/hydrophone.png"
+        },
+        {
+          "sequence": 60,
+          "slug": "sonar-array",
+          "code": "SA",
+          "title": "Sonar Array",
+          "description": "Sonar Array extends what the exploration track can detect and map.",
+          "threshold": 10800,
+          "svgPath": "static/badges/pyr/exploration/sonar-array.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/sonar-array.png"
+        },
+        {
+          "sequence": 61,
+          "slug": "radar-dish",
+          "code": "RD",
+          "title": "Radar Dish",
+          "description": "Radar Dish extends what the exploration track can detect and map.",
+          "threshold": 11349,
+          "svgPath": "static/badges/pyr/exploration/radar-dish.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/radar-dish.png"
+        },
+        {
+          "sequence": 62,
+          "slug": "weather-balloon",
+          "code": "WB",
+          "title": "Weather Balloon",
+          "description": "Weather Balloon represents a discovery milestone on the exploration track.",
+          "threshold": 11916,
+          "svgPath": "static/badges/pyr/exploration/weather-balloon.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/weather-balloon.png"
+        },
+        {
+          "sequence": 63,
+          "slug": "satellite",
+          "code": "SAT",
+          "title": "Satellite",
+          "description": "Satellite represents a discovery milestone on the exploration track.",
+          "threshold": 12502,
+          "svgPath": "static/badges/pyr/exploration/satellite.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/satellite.png"
+        },
+        {
+          "sequence": 64,
+          "slug": "cubesat",
+          "code": "CUB",
+          "title": "CubeSat",
+          "description": "CubeSat represents a discovery milestone on the exploration track.",
+          "threshold": 13107,
+          "svgPath": "static/badges/pyr/exploration/cubesat.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/cubesat.png"
+        },
+        {
+          "sequence": 65,
+          "slug": "star-tracker",
+          "code": "ST",
+          "title": "Star Tracker",
+          "description": "Star Tracker represents the data-handling layer of exploration.",
+          "threshold": 13731,
+          "svgPath": "static/badges/pyr/exploration/star-tracker.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/star-tracker.png"
+        },
+        {
+          "sequence": 66,
+          "slug": "probe",
+          "code": "PRO",
+          "title": "Probe",
+          "description": "Probe marks autonomous exploration beyond direct human reach.",
+          "threshold": 14375,
+          "svgPath": "static/badges/pyr/exploration/probe.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/probe.png"
+        },
+        {
+          "sequence": 67,
+          "slug": "cpu",
+          "code": "CPU",
+          "title": "CPU",
+          "description": "CPU marks the computing layer behind advanced discovery.",
+          "threshold": 15038,
+          "svgPath": "static/badges/pyr/exploration/cpu.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/cpu.png"
+        },
+        {
+          "sequence": 68,
+          "slug": "gpu",
+          "code": "GPU",
+          "title": "GPU",
+          "description": "GPU marks the computing layer behind advanced discovery.",
+          "threshold": 15722,
+          "svgPath": "static/badges/pyr/exploration/gpu.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/gpu.png"
+        },
+        {
+          "sequence": 69,
+          "slug": "keyboard",
+          "code": "KEY",
+          "title": "Keyboard",
+          "description": "Keyboard represents the data-handling layer of exploration.",
+          "threshold": 16425,
+          "svgPath": "static/badges/pyr/exploration/keyboard.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/keyboard.png"
+        },
+        {
+          "sequence": 70,
+          "slug": "mouse",
+          "code": "MOU",
+          "title": "Mouse",
+          "description": "Mouse represents the data-handling layer of exploration.",
+          "threshold": 17150,
+          "svgPath": "static/badges/pyr/exploration/mouse.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/mouse.png"
+        },
+        {
+          "sequence": 71,
+          "slug": "monitor",
+          "code": "MON",
+          "title": "Monitor",
+          "description": "Monitor represents the data-handling layer of exploration.",
+          "threshold": 17896,
+          "svgPath": "static/badges/pyr/exploration/monitor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/monitor.png"
+        },
+        {
+          "sequence": 72,
+          "slug": "server",
+          "code": "SER",
+          "title": "Server",
+          "description": "Server marks a shift from fieldwork to expedition systems.",
+          "threshold": 18662,
+          "svgPath": "static/badges/pyr/exploration/server.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/server.png"
+        },
+        {
+          "sequence": 73,
+          "slug": "cloud",
+          "code": "CLO",
+          "title": "Cloud",
+          "description": "Cloud represents the data-handling layer of exploration.",
+          "threshold": 19451,
+          "svgPath": "static/badges/pyr/exploration/cloud.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/cloud.png"
+        },
+        {
+          "sequence": 74,
+          "slug": "storage",
+          "code": "STO",
+          "title": "Storage",
+          "description": "Storage represents the data-handling layer of exploration.",
+          "threshold": 20261,
+          "svgPath": "static/badges/pyr/exploration/storage.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/storage.png"
+        },
+        {
+          "sequence": 75,
+          "slug": "spare-memory",
+          "code": "SM",
+          "title": "Spare Memory",
+          "description": "Spare Memory marks the computing layer behind advanced discovery.",
+          "threshold": 21094,
+          "svgPath": "static/badges/pyr/exploration/spare-memory.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/spare-memory.png"
+        },
+        {
+          "sequence": 76,
+          "slug": "bit-to-petabyte",
+          "code": "BP",
+          "title": "Bit To Petabyte",
+          "description": "Bit to Petabyte represents the data-handling layer of exploration.",
+          "threshold": 21949,
+          "svgPath": "static/badges/pyr/exploration/bit-to-petabyte.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/bit-to-petabyte.png"
+        },
+        {
+          "sequence": 77,
+          "slug": "computing-cluster",
+          "code": "CC",
+          "title": "Computing Cluster",
+          "description": "Computing Cluster marks a shift from fieldwork to expedition systems.",
+          "threshold": 22827,
+          "svgPath": "static/badges/pyr/exploration/computing-cluster.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/computing-cluster.png"
+        },
+        {
+          "sequence": 78,
+          "slug": "artificial-intelligence-ai-processor",
+          "code": "AIA",
+          "title": "Artificial Intelligence (AI) Processor",
+          "description": "Artificial Intelligence (AI) Processor marks the computing layer behind advanced discovery.",
+          "threshold": 23728,
+          "svgPath": "static/badges/pyr/exploration/artificial-intelligence-ai-processor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/artificial-intelligence-ai-processor.png"
+        },
+        {
+          "sequence": 79,
+          "slug": "machine-learning-kit-for-robots",
+          "code": "MLR",
+          "title": "Machine Learning Kit For Robots",
+          "description": "Machine Learning Kit for Robots marks autonomous exploration beyond direct human reach.",
+          "threshold": 24652,
+          "svgPath": "static/badges/pyr/exploration/machine-learning-kit-for-robots.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/machine-learning-kit-for-robots.png"
+        },
+        {
+          "sequence": 80,
+          "slug": "haptic-feedback-system",
+          "code": "HF",
+          "title": "Haptic Feedback System",
+          "description": "Haptic Feedback System represents a discovery milestone on the exploration track.",
+          "threshold": 25600,
+          "svgPath": "static/badges/pyr/exploration/haptic-feedback-system.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/haptic-feedback-system.png"
+        },
+        {
+          "sequence": 81,
+          "slug": "robotic-exoskeleton",
+          "code": "RE",
+          "title": "Robotic Exoskeleton",
+          "description": "Robotic Exoskeleton marks autonomous exploration beyond direct human reach.",
+          "threshold": 26572,
+          "svgPath": "static/badges/pyr/exploration/robotic-exoskeleton.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/robotic-exoskeleton.png"
+        },
+        {
+          "sequence": 82,
+          "slug": "flexible-electronic-skin-e-skin",
+          "code": "FES",
+          "title": "Flexible Electronic Skin (e-skin)",
+          "description": "Flexible Electronic Skin (e-skin) marks autonomous exploration beyond direct human reach.",
+          "threshold": 27568,
+          "svgPath": "static/badges/pyr/exploration/flexible-electronic-skin-e-skin.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/flexible-electronic-skin-e-skin.png"
+        },
+        {
+          "sequence": 83,
+          "slug": "biosensor",
+          "code": "BIO",
+          "title": "Biosensor",
+          "description": "Biosensor extends what the exploration track can detect and map.",
+          "threshold": 28589,
+          "svgPath": "static/badges/pyr/exploration/biosensor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/biosensor.png"
+        },
+        {
+          "sequence": 84,
+          "slug": "quantum-sensor",
+          "code": "QS",
+          "title": "Quantum Sensor",
+          "description": "Quantum Sensor extends what the exploration track can detect and map.",
+          "threshold": 29635,
+          "svgPath": "static/badges/pyr/exploration/quantum-sensor.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/quantum-sensor.png"
+        },
+        {
+          "sequence": 85,
+          "slug": "advanced-lidar-system",
+          "code": "AL",
+          "title": "Advanced LiDAR System",
+          "description": "Advanced LiDAR System extends what the exploration track can detect and map.",
+          "threshold": 30706,
+          "svgPath": "static/badges/pyr/exploration/advanced-lidar-system.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/advanced-lidar-system.png"
+        },
+        {
+          "sequence": 86,
+          "slug": "microbot-swarm",
+          "code": "MS",
+          "title": "Microbot Swarm",
+          "description": "Microbot Swarm marks autonomous exploration beyond direct human reach.",
+          "threshold": 31803,
+          "svgPath": "static/badges/pyr/exploration/microbot-swarm.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/microbot-swarm.png"
+        },
+        {
+          "sequence": 87,
+          "slug": "dna-nanotechnology",
+          "code": "DN",
+          "title": "DNA Nanotechnology",
+          "description": "DNA Nanotechnology represents frontier materials and bioengineering in exploration.",
+          "threshold": 32925,
+          "svgPath": "static/badges/pyr/exploration/dna-nanotechnology.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/dna-nanotechnology.png"
+        },
+        {
+          "sequence": 88,
+          "slug": "gene-sequencer",
+          "code": "GS",
+          "title": "Gene Sequencer",
+          "description": "Gene Sequencer represents a discovery milestone on the exploration track.",
+          "threshold": 34074,
+          "svgPath": "static/badges/pyr/exploration/gene-sequencer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/gene-sequencer.png"
+        },
+        {
+          "sequence": 89,
+          "slug": "nanoscope",
+          "code": "NAN",
+          "title": "Nanoscope",
+          "description": "Nanoscope is a scientific observation milestone on the exploration track.",
+          "threshold": 35248,
+          "svgPath": "static/badges/pyr/exploration/nanoscope.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/nanoscope.png"
+        },
+        {
+          "sequence": 90,
+          "slug": "particle-detector",
+          "code": "PD",
+          "title": "Particle Detector",
+          "description": "Particle Detector is a scientific observation milestone on the exploration track.",
+          "threshold": 36450,
+          "svgPath": "static/badges/pyr/exploration/particle-detector.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/particle-detector.png"
+        },
+        {
+          "sequence": 91,
+          "slug": "quantum-computer",
+          "code": "QC",
+          "title": "Quantum Computer",
+          "description": "Quantum Computer marks the computing layer behind advanced discovery.",
+          "threshold": 37679,
+          "svgPath": "static/badges/pyr/exploration/quantum-computer.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/quantum-computer.png"
+        },
+        {
+          "sequence": 92,
+          "slug": "fusion-test-chamber",
+          "code": "FTC",
+          "title": "Fusion Test Chamber",
+          "description": "Fusion Test Chamber represents a discovery milestone on the exploration track.",
+          "threshold": 38934,
+          "svgPath": "static/badges/pyr/exploration/fusion-test-chamber.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/fusion-test-chamber.png"
+        },
+        {
+          "sequence": 93,
+          "slug": "neutrino-detector",
+          "code": "ND",
+          "title": "Neutrino Detector",
+          "description": "Neutrino Detector represents a discovery milestone on the exploration track.",
+          "threshold": 40218,
+          "svgPath": "static/badges/pyr/exploration/neutrino-detector.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/neutrino-detector.png"
+        },
+        {
+          "sequence": 94,
+          "slug": "deep-sea-observatory",
+          "code": "DSO",
+          "title": "Deep Sea Observatory",
+          "description": "Deep Sea Observatory represents a discovery milestone on the exploration track.",
+          "threshold": 41529,
+          "svgPath": "static/badges/pyr/exploration/deep-sea-observatory.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/deep-sea-observatory.png"
+        },
+        {
+          "sequence": 95,
+          "slug": "orbital-telescope",
+          "code": "OT",
+          "title": "Orbital Telescope",
+          "description": "Orbital Telescope is a scientific observation milestone on the exploration track.",
+          "threshold": 42869,
+          "svgPath": "static/badges/pyr/exploration/orbital-telescope.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/orbital-telescope.png"
+        },
+        {
+          "sequence": 96,
+          "slug": "planetary-lander",
+          "code": "PL",
+          "title": "Planetary Lander",
+          "description": "Planetary Lander supports hands-on field investigation in the exploration track.",
+          "threshold": 44237,
+          "svgPath": "static/badges/pyr/exploration/planetary-lander.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/planetary-lander.png"
+        },
+        {
+          "sequence": 97,
+          "slug": "swarm-drone-beacon",
+          "code": "SDB",
+          "title": "Swarm Drone Beacon",
+          "description": "Swarm Drone Beacon marks autonomous exploration beyond direct human reach.",
+          "threshold": 45634,
+          "svgPath": "static/badges/pyr/exploration/swarm-drone-beacon.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/swarm-drone-beacon.png"
+        },
+        {
+          "sequence": 98,
+          "slug": "exoplanet-imager",
+          "code": "EI",
+          "title": "Exoplanet Imager",
+          "description": "Exoplanet Imager supports hands-on field investigation in the exploration track.",
+          "threshold": 47060,
+          "svgPath": "static/badges/pyr/exploration/exoplanet-imager.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/exoplanet-imager.png"
+        },
+        {
+          "sequence": 99,
+          "slug": "dark-matter-array",
+          "code": "DMA",
+          "title": "Dark Matter Array",
+          "description": "Dark Matter Array represents a discovery milestone on the exploration track.",
+          "threshold": 48515,
+          "svgPath": "static/badges/pyr/exploration/dark-matter-array.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/dark-matter-array.png"
+        },
+        {
+          "sequence": 100,
+          "slug": "interstellar-probe",
+          "code": "IP",
+          "title": "Interstellar Probe",
+          "description": "Interstellar Probe marks autonomous exploration beyond direct human reach.",
+          "threshold": 50000,
+          "svgPath": "static/badges/pyr/exploration/interstellar-probe.svg",
+          "centerArtPath": "static/badges/pyr/center-art/exploration/interstellar-probe.png"
+        }
+      ]
+    }
+  }
+}

@@ -603,11 +603,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Building Badges (edits) -->
+          <!-- Edit Achievements (building track) -->
           <div class="nge-profile-section nge-profile-section--badges">
-            <div class="nge-profile-section-label" style="color: #ffd08a;">▌ Building Badges <span style="font-size: 0.75em; opacity: 0.6;">(edits)</span></div>
+            <div class="nge-profile-section-label" style="color: #ffd08a;">▌ Edit Achievements</div>
             <div class="nge-profile-badges-hint" v-if="selectedBadge?.track === 'building'">
-              badge detail on the right · click again to dismiss
+              achievement detail on the right · click again to dismiss
             </div>
             <div class="nge-profile-badges-grid">
               <div
@@ -641,11 +641,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Exploration Badges (cells completed) -->
+          <!-- Cell Achievements (exploration track) -->
           <div class="nge-profile-section nge-profile-section--badges">
-            <div class="nge-profile-section-label" style="color: #90fff2;">▌ Exploration Badges <span style="font-size: 0.75em; opacity: 0.6;">(cells)</span></div>
+            <div class="nge-profile-section-label" style="color: #90fff2;">▌ Cell Achievements</div>
             <div class="nge-profile-badges-hint" v-if="selectedBadge?.track === 'exploration'">
-              badge detail on the right · click again to dismiss
+              achievement detail on the right · click again to dismiss
             </div>
             <div class="nge-profile-badges-grid">
               <div
@@ -756,7 +756,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
             <!-- Badge detail view -->
             <div v-else key="badge" class="nge-profile-viz-panel nge-profile-viz-badge">
-              <div class="nge-profile-viz-title">▌ Badge Detail</div>
+              <div class="nge-profile-viz-title">▌ Achievement Detail</div>
               <img
                 :src="getBadgeUrl(selectedBadge.imageKey)"
                 :alt="selectedBadge.name"
