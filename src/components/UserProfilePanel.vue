@@ -641,6 +641,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
+          <!-- Divider between achievement tracks -->
+          <div class="nge-profile-badges-divider"></div>
+
           <!-- Cell Achievements (exploration track) -->
           <div class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-section-label" style="color: #90fff2;">▌ Cell Achievements</div>
@@ -794,6 +797,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-modal :deep(.nge-overlay) {
   overflow: hidden;
   animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) !important;
 }
 
 /* Scanline removed — holographic border glow handled by ModalOverlay */
@@ -1261,6 +1265,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 /* ── Badges ── */
+.nge-profile-badges-divider {
+  height: 1px;
+  margin: 14px 0 8px;
+  background: linear-gradient(90deg, transparent 0%, rgba(74, 158, 255, 0.2) 30%, rgba(74, 158, 255, 0.2) 70%, transparent 100%);
+}
+
 .nge-profile-badges-hint {
   font-size: 0.7em;
   color: rgba(74, 158, 255, 0.45);
@@ -1367,7 +1377,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* Badge detail in viz column */
 .nge-profile-viz-badge { justify-content: center; text-align: center; gap: 12px; }
 
-.nge-profile-viz-badge-icon { width: 88px; height: 88px; object-fit: contain; filter: drop-shadow(0 0 16px rgba(74,158,255,0.35)); }
+.nge-profile-viz-badge-icon { width: 140px; height: 140px; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
 
 .nge-profile-viz-badge-name {
   font-size: 1em; font-weight: 700; color: #e0e8f4;
