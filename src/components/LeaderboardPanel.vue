@@ -3,7 +3,7 @@ import {ref, computed, onMounted} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {DEMO_USERS, DemoUser} from '../data/demo-users';
-import {BADGE_DEFINITIONS} from '../widgets/badge_definitions';
+import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {useUserPreferencesStore, useProofreadingBackendStore} from '../store';
 
@@ -60,6 +60,13 @@ function editCountForTab(user: DemoUser): number {
 }
 
 // Badges helpers
+function isBadgeEarnedByUser(badge: BadgeDefinition, user: DemoUser): boolean {
+  if (badge.threshold === 0) return false;
+  const stat = badge.track === 'building' ? user.stats.editsAllTime : user.stats.cellsSubmitted;
+  return stat >= badge.threshold;
+}
+
+// Legacy compat wrapper
 function isBadgeEarned(editThreshold: number, editsAllTime: number): boolean {
   if (editThreshold === 0) return false;
   return editsAllTime >= editThreshold;
@@ -69,11 +76,11 @@ function getBadgeUrl(imageKey: string): string {
   return BADGE_IMAGE_MAP[imageKey] ?? '';
 }
 
-// Top earned badge for the leaderboard row (highest threshold)
+// Top earned badge for the leaderboard row (highest threshold from either track)
 function topBadge(user: DemoUser) {
   return BADGE_DEFINITIONS
-    .filter(b => b.editThreshold > 0 && user.stats.editsAllTime >= b.editThreshold)
-    .sort((a, b) => b.editThreshold - a.editThreshold)[0] ?? null;
+    .filter(b => b.threshold > 0 && isBadgeEarnedByUser(b, user))
+    .sort((a, b) => b.threshold - a.threshold)[0] ?? null;
 }
 
 function selectUser(user: DemoUser) {
@@ -238,25 +245,60 @@ const emit = defineEmits({hide: null});
             </span>
           </div>
 
-          <!-- Badges -->
-          <div class="nge-lb-detail-badges-label">Badges</div>
+          <!-- Building Badges -->
+          <div class="nge-lb-detail-badges-label" style="color: #ffd08a;">Building Badges <span style="font-size: 0.75em; opacity: 0.6;">(edits)</span></div>
           <div class="nge-lb-detail-badges-grid">
             <div
-              v-for="badge in BADGE_DEFINITIONS"
+              v-for="badge in BUILDING_BADGES"
               :key="badge.id"
               class="nge-lb-detail-badge"
               :class="{
-                'nge-lb-detail-badge--locked': !isBadgeEarned(badge.editThreshold, selectedUser.stats.editsAllTime),
+                'nge-lb-detail-badge--locked': !isBadgeEarnedByUser(badge, selectedUser),
                 'nge-lb-detail-badge--selected': selectedBadgeId === badge.id,
               }"
-              :title="isBadgeEarned(badge.editThreshold, selectedUser.stats.editsAllTime)
+              :title="isBadgeEarnedByUser(badge, selectedUser)
                 ? badge.name + ' — click for details'
                 : '??? (locked)'"
-              @click="isBadgeEarned(badge.editThreshold, selectedUser.stats.editsAllTime)
+              @click="isBadgeEarnedByUser(badge, selectedUser)
                 ? onDetailBadgeClick(badge.id)
                 : undefined"
             >
-              <template v-if="isBadgeEarned(badge.editThreshold, selectedUser.stats.editsAllTime)">
+              <template v-if="isBadgeEarnedByUser(badge, selectedUser)">
+                <div class="nge-lb-detail-badge-img">
+                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-lb-detail-badge-icon" />
+                </div>
+                <div class="nge-lb-detail-badge-name">{{ badge.name }}</div>
+              </template>
+              <template v-else>
+                <div class="nge-lb-detail-badge-img">
+                  <div class="nge-lb-detail-badge-mystery">
+                    <span class="nge-lb-detail-badge-mystery-q">?</span>
+                  </div>
+                </div>
+                <div class="nge-lb-detail-badge-name nge-lb-detail-badge-name--locked">???</div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Exploration Badges -->
+          <div class="nge-lb-detail-badges-label" style="color: #90fff2;">Exploration Badges <span style="font-size: 0.75em; opacity: 0.6;">(cells)</span></div>
+          <div class="nge-lb-detail-badges-grid">
+            <div
+              v-for="badge in EXPLORATION_BADGES"
+              :key="badge.id"
+              class="nge-lb-detail-badge"
+              :class="{
+                'nge-lb-detail-badge--locked': !isBadgeEarnedByUser(badge, selectedUser),
+                'nge-lb-detail-badge--selected': selectedBadgeId === badge.id,
+              }"
+              :title="isBadgeEarnedByUser(badge, selectedUser)
+                ? badge.name + ' — click for details'
+                : '??? (locked)'"
+              @click="isBadgeEarnedByUser(badge, selectedUser)
+                ? onDetailBadgeClick(badge.id)
+                : undefined"
+            >
+              <template v-if="isBadgeEarnedByUser(badge, selectedUser)">
                 <div class="nge-lb-detail-badge-img">
                   <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-lb-detail-badge-icon" />
                 </div>
@@ -285,7 +327,7 @@ const emit = defineEmits({hide: null});
                 <div class="nge-lb-detail-badge-card-name">{{ selectedBadgeDef()?.name }}</div>
                 <div class="nge-lb-detail-badge-card-desc">{{ selectedBadgeDef()?.description }}</div>
                 <div class="nge-lb-detail-badge-card-thresh">
-                  Unlocked at {{ selectedBadgeDef()?.editThreshold.toLocaleString() }} edits
+                  Unlocked at {{ selectedBadgeDef()?.threshold.toLocaleString() }} {{ selectedBadgeDef()?.track === 'building' ? 'edits' : 'cells completed' }}
                 </div>
               </div>
               <button class="nge-lb-detail-badge-card-close" @click.stop="selectedBadgeId = null">×</button>

@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
 import { useUserStatsStore, useCellHistoryStore } from '../store';
-import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
+import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badge_definitions';
 
 const { stats } = storeToRefs(useUserStatsStore());
 const emit = defineEmits({ hide: null });
@@ -39,37 +39,33 @@ const contributionPct = computed<string | null>(() => {
   return pct < 0.1 ? '<0.1' : pct.toFixed(1);
 });
 
-// ── Next unearned badge + progress bar ───────────────────────────────────
+// ── Next unearned badge + progress bar (picks closest across both tracks) ────
 interface NextBadgeInfo {
   name: string;
-  editThreshold: number;
-  editsRemaining: number;
+  threshold: number;
+  remaining: number;
   progressPct: number;
   prevThreshold: number;
+  track: BadgeTrack;
 }
 
 const nextBadge = computed<NextBadgeInfo | null>(() => {
-  const allTime = stats.value.editsAllTime ?? 0;
-  const sorted = [...BADGE_DEFINITIONS]
-    .filter(b => b.editThreshold > 0)
-    .sort((a, b) => a.editThreshold - b.editThreshold);
-
-  const idx = sorted.findIndex(b => allTime < b.editThreshold);
-  if (idx === -1) return null; // all badges earned
-
-  const target = sorted[idx];
-  const prev = idx > 0 ? sorted[idx - 1].editThreshold : 0;
-  const range = target.editThreshold - prev;
-  const progress = allTime - prev;
-  const pct = Math.min(100, Math.round((progress / range) * 100));
-
-  return {
-    name: target.name,
-    editThreshold: target.editThreshold,
-    editsRemaining: target.editThreshold - allTime,
-    progressPct: pct,
-    prevThreshold: prev,
-  };
+  function nextFor(badges: typeof BUILDING_BADGES, current: number, track: BadgeTrack): NextBadgeInfo | null {
+    const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
+    const idx = sorted.findIndex(b => current < b.threshold);
+    if (idx === -1) return null;
+    const target = sorted[idx];
+    const prev = idx > 0 ? sorted[idx - 1].threshold : 0;
+    const range = target.threshold - prev;
+    const progress = current - prev;
+    const pct = Math.min(100, Math.round((progress / range) * 100));
+    return { name: target.name, threshold: target.threshold, remaining: target.threshold - current, progressPct: pct, prevThreshold: prev, track };
+  }
+  const b = nextFor(BUILDING_BADGES, stats.value.editsAllTime ?? 0, 'building');
+  const e = nextFor(EXPLORATION_BADGES, stats.value.cellsSubmitted ?? 0, 'exploration');
+  if (!b) return e;
+  if (!e) return b;
+  return b.remaining <= e.remaining ? b : e;
 });
 
 // ── Rotating science facts (cycles by ISO week — same all week) ───────────
@@ -239,7 +235,7 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-badge-row">
             <div class="nge-recap-badge-name">{{ nextBadge.name }}</div>
             <div class="nge-recap-badge-remaining">
-              {{ nextBadge.editsRemaining.toLocaleString() }} edits to go
+              {{ nextBadge.remaining.toLocaleString() }} {{ nextBadge.track === 'building' ? 'edits' : 'cells' }} to go
             </div>
           </div>
           <div class="nge-recap-progress-track">
@@ -251,7 +247,7 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-progress-labels">
             <span>{{ nextBadge.prevThreshold.toLocaleString() }}</span>
             <span>{{ nextBadge.progressPct }}%</span>
-            <span>{{ nextBadge.editThreshold.toLocaleString() }}</span>
+            <span>{{ nextBadge.threshold.toLocaleString() }}</span>
           </div>
         </div>
         <div class="nge-recap-section nge-recap-badge-complete" v-else>

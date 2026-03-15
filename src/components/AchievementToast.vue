@@ -10,7 +10,7 @@
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useUserStatsStore, useProofreadingQueueStore } from '../store';
-import { BADGE_DEFINITIONS, BadgeDefinition } from '../widgets/badge_definitions';
+import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
 
@@ -76,14 +76,14 @@ onMounted(() => {
   setTimeout(() => { confettiRef.value?.sparkle(2); }, 800);
 });
 
-// Watch for badge unlocks
+// Watch for building badge unlocks (edits)
 watch(() => stats.value.editsAllTime, (newEdits) => {
   if (!initialized) { prevEdits = newEdits; return; }
   // First real update after init — just capture baseline, don't celebrate
   if (!statsSeenNonZero && newEdits > 0) { statsSeenNonZero = true; prevEdits = newEdits; return; }
-  for (const badge of BADGE_DEFINITIONS) {
-    if (badge.editThreshold <= 0) continue;
-    if (prevEdits < badge.editThreshold && newEdits >= badge.editThreshold) {
+  for (const badge of BUILDING_BADGES) {
+    if (badge.threshold <= 0) continue;
+    if (prevEdits < badge.threshold && newEdits >= badge.threshold) {
       const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
       addToast({
         type: 'badge',
@@ -92,8 +92,7 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
         icon: imgUrl || '🏅',
         isImage: !!imgUrl,
       });
-      // 🎊 Confetti for badge unlocks!
-      fireConfetti('purple', badge.editThreshold >= 1000 ? 2 : 1);
+      fireConfetti('purple', badge.threshold >= 1000 ? 2 : 1);
     }
   }
   // Edit milestones (round numbers) — confetti scales with milestone size
@@ -107,7 +106,6 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
         icon: '⚡',
         isImage: false,
       });
-      // 🎊 Confetti intensity scales with milestone
       const intensity = m >= 10000 ? 3 : m >= 1000 ? 2 : 1;
       const palette = m >= 10000 ? 'rainbow' : m >= 1000 ? 'gold' : 'cyan';
       fireConfetti(palette, intensity);
@@ -116,9 +114,25 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
   prevEdits = newEdits;
 });
 
-// Watch for cell milestones
+// Watch for exploration badge unlocks + cell milestones
 watch(() => stats.value.cellsSubmitted, (newCells) => {
   if (!initialized) { prevCells = newCells; return; }
+  // Exploration badge unlocks
+  for (const badge of EXPLORATION_BADGES) {
+    if (badge.threshold <= 0) continue;
+    if (prevCells < badge.threshold && newCells >= badge.threshold) {
+      const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
+      addToast({
+        type: 'badge',
+        title: `Badge Unlocked: ${badge.name}`,
+        subtitle: badge.description,
+        icon: imgUrl || '🏅',
+        isImage: !!imgUrl,
+      });
+      fireConfetti('purple', badge.threshold >= 500 ? 2 : 1);
+    }
+  }
+  // Cell milestones
   for (const m of CELL_MILESTONES) {
     if (prevCells < m && newCells >= m) {
       addToast({

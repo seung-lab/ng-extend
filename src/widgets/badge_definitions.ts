@@ -2,160 +2,262 @@
  * badge_definitions.ts
  * Eyewire II — Badge catalogue for the community branch.
  *
- * badge_10.png is absent from the asset zip; id 10 is intentionally omitted.
- * Update `editThreshold` values once the official thresholds are confirmed.
+ * Two tracks:
+ *   - Building (100 badges) — earned via edits, cubic curve 1 → 1,000,000
+ *   - Exploration (100 badges) — earned via cells completed, cubic curve 1 → 50,000
+ *
+ * Auto-generated from pyr manifest. Do not edit manually.
  */
 
+export type BadgeTrack = 'building' | 'exploration';
+
 export interface BadgeDefinition {
-  /** Numeric badge ID (matches the filename badge_<id>.png). */
+  /** Unique badge ID: building badges 1–100, exploration badges 101–200. */
   id: number;
+  /** Which track this badge belongs to. */
+  track: BadgeTrack;
+  /** Sequence within the track (1–100). */
+  sequence: number;
+  /** URL-friendly slug (used as image key). */
+  slug: string;
+  /** Short code (2–3 letters). */
+  code: string;
   name: string;
   description: string;
   /**
-   * Key used to look up the image via import.meta.glob.
-   * Corresponds to `../assets/badges/badge_<id>.png` relative to components/.
+   * Key used to look up the image in BADGE_IMAGE_MAP.
+   * Format: 'building/<slug>' or 'exploration/<slug>'.
    */
   imageKey: string;
   /**
-   * Number of all-time edits required to earn this badge.
-   * 0 = awarded by a different mechanism (e.g. first login, manual grant).
+   * Number of all-time edits (building) or cells completed (exploration)
+   * required to earn this badge.
+   */
+  threshold: number;
+  /**
+   * @deprecated Alias for threshold. Kept for backward compatibility.
    */
   editThreshold: number;
 }
 
-export const BADGE_DEFINITIONS: BadgeDefinition[] = [
-  {
-    id: 1,
-    name: 'First Merge',
-    description: 'Made your very first merge.',
-    imageKey: 'badge_1',
-    editThreshold: 1,
-  },
-  {
-    id: 2,
-    name: 'Getting Started',
-    description: 'Reached 5 edits.',
-    imageKey: 'badge_2',
-    editThreshold: 5,
-  },
-  {
-    id: 3,
-    name: 'Explorer',
-    description: 'Reached 25 edits.',
-    imageKey: 'badge_3',
-    editThreshold: 25,
-  },
-  {
-    id: 4,
-    name: 'Trailblazer',
-    description: 'Reached 50 edits.',
-    imageKey: 'badge_4',
-    editThreshold: 50,
-  },
-  {
-    id: 5,
-    name: 'Pathfinder',
-    description: 'Reached 100 edits.',
-    imageKey: 'badge_5',
-    editThreshold: 100,
-  },
-  {
-    id: 6,
-    name: 'Navigator',
-    description: 'Reached 250 edits.',
-    imageKey: 'badge_6',
-    editThreshold: 250,
-  },
-  {
-    id: 7,
-    name: 'Mapper',
-    description: 'Reached 500 edits.',
-    imageKey: 'badge_7',
-    editThreshold: 500,
-  },
-  {
-    id: 8,
-    name: 'Cartographer',
-    description: 'Reached 1,000 edits.',
-    imageKey: 'badge_8',
-    editThreshold: 1_000,
-  },
-  {
-    id: 9,
-    name: 'Master Mapper',
-    description: 'Reached 2,500 edits.',
-    imageKey: 'badge_9',
-    editThreshold: 2_500,
-  },
-  // badge_10 image is missing from the asset set — id 10 is skipped
-  {
-    id: 11,
-    name: 'Synapse Scout',
-    description: 'Reached 5,000 edits.',
-    imageKey: 'badge_11',
-    editThreshold: 5_000,
-  },
-  {
-    id: 12,
-    name: 'Connectome Builder',
-    description: 'Reached 7,500 edits.',
-    imageKey: 'badge_12',
-    editThreshold: 7_500,
-  },
-  {
-    id: 13,
-    name: 'Dendrite Diver',
-    description: 'Reached 10,000 edits.',
-    imageKey: 'badge_13',
-    editThreshold: 10_000,
-  },
-  {
-    id: 14,
-    name: 'Axon Expert',
-    description: 'Reached 15,000 edits.',
-    imageKey: 'badge_14',
-    editThreshold: 15_000,
-  },
-  {
-    id: 15,
-    name: 'Neuron Nerd',
-    description: 'Reached 20,000 edits.',
-    imageKey: 'badge_15',
-    editThreshold: 20_000,
-  },
-  {
-    id: 16,
-    name: 'Circuit Breaker',
-    description: 'Reached 30,000 edits.',
-    imageKey: 'badge_16',
-    editThreshold: 30_000,
-  },
-  {
-    id: 17,
-    name: 'Synaptologist',
-    description: 'Reached 50,000 edits.',
-    imageKey: 'badge_17',
-    editThreshold: 50_000,
-  },
-  {
-    id: 18,
-    name: 'Neural Architect',
-    description: 'Reached 75,000 edits.',
-    imageKey: 'badge_18',
-    editThreshold: 75_000,
-  },
-  {
-    id: 19,
-    name: 'Connectomics Hero',
-    description: 'Reached 100,000 edits.',
-    imageKey: 'badge_19',
-    editThreshold: 100_000,
-  },
-  {
-    id: 20,
-    name: 'Legend',
-    description: 'Reached 250,000 edits.',
-    imageKey: 'badge_20',
-    editThreshold: 250_000,
-  },
+export const BUILDING_BADGES: BadgeDefinition[] = [
+  { id: 1, track: 'building', sequence: 1, slug: 'charcoal', code: 'CHA', name: 'Charcoal', description: 'Charcoal marks the point where making starts with a mark on the page.', imageKey: 'building/charcoal', threshold: 1, editThreshold: 1 },
+  { id: 2, track: 'building', sequence: 2, slug: 'stylus', code: 'STY', name: 'Stylus', description: 'Stylus marks the point where making starts with a mark on the page.', imageKey: 'building/stylus', threshold: 8, editThreshold: 8 },
+  { id: 3, track: 'building', sequence: 3, slug: 'twine', code: 'TWI', name: 'Twine', description: 'Twine anchors the structural side of the building track.', imageKey: 'building/twine', threshold: 27, editThreshold: 27 },
+  { id: 4, track: 'building', sequence: 4, slug: 'play-dough', code: 'PD', name: 'Play Dough', description: 'Play Dough expands the materials toolkit for advanced fabrication.', imageKey: 'building/play-dough', threshold: 64, editThreshold: 64 },
+  { id: 5, track: 'building', sequence: 5, slug: 'mallet', code: 'MAL', name: 'Mallet', description: 'Mallet is a core fabrication milestone on the building track.', imageKey: 'building/mallet', threshold: 125, editThreshold: 125 },
+  { id: 6, track: 'building', sequence: 6, slug: 'awl', code: 'AWL', name: 'Awl', description: 'Awl is a core fabrication milestone on the building track.', imageKey: 'building/awl', threshold: 216, editThreshold: 216 },
+  { id: 7, track: 'building', sequence: 7, slug: 'hammer', code: 'HAM', name: 'Hammer', description: 'Hammer is a core fabrication milestone on the building track.', imageKey: 'building/hammer', threshold: 343, editThreshold: 343 },
+  { id: 8, track: 'building', sequence: 8, slug: 'chisel', code: 'CHI', name: 'Chisel', description: 'Chisel is a core fabrication milestone on the building track.', imageKey: 'building/chisel', threshold: 512, editThreshold: 512 },
+  { id: 9, track: 'building', sequence: 9, slug: 'wrench', code: 'WRE', name: 'Wrench', description: 'Wrench is a core fabrication milestone on the building track.', imageKey: 'building/wrench', threshold: 729, editThreshold: 729 },
+  { id: 10, track: 'building', sequence: 10, slug: 'screwdriver', code: 'SCR', name: 'Screwdriver', description: 'Screwdriver is a core fabrication milestone on the building track.', imageKey: 'building/screwdriver', threshold: 1_000, editThreshold: 1_000 },
+  { id: 11, track: 'building', sequence: 11, slug: 'axe', code: 'AXE', name: 'Axe', description: 'Axe is a core fabrication milestone on the building track.', imageKey: 'building/axe', threshold: 1_331, editThreshold: 1_331 },
+  { id: 12, track: 'building', sequence: 12, slug: 'nail', code: 'NAI', name: 'Nail', description: 'Nail anchors the structural side of the building track.', imageKey: 'building/nail', threshold: 1_728, editThreshold: 1_728 },
+  { id: 13, track: 'building', sequence: 13, slug: 'bolt', code: 'BOL', name: 'Bolt', description: 'Bolt anchors the structural side of the building track.', imageKey: 'building/bolt', threshold: 2_197, editThreshold: 2_197 },
+  { id: 14, track: 'building', sequence: 14, slug: 'nut', code: 'NUT', name: 'Nut', description: 'Nut anchors the structural side of the building track.', imageKey: 'building/nut', threshold: 2_744, editThreshold: 2_744 },
+  { id: 15, track: 'building', sequence: 15, slug: 'rope', code: 'ROP', name: 'Rope', description: 'Rope anchors the structural side of the building track.', imageKey: 'building/rope', threshold: 3_375, editThreshold: 3_375 },
+  { id: 16, track: 'building', sequence: 16, slug: 'bucket', code: 'BUC', name: 'Bucket', description: 'Bucket anchors the structural side of the building track.', imageKey: 'building/bucket', threshold: 4_096, editThreshold: 4_096 },
+  { id: 17, track: 'building', sequence: 17, slug: 'trowel', code: 'TRO', name: 'Trowel', description: 'Trowel is a core fabrication milestone on the building track.', imageKey: 'building/trowel', threshold: 4_913, editThreshold: 4_913 },
+  { id: 18, track: 'building', sequence: 18, slug: 'shovel', code: 'SHO', name: 'Shovel', description: 'Shovel is a core fabrication milestone on the building track.', imageKey: 'building/shovel', threshold: 5_832, editThreshold: 5_832 },
+  { id: 19, track: 'building', sequence: 19, slug: 'pick-axe', code: 'PA', name: 'Pick Axe', description: 'Pick Axe is a core fabrication milestone on the building track.', imageKey: 'building/pick-axe', threshold: 6_859, editThreshold: 6_859 },
+  { id: 20, track: 'building', sequence: 20, slug: 'ladder', code: 'LAD', name: 'Ladder', description: 'Ladder anchors the structural side of the building track.', imageKey: 'building/ladder', threshold: 8_000, editThreshold: 8_000 },
+  { id: 21, track: 'building', sequence: 21, slug: 'wheelbarrow', code: 'WHE', name: 'Wheelbarrow', description: 'Wheelbarrow anchors the structural side of the building track.', imageKey: 'building/wheelbarrow', threshold: 9_261, editThreshold: 9_261 },
+  { id: 22, track: 'building', sequence: 22, slug: 'saw', code: 'SAW', name: 'Saw', description: 'Saw is a core fabrication milestone on the building track.', imageKey: 'building/saw', threshold: 10_648, editThreshold: 10_648 },
+  { id: 23, track: 'building', sequence: 23, slug: 'hand-plane', code: 'HP', name: 'Hand Plane', description: 'Hand Plane is a core fabrication milestone on the building track.', imageKey: 'building/hand-plane', threshold: 12_167, editThreshold: 12_167 },
+  { id: 24, track: 'building', sequence: 24, slug: 'spokeshave', code: 'SPO', name: 'Spokeshave', description: 'Spokeshave is a core fabrication milestone on the building track.', imageKey: 'building/spokeshave', threshold: 13_824, editThreshold: 13_824 },
+  { id: 25, track: 'building', sequence: 25, slug: 'file', code: 'FIL', name: 'File', description: 'File is a core fabrication milestone on the building track.', imageKey: 'building/file', threshold: 15_625, editThreshold: 15_625 },
+  { id: 26, track: 'building', sequence: 26, slug: 'rasp', code: 'RAS', name: 'Rasp', description: 'Rasp is a core fabrication milestone on the building track.', imageKey: 'building/rasp', threshold: 17_576, editThreshold: 17_576 },
+  { id: 27, track: 'building', sequence: 27, slug: 'clamp', code: 'CLA', name: 'Clamp', description: 'Clamp is a core fabrication milestone on the building track.', imageKey: 'building/clamp', threshold: 19_683, editThreshold: 19_683 },
+  { id: 28, track: 'building', sequence: 28, slug: 'vise', code: 'VIS', name: 'Vise', description: 'Vise is a core fabrication milestone on the building track.', imageKey: 'building/vise', threshold: 21_952, editThreshold: 21_952 },
+  { id: 29, track: 'building', sequence: 29, slug: 'tape-measure', code: 'TM', name: 'Tape Measure', description: 'Tape Measure represents a fabrication milestone on the building track.', imageKey: 'building/tape-measure', threshold: 24_389, editThreshold: 24_389 },
+  { id: 30, track: 'building', sequence: 30, slug: 't-square', code: 'TS', name: 'T-Square', description: 'T-Square is a core fabrication milestone on the building track.', imageKey: 'building/t-square', threshold: 27_000, editThreshold: 27_000 },
+  { id: 31, track: 'building', sequence: 31, slug: 'leveler', code: 'LEV', name: 'Leveler', description: 'Leveler supports precision and alignment in the building track.', imageKey: 'building/leveler', threshold: 29_791, editThreshold: 29_791 },
+  { id: 32, track: 'building', sequence: 32, slug: 'plumb-bob', code: 'PB', name: 'Plumb Bob', description: 'Plumb Bob is a core fabrication milestone on the building track.', imageKey: 'building/plumb-bob', threshold: 32_768, editThreshold: 32_768 },
+  { id: 33, track: 'building', sequence: 33, slug: 'laser-leveler', code: 'LL', name: 'Laser Leveler', description: 'Laser Leveler supports precision and alignment in the building track.', imageKey: 'building/laser-leveler', threshold: 35_937, editThreshold: 35_937 },
+  { id: 34, track: 'building', sequence: 34, slug: 'brick', code: 'BRI', name: 'Brick', description: 'Brick anchors the structural side of the building track.', imageKey: 'building/brick', threshold: 39_304, editThreshold: 39_304 },
+  { id: 35, track: 'building', sequence: 35, slug: 'column', code: 'COL', name: 'Column', description: 'Column anchors the structural side of the building track.', imageKey: 'building/column', threshold: 42_875, editThreshold: 42_875 },
+  { id: 36, track: 'building', sequence: 36, slug: 'arch', code: 'ARC', name: 'Arch', description: 'Arch anchors the structural side of the building track.', imageKey: 'building/arch', threshold: 46_656, editThreshold: 46_656 },
+  { id: 37, track: 'building', sequence: 37, slug: 'corbel', code: 'COR', name: 'Corbel', description: 'Corbel anchors the structural side of the building track.', imageKey: 'building/corbel', threshold: 50_653, editThreshold: 50_653 },
+  { id: 38, track: 'building', sequence: 38, slug: 'rafter', code: 'RAF', name: 'Rafter', description: 'Rafter anchors the structural side of the building track.', imageKey: 'building/rafter', threshold: 54_872, editThreshold: 54_872 },
+  { id: 39, track: 'building', sequence: 39, slug: 'dome', code: 'DOM', name: 'Dome', description: 'Dome anchors the structural side of the building track.', imageKey: 'building/dome', threshold: 59_319, editThreshold: 59_319 },
+  { id: 40, track: 'building', sequence: 40, slug: 'vault', code: 'VAU', name: 'Vault', description: 'Vault anchors the structural side of the building track.', imageKey: 'building/vault', threshold: 64_000, editThreshold: 64_000 },
+  { id: 41, track: 'building', sequence: 41, slug: 'loom', code: 'LOO', name: 'Loom', description: 'Loom anchors the structural side of the building track.', imageKey: 'building/loom', threshold: 68_921, editThreshold: 68_921 },
+  { id: 42, track: 'building', sequence: 42, slug: 'kiln', code: 'KIL', name: 'Kiln', description: 'Kiln pushes building from handwork into powered systems.', imageKey: 'building/kiln', threshold: 74_088, editThreshold: 74_088 },
+  { id: 43, track: 'building', sequence: 43, slug: 'bellows', code: 'BEL', name: 'Bellows', description: 'Bellows pushes building from handwork into powered systems.', imageKey: 'building/bellows', threshold: 79_507, editThreshold: 79_507 },
+  { id: 44, track: 'building', sequence: 44, slug: 'anvil', code: 'ANV', name: 'Anvil', description: 'Anvil anchors the structural side of the building track.', imageKey: 'building/anvil', threshold: 85_184, editThreshold: 85_184 },
+  { id: 45, track: 'building', sequence: 45, slug: 'forge', code: 'FOR', name: 'Forge', description: 'Forge anchors the structural side of the building track.', imageKey: 'building/forge', threshold: 91_125, editThreshold: 91_125 },
+  { id: 46, track: 'building', sequence: 46, slug: 'catapult', code: 'CAT', name: 'Catapult', description: 'Catapult pushes building from handwork into powered systems.', imageKey: 'building/catapult', threshold: 97_336, editThreshold: 97_336 },
+  { id: 47, track: 'building', sequence: 47, slug: 'ox-drawn-plow', code: 'ODP', name: 'Ox-drawn Plow', description: 'Ox-drawn Plow pushes building from handwork into powered systems.', imageKey: 'building/ox-drawn-plow', threshold: 103_823, editThreshold: 103_823 },
+  { id: 48, track: 'building', sequence: 48, slug: 'pulley', code: 'PUL', name: 'Pulley', description: 'Pulley anchors the structural side of the building track.', imageKey: 'building/pulley', threshold: 110_592, editThreshold: 110_592 },
+  { id: 49, track: 'building', sequence: 49, slug: 'piston', code: 'PIS', name: 'Piston', description: 'Piston pushes building from handwork into powered systems.', imageKey: 'building/piston', threshold: 117_649, editThreshold: 117_649 },
+  { id: 50, track: 'building', sequence: 50, slug: 'actuator', code: 'ACT', name: 'Actuator', description: 'Actuator pushes building from handwork into powered systems.', imageKey: 'building/actuator', threshold: 125_000, editThreshold: 125_000 },
+  { id: 51, track: 'building', sequence: 51, slug: 'electric-drill', code: 'ED', name: 'Electric Drill', description: 'Electric Drill is a core fabrication milestone on the building track.', imageKey: 'building/electric-drill', threshold: 132_651, editThreshold: 132_651 },
+  { id: 52, track: 'building', sequence: 52, slug: 'hand-drill', code: 'HD', name: 'Hand Drill', description: 'Hand Drill is a core fabrication milestone on the building track.', imageKey: 'building/hand-drill', threshold: 140_608, editThreshold: 140_608 },
+  { id: 53, track: 'building', sequence: 53, slug: 'hot-glue-gun', code: 'HGG', name: 'Hot Glue Gun', description: 'Hot Glue Gun is a core fabrication milestone on the building track.', imageKey: 'building/hot-glue-gun', threshold: 148_877, editThreshold: 148_877 },
+  { id: 54, track: 'building', sequence: 54, slug: 'welding-torch', code: 'WT', name: 'Welding Torch', description: 'Welding Torch is a core fabrication milestone on the building track.', imageKey: 'building/welding-torch', threshold: 157_464, editThreshold: 157_464 },
+  { id: 55, track: 'building', sequence: 55, slug: 'rivet-gun', code: 'RG', name: 'Rivet Gun', description: 'Rivet Gun is a core fabrication milestone on the building track.', imageKey: 'building/rivet-gun', threshold: 166_375, editThreshold: 166_375 },
+  { id: 56, track: 'building', sequence: 56, slug: 'workbench', code: 'WOR', name: 'Workbench', description: 'Workbench anchors the structural side of the building track.', imageKey: 'building/workbench', threshold: 175_616, editThreshold: 175_616 },
+  { id: 57, track: 'building', sequence: 57, slug: 'component-organizer', code: 'CO', name: 'Component Organizer', description: 'Component Organizer marks the electronics stage of the building track.', imageKey: 'building/component-organizer', threshold: 185_193, editThreshold: 185_193 },
+  { id: 58, track: 'building', sequence: 58, slug: 'pcb-etching-kit', code: 'PE', name: 'PCB Etching Kit', description: 'PCB Etching Kit marks the electronics stage of the building track.', imageKey: 'building/pcb-etching-kit', threshold: 195_112, editThreshold: 195_112 },
+  { id: 59, track: 'building', sequence: 59, slug: 'breadboard', code: 'BRE', name: 'Breadboard', description: 'Breadboard marks the electronics stage of the building track.', imageKey: 'building/breadboard', threshold: 205_379, editThreshold: 205_379 },
+  { id: 60, track: 'building', sequence: 60, slug: 'jumper-wires', code: 'JW', name: 'Jumper Wires', description: 'Jumper Wires marks the electronics stage of the building track.', imageKey: 'building/jumper-wires', threshold: 216_000, editThreshold: 216_000 },
+  { id: 61, track: 'building', sequence: 61, slug: 'wire-strippers', code: 'WS', name: 'Wire Strippers', description: 'Wire Strippers is a core fabrication milestone on the building track.', imageKey: 'building/wire-strippers', threshold: 226_981, editThreshold: 226_981 },
+  { id: 62, track: 'building', sequence: 62, slug: 'soldering-iron', code: 'SI', name: 'Soldering Iron', description: 'Soldering Iron is a core fabrication milestone on the building track.', imageKey: 'building/soldering-iron', threshold: 238_328, editThreshold: 238_328 },
+  { id: 63, track: 'building', sequence: 63, slug: 'heat-shrink-tubing', code: 'HST', name: 'Heat Shrink Tubing', description: 'Heat Shrink Tubing marks the point where making starts with a mark on the page.', imageKey: 'building/heat-shrink-tubing', threshold: 250_047, editThreshold: 250_047 },
+  { id: 64, track: 'building', sequence: 64, slug: 'power-supply', code: 'PS', name: 'Power Supply', description: 'Power Supply pushes building from handwork into powered systems.', imageKey: 'building/power-supply', threshold: 262_144, editThreshold: 262_144 },
+  { id: 65, track: 'building', sequence: 65, slug: 'microcontroller', code: 'MIC', name: 'Microcontroller', description: 'Microcontroller marks the electronics stage of the building track.', imageKey: 'building/microcontroller', threshold: 274_625, editThreshold: 274_625 },
+  { id: 66, track: 'building', sequence: 66, slug: 'prototyping-shield', code: 'PS', name: 'Prototyping Shield', description: 'Prototyping Shield marks the electronics stage of the building track.', imageKey: 'building/prototyping-shield', threshold: 287_496, editThreshold: 287_496 },
+  { id: 67, track: 'building', sequence: 67, slug: 'rasberry-pi', code: 'RP', name: 'Rasberry Pi', description: 'Rasberry Pi marks the electronics stage of the building track.', imageKey: 'building/rasberry-pi', threshold: 300_763, editThreshold: 300_763 },
+  { id: 68, track: 'building', sequence: 68, slug: 'leds', code: 'LED', name: 'LEDs', description: 'LEDs marks the electronics stage of the building track.', imageKey: 'building/leds', threshold: 314_432, editThreshold: 314_432 },
+  { id: 69, track: 'building', sequence: 69, slug: 'servo-motor', code: 'SM', name: 'Servo Motor', description: 'Servo Motor marks the move from mechanisms to automation.', imageKey: 'building/servo-motor', threshold: 328_509, editThreshold: 328_509 },
+  { id: 70, track: 'building', sequence: 70, slug: 'stepper-motor', code: 'SM', name: 'Stepper Motor', description: 'Stepper Motor marks the move from mechanisms to automation.', imageKey: 'building/stepper-motor', threshold: 343_000, editThreshold: 343_000 },
+  { id: 71, track: 'building', sequence: 71, slug: 'dc-motor', code: 'DM', name: 'DC Motor', description: 'DC Motor marks the move from mechanisms to automation.', imageKey: 'building/dc-motor', threshold: 357_911, editThreshold: 357_911 },
+  { id: 72, track: 'building', sequence: 72, slug: 'motor-driver', code: 'MD', name: 'Motor Driver', description: 'Motor Driver marks the move from mechanisms to automation.', imageKey: 'building/motor-driver', threshold: 373_248, editThreshold: 373_248 },
+  { id: 73, track: 'building', sequence: 73, slug: 'wheel-and-tire-kit', code: 'WT', name: 'Wheel And Tire Kit', description: 'Wheel and Tire Kit represents a fabrication milestone on the building track.', imageKey: 'building/wheel-and-tire-kit', threshold: 389_017, editThreshold: 389_017 },
+  { id: 74, track: 'building', sequence: 74, slug: 'ball-caster', code: 'BC', name: 'Ball Caster', description: 'Ball Caster marks the move from mechanisms to automation.', imageKey: 'building/ball-caster', threshold: 405_224, editThreshold: 405_224 },
+  { id: 75, track: 'building', sequence: 75, slug: 'track-system', code: 'TRA', name: 'Track System', description: 'Track System marks the move from mechanisms to automation.', imageKey: 'building/track-system', threshold: 421_875, editThreshold: 421_875 },
+  { id: 76, track: 'building', sequence: 76, slug: 'robot-chassis', code: 'RC', name: 'Robot Chassis', description: 'Robot Chassis marks the move from mechanisms to automation.', imageKey: 'building/robot-chassis', threshold: 438_976, editThreshold: 438_976 },
+  { id: 77, track: 'building', sequence: 77, slug: 'claw', code: 'CLA', name: 'Claw', description: 'Claw marks the move from mechanisms to automation.', imageKey: 'building/claw', threshold: 456_533, editThreshold: 456_533 },
+  { id: 78, track: 'building', sequence: 78, slug: 'gripper-kit', code: 'GRI', name: 'Gripper Kit', description: 'Gripper Kit marks the move from mechanisms to automation.', imageKey: 'building/gripper-kit', threshold: 474_552, editThreshold: 474_552 },
+  { id: 79, track: 'building', sequence: 79, slug: 'robot-arm-kit', code: 'RA', name: 'Robot Arm Kit', description: 'Robot Arm Kit marks the move from mechanisms to automation.', imageKey: 'building/robot-arm-kit', threshold: 493_039, editThreshold: 493_039 },
+  { id: 80, track: 'building', sequence: 80, slug: 'robotic-fabricator', code: 'RF', name: 'Robotic Fabricator', description: 'Robotic Fabricator pushes building from handwork into powered systems.', imageKey: 'building/robotic-fabricator', threshold: 512_000, editThreshold: 512_000 },
+  { id: 81, track: 'building', sequence: 81, slug: '3d-printer', code: '3P', name: '3D Printer', description: '3D Printer pushes building from handwork into powered systems.', imageKey: 'building/3d-printer', threshold: 531_441, editThreshold: 531_441 },
+  { id: 82, track: 'building', sequence: 82, slug: 'filament-spool', code: 'FS', name: 'Filament Spool', description: 'Filament Spool expands the materials toolkit for advanced fabrication.', imageKey: 'building/filament-spool', threshold: 551_368, editThreshold: 551_368 },
+  { id: 83, track: 'building', sequence: 83, slug: 'resin-vat', code: 'RV', name: 'Resin Vat', description: 'Resin Vat expands the materials toolkit for advanced fabrication.', imageKey: 'building/resin-vat', threshold: 571_787, editThreshold: 571_787 },
+  { id: 84, track: 'building', sequence: 84, slug: 'laser-cutter', code: 'LC', name: 'Laser Cutter', description: 'Laser Cutter pushes building from handwork into powered systems.', imageKey: 'building/laser-cutter', threshold: 592_704, editThreshold: 592_704 },
+  { id: 85, track: 'building', sequence: 85, slug: 'cnc-router', code: 'CR', name: 'CNC Router', description: 'CNC Router pushes building from handwork into powered systems.', imageKey: 'building/cnc-router', threshold: 614_125, editThreshold: 614_125 },
+  { id: 86, track: 'building', sequence: 86, slug: 'milling-machine', code: 'MM', name: 'Milling Machine', description: 'Milling Machine pushes building from handwork into powered systems.', imageKey: 'building/milling-machine', threshold: 636_056, editThreshold: 636_056 },
+  { id: 87, track: 'building', sequence: 87, slug: 'drill-press', code: 'DP', name: 'Drill Press', description: 'Drill Press is a core fabrication milestone on the building track.', imageKey: 'building/drill-press', threshold: 658_503, editThreshold: 658_503 },
+  { id: 88, track: 'building', sequence: 88, slug: 'bandsaw', code: 'BAN', name: 'Bandsaw', description: 'Bandsaw is a core fabrication milestone on the building track.', imageKey: 'building/bandsaw', threshold: 681_472, editThreshold: 681_472 },
+  { id: 89, track: 'building', sequence: 89, slug: 'table-saw', code: 'TS', name: 'Table Saw', description: 'Table Saw is a core fabrication milestone on the building track.', imageKey: 'building/table-saw', threshold: 704_969, editThreshold: 704_969 },
+  { id: 90, track: 'building', sequence: 90, slug: 'lathe', code: 'LAT', name: 'Lathe', description: 'Lathe pushes building from handwork into powered systems.', imageKey: 'building/lathe', threshold: 729_000, editThreshold: 729_000 },
+  { id: 91, track: 'building', sequence: 91, slug: 'linear-rail', code: 'LR', name: 'Linear Rail', description: 'Linear Rail pushes building from handwork into powered systems.', imageKey: 'building/linear-rail', threshold: 753_571, editThreshold: 753_571 },
+  { id: 92, track: 'building', sequence: 92, slug: 'gearbox', code: 'GEA', name: 'Gearbox', description: 'Gearbox pushes building from handwork into powered systems.', imageKey: 'building/gearbox', threshold: 778_688, editThreshold: 778_688 },
+  { id: 93, track: 'building', sequence: 93, slug: 'carbon-fiber', code: 'CF', name: 'Carbon Fiber', description: 'Carbon Fiber expands the materials toolkit for advanced fabrication.', imageKey: 'building/carbon-fiber', threshold: 804_357, editThreshold: 804_357 },
+  { id: 94, track: 'building', sequence: 94, slug: 'kevlar', code: 'KEV', name: 'Kevlar', description: 'Kevlar expands the materials toolkit for advanced fabrication.', imageKey: 'building/kevlar', threshold: 830_584, editThreshold: 830_584 },
+  { id: 95, track: 'building', sequence: 95, slug: 'vacuum-tube', code: 'VT', name: 'Vacuum Tube', description: 'Vacuum Tube marks the electronics stage of the building track.', imageKey: 'building/vacuum-tube', threshold: 857_375, editThreshold: 857_375 },
+  { id: 96, track: 'building', sequence: 96, slug: 'transistor', code: 'TRA', name: 'Transistor', description: 'Transistor marks the electronics stage of the building track.', imageKey: 'building/transistor', threshold: 884_736, editThreshold: 884_736 },
+  { id: 97, track: 'building', sequence: 97, slug: 'gantry-crane', code: 'GC', name: 'Gantry Crane', description: 'Gantry Crane pushes building from handwork into powered systems.', imageKey: 'building/gantry-crane', threshold: 912_673, editThreshold: 912_673 },
+  { id: 98, track: 'building', sequence: 98, slug: 'robotic-welder', code: 'RW', name: 'Robotic Welder', description: 'Robotic Welder marks the move from mechanisms to automation.', imageKey: 'building/robotic-welder', threshold: 941_192, editThreshold: 941_192 },
+  { id: 99, track: 'building', sequence: 99, slug: 'autonomous-assembly-cell', code: 'AAC', name: 'Autonomous Assembly Cell', description: 'Autonomous Assembly Cell pushes building from handwork into powered systems.', imageKey: 'building/autonomous-assembly-cell', threshold: 970_299, editThreshold: 970_299 },
+  { id: 100, track: 'building', sequence: 100, slug: 'microfactory', code: 'MIC', name: 'Microfactory', description: 'Microfactory pushes building from handwork into powered systems.', imageKey: 'building/microfactory', threshold: 1_000_000, editThreshold: 1_000_000 },
 ];
+
+export const EXPLORATION_BADGES: BadgeDefinition[] = [
+  { id: 101, track: 'exploration', sequence: 1, slug: 'scroll', code: 'SCR', name: 'Scroll', description: 'Scroll captures the record-keeping side of exploration.', imageKey: 'exploration/scroll', threshold: 1, editThreshold: 1 },
+  { id: 102, track: 'exploration', sequence: 2, slug: 'pencil', code: 'PEN', name: 'Pencil', description: 'Pencil marks the first step in documenting what you discover.', imageKey: 'exploration/pencil', threshold: 2, editThreshold: 2 },
+  { id: 103, track: 'exploration', sequence: 3, slug: 'ink', code: 'INK', name: 'Ink', description: 'Ink marks the first step in documenting what you discover.', imageKey: 'exploration/ink', threshold: 3, editThreshold: 3 },
+  { id: 104, track: 'exploration', sequence: 4, slug: 'fountain-pen', code: 'FP', name: 'Fountain Pen', description: 'Fountain Pen marks the first step in documenting what you discover.', imageKey: 'exploration/fountain-pen', threshold: 4, editThreshold: 4 },
+  { id: 105, track: 'exploration', sequence: 5, slug: 'lab-notebook', code: 'LN', name: 'Lab Notebook', description: 'Lab Notebook captures the record-keeping side of exploration.', imageKey: 'exploration/lab-notebook', threshold: 6, editThreshold: 6 },
+  { id: 106, track: 'exploration', sequence: 6, slug: 'abacus', code: 'ABA', name: 'Abacus', description: 'Abacus is a scientific observation milestone on the exploration track.', imageKey: 'exploration/abacus', threshold: 11, editThreshold: 11 },
+  { id: 107, track: 'exploration', sequence: 7, slug: 'map', code: 'MAP', name: 'Map', description: 'Map captures the record-keeping side of exploration.', imageKey: 'exploration/map', threshold: 17, editThreshold: 17 },
+  { id: 108, track: 'exploration', sequence: 8, slug: 'compass', code: 'COM', name: 'Compass', description: 'Compass is a scientific observation milestone on the exploration track.', imageKey: 'exploration/compass', threshold: 26, editThreshold: 26 },
+  { id: 109, track: 'exploration', sequence: 9, slug: 'cairn', code: 'CAI', name: 'Cairn', description: 'Cairn represents a discovery milestone on the exploration track.', imageKey: 'exploration/cairn', threshold: 36, editThreshold: 36 },
+  { id: 110, track: 'exploration', sequence: 10, slug: 'sextant', code: 'SEX', name: 'Sextant', description: 'Sextant is a scientific observation milestone on the exploration track.', imageKey: 'exploration/sextant', threshold: 50, editThreshold: 50 },
+  { id: 111, track: 'exploration', sequence: 11, slug: 'astrolabe', code: 'AST', name: 'Astrolabe', description: 'Astrolabe is a scientific observation milestone on the exploration track.', imageKey: 'exploration/astrolabe', threshold: 67, editThreshold: 67 },
+  { id: 112, track: 'exploration', sequence: 12, slug: 'sundial', code: 'SUN', name: 'Sundial', description: 'Sundial represents a discovery milestone on the exploration track.', imageKey: 'exploration/sundial', threshold: 86, editThreshold: 86 },
+  { id: 113, track: 'exploration', sequence: 13, slug: 'globe', code: 'GLO', name: 'Globe', description: 'Globe represents a discovery milestone on the exploration track.', imageKey: 'exploration/globe', threshold: 110, editThreshold: 110 },
+  { id: 114, track: 'exploration', sequence: 14, slug: 'star-chart', code: 'SC', name: 'Star Chart', description: 'Star Chart captures the record-keeping side of exploration.', imageKey: 'exploration/star-chart', threshold: 137, editThreshold: 137 },
+  { id: 115, track: 'exploration', sequence: 15, slug: 'magnifying-glass', code: 'MG', name: 'Magnifying Glass', description: 'Magnifying Glass represents a discovery milestone on the exploration track.', imageKey: 'exploration/magnifying-glass', threshold: 169, editThreshold: 169 },
+  { id: 116, track: 'exploration', sequence: 16, slug: 'fresnel-lens', code: 'FL', name: 'Fresnel Lens', description: 'Fresnel Lens is a scientific observation milestone on the exploration track.', imageKey: 'exploration/fresnel-lens', threshold: 205, editThreshold: 205 },
+  { id: 117, track: 'exploration', sequence: 17, slug: 'telescope', code: 'TEL', name: 'Telescope', description: 'Telescope is a scientific observation milestone on the exploration track.', imageKey: 'exploration/telescope', threshold: 246, editThreshold: 246 },
+  { id: 118, track: 'exploration', sequence: 18, slug: 'binoculars', code: 'BIN', name: 'Binoculars', description: 'Binoculars is a scientific observation milestone on the exploration track.', imageKey: 'exploration/binoculars', threshold: 292, editThreshold: 292 },
+  { id: 119, track: 'exploration', sequence: 19, slug: 'periscope', code: 'PER', name: 'Periscope', description: 'Periscope is a scientific observation milestone on the exploration track.', imageKey: 'exploration/periscope', threshold: 343, editThreshold: 343 },
+  { id: 120, track: 'exploration', sequence: 20, slug: 'barometer', code: 'BAR', name: 'Barometer', description: 'Barometer is a scientific observation milestone on the exploration track.', imageKey: 'exploration/barometer', threshold: 400, editThreshold: 400 },
+  { id: 121, track: 'exploration', sequence: 21, slug: 'thermometer', code: 'THE', name: 'Thermometer', description: 'Thermometer is a scientific observation milestone on the exploration track.', imageKey: 'exploration/thermometer', threshold: 463, editThreshold: 463 },
+  { id: 122, track: 'exploration', sequence: 22, slug: 'hygrometer', code: 'HYG', name: 'Hygrometer', description: 'Hygrometer is a scientific observation milestone on the exploration track.', imageKey: 'exploration/hygrometer', threshold: 532, editThreshold: 532 },
+  { id: 123, track: 'exploration', sequence: 23, slug: 'altimeter', code: 'ALT', name: 'Altimeter', description: 'Altimeter is a scientific observation milestone on the exploration track.', imageKey: 'exploration/altimeter', threshold: 608, editThreshold: 608 },
+  { id: 124, track: 'exploration', sequence: 24, slug: 'depth-gauge', code: 'DG', name: 'Depth Gauge', description: 'Depth Gauge represents a discovery milestone on the exploration track.', imageKey: 'exploration/depth-gauge', threshold: 691, editThreshold: 691 },
+  { id: 125, track: 'exploration', sequence: 25, slug: 'gyroscope', code: 'GYR', name: 'Gyroscope', description: 'Gyroscope is a scientific observation milestone on the exploration track.', imageKey: 'exploration/gyroscope', threshold: 781, editThreshold: 781 },
+  { id: 126, track: 'exploration', sequence: 26, slug: 'accelerometer', code: 'ACC', name: 'Accelerometer', description: 'Accelerometer is a scientific observation milestone on the exploration track.', imageKey: 'exploration/accelerometer', threshold: 879, editThreshold: 879 },
+  { id: 127, track: 'exploration', sequence: 27, slug: 'multimeter', code: 'MUL', name: 'Multimeter', description: 'Multimeter marks the computing layer behind advanced discovery.', imageKey: 'exploration/multimeter', threshold: 984, editThreshold: 984 },
+  { id: 128, track: 'exploration', sequence: 28, slug: 'oscilloscope', code: 'OSC', name: 'Oscilloscope', description: 'Oscilloscope marks the computing layer behind advanced discovery.', imageKey: 'exploration/oscilloscope', threshold: 1_098, editThreshold: 1_098 },
+  { id: 129, track: 'exploration', sequence: 29, slug: 'logic-analyzer', code: 'LA', name: 'Logic Analyzer', description: 'Logic Analyzer marks the computing layer behind advanced discovery.', imageKey: 'exploration/logic-analyzer', threshold: 1_219, editThreshold: 1_219 },
+  { id: 130, track: 'exploration', sequence: 30, slug: 'digital-caliper', code: 'DC', name: 'Digital Caliper', description: 'Digital Caliper represents a discovery milestone on the exploration track.', imageKey: 'exploration/digital-caliper', threshold: 1_350, editThreshold: 1_350 },
+  { id: 131, track: 'exploration', sequence: 31, slug: 'compound-microscope', code: 'CM', name: 'Compound Microscope', description: 'Compound Microscope is a scientific observation milestone on the exploration track.', imageKey: 'exploration/compound-microscope', threshold: 1_490, editThreshold: 1_490 },
+  { id: 132, track: 'exploration', sequence: 32, slug: 'electron-microscope', code: 'EM', name: 'Electron Microscope', description: 'Electron Microscope is a scientific observation milestone on the exploration track.', imageKey: 'exploration/electron-microscope', threshold: 1_638, editThreshold: 1_638 },
+  { id: 133, track: 'exploration', sequence: 33, slug: 'tomography', code: 'TOM', name: 'Tomography', description: 'Tomography is a scientific observation milestone on the exploration track.', imageKey: 'exploration/tomography', threshold: 1_797, editThreshold: 1_797 },
+  { id: 134, track: 'exploration', sequence: 34, slug: 'diamond-knife', code: 'DK', name: 'Diamond Knife', description: 'Diamond Knife is a scientific observation milestone on the exploration track.', imageKey: 'exploration/diamond-knife', threshold: 1_965, editThreshold: 1_965 },
+  { id: 135, track: 'exploration', sequence: 35, slug: 'pipette', code: 'PIP', name: 'Pipette', description: 'Pipette marks the computing layer behind advanced discovery.', imageKey: 'exploration/pipette', threshold: 2_144, editThreshold: 2_144 },
+  { id: 136, track: 'exploration', sequence: 36, slug: 'test-tube', code: 'TT', name: 'Test Tube', description: 'Test Tube is a scientific observation milestone on the exploration track.', imageKey: 'exploration/test-tube', threshold: 2_333, editThreshold: 2_333 },
+  { id: 137, track: 'exploration', sequence: 37, slug: 'petri-dish', code: 'PD', name: 'Petri Dish', description: 'Petri Dish is a scientific observation milestone on the exploration track.', imageKey: 'exploration/petri-dish', threshold: 2_533, editThreshold: 2_533 },
+  { id: 138, track: 'exploration', sequence: 38, slug: 'centrifuge', code: 'CEN', name: 'Centrifuge', description: 'Centrifuge is a scientific observation milestone on the exploration track.', imageKey: 'exploration/centrifuge', threshold: 2_744, editThreshold: 2_744 },
+  { id: 139, track: 'exploration', sequence: 39, slug: 'spectrometer', code: 'SPE', name: 'Spectrometer', description: 'Spectrometer is a scientific observation milestone on the exploration track.', imageKey: 'exploration/spectrometer', threshold: 2_966, editThreshold: 2_966 },
+  { id: 140, track: 'exploration', sequence: 40, slug: 'chromatograph', code: 'CHR', name: 'Chromatograph', description: 'Chromatograph is a scientific observation milestone on the exploration track.', imageKey: 'exploration/chromatograph', threshold: 3_200, editThreshold: 3_200 },
+  { id: 141, track: 'exploration', sequence: 41, slug: 'seismograph', code: 'SEI', name: 'Seismograph', description: 'Seismograph represents a discovery milestone on the exploration track.', imageKey: 'exploration/seismograph', threshold: 3_446, editThreshold: 3_446 },
+  { id: 142, track: 'exploration', sequence: 42, slug: 'geiger-counter', code: 'GC', name: 'Geiger Counter', description: 'Geiger Counter is a scientific observation milestone on the exploration track.', imageKey: 'exploration/geiger-counter', threshold: 3_704, editThreshold: 3_704 },
+  { id: 143, track: 'exploration', sequence: 43, slug: 'magnetometer', code: 'MAG', name: 'Magnetometer', description: 'Magnetometer is a scientific observation milestone on the exploration track.', imageKey: 'exploration/magnetometer', threshold: 3_975, editThreshold: 3_975 },
+  { id: 144, track: 'exploration', sequence: 44, slug: 'gravimeter', code: 'GRA', name: 'Gravimeter', description: 'Gravimeter is a scientific observation milestone on the exploration track.', imageKey: 'exploration/gravimeter', threshold: 4_259, editThreshold: 4_259 },
+  { id: 145, track: 'exploration', sequence: 45, slug: 'lidar', code: 'LID', name: 'LiDAR', description: 'LiDAR extends what the exploration track can detect and map.', imageKey: 'exploration/lidar', threshold: 4_556, editThreshold: 4_556 },
+  { id: 146, track: 'exploration', sequence: 46, slug: 'ultrasonic-sensor', code: 'US', name: 'Ultrasonic Sensor', description: 'Ultrasonic Sensor extends what the exploration track can detect and map.', imageKey: 'exploration/ultrasonic-sensor', threshold: 4_867, editThreshold: 4_867 },
+  { id: 147, track: 'exploration', sequence: 47, slug: 'infrared-sensor', code: 'IS', name: 'Infrared Sensor', description: 'Infrared Sensor extends what the exploration track can detect and map.', imageKey: 'exploration/infrared-sensor', threshold: 5_191, editThreshold: 5_191 },
+  { id: 148, track: 'exploration', sequence: 48, slug: 'touch-sensor', code: 'TS', name: 'Touch Sensor', description: 'Touch Sensor extends what the exploration track can detect and map.', imageKey: 'exploration/touch-sensor', threshold: 5_530, editThreshold: 5_530 },
+  { id: 149, track: 'exploration', sequence: 49, slug: 'camera-module', code: 'CM', name: 'Camera Module', description: 'Camera Module extends what the exploration track can detect and map.', imageKey: 'exploration/camera-module', threshold: 5_882, editThreshold: 5_882 },
+  { id: 150, track: 'exploration', sequence: 50, slug: 'thermal-camera', code: 'TC', name: 'Thermal Camera', description: 'Thermal Camera extends what the exploration track can detect and map.', imageKey: 'exploration/thermal-camera', threshold: 6_250, editThreshold: 6_250 },
+  { id: 151, track: 'exploration', sequence: 51, slug: 'hyperspectral-camera', code: 'HC', name: 'Hyperspectral Camera', description: 'Hyperspectral Camera extends what the exploration track can detect and map.', imageKey: 'exploration/hyperspectral-camera', threshold: 6_633, editThreshold: 6_633 },
+  { id: 152, track: 'exploration', sequence: 52, slug: 'wi-fi-module', code: 'WFM', name: 'Wi-Fi Module', description: 'Wi-Fi Module represents a discovery milestone on the exploration track.', imageKey: 'exploration/wi-fi-module', threshold: 7_030, editThreshold: 7_030 },
+  { id: 153, track: 'exploration', sequence: 53, slug: 'gps-receiver', code: 'GR', name: 'GPS Receiver', description: 'GPS Receiver represents the data-handling layer of exploration.', imageKey: 'exploration/gps-receiver', threshold: 7_444, editThreshold: 7_444 },
+  { id: 154, track: 'exploration', sequence: 54, slug: 'ros', code: 'ROS', name: 'ROS', description: 'ROS marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/ros', threshold: 7_873, editThreshold: 7_873 },
+  { id: 155, track: 'exploration', sequence: 55, slug: 'quadruped-robot', code: 'QR', name: 'Quadruped Robot', description: 'Quadruped Robot marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/quadruped-robot', threshold: 8_319, editThreshold: 8_319 },
+  { id: 156, track: 'exploration', sequence: 56, slug: 'drone', code: 'DRO', name: 'Drone', description: 'Drone marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/drone', threshold: 8_781, editThreshold: 8_781 },
+  { id: 157, track: 'exploration', sequence: 57, slug: 'rover', code: 'ROV', name: 'Rover', description: 'Rover marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/rover', threshold: 9_260, editThreshold: 9_260 },
+  { id: 158, track: 'exploration', sequence: 58, slug: 'autonomous-underwater-vehicle-auv', code: 'AUV', name: 'Autonomous Underwater Vehicle (AUV)', description: 'Autonomous Underwater Vehicle (AUV) marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/autonomous-underwater-vehicle-auv', threshold: 9_756, editThreshold: 9_756 },
+  { id: 159, track: 'exploration', sequence: 59, slug: 'hydrophone', code: 'HYD', name: 'Hydrophone', description: 'Hydrophone extends what the exploration track can detect and map.', imageKey: 'exploration/hydrophone', threshold: 10_269, editThreshold: 10_269 },
+  { id: 160, track: 'exploration', sequence: 60, slug: 'sonar-array', code: 'SA', name: 'Sonar Array', description: 'Sonar Array extends what the exploration track can detect and map.', imageKey: 'exploration/sonar-array', threshold: 10_800, editThreshold: 10_800 },
+  { id: 161, track: 'exploration', sequence: 61, slug: 'radar-dish', code: 'RD', name: 'Radar Dish', description: 'Radar Dish extends what the exploration track can detect and map.', imageKey: 'exploration/radar-dish', threshold: 11_349, editThreshold: 11_349 },
+  { id: 162, track: 'exploration', sequence: 62, slug: 'weather-balloon', code: 'WB', name: 'Weather Balloon', description: 'Weather Balloon represents a discovery milestone on the exploration track.', imageKey: 'exploration/weather-balloon', threshold: 11_916, editThreshold: 11_916 },
+  { id: 163, track: 'exploration', sequence: 63, slug: 'satellite', code: 'SAT', name: 'Satellite', description: 'Satellite represents a discovery milestone on the exploration track.', imageKey: 'exploration/satellite', threshold: 12_502, editThreshold: 12_502 },
+  { id: 164, track: 'exploration', sequence: 64, slug: 'cubesat', code: 'CUB', name: 'CubeSat', description: 'CubeSat represents a discovery milestone on the exploration track.', imageKey: 'exploration/cubesat', threshold: 13_107, editThreshold: 13_107 },
+  { id: 165, track: 'exploration', sequence: 65, slug: 'star-tracker', code: 'ST', name: 'Star Tracker', description: 'Star Tracker represents the data-handling layer of exploration.', imageKey: 'exploration/star-tracker', threshold: 13_731, editThreshold: 13_731 },
+  { id: 166, track: 'exploration', sequence: 66, slug: 'probe', code: 'PRO', name: 'Probe', description: 'Probe marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/probe', threshold: 14_375, editThreshold: 14_375 },
+  { id: 167, track: 'exploration', sequence: 67, slug: 'cpu', code: 'CPU', name: 'CPU', description: 'CPU marks the computing layer behind advanced discovery.', imageKey: 'exploration/cpu', threshold: 15_038, editThreshold: 15_038 },
+  { id: 168, track: 'exploration', sequence: 68, slug: 'gpu', code: 'GPU', name: 'GPU', description: 'GPU marks the computing layer behind advanced discovery.', imageKey: 'exploration/gpu', threshold: 15_722, editThreshold: 15_722 },
+  { id: 169, track: 'exploration', sequence: 69, slug: 'keyboard', code: 'KEY', name: 'Keyboard', description: 'Keyboard represents the data-handling layer of exploration.', imageKey: 'exploration/keyboard', threshold: 16_425, editThreshold: 16_425 },
+  { id: 170, track: 'exploration', sequence: 70, slug: 'mouse', code: 'MOU', name: 'Mouse', description: 'Mouse represents the data-handling layer of exploration.', imageKey: 'exploration/mouse', threshold: 17_150, editThreshold: 17_150 },
+  { id: 171, track: 'exploration', sequence: 71, slug: 'monitor', code: 'MON', name: 'Monitor', description: 'Monitor represents the data-handling layer of exploration.', imageKey: 'exploration/monitor', threshold: 17_896, editThreshold: 17_896 },
+  { id: 172, track: 'exploration', sequence: 72, slug: 'server', code: 'SER', name: 'Server', description: 'Server marks a shift from fieldwork to expedition systems.', imageKey: 'exploration/server', threshold: 18_662, editThreshold: 18_662 },
+  { id: 173, track: 'exploration', sequence: 73, slug: 'cloud', code: 'CLO', name: 'Cloud', description: 'Cloud represents the data-handling layer of exploration.', imageKey: 'exploration/cloud', threshold: 19_451, editThreshold: 19_451 },
+  { id: 174, track: 'exploration', sequence: 74, slug: 'storage', code: 'STO', name: 'Storage', description: 'Storage represents the data-handling layer of exploration.', imageKey: 'exploration/storage', threshold: 20_261, editThreshold: 20_261 },
+  { id: 175, track: 'exploration', sequence: 75, slug: 'spare-memory', code: 'SM', name: 'Spare Memory', description: 'Spare Memory marks the computing layer behind advanced discovery.', imageKey: 'exploration/spare-memory', threshold: 21_094, editThreshold: 21_094 },
+  { id: 176, track: 'exploration', sequence: 76, slug: 'bit-to-petabyte', code: 'BP', name: 'Bit To Petabyte', description: 'Bit to Petabyte represents the data-handling layer of exploration.', imageKey: 'exploration/bit-to-petabyte', threshold: 21_949, editThreshold: 21_949 },
+  { id: 177, track: 'exploration', sequence: 77, slug: 'computing-cluster', code: 'CC', name: 'Computing Cluster', description: 'Computing Cluster marks a shift from fieldwork to expedition systems.', imageKey: 'exploration/computing-cluster', threshold: 22_827, editThreshold: 22_827 },
+  { id: 178, track: 'exploration', sequence: 78, slug: 'artificial-intelligence-ai-processor', code: 'AIA', name: 'Artificial Intelligence (AI) Processor', description: 'Artificial Intelligence (AI) Processor marks the computing layer behind advanced discovery.', imageKey: 'exploration/artificial-intelligence-ai-processor', threshold: 23_728, editThreshold: 23_728 },
+  { id: 179, track: 'exploration', sequence: 79, slug: 'machine-learning-kit-for-robots', code: 'MLR', name: 'Machine Learning Kit For Robots', description: 'Machine Learning Kit for Robots marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/machine-learning-kit-for-robots', threshold: 24_652, editThreshold: 24_652 },
+  { id: 180, track: 'exploration', sequence: 80, slug: 'haptic-feedback-system', code: 'HF', name: 'Haptic Feedback System', description: 'Haptic Feedback System represents a discovery milestone on the exploration track.', imageKey: 'exploration/haptic-feedback-system', threshold: 25_600, editThreshold: 25_600 },
+  { id: 181, track: 'exploration', sequence: 81, slug: 'robotic-exoskeleton', code: 'RE', name: 'Robotic Exoskeleton', description: 'Robotic Exoskeleton marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/robotic-exoskeleton', threshold: 26_572, editThreshold: 26_572 },
+  { id: 182, track: 'exploration', sequence: 82, slug: 'flexible-electronic-skin-e-skin', code: 'FES', name: 'Flexible Electronic Skin (e-skin)', description: 'Flexible Electronic Skin (e-skin) marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/flexible-electronic-skin-e-skin', threshold: 27_568, editThreshold: 27_568 },
+  { id: 183, track: 'exploration', sequence: 83, slug: 'biosensor', code: 'BIO', name: 'Biosensor', description: 'Biosensor extends what the exploration track can detect and map.', imageKey: 'exploration/biosensor', threshold: 28_589, editThreshold: 28_589 },
+  { id: 184, track: 'exploration', sequence: 84, slug: 'quantum-sensor', code: 'QS', name: 'Quantum Sensor', description: 'Quantum Sensor extends what the exploration track can detect and map.', imageKey: 'exploration/quantum-sensor', threshold: 29_635, editThreshold: 29_635 },
+  { id: 185, track: 'exploration', sequence: 85, slug: 'advanced-lidar-system', code: 'AL', name: 'Advanced LiDAR System', description: 'Advanced LiDAR System extends what the exploration track can detect and map.', imageKey: 'exploration/advanced-lidar-system', threshold: 30_706, editThreshold: 30_706 },
+  { id: 186, track: 'exploration', sequence: 86, slug: 'microbot-swarm', code: 'MS', name: 'Microbot Swarm', description: 'Microbot Swarm marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/microbot-swarm', threshold: 31_803, editThreshold: 31_803 },
+  { id: 187, track: 'exploration', sequence: 87, slug: 'dna-nanotechnology', code: 'DN', name: 'DNA Nanotechnology', description: 'DNA Nanotechnology represents frontier materials and bioengineering in exploration.', imageKey: 'exploration/dna-nanotechnology', threshold: 32_925, editThreshold: 32_925 },
+  { id: 188, track: 'exploration', sequence: 88, slug: 'gene-sequencer', code: 'GS', name: 'Gene Sequencer', description: 'Gene Sequencer represents a discovery milestone on the exploration track.', imageKey: 'exploration/gene-sequencer', threshold: 34_074, editThreshold: 34_074 },
+  { id: 189, track: 'exploration', sequence: 89, slug: 'nanoscope', code: 'NAN', name: 'Nanoscope', description: 'Nanoscope is a scientific observation milestone on the exploration track.', imageKey: 'exploration/nanoscope', threshold: 35_248, editThreshold: 35_248 },
+  { id: 190, track: 'exploration', sequence: 90, slug: 'particle-detector', code: 'PD', name: 'Particle Detector', description: 'Particle Detector is a scientific observation milestone on the exploration track.', imageKey: 'exploration/particle-detector', threshold: 36_450, editThreshold: 36_450 },
+  { id: 191, track: 'exploration', sequence: 91, slug: 'quantum-computer', code: 'QC', name: 'Quantum Computer', description: 'Quantum Computer marks the computing layer behind advanced discovery.', imageKey: 'exploration/quantum-computer', threshold: 37_679, editThreshold: 37_679 },
+  { id: 192, track: 'exploration', sequence: 92, slug: 'fusion-test-chamber', code: 'FTC', name: 'Fusion Test Chamber', description: 'Fusion Test Chamber represents a discovery milestone on the exploration track.', imageKey: 'exploration/fusion-test-chamber', threshold: 38_934, editThreshold: 38_934 },
+  { id: 193, track: 'exploration', sequence: 93, slug: 'neutrino-detector', code: 'ND', name: 'Neutrino Detector', description: 'Neutrino Detector represents a discovery milestone on the exploration track.', imageKey: 'exploration/neutrino-detector', threshold: 40_218, editThreshold: 40_218 },
+  { id: 194, track: 'exploration', sequence: 94, slug: 'deep-sea-observatory', code: 'DSO', name: 'Deep Sea Observatory', description: 'Deep Sea Observatory represents a discovery milestone on the exploration track.', imageKey: 'exploration/deep-sea-observatory', threshold: 41_529, editThreshold: 41_529 },
+  { id: 195, track: 'exploration', sequence: 95, slug: 'orbital-telescope', code: 'OT', name: 'Orbital Telescope', description: 'Orbital Telescope is a scientific observation milestone on the exploration track.', imageKey: 'exploration/orbital-telescope', threshold: 42_869, editThreshold: 42_869 },
+  { id: 196, track: 'exploration', sequence: 96, slug: 'planetary-lander', code: 'PL', name: 'Planetary Lander', description: 'Planetary Lander supports hands-on field investigation in the exploration track.', imageKey: 'exploration/planetary-lander', threshold: 44_237, editThreshold: 44_237 },
+  { id: 197, track: 'exploration', sequence: 97, slug: 'swarm-drone-beacon', code: 'SDB', name: 'Swarm Drone Beacon', description: 'Swarm Drone Beacon marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/swarm-drone-beacon', threshold: 45_634, editThreshold: 45_634 },
+  { id: 198, track: 'exploration', sequence: 98, slug: 'exoplanet-imager', code: 'EI', name: 'Exoplanet Imager', description: 'Exoplanet Imager supports hands-on field investigation in the exploration track.', imageKey: 'exploration/exoplanet-imager', threshold: 47_060, editThreshold: 47_060 },
+  { id: 199, track: 'exploration', sequence: 99, slug: 'dark-matter-array', code: 'DMA', name: 'Dark Matter Array', description: 'Dark Matter Array represents a discovery milestone on the exploration track.', imageKey: 'exploration/dark-matter-array', threshold: 48_515, editThreshold: 48_515 },
+  { id: 200, track: 'exploration', sequence: 100, slug: 'interstellar-probe', code: 'IP', name: 'Interstellar Probe', description: 'Interstellar Probe marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/interstellar-probe', threshold: 50_000, editThreshold: 50_000 },
+];
+
+/** All 200 badges, building first then exploration. */
+export const BADGE_DEFINITIONS: BadgeDefinition[] = [
+  ...BUILDING_BADGES,
+  ...EXPLORATION_BADGES,
+];
+
+/** Helper: get badges for a specific track. */
+export function badgesForTrack(track: BadgeTrack): BadgeDefinition[] {
+  return track === 'building' ? BUILDING_BADGES : EXPLORATION_BADGES;
+}
+
+/** Helper: get the stat key to check for a given track. */
+export function statKeyForTrack(track: BadgeTrack): 'editsAllTime' | 'cellsSubmitted' {
+  return track === 'building' ? 'editsAllTime' : 'cellsSubmitted';
+}

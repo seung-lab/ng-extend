@@ -4,7 +4,7 @@ import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, CellHistoryEntry} from '../store';
-import {BADGE_DEFINITIONS, BadgeDefinition} from '../widgets/badge_definitions';
+import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
 
@@ -272,27 +272,47 @@ function getBadgeUrl(imageKey: string): string {
   return BADGE_IMAGE_MAP[imageKey] ?? '';
 }
 
-function isBadgeEarned(editThreshold: number): boolean {
-  if (editThreshold === 0) return false;
-  return (stats.value.editsAllTime ?? 0) >= editThreshold;
+/** Get the player's current count for a given track. */
+function statForTrack(track: BadgeTrack): number {
+  return track === 'building'
+    ? (stats.value.editsAllTime ?? 0)
+    : (stats.value.cellsSubmitted ?? 0);
+}
+
+function isBadgeEarned(badge: BadgeDefinition): boolean {
+  if (badge.threshold === 0) return false;
+  return statForTrack(badge.track) >= badge.threshold;
 }
 
 function onBadgeClick(badge: BadgeDefinition) {
-  if (!isBadgeEarned(badge.editThreshold)) return;
+  if (!isBadgeEarned(badge)) return;
   // Toggle: click same badge again to return to cells canvas
   selectedBadge.value = selectedBadge.value?.id === badge.id ? null : badge;
 }
 
-// ── Achievement countdown ─────────────────────────────────────────────────────
+/** Label for the threshold in badge detail. */
+function thresholdLabel(badge: BadgeDefinition): string {
+  return badge.track === 'building' ? 'edits' : 'cells completed';
+}
+
+// ── Achievement countdown (shows next badge across both tracks) ──────────────
 const nextAchievement = computed(() => {
-  const allTime = stats.value.editsAllTime ?? 0;
-  const sorted = [...BADGE_DEFINITIONS].filter(b => b.editThreshold > 0).sort((a, b) => a.editThreshold - b.editThreshold);
-  const next = sorted.find(b => allTime < b.editThreshold);
-  if (!next) return null;
-  const prev = sorted[sorted.indexOf(next) - 1]?.editThreshold ?? 0;
-  const remaining = next.editThreshold - allTime;
-  const pct = Math.min(100, Math.round(((allTime - prev) / (next.editThreshold - prev)) * 100));
-  return { name: next.name, threshold: next.editThreshold, remaining, pct };
+  // Find next unearned badge from each track, show whichever is closer
+  function nextFor(badges: BadgeDefinition[], current: number) {
+    const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
+    const next = sorted.find(b => current < b.threshold);
+    if (!next) return null;
+    const prev = sorted[sorted.indexOf(next) - 1]?.threshold ?? 0;
+    const remaining = next.threshold - current;
+    const pct = Math.min(100, Math.round(((current - prev) / (next.threshold - prev)) * 100));
+    return { name: next.name, threshold: next.threshold, remaining, pct, track: next.track as BadgeTrack };
+  }
+  const building = nextFor(BUILDING_BADGES, stats.value.editsAllTime ?? 0);
+  const exploration = nextFor(EXPLORATION_BADGES, stats.value.cellsSubmitted ?? 0);
+  // Prefer whichever has fewer remaining (closer to unlock)
+  if (!building) return exploration;
+  if (!exploration) return building;
+  return building.remaining <= exploration.remaining ? building : exploration;
 });
 
 // ── Current dataset helper (for filtering cells) ────────────────────────────
@@ -571,7 +591,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-profile-section-label nge-profile-section-label--green">▌ Next Achievement</div>
             <div class="nge-profile-countdown-row">
               <div class="nge-profile-countdown-name">{{ nextAchievement.name }}</div>
-              <div class="nge-profile-countdown-remaining">{{ nextAchievement.remaining.toLocaleString() }} edits to go</div>
+              <div class="nge-profile-countdown-remaining">{{ nextAchievement.remaining.toLocaleString() }} {{ nextAchievement.track === 'building' ? 'edits' : 'cells' }} to go</div>
             </div>
             <div class="nge-profile-countdown-track">
               <div class="nge-profile-countdown-fill" :style="{ width: nextAchievement.pct + '%' }"></div>
@@ -583,27 +603,65 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Badges -->
+          <!-- Building Badges (edits) -->
           <div class="nge-profile-section nge-profile-section--badges">
-            <div class="nge-profile-section-label">▌ Badges</div>
-            <div class="nge-profile-badges-hint" v-if="selectedBadge">
+            <div class="nge-profile-section-label" style="color: #ffd08a;">▌ Building Badges <span style="font-size: 0.75em; opacity: 0.6;">(edits)</span></div>
+            <div class="nge-profile-badges-hint" v-if="selectedBadge?.track === 'building'">
               badge detail on the right · click again to dismiss
             </div>
             <div class="nge-profile-badges-grid">
               <div
-                v-for="badge in BADGE_DEFINITIONS"
+                v-for="badge in BUILDING_BADGES"
                 :key="badge.id"
                 class="nge-profile-badge"
                 :class="{
-                  'nge-profile-badge--locked':   !isBadgeEarned(badge.editThreshold),
+                  'nge-profile-badge--locked':   !isBadgeEarned(badge),
                   'nge-profile-badge--selected': selectedBadge?.id === badge.id,
                 }"
-                :title="isBadgeEarned(badge.editThreshold)
+                :title="isBadgeEarned(badge)
                   ? badge.name + ' — click to see detail'
                   : '??? — keep editing to unlock!'"
                 @click="onBadgeClick(badge)"
               >
-                <template v-if="isBadgeEarned(badge.editThreshold)">
+                <template v-if="isBadgeEarned(badge)">
+                  <div class="nge-profile-badge-img">
+                    <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" />
+                  </div>
+                  <div class="nge-profile-badge-name">{{ badge.name }}</div>
+                </template>
+                <template v-else>
+                  <div class="nge-profile-badge-img">
+                    <div class="nge-profile-badge-mystery">
+                      <span class="nge-profile-badge-mystery-q">?</span>
+                    </div>
+                  </div>
+                  <div class="nge-profile-badge-name nge-profile-badge-name--locked">???</div>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <!-- Exploration Badges (cells completed) -->
+          <div class="nge-profile-section nge-profile-section--badges">
+            <div class="nge-profile-section-label" style="color: #90fff2;">▌ Exploration Badges <span style="font-size: 0.75em; opacity: 0.6;">(cells)</span></div>
+            <div class="nge-profile-badges-hint" v-if="selectedBadge?.track === 'exploration'">
+              badge detail on the right · click again to dismiss
+            </div>
+            <div class="nge-profile-badges-grid">
+              <div
+                v-for="badge in EXPLORATION_BADGES"
+                :key="badge.id"
+                class="nge-profile-badge"
+                :class="{
+                  'nge-profile-badge--locked':   !isBadgeEarned(badge),
+                  'nge-profile-badge--selected': selectedBadge?.id === badge.id,
+                }"
+                :title="isBadgeEarned(badge)
+                  ? badge.name + ' — click to see detail'
+                  : '??? — complete more cells to unlock!'"
+                @click="onBadgeClick(badge)"
+              >
+                <template v-if="isBadgeEarned(badge)">
                   <div class="nge-profile-badge-img">
                     <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" />
                   </div>
@@ -708,7 +766,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-profile-viz-badge-desc">{{ selectedBadge.description }}</div>
               <div class="nge-profile-viz-badge-threshold">
                 Unlocked at<br>
-                <strong>{{ selectedBadge.editThreshold.toLocaleString() }}</strong> edits
+                <strong>{{ selectedBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(selectedBadge) }}
               </div>
               <button class="nge-profile-viz-badge-back" @click="selectedBadge = null">
                 ← Back to cells map
