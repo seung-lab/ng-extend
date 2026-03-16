@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue';
+import {ref, computed, onMounted, onUnmounted} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
@@ -25,7 +25,9 @@ backendStore.loadUserStats();
 const closing        = ref(false);
 const selectedBadge  = ref<BadgeDefinition | null>(null);
 const showFlagPicker = ref(false);
-const cellCanvas     = ref<HTMLCanvasElement | null>(null);
+const showAllBuilding    = ref(false);
+const showAllExploration = ref(false);
+const BADGE_PREVIEW_LIMIT = 12;
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
 // All country flags A-Z (ISO 3166-1 alpha-2, sorted alphabetically)
@@ -80,164 +82,7 @@ onMounted(()  => document.addEventListener('click', handleGlobalClick, true));
 onUnmounted(() => document.removeEventListener('click', handleGlobalClick, true));
 
 // ── Canvas cell-dot visualization ─────────────────────────────────────────────
-/** Seeded LCG RNG — deterministic dot layout that doesn't shift on re-render. */
-function seededRNG(seed: number) {
-  let s = seed >>> 0;
-  return function () {
-    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
-    return s / 0x100000000;
-  };
-}
-
-/** Draw cells as dots inside a rectangular volume bounding box. */
-function drawCells() {
-  const canvas = cellCanvas.value;
-  if (!canvas) return;
-
-  const W = 270, H = 310;
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width  = W * dpr;
-  canvas.height = H * dpr;
-  canvas.style.width  = W + 'px';
-  canvas.style.height = H + 'px';
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, W, H);
-
-  // Rectangular volume bounding box (all connectomics datasets are rectangular)
-  const mX = 16, mY = 22;
-  const bL = mX, bT = mY, bR = W - mX, bB = H - mY;
-  const bW = bR - bL, bH = bB - bT;
-
-  // Outer box (very faint)
-  ctx.strokeStyle = 'rgba(74, 158, 255, 0.09)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(bL, bT, bW, bH);
-
-  // Sci-fi corner brackets
-  const cs = 11;
-  ctx.strokeStyle = 'rgba(74, 158, 255, 0.5)';
-  ctx.lineWidth = 1.5;
-  ([ [bL, bT, 1, 1], [bR, bT, -1, 1], [bL, bB, 1, -1], [bR, bB, -1, -1] ] as const)
-    .forEach(([x, y, dx, dy]) => {
-      ctx.beginPath();
-      ctx.moveTo(x + dx * cs, y);
-      ctx.lineTo(x, y);
-      ctx.lineTo(x, y + dy * cs);
-      ctx.stroke();
-    });
-
-  // Dataset label bottom-right
-  ctx.fillStyle = 'rgba(74, 158, 255, 0.28)';
-  ctx.font = '9px system-ui, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('minnie65', bR - 2, bB - 3);
-
-  const completed   = Math.min(stats.value.cellsSubmitted, 400);
-  const estimated   = Math.round(stats.value.editsAllTime / 30);
-  const contributed = Math.min(Math.max(0, estimated - stats.value.cellsSubmitted), 250);
-  const todayEdits  = Math.min(stats.value.editsToday, 80); // today's edits in amber
-
-  if (completed === 0 && contributed === 0 && todayEdits === 0) {
-    ctx.fillStyle = 'rgba(100, 130, 160, 0.3)';
-    ctx.font = '11px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Start editing to map cells', W / 2, H / 2 + 4);
-    return;
-  }
-
-  const rng = seededRNG(42);
-  const inset = 5;
-
-  function nextDot(): [number, number] {
-    // Uniform random within the volume rectangle (no rejection sampling needed)
-    return [
-      bL + inset + rng() * (bW - 2 * inset),
-      bT + inset + rng() * (bH - 2 * inset),
-    ];
-  }
-
-  // Contributed cells (faded blue) drawn first so bright dots render on top
-  for (let i = 0; i < contributed; i++) {
-    const [x, y] = nextDot();
-    ctx.beginPath();
-    ctx.arc(x, y, 1.5, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(100, 160, 255, 0.2)';
-    ctx.fill();
-  }
-
-  // Completed cells (bright blue)
-  const completedDots: Array<[number, number]> = [];
-  for (let i = 0; i < completed; i++) {
-    const dot = nextDot();
-    completedDots.push(dot);
-    const [x, y] = dot;
-    ctx.beginPath();
-    ctx.arc(x, y, 2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(120, 200, 255, 0.9)';
-    ctx.fill();
-  }
-
-  // Radial glow on random selection of completed dots
-  if (completedDots.length > 0) {
-    const rngGlow = seededRNG(99);
-    const glowN = Math.min(completedDots.length, 60);
-    for (let i = 0; i < glowN; i++) {
-      const [x, y] = completedDots[Math.floor(rngGlow() * completedDots.length)];
-      const grd = ctx.createRadialGradient(x, y, 0, x, y, 6);
-      grd.addColorStop(0, 'rgba(120, 200, 255, 0.35)');
-      grd.addColorStop(1, 'rgba(120, 200, 255, 0)');
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = grd;
-      ctx.fill();
-    }
-  }
-
-  // Today's edits — amber/green dots with glow (drawn on top so they pop)
-  const rngToday = seededRNG(77 + todayEdits); // seed changes as count grows
-  for (let i = 0; i < todayEdits; i++) {
-    const x = bL + inset + rngToday() * (bW - 2 * inset);
-    const y = bT + inset + rngToday() * (bH - 2 * inset);
-    // Glow
-    const grd = ctx.createRadialGradient(x, y, 0, x, y, 7);
-    grd.addColorStop(0, 'rgba(120, 255, 160, 0.45)');
-    grd.addColorStop(1, 'rgba(120, 255, 160, 0)');
-    ctx.beginPath();
-    ctx.arc(x, y, 7, 0, Math.PI * 2);
-    ctx.fillStyle = grd;
-    ctx.fill();
-    // Dot
-    ctx.beginPath();
-    ctx.arc(x, y, 2.2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(120, 255, 160, 0.95)';
-    ctx.fill();
-  }
-}
-
-// Pulse the canvas when new cells are submitted or edits happen today
-watch(() => stats.value.cellsSubmitted, (newVal, oldVal) => {
-  if (newVal > oldVal) {
-    nextTick(() => {
-      cellCanvas.value?.classList.add('nge-canvas-pulse');
-      setTimeout(() => cellCanvas.value?.classList.remove('nge-canvas-pulse'), 700);
-    });
-  }
-});
-
-// Also pulse on today's edits (segment interactions)
-watch(() => stats.value.editsToday, (newVal, oldVal) => {
-  if (newVal > oldVal) {
-    nextTick(() => {
-      cellCanvas.value?.classList.add('nge-canvas-pulse');
-      setTimeout(() => cellCanvas.value?.classList.remove('nge-canvas-pulse'), 700);
-    });
-  }
-});
-
-// ── Demo seeding + initial draw ───────────────────────────────────────────────
+// ── Demo seeding ─────────────────────────────────────────────────────────────
 onMounted(() => {
   if (stats.value.editsAllTime === 0) {
     const amy = DEMO_USERS[0];
@@ -258,14 +103,7 @@ onMounted(() => {
       communityEditsThisMonth: DEMO_COMMUNITY_EDITS_MONTH,
     });
   }
-  nextTick(drawCells);
 });
-
-// Redraw when stats change (real edit data pushed in from CAVE)
-watch(stats, () => nextTick(drawCells), {deep: true});
-
-// Redraw canvas when returning from badge-detail view in the viz column
-watch(selectedBadge, (v) => { if (!v) nextTick(drawCells); });
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 function getBadgeUrl(imageKey: string): string {
@@ -286,34 +124,61 @@ function isBadgeEarned(badge: BadgeDefinition): boolean {
 
 function onBadgeClick(badge: BadgeDefinition) {
   if (!isBadgeEarned(badge)) return;
-  // Toggle: click same badge again to return to cells canvas
+  // Toggle: click same badge again to dismiss detail
   selectedBadge.value = selectedBadge.value?.id === badge.id ? null : badge;
 }
+
+// ── Earned badges + 1 upcoming "next" badge per track ────────────────────────
+const earnedBuildingBadges = computed(() => {
+  const earned = BUILDING_BADGES.filter(b => isBadgeEarned(b)).reverse();
+  const nextLocked = BUILDING_BADGES.find(b => !isBadgeEarned(b));
+  return { earned, next: nextLocked ?? null };
+});
+
+const earnedExplorationBadges = computed(() => {
+  const earned = EXPLORATION_BADGES.filter(b => isBadgeEarned(b)).reverse();
+  const nextLocked = EXPLORATION_BADGES.find(b => !isBadgeEarned(b));
+  return { earned, next: nextLocked ?? null };
+});
+
+/** Most recently earned badge (highest threshold among earned). */
+const latestEarnedBadge = computed(() => {
+  const allEarned = BADGE_DEFINITIONS.filter(b => isBadgeEarned(b));
+  if (allEarned.length === 0) return null;
+  return allEarned.reduce((a, b) => a.threshold > b.threshold ? a : b);
+});
+
+const displayedBuildingBadges = computed(() => {
+  const all = earnedBuildingBadges.value.earned;
+  return showAllBuilding.value ? all : all.slice(0, BADGE_PREVIEW_LIMIT);
+});
+const displayedExplorationBadges = computed(() => {
+  const all = earnedExplorationBadges.value.earned;
+  return showAllExploration.value ? all : all.slice(0, BADGE_PREVIEW_LIMIT);
+});
 
 /** Label for the threshold in badge detail. */
 function thresholdLabel(badge: BadgeDefinition): string {
   return badge.track === 'building' ? 'edits' : 'cells completed';
 }
 
-// ── Achievement countdown (shows next badge across both tracks) ──────────────
-const nextAchievement = computed(() => {
-  // Find next unearned badge from each track, show whichever is closer
-  function nextFor(badges: BadgeDefinition[], current: number) {
-    const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
-    const next = sorted.find(b => current < b.threshold);
-    if (!next) return null;
-    const prev = sorted[sorted.indexOf(next) - 1]?.threshold ?? 0;
-    const remaining = next.threshold - current;
-    const pct = Math.min(100, Math.round(((current - prev) / (next.threshold - prev)) * 100));
-    return { name: next.name, threshold: next.threshold, remaining, pct, track: next.track as BadgeTrack };
-  }
-  const building = nextFor(BUILDING_BADGES, stats.value.editsAllTime ?? 0);
-  const exploration = nextFor(EXPLORATION_BADGES, stats.value.cellsSubmitted ?? 0);
-  // Prefer whichever has fewer remaining (closer to unlock)
-  if (!building) return exploration;
-  if (!exploration) return building;
-  return building.remaining <= exploration.remaining ? building : exploration;
-});
+// ── Per-track achievement countdowns ─────────────────────────────────────────
+function nextForTrack(badges: BadgeDefinition[], current: number) {
+  const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
+  const next = sorted.find(b => current < b.threshold);
+  if (!next) return null;
+  const prev = sorted[sorted.indexOf(next) - 1]?.threshold ?? 0;
+  const remaining = next.threshold - current;
+  const pct = Math.min(100, Math.round(((current - prev) / (next.threshold - prev)) * 100));
+  return { name: next.name, threshold: next.threshold, remaining, pct, track: next.track as BadgeTrack };
+}
+
+const nextBuildingAchievement = computed(() =>
+  nextForTrack(BUILDING_BADGES, stats.value.editsAllTime ?? 0)
+);
+const nextExplorationAchievement = computed(() =>
+  nextForTrack(EXPLORATION_BADGES, stats.value.cellsSubmitted ?? 0)
+);
 
 // ── Current dataset helper (for filtering cells) ────────────────────────────
 function getCurrentDataset(): string {
@@ -467,7 +332,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 </Transition>
               </div>
 
-              <div class="nge-profile-name">{{ sessions[0].name }}</div>
+              <div class="nge-profile-name">{{ sessions[0].name || sessions[0].email?.split('@')[0] || 'Explorer' }}</div>
 
               <button class="nge-profile-edit-btn"
                       @click="emit('open-settings')"
@@ -546,7 +411,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <!-- Cell history list -->
             <div class="nge-cell-list" v-if="filteredCellHistory.length > 0">
               <div class="nge-cell-list-header">
-                <span>Recent cells — click to jump</span>
+                <span class="nge-cell-list-title">Recent Cells</span>
                 <span v-if="currentDataset" class="nge-cell-list-dataset" :title="'Filtered to ' + currentDataset">{{ currentDataset }}</span>
               </div>
               <div class="nge-cell-list-scroll">
@@ -586,58 +451,57 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         <!-- CENTER: countdown + badges + streak -->
         <div class="nge-profile-col nge-profile-col--center">
 
-          <!-- Achievement countdown — moved to top of center column -->
-          <div class="nge-profile-section nge-profile-section--countdown" v-if="nextAchievement">
-            <div class="nge-profile-section-label nge-profile-section-label--green">▌ Next Achievement</div>
-            <div class="nge-profile-countdown-row">
-              <div class="nge-profile-countdown-name">{{ nextAchievement.name }}</div>
-              <div class="nge-profile-countdown-remaining">{{ nextAchievement.remaining.toLocaleString() }} {{ nextAchievement.track === 'building' ? 'edits' : 'cells' }} to go</div>
-            </div>
-            <div class="nge-profile-countdown-track">
-              <div class="nge-profile-countdown-fill" :style="{ width: nextAchievement.pct + '%' }"></div>
-            </div>
-            <div class="nge-profile-countdown-labels">
-              <span>{{ (nextAchievement.threshold - nextAchievement.remaining).toLocaleString() }}</span>
-              <span>{{ nextAchievement.pct }}%</span>
-              <span>{{ nextAchievement.threshold.toLocaleString() }}</span>
-            </div>
-          </div>
-
-          <!-- Edit Achievements (building track) -->
+          <!-- Proofreading Achievements (building track) -->
           <div class="nge-profile-section nge-profile-section--badges">
-            <div class="nge-profile-section-label" style="color: #ffd08a;">▌ Edit Achievements</div>
-            <div class="nge-profile-badges-hint" v-if="selectedBadge?.track === 'building'">
-              achievement detail on the right · click again to dismiss
+            <div class="nge-profile-section-label" style="color: #ffd08a;">▌ Proofreading Achievements</div>
+            <!-- Per-section countdown -->
+            <div class="nge-profile-countdown-inline" v-if="nextBuildingAchievement">
+              <div class="nge-profile-countdown-row">
+                <div class="nge-profile-countdown-name">{{ nextBuildingAchievement.name }}</div>
+                <div class="nge-profile-countdown-remaining">{{ nextBuildingAchievement.remaining.toLocaleString() }} edits to go</div>
+              </div>
+              <div class="nge-profile-countdown-track">
+                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--building" :style="{ width: nextBuildingAchievement.pct + '%' }"></div>
+              </div>
             </div>
             <div class="nge-profile-badges-grid">
               <div
-                v-for="badge in BUILDING_BADGES"
+                v-for="badge in displayedBuildingBadges"
                 :key="badge.id"
                 class="nge-profile-badge"
                 :class="{
-                  'nge-profile-badge--locked':   !isBadgeEarned(badge),
                   'nge-profile-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-profile-badge--latest': latestEarnedBadge?.id === badge.id,
                 }"
-                :title="isBadgeEarned(badge)
-                  ? badge.name + ' — click to see detail'
-                  : '??? — keep editing to unlock!'"
+                :title="badge.name + ' — click to see detail'"
                 @click="onBadgeClick(badge)"
               >
-                <template v-if="isBadgeEarned(badge)">
-                  <div class="nge-profile-badge-img">
-                    <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" />
-                  </div>
-                  <div class="nge-profile-badge-name">{{ badge.name }}</div>
-                </template>
-                <template v-else>
-                  <div class="nge-profile-badge-img">
-                    <div class="nge-profile-badge-mystery">
-                      <span class="nge-profile-badge-mystery-q">?</span>
-                    </div>
-                  </div>
-                  <div class="nge-profile-badge-name nge-profile-badge-name--locked">???</div>
-                </template>
+                <div class="nge-profile-badge-img">
+                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" />
+                </div>
+                <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
+              <!-- Next locked badge teaser -->
+              <div
+                v-if="earnedBuildingBadges.next && (showAllBuilding || earnedBuildingBadges.earned.length <= BADGE_PREVIEW_LIMIT)"
+                class="nge-profile-badge nge-profile-badge--locked"
+                :title="'Next: keep editing to unlock!'"
+              >
+                <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-mystery">
+                    <span class="nge-profile-badge-mystery-q">?</span>
+                  </div>
+                </div>
+                <div class="nge-profile-badge-name nge-profile-badge-name--locked">???</div>
+              </div>
+            </div>
+            <button
+              v-if="earnedBuildingBadges.earned.length > BADGE_PREVIEW_LIMIT"
+              class="nge-profile-badges-toggle"
+              @click="showAllBuilding = !showAllBuilding"
+            >{{ showAllBuilding ? '▲ Show less' : `▼ See all ${earnedBuildingBadges.earned.length} badges` }}</button>
+            <div v-if="earnedBuildingBadges.earned.length === 0" class="nge-profile-badges-empty">
+              Make your first edit to earn a badge!
             </div>
           </div>
 
@@ -647,40 +511,108 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- Cell Achievements (exploration track) -->
           <div class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-section-label" style="color: #90fff2;">▌ Cell Achievements</div>
-            <div class="nge-profile-badges-hint" v-if="selectedBadge?.track === 'exploration'">
-              achievement detail on the right · click again to dismiss
+            <!-- Per-section countdown -->
+            <div class="nge-profile-countdown-inline" v-if="nextExplorationAchievement">
+              <div class="nge-profile-countdown-row">
+                <div class="nge-profile-countdown-name">{{ nextExplorationAchievement.name }}</div>
+                <div class="nge-profile-countdown-remaining">{{ nextExplorationAchievement.remaining.toLocaleString() }} cells to go</div>
+              </div>
+              <div class="nge-profile-countdown-track">
+                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--exploration" :style="{ width: nextExplorationAchievement.pct + '%' }"></div>
+              </div>
             </div>
             <div class="nge-profile-badges-grid">
               <div
-                v-for="badge in EXPLORATION_BADGES"
+                v-for="badge in displayedExplorationBadges"
                 :key="badge.id"
                 class="nge-profile-badge"
                 :class="{
-                  'nge-profile-badge--locked':   !isBadgeEarned(badge),
                   'nge-profile-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-profile-badge--latest': latestEarnedBadge?.id === badge.id,
                 }"
-                :title="isBadgeEarned(badge)
-                  ? badge.name + ' — click to see detail'
-                  : '??? — complete more cells to unlock!'"
+                :title="badge.name + ' — click to see detail'"
                 @click="onBadgeClick(badge)"
               >
-                <template v-if="isBadgeEarned(badge)">
-                  <div class="nge-profile-badge-img">
-                    <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" />
+                <div class="nge-profile-badge-img">
+                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" />
+                </div>
+                <div class="nge-profile-badge-name">{{ badge.name }}</div>
+              </div>
+              <!-- Next locked badge teaser -->
+              <div
+                v-if="earnedExplorationBadges.next && (showAllExploration || earnedExplorationBadges.earned.length <= BADGE_PREVIEW_LIMIT)"
+                class="nge-profile-badge nge-profile-badge--locked"
+                :title="'Next: complete more cells to unlock!'"
+              >
+                <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-mystery">
+                    <span class="nge-profile-badge-mystery-q">?</span>
                   </div>
-                  <div class="nge-profile-badge-name">{{ badge.name }}</div>
-                </template>
-                <template v-else>
-                  <div class="nge-profile-badge-img">
-                    <div class="nge-profile-badge-mystery">
-                      <span class="nge-profile-badge-mystery-q">?</span>
-                    </div>
-                  </div>
-                  <div class="nge-profile-badge-name nge-profile-badge-name--locked">???</div>
-                </template>
+                </div>
+                <div class="nge-profile-badge-name nge-profile-badge-name--locked">???</div>
               </div>
             </div>
+            <button
+              v-if="earnedExplorationBadges.earned.length > BADGE_PREVIEW_LIMIT"
+              class="nge-profile-badges-toggle"
+              @click="showAllExploration = !showAllExploration"
+            >{{ showAllExploration ? '▲ Show less' : `▼ See all ${earnedExplorationBadges.earned.length} badges` }}</button>
+            <div v-if="earnedExplorationBadges.earned.length === 0" class="nge-profile-badges-empty">
+              Complete your first cell to earn a badge!
+            </div>
           </div>
+
+
+        </div><!-- end center column -->
+
+        <!-- RIGHT: latest badge highlight  <->  badge detail -->
+        <div class="nge-profile-col nge-profile-col--right">
+          <Transition name="nge-viz-swap" mode="out-in">
+
+            <!-- Default view: latest earned badge spotlight -->
+            <div v-if="!selectedBadge" key="latest" class="nge-profile-viz-panel nge-profile-viz-badge">
+              <template v-if="latestEarnedBadge">
+                <div class="nge-profile-viz-title">▌ Latest Badge</div>
+                <img
+                  :src="getBadgeUrl(latestEarnedBadge.imageKey)"
+                  :alt="latestEarnedBadge.name"
+                  class="nge-profile-viz-badge-icon"
+                />
+                <div class="nge-profile-viz-badge-name">{{ latestEarnedBadge.name }}</div>
+                <div class="nge-profile-viz-badge-desc">{{ latestEarnedBadge.description }}</div>
+                <div class="nge-profile-viz-badge-threshold">
+                  Earned at <strong>{{ latestEarnedBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(latestEarnedBadge) }}
+                </div>
+              </template>
+              <template v-else>
+                <div class="nge-profile-viz-title">▌ Badges</div>
+                <div class="nge-profile-viz-badge-desc" style="margin-top: 40px;">
+                  Make edits and complete cells to earn badges!
+                </div>
+              </template>
+            </div>
+
+            <!-- Badge detail view (when a badge is clicked) -->
+            <div v-else key="badge" class="nge-profile-viz-panel nge-profile-viz-badge nge-profile-viz-badge--detail">
+              <img
+                :src="getBadgeUrl(selectedBadge.imageKey)"
+                :alt="selectedBadge.name"
+                class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
+              />
+              <div class="nge-profile-viz-badge-name">{{ selectedBadge.name }}</div>
+              <div class="nge-profile-viz-badge-desc">{{ selectedBadge.description }}</div>
+              <div class="nge-profile-viz-badge-threshold">
+                Unlocked at <strong>{{ selectedBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(selectedBadge) }}
+              </div>
+              <button class="nge-profile-viz-badge-back" @click="selectedBadge = null">
+                ← Back
+              </button>
+            </div>
+
+          </Transition>
+
+          <!-- Divider between badge and streak -->
+          <div class="nge-profile-right-divider"></div>
 
           <!-- Streak + Activity Chart -->
           <div class="nge-profile-section nge-profile-section--streak">
@@ -733,50 +665,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-
-        </div><!-- end center column -->
-
-        <!-- RIGHT: cell canvas  <->  badge detail -->
-        <div class="nge-profile-col nge-profile-col--right">
-          <Transition name="nge-viz-swap" mode="out-in">
-
-            <!-- Canvas view (default) -->
-            <div v-if="!selectedBadge" key="canvas" class="nge-profile-viz-panel">
-              <div class="nge-profile-viz-title">▌ Cells Mapped</div>
-              <canvas ref="cellCanvas" class="nge-profile-canvas"></canvas>
-              <div class="nge-profile-viz-legend">
-                <span class="nge-profile-viz-dot nge-profile-viz-dot--completed"></span>
-                <span class="nge-profile-viz-legend-lbl">completed</span>
-                <span class="nge-profile-viz-dot nge-profile-viz-dot--contributed"></span>
-                <span class="nge-profile-viz-legend-lbl">contributed</span>
-                <span class="nge-profile-viz-dot nge-profile-viz-dot--today"></span>
-                <span class="nge-profile-viz-legend-lbl">today</span>
-              </div>
-              <div class="nge-profile-viz-count">
-                {{ stats.cellsSubmitted.toLocaleString() }} cells submitted
-              </div>
-            </div>
-
-            <!-- Badge detail view -->
-            <div v-else key="badge" class="nge-profile-viz-panel nge-profile-viz-badge">
-              <div class="nge-profile-viz-title">▌ Achievement Detail</div>
-              <img
-                :src="getBadgeUrl(selectedBadge.imageKey)"
-                :alt="selectedBadge.name"
-                class="nge-profile-viz-badge-icon"
-              />
-              <div class="nge-profile-viz-badge-name">{{ selectedBadge.name }}</div>
-              <div class="nge-profile-viz-badge-desc">{{ selectedBadge.description }}</div>
-              <div class="nge-profile-viz-badge-threshold">
-                Unlocked at<br>
-                <strong>{{ selectedBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(selectedBadge) }}
-              </div>
-              <button class="nge-profile-viz-badge-back" @click="selectedBadge = null">
-                ← Back to cells map
-              </button>
-            </div>
-
-          </Transition>
         </div><!-- end right column -->
 
       </div><!-- end .nge-profile-body -->
@@ -884,27 +772,28 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 /* Left: stats + recent cells */
 .nge-profile-col--left {
-  width: 320px;
+  width: 380px;
   flex-shrink: 0;
 }
 
 /* Center: badges + streak + countdown */
 .nge-profile-col--center {
-  width: 340px;
+  width: 380px;
   flex-shrink: 0;
+  overflow-x: hidden;
   border-left: 1px solid rgba(74, 158, 255, 0.08);
   border-right: 1px solid rgba(74, 158, 255, 0.08);
   background: rgba(74, 158, 255, 0.01);
 }
 
-/* Right: cells mapped visualization */
+/* Right: latest badge / badge detail */
 .nge-profile-col--right {
   width: 310px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   background: rgba(74, 158, 255, 0.015);
   overflow: hidden;
 }
@@ -1064,7 +953,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   align-items: baseline;
   margin-bottom: 8px;
 }
-.nge-profile-countdown-name { font-weight: 600; color: #ddd; font-size: 0.92em; }
+.nge-profile-countdown-name { font-weight: 400; color: rgba(255,255,255,0.5); font-size: 0.82em; font-style: italic; }
 .nge-profile-countdown-remaining { font-size: 0.75em; color: #9e9e9e; }
 .nge-profile-countdown-track {
   height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;
@@ -1076,6 +965,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-countdown-labels {
   display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.68em; color: #555;
 }
+.nge-profile-countdown-inline { margin-bottom: 10px; }
+.nge-profile-countdown-fill--building { background: linear-gradient(90deg, #ffd08a, #f5a623); }
+.nge-profile-countdown-fill--exploration { background: linear-gradient(90deg, #90fff2, #4ae5d5); }
 
 /* ── Stat row ── */
 .nge-profile-stat-row {
@@ -1305,17 +1197,52 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-badge--selected .nge-profile-badge-img {
   filter: drop-shadow(0 0 6px rgba(100, 180, 255, 0.75));
 }
+.nge-profile-badge--latest .nge-profile-badge-img {
+  filter: drop-shadow(0 0 8px rgba(255, 200, 80, 0.6));
+}
+.nge-profile-badge--latest .nge-profile-badge-name {
+  color: #ffd08a;
+}
+
+.nge-profile-badges-empty {
+  font-size: 0.75em;
+  color: #556;
+  padding: 8px 0;
+  font-style: italic;
+}
+
+.nge-profile-badges-toggle {
+  background: none;
+  border: 1px solid rgba(74, 158, 255, 0.2);
+  color: rgba(74, 158, 255, 0.6);
+  font-size: 0.72em;
+  padding: 4px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.nge-profile-badges-toggle:hover {
+  color: rgba(74, 158, 255, 0.9);
+  border-color: rgba(74, 158, 255, 0.4);
+}
+
+.nge-profile-right-divider {
+  height: 1px;
+  margin: 18px 20px;
+  background: linear-gradient(90deg, transparent 0%, rgba(74, 158, 255, 0.15) 30%, rgba(74, 158, 255, 0.15) 70%, transparent 100%);
+}
 
 .nge-profile-badge-img {
   display: flex; align-items: center; justify-content: center;
-  width: 54px; height: 54px;
+  width: 68px; height: 68px;
   transition: filter 0.15s;
 }
 
-.nge-profile-badge-icon { width: 48px; height: 48px; object-fit: contain; }
+.nge-profile-badge-icon { width: 62px; height: 62px; object-fit: contain; }
 
 .nge-profile-badge-mystery {
-  width: 42px; height: 42px;
+  width: 50px; height: 50px;
   background: rgba(255,255,255,0.04);
   border: 2px dashed rgba(255,255,255,0.12);
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
@@ -1352,32 +1279,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   align-self: flex-start;
 }
 
-.nge-profile-canvas { display: block; }
-
-/* Pulse when new cells submitted */
-@keyframes ngeCellsPulse {
-  0%   { filter: brightness(1.8) drop-shadow(0 0 12px rgba(120,200,255,0.9)); }
-  100% { filter: brightness(1)   drop-shadow(0 0 0px rgba(120,200,255,0));  }
-}
-.nge-canvas-pulse { animation: ngeCellsPulse 0.7s ease-out both; }
-
-.nge-profile-viz-legend {
-  display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: center;
-}
-.nge-profile-viz-dot {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-}
-.nge-profile-viz-dot--completed  { background: rgba(120, 200, 255, 0.9); }
-.nge-profile-viz-dot--contributed { background: rgba(100,160,255,0.22); border: 1px solid rgba(100,160,255,0.45); }
-.nge-profile-viz-dot--today       { background: rgba(120, 255, 160, 0.9); }
-.nge-profile-viz-legend-lbl { font-size: 0.78em; color: #555; margin-right: 5px; }
-
-.nge-profile-viz-count { font-size: 0.85em; color: #666; text-align: center; font-weight: 600; }
-
 /* Badge detail in viz column */
-.nge-profile-viz-badge { justify-content: center; text-align: center; gap: 12px; }
+.nge-profile-viz-badge { justify-content: flex-start; text-align: center; gap: 12px; padding-top: 16px; }
 
-.nge-profile-viz-badge-icon { width: 140px; height: 140px; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
+.nge-profile-viz-badge-icon { width: 220px; height: 220px; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
+.nge-profile-viz-badge-icon--large { width: 240px; height: 240px; }
 
 .nge-profile-viz-badge-name {
   font-size: 1em; font-weight: 700; color: #e0e8f4;
@@ -1420,10 +1326,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   margin-bottom: 8px;
 }
 
-.nge-cell-list-header span {
-  font-size: 0.68em;
-  color: rgba(74, 158, 255, 0.45);
-  font-style: italic;
+.nge-cell-list-title {
+  font-size: 0.63em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: rgba(74, 158, 255, 0.65);
+  font-style: normal;
 }
 
 .nge-cell-list-dataset {

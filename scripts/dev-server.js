@@ -145,7 +145,7 @@ const micronState = JSON.stringify({
 // esbuild --define expects a JS expression; JSON.stringify wraps the value in quotes.
 args.push('--define', `NEUROGLANCER_DEFAULT_STATE_FRAGMENT=${JSON.stringify(micronState)}`);
 
-args.push('--config=dev', '--serve', '--watch');
+args.push('--config=dev', '--serve', '--watch', '--host', '0.0.0.0');
 
 // ── Copy badge center-art PNGs into dev output ─────────────────────────────
 const path = require('path');
