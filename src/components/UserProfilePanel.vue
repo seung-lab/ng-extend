@@ -415,6 +415,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <span class="nge-cell-list-title">Recent Cells</span>
                 <span v-if="currentDataset" class="nge-cell-list-dataset" :title="'Filtered to ' + currentDataset">{{ currentDataset }}</span>
               </div>
+              <div class="nge-cell-list-columns">
+                <span class="nge-cell-col-label nge-cell-col-label--id">Segment</span>
+                <span class="nge-cell-col-label nge-cell-col-label--type">Type</span>
+                <span class="nge-cell-col-label nge-cell-col-label--time">When</span>
+              </div>
               <div class="nge-cell-list-scroll">
                 <div
                   v-for="cell in filteredCellHistory.slice(0, 50)"
@@ -1348,13 +1353,31 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-cell-list-title {
-  font-size: 0.63em;
+  font-size: 0.82em;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.13em;
   color: rgba(74, 158, 255, 0.65);
   font-style: normal;
 }
+
+.nge-cell-list-columns {
+  display: flex;
+  align-items: center;
+  padding: 0 2px 4px 42px; /* align with cell rows (past fav + pip) */
+  border-bottom: 1px solid rgba(74, 158, 255, 0.08);
+  margin-bottom: 2px;
+}
+.nge-cell-col-label {
+  font-size: 0.58em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.25);
+}
+.nge-cell-col-label--id { flex: 1; }
+.nge-cell-col-label--type { width: 90px; text-align: left; }
+.nge-cell-col-label--time { width: 52px; text-align: right; padding-right: 18px; }
 
 .nge-cell-list-dataset {
   font-size: 0.62em !important;
