@@ -21,17 +21,23 @@ const notifPostToChat = ref(false);
 const notifImageFile = ref<File | null>(null);
 const notifSending = ref(false);
 const notifSent = ref(false);
+const notifError = ref('');
 
 async function sendNotification() {
   if (!notifTitle.value.trim() || !notifBody.value.trim()) return;
   notifSending.value = true;
+  notifError.value = '';
   try {
     let imageUrl: string | undefined;
     let thumbnailUrl: string | undefined;
     if (notifImageFile.value) {
-      const urls = await backend.uploadAdminImage(notifImageFile.value, 'notifications');
-      imageUrl = urls.fullUrl;
-      thumbnailUrl = urls.thumbUrl;
+      try {
+        const urls = await backend.uploadAdminImage(notifImageFile.value, 'notifications');
+        imageUrl = urls.fullUrl;
+        thumbnailUrl = urls.thumbUrl;
+      } catch (imgErr: any) {
+        console.warn('[admin] Image upload failed, sending without image:', imgErr.message);
+      }
     }
     await backend.createNotification({
       title: notifTitle.value.trim(),
@@ -50,6 +56,9 @@ async function sendNotification() {
     notifPostToChat.value = false;
     notifSent.value = true;
     setTimeout(() => { notifSent.value = false; }, 2000);
+  } catch (e: any) {
+    notifError.value = e.message || 'Failed to send notification';
+    console.error('[admin] sendNotification failed:', e);
   } finally {
     notifSending.value = false;
   }
@@ -334,6 +343,7 @@ const emit = defineEmits({hide: null});
               <span v-else-if="notifSending">Sending...</span>
               <span v-else>Send Notification</span>
             </button>
+            <div v-if="notifError" class="nge-admin-error">⚠ {{ notifError }}</div>
           </div>
 
           <!-- Recent notifications -->
