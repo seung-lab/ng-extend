@@ -123,7 +123,14 @@ const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'cells'
 
 const visibleToolbar = computed(() => {
   const prefs = useUserPreferencesStore().prefs;
-  const order = prefs.toolbarIcons.length > 0 ? prefs.toolbarIcons : DEFAULT_TOOLBAR_ORDER;
+  let order = prefs.toolbarIcons.length > 0 ? [...prefs.toolbarIcons] : DEFAULT_TOOLBAR_ORDER;
+  // Auto-inject new toolbar icons that weren't in older saved prefs
+  for (const newId of ['notif', 'chat']) {
+    if (!order.includes(newId)) {
+      const settingsIdx = order.indexOf('settings');
+      order.splice(settingsIdx >= 0 ? settingsIdx : order.length, 0, newId);
+    }
+  }
   return order.map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
 });
 

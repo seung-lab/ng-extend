@@ -213,10 +213,12 @@ const TOOLBAR_ICON_OPTIONS = [
   { id: 'cells', emoji: '🧬', label: 'Cell Library' },
   { id: 'help', emoji: '🔍', label: 'Help Requests' },
   { id: 'feed', emoji: '📡', label: 'Activity Feed' },
+  { id: 'notif', emoji: '🔔', label: 'Notifications' },
+  { id: 'chat', emoji: '💬', label: 'Chat' },
   { id: 'settings', emoji: '⚙️', label: 'Settings' },
 ];
 
-const DEFAULT_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'help', 'feed', 'settings'];
+const DEFAULT_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'help', 'feed', 'notif', 'chat', 'settings'];
 
 function isToolbarIconEnabled(id: string) {
   return draftToolbar.value.includes(id);
