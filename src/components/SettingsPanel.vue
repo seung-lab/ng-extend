@@ -432,7 +432,7 @@ const emit = defineEmits({hide: null});
               </div>
               <div v-if="awardUserResults.length > 0" class="nge-admin-search-results">
                 <button v-for="u in awardUserResults" :key="u.id" class="nge-admin-search-item" @click="awardToUser(u.id)">
-                  Award to {{ u.username }}
+                  Award to {{ u.display_name || u.email }}
                 </button>
               </div>
 
