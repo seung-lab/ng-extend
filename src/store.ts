@@ -1,4 +1,4 @@
-import {Ref, ref, reactive} from 'vue';
+import {Ref, ref, reactive, computed} from 'vue';
 import {defineStore} from 'pinia';
 
 import {Viewer} from 'neuroglancer/viewer';
@@ -2554,7 +2554,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin,
     // Notifications
-    notifications, unreadNotificationCount, loadNotifications,
+    notifications, notificationReads, unreadNotificationCount, loadNotifications,
     markNotificationRead, markAllNotificationsRead,
     createNotification, deleteNotification,
     subscribeToNotifications, unsubscribeFromNotifications,

@@ -15,6 +15,7 @@ import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
+import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore} from '../store';
 import {useTutorialStore} from '../store-pyr';
@@ -80,6 +81,7 @@ const showChat = ref(false);
 const showCellLibrary = ref(false);
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
+const showNotifications = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
 const backendStore = useProofreadingBackendStore();
 const { tutorialStep } = storeToRefs(useTutorialStore());
@@ -112,11 +114,12 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'batch', emoji: '📦', label: 'Batch Processor', action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
   { id: 'help', emoji: '🔍', label: 'Second Opinion Requests', action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => helpStore.pending.length },
   { id: 'feed', emoji: '📡', label: 'Activity Feed', action: () => { showFeed.value = true; } },
+  { id: 'notif', emoji: '🔔', label: 'Notifications', action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
   { id: 'chat', emoji: '💬', label: 'Chat', action: () => { showChat.value = !showChat.value; } },
   { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
 ]);
 
-const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'feed', 'chat', 'settings'];
+const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'feed', 'notif', 'chat', 'settings'];
 
 const visibleToolbar = computed(() => {
   const prefs = useUserPreferencesStore().prefs;
@@ -184,6 +187,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
+  <notification-feed-panel v-if="showNotifications" @hide="showNotifications = false" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">

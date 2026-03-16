@@ -568,6 +568,26 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
+          <!-- Special Awards (admin-awarded badges) -->
+          <template v-if="backendStore.mySpecialBadges.length > 0">
+            <div class="nge-profile-badges-divider"></div>
+            <div class="nge-profile-section nge-profile-section--badges nge-profile-section--special">
+              <div class="nge-profile-section-label" style="color: #ffd700;">★ Special Awards</div>
+              <div class="nge-profile-badges-grid">
+                <div
+                  v-for="award in backendStore.mySpecialBadges"
+                  :key="award.id"
+                  class="nge-profile-badge nge-profile-badge--special"
+                  :title="award.name + (award.description ? ' — ' + award.description : '')"
+                >
+                  <div class="nge-profile-badge-img">
+                    <img :src="award.thumbnail_url || award.image_url" :alt="award.name" class="nge-profile-badge-icon" />
+                  </div>
+                  <div class="nge-profile-badge-name">{{ award.name }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
 
         </div><!-- end center column -->
 
@@ -1229,6 +1249,19 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 /* Twine: rotate 90° to look like an infinity symbol */
 .nge-badge--twine { transform: rotate(90deg); }
+
+/* Special Awards (admin-awarded) — gold accent */
+.nge-profile-badge--special .nge-profile-badge-img {
+  background: rgba(255, 215, 0, 0.06);
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.3));
+}
+.nge-profile-badge--special .nge-profile-badge-name {
+  color: #ffd700;
+}
+.nge-profile-section--special {
+  border-top: none;
+}
 
 .nge-profile-badges-empty {
   font-size: 0.75em;
