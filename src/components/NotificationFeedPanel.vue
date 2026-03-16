@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useProofreadingBackendStore } from '../store';
 
 const emit = defineEmits({ hide: null });
@@ -15,7 +15,7 @@ onUnmounted(() => {
 });
 
 const lightboxUrl = ref<string | null>(null);
-const expandedId = ref<number | null>(null);
+const openNotif = ref<any | null>(null);
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -32,9 +32,13 @@ function isRead(id: number): boolean {
   return (backend as any).notificationReads?.has?.(id) ?? false;
 }
 
-function toggleExpand(id: number) {
-  backend.markNotificationRead(id);
-  expandedId.value = expandedId.value === id ? null : id;
+function openDetail(notif: any) {
+  backend.markNotificationRead(notif.id);
+  openNotif.value = notif;
+}
+
+function closeDetail() {
+  openNotif.value = null;
 }
 
 /** Convert URLs in text to clickable <a> tags */
@@ -65,35 +69,17 @@ function linkify(text: string): string {
         v-for="notif in backend.notifications"
         :key="notif.id"
         class="nge-notif-card"
-        :class="{
-          'nge-notif-card--unread': !isRead(notif.id),
-          'nge-notif-card--expanded': expandedId === notif.id,
-        }"
-        @click="toggleExpand(notif.id)"
+        :class="{ 'nge-notif-card--unread': !isRead(notif.id) }"
+        @click="openDetail(notif)"
       >
         <div class="nge-notif-card-header">
           <span v-if="!isRead(notif.id)" class="nge-notif-unread-dot"></span>
           <div class="nge-notif-card-title">{{ notif.title }}</div>
           <span class="nge-notif-time">{{ relativeTime(notif.send_at) }}</span>
         </div>
-        <!-- Collapsed: truncated preview -->
-        <div
-          v-if="expandedId !== notif.id"
-          class="nge-notif-card-body nge-notif-card-body--preview"
-        >{{ notif.body }}</div>
-        <!-- Expanded: full body with preserved whitespace + clickable links -->
-        <div
-          v-else
-          class="nge-notif-card-body nge-notif-card-body--full"
-          v-html="linkify(notif.body)"
-          @click.stop
-        ></div>
-        <div v-if="notif.thumbnail_url && expandedId === notif.id" class="nge-notif-card-image">
-          <img
-            :src="notif.thumbnail_url"
-            class="nge-notif-thumb"
-            @click.stop="lightboxUrl = notif.image_url || notif.thumbnail_url"
-          />
+        <div class="nge-notif-card-body nge-notif-card-body--preview">{{ notif.body }}</div>
+        <div v-if="notif.thumbnail_url" class="nge-notif-card-thumb">
+          <img :src="notif.thumbnail_url" class="nge-notif-thumb-sm" />
         </div>
       </div>
     </div>
@@ -102,8 +88,34 @@ function linkify(text: string): string {
       No notifications yet.
     </div>
 
-    <!-- Lightbox for full-size images -->
+    <!-- ═══ Detail overlay ═══ -->
     <Teleport to="body">
+      <Transition name="nge-notif-detail">
+        <div v-if="openNotif" class="nge-notif-detail-backdrop" @click.self="closeDetail">
+          <div class="nge-notif-detail">
+            <div class="nge-notif-detail-topbar">
+              <span class="nge-notif-detail-time">{{ relativeTime(openNotif.send_at) }}</span>
+              <button class="nge-notif-detail-close" @click="closeDetail">×</button>
+            </div>
+            <div class="nge-notif-detail-scroll">
+              <h2 class="nge-notif-detail-title">{{ openNotif.title }}</h2>
+              <div
+                class="nge-notif-detail-body"
+                v-html="linkify(openNotif.body)"
+              ></div>
+              <div v-if="openNotif.image_url || openNotif.thumbnail_url" class="nge-notif-detail-image">
+                <img
+                  :src="openNotif.image_url || openNotif.thumbnail_url"
+                  class="nge-notif-detail-img"
+                  @click="lightboxUrl = openNotif.image_url || openNotif.thumbnail_url"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- Lightbox for full-size images -->
       <div v-if="lightboxUrl" class="nge-notif-lightbox" @click="lightboxUrl = null">
         <img :src="lightboxUrl" class="nge-notif-lightbox-img" />
       </div>
@@ -171,18 +183,18 @@ function linkify(text: string): string {
   scrollbar-color: rgba(74, 158, 255, 0.15) transparent;
 }
 
+/* ── Feed cards (compact list) ── */
 .nge-notif-card {
   padding: 10px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   cursor: pointer;
   transition: background 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 .nge-notif-card:hover { background: rgba(74, 158, 255, 0.04); }
 .nge-notif-card--unread { background: rgba(74, 158, 255, 0.03); }
-.nge-notif-card--expanded {
-  background: rgba(74, 158, 255, 0.02);
-  border-left: 2px solid rgba(74, 158, 255, 0.3);
-}
 
 .nge-notif-unread-dot {
   width: 6px;
@@ -214,13 +226,11 @@ function linkify(text: string): string {
 }
 
 .nge-notif-card-body {
-  margin-top: 3px;
   font-size: 0.82em;
   color: #888;
   line-height: 1.4;
 }
 
-/* Collapsed preview: truncate to 2 lines */
 .nge-notif-card-body--preview {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -228,30 +238,13 @@ function linkify(text: string): string {
   overflow: hidden;
 }
 
-/* Expanded: preserve whitespace and line breaks */
-.nge-notif-card-body--full {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* Clickable links inside notification body */
-.nge-notif-card-body--full :deep(.nge-notif-link) {
-  color: #4a9eff;
-  text-decoration: none;
-  word-break: break-all;
-}
-.nge-notif-card-body--full :deep(.nge-notif-link:hover) {
-  text-decoration: underline;
-}
-
-.nge-notif-card-image { margin-top: 8px; }
-
-.nge-notif-thumb {
-  max-width: 100%;
-  max-height: 120px;
-  border-radius: 6px;
-  cursor: zoom-in;
+.nge-notif-card-thumb { margin-top: 4px; }
+.nge-notif-thumb-sm {
+  width: 48px;
+  height: 48px;
   object-fit: cover;
+  border-radius: 4px;
+  opacity: 0.8;
 }
 
 .nge-notif-empty {
@@ -262,7 +255,110 @@ function linkify(text: string): string {
   font-style: italic;
 }
 
-/* Lightbox */
+/* ═══ Detail overlay ═══ */
+.nge-notif-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nge-notif-detail {
+  width: 480px;
+  max-width: 90vw;
+  max-height: 80vh;
+  background: rgba(14, 17, 23, 0.98);
+  border: 1px solid rgba(74, 158, 255, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.7), 0 0 40px rgba(74, 158, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(12px);
+}
+
+.nge-notif-detail-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.nge-notif-detail-time {
+  font-size: 0.75em;
+  color: #556;
+}
+
+.nge-notif-detail-close {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 1.4em;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.nge-notif-detail-close:hover { color: #fff; }
+
+.nge-notif-detail-scroll {
+  overflow-y: auto;
+  padding: 18px 22px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.15) transparent;
+}
+
+.nge-notif-detail-title {
+  font-size: 1.2em;
+  font-weight: 700;
+  color: #e8e8ee;
+  margin: 0 0 14px;
+  line-height: 1.3;
+}
+
+.nge-notif-detail-body {
+  font-size: 0.95em;
+  color: #b0b0b8;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.nge-notif-detail-body :deep(.nge-notif-link) {
+  color: #4a9eff;
+  text-decoration: none;
+  word-break: break-all;
+}
+.nge-notif-detail-body :deep(.nge-notif-link:hover) {
+  text-decoration: underline;
+}
+
+.nge-notif-detail-image {
+  margin-top: 16px;
+}
+
+.nge-notif-detail-img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+/* ── Transition ── */
+.nge-notif-detail-enter-active { transition: opacity 0.2s ease; }
+.nge-notif-detail-enter-active .nge-notif-detail { transition: transform 0.2s ease, opacity 0.2s ease; }
+.nge-notif-detail-leave-active { transition: opacity 0.15s ease; }
+.nge-notif-detail-leave-active .nge-notif-detail { transition: transform 0.15s ease, opacity 0.15s ease; }
+.nge-notif-detail-enter-from { opacity: 0; }
+.nge-notif-detail-enter-from .nge-notif-detail { transform: scale(0.95) translateY(8px); opacity: 0; }
+.nge-notif-detail-leave-to { opacity: 0; }
+.nge-notif-detail-leave-to .nge-notif-detail { transform: scale(0.97); opacity: 0; }
+
+/* ── Lightbox ── */
 .nge-notif-lightbox {
   position: fixed;
   inset: 0;
