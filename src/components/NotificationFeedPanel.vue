@@ -105,17 +105,21 @@ function linkify(text: string): string {
               <button class="nge-notif-detail-close" @click="closeDetail">×</button>
             </div>
             <div class="nge-notif-detail-scroll">
-              <h2 class="nge-notif-detail-title">{{ openNotif.title }}</h2>
-              <div
-                class="nge-notif-detail-body"
-                v-html="linkify(openNotif.body)"
-              ></div>
-              <div v-if="openNotif.image_url || openNotif.thumbnail_url" class="nge-notif-detail-image">
-                <img
-                  :src="openNotif.image_url || openNotif.thumbnail_url"
-                  class="nge-notif-detail-img"
-                  @click="lightboxUrl = openNotif.image_url || openNotif.thumbnail_url"
-                />
+              <div class="nge-notif-detail-layout" :class="{ 'nge-notif-detail-layout--has-image': openNotif.image_url || openNotif.thumbnail_url }">
+                <div v-if="openNotif.image_url || openNotif.thumbnail_url" class="nge-notif-detail-image">
+                  <img
+                    :src="openNotif.image_url || openNotif.thumbnail_url"
+                    class="nge-notif-detail-img"
+                    @click="lightboxUrl = openNotif.image_url || openNotif.thumbnail_url"
+                  />
+                </div>
+                <div class="nge-notif-detail-text">
+                  <h2 class="nge-notif-detail-title">{{ openNotif.title }}</h2>
+                  <div
+                    class="nge-notif-detail-body"
+                    v-html="linkify(openNotif.body)"
+                  ></div>
+                </div>
               </div>
             </div>
           </div>
@@ -146,6 +150,7 @@ function linkify(text: string): string {
   flex-direction: column;
   backdrop-filter: blur(12px);
   font-size: 0.85em;
+  font-family: sans-serif;
 }
 
 .nge-notif-topbar {
@@ -292,7 +297,7 @@ function linkify(text: string): string {
 }
 
 .nge-notif-detail {
-  width: 480px;
+  width: 560px;
   max-width: 90vw;
   max-height: 80vh;
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
@@ -302,6 +307,7 @@ function linkify(text: string): string {
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(12px);
+  font-family: sans-serif;
 }
 
 .nge-notif-detail-topbar {
@@ -361,12 +367,29 @@ function linkify(text: string): string {
   text-decoration: underline;
 }
 
+.nge-notif-detail-layout {
+  display: flex;
+  flex-direction: column;
+}
+.nge-notif-detail-layout--has-image {
+  flex-direction: row;
+  gap: 18px;
+}
+
 .nge-notif-detail-image {
-  margin-top: 16px;
+  flex-shrink: 0;
+}
+.nge-notif-detail-layout--has-image .nge-notif-detail-image {
+  width: 180px;
+}
+
+.nge-notif-detail-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .nge-notif-detail-img {
-  max-width: 100%;
+  width: 100%;
   max-height: 300px;
   border-radius: 8px;
   object-fit: contain;

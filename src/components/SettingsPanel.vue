@@ -18,6 +18,8 @@ const notifBody = ref('');
 const notifTargetType = ref<'all' | 'group' | 'user'>('all');
 const notifTargetId = ref('');
 const notifPostToChat = ref(false);
+const notifSendAt = ref('');
+const notifExpiresAt = ref('');
 const notifImageFile = ref<File | null>(null);
 const notifSending = ref(false);
 const notifSent = ref(false);
@@ -41,6 +43,8 @@ async function sendNotification() {
       target_type: notifTargetType.value,
       target_id: notifTargetType.value !== 'all' ? notifTargetId.value : undefined,
       post_to_chat: notifPostToChat.value,
+      send_at: notifSendAt.value ? new Date(notifSendAt.value).toISOString() : undefined,
+      expires_at: notifExpiresAt.value ? new Date(notifExpiresAt.value).toISOString() : undefined,
       image_url: imageUrl,
       thumbnail_url: thumbnailUrl,
     });
@@ -50,6 +54,8 @@ async function sendNotification() {
     notifTargetType.value = 'all';
     notifTargetId.value = '';
     notifPostToChat.value = false;
+    notifSendAt.value = '';
+    notifExpiresAt.value = '';
     notifSent.value = true;
     setTimeout(() => { notifSent.value = false; }, 2000);
   } catch (e: any) {
@@ -331,6 +337,17 @@ const emit = defineEmits({hide: null});
               </select>
               <input v-if="notifTargetType === 'user'" v-model="notifTargetId" class="nge-admin-input nge-admin-input--sm" placeholder="User ID" />
             </div>
+            <div class="nge-admin-row nge-admin-row--dates">
+              <label class="nge-admin-date-label">
+                <span>Send at</span>
+                <input type="datetime-local" v-model="notifSendAt" class="nge-admin-date-input" />
+              </label>
+              <label class="nge-admin-date-label">
+                <span>Expires at</span>
+                <input type="datetime-local" v-model="notifExpiresAt" class="nge-admin-date-input" />
+              </label>
+            </div>
+            <p v-if="!notifSendAt" class="nge-settings-hint" style="margin:-4px 0 4px; font-size:0.7em; color:#556">Leave "Send at" empty to send immediately</p>
             <div class="nge-admin-row">
               <label class="nge-admin-check"><input type="checkbox" v-model="notifPostToChat" /> Also post to chat</label>
               <label class="nge-admin-file-label">
@@ -816,6 +833,28 @@ const emit = defineEmits({hide: null});
   gap: 8px;
   align-items: center;
 }
+.nge-admin-row--dates { gap: 12px; }
+
+.nge-admin-date-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  font-size: 0.72em;
+  color: #888;
+}
+
+.nge-admin-date-input {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-size: 1.1em;
+  font-family: inherit;
+  padding: 5px 8px;
+  outline: none;
+}
+.nge-admin-date-input:focus { border-color: rgba(74,158,255,0.5); }
 
 .nge-admin-check {
   font-size: 0.78em;

@@ -714,7 +714,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   overflow: hidden;
   animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) !important;
-  position: relative;
 }
 
 /* ── Holographic edge glow — subtle orbiting light dots ── */
