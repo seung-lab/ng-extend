@@ -211,11 +211,8 @@ async function completeCell(cell: typeof cells.value[0]) {
   writeCompletionToSheet(cell.segId, backend.userName, cell.finalSegId || '', cell.somaCoords || '');
   // Log as mark_complete for stats
   await backend.logEdit({ operation: 'mark_complete', task_id: cell.taskId });
-  // Auto-release claim on complete
-  if (isMyClaim(cell)) {
-    await backend.releaseBySegment(cell.segId);
-    document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
-  }
+  // Notify UI that status changed (claim is already cleared by completeTask)
+  document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
   await backend.loadTasks('eyewire_ii');
 }
 
@@ -411,7 +408,7 @@ const panelStyle = computed(() => ({
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
           <div class="nge-cl-title">
-            <span class="nge-cl-icon">🧬</span> Cell Library
+            <span class="nge-cl-icon">🧠</span> Cell Library
           </div>
           <button class="nge-cl-close" @click="emit('hide')">×</button>
         </div>
