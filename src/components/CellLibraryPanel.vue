@@ -408,7 +408,7 @@ const panelStyle = computed(() => ({
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
           <div class="nge-cl-title">
-            <span class="nge-cl-icon">🧠</span> Cell Library
+            <img src="center-art/../neuron-icon-white.png" class="nge-cl-icon" /> Cell Library
           </div>
           <button class="nge-cl-close" @click="emit('hide')">×</button>
         </div>
@@ -631,7 +631,7 @@ const panelStyle = computed(() => ({
   letter-spacing: 0.03em;
   color: #eef;
 }
-.nge-cl-icon { font-size: 1.1em; }
+.nge-cl-icon { width: 18px; height: 18px; object-fit: contain; vertical-align: middle; }
 .nge-cl-close {
   background: none;
   border: none;
