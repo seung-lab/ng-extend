@@ -468,7 +468,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div
                 v-for="badge in displayedBuildingBadges"
                 :key="badge.id"
-                class="nge-profile-badge"
+                class="nge-profile-badge nge-profile-badge--building"
                 :class="{
                   'nge-profile-badge--selected': selectedBadge?.id === badge.id,
                   'nge-profile-badge--latest': latestEarnedBadge?.id === badge.id,
@@ -477,7 +477,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" />
+                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
@@ -525,7 +525,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div
                 v-for="badge in displayedExplorationBadges"
                 :key="badge.id"
-                class="nge-profile-badge"
+                class="nge-profile-badge nge-profile-badge--exploration"
                 :class="{
                   'nge-profile-badge--selected': selectedBadge?.id === badge.id,
                   'nge-profile-badge--latest': latestEarnedBadge?.id === badge.id,
@@ -534,7 +534,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" />
+                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
@@ -577,6 +577,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   :src="getBadgeUrl(latestEarnedBadge.imageKey)"
                   :alt="latestEarnedBadge.name"
                   class="nge-profile-viz-badge-icon"
+                  :class="`nge-badge--${latestEarnedBadge.slug}`"
                 />
                 <div class="nge-profile-viz-badge-name">{{ latestEarnedBadge.name }}</div>
                 <div class="nge-profile-viz-badge-desc">{{ latestEarnedBadge.description }}</div>
@@ -598,6 +599,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 :src="getBadgeUrl(selectedBadge.imageKey)"
                 :alt="selectedBadge.name"
                 class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
+                :class="`nge-badge--${selectedBadge.slug}`"
               />
               <div class="nge-profile-viz-badge-name">{{ selectedBadge.name }}</div>
               <div class="nge-profile-viz-badge-desc">{{ selectedBadge.description }}</div>
@@ -1190,19 +1192,36 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 .nge-profile-badge:not(.nge-profile-badge--locked) { cursor: pointer; }
 .nge-profile-badge:not(.nge-profile-badge--locked):hover { transform: scale(1.1); }
+/* Exploration badges: blue highlight (default) */
 .nge-profile-badge--selected {
+  background: rgba(74, 158, 255, 0.1);
+  box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.3) inset;
+}
+.nge-profile-badge--selected .nge-profile-badge-img {
+  filter: drop-shadow(0 0 6px rgba(100, 180, 255, 0.75));
+}
+.nge-profile-badge--latest .nge-profile-badge-img {
+  filter: drop-shadow(0 0 8px rgba(100, 180, 255, 0.6));
+}
+.nge-profile-badge--latest .nge-profile-badge-name {
+  color: #8ac8ff;
+}
+/* Building badges: golden highlight */
+.nge-profile-badge--building.nge-profile-badge--selected {
   background: rgba(245, 166, 35, 0.12);
   box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.35) inset;
 }
-.nge-profile-badge--selected .nge-profile-badge-img {
+.nge-profile-badge--building.nge-profile-badge--selected .nge-profile-badge-img {
   filter: drop-shadow(0 0 6px rgba(255, 200, 80, 0.75));
 }
-.nge-profile-badge--latest .nge-profile-badge-img {
+.nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-img {
   filter: drop-shadow(0 0 8px rgba(255, 200, 80, 0.6));
 }
-.nge-profile-badge--latest .nge-profile-badge-name {
+.nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-name {
   color: #ffd08a;
 }
+/* Twine: rotate 90° to look like an infinity symbol */
+.nge-badge--twine { transform: rotate(90deg); }
 
 .nge-profile-badges-empty {
   font-size: 0.75em;
