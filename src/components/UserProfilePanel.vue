@@ -318,7 +318,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   title="Click to change flag"
                 >
                   <img v-if="flagImgUrl(prefs.flag || '')" :src="flagImgUrl(prefs.flag)" class="nge-flag-img" />
-                  <span v-else>🌐</span>
+                  <img v-else src="center-art/../pyr-icon.png" class="nge-flag-img nge-pyr-icon" />
                 </button>
                 <Transition name="nge-flag-picker">
                   <div v-if="showFlagPicker" class="nge-profile-flag-picker">
@@ -824,6 +824,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 /* Flag images (cross-platform — Windows doesn't render flag emoji) */
 .nge-flag-img { width: 24px; height: 18px; object-fit: cover; border-radius: 2px; vertical-align: middle; }
+.nge-flag-img.nge-pyr-icon { width: 22px; height: 22px; object-fit: contain; border-radius: 0; }
 .nge-flag-img--picker { width: 28px; height: 20px; }
 
 .nge-profile-flag {
