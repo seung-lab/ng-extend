@@ -110,6 +110,8 @@ const badgeDesc = ref('');
 const badgeSlug = ref('');
 const badgeImageFile = ref<File | null>(null);
 const badgeCreating = ref(false);
+const badgeError = ref('');
+const badgeCreated = ref(false);
 const awardBadgeId = ref<number | null>(null);
 const awardUserSearch = ref('');
 const awardUserResults = ref<any[]>([]);
@@ -119,6 +121,8 @@ let awardSearchTimeout: any = null;
 async function createBadge() {
   if (!badgeName.value.trim() || !badgeSlug.value.trim() || !badgeImageFile.value) return;
   badgeCreating.value = true;
+  badgeError.value = '';
+  badgeCreated.value = false;
   try {
     const urls = await backend.uploadAdminImage(badgeImageFile.value, 'badges');
     await backend.createSpecialBadge({
@@ -132,7 +136,12 @@ async function createBadge() {
     badgeDesc.value = '';
     badgeSlug.value = '';
     badgeImageFile.value = null;
+    badgeCreated.value = true;
+    setTimeout(() => { badgeCreated.value = false; }, 2500);
     await backend.loadSpecialBadges();
+  } catch (e: any) {
+    badgeError.value = e.message || 'Failed to create badge';
+    console.error('[admin] createBadge failed:', e);
   } finally {
     badgeCreating.value = false;
   }
@@ -392,9 +401,11 @@ const emit = defineEmits({hide: null});
               {{ badgeImageFile ? badgeImageFile.name : 'Choose badge image...' }}
             </label>
             <button class="nge-settings-save" :disabled="badgeCreating || !badgeName.trim() || !badgeSlug.trim() || !badgeImageFile" @click="createBadge">
-              <span v-if="badgeCreating">Creating...</span>
+              <span v-if="badgeCreated">✓ Created!</span>
+              <span v-else-if="badgeCreating">Creating...</span>
               <span v-else>Create Badge</span>
             </button>
+            <div v-if="badgeError" class="nge-admin-error">⚠ {{ badgeError }}</div>
           </div>
 
           <div class="nge-settings-section" v-if="backend.specialBadges.length > 0">
@@ -949,5 +960,15 @@ const emit = defineEmits({hide: null});
   color: #889;
   text-align: center;
   word-break: break-word;
+}
+
+.nge-admin-error {
+  font-size: 0.78em;
+  color: #e55;
+  background: rgba(255, 50, 50, 0.08);
+  border: 1px solid rgba(255, 50, 50, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 4px;
 }
 </style>
