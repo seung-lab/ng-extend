@@ -1191,11 +1191,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-badge:not(.nge-profile-badge--locked) { cursor: pointer; }
 .nge-profile-badge:not(.nge-profile-badge--locked):hover { transform: scale(1.1); }
 .nge-profile-badge--selected {
-  background: rgba(74, 158, 255, 0.1);
-  box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.3) inset;
+  background: rgba(245, 166, 35, 0.12);
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.35) inset;
 }
 .nge-profile-badge--selected .nge-profile-badge-img {
-  filter: drop-shadow(0 0 6px rgba(100, 180, 255, 0.75));
+  filter: drop-shadow(0 0 6px rgba(255, 200, 80, 0.75));
 }
 .nge-profile-badge--latest .nge-profile-badge-img {
   filter: drop-shadow(0 0 8px rgba(255, 200, 80, 0.6));
@@ -1213,8 +1213,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 .nge-profile-badges-toggle {
   background: none;
-  border: 1px solid rgba(74, 158, 255, 0.2);
-  color: rgba(74, 158, 255, 0.6);
+  border: 1px solid rgba(245, 166, 35, 0.25);
+  color: rgba(255, 208, 138, 0.6);
   font-size: 0.72em;
   padding: 4px 12px;
   border-radius: 12px;
@@ -1223,8 +1223,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   transition: color 0.15s, border-color 0.15s;
 }
 .nge-profile-badges-toggle:hover {
-  color: rgba(74, 158, 255, 0.9);
-  border-color: rgba(74, 158, 255, 0.4);
+  color: rgba(255, 208, 138, 0.9);
+  border-color: rgba(245, 166, 35, 0.45);
 }
 
 .nge-profile-right-divider {
