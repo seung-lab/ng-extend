@@ -41,7 +41,7 @@ export interface BadgeDefinition {
 }
 
 export const BUILDING_BADGES: BadgeDefinition[] = [
-  { id: 1, track: 'building', sequence: 1, slug: 'charcoal', code: 'CHA', name: 'Charcoal', description: 'Charcoal marks the point where making starts with a mark on the page.', imageKey: 'building/charcoal', threshold: 1, editThreshold: 1 },
+  { id: 1, track: 'building', sequence: 1, slug: 'battery', code: 'BAT', name: 'Battery', description: 'Battery sparks the very first charge on your building journey.', imageKey: 'building/battery', threshold: 1, editThreshold: 1 },
   { id: 2, track: 'building', sequence: 2, slug: 'stylus', code: 'STY', name: 'Stylus', description: 'Stylus marks the point where making starts with a mark on the page.', imageKey: 'building/stylus', threshold: 8, editThreshold: 8 },
   { id: 3, track: 'building', sequence: 3, slug: 'twine', code: 'TWI', name: 'Twine', description: 'Twine anchors the structural side of the building track.', imageKey: 'building/twine', threshold: 27, editThreshold: 27 },
   { id: 4, track: 'building', sequence: 4, slug: 'play-dough', code: 'PD', name: 'Play Dough', description: 'Play Dough expands the materials toolkit for advanced fabrication.', imageKey: 'building/play-dough', threshold: 64, editThreshold: 64 },
