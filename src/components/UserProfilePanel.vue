@@ -7,6 +7,7 @@ import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistor
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
+import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 // ── Stores ────────────────────────────────────────────────────────────────────
 const {sessions} = storeToRefs(useLoginStore());
@@ -318,7 +319,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   title="Click to change flag"
                 >
                   <img v-if="flagImgUrl(prefs.flag || '')" :src="flagImgUrl(prefs.flag)" class="nge-flag-img" />
-                  <img v-else src="center-art/../pyr-icon.png" class="nge-flag-img nge-pyr-icon" />
+                  <img v-else :src="pyrIcon" class="nge-flag-img nge-pyr-icon" />
                 </button>
                 <Transition name="nge-flag-picker">
                   <div v-if="showFlagPicker" class="nge-profile-flag-picker">

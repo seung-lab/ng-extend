@@ -10,6 +10,7 @@ import {
   type HelpRequest,
 } from '../store';
 import { isLatestRoots, getLatestRoots } from '../widgets/pcg_service';
+import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 const props = defineProps<{ initialTab?: string }>();
 const emit = defineEmits({ hide: null });
@@ -410,7 +411,7 @@ const panelStyle = computed(() => ({
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
           <div class="nge-cl-title">
-            <img src="center-art/../neuron-icon-white.png" class="nge-cl-icon" /> Cell Library
+            <img :src="neuronIcon" class="nge-cl-icon" /> Cell Library
           </div>
           <button class="nge-cl-close" @click="emit('hide')">×</button>
         </div>
