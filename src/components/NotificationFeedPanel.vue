@@ -15,6 +15,7 @@ onUnmounted(() => {
 });
 
 const lightboxUrl = ref<string | null>(null);
+const expandedId = ref<number | null>(null);
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -29,6 +30,19 @@ function relativeTime(iso: string): string {
 
 function isRead(id: number): boolean {
   return (backend as any).notificationReads?.has?.(id) ?? false;
+}
+
+function toggleExpand(id: number) {
+  backend.markNotificationRead(id);
+  expandedId.value = expandedId.value === id ? null : id;
+}
+
+/** Convert URLs in text to clickable <a> tags */
+function linkify(text: string): string {
+  const urlPattern = /(https?:\/\/[^\s<]+)/g;
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(urlPattern, '<a href="$1" target="_blank" rel="noopener" class="nge-notif-link">$1</a>');
 }
 </script>
 
@@ -51,16 +65,30 @@ function isRead(id: number): boolean {
         v-for="notif in backend.notifications"
         :key="notif.id"
         class="nge-notif-card"
-        :class="{ 'nge-notif-card--unread': !isRead(notif.id) }"
-        @click="backend.markNotificationRead(notif.id)"
+        :class="{
+          'nge-notif-card--unread': !isRead(notif.id),
+          'nge-notif-card--expanded': expandedId === notif.id,
+        }"
+        @click="toggleExpand(notif.id)"
       >
         <div class="nge-notif-card-header">
           <span v-if="!isRead(notif.id)" class="nge-notif-unread-dot"></span>
           <div class="nge-notif-card-title">{{ notif.title }}</div>
           <span class="nge-notif-time">{{ relativeTime(notif.send_at) }}</span>
         </div>
-        <div class="nge-notif-card-body">{{ notif.body }}</div>
-        <div v-if="notif.thumbnail_url" class="nge-notif-card-image">
+        <!-- Collapsed: truncated preview -->
+        <div
+          v-if="expandedId !== notif.id"
+          class="nge-notif-card-body nge-notif-card-body--preview"
+        >{{ notif.body }}</div>
+        <!-- Expanded: full body with preserved whitespace + clickable links -->
+        <div
+          v-else
+          class="nge-notif-card-body nge-notif-card-body--full"
+          v-html="linkify(notif.body)"
+          @click.stop
+        ></div>
+        <div v-if="notif.thumbnail_url && expandedId === notif.id" class="nge-notif-card-image">
           <img
             :src="notif.thumbnail_url"
             class="nge-notif-thumb"
@@ -151,6 +179,10 @@ function isRead(id: number): boolean {
 }
 .nge-notif-card:hover { background: rgba(74, 158, 255, 0.04); }
 .nge-notif-card--unread { background: rgba(74, 158, 255, 0.03); }
+.nge-notif-card--expanded {
+  background: rgba(74, 158, 255, 0.02);
+  border-left: 2px solid rgba(74, 158, 255, 0.3);
+}
 
 .nge-notif-unread-dot {
   width: 6px;
@@ -186,6 +218,30 @@ function isRead(id: number): boolean {
   font-size: 0.82em;
   color: #888;
   line-height: 1.4;
+}
+
+/* Collapsed preview: truncate to 2 lines */
+.nge-notif-card-body--preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Expanded: preserve whitespace and line breaks */
+.nge-notif-card-body--full {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Clickable links inside notification body */
+.nge-notif-card-body--full :deep(.nge-notif-link) {
+  color: #4a9eff;
+  text-decoration: none;
+  word-break: break-all;
+}
+.nge-notif-card-body--full :deep(.nge-notif-link:hover) {
+  text-decoration: underline;
 }
 
 .nge-notif-card-image { margin-top: 8px; }
