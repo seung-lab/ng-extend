@@ -209,7 +209,6 @@ const TOOLBAR_ICON_OPTIONS = [
   { id: 'merge', emoji: '🔗', label: 'Merge Mode' },
   { id: 'recap', emoji: '📊', label: 'Weekly Recap' },
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard' },
-  { id: 'quest', emoji: '🧠', label: 'Brain Quest' },
   { id: 'cells', emoji: '🧬', label: 'Cell Library' },
   { id: 'help', emoji: '🔍', label: 'Help Requests' },
   { id: 'feed', emoji: '📡', label: 'Activity Feed' },
@@ -218,7 +217,7 @@ const TOOLBAR_ICON_OPTIONS = [
   { id: 'settings', emoji: '⚙️', label: 'Settings' },
 ];
 
-const DEFAULT_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'help', 'feed', 'notif', 'chat', 'settings'];
+const DEFAULT_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'help', 'feed', 'notif', 'chat', 'settings'];
 
 function isToolbarIconEnabled(id: string) {
   return draftToolbar.value.includes(id);

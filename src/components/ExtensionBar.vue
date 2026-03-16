@@ -131,6 +131,8 @@ const visibleToolbar = computed(() => {
       order.splice(settingsIdx >= 0 ? settingsIdx : order.length, 0, newId);
     }
   }
+  // Remove retired icons from saved prefs
+  order = order.filter(id => !['quest'].includes(id));
   return order.map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
 });
 
