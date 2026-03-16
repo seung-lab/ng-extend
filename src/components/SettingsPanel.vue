@@ -124,7 +124,11 @@ const awardGroupId = ref<number | null>(null);
 let awardSearchTimeout: any = null;
 
 async function createBadge() {
-  if (!badgeName.value.trim() || !badgeSlug.value.trim() || !badgeImageFile.value) return;
+  if (!badgeName.value.trim()) { badgeError.value = 'Badge name is required'; return; }
+  if (!badgeImageFile.value) { badgeError.value = 'Badge image is required'; return; }
+  // Auto-generate slug from name if not provided
+  const slug = (badgeSlug.value.trim() || badgeName.value.trim())
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   badgeCreating.value = true;
   badgeError.value = '';
   badgeCreated.value = false;
@@ -133,7 +137,7 @@ async function createBadge() {
     await backend.createSpecialBadge({
       name: badgeName.value.trim(),
       description: badgeDesc.value.trim(),
-      slug: badgeSlug.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+      slug,
       image_url: urls.fullUrl,
       thumbnail_url: urls.thumbUrl,
     });
@@ -401,13 +405,12 @@ const emit = defineEmits({hide: null});
           <div class="nge-settings-section">
             <label class="nge-settings-label">Create Special Badge</label>
             <input v-model="badgeName" class="nge-admin-input" placeholder="Badge name" />
-            <input v-model="badgeSlug" class="nge-admin-input" placeholder="Slug (URL-safe, e.g. beta-tester)" />
             <textarea v-model="badgeDesc" class="nge-settings-textarea" rows="2" placeholder="Description..."></textarea>
             <label class="nge-admin-file-label">
               <input type="file" accept="image/*" @change="onBadgeImageChange" class="nge-admin-file-input" />
               {{ badgeImageFile ? badgeImageFile.name : 'Choose badge image...' }}
             </label>
-            <button class="nge-settings-save" :disabled="badgeCreating || !badgeName.trim() || !badgeSlug.trim() || !badgeImageFile" @click="createBadge">
+            <button class="nge-settings-save" :disabled="badgeCreating || !badgeName.trim() || !badgeImageFile" @click="createBadge">
               <span v-if="badgeCreated">✓ Created!</span>
               <span v-else-if="badgeCreating">Creating...</span>
               <span v-else>Create Badge</span>

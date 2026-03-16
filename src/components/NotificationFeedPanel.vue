@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useProofreadingBackendStore } from '../store';
+import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 const emit = defineEmits({ hide: null });
 const backend = useProofreadingBackendStore();
@@ -72,14 +73,20 @@ function linkify(text: string): string {
         :class="{ 'nge-notif-card--unread': !isRead(notif.id) }"
         @click="openDetail(notif)"
       >
-        <div class="nge-notif-card-header">
-          <span v-if="!isRead(notif.id)" class="nge-notif-unread-dot"></span>
-          <div class="nge-notif-card-title">{{ notif.title }}</div>
-          <span class="nge-notif-time">{{ relativeTime(notif.send_at) }}</span>
-        </div>
-        <div class="nge-notif-card-body nge-notif-card-body--preview">{{ notif.body }}</div>
-        <div v-if="notif.thumbnail_url" class="nge-notif-card-thumb">
-          <img :src="notif.thumbnail_url" class="nge-notif-thumb-sm" />
+        <div class="nge-notif-card-row">
+          <img
+            :src="notif.thumbnail_url || notif.image_url || pyrIcon"
+            class="nge-notif-thumb-sm"
+            :class="{ 'nge-notif-thumb-fallback': !notif.thumbnail_url && !notif.image_url }"
+          />
+          <div class="nge-notif-card-content">
+            <div class="nge-notif-card-header">
+              <span v-if="!isRead(notif.id)" class="nge-notif-unread-dot"></span>
+              <div class="nge-notif-card-title">{{ notif.title }}</div>
+              <span class="nge-notif-time">{{ relativeTime(notif.send_at) }}</span>
+            </div>
+            <div class="nge-notif-card-body nge-notif-card-body--preview">{{ notif.body }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -130,14 +137,14 @@ function linkify(text: string): string {
   right: 8px;
   width: 340px;
   max-height: 480px;
-  background: rgba(14, 17, 23, 0.97);
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
   border: 1px solid rgba(74, 158, 255, 0.15);
   border-radius: 10px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   z-index: 8000;
   display: flex;
   flex-direction: column;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
   font-size: 0.85em;
 }
 
@@ -189,12 +196,39 @@ function linkify(text: string): string {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   cursor: pointer;
   transition: background 0.15s;
+}
+.nge-notif-card:hover { background: rgba(74, 158, 255, 0.04); }
+.nge-notif-card--unread { background: rgba(74, 158, 255, 0.03); }
+
+.nge-notif-card-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.nge-notif-card-content {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
-.nge-notif-card:hover { background: rgba(74, 158, 255, 0.04); }
-.nge-notif-card--unread { background: rgba(74, 158, 255, 0.03); }
+
+.nge-notif-thumb-sm {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+.nge-notif-thumb-fallback {
+  opacity: 0.35;
+  padding: 6px;
+  background: rgba(74, 158, 255, 0.06);
+  border-radius: 8px;
+}
 
 .nge-notif-unread-dot {
   width: 6px;
@@ -238,15 +272,6 @@ function linkify(text: string): string {
   overflow: hidden;
 }
 
-.nge-notif-card-thumb { margin-top: 4px; }
-.nge-notif-thumb-sm {
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 4px;
-  opacity: 0.8;
-}
-
 .nge-notif-empty {
   padding: 32px 16px;
   text-align: center;
@@ -270,7 +295,7 @@ function linkify(text: string): string {
   width: 480px;
   max-width: 90vw;
   max-height: 80vh;
-  background: rgba(14, 17, 23, 0.98);
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
   border: 1px solid rgba(74, 158, 255, 0.2);
   border-radius: 12px;
   box-shadow: 0 16px 64px rgba(0, 0, 0, 0.7), 0 0 40px rgba(74, 158, 255, 0.06);

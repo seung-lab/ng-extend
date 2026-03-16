@@ -63,14 +63,11 @@ import Overlay from "components/Overlay.vue";
 
 .nge-overlay-content {
   min-width: 250px;
-  background-color: #00000099;
   font-family: sans-serif;
-  background: linear-gradient(90deg, #a46fe236, #a46fe214);
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
   border-radius: 20px;
-  border: 5px solid #0000ff00;
-  border-left: 5px solid #a46fe2ba;
-  border-right: none;
-  backdrop-filter: blur(2px);
+  border: 1px solid rgba(74, 158, 255, 0.15);
+  backdrop-filter: blur(12px);
 
 }
 

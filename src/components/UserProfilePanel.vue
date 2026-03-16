@@ -714,6 +714,52 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   overflow: hidden;
   animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) !important;
+  position: relative;
+}
+
+/* ── Holographic edge glow — subtle orbiting light dots ── */
+.nge-profile-modal :deep(.nge-overlay)::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--nge-holo-angle, 0deg),
+    transparent 0%,
+    rgba(74, 158, 255, 0.0) 10%,
+    rgba(74, 158, 255, 0.35) 14%,
+    rgba(0, 210, 255, 0.15) 18%,
+    transparent 22%,
+    transparent 35%,
+    rgba(160, 120, 255, 0.25) 39%,
+    rgba(120, 80, 220, 0.1) 43%,
+    transparent 47%,
+    transparent 60%,
+    rgba(0, 255, 200, 0.2) 64%,
+    rgba(74, 158, 255, 0.08) 68%,
+    transparent 72%,
+    transparent 85%,
+    rgba(74, 158, 255, 0.15) 89%,
+    transparent 93%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: ngeHoloEdgeSpin 8s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.7;
+}
+
+@property --nge-holo-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes ngeHoloEdgeSpin {
+  to { --nge-holo-angle: 360deg; }
 }
 
 /* Scanline removed — holographic border glow handled by ModalOverlay */
