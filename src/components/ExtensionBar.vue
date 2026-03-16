@@ -51,6 +51,7 @@ const {volumes} = useVolumesStore();
 
 onMounted(() => {
   (document.querySelector('.ng-extend-logo > a > img')! as HTMLImageElement).src = logoImage;
+  document.addEventListener('nge:open-profile', () => { showProfile.value = true; });
 });
 
 const statsStore = useUserStatsStore();

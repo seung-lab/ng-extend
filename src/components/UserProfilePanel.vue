@@ -1207,16 +1207,16 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-badge--latest .nge-profile-badge-name {
   color: #8ac8ff;
 }
-/* Building badges: golden highlight */
+/* Building badges: subtle golden highlight */
 .nge-profile-badge--building.nge-profile-badge--selected {
-  background: rgba(245, 166, 35, 0.12);
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.35) inset;
+  background: rgba(245, 166, 35, 0.06);
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.2) inset;
 }
 .nge-profile-badge--building.nge-profile-badge--selected .nge-profile-badge-img {
-  filter: drop-shadow(0 0 6px rgba(255, 200, 80, 0.75));
+  filter: drop-shadow(0 0 3px rgba(255, 200, 80, 0.35));
 }
 .nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-img {
-  filter: drop-shadow(0 0 8px rgba(255, 200, 80, 0.6));
+  filter: drop-shadow(0 0 4px rgba(255, 200, 80, 0.3));
 }
 .nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-name {
   color: #ffd08a;

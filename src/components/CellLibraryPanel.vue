@@ -197,8 +197,10 @@ function parseCoords(s: string): [number, number, number] {
 }
 
 async function claimCell(cell: typeof cells.value[0]) {
-  if (!isLoggedIn.value || !cell.taskId) return;
-  await backend.claimTask(cell.taskId);
+  if (!isLoggedIn.value) return;
+  // Use claimBySegment which creates the task if it doesn't exist yet
+  const result = await backend.claimBySegment(cell.segId);
+  if (!result.ok) { console.warn('[cellLibrary] Claim failed:', result.reason); return; }
   // Write claim to Google Sheet (best-effort)
   writeClaimToSheet(cell.segId, backend.userName);
   await backend.loadTasks('eyewire_ii');
@@ -562,7 +564,7 @@ const panelStyle = computed(() => ({
               >↗</button>
 
               <button
-                v-if="cell.status === 'pending' && isLoggedIn && cell.taskId"
+                v-if="cell.status === 'pending' && isLoggedIn"
                 class="nge-cl-btn nge-cl-btn--claim"
                 @click="claimCell(cell)"
               >Claim</button>

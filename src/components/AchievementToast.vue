@@ -37,8 +37,17 @@ interface Toast {
 const toasts = ref<Toast[]>([]);
 let toastId = 0;
 
+/** Hero badge — shown centered as a big celebration */
+const heroBadge = ref<Toast | null>(null);
+
 function addToast(toast: Omit<Toast, 'id' | 'leaving'>) {
   const t: Toast = { ...toast, id: ++toastId, leaving: false };
+  // Badge unlocks get hero treatment
+  if (toast.type === 'badge') {
+    heroBadge.value = t;
+    setTimeout(() => dismissHero(), 8000);
+    return;
+  }
   toasts.value.push(t);
   // Auto-dismiss after 5s
   setTimeout(() => dismiss(t.id), 5000);
@@ -52,6 +61,15 @@ function dismiss(id: number) {
       toasts.value = toasts.value.filter(x => x.id !== id);
     }, 300);
   }
+}
+
+function dismissHero() {
+  heroBadge.value = null;
+}
+
+function onHeroClick() {
+  dismissHero();
+  document.dispatchEvent(new CustomEvent('nge:open-profile'));
 }
 
 // ── Track previous values to detect threshold crossings ──────────────────────
@@ -217,6 +235,24 @@ watch(() => queueStore.proofread.size, () => {
 <template>
   <ConfettiCelebration ref="confettiRef" />
   <Teleport to="body">
+    <!-- Hero badge unlock overlay -->
+    <Transition name="nge-hero">
+      <div v-if="heroBadge" class="nge-hero-overlay" @click="onHeroClick">
+        <div class="nge-hero-card">
+          <div class="nge-hero-particles">
+            <span v-for="i in 12" :key="i" class="nge-hero-particle" :style="{ '--i': i }"></span>
+          </div>
+          <div class="nge-hero-icon">
+            <img v-if="heroBadge.isImage" :src="heroBadge.icon" class="nge-hero-badge-img" />
+            <span v-else class="nge-hero-emoji">{{ heroBadge.icon }}</span>
+          </div>
+          <div class="nge-hero-title">{{ heroBadge.title }}</div>
+          <div class="nge-hero-subtitle">{{ heroBadge.subtitle }}</div>
+          <div class="nge-hero-hint">Click to view profile</div>
+        </div>
+      </div>
+    </Transition>
+
     <div class="nge-toast-container">
       <TransitionGroup name="nge-toast">
         <div
@@ -255,6 +291,78 @@ watch(() => queueStore.proofread.size, () => {
 </template>
 
 <style scoped>
+/* ── Hero badge unlock (centered overlay) ── */
+.nge-hero-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+.nge-hero-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 56px;
+  background: rgba(18, 22, 30, 0.97);
+  border: 1px solid rgba(255, 200, 80, 0.3);
+  border-radius: 16px;
+  box-shadow:
+    0 0 80px rgba(245, 166, 35, 0.15),
+    0 0 200px rgba(206, 147, 216, 0.08),
+    0 24px 64px rgba(0, 0, 0, 0.6);
+  position: relative;
+  overflow: hidden;
+}
+.nge-hero-icon {
+  width: 140px; height: 140px;
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 0 24px rgba(255, 200, 80, 0.5));
+  animation: nge-hero-float 3s ease-in-out infinite alternate;
+}
+.nge-hero-badge-img { width: 120px; height: 120px; object-fit: contain; }
+.nge-hero-emoji { font-size: 72px; }
+.nge-hero-title {
+  font-size: 20px; font-weight: 700; color: #ffd08a;
+  text-align: center; text-shadow: 0 0 20px rgba(245, 166, 35, 0.4);
+}
+.nge-hero-subtitle {
+  font-size: 13px; color: #999; text-align: center; max-width: 280px;
+}
+.nge-hero-hint {
+  font-size: 11px; color: rgba(255, 208, 138, 0.5); margin-top: 8px;
+}
+@keyframes nge-hero-float {
+  from { transform: translateY(0); }
+  to { transform: translateY(-8px); }
+}
+/* Hero particles */
+.nge-hero-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.nge-hero-particle {
+  position: absolute; width: 4px; height: 4px; border-radius: 50%;
+  background: rgba(255, 200, 80, 0.6);
+  animation: nge-hero-sparkle 2s ease-out infinite;
+  animation-delay: calc(var(--i) * 0.15s);
+  left: calc(5% + var(--i) * 7.5%);
+  top: 80%;
+}
+@keyframes nge-hero-sparkle {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-120px) scale(0); }
+}
+/* Hero transitions */
+.nge-hero-enter-active { transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.nge-hero-leave-active { transition: all 0.3s ease-in; }
+.nge-hero-enter-from { opacity: 0; }
+.nge-hero-enter-from .nge-hero-card { transform: scale(0.7); }
+.nge-hero-leave-to { opacity: 0; }
+.nge-hero-leave-to .nge-hero-card { transform: scale(0.9); }
+
 .nge-toast-container {
   position: fixed;
   top: 52px;
