@@ -31,13 +31,9 @@ async function sendNotification() {
     let imageUrl: string | undefined;
     let thumbnailUrl: string | undefined;
     if (notifImageFile.value) {
-      try {
-        const urls = await backend.uploadAdminImage(notifImageFile.value, 'notifications');
-        imageUrl = urls.fullUrl;
-        thumbnailUrl = urls.thumbUrl;
-      } catch (imgErr: any) {
-        console.warn('[admin] Image upload failed, sending without image:', imgErr.message);
-      }
+      const urls = await backend.uploadAdminImage(notifImageFile.value, 'notifications');
+      imageUrl = urls.fullUrl;
+      thumbnailUrl = urls.thumbUrl;
     }
     await backend.createNotification({
       title: notifTitle.value.trim(),
