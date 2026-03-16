@@ -121,6 +121,22 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
 
 const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'feed', 'notif', 'chat', 'settings'];
 
+// Map icon IDs to their active (open) state
+const iconActiveState: Record<string, () => boolean> = {
+  recap: () => showRecap.value,
+  leaderboard: () => showLeaderboard.value,
+  quest: () => showQueue.value,
+  cells: () => showCellLibrary.value,
+  batch: () => showBatchProcessor.value,
+  feed: () => showFeed.value,
+  notif: () => showNotifications.value,
+  chat: () => showChat.value,
+  settings: () => showSettings.value,
+};
+function isIconActive(id: string): boolean {
+  return iconActiveState[id]?.() ?? false;
+}
+
 const visibleToolbar = computed(() => {
   const prefs = useUserPreferencesStore().prefs;
   let order = prefs.toolbarIcons.length > 0 ? [...prefs.toolbarIcons] : DEFAULT_TOOLBAR_ORDER;
@@ -219,7 +235,10 @@ function activateTool(toolType: 'multicut' | 'merge') {
         v-for="icon in visibleToolbar"
         :key="icon.id"
         class="nge-icon-btn"
-        :class="{ 'nge-icon-btn--badge': icon.badge && icon.badge() > 0 }"
+        :class="{
+          'nge-icon-btn--badge': icon.badge && icon.badge() > 0,
+          'nge-icon-btn--active': isIconActive(icon.id),
+        }"
         :title="icon.label"
         @click="icon.action()"
       ><span v-if="icon.svg" v-html="icon.svg"></span><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge">{{ icon.badge() }}</span></button>
@@ -420,6 +439,11 @@ function activateTool(toolType: 'multicut' | 'merge') {
 .nge-icon-btn:hover {
   opacity: 1;
   background: rgba(255, 255, 255, 0.06);
+}
+.nge-icon-btn--active {
+  opacity: 1;
+  background: rgba(74, 158, 255, 0.12);
+  box-shadow: 0 1px 0 0 #4a9eff;
 }
 .nge-icon-btn--badge { position: relative; }
 
