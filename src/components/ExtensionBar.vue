@@ -116,7 +116,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
 ]);
 
-const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'quest', 'cells', 'batch', 'help', 'feed', 'chat', 'settings'];
+const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'feed', 'chat', 'settings'];
 
 const visibleToolbar = computed(() => {
   const prefs = useUserPreferencesStore().prefs;
@@ -161,7 +161,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
 
 <template>
   <login-modal />
-  <annotation-panel />
+  <!-- <annotation-panel /> --> <!-- Hidden: users pick cells from Cell Library instead -->
   <achievement-toast />
   <command-palette
     ref="cmdPalette"

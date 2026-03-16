@@ -406,7 +406,7 @@ export interface UserStats {
   editsThisMonth: number;
   mergesThisMonth: number;
   splitsThisMonth: number;
-  // Streak — consecutive calendar days with ≥1 edit (merge OR split counts)
+  // Streak — consecutive calendar days with ≥1 activity (edits or cell completions)
   currentStreak: number;
   longestStreak: number;
   lastEditDate: string;       // ISO date string e.g. "2026-03-01"
@@ -1821,7 +1821,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         updates.cells_completed = (row.cells_completed || 0) + 1;
       }
 
-      // Calculate streak: consecutive calendar days with edits
+      // Calculate streak: consecutive calendar days with any activity (edits or completions)
       const lastDate = row.last_edit_date;
       let streak = row.current_streak || 0;
       let longest = row.longest_streak || 0;
