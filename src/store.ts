@@ -1599,6 +1599,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         userId.value = newUser?.id ?? null;
         console.info('[backend] syncUser: created user', userId.value);
       }
+      // Check admin status + load special badges after user is synced
+      await checkAdmin();
+      await loadMySpecialBadges();
     } catch (e: any) {
       console.warn('[backend] User sync failed:', e.message);
     }
@@ -2145,6 +2148,400 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     return true;
   }
 
+  // ── Admin Hub ──────────────────────────────────────────────────────────
+
+  const isAdmin = ref(false);
+
+  async function checkAdmin() {
+    if (!userEmail.value) { isAdmin.value = false; return; }
+    const { data } = await supabase
+      .from('admins')
+      .select('id')
+      .eq('email', userEmail.value)
+      .maybeSingle();
+    isAdmin.value = !!data;
+    if (isAdmin.value) console.info('[backend] Admin access granted for', userEmail.value);
+  }
+
+  // ── Notifications ─────────────────────────────────────────────────────
+
+  interface Notification {
+    id: number;
+    title: string;
+    body: string;
+    image_url: string | null;
+    thumbnail_url: string | null;
+    send_at: string;
+    expires_at: string | null;
+    target_type: string;
+    target_id: string | null;
+    post_to_chat: boolean;
+    created_at: string;
+    created_by: string | null;
+  }
+
+  const notifications = ref<Notification[]>([]);
+  const notificationReads = ref<Set<number>>(new Set());
+  let notifSubscription: any = null;
+
+  const unreadNotificationCount = computed(() =>
+    notifications.value.filter(n => !notificationReads.value.has(n.id)).length
+  );
+
+  async function loadNotifications() {
+    if (!userId.value) return;
+    const now = new Date().toISOString();
+
+    // Get user's group IDs for group-targeted notifications
+    const { data: memberships } = await supabase
+      .from('user_group_members')
+      .select('group_id')
+      .eq('user_id', userId.value);
+    const groupIds = (memberships || []).map((m: any) => String(m.group_id));
+
+    // Fetch active notifications
+    let query = supabase
+      .from('notifications')
+      .select('*')
+      .lte('send_at', now)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    const { data: allNotifs } = await query;
+    if (!allNotifs) return;
+
+    // Filter: show only non-expired + matching target
+    notifications.value = allNotifs.filter((n: Notification) => {
+      if (n.expires_at && new Date(n.expires_at) < new Date()) return false;
+      if (n.target_type === 'all') return true;
+      if (n.target_type === 'user' && n.target_id === userId.value) return true;
+      if (n.target_type === 'group' && groupIds.includes(n.target_id || '')) return true;
+      return false;
+    });
+
+    // Load read status
+    const { data: reads } = await supabase
+      .from('notification_reads')
+      .select('notification_id')
+      .eq('user_id', userId.value);
+    notificationReads.value = new Set((reads || []).map((r: any) => r.notification_id));
+  }
+
+  async function markNotificationRead(notifId: number) {
+    if (!userId.value) return;
+    notificationReads.value.add(notifId);
+    await supabase.from('notification_reads').insert({
+      notification_id: notifId,
+      user_id: userId.value,
+    }).then(() => {}, () => {}); // ignore duplicate errors
+  }
+
+  async function markAllNotificationsRead() {
+    if (!userId.value) return;
+    const unread = notifications.value.filter(n => !notificationReads.value.has(n.id));
+    for (const n of unread) {
+      notificationReads.value.add(n.id);
+    }
+    // Batch insert (ignore conflicts)
+    const rows = unread.map(n => ({ notification_id: n.id, user_id: userId.value }));
+    if (rows.length > 0) {
+      await supabase.from('notification_reads').upsert(rows, { onConflict: 'notification_id,user_id' });
+    }
+  }
+
+  async function createNotification(data: {
+    title: string; body: string;
+    image_url?: string; thumbnail_url?: string;
+    send_at?: string; expires_at?: string;
+    target_type?: string; target_id?: string;
+    post_to_chat?: boolean;
+  }) {
+    if (!isAdmin.value || !userId.value) return;
+    const row = {
+      title: data.title,
+      body: data.body,
+      image_url: data.image_url || null,
+      thumbnail_url: data.thumbnail_url || null,
+      send_at: data.send_at || new Date().toISOString(),
+      expires_at: data.expires_at || null,
+      target_type: data.target_type || 'all',
+      target_id: data.target_id || null,
+      post_to_chat: data.post_to_chat || false,
+      created_by: userId.value,
+    };
+    const { error: err } = await supabase.from('notifications').insert(row);
+    if (err) console.warn('[admin] createNotification error:', err.message);
+    await loadNotifications();
+  }
+
+  async function deleteNotification(notifId: number) {
+    if (!isAdmin.value) return;
+    await supabase.from('notifications').delete().eq('id', notifId);
+    notifications.value = notifications.value.filter(n => n.id !== notifId);
+  }
+
+  function subscribeToNotifications() {
+    if (notifSubscription) return;
+    notifSubscription = supabase
+      .channel('notifications_realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' },
+        () => { loadNotifications(); })
+      .subscribe();
+  }
+
+  function unsubscribeFromNotifications() {
+    if (notifSubscription) {
+      supabase.removeChannel(notifSubscription);
+      notifSubscription = null;
+    }
+  }
+
+  // ── User Groups ───────────────────────────────────────────────────────
+
+  interface UserGroup {
+    id: number;
+    name: string;
+    description: string;
+    color: string;
+    created_at: string;
+    member_count?: number;
+  }
+
+  interface GroupMember {
+    user_id: string;
+    display_name: string;
+    email: string;
+    added_at: string;
+  }
+
+  const groups = ref<UserGroup[]>([]);
+
+  async function loadGroups() {
+    const { data } = await supabase
+      .from('user_groups')
+      .select('*')
+      .order('name');
+    if (data) {
+      // Get member counts
+      for (const g of data) {
+        const { count } = await supabase
+          .from('user_group_members')
+          .select('id', { count: 'exact', head: true })
+          .eq('group_id', g.id);
+        g.member_count = count || 0;
+      }
+      groups.value = data;
+    }
+  }
+
+  async function createGroup(name: string, description: string = '', color: string = '#4a9eff') {
+    if (!isAdmin.value || !userId.value) return;
+    const { error: err } = await supabase.from('user_groups').insert({
+      name, description, color, created_by: userId.value,
+    });
+    if (err) console.warn('[admin] createGroup error:', err.message);
+    await loadGroups();
+  }
+
+  async function deleteGroup(groupId: number) {
+    if (!isAdmin.value) return;
+    await supabase.from('user_groups').delete().eq('id', groupId);
+    await loadGroups();
+  }
+
+  async function loadGroupMembers(groupId: number): Promise<GroupMember[]> {
+    const { data } = await supabase
+      .from('user_group_members')
+      .select('user_id, added_at, users!inner(display_name, middleauth_email)')
+      .eq('group_id', groupId);
+    return (data || []).map((m: any) => ({
+      user_id: m.user_id,
+      display_name: m.users?.display_name || '',
+      email: m.users?.middleauth_email || '',
+      added_at: m.added_at,
+    }));
+  }
+
+  async function addGroupMembers(groupId: number, userIds: string[]) {
+    if (!isAdmin.value || !userId.value) return;
+    const rows = userIds.map(uid => ({
+      group_id: groupId, user_id: uid, added_by: userId.value,
+    }));
+    await supabase.from('user_group_members').upsert(rows, { onConflict: 'group_id,user_id' });
+    await loadGroups();
+  }
+
+  async function removeGroupMember(groupId: number, memberId: string) {
+    if (!isAdmin.value) return;
+    await supabase.from('user_group_members')
+      .delete()
+      .eq('group_id', groupId)
+      .eq('user_id', memberId);
+    await loadGroups();
+  }
+
+  async function searchUsers(query: string): Promise<Array<{id: string; display_name: string; email: string}>> {
+    if (!query || query.length < 2) return [];
+    const { data } = await supabase
+      .from('users')
+      .select('id, display_name, middleauth_email')
+      .or(`display_name.ilike.%${query}%,middleauth_email.ilike.%${query}%`)
+      .limit(10);
+    return (data || []).map((u: any) => ({
+      id: u.id, display_name: u.display_name, email: u.middleauth_email,
+    }));
+  }
+
+  // ── Special Badges ────────────────────────────────────────────────────
+
+  interface SpecialBadge {
+    id: number;
+    name: string;
+    description: string;
+    slug: string;
+    image_url: string;
+    thumbnail_url: string | null;
+    created_at: string;
+  }
+
+  interface SpecialBadgeAward {
+    id: number;
+    badge_id: number;
+    user_id: string;
+    awarded_at: string;
+    awarded_by: string | null;
+    reason: string;
+    badge?: SpecialBadge;
+  }
+
+  const specialBadges = ref<SpecialBadge[]>([]);
+  const mySpecialBadges = ref<SpecialBadgeAward[]>([]);
+
+  async function loadSpecialBadges() {
+    const { data } = await supabase
+      .from('special_badges')
+      .select('*')
+      .order('created_at', { ascending: false });
+    specialBadges.value = data || [];
+  }
+
+  async function loadMySpecialBadges() {
+    if (!userId.value) return;
+    const { data } = await supabase
+      .from('special_badge_awards')
+      .select('*, special_badges(*)')
+      .eq('user_id', userId.value)
+      .order('awarded_at', { ascending: false });
+    mySpecialBadges.value = (data || []).map((a: any) => ({
+      ...a,
+      badge: a.special_badges || undefined,
+    }));
+  }
+
+  /** Load special badges for any user (for viewing other profiles). */
+  async function loadUserSpecialBadges(uid: string): Promise<SpecialBadgeAward[]> {
+    const { data } = await supabase
+      .from('special_badge_awards')
+      .select('*, special_badges(*)')
+      .eq('user_id', uid)
+      .order('awarded_at', { ascending: false });
+    return (data || []).map((a: any) => ({
+      ...a,
+      badge: a.special_badges || undefined,
+    }));
+  }
+
+  async function createSpecialBadge(data: {
+    name: string; description: string; slug: string;
+    image_url: string; thumbnail_url?: string;
+  }) {
+    if (!isAdmin.value || !userId.value) return;
+    const { error: err } = await supabase.from('special_badges').insert({
+      ...data, thumbnail_url: data.thumbnail_url || null, created_by: userId.value,
+    });
+    if (err) console.warn('[admin] createSpecialBadge error:', err.message);
+    await loadSpecialBadges();
+  }
+
+  async function awardBadge(badgeId: number, userIds: string[], reason: string = '') {
+    if (!isAdmin.value || !userId.value) return;
+    const rows = userIds.map(uid => ({
+      badge_id: badgeId, user_id: uid, awarded_by: userId.value, reason,
+    }));
+    const { error: err } = await supabase.from('special_badge_awards')
+      .upsert(rows, { onConflict: 'badge_id,user_id' });
+    if (err) console.warn('[admin] awardBadge error:', err.message);
+  }
+
+  async function awardBadgeToGroup(badgeId: number, groupId: number, reason: string = '') {
+    if (!isAdmin.value || !userId.value) return;
+    const { data: members } = await supabase
+      .from('user_group_members')
+      .select('user_id')
+      .eq('group_id', groupId);
+    if (members && members.length > 0) {
+      await awardBadge(badgeId, members.map((m: any) => m.user_id), reason);
+    }
+  }
+
+  async function revokeBadge(badgeId: number, uid: string) {
+    if (!isAdmin.value) return;
+    await supabase.from('special_badge_awards')
+      .delete()
+      .eq('badge_id', badgeId)
+      .eq('user_id', uid);
+  }
+
+  // ── Image Upload ──────────────────────────────────────────────────────
+
+  async function uploadAdminImage(
+    file: File, type: 'notifications' | 'badges',
+  ): Promise<{fullUrl: string; thumbUrl: string}> {
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fullPath = `${type}/${timestamp}-${safeName}`;
+    const thumbPath = `${type}/${timestamp}-${safeName}-thumb.png`;
+
+    // Upload full image
+    const { error: fullErr } = await supabase.storage
+      .from('admin-uploads')
+      .upload(fullPath, file, { contentType: file.type, upsert: true });
+    if (fullErr) throw new Error('Full image upload failed: ' + fullErr.message);
+
+    // Generate thumbnail client-side
+    const thumbBlob = await generateThumbnail(file, 120);
+    const { error: thumbErr } = await supabase.storage
+      .from('admin-uploads')
+      .upload(thumbPath, thumbBlob, { contentType: 'image/png', upsert: true });
+    if (thumbErr) throw new Error('Thumbnail upload failed: ' + thumbErr.message);
+
+    const { data: fullData } = supabase.storage.from('admin-uploads').getPublicUrl(fullPath);
+    const { data: thumbData } = supabase.storage.from('admin-uploads').getPublicUrl(thumbPath);
+
+    return { fullUrl: fullData.publicUrl, thumbUrl: thumbData.publicUrl };
+  }
+
+  function generateThumbnail(file: File, maxWidth: number): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(maxWidth / img.width, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Canvas not supported')); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Thumbnail generation failed'));
+        }, 'image/png');
+      };
+      img.onerror = () => reject(new Error('Image load failed'));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     leaderboard,
@@ -2154,6 +2551,22 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Claim-by-segment
     claimBySegment, releaseBySegment, isMyClaimedSegment, isClaimedSegment, myActiveClaimCount,
     MAX_CLAIMS,
+    // Admin Hub
+    isAdmin, checkAdmin,
+    // Notifications
+    notifications, unreadNotificationCount, loadNotifications,
+    markNotificationRead, markAllNotificationsRead,
+    createNotification, deleteNotification,
+    subscribeToNotifications, unsubscribeFromNotifications,
+    // User Groups
+    groups, loadGroups, createGroup, deleteGroup,
+    loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
+    // Special Badges
+    specialBadges, mySpecialBadges,
+    loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
+    createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
+    // Image Upload
+    uploadAdminImage,
   };
 });
 
@@ -2352,7 +2765,7 @@ export const useChatStore = defineStore('chat', () => {
       event: 'message',
       payload: {
         name,
-        rank: 'player',
+        rank: backend.isAdmin ? 'admin' : 'player',
         text,
         timestamp: new Date().toISOString(),
       },
