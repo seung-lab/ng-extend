@@ -253,7 +253,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
       </div>
     </Transition>
 
-    <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn" title="My Profile">👤</button>
+    <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn" title="My Profile"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
     <template v-if="login.sessions.length > 0">
       <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
           <template #buttonTitle>Logins ({{ login.sessions.length }})</template>
