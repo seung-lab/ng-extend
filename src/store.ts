@@ -531,6 +531,51 @@ export const useUserStatsStore = defineStore('userStats', () => {
 
   loadDailyLog();
 
+  /** Recalculate today/week/month stats from dailyLog to prevent stale accumulation. */
+  function recalcFromDailyLog() {
+    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+    const monthAgo = new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+
+    let editsToday = 0, mergesToday = 0, splitsToday = 0;
+    let editsWeek = 0, mergesWeek = 0, splitsWeek = 0;
+    let editsMonth = 0, mergesMonth = 0, splitsMonth = 0;
+
+    for (const entry of dailyLog.value) {
+      if (entry.date === today) {
+        editsToday += entry.edits;
+        mergesToday += entry.merges;
+        splitsToday += entry.splits;
+      }
+      if (entry.date >= weekAgo) {
+        editsWeek += entry.edits;
+        mergesWeek += entry.merges;
+        splitsWeek += entry.splits;
+      }
+      if (entry.date >= monthAgo) {
+        editsMonth += entry.edits;
+        mergesMonth += entry.merges;
+        splitsMonth += entry.splits;
+      }
+    }
+
+    // Only update today/week/month — preserve allTime from Supabase
+    const s = stats.value;
+    s.editsToday = editsToday;
+    s.mergesToday = mergesToday;
+    s.splitsToday = splitsToday;
+    s.editsThisWeek = editsWeek;
+    s.mergesThisWeek = mergesWeek;
+    s.splitsThisWeek = splitsWeek;
+    s.editsThisMonth = editsMonth;
+    s.mergesThisMonth = mergesMonth;
+    s.splitsThisMonth = splitsMonth;
+    persist();
+  }
+
+  recalcFromDailyLog();
+
   // ── Edit event signal for UI celebrations ───────────────────────
   /** Brief reactive signal: set on merge/split, auto-clears after 2.5s. */
   const recentEditEvent = ref<{type: 'merge' | 'split'; ts: number} | null>(null);
@@ -831,6 +876,8 @@ export interface HelpRequest {
   dataset?: string;
   /** Who created this request */
   userName?: string;
+  /** Display name of the user who resolved this request */
+  resolvedByName?: string;
 }
 
 /** Map Supabase row → HelpRequest interface */
@@ -847,6 +894,7 @@ function rowToHelpRequest(row: any): HelpRequest {
     nickname: row.nickname ?? undefined,
     dataset: row.dataset ?? undefined,
     userName: row.user_name ?? undefined,
+    resolvedByName: row.resolved_by_name ?? undefined,
   };
 }
 
@@ -970,12 +1018,14 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   /** Mark a help request as resolved in Supabase. */
   async function resolve(id: string) {
     const backend = useProofreadingBackendStore();
+    const resolverName = backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
     const { error } = await supabase
       .from('help_requests')
       .update({
         resolved: true,
         resolved_at: new Date().toISOString(),
         resolved_by: backend.userId || null,
+        resolved_by_name: resolverName,
       })
       .eq('id', id);
 
@@ -984,7 +1034,10 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
     }
     // Optimistic update
     const r = requests.value.find(x => x.id === id);
-    if (r) r.resolved = true;
+    if (r) {
+      r.resolved = true;
+      r.resolvedByName = resolverName;
+    }
     refreshPending();
   }
 

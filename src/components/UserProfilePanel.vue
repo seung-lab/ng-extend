@@ -3,7 +3,7 @@ import {ref, computed, onMounted, onUnmounted} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
-import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, CellHistoryEntry} from '../store';
+import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
@@ -21,6 +21,14 @@ const {cells: cellHistory} = storeToRefs(historyStore);
 // Refresh stats from Supabase when profile opens
 const backendStore = useProofreadingBackendStore();
 backendStore.loadUserStats();
+
+// Player assists — help requests resolved by current user
+const helpStore = useHelpRequestStore();
+const playerAssists = computed(() => {
+  const name = backendStore.userName || backendStore.userEmail?.split('@')[0];
+  if (!name) return 0;
+  return helpStore.requests.filter(r => r.resolved && r.resolvedByName === name).length;
+});
 
 // ── Local state ───────────────────────────────────────────────────────────────
 const closing        = ref(false);
@@ -413,6 +421,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <div class="nge-profile-stat-label">Total</div>
                 <div class="nge-profile-stat-val">{{ filteredCellHistory.length.toLocaleString() }}</div>
                 <div class="nge-profile-stat-sub">touched</div>
+              </div>
+              <div class="nge-profile-stat-col" v-if="playerAssists > 0">
+                <div class="nge-profile-stat-label">Assists</div>
+                <div class="nge-profile-stat-val" style="color: #7f8;">{{ playerAssists }}</div>
+                <div class="nge-profile-stat-sub">helped</div>
               </div>
             </div>
 

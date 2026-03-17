@@ -103,6 +103,7 @@ CREATE TABLE help_requests (
   resolved BOOLEAN DEFAULT false,
   resolved_at TIMESTAMPTZ,
   resolved_by UUID REFERENCES users(id),
+  resolved_by_name TEXT,
   cell_type TEXT,
   nickname TEXT,
   created_at TIMESTAMPTZ DEFAULT now()

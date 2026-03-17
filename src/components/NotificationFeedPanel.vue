@@ -65,6 +65,7 @@ function linkify(text: string): string {
 </script>
 
 <template>
+  <Teleport to="body">
   <div ref="panelRef" class="nge-notif-panel">
     <div class="nge-notif-topbar">
       <span class="nge-notif-title">🔔 Notifications</span>
@@ -115,42 +116,41 @@ function linkify(text: string): string {
     </div>
 
     <!-- ═══ Detail overlay ═══ -->
-    <Teleport to="body">
-      <Transition name="nge-notif-detail">
-        <div v-if="openNotif" class="nge-notif-detail-backdrop" @click.self="closeDetail">
-          <div class="nge-notif-detail">
-            <div class="nge-notif-detail-topbar">
-              <span class="nge-notif-detail-time">{{ relativeTime(openNotif.send_at) }}</span>
-              <button class="nge-notif-detail-close" @click="closeDetail">×</button>
-            </div>
-            <div class="nge-notif-detail-scroll">
-              <div class="nge-notif-detail-layout" :class="{ 'nge-notif-detail-layout--has-image': openNotif.image_url || openNotif.thumbnail_url }">
-                <div v-if="openNotif.image_url || openNotif.thumbnail_url" class="nge-notif-detail-image">
-                  <img
-                    :src="openNotif.image_url || openNotif.thumbnail_url"
-                    class="nge-notif-detail-img"
-                    @click="lightboxUrl = openNotif.image_url || openNotif.thumbnail_url"
-                  />
-                </div>
-                <div class="nge-notif-detail-text">
-                  <h2 class="nge-notif-detail-title">{{ openNotif.title }}</h2>
-                  <div
-                    class="nge-notif-detail-body"
-                    v-html="linkify(openNotif.body)"
-                  ></div>
-                </div>
+    <Transition name="nge-notif-detail">
+      <div v-if="openNotif" class="nge-notif-detail-backdrop" @click.self="closeDetail">
+        <div class="nge-notif-detail">
+          <div class="nge-notif-detail-topbar">
+            <span class="nge-notif-detail-time">{{ relativeTime(openNotif.send_at) }}</span>
+            <button class="nge-notif-detail-close" @click="closeDetail">×</button>
+          </div>
+          <div class="nge-notif-detail-scroll">
+            <div class="nge-notif-detail-layout" :class="{ 'nge-notif-detail-layout--has-image': openNotif.image_url || openNotif.thumbnail_url }">
+              <div v-if="openNotif.image_url || openNotif.thumbnail_url" class="nge-notif-detail-image">
+                <img
+                  :src="openNotif.image_url || openNotif.thumbnail_url"
+                  class="nge-notif-detail-img"
+                  @click="lightboxUrl = openNotif.image_url || openNotif.thumbnail_url"
+                />
+              </div>
+              <div class="nge-notif-detail-text">
+                <h2 class="nge-notif-detail-title">{{ openNotif.title }}</h2>
+                <div
+                  class="nge-notif-detail-body"
+                  v-html="linkify(openNotif.body)"
+                ></div>
               </div>
             </div>
           </div>
         </div>
-      </Transition>
-
-      <!-- Lightbox for full-size images -->
-      <div v-if="lightboxUrl" class="nge-notif-lightbox" @click="lightboxUrl = null">
-        <img :src="lightboxUrl" class="nge-notif-lightbox-img" />
       </div>
-    </Teleport>
+    </Transition>
+
+    <!-- Lightbox for full-size images -->
+    <div v-if="lightboxUrl" class="nge-notif-lightbox" @click="lightboxUrl = null">
+      <img :src="lightboxUrl" class="nge-notif-lightbox-img" />
+    </div>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>

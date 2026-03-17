@@ -546,7 +546,11 @@ const emit = defineEmits({hide: null});
 
 .nge-lb-name {
   font-weight: 500;
-  color: #ddd;
+  color: rgba(74, 158, 255, 0.9);
+  cursor: pointer;
+}
+.nge-lb-row:hover .nge-lb-name {
+  text-decoration: underline;
 }
 
 .nge-lb-you-tag {

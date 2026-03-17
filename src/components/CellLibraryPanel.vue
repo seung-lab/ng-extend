@@ -498,6 +498,7 @@ const panelStyle = computed(() => ({
                   </div>
                   <div class="nge-cl-row-meta">
                     <span class="nge-cl-badge" style="background: rgba(85,102,119,0.15); color: #889;">{{ req.issueType }}</span>
+                    <span v-if="req.resolvedByName" class="nge-cl-notes" style="color: #7f8;">✓ {{ req.resolvedByName }}</span>
                     <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
                   </div>
                 </div>

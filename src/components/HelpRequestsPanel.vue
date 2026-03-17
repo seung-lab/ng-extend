@@ -197,6 +197,7 @@ function relativeTime(iso: string): string {
               </span>
               <span class="nge-help-card-issue" v-if="req.issueType">{{ req.issueType }}</span>
               <span v-if="req.dataset" class="nge-help-card-dataset">{{ req.dataset }}</span>
+              <span v-if="req.resolvedByName" class="nge-help-card-resolver">✓ {{ req.resolvedByName }}</span>
               <span class="nge-help-card-time">{{ relativeTime(req.createdAt) }}</span>
               <button class="nge-help-card-remove" @click="removeReq(req)" title="Remove">×</button>
             </div>
@@ -385,6 +386,12 @@ function relativeTime(iso: string): string {
   margin-left: auto;
   font-size: 0.85em;
   color: #666;
+}
+
+.nge-help-card-resolver {
+  font-size: 0.82em;
+  color: #7f8;
+  font-weight: 500;
 }
 
 .nge-help-card-remove {

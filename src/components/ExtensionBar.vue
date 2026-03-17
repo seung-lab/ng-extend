@@ -253,7 +253,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
       </div>
     </Transition>
 
-    <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
+    <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
     <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
       <template #buttonTitle>☰</template>
       <template #listItems>
@@ -307,6 +307,25 @@ function activateTool(toolType: 'multicut' | 'merge') {
 
 #insertNGTopBar > div {
   width: 100%;
+}
+
+/* Style NG's Share button to look clickable */
+#insertNGTopBar button[title*="hare"],
+#insertNGTopBar .neuroglancer-share-button,
+#insertNGTopBar [class*="share" i] {
+  background: rgba(74, 158, 255, 0.1) !important;
+  border: 1px solid rgba(74, 158, 255, 0.3) !important;
+  border-radius: 4px !important;
+  padding: 2px 8px !important;
+  color: rgba(74, 158, 255, 0.9) !important;
+  cursor: pointer !important;
+  transition: background 0.15s, border-color 0.15s !important;
+}
+#insertNGTopBar button[title*="hare"]:hover,
+#insertNGTopBar .neuroglancer-share-button:hover,
+#insertNGTopBar [class*="share" i]:hover {
+  background: rgba(74, 158, 255, 0.2) !important;
+  border-color: rgba(74, 158, 255, 0.5) !important;
 }
 
 #extensionBar {
