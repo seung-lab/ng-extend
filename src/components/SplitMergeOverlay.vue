@@ -136,6 +136,7 @@ function cancelTool() {
 
           <div class="nge-smo-actions" v-if="!isSubmitting">
             <span class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
+            <span class="nge-smo-key-hint"><kbd>Enter</kbd> Submit</span>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit merge mode"><kbd>Esc</kbd> Cancel</button>
           </div>
           <div class="nge-smo-loading-indicator" v-if="isSubmitting">
