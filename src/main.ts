@@ -456,6 +456,7 @@ function observeSplitMergeTools() {
   let wasMulticutActive = false;
   let wasMergeActive = false;
   let hadPointsPlaced = false;
+  let multicutOpenTime = 0;
 
   // Track NG status bar messages to capture split/merge errors
   let lastStatusText = '';
@@ -517,6 +518,7 @@ function observeSplitMergeTools() {
 
       // Read point counts from internal multicut state (sinks = red, sources = blue)
       const viewer: any = (<any>window)['viewer'];
+      let gotInternalCounts = false;
       try {
         const segLayer = viewer?.selectedLayer?.layer?.layer;
         const gc = segLayer?.graphConnection?.value;
@@ -526,6 +528,7 @@ function observeSplitMergeTools() {
           const sourceCount = ms.sources?.size ?? 0;
           store.updatePointCounts(sinkCount, sourceCount);
           if (sinkCount > 0 || sourceCount > 0) hadPointsPlaced = true;
+          gotInternalCounts = true;
 
           // Detect submit: points reset to 0 means user submitted
           if (wasMulticutActive &&
@@ -537,8 +540,18 @@ function observeSplitMergeTools() {
           prevSinkCount = sinkCount;
           prevSourceCount = sourceCount;
         }
-      } catch { /* fallback: leave counts as-is */ }
+      } catch { /* fallback below */ }
 
+      // Fallback: detect points from DOM if internal state access failed
+      if (!gotInternalCounts) {
+        const annotations = multicutEl.querySelectorAll('[class*="annotation"], [class*="point"], circle, .neuroglancer-annotation-layer-view');
+        if (annotations.length > 0) hadPointsPlaced = true;
+        // Also check if the multicut UI shows any point count text
+        const text = multicutEl.textContent || '';
+        if (/\d+\s*(source|sink|point)/i.test(text)) hadPointsPlaced = true;
+      }
+
+      if (!wasMulticutActive) multicutOpenTime = Date.now();
       wasMulticutActive = true;
       wasMergeActive = false;
 
@@ -582,7 +595,11 @@ function observeSplitMergeTools() {
     } else {
       // Tool DOM disappeared
       if (wasMulticutActive) {
-        if (store.submitting || hadPointsPlaced) {
+        // Tool was open long enough that user likely placed points and submitted,
+        // even if we couldn't detect points via internal state
+        const toolWasUsed = store.submitting || hadPointsPlaced ||
+          (Date.now() - multicutOpenTime > 3000);
+        if (toolWasUsed) {
           // Had points placed and tool disappeared — likely submitted
           store.beginSuccessClose('Split complete');
         } else {
