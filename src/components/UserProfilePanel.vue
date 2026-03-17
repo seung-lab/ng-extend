@@ -25,6 +25,7 @@ backendStore.loadUserStats();
 // ── Local state ───────────────────────────────────────────────────────────────
 const closing        = ref(false);
 const selectedBadge  = ref<BadgeDefinition | null>(null);
+const selectedSpecialBadge = ref<any | null>(null);
 const showFlagPicker = ref(false);
 const showAllBuilding    = ref(false);
 const showAllExploration = ref(false);
@@ -125,8 +126,14 @@ function isBadgeEarned(badge: BadgeDefinition): boolean {
 
 function onBadgeClick(badge: BadgeDefinition) {
   if (!isBadgeEarned(badge)) return;
+  selectedSpecialBadge.value = null;
   // Toggle: click same badge again to dismiss detail
   selectedBadge.value = selectedBadge.value?.id === badge.id ? null : badge;
+}
+
+function onSpecialBadgeClick(award: any) {
+  selectedBadge.value = null;
+  selectedSpecialBadge.value = selectedSpecialBadge.value?.id === award.id ? null : award;
 }
 
 // ── Earned badges + 1 upcoming "next" badge per track ────────────────────────
@@ -572,13 +579,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <template v-if="backendStore.mySpecialBadges.length > 0">
             <div class="nge-profile-badges-divider"></div>
             <div class="nge-profile-section nge-profile-section--badges nge-profile-section--special">
-              <div class="nge-profile-section-label" style="color: #ffd700;">★ Special Awards</div>
+              <div class="nge-profile-section-label">★ Special Awards</div>
               <div class="nge-profile-badges-grid">
                 <div
                   v-for="award in backendStore.mySpecialBadges"
                   :key="award.id"
-                  class="nge-profile-badge nge-profile-badge--special"
+                  class="nge-profile-badge"
+                  :class="{ 'nge-profile-badge--selected': selectedSpecialBadge?.id === award.id }"
                   :title="(award.badge?.name || '') + (award.badge?.description ? ' — ' + award.badge.description : '')"
+                  @click="onSpecialBadgeClick(award)"
                 >
                   <div class="nge-profile-badge-img">
                     <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
@@ -595,8 +604,25 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         <div class="nge-profile-col nge-profile-col--right">
           <Transition name="nge-viz-swap" mode="out-in">
 
+            <!-- Special badge detail view -->
+            <div v-if="selectedSpecialBadge" key="special" class="nge-profile-viz-panel nge-profile-viz-badge nge-profile-viz-badge--detail">
+              <img
+                :src="selectedSpecialBadge.badge?.image_url || selectedSpecialBadge.badge?.thumbnail_url"
+                :alt="selectedSpecialBadge.badge?.name"
+                class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
+              />
+              <div class="nge-profile-viz-badge-name">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
+              <div v-if="selectedSpecialBadge.badge?.description" class="nge-profile-viz-badge-desc">{{ selectedSpecialBadge.badge.description }}</div>
+              <div class="nge-profile-viz-badge-threshold">
+                Awarded {{ relativeTime(selectedSpecialBadge.awarded_at) }}
+              </div>
+              <button class="nge-profile-viz-badge-back" @click="selectedSpecialBadge = null">
+                ← Back
+              </button>
+            </div>
+
             <!-- Default view: latest earned badge spotlight -->
-            <div v-if="!selectedBadge" key="latest" class="nge-profile-viz-panel nge-profile-viz-badge">
+            <div v-else-if="!selectedBadge" key="latest" class="nge-profile-viz-panel nge-profile-viz-badge">
               <template v-if="latestEarnedBadge">
                 <div class="nge-profile-viz-title">▌ Latest Badge</div>
                 <img
@@ -1295,15 +1321,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* Twine: rotate 90° to look like an infinity symbol */
 .nge-badge--twine { transform: rotate(90deg); }
 
-/* Special Awards (admin-awarded) — gold accent */
-.nge-profile-badge--special .nge-profile-badge-img {
-  background: rgba(255, 215, 0, 0.06);
-  border: 1px solid rgba(255, 215, 0, 0.2);
-  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.3));
-}
-.nge-profile-badge--special .nge-profile-badge-name {
-  color: #ffd700;
-}
 .nge-profile-section--special {
   border-top: none;
 }
