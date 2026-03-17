@@ -28,11 +28,9 @@
 
 /* ── Coordinate display (top-left x, y, z) ── */
 .neuroglancer-position-widget {
-  background: rgba(4, 8, 18, 0.85) !important;
-  backdrop-filter: blur(8px);
+  background: transparent !important;
   border-radius: 6px;
   padding: 4px 8px;
-  border: 1px solid rgba(74, 158, 255, 0.1);
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.82em;
 }
@@ -49,7 +47,7 @@
 .neuroglancer-layer-panel {
   background: rgba(4, 8, 18, 0.9) !important;
   backdrop-filter: blur(8px);
-  border-top: 1px solid rgba(74, 158, 255, 0.08);
+  border-top: none !important;
   padding: 2px 4px;
   gap: 3px;
 }
