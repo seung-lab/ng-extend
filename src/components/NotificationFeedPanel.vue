@@ -52,6 +52,7 @@ function linkify(text: string): string {
 </script>
 
 <template>
+  <div class="nge-notif-backdrop" @click.self="emit('hide')"></div>
   <div class="nge-notif-panel">
     <div class="nge-notif-topbar">
       <span class="nge-notif-title">🔔 Notifications</span>
@@ -61,7 +62,7 @@ function linkify(text: string): string {
           class="nge-notif-mark-all"
           @click="backend.markAllNotificationsRead()"
         >Mark all read</button>
-        <button class="nge-notif-close" @click="emit('hide')">×</button>
+        <button class="nge-notif-close" @click.stop="emit('hide')">×</button>
       </div>
     </div>
 
@@ -84,6 +85,12 @@ function linkify(text: string): string {
               <span v-if="!isRead(notif.id)" class="nge-notif-unread-dot"></span>
               <div class="nge-notif-card-title">{{ notif.title }}</div>
               <span class="nge-notif-time">{{ relativeTime(notif.send_at) }}</span>
+              <button
+                v-if="backend.isAdmin"
+                class="nge-notif-delete"
+                @click.stop="backend.deleteNotification(notif.id)"
+                title="Delete notification"
+              >🗑</button>
             </div>
             <div class="nge-notif-card-body nge-notif-card-body--preview">{{ notif.body }}</div>
           </div>
@@ -135,6 +142,12 @@ function linkify(text: string): string {
 </template>
 
 <style scoped>
+.nge-notif-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 7999;
+}
+
 .nge-notif-panel {
   position: fixed;
   top: 42px;
@@ -264,6 +277,20 @@ function linkify(text: string): string {
   flex-shrink: 0;
 }
 
+.nge-notif-delete {
+  background: none;
+  border: none;
+  font-size: 0.7em;
+  cursor: pointer;
+  opacity: 0;
+  padding: 0 2px;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  filter: grayscale(1);
+}
+.nge-notif-card:hover .nge-notif-delete { opacity: 0.5; }
+.nge-notif-delete:hover { opacity: 1 !important; filter: none; }
+
 .nge-notif-card-body {
   font-size: 0.82em;
   color: #888;
@@ -297,7 +324,7 @@ function linkify(text: string): string {
 }
 
 .nge-notif-detail {
-  width: 560px;
+  width: 620px;
   max-width: 90vw;
   max-height: 80vh;
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
@@ -380,7 +407,7 @@ function linkify(text: string): string {
   flex-shrink: 0;
 }
 .nge-notif-detail-layout--has-image .nge-notif-detail-image {
-  width: 180px;
+  width: 220px;
 }
 
 .nge-notif-detail-text {

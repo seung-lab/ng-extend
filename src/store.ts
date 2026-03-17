@@ -2271,6 +2271,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     };
     const { error: err } = await supabase.from('notifications').insert(row);
     if (err) console.warn('[admin] createNotification error:', err.message);
+    // Post to chat as a system message if requested
+    if (data.post_to_chat) {
+      try {
+        const chatStore = useChatStore();
+        if (chatStore.connected) {
+          chatStore.sendMessage(`📢 ${data.title}: ${data.body.slice(0, 200)}${data.body.length > 200 ? '...' : ''}`);
+        }
+      } catch (e) { console.warn('[admin] post_to_chat failed:', e); }
+    }
     await loadNotifications();
   }
 

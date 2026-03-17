@@ -119,7 +119,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
 ]);
 
-const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'feed', 'notif', 'chat', 'settings'];
+const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'notif', 'chat', 'settings'];
 
 // Map icon IDs to their active (open) state
 const iconActiveState: Record<string, () => boolean> = {
@@ -148,7 +148,7 @@ const visibleToolbar = computed(() => {
     }
   }
   // Remove retired icons from saved prefs
-  order = order.filter(id => !['quest'].includes(id));
+  order = order.filter(id => !['quest', 'feed'].includes(id));
   return order.map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
 });
 

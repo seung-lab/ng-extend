@@ -212,7 +212,7 @@ const identifiedCells = computed(() => filteredCellHistory.value.filter(c => c.c
 
 // ── 14-day activity chart data ───────────────────────────────────────────────
 const last14Days = computed(() => {
-  const days: Array<{ date: string; label: string; edits: number; quests: number; total: number }> = [];
+  const days: Array<{ date: string; label: string; edits: number; completions: number; total: number }> = [];
   const log = statsStore.dailyLog;
   for (let i = 13; i >= 0; i--) {
     const d = new Date();
@@ -224,8 +224,8 @@ const last14Days = computed(() => {
       date: dateStr,
       label: i === 0 ? 'Today' : dayLabel,
       edits: entry?.edits ?? 0,
-      quests: entry?.questsCompleted ?? 0,
-      total: (entry?.edits ?? 0) + (entry?.questsCompleted ?? 0),
+      completions: entry?.cellsCompleted ?? 0,
+      total: (entry?.edits ?? 0) + (entry?.cellsCompleted ?? 0),
     });
   }
   return days;
@@ -665,13 +665,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   v-for="day in last14Days"
                   :key="day.date"
                   class="nge-profile-chart-col"
-                  :title="`${day.date}: ${day.edits} edits, ${day.quests} quests`"
+                  :title="`${day.date}: ${day.edits} edits, ${day.completions} completions`"
                 >
                   <div class="nge-profile-chart-bar-wrap">
                     <div
-                      v-if="day.quests > 0"
-                      class="nge-profile-chart-bar nge-profile-chart-bar--quest"
-                      :style="{ height: Math.max(2, (day.quests / chartMax) * 48) + 'px' }"
+                      v-if="day.completions > 0"
+                      class="nge-profile-chart-bar nge-profile-chart-bar--completion"
+                      :style="{ height: Math.max(2, (day.completions / chartMax) * 48) + 'px' }"
                     ></div>
                     <div
                       v-if="day.edits > 0"
@@ -687,7 +687,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   <span class="nge-profile-chart-legend-dot nge-profile-chart-legend-dot--edit"></span> Edits
                 </span>
                 <span class="nge-profile-chart-legend-item">
-                  <span class="nge-profile-chart-legend-dot nge-profile-chart-legend-dot--quest"></span> Quests
+                  <span class="nge-profile-chart-legend-dot nge-profile-chart-legend-dot--completion"></span> Completions
                 </span>
               </div>
             </div>
@@ -1189,8 +1189,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   background: linear-gradient(to top, rgba(74, 158, 255, 0.5), rgba(74, 158, 255, 0.8));
 }
 
-.nge-profile-chart-bar--quest {
-  background: linear-gradient(to top, rgba(206, 147, 216, 0.5), rgba(206, 147, 216, 0.8));
+.nge-profile-chart-bar--completion {
+  background: linear-gradient(to top, rgba(0, 210, 160, 0.5), rgba(0, 210, 160, 0.8));
   border-radius: 2px;
 }
 
@@ -1226,8 +1226,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   background: rgba(74, 158, 255, 0.7);
 }
 
-.nge-profile-chart-legend-dot--quest {
-  background: rgba(206, 147, 216, 0.7);
+.nge-profile-chart-legend-dot--completion {
+  background: rgba(0, 210, 160, 0.7);
 }
 
 /* ── Badges ── */

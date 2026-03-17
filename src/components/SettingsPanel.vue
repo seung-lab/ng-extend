@@ -175,9 +175,9 @@ function onAwardUserSearch() {
   }, 300);
 }
 
-async function awardToUser(userId: string) {
+async function awardToUser(uid: string) {
   if (!awardBadgeId.value) return;
-  await backend.awardBadge(awardBadgeId.value, userId);
+  await backend.awardBadge(awardBadgeId.value, [uid]);
   awardUserSearch.value = '';
   awardUserResults.value = [];
 }
@@ -226,7 +226,6 @@ const TOOLBAR_ICON_OPTIONS = [
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard' },
   { id: 'cells', emoji: '🧬', label: 'Cell Library' },
   { id: 'help', emoji: '🔍', label: 'Help Requests' },
-  { id: 'feed', emoji: '📡', label: 'Activity Feed' },
   { id: 'notif', emoji: '🔔', label: 'Notifications' },
   { id: 'chat', emoji: '💬', label: 'Chat' },
   { id: 'settings', emoji: '⚙️', label: 'Settings' },
@@ -403,7 +402,7 @@ const emit = defineEmits({hide: null});
               </div>
               <div v-if="memberSearchResults.length > 0" class="nge-admin-search-results">
                 <button v-for="u in memberSearchResults" :key="u.id" class="nge-admin-search-item" @click="addMember(u.id)">
-                  + {{ u.username }}
+                  + {{ u.display_name || u.email }}
                 </button>
               </div>
               <div class="nge-admin-member-list">
