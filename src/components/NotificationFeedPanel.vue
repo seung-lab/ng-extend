@@ -5,14 +5,27 @@ import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 const emit = defineEmits({ hide: null });
 const backend = useProofreadingBackendStore();
+const panelRef = ref<HTMLElement | null>(null);
+
+function onDocClick(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  // Ignore clicks on the toolbar bell button (it handles its own toggle)
+  if (target.closest?.('.nge-icon-btn')) return;
+  if (panelRef.value && !panelRef.value.contains(target)) {
+    emit('hide');
+  }
+}
 
 onMounted(() => {
   backend.loadNotifications();
   backend.subscribeToNotifications();
+  // Delay listener so the opening click doesn't immediately close
+  setTimeout(() => document.addEventListener('mousedown', onDocClick, true), 0);
 });
 
 onUnmounted(() => {
   backend.unsubscribeFromNotifications();
+  document.removeEventListener('mousedown', onDocClick, true);
 });
 
 const lightboxUrl = ref<string | null>(null);
@@ -52,8 +65,7 @@ function linkify(text: string): string {
 </script>
 
 <template>
-  <div class="nge-notif-backdrop" @click.self="emit('hide')">
-  <div class="nge-notif-panel" @click.stop>
+  <div ref="panelRef" class="nge-notif-panel">
     <div class="nge-notif-topbar">
       <span class="nge-notif-title">🔔 Notifications</span>
       <div class="nge-notif-topbar-actions">
@@ -139,16 +151,9 @@ function linkify(text: string): string {
       </div>
     </Teleport>
   </div>
-  </div>
 </template>
 
 <style scoped>
-.nge-notif-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 7999;
-}
-
 .nge-notif-panel {
   position: fixed;
   top: 42px;
