@@ -10,6 +10,7 @@ import {
   type HelpRequest,
 } from '../store';
 import { isLatestRoots, getLatestRoots } from '../widgets/pcg_service';
+import { EYEWIRE_II_CAVE_CONFIG } from '../config';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 const props = defineProps<{ initialTab?: string }>();
@@ -73,8 +74,10 @@ onMounted(async () => {
   // Load tasks from Supabase — these have claim/completion status
   await backend.loadTasks('eyewire_ii');
   // Also ensure queue items are loaded (from Google Sheet)
-  if (queue.sheetUrl && queue.items.length === 0) {
-    await queue.loadFromSheet();
+  // Use configured default sheet URL if none saved in localStorage
+  const sheetSource = queue.sheetUrl || EYEWIRE_II_CAVE_CONFIG.cellLibrarySheetUrl;
+  if (sheetSource && queue.items.length === 0) {
+    await queue.loadFromSheet(sheetSource);
   }
   loading.value = false;
   // Fire-and-forget: resolve stale root IDs for claimed cells

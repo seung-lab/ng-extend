@@ -310,6 +310,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
 }
 
 /* Style NG's Share button to look clickable */
+#insertNGTopBar .neuroglancer-icon[title*="Share"],
 #insertNGTopBar button[title*="hare"],
 #insertNGTopBar .neuroglancer-share-button,
 #insertNGTopBar [class*="share" i] {
@@ -321,6 +322,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
   cursor: pointer !important;
   transition: background 0.15s, border-color 0.15s !important;
 }
+#insertNGTopBar .neuroglancer-icon[title*="Share"]:hover,
 #insertNGTopBar button[title*="hare"]:hover,
 #insertNGTopBar .neuroglancer-share-button:hover,
 #insertNGTopBar [class*="share" i]:hover {

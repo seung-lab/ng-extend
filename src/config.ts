@@ -46,6 +46,10 @@ export const EYEWIRE_II_CAVE_CONFIG = {
 
   /** CAVE datastack name for Eyewire II. Confirm with your team. */
   datastack: 'eyewire_ii',
+
+  /** Default Google Sheet URL for the Cell Library task list.
+   *  Used when no sheet URL has been configured in localStorage. */
+  cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
 };
 
 // Standard mammalian retinal cell types shown in the annotation picker.
