@@ -141,7 +141,7 @@ const visibleToolbar = computed(() => {
   const prefs = useUserPreferencesStore().prefs;
   let order = prefs.toolbarIcons.length > 0 ? [...prefs.toolbarIcons] : DEFAULT_TOOLBAR_ORDER;
   // Auto-inject new toolbar icons that weren't in older saved prefs
-  for (const newId of ['notif', 'chat']) {
+  for (const newId of ['batch', 'notif', 'chat']) {
     if (!order.includes(newId)) {
       const settingsIdx = order.indexOf('settings');
       order.splice(settingsIdx >= 0 ? settingsIdx : order.length, 0, newId);

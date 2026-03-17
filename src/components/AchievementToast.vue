@@ -9,7 +9,7 @@
  */
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useUserStatsStore, useProofreadingQueueStore } from '../store';
+import { useUserStatsStore, useProofreadingQueueStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
@@ -229,6 +229,30 @@ watch(() => queueStore.proofread.size, () => {
     fireConfetti('rainbow', 2);
   }
   prevDailyDone = done;
+});
+
+// ── Special badge award celebration (from admin-awarded badges) ──────────────
+const backend = useProofreadingBackendStore();
+let prevNotifCount = -1;
+
+watch(() => backend.notifications.length, (newLen) => {
+  if (prevNotifCount < 0) { prevNotifCount = newLen; return; }
+  if (newLen <= prevNotifCount) { prevNotifCount = newLen; return; }
+  // Check the newest notifications for achievement awards
+  const newNotifs = backend.notifications.slice(0, newLen - prevNotifCount);
+  for (const notif of newNotifs) {
+    if (notif.title?.includes('New Achievement')) {
+      addToast({
+        type: 'badge',
+        title: '✨ New Achievement!',
+        subtitle: notif.body || 'You earned a special award!',
+        icon: notif.thumbnail_url || notif.image_url || '🏆',
+        isImage: !!(notif.thumbnail_url || notif.image_url),
+      });
+      fireConfetti('gold', 2);
+    }
+  }
+  prevNotifCount = newLen;
 });
 </script>
 

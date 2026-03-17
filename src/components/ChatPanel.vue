@@ -290,8 +290,9 @@ function toggleCollapse() {
   z-index: 9000;
   display: flex;
   flex-direction: column;
-  background: transparent;
+  background: rgba(6, 10, 20, 0.85);
   border-radius: 6px;
+  border: 1px solid rgba(74, 158, 255, 0.08);
   overflow: hidden;
   font-family: 'Inter', 'Roboto', sans-serif;
 }

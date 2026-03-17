@@ -127,6 +127,7 @@ const awardBadgeId = ref<number | null>(null);
 const awardUserSearch = ref('');
 const awardUserResults = ref<any[]>([]);
 const awardGroupId = ref<number | null>(null);
+const awardSuccess = ref('');
 let awardSearchTimeout: any = null;
 
 async function createBadge() {
@@ -175,16 +176,42 @@ function onAwardUserSearch() {
   }, 300);
 }
 
-async function awardToUser(uid: string) {
+async function awardToUser(uid: string, displayName: string) {
   if (!awardBadgeId.value) return;
+  const badge = backend.specialBadges.find(b => b.id === awardBadgeId.value);
   await backend.awardBadge(awardBadgeId.value, [uid]);
   awardUserSearch.value = '';
   awardUserResults.value = [];
+  awardSuccess.value = `✓ "${badge?.name}" awarded to ${displayName}!`;
+  setTimeout(() => { awardSuccess.value = ''; }, 3500);
+
+  // Send a notification to the recipient about their new badge
+  if (badge) {
+    try {
+      await backend.createNotification({
+        title: '✨ New Achievement!',
+        body: `You earned the "${badge.name}" award!${badge.description ? ' — ' + badge.description : ''}`,
+        image_url: badge.image_url || '',
+        thumbnail_url: badge.thumbnail_url || '',
+        target_type: 'user',
+        target_id: uid,
+        post_to_chat: false,
+      });
+    } catch (e) { console.warn('[admin] badge notification failed:', e); }
+  }
 }
 
 async function awardToGroup() {
   if (!awardBadgeId.value || !awardGroupId.value) return;
+  const badge = backend.specialBadges.find(b => b.id === awardBadgeId.value);
+  const group = backend.groups.find(g => g.id === awardGroupId.value);
   await backend.awardBadgeToGroup(awardBadgeId.value, awardGroupId.value);
+  awardSuccess.value = `✓ "${badge?.name}" awarded to group "${group?.name}"!`;
+  setTimeout(() => { awardSuccess.value = ''; }, 3500);
+}
+
+function selectBadgeForAward(badgeId: number) {
+  awardBadgeId.value = awardBadgeId.value === badgeId ? null : badgeId;
 }
 
 // Load admin data when switching to admin tab
@@ -264,6 +291,14 @@ function openJsonEditor() {
   if (viewer?.editJsonState) viewer.editJsonState();
 }
 
+function toggleLayerListPanel() {
+  const viewer = (window as any)['viewer'];
+  if (viewer?.layerListPanelState?.location?.watchableVisible) {
+    const vis = viewer.layerListPanelState.location.watchableVisible;
+    vis.value = !vis.value;
+  }
+}
+
 const emit = defineEmits({hide: null});
 </script>
 
@@ -314,9 +349,10 @@ const emit = defineEmits({hide: null});
 
         <div class="nge-settings-section">
           <label class="nge-settings-label">Advanced</label>
-          <div class="nge-admin-row" style="gap:10px">
+          <div class="nge-admin-row" style="gap:10px; flex-wrap:wrap">
             <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>
             <button class="nge-settings-advanced-btn" @click="openJsonEditor">{} Edit JSON State</button>
+            <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
           </div>
         </div>
 
@@ -454,20 +490,28 @@ const emit = defineEmits({hide: null});
             <div v-if="badgeError" class="nge-admin-error">⚠ {{ badgeError }}</div>
           </div>
 
+          <!-- Award Badge — click a badge icon to select it -->
           <div class="nge-settings-section" v-if="backend.specialBadges.length > 0">
-            <label class="nge-settings-label">Award Badge</label>
-            <select v-model="awardBadgeId" class="nge-admin-select">
-              <option :value="null" disabled>Select badge...</option>
-              <option v-for="b in backend.specialBadges" :key="b.id" :value="b.id">{{ b.name }}</option>
-            </select>
+            <label class="nge-settings-label">Award Badge <span class="nge-settings-hint" style="font-weight:normal; margin-left:6px">Click a badge to select it</span></label>
+            <div class="nge-admin-badge-grid">
+              <div v-for="b in backend.specialBadges" :key="b.id"
+                class="nge-admin-badge-card" :class="{ 'nge-admin-badge-card--selected': awardBadgeId === b.id }"
+                @click="selectBadgeForAward(b.id)" :title="b.description || b.name">
+                <img v-if="b.thumbnail_url || b.image_url" :src="b.thumbnail_url || b.image_url" class="nge-admin-badge-img" />
+                <div class="nge-admin-badge-name">{{ b.name }}</div>
+              </div>
+            </div>
+
+            <!-- Success message -->
+            <div v-if="awardSuccess" class="nge-admin-success">{{ awardSuccess }}</div>
 
             <div v-if="awardBadgeId" class="nge-admin-award-section">
               <p class="nge-settings-hint">Award to individual user:</p>
               <div class="nge-admin-row">
-                <input v-model="awardUserSearch" @input="onAwardUserSearch" class="nge-admin-input" placeholder="Search username..." />
+                <input v-model="awardUserSearch" @input="onAwardUserSearch" class="nge-admin-input" placeholder="Search by name or email..." />
               </div>
               <div v-if="awardUserResults.length > 0" class="nge-admin-search-results">
-                <button v-for="u in awardUserResults" :key="u.id" class="nge-admin-search-item" @click="awardToUser(u.id)">
+                <button v-for="u in awardUserResults" :key="u.id" class="nge-admin-search-item" @click="awardToUser(u.id, u.display_name || u.email)">
                   Award to {{ u.display_name || u.email }}
                 </button>
               </div>
@@ -479,17 +523,6 @@ const emit = defineEmits({hide: null});
                   <option v-for="g in backend.groups" :key="g.id" :value="g.id">{{ g.name }}</option>
                 </select>
                 <button class="nge-admin-action-btn" :disabled="!awardGroupId" @click="awardToGroup">Award to Group</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Existing badges list -->
-          <div class="nge-settings-section" v-if="backend.specialBadges.length > 0">
-            <label class="nge-settings-label">Existing Badges</label>
-            <div class="nge-admin-badge-grid">
-              <div v-for="b in backend.specialBadges" :key="b.id" class="nge-admin-badge-card">
-                <img v-if="b.thumbnail_url" :src="b.thumbnail_url" class="nge-admin-badge-img" />
-                <div class="nge-admin-badge-name">{{ b.name }}</div>
               </div>
             </div>
           </div>
@@ -552,7 +585,7 @@ const emit = defineEmits({hide: null});
 }
 
 .nge-settings-title {
-  font-size: 1.1em;
+  font-size: 1.35em;
   font-weight: 600;
   color: #e0e0e0;
 }
@@ -584,10 +617,11 @@ const emit = defineEmits({hide: null});
 }
 
 .nge-settings-label {
-  font-size: 0.78em;
+  font-size: 0.88em;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: #888;
+  color: #999;
+  font-weight: 600;
 }
 
 .nge-settings-hint {
@@ -1033,6 +1067,21 @@ const emit = defineEmits({hide: null});
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 8px;
   width: 80px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+}
+.nge-admin-badge-card:hover {
+  border-color: rgba(74, 158, 255, 0.35);
+  background: rgba(74, 158, 255, 0.06);
+  transform: translateY(-1px);
+}
+.nge-admin-badge-card--selected {
+  border-color: rgba(74, 200, 140, 0.6) !important;
+  background: rgba(74, 200, 140, 0.1) !important;
+  box-shadow: 0 0 12px rgba(74, 200, 140, 0.15);
+}
+.nge-admin-badge-card--selected .nge-admin-badge-name {
+  color: rgba(74, 200, 140, 0.9);
 }
 .nge-admin-badge-img {
   width: 48px;
@@ -1045,6 +1094,21 @@ const emit = defineEmits({hide: null});
   color: #889;
   text-align: center;
   word-break: break-word;
+  transition: color 0.2s;
+}
+.nge-admin-success {
+  font-size: 0.82em;
+  color: rgba(74, 200, 140, 0.95);
+  background: rgba(74, 200, 140, 0.08);
+  border: 1px solid rgba(74, 200, 140, 0.25);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  animation: ngeSuccessFadeIn 0.3s ease-out;
+}
+@keyframes ngeSuccessFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .nge-admin-error {
