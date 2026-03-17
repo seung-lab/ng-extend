@@ -115,7 +115,11 @@ function linkify(text: string): string {
       No notifications yet.
     </div>
 
-    <!-- ═══ Detail overlay ═══ -->
+  </div>
+  </Teleport>
+
+  <!-- ═══ Detail overlay (separate Teleport so it's not clipped by panel) ═══ -->
+  <Teleport to="body">
     <Transition name="nge-notif-detail">
       <div v-if="openNotif" class="nge-notif-detail-backdrop" @click.self="closeDetail">
         <div class="nge-notif-detail">
@@ -149,7 +153,6 @@ function linkify(text: string): string {
     <div v-if="lightboxUrl" class="nge-notif-lightbox" @click="lightboxUrl = null">
       <img :src="lightboxUrl" class="nge-notif-lightbox-img" />
     </div>
-  </div>
   </Teleport>
 </template>
 
