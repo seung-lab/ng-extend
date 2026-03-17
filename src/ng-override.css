@@ -18,6 +18,91 @@
     margin-bottom: unset;
 }
 
+/* ── Panel hover border: subtle dark blue instead of white ── */
+.neuroglancer-panel:focus-within {
+  border-color: rgba(40, 70, 120, 0.6) !important;
+}
+.neuroglancer-show-panel-borders .neuroglancer-panel {
+  border-color: rgba(20, 30, 50, 0.4) !important;
+}
+
+/* ── Coordinate display (top-left x, y, z) ── */
+.neuroglancer-position-widget {
+  background: rgba(4, 8, 18, 0.85) !important;
+  backdrop-filter: blur(8px);
+  border-radius: 6px;
+  padding: 4px 8px;
+  border: 1px solid rgba(74, 158, 255, 0.1);
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.82em;
+}
+
+.neuroglancer-position-dimension-name {
+  color: rgba(74, 158, 255, 0.7) !important;
+}
+
+.neuroglancer-position-dimension-coordinate {
+  color: rgba(200, 210, 230, 0.9) !important;
+}
+
+/* ── Layer bar (bottom: "1img", "2pinky_training6", "+") ── */
+.neuroglancer-layer-panel {
+  background: rgba(4, 8, 18, 0.9) !important;
+  backdrop-filter: blur(8px);
+  border-top: 1px solid rgba(74, 158, 255, 0.08);
+  padding: 2px 4px;
+  gap: 3px;
+}
+
+.neuroglancer-layer-item {
+  border-radius: 4px !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  font-size: 0.85em;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.neuroglancer-layer-item:hover {
+  border-color: rgba(74, 158, 255, 0.3) !important;
+  background: rgba(74, 158, 255, 0.06) !important;
+}
+
+.neuroglancer-layer-item[data-selected=true] {
+  border-color: rgba(74, 200, 140, 0.4) !important;
+  background: rgba(74, 200, 140, 0.08) !important;
+}
+
+.neuroglancer-layer-item[data-selected=true]:hover {
+  border-color: rgba(74, 200, 140, 0.6) !important;
+}
+
+.neuroglancer-layer-item-number {
+  background: rgba(74, 158, 255, 0.15) !important;
+  color: rgba(74, 158, 255, 0.8) !important;
+  border-radius: 3px;
+}
+
+.neuroglancer-layer-add-button {
+  border-radius: 4px !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  transition: border-color 0.15s;
+}
+
+.neuroglancer-layer-add-button:hover {
+  border-color: rgba(74, 158, 255, 0.3) !important;
+  color: rgba(74, 158, 255, 0.7) !important;
+}
+
+/* ── Hide neuroglancer settings gear + JSON editor from top bar ── */
+/* They are moved into our Settings panel */
+.neuroglancer-viewer-top-row > [title="Show settings panel"],
+.neuroglancer-viewer-top-row > [title="Hide settings panel"],
+.neuroglancer-viewer-top-row > [title="Edit JSON state"] {
+  display: none !important;
+}
+
 .ng-extend .overlay-content, .overlay-content.ng-dark {
   /* background-color: var(--color-dark-bg); */
   color: var(--color-small-text);

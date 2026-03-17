@@ -252,6 +252,18 @@ function resetToolbar() {
 
 const QUICK_FLAGS = ['🇺🇸','🇬🇧','🇨🇦','🇩🇪','🇫🇷','🇯🇵','🇰🇷','🇨🇳','🇧🇷','🇮🇳','🇦🇺','🇳🇬','🇹🇼','🇵🇹','🇩🇰','🇸🇦'];
 
+function openNgSettings() {
+  const viewer = (window as any)['viewer'];
+  if (viewer?.settingsPanelState) {
+    viewer.settingsPanelState.location.watchableVisible.value = true;
+  }
+}
+
+function openJsonEditor() {
+  const viewer = (window as any)['viewer'];
+  if (viewer?.editJsonState) viewer.editJsonState();
+}
+
 const emit = defineEmits({hide: null});
 </script>
 
@@ -298,6 +310,14 @@ const emit = defineEmits({hide: null});
             </button>
           </div>
           <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
+        </div>
+
+        <div class="nge-settings-section">
+          <label class="nge-settings-label">Advanced</label>
+          <div class="nge-admin-row" style="gap:10px">
+            <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>
+            <button class="nge-settings-advanced-btn" @click="openJsonEditor">{} Edit JSON State</button>
+          </div>
         </div>
 
         <div class="nge-settings-actions">
@@ -685,6 +705,23 @@ const emit = defineEmits({hide: null});
 .nge-settings-cancel:hover {
   background: rgba(255,255,255,0.1);
   color: #ccc;
+}
+
+.nge-settings-advanced-btn {
+  padding: 7px 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: #888;
+  font-size: 0.82em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex: 1;
+}
+.nge-settings-advanced-btn:hover {
+  background: rgba(74,158,255,0.08);
+  color: #bbc;
+  border-color: rgba(74,158,255,0.25);
 }
 
 /* Toolbar customization */
