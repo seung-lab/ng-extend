@@ -94,7 +94,7 @@ function cancelTool() {
         <!-- MULTICUT / SPLIT MODE -->
         <template v-else-if="isMulticut">
           <div class="nge-smo-mode-badge split-badge">
-            SPLIT MODE
+            CUT MODE
           </div>
 
           <div class="nge-smo-groups">
@@ -119,7 +119,7 @@ function cancelTool() {
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
             <span class="nge-smo-key-hint"><kbd>G</kbd> Swap</span>
             <span class="nge-smo-key-hint"><kbd>Enter</kbd> Submit</span>
-            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit split mode"><kbd>Esc</kbd> Cancel</button>
+            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd>Esc</kbd> Cancel</button>
           </div>
           <div class="nge-smo-loading-indicator" v-if="isSubmitting">
             <span class="nge-smo-spinner"></span>
@@ -496,7 +496,7 @@ function cancelTool() {
   bottom: 56px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 91;
+  z-index: 9600;
   display: flex;
   align-items: center;
   gap: 12px;

@@ -11,6 +11,8 @@ function onDocClick(e: MouseEvent) {
   const target = e.target as HTMLElement;
   // Ignore clicks on the toolbar bell button (it handles its own toggle)
   if (target.closest?.('.nge-icon-btn')) return;
+  // Ignore clicks inside the detail overlay or lightbox (separate Teleport)
+  if (target.closest?.('.nge-notif-detail-backdrop') || target.closest?.('.nge-notif-lightbox')) return;
   if (panelRef.value && !panelRef.value.contains(target)) {
     emit('hide');
   }
@@ -333,7 +335,7 @@ function linkify(text: string): string {
 }
 
 .nge-notif-detail {
-  width: 620px;
+  width: 740px;
   max-width: 90vw;
   max-height: 80vh;
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
@@ -416,7 +418,7 @@ function linkify(text: string): string {
   flex-shrink: 0;
 }
 .nge-notif-detail-layout--has-image .nge-notif-detail-image {
-  width: 220px;
+  width: 320px;
 }
 
 .nge-notif-detail-text {
@@ -426,7 +428,7 @@ function linkify(text: string): string {
 
 .nge-notif-detail-img {
   width: 100%;
-  max-height: 300px;
+  max-height: 420px;
   border-radius: 8px;
   object-fit: contain;
   cursor: zoom-in;

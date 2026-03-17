@@ -39,7 +39,7 @@ function defineShaderCommon(builder: ShaderBuilder) {
   builder.addUniform('highp vec3', 'uUpperClipBound');
 
   builder.setFragmentMain(`
-emit(vec4(1.0, 1.0, 1.0, getLineAlpha()), 0u);
+emit(vec4(0.2, 0.45, 0.8, getLineAlpha() * 0.5), 0u);
 `);
 }
 

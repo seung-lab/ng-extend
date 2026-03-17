@@ -81,7 +81,7 @@ emitLine(uProjectionMatrix * vec4(vertexPosition1, 1.0),
          2.0);
 `);
     builder.setFragmentMain(`
-emit(vec4(1.0, 1.0, 1.0, getLineAlpha()));
+emit(vec4(0.2, 0.45, 0.8, getLineAlpha() * 0.5));
 `);
     return;
   }

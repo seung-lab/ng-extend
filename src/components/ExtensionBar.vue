@@ -105,7 +105,7 @@ const SPLIT_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:16px;height
 const MERGE_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:16px;height:16px;vertical-align:middle"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.5" fill="currentColor"/><circle cx="12" cy="2.5" r="1.5" fill="currentColor"/><circle cx="8" cy="13" r="1.5" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 
 const toolbarDefs = computed<ToolbarIcon[]>(() => [
-  { id: 'split', emoji: '✂️', svg: SPLIT_SVG, label: 'Split Mode (C)', action: () => activateTool('multicut') },
+  { id: 'split', emoji: '✂️', svg: SPLIT_SVG, label: 'Cut Mode (C)', action: () => activateTool('multicut') },
   { id: 'merge', emoji: '🔗', svg: MERGE_SVG, label: 'Merge Mode (M)', action: () => activateTool('merge') },
   { id: 'recap', emoji: '📊', label: 'Your Week in Science', action: () => { showRecap.value = true; } },
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard', action: () => { showLeaderboard.value = true; } },
