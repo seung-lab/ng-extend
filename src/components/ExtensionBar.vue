@@ -114,7 +114,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'batch', emoji: '📦', label: 'Batch Processor', action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
   { id: 'help', emoji: '🔍', label: 'Second Opinion Requests', action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => helpStore.pending.length },
   { id: 'feed', emoji: '📡', label: 'Activity Feed', action: () => { showFeed.value = true; } },
-  { id: 'notif', emoji: '🔔', label: 'Notifications', action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
+  { id: 'notif', emoji: '🔔', label: 'Notifications', action: () => { showNotifications.value = !showNotifications.value; console.debug('[nge] bell toggled →', showNotifications.value); }, badge: () => backendStore.unreadNotificationCount },
   { id: 'chat', emoji: '💬', label: 'Chat', action: () => { showChat.value = !showChat.value; } },
   { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
 ]);

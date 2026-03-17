@@ -63,9 +63,11 @@ const panelWidth = ref(280);
 const panelHeight = ref(200);
 const isResizing = ref(false);
 let resizeStart = { mx: 0, my: 0, w: 0, h: 0 };
+let resizeAxis: 'corner' | 'top' | 'right' = 'corner';
 
-function startResize(e: MouseEvent) {
+function startResize(e: MouseEvent, axis: 'corner' | 'top' | 'right' = 'corner') {
   isResizing.value = true;
+  resizeAxis = axis;
   resizeStart = { mx: e.clientX, my: e.clientY, w: panelWidth.value, h: panelHeight.value };
   document.addEventListener('mousemove', onResize);
   document.addEventListener('mouseup', stopResize);
@@ -75,8 +77,16 @@ function startResize(e: MouseEvent) {
 
 function onResize(e: MouseEvent) {
   if (!isResizing.value) return;
-  panelWidth.value = Math.max(180, Math.min(500, resizeStart.w - (e.clientX - resizeStart.mx)));
-  panelHeight.value = Math.max(100, Math.min(500, resizeStart.h - (e.clientY - resizeStart.my)));
+  if (resizeAxis === 'corner' || resizeAxis === 'right') {
+    // Right edge or corner: dragging right = wider (panel anchored at left when positioned)
+    const newW = posX.value !== null
+      ? resizeStart.w + (e.clientX - resizeStart.mx)   // free-positioned: grow right
+      : resizeStart.w - (e.clientX - resizeStart.mx);  // CSS default (left:8px): grow left
+    panelWidth.value = Math.max(200, Math.min(600, newW));
+  }
+  if (resizeAxis === 'corner' || resizeAxis === 'top') {
+    panelHeight.value = Math.max(120, Math.min(600, resizeStart.h - (e.clientY - resizeStart.my)));
+  }
 }
 
 function stopResize() {
@@ -197,18 +207,21 @@ function toggleCollapse() {
         ...positionStyle
       }"
     >
-      <!-- Resize handle (top-left corner) -->
-      <div v-if="!collapsed" class="nge-chat-resize" @mousedown="startResize"></div>
+      <!-- Resize handles — edges and corner -->
+      <div v-if="!collapsed" class="nge-chat-resize nge-chat-resize--corner" @mousedown="startResize($event, 'corner')"></div>
+      <div v-if="!collapsed" class="nge-chat-resize nge-chat-resize--top" @mousedown="startResize($event, 'top')"></div>
+      <div v-if="!collapsed" class="nge-chat-resize nge-chat-resize--right" @mousedown="startResize($event, 'right')"></div>
 
       <!-- Tiny drag/control strip -->
       <div class="nge-chat-strip" @mousedown="startDrag" @dblclick="toggleCollapse">
         <span class="nge-chat-strip-dot" :class="{ 'nge-chat-strip-dot--on': connected }"></span>
-        <span v-if="collapsed && unreadMessages" class="nge-chat-strip-badge">{{ unreadMessages }}</span>
+        <span v-if="collapsed" class="nge-chat-strip-label">Chat</span>
+        <span v-if="collapsed && unreadMessages" class="nge-chat-strip-unread" title="New messages"></span>
         <span class="nge-chat-strip-spacer"></span>
-        <button class="nge-chat-strip-btn" @click.stop="toggleCollapse" :title="collapsed ? 'Expand' : 'Collapse'">
+        <button class="nge-chat-strip-btn nge-chat-collapse-btn" @click.stop="toggleCollapse" :title="collapsed ? 'Expand chat' : 'Collapse chat'">
           {{ collapsed ? '▲' : '▼' }}
         </button>
-        <button class="nge-chat-strip-btn" @click.stop="emit('hide')" title="Close">×</button>
+        <button class="nge-chat-strip-btn nge-chat-close-btn" @click.stop="emit('hide')" title="Close chat">×</button>
       </div>
 
       <!-- Body (hidden when collapsed) -->
@@ -307,26 +320,41 @@ function toggleCollapse() {
   user-select: none;
 }
 
-/* ── Resize handle — top-left corner ── */
-.nge-chat-resize {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 12px;
-  height: 12px;
+/* ── Resize handles ── */
+.nge-chat-resize { position: absolute; z-index: 10; }
+
+.nge-chat-resize--corner {
+  top: 0; left: 0;
+  width: 14px; height: 14px;
   cursor: nw-resize;
-  z-index: 10;
 }
-.nge-chat-resize::after {
+.nge-chat-resize--corner::after {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 5px;
-  height: 5px;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  top: 3px; left: 3px;
+  width: 6px; height: 6px;
+  border-top: 2px solid rgba(74, 158, 255, 0.25);
+  border-left: 2px solid rgba(74, 158, 255, 0.25);
+  border-radius: 1px;
+  transition: border-color 0.15s;
 }
+.nge-chat-resize--corner:hover::after {
+  border-color: rgba(74, 158, 255, 0.6);
+}
+
+.nge-chat-resize--top {
+  top: 0; left: 14px; right: 0;
+  height: 4px;
+  cursor: n-resize;
+}
+.nge-chat-resize--top:hover { background: rgba(74, 158, 255, 0.15); }
+
+.nge-chat-resize--right {
+  top: 0; right: 0;
+  width: 4px; bottom: 0;
+  cursor: e-resize;
+}
+.nge-chat-resize--right:hover { background: rgba(74, 158, 255, 0.15); }
 
 /* ── Tiny control strip (drag handle + buttons) ── */
 .nge-chat-strip {
@@ -352,16 +380,25 @@ function toggleCollapse() {
   box-shadow: 0 0 4px rgba(15, 177, 139, 0.5);
 }
 
-.nge-chat-strip-badge {
+.nge-chat-strip-label {
+  font-size: 10px;
+  color: #667;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.nge-chat-strip-unread {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   background: #4a9eff;
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 0 4px;
-  border-radius: 6px;
-  min-width: 14px;
-  text-align: center;
-  line-height: 14px;
+  box-shadow: 0 0 6px rgba(74, 158, 255, 0.6);
+  flex-shrink: 0;
+  animation: nge-chat-unread-pulse 2s ease-in-out infinite;
+}
+@keyframes nge-chat-unread-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .nge-chat-strip-spacer { flex: 1; }
@@ -370,13 +407,24 @@ function toggleCollapse() {
   background: none;
   border: none;
   color: #556;
-  font-size: 12px;
   cursor: pointer;
-  padding: 0 2px;
   line-height: 1;
-  transition: color 0.12s;
+  transition: color 0.12s, background 0.12s;
+  border-radius: 3px;
 }
-.nge-chat-strip-btn:hover { color: #aaa; }
+.nge-chat-strip-btn:hover { color: #ccc; background: rgba(255, 255, 255, 0.06); }
+
+.nge-chat-collapse-btn {
+  font-size: 11px;
+  padding: 2px 5px;
+}
+
+.nge-chat-close-btn {
+  font-size: 16px;
+  padding: 0 5px;
+  font-weight: 300;
+}
+.nge-chat-close-btn:hover { color: #ff6b6b; background: rgba(255, 80, 80, 0.08); }
 
 /* ── Messages wrapper with fade ── */
 .nge-chat-messages-wrap {
