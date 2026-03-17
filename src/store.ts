@@ -2120,7 +2120,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       // Claim via existing mechanism
       const ok = await claimTask(task!.id);
       if (ok) {
-        // Reload tasks to get updated statuses
+        // Optimistic local update so UI reacts immediately
+        const local = tasks.value.find(t => t.id === task!.id);
+        if (local) { local.status = 'assigned'; local.assigned_to = userId.value; }
+        // Reload tasks to get updated statuses from server
         await loadTasks('eyewire_ii');
         await postActivity(`claimed cell ...${segId.slice(-4)}`);
         return { ok: true };

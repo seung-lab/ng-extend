@@ -393,15 +393,15 @@ function activateTool(toolType: 'multicut' | 'merge') {
 .nge-toolbar-icons {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 6px;
+  gap: 6px;
+  padding: 0 8px;
   height: 100%;
 }
 
 .nge-icon-btn {
-  font-size: 14px;
-  width: 32px;
-  height: 28px;
+  font-size: 16px;
+  width: 34px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;

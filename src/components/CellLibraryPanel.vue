@@ -435,8 +435,8 @@ const panelStyle = computed(() => ({
           </button>
         </div>
 
-        <!-- Search -->
-        <div class="nge-cl-search">
+        <!-- Search (not shown on Help tab) -->
+        <div v-if="filter !== 'help'" class="nge-cl-search">
           <input
             v-model="search"
             placeholder="Search by ID, name, or notes..."

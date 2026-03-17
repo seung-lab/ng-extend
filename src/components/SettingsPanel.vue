@@ -369,7 +369,7 @@ const emit = defineEmits({hide: null});
                 <span class="nge-settings-login-email">{{ session.email || 'Unknown' }}</span>
                 <span class="nge-settings-login-host">{{ session.hostname }}</span>
               </div>
-              <button class="nge-settings-advanced-btn" style="font-size: 0.72em; padding: 2px 8px;" @click="logoutSession(session)">Logout</button>
+              <button class="nge-settings-logout-btn" @click="logoutSession(session)">Logout</button>
             </div>
           </div>
         </div>
@@ -798,6 +798,21 @@ const emit = defineEmits({hide: null});
 .nge-settings-login-host {
   font-size: 0.68em;
   color: #667;
+}
+.nge-settings-logout-btn {
+  font-size: 0.65em;
+  padding: 2px 10px;
+  background: rgba(200, 60, 60, 0.12);
+  border: 1px solid rgba(200, 60, 60, 0.25);
+  color: rgba(220, 100, 100, 0.8);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.nge-settings-logout-btn:hover {
+  background: rgba(200, 60, 60, 0.2);
+  border-color: rgba(200, 60, 60, 0.4);
+  color: rgba(240, 120, 120, 0.95);
 }
 
 /* Toolbar customization */
