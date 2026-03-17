@@ -11,6 +11,7 @@ import {
 } from '../store';
 import { isLatestRoots, getLatestRoots } from '../widgets/pcg_service';
 import { EYEWIRE_II_CAVE_CONFIG } from '../config';
+import { getAccessToken } from '../widgets/google_sheets_auth';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 const props = defineProps<{ initialTab?: string }>();
@@ -22,10 +23,12 @@ const history = useCellHistoryStore();
 const helpStore = useHelpRequestStore();
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'help'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help'>(
   (props.initialTab as any) || 'mine',
 );
 const search = ref('');
+const claimError = ref('');
+let claimErrorTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ── Lineage resolution (stale root ID detection) ────────────────────
 const latestRootMap = ref<Map<string, string>>(new Map());
@@ -169,6 +172,8 @@ const filteredCells = computed(() => {
     list = [...myClaimed, ...myCompleted];
   } else if (filter.value === 'available') {
     list = list.filter(c => c.status === 'pending');
+  } else if (filter.value === 'claimed') {
+    list = list.filter(c => c.status === 'assigned' || c.status === 'in_progress');
   } else if (filter.value === 'completed') {
     list = list.filter(c => c.status === 'completed');
   }
@@ -187,6 +192,34 @@ const myClaimCount = computed(() => cells.value.filter(c => isMyClaim(c)).length
 
 const availableCount = computed(() => cells.value.filter(c => c.status === 'pending').length);
 const completedCount = computed(() => cells.value.filter(c => c.status === 'completed').length);
+const claimedCount = computed(() => cells.value.filter(c => c.status === 'assigned' || c.status === 'in_progress').length);
+
+// ── User name lookup (for claimed tab) ───────────────────────────────
+const userNameCache = ref<Map<string, string>>(new Map());
+async function resolveUserName(userId: string): Promise<string> {
+  if (userNameCache.value.has(userId)) return userNameCache.value.get(userId)!;
+  try {
+    const { data } = await (await import('../supabase')).default
+      .from('users')
+      .select('display_name')
+      .eq('id', userId)
+      .single();
+    const name = data?.display_name || userId.slice(0, 8);
+    userNameCache.value.set(userId, name);
+    return name;
+  } catch {
+    return userId.slice(0, 8);
+  }
+}
+function getCachedUserName(userId: string): string {
+  if (!userId) return '?';
+  if (userId === backend.userId) return 'You';
+  if (!userNameCache.value.has(userId)) {
+    resolveUserName(userId); // fire-and-forget
+    return userId.slice(0, 8) + '…';
+  }
+  return userNameCache.value.get(userId)!;
+}
 
 // ── Actions ──────────────────────────────────────────────────────────
 function jumpToCell(segId: string, coords: string) {
@@ -202,9 +235,14 @@ function parseCoords(s: string): [number, number, number] {
 
 async function claimCell(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value) return;
-  // Use claimBySegment which creates the task if it doesn't exist yet
+  claimError.value = '';
   const result = await backend.claimBySegment(cell.segId);
-  if (!result.ok) { console.warn('[cellLibrary] Claim failed:', result.reason); return; }
+  if (!result.ok) {
+    claimError.value = result.reason || 'Claim failed';
+    if (claimErrorTimer) clearTimeout(claimErrorTimer);
+    claimErrorTimer = setTimeout(() => { claimError.value = ''; }, 5000);
+    return;
+  }
   // Write claim to Google Sheet (best-effort)
   writeClaimToSheet(cell.segId, backend.userName);
   await backend.loadTasks('eyewire_ii');
@@ -301,8 +339,10 @@ async function writeToSheetColumn(segId: string, columnPattern: string, value: s
   };
   const cellRef = `${colLetter(colIdx)}${rowIdx + 1}`;
 
-  // Resolve sheet name from gid
-  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
+  // Resolve sheet name from gid — use service account auth
+  const accessToken = await getAccessToken();
+  const authHeaders = { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
+  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`, { headers: authHeaders });
   let sheetName = 'Sheet1';
   if (metaRes.ok) {
     const meta = await metaRes.json();
@@ -315,7 +355,7 @@ async function writeToSheetColumn(segId: string, columnPattern: string, value: s
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
     {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         range,
         majorDimension: 'ROWS',
@@ -327,7 +367,10 @@ async function writeToSheetColumn(segId: string, columnPattern: string, value: s
   if (writeRes.ok) {
     console.info(`[cellLibrary] Wrote "${value}" to sheet cell ${range}`);
   } else {
-    console.warn(`[cellLibrary] Sheet write failed (${writeRes.status})`);
+    const body = await writeRes.text().catch(() => '');
+    console.warn(`[cellLibrary] Sheet write failed (${writeRes.status}): ${body.slice(0, 200)}`);
+    // Note: Sheets API v4 requires an API key or OAuth token even for publicly-editable sheets.
+    // The CSV export endpoint works without auth, but the values PUT endpoint does not.
   }
 }
 
@@ -360,6 +403,45 @@ const showResolved = ref(false);
 const pendingHelp = computed(() => helpStore.requests.filter(r => !r.resolved));
 const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
 
+// ── Help response form state ────────────────────────────────────────
+const respondingTo = ref<string | null>(null);
+const responseNote = ref('');
+const responseUrl = ref('');
+const responseAnnotationLayer = ref('');
+
+function toggleResponseForm(reqId: string) {
+  if (respondingTo.value === reqId) {
+    respondingTo.value = null;
+  } else {
+    respondingTo.value = reqId;
+    responseNote.value = '';
+    responseUrl.value = '';
+    responseAnnotationLayer.value = '';
+  }
+}
+
+/** Get available annotation layers from the viewer. */
+function getAnnotationLayers(): string[] {
+  try {
+    const viewer = (window as any)['viewer'];
+    if (!viewer?.layerManager?.managedLayers) return [];
+    return viewer.layerManager.managedLayers
+      .filter((l: any) => l.layer?.type === 'annotation')
+      .map((l: any) => l.name) as string[];
+  } catch { return []; }
+}
+
+async function submitResponse(req: HelpRequest) {
+  if (!responseNote.value.trim()) return;
+  await helpStore.resolve(req.id, {
+    note: responseNote.value.trim(),
+    url: responseUrl.value.trim() || undefined,
+    annotationLayer: responseAnnotationLayer.value.trim() || undefined,
+  });
+  respondingTo.value = null;
+  helpStore.refreshPending();
+}
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -377,6 +459,12 @@ function jumpToReq(req: HelpRequest) {
 function resolveReq(req: HelpRequest) {
   helpStore.resolve(req.id);
   helpStore.refreshPending();
+}
+
+function openResponseUrl(url: string) {
+  if (url.startsWith('http')) {
+    window.open(url, '_blank');
+  }
 }
 
 function removeReq(req: HelpRequest) {
@@ -430,6 +518,9 @@ const panelStyle = computed(() => ({
           <button :class="{ active: filter === 'available' }" @click="filter = 'available'">
             Available ({{ availableCount }})
           </button>
+          <button :class="{ active: filter === 'claimed', 'nge-cl-claimed-tab': true }" @click="filter = 'claimed'">
+            Claimed ({{ claimedCount }})
+          </button>
           <button :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
             Completed ({{ completedCount }})
           </button>
@@ -459,26 +550,61 @@ const panelStyle = computed(() => ({
           <div
             v-for="req in pendingHelp"
             :key="req.id"
-            class="nge-cl-row"
+            class="nge-cl-help-item"
           >
-            <div class="nge-cl-row-left">
-              <span class="nge-cl-pip nge-cl-status--help"></span>
-              <div class="nge-cl-row-info">
-                <div class="nge-cl-row-name" @click="copyId(req.segId)" :title="'Click to copy ' + req.segId">
-                  {{ req.segId }}
-                  <span v-if="copiedId === req.segId" class="nge-cl-copied">copied</span>
+            <div class="nge-cl-row">
+              <div class="nge-cl-row-left">
+                <span class="nge-cl-pip nge-cl-status--help"></span>
+                <div class="nge-cl-row-info">
+                  <div class="nge-cl-row-name" @click="copyId(req.segId)" :title="'Click to copy ' + req.segId">
+                    {{ req.segId }}
+                    <span v-if="copiedId === req.segId" class="nge-cl-copied">copied</span>
+                  </div>
+                  <div class="nge-cl-row-meta">
+                    <span class="nge-cl-badge nge-cl-status--help">{{ req.issueType }}</span>
+                    <span v-if="req.userName" class="nge-cl-notes">by {{ req.userName }}</span>
+                    <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
+                  </div>
+                  <div v-if="req.note" class="nge-cl-help-note">{{ req.note }}</div>
                 </div>
-                <div class="nge-cl-row-meta">
-                  <span class="nge-cl-badge nge-cl-status--help">{{ req.issueType }}</span>
-                  <span v-if="req.userName" class="nge-cl-notes">by {{ req.userName }}</span>
-                  <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
-                </div>
-                <div v-if="req.note" class="nge-cl-help-note">{{ req.note }}</div>
+              </div>
+              <div class="nge-cl-row-actions">
+                <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
+                <button class="nge-cl-btn nge-cl-btn--respond" @click="toggleResponseForm(req.id)" :title="respondingTo === req.id ? 'Cancel' : 'Respond'">
+                  {{ respondingTo === req.id ? '▾' : '💬' }}
+                </button>
+                <button class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(req)">Resolve</button>
               </div>
             </div>
-            <div class="nge-cl-row-actions">
-              <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
-              <button class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(req)">Resolve</button>
+
+            <!-- Inline response form -->
+            <div v-if="respondingTo === req.id" class="nge-cl-response-form">
+              <textarea
+                v-model="responseNote"
+                placeholder="Write your response..."
+                class="nge-cl-response-textarea"
+                rows="3"
+                @keydown.stop @keyup.stop @keypress.stop
+              ></textarea>
+              <input
+                v-model="responseUrl"
+                placeholder="Paste neuroglancer state URL (optional)"
+                class="nge-cl-response-input"
+                @keydown.stop @keyup.stop @keypress.stop
+              />
+              <select
+                v-if="getAnnotationLayers().length > 0"
+                v-model="responseAnnotationLayer"
+                class="nge-cl-response-input"
+              >
+                <option value="">Select annotation layer (optional)</option>
+                <option v-for="layer in getAnnotationLayers()" :key="layer" :value="layer">{{ layer }}</option>
+              </select>
+              <button
+                class="nge-cl-btn nge-cl-btn--submit-response"
+                :disabled="!responseNote.trim()"
+                @click="submitResponse(req)"
+              >Submit Response & Resolve</button>
             </div>
           </div>
 
@@ -491,30 +617,45 @@ const panelStyle = computed(() => ({
             <div
               v-for="req in resolvedHelp"
               :key="req.id"
-              class="nge-cl-row nge-cl-row--done"
+              class="nge-cl-help-item"
             >
-              <div class="nge-cl-row-left">
-                <span class="nge-cl-pip" style="background: #556;"></span>
-                <div class="nge-cl-row-info">
-                  <div class="nge-cl-row-name" @click="copyId(req.segId)" :title="'Click to copy ' + req.segId">
-                    {{ req.segId }}
-                  </div>
-                  <div class="nge-cl-row-meta">
-                    <span class="nge-cl-badge" style="background: rgba(85,102,119,0.15); color: #889;">{{ req.issueType }}</span>
-                    <span v-if="req.resolvedByName" class="nge-cl-notes" style="color: #7f8;">✓ {{ req.resolvedByName }}</span>
-                    <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
+              <div class="nge-cl-row nge-cl-row--done">
+                <div class="nge-cl-row-left">
+                  <span class="nge-cl-pip" style="background: #556;"></span>
+                  <div class="nge-cl-row-info">
+                    <div class="nge-cl-row-name" @click="copyId(req.segId)" :title="'Click to copy ' + req.segId">
+                      {{ req.segId }}
+                    </div>
+                    <div class="nge-cl-row-meta">
+                      <span class="nge-cl-badge" style="background: rgba(85,102,119,0.15); color: #889;">{{ req.issueType }}</span>
+                      <span v-if="req.resolvedByName" class="nge-cl-notes" style="color: #7f8;">✓ {{ req.resolvedByName }}</span>
+                      <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
+                    </div>
                   </div>
                 </div>
+                <div class="nge-cl-row-actions">
+                  <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
+                  <button class="nge-cl-btn nge-cl-btn--release" @click="removeReq(req)" title="Remove">×</button>
+                </div>
               </div>
-              <div class="nge-cl-row-actions">
-                <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
-                <button class="nge-cl-btn nge-cl-btn--release" @click="removeReq(req)" title="Remove">×</button>
+              <!-- Response display -->
+              <div v-if="req.responseNote" class="nge-cl-response-display">
+                <div class="nge-cl-response-label">Response from {{ req.resolvedByName || 'resolver' }}:</div>
+                <div class="nge-cl-response-text">{{ req.responseNote }}</div>
+                <a v-if="req.responseUrl" class="nge-cl-response-link" @click.prevent="openResponseUrl(req.responseUrl)" href="#">↗ View linked state</a>
+                <span v-if="req.responseAnnotationLayer" class="nge-cl-response-layer">📐 Layer: {{ req.responseAnnotationLayer }}</span>
               </div>
             </div>
           </template>
         </div>
 
         <!-- ═══ CELL TABS ═══ -->
+        <!-- Claim error banner -->
+        <div v-if="claimError && filter !== 'help'" class="nge-cl-error-banner" @click="claimError = ''">
+          {{ claimError }}
+          <span class="nge-cl-error-dismiss">×</span>
+        </div>
+
         <!-- Loading -->
         <div v-else-if="loading || backend.loading" class="nge-cl-loading">Loading cells...</div>
 
@@ -551,6 +692,7 @@ const panelStyle = computed(() => ({
                 </div>
                 <div class="nge-cl-row-meta">
                   <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
+                  <span v-if="filter === 'claimed' && cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
                 <div v-if="cell.currentSegId && cell.currentSegId !== cell.segId" class="nge-cl-row-current" @click="copyId(cell.currentSegId)" title="Click to copy current ID">
@@ -914,5 +1056,123 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-help-resolved-arrow--open {
   transform: rotate(90deg);
+}
+
+/* Claimed tab */
+.nge-cl-claimed-tab.active {
+  background: rgba(255, 215, 0, 0.12);
+  color: #fd0;
+  border-color: rgba(255, 215, 0, 0.25);
+}
+.nge-cl-claimer {
+  font-size: 0.68em;
+  color: #fd0;
+  font-weight: 600;
+}
+
+/* Claim error banner */
+.nge-cl-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(255, 80, 60, 0.12);
+  border-bottom: 1px solid rgba(255, 80, 60, 0.2);
+  color: #f86;
+  font-size: 0.78em;
+  cursor: pointer;
+}
+.nge-cl-error-dismiss {
+  font-size: 1.1em;
+  opacity: 0.6;
+  margin-left: 8px;
+}
+.nge-cl-error-banner:hover .nge-cl-error-dismiss { opacity: 1; }
+
+/* Help response form */
+.nge-cl-help-item {
+  border-bottom: 1px solid rgba(120, 140, 255, 0.04);
+}
+.nge-cl-help-item .nge-cl-row {
+  border-bottom: none;
+}
+.nge-cl-btn--respond {
+  font-size: 0.75em;
+  padding: 3px 7px;
+}
+.nge-cl-response-form {
+  padding: 6px 12px 10px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.nge-cl-response-textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid rgba(120, 140, 255, 0.15);
+  border-radius: 6px;
+  background: rgba(10, 10, 30, 0.6);
+  color: #ccd;
+  font-size: 0.76em;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+.nge-cl-response-textarea:focus {
+  border-color: rgba(74, 158, 255, 0.3);
+}
+.nge-cl-response-input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgba(120, 140, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(10, 10, 30, 0.5);
+  color: #ccd;
+  font-size: 0.72em;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.nge-cl-response-input:focus {
+  border-color: rgba(74, 158, 255, 0.3);
+}
+.nge-cl-btn--submit-response {
+  align-self: flex-end;
+  border-color: rgba(68, 170, 102, 0.25);
+  color: #4a6;
+  padding: 5px 12px;
+}
+.nge-cl-btn--submit-response:hover { background: rgba(68, 170, 102, 0.12); }
+.nge-cl-btn--submit-response:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Response display on resolved items */
+.nge-cl-response-display {
+  padding: 4px 12px 8px 28px;
+  font-size: 0.72em;
+}
+.nge-cl-response-label {
+  color: #7f8;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.nge-cl-response-text {
+  color: #aab;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  margin-bottom: 3px;
+}
+.nge-cl-response-link {
+  color: #8bf;
+  cursor: pointer;
+  text-decoration: none;
+  margin-right: 10px;
+}
+.nge-cl-response-link:hover { color: #adf; text-decoration: underline; }
+.nge-cl-response-layer {
+  color: #889;
 }
 </style>

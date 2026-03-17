@@ -50,6 +50,9 @@ export const EYEWIRE_II_CAVE_CONFIG = {
   /** Default Google Sheet URL for the Cell Library task list.
    *  Used when no sheet URL has been configured in localStorage. */
   cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+
+  /** Google Sheets API key for write-back (claim/completion data). */
+  googleSheetsApiKey: 'AIzaSyDEZoctmovc7FQXK-fBu2mI-wWHiKEB9LU',
 };
 
 // Standard mammalian retinal cell types shown in the annotation picker.

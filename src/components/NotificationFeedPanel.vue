@@ -428,7 +428,7 @@ function linkify(text: string): string {
 
 .nge-notif-detail-img {
   width: 100%;
-  max-height: 420px;
+  max-height: 600px;
   border-radius: 8px;
   object-fit: contain;
   cursor: zoom-in;

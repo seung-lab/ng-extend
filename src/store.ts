@@ -878,6 +878,12 @@ export interface HelpRequest {
   userName?: string;
   /** Display name of the user who resolved this request */
   resolvedByName?: string;
+  /** Response note from the resolver */
+  responseNote?: string;
+  /** Optional link (e.g. neuroglancer state URL) from the resolver */
+  responseUrl?: string;
+  /** Optional annotation layer name referenced by the resolver */
+  responseAnnotationLayer?: string;
 }
 
 /** Map Supabase row → HelpRequest interface */
@@ -895,6 +901,9 @@ function rowToHelpRequest(row: any): HelpRequest {
     dataset: row.dataset ?? undefined,
     userName: row.user_name ?? undefined,
     resolvedByName: row.resolved_by_name ?? undefined,
+    responseNote: row.response_note ?? undefined,
+    responseUrl: row.response_url ?? undefined,
+    responseAnnotationLayer: row.response_annotation_layer ?? undefined,
   };
 }
 
@@ -1015,18 +1024,23 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
     refreshPending();
   }
 
-  /** Mark a help request as resolved in Supabase. */
-  async function resolve(id: string) {
+  /** Mark a help request as resolved in Supabase, optionally with a response. */
+  async function resolve(id: string, response?: { note?: string; url?: string; annotationLayer?: string }) {
     const backend = useProofreadingBackendStore();
     const resolverName = backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
+    const updateData: Record<string, any> = {
+      resolved: true,
+      resolved_at: new Date().toISOString(),
+      resolved_by: backend.userId || null,
+      resolved_by_name: resolverName,
+    };
+    if (response?.note) updateData.response_note = response.note;
+    if (response?.url) updateData.response_url = response.url;
+    if (response?.annotationLayer) updateData.response_annotation_layer = response.annotationLayer;
+
     const { error } = await supabase
       .from('help_requests')
-      .update({
-        resolved: true,
-        resolved_at: new Date().toISOString(),
-        resolved_by: backend.userId || null,
-        resolved_by_name: resolverName,
-      })
+      .update(updateData)
       .eq('id', id);
 
     if (error) {
@@ -1037,6 +1051,9 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
     if (r) {
       r.resolved = true;
       r.resolvedByName = resolverName;
+      if (response?.note) r.responseNote = response.note;
+      if (response?.url) r.responseUrl = response.url;
+      if (response?.annotationLayer) r.responseAnnotationLayer = response.annotationLayer;
     }
     refreshPending();
   }
