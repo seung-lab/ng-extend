@@ -664,12 +664,6 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- ═══ CELL TABS ═══ -->
-        <!-- Claim error banner -->
-        <div v-if="claimError && filter !== 'help'" class="nge-cl-error-banner" @click="claimError = ''">
-          {{ claimError }}
-          <span class="nge-cl-error-dismiss">×</span>
-        </div>
-
         <!-- Loading -->
         <div v-else-if="loading || backend.loading" class="nge-cl-loading">Loading cells...</div>
 
@@ -681,6 +675,11 @@ const panelStyle = computed(() => ({
 
         <!-- Cell list -->
         <div v-else class="nge-cl-list">
+          <!-- Claim error banner -->
+          <div v-if="claimError" class="nge-cl-error-banner" @click="claimError = ''">
+            {{ claimError }}
+            <span class="nge-cl-error-dismiss">×</span>
+          </div>
           <div v-if="filteredCells.length === 0 && filter === 'mine'" class="nge-cl-no-results">
             No claimed cells yet. Claim cells from the All or Available tabs!
           </div>
