@@ -467,6 +467,16 @@ function openResponseUrl(url: string) {
   }
 }
 
+/** Copy current neuroglancer viewer state URL to the response URL field. */
+function copyCurrentState() {
+  try {
+    // The current URL with fragment contains the full viewer state
+    responseUrl.value = window.location.href;
+  } catch {
+    responseUrl.value = '';
+  }
+}
+
 function removeReq(req: HelpRequest) {
   helpStore.remove(req.id);
   helpStore.refreshPending();
@@ -581,17 +591,21 @@ const panelStyle = computed(() => ({
             <div v-if="respondingTo === req.id" class="nge-cl-response-form">
               <textarea
                 v-model="responseNote"
-                placeholder="Write your response..."
+                placeholder="Write your response... (Enter to submit, Shift+Enter for newline)"
                 class="nge-cl-response-textarea"
                 rows="3"
                 @keydown.stop @keyup.stop @keypress.stop
+                @keydown.enter.exact.prevent="submitResponse(req)"
               ></textarea>
-              <input
-                v-model="responseUrl"
-                placeholder="Paste neuroglancer state URL (optional)"
-                class="nge-cl-response-input"
-                @keydown.stop @keyup.stop @keypress.stop
-              />
+              <div class="nge-cl-response-url-row">
+                <input
+                  v-model="responseUrl"
+                  placeholder="Neuroglancer state URL (optional)"
+                  class="nge-cl-response-input"
+                  @keydown.stop @keyup.stop @keypress.stop
+                />
+                <button class="nge-cl-btn nge-cl-btn--copy-state" @click="copyCurrentState" title="Copy current viewer state URL">📋 State</button>
+              </div>
               <select
                 v-if="getAnnotationLayers().length > 0"
                 v-model="responseAnnotationLayer"
@@ -1136,6 +1150,21 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-response-input:focus {
   border-color: rgba(74, 158, 255, 0.3);
+}
+.nge-cl-response-url-row {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+.nge-cl-response-url-row .nge-cl-response-input {
+  flex: 1;
+  min-width: 0;
+}
+.nge-cl-btn--copy-state {
+  font-size: 0.68em;
+  padding: 4px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .nge-cl-btn--submit-response {
   align-self: flex-end;

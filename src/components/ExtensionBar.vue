@@ -16,6 +16,7 @@ import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
+import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore} from '../store';
 import {useTutorialStore} from '../store-pyr';
@@ -95,6 +96,7 @@ interface ToolbarIcon {
   id: string;
   emoji: string;
   svg?: string;
+  img?: string;
   label: string;
   action: () => void;
   badge?: () => number;
@@ -110,7 +112,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'recap', emoji: '📊', label: 'Your Week in Science', action: () => { showRecap.value = true; } },
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard', action: () => { showLeaderboard.value = true; } },
   { id: 'quest', emoji: '🧠', label: 'Brain Quest', action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
-  { id: 'cells', emoji: '🧬', label: 'Cell Library', action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
+  { id: 'cells', emoji: '🧬', img: neuronIcon, label: 'Cell Library', action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
   { id: 'batch', emoji: '📦', label: 'Batch Processor', action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
   { id: 'help', emoji: '🔍', label: 'Second Opinion Requests', action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => helpStore.pending.length },
   { id: 'feed', emoji: '📡', label: 'Activity Feed', action: () => { showFeed.value = true; } },
@@ -241,7 +243,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
         }"
         :title="icon.label"
         @click="icon.action()"
-      ><span v-if="icon.svg" v-html="icon.svg"></span><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge">{{ icon.badge() }}</span></button>
+      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge">{{ icon.badge() }}</span></button>
     </div>
 
     <!-- Merge/Split celebration burst -->
@@ -444,6 +446,13 @@ function activateTool(toolType: 'multicut' | 'merge') {
 }
 .nge-icon-btn--badge { position: relative; }
 
+.nge-toolbar-icon-img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  vertical-align: middle;
+  opacity: 0.85;
+}
 .nge-toolbar-badge {
   position: absolute;
   top: 1px;
