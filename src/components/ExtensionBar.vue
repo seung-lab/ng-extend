@@ -255,7 +255,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
       </div>
     </Transition>
 
-    <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
+    <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
     <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
       <template #buttonTitle>☰</template>
       <template #listItems>
