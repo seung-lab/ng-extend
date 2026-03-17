@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ref, onMounted, watch} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
-import {useUserPreferencesStore, useProofreadingBackendStore} from '../store';
+import {useUserPreferencesStore, useProofreadingBackendStore, useLoginStore, loginSession} from '../store';
 
 const prefsStore = useUserPreferencesStore();
 const backend = useProofreadingBackendStore();
@@ -299,6 +299,12 @@ function toggleLayerListPanel() {
   }
 }
 
+const loginStore = useLoginStore();
+
+function logoutSession(session: loginSession) {
+  loginStore.logout(session);
+}
+
 const emit = defineEmits({hide: null});
 </script>
 
@@ -353,6 +359,18 @@ const emit = defineEmits({hide: null});
             <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>
             <button class="nge-settings-advanced-btn" @click="openJsonEditor">{} Edit JSON State</button>
             <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
+          </div>
+
+          <!-- Logins management -->
+          <div v-if="loginStore.sessions.length > 0" style="margin-top: 10px;">
+            <p class="nge-settings-hint">Active logins:</p>
+            <div v-for="session in loginStore.sessions" :key="session.hostname" class="nge-settings-login-row">
+              <div class="nge-settings-login-info">
+                <span class="nge-settings-login-email">{{ session.email || 'Unknown' }}</span>
+                <span class="nge-settings-login-host">{{ session.hostname }}</span>
+              </div>
+              <button class="nge-settings-advanced-btn" style="font-size: 0.72em; padding: 2px 8px;" @click="logoutSession(session)">Logout</button>
+            </div>
           </div>
         </div>
 
@@ -756,6 +774,30 @@ const emit = defineEmits({hide: null});
   background: rgba(74,158,255,0.08);
   color: #bbc;
   border-color: rgba(74,158,255,0.25);
+}
+
+.nge-settings-login-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+.nge-settings-login-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nge-settings-login-email {
+  font-size: 0.78em;
+  color: #aab;
+}
+.nge-settings-login-host {
+  font-size: 0.68em;
+  color: #667;
 }
 
 /* Toolbar customization */

@@ -253,31 +253,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
       </div>
     </Transition>
 
-    <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn" title="My Profile"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
-    <template v-if="login.sessions.length > 0">
-      <dropdown-list dropdown-group="extension-bar-right" id="loginsDropdown" class="rightMost">
-          <template #buttonTitle>Logins ({{ login.sessions.length }})</template>
-          <template #listItems>
-            <li v-for="session of validLogins">
-              <div class="loginRow">
-                <div class="loginData">
-                  <div>{{ session.email }}</div>
-                  <div>{{ session.hostname }}</div>
-                </div>
-                <div class="logoutButton" @click="logout(session)"><span>Logout</span></div>
-              </div>
-            </li>
-            <li v-for="session in invalidLogins">
-              <div class="loginRow">
-                <div class="loginData expired">
-                  <div>{{ session.hostname }} - Expired</div>
-                </div>
-                <div class="logoutButton" @click="logout(session)"><span>Delete</span></div>
-              </div>
-            </li>
-          </template>
-        </dropdown-list>
-    </template>
+    <button v-if="login.sessions.length > 0" @click="showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
     <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
       <template #buttonTitle>☰</template>
       <template #listItems>

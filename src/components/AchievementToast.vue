@@ -264,7 +264,7 @@ watch(() => backend.notifications.length, (newLen) => {
       <div v-if="heroBadge" class="nge-hero-overlay" @click="onHeroClick">
         <div class="nge-hero-card">
           <div class="nge-hero-particles">
-            <span v-for="i in 12" :key="i" class="nge-hero-particle" :style="{ '--i': i }"></span>
+            <span v-for="i in 20" :key="i" class="nge-hero-particle" :style="{ '--i': i }"></span>
           </div>
           <div class="nge-hero-icon">
             <img v-if="heroBadge.isImage" :src="heroBadge.icon" class="nge-hero-badge-img" />
@@ -331,53 +331,80 @@ watch(() => backend.notifications.length, (newLen) => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 40px 56px;
-  background: rgba(18, 22, 30, 0.97);
-  border: 1px solid rgba(255, 200, 80, 0.3);
-  border-radius: 16px;
+  gap: 16px;
+  padding: 48px 64px;
+  background: linear-gradient(145deg, rgba(12, 16, 28, 0.98) 0%, rgba(18, 22, 36, 0.97) 50%, rgba(10, 14, 26, 0.98) 100%);
+  border: 1px solid rgba(255, 200, 80, 0.25);
+  border-radius: 20px;
   box-shadow:
-    0 0 80px rgba(245, 166, 35, 0.15),
-    0 0 200px rgba(206, 147, 216, 0.08),
-    0 24px 64px rgba(0, 0, 0, 0.6);
+    0 0 100px rgba(245, 166, 35, 0.18),
+    0 0 250px rgba(206, 147, 216, 0.1),
+    0 0 40px rgba(74, 158, 255, 0.05),
+    0 24px 64px rgba(0, 0, 0, 0.7);
   position: relative;
   overflow: hidden;
 }
+/* Animated shimmer sweep across card */
+.nge-hero-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 40%, rgba(255, 200, 80, 0.06) 45%, rgba(255, 200, 80, 0.12) 50%, rgba(255, 200, 80, 0.06) 55%, transparent 60%);
+  animation: nge-hero-shimmer 3s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes nge-hero-shimmer {
+  0% { transform: translateX(-200%); }
+  100% { transform: translateX(200%); }
+}
 .nge-hero-icon {
-  width: 140px; height: 140px;
+  width: 200px; height: 200px;
   display: flex; align-items: center; justify-content: center;
-  filter: drop-shadow(0 0 24px rgba(255, 200, 80, 0.5));
+  filter: drop-shadow(0 0 32px rgba(255, 200, 80, 0.5)) drop-shadow(0 0 60px rgba(206, 147, 216, 0.2));
   animation: nge-hero-float 3s ease-in-out infinite alternate;
 }
-.nge-hero-badge-img { width: 120px; height: 120px; object-fit: contain; }
-.nge-hero-emoji { font-size: 72px; }
+.nge-hero-badge-img { width: 180px; height: 180px; object-fit: contain; }
+.nge-hero-emoji { font-size: 96px; }
 .nge-hero-title {
-  font-size: 20px; font-weight: 700; color: #ffd08a;
-  text-align: center; text-shadow: 0 0 20px rgba(245, 166, 35, 0.4);
+  font-size: 24px; font-weight: 700; color: #ffd08a;
+  text-align: center; text-shadow: 0 0 24px rgba(245, 166, 35, 0.5);
+  letter-spacing: 0.02em;
 }
 .nge-hero-subtitle {
-  font-size: 13px; color: #999; text-align: center; max-width: 280px;
+  font-size: 14px; color: #aaa; text-align: center; max-width: 320px;
+  line-height: 1.5;
 }
 .nge-hero-hint {
-  font-size: 11px; color: rgba(255, 208, 138, 0.5); margin-top: 8px;
+  font-size: 11px; color: rgba(255, 208, 138, 0.4); margin-top: 4px;
+  letter-spacing: 0.05em; text-transform: uppercase;
 }
 @keyframes nge-hero-float {
   from { transform: translateY(0); }
   to { transform: translateY(-8px); }
 }
-/* Hero particles */
+/* Hero particles — sparkle burst */
 .nge-hero-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .nge-hero-particle {
-  position: absolute; width: 4px; height: 4px; border-radius: 50%;
-  background: rgba(255, 200, 80, 0.6);
-  animation: nge-hero-sparkle 2s ease-out infinite;
-  animation-delay: calc(var(--i) * 0.15s);
-  left: calc(5% + var(--i) * 7.5%);
-  top: 80%;
+  position: absolute; border-radius: 50%;
+  background: rgba(255, 200, 80, 0.7);
+  animation: nge-hero-sparkle 2.5s ease-out infinite;
+  animation-delay: calc(var(--i) * 0.12s);
+  left: calc(3% + var(--i) * 4.7%);
+  top: 85%;
+  width: 3px; height: 3px;
+}
+.nge-hero-particle:nth-child(odd) {
+  background: rgba(206, 180, 255, 0.6);
+  width: 2px; height: 2px;
+}
+.nge-hero-particle:nth-child(3n) {
+  background: rgba(74, 200, 255, 0.5);
+  width: 4px; height: 4px;
 }
 @keyframes nge-hero-sparkle {
-  0%   { opacity: 1; transform: translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-120px) scale(0); }
+  0%   { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
+  50%  { opacity: 0.8; transform: translateY(-80px) scale(0.7) rotate(180deg); }
+  100% { opacity: 0; transform: translateY(-180px) scale(0) rotate(360deg); }
 }
 /* Hero transitions */
 .nge-hero-enter-active { transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }

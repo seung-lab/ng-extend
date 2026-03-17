@@ -578,12 +578,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   v-for="award in backendStore.mySpecialBadges"
                   :key="award.id"
                   class="nge-profile-badge nge-profile-badge--special"
-                  :title="award.name + (award.description ? ' — ' + award.description : '')"
+                  :title="(award.badge?.name || '') + (award.badge?.description ? ' — ' + award.badge.description : '')"
                 >
                   <div class="nge-profile-badge-img">
-                    <img :src="award.thumbnail_url || award.image_url" :alt="award.name" class="nge-profile-badge-icon" />
+                    <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
                   </div>
-                  <div class="nge-profile-badge-name">{{ award.name }}</div>
+                  <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
                 </div>
               </div>
             </div>

@@ -195,11 +195,9 @@
   background: rgba(74, 158, 255, 0.08) !important;
 }
 
-/* ── Segment IDs: softer colors instead of harsh black-on-white ── */
+/* ── Segment IDs: keep neuroglancer's per-segment inline colors ── */
 .neuroglancer-segment-list-entry-id,
 .neuroglancer-selection-details-segment-id {
-  color: rgba(200, 215, 240, 0.9) !important;
-  background: rgba(74, 158, 255, 0.08) !important;
   font-size: 0.85em !important;
   border-radius: 3px;
   padding: 1px 4px;

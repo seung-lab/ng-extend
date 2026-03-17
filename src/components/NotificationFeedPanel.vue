@@ -52,8 +52,8 @@ function linkify(text: string): string {
 </script>
 
 <template>
-  <div class="nge-notif-backdrop" @click.self="emit('hide')"></div>
-  <div class="nge-notif-panel">
+  <div class="nge-notif-backdrop" @click.self="emit('hide')">
+  <div class="nge-notif-panel" @click.stop>
     <div class="nge-notif-topbar">
       <span class="nge-notif-title">🔔 Notifications</span>
       <div class="nge-notif-topbar-actions">
@@ -138,6 +138,7 @@ function linkify(text: string): string {
         <img :src="lightboxUrl" class="nge-notif-lightbox-img" />
       </div>
     </Teleport>
+  </div>
   </div>
 </template>
 
