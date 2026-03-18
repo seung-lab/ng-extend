@@ -1,5 +1,47 @@
 import { Step } from "./store-pyr";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function getViewer(): any {
+  return (window as any)['viewer'];
+}
+
+/** Set annotation color on all annotation layers */
+function setAnnotationColor(color: string) {
+  const viewer = getViewer();
+  if (!viewer) return;
+  const layers = viewer.layerManager && viewer.layerManager.managedLayers;
+  if (!layers) return;
+  for (const ml of layers) {
+    const name = ml.layer && ml.layer.constructor && ml.layer.constructor.name;
+    if (name && (name as string).indexOf('Annotation') >= 0) {
+      try { ml.layer.annotationColor.value = color; } catch (e) { /* */ }
+    }
+  }
+}
+
+/** Remove a segment from the first segmentation layer */
+function removeSegment(segId: string) {
+  const viewer = getViewer();
+  if (!viewer) return;
+  const layers = viewer.layerManager && viewer.layerManager.managedLayers;
+  if (!layers) return;
+  for (const ml of layers) {
+    const layer = ml.layer;
+    const name = layer && layer.constructor && layer.constructor.name;
+    if (name && (name as string).indexOf('Segmentation') >= 0) {
+      const rootSegs = layer.displayState && layer.displayState.rootSegments;
+      if (rootSegs) {
+        for (const seg of rootSegs) {
+          if (seg.toString() === segId) {
+            rootSegs.delete(seg);
+            return;
+          }
+        }
+      }
+    }
+  }
+}
+
 const MIDDLE = {
   element: "body",
   x: 0.5,
@@ -32,7 +74,7 @@ export const steps: Step[] = [
   {
     title: `Welcome!`,
     text: `
-We’re a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
+We're a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
 
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
     image:
@@ -99,30 +141,40 @@ This box won't go away when you click outside it.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
+    onEnter: () => {
+      const viewer = getViewer();
+      if (!viewer) return;
+      // Turn on axis lines (keyboard shortcut A)
+      viewer.showAxisLines.value = true;
+      // Close the side panel / deselect layer to remove annotation tab
+      try { viewer.selectedLayer.visible = false; } catch {}
+    },
   },
   //8b - find annotation
   {
     text: `**See if you can find a yellow annotation at the end of one of the branches and zoom in on it.**
 
-Don’t worry if you can’t find it - the Next button will take you there.`,
+Don't worry if you can't find it - the Next button will take you there.`,
     position: OVER_3D,
     image:
       "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/inspector-nurro-2.png",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
+    onEnter: () => { setAnnotationColor('#ffff00'); },
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
     text: `There it is! This flat edge reveals a mistake by the AI.
 
 It missed a branch. Let's see if we can find it.`,
-    
+
     position: OVER_3D,
     image:
       "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png",
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
-    width: "200px"
+    width: "200px",
+    onEnter: () => { setAnnotationColor('#ffff00'); },
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
@@ -175,6 +227,10 @@ Don't worry if you lose the neuron - the Next button in this section resets this
     position: MIDDLE,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
+    onEnter: () => {
+      // Remove the erroneous purple segment
+      setTimeout(() => removeSegment('648518346356484078'), 500);
+    },
   },
   //18 -  middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408
   {

@@ -155,6 +155,8 @@ export interface Step {
   spaceAdvances?: boolean;
   clickAfterState?: string;
   floatingImage?: string;
+  /** Runs after state is loaded — use for programmatic viewer tweaks */
+  onEnter?: () => void | Promise<void>;
 }
 
 export const useTutorialStore = defineStore("tutorial", () => {

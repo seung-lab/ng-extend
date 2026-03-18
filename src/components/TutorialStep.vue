@@ -278,6 +278,9 @@ onMounted(async () => {
         const el = await waitForElement(props.step.clickAfterState);
         if (el) (el as HTMLElement).click();
     }
+    if (props.step.onEnter) {
+        await props.step.onEnter();
+    }
     console.log('updating position', performance.now() - startT);
     updateChipPosition();
     ready.value = true;
@@ -628,29 +631,48 @@ onUnmounted(() => {
     color: #b0dfff;
 }
 
-@keyframes floatUp {
+@keyframes floatUpDrift {
     0% {
-        transform: translateY(0) translateX(0);
+        transform: translateY(0) translateX(0) rotate(0deg) scale(1);
         opacity: 1;
     }
-    15% {
-        transform: translateY(-16vh) translateX(30px);
+    4% {
+        transform: translateY(-5vh) translateX(4px) rotate(0.5deg) scale(1.01);
     }
-    30% {
-        transform: translateY(-33vh) translateX(-20px);
+    10% {
+        transform: translateY(-12vh) translateX(18px) rotate(1.5deg) scale(1.01);
     }
-    50% {
-        transform: translateY(-55vh) translateX(25px);
+    18% {
+        transform: translateY(-22vh) translateX(8px) rotate(-0.5deg) scale(1);
     }
-    70% {
-        transform: translateY(-77vh) translateX(-15px);
+    26% {
+        transform: translateY(-32vh) translateX(-14px) rotate(-1.8deg) scale(0.99);
+    }
+    35% {
+        transform: translateY(-42vh) translateX(-6px) rotate(-0.3deg) scale(1);
+    }
+    44% {
+        transform: translateY(-52vh) translateX(20px) rotate(2deg) scale(1.01);
+    }
+    54% {
+        transform: translateY(-63vh) translateX(12px) rotate(0.8deg) scale(1);
+    }
+    64% {
+        transform: translateY(-74vh) translateX(-16px) rotate(-1.5deg) scale(0.99);
+    }
+    75% {
+        transform: translateY(-85vh) translateX(-4px) rotate(-0.2deg) scale(1);
     }
     85% {
+        transform: translateY(-96vh) translateX(14px) rotate(1.2deg) scale(1);
         opacity: 1;
-        transform: translateY(-93vh) translateX(20px);
+    }
+    93% {
+        transform: translateY(-108vh) translateX(6px) rotate(0.3deg) scale(1);
+        opacity: 0.6;
     }
     100% {
-        transform: translateY(-120vh) translateX(-10px);
+        transform: translateY(-120vh) translateX(-8px) rotate(-0.5deg) scale(1);
         opacity: 0;
     }
 }
@@ -662,7 +684,7 @@ onUnmounted(() => {
     margin-left: -150px;
     width: 300px;
     z-index: 91;
-    animation: floatUp 6s ease-in-out forwards;
+    animation: floatUpDrift 9s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
     pointer-events: none;
 }
 </style>
