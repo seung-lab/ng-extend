@@ -247,6 +247,17 @@ watch(() => queueStore.proofread.size, () => {
 const backend = useProofreadingBackendStore();
 let prevNotifCount = -1;
 
+/** Parse badge name and description from notification body like:
+ *  'You earned the "Alpha Tester" award! — Only the elite are invited...' */
+function parseBadgeBody(body: string): { name: string; description: string } {
+  const nameMatch = body.match(/"([^"]+)"/);
+  const name = nameMatch ? nameMatch[1] : 'New Achievement';
+  // Description is after " — " or after "award!"
+  const descMatch = body.match(/(?:award!?\s*(?:—\s*)?)(.*)/);
+  const description = descMatch?.[1]?.trim() || body;
+  return { name, description };
+}
+
 watch(() => backend.notifications.length, (newLen) => {
   if (prevNotifCount < 0) { prevNotifCount = newLen; return; }
   if (newLen <= prevNotifCount) { prevNotifCount = newLen; return; }
@@ -254,10 +265,11 @@ watch(() => backend.notifications.length, (newLen) => {
   const newNotifs = backend.notifications.slice(0, newLen - prevNotifCount);
   for (const notif of newNotifs) {
     if (notif.title?.includes('New Achievement')) {
+      const { name, description } = parseBadgeBody(notif.body || '');
       addToast({
         type: 'badge',
-        title: '✨ New Achievement!',
-        subtitle: notif.body || 'You earned a special award!',
+        title: name,
+        subtitle: description,
         icon: notif.image_url || notif.thumbnail_url || '🏆',
         isImage: !!(notif.image_url || notif.thumbnail_url),
       });
@@ -270,10 +282,11 @@ watch(() => backend.notifications.length, (newLen) => {
 // ── Replay badge celebration when clicked from notification panel ─────────
 watch(() => backend.pendingBadgeCelebration, (pending) => {
   if (!pending) return;
+  const { name, description } = parseBadgeBody(pending.body || '');
   addToast({
     type: 'badge',
-    title: '✨ New Achievement!',
-    subtitle: pending.body || 'You earned a special award!',
+    title: name,
+    subtitle: description,
     icon: pending.imageUrl || '🏆',
     isImage: !!pending.imageUrl,
   });
@@ -504,9 +517,9 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 /* ── Holographic rings ── */
 .nge-hero-rings {
   position: absolute;
-  top: 20px;
-  width: 440px;
-  height: 440px;
+  top: 10px;
+  width: 320px;
+  height: 320px;
   pointer-events: none;
 }
 .nge-hero-ring {
@@ -543,9 +556,9 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 /* ── Orbital electron dots ── */
 .nge-hero-orbits {
   position: absolute;
-  top: 20px;
-  width: 440px;
-  height: 440px;
+  top: 10px;
+  width: 320px;
+  height: 320px;
   pointer-events: none;
 }
 .nge-hero-orbit-dot {
@@ -598,9 +611,9 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 /* ── Energy aura ── */
 .nge-hero-aura {
   position: absolute;
-  top: 50px;
-  width: 360px;
-  height: 360px;
+  top: 20px;
+  width: 280px;
+  height: 280px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(0, 180, 255, 0.08) 0%, rgba(206, 147, 216, 0.04) 40%, transparent 70%);
   animation: nge-hero-aura-pulse 2.5s ease-in-out infinite;
@@ -613,8 +626,8 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 
 /* ── Badge icon ── */
 .nge-hero-icon {
-  width: 380px;
-  height: 380px;
+  width: 280px;
+  height: 280px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -627,8 +640,8 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
   position: relative;
 }
 .nge-hero-badge-img {
-  width: 360px;
-  height: 360px;
+  width: 240px;
+  height: 240px;
   object-fit: contain;
   image-rendering: auto;
   animation: nge-hero-badge-materialize 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
