@@ -431,13 +431,18 @@ function getAnnotationLayers(): string[] {
   } catch { return []; }
 }
 
-async function submitResponse(req: HelpRequest) {
+async function submitResponse(req: HelpRequest, andResolve = false) {
   if (!responseNote.value.trim()) return;
-  await helpStore.resolve(req.id, {
+  const payload = {
     note: responseNote.value.trim(),
     url: responseUrl.value.trim() || undefined,
     annotationLayer: responseAnnotationLayer.value.trim() || undefined,
-  });
+  };
+  if (andResolve) {
+    await helpStore.resolve(req.id, payload);
+  } else {
+    await helpStore.respond(req.id, payload);
+  }
   respondingTo.value = null;
   helpStore.refreshPending();
 }
@@ -618,7 +623,12 @@ const panelStyle = computed(() => ({
                 class="nge-cl-btn nge-cl-btn--submit-response"
                 :disabled="!responseNote.trim()"
                 @click="submitResponse(req)"
-              >Submit Response & Resolve</button>
+              >Submit Response</button>
+              <button
+                class="nge-cl-btn nge-cl-btn--submit-response nge-cl-btn--resolve"
+                :disabled="!responseNote.trim()"
+                @click="submitResponse(req, true)"
+              >Submit & Resolve</button>
             </div>
           </div>
 

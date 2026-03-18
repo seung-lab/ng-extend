@@ -1058,6 +1058,35 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
     refreshPending();
   }
 
+  /** Add a response to a help request WITHOUT resolving it. */
+  async function respond(id: string, response: { note?: string; url?: string; annotationLayer?: string }) {
+    const backend = useProofreadingBackendStore();
+    const responderName = backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
+    const updateData: Record<string, any> = {
+      resolved_by_name: responderName,
+    };
+    if (response.note) updateData.response_note = response.note;
+    if (response.url) updateData.response_url = response.url;
+    if (response.annotationLayer) updateData.response_annotation_layer = response.annotationLayer;
+
+    const { error } = await supabase
+      .from('help_requests')
+      .update(updateData)
+      .eq('id', id);
+
+    if (error) {
+      console.warn('[helpRequests] respond error:', error.message);
+    }
+    // Optimistic update
+    const r = requests.value.find(x => x.id === id);
+    if (r) {
+      r.resolvedByName = responderName;
+      if (response.note) r.responseNote = response.note;
+      if (response.url) r.responseUrl = response.url;
+      if (response.annotationLayer) r.responseAnnotationLayer = response.annotationLayer;
+    }
+  }
+
   /** Remove a help request (delete from Supabase). */
   async function remove(id: string) {
     const { error } = await supabase
@@ -1076,7 +1105,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   load();
   subscribe();
 
-  return { requests, pending, add, resolve, remove, refreshPending, load, subscribe, unsubscribe };
+  return { requests, pending, add, resolve, respond, remove, refreshPending, load, subscribe, unsubscribe };
 });
 
 // ── Proofreading Queue ─────────────────────────────────────────────────────
