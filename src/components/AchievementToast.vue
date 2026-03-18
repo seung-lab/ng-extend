@@ -45,7 +45,7 @@ function addToast(toast: Omit<Toast, 'id' | 'leaving'>) {
   // Badge unlocks get hero treatment
   if (toast.type === 'badge') {
     heroBadge.value = t;
-    setTimeout(() => dismissHero(), 8000);
+    // No auto-dismiss — stays until user clicks
     return;
   }
   toasts.value.push(t);
@@ -92,6 +92,18 @@ onMounted(() => {
 
   // Welcome sparkle — calcium-imaging shimmer on extension open
   setTimeout(() => { confettiRef.value?.sparkle(2); }, 800);
+
+  // DEV: test hero badge from console → window.__testHeroBadge()
+  (window as any).__testHeroBadge = () => {
+    addToast({
+      type: 'badge',
+      title: 'Pyramid Builder',
+      subtitle: 'You completed 100 edits on pyramidal neurons. Incredible work, scientist!',
+      icon: BADGE_IMAGE_MAP[BUILDING_BADGES[4]?.imageKey] || '🏅',
+      isImage: !!BADGE_IMAGE_MAP[BUILDING_BADGES[4]?.imageKey],
+    });
+    fireConfetti('gold', 1.5);
+  };
 });
 
 // Watch for building badge unlocks (edits)
@@ -105,12 +117,12 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
       const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
       addToast({
         type: 'badge',
-        title: `Badge Unlocked: ${badge.name}`,
+        title: badge.name,
         subtitle: badge.description,
         icon: imgUrl || '🏅',
         isImage: !!imgUrl,
       });
-      fireConfetti('purple', badge.threshold >= 1000 ? 2 : 1);
+      fireConfetti('gold', 1.5);
     }
   }
   // Edit milestones (round numbers) — confetti scales with milestone size
@@ -142,12 +154,12 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
       const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
       addToast({
         type: 'badge',
-        title: `Badge Unlocked: ${badge.name}`,
+        title: badge.name,
         subtitle: badge.description,
         icon: imgUrl || '🏅',
         isImage: !!imgUrl,
       });
-      fireConfetti('purple', badge.threshold >= 500 ? 2 : 1);
+      fireConfetti('gold', 1.5);
     }
   }
   // Cell milestones
@@ -249,7 +261,7 @@ watch(() => backend.notifications.length, (newLen) => {
         icon: notif.thumbnail_url || notif.image_url || '🏆',
         isImage: !!(notif.thumbnail_url || notif.image_url),
       });
-      fireConfetti('gold', 2);
+      fireConfetti('gold', 1.5);
     }
   }
   prevNotifCount = newLen;
@@ -259,18 +271,48 @@ watch(() => backend.notifications.length, (newLen) => {
 <template>
   <ConfettiCelebration ref="confettiRef" />
   <Teleport to="body">
-    <!-- Hero badge unlock overlay -->
+    <!-- Hero badge unlock overlay — full-screen sci-fi spectacle -->
     <Transition name="nge-hero">
       <div v-if="heroBadge" class="nge-hero-overlay" @click="onHeroClick">
+        <!-- Hex grid background -->
+        <div class="nge-hero-hexgrid"></div>
+        <!-- Shockwave ring -->
+        <div class="nge-hero-shockwave"></div>
+        <!-- Vertical energy scan -->
+        <div class="nge-hero-scanline"></div>
+
         <div class="nge-hero-card">
+          <!-- Multi-layer particles -->
           <div class="nge-hero-particles">
-            <span v-for="i in 20" :key="i" class="nge-hero-particle" :style="{ '--i': i }"></span>
+            <span v-for="i in 40" :key="i" class="nge-hero-particle" :style="{ '--i': i }"></span>
           </div>
+
+          <!-- Rotating holographic rings -->
+          <div class="nge-hero-rings">
+            <div class="nge-hero-ring nge-hero-ring--1"></div>
+            <div class="nge-hero-ring nge-hero-ring--2"></div>
+            <div class="nge-hero-ring nge-hero-ring--3"></div>
+          </div>
+
+          <!-- Orbital electron dots -->
+          <div class="nge-hero-orbits">
+            <span v-for="i in 8" :key="i" class="nge-hero-orbit-dot" :style="{ '--j': i }"></span>
+          </div>
+
+          <!-- Pulsing energy aura -->
+          <div class="nge-hero-aura"></div>
+
+          <!-- Badge icon -->
           <div class="nge-hero-icon">
             <img v-if="heroBadge.isImage" :src="heroBadge.icon" class="nge-hero-badge-img" />
             <span v-else class="nge-hero-emoji">{{ heroBadge.icon }}</span>
           </div>
-          <div class="nge-hero-title">{{ heroBadge.title }}</div>
+
+          <!-- Glitch-reveal title -->
+          <div class="nge-hero-title-wrap">
+            <div class="nge-hero-label">ACHIEVEMENT UNLOCKED</div>
+            <div class="nge-hero-title">{{ heroBadge.title }}</div>
+          </div>
           <div class="nge-hero-subtitle">{{ heroBadge.subtitle }}</div>
           <div class="nge-hero-hint">Click to view profile</div>
         </div>
@@ -315,7 +357,9 @@ watch(() => backend.notifications.length, (newLen) => {
 </template>
 
 <style scoped>
-/* ── Hero badge unlock (centered overlay) ── */
+/* ══════════════════════════════════════════════════════════════════
+   HERO BADGE UNLOCK — Full-screen sci-fi spectacle
+   ══════════════════════════════════════════════════════════════════ */
 .nge-hero-overlay {
   position: fixed;
   inset: 0;
@@ -323,96 +367,369 @@ watch(() => backend.notifications.length, (newLen) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
+  background: radial-gradient(ellipse at center, rgba(6, 12, 28, 0.85) 0%, rgba(0, 0, 0, 0.95) 100%);
+  backdrop-filter: blur(8px) saturate(1.5);
   cursor: pointer;
+  overflow: hidden;
 }
+
+/* ── Hex grid background ── */
+.nge-hero-hexgrid {
+  position: absolute;
+  inset: -50%;
+  background-image:
+    linear-gradient(30deg, rgba(0, 180, 255, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(0, 180, 255, 0.03) 87.5%),
+    linear-gradient(150deg, rgba(0, 180, 255, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(0, 180, 255, 0.03) 87.5%),
+    linear-gradient(30deg, rgba(0, 180, 255, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(0, 180, 255, 0.03) 87.5%),
+    linear-gradient(150deg, rgba(0, 180, 255, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(0, 180, 255, 0.03) 87.5%),
+    linear-gradient(60deg, rgba(206, 147, 216, 0.02) 25%, transparent 25.5%, transparent 75%, rgba(206, 147, 216, 0.02) 75%),
+    linear-gradient(60deg, rgba(206, 147, 216, 0.02) 25%, transparent 25.5%, transparent 75%, rgba(206, 147, 216, 0.02) 75%);
+  background-size: 80px 140px;
+  background-position: 0 0, 0 0, 40px 70px, 40px 70px, 0 0, 40px 70px;
+  animation: nge-hero-hexdrift 20s linear infinite;
+  pointer-events: none;
+  opacity: 0;
+  animation: nge-hero-hexdrift 20s linear infinite, nge-hero-hexfade 1s 0.3s ease-out forwards;
+}
+@keyframes nge-hero-hexdrift {
+  from { transform: translate(0, 0) rotate(0deg); }
+  to { transform: translate(-40px, -70px) rotate(1deg); }
+}
+@keyframes nge-hero-hexfade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Shockwave ring ── */
+.nge-hero-shockwave {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 200, 255, 0.6);
+  box-shadow: 0 0 40px rgba(0, 200, 255, 0.3), inset 0 0 40px rgba(0, 200, 255, 0.1);
+  animation: nge-hero-shockwave 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: none;
+}
+@keyframes nge-hero-shockwave {
+  0% { transform: scale(0.5); opacity: 1; border-width: 3px; }
+  70% { opacity: 0.4; border-width: 1px; }
+  100% { transform: scale(18); opacity: 0; border-width: 0.5px; }
+}
+
+/* ── Vertical energy scan ── */
+.nge-hero-scanline {
+  position: absolute;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 200, 255, 0.15) 20%, rgba(0, 200, 255, 0.4) 50%, rgba(0, 200, 255, 0.15) 80%, transparent 100%);
+  box-shadow: 0 0 20px rgba(0, 200, 255, 0.3);
+  animation: nge-hero-scan 3s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes nge-hero-scan {
+  0% { top: -5%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 105%; opacity: 0; }
+}
+
+/* ── Main card ── */
 .nge-hero-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 48px 64px;
-  background: linear-gradient(145deg, rgba(12, 16, 28, 0.98) 0%, rgba(18, 22, 36, 0.97) 50%, rgba(10, 14, 26, 0.98) 100%);
-  border: 1px solid rgba(255, 200, 80, 0.25);
-  border-radius: 20px;
+  gap: 20px;
+  padding: 56px 80px 48px;
+  background: radial-gradient(ellipse at 50% 30%, rgba(0, 60, 120, 0.15) 0%, transparent 70%),
+    linear-gradient(145deg, rgba(8, 12, 24, 0.97) 0%, rgba(14, 18, 32, 0.96) 50%, rgba(6, 10, 22, 0.97) 100%);
+  border: 1px solid rgba(0, 180, 255, 0.15);
+  border-radius: 24px;
   box-shadow:
-    0 0 100px rgba(245, 166, 35, 0.18),
-    0 0 250px rgba(206, 147, 216, 0.1),
-    0 0 40px rgba(74, 158, 255, 0.05),
-    0 24px 64px rgba(0, 0, 0, 0.7);
+    0 0 120px rgba(0, 160, 255, 0.15),
+    0 0 300px rgba(206, 147, 216, 0.08),
+    0 0 60px rgba(0, 220, 255, 0.1),
+    inset 0 0 80px rgba(0, 100, 200, 0.03),
+    0 32px 80px rgba(0, 0, 0, 0.8);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 1;
+  animation: nge-hero-card-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+@keyframes nge-hero-card-enter {
+  0% { transform: scale(0.3) translateY(40px); opacity: 0; filter: brightness(3) blur(10px); }
+  40% { transform: scale(1.06) translateY(-4px); filter: brightness(1.4) blur(0px); }
+  70% { transform: scale(0.98) translateY(2px); }
+  100% { transform: scale(1) translateY(0); opacity: 1; filter: brightness(1) blur(0); }
+}
+
 /* Animated shimmer sweep across card */
 .nge-hero-card::after {
   content: '';
   position: absolute;
-  inset: 0;
-  background: linear-gradient(105deg, transparent 40%, rgba(255, 200, 80, 0.06) 45%, rgba(255, 200, 80, 0.12) 50%, rgba(255, 200, 80, 0.06) 55%, transparent 60%);
-  animation: nge-hero-shimmer 3s ease-in-out infinite;
+  inset: -2px;
+  border-radius: 24px;
+  background: conic-gradient(from 0deg, transparent 0%, rgba(0, 200, 255, 0.12) 10%, transparent 20%, rgba(206, 147, 216, 0.1) 30%, transparent 40%, rgba(0, 200, 255, 0.08) 50%, transparent 60%);
+  animation: nge-hero-border-spin 6s linear infinite;
+  z-index: -1;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  padding: 1px;
+}
+@keyframes nge-hero-border-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Holographic rings ── */
+.nge-hero-rings {
+  position: absolute;
+  top: 20px;
+  width: 440px;
+  height: 440px;
   pointer-events: none;
 }
-@keyframes nge-hero-shimmer {
-  0% { transform: translateX(-200%); }
-  100% { transform: translateX(200%); }
+.nge-hero-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid transparent;
 }
+.nge-hero-ring--1 {
+  border-color: rgba(0, 200, 255, 0.2);
+  animation: nge-hero-ring-spin 8s linear infinite;
+  box-shadow: 0 0 15px rgba(0, 200, 255, 0.1);
+}
+.nge-hero-ring--2 {
+  inset: 20px;
+  border-color: rgba(206, 147, 216, 0.15);
+  border-style: dashed;
+  animation: nge-hero-ring-spin 12s linear infinite reverse;
+  box-shadow: 0 0 15px rgba(206, 147, 216, 0.08);
+}
+.nge-hero-ring--3 {
+  inset: -15px;
+  border-color: rgba(0, 255, 180, 0.08);
+  border-width: 0.5px;
+  animation: nge-hero-ring-spin 20s linear infinite;
+}
+@keyframes nge-hero-ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Orbital electron dots ── */
+.nge-hero-orbits {
+  position: absolute;
+  top: 20px;
+  width: 440px;
+  height: 440px;
+  pointer-events: none;
+}
+.nge-hero-orbit-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(0, 220, 255, 0.9);
+  box-shadow: 0 0 8px rgba(0, 220, 255, 0.6), 0 0 20px rgba(0, 220, 255, 0.3);
+  top: 50%;
+  left: 50%;
+  animation: nge-hero-orbit 4s linear infinite;
+  animation-delay: calc(var(--j) * -0.5s);
+  offset-path: ellipse(170px 160px at 50% 50%);
+  offset-rotate: 0deg;
+  animation-name: nge-hero-orbit-path;
+}
+.nge-hero-orbit-dot:nth-child(odd) {
+  width: 3px;
+  height: 3px;
+  background: rgba(206, 180, 255, 0.8);
+  box-shadow: 0 0 6px rgba(206, 180, 255, 0.5);
+  animation-duration: 6s;
+  animation-direction: reverse;
+}
+.nge-hero-orbit-dot:nth-child(3n) {
+  width: 4px;
+  height: 4px;
+  background: rgba(0, 255, 180, 0.7);
+  box-shadow: 0 0 6px rgba(0, 255, 180, 0.4);
+  animation-duration: 5s;
+}
+/* Fallback orbit using transform for browsers without offset-path */
+@keyframes nge-hero-orbit-path {
+  from { offset-distance: 0%; opacity: 0.4; }
+  50% { opacity: 1; }
+  to { offset-distance: 100%; opacity: 0.4; }
+}
+/* Traditional orbit fallback */
+@keyframes nge-hero-orbit {
+  from { transform: rotate(calc(var(--j) * 45deg)) translateX(210px) rotate(calc(var(--j) * -45deg)); }
+  to { transform: rotate(calc(var(--j) * 45deg + 360deg)) translateX(210px) rotate(calc(var(--j) * -45deg - 360deg)); }
+}
+/* Use traditional orbit by default (better browser support) */
+.nge-hero-orbit-dot {
+  offset-path: none;
+  animation-name: nge-hero-orbit;
+}
+
+/* ── Energy aura ── */
+.nge-hero-aura {
+  position: absolute;
+  top: 50px;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 180, 255, 0.08) 0%, rgba(206, 147, 216, 0.04) 40%, transparent 70%);
+  animation: nge-hero-aura-pulse 2.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes nge-hero-aura-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+
+/* ── Badge icon ── */
 .nge-hero-icon {
-  width: 200px; height: 200px;
-  display: flex; align-items: center; justify-content: center;
-  filter: drop-shadow(0 0 32px rgba(255, 200, 80, 0.5)) drop-shadow(0 0 60px rgba(206, 147, 216, 0.2));
-  animation: nge-hero-float 3s ease-in-out infinite alternate;
+  width: 380px;
+  height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter:
+    drop-shadow(0 0 40px rgba(0, 180, 255, 0.4))
+    drop-shadow(0 0 80px rgba(206, 147, 216, 0.25))
+    drop-shadow(0 0 120px rgba(0, 220, 255, 0.15));
+  animation: nge-hero-float 4s ease-in-out infinite alternate;
+  z-index: 2;
+  position: relative;
 }
-.nge-hero-badge-img { width: 180px; height: 180px; object-fit: contain; }
-.nge-hero-emoji { font-size: 96px; }
-.nge-hero-title {
-  font-size: 24px; font-weight: 700; color: #ffd08a;
-  text-align: center; text-shadow: 0 0 24px rgba(245, 166, 35, 0.5);
-  letter-spacing: 0.02em;
+.nge-hero-badge-img {
+  width: 360px;
+  height: 360px;
+  object-fit: contain;
+  animation: nge-hero-badge-materialize 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-.nge-hero-subtitle {
-  font-size: 14px; color: #aaa; text-align: center; max-width: 320px;
-  line-height: 1.5;
+@keyframes nge-hero-badge-materialize {
+  0% { transform: scale(0.1) rotate(-20deg); opacity: 0; filter: brightness(4) saturate(0); }
+  50% { filter: brightness(1.8) saturate(1.2); }
+  80% { transform: scale(1.05) rotate(2deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; filter: brightness(1) saturate(1); }
 }
-.nge-hero-hint {
-  font-size: 11px; color: rgba(255, 208, 138, 0.4); margin-top: 4px;
-  letter-spacing: 0.05em; text-transform: uppercase;
+.nge-hero-emoji {
+  font-size: 180px;
+  animation: nge-hero-badge-materialize 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes nge-hero-float {
   from { transform: translateY(0); }
-  to { transform: translateY(-8px); }
+  to { transform: translateY(-12px); }
 }
-/* Hero particles — sparkle burst */
-.nge-hero-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+
+/* ── Title ── */
+.nge-hero-title-wrap {
+  text-align: center;
+  z-index: 2;
+  margin-top: 20px;
+}
+.nge-hero-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(0, 200, 255, 0.7);
+  margin-bottom: 8px;
+  animation: nge-hero-glitch-in 0.6s 0.3s ease-out both;
+}
+.nge-hero-title {
+  font-size: 32px;
+  font-weight: 300;
+  color: #fff;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  text-shadow:
+    0 0 30px rgba(0, 180, 255, 0.6),
+    0 0 60px rgba(0, 180, 255, 0.3),
+    0 0 100px rgba(206, 147, 216, 0.15),
+    0 2px 4px rgba(0, 0, 0, 0.8);
+  animation: nge-hero-glitch-in 0.6s 0.5s ease-out both;
+}
+.nge-hero-subtitle {
+  font-size: 15px;
+  color: rgba(180, 200, 220, 0.7);
+  text-align: center;
+  max-width: 380px;
+  line-height: 1.6;
+  z-index: 2;
+  animation: nge-hero-glitch-in 0.6s 0.7s ease-out both;
+}
+.nge-hero-hint {
+  font-size: 11px;
+  color: rgba(0, 200, 255, 0.3);
+  margin-top: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  z-index: 2;
+  animation: nge-hero-glitch-in 0.6s 0.9s ease-out both;
+}
+@keyframes nge-hero-glitch-in {
+  0% { opacity: 0; transform: translateY(10px); filter: blur(4px); clip-path: inset(0 100% 0 0); }
+  40% { clip-path: inset(0 20% 0 0); }
+  60% { clip-path: inset(0 0 0 0); filter: blur(0); }
+  75% { transform: translateY(-2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Particles (40, multi-layered) ── */
+.nge-hero-particles { position: absolute; inset: -40px; pointer-events: none; overflow: visible; z-index: 0; }
 .nge-hero-particle {
-  position: absolute; border-radius: 50%;
-  background: rgba(255, 200, 80, 0.7);
-  animation: nge-hero-sparkle 2.5s ease-out infinite;
-  animation-delay: calc(var(--i) * 0.12s);
-  left: calc(3% + var(--i) * 4.7%);
-  top: 85%;
-  width: 3px; height: 3px;
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(0, 200, 255, 0.7);
+  animation: nge-hero-sparkle-up 3s ease-out infinite;
+  animation-delay: calc(var(--i) * 0.075s);
+  left: calc(2% + var(--i) * 2.4%);
+  bottom: -10px;
+  width: 3px;
+  height: 3px;
 }
 .nge-hero-particle:nth-child(odd) {
   background: rgba(206, 180, 255, 0.6);
   width: 2px; height: 2px;
+  animation-duration: 3.5s;
 }
 .nge-hero-particle:nth-child(3n) {
-  background: rgba(74, 200, 255, 0.5);
+  background: rgba(0, 255, 180, 0.5);
   width: 4px; height: 4px;
+  animation-duration: 2.8s;
 }
-@keyframes nge-hero-sparkle {
-  0%   { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
-  50%  { opacity: 0.8; transform: translateY(-80px) scale(0.7) rotate(180deg); }
-  100% { opacity: 0; transform: translateY(-180px) scale(0) rotate(360deg); }
+.nge-hero-particle:nth-child(4n) {
+  background: rgba(255, 200, 80, 0.6);
+  width: 3px; height: 3px;
+  animation-duration: 4s;
 }
-/* Hero transitions */
-.nge-hero-enter-active { transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
-.nge-hero-leave-active { transition: all 0.3s ease-in; }
+.nge-hero-particle:nth-child(5n) {
+  background: rgba(255, 100, 200, 0.5);
+  width: 2px; height: 2px;
+  animation-duration: 3.2s;
+}
+@keyframes nge-hero-sparkle-up {
+  0%   { opacity: 0; transform: translateY(0) translateX(0) scale(0.5); }
+  15%  { opacity: 1; transform: translateY(-40px) translateX(calc((var(--i) - 20) * 1.5px)) scale(1); }
+  60%  { opacity: 0.7; transform: translateY(-200px) translateX(calc((var(--i) - 20) * 4px)) scale(0.8); }
+  100% { opacity: 0; transform: translateY(-400px) translateX(calc((var(--i) - 20) * 6px)) scale(0); }
+}
+
+/* ── Transitions ── */
+.nge-hero-enter-active { transition: opacity 0.3s ease-out; }
+.nge-hero-leave-active { transition: all 0.5s ease-in; }
 .nge-hero-enter-from { opacity: 0; }
-.nge-hero-enter-from .nge-hero-card { transform: scale(0.7); }
 .nge-hero-leave-to { opacity: 0; }
-.nge-hero-leave-to .nge-hero-card { transform: scale(0.9); }
+.nge-hero-leave-to .nge-hero-card { transform: scale(0.8) translateY(20px); opacity: 0; filter: brightness(2) blur(6px); }
+.nge-hero-leave-to .nge-hero-shockwave { display: none; }
 
 .nge-toast-container {
   position: fixed;
