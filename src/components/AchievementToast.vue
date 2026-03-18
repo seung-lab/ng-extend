@@ -266,6 +266,20 @@ watch(() => backend.notifications.length, (newLen) => {
   }
   prevNotifCount = newLen;
 });
+
+// ── Replay badge celebration when clicked from notification panel ─────────
+watch(() => backend.pendingBadgeCelebration, (pending) => {
+  if (!pending) return;
+  addToast({
+    type: 'badge',
+    title: '✨ New Achievement!',
+    subtitle: pending.body || 'You earned a special award!',
+    icon: pending.imageUrl || '🏆',
+    isImage: !!pending.imageUrl,
+  });
+  fireConfetti('gold', 1.5);
+  backend.pendingBadgeCelebration = null;
+});
 </script>
 
 <template>

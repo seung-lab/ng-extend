@@ -62,8 +62,22 @@ function isRead(id: number): boolean {
   return (backend as any).notificationReads?.has?.(id) ?? false;
 }
 
+function isBadgeNotification(notif: any): boolean {
+  return notif?.title?.includes('New Achievement');
+}
+
 function openDetail(notif: any) {
   backend.markNotificationRead(notif.id);
+  // Badge notifications trigger the hero celebration overlay
+  if (isBadgeNotification(notif)) {
+    backend.pendingBadgeCelebration = {
+      title: notif.title,
+      body: notif.body || '',
+      imageUrl: notif.thumbnail_url || notif.image_url || '',
+    };
+    emit('hide');
+    return;
+  }
   openNotif.value = notif;
 }
 
