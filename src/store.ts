@@ -875,6 +875,7 @@ export interface HelpRequest {
   /** Dataset/layer name this request belongs to (for cross-dataset filtering). */
   dataset?: string;
   /** Who created this request */
+  userId?: string;
   userName?: string;
   /** Display name of the user who resolved this request */
   resolvedByName?: string;
@@ -899,6 +900,7 @@ function rowToHelpRequest(row: any): HelpRequest {
     cellType: row.cell_type ?? undefined,
     nickname: row.nickname ?? undefined,
     dataset: row.dataset ?? undefined,
+    userId: row.user_id ?? undefined,
     userName: row.user_name ?? undefined,
     resolvedByName: row.resolved_by_name ?? undefined,
     responseNote: row.response_note ?? undefined,
@@ -1084,6 +1086,19 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       if (response.note) r.responseNote = response.note;
       if (response.url) r.responseUrl = response.url;
       if (response.annotationLayer) r.responseAnnotationLayer = response.annotationLayer;
+    }
+
+    // Send notification to the requester
+    if (r?.userId && r.userId !== backend.userId) {
+      const notePreview = (response.note || '').slice(0, 120) + ((response.note || '').length > 120 ? '...' : '');
+      await supabase.from('notifications').insert({
+        title: `💬 Response to your help request`,
+        body: `${responderName} responded on ${r.segId}: ${notePreview}`,
+        target_type: 'user',
+        target_id: r.userId,
+        send_at: new Date().toISOString(),
+        created_by: backend.userId,
+      }).then(({ error: e }) => { if (e) console.warn('[helpRequests] notification error:', e.message); });
     }
   }
 

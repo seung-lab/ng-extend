@@ -630,6 +630,14 @@ const panelStyle = computed(() => ({
                 @click="submitResponse(req, true)"
               >Submit & Resolve</button>
             </div>
+
+            <!-- Show existing response thread -->
+            <div v-if="req.responseNote" class="nge-cl-response-display">
+              <div class="nge-cl-response-label">💬 {{ req.resolvedByName || 'Response' }}:</div>
+              <div class="nge-cl-response-text">{{ req.responseNote }}</div>
+              <a v-if="req.responseUrl" class="nge-cl-response-link" @click.prevent="openResponseUrl(req.responseUrl)" href="#">↗ View linked state</a>
+              <span v-if="req.responseAnnotationLayer" class="nge-cl-response-layer">📐 Layer: {{ req.responseAnnotationLayer }}</span>
+            </div>
           </div>
 
           <!-- Resolved section -->
