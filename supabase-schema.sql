@@ -106,7 +106,10 @@ CREATE TABLE help_requests (
   resolved_by_name TEXT,
   cell_type TEXT,
   nickname TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  response_note TEXT,
+  response_url TEXT,
+  response_annotation_layer TEXT
 );
 
 CREATE INDEX idx_help_dataset ON help_requests(dataset, resolved);

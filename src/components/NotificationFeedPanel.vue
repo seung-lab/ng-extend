@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { useProofreadingBackendStore } from '../store';
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
+const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits({ hide: null, 'open-help': null });
 const backend = useProofreadingBackendStore();
 const panelRef = ref<HTMLElement | null>(null);
 
 function onDocClick(e: MouseEvent) {
+  if (!props.visible) return;
   const target = e.target as HTMLElement;
   // Ignore clicks on the toolbar bell button (it handles its own toggle)
   if (target.closest?.('.nge-icon-btn')) return;
@@ -21,13 +23,20 @@ function onDocClick(e: MouseEvent) {
 onMounted(() => {
   backend.loadNotifications();
   backend.subscribeToNotifications();
-  // Delay listener so the opening click doesn't immediately close
-  setTimeout(() => document.addEventListener('mousedown', onDocClick, true), 0);
+  document.addEventListener('mousedown', onDocClick, true);
 });
 
 onUnmounted(() => {
   backend.unsubscribeFromNotifications();
   document.removeEventListener('mousedown', onDocClick, true);
+});
+
+// Close detail overlay when panel hides
+watch(() => props.visible, (v) => {
+  if (!v) {
+    openNotif.value = null;
+    lightboxUrl.value = null;
+  }
 });
 
 const lightboxUrl = ref<string | null>(null);
@@ -78,7 +87,7 @@ function linkify(text: string): string {
 
 <template>
   <Teleport to="body">
-  <div ref="panelRef" class="nge-notif-panel">
+  <div v-show="visible" ref="panelRef" class="nge-notif-panel">
     <div class="nge-notif-topbar">
       <span class="nge-notif-title">🔔 Notifications</span>
       <div class="nge-notif-topbar-actions">
