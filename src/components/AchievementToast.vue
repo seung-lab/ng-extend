@@ -517,9 +517,9 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 /* ── Holographic rings ── */
 .nge-hero-rings {
   position: absolute;
-  top: 10px;
-  width: 320px;
-  height: 320px;
+  top: 20px;
+  width: 440px;
+  height: 440px;
   pointer-events: none;
 }
 .nge-hero-ring {
@@ -556,9 +556,9 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 /* ── Orbital electron dots ── */
 .nge-hero-orbits {
   position: absolute;
-  top: 10px;
-  width: 320px;
-  height: 320px;
+  top: 20px;
+  width: 440px;
+  height: 440px;
   pointer-events: none;
 }
 .nge-hero-orbit-dot {
@@ -611,9 +611,9 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 /* ── Energy aura ── */
 .nge-hero-aura {
   position: absolute;
-  top: 20px;
-  width: 280px;
-  height: 280px;
+  top: 50px;
+  width: 360px;
+  height: 360px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(0, 180, 255, 0.08) 0%, rgba(206, 147, 216, 0.04) 40%, transparent 70%);
   animation: nge-hero-aura-pulse 2.5s ease-in-out infinite;
@@ -626,8 +626,8 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 
 /* ── Badge icon ── */
 .nge-hero-icon {
-  width: 280px;
-  height: 280px;
+  width: 380px;
+  height: 380px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -640,8 +640,8 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
   position: relative;
 }
 .nge-hero-badge-img {
-  width: 240px;
-  height: 240px;
+  width: 360px;
+  height: 360px;
   object-fit: contain;
   image-rendering: auto;
   animation: nge-hero-badge-materialize 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
