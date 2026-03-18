@@ -1027,7 +1027,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   }
 
   /** Mark a help request as resolved in Supabase, optionally with a response. */
-  async function resolve(id: string, response?: { note?: string; url?: string; annotationLayer?: string }) {
+  async function resolve(id: string, response?: { note?: string; url?: string; annotationLayer?: string; appendToExisting?: boolean }) {
     const backend = useProofreadingBackendStore();
     const resolverName = backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
     const updateData: Record<string, any> = {
@@ -1036,7 +1036,17 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       resolved_by: backend.userId || null,
       resolved_by_name: resolverName,
     };
-    if (response?.note) updateData.response_note = response.note;
+    if (response?.note) {
+      if (response.appendToExisting) {
+        const { data } = await supabase.from('help_requests').select('response_note').eq('id', id).single();
+        const existing = data?.response_note || '';
+        updateData.response_note = existing
+          ? `${existing}\n---\n${resolverName}: ${response.note}`
+          : response.note;
+      } else {
+        updateData.response_note = response.note;
+      }
+    }
     if (response?.url) updateData.response_url = response.url;
     if (response?.annotationLayer) updateData.response_annotation_layer = response.annotationLayer;
 
