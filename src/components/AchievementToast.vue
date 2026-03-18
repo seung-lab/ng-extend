@@ -258,8 +258,8 @@ watch(() => backend.notifications.length, (newLen) => {
         type: 'badge',
         title: '✨ New Achievement!',
         subtitle: notif.body || 'You earned a special award!',
-        icon: notif.thumbnail_url || notif.image_url || '🏆',
-        isImage: !!(notif.thumbnail_url || notif.image_url),
+        icon: notif.image_url || notif.thumbnail_url || '🏆',
+        isImage: !!(notif.image_url || notif.thumbnail_url),
       });
       fireConfetti('gold', 1.5);
     }
@@ -298,7 +298,7 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
         <div class="nge-hero-card">
           <!-- Multi-layer particles -->
           <div class="nge-hero-particles">
-            <span v-for="i in 40" :key="i" class="nge-hero-particle" :style="{ '--i': i }"></span>
+            <span v-for="i in 20" :key="i" class="nge-hero-particle" :style="{ '--i': i }"></span>
           </div>
 
           <!-- Rotating holographic rings -->
@@ -310,7 +310,7 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 
           <!-- Orbital electron dots -->
           <div class="nge-hero-orbits">
-            <span v-for="i in 8" :key="i" class="nge-hero-orbit-dot" :style="{ '--j': i }"></span>
+            <span v-for="i in 5" :key="i" class="nge-hero-orbit-dot" :style="{ '--j': i }"></span>
           </div>
 
           <!-- Pulsing energy aura -->
@@ -385,6 +385,8 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
   backdrop-filter: blur(8px) saturate(1.5);
   cursor: pointer;
   overflow: hidden;
+  will-change: opacity;
+  transform: translateZ(0);
 }
 
 /* ── Hex grid background ── */
@@ -469,6 +471,8 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
   overflow: visible;
   z-index: 1;
   animation: nge-hero-card-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 @keyframes nge-hero-card-enter {
   0% { transform: scale(0.3) translateY(40px); opacity: 0; filter: brightness(3) blur(10px); }
@@ -510,6 +514,8 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
   inset: 0;
   border-radius: 50%;
   border: 1px solid transparent;
+  will-change: transform;
+  transform: translateZ(0);
 }
 .nge-hero-ring--1 {
   border-color: rgba(0, 200, 255, 0.2);
@@ -624,7 +630,9 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
   width: 360px;
   height: 360px;
   object-fit: contain;
+  image-rendering: auto;
   animation: nge-hero-badge-materialize 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
 }
 @keyframes nge-hero-badge-materialize {
   0% { transform: scale(0.1) rotate(-20deg); opacity: 0; filter: brightness(4) saturate(0); }

@@ -73,7 +73,7 @@ function openDetail(notif: any) {
     backend.pendingBadgeCelebration = {
       title: notif.title,
       body: notif.body || '',
-      imageUrl: notif.thumbnail_url || notif.image_url || '',
+      imageUrl: notif.image_url || notif.thumbnail_url || '',
     };
     emit('hide');
     return;
