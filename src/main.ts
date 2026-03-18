@@ -442,6 +442,49 @@ function liveNeuroglancerInjection() {
 }
 
 /**
+ * After exiting multicut/merge, restore 3D segmentation rendering.
+ * The multicut tool sets useTemporaryVisibleSegments which can leave
+ * the segmentation layer in a state where 3D meshes are not rendered.
+ */
+function restoreSegmentation3D() {
+  try {
+    const viewer = (window as any)['viewer'];
+    if (!viewer) return;
+    for (const ml of viewer.layerManager?.managedLayers ?? []) {
+      const layer = ml.layer;
+      if (!layer || !layer.displayState) continue;
+      const segState = layer.displayState?.segmentationGroupState?.value;
+      if (!segState) continue;
+      // Reset temporary visible segments state that multicut mode uses
+      if (segState.useTemporaryVisibleSegments?.value) {
+        segState.useTemporaryVisibleSegments.value = false;
+      }
+      if (segState.useTemporarySegmentEquivalences?.value) {
+        segState.useTemporarySegmentEquivalences.value = false;
+      }
+      if (segState.temporaryVisibleSegments?.clear) {
+        segState.temporaryVisibleSegments.clear();
+      }
+      if (segState.temporarySegmentEquivalences?.clear) {
+        segState.temporarySegmentEquivalences.clear();
+      }
+      // Reset 2D temp colors
+      if (layer.displayState.useTempSegmentStatedColors2d) {
+        layer.displayState.useTempSegmentStatedColors2d.value = false;
+      }
+      if (layer.displayState.tempSegmentStatedColors2d?.value?.clear) {
+        layer.displayState.tempSegmentStatedColors2d.value.clear();
+      }
+      if (layer.displayState.tempSegmentDefaultColor2d) {
+        layer.displayState.tempSegmentDefaultColor2d.value = undefined;
+      }
+    }
+  } catch (e) {
+    console.warn('[restoreSegmentation3D] Failed:', e);
+  }
+}
+
+/**
  * Watch for graphene multicut / merge tool activation in neuroglancer's DOM.
  * Updates useSplitMergeOverlayStore so Vue components can react.
  */
@@ -643,6 +686,11 @@ function observeSplitMergeTools() {
       hadPointsPlaced = false;
       prevMergeStatuses = [];
       lastStatusText = '';
+
+      // Restore 3D segmentation after tool exit.
+      // Multicut mode uses temporaryVisibleSegments which can leave the
+      // segmentation layer in a state where 3D meshes are hidden.
+      restoreSegmentation3D();
     }
 
     // Check NG status bar for errors during tool use
