@@ -436,8 +436,14 @@ function getAnnotationLayers(): string[] {
 
 async function submitResponse(req: HelpRequest, andResolve = false) {
   if (!responseNote.value.trim()) return;
+  // If there's an existing response, append as a thread entry
+  const userName = backend.userName || 'Unknown';
+  let note = responseNote.value.trim();
+  if (req.responseNote) {
+    note = `${req.responseNote}\n---\n${userName}: ${note}`;
+  }
   const payload = {
-    note: responseNote.value.trim(),
+    note,
     url: responseUrl.value.trim() || undefined,
     annotationLayer: responseAnnotationLayer.value.trim() || undefined,
   };
@@ -448,6 +454,14 @@ async function submitResponse(req: HelpRequest, andResolve = false) {
   }
   respondingTo.value = null;
   helpStore.refreshPending();
+}
+
+/** Format a threaded response note into HTML with line breaks */
+function formatResponseThread(note: string): string {
+  return note
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\n---\n/g, '<hr style="border:0;border-top:1px solid rgba(255,255,255,0.1);margin:6px 0">')
+    .replace(/\n/g, '<br>');
 }
 
 function relativeTime(iso: string): string {
@@ -639,9 +653,10 @@ const panelStyle = computed(() => ({
             <!-- Show existing response thread -->
             <div v-if="req.responseNote" class="nge-cl-response-display">
               <div class="nge-cl-response-label">💬 {{ req.resolvedByName || 'Response' }}:</div>
-              <div class="nge-cl-response-text">{{ req.responseNote }}</div>
+              <div class="nge-cl-response-text" v-html="formatResponseThread(req.responseNote)"></div>
               <a v-if="req.responseUrl" class="nge-cl-response-link" @click.prevent="openResponseUrl(req.responseUrl)" href="#">↗ View linked state</a>
               <span v-if="req.responseAnnotationLayer" class="nge-cl-response-layer">📐 Layer: {{ req.responseAnnotationLayer }}</span>
+              <button v-if="respondingTo !== req.id" class="nge-cl-btn nge-cl-btn--reply" @click="toggleResponseForm(req.id)">↩ Reply</button>
             </div>
           </div>
 
@@ -1229,5 +1244,19 @@ const panelStyle = computed(() => ({
 .nge-cl-response-link:hover { color: #adf; text-decoration: underline; }
 .nge-cl-response-layer {
   color: #889;
+}
+.nge-cl-btn--reply {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.7em;
+  padding: 2px 8px;
+  color: #8cf;
+  background: rgba(100, 180, 255, 0.1);
+  border: 1px solid rgba(100, 180, 255, 0.2);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.nge-cl-btn--reply:hover {
+  background: rgba(100, 180, 255, 0.2);
 }
 </style>

@@ -1229,7 +1229,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-profile-chart-bar--completion {
-  background: linear-gradient(to top, rgba(0, 210, 160, 0.5), rgba(0, 210, 160, 0.8));
+  background: linear-gradient(to top, rgba(255, 180, 50, 0.5), rgba(255, 180, 50, 0.85));
   border-radius: 2px;
 }
 
@@ -1266,7 +1266,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-profile-chart-legend-dot--completion {
-  background: rgba(0, 210, 160, 0.7);
+  background: rgba(255, 180, 50, 0.7);
 }
 
 /* ── Badges ── */

@@ -557,7 +557,7 @@ function cancelTool() {
   cursor: pointer;
   font-size: 12px;
   padding: 2px 4px;
-  opacity: 0;
+  opacity: 0.4;
   transition: opacity 0.15s ease;
   pointer-events: auto;
 }
