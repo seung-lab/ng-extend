@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref, computed, onMounted} from 'vue';
+import {ref, computed, onMounted, type Ref} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {DEMO_USERS, DemoUser} from '../data/demo-users';
@@ -82,6 +82,16 @@ function topBadge(user: DemoUser) {
     .filter(b => b.threshold > 0 && isBadgeEarnedByUser(b, user))
     .sort((a, b) => b.threshold - a.threshold)[0] ?? null;
 }
+
+// Earned badges for the selected user (only earned, most recent first)
+const earnedBuildingForUser = computed(() => {
+  if (!selectedUser.value) return [];
+  return BUILDING_BADGES.filter(b => isBadgeEarnedByUser(b, selectedUser.value!)).reverse();
+});
+const earnedExplorationForUser = computed(() => {
+  if (!selectedUser.value) return [];
+  return EXPLORATION_BADGES.filter(b => isBadgeEarnedByUser(b, selectedUser.value!)).reverse();
+});
 
 function selectUser(user: DemoUser) {
   selectedUser.value = user;
@@ -247,73 +257,41 @@ const emit = defineEmits({hide: null});
 
           <!-- Edit Achievements -->
           <div class="nge-lb-detail-badges-label" style="color: #ffd08a;">Edit Achievements</div>
-          <div class="nge-lb-detail-badges-grid">
+          <div v-if="earnedBuildingForUser.length > 0" class="nge-lb-detail-badges-grid">
             <div
-              v-for="badge in BUILDING_BADGES"
+              v-for="badge in earnedBuildingForUser"
               :key="badge.id"
               class="nge-lb-detail-badge"
-              :class="{
-                'nge-lb-detail-badge--locked': !isBadgeEarnedByUser(badge, selectedUser),
-                'nge-lb-detail-badge--selected': selectedBadgeId === badge.id,
-              }"
-              :title="isBadgeEarnedByUser(badge, selectedUser)
-                ? badge.name + ' — click for details'
-                : '??? (locked)'"
-              @click="isBadgeEarnedByUser(badge, selectedUser)
-                ? onDetailBadgeClick(badge.id)
-                : undefined"
+              :class="{ 'nge-lb-detail-badge--selected': selectedBadgeId === badge.id }"
+              :title="badge.name + ' — click for details'"
+              @click="onDetailBadgeClick(badge.id)"
             >
-              <template v-if="isBadgeEarnedByUser(badge, selectedUser)">
-                <div class="nge-lb-detail-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-lb-detail-badge-icon" />
-                </div>
-                <div class="nge-lb-detail-badge-name">{{ badge.name }}</div>
-              </template>
-              <template v-else>
-                <div class="nge-lb-detail-badge-img">
-                  <div class="nge-lb-detail-badge-mystery">
-                    <span class="nge-lb-detail-badge-mystery-q">?</span>
-                  </div>
-                </div>
-                <div class="nge-lb-detail-badge-name nge-lb-detail-badge-name--locked">???</div>
-              </template>
+              <div class="nge-lb-detail-badge-img">
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-lb-detail-badge-icon" />
+              </div>
+              <div class="nge-lb-detail-badge-name">{{ badge.name }}</div>
             </div>
           </div>
+          <div v-else class="nge-lb-detail-no-badges">No edit badges earned yet</div>
 
           <!-- Cell Achievements -->
           <div class="nge-lb-detail-badges-label" style="color: #90fff2;">Cell Achievements</div>
-          <div class="nge-lb-detail-badges-grid">
+          <div v-if="earnedExplorationForUser.length > 0" class="nge-lb-detail-badges-grid">
             <div
-              v-for="badge in EXPLORATION_BADGES"
+              v-for="badge in earnedExplorationForUser"
               :key="badge.id"
               class="nge-lb-detail-badge"
-              :class="{
-                'nge-lb-detail-badge--locked': !isBadgeEarnedByUser(badge, selectedUser),
-                'nge-lb-detail-badge--selected': selectedBadgeId === badge.id,
-              }"
-              :title="isBadgeEarnedByUser(badge, selectedUser)
-                ? badge.name + ' — click for details'
-                : '??? (locked)'"
-              @click="isBadgeEarnedByUser(badge, selectedUser)
-                ? onDetailBadgeClick(badge.id)
-                : undefined"
+              :class="{ 'nge-lb-detail-badge--selected': selectedBadgeId === badge.id }"
+              :title="badge.name + ' — click for details'"
+              @click="onDetailBadgeClick(badge.id)"
             >
-              <template v-if="isBadgeEarnedByUser(badge, selectedUser)">
-                <div class="nge-lb-detail-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-lb-detail-badge-icon" />
-                </div>
-                <div class="nge-lb-detail-badge-name">{{ badge.name }}</div>
-              </template>
-              <template v-else>
-                <div class="nge-lb-detail-badge-img">
-                  <div class="nge-lb-detail-badge-mystery">
-                    <span class="nge-lb-detail-badge-mystery-q">?</span>
-                  </div>
-                </div>
-                <div class="nge-lb-detail-badge-name nge-lb-detail-badge-name--locked">???</div>
-              </template>
+              <div class="nge-lb-detail-badge-img">
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-lb-detail-badge-icon" />
+              </div>
+              <div class="nge-lb-detail-badge-name">{{ badge.name }}</div>
             </div>
           </div>
+          <div v-else class="nge-lb-detail-no-badges">No cell badges earned yet</div>
 
           <!-- Badge detail card -->
           <Transition name="lb-badge-detail">
@@ -742,6 +720,13 @@ const emit = defineEmits({hide: null});
 }
 
 .nge-lb-detail-badge-name--locked { color: #444; }
+
+.nge-lb-detail-no-badges {
+  font-size: 0.78em;
+  color: #444;
+  font-style: italic;
+  padding: 8px 0 4px;
+}
 
 /* Badge detail card */
 .nge-lb-detail-badge-card {
