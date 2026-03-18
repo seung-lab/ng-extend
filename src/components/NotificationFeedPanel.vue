@@ -31,6 +31,11 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', onDocClick, true);
 });
 
+// Panel mounts before auth completes (v-show), so reload once userId is available
+watch(() => backend.userId, (id) => {
+  if (id) backend.loadNotifications();
+});
+
 // Close detail overlay when panel hides
 watch(() => props.visible, (v) => {
   if (!v) {
