@@ -564,9 +564,27 @@ function observeSplitMergeTools() {
       wasMulticutActive = false;
       wasMergeActive = true;
 
-      // Count merge submissions
+      // Count merge submissions and scrape segment IDs
       const submissions = mergeEl.querySelectorAll('.graphene-merge-segments-submission');
       store.mergeSubmissionCount = submissions.length;
+
+      // Scrape segment IDs from each submission pair
+      const segments: string[][] = [];
+      submissions.forEach(sub => {
+        const points = sub.querySelectorAll('.graphene-merge-segments-point');
+        const pair: string[] = [];
+        points.forEach(pt => {
+          // Segment ID is in the text of the widget (first line of the double-line entry)
+          const text = (pt.textContent || '').trim().split('\n')[0].trim();
+          if (text) pair.push(text);
+        });
+        if (pair.length > 0) segments.push(pair);
+      });
+      store.mergeSegments = segments;
+
+      // Scrape auto-submit checkbox state
+      const autoSubmitCheckbox = mergeEl.querySelector('label input[type="checkbox"]') as HTMLInputElement | null;
+      store.autoSubmit = autoSubmitCheckbox?.checked ?? false;
 
       // Scrape per-submission status from .graphene-merge-segments-submission-status
       const statusEls = mergeEl.querySelectorAll('.graphene-merge-segments-submission-status');

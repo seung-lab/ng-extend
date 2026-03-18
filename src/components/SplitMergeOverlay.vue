@@ -20,6 +20,7 @@ const resultIsSuccess = computed(() => store.resultFlash === 'success');
 const resultIsError = computed(() => store.resultFlash === 'error');
 // Show inline result on bar (merge mode stays open, shows temporary result)
 const hasInlineResult = computed(() => hasResult.value && !store.pendingClose);
+const hasMergeSegments = computed(() => store.mergeSegments.length > 0);
 
 const contextHint = computed(() => {
   if (store.statusMessage) return store.statusMessage;
@@ -60,6 +61,14 @@ function clearPoints() {
     const icons = multicutEl.querySelectorAll('.neuroglancer-icon');
     if (icons[1]) (icons[1] as HTMLElement).click();
   }
+}
+
+/** Toggle NG's native auto-submit checkbox */
+function toggleAutoSubmit() {
+  const mergeEl = document.querySelector('.graphene-merge-segments');
+  if (!mergeEl) return;
+  const checkbox = mergeEl.querySelector('label input[type="checkbox"]') as HTMLInputElement | null;
+  if (checkbox) checkbox.click();
 }
 
 /** Exit the current split/merge tool (cancel the operation). */
@@ -132,9 +141,22 @@ function cancelTool() {
             MERGE MODE
           </div>
 
+          <!-- Merge segment list (scrollable pills) -->
+          <div v-if="hasMergeSegments" class="nge-smo-merge-list">
+            <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-pair">
+              <span class="nge-smo-seg-id">{{ pair[0] }}</span>
+              <span v-if="pair[1]" class="nge-smo-merge-arrow">⇄</span>
+              <span v-if="pair[1]" class="nge-smo-seg-id">{{ pair[1] }}</span>
+            </div>
+          </div>
+
           <div class="nge-smo-hint merge-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>
 
           <div class="nge-smo-actions" v-if="!isSubmitting">
+            <label class="nge-smo-auto-submit" title="Auto-submit merges when both points are placed" @click.prevent="toggleAutoSubmit">
+              <span class="nge-smo-checkbox" :class="{ checked: store.autoSubmit }">{{ store.autoSubmit ? '☑' : '☐' }}</span>
+              auto-submit
+            </label>
             <span class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
             <span class="nge-smo-key-hint"><kbd>Enter</kbd> Submit</span>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit merge mode"><kbd>Esc</kbd> Cancel</button>
@@ -169,7 +191,7 @@ function cancelTool() {
   align-items: center;
   gap: 16px;
   padding: 8px 20px;
-  height: 48px;
+  min-height: 48px;
   font-family: 'Inter', 'Roboto', sans-serif;
   font-size: 13px;
   color: #e0e0e0;
@@ -450,6 +472,81 @@ function cancelTool() {
   font-size: 11px;
   color: #ccc;
   line-height: 1.4;
+}
+
+/* ── Merge segment list ── */
+.nge-smo-merge-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 40%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-shrink: 1;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 220, 120, 0.3) transparent;
+  padding: 2px 0;
+}
+
+.nge-smo-merge-list::-webkit-scrollbar {
+  height: 3px;
+}
+
+.nge-smo-merge-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 220, 120, 0.3);
+  border-radius: 2px;
+}
+
+.nge-smo-merge-pair {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  background: rgba(0, 220, 120, 0.12);
+  border: 1px solid rgba(0, 220, 120, 0.25);
+  border-radius: 4px;
+}
+
+.nge-smo-seg-id {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  color: #90e8c0;
+  white-space: nowrap;
+}
+
+.nge-smo-merge-arrow {
+  color: rgba(0, 220, 120, 0.5);
+  font-size: 10px;
+}
+
+/* ── Auto-submit checkbox ── */
+.nge-smo-auto-submit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+  cursor: pointer;
+  color: #aaa;
+  font-size: 12px;
+  margin-right: 8px;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+
+.nge-smo-auto-submit:hover {
+  color: #80ffc0;
+}
+
+.nge-smo-checkbox {
+  font-size: 14px;
+  color: #666;
+  transition: color 0.15s ease;
+}
+
+.nge-smo-checkbox.checked {
+  color: #80ffc0;
+  text-shadow: 0 0 6px rgba(0, 220, 120, 0.5);
 }
 
 /* Error hint styling */

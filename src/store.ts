@@ -1538,6 +1538,10 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   const redPointCount = ref(0);
   const bluePointCount = ref(0);
   const mergeSubmissionCount = ref(0);
+  /** Scraped merge pairs: each entry is [sinkId, sourceId] or [sinkId] if incomplete */
+  const mergeSegments = ref<string[][]>([]);
+  /** Whether NG's auto-submit checkbox is checked */
+  const autoSubmit = ref(false);
   const submitting = ref(false);
   /** Status message scraped from neuroglancer's tool UI */
   const statusMessage = ref('');
@@ -1559,6 +1563,8 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
         redPointCount.value = 0;
         bluePointCount.value = 0;
         mergeSubmissionCount.value = 0;
+        mergeSegments.value = [];
+        autoSubmit.value = false;
         submitting.value = false;
         statusMessage.value = '';
       }
@@ -1614,7 +1620,7 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
 
   return {
     toolActive, activeGroup, redPointCount, bluePointCount,
-    mergeSubmissionCount, submitting, statusMessage, resultFlash, resultText,
+    mergeSubmissionCount, mergeSegments, autoSubmit, submitting, statusMessage, resultFlash, resultText,
     pendingClose, closingTool,
     setToolState, setActiveGroup, updatePointCounts, setStatusMessage,
     showResult, beginSuccessClose,
@@ -2396,7 +2402,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       try {
         const chatStore = useChatStore();
         if (chatStore.connected) {
-          chatStore.sendMessage(`📢 ${data.title}: ${data.body.slice(0, 200)}${data.body.length > 200 ? '...' : ''}`);
+          chatStore.sendMessage(`📢 ${data.title} — check your notifications for details!`);
         }
       } catch (e) { console.warn('[admin] post_to_chat failed:', e); }
     }
