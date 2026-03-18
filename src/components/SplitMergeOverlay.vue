@@ -141,15 +141,6 @@ function cancelTool() {
             MERGE MODE
           </div>
 
-          <!-- Merge segment list (scrollable pills) -->
-          <div v-if="hasMergeSegments" class="nge-smo-merge-list">
-            <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-pair">
-              <span class="nge-smo-seg-id">{{ pair[0] }}</span>
-              <span v-if="pair[1]" class="nge-smo-merge-arrow">⇄</span>
-              <span v-if="pair[1]" class="nge-smo-seg-id">{{ pair[1] }}</span>
-            </div>
-          </div>
-
           <div class="nge-smo-hint merge-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>
 
           <div class="nge-smo-actions" v-if="!isSubmitting">
@@ -166,6 +157,24 @@ function cancelTool() {
           </div>
         </template>
 
+      </div>
+    </transition>
+
+    <!-- Merge segment queue (vertical list, left side) -->
+    <transition name="merge-list-fade">
+      <div v-if="isMerge && hasMergeSegments && !isPendingClose" class="nge-smo-merge-panel">
+        <div class="nge-smo-merge-panel-header">
+          Merge Queue ({{ store.mergeSegments.length }})
+        </div>
+        <div class="nge-smo-merge-panel-list">
+          <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-row">
+            <span class="nge-smo-merge-num">{{ i + 1 }}.</span>
+            <span class="nge-smo-seg-id">{{ pair[0] }}</span>
+            <span v-if="pair[1]" class="nge-smo-merge-arrow">⇄</span>
+            <span v-if="pair[1]" class="nge-smo-seg-id">{{ pair[1] }}</span>
+            <button class="nge-smo-merge-remove" @click="store.removeMergeSegment(i)" title="Remove this merge pair">🗑</button>
+          </div>
+        </div>
       </div>
     </transition>
 
@@ -474,38 +483,59 @@ function cancelTool() {
   line-height: 1.4;
 }
 
-/* ── Merge segment list ── */
-.nge-smo-merge-list {
+/* ── Merge segment vertical panel (left side) ── */
+.nge-smo-merge-panel {
+  position: fixed;
+  bottom: 84px;
+  left: 12px;
+  z-index: 9501;
+  min-width: 200px;
+  max-width: 420px;
+  max-height: 360px;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 40%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  flex-shrink: 1;
+  flex-direction: column;
+  background: rgba(10, 18, 28, 0.92);
+  border: 1px solid rgba(0, 220, 120, 0.25);
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+  font-family: 'Inter', 'Roboto', sans-serif;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.nge-smo-merge-panel-header {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #80ffc0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(0, 220, 120, 0.15);
+}
+
+.nge-smo-merge-panel-list {
+  overflow-y: auto;
+  max-height: 300px;
+  padding: 4px 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 220, 120, 0.3) transparent;
-  padding: 2px 0;
 }
 
-.nge-smo-merge-list::-webkit-scrollbar {
-  height: 3px;
-}
-
-.nge-smo-merge-list::-webkit-scrollbar-thumb {
-  background: rgba(0, 220, 120, 0.3);
-  border-radius: 2px;
-}
-
-.nge-smo-merge-pair {
+.nge-smo-merge-row {
   display: flex;
   align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-  padding: 2px 8px;
-  background: rgba(0, 220, 120, 0.12);
-  border: 1px solid rgba(0, 220, 120, 0.25);
-  border-radius: 4px;
+  gap: 5px;
+  padding: 4px 10px;
+  transition: background 0.15s ease;
+}
+.nge-smo-merge-row:hover {
+  background: rgba(0, 220, 120, 0.08);
+}
+
+.nge-smo-merge-num {
+  font-size: 10px;
+  color: rgba(0, 220, 120, 0.5);
+  min-width: 18px;
 }
 
 .nge-smo-seg-id {
@@ -518,6 +548,35 @@ function cancelTool() {
 .nge-smo-merge-arrow {
   color: rgba(0, 220, 120, 0.5);
   font-size: 10px;
+}
+
+.nge-smo-merge-remove {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: auto;
+}
+.nge-smo-merge-row:hover .nge-smo-merge-remove {
+  opacity: 0.7;
+}
+.nge-smo-merge-remove:hover {
+  opacity: 1 !important;
+}
+
+/* Merge panel transition */
+.merge-list-fade-enter-active,
+.merge-list-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.merge-list-fade-enter-from,
+.merge-list-fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
 }
 
 /* ── Auto-submit checkbox ── */

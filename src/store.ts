@@ -1567,6 +1567,9 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
         autoSubmit.value = false;
         submitting.value = false;
         statusMessage.value = '';
+        resultFlash.value = '';
+        resultText.value = '';
+        if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
       }
     }
   }
@@ -1618,12 +1621,17 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
     }, 2500);
   }
 
+  function removeMergeSegment(index: number) {
+    mergeSegments.value.splice(index, 1);
+    if (mergeSubmissionCount.value > 0) mergeSubmissionCount.value--;
+  }
+
   return {
     toolActive, activeGroup, redPointCount, bluePointCount,
     mergeSubmissionCount, mergeSegments, autoSubmit, submitting, statusMessage, resultFlash, resultText,
     pendingClose, closingTool,
     setToolState, setActiveGroup, updatePointCounts, setStatusMessage,
-    showResult, beginSuccessClose,
+    showResult, beginSuccessClose, removeMergeSegment,
   };
 });
 
