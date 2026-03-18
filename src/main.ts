@@ -495,6 +495,10 @@ function observeSplitMergeTools() {
       if (lower.includes('failed') || lower.includes('error')) {
         store.showResult('error', cleanText, 6000);
         store.submitting = false;
+      } else if (lower.includes('splitting') || lower.includes('finding split')) {
+        // Neuroglancer shows "Splitting source from sink..." during processing
+        store.submitting = true;
+        store.setStatusMessage('Splitting...');
       }
       return; // one message per scan cycle
     }

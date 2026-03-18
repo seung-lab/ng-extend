@@ -201,14 +201,16 @@ async function resolveUserName(userId: string): Promise<string> {
   try {
     const { data } = await (await import('../supabase')).default
       .from('users')
-      .select('display_name')
+      .select('display_name, email')
       .eq('id', userId)
       .single();
-    const name = data?.display_name || userId.slice(0, 8);
+    const name = data?.display_name || data?.email?.split('@')[0] || userId.slice(0, 8);
     userNameCache.value.set(userId, name);
     return name;
   } catch {
-    return userId.slice(0, 8);
+    const fallback = userId.slice(0, 8);
+    userNameCache.value.set(userId, fallback);
+    return fallback;
   }
 }
 function getCachedUserName(userId: string): string {
@@ -400,6 +402,7 @@ const isMyClaim = (cell: typeof cells.value[0]) =>
 
 // ── Help request helpers ────────────────────────────────────────────
 const showResolved = ref(false);
+const activeHelpId = ref<string | null>(null);
 const pendingHelp = computed(() => helpStore.requests.filter(r => !r.resolved));
 const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
 
@@ -458,6 +461,7 @@ function relativeTime(iso: string): string {
 }
 
 function jumpToReq(req: HelpRequest) {
+  activeHelpId.value = req.id;
   history.jumpToCell(req.segId, req.position);
 }
 
@@ -566,6 +570,7 @@ const panelStyle = computed(() => ({
             v-for="req in pendingHelp"
             :key="req.id"
             class="nge-cl-help-item"
+            :class="{ 'nge-cl-help-item--active': activeHelpId === req.id }"
           >
             <div class="nge-cl-row">
               <div class="nge-cl-row-left">
@@ -1123,6 +1128,10 @@ const panelStyle = computed(() => ({
 /* Help response form */
 .nge-cl-help-item {
   border-bottom: 1px solid rgba(120, 140, 255, 0.04);
+}
+.nge-cl-help-item--active {
+  background: rgba(255, 136, 170, 0.08);
+  border-left: 2px solid #f8a;
 }
 .nge-cl-help-item .nge-cl-row {
   border-bottom: none;

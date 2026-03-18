@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { useProofreadingBackendStore } from '../store';
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
-const emit = defineEmits({ hide: null });
+const emit = defineEmits({ hide: null, 'open-help': null });
 const backend = useProofreadingBackendStore();
 const panelRef = ref<HTMLElement | null>(null);
 
@@ -55,6 +55,16 @@ function openDetail(notif: any) {
 
 function closeDetail() {
   openNotif.value = null;
+}
+
+function isHelpNotification(notif: any): boolean {
+  return notif?.title?.includes('help request') || notif?.title?.includes('Response to your');
+}
+
+function openHelpTab() {
+  closeDetail();
+  emit('hide');
+  emit('open-help');
 }
 
 /** Convert URLs in text to clickable <a> tags */
@@ -144,6 +154,11 @@ function linkify(text: string): string {
                   class="nge-notif-detail-body"
                   v-html="linkify(openNotif.body)"
                 ></div>
+                <button
+                  v-if="isHelpNotification(openNotif)"
+                  class="nge-notif-open-help"
+                  @click="openHelpTab"
+                >Open in Help tab →</button>
               </div>
             </div>
           </div>
@@ -432,6 +447,24 @@ function linkify(text: string): string {
   border-radius: 8px;
   object-fit: contain;
   cursor: zoom-in;
+}
+
+/* Help notification action */
+.nge-notif-open-help {
+  margin-top: 14px;
+  padding: 7px 16px;
+  border: 1px solid rgba(255, 136, 170, 0.25);
+  border-radius: 6px;
+  background: rgba(255, 136, 170, 0.08);
+  color: #f8a;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nge-notif-open-help:hover {
+  background: rgba(255, 136, 170, 0.15);
+  border-color: rgba(255, 136, 170, 0.4);
 }
 
 /* ── Transition ── */

@@ -214,7 +214,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
-  <notification-feed-panel v-if="showNotifications" @hide="showNotifications = false" />
+  <notification-feed-panel v-if="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
