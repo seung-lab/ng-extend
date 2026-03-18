@@ -436,16 +436,11 @@ function getAnnotationLayers(): string[] {
 
 async function submitResponse(req: HelpRequest, andResolve = false) {
   if (!responseNote.value.trim()) return;
-  // If there's an existing response, append as a thread entry
-  const userName = backend.userName || 'Unknown';
-  let note = responseNote.value.trim();
-  if (req.responseNote) {
-    note = `${req.responseNote}\n---\n${userName}: ${note}`;
-  }
   const payload = {
-    note,
+    note: responseNote.value.trim(),
     url: responseUrl.value.trim() || undefined,
     annotationLayer: responseAnnotationLayer.value.trim() || undefined,
+    appendToExisting: !!req.responseNote,  // signal to append, not replace
   };
   if (andResolve) {
     await helpStore.resolve(req.id, payload);

@@ -1061,13 +1061,28 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   }
 
   /** Add a response to a help request WITHOUT resolving it. */
-  async function respond(id: string, response: { note?: string; url?: string; annotationLayer?: string }) {
+  async function respond(id: string, response: { note?: string; url?: string; annotationLayer?: string; appendToExisting?: boolean }) {
     const backend = useProofreadingBackendStore();
     const responderName = backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
+
+    // If appending to an existing thread, fetch current note from DB to avoid overwrites
+    let finalNote = response.note || '';
+    if (response.appendToExisting && response.note) {
+      const { data } = await supabase
+        .from('help_requests')
+        .select('response_note')
+        .eq('id', id)
+        .single();
+      const existing = data?.response_note || '';
+      if (existing) {
+        finalNote = `${existing}\n---\n${responderName}: ${response.note}`;
+      }
+    }
+
     const updateData: Record<string, any> = {
       resolved_by_name: responderName,
     };
-    if (response.note) updateData.response_note = response.note;
+    if (finalNote) updateData.response_note = finalNote;
     if (response.url) updateData.response_url = response.url;
     if (response.annotationLayer) updateData.response_annotation_layer = response.annotationLayer;
 
@@ -1083,7 +1098,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
     const r = requests.value.find(x => x.id === id);
     if (r) {
       r.resolvedByName = responderName;
-      if (response.note) r.responseNote = response.note;
+      if (finalNote) r.responseNote = finalNote;
       if (response.url) r.responseUrl = response.url;
       if (response.annotationLayer) r.responseAnnotationLayer = response.annotationLayer;
     }
