@@ -664,9 +664,13 @@ function observeSplitMergeTools() {
         // even if we couldn't detect points via internal state
         const toolWasUsed = store.submitting || hadPointsPlaced ||
           (Date.now() - multicutOpenTime > 3000);
-        if (toolWasUsed) {
+        const recentError = store.resultFlash === 'error';
+        if (toolWasUsed && !recentError) {
           // Had points placed and tool disappeared — likely submitted
           store.beginSuccessClose('Split complete');
+        } else if (recentError) {
+          // Split failed — don't override the error with success, just clean up tool state
+          store.setToolState(null);
         } else {
           // No points were ever placed — cancelled immediately
           store.setToolState(null);

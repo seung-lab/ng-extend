@@ -1089,9 +1089,11 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       }
     }
 
-    const updateData: Record<string, any> = {
-      resolved_by_name: responderName,
-    };
+    const updateData: Record<string, any> = {};
+    // Only set resolved_by_name if there's no existing response (don't overwrite original responder)
+    if (!response.appendToExisting) {
+      updateData.resolved_by_name = responderName;
+    }
     if (finalNote) updateData.response_note = finalNote;
     if (response.url) updateData.response_url = response.url;
     if (response.annotationLayer) updateData.response_annotation_layer = response.annotationLayer;
@@ -1107,7 +1109,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
     // Optimistic update
     const r = requests.value.find(x => x.id === id);
     if (r) {
-      r.resolvedByName = responderName;
+      if (!response.appendToExisting) r.resolvedByName = responderName;
       if (finalNote) r.responseNote = finalNote;
       if (response.url) r.responseUrl = response.url;
       if (response.annotationLayer) r.responseAnnotationLayer = response.annotationLayer;

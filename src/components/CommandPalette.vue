@@ -42,7 +42,7 @@ interface PaletteItem {
   id: string;
   label: string;
   description?: string;
-  category: 'action' | 'navigate' | 'cell' | 'tool' | 'help';
+  category: 'action' | 'navigate' | 'cell' | 'tool' | 'help' | 'shortcut';
   icon: string;
   shortcut?: string;
   action: () => void;
@@ -337,6 +337,135 @@ function buildActions(): PaletteItem[] {
     action: () => window.open('https://forum.eyewire.org', '_blank'),
   });
 
+  // ── Keyboard Shortcuts (from neuroglancer ? menu) ──
+  const dispatchKey = (key: string, code: string, opts: Partial<KeyboardEventInit> = {}) => () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true, ...opts }));
+    close();
+  };
+  items.push({
+    id: 'shortcut-all',
+    label: 'Show All Keyboard Shortcuts',
+    description: 'Open the full neuroglancer shortcut reference (? panel)',
+    category: 'shortcut',
+    icon: '⌨️',
+    shortcut: 'H',
+    aliases: ['help', 'keys', 'keybindings', 'bindings', 'hotkeys', 'keyboard', 'shortcuts', '?'],
+    action: () => {
+      close();
+      try { (window as any)['viewer']?.toggleHelpPanel?.(); } catch {}
+    },
+  });
+  items.push({
+    id: 'shortcut-recolor',
+    label: 'Recolor Segments',
+    description: 'Randomize segment colors',
+    category: 'shortcut',
+    icon: '🎨',
+    shortcut: 'L',
+    aliases: ['recolor', 'colors', 'randomize'],
+    action: dispatchKey('l', 'KeyL'),
+  });
+  items.push({
+    id: 'shortcut-slices',
+    label: 'Toggle Slices',
+    description: 'Show/hide cross-section slices in 3D',
+    category: 'shortcut',
+    icon: '🔍',
+    shortcut: 'S',
+    aliases: ['slices', 'cross section', 'show slices'],
+    action: dispatchKey('s', 'KeyS'),
+  });
+  items.push({
+    id: 'shortcut-scalebar',
+    label: 'Toggle Scale Bar',
+    description: 'Show/hide the scale bar',
+    category: 'shortcut',
+    icon: '📏',
+    shortcut: 'B',
+    aliases: ['scale', 'bar', 'ruler', 'measurement'],
+    action: dispatchKey('b', 'KeyB'),
+  });
+  items.push({
+    id: 'shortcut-annotations',
+    label: 'Toggle Default Annotations',
+    description: 'Show/hide default annotation layer',
+    category: 'shortcut',
+    icon: '📌',
+    shortcut: 'V',
+    aliases: ['annotations', 'pins', 'markers'],
+    action: dispatchKey('v', 'KeyV'),
+  });
+  items.push({
+    id: 'shortcut-axes',
+    label: 'Toggle Axis Lines',
+    description: 'Show/hide axis lines in the viewer',
+    category: 'shortcut',
+    icon: '➕',
+    shortcut: 'A',
+    aliases: ['axis', 'axes', 'grid', 'lines'],
+    action: dispatchKey('a', 'KeyA'),
+  });
+  items.push({
+    id: 'shortcut-ortho',
+    label: 'Toggle Orthographic Projection',
+    description: 'Switch between perspective and orthographic view',
+    category: 'shortcut',
+    icon: '🔲',
+    shortcut: 'O',
+    aliases: ['orthographic', 'perspective', 'projection', 'ortho'],
+    action: dispatchKey('o', 'KeyO'),
+  });
+  items.push({
+    id: 'shortcut-layout',
+    label: 'Toggle Layout',
+    description: 'Switch panel layout',
+    category: 'shortcut',
+    icon: '⊞',
+    shortcut: 'Space',
+    aliases: ['layout', 'panels', 'view', 'arrangement'],
+    action: dispatchKey(' ', 'Space'),
+  });
+  items.push({
+    id: 'shortcut-zoom-in',
+    label: 'Zoom In',
+    description: 'Zoom into the current view',
+    category: 'shortcut',
+    icon: '🔎',
+    shortcut: 'Ctrl+=',
+    aliases: ['zoom', 'magnify', 'closer', 'enlarge'],
+    action: dispatchKey('=', 'Equal', { ctrlKey: true }),
+  });
+  items.push({
+    id: 'shortcut-zoom-out',
+    label: 'Zoom Out',
+    description: 'Zoom out of the current view',
+    category: 'shortcut',
+    icon: '🔎',
+    shortcut: 'Ctrl+-',
+    aliases: ['zoom', 'shrink', 'farther', 'smaller'],
+    action: dispatchKey('-', 'Minus', { ctrlKey: true }),
+  });
+  items.push({
+    id: 'shortcut-snap',
+    label: 'Snap to Nearest Section',
+    description: 'Snap view to nearest integer slice',
+    category: 'shortcut',
+    icon: '🧲',
+    shortcut: 'Z',
+    aliases: ['snap', 'align', 'section', 'nearest'],
+    action: dispatchKey('z', 'KeyZ'),
+  });
+  items.push({
+    id: 'shortcut-add-layer',
+    label: 'Add New Layer',
+    description: 'Open the new layer dialog',
+    category: 'shortcut',
+    icon: '➕',
+    shortcut: 'N',
+    aliases: ['layer', 'add', 'new layer'],
+    action: dispatchKey('n', 'KeyN'),
+  });
+
   // ── Cells (from history) ──
   for (const cell of cellHistory.value.slice(0, 30)) {
     items.push({
@@ -524,6 +653,7 @@ function categoryLabel(cat: string): string {
     case 'navigate': return 'NAVIGATION';
     case 'tool': return 'TOOLS';
     case 'help': return 'HELP & LEARNING';
+    case 'shortcut': return 'KEYBOARD SHORTCUTS';
     case 'cell': return 'CELLS';
     default: return cat.toUpperCase();
   }

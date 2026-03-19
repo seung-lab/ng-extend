@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import {
   useProofreadingBackendStore,
   useProofreadingQueueStore,
@@ -406,6 +406,13 @@ const activeHelpId = ref<string | null>(null);
 const pendingHelp = computed(() => helpStore.requests.filter(r => !r.resolved));
 const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
 
+// ── Help note expand state ──────────────────────────────────────────
+const expandedNotes = reactive(new Set<string>());
+function toggleNoteExpand(id: string) {
+  if (expandedNotes.has(id)) expandedNotes.delete(id);
+  else expandedNotes.add(id);
+}
+
 // ── Help response form state ────────────────────────────────────────
 const respondingTo = ref<string | null>(null);
 const responseNote = ref('');
@@ -594,7 +601,7 @@ const panelStyle = computed(() => ({
                     <span v-if="req.userName" class="nge-cl-notes">by {{ req.userName }}</span>
                     <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
                   </div>
-                  <div v-if="req.note" class="nge-cl-help-note">{{ req.note }}</div>
+                  <div v-if="req.note" class="nge-cl-help-note" :class="{ 'nge-cl-help-note--expanded': expandedNotes.has(req.id) }" @click="toggleNoteExpand(req.id)">{{ req.note }}</div>
                 </div>
               </div>
               <div class="nge-cl-row-actions">
@@ -1080,6 +1087,11 @@ const panelStyle = computed(() => ({
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  cursor: pointer;
+}
+.nge-cl-help-note--expanded {
+  -webkit-line-clamp: unset;
+  display: block;
 }
 .nge-cl-help-resolved-header {
   display: flex;

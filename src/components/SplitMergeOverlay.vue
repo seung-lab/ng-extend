@@ -649,7 +649,7 @@ function cancelTool() {
 
 .nge-smo-result-flash {
   position: fixed;
-  bottom: 56px;
+  bottom: 72px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9600;
