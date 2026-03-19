@@ -5,16 +5,21 @@ import { computed, ref } from "vue";
 import { useTutorialStore } from "#src/store-pyr.js";
 import { steps as steps1 } from "#src/tutorial-1.js";
 import { steps as steps2 } from "#src/tutorial-2.js";
+import { steps as steps3 } from "#src/tutorial-3.js";
 import badgeCitizenScientist from "#src/images/badge-citizen-scientist.png";
 import badgeClearanceLevel2 from "#src/images/badge-clearance-level-2.png";
 
+
 const store = useTutorialStore();
 
-const steps = computed(() => store.activeTutorial === 1 ? steps1 : steps2);
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3 };
+const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
-const currentStep = computed(() =>
-    store.activeTutorial === 1 ? store.tutorialStep1 : store.tutorialStep2
-);
+const currentStep = computed(() => {
+    if (store.activeTutorial === 1) return store.tutorialStep1;
+    if (store.activeTutorial === 2) return store.tutorialStep2;
+    return store.tutorialStep3;
+});
 
 const activeStep = computed(() => {
     const index = currentStep.value;
@@ -38,6 +43,7 @@ const badgeTitle = ref('');
 const BADGE_KEYS: Record<number, { key: string; title: string; image: string }> = {
     1: { key: 'nge-badge-citizen-scientist', title: 'Citizen Scientist', image: badgeCitizenScientist },
     2: { key: 'nge-badge-advanced-operator', title: 'Advanced Operator', image: badgeClearanceLevel2 },
+    // 3: Tutorial 3 badge TBD
 };
 
 function awardBadgeIfNew(tutorialNum: number) {

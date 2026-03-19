@@ -105,9 +105,19 @@ function logout(session: loginSession) {
             <span>Reset Tutorial 2</span>
           </div>
         </li>
+        <li v-if="tutorialStore.tutorialStep3 >= 0">
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Reset Tutorial 3</span>
+          </div>
+        </li>
         <li>
           <div class="logoutButton button" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
             <span>Advanced Interface Tutorial</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Cut & Merge Tutorial</span>
           </div>
         </li>
         <li>

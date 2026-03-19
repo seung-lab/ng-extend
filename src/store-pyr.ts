@@ -169,14 +169,20 @@ export const useTutorialStore = defineStore("tutorial", () => {
   const tutorialStep2: Ref<number> = ref(
     parseInt(localStorage.getItem(`nge-tutorial-2-step`) ?? "-1")
   );
+  const tutorialStep3: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-3-step`) ?? "-1")
+  );
 
   function getTutorialStep() {
-    return activeTutorial.value === 1 ? tutorialStep1.value : tutorialStep2.value;
+    if (activeTutorial.value === 1) return tutorialStep1.value;
+    if (activeTutorial.value === 2) return tutorialStep2.value;
+    return tutorialStep3.value;
   }
 
   function setTutorialStep(val: number) {
     if (activeTutorial.value === 1) tutorialStep1.value = val;
-    else tutorialStep2.value = val;
+    else if (activeTutorial.value === 2) tutorialStep2.value = val;
+    else tutorialStep3.value = val;
   }
 
   watch(tutorialStep1, () => {
@@ -184,6 +190,9 @@ export const useTutorialStore = defineStore("tutorial", () => {
   });
   watch(tutorialStep2, () => {
     localStorage.setItem(`nge-tutorial-2-step`, `${tutorialStep2.value}`);
+  });
+  watch(tutorialStep3, () => {
+    localStorage.setItem(`nge-tutorial-3-step`, `${tutorialStep3.value}`);
   });
   watch(activeTutorial, () => {
     localStorage.setItem(`nge-active-tutorial`, `${activeTutorial.value}`);
@@ -195,5 +204,6 @@ export const useTutorialStore = defineStore("tutorial", () => {
     setTutorialStep,
     tutorialStep1,
     tutorialStep2,
+    tutorialStep3,
   };
 });
