@@ -155,16 +155,55 @@ export interface Step {
   spaceAdvances?: boolean;
   clickAfterState?: string;
   floatingImage?: string;
+  onEnter?: () => void | Promise<void>;
 }
 
 export const useTutorialStore = defineStore("tutorial", () => {
-  const tutorialStep: Ref<number> = ref(
+  const activeTutorial: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-active-tutorial`) ?? "1")
+  );
+
+  const tutorialStep1: Ref<number> = ref(
     parseInt(localStorage.getItem(`nge-tutorial-step`) ?? "0")
   );
-  watch(tutorialStep, () => {
-    localStorage.setItem(`nge-tutorial-step`, `${tutorialStep.value}`);
+  const tutorialStep2: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-2-step`) ?? "-1")
+  );
+  const tutorialStep3: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-3-step`) ?? "-1")
+  );
+
+  function getTutorialStep() {
+    if (activeTutorial.value === 1) return tutorialStep1.value;
+    if (activeTutorial.value === 2) return tutorialStep2.value;
+    return tutorialStep3.value;
+  }
+
+  function setTutorialStep(val: number) {
+    if (activeTutorial.value === 1) tutorialStep1.value = val;
+    else if (activeTutorial.value === 2) tutorialStep2.value = val;
+    else tutorialStep3.value = val;
+  }
+
+  watch(tutorialStep1, () => {
+    localStorage.setItem(`nge-tutorial-step`, `${tutorialStep1.value}`);
   });
+  watch(tutorialStep2, () => {
+    localStorage.setItem(`nge-tutorial-2-step`, `${tutorialStep2.value}`);
+  });
+  watch(tutorialStep3, () => {
+    localStorage.setItem(`nge-tutorial-3-step`, `${tutorialStep3.value}`);
+  });
+  watch(activeTutorial, () => {
+    localStorage.setItem(`nge-active-tutorial`, `${activeTutorial.value}`);
+  });
+
   return {
-    tutorialStep,
+    activeTutorial,
+    getTutorialStep,
+    setTutorialStep,
+    tutorialStep1,
+    tutorialStep2,
+    tutorialStep3,
   };
 });

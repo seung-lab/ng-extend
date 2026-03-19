@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "ng-extend-demo",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", "-s", "dist/min", "-l", "5173"],
-      "port": 5173
+      "name": "ng-extend-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev-server"],
+      "port": 8080
     }
   ]
 }

@@ -1,4 +1,4 @@
-import {createApp} from 'vue';
+import {createApp, nextTick} from 'vue';
 import {createPinia} from 'pinia';
 
 import 'neuroglancer/ui/default_viewer.css';
@@ -95,8 +95,10 @@ window.addEventListener('DOMContentLoaded', () => {
   // const viewer = setupDefaultViewer();
   initializeWithViewer(viewer);
   loadVolumes(viewer);
-  mergeTopBars();
-  liveNeuroglancerInjection();
+  nextTick(() => {
+    mergeTopBars();
+    liveNeuroglancerInjection();
+  });
 
   const {loopUpdateLeaderboard} = useStatsStore();
   loopUpdateLeaderboard();

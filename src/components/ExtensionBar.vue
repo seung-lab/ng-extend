@@ -18,7 +18,7 @@ import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
-import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore} from '../store';
+import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore} from '../store';
 import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
@@ -26,6 +26,8 @@ import {storeToRefs} from 'pinia';
 import logoImage from '../CaveLogo-clear.png';
 
 const login = useLoginStore();
+const tutorialStore = useTutorialStore();
+const dropdownStore = useDropdownListStore();
 
 /** Sync the first valid login session to Supabase so userId is set. */
 function syncFirstSession() {
@@ -39,6 +41,9 @@ function syncFirstSession() {
   }
 }
 
+function closeHamburger() {
+  dropdownStore.activeDropdowns['extension-bar-right'] = undefined;
+}
 window.addEventListener("middleauthlogin", () => {
   login.update().then(syncFirstSession);
 });
@@ -260,8 +265,28 @@ function activateTool(toolType: 'multicut' | 'merge') {
       <template #buttonTitle>☰</template>
       <template #listItems>
         <li>
-          <div class="logoutButton button" @click="tutorialStep = 0">
-            <span>Reset Tutorial</span>
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 1; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Reset Tutorial 1</span>
+          </div>
+        </li>
+        <li v-if="tutorialStore.tutorialStep2 >= 0">
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Reset Tutorial 2</span>
+          </div>
+        </li>
+        <li v-if="tutorialStore.tutorialStep3 >= 0">
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Reset Tutorial 3</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Advanced Interface Tutorial</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Cut & Merge Tutorial</span>
           </div>
         </li>
         <li>

@@ -2,7 +2,7 @@
 import { isNextToElementPostition, type Step } from '../store-pyr';
 import { useLayersStore } from 'src/store';
 import { marked } from 'marked';
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef } from 'vue';
 
 const layerStore = useLayersStore();
 
@@ -16,6 +16,7 @@ const props = defineProps<{
     first: boolean,
     last: boolean,
     stepIndex: number,
+    totalSteps: number,
 }>();
 
 const emit = defineEmits<{
@@ -278,6 +279,9 @@ onMounted(async () => {
         const el = await waitForElement(props.step.clickAfterState);
         if (el) (el as HTMLElement).click();
     }
+    if (props.step.onEnter) {
+        await props.step.onEnter();
+    }
     console.log('updating position', performance.now() - startT);
     updateChipPosition();
     ready.value = true;
@@ -336,8 +340,12 @@ onUnmounted(() => {
                 <div class="html" v-if="computedStep.html" v-html="computedStep.html"></div>
                 <div class="buttonContainer">
                     <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
+                    <span class="stepCounter">{{ stepIndex + 1 }}/{{ totalSteps }}</span>
                     <button v-if="computedStep.last" @click="launchConfetti(); $emit('next')" class="next">done</button>
                     <button v-else @click="$emit('next')" class="next">{{ computedStep.nextLabel || 'next' }}</button>
+                </div>
+                <div class="progressBarContainer">
+                    <div class="progressBar" :style="{ width: ((stepIndex + 1) / totalSteps * 100) + '%' }"></div>
                 </div>
             </div>
 
@@ -350,7 +358,9 @@ onUnmounted(() => {
                 </div>
             </div>
         </div>
-        <img v-if="computedStep.floatingImage" class="floatingImage" :src="computedStep.floatingImage">
+        <div v-if="computedStep.floatingImage" class="floatingImageRise">
+            <img class="floatingImageSway" :src="computedStep.floatingImage">
+        </div>
     </div>
 </template>
 
@@ -386,7 +396,7 @@ onUnmounted(() => {
 }
 
 .introductionStepAnchor.right .arrow {
-    border-right: 12px solid var(--color-flywire-dark-green);
+    border-right: 12px solid rgba(160, 200, 240, 0.35);
     right: -12px;
 }
 
@@ -395,7 +405,7 @@ onUnmounted(() => {
 }
 
 .introductionStepAnchor.bottom .arrow {
-    border-bottom: 12px solid var(--color-flywire-dark-green);
+    border-bottom: 12px solid rgba(160, 200, 240, 0.35);
     bottom: -12px;
 }
 
@@ -616,6 +626,32 @@ onUnmounted(() => {
     opacity: 1;
 }
 
+.ng-extend .chip .progressBarContainer {
+    width: 100%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.ng-extend .chip .progressBar {
+    height: 100%;
+    background: linear-gradient(90deg, #00c8ff, #80ffcc);
+    border-radius: 2px;
+    transition: width 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.ng-extend .chip .stepCounter {
+    position: absolute;
+    right: 0;
+    bottom: 2px;
+    font-size: 12px;
+    opacity: 0.4;
+    font-family: 'Inter', 'Roboto', monospace;
+    letter-spacing: 0.5px;
+}
+
 .ng-extend .chip button.exit {
     position: absolute;
     right: 0;
@@ -648,69 +684,42 @@ onUnmounted(() => {
     color: #b0dfff;
 }
 
-/* Balloon lift — starts slow (buoyancy building), gentle sway like wind,
-   slight bobbing from balloon physics, fades out at the top */
+/* Balloon: outer div rises smoothly, inner img sways side-to-side */
 @keyframes floatUp {
     0% {
-        transform: translateY(0) translateX(0) rotate(0deg);
+        transform: translateY(0);
         opacity: 1;
     }
-    /* Slow start — balloons catching air */
-    5% {
-        transform: translateY(-2vh) translateX(2px) rotate(0.5deg);
+    85% {
         opacity: 1;
-    }
-    12% {
-        transform: translateY(-8vh) translateX(6px) rotate(1.5deg);
-    }
-    /* Rising — gentle pendulum sway */
-    20% {
-        transform: translateY(-16vh) translateX(12px) rotate(2deg);
-    }
-    28% {
-        transform: translateY(-24vh) translateX(8px) rotate(0.5deg);
-    }
-    36% {
-        transform: translateY(-32vh) translateX(-4px) rotate(-1.5deg);
-    }
-    44% {
-        transform: translateY(-41vh) translateX(-10px) rotate(-2deg);
-    }
-    52% {
-        transform: translateY(-50vh) translateX(-6px) rotate(-0.5deg);
-    }
-    60% {
-        transform: translateY(-58vh) translateX(5px) rotate(1deg);
-    }
-    68% {
-        transform: translateY(-66vh) translateX(10px) rotate(1.5deg);
-    }
-    76% {
-        transform: translateY(-75vh) translateX(4px) rotate(0deg);
-    }
-    84% {
-        transform: translateY(-84vh) translateX(-3px) rotate(-0.8deg);
-        opacity: 1;
-    }
-    92% {
-        transform: translateY(-95vh) translateX(2px) rotate(0deg);
-        opacity: 0.6;
     }
     100% {
-        transform: translateY(-115vh) translateX(0px) rotate(0deg);
+        transform: translateY(-120vh);
         opacity: 0;
     }
 }
 
-.floatingImage {
+@keyframes floatSway {
+    0%   { transform: translateX(0)    rotate(0deg); }
+    25%  { transform: translateX(18px) rotate(1.5deg); }
+    50%  { transform: translateX(0)    rotate(0deg); }
+    75%  { transform: translateX(-18px) rotate(-1.5deg); }
+    100% { transform: translateX(0)    rotate(0deg); }
+}
+
+.floatingImageRise {
     position: fixed;
     bottom: -350px;
     left: 50%;
     margin-left: -150px;
     width: 300px;
     z-index: 91;
-    /* Ease-out gives the slow-start, accelerating-rise feel of helium balloons */
-    animation: floatUp 10s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
     pointer-events: none;
+    animation: floatUp 8s linear forwards;
+}
+
+.floatingImageSway {
+    width: 100%;
+    animation: floatSway 3s ease-in-out infinite;
 }
 </style>

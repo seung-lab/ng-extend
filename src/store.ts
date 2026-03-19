@@ -288,12 +288,14 @@ export const useLayersStore = defineStore('layers', () => {
   }
 
   function initializeWithViewer(v: Viewer) {
+    console.log("initializeWithViewer");
     viewer = v;
 
     // set default values in settings
     viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit.value = 2e9;
     viewer.chunkQueueManager.capacities.systemMemory.sizeLimit.value = 3e9;
     viewer.layout.restoreState('xy-3d');
+
     viewer.layerManager.layersChanged.add(refreshLayers);
     refreshLayers();
   }
