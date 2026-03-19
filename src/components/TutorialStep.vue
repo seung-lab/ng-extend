@@ -16,6 +16,7 @@ const props = defineProps<{
     first: boolean,
     last: boolean,
     stepIndex: number,
+    totalSteps: number,
 }>();
 
 const emit = defineEmits<{
@@ -334,8 +335,12 @@ onUnmounted(() => {
                 <div class="html" v-if="computedStep.html" v-html="computedStep.html"></div>
                 <div class="buttonContainer">
                     <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
+                    <span class="stepCounter">{{ stepIndex + 1 }}/{{ totalSteps }}</span>
                     <button v-if="computedStep.last" @click="launchConfetti(); $emit('next')" class="next">done</button>
                     <button v-else @click="$emit('next')" class="next">{{ computedStep.nextLabel || 'next' }}</button>
+                </div>
+                <div class="progressBarContainer">
+                    <div class="progressBar" :style="{ width: ((stepIndex + 1) / totalSteps * 100) + '%' }"></div>
                 </div>
             </div>
 
@@ -348,7 +353,9 @@ onUnmounted(() => {
                 </div>
             </div>
         </div>
-        <img v-if="computedStep.floatingImage" class="floatingImage" :src="computedStep.floatingImage">
+        <div v-if="computedStep.floatingImage" class="floatingImageRise">
+            <img class="floatingImageSway" :src="computedStep.floatingImage">
+        </div>
     </div>
 </template>
 
@@ -384,7 +391,7 @@ onUnmounted(() => {
 }
 
 .introductionStepAnchor.right .arrow {
-    border-right: 12px solid var(--color-flywire-dark-green);
+    border-right: 12px solid rgba(160, 200, 240, 0.35);
     right: -12px;
 }
 
@@ -393,7 +400,7 @@ onUnmounted(() => {
 }
 
 .introductionStepAnchor.bottom .arrow {
-    border-bottom: 12px solid var(--color-flywire-dark-green);
+    border-bottom: 12px solid rgba(160, 200, 240, 0.35);
     bottom: -12px;
 }
 
@@ -599,6 +606,32 @@ onUnmounted(() => {
     opacity: 1;
 }
 
+.ng-extend .chip .progressBarContainer {
+    width: 100%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.ng-extend .chip .progressBar {
+    height: 100%;
+    background: linear-gradient(90deg, #00c8ff, #80ffcc);
+    border-radius: 2px;
+    transition: width 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.ng-extend .chip .stepCounter {
+    position: absolute;
+    right: 0;
+    bottom: 2px;
+    font-size: 12px;
+    opacity: 0.4;
+    font-family: 'Inter', 'Roboto', monospace;
+    letter-spacing: 0.5px;
+}
+
 .ng-extend .chip button.exit {
     position: absolute;
     right: 0;
@@ -631,60 +664,42 @@ onUnmounted(() => {
     color: #b0dfff;
 }
 
-@keyframes floatUpDrift {
+/* Balloon: outer div rises smoothly, inner img sways side-to-side */
+@keyframes floatUp {
     0% {
-        transform: translateY(0) translateX(0) rotate(0deg) scale(1);
+        transform: translateY(0);
         opacity: 1;
-    }
-    4% {
-        transform: translateY(-5vh) translateX(4px) rotate(0.5deg) scale(1.01);
-    }
-    10% {
-        transform: translateY(-12vh) translateX(18px) rotate(1.5deg) scale(1.01);
-    }
-    18% {
-        transform: translateY(-22vh) translateX(8px) rotate(-0.5deg) scale(1);
-    }
-    26% {
-        transform: translateY(-32vh) translateX(-14px) rotate(-1.8deg) scale(0.99);
-    }
-    35% {
-        transform: translateY(-42vh) translateX(-6px) rotate(-0.3deg) scale(1);
-    }
-    44% {
-        transform: translateY(-52vh) translateX(20px) rotate(2deg) scale(1.01);
-    }
-    54% {
-        transform: translateY(-63vh) translateX(12px) rotate(0.8deg) scale(1);
-    }
-    64% {
-        transform: translateY(-74vh) translateX(-16px) rotate(-1.5deg) scale(0.99);
-    }
-    75% {
-        transform: translateY(-85vh) translateX(-4px) rotate(-0.2deg) scale(1);
     }
     85% {
-        transform: translateY(-96vh) translateX(14px) rotate(1.2deg) scale(1);
         opacity: 1;
     }
-    93% {
-        transform: translateY(-108vh) translateX(6px) rotate(0.3deg) scale(1);
-        opacity: 0.6;
-    }
     100% {
-        transform: translateY(-120vh) translateX(-8px) rotate(-0.5deg) scale(1);
+        transform: translateY(-120vh);
         opacity: 0;
     }
 }
 
-.floatingImage {
+@keyframes floatSway {
+    0%   { transform: translateX(0)    rotate(0deg); }
+    25%  { transform: translateX(18px) rotate(1.5deg); }
+    50%  { transform: translateX(0)    rotate(0deg); }
+    75%  { transform: translateX(-18px) rotate(-1.5deg); }
+    100% { transform: translateX(0)    rotate(0deg); }
+}
+
+.floatingImageRise {
     position: fixed;
     bottom: -350px;
     left: 50%;
     margin-left: -150px;
     width: 300px;
     z-index: 91;
-    animation: floatUpDrift 9s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
     pointer-events: none;
+    animation: floatUp 8s linear forwards;
+}
+
+.floatingImageSway {
+    width: 100%;
+    animation: floatSway 3s ease-in-out infinite;
 }
 </style>

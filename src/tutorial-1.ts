@@ -134,6 +134,30 @@ This box won't go away when you click outside it.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+    onEnter: () => {
+      const viewer = getViewer();
+      if (!viewer) return;
+      // Close side panel so segment list isn't visible
+      try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+      // Remove the annotations layer entirely
+      setTimeout(() => {
+        const layers = viewer.layerManager && viewer.layerManager.managedLayers;
+        if (layers) {
+          for (let i = layers.length - 1; i >= 0; i--) {
+            const n = layers[i].layer && layers[i].layer.constructor && layers[i].layer.constructor.name;
+            if (n && (n as string).indexOf('Annotation') >= 0) {
+              layers[i].setVisible(false);
+              try { viewer.layerManager.removeManagedLayer(layers[i]); } catch (e) { /* */ }
+            }
+          }
+        }
+        // Remove extra segments, keep only 648518346353862024
+        removeSegment('648518346353084129');
+        removeSegment('648518346354708544');
+        removeSegment('648518346355322263');
+        removeSegment('648518346356789312');
+      }, 1500);
+    },
   },
   //8a - right click
   {
@@ -147,7 +171,13 @@ This box won't go away when you click outside it.`,
       // Turn on axis lines (keyboard shortcut A)
       viewer.showAxisLines.value = true;
       // Close the side panel / deselect layer to remove annotation tab
-      try { viewer.selectedLayer.visible = false; } catch {}
+      try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+      try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
+      // Also try closing after a delay in case state load re-opens it
+      setTimeout(() => {
+        try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+        try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
+      }, 1000);
     },
   },
   //8b - find annotation
@@ -229,7 +259,7 @@ Don't worry if you lose the neuron - the Next button in this section resets this
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
     onEnter: () => {
       // Remove the erroneous purple segment
-      setTimeout(() => removeSegment('648518346356484078'), 500);
+      setTimeout(() => removeSegment('648518346356484078'), 1500);
     },
   },
   //18 -  middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408
@@ -269,18 +299,115 @@ Hit next to reveal the answer.`,
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+    onEnter: () => {
+      const viewer = getViewer();
+      if (!viewer) return;
+      // Close layers side panel aggressively
+      function closePanel() {
+        try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+        try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
+        // Hide any side panel elements by broad class matching
+        var selectors = [
+          '.neuroglancer-layer-side-panel-container',
+          '.neuroglancer-layer-list-panel',
+          '.neuroglancer-selected-layer-side-panel',
+          '[class*="side-panel"]',
+          '[class*="sidepanel"]',
+          '[class*="SidePanel"]',
+        ];
+        for (var i = 0; i < selectors.length; i++) {
+          var els = document.querySelectorAll(selectors[i]);
+          for (var j = 0; j < els.length; j++) {
+            (els[j] as HTMLElement).style.display = 'none';
+          }
+        }
+        // Also try toggling the layer bar visibility
+        try { viewer.showLayerPanel.value = false; } catch (e) { /* */ }
+        try { viewer.layerSpecification.visible = false; } catch (e) { /* */ }
+      }
+      closePanel();
+      setTimeout(closePanel, 300);
+      setTimeout(closePanel, 1000);
+      setTimeout(closePanel, 2000);
+
+      // Fun hamburger emoji animation on the menu button
+      setTimeout(() => {
+        const btn = document.querySelector('#hamburger > button') as HTMLElement;
+        if (!btn) return;
+        const rect = btn.getBoundingClientRect();
+
+        // Create emoji overlay
+        const emoji = document.createElement('div');
+        emoji.textContent = '\u{1F354}';
+        emoji.style.cssText = [
+          'position: fixed',
+          'z-index: 10000',
+          'font-size: 28px',
+          'pointer-events: none',
+          'left: ' + (rect.left + rect.width / 2) + 'px',
+          'top: ' + (rect.top + rect.height / 2) + 'px',
+          'transform: translate(-50%, -50%) scale(0)',
+          'transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
+          'opacity: 1',
+          'filter: drop-shadow(0 0 8px rgba(255, 180, 50, 0.6))',
+        ].join(';');
+        document.body.appendChild(emoji);
+
+        // Animate in: scale up with bounce
+        requestAnimationFrame(() => {
+          emoji.style.transform = 'translate(-50%, -50%) scale(1.8)';
+        });
+
+        // Wiggle
+        setTimeout(() => {
+          emoji.style.transition = 'transform 0.15s ease-in-out';
+          emoji.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(12deg)';
+          setTimeout(() => {
+            emoji.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(-10deg)';
+            setTimeout(() => {
+              emoji.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(6deg)';
+              setTimeout(() => {
+                emoji.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(0deg)';
+              }, 150);
+            }, 150);
+          }, 150);
+        }, 500);
+
+        // Fade out
+        setTimeout(() => {
+          emoji.style.transition = 'transform 0.5s ease-in, opacity 0.5s ease-in';
+          emoji.style.transform = 'translate(-50%, -50%) scale(0.5)';
+          emoji.style.opacity = '0';
+          setTimeout(() => emoji.remove(), 600);
+        }, 1600);
+      }, 800);
+    },
   },
   {
     text: `Researchers: take the **Self-guided training** when you are ready to learn more and gain access to the production dataset! LINK
-    
+
 Citizen scientists: [Unlock access](https://blog.eyewire.org/how-to-access-the-eyewire-ii-dataset/) to start mapping neurons in Eyewire II!
 
-Email support at eyewire.ai with any questions. 
-  
+Email support at eyewire.ai with any questions.
+
 Thanks for being a part of the neuroscience community. For Science!`,
     position: MIDDLE,
     image:
       "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png",
-    width: "600px"
+    width: "600px",
+    onEnter: () => {
+      const viewer = getViewer();
+      if (!viewer) return;
+      try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+      try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
+      try { viewer.showLayerPanel.value = false; } catch (e) { /* */ }
+      var selectors = ['[class*="side-panel"]', '[class*="sidepanel"]', '[class*="SidePanel"]'];
+      for (var i = 0; i < selectors.length; i++) {
+        var els = document.querySelectorAll(selectors[i]);
+        for (var j = 0; j < els.length; j++) {
+          (els[j] as HTMLElement).style.display = 'none';
+        }
+      }
+    },
   },
 ];
