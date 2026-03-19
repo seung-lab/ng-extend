@@ -3,6 +3,7 @@ import {createPinia} from 'pinia';
 
 import 'neuroglancer/ui/default_viewer.css';
 import './widgets/lightbulb_menu.css';
+import './widgets/help_panel_restyle.css';
 
 import App from 'components/App.vue';
 import {useLayersStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';

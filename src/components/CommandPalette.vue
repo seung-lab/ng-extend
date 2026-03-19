@@ -337,134 +337,146 @@ function buildActions(): PaletteItem[] {
     action: () => window.open('https://forum.eyewire.org', '_blank'),
   });
 
-  // ── Keyboard Shortcuts (from neuroglancer ? menu) ──
-  const dispatchKey = (key: string, code: string, opts: Partial<KeyboardEventInit> = {}) => () => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true, ...opts }));
-    close();
+  // ── Keyboard Shortcuts (dynamically from neuroglancer + curated labels) ──
+  const FRIENDLY_NAMES: Record<string, { label: string; icon: string; aliases?: string[] }> = {
+    'recolor':                      { label: 'Recolor Segments', icon: '🎨', aliases: ['colors', 'randomize'] },
+    'clear-segments':               { label: 'Clear All Segments', icon: '🧹', aliases: ['deselect', 'hide'] },
+    'toggle-show-slices':           { label: 'Toggle Slices', icon: '🔍', aliases: ['cross section', 'slices'] },
+    'toggle-scale-bar':             { label: 'Toggle Scale Bar', icon: '📏', aliases: ['ruler', 'measurement'] },
+    'toggle-default-annotations':   { label: 'Toggle Annotations', icon: '📌', aliases: ['pins', 'markers'] },
+    'toggle-axis-lines':            { label: 'Toggle Axis Lines', icon: '➕', aliases: ['grid', 'axes'] },
+    'toggle-orthographic-projection': { label: 'Toggle Orthographic', icon: '🔲', aliases: ['perspective', 'ortho'] },
+    'toggle-layout':                { label: 'Toggle Layout', icon: '⊞', aliases: ['panels', 'arrangement'] },
+    'toggle-layout-alternative':    { label: 'Toggle Layout (Alt)', icon: '⊞' },
+    'toggle-show-statistics':       { label: 'Toggle Statistics', icon: '📊', aliases: ['stats', 'gpu', 'performance'] },
+    'help':                         { label: 'Show All Keyboard Shortcuts', icon: '⌨️', aliases: ['keys', 'keybindings', 'hotkeys', '?'] },
+    'add-layer':                    { label: 'Add New Layer', icon: '➕', aliases: ['new layer'] },
+    'snap':                         { label: 'Snap to Nearest Section', icon: '🧲', aliases: ['align', 'section'] },
+    'zoom-in':                      { label: 'Zoom In', icon: '🔎', aliases: ['magnify', 'closer'] },
+    'zoom-out':                     { label: 'Zoom Out', icon: '🔎', aliases: ['shrink', 'farther'] },
+    'select':                       { label: 'Select Segment', icon: '👆', aliases: ['pick', 'choose'] },
+    'rotate-relative-z-':           { label: 'Rotate View Left', icon: '🔄', aliases: ['rotate'] },
+    'rotate-relative-z+':           { label: 'Rotate View Right', icon: '🔄', aliases: ['rotate'] },
+    'x-':                           { label: 'Move Left', icon: '⬅️' },
+    'x+':                           { label: 'Move Right', icon: '➡️' },
+    'y-':                           { label: 'Move Up', icon: '⬆️' },
+    'y+':                           { label: 'Move Down', icon: '⬇️' },
+    'z-':                           { label: 'Slice Down (Z-)', icon: '⏬', aliases: ['z minus', 'deeper'] },
+    'z+':                           { label: 'Slice Up (Z+)', icon: '⏫', aliases: ['z plus', 'shallower'] },
+    'move-to-mouse-position':       { label: 'Move to Mouse Position', icon: '🎯', aliases: ['jump', 'center'] },
   };
-  items.push({
-    id: 'shortcut-all',
-    label: 'Show All Keyboard Shortcuts',
-    description: 'Open the full neuroglancer shortcut reference (? panel)',
-    category: 'shortcut',
-    icon: '⌨️',
-    shortcut: 'H',
-    aliases: ['help', 'keys', 'keybindings', 'bindings', 'hotkeys', 'keyboard', 'shortcuts', '?'],
-    action: () => {
-      close();
-      try { (window as any)['viewer']?.toggleHelpPanel?.(); } catch {}
-    },
-  });
-  items.push({
-    id: 'shortcut-recolor',
-    label: 'Recolor Segments',
-    description: 'Randomize segment colors',
-    category: 'shortcut',
-    icon: '🎨',
-    shortcut: 'L',
-    aliases: ['recolor', 'colors', 'randomize'],
-    action: dispatchKey('l', 'KeyL'),
-  });
-  items.push({
-    id: 'shortcut-slices',
-    label: 'Toggle Slices',
-    description: 'Show/hide cross-section slices in 3D',
-    category: 'shortcut',
-    icon: '🔍',
-    shortcut: 'S',
-    aliases: ['slices', 'cross section', 'show slices'],
-    action: dispatchKey('s', 'KeyS'),
-  });
-  items.push({
-    id: 'shortcut-scalebar',
-    label: 'Toggle Scale Bar',
-    description: 'Show/hide the scale bar',
-    category: 'shortcut',
-    icon: '📏',
-    shortcut: 'B',
-    aliases: ['scale', 'bar', 'ruler', 'measurement'],
-    action: dispatchKey('b', 'KeyB'),
-  });
-  items.push({
-    id: 'shortcut-annotations',
-    label: 'Toggle Default Annotations',
-    description: 'Show/hide default annotation layer',
-    category: 'shortcut',
-    icon: '📌',
-    shortcut: 'V',
-    aliases: ['annotations', 'pins', 'markers'],
-    action: dispatchKey('v', 'KeyV'),
-  });
-  items.push({
-    id: 'shortcut-axes',
-    label: 'Toggle Axis Lines',
-    description: 'Show/hide axis lines in the viewer',
-    category: 'shortcut',
-    icon: '➕',
-    shortcut: 'A',
-    aliases: ['axis', 'axes', 'grid', 'lines'],
-    action: dispatchKey('a', 'KeyA'),
-  });
-  items.push({
-    id: 'shortcut-ortho',
-    label: 'Toggle Orthographic Projection',
-    description: 'Switch between perspective and orthographic view',
-    category: 'shortcut',
-    icon: '🔲',
-    shortcut: 'O',
-    aliases: ['orthographic', 'perspective', 'projection', 'ortho'],
-    action: dispatchKey('o', 'KeyO'),
-  });
-  items.push({
-    id: 'shortcut-layout',
-    label: 'Toggle Layout',
-    description: 'Switch panel layout',
-    category: 'shortcut',
-    icon: '⊞',
-    shortcut: 'Space',
-    aliases: ['layout', 'panels', 'view', 'arrangement'],
-    action: dispatchKey(' ', 'Space'),
-  });
-  items.push({
-    id: 'shortcut-zoom-in',
-    label: 'Zoom In',
-    description: 'Zoom into the current view',
-    category: 'shortcut',
-    icon: '🔎',
-    shortcut: 'Ctrl+=',
-    aliases: ['zoom', 'magnify', 'closer', 'enlarge'],
-    action: dispatchKey('=', 'Equal', { ctrlKey: true }),
-  });
-  items.push({
-    id: 'shortcut-zoom-out',
-    label: 'Zoom Out',
-    description: 'Zoom out of the current view',
-    category: 'shortcut',
-    icon: '🔎',
-    shortcut: 'Ctrl+-',
-    aliases: ['zoom', 'shrink', 'farther', 'smaller'],
-    action: dispatchKey('-', 'Minus', { ctrlKey: true }),
-  });
-  items.push({
-    id: 'shortcut-snap',
-    label: 'Snap to Nearest Section',
-    description: 'Snap view to nearest integer slice',
-    category: 'shortcut',
-    icon: '🧲',
-    shortcut: 'Z',
-    aliases: ['snap', 'align', 'section', 'nearest'],
-    action: dispatchKey('z', 'KeyZ'),
-  });
-  items.push({
-    id: 'shortcut-add-layer',
-    label: 'Add New Layer',
-    description: 'Open the new layer dialog',
-    category: 'shortcut',
-    icon: '➕',
-    shortcut: 'N',
-    aliases: ['layer', 'add', 'new layer'],
-    action: dispatchKey('n', 'KeyN'),
-  });
+
+  // Skip noisy/redundant bindings
+  const SKIP_ACTIONS = new Set([
+    'annotate', 'move-annotation', 'delete-annotation', 'pin-annotation', 'move-to-annotation',
+    'select-position', 'star', 'z+1-via-wheel', 'z+10-via-wheel',
+    'zoom-via-wheel', 'zoom-via-touchpinch', 'adjust-depth-range-via-wheel',
+    'rotate-via-mouse-drag', 'translate-via-mouse-drag',
+    'rotate-in-plane-via-touchrotate', 'translate-in-plane-via-touchtranslate',
+    'rotate-out-of-plane-via-touchtranslate', 'translate-z-via-touchtranslate',
+    'depth-range-decrease', 'depth-range-increase',
+  ]);
+
+  // Format raw key codes to readable shortcuts
+  function formatKey(raw: string): string {
+    return raw
+      .replace(/\bat:/, '')
+      .replace(/\bkey([a-z])/gi, (_, c) => c.toUpperCase())
+      .replace(/\bdigit(\d)/g, '$1')
+      .replace(/\barrow(up|down|left|right)/gi, (_, d) => d.charAt(0).toUpperCase() + d.slice(1))
+      .replace(/\bcontrol\b/g, 'Ctrl')
+      .replace(/\bshift\b/g, 'Shift')
+      .replace(/\balt\b/g, 'Alt')
+      .replace(/\bequal\b/g, '=')
+      .replace(/\bminus\b/g, '-')
+      .replace(/\bcomma\b/g, ',')
+      .replace(/\bperiod\b/g, '.')
+      .replace(/\bspace\b/g, 'Space')
+      .replace(/\bbackslash\b/g, '\\')
+      .replace(/\bbracketleft\b/g, '[')
+      .replace(/\bbracketright\b/g, ']')
+      .replace(/\bmousedown(\d)\b/g, 'Mouse$1')
+      .replace(/\bdblclick(\d)\b/g, 'DblClick')
+      .replace(/\+/g, '+');
+  }
+
+  // Dynamically read all bindings from the viewer
+  try {
+    const viewer = (window as any)['viewer'];
+    if (viewer?.inputEventBindings) {
+      const seen = new Set<string>(); // dedupe by action
+      const sources: [string, any][] = [
+        ['Global', viewer.inputEventBindings.global],
+        ['Slice View', viewer.inputEventBindings.sliceView],
+        ['3D View', viewer.inputEventBindings.perspectiveView],
+      ];
+
+      for (const [group, eventMap] of sources) {
+        if (!eventMap?.bindings) continue;
+        // Walk the map and its parents
+        const walkMap = (map: any) => {
+          if (!map?.bindings) return;
+          for (const [event, eventAction] of map.bindings.entries()) {
+            const action = typeof eventAction === 'string' ? eventAction : eventAction?.action;
+            if (!action || SKIP_ACTIONS.has(action)) continue;
+            // Skip touch events and layer toggle/select/pick (too many)
+            if (event.includes('touch') || event.includes('wheel')) continue;
+            if (/toggle-layer-|select-layer-|toggle-pick-layer-/.test(action)) continue;
+            if (/^tool-[A-Z]$/.test(action)) continue; // tool-A through tool-Z
+
+            const dedupeKey = action;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+
+            const rawKey = event.replace(/^[^:]*:/, ''); // strip "at:" prefix
+            const shortcutStr = formatKey(rawKey);
+            const friendly = FRIENDLY_NAMES[action];
+            const label = friendly?.label || action.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const icon = friendly?.icon || '⌨️';
+
+            items.push({
+              id: `shortcut-${action}`,
+              label,
+              description: `${group} shortcut`,
+              category: 'shortcut',
+              icon,
+              shortcut: shortcutStr,
+              aliases: [
+                action, action.replace(/-/g, ' '),
+                ...(friendly?.aliases || []),
+              ],
+              action: action === 'help'
+                ? () => { close(); try { viewer.toggleHelpPanel?.(); } catch {} }
+                : () => {
+                    close();
+                    // Dispatch the original key event
+                    const parts = rawKey.split('+');
+                    const keyPart = parts[parts.length - 1];
+                    const code = keyPart.startsWith('key') ? keyPart.charAt(0).toUpperCase() + keyPart.slice(1)
+                      : keyPart.startsWith('digit') ? keyPart.charAt(0).toUpperCase() + keyPart.slice(1)
+                      : keyPart.charAt(0).toUpperCase() + keyPart.slice(1);
+                    document.dispatchEvent(new KeyboardEvent('keydown', {
+                      key: keyPart.replace(/^key/, '').replace(/^digit/, ''),
+                      code,
+                      ctrlKey: rawKey.includes('control'),
+                      shiftKey: rawKey.includes('shift'),
+                      altKey: rawKey.includes('alt'),
+                      bubbles: true,
+                    }));
+                  },
+            });
+          }
+          // Walk parents
+          if (map.parents) {
+            for (const parent of map.parents) {
+              walkMap(parent);
+            }
+          }
+        };
+        walkMap(eventMap);
+      }
+    }
+  } catch {};
 
   // ── Cells (from history) ──
   for (const cell of cellHistory.value.slice(0, 30)) {
