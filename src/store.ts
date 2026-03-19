@@ -2342,6 +2342,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   const notifications = ref<Notification[]>([]);
   const notificationReads = ref<Set<number>>(new Set());
+  const notificationDismissals = ref<Set<number>>(new Set(
+    JSON.parse(localStorage.getItem('nge-notification-dismissals') || '[]')
+  ));
   let notifSubscription: any = null;
 
   /** Trigger badge celebration from notification click — AchievementToast watches this */
@@ -2373,9 +2376,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const { data: allNotifs } = await query;
     if (!allNotifs) return;
 
-    // Filter: show only non-expired + matching target
+    // Filter: show only non-expired + matching target + not dismissed
     notifications.value = allNotifs.filter((n: Notification) => {
       if (n.expires_at && new Date(n.expires_at) < new Date()) return false;
+      if (notificationDismissals.value.has(n.id)) return false;
       if (n.target_type === 'all') return true;
       if (n.target_type === 'user' && n.target_id === userId.value) return true;
       if (n.target_type === 'group' && groupIds.includes(n.target_id || '')) return true;
@@ -2449,6 +2453,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   async function deleteNotification(notifId: number) {
     if (!isAdmin.value) return;
     await supabase.from('notifications').delete().eq('id', notifId);
+    notifications.value = notifications.value.filter(n => n.id !== notifId);
+  }
+
+  function dismissNotification(notifId: number) {
+    notificationDismissals.value.add(notifId);
+    localStorage.setItem('nge-notification-dismissals', JSON.stringify([...notificationDismissals.value]));
     notifications.value = notifications.value.filter(n => n.id !== notifId);
   }
 
@@ -2728,7 +2738,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Notifications
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
     markNotificationRead, markAllNotificationsRead,
-    createNotification, deleteNotification,
+    createNotification, deleteNotification, dismissNotification,
     subscribeToNotifications, unsubscribeFromNotifications,
     pendingBadgeCelebration,
     // User Groups
