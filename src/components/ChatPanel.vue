@@ -62,13 +62,13 @@ function stopDrag() {
 const panelWidth = ref(280);
 const panelHeight = ref(200);
 const isResizing = ref(false);
-let resizeStart = { mx: 0, my: 0, w: 0, h: 0 };
+let resizeStart = { mx: 0, my: 0, w: 0, h: 0, py: 0 };
 let resizeAxis: 'corner' | 'top' | 'right' = 'corner';
 
 function startResize(e: MouseEvent, axis: 'corner' | 'top' | 'right' = 'corner') {
   isResizing.value = true;
   resizeAxis = axis;
-  resizeStart = { mx: e.clientX, my: e.clientY, w: panelWidth.value, h: panelHeight.value };
+  resizeStart = { mx: e.clientX, my: e.clientY, w: panelWidth.value, h: panelHeight.value, py: posY.value ?? 0 };
   document.addEventListener('mousemove', onResize);
   document.addEventListener('mouseup', stopResize);
   e.preventDefault();
@@ -85,7 +85,16 @@ function onResize(e: MouseEvent) {
     panelWidth.value = Math.max(200, Math.min(600, newW));
   }
   if (resizeAxis === 'corner' || resizeAxis === 'top') {
-    panelHeight.value = Math.max(120, Math.min(600, resizeStart.h - (e.clientY - resizeStart.my)));
+    const dy = e.clientY - resizeStart.my;
+    if (posY.value !== null) {
+      // Free-positioned (top-anchored): drag top edge up → move posY up + grow taller
+      const newH = Math.max(120, Math.min(600, resizeStart.h - dy));
+      panelHeight.value = newH;
+      posY.value = Math.max(0, resizeStart.py + (resizeStart.h - newH));
+    } else {
+      // CSS default (bottom-anchored): drag top edge up → just grow taller
+      panelHeight.value = Math.max(120, Math.min(600, resizeStart.h - dy));
+    }
   }
 }
 

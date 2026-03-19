@@ -195,12 +195,21 @@
   background: rgba(74, 158, 255, 0.08) !important;
 }
 
-/* ── Segment IDs: keep neuroglancer's per-segment inline colors ── */
+/* ── Segment list row alignment: center star/eye/copy icons vertically ── */
+.neuroglancer-segment-list-entry {
+  align-items: center !important;
+}
+.neuroglancer-segment-list-entry-sticky {
+  align-items: center !important;
+}
+
+/* ── Segment IDs: soften contrast, keep neuroglancer's per-segment inline colors ── */
 .neuroglancer-segment-list-entry-id,
 .neuroglancer-selection-details-segment-id {
   font-size: 0.85em !important;
   border-radius: 3px;
   padding: 1px 4px;
+  filter: saturate(0.8) brightness(0.85);
 }
 
 /* ── Segment list header ── */

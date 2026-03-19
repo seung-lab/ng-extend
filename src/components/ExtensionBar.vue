@@ -17,6 +17,7 @@ import ChatPanel from "components/ChatPanel.vue";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
+import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore} from '../store';
 import {useTutorialStore} from '../store-pyr';
@@ -223,8 +224,8 @@ function activateTool(toolType: 'multicut' | 'merge') {
   <chat-panel v-if="showChat" @hide="showChat = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
-      <a href="https://h01-release.storage.googleapis.com/explore.html" target="_blank">
-        <img src="insert-logo" title="Cave Explorer">
+      <a href="https://eyewire.org" target="_blank" title="EyeWire II">
+        <img :src="pyrIcon" class="nge-pyr-logo" />
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
@@ -420,9 +421,23 @@ function activateTool(toolType: 'multicut' | 'merge') {
   opacity: 0.5;
 }
 
-.ng-extend-logo > a, .ng-extend-logo > a > img {
-  height: 100%;
+.ng-extend-logo {
+  display: flex;
+  align-items: center;
+  padding: 0 6px 0 8px;
 }
+.ng-extend-logo > a {
+  display: flex;
+  align-items: center;
+}
+.nge-pyr-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+.nge-pyr-logo:hover { opacity: 1; }
 
 .nge-streak-chip {
   display: flex;
@@ -441,15 +456,15 @@ function activateTool(toolType: 'multicut' | 'merge') {
 .nge-toolbar-icons {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 8px;
+  gap: 2px;
+  padding: 0 6px;
   height: 100%;
 }
 
 .nge-icon-btn {
-  font-size: 16px;
-  width: 34px;
-  height: 30px;
+  font-size: 15px;
+  width: 30px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -459,6 +474,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
   cursor: pointer;
   opacity: 0.7;
   transition: opacity 0.15s, background 0.15s;
+  line-height: 1;
 }
 .nge-icon-btn:hover {
   opacity: 1;
