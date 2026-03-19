@@ -1,5 +1,47 @@
 import { Step } from "./store-pyr";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function getViewer(): any {
+  return (window as any)['viewer'];
+}
+
+/** Set annotation color on all annotation layers */
+function setAnnotationColor(color: string) {
+  const viewer = getViewer();
+  if (!viewer) return;
+  const layers = viewer.layerManager && viewer.layerManager.managedLayers;
+  if (!layers) return;
+  for (const ml of layers) {
+    const name = ml.layer && ml.layer.constructor && ml.layer.constructor.name;
+    if (name && (name as string).indexOf('Annotation') >= 0) {
+      try { ml.layer.annotationColor.value = color; } catch (e) { /* */ }
+    }
+  }
+}
+
+/** Remove a segment from the first segmentation layer */
+function removeSegment(segId: string) {
+  const viewer = getViewer();
+  if (!viewer) return;
+  const layers = viewer.layerManager && viewer.layerManager.managedLayers;
+  if (!layers) return;
+  for (const ml of layers) {
+    const layer = ml.layer;
+    const name = layer && layer.constructor && layer.constructor.name;
+    if (name && (name as string).indexOf('Segmentation') >= 0) {
+      const rootSegs = layer.displayState && layer.displayState.rootSegments;
+      if (rootSegs) {
+        for (const seg of rootSegs) {
+          if (seg.toString() === segId) {
+            rootSegs.delete(seg);
+            return;
+          }
+        }
+      }
+    }
+  }
+}
+
 const MIDDLE = {
   element: "body",
   x: 0.5,
@@ -19,466 +61,353 @@ const OVER_3D = {
 };
 
 export const steps: Step[] = [
- /*  {
-    html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
-        src="https://www.youtube.com/embed/tnoIdea7Wmo?si=xiJSTIQyr_Q5XDo3"
-        frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
+ // {
+ //   html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
+ //       src="https://www.youtube.com/embed/tnoIdea7Wmo?si=xiJSTIQyr_Q5XDo3"
+ //       frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
+ //   position: MIDDLE,
+ //   modal: true,
+ //   state:
+ //     "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
+ // },
+  //1 -- full screen 3D - button option to skip to keyboard commands - state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
+  {
+    title: `Welcome!`,
+    text: `
+We're a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
+
+Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
+    image:
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/main-banner-vF.jpg",
     position: MIDDLE,
-    modal: true,
+    width: "1000px",
+    state: 
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4594033348313088",
+  },
+  //2 + image 2
+  {
+    text: `
+To create a connectomics dataset, we start with a brain. It is sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI.`,
+    position: MIDDLE,
+    image:
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg",
+    width: "500px"
+  },
+  //4
+  {
+    text: `
+Connectomics allows us to see all the way down to the synaptic connections between neurons.
+
+Although AI reconstructions are impressive, there are still many mistakes. The AI misses huge branches and fuses cells together. That's why we need YOU!
+
+The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck. Ready to get started?`,
+    position: MIDDLE,
+    image:
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/synapse-wide.png",
+    width: "500px",
+    nextLabel: "Let's go!",
+  },
+  //5 -- this is the box that #1 jumps to if user clicks to skip to commands
+  {
+    text: `
+Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them. The sandbox uses data from the MICrONS project. The cell behind this box is a pyramidal neuron from mouse visual cortex.`,
+    position: MIDDLE,
+    image:
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/sandbox-explosion.jpg",
+    width: "500px",
+    state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/5789745012539392",
+    nextLabel: "ONWARD!",
+  },
+  //6 - gif reuse 3D click+ drag
+  {
+    text: `
+This is a 3D neuron that has been mapped by AI. 
+
+CLICK + DRAG to rotate it.
+
+This box won't go away when you click outside it.`,
+    position: OVER_3D,
+  },
+  //7 - gif reuse 3D CNTRL+SCROLL
+  {
+    text: `CNTRL+SCROLL to zoom in and out.`,
+    position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
-  }, */
-  //1 -- introducing interface -- state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
-  {
-    text: `
-Now that you've gotten familiar with the basics, let's take a deeper dive into the interface.`,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
-    position: MIDDLE,
-    width: "400px",
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+    onEnter: () => {
+      const viewer = getViewer();
+      if (!viewer) return;
+      // Close side panel so segment list isn't visible
+      try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+      // Remove the annotations layer entirely
+      setTimeout(() => {
+        const layers = viewer.layerManager && viewer.layerManager.managedLayers;
+        if (layers) {
+          for (let i = layers.length - 1; i >= 0; i--) {
+            const n = layers[i].layer && layers[i].layer.constructor && layers[i].layer.constructor.name;
+            if (n && (n as string).indexOf('Annotation') >= 0) {
+              layers[i].setVisible(false);
+              try { viewer.layerManager.removeManagedLayer(layers[i]); } catch (e) { /* */ }
+            }
+          }
+        }
+        // Remove extra segments, keep only 648518346353862024
+        removeSegment('648518346353084129');
+        removeSegment('648518346354708544');
+        removeSegment('648518346355322263');
+        removeSegment('648518346356789312');
+      }, 1500);
+    },
   },
-  //2 -- Making mistakes
+  //8a - right click
   {
-    text: `
-During this tutorial, you may make a mistake, accidentally delete something or become lost. 
-
-You can step backwards in the tutorial to retry. If you are still lost, just keep going and we will restore the workspace within 1 or 2 slides.`,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
-    position: MIDDLE,
-    width: "400px",
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  //2 -- Making mistakes
-  {
-    text: `
-The mouse and keyboard commands explained in this tutorial are based on the QWERTY keyboard layout. 
-
-If you are using another country's keyboard layout, you can <a href="https://kbdlayout.info/features/languages" target="blank">use this resource</a> to translate the correct keys for your layout. 
-
-Here's a <a href="https://kbdlayout.info/kbdus" target="blank">quick link to the QWERTY keyboard</a> as well.`,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
-    position: MIDDLE,
-    width: "400px",
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  //3 -- Hover states
-  {
-    text: `
-Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text at the top of the screen. The help text may need a few seconds to load.
-
-If you get confused in the future, hovering may help!`,
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/nurro-at-home600.png?raw=true",
-    position: MIDDLE,
-    width: "400px",
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  //4 -- Adding Axis
-  {
-    text: `
-Right now we are centered in the cell's soma. <strong>Press the "A" key</strong> to reveal the axis lines. 
-
-These lines converge at the point we are centered on and represent the volume's x, y, and z dimensions.
-
-<strong>Press "A" again</strong> to remove them. Many of our keyboard commands act as a toggle switch between SHOW and HIDE.`,
-    width: "500px",
+    text: `Right click on the neuron to center view at any point.`,
     position: OVER_3D,
     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  //5 -- Coordinates pt 1
-  {
-    text: `
-Let's explore a bit! But before we do, we'd like to be able to easily return to the soma in case we get lost. 
-
-Click here to COPY our current location.`,
-    width: "500px",
-    position: {
-      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
-     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  //6 -- Coordinates pt 2
-  {
-    text: `
-One of our collaborators would like us to check out a precise location on this cell. 
-
-The X coordinate for our new location is 456789. <strong>Click onto this number and type it in</strong>. Press "Enter" to jump to the new location.`,
-    width: "500px",
-    position: {
-      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div:nth-child(1) > div:nth-child(1) > input",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-    //7 -- Coordinates pt 3
-  {
-    text: `
-Oh sorry, that wasn't right! That was the amount owed on my cat's latest vet bill 😿. Now we're lost in neuron space!
-
-That's okay, remember that we COPIED the coorinates for the cell's soma. 
-
-<strong>CTRL+V anywhere in the interface to PASTE them</strong> and we'll jump back to the right spot.`,
-    width: "500px",
-    position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6180235000152064",
-  },
-  //8 -- Coordinates pt 4
-  {
-    text: `
-Great! We're back in view of our cell again. 
-
-Let's keep investigating.`,
-    width: "500px",
-    position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  //9 -- Using layers, show/hide
-  {
-    text: `
-This LAYER has a green border to indicate it is currently selected.`,
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(2)",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-      state:
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5077771186339840",
-  },
-    //10 -- Using layers, select
-  {
-    text: `
-<strong>RIGHT-CLICK</strong> to select this layer instead.  
-
-If you did it correctly it will have a green border!`,
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
+    onEnter: () => {
+      const viewer = getViewer();
+      if (!viewer) return;
+      // Turn on axis lines (keyboard shortcut A)
+      viewer.showAxisLines.value = true;
+      // Close the side panel / deselect layer to remove annotation tab
+      try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+      try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
+      // Also try closing after a delay in case state load re-opens it
+      setTimeout(() => {
+        try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+        try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
+      }, 1000);
     },
   },
-   //10 -- Using layers, select
+  //8b - find annotation
   {
-    text: `
-<strong>LEFT-CLICK</strong> on they layer to SHOW or HIDE it. 
+    text: `**See if you can find a yellow annotation at the end of one of the branches and zoom in on it.**
 
-<strong>Pressing the LAYER NUMBER</strong> on your keyboard also works. In this case the number is "2." 
-
-Try both ways!`,
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
-      side: "bottom",
-      offset: { x: 0, y: 0 },
-    },
-  },
-  //11 -- Layer Toolbox
-  {
-    text: `
-Look here! This SIDE PANEL opened up when the layer was selected.
-
-You can see the NAME of the selected layer in this <span style="color: white; background-color: green;">GREEN BOX</span> as well as the LAYER TYPE in <span style="color: white; background-color: #184e1c; font-weight: bold;">DARK GREEN</span>.`,
-    position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
-  },
-  //12 -- Layer Toolbox cont.
-  {
-    text: `
-This layer type is <span style="color: white; background-color: #184e1c; font-weight: bold;">seg</span> or "segmentation layer" which shows the 3D model.
-
-Other layer types include IMG which indicates the EM image layer, and ANN for annotation layer.`,
-    position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-  },
-  //13 -- Layer Toolbox Tabs
-  {
-    text: `
-These TABS correspond to your selected layer. 
-
-We are currently in the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Seg.</span> tab which shows the segment ID for our visible cell. `,
-    position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-  },
-  //14 -- Layer Toolbox Tabs cont.
-  {
-    text: `
-If we add more cells, their IDs will appear here as well. `,
-    position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(4) > div:nth-child(2) > span",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
-  },
-  //15 -- Layer Toolbox Tabs "Render"
-  {
-    text: `
-<span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Render</span> is another important tab. Here you can alter the visualization of your cell. 
-
-We've opened the 2D view so you can see how the render controls affect the 2D as well.
-
-Try it! We'll restore the default view in the next slide.`,
-    position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    state: 
-        //"middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
-    "middleauth+https://global.daf-apis.com/nglstate/api/v1/5352335057354752",
-  },
-  //16 -- Add annotation layer
-  {
-    text: `
-Let's try adding an ANNOTATION LAYER.
-
-<strong>CLICK the "+" to add it.</strong>`,
-    width: "500px",
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
-  },
-  //17 -- Remove new layer
-  {
-    text: `
-Oops, I forgot 🙈! LEFT-CLICK adds a BLANK LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
-
-That's okay, it's an easy fix! <strong>Hover on NEW LAYER, and click the "X" to remove it.</strong>`,
-    width: "500px",
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(4)",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
-  },
-   //5 -- Layers menu
-  {
-    text: `
-Our NEW LAYER was removed, but it was not deleted permanently!
-
-Click here to view all the layers currently available in our workspace.`,
-    position: {
-      element: "#insertNGTopBar > div > div:nth-child(6)",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
-  },
-    //5 -- Layers menu, reveal
-  {
-    text: `
-You can see here that the NEW LAYER is available, but not visible in our workspace.
-
-CLICK the EYE to reveal it!`,
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-layer-list-panel-items > div:nth-child(3) > div:nth-child(3) > div:nth-child(2)",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
-  },
-   //5 -- Layers menu, delete
-  {
-    text: `
-Great job! Since this layer has no further use to us, let's DELETE it PERMANENTLY. Hover over it and click the 🗑️ to DELETE.`,
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-layer-list-panel-items > div:nth-child(3)",
-      side: "right",
-      offset: { x: 0, y: 0 },
-    },
-  },
-  //5 -- Deleted Layers
-  {
-    text: `
-⚠️<em>Be very careful with the</em> 🗑️ <em>function! Any trashed layers are UNRECOVERABLE.</em>`,
-    position: MIDDLE,
-    state: 
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
-  },
-   //5 -- Share to save
-  {
-    text: `
-It's recommended to hit the SHARE button to save your work at frequent intervals in case you accidentally delete something important! 
-
-⚠️<em>SHARE only copies the link to your clipboard, to save it you must PASTE the link in a location convenient to you.</em>`,
-    position: {
-      element: "#insertNGTopBar > div > div:nth-child(4) > div",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
-  },
-  //11 -- Add annotation layer
-   {
-    text: `
-Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forgot, click below to reveal the answer.
-
-<details>
-    <summary>Answer</summary>
-    <strong>RIGHT-CLICK the "+" button</strong> to add an ANNOTATION LAYER.
-</details>`,
-    width: "500px",
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
-  },
-  //13 -- Annotation Layer Panel
-  {
-    text: `
-Let's take a look at the Annotation Layer Panel.
-
-Let's give our tab another name. Click into the <span style="color: white; background-color: green;">GREEN BOX</span> here and <strong>DELETE the current text. TYPE IN new text.</strong> Let's call it "Tutorial."`,
-    position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5451570511609856",
-  },
-    //13 -- Annotation Layer Panel
-  {
-    text: `
-Now it's time to add some annotations! Select the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Annotations</span> tab to begin.`,
-    position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5934606860681216",
-  },
-  //14 -- Add annotation point
-  {
-    text: `
-Great! Click the "○" button to select the single point annotation. 
-
-⚠️<em>You must always choose an annotation type after creating a new annotation layer.</em>`,
-    position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div.neuroglancer-tab-content.neuroglancer-annotations-tab > div > div.neuroglancer-annotation-toolbox",
-      side: "left",
-      offset: { x: 0, y: 2 },
-    },
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5377501518888960",
-  },
-  //20 -- Add annotation point pt. 2
-  {
-    text: `CTRL+Click anywhere on the cell to place your annotation points. Try placing a few!`,
+Don't worry if you can't find it - the Next button will take you there.`,
     position: OVER_3D,
-  },
-  //20 -- Putting it all together
-  {
-    text: `
-Oh great, I finally found that very important memo from our collaborators! 
-    
-It was buried in a different pile of papers along with some suspicious looking cat hair and a file called "KITTY WORLD DOMINATION TOP SECRET." I wonder what that could mean 🤔.
-    
-Can you help out with this final task? Here's what I need:
-<ol>
-  <li>Go to this location: 87298, 52545, 998</li>
-  <li>Add a new annotation layer. Rename it "Top Secret Location"</li>
-  <li>Open the 2 panel view</li>
-  <li>There is a missing branch here! scroll until you find it.</li>
-  <li>Add an annotation point to show where the branch should continue.</li>
-</ol>
-
-Click "next" once you've completed this task!`,
-    position: OVER_3D,
-    state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/4777677526401024",
-  },
-  //21 -- Learn more about annotations
-  {
-    text: `
-Optional: Add a description and tag to your annotation point. <em>Skip to the next slide if you prefer not to complete this task!</em>
-
-You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank"> watch this video</a> to learn about adding descriptions and tags.`,
-    position: OVER_3D,
-  },
-  //21 -- Learn more about annotations
-  {
-    text: `
-If you'd like to recieve a special badge for finishing this tutorial, click the "Share" button to copy your link,  and then <a href="https://docs.google.com/forms/d/1GBgMt4MCivS1R0HchK3WsJg2Kf1R5G8wyyshnGaucVM/edit" target="_blank">fill out this form</a>.`,
-    position: OVER_3D,
-  },
-  //22
-  {
-    text: `
-Now you have a basic understanding of the EyeWire II interface! For additional training you can find more resources under the hamburger menu.`,
-    position: {
-      element: "#hamburger > button",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-  },
-  //23
-  {
-    text: `
-Check out the help menu here as well. You can also press "H" on your keyboard.`,
-    position: {
-      element: "#insertNGTopBar > div > div:nth-child(11)",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
-  },
-  {
-    text: `
-The help menu is auto-computed, and some instructions can be a little difficult to understand at first glance.
-
-Note that the YELLOW TEXT indicates a KEYBOARD or MOUSE COMMAND. The WHITE TEXT indicates the ACTION that will be taken.`,
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-side-panel-titlebar",
-      side: "right",
-      offset: { x: 0, y: 0 },
-    },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5414723718742016",
-  },
-  {
-    text: "Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. Check out this menu for guides, tutorials, and more resources.",
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/rika-success.png?raw=true",
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/inspector-nurro-2.png",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
+    onEnter: () => { setAnnotationColor('#ffff00'); },
+  },
+  //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
+  {
+    text: `There it is! This flat edge reveals a mistake by the AI.
 
+It missed a branch. Let's see if we can find it.`,
+
+    position: OVER_3D,
+    image:
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
+    width: "200px",
+    onEnter: () => { setAnnotationColor('#ffff00'); },
+  },
+  //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
+
+  {
+    text: `Hit SPACE to bring up a split screen view that reveals the electron microscope image data from which these neurons were reconstructed.`,
+    position: OVER_3D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
+    spaceAdvances: true,
+  },
+  //12 - over 2D - EM cross section view
+  {
+    text: `This is an electron microscope (EM) image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
+    position: OVER_2D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+  },
+  //12a - split screen tip
+  {
+    text: `You're now in split screen view — EM on the left, 3D on the right. If you ever end up in 4 panel view, look for the ◫ button to get back to split screen.`,
+    position: OVER_2D,
+  },
+  //13 - gif
+  {
+    text: `Move your cursor outside this box, then press COMMA and PERIOD to step through the EM slices. You can also hover your mouse over EM and scroll through images.
+
+Don't worry if you lose the neuron - the Next button in this section resets this view.`,
+    position: OVER_2D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+  },
+  //14 - 2D control + scroll gif
+  {
+    text: `Hold your cursor over black and white EM and CTRL + Scroll to zoom in and out`,
+    position: OVER_2D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+  },
+  //15 - 2D right click center gif
+  {
+    text: `Right click to recenter`,
+    position: OVER_2D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+  },
+
+  //17 - position center of page - ensure location is  middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
+  {
+    text: `The big black empty space is an imaging defect, which happens occasionally when you are snapping at the nanoscale. It caused the AI to make a mistake and disconnect a dendrite.`,
+    position: MIDDLE,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
+    onEnter: () => {
+      // Remove the erroneous purple segment
+      setTimeout(() => removeSegment('648518346356484078'), 1500);
+    },
+  },
+  //18 -  middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408
+  {
+    text: `To fix it, we need to scroll past the defect and find where the branch continues.
+
+This is a tutorial so we dropped a hint. Hit the comma key a few times until you get to an image past the black spill that does not have the cell colored in. There is an annotation point in the continuation segment. See what happens when you double click in 2D.
+
+Hit next to reveal the answer.`,
+    position: MIDDLE,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5250067188416512",
+  },
+  //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
+  {
+    text: `Bravo! We found the continuation!`,
+    position: {
+      element: "body",
+      x: 0.5,
+      y: 0.12,
+    },
+    floatingImage:
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/bravo-nurro.png",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5114308439572480",
+  },
+  {
+    text: `Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore.`,
+    image:
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/rika-success.png",
+    position: OVER_3D,
+  },
+  {
+    text: `Check out this top right menu for guides, tutorials, and more resources.`,
     position: {
       element: "#hamburger > button",
       side: "bottom",
       offset: { x: 0, y: 0 },
     },
+    onEnter: () => {
+      const viewer = getViewer();
+      if (!viewer) return;
+      // Close layers side panel aggressively
+      function closePanel() {
+        try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+        try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
+        // Hide any side panel elements by broad class matching
+        var selectors = [
+          '.neuroglancer-layer-side-panel-container',
+          '.neuroglancer-layer-list-panel',
+          '.neuroglancer-selected-layer-side-panel',
+          '[class*="side-panel"]',
+          '[class*="sidepanel"]',
+          '[class*="SidePanel"]',
+        ];
+        for (var i = 0; i < selectors.length; i++) {
+          var els = document.querySelectorAll(selectors[i]);
+          for (var j = 0; j < els.length; j++) {
+            (els[j] as HTMLElement).style.display = 'none';
+          }
+        }
+        // Also try toggling the layer bar visibility
+        try { viewer.showLayerPanel.value = false; } catch (e) { /* */ }
+        try { viewer.layerSpecification.visible = false; } catch (e) { /* */ }
+      }
+      closePanel();
+      setTimeout(closePanel, 300);
+      setTimeout(closePanel, 1000);
+      setTimeout(closePanel, 2000);
+
+      // Fun hamburger emoji animation on the menu button
+      setTimeout(() => {
+        const btn = document.querySelector('#hamburger > button') as HTMLElement;
+        if (!btn) return;
+        const rect = btn.getBoundingClientRect();
+
+        // Create emoji overlay
+        const emoji = document.createElement('div');
+        emoji.textContent = '\u{1F354}';
+        emoji.style.cssText = [
+          'position: fixed',
+          'z-index: 10000',
+          'font-size: 28px',
+          'pointer-events: none',
+          'left: ' + (rect.left + rect.width / 2) + 'px',
+          'top: ' + (rect.top + rect.height / 2) + 'px',
+          'transform: translate(-50%, -50%) scale(0)',
+          'transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
+          'opacity: 1',
+          'filter: drop-shadow(0 0 8px rgba(255, 180, 50, 0.6))',
+        ].join(';');
+        document.body.appendChild(emoji);
+
+        // Animate in: scale up with bounce
+        requestAnimationFrame(() => {
+          emoji.style.transform = 'translate(-50%, -50%) scale(1.8)';
+        });
+
+        // Wiggle
+        setTimeout(() => {
+          emoji.style.transition = 'transform 0.15s ease-in-out';
+          emoji.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(12deg)';
+          setTimeout(() => {
+            emoji.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(-10deg)';
+            setTimeout(() => {
+              emoji.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(6deg)';
+              setTimeout(() => {
+                emoji.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(0deg)';
+              }, 150);
+            }, 150);
+          }, 150);
+        }, 500);
+
+        // Fade out
+        setTimeout(() => {
+          emoji.style.transition = 'transform 0.5s ease-in, opacity 0.5s ease-in';
+          emoji.style.transform = 'translate(-50%, -50%) scale(0.5)';
+          emoji.style.opacity = '0';
+          setTimeout(() => emoji.remove(), 600);
+        }, 1600);
+      }, 800);
+    },
   },
   {
-    text: "Take the **Self-guided training** when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset. Email us support@eyewire.ai with any questions. Thanks for being a part of the neuroscience community! For Science!",
+    text: `Researchers: take the **Self-guided training** when you are ready to learn more and gain access to the production dataset! LINK
+
+Citizen scientists: [Unlock access](https://blog.eyewire.org/how-to-access-the-eyewire-ii-dataset/) to start mapping neurons in Eyewire II!
+
+Email support at eyewire.ai with any questions.
+
+Thanks for being a part of the neuroscience community. For Science!`,
     position: MIDDLE,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
+      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png",
+    width: "600px",
+    onEnter: () => {
+      const viewer = getViewer();
+      if (!viewer) return;
+      try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+      try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
+      try { viewer.showLayerPanel.value = false; } catch (e) { /* */ }
+      var selectors = ['[class*="side-panel"]', '[class*="sidepanel"]', '[class*="SidePanel"]'];
+      for (var i = 0; i < selectors.length; i++) {
+        var els = document.querySelectorAll(selectors[i]);
+        for (var j = 0; j < els.length; j++) {
+          (els[j] as HTMLElement).style.display = 'none';
+        }
+      }
+    },
   },
 ];

@@ -7,10 +7,16 @@ import { loginSession, useLoginStore } from "#src/store.js";
 import logoGemImage from '#src/images/pyr-icon.png';
 import logoTextImage from '#src/images/pyr-logo-wordmark.png';
 import { useTutorialStore } from "#src/store-pyr.js";
+import { useDropdownListStore } from "#src/store.js";
 import { storeToRefs } from "pinia";
 
 const login = useLoginStore();
-const { tutorialStep } = storeToRefs(useTutorialStore());
+const tutorialStore = useTutorialStore();
+const dropdownStore = useDropdownListStore();
+
+function closeHamburger() {
+  dropdownStore.activeDropdowns['extension-bar-right'] = undefined;
+}
 window.addEventListener("middleauthlogin", () => {
   login.update();
 });
@@ -90,8 +96,18 @@ function logout(session: loginSession) {
       <template #buttonTitle>☰</template>
       <template #listItems>
         <li>
-          <div class="logoutButton button" @click="tutorialStep = 0">
-            <span>Reset Tutorial</span>
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 1; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Reset Tutorial 1</span>
+          </div>
+        </li>
+        <li v-if="tutorialStore.tutorialStep2 >= 0">
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Reset Tutorial 2</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Advanced Interface Tutorial</span>
           </div>
         </li>
         <li>

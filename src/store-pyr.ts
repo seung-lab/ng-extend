@@ -1,4 +1,4 @@
-import { Ref, ref, reactive, watch } from "vue";
+import { Ref, ref, reactive, watch, computed } from "vue";
 import { defineStore, storeToRefs } from "pinia";
 import { useLoginStore } from "#src/store.js";
 import { Config } from "#src/config.js";
@@ -151,16 +151,49 @@ export interface Step {
   preloading?: boolean;
   videoCache?: HTMLVideoElement;
   width?: string;
+  nextLabel?: string;
+  spaceAdvances?: boolean;
+  clickAfterState?: string;
+  floatingImage?: string;
+  onEnter?: () => void | Promise<void>;
 }
 
 export const useTutorialStore = defineStore("tutorial", () => {
-  const tutorialStep: Ref<number> = ref(
+  const activeTutorial: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-active-tutorial`) ?? "1")
+  );
+
+  const tutorialStep1: Ref<number> = ref(
     parseInt(localStorage.getItem(`nge-tutorial-step`) ?? "0")
   );
-  watch(tutorialStep, () => {
-    localStorage.setItem(`nge-tutorial-step`, `${tutorialStep.value}`);
+  const tutorialStep2: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-2-step`) ?? "-1")
+  );
+
+  function getTutorialStep() {
+    return activeTutorial.value === 1 ? tutorialStep1.value : tutorialStep2.value;
+  }
+
+  function setTutorialStep(val: number) {
+    if (activeTutorial.value === 1) tutorialStep1.value = val;
+    else tutorialStep2.value = val;
+  }
+
+  watch(tutorialStep1, () => {
+    localStorage.setItem(`nge-tutorial-step`, `${tutorialStep1.value}`);
   });
+  watch(tutorialStep2, () => {
+    localStorage.setItem(`nge-tutorial-2-step`, `${tutorialStep2.value}`);
+  });
+  watch(activeTutorial, () => {
+    localStorage.setItem(`nge-active-tutorial`, `${activeTutorial.value}`);
+  });
+
   return {
-    tutorialStep,
+    activeTutorial,
+    getTutorialStep,
+    setTutorialStep,
+    tutorialStep1,
+    tutorialStep2,
   };
 });
