@@ -42,12 +42,14 @@ interface PaletteItem {
   id: string;
   label: string;
   description?: string;
-  category: 'action' | 'navigate' | 'cell' | 'tool';
+  category: 'action' | 'navigate' | 'cell' | 'tool' | 'help';
   icon: string;
   shortcut?: string;
   action: () => void;
   /** If true, only show when a segment is selected */
   requiresSeg?: boolean;
+  /** Extra search terms that match this item */
+  aliases?: string[];
 }
 
 function buildActions(): PaletteItem[] {
@@ -172,6 +174,37 @@ function buildActions(): PaletteItem[] {
 
   // ── Tools ──
   items.push({
+    id: 'tool-merge',
+    label: 'Merge Tool',
+    description: 'Activate merge mode — join two segments',
+    category: 'tool',
+    icon: '🔗',
+    shortcut: 'M',
+    aliases: ['merge', 'join', 'connect', 'merge segments'],
+    action: () => activateTool('merge'),
+  });
+  items.push({
+    id: 'tool-cut',
+    label: 'Cut Tool',
+    description: 'Activate multicut mode — separate a segment',
+    category: 'tool',
+    icon: '✂️',
+    shortcut: 'C',
+    aliases: ['cut', 'split', 'multicut', 'separate', 'divide'],
+    action: () => activateTool('multicut'),
+  });
+  items.push({
+    id: 'tool-undo',
+    label: 'Undo',
+    description: 'Undo last action',
+    category: 'tool',
+    icon: '↩️',
+    shortcut: 'Ctrl+Z',
+    action: () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', ctrlKey: true, bubbles: true }));
+    },
+  });
+  items.push({
     id: 'reset-view',
     label: 'Reset Viewer Position',
     description: 'Return to default position',
@@ -257,6 +290,53 @@ function buildActions(): PaletteItem[] {
     },
   });
 
+  // ── Help & Learning ──
+  items.push({
+    id: 'help-proofread-guide',
+    label: 'Proofreading Guide',
+    description: 'How to proofread neurons — blog post',
+    category: 'help',
+    icon: '📖',
+    aliases: ['guide', 'tutorial', 'how to', 'proofreading', 'help', 'learn'],
+    action: () => window.open('https://blog.pyr.ai/2024/12/20/proofreading-101-climb-into-spelunker/', '_blank'),
+  });
+  items.push({
+    id: 'help-merge-video',
+    label: 'Merge Video Tutorial',
+    description: 'Watch how to merge segments — YouTube',
+    category: 'help',
+    icon: '▶️',
+    aliases: ['merge', 'video', 'tutorial', 'how to merge'],
+    action: () => window.open('https://youtu.be/48GS9Sizrvw', '_blank'),
+  });
+  items.push({
+    id: 'help-split-video',
+    label: 'Split Video Tutorial',
+    description: 'Watch how to cut/split segments — YouTube',
+    category: 'help',
+    icon: '▶️',
+    aliases: ['split', 'cut', 'video', 'tutorial', 'how to split', 'how to cut'],
+    action: () => window.open('https://youtu.be/DB6wmQWGsck', '_blank'),
+  });
+  items.push({
+    id: 'help-findpath-video',
+    label: 'Find Path Video Tutorial',
+    description: 'Watch how to use Find Path — YouTube',
+    category: 'help',
+    icon: '▶️',
+    aliases: ['find path', 'path', 'video', 'tutorial'],
+    action: () => window.open('https://youtu.be/CGooeAhSryg', '_blank'),
+  });
+  items.push({
+    id: 'help-forum',
+    label: 'EyeWire Forum',
+    description: 'Community discussion board',
+    category: 'help',
+    icon: '💬',
+    aliases: ['forum', 'community', 'discuss', 'questions', 'ask'],
+    action: () => window.open('https://forum.eyewire.org', '_blank'),
+  });
+
   // ── Cells (from history) ──
   for (const cell of cellHistory.value.slice(0, 30)) {
     items.push({
@@ -274,6 +354,35 @@ function buildActions(): PaletteItem[] {
   }
 
   return items;
+}
+
+// ── Tool activation (same logic as ExtensionBar) ─────────────────────────────
+function activateTool(toolType: 'multicut' | 'merge') {
+  const viewer = (window as any)['viewer'];
+  if (!viewer) return;
+  try {
+    const segLayer = viewer.layerManager?.managedLayers?.find(
+      (x: any) => x.layer?.constructor?.name?.includes('Segmentation'),
+    );
+    if (segLayer) {
+      viewer.selectedLayer.layer = segLayer;
+      viewer.selectedLayer.visible = true;
+    }
+  } catch { /* non-critical */ }
+  const key = toolType === 'multicut' ? 'c' : 'm';
+  const eventInit: KeyboardEventInit = {
+    key, code: key === 'c' ? 'KeyC' : 'KeyM',
+    bubbles: true, cancelable: true,
+  };
+  const targets = [
+    viewer.element,
+    viewer.display?.container,
+    document.getElementById('neuroglancer-container'),
+  ].filter(Boolean);
+  for (const el of targets) {
+    if (el instanceof HTMLElement) el.focus();
+    el.dispatchEvent(new KeyboardEvent('keydown', eventInit));
+  }
 }
 
 // ── Fuzzy search ──────────────────────────────────────────────────────────────
@@ -305,23 +414,28 @@ function fuzzyScore(text: string, pattern: string): number {
 const results = computed(() => {
   const all = buildActions();
   if (!query.value.trim()) {
-    // Show actions + navigation first, then tools, then first 8 cells
+    // Show actions + navigation first, then tools, help, then first 8 cells
     const actions = all.filter(i => i.category === 'action');
     const nav = all.filter(i => i.category === 'navigate');
     const tools = all.filter(i => i.category === 'tool');
+    const help = all.filter(i => i.category === 'help');
     const cells = all.filter(i => i.category === 'cell').slice(0, 8);
-    return [...actions, ...nav, ...tools, ...cells];
+    return [...actions, ...nav, ...tools, ...help, ...cells];
   }
   const q = query.value.trim();
   return all
-    .map(item => ({
-      item,
-      score: Math.max(
-        fuzzyScore(item.label, q),
-        fuzzyScore(item.description || '', q),
-        fuzzyScore(item.id, q),
-      ),
-    }))
+    .map(item => {
+      const aliasScores = (item.aliases || []).map(a => fuzzyScore(a, q));
+      return {
+        item,
+        score: Math.max(
+          fuzzyScore(item.label, q),
+          fuzzyScore(item.description || '', q),
+          fuzzyScore(item.id, q),
+          ...aliasScores,
+        ),
+      };
+    })
     .filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .map(x => x.item)
@@ -409,6 +523,7 @@ function categoryLabel(cat: string): string {
     case 'action': return 'QUICK ACTIONS';
     case 'navigate': return 'NAVIGATION';
     case 'tool': return 'TOOLS';
+    case 'help': return 'HELP & LEARNING';
     case 'cell': return 'CELLS';
     default: return cat.toUpperCase();
   }
