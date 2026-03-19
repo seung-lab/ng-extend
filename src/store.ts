@@ -2450,6 +2450,29 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     await loadNotifications();
   }
 
+  /** Create a self-targeted notification (no admin required). */
+  async function createSelfNotification(data: {
+    title: string; body: string;
+    image_url?: string; thumbnail_url?: string;
+  }) {
+    if (!userId.value) return;
+    const row = {
+      title: data.title,
+      body: data.body,
+      image_url: data.image_url || null,
+      thumbnail_url: data.thumbnail_url || null,
+      send_at: new Date().toISOString(),
+      expires_at: null,
+      target_type: 'user',
+      target_id: userId.value,
+      post_to_chat: false,
+      created_by: userId.value,
+    };
+    const { error: err } = await supabase.from('notifications').insert(row);
+    if (err) console.warn('[notifications] self-notification error:', err.message);
+    await loadNotifications();
+  }
+
   async function deleteNotification(notifId: number) {
     if (!isAdmin.value) return;
     await supabase.from('notifications').delete().eq('id', notifId);
@@ -2738,7 +2761,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Notifications
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
     markNotificationRead, markAllNotificationsRead,
-    createNotification, deleteNotification, dismissNotification,
+    createNotification, createSelfNotification, deleteNotification, dismissNotification,
     subscribeToNotifications, unsubscribeFromNotifications,
     pendingBadgeCelebration,
     // User Groups

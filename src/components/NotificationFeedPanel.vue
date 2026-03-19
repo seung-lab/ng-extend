@@ -96,12 +96,6 @@ function openHelpTab() {
 }
 
 /** Convert URLs in text to clickable <a> tags */
-function dismissAll() {
-  for (const n of [...backend.notifications]) {
-    backend.dismissNotification(n.id);
-  }
-}
-
 function linkify(text: string): string {
   const urlPattern = /(https?:\/\/[^\s<]+)/g;
   return text
@@ -121,11 +115,6 @@ function linkify(text: string): string {
           class="nge-notif-mark-all"
           @click="backend.markAllNotificationsRead()"
         >Mark all read</button>
-        <button
-          v-if="backend.notifications.length > 1"
-          class="nge-notif-dismiss-all"
-          @click="dismissAll()"
-        >Dismiss all</button>
         <button class="nge-notif-close" @click.stop="emit('hide')">×</button>
       </div>
     </div>
@@ -265,17 +254,6 @@ function linkify(text: string): string {
 }
 .nge-notif-mark-all:hover { color: #4a9eff; border-color: rgba(74, 158, 255, 0.4); }
 
-.nge-notif-dismiss-all {
-  background: none;
-  border: 1px solid rgba(255, 100, 100, 0.15);
-  color: rgba(255, 100, 100, 0.5);
-  font-size: 0.72em;
-  padding: 2px 8px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.nge-notif-dismiss-all:hover { color: #f66; border-color: rgba(255, 100, 100, 0.35); }
-
 .nge-notif-close {
   background: none; border: none; color: #666; font-size: 1.2em;
   cursor: pointer; padding: 0 4px;
@@ -376,17 +354,16 @@ function linkify(text: string): string {
 .nge-notif-dismiss {
   background: none;
   border: none;
-  font-size: 1em;
+  font-size: 1.1em;
   color: #556;
   cursor: pointer;
-  opacity: 0;
-  padding: 0 4px;
+  opacity: 0.45;
+  padding: 2px 4px;
   transition: opacity 0.15s, color 0.15s;
   flex-shrink: 0;
   line-height: 1;
 }
-.nge-notif-card:hover .nge-notif-dismiss { opacity: 0.5; }
-.nge-notif-dismiss:hover { opacity: 1 !important; color: #f66; }
+.nge-notif-dismiss:hover { opacity: 1; color: #f66; }
 
 .nge-notif-card-body {
   font-size: 0.82em;

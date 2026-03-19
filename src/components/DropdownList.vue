@@ -147,14 +147,46 @@ const isActive = computed(() => {
 }
 
 .dropdownMenu {
-  min-width: 100%;
+  min-width: 180px;
   position: absolute;
   right: 0;
   top: 33px;
-  background-color: var(--color-dark-bg);
-  border-radius: 8px;
-  border: 1px solid var(--color-light-bg);
+  background: linear-gradient(135deg, rgba(8, 12, 24, 0.97) 0%, rgba(12, 18, 32, 0.95) 100%);
+  border-radius: 10px;
+  border: 1px solid rgba(74, 158, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(74, 158, 255, 0.04);
+  backdrop-filter: blur(12px);
   overflow: hidden;
   z-index: 10;
+  padding: 6px 0;
+  list-style: none;
+}
+
+.dropdownMenu :deep(li) {
+  list-style: none;
+}
+
+.dropdownMenu :deep(li > div),
+.dropdownMenu :deep(li > a) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 0.85em;
+  color: rgba(200, 215, 240, 0.85);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.dropdownMenu :deep(li > div:hover),
+.dropdownMenu :deep(li > a:hover) {
+  background: rgba(74, 158, 255, 0.08);
+  color: #e0e8f0;
+}
+
+.dropdownMenu :deep(li + li) {
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
 }
 </style>

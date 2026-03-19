@@ -145,7 +145,7 @@ Let's keep investigating.`,
   //9 -- Using layers, show/hide
   {
     text: `
-This LAYER has a green border to indicate it is currently selected.`,
+This LAYER has a blue border to indicate it is currently selected.`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(2)",
       side: "bottom",
@@ -159,7 +159,7 @@ This LAYER has a green border to indicate it is currently selected.`,
     text: `
 <strong>RIGHT-CLICK</strong> to select this layer instead.  
 
-If you did it correctly it will have a green border!`,
+If you did it correctly it will have a blue border!`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
@@ -185,11 +185,11 @@ Try both ways!`,
     text: `
 Look here! This SIDE PANEL opened up when the layer was selected.
 
-You can see the NAME of the selected layer in this <span style="color: white; background-color: green;">GREEN BOX</span> as well as the LAYER TYPE in <span style="color: white; background-color: #184e1c; font-weight: bold;">DARK GREEN</span>.`,
+You can see the NAME of the selected layer in this <span style="color: white; background-color: #2563eb; padding: 1px 4px; border-radius: 2px;">BLUE BOX</span> as well as the LAYER TYPE in <span style="color: white; background-color: #1e3a5f; font-weight: bold;">DARK BLUE</span>.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
-      offset: { x: 0, y: 0 },
+      offset: { x: -40, y: 0 },
     },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
@@ -197,25 +197,25 @@ You can see the NAME of the selected layer in this <span style="color: white; ba
   //12 -- Layer Toolbox cont.
   {
     text: `
-This layer type is <span style="color: white; background-color: #184e1c; font-weight: bold;">seg</span> or "segmentation layer" which shows the 3D model.
+This layer type is <span style="color: white; background-color: #1e3a5f; font-weight: bold;">seg</span> or "segmentation layer" which shows the 3D model.
 
 Other layer types include IMG which indicates the EM image layer, and ANN for annotation layer.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
-      offset: { x: 0, y: 0 },
+      offset: { x: -40, y: 0 },
     },
   },
   //13 -- Layer Toolbox Tabs
   {
     text: `
-These TABS correspond to your selected layer. 
+These TABS correspond to your selected layer.
 
 We are currently in the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Seg.</span> tab which shows the segment ID for our visible cell. `,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
-      offset: { x: 0, y: 0 },
+      offset: { x: -40, y: 0 },
     },
   },
   //14 -- Layer Toolbox Tabs cont.
@@ -225,7 +225,7 @@ If we add more cells, their IDs will appear here as well. `,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(4) > div:nth-child(2) > span",
       side: "left",
-      offset: { x: 0, y: 0 },
+      offset: { x: -40, y: 0 },
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
@@ -233,7 +233,7 @@ If we add more cells, their IDs will appear here as well. `,
   //15 -- Layer Toolbox Tabs "Render"
   {
     text: `
-<span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Render</span> is another important tab. Here you can alter the visualization of your cell. 
+<span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Render</span> is another important tab. Here you can alter the visualization of your cell.
 
 We've opened the 2D view so you can see how the render controls affect the 2D as well.
 
@@ -241,7 +241,7 @@ Try it! We'll restore the default view in the next slide.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
-      offset: { x: 0, y: 0 },
+      offset: { x: -40, y: 0 },
     },
     state: 
         //"middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
@@ -284,7 +284,7 @@ Click here to view all the layers currently available in our workspace.`,
     position: {
       element: "#insertNGTopBar > div > div:nth-child(6)",
       side: "bottom",
-      offset: { x: 0, y: 7 },
+      offset: { x: 0, y: 15 },
     },
   },
     //5 -- Layers menu, reveal
@@ -352,11 +352,11 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
     text: `
 Let's take a look at the Annotation Layer Panel.
 
-Let's give our tab another name. Click into the <span style="color: white; background-color: green;">GREEN BOX</span> here and <strong>DELETE the current text. TYPE IN new text.</strong> Let's call it "Tutorial."`,
+Let's give our tab another name. Click into the <span style="color: white; background-color: #2563eb; padding: 1px 4px; border-radius: 2px;">BLUE BOX</span> here and <strong>DELETE the current text. TYPE IN new text.</strong> Let's call it "Tutorial."`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
-      offset: { x: 0, y: 0 },
+      offset: { x: -40, y: 0 },
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/5451570511609856",
@@ -368,7 +368,7 @@ Now it's time to add some annotations! Select the <span style="color: white; bac
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
-      offset: { x: 0, y: 0 },
+      offset: { x: -40, y: 0 },
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/5934606860681216",
@@ -376,13 +376,13 @@ Now it's time to add some annotations! Select the <span style="color: white; bac
   //14 -- Add annotation point
   {
     text: `
-Great! Click the "○" button to select the single point annotation. 
+Great! Click the "○" button to select the single point annotation.
 
 ⚠️<em>You must always choose an annotation type after creating a new annotation layer.</em>`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div.neuroglancer-tab-content.neuroglancer-annotations-tab > div > div.neuroglancer-annotation-toolbox",
       side: "left",
-      offset: { x: 0, y: 2 },
+      offset: { x: -40, y: 2 },
     },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5377501518888960",
@@ -426,8 +426,8 @@ You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0
 Now you have a basic understanding of the EyeWire II interface! For additional training you can find more resources under the hamburger menu.`,
     position: {
       element: "#hamburger > button",
-      side: "left",
-      offset: { x: 0, y: 0 },
+      side: "bottom",
+      offset: { x: -200, y: 10 },
     },
   },
   //23
@@ -444,7 +444,7 @@ Check out the help menu here as well. You can also press "H" on your keyboard.`,
     text: `
 The help menu is auto-computed, and some instructions can be a little difficult to understand at first glance.
 
-Note that the YELLOW TEXT indicates a KEYBOARD or MOUSE COMMAND. The WHITE TEXT indicates the ACTION that will be taken.`,
+Note that the <span style="color: #7df;">CYAN TEXT</span> indicates a KEYBOARD or MOUSE COMMAND. The <span style="color: #aab;">GRAY TEXT</span> indicates the ACTION that will be taken.`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-side-panel-titlebar",
       side: "right",
@@ -461,7 +461,7 @@ Note that the YELLOW TEXT indicates a KEYBOARD or MOUSE COMMAND. The WHITE TEXT 
     position: {
       element: "#hamburger > button",
       side: "bottom",
-      offset: { x: 0, y: 0 },
+      offset: { x: -200, y: 10 },
     },
   },
   {

@@ -26,10 +26,10 @@
 
 /* ── Control labels ── */
 .neuroglancer-layer-control-label-container {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
-  color: rgba(180, 200, 230, 0.8);
+  color: rgba(190, 210, 235, 0.85);
 }
 
 /* ── Range sliders ── */
@@ -84,7 +84,7 @@
   border-radius: 3px;
   padding: 1px 4px;
   font-family: 'JetBrains Mono', 'Consolas', monospace;
-  font-size: 10px;
+  font-size: 11px;
   width: 3.5em;
   text-align: center;
 }
@@ -164,7 +164,7 @@ input[type='checkbox'].neuroglancer-layer-control-control:hover {
 /* ── Section labels (Annotations header) ── */
 .neuroglancer-segmentation-rendering-tab > label,
 .neuroglancer-segmentation-rendering-tab > .neuroglancer-layer-control-label {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -179,7 +179,7 @@ select.neuroglancer-layer-control-control {
   border: 1px solid rgba(74, 158, 255, 0.15);
   border-radius: 3px;
   padding: 2px 4px;
-  font-size: 10px;
+  font-size: 11px;
   cursor: pointer;
 }
 

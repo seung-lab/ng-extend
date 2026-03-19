@@ -1,0 +1,178 @@
+/**
+ * Restyle neuroglancer's Annotations tab and toolbox
+ * to match ng-extend's sci-fi aesthetic.
+ */
+
+/* ── Annotations tab container ── */
+.neuroglancer-annotations-tab {
+  padding: 6px 8px;
+}
+
+/* ── Annotation toolbox (type selector row) ── */
+.neuroglancer-annotation-toolbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  margin-bottom: 4px;
+  background: rgba(15, 22, 40, 0.5);
+  border-radius: 6px;
+  border: 1px solid rgba(74, 158, 255, 0.08);
+}
+
+.neuroglancer-annotation-toolbox .neuroglancer-tool-button {
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.12s;
+}
+
+.neuroglancer-annotation-toolbox .neuroglancer-tool-button:hover {
+  background: rgba(74, 158, 255, 0.1);
+}
+
+/* ── Annotation tool key bindings ── */
+.neuroglancer-tool-key-binding {
+  color: #7df;
+  font-size: 10px;
+}
+
+.neuroglancer-tool-key-binding::before,
+.neuroglancer-tool-key-binding::after {
+  color: rgba(100, 150, 200, 0.4);
+}
+
+/* ── Layer control containers inside annotations ── */
+.neuroglancer-annotations-tab .neuroglancer-layer-control-container {
+  padding: 4px 6px;
+  margin: 1px 0;
+  border-radius: 4px;
+  background: rgba(20, 30, 50, 0.3);
+}
+
+/* ── Annotation list entries ── */
+.neuroglancer-annotation-list-entry {
+  padding: 3px 4px;
+  border-radius: 3px;
+  transition: background 0.12s;
+}
+
+.neuroglancer-annotation-hover {
+  background: rgba(74, 158, 255, 0.08) !important;
+}
+
+.neuroglancer-annotation-selected {
+  background: rgba(120, 80, 200, 0.15) !important;
+}
+
+.neuroglancer-annotation-hover.neuroglancer-annotation-selected {
+  background: rgba(120, 80, 200, 0.2) !important;
+}
+
+/* ── Annotation coordinates ── */
+.neuroglancer-annotation-coordinate {
+  font-size: 10px;
+  color: rgba(180, 200, 230, 0.7);
+}
+
+.neuroglancer-annotations-view-dimension-name {
+  color: #7df !important;
+}
+
+.neuroglancer-annotations-view-dimension-scale {
+  color: rgba(140, 160, 190, 0.6) !important;
+}
+
+/* ── Annotation detail panel ── */
+.neuroglancer-annotation-details-title {
+  background: rgba(30, 50, 90, 0.5) !important;
+  border-radius: 4px;
+  padding: 4px 8px !important;
+}
+
+textarea.neuroglancer-annotation-details-description {
+  background: rgba(15, 22, 40, 0.8) !important;
+  border: 1px solid rgba(74, 158, 255, 0.1);
+  border-radius: 4px;
+  padding: 6px;
+  font-size: 10pt;
+  color: rgba(200, 215, 240, 0.9) !important;
+}
+
+textarea.neuroglancer-annotation-details-description:focus {
+  border-color: rgba(74, 158, 255, 0.3);
+  outline: none;
+}
+
+/* ── Selected annotation position display ── */
+.neuroglancer-selected-annotation-details-position-dim {
+  color: #7df !important;
+}
+
+.neuroglancer-selected-annotation-details-position-coord {
+  color: rgba(200, 215, 240, 0.85);
+}
+
+/* ── Segment filter / related segments ── */
+.neuroglancer-annotation-segment-item {
+  color: #ddd !important;
+  background: rgba(30, 45, 70, 0.4) !important;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.neuroglancer-related-segment-list-title {
+  background: rgba(25, 35, 55, 0.6) !important;
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-size: 10px;
+  color: rgba(160, 180, 210, 0.7);
+}
+
+/* ── Checkboxes in annotations ── */
+.neuroglancer-annotations-tab input[type='checkbox'] {
+  accent-color: #4a9eff;
+}
+
+/* ── Annotation tool status (bottom status bar) ── */
+.neuroglancer-annotation-tool-status-widget-description {
+  color: #7df !important;
+  font-size: 10px;
+}
+
+.neuroglancer-annotation-tool-status-widget-key {
+  color: #7df !important;
+  font-size: 9px;
+}
+
+.neuroglancer-annotation-tool-status-widget-key::before,
+.neuroglancer-annotation-tool-status-widget-key::after {
+  color: rgba(100, 150, 200, 0.4);
+}
+
+.neuroglancer-annotation-tool-status-widget:hover {
+  outline: 1px solid rgba(74, 158, 255, 0.4);
+}
+
+/* ── Annotation property labels ── */
+.neuroglancer-annotation-property-label {
+  color: rgba(140, 160, 190, 0.65) !important;
+}
+
+.neuroglancer-annotation-relationship-label {
+  color: rgba(140, 160, 190, 0.65) !important;
+}
+
+/* ── Select dropdown in annotations ── */
+.neuroglancer-annotations-tab select {
+  background: rgba(20, 35, 60, 0.6);
+  color: #b0c8e8;
+  border: 1px solid rgba(74, 158, 255, 0.15);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.neuroglancer-annotations-tab select option {
+  background: #0c1020;
+  color: #b0c8e8;
+}

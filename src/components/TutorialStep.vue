@@ -288,8 +288,12 @@ onMounted(async () => {
 });
 
 // Intercept ENTER to advance tutorial, SPACE for specific steps
+// Skip if user is typing in an input/textarea (e.g. coordinate fields)
 function onKeyDown(e: KeyboardEvent) {
-    if (e.code === 'Enter') {
+    const tag = (document.activeElement as HTMLElement)?.tagName;
+    const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable;
+
+    if (e.code === 'Enter' && !isTyping) {
         e.preventDefault();
         e.stopPropagation();
         if (props.last) {
@@ -297,7 +301,7 @@ function onKeyDown(e: KeyboardEvent) {
         }
         emit('next');
     }
-    if (props.step.spaceAdvances && e.code === 'Space') {
+    if (props.step.spaceAdvances && e.code === 'Space' && !isTyping) {
         e.preventDefault();
         e.stopPropagation();
         emit('next');

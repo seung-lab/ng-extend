@@ -96,10 +96,7 @@ function buildActions(): PaletteItem[] {
       description: 'Flag this segment for review',
       category: 'action',
       icon: '🔍',
-      action: () => {
-        const btn = document.querySelector('.nge-ann-help-btn') as HTMLButtonElement;
-        if (btn) btn.click();
-      },
+      action: () => { close(); emit('open-help'); },
     });
   }
 
