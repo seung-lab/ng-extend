@@ -189,7 +189,7 @@ You can see the NAME of the selected layer in this <span style="color: white; ba
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
-      offset: { x: -40, y: 0 },
+      offset: { x: 0, y: 0 },
     },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
@@ -203,7 +203,7 @@ Other layer types include IMG which indicates the EM image layer, and ANN for an
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
-      offset: { x: -40, y: 0 },
+      offset: { x: 0, y: 0 },
     },
   },
   //13 -- Layer Toolbox Tabs
@@ -215,7 +215,7 @@ We are currently in the <span style="color: white; background-color: black; font
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
-      offset: { x: -40, y: 0 },
+      offset: { x: 0, y: 0 },
     },
   },
   //14 -- Layer Toolbox Tabs cont.
@@ -225,7 +225,7 @@ If we add more cells, their IDs will appear here as well. `,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(4) > div:nth-child(2) > span",
       side: "left",
-      offset: { x: -40, y: 0 },
+      offset: { x: 0, y: 0 },
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
@@ -241,7 +241,7 @@ Try it! We'll restore the default view in the next slide.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
-      offset: { x: -40, y: 0 },
+      offset: { x: 0, y: 0 },
     },
     state: 
         //"middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
@@ -280,41 +280,14 @@ That's okay, it's an easy fix! <strong>Hover on NEW LAYER, and click the "X" to 
     text: `
 Our NEW LAYER was removed, but it was not deleted permanently!
 
-Click here to view all the layers currently available in our workspace.`,
-    position: {
-      element: "#insertNGTopBar > div > div:nth-child(6)",
-      side: "bottom",
-      offset: { x: 0, y: 15 },
-    },
-  },
-    //5 -- Layers menu, reveal
-  {
-    text: `
-You can see here that the NEW LAYER is available, but not visible in our workspace.
+You can view all layers by opening <strong>Settings ⚙️</strong> in the toolbar, then clicking <strong>☰ Layer List Panel</strong> at the bottom.
 
-CLICK the EYE to reveal it!`,
-    position: {
-      element: ".neuroglancer-layer-list-panel-items",
-      side: "right",
-      offset: { x: 0, y: 0 },
-    },
-  },
-   //5 -- Layers menu, delete
-  {
-    text: `
-Great job! Since this layer has no further use to us, let's DELETE it PERMANENTLY. Hover over it and click the 🗑️ to DELETE.`,
-    position: {
-      element: ".neuroglancer-layer-list-panel-items",
-      side: "right",
-      offset: { x: 0, y: 0 },
-    },
-  },
-  //5 -- Deleted Layers
-  {
-    text: `
-⚠️<em>Be very careful with the</em> 🗑️ <em>function! Any trashed layers are UNRECOVERABLE.</em>`,
-    position: MIDDLE,
-    state: 
+Try it! Open the Layer List Panel, and you'll see the hidden layer. <strong>Click the EYE icon</strong> to reveal it, then <strong>click the 🗑️</strong> to delete it permanently.
+
+⚠️<em>Be careful with the</em> 🗑️ <em>function! Any trashed layers are UNRECOVERABLE.</em>`,
+    width: "500px",
+    position: OVER_3D,
+    state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
   },
    //5 -- Share to save
@@ -356,7 +329,7 @@ Let's give our tab another name. Click into the <span style="color: white; backg
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
-      offset: { x: -40, y: 0 },
+      offset: { x: 0, y: 0 },
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/5451570511609856",
@@ -368,7 +341,7 @@ Now it's time to add some annotations! Select the <span style="color: white; bac
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",
-      offset: { x: -40, y: 0 },
+      offset: { x: 0, y: 0 },
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/5934606860681216",
@@ -426,8 +399,8 @@ You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0
 Now you have a basic understanding of the EyeWire II interface! For additional training you can find more resources under the hamburger menu.`,
     position: {
       element: "#hamburger > button",
-      side: "bottom",
-      offset: { x: -200, y: 10 },
+      side: "left",
+      offset: { x: 0, y: 0 },
     },
   },
   //23
@@ -460,8 +433,8 @@ Note that the <span style="color: #7df;">CYAN TEXT</span> indicates a KEYBOARD o
 
     position: {
       element: "#hamburger > button",
-      side: "bottom",
-      offset: { x: -200, y: 10 },
+      side: "left",
+      offset: { x: 0, y: 0 },
     },
   },
   {

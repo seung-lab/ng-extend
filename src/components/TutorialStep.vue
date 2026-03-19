@@ -379,9 +379,12 @@ onUnmounted(() => {
     /* filter: drop-shadow(0 8px 4px rgba(0, 0, 0, 0.25)); overwrites backdrop-filter*/
 }
 
-.introductionStepAnchor.left>*,
 .introductionStepAnchor.right>* {
     transform: translate(0, -50%);
+}
+
+.introductionStepAnchor.left>* {
+    transform: translate(-100%, -50%);
 }
 
 .introductionStepAnchor.top>*,
@@ -395,26 +398,44 @@ onUnmounted(() => {
 
 .introductionStepAnchor .arrow {
     position: absolute;
-    border: 12px solid transparent;
-    filter: drop-shadow(0 0px 8px rgba(0, 0, 0, 1));
+    border: 14px solid transparent;
+    filter: drop-shadow(0 0 10px rgba(80, 160, 255, 0.6));
+    z-index: 3;
 }
 
 .introductionStepAnchor.right .arrow {
-    border-right: 12px solid rgba(160, 200, 240, 0.35);
-    right: -12px;
+    border-right: 14px solid rgba(120, 180, 255, 0.6);
+    right: -14px;
 }
 
 .introductionStepAnchor.right .chip {
-    left: 12px !important;
+    left: 14px !important;
 }
 
 .introductionStepAnchor.bottom .arrow {
-    border-bottom: 12px solid rgba(160, 200, 240, 0.35);
-    bottom: -12px;
+    border-bottom: 14px solid rgba(120, 180, 255, 0.6);
+    bottom: -14px;
 }
 
 .introductionStepAnchor.bottom .chip {
-    top: 12px !important;
+    top: 14px !important;
+}
+
+.introductionStepAnchor.left .arrow {
+    border-left: 14px solid rgba(120, 180, 255, 0.6);
+    right: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.introductionStepAnchor.left .chip {
+    right: 14px !important;
+    left: auto !important;
+}
+
+.introductionStepAnchor.top .arrow {
+    border-top: 14px solid rgba(120, 180, 255, 0.6);
+    top: -14px;
 }
 
 .chip {
