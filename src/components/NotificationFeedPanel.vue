@@ -145,7 +145,6 @@ function linkify(text: string): string {
                 title="Delete notification (admin)"
               >🗑</button>
               <button
-                v-else
                 class="nge-notif-dismiss"
                 @click.stop="backend.dismissNotification(notif.id)"
                 title="Dismiss"

@@ -1,4 +1,5 @@
 import { Step } from "./store-pyr";
+import scytheHero from './images/scythe_hero.png';
 
 const MIDDLE = {
   element: "body",
@@ -185,7 +186,7 @@ Try both ways!`,
     text: `
 Look here! This SIDE PANEL opened up when the layer was selected.
 
-You can see the NAME of the selected layer in this <span style="color: white; background-color: #2563eb; padding: 1px 4px; border-radius: 2px;">BLUE BOX</span> as well as the LAYER TYPE in <span style="color: white; background-color: #1e3a5f; font-weight: bold;">DARK BLUE</span>.`,
+You can see the NAME of the selected layer in this <span style="color: #b0d0ff; background: linear-gradient(135deg, rgba(20, 35, 65, 0.95), rgba(15, 25, 50, 0.95)); padding: 2px 8px; border-radius: 3px; border: 1px solid rgba(74, 158, 255, 0.3); font-weight: 600;">BLUE BOX</span> as well as the LAYER TYPE in <span style="color: white; background-color: #1e3a5f; font-weight: bold;">DARK BLUE</span>.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
@@ -358,7 +359,7 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
     text: `
 Let's take a look at the Annotation Layer Panel.
 
-Let's give our tab another name. Click into the <span style="color: white; background-color: #2563eb; padding: 1px 4px; border-radius: 2px;">BLUE BOX</span> here and <strong>DELETE the current text. TYPE IN new text.</strong> Let's call it "Tutorial."`,
+Let's give our tab another name. Click into the <span style="color: #b0d0ff; background: linear-gradient(135deg, rgba(20, 35, 65, 0.95), rgba(15, 25, 50, 0.95)); padding: 2px 8px; border-radius: 3px; border: 1px solid rgba(74, 158, 255, 0.3); font-weight: 600;">BLUE BOX</span> here and <strong>DELETE the current text. TYPE IN new text.</strong> Let's call it "Tutorial."`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
       side: "left",
@@ -392,6 +393,19 @@ Great! Click the "○" button to select the single point annotation.
     },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5377501518888960",
+    onEnter() {
+      // Set annotation layer color to golden yellow
+      try {
+        const viewer = (window as any).viewer;
+        for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+          if (ml.layer?.constructor?.name?.includes('Annotation')) {
+            const color = ml.layer.annotationDisplayState?.color;
+            if (color) color.restoreState('#ffd700');
+            break;
+          }
+        }
+      } catch (_) {}
+    },
   },
   //20 -- Add annotation point pt. 2
   {
@@ -439,9 +453,9 @@ Now you have a basic understanding of the EyeWire II interface! For additional t
   //23
   {
     text: `
-Check out the help menu here as well. You can also press "H" on your keyboard.`,
+Check out the command palette here! Press <strong>Ctrl+K</strong> to quickly search for tools, actions, and help resources.`,
     position: {
-      element: "#insertNGTopBar > div > div:nth-child(11)",
+      element: ".nge-cmd-trigger",
       side: "bottom",
       offset: { x: 0, y: 7 },
     },
@@ -461,9 +475,7 @@ Note that the <span style="color: #7df;">CYAN TEXT</span> indicates a KEYBOARD o
   },
   {
     text: "Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore. Check out this menu for guides, tutorials, and more resources.",
-    image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/rika-success.png?raw=true",
-
+    image: scytheHero,
     position: {
       element: "#hamburger > button",
       side: "left",
@@ -471,7 +483,9 @@ Note that the <span style="color: #7df;">CYAN TEXT</span> indicates a KEYBOARD o
     },
   },
   {
-    text: "Take the **Self-guided training** when you are ready to learn more! At the end of the training you can take a test to gain access to the Production dataset. Email us support@eyewire.ai with any questions. Thanks for being a part of the neuroscience community! For Science!",
+    text: `Ready for the next step? Try the **Merge & Split Tutorial** to learn how to fuse branches and cut away errors.
+
+When you're ready, submit a set of **10 annotated test edits** (5 splits and 5 merges) to <a href="mailto:support@eyewire.org" style="color: #7df;">support@eyewire.org</a> to gain access to the Production dataset. Thanks for being a part of the neuroscience community! 🧠 For Science!`,
     position: MIDDLE,
     image:
       "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
