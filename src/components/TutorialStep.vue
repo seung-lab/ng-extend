@@ -314,6 +314,8 @@ onMounted(() => {
 
 onUnmounted(() => {
     window.removeEventListener('keydown', onKeyDown, true);
+    // Clean up any injected tutorial highlight styles
+    document.getElementById('nge-tutorial-highlight')?.remove();
 });
 
 </script>

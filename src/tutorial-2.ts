@@ -259,8 +259,25 @@ Let's try adding an ANNOTATION LAYER.
       side: "bottom",
       offset: { x: 0, y: 7 },
     },
-    state: 
+    state:
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
+    onEnter() {
+      // Highlight the + button with a pulsing glow so it's easy to find
+      let style = document.getElementById('nge-tutorial-highlight');
+      if (!style) { style = document.createElement('style'); style.id = 'nge-tutorial-highlight'; document.head.appendChild(style); }
+      style.textContent = `
+        .neuroglancer-layer-add-button {
+          animation: nge-pulse-highlight 1.2s ease-in-out infinite !important;
+          border-radius: 4px !important;
+          position: relative;
+          z-index: 1;
+        }
+        @keyframes nge-pulse-highlight {
+          0%, 100% { box-shadow: 0 0 8px 3px rgba(80, 160, 255, 0.7), inset 0 0 4px rgba(80, 160, 255, 0.3); }
+          50% { box-shadow: 0 0 18px 6px rgba(80, 160, 255, 1), inset 0 0 8px rgba(80, 160, 255, 0.5); }
+        }
+      `;
+    },
   },
   //17 -- Remove new layer
   {
@@ -316,6 +333,22 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div.neuroglancer-icon.neuroglancer-layer-add-button",
       side: "bottom",
       offset: { x: 0, y: 7 },
+    },
+    onEnter() {
+      let style = document.getElementById('nge-tutorial-highlight');
+      if (!style) { style = document.createElement('style'); style.id = 'nge-tutorial-highlight'; document.head.appendChild(style); }
+      style.textContent = `
+        .neuroglancer-layer-add-button {
+          animation: nge-pulse-highlight 1.2s ease-in-out infinite !important;
+          border-radius: 4px !important;
+          position: relative;
+          z-index: 1;
+        }
+        @keyframes nge-pulse-highlight {
+          0%, 100% { box-shadow: 0 0 8px 3px rgba(80, 160, 255, 0.7), inset 0 0 4px rgba(80, 160, 255, 0.3); }
+          50% { box-shadow: 0 0 18px 6px rgba(80, 160, 255, 1), inset 0 0 8px rgba(80, 160, 255, 0.5); }
+        }
+      `;
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
