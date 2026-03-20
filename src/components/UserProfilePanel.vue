@@ -37,7 +37,10 @@ const selectedSpecialBadge = ref<any | null>(null);
 const showFlagPicker = ref(false);
 const showAllBuilding    = ref(false);
 const showAllExploration = ref(false);
-const BADGE_PREVIEW_LIMIT = 12;
+const BADGE_PREVIEW_LIMIT = 8;  // 2 rows of 4
+
+// ── Profile tabs ─────────────────────────────────────────────────────────────
+const activeTab = ref<'overview' | 'trophyCase'>('overview');
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
 // All country flags A-Z (ISO 3166-1 alpha-2, sorted alphabetically)
@@ -315,8 +318,22 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         <button class="nge-profile-exit" @click="handleClose">×</button>
       </div>
 
-      <!-- ── Three-column body ──────────────────────────────── -->
-      <div class="nge-profile-body">
+      <!-- ── Tab bar ─────────────────────────────────────────── -->
+      <div class="nge-profile-tabbar">
+        <button
+          class="nge-profile-tab"
+          :class="{ 'nge-profile-tab--active': activeTab === 'overview' }"
+          @click="activeTab = 'overview'"
+        >Overview</button>
+        <button
+          class="nge-profile-tab"
+          :class="{ 'nge-profile-tab--active': activeTab === 'trophyCase' }"
+          @click="activeTab = 'trophyCase'"
+        >🏆 Trophy Case</button>
+      </div>
+
+      <!-- ── Three-column body (Overview tab) ────────────────── -->
+      <div v-if="activeTab === 'overview'" class="nge-profile-body">
 
         <!-- LEFT: stats + recent cells -->
         <div class="nge-profile-col nge-profile-col--left">
@@ -524,8 +541,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <button
               v-if="earnedBuildingBadges.earned.length > BADGE_PREVIEW_LIMIT"
               class="nge-profile-badges-toggle"
-              @click="showAllBuilding = !showAllBuilding"
-            >{{ showAllBuilding ? '▲ Show less' : `▼ See all ${earnedBuildingBadges.earned.length} badges` }}</button>
+              @click="activeTab = 'trophyCase'"
+            >View all {{ earnedBuildingBadges.earned.length }} badges →</button>
             <div v-if="earnedBuildingBadges.earned.length === 0" class="nge-profile-badges-empty">
               Make your first edit to earn a badge!
             </div>
@@ -581,8 +598,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <button
               v-if="earnedExplorationBadges.earned.length > BADGE_PREVIEW_LIMIT"
               class="nge-profile-badges-toggle"
-              @click="showAllExploration = !showAllExploration"
-            >{{ showAllExploration ? '▲ Show less' : `▼ See all ${earnedExplorationBadges.earned.length} badges` }}</button>
+              @click="activeTab = 'trophyCase'"
+            >View all {{ earnedExplorationBadges.earned.length }} badges →</button>
             <div v-if="earnedExplorationBadges.earned.length === 0" class="nge-profile-badges-empty">
               Complete your first cell to earn a badge!
             </div>
@@ -734,7 +751,100 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
         </div><!-- end right column -->
 
-      </div><!-- end .nge-profile-body -->
+      </div><!-- end .nge-profile-body (Overview) -->
+
+      <!-- ── Trophy Case tab ─────────────────────────────────── -->
+      <div v-else class="nge-profile-body nge-profile-body--trophy">
+        <div class="nge-trophy-scroll">
+
+          <!-- Proofreading track -->
+          <div class="nge-trophy-track">
+            <div class="nge-trophy-track-label" style="color: #ffd08a;">🏗️ Proofreading Achievements
+              <span class="nge-trophy-track-count">{{ earnedBuildingBadges.earned.length }} earned</span>
+            </div>
+            <div class="nge-trophy-grid">
+              <div
+                v-for="badge in earnedBuildingBadges.earned"
+                :key="badge.id"
+                class="nge-trophy-badge nge-trophy-badge--building"
+                :class="{ 'nge-trophy-badge--selected': selectedBadge?.id === badge.id }"
+                @click="onBadgeClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-desc">{{ badge.description }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
+              </div>
+              <!-- Next locked -->
+              <div v-if="earnedBuildingBadges.next" class="nge-trophy-badge nge-trophy-badge--locked">
+                <div class="nge-trophy-badge-mystery">?</div>
+                <div class="nge-trophy-badge-name nge-trophy-badge-name--locked">{{ earnedBuildingBadges.next.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ earnedBuildingBadges.next.threshold.toLocaleString() }} edits</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Exploration track -->
+          <div class="nge-trophy-track">
+            <div class="nge-trophy-track-label" style="color: #90fff2;">🔬 Cell Achievements
+              <span class="nge-trophy-track-count">{{ earnedExplorationBadges.earned.length }} earned</span>
+            </div>
+            <div class="nge-trophy-grid">
+              <div
+                v-for="badge in earnedExplorationBadges.earned"
+                :key="badge.id"
+                class="nge-trophy-badge nge-trophy-badge--exploration"
+                :class="{ 'nge-trophy-badge--selected': selectedBadge?.id === badge.id }"
+                @click="onBadgeClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-desc">{{ badge.description }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
+              </div>
+              <!-- Next locked -->
+              <div v-if="earnedExplorationBadges.next" class="nge-trophy-badge nge-trophy-badge--locked">
+                <div class="nge-trophy-badge-mystery">?</div>
+                <div class="nge-trophy-badge-name nge-trophy-badge-name--locked">{{ earnedExplorationBadges.next.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ earnedExplorationBadges.next.threshold.toLocaleString() }} cells</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Special Awards -->
+          <div v-if="backendStore.mySpecialBadges.length > 0" class="nge-trophy-track">
+            <div class="nge-trophy-track-label">★ Special Awards</div>
+            <div class="nge-trophy-grid">
+              <div
+                v-for="award in backendStore.mySpecialBadges"
+                :key="award.id"
+                class="nge-trophy-badge"
+                :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id }"
+                @click="onSpecialBadgeClick(award)"
+              >
+                <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
+                <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
+                <div v-if="award.badge?.description" class="nge-trophy-badge-desc">{{ award.badge.description }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Selected badge detail -->
+          <Transition name="nge-viz-swap">
+            <div v-if="selectedBadge" class="nge-trophy-detail">
+              <img :src="getBadgeUrl(selectedBadge.imageKey)" :alt="selectedBadge.name" class="nge-trophy-detail-icon" :class="`nge-badge--${selectedBadge.slug}`" />
+              <div class="nge-trophy-detail-name">{{ selectedBadge.name }}</div>
+              <div class="nge-trophy-detail-desc">{{ selectedBadge.description }}</div>
+              <div class="nge-trophy-detail-threshold">
+                Unlocked at <strong>{{ selectedBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(selectedBadge) }}
+              </div>
+              <button class="nge-trophy-detail-close" @click="selectedBadge = null">✕</button>
+            </div>
+          </Transition>
+
+        </div>
+      </div><!-- end Trophy Case -->
+
     </div>
   </modal-overlay>
 </template>
@@ -1609,4 +1719,219 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   font-style: italic;
   line-height: 1.5;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TAB BAR
+───────────────────────────────────────────────────────────────────────────── */
+.nge-profile-tabbar {
+  display: flex;
+  gap: 2px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.nge-profile-tab {
+  background: none;
+  border: none;
+  color: rgba(160, 175, 200, 0.6);
+  font-size: 0.82em;
+  font-weight: 600;
+  padding: 8px 16px 7px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  letter-spacing: 0.02em;
+}
+.nge-profile-tab:hover {
+  color: rgba(200, 220, 255, 0.8);
+}
+.nge-profile-tab--active {
+  color: rgba(200, 220, 255, 0.95);
+  border-bottom-color: #4a9eff;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TROPHY CASE TAB
+───────────────────────────────────────────────────────────────────────────── */
+.nge-profile-body--trophy {
+  display: block;
+  padding: 0;
+}
+
+.nge-trophy-scroll {
+  overflow-y: auto;
+  padding: 16px 24px 24px;
+  max-height: calc(90vh - 100px);
+}
+
+.nge-trophy-track {
+  margin-bottom: 24px;
+}
+
+.nge-trophy-track-label {
+  font-size: 0.88em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nge-trophy-track-count {
+  font-size: 0.82em;
+  font-weight: 500;
+  color: #667;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 2px 8px;
+}
+
+.nge-trophy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.nge-trophy-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 10px 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s, border-color 0.15s;
+}
+.nge-trophy-badge:hover {
+  transform: scale(1.05);
+  background: rgba(74, 158, 255, 0.06);
+  border-color: rgba(74, 158, 255, 0.15);
+}
+.nge-trophy-badge--selected {
+  background: rgba(74, 158, 255, 0.1) !important;
+  border-color: rgba(74, 158, 255, 0.3) !important;
+  box-shadow: 0 0 12px rgba(74, 158, 255, 0.15);
+}
+.nge-trophy-badge--building.nge-trophy-badge--selected {
+  background: rgba(245, 166, 35, 0.08) !important;
+  border-color: rgba(245, 166, 35, 0.25) !important;
+  box-shadow: 0 0 12px rgba(245, 166, 35, 0.1);
+}
+
+.nge-trophy-badge--locked {
+  opacity: 0.35;
+  cursor: default;
+}
+.nge-trophy-badge--locked:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.04);
+}
+
+.nge-trophy-badge-icon {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 0 4px rgba(100, 180, 255, 0.2));
+}
+
+.nge-trophy-badge-mystery {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8em;
+  color: #445;
+  border: 2px dashed rgba(100, 120, 160, 0.2);
+  border-radius: 50%;
+  margin-bottom: 6px;
+}
+
+.nge-trophy-badge-name {
+  font-size: 0.72em;
+  font-weight: 600;
+  color: rgba(200, 215, 240, 0.85);
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+.nge-trophy-badge-name--locked {
+  color: #445;
+}
+
+.nge-trophy-badge-desc {
+  font-size: 0.62em;
+  color: #667;
+  line-height: 1.3;
+  max-height: 2.6em;
+  overflow: hidden;
+}
+
+.nge-trophy-badge-threshold {
+  font-size: 0.6em;
+  color: #556;
+  margin-top: 3px;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+}
+
+/* ── Trophy detail panel (floating) ── */
+.nge-trophy-detail {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(8, 14, 28, 0.98), rgba(12, 20, 40, 0.98));
+  border: 1px solid rgba(74, 158, 255, 0.2);
+  border-radius: 10px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.nge-trophy-detail-icon {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 8px rgba(100, 180, 255, 0.4));
+}
+
+.nge-trophy-detail-name {
+  font-size: 1em;
+  font-weight: 700;
+  color: #e0ecff;
+}
+
+.nge-trophy-detail-desc {
+  font-size: 0.82em;
+  color: #99a;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.nge-trophy-detail-threshold {
+  font-size: 0.78em;
+  color: #667;
+  margin-top: 4px;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+}
+
+.nge-trophy-detail-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #667;
+  font-size: 1em;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.nge-trophy-detail-close:hover { color: #f66; }
 </style>

@@ -406,6 +406,65 @@ const activeHelpId = ref<string | null>(null);
 const pendingHelp = computed(() => helpStore.requests.filter(r => !r.resolved));
 const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
 
+// ── Create help request form ─────────────────────────────────────────
+const showCreateHelp = ref(false);
+const newHelpIssue = ref('Unsure');
+const newHelpNote = ref('');
+const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branch', 'Other'];
+
+function getActiveSegId(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    const seg = viewer?.selectedLayer?.layer_?.layer_;
+    if (seg?.type === 'segmentation' || seg?.type === 'segmentation_with_graph') {
+      const sel = seg.displayState?.segmentSelectionState?.selectedSegment;
+      if (sel) return sel.toString();
+    }
+  } catch {}
+  return '';
+}
+
+function getViewerPosition(): number[] {
+  try {
+    const viewer = (window as any)['viewer'];
+    const p = viewer?.navigationState?.position?.value;
+    if (p) return [Math.round(p[0]), Math.round(p[1]), Math.round(p[2])];
+  } catch {}
+  return [];
+}
+
+function getCurrentDatasetName(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const typeName = ml.layer?.constructor?.name ?? '';
+      if (typeName.includes('Segmentation')) return ml.name ?? '';
+    }
+  } catch {}
+  return '';
+}
+
+async function submitNewHelp() {
+  const segId = getActiveSegId();
+  if (!segId) {
+    alert('No segment selected. Select a segment first, then create a help request.');
+    return;
+  }
+  await helpStore.add({
+    segId,
+    position: getViewerPosition(),
+    note: newHelpNote.value.trim(),
+    issueType: newHelpIssue.value,
+    dataset: getCurrentDatasetName(),
+    cellType: '',
+    nickname: '',
+  });
+  helpStore.refreshPending();
+  showCreateHelp.value = false;
+  newHelpNote.value = '';
+  newHelpIssue.value = 'Unsure';
+}
+
 // ── Help note expand state ──────────────────────────────────────────
 const expandedNotes = reactive(new Set<string>());
 function toggleNoteExpand(id: string) {
@@ -562,6 +621,12 @@ const panelStyle = computed(() => ({
           <button :class="{ active: filter === 'help', 'nge-cl-help-tab': true }" @click="filter = 'help'">
             Help ({{ pendingHelp.length }})
           </button>
+          <button
+            v-if="filter === 'help'"
+            class="nge-cl-help-create-btn"
+            @click="showCreateHelp = !showCreateHelp"
+            title="Create a new help request for the selected segment"
+          >+</button>
         </div>
 
         <!-- Search (not shown on Help tab) -->
@@ -576,9 +641,40 @@ const panelStyle = computed(() => ({
 
         <!-- ═══ HELP TAB ═══ -->
         <div v-if="filter === 'help'" class="nge-cl-list">
+
+          <!-- Create help request form -->
+          <Transition name="nge-slide">
+            <div v-if="showCreateHelp" class="nge-cl-help-create">
+              <div class="nge-cl-help-create-title">New Help Request</div>
+              <div class="nge-cl-help-create-hint">Select a segment in the viewer, then describe the issue.</div>
+              <div class="nge-cl-help-create-row">
+                <label class="nge-cl-help-create-label">Issue type</label>
+                <div class="nge-cl-help-create-chips">
+                  <button
+                    v-for="t in HELP_ISSUE_TYPES" :key="t"
+                    class="nge-cl-help-chip"
+                    :class="{ 'nge-cl-help-chip--active': newHelpIssue === t }"
+                    @click="newHelpIssue = t"
+                  >{{ t }}</button>
+                </div>
+              </div>
+              <textarea
+                v-model="newHelpNote"
+                class="nge-cl-help-create-note"
+                placeholder="Describe what looks wrong (optional)..."
+                rows="2"
+                @keydown.stop @keyup.stop @keypress.stop
+              ></textarea>
+              <div class="nge-cl-help-create-actions">
+                <button class="nge-cl-help-create-submit" @click="submitNewHelp">🔍 Submit Request</button>
+                <button class="nge-cl-help-create-cancel" @click="showCreateHelp = false">Cancel</button>
+              </div>
+            </div>
+          </Transition>
+
           <!-- Pending help requests -->
-          <div v-if="pendingHelp.length === 0 && resolvedHelp.length === 0" class="nge-cl-empty">
-            No help requests yet. Select a segment and click "Ask for Second Opinion" in the annotation panel.
+          <div v-if="pendingHelp.length === 0 && resolvedHelp.length === 0 && !showCreateHelp" class="nge-cl-empty">
+            No help requests yet. Click <strong>+</strong> above or use "Ask for Second Opinion" in the annotation panel.
           </div>
           <div v-else-if="pendingHelp.length === 0" class="nge-cl-no-results">No pending requests</div>
 
@@ -1265,5 +1361,157 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-btn--reply:hover {
   background: rgba(100, 180, 255, 0.2);
+}
+
+/* ── Help Request Create Button ── */
+.nge-cl-help-create-btn {
+  background: rgba(255, 136, 170, 0.12);
+  border: 1px solid rgba(255, 136, 170, 0.3);
+  color: #f8a;
+  font-size: 1.1em;
+  font-weight: 700;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.12s, transform 0.12s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.nge-cl-help-create-btn:hover {
+  background: rgba(255, 136, 170, 0.22);
+  transform: scale(1.1);
+}
+
+/* ── Help Request Create Form ── */
+.nge-cl-help-create {
+  background: rgba(255, 136, 170, 0.04);
+  border: 1px solid rgba(255, 136, 170, 0.15);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.nge-cl-help-create-title {
+  font-size: 0.88em;
+  font-weight: 700;
+  color: #f8a;
+  margin-bottom: 4px;
+}
+
+.nge-cl-help-create-hint {
+  font-size: 0.72em;
+  color: #778;
+  margin-bottom: 10px;
+}
+
+.nge-cl-help-create-row {
+  margin-bottom: 8px;
+}
+
+.nge-cl-help-create-label {
+  display: block;
+  font-size: 0.72em;
+  font-weight: 600;
+  color: #99a;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.nge-cl-help-create-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nge-cl-help-chip {
+  padding: 3px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #99a;
+  font-size: 0.72em;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.nge-cl-help-chip:hover {
+  background: rgba(255, 136, 170, 0.08);
+  border-color: rgba(255, 136, 170, 0.2);
+}
+.nge-cl-help-chip--active {
+  background: rgba(255, 136, 170, 0.15);
+  border-color: rgba(255, 136, 170, 0.35);
+  color: #f8a;
+  font-weight: 600;
+}
+
+.nge-cl-help-create-note {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #ccd;
+  font-size: 0.78em;
+  padding: 6px 8px;
+  resize: vertical;
+  margin-bottom: 8px;
+  font-family: inherit;
+}
+.nge-cl-help-create-note:focus {
+  outline: none;
+  border-color: rgba(255, 136, 170, 0.3);
+}
+
+.nge-cl-help-create-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.nge-cl-help-create-submit {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 136, 170, 0.3);
+  background: rgba(255, 136, 170, 0.1);
+  color: #f8a;
+  font-size: 0.78em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.nge-cl-help-create-submit:hover {
+  background: rgba(255, 136, 170, 0.2);
+}
+
+.nge-cl-help-create-cancel {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: none;
+  color: #778;
+  font-size: 0.78em;
+  cursor: pointer;
+}
+.nge-cl-help-create-cancel:hover {
+  color: #aab;
+}
+
+/* Slide transition for create form */
+.nge-slide-enter-active { transition: all 0.2s ease-out; }
+.nge-slide-leave-active { transition: all 0.15s ease-in; }
+.nge-slide-enter-from, .nge-slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+.nge-slide-enter-to, .nge-slide-leave-from {
+  max-height: 250px;
 }
 </style>
