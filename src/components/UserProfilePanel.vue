@@ -580,7 +580,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 @click="activeTab = 'trophyCase'"
               >
                 <div class="nge-profile-badge-img">
-                  <div class="nge-profile-badge-viewall-icon">🏆</div>
+                  <div class="nge-profile-badge-viewall-icon">→</div>
                 </div>
                 <div class="nge-profile-badge-name">View all</div>
               </div>
@@ -641,7 +641,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 @click="activeTab = 'trophyCase'"
               >
                 <div class="nge-profile-badge-img">
-                  <div class="nge-profile-badge-viewall-icon">🏆</div>
+                  <div class="nge-profile-badge-viewall-icon">→</div>
                 </div>
                 <div class="nge-profile-badge-name">View all</div>
               </div>
