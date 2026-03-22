@@ -930,7 +930,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
           <!-- Exploration track (Cell Achievements first) -->
           <div class="nge-trophy-track">
-            <div class="nge-trophy-track-label" style="color: #90fff2;">🔬 Cell Achievements
+            <div class="nge-trophy-track-label" style="color: #90fff2;">Cell Achievements
               <span class="nge-trophy-track-count">{{ earnedExplorationBadges.earned.length }} earned</span>
             </div>
             <div class="nge-trophy-grid">
@@ -954,7 +954,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
           <!-- Proofreading track -->
           <div class="nge-trophy-track">
-            <div class="nge-trophy-track-label" style="color: #ffd08a;">🏗️ Proofreading Achievements
+            <div class="nge-trophy-track-label" style="color: #ffd08a;">Proofreading Achievements
               <span class="nge-trophy-track-count">{{ earnedBuildingBadges.earned.length }} earned</span>
             </div>
             <div class="nge-trophy-grid">
