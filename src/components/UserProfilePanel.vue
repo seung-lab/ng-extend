@@ -849,6 +849,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-trophy-featured-info">
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="selectedSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ selectedSpecialBadge.badge.description }}</div>
+              <div class="nge-trophy-featured-desc" style="font-style: italic; opacity: 0.7;">Won for being awesome</div>
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(selectedSpecialBadge.awarded_at) }}</strong>
               </div>
@@ -879,6 +880,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-trophy-featured-info">
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ favoriteSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="favoriteSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ favoriteSpecialBadge.badge.description }}</div>
+              <div class="nge-trophy-featured-desc" style="font-style: italic; opacity: 0.7;">Won for being awesome</div>
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(favoriteSpecialBadge.awarded_at) }}</strong>
               </div>
@@ -2121,12 +2123,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   line-height: 1;
 }
 .nge-trophy-featured-star:hover {
-  color: #ffd700;
+  color: #58a6ff;
   transform: scale(1.15);
 }
 .nge-trophy-featured-star--active {
-  color: #ffd700;
-  text-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
+  color: #58a6ff;
+  text-shadow: 0 0 12px rgba(88, 166, 255, 0.5);
 }
 
 /* Favorited badge gets subtle gold outline in grid */
