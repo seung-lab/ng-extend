@@ -861,7 +861,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               @click="toggleFavoriteSpecialBadge(selectedSpecialBadge)"
             >{{ favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) ? '★' : '☆' }}</button>
           </div>
-          <div v-else-if="favoriteSpecialBadge" class="nge-trophy-featured">
+          <div v-else-if="favoriteSpecialBadge && !selectedBadge" class="nge-trophy-featured">
             <div class="nge-trophy-featured-effects">
               <div class="nge-trophy-ring nge-trophy-ring--1"></div>
               <div class="nge-trophy-ring nge-trophy-ring--2"></div>
