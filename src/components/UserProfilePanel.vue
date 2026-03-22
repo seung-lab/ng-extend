@@ -817,7 +817,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-trophy-ring nge-trophy-ring--3"></div>
               <div class="nge-trophy-ring nge-trophy-ring--4"></div>
               <div class="nge-trophy-ring nge-trophy-ring--5"></div>
-              <span v-for="i in 3" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
+              <span v-for="i in 8" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
               <div class="nge-trophy-aura"></div>
             </div>
             <img
@@ -847,7 +847,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-trophy-ring nge-trophy-ring--3"></div>
               <div class="nge-trophy-ring nge-trophy-ring--4"></div>
               <div class="nge-trophy-ring nge-trophy-ring--5"></div>
-              <span v-for="i in 3" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
+              <span v-for="i in 8" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
               <div class="nge-trophy-aura"></div>
             </div>
             <img
@@ -876,7 +876,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-trophy-ring nge-trophy-ring--3"></div>
               <div class="nge-trophy-ring nge-trophy-ring--4"></div>
               <div class="nge-trophy-ring nge-trophy-ring--5"></div>
-              <span v-for="i in 3" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
+              <span v-for="i in 8" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
               <div class="nge-trophy-aura"></div>
             </div>
             <img
@@ -2248,9 +2248,32 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   box-shadow: 0 0 5px rgba(0, 255, 180, 0.3);
   animation-duration: 48s;
 }
+/* Outer orbit particles */
+.nge-trophy-orbit-dot:nth-child(n+6) {
+  animation-name: nge-trophy-orbit-outer;
+  animation-duration: 65s;
+  width: 2px; height: 2px;
+  opacity: 0.6;
+}
+.nge-trophy-orbit-dot:nth-child(7) {
+  background: rgba(255, 200, 100, 0.5);
+  box-shadow: 0 0 4px rgba(255, 200, 100, 0.3);
+  animation-duration: 58s;
+  animation-direction: reverse;
+}
+.nge-trophy-orbit-dot:nth-child(8) {
+  width: 2.5px; height: 2.5px;
+  background: rgba(100, 180, 255, 0.6);
+  box-shadow: 0 0 5px rgba(100, 180, 255, 0.3);
+  animation-duration: 72s;
+}
 @keyframes nge-trophy-orbit {
-  from { transform: rotate(calc(var(--j) * 60deg))       translateX(175px) rotate(calc(var(--j) * -60deg)); }
-  to   { transform: rotate(calc(var(--j) * 60deg + 360deg)) translateX(175px) rotate(calc(var(--j) * -60deg - 360deg)); }
+  from { transform: rotate(calc(var(--j) * 45deg))       translateX(175px) rotate(calc(var(--j) * -45deg)); }
+  to   { transform: rotate(calc(var(--j) * 45deg + 360deg)) translateX(175px) rotate(calc(var(--j) * -45deg - 360deg)); }
+}
+@keyframes nge-trophy-orbit-outer {
+  from { transform: rotate(calc(var(--j) * 45deg))       translateX(210px) rotate(calc(var(--j) * -45deg)); }
+  to   { transform: rotate(calc(var(--j) * 45deg + 360deg)) translateX(210px) rotate(calc(var(--j) * -45deg - 360deg)); }
 }
 
 /* Pulsing aura */
