@@ -177,6 +177,13 @@ const favoriteBadge = computed<BadgeDefinition | null>(() => {
   }
   return null;
 });
+/** Check if the favorite is a special badge (not a regular track badge). */
+const favoriteSpecialBadge = computed(() => {
+  if (!favoriteBadgeSlug.value || favoriteBadge.value) return null; // regular badge takes priority
+  return backendStore.mySpecialBadges.find(
+    (a: any) => (a.badge?.slug || `special-${a.id}`) === favoriteBadgeSlug.value
+  ) || null;
+});
 /** Badge shown in the Trophy Case featured banner. */
 const featuredBadge = computed(() => selectedBadge.value ?? favoriteBadge.value ?? latestEarnedBadge.value);
 function toggleFavoriteBadge(badge: BadgeDefinition) {
@@ -187,6 +194,19 @@ function toggleFavoriteBadge(badge: BadgeDefinition) {
     favoriteBadgeSlug.value = badge.slug;
     localStorage.setItem('nge-favorite-badge', badge.slug);
   }
+}
+function toggleFavoriteSpecialBadge(award: any) {
+  const slug = award.badge?.slug || `special-${award.id}`;
+  if (favoriteBadgeSlug.value === slug) {
+    favoriteBadgeSlug.value = '';
+    localStorage.removeItem('nge-favorite-badge');
+  } else {
+    favoriteBadgeSlug.value = slug;
+    localStorage.setItem('nge-favorite-badge', slug);
+  }
+}
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 const displayedBuildingBadges = computed(() => {
@@ -341,7 +361,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
-        <span class="nge-profile-topbar-label">◈ USER PROFILE</span>
+        <span class="nge-profile-topbar-label">◈ SCIENTIST PROFILE</span>
         <button class="nge-profile-exit" @click="handleClose">×</button>
       </div>
 
@@ -813,12 +833,46 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
             />
             <div class="nge-trophy-featured-info">
-              <div class="nge-trophy-featured-name">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
+              <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="selectedSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ selectedSpecialBadge.badge.description }}</div>
               <div class="nge-trophy-featured-threshold">
-                Awarded <strong>{{ relativeTime(selectedSpecialBadge.awarded_at) }}</strong>
+                Won on <strong>{{ formatDate(selectedSpecialBadge.awarded_at) }}</strong>
               </div>
+              <div v-if="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`)" class="nge-trophy-featured-fav-label">⭐ Your favorite badge</div>
             </div>
+            <button
+              class="nge-trophy-featured-star"
+              :class="{ 'nge-trophy-featured-star--active': favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) }"
+              :title="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) ? 'Remove from favorites' : 'Set as favorite badge'"
+              @click="toggleFavoriteSpecialBadge(selectedSpecialBadge)"
+            >{{ favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) ? '★' : '☆' }}</button>
+          </div>
+          <div v-else-if="favoriteSpecialBadge" class="nge-trophy-featured">
+            <div class="nge-trophy-featured-effects">
+              <div class="nge-trophy-ring nge-trophy-ring--1"></div>
+              <div class="nge-trophy-ring nge-trophy-ring--2"></div>
+              <div class="nge-trophy-ring nge-trophy-ring--3"></div>
+              <span v-for="i in 3" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
+              <div class="nge-trophy-aura"></div>
+            </div>
+            <img
+              :src="favoriteSpecialBadge.badge?.image_url || favoriteSpecialBadge.badge?.thumbnail_url"
+              :alt="favoriteSpecialBadge.badge?.name"
+              class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
+            />
+            <div class="nge-trophy-featured-info">
+              <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ favoriteSpecialBadge.badge?.name || 'Award' }}</div>
+              <div v-if="favoriteSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ favoriteSpecialBadge.badge.description }}</div>
+              <div class="nge-trophy-featured-threshold">
+                Won on <strong>{{ formatDate(favoriteSpecialBadge.awarded_at) }}</strong>
+              </div>
+              <div class="nge-trophy-featured-fav-label">⭐ Your favorite badge</div>
+            </div>
+            <button
+              class="nge-trophy-featured-star nge-trophy-featured-star--active"
+              title="Remove from favorites"
+              @click="toggleFavoriteSpecialBadge(favoriteSpecialBadge)"
+            >★</button>
           </div>
           <div v-else-if="featuredBadge" class="nge-trophy-featured">
             <div class="nge-trophy-featured-effects">
@@ -835,7 +889,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               :class="`nge-badge--${featuredBadge.slug}`"
             />
             <div class="nge-trophy-featured-info">
-              <div class="nge-trophy-featured-name">{{ featuredBadge.name }}</div>
+              <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ featuredBadge.name }}</div>
               <div class="nge-trophy-featured-desc">{{ featuredBadge.description }}</div>
               <div class="nge-trophy-featured-threshold">
                 Unlocked at <strong>{{ featuredBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(featuredBadge) }}
@@ -936,6 +990,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 </template>
 
 <style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap');
 .nge-profile-modal { font-size: 0.9em; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -2076,12 +2131,16 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 /* ── Hero-style effects around featured badge ── */
 .nge-trophy-featured {
-  overflow: hidden;          /* contain rings that extend beyond banner */
+  overflow: visible;          /* let rings extend beyond banner */
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  gap: 48px;                  /* more space between icon and text */
 }
 .nge-trophy-featured-effects {
   position: absolute;
   top: 50%;
-  left: 175px;               /* center on the 350px icon area */
+  left: 200px;               /* center on the 350px icon area + padding */
   width: 0;
   height: 0;
   pointer-events: none;
@@ -2092,7 +2151,17 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   position: relative;
 }
 .nge-trophy-featured-icon--animated {
-  animation: nge-trophy-float 4s ease-in-out infinite alternate;
+  animation: nge-trophy-float 5s ease-in-out infinite alternate;
+}
+.nge-trophy-featured-name--scifi {
+  font-family: 'Orbitron', 'Rajdhani', 'Audiowide', 'Share Tech Mono', ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 1.8em;
+  background: linear-gradient(135deg, #e0ecff 0%, #58a6ff 50%, #a0d0ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 @keyframes nge-trophy-float {
   from { transform: translateY(0); }
@@ -2113,7 +2182,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   width: 380px; height: 380px;
   margin: -190px 0 0 -190px;
   border-color: rgba(0, 200, 255, 0.12);
-  animation: nge-trophy-ring-spin 8s linear infinite;
+  animation: nge-trophy-ring-spin 30s linear infinite;
   box-shadow: 0 0 12px rgba(0, 200, 255, 0.06);
 }
 .nge-trophy-ring--2 {
@@ -2121,7 +2190,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   margin: -170px 0 0 -170px;
   border-color: rgba(206, 147, 216, 0.08);
   border-style: dashed;
-  animation: nge-trophy-ring-spin 12s linear infinite reverse;
+  animation: nge-trophy-ring-spin 45s linear infinite reverse;
   box-shadow: 0 0 12px rgba(206, 147, 216, 0.04);
 }
 .nge-trophy-ring--3 {
@@ -2129,7 +2198,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   margin: -205px 0 0 -205px;
   border-color: rgba(0, 255, 180, 0.05);
   border-width: 0.5px;
-  animation: nge-trophy-ring-spin 20s linear infinite;
+  animation: nge-trophy-ring-spin 60s linear infinite;
 }
 @keyframes nge-trophy-ring-spin {
   from { transform: rotate(0deg); }
@@ -2145,21 +2214,21 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   box-shadow: 0 0 6px rgba(0, 220, 255, 0.4), 0 0 14px rgba(0, 220, 255, 0.2);
   top: 50%; left: 50%;
   will-change: transform;
-  animation: nge-trophy-orbit 4s linear infinite;
-  animation-delay: calc(var(--j) * -1.3s);
+  animation: nge-trophy-orbit 16s linear infinite;
+  animation-delay: calc(var(--j) * -5s);
 }
 .nge-trophy-orbit-dot:nth-child(odd) {
   width: 3px; height: 3px;
   background: rgba(206, 180, 255, 0.6);
   box-shadow: 0 0 5px rgba(206, 180, 255, 0.3);
-  animation-duration: 6s;
+  animation-duration: 22s;
   animation-direction: reverse;
 }
 .nge-trophy-orbit-dot:nth-child(3n) {
   width: 3px; height: 3px;
   background: rgba(0, 255, 180, 0.5);
   box-shadow: 0 0 5px rgba(0, 255, 180, 0.3);
-  animation-duration: 5s;
+  animation-duration: 19s;
 }
 @keyframes nge-trophy-orbit {
   from { transform: rotate(calc(var(--j) * 60deg))       translateX(175px) rotate(calc(var(--j) * -60deg)); }
@@ -2174,7 +2243,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   margin: -170px 0 0 -170px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(0, 180, 255, 0.05) 0%, rgba(206, 147, 216, 0.025) 40%, transparent 70%);
-  animation: nge-trophy-aura-pulse 2.5s ease-in-out infinite;
+  animation: nge-trophy-aura-pulse 6s ease-in-out infinite;
   pointer-events: none;
 }
 @keyframes nge-trophy-aura-pulse {
