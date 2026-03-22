@@ -768,7 +768,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 Unlocked at <strong>{{ selectedBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(selectedBadge) }}
               </div>
               <button class="nge-profile-viz-badge-back" @click="selectedBadge = null">
-                ← Back
+                ← {{ favoriteBadge || favoriteSpecialBadge ? 'Back to favorite' : 'Back' }}
               </button>
             </div>
 
