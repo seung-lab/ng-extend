@@ -226,40 +226,43 @@ export const useLayersStore = defineStore('layers', () => {
         if (net === 0) return; // changes cancelled out
 
         const statsStore = useUserStatsStore();
-        // Count as exactly 1 operation regardless of segment count change
+        // Count each merge/split in a batch individually
+        const count = Math.abs(net);
         if (net < 0) {
           statsStore.setStats({
-            editsAllTime:   statsStore.stats.editsAllTime   + 1,
-            mergesAllTime:  statsStore.stats.mergesAllTime  + 1,
-            editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
-            mergesThisWeek: statsStore.stats.mergesThisWeek + 1,
-            editsThisMonth: statsStore.stats.editsThisMonth + 1,
-            mergesThisMonth:statsStore.stats.mergesThisMonth+ 1,
-            editsToday:     statsStore.stats.editsToday     + 1,
-            mergesToday:    statsStore.stats.mergesToday     + 1,
+            editsAllTime:   statsStore.stats.editsAllTime   + count,
+            mergesAllTime:  statsStore.stats.mergesAllTime  + count,
+            editsThisWeek:  statsStore.stats.editsThisWeek  + count,
+            mergesThisWeek: statsStore.stats.mergesThisWeek + count,
+            editsThisMonth: statsStore.stats.editsThisMonth + count,
+            mergesThisMonth:statsStore.stats.mergesThisMonth+ count,
+            editsToday:     statsStore.stats.editsToday     + count,
+            mergesToday:    statsStore.stats.mergesToday     + count,
           });
         } else {
           statsStore.setStats({
-            editsAllTime:   statsStore.stats.editsAllTime   + 1,
-            splitsAllTime:  statsStore.stats.splitsAllTime  + 1,
-            editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
-            splitsThisWeek: statsStore.stats.splitsThisWeek + 1,
-            editsThisMonth: statsStore.stats.editsThisMonth + 1,
-            splitsThisMonth:statsStore.stats.splitsThisMonth+ 1,
-            editsToday:     statsStore.stats.editsToday     + 1,
-            splitsToday:    statsStore.stats.splitsToday    + 1,
+            editsAllTime:   statsStore.stats.editsAllTime   + count,
+            splitsAllTime:  statsStore.stats.splitsAllTime  + count,
+            editsThisWeek:  statsStore.stats.editsThisWeek  + count,
+            splitsThisWeek: statsStore.stats.splitsThisWeek + count,
+            editsThisMonth: statsStore.stats.editsThisMonth + count,
+            splitsThisMonth:statsStore.stats.splitsThisMonth+ count,
+            editsToday:     statsStore.stats.editsToday     + count,
+            splitsToday:    statsStore.stats.splitsToday    + count,
           });
         }
 
-        statsStore.logDailyEdit(net < 0 ? 'merge' : 'split');
+        for (let c = 0; c < count; c++) {
+          statsStore.logDailyEdit(net < 0 ? 'merge' : 'split');
+        }
         statsStore.signalEdit(net < 0 ? 'merge' : 'split');
-        localEditAccum += 1;
+        localEditAccum += count;
         if (localEditAccum >= 5) {
           statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
           localEditAccum = 0;
         }
 
-        // Log to Supabase with diff=1 (one operation)
+        // Log to Supabase with actual count of operations
         try {
           const backendStore = useProofreadingBackendStore();
           if (backendStore.userId) {
@@ -272,9 +275,9 @@ export const useLayersStore = defineStore('layers', () => {
               segment_before: removedIds,  // segments consumed/removed by the operation
               segment_after: addedIds,     // segments produced/added by the operation
               coordinates: coords,
-              metadata: { net_segment_change: net, diff: 1 },
+              metadata: { net_segment_change: net, diff: count },
             });
-            backendStore.postActivity(`${operation === 'merge' ? 'merged' : 'split'} segment`);
+            backendStore.postActivity(`${operation === 'merge' ? 'merged' : 'split'} ${count > 1 ? count + ' segments' : 'segment'}`);
           }
         } catch { /* backend logging is non-critical */ }
       }, EDIT_DEBOUNCE_MS);
