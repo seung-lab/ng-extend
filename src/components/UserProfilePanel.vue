@@ -799,11 +799,39 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         <div class="nge-trophy-scroll">
 
           <!-- ── Featured badge banner ── -->
-          <div v-if="featuredBadge" class="nge-trophy-featured">
+          <div v-if="selectedSpecialBadge" class="nge-trophy-featured">
+            <div class="nge-trophy-featured-effects">
+              <div class="nge-trophy-ring nge-trophy-ring--1"></div>
+              <div class="nge-trophy-ring nge-trophy-ring--2"></div>
+              <div class="nge-trophy-ring nge-trophy-ring--3"></div>
+              <span v-for="i in 3" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
+              <div class="nge-trophy-aura"></div>
+            </div>
+            <img
+              :src="selectedSpecialBadge.badge?.image_url || selectedSpecialBadge.badge?.thumbnail_url"
+              :alt="selectedSpecialBadge.badge?.name"
+              class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
+            />
+            <div class="nge-trophy-featured-info">
+              <div class="nge-trophy-featured-name">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
+              <div v-if="selectedSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ selectedSpecialBadge.badge.description }}</div>
+              <div class="nge-trophy-featured-threshold">
+                Awarded <strong>{{ relativeTime(selectedSpecialBadge.awarded_at) }}</strong>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="featuredBadge" class="nge-trophy-featured">
+            <div class="nge-trophy-featured-effects">
+              <div class="nge-trophy-ring nge-trophy-ring--1"></div>
+              <div class="nge-trophy-ring nge-trophy-ring--2"></div>
+              <div class="nge-trophy-ring nge-trophy-ring--3"></div>
+              <span v-for="i in 3" :key="i" class="nge-trophy-orbit-dot" :style="{ '--j': i }"></span>
+              <div class="nge-trophy-aura"></div>
+            </div>
             <img
               :src="getBadgeUrl(featuredBadge.imageKey)"
               :alt="featuredBadge.name"
-              class="nge-trophy-featured-icon"
+              class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
               :class="`nge-badge--${featuredBadge.slug}`"
             />
             <div class="nge-trophy-featured-info">
@@ -820,6 +848,36 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               :title="favoriteBadgeSlug === featuredBadge.slug ? 'Remove from favorites' : 'Set as favorite badge'"
               @click="toggleFavoriteBadge(featuredBadge)"
             >{{ favoriteBadgeSlug === featuredBadge.slug ? '★' : '☆' }}</button>
+          </div>
+
+          <!-- Exploration track (Cell Achievements first) -->
+          <div class="nge-trophy-track">
+            <div class="nge-trophy-track-label" style="color: #90fff2;">🔬 Cell Achievements
+              <span class="nge-trophy-track-count">{{ earnedExplorationBadges.earned.length }} earned</span>
+            </div>
+            <div class="nge-trophy-grid">
+              <div
+                v-for="badge in earnedExplorationBadges.earned"
+                :key="badge.id"
+                class="nge-trophy-badge nge-trophy-badge--exploration"
+                :class="{
+                  'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                }"
+                @click="onBadgeClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-desc">{{ badge.description }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
+              </div>
+              <!-- Next locked -->
+              <div v-if="earnedExplorationBadges.next" class="nge-trophy-badge nge-trophy-badge--locked">
+                <div class="nge-trophy-badge-mystery">?</div>
+                <div class="nge-trophy-badge-name nge-trophy-badge-name--locked">{{ earnedExplorationBadges.next.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ earnedExplorationBadges.next.threshold.toLocaleString() }} cells</div>
+              </div>
+            </div>
           </div>
 
           <!-- Proofreading track -->
@@ -848,36 +906,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <div class="nge-trophy-badge-mystery">?</div>
                 <div class="nge-trophy-badge-name nge-trophy-badge-name--locked">{{ earnedBuildingBadges.next.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ earnedBuildingBadges.next.threshold.toLocaleString() }} edits</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Exploration track -->
-          <div class="nge-trophy-track">
-            <div class="nge-trophy-track-label" style="color: #90fff2;">🔬 Cell Achievements
-              <span class="nge-trophy-track-count">{{ earnedExplorationBadges.earned.length }} earned</span>
-            </div>
-            <div class="nge-trophy-grid">
-              <div
-                v-for="badge in earnedExplorationBadges.earned"
-                :key="badge.id"
-                class="nge-trophy-badge nge-trophy-badge--exploration"
-                :class="{
-                  'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
-                  'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
-                }"
-                @click="onBadgeClick(badge)"
-              >
-                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
-                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
-                <div class="nge-trophy-badge-desc">{{ badge.description }}</div>
-                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
-              </div>
-              <!-- Next locked -->
-              <div v-if="earnedExplorationBadges.next" class="nge-trophy-badge nge-trophy-badge--locked">
-                <div class="nge-trophy-badge-mystery">?</div>
-                <div class="nge-trophy-badge-name nge-trophy-badge-name--locked">{{ earnedExplorationBadges.next.name }}</div>
-                <div class="nge-trophy-badge-threshold">{{ earnedExplorationBadges.next.threshold.toLocaleString() }} cells</div>
               </div>
             </div>
           </div>
@@ -2045,4 +2073,112 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   box-shadow: 0 0 0 1.5px rgba(255, 215, 0, 0.35) inset;
 }
 .nge-trophy-detail-close:hover { color: #f66; }
+
+/* ── Hero-style effects around featured badge ── */
+.nge-trophy-featured {
+  overflow: hidden;          /* contain rings that extend beyond banner */
+}
+.nge-trophy-featured-effects {
+  position: absolute;
+  top: 50%;
+  left: 175px;               /* center on the 350px icon area */
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.nge-trophy-featured-icon {
+  z-index: 1;
+  position: relative;
+}
+.nge-trophy-featured-icon--animated {
+  animation: nge-trophy-float 4s ease-in-out infinite alternate;
+}
+@keyframes nge-trophy-float {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-8px); }
+}
+
+/* Rotating rings */
+.nge-trophy-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  will-change: transform;
+  transform: translateZ(0);
+  top: 50%;
+  left: 50%;
+}
+.nge-trophy-ring--1 {
+  width: 380px; height: 380px;
+  margin: -190px 0 0 -190px;
+  border-color: rgba(0, 200, 255, 0.12);
+  animation: nge-trophy-ring-spin 8s linear infinite;
+  box-shadow: 0 0 12px rgba(0, 200, 255, 0.06);
+}
+.nge-trophy-ring--2 {
+  width: 340px; height: 340px;
+  margin: -170px 0 0 -170px;
+  border-color: rgba(206, 147, 216, 0.08);
+  border-style: dashed;
+  animation: nge-trophy-ring-spin 12s linear infinite reverse;
+  box-shadow: 0 0 12px rgba(206, 147, 216, 0.04);
+}
+.nge-trophy-ring--3 {
+  width: 410px; height: 410px;
+  margin: -205px 0 0 -205px;
+  border-color: rgba(0, 255, 180, 0.05);
+  border-width: 0.5px;
+  animation: nge-trophy-ring-spin 20s linear infinite;
+}
+@keyframes nge-trophy-ring-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Orbital dots */
+.nge-trophy-orbit-dot {
+  position: absolute;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: rgba(0, 220, 255, 0.7);
+  box-shadow: 0 0 6px rgba(0, 220, 255, 0.4), 0 0 14px rgba(0, 220, 255, 0.2);
+  top: 50%; left: 50%;
+  will-change: transform;
+  animation: nge-trophy-orbit 4s linear infinite;
+  animation-delay: calc(var(--j) * -1.3s);
+}
+.nge-trophy-orbit-dot:nth-child(odd) {
+  width: 3px; height: 3px;
+  background: rgba(206, 180, 255, 0.6);
+  box-shadow: 0 0 5px rgba(206, 180, 255, 0.3);
+  animation-duration: 6s;
+  animation-direction: reverse;
+}
+.nge-trophy-orbit-dot:nth-child(3n) {
+  width: 3px; height: 3px;
+  background: rgba(0, 255, 180, 0.5);
+  box-shadow: 0 0 5px rgba(0, 255, 180, 0.3);
+  animation-duration: 5s;
+}
+@keyframes nge-trophy-orbit {
+  from { transform: rotate(calc(var(--j) * 60deg))       translateX(175px) rotate(calc(var(--j) * -60deg)); }
+  to   { transform: rotate(calc(var(--j) * 60deg + 360deg)) translateX(175px) rotate(calc(var(--j) * -60deg - 360deg)); }
+}
+
+/* Pulsing aura */
+.nge-trophy-aura {
+  position: absolute;
+  width: 340px; height: 340px;
+  top: 50%; left: 50%;
+  margin: -170px 0 0 -170px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 180, 255, 0.05) 0%, rgba(206, 147, 216, 0.025) 40%, transparent 70%);
+  animation: nge-trophy-aura-pulse 2.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes nge-trophy-aura-pulse {
+  0%, 100% { transform: scale(1);    opacity: 0.5; }
+  50%      { transform: scale(1.12); opacity: 0.85; }
+}
 </style>
