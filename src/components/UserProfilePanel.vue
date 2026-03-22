@@ -919,8 +919,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <!-- Next locked -->
               <div v-if="earnedExplorationBadges.next" class="nge-trophy-badge nge-trophy-badge--locked">
                 <div class="nge-trophy-badge-mystery">?</div>
-                <div class="nge-trophy-badge-name nge-trophy-badge-name--locked">{{ earnedExplorationBadges.next.name }}</div>
-                <div class="nge-trophy-badge-threshold">{{ earnedExplorationBadges.next.threshold.toLocaleString() }} cells</div>
+                <div class="nge-trophy-badge-name nge-trophy-badge-name--locked">???</div>
+                <div class="nge-trophy-badge-threshold">~Next at {{ earnedExplorationBadges.next.threshold.toLocaleString() }} cells</div>
               </div>
             </div>
           </div>
@@ -949,8 +949,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <!-- Next locked -->
               <div v-if="earnedBuildingBadges.next" class="nge-trophy-badge nge-trophy-badge--locked">
                 <div class="nge-trophy-badge-mystery">?</div>
-                <div class="nge-trophy-badge-name nge-trophy-badge-name--locked">{{ earnedBuildingBadges.next.name }}</div>
-                <div class="nge-trophy-badge-threshold">{{ earnedBuildingBadges.next.threshold.toLocaleString() }} edits</div>
+                <div class="nge-trophy-badge-name nge-trophy-badge-name--locked">???</div>
+                <div class="nge-trophy-badge-threshold">~Next at {{ earnedBuildingBadges.next.threshold.toLocaleString() }} edits</div>
               </div>
             </div>
           </div>
