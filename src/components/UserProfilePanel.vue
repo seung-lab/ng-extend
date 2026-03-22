@@ -352,7 +352,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
-        <span class="nge-profile-topbar-label">◈ SCIENTIST PROFILE</span>
+        <span class="nge-profile-topbar-label">◈ RESEARCHER PROFILE</span>
         <button class="nge-profile-exit" @click="handleClose">×</button>
       </div>
 
@@ -703,9 +703,36 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </button>
             </div>
 
-            <!-- Default view: latest earned badge spotlight -->
+            <!-- Default view: favorite badge → favorite special badge → latest earned -->
             <div v-else-if="!selectedBadge" key="latest" class="nge-profile-viz-panel nge-profile-viz-badge">
-              <template v-if="latestEarnedBadge">
+              <template v-if="favoriteBadge">
+                <div class="nge-profile-viz-title">⭐ Favorite Badge</div>
+                <img
+                  :src="getBadgeUrl(favoriteBadge.imageKey)"
+                  :alt="favoriteBadge.name"
+                  class="nge-profile-viz-badge-icon"
+                  :class="`nge-badge--${favoriteBadge.slug}`"
+                />
+                <div class="nge-profile-viz-badge-name">{{ favoriteBadge.name }}</div>
+                <div class="nge-profile-viz-badge-desc">{{ favoriteBadge.description }}</div>
+                <div class="nge-profile-viz-badge-threshold">
+                  Unlocked at <strong>{{ favoriteBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(favoriteBadge) }}
+                </div>
+              </template>
+              <template v-else-if="favoriteSpecialBadge">
+                <div class="nge-profile-viz-title">⭐ Favorite Badge</div>
+                <img
+                  :src="favoriteSpecialBadge.badge?.image_url || favoriteSpecialBadge.badge?.thumbnail_url"
+                  :alt="favoriteSpecialBadge.badge?.name"
+                  class="nge-profile-viz-badge-icon nge-profile-viz-badge-icon--large"
+                />
+                <div class="nge-profile-viz-badge-name">{{ favoriteSpecialBadge.badge?.name || 'Award' }}</div>
+                <div v-if="favoriteSpecialBadge.badge?.description" class="nge-profile-viz-badge-desc">{{ favoriteSpecialBadge.badge.description }}</div>
+                <div class="nge-profile-viz-badge-threshold">
+                  Won on <strong>{{ formatDate(favoriteSpecialBadge.awarded_at) }}</strong>
+                </div>
+              </template>
+              <template v-else-if="latestEarnedBadge">
                 <div class="nge-profile-viz-title">▌ Latest Badge</div>
                 <img
                   :src="getBadgeUrl(latestEarnedBadge.imageKey)"
@@ -2132,7 +2159,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
-  gap: 48px;                  /* more space between icon and text */
+  gap: 72px;                  /* more space between icon and text */
 }
 .nge-trophy-featured-effects {
   position: absolute;

@@ -543,6 +543,9 @@ function cancelTool() {
   font-size: 10px;
   color: #90e8c0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
 }
 
 .nge-smo-merge-arrow {
@@ -552,12 +555,13 @@ function cancelTool() {
 
 .nge-smo-merge-remove {
   margin-left: auto;
+  flex-shrink: 0;
   background: none;
   border: none;
   cursor: pointer;
   font-size: 12px;
   padding: 2px 4px;
-  opacity: 0.4;
+  opacity: 0.5;
   transition: opacity 0.15s ease;
   pointer-events: auto;
 }
