@@ -538,7 +538,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <!-- Per-section countdown -->
             <div class="nge-profile-countdown-inline" v-if="nextBuildingAchievement">
               <div class="nge-profile-countdown-row">
-                <div class="nge-profile-countdown-name">{{ nextBuildingAchievement.name }}</div>
+                <div class="nge-profile-countdown-name">???</div>
                 <div class="nge-profile-countdown-remaining">{{ nextBuildingAchievement.remaining.toLocaleString() }} edits to go</div>
               </div>
               <div class="nge-profile-countdown-track">
@@ -602,7 +602,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <!-- Per-section countdown -->
             <div class="nge-profile-countdown-inline" v-if="nextExplorationAchievement">
               <div class="nge-profile-countdown-row">
-                <div class="nge-profile-countdown-name">{{ nextExplorationAchievement.name }}</div>
+                <div class="nge-profile-countdown-name">???</div>
                 <div class="nge-profile-countdown-remaining">{{ nextExplorationAchievement.remaining.toLocaleString() }} cells to go</div>
               </div>
               <div class="nge-profile-countdown-track">
