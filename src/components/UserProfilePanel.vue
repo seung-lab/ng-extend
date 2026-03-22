@@ -535,6 +535,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- Proofreading Achievements (building track) -->
           <div class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-section-label" style="color: #ffd08a;">▌ Proofreading Achievements</div>
+            <div class="nge-profile-countdown-inline" v-if="nextBuildingAchievement">
+              <div class="nge-profile-countdown-row">
+                <div class="nge-profile-countdown-remaining">{{ nextBuildingAchievement.remaining.toLocaleString() }} edits to go</div>
+              </div>
+              <div class="nge-profile-countdown-track">
+                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--building" :style="{ width: nextBuildingAchievement.pct + '%' }"></div>
+              </div>
+            </div>
             <div class="nge-profile-badges-grid">
               <div
                 v-for="badge in displayedBuildingBadges"
@@ -551,6 +559,18 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
+              </div>
+              <!-- Next locked badge teaser -->
+              <div
+                v-if="earnedBuildingBadges.next && !showBuildingViewAll"
+                class="nge-profile-badge nge-profile-badge--locked"
+                :title="'Next: keep editing to unlock!'"
+              >
+                <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-mystery">
+                    <span class="nge-profile-badge-mystery-q">?</span>
+                  </div>
+                </div>
               </div>
               <!-- "View All" tile at end of row 2 -->
               <div
@@ -576,6 +596,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- Cell Achievements (exploration track) -->
           <div class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-section-label" style="color: #90fff2;">▌ Cell Achievements</div>
+            <div class="nge-profile-countdown-inline" v-if="nextExplorationAchievement">
+              <div class="nge-profile-countdown-row">
+                <div class="nge-profile-countdown-remaining">{{ nextExplorationAchievement.remaining.toLocaleString() }} cells to go</div>
+              </div>
+              <div class="nge-profile-countdown-track">
+                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--exploration" :style="{ width: nextExplorationAchievement.pct + '%' }"></div>
+              </div>
+            </div>
             <div class="nge-profile-badges-grid">
               <div
                 v-for="badge in displayedExplorationBadges"
@@ -592,6 +620,18 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 </div>
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
+              </div>
+              <!-- Next locked badge teaser -->
+              <div
+                v-if="earnedExplorationBadges.next && !showExplorationViewAll"
+                class="nge-profile-badge nge-profile-badge--locked"
+                :title="'Next: complete more cells to unlock!'"
+              >
+                <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-mystery">
+                    <span class="nge-profile-badge-mystery-q">?</span>
+                  </div>
+                </div>
               </div>
               <!-- "View All" tile at end of row 2 -->
               <div
