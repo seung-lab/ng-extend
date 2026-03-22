@@ -2103,7 +2103,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 .nge-trophy-featured-fav-label {
   font-size: 0.78em;
-  color: #ffd700;
+  color: rgba(74, 158, 255, 0.6);
   margin-top: 8px;
   letter-spacing: 0.03em;
 }
