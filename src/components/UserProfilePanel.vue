@@ -853,6 +853,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(selectedSpecialBadge.awarded_at) }}</strong>
               </div>
+              <div v-if="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`)" class="nge-trophy-featured-fav-label">★ Your favorite badge</div>
             </div>
             <button
               class="nge-trophy-featured-star"
@@ -883,6 +884,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(favoriteSpecialBadge.awarded_at) }}</strong>
               </div>
+              <div class="nge-trophy-featured-fav-label">★ Your favorite badge</div>
             </div>
             <button
               class="nge-trophy-featured-star nge-trophy-featured-star--active"
@@ -912,6 +914,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-trophy-featured-threshold">
                 Unlocked at <strong>{{ featuredBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(featuredBadge) }}
               </div>
+              <div v-if="favoriteBadgeSlug === featuredBadge.slug" class="nge-trophy-featured-fav-label">★ Your favorite badge</div>
             </div>
             <button
               class="nge-trophy-featured-star"
