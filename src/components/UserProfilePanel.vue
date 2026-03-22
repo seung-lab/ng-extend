@@ -169,7 +169,8 @@ const latestEarnedBadge = computed(() => {
 });
 
 // ── Favorite badge (persisted in localStorage) ────────────────────────────────
-const favoriteBadgeSlug = ref(localStorage.getItem('nge-favorite-badge') || '');
+/** Favorite badge slug — synced to Supabase via store. */
+const favoriteBadgeSlug = computed(() => backendStore.favoriteBadgeSlug);
 const favoriteBadge = computed<BadgeDefinition | null>(() => {
   if (favoriteBadgeSlug.value) {
     const found = BADGE_DEFINITIONS.find(b => b.slug === favoriteBadgeSlug.value);
@@ -179,7 +180,7 @@ const favoriteBadge = computed<BadgeDefinition | null>(() => {
 });
 /** Check if the favorite is a special badge (not a regular track badge). */
 const favoriteSpecialBadge = computed(() => {
-  if (!favoriteBadgeSlug.value || favoriteBadge.value) return null; // regular badge takes priority
+  if (!favoriteBadgeSlug.value || favoriteBadge.value) return null;
   return backendStore.mySpecialBadges.find(
     (a: any) => (a.badge?.slug || `special-${a.id}`) === favoriteBadgeSlug.value
   ) || null;
@@ -187,23 +188,13 @@ const favoriteSpecialBadge = computed(() => {
 /** Badge shown in the Trophy Case featured banner. */
 const featuredBadge = computed(() => selectedBadge.value ?? favoriteBadge.value ?? latestEarnedBadge.value);
 function toggleFavoriteBadge(badge: BadgeDefinition) {
-  if (favoriteBadgeSlug.value === badge.slug) {
-    favoriteBadgeSlug.value = '';
-    localStorage.removeItem('nge-favorite-badge');
-  } else {
-    favoriteBadgeSlug.value = badge.slug;
-    localStorage.setItem('nge-favorite-badge', badge.slug);
-  }
+  const newSlug = favoriteBadgeSlug.value === badge.slug ? '' : badge.slug;
+  backendStore.saveFavoriteBadge(newSlug);
 }
 function toggleFavoriteSpecialBadge(award: any) {
   const slug = award.badge?.slug || `special-${award.id}`;
-  if (favoriteBadgeSlug.value === slug) {
-    favoriteBadgeSlug.value = '';
-    localStorage.removeItem('nge-favorite-badge');
-  } else {
-    favoriteBadgeSlug.value = slug;
-    localStorage.setItem('nge-favorite-badge', slug);
-  }
+  const newSlug = favoriteBadgeSlug.value === slug ? '' : slug;
+  backendStore.saveFavoriteBadge(newSlug);
 }
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });

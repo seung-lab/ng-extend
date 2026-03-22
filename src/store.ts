@@ -1756,9 +1756,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         userId.value = newUser?.id ?? null;
         console.info('[backend] syncUser: created user', userId.value);
       }
-      // Check admin status + load special badges after user is synced
+      // Check admin status + load special badges + favorite badge after user is synced
       await checkAdmin();
       await loadMySpecialBadges();
+      await loadFavoriteBadge();
     } catch (e: any) {
       console.warn('[backend] User sync failed:', e.message);
     }
@@ -2747,6 +2748,38 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     });
   }
 
+  // ── Favorite Badge (persisted to Supabase) ─────────────────────────────
+  const favoriteBadgeSlug: Ref<string> = ref('');
+
+  async function loadFavoriteBadge() {
+    if (!userId.value) return;
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('favorite_badge')
+        .eq('id', userId.value)
+        .single();
+      if (data?.favorite_badge) {
+        favoriteBadgeSlug.value = data.favorite_badge;
+      }
+    } catch (e: any) {
+      console.warn('[backend] loadFavoriteBadge error:', e.message);
+    }
+  }
+
+  async function saveFavoriteBadge(slug: string) {
+    favoriteBadgeSlug.value = slug;
+    if (!userId.value) return;
+    try {
+      await supabase
+        .from('users')
+        .update({ favorite_badge: slug || null })
+        .eq('id', userId.value);
+    } catch (e: any) {
+      console.warn('[backend] saveFavoriteBadge error:', e.message);
+    }
+  }
+
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     leaderboard,
@@ -2773,6 +2806,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload
     uploadAdminImage,
+    // Favorite Badge
+    favoriteBadgeSlug, loadFavoriteBadge, saveFavoriteBadge,
   };
 });
 
