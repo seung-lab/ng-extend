@@ -108,11 +108,10 @@ async function addMember(userId: string) {
   memberSearchResults.value = [];
 }
 
-async function removeMember(memberId: number) {
-  await backend.removeGroupMember(memberId);
-  if (selectedGroupId.value) {
-    groupMembers.value = await backend.loadGroupMembers(selectedGroupId.value);
-  }
+async function removeMember(userId: string) {
+  if (!selectedGroupId.value) return;
+  await backend.removeGroupMember(selectedGroupId.value, userId);
+  groupMembers.value = await backend.loadGroupMembers(selectedGroupId.value);
 }
 
 // ── Special badge management ──
@@ -480,9 +479,9 @@ const emit = defineEmits({hide: null});
                 </button>
               </div>
               <div class="nge-admin-member-list">
-                <div v-for="m in groupMembers" :key="m.id" class="nge-admin-member-row">
-                  <span>{{ m.users?.username || m.user_id }}</span>
-                  <button class="nge-admin-delete-btn" @click="removeMember(m.id)">×</button>
+                <div v-for="m in groupMembers" :key="m.user_id" class="nge-admin-member-row">
+                  <span>{{ m.display_name || m.email || m.user_id }}</span>
+                  <button class="nge-admin-delete-btn" @click="removeMember(m.user_id)">×</button>
                 </div>
                 <div v-if="groupMembers.length === 0" class="nge-settings-hint">No members yet.</div>
               </div>
@@ -1069,7 +1068,7 @@ const emit = defineEmits({hide: null});
   transition: all 0.12s;
 }
 .nge-admin-group-chip:hover { background: rgba(255,255,255,0.08); }
-.nge-admin-group-chip--active { background: rgba(74,158,255,0.08); border-color: rgba(74,158,255,0.3); color: #4a9eff; }
+.nge-admin-group-chip--active { background: rgba(255,255,255,0.08); color: #e0ecff; }
 .nge-admin-group-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
 .nge-admin-members { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
