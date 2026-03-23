@@ -177,7 +177,7 @@ function batchRecolor(group: SegmentGroup, hexColor: string) {
   }
   group.color = hexColor;
   persist();
-  colorPickerGroupId.value = null;
+  // Keep color picker open so user can try different colors
   flash(`Recolored ${count} segments`);
 }
 
