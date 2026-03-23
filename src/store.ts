@@ -2007,6 +2007,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         updates.total_splits = (row.total_splits || 0) + diff;
       } else if (op === 'mark_complete') {
         updates.cells_completed = (row.cells_completed || 0) + 1;
+      } else if (op === 'unmark_complete') {
+        updates.cells_completed = Math.max(0, (row.cells_completed || 0) - 1);
       }
 
       // Calculate streak: consecutive calendar days with any activity (edits or completions)

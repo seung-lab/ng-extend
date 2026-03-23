@@ -309,10 +309,13 @@ export async function setCellComplete(
       position: pos,
       dataset: getCurrentDataset(),
     });
+    const statsStore = useUserStatsStore();
     if (complete) {
-      const statsStore = useUserStatsStore();
       statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
       statsStore.logDailyCellComplete();
+    } else {
+      // Decrement on unmark (don't go below 0)
+      statsStore.setStats({ cellsSubmitted: Math.max(0, statsStore.stats.cellsSubmitted - 1) });
     }
   } catch { /* non-critical */ }
   // Log to Supabase regardless of CAVE/local path
