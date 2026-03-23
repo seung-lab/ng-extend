@@ -195,32 +195,37 @@ const completedCount = computed(() => cells.value.filter(c => c.status === 'comp
 const claimedCount = computed(() => cells.value.filter(c => c.status === 'assigned' || c.status === 'in_progress').length);
 
 // ── User name lookup (for claimed tab) ───────────────────────────────
-const userNameCache = ref<Map<string, string>>(new Map());
+const userNameCache = ref<Record<string, string>>({});
+const pendingResolves = new Set<string>();
 async function resolveUserName(userId: string): Promise<string> {
-  if (userNameCache.value.has(userId)) return userNameCache.value.get(userId)!;
+  if (userNameCache.value[userId]) return userNameCache.value[userId];
+  if (pendingResolves.has(userId)) return userId.slice(0, 8);
+  pendingResolves.add(userId);
   try {
     const { data } = await (await import('../supabase')).default
       .from('users')
-      .select('display_name, email')
+      .select('display_name, middleauth_email')
       .eq('id', userId)
       .single();
-    const name = data?.display_name || data?.email?.split('@')[0] || userId.slice(0, 8);
-    userNameCache.value.set(userId, name);
+    const name = data?.display_name || data?.middleauth_email?.split('@')[0] || userId.slice(0, 8);
+    userNameCache.value = { ...userNameCache.value, [userId]: name };
     return name;
   } catch {
     const fallback = userId.slice(0, 8);
-    userNameCache.value.set(userId, fallback);
+    userNameCache.value = { ...userNameCache.value, [userId]: fallback };
     return fallback;
+  } finally {
+    pendingResolves.delete(userId);
   }
 }
 function getCachedUserName(userId: string): string {
   if (!userId) return '?';
   if (userId === backend.userId) return 'You';
-  if (!userNameCache.value.has(userId)) {
-    resolveUserName(userId); // fire-and-forget
-    return userId.slice(0, 8) + '…';
+  if (!userNameCache.value[userId]) {
+    resolveUserName(userId);
+    return '…';
   }
-  return userNameCache.value.get(userId)!;
+  return userNameCache.value[userId];
 }
 
 // ── Actions ──────────────────────────────────────────────────────────

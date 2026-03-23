@@ -179,6 +179,34 @@ function send() {
   inputEl.value?.focus();
 }
 
+// ── Load segment from #SegID click ──
+function loadSegment(segRef: string) {
+  const segId = segRef.replace('#', '');
+  try {
+    const viewer = (window as any)['viewer'];
+    if (!viewer) return;
+    // Find segmentation layer and add segment
+    const segLayer = viewer.layerManager?.managedLayers?.find((x: any) => {
+      const layer = x.layer;
+      if (!layer) return false;
+      const cn = layer.constructor?.name || '';
+      return cn.includes('Segmentation') || layer.type === 'segmentation' || x.initialSpecification?.type === 'segmentation';
+    });
+    if (segLayer?.layer) {
+      const groupState = segLayer.layer.displayState?.segmentationGroupState?.value;
+      if (groupState?.visibleSegments) {
+        const { Uint64 } = require('neuroglancer/util/uint64');
+        const seg = Uint64.parseString(segId);
+        if (!groupState.visibleSegments.has(seg)) {
+          groupState.visibleSegments.add(seg);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[chat] loadSegment error:', e);
+  }
+}
+
 // ── Scroll handling (inverted scroll) ──
 function handleScroll() {
   const el = scrollContainer.value;
@@ -263,6 +291,7 @@ function toggleCollapse() {
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <a v-else-if="part.type === 'link'" :href="part.text" target="_blank" rel="noopener" class="nge-chat-link">{{ part.text }}</a>
+                    <button v-else-if="part.type === 'segment'" class="nge-chat-seg-link" @click="loadSegment(part.text)" :title="'Load segment ' + part.text.slice(1)">{{ part.text }}</button>
                     <span v-else class="nge-chat-msg-text">{{ part.text }}</span>
                   </template>
                 </div>
@@ -510,6 +539,22 @@ function toggleCollapse() {
   font-size: 13px;
 }
 .nge-chat-link:hover { text-decoration: underline; }
+
+.nge-chat-seg-link {
+  background: rgba(0, 220, 120, 0.1);
+  border: 1px solid rgba(0, 220, 120, 0.25);
+  color: #80ffc0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nge-chat-seg-link:hover {
+  background: rgba(0, 220, 120, 0.2);
+  border-color: rgba(0, 220, 120, 0.4);
+}
 
 /* System messages */
 .nge-chat-sys {

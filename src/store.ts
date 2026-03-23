@@ -2913,7 +2913,7 @@ export const useVolumesStore = defineStore('volumes', () => {
 // ════════════════════════════════════════════════════════════════════════════════
 
 export interface MessagePart {
-  type: 'text' | 'link' | 'sender';
+  type: 'text' | 'link' | 'sender' | 'segment';
   text: string;
 }
 
@@ -2926,21 +2926,21 @@ export interface ChatMessage {
   parts: MessagePart[];
 }
 
-/** Parse message text into parts (text + auto-detected links) */
+/** Parse message text into parts (text + auto-detected links + #SegID references) */
 function parseMessageParts(name: string, text: string): MessagePart[] {
   const parts: MessagePart[] = [{ type: 'sender', text: name }];
-  // Split on URLs
-  const urlRegex = /(https?:\/\/\S+)/g;
-  const segments = text.split(urlRegex);
+  // Split on URLs and #SegmentID references
+  const tokenRegex = /(https?:\/\/\S+|#\d{5,})/g;
+  const segments = text.split(tokenRegex);
   for (const seg of segments) {
     if (!seg) continue;
-    if (urlRegex.test(seg)) {
+    if (/^https?:\/\//.test(seg)) {
       parts.push({ type: 'link', text: seg });
+    } else if (/^#\d{5,}$/.test(seg)) {
+      parts.push({ type: 'segment', text: seg });
     } else {
       parts.push({ type: 'text', text: seg });
     }
-    // Reset regex lastIndex since we reuse it
-    urlRegex.lastIndex = 0;
   }
   return parts;
 }

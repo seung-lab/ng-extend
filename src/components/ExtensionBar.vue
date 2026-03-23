@@ -57,12 +57,29 @@ const invalidLogins = computed(() => login.sessions.filter(x => x.status !== und
 
 const {volumes} = useVolumesStore();
 
+const shareCopied = ref(false);
+let shareCopiedTimer: ReturnType<typeof setTimeout> | null = null;
+
 onMounted(() => {
   // Keep Pyr icon in top-left (don't overwrite with CaveLogo)
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
     showProfile.value = true;
   }) as EventListener);
+
+  // Detect Share button click → show "Link copied" toast
+  const topBar = document.getElementById('insertNGTopBar');
+  if (topBar) {
+    topBar.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const shareBtn = target.closest('[title*="hare"], [class*="share" i]');
+      if (shareBtn) {
+        if (shareCopiedTimer) clearTimeout(shareCopiedTimer);
+        shareCopied.value = true;
+        shareCopiedTimer = setTimeout(() => { shareCopied.value = false; }, 2500);
+      }
+    });
+  }
 });
 
 const statsStore = useUserStatsStore();
@@ -233,6 +250,9 @@ function activateTool(toolType: 'multicut' | 'merge') {
       </a>
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
+    <transition name="nge-share-toast">
+      <div v-if="shareCopied" class="nge-share-toast">Link copied to clipboard</div>
+    </transition>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
          class="nge-streak-chip" title="Your current editing streak">
@@ -452,6 +472,30 @@ function activateTool(toolType: 'multicut' | 'merge') {
   transition: opacity 0.15s;
 }
 .nge-pyr-logo:hover { opacity: 1; }
+
+/* ── Share toast ── */
+.nge-share-toast {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(8, 24, 40, 0.94);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  color: #a0d0ff;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 9999;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+.nge-share-toast-enter-active { transition: all 0.25s ease-out; }
+.nge-share-toast-leave-active { transition: all 0.3s ease-in; }
+.nge-share-toast-enter-from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+.nge-share-toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(-4px); }
 
 .nge-streak-chip {
   display: flex;
