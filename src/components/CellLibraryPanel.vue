@@ -202,7 +202,8 @@ async function resolveUserName(userId: string): Promise<string> {
   if (pendingResolves.has(userId)) return userId.slice(0, 8);
   pendingResolves.add(userId);
   try {
-    const { data } = await (await import('../supabase')).default
+    const { supabase } = await import('../supabase');
+    const { data } = await supabase
       .from('users')
       .select('display_name, middleauth_email')
       .eq('id', userId)
