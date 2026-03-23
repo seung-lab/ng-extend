@@ -1763,8 +1763,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-viz-badge-icon--large { width: 240px; height: 240px; }
 
 .nge-profile-viz-badge-name {
-  font-size: 1em; font-weight: 700; color: #e0e8f4;
-  text-shadow: 0 0 20px rgba(74,158,255,0.25);
+  font-family: 'Orbitron', 'Rajdhani', 'Audiowide', 'Share Tech Mono', ui-monospace, monospace;
+  font-size: 1.1em; font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #e0ecff 0%, #58a6ff 50%, #a0d0ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .nge-profile-viz-badge-desc { font-size: 0.8em; color: #888; line-height: 1.4; font-style: italic; }
