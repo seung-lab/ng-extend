@@ -207,6 +207,19 @@ function loadSegment(segRef: string) {
   }
 }
 
+// ── Open user profile from chat name click ──
+async function openUserProfile(displayName: string) {
+  try {
+    const results = await backendStore.searchUsers(displayName);
+    const match = results.find((u: any) => u.display_name === displayName) || results[0];
+    if (match) {
+      document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: match.id } }));
+    }
+  } catch (e) {
+    console.warn('[chat] openUserProfile error:', e);
+  }
+}
+
 // ── Scroll handling (inverted scroll) ──
 function handleScroll() {
   const el = scrollContainer.value;
@@ -287,7 +300,7 @@ function toggleCollapse() {
                 <div v-else-if="msg.type === 'message'" class="nge-chat-msg">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
-                  <span class="nge-chat-msg-name" :style="{ color: rankColor(msg.rank) }">{{ shortName(msg.name) }}</span>
+                  <button class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: rankColor(msg.rank) }" @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</button>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <a v-else-if="part.type === 'link'" :href="part.text" target="_blank" rel="noopener" class="nge-chat-link">{{ part.text }}</a>
@@ -526,6 +539,20 @@ function toggleCollapse() {
   font-weight: 600;
   font-size: 13px;
   margin-right: 4px;
+}
+.nge-chat-msg-name--clickable {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  transition: opacity 0.15s;
+}
+.nge-chat-msg-name--clickable:hover {
+  opacity: 0.8;
+  text-decoration: underline;
 }
 
 .nge-chat-msg-text {

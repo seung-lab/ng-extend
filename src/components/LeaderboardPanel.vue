@@ -175,7 +175,7 @@ const emit = defineEmits({hide: null});
                        class="nge-lb-flag-img"
                        :src="flagImgUrl((user.id === 'amy' || user.id === backendStore.userId) ? (prefs.flag || user.flag) : user.flag)" />
                   <span v-else class="nge-lb-flag-fallback">🌐</span>
-                  <span class="nge-lb-name">{{ user.name }}</span>
+                  <span class="nge-lb-name nge-lb-name--clickable" @click.stop="openFullProfile(user.id)" title="View profile">{{ user.name }}</span>
                   <span v-if="user.id === 'amy' || user.id === backendStore.userId" class="nge-lb-you-tag">you</span>
                   <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak"
                         :title="`${user.stats.currentStreak}-day streak`">
