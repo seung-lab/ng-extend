@@ -276,9 +276,10 @@ export async function setCellComplete(
           statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
           statsStore.logDailyCellComplete();
         } catch { /* non-critical */ }
-        // Celebration!
+        // Celebration! Read fresh count from Supabase for accuracy
         try {
           const backend = useProofreadingBackendStore();
+          await backend.loadUserStats(); // refresh from DB
           const statsStore = useUserStatsStore();
           const total = statsStore.stats.cellsSubmitted;
           const nurro = NURRO_IMAGES[Math.floor(Math.random() * NURRO_IMAGES.length)];
@@ -334,6 +335,20 @@ export async function setCellComplete(
       );
     }
   } catch { /* non-critical */ }
+  // Celebration on complete (fallback path — CAVE was unavailable)
+  if (complete) {
+    try {
+      const backend = useProofreadingBackendStore();
+      await backend.loadUserStats();
+      const statsStore = useUserStatsStore();
+      const total = statsStore.stats.cellsSubmitted;
+      const nurro = NURRO_IMAGES[Math.floor(Math.random() * NURRO_IMAGES.length)];
+      backend.pendingCellCelebration = {
+        totalCells: total,
+        imageUrl: nurro,
+      };
+    } catch { /* non-critical */ }
+  }
   return true;
 }
 

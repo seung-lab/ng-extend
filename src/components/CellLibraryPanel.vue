@@ -283,7 +283,8 @@ import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
-function triggerCellCelebration() {
+async function triggerCellCelebration() {
+  await backend.loadUserStats(); // refresh from DB for accurate count
   const statsStore = useUserStatsStore();
   const total = statsStore.stats.cellsSubmitted;
   const nurro = NURRO_IMAGES[Math.floor(Math.random() * NURRO_IMAGES.length)];
