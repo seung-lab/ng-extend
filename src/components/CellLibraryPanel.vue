@@ -841,7 +841,7 @@ const panelStyle = computed(() => ({
                 </div>
                 <div class="nge-cl-row-meta">
                   <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
-                  <span v-if="filter === 'claimed' && cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
+                  <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
                 <div v-if="cell.currentSegId && cell.currentSegId !== cell.segId" class="nge-cl-row-current" @click="copyId(cell.currentSegId)" title="Click to copy current ID">
