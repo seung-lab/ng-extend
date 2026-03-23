@@ -2177,6 +2177,29 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
+  // ── Load another user's profile data ────────────────────────────────
+  async function loadUserProfile(targetUserId: string): Promise<any | null> {
+    try {
+      const { data: user } = await supabase
+        .from('users')
+        .select('id, display_name, middleauth_email, flag, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
+        .eq('id', targetUserId)
+        .single();
+      if (!user) return null;
+
+      // Load their special badges
+      const { data: awards } = await supabase
+        .from('special_badge_awards')
+        .select('*, badge:special_badges(*)')
+        .eq('user_id', targetUserId);
+
+      return { ...user, specialBadges: awards || [] };
+    } catch (e: any) {
+      console.warn('[backend] loadUserProfile error:', e.message);
+      return null;
+    }
+  }
+
   // ── Leaderboard: top users from Supabase ────────────────────────────
   const leaderboard: Ref<any[]> = ref([]);
 
@@ -2788,7 +2811,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     leaderboard,
     syncUser, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
-    importFromGoogleSheet, syncStats, loadUserStats, loadLeaderboard,
+    importFromGoogleSheet, syncStats, loadUserStats, loadUserProfile, loadLeaderboard,
     // Claim-by-segment
     claimBySegment, releaseBySegment, isMyClaimedSegment, isClaimedSegment, myActiveClaimCount,
     MAX_CLAIMS,

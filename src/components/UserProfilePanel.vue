@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref, computed, onMounted, onUnmounted} from 'vue';
+import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
@@ -8,6 +8,11 @@ import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition,
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+
+// ── Props ─────────────────────────────────────────────────────────────────────
+const props = defineProps<{
+  viewUserId?: string | null;
+}>();
 
 // ── Stores ────────────────────────────────────────────────────────────────────
 const {sessions} = storeToRefs(useLoginStore());
@@ -18,13 +23,58 @@ const {prefs}     = storeToRefs(prefsStore);
 const historyStore = useCellHistoryStore();
 const {cells: cellHistory} = storeToRefs(historyStore);
 
-// Refresh stats from Supabase when profile opens
 const backendStore = useProofreadingBackendStore();
-backendStore.loadUserStats();
+
+// ── Viewing another user's profile ────────────────────────────────────────────
+const viewingOtherUser = computed(() => !!props.viewUserId && props.viewUserId !== backendStore.userId);
+const otherUserProfile = ref<any>(null);
+
+async function loadOtherUser() {
+  if (viewingOtherUser.value && props.viewUserId) {
+    otherUserProfile.value = await backendStore.loadUserProfile(props.viewUserId);
+  } else {
+    otherUserProfile.value = null;
+    backendStore.loadUserStats();
+  }
+}
+loadOtherUser();
+
+// Profile display name & email — works for both self and other users
+const profileName = computed(() => {
+  if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.display_name || 'Anonymous';
+  return backendStore.userName || sessions.value?.[0]?.name || 'Researcher';
+});
+const profileEmail = computed(() => {
+  if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.middleauth_email || '';
+  return backendStore.userEmail || sessions.value?.[0]?.email || '';
+});
+const profileFlag = computed(() => {
+  if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.flag || '';
+  return prefs.value.flag || '';
+});
+const profileStats = computed(() => {
+  if (viewingOtherUser.value && otherUserProfile.value) {
+    const u = otherUserProfile.value;
+    return {
+      editsAllTime: u.total_edits || 0, mergesAllTime: u.total_merges || 0, splitsAllTime: u.total_splits || 0,
+      cellsSubmitted: u.cells_completed || 0, currentStreak: u.current_streak || 0, longestStreak: u.longest_streak || 0,
+      // Weekly/monthly/today not available for other users — show 0
+      editsThisWeek: 0, mergesThisWeek: 0, splitsThisWeek: 0,
+      editsThisMonth: 0, mergesThisMonth: 0, splitsThisMonth: 0,
+      editsToday: 0, mergesToday: 0, splitsToday: 0,
+    };
+  }
+  return stats.value;
+});
+const profileSpecialBadges = computed(() => {
+  if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.specialBadges || [];
+  return profileSpecialBadges;
+});
 
 // Player assists — help requests resolved by current user
 const helpStore = useHelpRequestStore();
 const playerAssists = computed(() => {
+  if (viewingOtherUser.value) return 0;
   const name = backendStore.userName || backendStore.userEmail?.split('@')[0];
   if (!name) return 0;
   return helpStore.requests.filter(r => r.resolved && r.resolvedByName === name).length;
@@ -126,9 +176,10 @@ function getBadgeUrl(imageKey: string): string {
 
 /** Get the player's current count for a given track. */
 function statForTrack(track: BadgeTrack): number {
+  const s = profileStats.value;
   return track === 'building'
-    ? (stats.value.editsAllTime ?? 0)
-    : (stats.value.cellsSubmitted ?? 0);
+    ? (s.editsAllTime ?? 0)
+    : (s.cellsSubmitted ?? 0);
 }
 
 function isBadgeEarned(badge: BadgeDefinition): boolean {
@@ -181,7 +232,7 @@ const favoriteBadge = computed<BadgeDefinition | null>(() => {
 /** Check if the favorite is a special badge (not a regular track badge). */
 const favoriteSpecialBadge = computed(() => {
   if (!favoriteBadgeSlug.value || favoriteBadge.value) return null;
-  return backendStore.mySpecialBadges.find(
+  return profileSpecialBadges.find(
     (a: any) => (a.badge?.slug || `special-${a.id}`) === favoriteBadgeSlug.value
   ) || null;
 });
@@ -231,10 +282,10 @@ function nextForTrack(badges: BadgeDefinition[], current: number) {
 }
 
 const nextBuildingAchievement = computed(() =>
-  nextForTrack(BUILDING_BADGES, stats.value.editsAllTime ?? 0)
+  nextForTrack(BUILDING_BADGES, profileStats.value.editsAllTime ?? 0)
 );
 const nextExplorationAchievement = computed(() =>
-  nextForTrack(EXPLORATION_BADGES, stats.value.cellsSubmitted ?? 0)
+  nextForTrack(EXPLORATION_BADGES, profileStats.value.cellsSubmitted ?? 0)
 );
 
 // ── Current dataset helper (for filtering cells) ────────────────────────────
@@ -377,18 +428,18 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         <div class="nge-profile-col nge-profile-col--left">
 
           <!-- Header -->
-          <div class="nge-profile-header" v-if="sessions.length > 0">
+          <div class="nge-profile-header" v-if="sessions.length > 0 || viewingOtherUser">
             <div class="nge-profile-name-row">
 
-              <!-- Flag with inline picker -->
-              <div id="nge-profile-flag-wrap" class="nge-profile-flag-wrap" @click.stop>
+              <!-- Flag (editable only for own profile) -->
+              <div v-if="!viewingOtherUser" id="nge-profile-flag-wrap" class="nge-profile-flag-wrap" @click.stop>
                 <button
                   class="nge-profile-flag"
                   :class="{ 'nge-profile-flag--active': showFlagPicker }"
                   @click="showFlagPicker = !showFlagPicker"
                   title="Click to change flag"
                 >
-                  <img v-if="flagImgUrl(prefs.flag || '')" :src="flagImgUrl(prefs.flag)" class="nge-flag-img" />
+                  <img v-if="flagImgUrl(profileFlag)" :src="flagImgUrl(profileFlag)" class="nge-flag-img" />
                   <img v-else :src="pyrIcon" class="nge-flag-img nge-pyr-icon" />
                 </button>
                 <Transition name="nge-flag-picker">
@@ -402,20 +453,25 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   </div>
                 </Transition>
               </div>
+              <div v-else class="nge-profile-flag-wrap">
+                <img v-if="flagImgUrl(profileFlag)" :src="flagImgUrl(profileFlag)" class="nge-flag-img" style="width:28px;height:20px;" />
+              </div>
 
-              <div class="nge-profile-name">{{ sessions[0].name || sessions[0].email?.split('@')[0] || 'Explorer' }}</div>
+              <div class="nge-profile-name">{{ profileName }}</div>
 
-              <button class="nge-profile-edit-btn"
+              <button v-if="!viewingOtherUser" class="nge-profile-edit-btn"
                       @click="emit('open-settings')"
                       title="Edit Profile — set bio, flag, and more">⚙</button>
             </div>
 
-            <div class="nge-profile-email">{{ sessions[0].email }}</div>
+            <div class="nge-profile-email">{{ profileEmail }}</div>
 
-            <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
-            <button v-else class="nge-profile-bio-add" @click="emit('open-settings')">
-              + Add a bio
-            </button>
+            <template v-if="!viewingOtherUser">
+              <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
+              <button v-else class="nge-profile-bio-add" @click="emit('open-settings')">
+                + Add a bio
+              </button>
+            </template>
           </div>
 
           <!-- Edits stats -->
@@ -423,9 +479,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-profile-section-label">▌ Edits</div>
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" v-for="(col, i) in [
-                {label:'Today',    val:stats.editsToday,    merges:stats.mergesToday,    splits:stats.splitsToday},
-                {label:'Past 7d',  val:stats.editsThisWeek, merges:stats.mergesThisWeek, splits:stats.splitsThisWeek},
-                {label:'All Time', val:stats.editsAllTime,  merges:stats.mergesAllTime,  splits:stats.splitsAllTime},
+                {label:'Today',    val:profileStats.editsToday,    merges:profileStats.mergesToday,    splits:profileStats.splitsToday},
+                {label:'Past 7d',  val:profileStats.editsThisWeek, merges:profileStats.mergesThisWeek, splits:profileStats.splitsThisWeek},
+                {label:'All Time', val:profileStats.editsAllTime,  merges:profileStats.mergesAllTime,  splits:profileStats.splitsAllTime},
               ]" :key="i">
                 <div class="nge-profile-stat-label">{{ col.label }}</div>
                 <div class="nge-profile-stat-val">{{ col.val.toLocaleString() }}</div>
@@ -457,7 +513,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           </div>
 
           <!-- Cells stats -->
-          <div class="nge-profile-section nge-profile-section--cells">
+          <div v-if="!viewingOtherUser" class="nge-profile-section nge-profile-section--cells">
             <div class="nge-profile-section-label">▌ Cells</div>
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col">
@@ -652,13 +708,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           </div>
 
           <!-- Special Awards (admin-awarded badges) -->
-          <template v-if="backendStore.mySpecialBadges.length > 0">
+          <template v-if="profileSpecialBadges.length > 0">
             <div class="nge-profile-badges-divider"></div>
             <div class="nge-profile-section nge-profile-section--badges nge-profile-section--special">
               <div class="nge-profile-section-label">★ Special Awards</div>
               <div class="nge-profile-badges-grid">
                 <div
-                  v-for="award in backendStore.mySpecialBadges"
+                  v-for="award in profileSpecialBadges"
                   :key="award.id"
                   class="nge-profile-badge"
                   :class="{ 'nge-profile-badge--selected': selectedSpecialBadge?.id === award.id }"
@@ -774,15 +830,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- Streak + Activity Chart -->
           <div class="nge-profile-section nge-profile-section--streak">
             <div class="nge-profile-section-label nge-profile-section-label--amber">▌ Streak</div>
-            <div class="nge-profile-streak-row" v-if="stats.currentStreak > 0 || stats.longestStreak > 0">
+            <div class="nge-profile-streak-row" v-if="profileStats.currentStreak > 0 || profileStats.longestStreak > 0">
               <div class="nge-profile-streak-current">
                 <span class="nge-profile-streak-flame">🔥</span>
-                <span class="nge-profile-streak-count">{{ stats.currentStreak }}</span>
-                <span class="nge-profile-streak-unit">day{{ stats.currentStreak === 1 ? '' : 's' }} current</span>
+                <span class="nge-profile-streak-count">{{ profileStats.currentStreak }}</span>
+                <span class="nge-profile-streak-unit">day{{ profileStats.currentStreak === 1 ? '' : 's' }} current</span>
               </div>
-              <div class="nge-profile-streak-best" v-if="stats.longestStreak > 0">
+              <div class="nge-profile-streak-best" v-if="profileStats.longestStreak > 0">
                 <span class="nge-profile-streak-best-label">Best</span>
-                <span class="nge-profile-streak-best-val">{{ stats.longestStreak }}d</span>
+                <span class="nge-profile-streak-best-val">{{ profileStats.longestStreak }}d</span>
               </div>
             </div>
 
@@ -973,11 +1029,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           </div>
 
           <!-- Special Awards -->
-          <div v-if="backendStore.mySpecialBadges.length > 0" class="nge-trophy-track">
+          <div v-if="profileSpecialBadges.length > 0" class="nge-trophy-track">
             <div class="nge-trophy-track-label">★ Special Awards</div>
             <div class="nge-trophy-grid">
               <div
-                v-for="award in backendStore.mySpecialBadges"
+                v-for="award in profileSpecialBadges"
                 :key="award.id"
                 class="nge-trophy-badge"
                 :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id }"

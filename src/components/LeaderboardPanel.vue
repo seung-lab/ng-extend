@@ -107,6 +107,11 @@ function selectedBadgeDef() {
   return BADGE_DEFINITIONS.find(b => b.id === selectedBadgeId.value) ?? null;
 }
 
+function openFullProfile(userId: string) {
+  document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId } }));
+  emit('hide');
+}
+
 const RANK_MEDAL: Record<number, string> = {1: '🥇', 2: '🥈', 3: '🥉'};
 
 /** Convert flag emoji to a CDN image URL (cross-platform, Windows compat). */
@@ -213,6 +218,7 @@ const emit = defineEmits({hide: null});
               <div class="nge-lb-detail-name">{{ selectedUser.name }}</div>
             </div>
             <div class="nge-lb-detail-bio" v-if="selectedUser.bio">{{ selectedUser.bio }}</div>
+            <button class="nge-lb-view-profile" @click="openFullProfile(selectedUser.id)">View Full Profile →</button>
           </div>
 
           <!-- Stats grid (2-column) -->
@@ -767,4 +773,20 @@ const emit = defineEmits({hide: null});
 .lb-badge-detail-leave-active { transition: all 0.15s ease-in; }
 .lb-badge-detail-enter-from,
 .lb-badge-detail-leave-to { opacity: 0; transform: translateY(8px) scale(0.96); }
+
+.nge-lb-view-profile {
+  margin-top: 8px;
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  color: #58a6ff;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nge-lb-view-profile:hover {
+  background: rgba(74, 158, 255, 0.2);
+  border-color: rgba(74, 158, 255, 0.4);
+}
 </style>

@@ -59,7 +59,10 @@ const {volumes} = useVolumesStore();
 
 onMounted(() => {
   (document.querySelector('.ng-extend-logo > a > img')! as HTMLImageElement).src = logoImage;
-  document.addEventListener('nge:open-profile', () => { showProfile.value = true; });
+  document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
+    profileUserId.value = e.detail?.userId || null;
+    showProfile.value = true;
+  }) as EventListener);
 });
 
 const statsStore = useUserStatsStore();
@@ -79,6 +82,7 @@ watch(() => statsStore.recentEditEvent, (ev) => {
 
 const showModal = ref(false);
 const showProfile = ref(false);
+const profileUserId = ref<string | null>(null);
 const showRecap = ref(false);
 const showLeaderboard = ref(false);
 const showSettings = ref(false);
@@ -216,7 +220,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
   <batch-processor-panel v-if="showBatchProcessor" @hide="showBatchProcessor = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
-  <user-profile-panel v-if="showProfile" @hide="showProfile = false" @open-settings="showSettings = true" />
+  <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" @hide="showProfile = false; profileUserId = null" @open-settings="showSettings = true" />
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
@@ -261,7 +265,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
       </div>
     </Transition>
 
-    <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
+    <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
     <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
       <template #buttonTitle>☰</template>
       <template #listItems>
