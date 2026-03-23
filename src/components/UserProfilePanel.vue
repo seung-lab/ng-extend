@@ -68,7 +68,7 @@ const profileStats = computed(() => {
 });
 const profileSpecialBadges = computed(() => {
   if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.specialBadges || [];
-  return profileSpecialBadges;
+  return backendStore.mySpecialBadges;
 });
 
 // Player assists — help requests resolved by current user
@@ -232,7 +232,7 @@ const favoriteBadge = computed<BadgeDefinition | null>(() => {
 /** Check if the favorite is a special badge (not a regular track badge). */
 const favoriteSpecialBadge = computed(() => {
   if (!favoriteBadgeSlug.value || favoriteBadge.value) return null;
-  return profileSpecialBadges.find(
+  return profileSpecialBadges.value.find(
     (a: any) => (a.badge?.slug || `special-${a.id}`) === favoriteBadgeSlug.value
   ) || null;
 });
