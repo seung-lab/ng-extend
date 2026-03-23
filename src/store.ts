@@ -188,7 +188,7 @@ export const useLayersStore = defineStore('layers', () => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingRemoved = new Set<string>(); // specific segments removed during this operation
     const pendingAdded   = new Set<string>(); // specific segments added during this operation
-    const EDIT_DEBOUNCE_MS = 1500;
+    const EDIT_DEBOUNCE_MS = 3000; // 3s to allow failed merges to revert before counting
 
     // Signal fires (segId, wasAdded) — track the specific segments involved
     const handler = (changedId?: any, wasAdded?: boolean) => {
@@ -226,43 +226,40 @@ export const useLayersStore = defineStore('layers', () => {
         if (net === 0) return; // changes cancelled out
 
         const statsStore = useUserStatsStore();
-        // Count each merge/split in a batch individually
-        const count = Math.abs(net);
+        // Count as exactly 1 operation per debounce window
         if (net < 0) {
           statsStore.setStats({
-            editsAllTime:   statsStore.stats.editsAllTime   + count,
-            mergesAllTime:  statsStore.stats.mergesAllTime  + count,
-            editsThisWeek:  statsStore.stats.editsThisWeek  + count,
-            mergesThisWeek: statsStore.stats.mergesThisWeek + count,
-            editsThisMonth: statsStore.stats.editsThisMonth + count,
-            mergesThisMonth:statsStore.stats.mergesThisMonth+ count,
-            editsToday:     statsStore.stats.editsToday     + count,
-            mergesToday:    statsStore.stats.mergesToday     + count,
+            editsAllTime:   statsStore.stats.editsAllTime   + 1,
+            mergesAllTime:  statsStore.stats.mergesAllTime  + 1,
+            editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
+            mergesThisWeek: statsStore.stats.mergesThisWeek + 1,
+            editsThisMonth: statsStore.stats.editsThisMonth + 1,
+            mergesThisMonth:statsStore.stats.mergesThisMonth+ 1,
+            editsToday:     statsStore.stats.editsToday     + 1,
+            mergesToday:    statsStore.stats.mergesToday     + 1,
           });
         } else {
           statsStore.setStats({
-            editsAllTime:   statsStore.stats.editsAllTime   + count,
-            splitsAllTime:  statsStore.stats.splitsAllTime  + count,
-            editsThisWeek:  statsStore.stats.editsThisWeek  + count,
-            splitsThisWeek: statsStore.stats.splitsThisWeek + count,
-            editsThisMonth: statsStore.stats.editsThisMonth + count,
-            splitsThisMonth:statsStore.stats.splitsThisMonth+ count,
-            editsToday:     statsStore.stats.editsToday     + count,
-            splitsToday:    statsStore.stats.splitsToday    + count,
+            editsAllTime:   statsStore.stats.editsAllTime   + 1,
+            splitsAllTime:  statsStore.stats.splitsAllTime  + 1,
+            editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
+            splitsThisWeek: statsStore.stats.splitsThisWeek + 1,
+            editsThisMonth: statsStore.stats.editsThisMonth + 1,
+            splitsThisMonth:statsStore.stats.splitsThisMonth+ 1,
+            editsToday:     statsStore.stats.editsToday     + 1,
+            splitsToday:    statsStore.stats.splitsToday    + 1,
           });
         }
 
-        for (let c = 0; c < count; c++) {
-          statsStore.logDailyEdit(net < 0 ? 'merge' : 'split');
-        }
+        statsStore.logDailyEdit(net < 0 ? 'merge' : 'split');
         statsStore.signalEdit(net < 0 ? 'merge' : 'split');
-        localEditAccum += count;
+        localEditAccum += 1;
         if (localEditAccum >= 5) {
           statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
           localEditAccum = 0;
         }
 
-        // Log to Supabase with actual count of operations
+        // Log to Supabase with diff=1 (one operation per debounce)
         try {
           const backendStore = useProofreadingBackendStore();
           if (backendStore.userId) {
@@ -272,12 +269,12 @@ export const useLayersStore = defineStore('layers', () => {
             const operation = net < 0 ? 'merge' : 'split';
             backendStore.logEdit({
               operation,
-              segment_before: removedIds,  // segments consumed/removed by the operation
-              segment_after: addedIds,     // segments produced/added by the operation
+              segment_before: removedIds,
+              segment_after: addedIds,
               coordinates: coords,
-              metadata: { net_segment_change: net, diff: count },
+              metadata: { net_segment_change: net, diff: 1 },
             });
-            backendStore.postActivity(`${operation === 'merge' ? 'merged' : 'split'} ${count > 1 ? count + ' segments' : 'segment'}`);
+            backendStore.postActivity(`${operation === 'merge' ? 'merged' : 'split'} segment`);
           }
         } catch { /* backend logging is non-critical */ }
       }, EDIT_DEBOUNCE_MS);

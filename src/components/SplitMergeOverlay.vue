@@ -172,7 +172,7 @@ function cancelTool() {
             <span class="nge-smo-seg-id">{{ pair[0] }}</span>
             <span v-if="pair[1]" class="nge-smo-merge-arrow">⇄</span>
             <span v-if="pair[1]" class="nge-smo-seg-id">{{ pair[1] }}</span>
-            <button class="nge-smo-merge-remove" @click="store.removeMergeSegment(i)" title="Remove this merge pair">🗑</button>
+            <button class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
           </div>
         </div>
       </div>
@@ -559,9 +559,10 @@ function cancelTool() {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 12px;
-  padding: 2px 4px;
-  opacity: 0.5;
+  font-size: 14px;
+  padding: 4px 8px;
+  opacity: 0.6;
+  color: #f66;
   transition: opacity 0.15s ease;
   pointer-events: auto;
 }
