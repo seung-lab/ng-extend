@@ -661,114 +661,54 @@ function cancelTool() {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 28px;
-  border-radius: 2px;
+  padding: 14px 32px;
+  border-radius: 12px;
   font-family: 'Inter', 'Roboto', sans-serif;
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.4px;
   pointer-events: none;
   user-select: none;
   white-space: nowrap;
   overflow: hidden;
-
-  /* Holographic glass base */
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-
-  /* Persistent scanline texture */
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent 0px,
-    transparent 2px,
-    rgba(0, 0, 0, 0.06) 2px,
-    rgba(0, 0, 0, 0.06) 4px
-  );
-  background-size: 100% 4px;
-  animation: holo-scanline-drift 4s linear infinite;
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
 }
 
-/* ── Scan beam — bright line that sweeps top→bottom on entry ── */
+/* ── Subtle glow shimmer on entry ── */
 .nge-smo-result-flash::before {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  top: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.1) 10%,
-    currentColor 35%,
-    rgba(255, 255, 255, 0.95) 50%,
-    currentColor 65%,
-    rgba(255, 255, 255, 0.1) 90%,
-    transparent 100%
-  );
-  filter: blur(0.5px);
-  box-shadow: 0 0 8px currentColor, 0 0 16px currentColor;
-  animation: holo-scanbeam 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-  animation-delay: 0.15s;
-  opacity: 0;
-}
-
-/* ── Holographic edge frame — breathing border glow ── */
-.nge-smo-result-flash::after {
-  content: '';
-  position: absolute;
   inset: 0;
-  border-radius: 2px;
-  border: 1px solid transparent;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.25) 0%,
-    transparent 30%,
-    transparent 70%,
-    rgba(255, 255, 255, 0.12) 100%
-  ) border-box;
-  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: holo-edge-breathe 2.5s ease-in-out infinite;
-  animation-delay: 0.8s;
-  opacity: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 50%);
+  pointer-events: none;
 }
+.nge-smo-result-flash::after { display: none; }
 
 /* ── SUCCESS ── */
 .nge-smo-result-flash.success {
-  background-color: rgba(6, 32, 20, 0.88);
-  border: 1px solid rgba(0, 255, 140, 0.35);
+  background-color: rgba(8, 30, 22, 0.92);
+  border: 1px solid rgba(0, 220, 120, 0.25);
   color: #a0ffd4;
-  box-shadow:
-    0 0 30px rgba(0, 220, 120, 0.25),
-    0 0 60px rgba(0, 220, 120, 0.08),
-    inset 0 1px 0 rgba(0, 255, 140, 0.15),
-    inset 0 0 30px rgba(0, 220, 120, 0.04);
-  text-shadow:
-    0 0 8px rgba(0, 220, 120, 0.7),
-    0 0 20px rgba(0, 220, 120, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(0, 220, 120, 0.15);
+  text-shadow: 0 0 6px rgba(0, 220, 120, 0.4);
+  animation: smo-result-glow-green 2s ease-in-out infinite;
 }
 
 /* ── ERROR ── */
 .nge-smo-result-flash.error {
-  background-color: rgba(40, 6, 6, 0.88);
-  border: 1px solid rgba(255, 80, 80, 0.35);
-  color: #ffb0b0;
-  box-shadow:
-    0 0 30px rgba(255, 60, 60, 0.25),
-    0 0 60px rgba(255, 60, 60, 0.08),
-    inset 0 1px 0 rgba(255, 80, 80, 0.15),
-    inset 0 0 30px rgba(255, 60, 60, 0.04);
-  text-shadow:
-    0 0 8px rgba(255, 60, 60, 0.7),
-    0 0 20px rgba(255, 60, 60, 0.25);
+  background-color: rgba(35, 10, 10, 0.92);
+  border: 1px solid rgba(255, 100, 100, 0.2);
+  color: #ffb8b8;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(255, 80, 80, 0.1);
+  text-shadow: 0 0 6px rgba(255, 80, 80, 0.3);
+  animation: smo-result-shake 0.4s ease-out;
 }
 
 .nge-smo-result-icon {
   font-size: 20px;
-  filter: drop-shadow(0 0 6px currentColor);
-  animation: holo-icon-stabilize 0.7s ease-out forwards;
+  filter: drop-shadow(0 0 4px currentColor);
 }
 
 .nge-smo-result-text {
@@ -783,166 +723,68 @@ function cancelTool() {
   font-style: italic;
   margin-left: 6px;
   opacity: 0;
-  animation: holo-retry-fade-in 0.4s ease-out 1.2s forwards;
+  animation: smo-retry-fade-in 0.4s ease-out 0.8s forwards;
 }
 
-/* ═══ HOLOGRAPHIC KEYFRAMES ═══════════════════════════════════ */
+/* ═══ SMOOTH RESULT KEYFRAMES ═══════════════════════════════ */
 
-/* Entry: beam line expands outward, content resolves through glitch */
-@keyframes holo-materialize {
+/* Entry: gentle slide up + fade in */
+@keyframes smo-result-enter {
   0% {
-    clip-path: inset(48% 35% 48% 35%);
     opacity: 0;
-    filter: brightness(4) saturate(0) blur(2px);
-    transform: translateX(-50%);
+    transform: translateX(-50%) translateY(16px) scale(0.96);
   }
-  8% {
-    opacity: 1;
-    filter: brightness(3) saturate(0) blur(1px);
-  }
-  /* Beam line visible — thin horizontal slit */
-  16% {
-    clip-path: inset(46% 8% 46% 8%);
-    filter: brightness(2.5) saturate(0) blur(0.5px);
-  }
-  /* Expanding — scanlines visible through the opening */
-  30% {
-    clip-path: inset(30% 2% 30% 2%);
-    filter: brightness(1.6) saturate(0.4) blur(0px);
-    transform: translateX(-50%);
-  }
-  48% {
-    clip-path: inset(12% 0% 12% 0%);
-    filter: brightness(1.2) saturate(0.7);
-  }
-  /* Content nearly full — first glitch hit */
   60% {
-    clip-path: inset(2% 0% 2% 0%);
-    filter: brightness(1) saturate(1);
-    transform: translateX(-50%);
-  }
-  /* Chromatic glitch sequence */
-  66% {
-    clip-path: inset(0);
-    transform: translateX(calc(-50% + 3px));
-    filter: brightness(1.4) hue-rotate(-10deg);
-    text-shadow: -3px 0 rgba(255, 0, 80, 0.7), 3px 0 rgba(0, 200, 255, 0.7);
-  }
-  72% {
-    transform: translateX(calc(-50% - 4px));
-    filter: brightness(0.8) hue-rotate(8deg);
-    text-shadow: 2px 0 rgba(255, 0, 80, 0.5), -2px 0 rgba(0, 200, 255, 0.5);
-  }
-  78% {
-    transform: translateX(calc(-50% + 1px));
-    filter: brightness(1.3) hue-rotate(-3deg);
-    text-shadow: -1px 0 rgba(255, 0, 80, 0.3), 1px 0 rgba(0, 200, 255, 0.3);
-  }
-  /* Stabilize */
-  88% {
-    filter: brightness(1.05) hue-rotate(0deg);
-    text-shadow: none;
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px) scale(1.01);
   }
   100% {
-    clip-path: inset(0);
     opacity: 1;
-    filter: brightness(1) saturate(1) blur(0px);
-    transform: translateX(-50%);
+    transform: translateX(-50%) translateY(0) scale(1);
   }
 }
 
-/* Scan beam sweeps top → bottom during materialization */
-@keyframes holo-scanbeam {
-  0%   { top: 0%;   opacity: 0.9; height: 2px; }
-  40%  { opacity: 1; height: 3px; }
-  100% { top: 100%; opacity: 0;   height: 1px; }
-}
-
-/* Scanline texture drifts upward slowly (CRT / hologram feel) */
-@keyframes holo-scanline-drift {
-  0%   { background-position: 0 0; }
-  100% { background-position: 0 -40px; }
-}
-
-/* Edge glow pulses after materialization */
-@keyframes holo-edge-breathe {
-  0%, 100% { opacity: 0.2; }
-  50%      { opacity: 0.6; }
-}
-
-/* Icon resolves from static */
-@keyframes holo-icon-stabilize {
-  0%   { opacity: 0; transform: scale(1.8); filter: blur(4px) drop-shadow(0 0 12px currentColor); }
-  40%  { opacity: 1; transform: scale(0.9); filter: blur(0px) drop-shadow(0 0 8px currentColor); }
-  60%  { transform: scale(1.1); }
-  80%  { transform: scale(0.97); }
-  100% { transform: scale(1); filter: drop-shadow(0 0 6px currentColor); }
-}
-
-/* Retry text materializes late */
-@keyframes holo-retry-fade-in {
-  0%   { opacity: 0; transform: translateX(-4px); filter: blur(2px); }
-  60%  { opacity: 0.8; filter: blur(0); }
-  100% { opacity: 0.65; transform: translateX(0); }
-}
-
-/* Exit: destabilize → chromatic split → collapse to beam → vanish */
-@keyframes holo-destabilize {
+/* Exit: gentle fade down */
+@keyframes smo-result-exit {
   0% {
-    clip-path: inset(0);
     opacity: 1;
-    filter: brightness(1) saturate(1);
-    transform: translateX(-50%);
-  }
-  /* Flicker unstable */
-  15% {
-    opacity: 0.7;
-    filter: brightness(1.5) saturate(0.6);
-    transform: translateX(calc(-50% - 2px));
-    text-shadow: -2px 0 rgba(255, 0, 80, 0.6), 2px 0 rgba(0, 200, 255, 0.6);
-  }
-  25% {
-    opacity: 1;
-    filter: brightness(0.8);
-    transform: translateX(calc(-50% + 3px));
-  }
-  35% {
-    filter: brightness(1.8) saturate(0.3);
-    transform: translateX(calc(-50% - 1px));
-    text-shadow: -3px 0 rgba(255, 0, 80, 0.4), 3px 0 rgba(0, 200, 255, 0.4);
-  }
-  /* Begin collapse */
-  50% {
-    clip-path: inset(15% 3% 15% 3%);
-    filter: brightness(2) saturate(0.1);
-    text-shadow: none;
-    transform: translateX(-50%);
-  }
-  70% {
-    clip-path: inset(35% 10% 35% 10%);
-    filter: brightness(2.5) saturate(0) blur(0.5px);
-    opacity: 0.7;
-  }
-  85% {
-    clip-path: inset(46% 25% 46% 25%);
-    filter: brightness(3) saturate(0) blur(1px);
-    opacity: 0.4;
+    transform: translateX(-50%) translateY(0) scale(1);
   }
   100% {
-    clip-path: inset(50% 45% 50% 45%);
-    filter: brightness(4) saturate(0) blur(2px);
     opacity: 0;
-    transform: translateX(-50%);
+    transform: translateX(-50%) translateY(10px) scale(0.97);
   }
+}
+
+/* Success: subtle breathing glow */
+@keyframes smo-result-glow-green {
+  0%, 100% { box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 20px rgba(0,220,120,0.12); }
+  50%      { box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 28px rgba(0,220,120,0.2); }
+}
+
+/* Error: satisfying micro-shake then settle */
+@keyframes smo-result-shake {
+  0%   { transform: translateX(-50%); }
+  20%  { transform: translateX(calc(-50% + 6px)); }
+  40%  { transform: translateX(calc(-50% - 4px)); }
+  60%  { transform: translateX(calc(-50% + 2px)); }
+  80%  { transform: translateX(calc(-50% - 1px)); }
+  100% { transform: translateX(-50%); }
+}
+
+/* Retry text fades in gently */
+@keyframes smo-retry-fade-in {
+  0%   { opacity: 0; }
+  100% { opacity: 0.6; }
 }
 
 /* ═══ VUE TRANSITION HOOKS ═══════════════════════════════════ */
 
 .flash-pop-enter-active {
-  animation: holo-materialize 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: smo-result-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 .flash-pop-leave-active {
-  animation: holo-destabilize 0.55s ease-in forwards;
+  animation: smo-result-exit 0.35s ease-in forwards;
 }
 
 /* ═══ MAIN BAR TRANSITION — horizontal wipe materialization ══ */
