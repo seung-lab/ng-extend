@@ -1817,6 +1817,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   async function claimTask(taskId: number) {
     if (!userId.value) { error.value = 'Not logged in'; return false; }
     try {
+      // Check if already claimed by someone else
+      const task = tasks.value.find(t => t.id === taskId);
+      if (task && (task.status === 'assigned' || task.status === 'in_progress') && task.assigned_to && task.assigned_to !== userId.value) {
+        error.value = 'This cell is already claimed by another user';
+        return false;
+      }
       // Insert assignment
       const { error: assignErr } = await supabase
         .from('task_assignments')
@@ -2535,7 +2541,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifSubscription = supabase
       .channel('notifications_realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' },
-        () => { loadNotifications(); })
+        (payload: any) => {
+          loadNotifications();
+          // Auto-trigger hero celebration for badge award notifications
+          const row = payload?.new;
+          if (row?.title?.includes('New Achievement') && row?.target_type !== 'group') {
+            // Only show if it's for the current user
+            if (!row.target_id || row.target_id === userId.value) {
+              pendingBadgeCelebration.value = {
+                title: row.title,
+                body: row.body || '',
+                imageUrl: row.image_url || row.thumbnail_url || '',
+              };
+            }
+          }
+        })
       .subscribe();
   }
 
