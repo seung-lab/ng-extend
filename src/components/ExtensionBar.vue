@@ -58,7 +58,7 @@ const invalidLogins = computed(() => login.sessions.filter(x => x.status !== und
 const {volumes} = useVolumesStore();
 
 onMounted(() => {
-  (document.querySelector('.ng-extend-logo > a > img')! as HTMLImageElement).src = logoImage;
+  // Keep Pyr icon in top-left (don't overwrite with CaveLogo)
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
     showProfile.value = true;
@@ -113,13 +113,13 @@ interface ToolbarIcon {
 }
 
 // Branch-style SVG icons for split & merge (must match profile icons)
-const SPLIT_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:16px;height:16px;vertical-align:middle;color:#e06060"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.5" fill="currentColor"/><circle cx="4" cy="13" r="1.5" fill="currentColor"/><circle cx="12" cy="13" r="1.5" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-const MERGE_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:16px;height:16px;vertical-align:middle;color:#60c060"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.5" fill="currentColor"/><circle cx="12" cy="2.5" r="1.5" fill="currentColor"/><circle cx="8" cy="13" r="1.5" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+const SPLIT_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#e06060"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.5" fill="currentColor"/><circle cx="4" cy="13" r="1.5" fill="currentColor"/><circle cx="12" cy="13" r="1.5" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+const MERGE_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#60c060"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.5" fill="currentColor"/><circle cx="12" cy="2.5" r="1.5" fill="currentColor"/><circle cx="8" cy="13" r="1.5" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 
 const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'split', emoji: '✂️', svg: SPLIT_SVG, label: 'Cut Mode (C)', action: () => activateTool('multicut') },
   { id: 'merge', emoji: '🔗', svg: MERGE_SVG, label: 'Merge Mode (M)', action: () => activateTool('merge') },
-  { id: 'recap', emoji: '📊', label: 'Your Week in Science', action: () => { showRecap.value = true; } },
+  { id: 'recap', emoji: '📊', svg: `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#a0c4ff"><rect x="2" y="10" width="2.5" height="4" rx="0.5" fill="currentColor" opacity="0.5"/><rect x="6" y="7" width="2.5" height="7" rx="0.5" fill="currentColor" opacity="0.7"/><rect x="10" y="3" width="2.5" height="11" rx="0.5" fill="currentColor"/><path d="M3 6l3.5-2.5L10 5.5l3-3" stroke="#ffd700" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="2" r="1.2" fill="#ffd700"/></svg>`, label: 'Your Week in Science', action: () => { showRecap.value = true; } },
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard', action: () => { showLeaderboard.value = true; } },
   { id: 'quest', emoji: '🧠', label: 'Brain Quest', action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
   { id: 'cells', emoji: '🧬', img: neuronIcon, label: 'Cell Library', action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
@@ -340,6 +340,16 @@ function activateTool(toolType: 'multicut' | 'merge') {
 #insertNGTopBar > div {
   width: 100%;
 }
+/* Add spacing between neuroglancer native icons next to Share */
+#insertNGTopBar .neuroglancer-icon,
+#insertNGTopBar button {
+  margin: 0 2px;
+}
+/* Hide selection details toggle from top bar (moved to Settings > Advanced) */
+#insertNGTopBar .neuroglancer-icon[title*="election"],
+#insertNGTopBar button[title*="election"] {
+  display: none !important;
+}
 
 /* Style NG's Share button to look clickable */
 #insertNGTopBar .neuroglancer-icon[title*="Share"],
@@ -460,15 +470,15 @@ function activateTool(toolType: 'multicut' | 'merge') {
 .nge-toolbar-icons {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 6px;
+  gap: 4px;
+  padding: 0 8px;
   height: 100%;
 }
 
 .nge-icon-btn {
-  font-size: 15px;
-  width: 30px;
-  height: 28px;
+  font-size: 18px;
+  width: 32px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -492,8 +502,8 @@ function activateTool(toolType: 'multicut' | 'merge') {
 .nge-icon-btn--badge { position: relative; }
 
 .nge-toolbar-icon-img {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   vertical-align: middle;
   opacity: 0.85;

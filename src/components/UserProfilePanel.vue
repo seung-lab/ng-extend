@@ -2293,46 +2293,46 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* Orbital dots */
 .nge-trophy-orbit-dot {
   position: absolute;
-  width: 6px; height: 6px;
+  width: 4px; height: 4px;
   border-radius: 50%;
   background: rgba(0, 220, 255, 0.8);
-  box-shadow: 0 0 8px rgba(0, 220, 255, 0.5), 0 0 18px rgba(0, 220, 255, 0.2);
+  box-shadow: 0 0 6px rgba(0, 220, 255, 0.4), 0 0 12px rgba(0, 220, 255, 0.15);
   top: 50%; left: 50%;
   will-change: transform;
   animation: nge-trophy-orbit 40s linear infinite;
   animation-delay: calc(var(--j) * -3.3s);
 }
 .nge-trophy-orbit-dot:nth-child(odd) {
-  width: 4px; height: 4px;
+  width: 3px; height: 3px;
   background: rgba(206, 180, 255, 0.7);
-  box-shadow: 0 0 7px rgba(206, 180, 255, 0.4);
+  box-shadow: 0 0 5px rgba(206, 180, 255, 0.3);
   animation-duration: 55s;
   animation-direction: reverse;
 }
 .nge-trophy-orbit-dot:nth-child(3n) {
-  width: 5px; height: 5px;
+  width: 3.5px; height: 3.5px;
   background: rgba(0, 255, 180, 0.6);
-  box-shadow: 0 0 7px rgba(0, 255, 180, 0.4);
+  box-shadow: 0 0 5px rgba(0, 255, 180, 0.3);
   animation-duration: 48s;
 }
 /* Outer orbit particles */
 .nge-trophy-orbit-dot:nth-child(n+7) {
   animation-name: nge-trophy-orbit-outer;
   animation-duration: 65s;
-  width: 4px; height: 4px;
+  width: 3px; height: 3px;
   opacity: 0.8;
 }
 .nge-trophy-orbit-dot:nth-child(8) {
-  width: 5px; height: 5px;
+  width: 3.5px; height: 3.5px;
   background: rgba(255, 200, 100, 0.6);
-  box-shadow: 0 0 6px rgba(255, 200, 100, 0.4);
+  box-shadow: 0 0 5px rgba(255, 200, 100, 0.3);
   animation-duration: 58s;
   animation-direction: reverse;
 }
 .nge-trophy-orbit-dot:nth-child(9) {
-  width: 4px; height: 4px;
+  width: 3px; height: 3px;
   background: rgba(100, 180, 255, 0.7);
-  box-shadow: 0 0 7px rgba(100, 180, 255, 0.4);
+  box-shadow: 0 0 5px rgba(100, 180, 255, 0.3);
   animation-duration: 72s;
 }
 .nge-trophy-orbit-dot:nth-child(10) {
@@ -2343,15 +2343,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   animation-direction: reverse;
 }
 .nge-trophy-orbit-dot:nth-child(11) {
-  width: 5px; height: 5px;
+  width: 3.5px; height: 3.5px;
   background: rgba(0, 220, 255, 0.5);
-  box-shadow: 0 0 8px rgba(0, 220, 255, 0.3);
+  box-shadow: 0 0 5px rgba(0, 220, 255, 0.2);
   animation-duration: 80s;
 }
 .nge-trophy-orbit-dot:nth-child(12) {
-  width: 3.5px; height: 3.5px;
+  width: 2.5px; height: 2.5px;
   background: rgba(206, 147, 216, 0.6);
-  box-shadow: 0 0 6px rgba(206, 147, 216, 0.4);
+  box-shadow: 0 0 4px rgba(206, 147, 216, 0.3);
   animation-duration: 62s;
   animation-direction: reverse;
 }

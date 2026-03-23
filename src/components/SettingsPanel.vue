@@ -245,10 +245,13 @@ function handleSave() {
 }
 
 // ── Toolbar icon choices ──────────────────────────────────────
+const SPLIT_SVG_SM = `<svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px;vertical-align:middle;color:#e06060"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.5" fill="currentColor"/><circle cx="4" cy="13" r="1.5" fill="currentColor"/><circle cx="12" cy="13" r="1.5" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+const MERGE_SVG_SM = `<svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px;vertical-align:middle;color:#60c060"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.5" fill="currentColor"/><circle cx="12" cy="2.5" r="1.5" fill="currentColor"/><circle cx="8" cy="13" r="1.5" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+const RECAP_SVG_SM = `<svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px;vertical-align:middle;color:#a0c4ff"><rect x="2" y="10" width="2.5" height="4" rx="0.5" fill="currentColor" opacity="0.5"/><rect x="6" y="7" width="2.5" height="7" rx="0.5" fill="currentColor" opacity="0.7"/><rect x="10" y="3" width="2.5" height="11" rx="0.5" fill="currentColor"/><path d="M3 6l3.5-2.5L10 5.5l3-3" stroke="#ffd700" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="2" r="1.2" fill="#ffd700"/></svg>`;
 const TOOLBAR_ICON_OPTIONS = [
-  { id: 'split', emoji: '✂️', label: 'Split Mode' },
-  { id: 'merge', emoji: '🔗', label: 'Merge Mode' },
-  { id: 'recap', emoji: '📊', label: 'Weekly Recap' },
+  { id: 'split', emoji: '✂️', svg: SPLIT_SVG_SM, label: 'Split Mode' },
+  { id: 'merge', emoji: '🔗', svg: MERGE_SVG_SM, label: 'Merge Mode' },
+  { id: 'recap', emoji: '📊', svg: RECAP_SVG_SM, label: 'Weekly Recap' },
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard' },
   { id: 'cells', emoji: '🧬', label: 'Cell Library' },
   { id: 'help', emoji: '🔍', label: 'Help Requests' },
@@ -295,6 +298,17 @@ function toggleLayerListPanel() {
   if (viewer?.layerListPanelState?.location?.watchableVisible) {
     const vis = viewer.layerListPanelState.location.watchableVisible;
     vis.value = !vis.value;
+  }
+}
+
+function toggleSelectionDetails() {
+  const viewer = (window as any)['viewer'];
+  if (viewer?.selectionDetailsState?.location?.watchableVisible) {
+    const vis = viewer.selectionDetailsState.location.watchableVisible;
+    vis.value = !vis.value;
+  } else if (viewer?.selectedStatePanel) {
+    // Alternative API path
+    viewer.selectedStatePanel.visible = !viewer.selectedStatePanel.visible;
   }
 }
 
@@ -345,7 +359,8 @@ const emit = defineEmits({hide: null});
           <p class="nge-settings-hint">Toggle which actions appear in your top bar.</p>
           <div class="nge-settings-toolbar-grid">
             <button v-for="opt in TOOLBAR_ICON_OPTIONS" :key="opt.id" class="nge-settings-toolbar-item" :class="{ 'nge-settings-toolbar-item--active': isToolbarIconEnabled(opt.id) }" @click="toggleToolbarIcon(opt.id)">
-              <span class="nge-settings-toolbar-emoji">{{ opt.emoji }}</span>
+              <span v-if="opt.svg" class="nge-settings-toolbar-emoji" v-html="opt.svg"></span>
+              <span v-else class="nge-settings-toolbar-emoji">{{ opt.emoji }}</span>
               <span class="nge-settings-toolbar-label">{{ opt.label }}</span>
             </button>
           </div>
@@ -358,6 +373,7 @@ const emit = defineEmits({hide: null});
             <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>
             <button class="nge-settings-advanced-btn" @click="openJsonEditor">{} Edit JSON State</button>
             <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
+            <button class="nge-settings-advanced-btn" @click="toggleSelectionDetails">◫ Selection Details</button>
           </div>
 
           <!-- Logins management -->
