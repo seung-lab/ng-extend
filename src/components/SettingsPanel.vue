@@ -369,7 +369,7 @@ const emit = defineEmits({hide: null});
 
         <div class="nge-settings-section">
           <label class="nge-settings-label">Advanced</label>
-          <div class="nge-admin-row" style="gap:10px; flex-wrap:wrap">
+          <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
             <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>
             <button class="nge-settings-advanced-btn" @click="openJsonEditor">{} Edit JSON State</button>
             <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
