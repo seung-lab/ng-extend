@@ -1651,6 +1651,27 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   }
 
   function removeMergeSegment(index: number) {
+    // Remove from neuroglancer's DOM (the source of truth)
+    try {
+      const mergeEl = document.querySelector('.graphene-merge-segments');
+      if (mergeEl) {
+        const submissions = mergeEl.querySelectorAll('.graphene-merge-segments-submission');
+        const sub = submissions[index];
+        if (sub) {
+          // Look for a delete/close/remove button within the submission
+          const deleteBtn = sub.querySelector('button[title*="delete" i], button[title*="remove" i], button[title*="cancel" i], .neuroglancer-icon[title*="delete" i]') as HTMLElement | null;
+          if (deleteBtn) {
+            deleteBtn.click();
+          } else {
+            // No button found — try removing the DOM node directly
+            sub.remove();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[smo] removeMergeSegment DOM error:', e);
+    }
+    // Also update local state immediately for UI responsiveness
     mergeSegments.value.splice(index, 1);
     if (mergeSubmissionCount.value > 0) mergeSubmissionCount.value--;
   }
