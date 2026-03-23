@@ -2625,7 +2625,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   async function loadGroupMembers(groupId: number): Promise<GroupMember[]> {
     const { data } = await supabase
       .from('user_group_members')
-      .select('user_id, added_at, users!inner(display_name, middleauth_email)')
+      .select('user_id, added_at, users!user_group_members_user_id_fkey(display_name, middleauth_email)')
       .eq('group_id', groupId);
     return (data || []).map((m: any) => ({
       user_id: m.user_id,
