@@ -82,7 +82,7 @@ let searchTimeout: any = null;
 
 async function createGroup() {
   if (!newGroupName.value.trim()) return;
-  await backend.createGroup(newGroupName.value.trim(), newGroupColor.value);
+  await backend.createGroup(newGroupName.value.trim(), '', newGroupColor.value);
   newGroupName.value = '';
   await backend.loadGroups();
 }
@@ -96,7 +96,10 @@ function onMemberSearch() {
   clearTimeout(searchTimeout);
   if (memberSearch.value.length < 2) { memberSearchResults.value = []; return; }
   searchTimeout = setTimeout(async () => {
-    memberSearchResults.value = await backend.searchUsers(memberSearch.value);
+    console.info('[groups] searching for:', memberSearch.value, 'selectedGroup:', selectedGroupId.value);
+    const results = await backend.searchUsers(memberSearch.value);
+    console.info('[groups] search results:', results);
+    memberSearchResults.value = results;
   }, 300);
 }
 
