@@ -8,7 +8,17 @@
 
 import {EYEWIRE_II_CAVE_CONFIG} from '../config';
 import {useProofreadingBackendStore, useCellHistoryStore, useUserStatsStore} from '../store';
-import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
+import nurroSuccess from '../../static/nurro/nurro-success.png';
+import nurroTrophy from '../../static/nurro/nurro-trophy.png';
+import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
+import nurroDance from '../../static/nurro/nurro-dance.png';
+import nurroAtHome from '../../static/nurro/nurro-at-home.png';
+import nurroConfetti from '../../static/nurro/nurro-confetti.png';
+import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
+import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
+import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
+import nurroExperiment from '../../static/nurro/nurro-experiment.png';
+const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
 // ─── Auth token helpers (mirrors the pattern in store.ts) ───────────────────
 
@@ -269,10 +279,13 @@ export async function setCellComplete(
         // Celebration!
         try {
           const backend = useProofreadingBackendStore();
+          const statsStore = useUserStatsStore();
+          const total = statsStore.stats.cellsSubmitted;
+          const nurro = NURRO_IMAGES[Math.floor(Math.random() * NURRO_IMAGES.length)];
           backend.pendingBadgeCelebration = {
-            title: 'Cell Complete!',
-            body: `You finished proofreading segment ...${rootId.slice(-6)}. Great work!`,
-            imageUrl: neuronIcon,
+            title: '+1 Cell Complete!',
+            body: `Total cells proofread: ${total}`,
+            imageUrl: nurro,
           };
         } catch { /* non-critical */ }
         return true;
