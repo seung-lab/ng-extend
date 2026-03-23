@@ -287,9 +287,8 @@ function triggerCellCelebration() {
   const statsStore = useUserStatsStore();
   const total = statsStore.stats.cellsSubmitted;
   const nurro = NURRO_IMAGES[Math.floor(Math.random() * NURRO_IMAGES.length)];
-  backend.pendingBadgeCelebration = {
-    title: '+1 Cell Complete!',
-    body: `Total cells proofread: ${total}`,
+  backend.pendingCellCelebration = {
+    totalCells: total,
     imageUrl: nurro,
   };
 }

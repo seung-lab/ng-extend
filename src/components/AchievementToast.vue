@@ -293,6 +293,22 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
   fireConfetti('gold', 1.5);
   backend.pendingBadgeCelebration = null;
 });
+
+// ── Cell completion celebration ──
+const cellCelebration = ref<{ totalCells: number; imageUrl: string } | null>(null);
+
+watch(() => backend.pendingCellCelebration, (pending) => {
+  if (!pending) return;
+  cellCelebration.value = { ...pending };
+  fireConfetti('cyan', 2);
+  backend.pendingCellCelebration = null;
+  // Auto-dismiss after 6s
+  setTimeout(() => { cellCelebration.value = null; }, 6000);
+});
+
+function dismissCellCelebration() {
+  cellCelebration.value = null;
+}
 </script>
 
 <template>
@@ -342,6 +358,21 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
           </div>
           <div class="nge-hero-subtitle">{{ heroBadge.subtitle }}</div>
           <div class="nge-hero-hint">Click to view profile</div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Cell completion celebration overlay -->
+    <Transition name="nge-cell-celebrate">
+      <div v-if="cellCelebration" class="nge-cell-overlay" @click="dismissCellCelebration">
+        <div class="nge-cell-card">
+          <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-cell-nurro" />
+          <div class="nge-cell-text">
+            <div class="nge-cell-congrats">Congratulations, Cell Complete!</div>
+            <div class="nge-cell-thanks">Thank you for helping to map the brain. For science!</div>
+            <div class="nge-cell-stats">+1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong></div>
+          </div>
+          <div class="nge-cell-hint">Click to dismiss</div>
         </div>
       </div>
     </Transition>
@@ -938,4 +969,101 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 .nge-toast-move {
   transition: transform 0.3s ease;
 }
+
+/* ═══ Cell Completion Celebration ═══ */
+.nge-cell-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 8, 20, 0.85);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+.nge-cell-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 500px;
+  padding: 40px 50px;
+  animation: nge-cell-float 3s ease-in-out infinite alternate;
+}
+.nge-cell-nurro {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  margin-bottom: 24px;
+  filter: drop-shadow(0 0 20px rgba(0, 200, 255, 0.3));
+  animation: nge-cell-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.nge-cell-text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nge-cell-congrats {
+  font-family: 'Orbitron', 'Rajdhani', 'Audiowide', monospace;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #a0ffd4 0%, #00dca0 40%, #58a6ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: nge-cell-title-in 0.5s ease-out 0.3s both;
+}
+.nge-cell-thanks {
+  font-size: 15px;
+  color: #99aabb;
+  font-style: italic;
+  line-height: 1.5;
+  animation: nge-cell-fade-in 0.4s ease-out 0.6s both;
+}
+.nge-cell-stats {
+  font-size: 16px;
+  color: #e0ecff;
+  margin-top: 6px;
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 0.04em;
+  animation: nge-cell-fade-in 0.4s ease-out 0.9s both;
+}
+.nge-cell-stats strong {
+  font-size: 22px;
+  color: #00dca0;
+  text-shadow: 0 0 10px rgba(0, 220, 160, 0.4);
+}
+.nge-cell-hint {
+  margin-top: 28px;
+  font-size: 11px;
+  color: #556;
+  letter-spacing: 0.1em;
+  animation: nge-cell-fade-in 0.4s ease-out 1.2s both;
+}
+
+@keyframes nge-cell-bounce {
+  0% { transform: scale(0.3) translateY(40px); opacity: 0; }
+  60% { transform: scale(1.1) translateY(-8px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes nge-cell-title-in {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes nge-cell-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes nge-cell-float {
+  from { transform: translateY(0); }
+  to { transform: translateY(-6px); }
+}
+
+/* Transition */
+.nge-cell-celebrate-enter-active { transition: opacity 0.4s ease-out; }
+.nge-cell-celebrate-leave-active { transition: opacity 0.5s ease-in; }
+.nge-cell-celebrate-enter-from, .nge-cell-celebrate-leave-to { opacity: 0; }
 </style>

@@ -2400,6 +2400,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   /** Trigger badge celebration from notification click — AchievementToast watches this */
   const pendingBadgeCelebration = ref<{ title: string; body: string; imageUrl: string } | null>(null);
+  const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string } | null>(null);
 
   const unreadNotificationCount = computed(() =>
     notifications.value.filter(n => !notificationReads.value.has(n.id)).length
@@ -2861,6 +2862,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     createNotification, createSelfNotification, deleteNotification, dismissNotification,
     subscribeToNotifications, unsubscribeFromNotifications,
     pendingBadgeCelebration,
+    pendingCellCelebration,
     // User Groups
     groups, loadGroups, createGroup, deleteGroup,
     loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
