@@ -8,6 +8,7 @@
 
 import {EYEWIRE_II_CAVE_CONFIG} from '../config';
 import {useProofreadingBackendStore, useCellHistoryStore, useUserStatsStore} from '../store';
+import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 // ─── Auth token helpers (mirrors the pattern in store.ts) ───────────────────
 
@@ -264,6 +265,15 @@ export async function setCellComplete(
           const statsStore = useUserStatsStore();
           statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
           statsStore.logDailyCellComplete();
+        } catch { /* non-critical */ }
+        // Celebration!
+        try {
+          const backend = useProofreadingBackendStore();
+          backend.pendingBadgeCelebration = {
+            title: 'Cell Complete!',
+            body: `You finished proofreading segment ...${rootId.slice(-6)}. Great work!`,
+            imageUrl: neuronIcon,
+          };
         } catch { /* non-critical */ }
         return true;
       }

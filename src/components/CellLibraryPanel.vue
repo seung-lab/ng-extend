@@ -266,6 +266,16 @@ async function completeCell(cell: typeof cells.value[0]) {
   // Notify UI that status changed (claim is already cleared by completeTask)
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
   await backend.loadTasks('eyewire_ii');
+  // Celebration!
+  triggerCellCelebration(cell.segId);
+}
+
+function triggerCellCelebration(segId: string) {
+  backend.pendingBadgeCelebration = {
+    title: 'Cell Complete!',
+    body: `You finished proofreading segment ...${segId.slice(-6)}. Great work!`,
+    imageUrl: neuronIcon,
+  };
 }
 
 async function releaseCell(cell: typeof cells.value[0]) {

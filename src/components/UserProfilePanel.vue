@@ -1482,8 +1482,24 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   gap: 5px;
 }
 
-.nge-profile-streak-flame { font-size: 1.25em; line-height: 1; }
-.nge-profile-streak-count { font-size: 1.7em; font-weight: 800; color: #f5a623; line-height: 1; }
+.nge-profile-streak-flame {
+  font-size: 1.25em; line-height: 1;
+  animation: nge-streak-flicker 2s ease-in-out infinite;
+}
+.nge-profile-streak-count {
+  font-size: 1.7em; font-weight: 800; color: #f5a623; line-height: 1;
+  text-shadow: 0 0 8px rgba(245, 166, 35, 0.3);
+  animation: nge-streak-glow 3s ease-in-out infinite;
+}
+@keyframes nge-streak-flicker {
+  0%, 100% { transform: scale(1); }
+  25% { transform: scale(1.1) rotate(-3deg); }
+  75% { transform: scale(1.05) rotate(2deg); }
+}
+@keyframes nge-streak-glow {
+  0%, 100% { text-shadow: 0 0 8px rgba(245, 166, 35, 0.3); }
+  50% { text-shadow: 0 0 14px rgba(245, 166, 35, 0.5), 0 0 24px rgba(245, 166, 35, 0.2); }
+}
 .nge-profile-streak-unit  { font-size: 0.8em; color: #777; }
 
 .nge-profile-streak-best {

@@ -465,13 +465,17 @@ function activateTool(toolType: 'multicut' | 'merge') {
   align-items: center;
 }
 .nge-pyr-logo {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
-  opacity: 0.85;
-  transition: opacity 0.15s;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.3));
+  transition: opacity 0.15s, filter 0.15s;
 }
-.nge-pyr-logo:hover { opacity: 1; }
+.nge-pyr-logo:hover {
+  opacity: 1;
+  filter: drop-shadow(0 0 10px rgba(74, 158, 255, 0.5));
+}
 
 /* ── Share toast ── */
 .nge-share-toast {
