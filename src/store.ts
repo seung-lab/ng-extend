@@ -9,6 +9,7 @@ import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG} from './config';
 import {supabase} from './supabase';
+import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 import {Uint64} from "neuroglancer/util/uint64";
@@ -667,9 +668,11 @@ export const useSegmentAnnotationStore = defineStore('segAnnotation', () => {
 const CELL_HISTORY_KEY = 'nge_cell_history_v1';
 
 export interface CellHistoryEntry {
-  segId: string;
+  segId: string;  // cached/display root ID (may be stale after edits)
   isComplete: boolean;
   cellType: string;
+  /** Spatial anchor — the point-in-space claim coordinate. Primary key for matching. */
+  claimPoint?: ClaimPoint;
   /** Viewer position at time of annotation — used for jump-to-cell. */
   position: [number, number, number];
   /** ISO timestamp of last update. */
@@ -696,9 +699,21 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
     localStorage.setItem(CELL_HISTORY_KEY, JSON.stringify(cells.value));
   }
 
-  /** Add or update a cell entry. */
+  /** Add or update a cell entry. Matches by claimPoint first, then segId. */
   function upsert(entry: Partial<CellHistoryEntry> & { segId: string }) {
-    const idx = cells.value.findIndex(c => c.segId === entry.segId);
+    // Match by claimPoint (stable across edits) first, then by segId
+    let idx = -1;
+    if (entry.claimPoint) {
+      idx = cells.value.findIndex(c =>
+        c.claimPoint &&
+        c.claimPoint[0] === entry.claimPoint![0] &&
+        c.claimPoint[1] === entry.claimPoint![1] &&
+        c.claimPoint[2] === entry.claimPoint![2],
+      );
+    }
+    if (idx < 0) {
+      idx = cells.value.findIndex(c => c.segId === entry.segId);
+    }
     const now = new Date().toISOString();
     if (idx >= 0) {
       // Merge fields — don't overwrite existing data with empty values
@@ -706,8 +721,10 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
       cells.value[idx] = {
         ...existing,
         ...entry,
+        segId: entry.segId || existing.segId,  // update cached segId if provided
         cellType: entry.cellType || existing.cellType,
         position: entry.position || existing.position,
+        claimPoint: entry.claimPoint || existing.claimPoint,
         dataset: entry.dataset || existing.dataset,
         updatedAt: now,
       };
@@ -716,6 +733,7 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
         segId: entry.segId,
         isComplete: entry.isComplete ?? false,
         cellType: entry.cellType ?? '',
+        claimPoint: entry.claimPoint,
         position: entry.position ?? [0, 0, 0],
         updatedAt: now,
         nickname: entry.nickname,
@@ -769,8 +787,8 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
     const viewer: any = (window as any)['viewer'];
     if (!viewer) return;
 
-    // Use override position (e.g. from help request) or fall back to cell history
-    const pos = positionOverride ?? entry?.position;
+    // Use override position, or claimPoint (stable anchor), or fall back to cell history
+    const pos = positionOverride ?? entry?.claimPoint ?? entry?.position;
     if (pos && (pos[0] || pos[1] || pos[2])) {
       try {
         viewer.navigationState.position.value = Float32Array.from(pos);
@@ -1687,9 +1705,12 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
 
 /* ───────── Proofreading Backend Store (Supabase) ───────── */
 
+/** Spatial coordinate anchor for point-in-space claims. */
+export type ClaimPoint = [number, number, number];
+
 export interface ProofreadingTask {
   id: number;
-  segment_id: string;
+  segment_id: string;  // cached/resolved root ID from PCG (may be stale)
   dataset: string;
   nucleus_coords: string | null;
   soma_coords: string | null;
@@ -1702,6 +1723,12 @@ export interface ProofreadingTask {
   source_sheet_url: string | null;
   created_at: string;
   updated_at: string;
+  // Point-in-space claim anchor
+  claim_point_x: number | null;
+  claim_point_y: number | null;
+  claim_point_z: number | null;
+  /** Immutable supervoxel ID at claim point — used to resolve current root after edits/splits. */
+  supervoxel_id: string | null;
 }
 
 export interface EditLogEntry {
@@ -2145,13 +2172,22 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         const segId = fields[iSeg] || '';
         if (!segId || !/^\d+$/.test(segId)) continue;
 
+        // Parse nucleus coords into claim point anchor
+        const nucRaw = iNuc >= 0 ? fields[iNuc] || '' : '';
+        const nucParts = nucRaw.split(',').map(p => parseFloat(p.trim()));
+        const hasNuc = nucParts.length >= 3 && nucParts.every(n => !isNaN(n));
+
         toInsert.push({
           segment_id: segId,
           dataset,
-          nucleus_coords: iNuc >= 0 ? fields[iNuc] || null : null,
+          nucleus_coords: nucRaw || null,
           soma_coords: iSoma >= 0 ? fields[iSoma] || null : null,
           notes: iNotes >= 0 ? fields[iNotes] || null : null,
           source_sheet_url: url,
+          // Point-in-space anchor from nucleus coordinates
+          claim_point_x: hasNuc ? Math.round(nucParts[0]) : null,
+          claim_point_y: hasNuc ? Math.round(nucParts[1]) : null,
+          claim_point_z: hasNuc ? Math.round(nucParts[2]) : null,
         });
       }
 
@@ -2270,8 +2306,43 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
-  // ── Claim-by-segment helpers ──────────────────────────────────────────
+  // ── Point-in-space claim helpers ──────────────────────────────────────
   const MAX_CLAIMS = 3;
+
+  function pointKey(pt: ClaimPoint): string { return `${pt[0]},${pt[1]},${pt[2]}`; }
+
+  /** Batch-refresh cached segment_ids by resolving supervoxel → current root via PCG.
+   *  Correctly follows edits and splits. */
+  async function refreshSegmentIds(): Promise<void> {
+    const tasksWithSv = tasks.value.filter(t => t.supervoxel_id);
+    if (!tasksWithSv.length) return;
+
+    const svIds = tasksWithSv.map(t => t.supervoxel_id!);
+    const resolved = await getRootsFromSupervoxels(svIds);
+    for (const task of tasksWithSv) {
+      const newRoot = resolved.get(task.supervoxel_id!);
+      if (newRoot && newRoot !== task.segment_id) {
+        task.segment_id = newRoot;
+        supabase.from('proofreading_tasks')
+          .update({ segment_id: newRoot })
+          .eq('id', task.id)
+          .then(() => {}, () => {});
+      }
+    }
+  }
+
+  function _findTaskByPoint(point: ClaimPoint): ProofreadingTask | undefined {
+    return tasks.value.find(
+      t => t.claim_point_x === point[0] && t.claim_point_y === point[1] && t.claim_point_z === point[2],
+    );
+  }
+
+  function _findActiveTaskByPoint(point: ClaimPoint): ProofreadingTask | undefined {
+    return tasks.value.find(
+      t => t.claim_point_x === point[0] && t.claim_point_y === point[1] && t.claim_point_z === point[2] &&
+           (t.status === 'assigned' || t.status === 'in_progress'),
+    );
+  }
 
   /** How many active claims does the current user have? */
   function myActiveClaimCount(): number {
@@ -2281,16 +2352,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     ).length;
   }
 
-  /** Is a specific segment claimed by the current user? */
-  function isMyClaimedSegment(segId: string): boolean {
-    if (!userId.value) return false;
-    return tasks.value.some(
-      t => t.segment_id === segId && t.assigned_to === userId.value &&
-           (t.status === 'assigned' || t.status === 'in_progress'),
-    );
+  /** Is a specific point claimed by anyone? */
+  function isClaimedPoint(point: ClaimPoint): {claimed: boolean; byMe: boolean; byName?: string} {
+    const task = _findActiveTaskByPoint(point);
+    if (!task) return { claimed: false, byMe: false };
+    return {
+      claimed: true,
+      byMe: task.assigned_to === userId.value,
+      byName: task.assigned_to && task.assigned_to !== userId.value ? task.assigned_to : undefined,
+    };
   }
 
-  /** Is a specific segment claimed by anyone? */
+  /** Is a segment claimed? Checks by matching cached segment_id on any active task. */
   function isClaimedSegment(segId: string): {claimed: boolean; byMe: boolean; byName?: string} {
     const task = tasks.value.find(
       t => t.segment_id === segId && (t.status === 'assigned' || t.status === 'in_progress'),
@@ -2303,23 +2376,37 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     };
   }
 
-  /** Claim a cell by segment ID. Enforces 3-cell limit. Creates task if needed. */
-  async function claimBySegment(segId: string): Promise<{ok: boolean; reason?: string}> {
+  /** Claim a cell by spatial coordinate + current root ID + supervoxel ID.
+   *  The point is the stable navigation anchor; supervoxel_id is the immutable
+   *  segment used to resolve current root after edits/splits. */
+  async function claimCell(point: ClaimPoint, currentSegId?: string, supervoxelId?: string): Promise<{ok: boolean; reason?: string}> {
     if (!userId.value) return { ok: false, reason: 'Not logged in' };
     if (myActiveClaimCount() >= MAX_CLAIMS) return { ok: false, reason: `Max ${MAX_CLAIMS} claims reached` };
 
-    // Check if already claimed
-    const existing = isClaimedSegment(segId);
+    // Check if already claimed at this point
+    const existing = isClaimedPoint(point);
     if (existing.claimed) return { ok: false, reason: existing.byMe ? 'Already claimed by you' : 'Claimed by another player' };
 
+    // Also check by segment ID if provided (in case the same cell was claimed at a different point)
+    if (currentSegId) {
+      const segClaim = isClaimedSegment(currentSegId);
+      if (segClaim.claimed) return { ok: false, reason: segClaim.byMe ? 'Already claimed by you' : 'Claimed by another player' };
+    }
+
     try {
-      // Find or create the task in Supabase
-      let task = tasks.value.find(t => t.segment_id === segId);
+      let task = _findTaskByPoint(point);
       if (!task) {
-        // Create task on-the-fly
         const { data, error: insertErr } = await supabase
           .from('proofreading_tasks')
-          .insert({ segment_id: segId, dataset: 'eyewire_ii', status: 'pending' })
+          .insert({
+            segment_id: currentSegId || '',
+            dataset: 'eyewire_ii',
+            status: 'pending',
+            claim_point_x: point[0],
+            claim_point_y: point[1],
+            claim_point_z: point[2],
+            supervoxel_id: supervoxelId || null,
+          })
           .select('*')
           .single();
         if (insertErr) throw insertErr;
@@ -2327,32 +2414,45 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         tasks.value.push(data);
       }
 
-      // Claim via existing mechanism
       const ok = await claimTask(task!.id);
       if (ok) {
-        // Optimistic local update so UI reacts immediately
         const local = tasks.value.find(t => t.id === task!.id);
         if (local) { local.status = 'assigned'; local.assigned_to = userId.value; }
-        // Reload tasks to get updated statuses from server
         await loadTasks('eyewire_ii');
-        await postActivity(`claimed cell ...${segId.slice(-4)}`);
+        const label = currentSegId ? `...${currentSegId.slice(-4)}` : pointKey(point);
+        await postActivity(`claimed cell ${label}`);
         return { ok: true };
       }
       return { ok: false, reason: error.value || 'Claim failed' };
     } catch (e: any) {
-      console.warn('[backend] claimBySegment error:', e.message);
+      console.warn('[backend] claimCell error:', e.message);
       return { ok: false, reason: e.message };
     }
   }
 
-  /** Release a claim by segment ID. */
+  /** Release a claim by spatial coordinate. */
+  async function releaseCell(point: ClaimPoint): Promise<boolean> {
+    const task = tasks.value.find(
+      t => t.claim_point_x === point[0] && t.claim_point_y === point[1] && t.claim_point_z === point[2] &&
+           t.assigned_to === userId.value &&
+           (t.status === 'assigned' || t.status === 'in_progress'),
+    );
+    if (!task) return false;
+    const prevActive = activeTaskId.value;
+    activeTaskId.value = task.id;
+    await releaseTask();
+    activeTaskId.value = prevActive;
+    await loadTasks('eyewire_ii');
+    return true;
+  }
+
+  /** Release a claim by segment ID (finds matching task by cached segment_id). */
   async function releaseBySegment(segId: string): Promise<boolean> {
     const task = tasks.value.find(
       t => t.segment_id === segId && t.assigned_to === userId.value &&
            (t.status === 'assigned' || t.status === 'in_progress'),
     );
     if (!task) return false;
-    // Temporarily set activeTaskId so releaseTask works
     const prevActive = activeTaskId.value;
     activeTaskId.value = task.id;
     await releaseTask();
@@ -2853,8 +2953,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     syncUser, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, loadUserStats, loadUserProfile, loadLeaderboard,
-    // Claim-by-segment
-    claimBySegment, releaseBySegment, isMyClaimedSegment, isClaimedSegment, myActiveClaimCount,
+    // Point-in-space claims
+    claimCell, releaseCell, releaseBySegment, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
+    refreshSegmentIds,
     MAX_CLAIMS,
     // Admin Hub
     isAdmin, checkAdmin,

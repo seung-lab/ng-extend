@@ -180,6 +180,87 @@ export async function getTabularChangeLog(rootId: string): Promise<EditLogEntry[
   }
 }
 
+// ─── Supervoxel → root resolution ───────────────────────────────────────────
+
+/**
+ * Get the current root ID for an immutable supervoxel ID.
+ * Supervoxels never change across edits, so storing a supervoxel at claim time
+ * lets us always resolve to the correct current root — even after splits.
+ *
+ * Endpoint: GET /segmentation/api/v1/table/{table}/node/{supervoxel_id}/root
+ */
+export async function getRootFromSupervoxel(
+  supervoxelId: string,
+): Promise<string | null> {
+  const pcg = getPcgInfo();
+  if (!pcg) {
+    console.info('[pcg] No PCG info available — skipping root lookup');
+    return null;
+  }
+
+  const url = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/node/${supervoxelId}/root`;
+  console.info(`[pcg] GET root_from_supervoxel → ${url}`);
+
+  try {
+    const res = await fetch(url, { headers: authHeaders(pcg.server) });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.warn(`[pcg] root_from_supervoxel ${res.status}:`, errText);
+      return null;
+    }
+    const data = await res.json();
+    const rootId = data.root_id ?? data;
+    return rootId ? String(rootId) : null;
+  } catch (e) {
+    console.warn('[pcg] root_from_supervoxel network error:', e);
+    return null;
+  }
+}
+
+/**
+ * Batch-resolve multiple supervoxel IDs to their current root IDs.
+ */
+export async function getRootsFromSupervoxels(
+  supervoxelIds: string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (supervoxelIds.length === 0) return result;
+
+  const promises = supervoxelIds.map(async (svId) => {
+    const rootId = await getRootFromSupervoxel(svId);
+    if (rootId) result.set(svId, rootId);
+  });
+  await Promise.all(promises);
+  return result;
+}
+
+// ─── Viewer supervoxel extraction ───────────────────────────────────────────
+
+/**
+ * Get the supervoxel ID currently under the cursor / selected in the viewer.
+ * Neuroglancer stores the base (supervoxel) segment alongside the mapped (root) segment
+ * in segmentSelectionState.baseSelectedSegment.
+ */
+export function getSelectedSupervoxelId(): string | null {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const layer = ml.layer;
+      if (!layer) continue;
+      const typeName = layer.constructor?.name ?? '';
+      if (!typeName.includes('Segmentation')) continue;
+      const selState = layer.displayState?.segmentSelectionState;
+      if (selState?.hasSelectedSegment) {
+        const base = selState.baseSelectedSegment;
+        if (base && (base.low || base.high)) {
+          return base.toString();
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
 // ─── Root lineage endpoints ─────────────────────────────────────────────────
 
 /**

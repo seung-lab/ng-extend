@@ -25,7 +25,7 @@ for (const [name, file] of Object.entries(defines)) {
 // Set DATASET=flywire_sandbox to use FlyWire sandbox instead of minnie65.
 //   npm run dev-server                          → minnie65 (default)
 //   DATASET=flywire_sandbox npm run dev-server  → FlyWire sandbox
-const DATASET = process.env.DATASET || 'pinky';
+const DATASET = process.env.DATASET || 'pinky_sandbox';
 
 const DATASETS_CONFIG = {
   minnie65: {
@@ -93,7 +93,7 @@ const DATASETS_CONFIG = {
       },
     ],
   },
-  pinky: {
+  pinky_sandbox: {
     dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] },
     position: [73631, 63170, 344],
     crossSectionScale: 1.1,
@@ -107,7 +107,7 @@ const DATASETS_CONFIG = {
       {
         type: 'segmentation',
         source: {
-          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6',
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_sandbox',
           subsources: {
             default: true,
             mesh: true,
@@ -115,11 +115,7 @@ const DATASETS_CONFIG = {
           },
           enableDefaultSubsources: true,
         },
-        name: 'pinky_training6',
-        segments: [
-          '648518346354708544',
-          '648518346355322263',
-        ],
+        name: 'pinky_sandbox',
       },
     ],
   },

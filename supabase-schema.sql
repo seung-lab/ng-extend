@@ -44,6 +44,32 @@ CREATE INDEX idx_tasks_status ON proofreading_tasks(status);
 CREATE INDEX idx_tasks_assigned ON proofreading_tasks(assigned_to);
 CREATE INDEX idx_tasks_segment ON proofreading_tasks(segment_id);
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Point-in-space claim system (migration)
+-- Claims are anchored to spatial coordinates, not segment IDs.
+-- segment_id becomes a cached/resolved field from PCG.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE proofreading_tasks
+  ADD COLUMN IF NOT EXISTS claim_point_x DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS claim_point_y DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS claim_point_z DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS supervoxel_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_claim_point
+  ON proofreading_tasks(claim_point_x, claim_point_y, claim_point_z)
+  WHERE claim_point_x IS NOT NULL;
+
+-- Backfill existing tasks from nucleus_coords
+UPDATE proofreading_tasks
+SET
+  claim_point_x = SPLIT_PART(nucleus_coords, ',', 1)::DOUBLE PRECISION,
+  claim_point_y = SPLIT_PART(nucleus_coords, ',', 2)::DOUBLE PRECISION,
+  claim_point_z = SPLIT_PART(nucleus_coords, ',', 3)::DOUBLE PRECISION
+WHERE nucleus_coords IS NOT NULL
+  AND nucleus_coords != ''
+  AND claim_point_x IS NULL;
+
 CREATE TABLE task_assignments (
   id SERIAL PRIMARY KEY,
   task_id INTEGER NOT NULL REFERENCES proofreading_tasks(id),

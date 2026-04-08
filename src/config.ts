@@ -25,6 +25,7 @@ export const EYEWIRE_II_CAVE_CONFIG = {
     minnie65_public:          'https://minnie.microns-daf.com',
     minnie65_public_v117:     'https://minnie.microns-daf.com',
     pinky_training3:          'https://minnie.microns-daf.com',
+    pinky_sandbox:            'https://minnie.microns-daf.com',
     // FlyWire sandbox (Drosophila FAFB) — uses global DAF CAVE server
     'fly_v26':                'https://global.daf-apis.com',
     'flywire_fafb_sandbox':   'https://global.daf-apis.com',
@@ -44,8 +45,11 @@ export const EYEWIRE_II_CAVE_CONFIG = {
    */
   cellTypeTable: 'cell_type_dev',
 
-  /** CAVE datastack name for Eyewire II. Confirm with your team. */
-  datastack: 'eyewire_ii',
+  /** CAVE datastack name for materialization queries. */
+  datastack: 'pinky_sandbox',
+
+  /** CAVE aligned volume name (used in annotation API v2 paths). */
+  alignedVolume: 'pinky100',
 
   /** Default Google Sheet URL for the Cell Library task list.
    *  Used when no sheet URL has been configured in localStorage. */

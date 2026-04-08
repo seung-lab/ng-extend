@@ -25,7 +25,7 @@ for (const [name, file] of Object.entries(defines)) {
 //   node scripts/build-prod.js                         → minnie65
 //   DATASET=pinky node scripts/build-prod.js           → pinky
 //   DATASET=flywire_sandbox node scripts/build-prod.js → FlyWire sandbox
-const DATASET = process.env.DATASET || 'pinky';
+const DATASET = process.env.DATASET || 'pinky_sandbox';
 
 const DATASETS_CONFIG = {
   minnie65: {
@@ -85,7 +85,7 @@ const DATASETS_CONFIG = {
       },
     ],
   },
-  pinky: {
+  pinky_sandbox: {
     dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] },
     position: [73631, 63170, 344],
     crossSectionScale: 1.1,
@@ -99,12 +99,11 @@ const DATASETS_CONFIG = {
       {
         type: 'segmentation',
         source: {
-          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6',
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_sandbox',
           subsources: { default: true, mesh: true, graph: true },
           enableDefaultSubsources: true,
         },
-        name: 'pinky_training6',
-        segments: ['648518346354708544', '648518346355322263'],
+        name: 'pinky_sandbox',
       },
     ],
   },

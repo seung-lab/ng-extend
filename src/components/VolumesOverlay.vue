@@ -111,6 +111,9 @@ function confirmSelection() {
       }
     });
     selectLayers(layers);
+    // Persist the user's explicit dataset choice so it survives reloads
+    const segName = selectedSegmentationLayer.value?.name || selectedSegmentationLayer.value?.ngl_image_name;
+    if (segName) localStorage.setItem('nge_dataset_preference', segName);
     emit('hide');
   }
 }

@@ -3,7 +3,8 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {RETINAL_CELL_TYPES} from '../config';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
-import {useHelpRequestStore, useProofreadingBackendStore} from '../store';
+import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
+import {getSelectedSupervoxelId} from './pcg_service';
 
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
@@ -447,7 +448,14 @@ export class ButtonService {
         claimBtn.addEventListener('click', async () => {
           claimBtn.disabled = true;
           claimBtn.textContent = 'Claiming…';
-          const result = await backend.claimBySegment(segmentIDString);
+          // Capture viewer position as the spatial claim anchor
+          const viewer = (window as any)['viewer'];
+          const vp = viewer?.navigationState?.position?.value;
+          const claimPoint: ClaimPoint = vp
+            ? [Math.round(vp[0]), Math.round(vp[1]), Math.round(vp[2])]
+            : [0, 0, 0];
+          const supervoxelId = getSelectedSupervoxelId();
+          const result = await backend.claimCell(claimPoint, segmentIDString, supervoxelId || undefined);
           if (result.ok) {
             claimBtn.textContent = '✓ Claimed!';
             claimBtn.style.color = '#fa4';

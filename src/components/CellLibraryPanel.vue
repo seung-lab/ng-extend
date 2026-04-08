@@ -9,8 +9,8 @@ import {
   useUserStatsStore,
   type ProofreadingTask,
   type HelpRequest,
+  type ClaimPoint,
 } from '../store';
-import { isLatestRoots, getLatestRoots } from '../widgets/pcg_service';
 import { EYEWIRE_II_CAVE_CONFIG } from '../config';
 import { getAccessToken } from '../widgets/google_sheets_auth';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
@@ -31,35 +31,16 @@ const search = ref('');
 const claimError = ref('');
 let claimErrorTimer: ReturnType<typeof setTimeout> | null = null;
 
-// ── Lineage resolution (stale root ID detection) ────────────────────
-const latestRootMap = ref<Map<string, string>>(new Map());
-const staleSet = ref<Set<string>>(new Set());
+// ── Point-based root ID resolution ──────────────────────────────────
 const resolving = ref(false);
 
-async function resolveStaleRoots() {
-  // Collect segment IDs from claimed/in-progress cells
-  const claimedIds = cells.value
-    .filter(c => c.status === 'assigned' || c.status === 'in_progress')
-    .map(c => c.segId);
-  if (claimedIds.length === 0) return;
-
+/** Resolve all claimed tasks' claim points to current root IDs via PCG. */
+async function resolveClaimPoints() {
   resolving.value = true;
   try {
-    // Step 1: lightweight check — which IDs are stale?
-    const latest = await isLatestRoots(claimedIds);
-    if (!latest) { resolving.value = false; return; }
-
-    const staleIds = claimedIds.filter(id => latest.get(id) === false);
-    if (staleIds.length === 0) { resolving.value = false; return; }
-
-    // Step 2: resolve stale IDs to current root IDs
-    const resolved = await getLatestRoots(staleIds);
-    if (resolved) {
-      latestRootMap.value = resolved;
-      staleSet.value = new Set(staleIds);
-    }
+    await backend.refreshSegmentIds();
   } catch (e) {
-    console.warn('[cellLibrary] lineage resolution failed:', e);
+    console.warn('[cellLibrary] point-based resolution failed:', e);
   }
   resolving.value = false;
 }
@@ -84,8 +65,8 @@ onMounted(async () => {
     await queue.loadFromSheet(sheetSource);
   }
   loading.value = false;
-  // Fire-and-forget: resolve stale root IDs for claimed cells
-  resolveStaleRoots();
+  // Fire-and-forget: resolve claim points to current root IDs via PCG
+  resolveClaimPoints();
   // Refresh help requests from Supabase
   helpStore.load();
 });
@@ -95,6 +76,14 @@ const isLoggedIn = computed(() => !!backend.userId);
 
 /** Merge queue items (from sheet) with backend tasks (from Supabase).
  *  Supabase tasks are the source of truth for status/assignment. */
+/** Helper to extract claim point from a task. */
+function taskClaimPoint(t: ProofreadingTask): ClaimPoint | null {
+  if (t.claim_point_x != null && t.claim_point_y != null && t.claim_point_z != null) {
+    return [t.claim_point_x, t.claim_point_y, t.claim_point_z];
+  }
+  return null;
+}
+
 const cells = computed(() => {
   const taskMap = new Map<string, ProofreadingTask>();
   for (const t of backend.tasks) {
@@ -109,7 +98,7 @@ const cells = computed(() => {
       sheetSegIds.add(item.segId);
       const task = taskMap.get(item.segId);
       return {
-        segId: item.segId,
+        segId: task?.segment_id || item.segId,  // use resolved root from task if available
         index: item.index || String(idx + 1),
         nucCoords: item.nucCoords,
         somaCoords: task?.soma_coords || item.somaCoords || '',
@@ -119,10 +108,9 @@ const cells = computed(() => {
         status: task?.status ?? 'pending',
         assignedTo: task?.assigned_to ?? null,
         finalSegId: task?.final_segment_id ?? null,
-        completedByName: null as string | null, // filled async
-        // Lineage resolution
-        currentSegId: latestRootMap.value.get(item.segId) || null,
-        isStale: staleSet.value.has(item.segId),
+        completedByName: null as string | null,
+        // Point-in-space claim anchor
+        claimPoint: task ? taskClaimPoint(task) : null,
       };
     });
 
@@ -140,8 +128,7 @@ const cells = computed(() => {
         assignedTo: t.assigned_to,
         finalSegId: t.final_segment_id,
         completedByName: null as string | null,
-        currentSegId: latestRootMap.value.get(t.segment_id) || null,
-        isStale: staleSet.value.has(t.segment_id),
+        claimPoint: taskClaimPoint(t),
       }));
 
     return [...sheetCells, ...extraTasks];
@@ -159,8 +146,7 @@ const cells = computed(() => {
     assignedTo: t.assigned_to,
     finalSegId: t.final_segment_id,
     completedByName: null as string | null,
-    currentSegId: latestRootMap.value.get(t.segment_id) || null,
-    isStale: staleSet.value.has(t.segment_id),
+    claimPoint: taskClaimPoint(t),
   }));
 });
 
@@ -245,7 +231,17 @@ function parseCoords(s: string): [number, number, number] {
 async function claimCell(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value) return;
   claimError.value = '';
-  const result = await backend.claimBySegment(cell.segId);
+  // Derive claim point: use cell's existing claim point, parse nucCoords, or use viewer position
+  let point: ClaimPoint;
+  if (cell.claimPoint) {
+    point = cell.claimPoint;
+  } else if (cell.nucCoords) {
+    const parsed = parseCoords(cell.nucCoords);
+    point = parsed[0] || parsed[1] || parsed[2] ? parsed : getViewerPos();
+  } else {
+    point = getViewerPos();
+  }
+  const result = await backend.claimCell(point);
   if (!result.ok) {
     claimError.value = result.reason || 'Claim failed';
     if (claimErrorTimer) clearTimeout(claimErrorTimer);
@@ -255,6 +251,16 @@ async function claimCell(cell: typeof cells.value[0]) {
   // Write claim to Google Sheet (best-effort)
   writeClaimToSheet(cell.segId, backend.userName);
   await backend.loadTasks('eyewire_ii');
+}
+
+/** Get current viewer position as a ClaimPoint. */
+function getViewerPos(): ClaimPoint {
+  try {
+    const viewer = (window as any)['viewer'];
+    const pos = viewer?.navigationState?.position?.value;
+    if (pos && pos.length >= 3) return [Math.round(pos[0]), Math.round(pos[1]), Math.round(pos[2])];
+  } catch {}
+  return [0, 0, 0];
 }
 
 async function completeCell(cell: typeof cells.value[0]) {
@@ -296,7 +302,12 @@ async function triggerCellCelebration() {
 
 async function releaseCell(cell: typeof cells.value[0]) {
   if (!cell.segId) return;
-  await backend.releaseBySegment(cell.segId);
+  // Prefer point-based release, fall back to segment-based
+  if (cell.claimPoint) {
+    await backend.releaseCell(cell.claimPoint);
+  } else {
+    await backend.releaseBySegment(cell.segId);
+  }
   // Dispatch event so seg dot pips update
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
   await backend.loadTasks('eyewire_ii');
@@ -865,20 +876,15 @@ const panelStyle = computed(() => ({
             <!-- Left: status pip + name -->
             <div class="nge-cl-row-left">
               <span class="nge-cl-pip" :class="statusClass(cell.status)"></span>
-              <span v-if="cell.isStale" class="nge-cl-stale-dot" title="Segment ID outdated — current ID shown below"></span>
               <div class="nge-cl-row-info">
-                <div class="nge-cl-row-name" @click="copyId(cell.currentSegId || cell.segId)" :title="'Click to copy ' + (cell.currentSegId || cell.segId)">
+                <div class="nge-cl-row-name" @click="copyId(cell.segId)" :title="'Click to copy ' + cell.segId">
                   {{ history.getNickname(cell.segId) || cell.segId }}
-                  <span v-if="copiedId === (cell.currentSegId || cell.segId)" class="nge-cl-copied">copied</span>
+                  <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
                 </div>
                 <div class="nge-cl-row-meta">
                   <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
-                </div>
-                <div v-if="cell.currentSegId && cell.currentSegId !== cell.segId" class="nge-cl-row-current" @click="copyId(cell.currentSegId)" title="Click to copy current ID">
-                  current: {{ cell.currentSegId }}
-                  <span v-if="copiedId === cell.currentSegId" class="nge-cl-copied">copied</span>
                 </div>
               </div>
             </div>
@@ -887,7 +893,7 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-row-actions">
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
-                @click="jumpToCell(cell.currentSegId || cell.segId, cell.nucCoords || cell.somaCoords)"
+                @click="jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords)"
                 title="Jump to segment"
               >↗</button>
 
@@ -1096,27 +1102,6 @@ const panelStyle = computed(() => ({
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.nge-cl-stale-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #333;
-  border: 1px solid #555;
-  flex-shrink: 0;
-  margin-left: -2px;
-}
-
-.nge-cl-row-current {
-  font-size: 0.65em;
-  color: #8bf;
-  margin-top: 2px;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.nge-cl-row-current:hover { color: #adf; }
 
 .nge-cl-row-name { cursor: pointer; }
 .nge-cl-row-name:hover { color: #eef; }
