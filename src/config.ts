@@ -26,6 +26,7 @@ export const EYEWIRE_II_CAVE_CONFIG = {
     minnie65_public_v117:     'https://minnie.microns-daf.com',
     pinky_training3:          'https://minnie.microns-daf.com',
     pinky_sandbox:            'https://minnie.microns-daf.com',
+    pinky_nf_v2:              'https://minnie.microns-daf.com',
     // FlyWire sandbox (Drosophila FAFB) — uses global DAF CAVE server
     'fly_v26':                'https://global.daf-apis.com',
     'flywire_fafb_sandbox':   'https://global.daf-apis.com',

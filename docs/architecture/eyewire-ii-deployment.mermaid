@@ -1,0 +1,60 @@
+---
+title: "EyeWire II — Deployment & CI/CD Pipeline"
+---
+graph LR
+    subgraph Developer["Developer"]
+        GitPush["git push to branch"]
+    end
+
+    subgraph GitHub["GitHub"]
+        Repo["ng-extend repo"]
+        subgraph Actions["GitHub Actions"]
+            CI["on_dev_branch_push.yml<br/>• Checkout code<br/>• Node 20.x setup<br/>• npm typecheck<br/>• npm build (esbuild)"]
+            WeeklyRecap["weekly-recap.yml<br/>• Cron: Sat 23:00 UTC<br/>• node scripts/weekly-recap.mjs<br/>• Generates weekly summaries"]
+        end
+        GHPages["GitHub Pages<br/>(alternate deploy target)"]
+    end
+
+    subgraph GoogleCloud["Google Cloud Platform"]
+        WIF["Workload Identity<br/>Federation"]
+        AppEngine["App Engine<br/>Service: brain-wire<br/>Runtime: Python 3.12<br/>Static file hosting"]
+        GCS["Cloud Storage<br/>(backing App Engine)"]
+    end
+
+    subgraph BuildArtifacts["Build Output"]
+        DistMin["dist/min/<br/>Bundled JS + HTML"]
+        StaticDir["appengine/frontend/static/<br/>Deployment payload"]
+    end
+
+    subgraph ExternalServices["Runtime Services"]
+        Supabase["Supabase<br/>PostgreSQL + Realtime"]
+        CAVE["CAVE API Servers<br/>• minnie.microns-daf.com<br/>• global.daf-apis.com<br/>• global.brain-wire-test.org"]
+        GSheets["Google Sheets API"]
+    end
+
+    GitPush --> Repo
+    Repo --> CI
+    CI -->|"npm run build<br/>(esbuild bundle)"| DistMin
+    DistMin -->|"copy to"| StaticDir
+    CI -->|"gcloud auth via"| WIF
+    StaticDir -->|"gcloud app deploy<br/>--version={branch}"| AppEngine
+    AppEngine --> GCS
+    CI -.->|"alternate: deploy-gh-pages.sh"| GHPages
+
+    WeeklyRecap -->|"POST weekly summaries"| Supabase
+
+    AppEngine -.->|"SPA serves, client connects to"| CAVE
+    AppEngine -.->|"SPA serves, client connects to"| Supabase
+    AppEngine -.->|"SPA serves, client connects to"| GSheets
+
+    classDef dev fill:#2c3e50,stroke:#1a252f,color:#fff
+    classDef gh fill:#24292e,stroke:#1b1f23,color:#fff
+    classDef gcp fill:#4285f4,stroke:#3367d6,color:#fff
+    classDef build fill:#e8a838,stroke:#c28a20,color:#fff
+    classDef ext fill:#50c878,stroke:#3a9a5a,color:#fff
+
+    class GitPush dev
+    class Repo,CI,WeeklyRecap,GHPages gh
+    class WIF,AppEngine,GCS gcp
+    class DistMin,StaticDir build
+    class Supabase,CAVE,GSheets ext

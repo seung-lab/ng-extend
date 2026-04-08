@@ -1,0 +1,89 @@
+---
+title: "EyeWire II — Data Flow Diagram"
+---
+sequenceDiagram
+    actor User
+    participant Browser as Vue 3 SPA
+    participant NG as Neuroglancer<br/>(WebGL Viewer)
+    participant MiddleAuth as Middleauth<br/>OAuth Proxy
+    participant CAVE as CAVE API<br/>(Annotation Server)
+    participant Supabase as Supabase<br/>(PostgreSQL + Realtime)
+    participant GSheets as Google Sheets<br/>API v4
+
+    Note over User,GSheets: === Authentication Flow ===
+
+    User->>Browser: Open EyeWire II
+    Browser->>NG: Initialize neuroglancer container
+    NG->>MiddleAuth: Detect auth requirement<br/>(from graphene:// layer URL)
+    MiddleAuth->>User: Redirect to OAuth login
+    User->>MiddleAuth: Authenticate
+    MiddleAuth->>Browser: Bearer token
+    Browser->>Browser: Store token in localStorage<br/>(auth_token_v2_{serverUrl})
+
+    Note over User,GSheets: === Segment Selection & Annotation ===
+
+    User->>NG: Select neuron segment in 3D view
+    NG->>Browser: MutationObserver detects<br/>new segment in DOM
+    Browser->>Browser: button_service.ts injects<br/>custom UI buttons
+    Browser->>CAVE: GET /annotation/api/v1/table/<br/>cell_status_dev/annotation/<br/>?filter_equal=pt_root_id:{id}
+    CAVE-->>Browser: Annotation data (status, type)
+    Browser->>Browser: useSegmentAnnotationStore<br/>updates panel state
+    Browser->>User: Show AnnotationPanel<br/>(completion status, cell type)
+
+    Note over User,GSheets: === Mark Cell Complete ===
+
+    User->>Browser: Click "Mark Complete"
+    Browser->>CAVE: POST /annotation/api/v1/table/<br/>cell_status_dev/annotation/<br/>{ type: "BoundText", tag: "complete",<br/>  pt_root_id, pt: {position} }
+    CAVE-->>Browser: 200 OK (annotation ID)
+    Browser->>Supabase: INSERT into edit_log<br/>(operation: "mark_complete")
+    Browser->>Supabase: UPDATE users SET<br/>cells_completed += 1
+    Supabase-->>Browser: Realtime broadcast<br/>on activity_feed channel
+    Browser->>User: Show celebration animation<br/>+ AchievementToast (if badge earned)
+
+    Note over User,GSheets: === Merge / Split Operations ===
+
+    User->>NG: Press M (merge) or C (multicut)
+    NG->>CAVE: Graphene merge/split API call<br/>(via graphene provider)
+    CAVE-->>NG: Updated segment graph
+    NG->>Browser: Segment ID changed
+    Browser->>Supabase: INSERT into edit_log<br/>(operation: "merge" | "split")
+    Browser->>Supabase: UPDATE users SET<br/>total_merges/total_splits += 1
+    Browser->>Browser: useUserStatsStore recalculates<br/>daily/weekly/monthly stats
+
+    Note over User,GSheets: === Proofreading Quest Queue ===
+
+    User->>Browser: Open Quest Board
+    Browser->>Supabase: SELECT * FROM proofreading_tasks<br/>WHERE status = 'pending'
+    Supabase-->>Browser: Available tasks
+    User->>Browser: Claim a task
+    Browser->>Supabase: INSERT into task_assignments<br/>(status: 'active', expires_at: +30min)
+    Browser->>Supabase: UPDATE proofreading_tasks<br/>SET status = 'assigned'
+    Supabase-->>Browser: Realtime: task claimed
+
+    Note over User,GSheets: === Cell Library (Google Sheets) ===
+
+    User->>Browser: Open Cell Library panel
+    Browser->>GSheets: GET spreadsheet CSV export<br/>(via published sheet URL)
+    GSheets-->>Browser: CSV data (segment IDs,<br/>coordinates, cell types)
+    Browser->>Browser: useProofreadingQueueStore<br/>parses CSV into task items
+    User->>Browser: Select cell from library
+    Browser->>NG: Navigate to coordinates<br/>& load segment
+
+    Note over User,GSheets: === Help Requests (Second Opinion) ===
+
+    User->>Browser: Request second opinion
+    Browser->>Supabase: INSERT into help_requests<br/>(segment_id, position, issue_type)
+    Supabase-->>Browser: Realtime broadcast
+    Browser->>User: Other users see<br/>pending help requests
+
+    Note over User,GSheets: === Realtime Activity Feed ===
+
+    Supabase->>Browser: Realtime subscription<br/>on activity_feed table
+    Browser->>User: Live feed of community<br/>edits, completions, achievements
+
+    Note over User,GSheets: === Leaderboard & Stats ===
+
+    User->>Browser: Open Leaderboard
+    Browser->>Supabase: SELECT * FROM users<br/>ORDER BY total_edits DESC
+    Supabase-->>Browser: Ranked user list
+    Browser->>User: Display All Time /<br/>Month / Week rankings

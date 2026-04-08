@@ -1,0 +1,129 @@
+---
+title: "EyeWire II — System Architecture Overview"
+---
+graph TB
+    subgraph UserLayer["👤 User Browser"]
+        Browser["Web Browser<br/>(WebGL-capable)"]
+    end
+
+    subgraph Frontend["Vue 3 SPA — Static Hosted on App Engine"]
+        direction TB
+        MainTS["main.ts<br/>Entry Point"]
+        AppVue["App.vue<br/>Root Shell"]
+
+        subgraph Neuroglancer["Neuroglancer Core (Git Submodule)"]
+            NGViewer["3D WebGL Viewer"]
+            GrapheneProvider["Graphene Provider<br/>(Merge / Split / Multicut)"]
+            MiddleAuth["Middleauth<br/>OAuth 2.0 Proxy"]
+        end
+
+        subgraph VueComponents["Vue Component Layer"]
+            ExtBar["ExtensionBar.vue<br/>Top Toolbar"]
+            LoginModal["LoginModal.vue<br/>Multi-server Auth"]
+            AnnotPanel["AnnotationPanel.vue<br/>Segment Status & Cell Type"]
+            QueuePanel["ProofreadingQueuePanel.vue<br/>Quest Board / Daily Quests"]
+            ProfilePanel["UserProfilePanel.vue<br/>Stats, Badges, History"]
+            LeaderPanel["LeaderboardPanel.vue<br/>Rankings (All/Month/Week)"]
+            CmdPalette["CommandPalette.vue<br/>Ctrl+K Fuzzy Search"]
+            CellLib["CellLibraryPanel.vue<br/>Google Sheets Task Import"]
+            ChatPanel["ChatPanel.vue<br/>Community Chat"]
+            NotifPanel["NotificationFeedPanel.vue"]
+            BatchProc["BatchProcessorPanel.vue"]
+            WeeklyRecap["WeeklyRecapPanel.vue"]
+            HelpReqs["HelpRequestsPanel.vue<br/>Second Opinions"]
+            ActivityFeed["ActivityFeedPanel.vue"]
+            AchToast["AchievementToast.vue<br/>Badge Unlocks"]
+            SettingsPanel["SettingsPanel.vue"]
+        end
+
+        subgraph PiniaStores["Pinia State Management (13 Stores)"]
+            LoginStore["useLoginStore<br/>Auth tokens"]
+            LayersStore["useLayersStore<br/>Active layers"]
+            StatsStore["useUserStatsStore<br/>Edits, merges, splits, streaks"]
+            PrefsStore["useUserPreferencesStore<br/>Flag, bio, toolbar"]
+            SegAnnotStore["useSegmentAnnotationStore<br/>Selected segment state"]
+            CellHistStore["useCellHistoryStore<br/>Favorites & nicknames"]
+            HelpStore["useHelpRequestStore"]
+            QueueStore["useProofreadingQueueStore<br/>Task queue & CSV parser"]
+            SplitMerge["useSplitMergeOverlayStore"]
+            BackendStore["useProofreadingBackendStore<br/>Supabase sync & leaderboard"]
+            VolumesStore["useVolumesStore<br/>EM volumes from CAVE"]
+            ChatStore["useChatStore"]
+            DropdownStore["useDropdownListStore"]
+        end
+
+        subgraph Services["Service Layer (src/widgets/)"]
+            LightbulbSvc["lightbulb_service.ts<br/>CAVE Annotation CRUD"]
+            ButtonSvc["button_service.ts<br/>DOM Injection"]
+            PCGSvc["pcg_service.ts<br/>Proofreading Cell Graph"]
+        end
+
+        subgraph Config["Configuration"]
+            ConfigTS["config.ts<br/>CAVE tables, server URLs"]
+            NGExtJSON["ng-extend.json<br/>Volumes & defaults"]
+            DatastackJSON["datastack-dataset.json<br/>Layer→datastack mapping"]
+            KeybindsJSON["custom-keybinds.json<br/>M=merge, C=cut, T=rotate"]
+            StateServers["state_servers.json<br/>CAVE state server URLs"]
+        end
+    end
+
+    subgraph ExternalAPIs["External Services"]
+        direction TB
+        subgraph CAVE["CAVE API<br/>(Connectomics Annotation Versioning Engine)"]
+            CAVEMinnie["minnie.microns-daf.com"]
+            CAVEGlobal["global.daf-apis.com"]
+            CAVEBrainWire["global.brain-wire-test.org"]
+            AnnotAPI["/annotation/api/v1/table/\n{cellStatusTable}/annotation/"]
+            InfoAPI["/info/api/v2/ngl_info\nVolume metadata"]
+            StateAPI["/nglstate/api/v1/post\nShared viewer state"]
+        end
+
+        subgraph Supabase["Supabase (PostgreSQL + Realtime)"]
+            SupaDB["PostgreSQL Database"]
+            SupaRT["Realtime Subscriptions"]
+            SupaRLS["Row-Level Security"]
+        end
+
+        GoogleSheets["Google Sheets API v4<br/>Task queue CSV import/export"]
+    end
+
+    subgraph Deployment["Deployment Pipeline"]
+        GHActions["GitHub Actions<br/>on_dev_branch_push.yml"]
+        WeeklyAction["weekly-recap.yml<br/>Saturdays 23:00 UTC"]
+        CloudBuild["Google Cloud Build"]
+        AppEngine["App Engine<br/>(brain-wire service)<br/>Python 3.12 static hosting"]
+    end
+
+    Browser --> AppVue
+    MainTS --> AppVue
+    AppVue --> NGViewer
+    AppVue --> ExtBar
+    ExtBar --> VueComponents
+    VueComponents --> PiniaStores
+    PiniaStores --> Services
+    Services --> CAVE
+    BackendStore --> Supabase
+    HelpStore --> Supabase
+    StatsStore --> Supabase
+    CellLib --> GoogleSheets
+    MiddleAuth --> CAVE
+    LoginStore -.->|Bearer tokens| MiddleAuth
+    SupaRT -.->|Realtime events| BackendStore
+    SupaRT -.->|Realtime events| HelpStore
+    GHActions -->|npm build| CloudBuild
+    CloudBuild -->|Deploy static| AppEngine
+    WeeklyAction -->|node scripts/weekly-recap.mjs| Supabase
+
+    classDef frontend fill:#4a90d9,stroke:#2c5f9e,color:#fff
+    classDef store fill:#7b68ee,stroke:#5a4fcf,color:#fff
+    classDef service fill:#e8a838,stroke:#c28a20,color:#fff
+    classDef external fill:#50c878,stroke:#3a9a5a,color:#fff
+    classDef deploy fill:#ff6b6b,stroke:#cc5555,color:#fff
+    classDef viewer fill:#2c3e50,stroke:#1a252f,color:#fff
+
+    class AppVue,ExtBar,LoginModal,AnnotPanel,QueuePanel,ProfilePanel,LeaderPanel,CmdPalette,CellLib,ChatPanel,NotifPanel,BatchProc,WeeklyRecap,HelpReqs,ActivityFeed,AchToast,SettingsPanel frontend
+    class LoginStore,LayersStore,StatsStore,PrefsStore,SegAnnotStore,CellHistStore,HelpStore,QueueStore,SplitMerge,BackendStore,VolumesStore,ChatStore,DropdownStore store
+    class LightbulbSvc,ButtonSvc,PCGSvc service
+    class CAVEMinnie,CAVEGlobal,CAVEBrainWire,AnnotAPI,InfoAPI,StateAPI,SupaDB,SupaRT,SupaRLS,GoogleSheets external
+    class GHActions,WeeklyAction,CloudBuild,AppEngine deploy
+    class NGViewer,GrapheneProvider,MiddleAuth viewer

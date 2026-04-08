@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "npm install --prefer-offline --no-audit"
+      }
+    ]
+  }
+}

@@ -1,0 +1,102 @@
+---
+title: "EyeWire II — Frontend Component & Store Architecture"
+---
+graph TB
+    subgraph EntryPoint["Entry Point"]
+        MainTS["main.ts<br/>• Init Vue app<br/>• Mount Pinia<br/>• Register keybindings<br/>• Start DOM observers"]
+    end
+
+    subgraph RootShell["Root Shell"]
+        AppVue["App.vue"]
+    end
+
+    subgraph NeuroglancerLayer["Neuroglancer (WebGL 3D Viewer)"]
+        NGContainer["Neuroglancer Container<br/>• EM image layers<br/>• Segmentation layers<br/>• Annotation layers"]
+        MergeTools["Graphene Tools<br/>• M = Merge segments<br/>• C = Multicut/Split<br/>• T = Free-rotate cube"]
+        DOMObserver["MutationObserver<br/>Watches segment list<br/>Injects custom buttons"]
+    end
+
+    subgraph Toolbar["ExtensionBar (Top Toolbar)"]
+        Logo["Logo + Volume Name"]
+        StatsBar["Edit Stats Counter<br/>(daily edits/merges/splits)"]
+        PanelButtons["Panel Toggle Buttons<br/>Quest | Profile | Leaderboard<br/>Library | Chat | Help | Settings"]
+        CelebOverlay["SplitMergeOverlay<br/>Celebration animations"]
+    end
+
+    subgraph Panels["Floating Panels (Holographic UI)"]
+        direction LR
+        P1["LoginModal<br/>• Multi-server detect<br/>• Animated neuron<br/>• OAuth via middleauth"]
+        P2["AnnotationPanel<br/>• Cell status (complete?)<br/>• Cell type selector<br/>• Second opinion btn"]
+        P3["ProofreadingQueue<br/>• Daily quests<br/>• Task claim (30min)<br/>• Nickname generator"]
+        P4["UserProfile<br/>• Stats grid<br/>• Badge collection<br/>• Cell history"]
+        P5["Leaderboard<br/>• All Time / Month / Week<br/>• Ranked user list"]
+        P6["CellLibrary<br/>• Google Sheets import<br/>• Sortable task table"]
+        P7["CommandPalette<br/>• Ctrl+K fuzzy search<br/>• Actions + Cells + Panels"]
+        P8["Chat | Notifications<br/>Activity | Weekly Recap<br/>Help Requests | Settings<br/>Batch Processor"]
+    end
+
+    subgraph Stores["Pinia Stores"]
+        direction TB
+        subgraph AuthStores["Auth & Config"]
+            SLogin["useLoginStore<br/>localStorage tokens<br/>auth_token_v2_*"]
+            SLayers["useLayersStore<br/>Active layers<br/>CAVE URL detection"]
+            SPrefs["useUserPreferencesStore<br/>Flag emoji, bio,<br/>toolbar order"]
+        end
+        subgraph DataStores["Data & State"]
+            SSegAnnot["useSegmentAnnotationStore<br/>Selected segment<br/>completion + type"]
+            SCellHist["useCellHistoryStore<br/>Favorites, nicknames<br/>localStorage cache"]
+            SQueue["useProofreadingQueueStore<br/>Task items<br/>CSV parser"]
+            SSplitMerge["useSplitMergeOverlayStore<br/>Active tool state"]
+            SVolumes["useVolumesStore<br/>EM volumes list"]
+        end
+        subgraph SyncStores["Backend Sync"]
+            SBackend["useProofreadingBackendStore<br/>• Supabase CRUD<br/>• Edit logging<br/>• Leaderboard queries<br/>• Activity feed sync"]
+            SStats["useUserStatsStore<br/>Daily/weekly/monthly<br/>edits, streaks"]
+            SHelp["useHelpRequestStore<br/>Second opinions<br/>localStorage + Supabase"]
+            SChat["useChatStore<br/>Messages (optional)"]
+        end
+    end
+
+    subgraph ServiceLayer["Service Layer (src/widgets/)"]
+        LightbulbSvc["lightbulb_service.ts<br/>CAVE annotation CRUD<br/>GET/POST/DELETE"]
+        ButtonSvc["button_service.ts<br/>DOM button injection<br/>into neuroglancer"]
+        PCGSvc["pcg_service.ts<br/>Proofreading cell graph<br/>operations"]
+    end
+
+    MainTS --> AppVue
+    AppVue --> NGContainer
+    AppVue --> Toolbar
+    NGContainer --> DOMObserver
+    DOMObserver --> ButtonSvc
+    Toolbar --> Panels
+    PanelButtons --> Panels
+
+    P1 --> SLogin
+    P2 --> SSegAnnot
+    P3 --> SQueue
+    P3 --> SBackend
+    P4 --> SStats
+    P4 --> SCellHist
+    P5 --> SBackend
+    P6 --> SQueue
+    P7 --> SLayers
+
+    SSegAnnot --> LightbulbSvc
+    SBackend --> SStats
+    SSplitMerge --> CelebOverlay
+    SVolumes --> SLayers
+
+    classDef entry fill:#2c3e50,stroke:#1a252f,color:#fff
+    classDef ng fill:#1a5276,stroke:#154360,color:#fff
+    classDef toolbar fill:#4a90d9,stroke:#2c5f9e,color:#fff
+    classDef panel fill:#5dade2,stroke:#3498db,color:#fff
+    classDef store fill:#7b68ee,stroke:#5a4fcf,color:#fff
+    classDef svc fill:#e8a838,stroke:#c28a20,color:#fff
+
+    class MainTS entry
+    class AppVue entry
+    class NGContainer,MergeTools,DOMObserver ng
+    class Logo,StatsBar,PanelButtons,CelebOverlay toolbar
+    class P1,P2,P3,P4,P5,P6,P7,P8 panel
+    class SLogin,SLayers,SPrefs,SSegAnnot,SCellHist,SQueue,SSplitMerge,SVolumes,SBackend,SStats,SHelp,SChat store
+    class LightbulbSvc,ButtonSvc,PCGSvc svc

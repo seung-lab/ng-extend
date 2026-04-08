@@ -99,11 +99,11 @@ const DATASETS_CONFIG = {
       {
         type: 'segmentation',
         source: {
-          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_sandbox',
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_nf_v2',
           subsources: { default: true, mesh: true, graph: true },
           enableDefaultSubsources: true,
         },
-        name: 'pinky_sandbox',
+        name: 'pinky_nf_v2',
       },
     ],
   },

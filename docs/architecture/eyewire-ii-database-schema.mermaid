@@ -1,0 +1,151 @@
+---
+title: "EyeWire II — Supabase Database Schema (ERD)"
+---
+erDiagram
+    users {
+        uuid id PK
+        text middleauth_email UK
+        text display_name
+        text flag "Emoji flag"
+        text bio
+        int total_edits "Default 0"
+        int total_merges "Default 0"
+        int total_splits "Default 0"
+        int cells_completed "Default 0"
+        int current_streak "Default 0"
+        int longest_streak "Default 0"
+        date last_edit_date
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    proofreading_tasks {
+        uuid id PK
+        text segment_id
+        text dataset
+        jsonb nucleus_coords "3D position"
+        jsonb soma_coords "3D position"
+        text status "pending|assigned|in_progress|completed|skipped"
+        uuid assigned_to FK "References users.id"
+        int priority "Default 0"
+        text final_segment_id "After edits"
+        text notes
+        text source_sheet_url
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    task_assignments {
+        uuid id PK
+        uuid task_id FK "References proofreading_tasks.id"
+        uuid user_id FK "References users.id"
+        timestamptz claimed_at "Default now()"
+        timestamptz expires_at "Default now() + 30min"
+        text status "active|completed|expired|released"
+        timestamptz created_at
+    }
+
+    edit_log {
+        uuid id PK
+        uuid task_id FK "References proofreading_tasks.id (nullable)"
+        uuid user_id FK "References users.id"
+        text operation "split|merge|mark_complete|set_cell_type"
+        text segment_before
+        text segment_after
+        jsonb coordinates "3D position"
+        jsonb metadata "Arbitrary JSON"
+        text dataset
+        timestamptz created_at
+    }
+
+    activity_feed {
+        uuid id PK
+        uuid user_id FK "References users.id"
+        text user_name
+        text action "Description of activity"
+        text segment_id
+        timestamptz timestamp "Default now()"
+    }
+
+    help_requests {
+        uuid id PK
+        uuid user_id FK "References users.id"
+        text segment_id
+        jsonb position "3D viewer position"
+        text issue_type
+        text dataset
+        boolean resolved "Default false"
+        timestamptz resolved_at
+        uuid resolved_by FK "References users.id"
+        text response_note
+        text response_url
+        timestamptz created_at
+    }
+
+    admins {
+        uuid id PK
+        text email UK
+        timestamptz created_at
+    }
+
+    user_groups {
+        uuid id PK
+        text name UK "e.g. Scythes, Mystics"
+        text description
+        text color "Hex color tag"
+        timestamptz created_at
+    }
+
+    user_group_members {
+        uuid id PK
+        uuid group_id FK "References user_groups.id"
+        uuid user_id FK "References users.id"
+        timestamptz joined_at
+    }
+
+    notifications {
+        uuid id PK
+        uuid created_by FK "References admins.id"
+        text title
+        text body
+        text target_type "all|group|user"
+        uuid target_id "Group or user ID (nullable)"
+        timestamptz created_at
+        timestamptz expires_at
+    }
+
+    special_badges {
+        uuid id PK
+        text name UK
+        text description
+        text image_url
+        timestamptz created_at
+    }
+
+    special_badge_awards {
+        uuid id PK
+        uuid badge_id FK "References special_badges.id"
+        uuid user_id FK "References users.id"
+        uuid awarded_by FK "References admins.id"
+        text reason
+        timestamptz awarded_at
+    }
+
+    %% Relationships
+    users ||--o{ proofreading_tasks : "assigned_to"
+    users ||--o{ task_assignments : "claims"
+    users ||--o{ edit_log : "performs"
+    users ||--o{ activity_feed : "generates"
+    users ||--o{ help_requests : "requests"
+    users ||--o{ help_requests : "resolves"
+    users ||--o{ user_group_members : "belongs_to"
+    users ||--o{ special_badge_awards : "earns"
+
+    proofreading_tasks ||--o{ task_assignments : "has"
+    proofreading_tasks ||--o{ edit_log : "tracks"
+
+    user_groups ||--o{ user_group_members : "contains"
+
+    special_badges ||--o{ special_badge_awards : "awarded_as"
+    admins ||--o{ notifications : "creates"
+    admins ||--o{ special_badge_awards : "awards"
