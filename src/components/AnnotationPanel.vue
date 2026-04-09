@@ -72,9 +72,12 @@ const statusLabel = computed(() => {
   return annotation.value.isComplete ? '✓ Complete' : '○ In Progress';
 });
 
-const cellTypeLabel = computed(() =>
-  annotation.value?.cellType || 'Unknown / Unsure'
-);
+const cellTypeLabel = computed(() => {
+  const ct = annotation.value?.cellType;
+  const cs = annotation.value?.classificationSystem;
+  if (!ct) return 'Unknown / Unsure';
+  return cs ? `${cs} - ${ct}` : ct;
+});
 
 // ── Fetch status from CAVE whenever the active segment changes ───────────────
 watch(activeSegId, async (id) => {
@@ -100,6 +103,7 @@ watch(activeSegId, async (id) => {
         segId: id,
         isComplete: status.isComplete,
         cellType: status.cellType ?? '',
+        classificationSystem: status.classificationSystem,
         annotationId: status.annotationId,
         cellTypeAnnotationId: status.cellTypeAnnotationId,
         loading: false,

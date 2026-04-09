@@ -61,6 +61,8 @@ export interface CellStatus {
   /** ID of the completion annotation row (needed for deletion / unmark). */
   annotationId?: number;
   cellType?: string;
+  /** Classification system (e.g. 'RGC', 'AC') from cell_type_local schema. */
+  classificationSystem?: string;
   cellTypeAnnotationId?: number;
 }
 
@@ -232,10 +234,13 @@ export async function getCellStatus(
       const rows: any[] = await res.json();
       if (rows.length) {
         const latest = rows[rows.length - 1];
-        // cell_type_local schema has 'cell_type' field; bound_tag has 'tag'
+        // cell_type_local schema has 'cell_type' + 'classification_system'; bound_tag has 'tag'
         status.cellType = cellTypeSchema === 'cell_type_local'
           ? (latest.cell_type || latest.tag)
           : latest.tag;
+        if (cellTypeSchema === 'cell_type_local' && latest.classification_system) {
+          status.classificationSystem = latest.classification_system;
+        }
         status.cellTypeAnnotationId = latest.id;
       }
       caveAvailable = true;

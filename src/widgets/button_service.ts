@@ -145,8 +145,11 @@ export class ButtonService {
       badge.className = status.isComplete
         ? 'nge-label-badge nge-label-badge--complete'
         : 'nge-label-badge nge-label-badge--annotated';
-      badge.textContent = status.cellType;
-      badge.title = status.isComplete ? `Complete: ${status.cellType}` : status.cellType;
+      const displayType = status.classificationSystem
+        ? `${status.classificationSystem} - ${status.cellType}`
+        : status.cellType;
+      badge.textContent = displayType;
+      badge.title = status.isComplete ? `Complete: ${displayType}` : displayType;
     } else {
       // No cell type — the pip color is sufficient, no text needed
       badge.className = 'nge-label-badge';

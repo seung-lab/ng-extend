@@ -632,6 +632,8 @@ export interface SegmentAnnotation {
   segId: string;
   isComplete: boolean;
   cellType: string;
+  /** Classification system (e.g. 'RGC', 'AC') from cell_type_local schema. */
+  classificationSystem?: string;
   annotationId?: number;
   cellTypeAnnotationId?: number;
   loading: boolean;
