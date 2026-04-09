@@ -2,12 +2,15 @@
  * lightbulb_service.ts
  * Eyewire II — CAVE API helpers for cell completion and annotation.
  *
- * TODO: Once you have the CAVE annotation table names from your admin,
- *       update EYEWIRE_II_CAVE_CONFIG in src/config.ts.
+ * Per-dataset CAVE config is resolved via getDatasetCaveConfig() in config.ts.
+ * Each dataset (stroeh_mouse_retina, pinky_sandbox, etc.) can have its own
+ * annotation tables, datastack, and aligned volume.
  */
 
-import {EYEWIRE_II_CAVE_CONFIG} from '../config';
+import {getDatasetCaveConfig, type DatasetCaveConfig} from '../config';
 import {useProofreadingBackendStore, useCellHistoryStore, useUserStatsStore} from '../store';
+import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
+import {parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import nurroSuccess from '../../static/nurro/nurro-success.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
@@ -133,11 +136,48 @@ function getViewerPosition(): [number, number, number] {
 
 // ─── Cell status (mark complete) ────────────────────────────────────────────
 
+// ─── Per-dataset config resolution ──────────────────────────────────────────
+
+/** Resolve the CAVE config for the currently active dataset in the viewer. */
+function getActiveDatasetConfig(): DatasetCaveConfig {
+  return getDatasetCaveConfig(getCurrentDataset());
+}
+
 // ─── CAVE Annotation API v2 helpers ─────────────────────────────────────────
 
-function annotationBaseUrl(caveServer: string, table: string): string {
-  const {alignedVolume} = EYEWIRE_II_CAVE_CONFIG;
-  return `${caveServer}/annotation/api/v2/aligned_volume/${alignedVolume}/table/${table}/annotations`;
+function annotationBaseUrl(caveServer: string, table: string, alignedVolume?: string): string {
+  const vol = alignedVolume ?? getActiveDatasetConfig().alignedVolume;
+  return `${caveServer}/annotation/api/v2/aligned_volume/${vol}/table/${table}/annotations`;
+}
+
+/**
+ * Authenticated fetch through neuroglancer's middleauth pipeline.
+ * This bypasses CORS issues by routing through the credentials provider.
+ */
+/** @internal Authenticated fetch through neuroglancer's middleauth pipeline — for future use. */
+export async function caveFetch(url: string, init?: RequestInit): Promise<Response> {
+  const maUrl = `middleauth+${url}`;
+  const {url: fetchUrl, credentialsProvider} = parseSpecialUrl(maUrl, defaultCredentialsManager);
+  // cancellableFetchSpecialOk only supports GET+responseJson, so for POST/DELETE
+  // we need to get the credentials and do the fetch ourselves
+  if (credentialsProvider) {
+    try {
+      const creds: any = await credentialsProvider.get(undefined as any);
+      const token = creds?.credentials?.token || creds?.token;
+      if (token) {
+        const headers = new Headers(init?.headers);
+        headers.set('Authorization', `Bearer ${token}`);
+        if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+        return fetch(fetchUrl, { ...init, headers });
+      }
+    } catch {}
+  }
+  // Fallback: try with localStorage token
+  const token = getAuthToken(url);
+  const headers = new Headers(init?.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  return fetch(url, { ...init, headers });
 }
 
 /**
@@ -147,8 +187,11 @@ function annotationBaseUrl(caveServer: string, table: string): string {
  */
 export async function getCellStatus(
     caveServer: string, rootId: string): Promise<CellStatus | null> {
-  const {cellStatusTable, cellTypeTable, datastack} = EYEWIRE_II_CAVE_CONFIG;
+  const dsCfg = getActiveDatasetConfig();
+  const {cellStatusTable, cellTypeTable, datastack, cellTypeSchema} = dsCfg;
   if (!caveServer) return null;
+
+  console.info(`[lightbulb] Using dataset config: datastack=${datastack}, status=${cellStatusTable}, type=${cellTypeTable} (${cellTypeSchema})`);
 
   const status: CellStatus = {isComplete: false};
   let caveAvailable = false;
@@ -189,7 +232,10 @@ export async function getCellStatus(
       const rows: any[] = await res.json();
       if (rows.length) {
         const latest = rows[rows.length - 1];
-        status.cellType = latest.tag;
+        // cell_type_local schema has 'cell_type' field; bound_tag has 'tag'
+        status.cellType = cellTypeSchema === 'cell_type_local'
+          ? (latest.cell_type || latest.tag)
+          : latest.tag;
         status.cellTypeAnnotationId = latest.id;
       }
       caveAvailable = true;
@@ -226,13 +272,14 @@ export async function getCellStatus(
 export async function setCellComplete(
     caveServer: string, rootId: string, complete: boolean,
     existingAnnotationId?: number): Promise<boolean> {
-  const {cellStatusTable} = EYEWIRE_II_CAVE_CONFIG;
+  const dsCfg = getActiveDatasetConfig();
+  const {cellStatusTable, alignedVolume} = dsCfg;
   if (!caveServer) {
     console.warn('[lightbulb] No CAVE server — cannot save completion status.');
     return false;
   }
 
-  const baseUrl = annotationBaseUrl(caveServer, cellStatusTable);
+  const baseUrl = annotationBaseUrl(caveServer, cellStatusTable, alignedVolume);
 
   try {
     if (!complete && existingAnnotationId !== undefined) {
@@ -377,13 +424,14 @@ export async function setCellComplete(
 export async function saveCellType(
     caveServer: string, rootId: string, cellType: string,
     existingAnnotationId?: number): Promise<boolean> {
-  const {cellTypeTable} = EYEWIRE_II_CAVE_CONFIG;
+  const dsCfg = getActiveDatasetConfig();
+  const {cellTypeTable, cellTypeSchema, alignedVolume} = dsCfg;
   if (!caveServer) {
     console.warn('[lightbulb] No CAVE server — cannot save cell type.');
     return false;
   }
 
-  const baseUrl = annotationBaseUrl(caveServer, cellTypeTable);
+  const baseUrl = annotationBaseUrl(caveServer, cellTypeTable, alignedVolume);
   const pos = getViewerPosition();
 
   try {
@@ -396,12 +444,21 @@ export async function saveCellType(
       }).catch(() => {});
     }
 
-    // Create new annotation
+    // Create new annotation — schema-aware payload
+    // cell_type_local: {pt, cell_type, classification_system}
+    // bound_tag:       {pt, tag}
+    const annotation = cellTypeSchema === 'cell_type_local'
+      ? {
+          pt: {position: pos},
+          cell_type: cellType,
+          classification_system: '',  // optional classification group
+        }
+      : {
+          pt: {position: pos},
+          tag: cellType,
+        };
     const body = {
-      annotations: [{
-        pt: {position: pos},
-        tag: cellType,
-      }],
+      annotations: [annotation],
     };
     console.info(`[lightbulb] POST cell type → ${baseUrl}`, body);
     const res = await fetch(baseUrl, {

@@ -25,9 +25,35 @@ for (const [name, file] of Object.entries(defines)) {
 // Set DATASET=flywire_sandbox to use FlyWire sandbox instead of minnie65.
 //   npm run dev-server                          → minnie65 (default)
 //   DATASET=flywire_sandbox npm run dev-server  → FlyWire sandbox
-const DATASET = process.env.DATASET || 'pinky_sandbox';
+const DATASET = process.env.DATASET || 'stroeh_mouse_retina';
 
 const DATASETS_CONFIG = {
+  stroeh_mouse_retina: {
+    dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] },
+    position: [32653, 23923, 583],
+    crossSectionScale: 3,
+    projectionScale: 15000,
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://middleauth+https://minnie.microns-daf.com/render/precomputed/stroeh_mouse_retina_EM_layer',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/stroeh_mouse_retina',
+          subsources: {
+            default: true,
+            mesh: true,
+            graph: true,
+          },
+          enableDefaultSubsources: true,
+        },
+        name: 'stroeh_mouse_retina',
+      },
+    ],
+  },
   minnie65: {
     dimensions: { x: [8e-9, 'm'], y: [8e-9, 'm'], z: [4e-8, 'm'] },
     position: [120320, 103936, 21360],

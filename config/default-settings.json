@@ -1,4 +1,11 @@
 {
+  "stroeh_mouse_retina": {
+    "dimensions": [1.6e-8, 1.6e-8, 4e-8],
+    "position": [32653, 23923, 583],
+    "crossSectionScale": 3,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 15000
+  },
   "h01_c3_flat": {
     "dimensions": [8e-9, 8e-9, 3.3e-8],
     "position": [313521.25, 181787.21875, 4311.5],

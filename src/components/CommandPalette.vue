@@ -23,6 +23,7 @@ const emit = defineEmits({
   'open-help': null,
   'open-queue': null,
   'open-feed': null,
+  'open-dataset-selector': null,
 });
 
 const visible = ref(false);
@@ -167,6 +168,16 @@ function buildActions(): PaletteItem[] {
     category: 'navigate',
     icon: '⚙',
     action: () => emit('open-settings'),
+  });
+  items.push({
+    id: 'open-dataset-selector',
+    label: 'Switch Dataset',
+    description: 'Switch between stroeh retina, pinky, minnie65',
+    category: 'navigate',
+    icon: '🗄',
+    shortcut: 'Ctrl+D',
+    aliases: ['dataset', 'volume', 'retina', 'stroeh', 'pinky', 'minnie', 'switch'],
+    action: () => emit('open-dataset-selector'),
   });
 
   // ── Tools ──
@@ -649,6 +660,10 @@ function globalKeyHandler(e: KeyboardEvent) {
   } else if (e.ctrlKey && e.shiftKey && e.key === 'L') {
     e.preventDefault();
     emit('open-leaderboard');
+  } else if (e.ctrlKey && e.key === 'd') {
+    e.preventDefault();
+    e.stopPropagation();
+    emit('open-dataset-selector');
   }
 }
 

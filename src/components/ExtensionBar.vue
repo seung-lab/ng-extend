@@ -16,6 +16,7 @@ import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
+import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -109,6 +110,7 @@ const showChat = ref(true);
 const showCellLibrary = ref(false);
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
+const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
 const backendStore = useProofreadingBackendStore();
@@ -230,6 +232,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
     @open-queue="showQueue = true"
     @open-cells="showCellLibrary = true"
     @open-feed="showFeed = true"
+    @open-dataset-selector="showDatasetSelector = true"
   />
   <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
   <!-- Help requests now live in Cell Library's Help tab -->
@@ -237,6 +240,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
   <batch-processor-panel v-if="showBatchProcessor" @hide="showBatchProcessor = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
+  <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" @hide="showProfile = false; profileUserId = null" @open-settings="showSettings = true" />
   <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
@@ -253,6 +257,11 @@ function activateTool(toolType: 'multicut' | 'merge') {
     <transition name="nge-share-toast">
       <div v-if="shareCopied" class="nge-share-toast">Link copied to clipboard</div>
     </transition>
+    <button class="nge-dataset-btn" @click="showDatasetSelector = !showDatasetSelector"
+            title="Switch Dataset">
+      <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
+      Dataset
+    </button>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
          class="nge-streak-chip" title="Your current editing streak">
