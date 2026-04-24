@@ -255,7 +255,58 @@ function activateTool(toolType: 'multicut' | 'merge') {
     </div>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">
-      <div v-if="shareCopied" class="nge-share-toast">Link copied to clipboard</div>
+      <div v-if="shareCopied" class="nge-share-toast">
+        <div class="nge-share-toast-icon">
+          <!-- Back neuron (offset up-left) -->
+          <svg class="nge-share-neuron nge-share-neuron--back" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="shareNeuronGlow" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="0.7" result="b1"/>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="b2"/>
+                <feMerge><feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <radialGradient id="shareSomaGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#80f0ff" stop-opacity="1"/>
+                <stop offset="60%" stop-color="#20d0ff" stop-opacity="0.8"/>
+                <stop offset="100%" stop-color="#00a0e0" stop-opacity="0.2"/>
+              </radialGradient>
+            </defs>
+            <g filter="url(#shareNeuronGlow)">
+              <!-- Apical trunk + tuft -->
+              <path d="M30 30 L29 22 L27 14 L24 6" stroke="#18cfff" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/>
+              <path d="M27 14 L33 10 L40 7" stroke="#15c8f8" stroke-width="1.0" stroke-linecap="round" opacity="0.7"/>
+              <path d="M27 14 L21 10 L14 8" stroke="#15c8f8" stroke-width="1.0" stroke-linecap="round" opacity="0.7"/>
+              <path d="M24 6 L20 2" stroke="#0ab0e0" stroke-width="0.6" stroke-linecap="round" opacity="0.5"/>
+              <path d="M24 6 L28 2" stroke="#0ab0e0" stroke-width="0.6" stroke-linecap="round" opacity="0.5"/>
+              <!-- Basal dendrites -->
+              <path d="M30 32 L24 38 L18 44" stroke="#15c8f8" stroke-width="1.0" stroke-linecap="round" opacity="0.65"/>
+              <path d="M30 32 L36 38 L42 44" stroke="#15c8f8" stroke-width="1.0" stroke-linecap="round" opacity="0.65"/>
+              <path d="M30 32 L30 42 L30 52" stroke="#10b8e8" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
+              <path d="M18 44 L14 50" stroke="#0ab0e0" stroke-width="0.6" stroke-linecap="round" opacity="0.4"/>
+              <path d="M42 44 L46 50" stroke="#0ab0e0" stroke-width="0.6" stroke-linecap="round" opacity="0.4"/>
+              <!-- Soma -->
+              <circle cx="30" cy="30" r="4" fill="url(#shareSomaGrad)"/>
+            </g>
+          </svg>
+          <!-- Front neuron (offset down-right, brighter) -->
+          <svg class="nge-share-neuron nge-share-neuron--front" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+            <g filter="url(#shareNeuronGlow)">
+              <path d="M30 30 L29 22 L27 14 L24 6" stroke="#5be3ff" stroke-width="1.8" stroke-linecap="round" opacity="1"/>
+              <path d="M27 14 L33 10 L40 7" stroke="#4dd8f8" stroke-width="1.1" stroke-linecap="round" opacity="0.85"/>
+              <path d="M27 14 L21 10 L14 8" stroke="#4dd8f8" stroke-width="1.1" stroke-linecap="round" opacity="0.85"/>
+              <path d="M24 6 L20 2" stroke="#3acaee" stroke-width="0.7" stroke-linecap="round" opacity="0.65"/>
+              <path d="M24 6 L28 2" stroke="#3acaee" stroke-width="0.7" stroke-linecap="round" opacity="0.65"/>
+              <path d="M30 32 L24 38 L18 44" stroke="#4dd8f8" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
+              <path d="M30 32 L36 38 L42 44" stroke="#4dd8f8" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
+              <path d="M30 32 L30 42 L30 52" stroke="#3acaee" stroke-width="1.0" stroke-linecap="round" opacity="0.7"/>
+              <path d="M18 44 L14 50" stroke="#3acaee" stroke-width="0.7" stroke-linecap="round" opacity="0.5"/>
+              <path d="M42 44 L46 50" stroke="#3acaee" stroke-width="0.7" stroke-linecap="round" opacity="0.5"/>
+              <circle cx="30" cy="30" r="4.5" fill="url(#shareSomaGrad)"/>
+            </g>
+          </svg>
+        </div>
+        <div class="nge-share-toast-text">Link copied to clipboard</div>
+      </div>
     </transition>
     <button class="nge-dataset-btn" @click="showDatasetSelector = !showDatasetSelector"
             title="Switch Dataset">
@@ -486,29 +537,103 @@ function activateTool(toolType: 'multicut' | 'merge') {
   filter: drop-shadow(0 0 10px rgba(74, 158, 255, 0.5));
 }
 
-/* ── Share toast ── */
+/* ── Share toast (holographic mini-modal) ── */
+/* `#extensionBar > *` sets height:100% on every direct child — override that
+   here, otherwise the absolute toast resolves 100% against the viewport and
+   becomes a full-page-tall bar. Also pin display so flex centering works. */
 .nge-share-toast {
-  position: absolute;
-  top: 44px;
+  position: fixed;
+  top: 64px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(8, 24, 40, 0.94);
-  border: 1px solid rgba(74, 158, 255, 0.3);
-  color: #a0d0ff;
-  padding: 8px 18px;
-  border-radius: 8px;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 26px 16px;
+  min-width: 220px;
+  background: linear-gradient(135deg,
+    rgba(8, 28, 48, 0.92) 0%,
+    rgba(12, 18, 38, 0.94) 50%,
+    rgba(8, 28, 48, 0.92) 100%);
+  border: 1px solid rgba(74, 200, 255, 0.35);
+  border-radius: 14px;
+  color: #cfeaff;
   font-size: 12px;
   font-weight: 500;
+  letter-spacing: 0.04em;
   white-space: nowrap;
   z-index: 9999;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    0 0 24px rgba(74, 200, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+  overflow: hidden;
+}
+.nge-share-toast::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    rgba(74, 220, 255, 0.5),
+    rgba(120, 0, 255, 0.15) 50%,
+    rgba(0, 220, 200, 0.4));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: nge-share-border 4s ease-in-out infinite;
   pointer-events: none;
 }
-.nge-share-toast-enter-active { transition: all 0.25s ease-out; }
-.nge-share-toast-leave-active { transition: all 0.3s ease-in; }
-.nge-share-toast-enter-from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
-.nge-share-toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+@keyframes nge-share-border {
+  0%, 100% { opacity: 0.7; }
+  50%      { opacity: 1; }
+}
+
+.nge-share-toast-icon {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+.nge-share-neuron {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  filter: drop-shadow(0 0 6px rgba(74, 200, 255, 0.5));
+}
+.nge-share-neuron--back {
+  top: 0;
+  left: 0;
+  opacity: 0.55;
+  animation: nge-share-neuron-breathe 2.6s ease-in-out infinite;
+}
+.nge-share-neuron--front {
+  bottom: 0;
+  right: 0;
+  opacity: 1;
+  filter: drop-shadow(0 0 8px rgba(91, 227, 255, 0.7));
+  animation: nge-share-neuron-breathe 2.6s ease-in-out infinite 0.4s;
+}
+@keyframes nge-share-neuron-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.05); }
+}
+
+.nge-share-toast-text {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 0 10px rgba(74, 200, 255, 0.4);
+}
+
+.nge-share-toast-enter-active { transition: opacity 0.28s ease-out, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+.nge-share-toast-leave-active { transition: opacity 0.32s ease-in, transform 0.32s ease-in; }
+.nge-share-toast-enter-from { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.94); }
+.nge-share-toast-leave-to   { opacity: 0; transform: translateX(-50%) translateY(-4px) scale(0.97); }
 
 .nge-streak-chip {
   display: flex;
