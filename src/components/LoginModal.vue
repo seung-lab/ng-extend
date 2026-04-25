@@ -24,8 +24,15 @@ interface LoginPrompt {
 const visible   = ref(false);
 const prompts   = ref<LoginPrompt[]>([]);
 
-/** Servers we've already authenticated — never re-prompt for these. */
-const authenticatedServers = new Set<string>();
+/**
+ * DOM elements we've already handled (either by surfacing the modal or
+ * because the user dismissed). Tracking by element identity, not server URL,
+ * so that a NEW login-required status emitted by neuroglancer's credentials
+ * provider after a token expiry creates a fresh element that we still
+ * surface — even if the user logged into that same server earlier this
+ * session. Previously a server-URL Set permanently silenced re-auth.
+ */
+const handledStatusEls = new WeakSet<HTMLElement>();
 
 let containerObserver: MutationObserver | null = null;
 let rootObserver: MutationObserver | null = null;
@@ -47,19 +54,23 @@ function scanForLoginPrompts() {
     }
     if (!text.includes('login required') || !text.includes('middleauth')) continue;
 
+    // Already-handled DOM nodes stay hidden. A new credentials prompt
+    // creates a new node, which we still want to surface.
+    if (handledStatusEls.has(child)) {
+      child.style.display = 'none';
+      continue;
+    }
+
     // Extract the server URL
     const match = text.match(/middleauth server (\S+)\s+login required/);
     const url = match?.[1] ?? '';
     if (!url) continue;
 
-    // Skip if already authenticated or already tracked
-    if (authenticatedServers.has(url)) {
-      child.style.display = 'none';
-      continue;
-    }
-    if (prompts.value.some(p => p.serverUrl === url)) continue;
+    // Dedupe within the current modal session — the same DOM child
+    // shouldn't be added to prompts twice across rapid mutation events.
+    if (prompts.value.some(p => p.statusEl === child)) continue;
 
-    // Hide the neuroglancer status message
+    handledStatusEls.add(child);
     child.style.display = 'none';
 
     prompts.value.push({
@@ -131,27 +142,29 @@ function loginAll() {
 
 function dismiss() {
   visible.value = false;
-  // Remember all servers so we never re-prompt (user chose to skip)
+  // Mark the current status DOM elements as handled — we keep hiding them
+  // for the rest of their lifetime. A future re-auth emits a new DOM
+  // element, which won't be in handledStatusEls and so will surface.
   for (const p of prompts.value) {
-    authenticatedServers.add(p.serverUrl);
-    // Keep status elements hidden — the observer will continue to
-    // silently hide any new messages from these servers.
+    handledStatusEls.add(p.statusEl);
     if (p.statusEl) p.statusEl.style.display = 'none';
   }
   prompts.value = [];
   // NOTE: Do NOT disconnect the observer here. Neuroglancer may emit
-  // new status messages later (mesh loads, new layers, etc.) and
-  // we need the observer to keep hiding them silently.
+  // new status messages later (mesh loads, new layers, token expiry,
+  // dataset switches) and we need the observer to react to them.
 }
 
 function handleLoginSuccess() {
   console.log('[LoginModal] middleauthlogin event fired — marking waiting prompts as done');
-  // Mark any waiting prompts as done and remember them permanently
+  // Mark waiting prompts as done. Their DOM elements stay in
+  // handledStatusEls so they don't re-prompt, but if neuroglancer emits a
+  // NEW status element later (token expired) it will surface fresh.
   for (const p of prompts.value) {
     if (p.waiting) {
       p.done = true;
       p.waiting = false;
-      authenticatedServers.add(p.serverUrl);
+      handledStatusEls.add(p.statusEl);
     }
   }
 
