@@ -54,6 +54,27 @@ function authHeaders(caveServer: string): HeadersInit {
   };
 }
 
+/** Drop expired auth tokens for a CAVE server so neuroglancer's middleauth
+ *  pipeline re-prompts on the next request, and notify the app shell so a
+ *  banner can prompt the user. */
+function handleCaveAuthExpired(caveServer: string): void {
+  try {
+    for (const key of Object.keys(window.localStorage)) {
+      if (!key.startsWith('auth_token_v2_')) continue;
+      try {
+        const data = JSON.parse(window.localStorage.getItem(key) || '{}');
+        if (new URL(data.url).hostname === new URL(caveServer).hostname) {
+          window.localStorage.removeItem(key);
+          console.warn('[lightbulb] Cleared expired CAVE token for', data.url);
+        }
+      } catch { /* skip malformed entry */ }
+    }
+  } catch { /* localStorage unavailable */ }
+  document.dispatchEvent(new CustomEvent('nge:cave-auth-expired', {
+    detail: { server: caveServer },
+  }));
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface CellStatus {
@@ -338,6 +359,12 @@ export async function setCellComplete(
         headers: authHeaders(caveServer),
         body: JSON.stringify(body),
       });
+      if (res.status === 401) {
+        const errText = await res.text().catch(() => '');
+        console.error('[lightbulb] CAVE 401 — token expired:', errText);
+        handleCaveAuthExpired(caveServer);
+        return false;  // do NOT fake-save to localStorage on auth failure
+      }
       if (res.ok) {
         console.info(`[lightbulb] ✓ Completion saved to CAVE`);
         try {
@@ -487,6 +514,12 @@ export async function saveCellType(
       headers: authHeaders(caveServer),
       body: JSON.stringify(body),
     });
+    if (res.status === 401) {
+      const errText = await res.text().catch(() => '');
+      console.error('[lightbulb] CAVE 401 — token expired:', errText);
+      handleCaveAuthExpired(caveServer);
+      return false;  // do NOT fake-save to localStorage on auth failure
+    }
     if (res.ok) {
       console.info(`[lightbulb] ✓ Cell type saved to CAVE`);
       try {
