@@ -338,10 +338,13 @@ export const useLayersStore = defineStore('layers', () => {
   function getCaveServerUrl(): string {
     if (!viewer) return EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
 
-    // 1. Try to extract from a middleauth-wrapped datasource URL
+    // 1. Extract host from the graphene segmentation layer's URL.
+    // Only match graphene:// — the EM image layer also uses middleauth+
+    // (with precomputed:// prefix) and matching that returns a malformed URL
+    // that lightbulb_service tries to fetch and chokes on.
     for (const ml of viewer.layerManager.managedLayers) {
       const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
-      if (url.includes('middleauth')) {
+      if (url.startsWith('graphene://middleauth+')) {
         const clean = url.replace('graphene://middleauth+', '');
         try {
           const u = new URL(clean);
