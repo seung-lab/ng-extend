@@ -173,20 +173,6 @@ function annotationBaseUrl(caveServer: string, table: string, alignedVolume?: st
   return `${caveServer}/annotation/api/v2/aligned_volume/${vol}/table/${table}/annotations`;
 }
 
-// CAVE AnnotationEngine at minnie.microns-daf.com returns no Access-Control-*
-// headers, so browsers block cross-origin POST/DELETE. We forward writes
-// through a Firebase Cloud Function that adds CORS and proxies verbatim.
-// Reads (Materializer /query, PCG) already have CORS and stay direct.
-const CAVE_WRITE_PROXY = 'https://us-central1-ytho-4bff2.cloudfunctions.net/caveProxy';
-function proxyWriteUrl(upstreamUrl: string): string {
-  try {
-    const u = new URL(upstreamUrl);
-    return `${CAVE_WRITE_PROXY}${u.pathname}${u.search}`;
-  } catch {
-    return upstreamUrl;
-  }
-}
-
 /**
  * Authenticated fetch through neuroglancer's middleauth pipeline.
  * This bypasses CORS issues by routing through the credentials provider.
@@ -333,7 +319,7 @@ export async function setCellComplete(
       }
       // CAVE v2 DELETE uses JSON body with annotation_ids
       console.info(`[lightbulb] DELETE completion → ${baseUrl} id=${existingAnnotationId}`);
-      const res = await fetch(proxyWriteUrl(baseUrl), {
+      const res = await fetch(baseUrl, {
         method: 'DELETE',
         headers: authHeaders(caveServer),
         body: JSON.stringify({ annotation_ids: [existingAnnotationId] }),
@@ -354,7 +340,7 @@ export async function setCellComplete(
         }],
       };
       console.info(`[lightbulb] POST completion → ${baseUrl}`, body);
-      const res = await fetch(proxyWriteUrl(baseUrl), {
+      const res = await fetch(baseUrl, {
         method: 'POST',
         headers: authHeaders(caveServer),
         body: JSON.stringify(body),
@@ -485,7 +471,7 @@ export async function saveCellType(
   try {
     // Delete old annotation if updating
     if (existingAnnotationId !== undefined && existingAnnotationId >= 0) {
-      await fetch(proxyWriteUrl(baseUrl), {
+      await fetch(baseUrl, {
         method: 'DELETE',
         headers: authHeaders(caveServer),
         body: JSON.stringify({ annotation_ids: [existingAnnotationId] }),
@@ -509,7 +495,7 @@ export async function saveCellType(
       annotations: [annotation],
     };
     console.info(`[lightbulb] POST cell type → ${baseUrl}`, body);
-    const res = await fetch(proxyWriteUrl(baseUrl), {
+    const res = await fetch(baseUrl, {
       method: 'POST',
       headers: authHeaders(caveServer),
       body: JSON.stringify(body),
