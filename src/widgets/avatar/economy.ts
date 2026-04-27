@@ -153,7 +153,9 @@ export const EFFECTS = [
   'Color Shift',
 ] as const;
 
-export const EFFECT_DESCRIPTION: Record<string, string> = {
+export type EffectName = typeof EFFECTS[number];
+
+export const EFFECT_DESCRIPTION: Record<EffectName, string> = {
   Grayscale:    'Strip the color out for that vintage cel feel.',
   Sepia:        'Old-photograph warmth — like a lab portrait from 1900.',
   Silhouette:   'Pure black profile against the lab backdrop.',
@@ -166,7 +168,7 @@ export const EFFECT_DESCRIPTION: Record<string, string> = {
   'Color Shift':'Hue rotates continuously through the spectrum.',
 };
 
-const EFFECT_RARITY: Record<string, Rarity> = {
+const EFFECT_RARITY: Record<EffectName, Rarity> = {
   Grayscale: 'standard',
   Sepia: 'standard',
   Silhouette: 'premium',
@@ -182,7 +184,7 @@ const EFFECT_RARITY: Record<string, Rarity> = {
 const EFFECT_BASE_PRICE = 800;
 
 export function effectRarity(name: string): Rarity {
-  return EFFECT_RARITY[name] ?? 'standard';
+  return EFFECT_RARITY[name as EffectName] ?? 'standard';
 }
 
 export function effectPrice(name: string): number {
@@ -191,4 +193,26 @@ export function effectPrice(name: string): number {
 
 export function effectKey(name: string): string {
   return `effect/${name}`;
+}
+
+// Inverse of itemKey/effectKey — split a stored unlock key back into its parts.
+// Effects use the literal "effect/" prefix; items use "<categoryName>/<itemName>".
+export type ParsedUnlockKey =
+  | { kind: 'effect'; name: string }
+  | { kind: 'item'; category: string; item: string };
+
+export function parseUnlockKey(key: string): ParsedUnlockKey | null {
+  const slash = key.indexOf('/');
+  if (slash < 0) return null;
+  const head = key.substring(0, slash);
+  const tail = key.substring(slash + 1);
+  if (head === 'effect') return { kind: 'effect', name: tail };
+  return { kind: 'item', category: head, item: tail };
+}
+
+// Cost of an unlock by its stored key (effects + items unified).
+export function unlockKeyPrice(key: string): number {
+  const parsed = parseUnlockKey(key);
+  if (!parsed) return 0;
+  return parsed.kind === 'effect' ? effectPrice(parsed.name) : itemPrice(parsed.category, parsed.item);
 }

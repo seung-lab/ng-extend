@@ -42,6 +42,10 @@ interface SectionGroup {
 
 const RARITY_RANK: Record<Rarity, number> = {legendary: 3, premium: 2, standard: 1};
 
+const effectPrices = EFFECTS.map(effectPrice);
+const effectPriceMin = Math.min(...effectPrices);
+const effectPriceMax = Math.max(...effectPrices);
+
 const sectionGroups = computed<SectionGroup[]>(() => {
   void version.value;
   const all = store.categoryViews();
@@ -242,7 +246,7 @@ async function cancelPurchase() {
           <div class="nge-avatar-category-row">
             <div class="nge-avatar-category-head">
               <span class="nge-avatar-category-label">Active effect</span>
-              <span class="nge-avatar-cat-cost"><img :src="connectomeCoin" class="nge-coin nge-coin--xs" alt="" /> 800 – 2,400</span>
+              <span class="nge-avatar-cat-cost"><img :src="connectomeCoin" class="nge-coin nge-coin--xs" alt="" /> {{ effectPriceMin }}{{ effectPriceMin === effectPriceMax ? '' : `–${effectPriceMax.toLocaleString()}` }}</span>
             </div>
             <div class="nge-avatar-items">
               <button
@@ -402,13 +406,11 @@ async function cancelPurchase() {
   text-shadow: 0 0 8px rgba(255, 180, 60, 0.25);
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: ui-monospace, 'Cascadia Code', monospace;
 }
 .nge-avatar-balance:hover {
   background: linear-gradient(135deg, rgba(255, 200, 80, 0.2), rgba(255, 160, 60, 0.14));
   box-shadow: 0 0 12px rgba(255, 180, 60, 0.25);
 }
-.nge-avatar-balance-icon { font-size: 1.05em; line-height: 1; }
 .nge-avatar-balance-num  { font-weight: 600; letter-spacing: 0.02em; }
 
 /* Connectome Coin icon — inline next to numbers. */

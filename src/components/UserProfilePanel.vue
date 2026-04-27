@@ -1404,10 +1404,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   box-shadow: 0 0 12px rgba(255, 180, 60, 0.25);
   border-color: rgba(255, 200, 80, 0.6);
 }
-.nge-profile-coins-icon {
-  font-size: 1.05em;
-  line-height: 1;
-}
 .nge-profile-coins-img {
   width: 18px;
   height: 18px;

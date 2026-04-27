@@ -3215,7 +3215,7 @@ export const useChatStore = defineStore('chat', () => {
 import Character, {Gender} from './widgets/avatar/character';
 import AvatarRenderer from './widgets/avatar/renderer';
 import {CanvasWrapper} from './widgets/avatar/canvas_interface';
-import {itemPrice, itemKey, itemRarity, effectPrice, effectKey, effectRarity, computeEarnedCoins, Rarity} from './widgets/avatar/economy';
+import {itemPrice, itemKey, itemRarity, effectPrice, effectKey, effectRarity, unlockKeyPrice, computeEarnedCoins} from './widgets/avatar/economy';
 
 const AVATAR_LS_KEY = 'eyewireAvatar';
 const AVATAR_UNLOCKS_LS_KEY = 'eyewireAvatarUnlocks';
@@ -3457,20 +3457,17 @@ export const useAvatarStore = defineStore('avatar', () => {
 
   async function selectItem(categoryName: string, itemName: string | null) {
     if (!character) return;
+    const cat = character.categories.get(categoryName);
     if (itemName === null) {
-      const cat = character.categories.get(categoryName);
-      if (cat?.activeItem) {
-        await cat.activeItem.disable();
-        cat.activeItem = null;
-        character.needsRender = true;
-      }
+      if (!cat?.activeItem) return; // already cleared
+      await cat.activeItem.disable();
+      cat.activeItem = null;
+      character.needsRender = true;
     } else {
+      if (cat?.activeItem?.name === itemName) return; // already equipped — no-op
       const price = itemPrice(categoryName, itemName);
       const k = itemKey(categoryName, itemName);
-      // Free items are always allowed; paid items require unlock.
-      if (price > 0 && !unlocks.value.has(k)) {
-        return; // refuse silently — UI should prevent this path
-      }
+      if (price > 0 && !unlocks.value.has(k)) return; // UI should prevent this
       await character.selectItem(categoryName, itemName);
     }
     persist();
@@ -3513,6 +3510,7 @@ export const useAvatarStore = defineStore('avatar', () => {
     if (previewSnapshot) await cancelPreview();
     previewSnapshot = { kind: 'effect', previousEffect: character.activeEffect };
     await character.setEffect(name);
+    activeEffect.value = name;
     bump();
   }
 
@@ -3533,6 +3531,7 @@ export const useAvatarStore = defineStore('avatar', () => {
       }
     } else {
       await character.setEffect(snap.previousEffect);
+      activeEffect.value = snap.previousEffect;
     }
     bump();
   }
@@ -3567,20 +3566,13 @@ export const useAvatarStore = defineStore('avatar', () => {
     return true;
   }
 
-  function getItemRarity(categoryName: string, itemName: string): Rarity {
-    return itemRarity(categoryName, itemName);
-  }
-
-  function getItemPrice(categoryName: string, itemName: string): number {
-    return itemPrice(categoryName, itemName);
-  }
-
   // ── Effects ───────────────────────────────────────────────────────────────
   const activeEffect = ref<string>('');
 
   async function applyEffect(name: string) {
     if (!character) return;
     if (name && !isEffectUnlocked(name)) return; // refuse unauthorized
+    if (activeEffect.value === name) return;     // already applied — no-op
     activeEffect.value = name;
     await character.setEffect(name);
     persist();
@@ -3632,8 +3624,14 @@ export const useAvatarStore = defineStore('avatar', () => {
     if (!character) return;
     const cat = character.categories.get(categoryName);
     if (!cat?.activeItem) return;
+    const colors = cat.activeItem.colors;
+    const currentIdx = colors && cat.activeItem.color
+        ? colors.indexOf(cat.activeItem.color)
+        : -1;
+    if (currentIdx === colorIndex) return; // already that color
     await character.setItemColorOrVariant(cat.activeItem.name, categoryName, colorIndex);
     persist();
+    thumbnailDirty = true;
     bump();
   }
 
@@ -3644,6 +3642,8 @@ export const useAvatarStore = defineStore('avatar', () => {
     character.cancel();
     character = await Character.createCharacter(newGender, renderer);
     grandfatherEquippedItems();
+    // Push any newly-grandfathered unlocks to Supabase as well as locally.
+    bulkPersistUnlocksSupabase();
     ready.value = true;
     thumbnailDirty = true;
     persist();
@@ -3651,8 +3651,8 @@ export const useAvatarStore = defineStore('avatar', () => {
   }
 
   // Coin balance — derives from existing user stats for "earned", subtracts unlock costs.
+  // Pinia-reactive deps drive this — no manual version bump needed.
   const coinsEarned = computed<number>(() => {
-    void version.value;
     return computeEarnedCoins({
       totalEdits: statsStore.stats.editsAllTime ?? 0,
       cellsCompleted: statsStore.stats.cellsSubmitted ?? 0,
@@ -3665,11 +3665,7 @@ export const useAvatarStore = defineStore('avatar', () => {
     void version.value;
     let total = 0;
     for (const k of unlocks.value) {
-      const slash = k.indexOf('/');
-      if (slash < 0) continue;
-      const cat = k.substring(0, slash);
-      const item = k.substring(slash + 1);
-      total += itemPrice(cat, item);
+      total += unlockKeyPrice(k);
     }
     return total;
   });
@@ -3683,7 +3679,7 @@ export const useAvatarStore = defineStore('avatar', () => {
     if (!character) return {owned: 0, total: 0};
     let total = 0;
     let owned = 0;
-    for (const [_, cats] of character.sections.entries()) {
+    for (const [, cats] of character.sections.entries()) {
       for (const catName of cats) {
         const cat = character.categories.get(catName);
         if (!cat) continue;
@@ -3742,9 +3738,15 @@ export const useAvatarStore = defineStore('avatar', () => {
   }
 
   function destroy() {
+    if (supaPersistTimeout !== null) {
+      clearTimeout(supaPersistTimeout);
+      supaPersistTimeout = null;
+    }
     character?.cancel();
     character = null;
     renderer = null;
+    previewSnapshot = null;
+    activeEffect.value = '';
     ready.value = false;
     editorOpen.value = false;
   }
@@ -3753,8 +3755,8 @@ export const useAvatarStore = defineStore('avatar', () => {
     ready, editorOpen, gender, version, thumbnailUrl, unlocks, activeEffect,
     coinsEarned, coinsSpent, coinsBalance, collectionProgress,
     initialize, destroy, getCharacter, categoryViews, selectItem, setColor, changeGender,
-    isUnlocked, purchase, captureThumbnailIfNeeded, getItemRarity, getItemPrice,
-    previewItem, previewEffect, cancelPreview, isPreviewing,
+    isUnlocked, purchase, captureThumbnailIfNeeded,
+    previewItem, previewEffect, cancelPreview,
     applyEffect, isEffectUnlocked, purchaseEffect,
   };
 });
