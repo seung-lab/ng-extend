@@ -111,7 +111,7 @@ export const COIN_RATES = {
   edit: 1,
   cellCompletion: 25,
   streakDay: 5,
-  badge: 100,
+  badge: 10,        // there are many badges — keep this modest so they don't dominate
   joiningBonus: 200,
 };
 
