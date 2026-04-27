@@ -3215,8 +3215,11 @@ export const useChatStore = defineStore('chat', () => {
 import Character, {Gender} from './widgets/avatar/character';
 import AvatarRenderer from './widgets/avatar/renderer';
 import {CanvasWrapper} from './widgets/avatar/canvas_interface';
+import {itemCost, itemKey, computeEarnedCoins} from './widgets/avatar/economy';
 
 const AVATAR_LS_KEY = 'eyewireAvatar';
+const AVATAR_UNLOCKS_LS_KEY = 'eyewireAvatarUnlocks';
+const AVATAR_THUMB_LS_KEY = 'eyewireAvatarThumb';
 
 export interface AvatarCategoryView {
   section: string;
@@ -3233,10 +3236,27 @@ export const useAvatarStore = defineStore('avatar', () => {
   const editorOpen = ref(false);
   const gender = ref<Gender>(Gender.Female);
   const version = ref(0); // bump to force editor view recompute
+  const thumbnailUrl = ref<string | null>(localStorage.getItem(AVATAR_THUMB_LS_KEY));
+  const unlocks = ref<Set<string>>(loadUnlocks());
+  let thumbnailDirty = true;
   let character: Character | null = null;
   let renderer: AvatarRenderer | null = null;
 
   function bump() { version.value++; }
+
+  function loadUnlocks(): Set<string> {
+    try {
+      const raw = localStorage.getItem(AVATAR_UNLOCKS_LS_KEY);
+      if (raw) return new Set(JSON.parse(raw));
+    } catch {/* ignore */}
+    return new Set();
+  }
+
+  function persistUnlocks() {
+    try {
+      localStorage.setItem(AVATAR_UNLOCKS_LS_KEY, JSON.stringify([...unlocks.value]));
+    } catch {/* ignore */}
+  }
 
   async function initialize(charCanvas: HTMLCanvasElement, bgCanvas: HTMLCanvasElement) {
     if (renderer) return; // already initialized
@@ -3257,8 +3277,24 @@ export const useAvatarStore = defineStore('avatar', () => {
       character = await Character.createCharacter(gender.value, renderer);
     }
     if (character) gender.value = character.gender;
+    // Grandfather any items currently equipped from saved state — they're unlocked for free.
+    grandfatherEquippedItems();
     ready.value = true;
+    thumbnailDirty = true;
     bump();
+  }
+
+  function grandfatherEquippedItems() {
+    if (!character) return;
+    let added = false;
+    for (const item of character.activeItems) {
+      const k = itemKey(item.categoryName, item.name);
+      if (!unlocks.value.has(k)) {
+        unlocks.value.add(k);
+        added = true;
+      }
+    }
+    if (added) persistUnlocks();
   }
 
   function getCharacter(): Character | null { return character; }
@@ -3293,7 +3329,6 @@ export const useAvatarStore = defineStore('avatar', () => {
   async function selectItem(categoryName: string, itemName: string | null) {
     if (!character) return;
     if (itemName === null) {
-      // Optional categories can be cleared
       const cat = character.categories.get(categoryName);
       if (cat?.activeItem) {
         await cat.activeItem.disable();
@@ -3301,10 +3336,37 @@ export const useAvatarStore = defineStore('avatar', () => {
         character.needsRender = true;
       }
     } else {
+      const cost = itemCost(categoryName);
+      const k = itemKey(categoryName, itemName);
+      // Free items are always allowed; paid items require unlock.
+      if (cost > 0 && !unlocks.value.has(k)) {
+        return; // refuse silently — UI should prevent this path
+      }
       await character.selectItem(categoryName, itemName);
     }
     persist();
+    thumbnailDirty = true;
     bump();
+  }
+
+  function isUnlocked(categoryName: string, itemName: string): boolean {
+    if (itemCost(categoryName) === 0) return true;
+    return unlocks.value.has(itemKey(categoryName, itemName));
+  }
+
+  async function purchase(categoryName: string, itemName: string): Promise<boolean> {
+    if (!character) return false;
+    const cost = itemCost(categoryName);
+    if (cost === 0) return true; // free
+    if (unlocks.value.has(itemKey(categoryName, itemName))) return true; // already owned
+    if (coinsBalance.value < cost) return false;
+    unlocks.value.add(itemKey(categoryName, itemName));
+    persistUnlocks();
+    await character.selectItem(categoryName, itemName);
+    persist();
+    thumbnailDirty = true;
+    bump();
+    return true;
   }
 
   async function setColor(categoryName: string, colorIndex: number) {
@@ -3322,9 +3384,60 @@ export const useAvatarStore = defineStore('avatar', () => {
     gender.value = newGender;
     character.cancel();
     character = await Character.createCharacter(newGender, renderer);
+    grandfatherEquippedItems();
     ready.value = true;
+    thumbnailDirty = true;
     persist();
     bump();
+  }
+
+  // Coin balance — derives from existing user stats for "earned", subtracts unlock costs.
+  const statsStore = useUserStatsStore();
+  const backendStore = useProofreadingBackendStore();
+
+  const coinsEarned = computed<number>(() => {
+    void version.value;
+    return computeEarnedCoins({
+      totalEdits: statsStore.stats.editsAllTime ?? 0,
+      cellsCompleted: statsStore.stats.cellsSubmitted ?? 0,
+      currentStreak: statsStore.stats.currentStreak ?? 0,
+      specialBadgeCount: backendStore.mySpecialBadges?.length ?? 0,
+    });
+  });
+
+  const coinsSpent = computed<number>(() => {
+    void version.value;
+    let total = 0;
+    for (const k of unlocks.value) {
+      const slash = k.indexOf('/');
+      if (slash < 0) continue;
+      total += itemCost(k.substring(0, slash));
+    }
+    return total;
+  });
+
+  const coinsBalance = computed<number>(() => coinsEarned.value - coinsSpent.value);
+
+  // Thumbnail capture — called by AvatarRenderer.vue after each render if dirty.
+  function captureThumbnailIfNeeded(charCanvas: HTMLCanvasElement) {
+    if (!thumbnailDirty || !ready.value) return;
+    if (charCanvas.width === 0 || charCanvas.height === 0) return;
+    try {
+      // Downsample to ~512px tall for storage efficiency.
+      const targetH = 512;
+      const scale = targetH / charCanvas.height;
+      const w = Math.round(charCanvas.width * scale);
+      const tmp = document.createElement('canvas');
+      tmp.width = w;
+      tmp.height = targetH;
+      const tmpCtx = tmp.getContext('2d');
+      if (!tmpCtx) return;
+      tmpCtx.drawImage(charCanvas, 0, 0, w, targetH);
+      const url = tmp.toDataURL('image/png');
+      thumbnailUrl.value = url;
+      try { localStorage.setItem(AVATAR_THUMB_LS_KEY, url); } catch {/* quota */}
+      thumbnailDirty = false;
+    } catch {/* CORS-tainted canvas etc. — silently skip */}
   }
 
   function persist() {
@@ -3343,8 +3456,10 @@ export const useAvatarStore = defineStore('avatar', () => {
   }
 
   return {
-    ready, editorOpen, gender, version,
+    ready, editorOpen, gender, version, thumbnailUrl, unlocks,
+    coinsEarned, coinsSpent, coinsBalance,
     initialize, destroy, getCharacter, categoryViews, selectItem, setColor, changeGender,
+    isUnlocked, purchase, captureThumbnailIfNeeded,
   };
 });
 

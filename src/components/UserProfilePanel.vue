@@ -10,6 +10,7 @@ import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition,
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+import nurroDefault from '../../static/nurro/nurro-at-home.png';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 const props = defineProps<{
@@ -438,6 +439,20 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
           <!-- Header -->
           <div class="nge-profile-header" v-if="sessions.length > 0 || viewingOtherUser">
+            <button
+              v-if="!viewingOtherUser"
+              class="nge-profile-avatar-thumb"
+              :class="{ 'nge-profile-avatar-thumb--default': !avatarStore.thumbnailUrl }"
+              :title="avatarStore.thumbnailUrl ? 'Open Avatar tab' : 'You haven\'t set up an avatar yet — click to customize'"
+              @click="activeTab = 'avatar'"
+            >
+              <img
+                :src="avatarStore.thumbnailUrl || nurroDefault"
+                :class="{ 'nge-profile-avatar-thumb-img--nurro': !avatarStore.thumbnailUrl }"
+                alt="Your avatar"
+              />
+            </button>
+            <div class="nge-profile-header-text">
             <div class="nge-profile-name-row">
 
               <!-- Flag (editable only for own profile) -->
@@ -481,6 +496,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 + Add a bio
               </button>
             </template>
+            </div><!-- end nge-profile-header-text -->
           </div>
 
           <!-- Edits stats -->
@@ -1277,9 +1293,63 @@ const emit = defineEmits({hide: null, 'open-settings': null});
    HEADER
 ───────────────────────────────────────────────────────────────────────────── */
 .nge-profile-header {
+  display: flex;
+  gap: 14px;
   padding-bottom: 22px;
   margin-bottom: 6px;
   animation: ngeSectionRollIn 0.2s ease-out 0.12s both;
+}
+.nge-profile-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Avatar thumbnail (clickable — opens Avatar tab) */
+.nge-profile-avatar-thumb {
+  flex-shrink: 0;
+  width: 76px;
+  height: 96px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 200, 255, 0.25);
+  background: linear-gradient(180deg, rgba(40, 60, 110, 0.5), rgba(15, 20, 50, 0.6));
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  position: relative;
+  transition: all 0.15s ease;
+  box-shadow:
+    0 0 0 1px rgba(120, 200, 255, 0.06) inset,
+    0 4px 14px rgba(0, 0, 0, 0.3);
+}
+.nge-profile-avatar-thumb:hover {
+  border-color: rgba(120, 200, 255, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(120, 200, 255, 0.2) inset,
+    0 0 16px rgba(74, 158, 255, 0.3),
+    0 4px 14px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+.nge-profile-avatar-thumb img {
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+.nge-profile-avatar-thumb--default {
+  align-items: center;
+  justify-content: center;
+}
+.nge-profile-avatar-thumb-img--nurro {
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
+  object-position: center center;
+  margin: auto;
+  filter: drop-shadow(0 0 6px rgba(120, 200, 255, 0.15));
 }
 
 .nge-profile-name-row {

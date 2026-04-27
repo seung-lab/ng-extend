@@ -35,9 +35,23 @@ function sizeCanvases() {
   if (character) character.needsRender = true;
 }
 
+let captureCooldown = 0;
+
 function loop() {
   const character = store.getCharacter();
-  if (character) character.render(true);
+  if (character) {
+    const wasDirty = character.needsRender;
+    character.render(true);
+    // After a render that actually drew something, schedule a thumbnail capture
+    // ~30 frames later (≈500ms) so async images settle first.
+    if (wasDirty) captureCooldown = 30;
+  }
+  if (captureCooldown > 0) {
+    captureCooldown--;
+    if (captureCooldown === 0 && charCanvasRef.value) {
+      store.captureThumbnailIfNeeded(charCanvasRef.value);
+    }
+  }
   animFrame = requestAnimationFrame(loop);
 }
 
