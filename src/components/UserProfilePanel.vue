@@ -2,6 +2,7 @@
 import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
+import AvatarRenderer from 'components/AvatarRenderer.vue';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
@@ -92,7 +93,6 @@ const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
 const activeTab = ref<'overview' | 'trophyCase' | 'avatar'>('overview');
-const AVATAR_PROTOTYPE_URL = 'https://seunglab.org/avatar-prototype/';
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
 // All country flags A-Z (ISO 3166-1 alpha-2, sorted alphabetically)
@@ -1060,19 +1060,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       <div v-else-if="activeTab === 'avatar'" class="nge-profile-body nge-profile-body--avatar">
         <div class="nge-avatar-shell">
           <div class="nge-avatar-header">
-            <div class="nge-avatar-title">CUSTOMIZE YOUR AVATAR</div>
+            <div class="nge-avatar-title">YOUR AVATAR</div>
             <div class="nge-avatar-subtitle">
-              Prototype — your selections aren't saved yet. Coming soon: link items to badges and persist your look across the site.
+              Phase 1 — rendering a default avatar. Editor + Connectome Coin economy coming soon.
             </div>
           </div>
           <div class="nge-avatar-frame-wrap">
-            <iframe
-              :src="AVATAR_PROTOTYPE_URL"
-              class="nge-avatar-frame"
-              title="Avatar Customization"
-              loading="lazy"
-              allow="fullscreen"
-            ></iframe>
+            <AvatarRenderer />
           </div>
         </div>
       </div><!-- end Avatar -->
