@@ -99,16 +99,18 @@ function prettify(s: string): string {
 
 const purchasePrompt = ref<{category: string; item: string; price: number; rarity: Rarity} | null>(null);
 
-function handleItemClick(category: string, itemName: string | null) {
+async function handleItemClick(category: string, itemName: string | null) {
   if (itemName === null) {
-    store.selectItem(category, null);
+    await store.selectItem(category, null);
     return;
   }
   const price = itemPrice(category, itemName);
   if (price === 0 || store.isUnlocked(category, itemName)) {
-    store.selectItem(category, itemName);
+    await store.selectItem(category, itemName);
     return;
   }
+  // Locked — try it on, then open the purchase modal.
+  await store.previewItem(category, itemName);
   purchasePrompt.value = {category, item: itemName, price, rarity: itemRarity(category, itemName)};
 }
 
@@ -118,7 +120,10 @@ async function confirmPurchase() {
   await store.purchase(category, item);
   purchasePrompt.value = null;
 }
-function cancelPurchase() { purchasePrompt.value = null; }
+async function cancelPurchase() {
+  await store.cancelPreview();
+  purchasePrompt.value = null;
+}
 </script>
 
 <template>
@@ -252,6 +257,7 @@ function cancelPurchase() { purchasePrompt.value = null; }
           <div class="nge-avatar-purchase-tier">{{ RARITY_LABEL[purchasePrompt.rarity].toUpperCase() }}</div>
           <div class="nge-avatar-purchase-name">{{ prettify(purchasePrompt.item) }}</div>
           <div class="nge-avatar-purchase-cat">{{ prettify(purchasePrompt.category) }}</div>
+          <div class="nge-avatar-purchase-tryon">↑ trying on — see how it looks ↑</div>
           <div class="nge-avatar-purchase-cost">
             <span class="nge-avatar-balance-icon">◎</span>
             <span>{{ purchasePrompt.price.toLocaleString() }}</span>
@@ -661,7 +667,19 @@ function cancelPurchase() { purchasePrompt.value = null; }
   color: rgba(180, 220, 255, 0.5);
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
+}
+.nge-avatar-purchase-tryon {
+  font-size: 0.7em;
+  color: rgba(180, 220, 255, 0.55);
+  font-style: italic;
+  letter-spacing: 0.06em;
+  margin-bottom: 12px;
+  animation: nge-avatar-tryon-pulse 2.4s ease-in-out infinite;
+}
+@keyframes nge-avatar-tryon-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.85; }
 }
 .nge-avatar-purchase-cost {
   font-family: ui-monospace, 'Cascadia Code', monospace;

@@ -3480,6 +3480,52 @@ export const useAvatarStore = defineStore('avatar', () => {
     return unlocks.value.has(itemKey(categoryName, itemName));
   }
 
+  // ── Preview/try-on (for locked items) ─────────────────────────────────────
+  // Click a locked item → previewItem() temporarily applies it so the user
+  // can see how it looks; then the purchase modal opens. Cancel reverts to
+  // whatever was equipped before; Buy completes the unlock.
+  let previewSnapshot: { category: string; previousItem: string | null } | null = null;
+
+  async function previewItem(categoryName: string, itemName: string) {
+    if (!character) return;
+    const cat = character.categories.get(categoryName);
+    if (!cat) return;
+    // If we're already previewing in a different category, revert that first.
+    if (previewSnapshot && previewSnapshot.category !== categoryName) {
+      await cancelPreview();
+    }
+    if (!previewSnapshot) {
+      previewSnapshot = { category: categoryName, previousItem: cat.activeItem?.name ?? null };
+    }
+    await character.selectItem(categoryName, itemName);
+    bump();
+  }
+
+  async function cancelPreview() {
+    if (!previewSnapshot || !character) return;
+    const { category, previousItem } = previewSnapshot;
+    previewSnapshot = null;
+    if (previousItem) {
+      await character.selectItem(category, previousItem);
+    } else {
+      const cat = character.categories.get(category);
+      if (cat?.activeItem) {
+        await cat.activeItem.disable();
+        cat.activeItem = null;
+        character.needsRender = true;
+      }
+    }
+    bump();
+  }
+
+  function commitPreview() {
+    previewSnapshot = null;
+  }
+
+  function isPreviewing(): boolean {
+    return previewSnapshot !== null;
+  }
+
   async function purchase(categoryName: string, itemName: string): Promise<boolean> {
     if (!character) return false;
     const price = itemPrice(categoryName, itemName);
@@ -3489,7 +3535,13 @@ export const useAvatarStore = defineStore('avatar', () => {
     unlocks.value.add(itemKey(categoryName, itemName));
     persistUnlocksLocal();
     persistUnlockSupabase(categoryName, itemName, price); // fire and forget
-    await character.selectItem(categoryName, itemName);
+    // The item is already on the avatar from the preview — don't re-select,
+    // just commit and persist.
+    if (isPreviewing()) {
+      commitPreview();
+    } else {
+      await character.selectItem(categoryName, itemName);
+    }
     persist();
     thumbnailDirty = true;
     bump();
@@ -3579,6 +3631,7 @@ export const useAvatarStore = defineStore('avatar', () => {
   // figurine.
   function captureThumbnailIfNeeded(charCanvas: HTMLCanvasElement) {
     if (!thumbnailDirty || !ready.value) return;
+    if (previewSnapshot) return; // don't snapshot a try-on the user hasn't bought
     if (charCanvas.width === 0 || charCanvas.height === 0) return;
     try {
       const sourceH = Math.round(charCanvas.height * 0.62);
@@ -3626,6 +3679,7 @@ export const useAvatarStore = defineStore('avatar', () => {
     coinsEarned, coinsSpent, coinsBalance, collectionProgress,
     initialize, destroy, getCharacter, categoryViews, selectItem, setColor, changeGender,
     isUnlocked, purchase, captureThumbnailIfNeeded, getItemRarity, getItemPrice,
+    previewItem, cancelPreview, isPreviewing,
   };
 });
 
