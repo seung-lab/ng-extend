@@ -74,6 +74,14 @@ const profileSpecialBadges = computed(() => {
   return backendStore.mySpecialBadges;
 });
 
+// Avatar thumbnail to show in the profile header — own user from the avatar
+// store (live, in-memory after their last render); other users from the
+// loaded profile row (snapshot from Supabase).
+const displayedAvatarThumb = computed(() => {
+  if (viewingOtherUser.value) return otherUserProfile.value?.avatar_thumbnail_url || null;
+  return avatarStore.thumbnailUrl;
+});
+
 // Player assists — help requests resolved by current user
 const helpStore = useHelpRequestStore();
 const playerAssists = computed(() => {
@@ -440,16 +448,21 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- Header -->
           <div class="nge-profile-header" v-if="sessions.length > 0 || viewingOtherUser">
             <button
-              v-if="!viewingOtherUser"
               class="nge-profile-avatar-thumb"
-              :class="{ 'nge-profile-avatar-thumb--default': !avatarStore.thumbnailUrl }"
-              :title="avatarStore.thumbnailUrl ? 'Open Avatar tab' : 'You haven\'t set up an avatar yet — click to customize'"
-              @click="activeTab = 'avatar'"
+              :class="{
+                'nge-profile-avatar-thumb--default': !displayedAvatarThumb,
+                'nge-profile-avatar-thumb--readonly': viewingOtherUser,
+              }"
+              :title="viewingOtherUser
+                ? (displayedAvatarThumb ? `${profileName}'s avatar` : `${profileName} hasn't customized an avatar yet`)
+                : (avatarStore.thumbnailUrl ? 'Open Avatar tab' : 'You haven\'t set up an avatar yet — click to customize')"
+              :disabled="viewingOtherUser"
+              @click="!viewingOtherUser && (activeTab = 'avatar')"
             >
               <img
-                :src="avatarStore.thumbnailUrl || nurroDefault"
-                :class="{ 'nge-profile-avatar-thumb-img--nurro': !avatarStore.thumbnailUrl }"
-                alt="Your avatar"
+                :src="displayedAvatarThumb || nurroDefault"
+                :class="{ 'nge-profile-avatar-thumb-img--nurro': !displayedAvatarThumb }"
+                alt="Avatar"
               />
             </button>
             <div class="nge-profile-header-text">
@@ -1331,6 +1344,16 @@ const emit = defineEmits({hide: null, 'open-settings': null});
     0 0 16px rgba(74, 158, 255, 0.3),
     0 4px 14px rgba(0, 0, 0, 0.3);
   transform: translateY(-1px);
+}
+.nge-profile-avatar-thumb--readonly {
+  cursor: default;
+}
+.nge-profile-avatar-thumb--readonly:hover {
+  transform: none;
+  border-color: rgba(120, 200, 255, 0.25);
+  box-shadow:
+    0 0 0 1px rgba(120, 200, 255, 0.06) inset,
+    0 4px 14px rgba(0, 0, 0, 0.3);
 }
 .nge-profile-avatar-thumb img {
   width: 100%;
