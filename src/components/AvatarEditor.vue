@@ -2,10 +2,10 @@
 import {computed, ref} from 'vue';
 import {storeToRefs} from 'pinia';
 import {useAvatarStore, AvatarGender} from '../store';
-import {itemPrice, itemRarity, formatCoins, RARITY_LABEL, COIN_RATES, Rarity} from '../widgets/avatar/economy';
+import {itemPrice, itemRarity, formatCoins, RARITY_LABEL, COIN_RATES, Rarity, EFFECTS, EFFECT_DESCRIPTION, effectPrice, effectRarity} from '../widgets/avatar/economy';
 
 const store = useAvatarStore();
-const {gender, ready, version, coinsBalance, coinsEarned, coinsSpent, collectionProgress} = storeToRefs(store);
+const {gender, ready, version, coinsBalance, coinsEarned, coinsSpent, collectionProgress, activeEffect} = storeToRefs(store);
 
 type FilterMode = 'all' | 'owned' | 'affordable' | 'locked';
 const filterMode = ref<FilterMode>('all');
@@ -97,7 +97,33 @@ function prettify(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
 }
 
-const purchasePrompt = ref<{category: string; item: string; price: number; rarity: Rarity} | null>(null);
+interface PurchasePrompt {
+  kind: 'item' | 'effect';
+  category: string;
+  item: string;
+  price: number;
+  rarity: Rarity;
+}
+const purchasePrompt = ref<PurchasePrompt | null>(null);
+
+async function handleEffectClick(name: string | null) {
+  if (name === null) {
+    await store.applyEffect('');
+    return;
+  }
+  if (store.isEffectUnlocked(name)) {
+    await store.applyEffect(name);
+    return;
+  }
+  await store.previewEffect(name);
+  purchasePrompt.value = {
+    kind: 'effect',
+    category: 'Effect',
+    item: name,
+    price: effectPrice(name),
+    rarity: effectRarity(name),
+  };
+}
 
 async function handleItemClick(category: string, itemName: string | null) {
   if (itemName === null) {
@@ -111,13 +137,23 @@ async function handleItemClick(category: string, itemName: string | null) {
   }
   // Locked — try it on, then open the purchase modal.
   await store.previewItem(category, itemName);
-  purchasePrompt.value = {category, item: itemName, price, rarity: itemRarity(category, itemName)};
+  purchasePrompt.value = {
+    kind: 'item',
+    category,
+    item: itemName,
+    price,
+    rarity: itemRarity(category, itemName),
+  };
 }
 
 async function confirmPurchase() {
   if (!purchasePrompt.value) return;
-  const {category, item} = purchasePrompt.value;
-  await store.purchase(category, item);
+  const p = purchasePrompt.value;
+  if (p.kind === 'effect') {
+    await store.purchaseEffect(p.item);
+  } else {
+    await store.purchase(p.category, p.item);
+  }
   purchasePrompt.value = null;
 }
 async function cancelPurchase() {
@@ -198,6 +234,44 @@ async function cancelPurchase() {
     </div>
 
     <div class="nge-avatar-editor-scroll">
+      <!-- Effects section — purchasable post-process filters applied to the avatar -->
+      <div class="nge-avatar-section">
+        <div class="nge-avatar-section-label">Effects</div>
+        <div class="nge-avatar-category">
+          <div class="nge-avatar-category-row">
+            <div class="nge-avatar-category-head">
+              <span class="nge-avatar-category-label">Active effect</span>
+              <span class="nge-avatar-cat-cost">◎ 800 – 2,400</span>
+            </div>
+            <div class="nge-avatar-items">
+              <button
+                class="nge-avatar-item"
+                :class="{ 'nge-avatar-item--active': activeEffect === '' }"
+                @click="handleEffectClick(null)"
+              >None</button>
+              <button
+                v-for="fx in EFFECTS"
+                :key="fx"
+                class="nge-avatar-item"
+                :class="[
+                  `nge-avatar-item--rarity-${effectRarity(fx)}`,
+                  {
+                    'nge-avatar-item--active': activeEffect === fx,
+                    'nge-avatar-item--locked': !store.isEffectUnlocked(fx),
+                    'nge-avatar-item--owned': store.isEffectUnlocked(fx) && activeEffect !== fx,
+                  }
+                ]"
+                :title="!store.isEffectUnlocked(fx) ? `${EFFECT_DESCRIPTION[fx]} — ${effectPrice(fx)} coins` : EFFECT_DESCRIPTION[fx]"
+                @click="handleEffectClick(fx)"
+              >
+                <span class="nge-avatar-item-name">{{ fx }}</span>
+                <span v-if="!store.isEffectUnlocked(fx)" class="nge-avatar-item-price">◎{{ effectPrice(fx) }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-for="group in sectionGroups" :key="group.section" class="nge-avatar-section">
         <div class="nge-avatar-section-label">{{ prettify(group.section) }}</div>
         <div v-for="cat in group.categories" :key="cat.category" class="nge-avatar-category">

@@ -1224,15 +1224,16 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   display: flex;
   flex-direction: column;
   max-height: 90vh;
-  transition: width 0.25s ease;
+  transition: width 0.25s ease, max-height 0.25s ease;
 }
 .nge-profile-shell--trophy {
   width: 85vw;
   max-width: 1200px;
 }
 .nge-profile-shell--avatar {
-  width: 92vw;
-  max-width: 1480px;
+  width: 96vw;
+  max-width: 1800px;
+  max-height: 95vh;
 }
 
 /* ── Topbar ── */
@@ -1326,10 +1327,10 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* Avatar thumbnail (clickable — opens Avatar tab) */
 .nge-profile-avatar-thumb {
   flex-shrink: 0;
-  width: 110px;
-  height: 138px;
+  width: 220px;
+  height: 276px;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 14px;
   border: 1px solid rgba(120, 200, 255, 0.25);
   background: linear-gradient(180deg, rgba(40, 60, 110, 0.5), rgba(15, 20, 50, 0.6));
   cursor: pointer;
@@ -2577,7 +2578,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-avatar-shell {
   display: flex;
   flex-direction: column;
-  height: calc(90vh - 100px);
+  height: calc(95vh - 100px);
   width: 100%;
   background: linear-gradient(180deg, rgba(15, 20, 40, 0.6) 0%, rgba(10, 12, 28, 0.4) 100%);
 }

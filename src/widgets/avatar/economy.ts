@@ -134,3 +134,61 @@ export function formatCoins(n: number): string {
   if (n >= 10000) return `${(n / 1000).toFixed(1)}k`;
   return n.toLocaleString();
 }
+
+// ── Effects ─────────────────────────────────────────────────────────────────
+// Renderer-side post-process effects (Glowing, Pixelated, Rainbow, etc.) are
+// sold as separate purchasable upgrades. Use the same unlocks set keyed on
+// "effect/<name>".
+
+export const EFFECTS = [
+  'Grayscale',
+  'Sepia',
+  'Silhouette',
+  'Glowing',
+  'Pixelated',
+  'Rainbow',
+  'Ghostly',
+  'Radioactive',
+  'Negative',
+  'Color Shift',
+] as const;
+
+export const EFFECT_DESCRIPTION: Record<string, string> = {
+  Grayscale:    'Strip the color out for that vintage cel feel.',
+  Sepia:        'Old-photograph warmth — like a lab portrait from 1900.',
+  Silhouette:   'Pure black profile against the lab backdrop.',
+  Glowing:      'A soft luminous halo radiates outward.',
+  Pixelated:    'Crunch the avatar to chunky 8-bit pixels.',
+  Rainbow:      'Tint the body in a vertical rainbow gradient.',
+  Ghostly:      'Translucent blue spirit, drifting and pulsing.',
+  Radioactive:  'Toxic green glow — handle with care.',
+  Negative:     'Color inverted, lit by a slow white pulse.',
+  'Color Shift':'Hue rotates continuously through the spectrum.',
+};
+
+const EFFECT_RARITY: Record<string, Rarity> = {
+  Grayscale: 'standard',
+  Sepia: 'standard',
+  Silhouette: 'premium',
+  Glowing: 'premium',
+  Pixelated: 'premium',
+  Rainbow: 'legendary',
+  Ghostly: 'legendary',
+  Radioactive: 'legendary',
+  Negative: 'legendary',
+  'Color Shift': 'legendary',
+};
+
+const EFFECT_BASE_PRICE = 800;
+
+export function effectRarity(name: string): Rarity {
+  return EFFECT_RARITY[name] ?? 'standard';
+}
+
+export function effectPrice(name: string): number {
+  return EFFECT_BASE_PRICE * RARITY_MULTIPLIER[effectRarity(name)];
+}
+
+export function effectKey(name: string): string {
+  return `effect/${name}`;
+}

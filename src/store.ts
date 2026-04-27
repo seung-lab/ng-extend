@@ -3215,7 +3215,7 @@ export const useChatStore = defineStore('chat', () => {
 import Character, {Gender} from './widgets/avatar/character';
 import AvatarRenderer from './widgets/avatar/renderer';
 import {CanvasWrapper} from './widgets/avatar/canvas_interface';
-import {itemPrice, itemKey, itemRarity, computeEarnedCoins, Rarity} from './widgets/avatar/economy';
+import {itemPrice, itemKey, itemRarity, effectPrice, effectKey, effectRarity, computeEarnedCoins, Rarity} from './widgets/avatar/economy';
 
 const AVATAR_LS_KEY = 'eyewireAvatar';
 const AVATAR_UNLOCKS_LS_KEY = 'eyewireAvatarUnlocks';
@@ -3395,7 +3395,10 @@ export const useAvatarStore = defineStore('avatar', () => {
     } else {
       character = await Character.createCharacter(gender.value, renderer);
     }
-    if (character) gender.value = character.gender;
+    if (character) {
+      gender.value = character.gender;
+      activeEffect.value = character.activeEffect ?? '';
+    }
     grandfatherEquippedItems();
     ready.value = true;
     thumbnailDirty = true;
@@ -3480,40 +3483,56 @@ export const useAvatarStore = defineStore('avatar', () => {
     return unlocks.value.has(itemKey(categoryName, itemName));
   }
 
-  // ── Preview/try-on (for locked items) ─────────────────────────────────────
-  // Click a locked item → previewItem() temporarily applies it so the user
-  // can see how it looks; then the purchase modal opens. Cancel reverts to
-  // whatever was equipped before; Buy completes the unlock.
-  let previewSnapshot: { category: string; previousItem: string | null } | null = null;
+  // ── Preview/try-on (for locked items + effects) ───────────────────────────
+  // Click a locked item or effect → previewXxx() temporarily applies it so
+  // the user can see how it looks; then the purchase modal opens. Cancel
+  // reverts to whatever was equipped before; Buy completes the unlock.
+  type PreviewSnapshot =
+    | { kind: 'item'; category: string; previousItem: string | null }
+    | { kind: 'effect'; previousEffect: string };
+
+  let previewSnapshot: PreviewSnapshot | null = null;
 
   async function previewItem(categoryName: string, itemName: string) {
     if (!character) return;
     const cat = character.categories.get(categoryName);
     if (!cat) return;
-    // If we're already previewing in a different category, revert that first.
-    if (previewSnapshot && previewSnapshot.category !== categoryName) {
+    // Revert any in-flight preview first (item OR effect).
+    if (previewSnapshot && !(previewSnapshot.kind === 'item' && previewSnapshot.category === categoryName)) {
       await cancelPreview();
     }
     if (!previewSnapshot) {
-      previewSnapshot = { category: categoryName, previousItem: cat.activeItem?.name ?? null };
+      previewSnapshot = { kind: 'item', category: categoryName, previousItem: cat.activeItem?.name ?? null };
     }
     await character.selectItem(categoryName, itemName);
     bump();
   }
 
+  async function previewEffect(name: string) {
+    if (!character) return;
+    if (previewSnapshot) await cancelPreview();
+    previewSnapshot = { kind: 'effect', previousEffect: character.activeEffect };
+    await character.setEffect(name);
+    bump();
+  }
+
   async function cancelPreview() {
     if (!previewSnapshot || !character) return;
-    const { category, previousItem } = previewSnapshot;
+    const snap = previewSnapshot;
     previewSnapshot = null;
-    if (previousItem) {
-      await character.selectItem(category, previousItem);
-    } else {
-      const cat = character.categories.get(category);
-      if (cat?.activeItem) {
-        await cat.activeItem.disable();
-        cat.activeItem = null;
-        character.needsRender = true;
+    if (snap.kind === 'item') {
+      if (snap.previousItem) {
+        await character.selectItem(snap.category, snap.previousItem);
+      } else {
+        const cat = character.categories.get(snap.category);
+        if (cat?.activeItem) {
+          await cat.activeItem.disable();
+          cat.activeItem = null;
+          character.needsRender = true;
+        }
       }
+    } else {
+      await character.setEffect(snap.previousEffect);
     }
     bump();
   }
@@ -3554,6 +3573,59 @@ export const useAvatarStore = defineStore('avatar', () => {
 
   function getItemPrice(categoryName: string, itemName: string): number {
     return itemPrice(categoryName, itemName);
+  }
+
+  // ── Effects ───────────────────────────────────────────────────────────────
+  const activeEffect = ref<string>('');
+
+  async function applyEffect(name: string) {
+    if (!character) return;
+    if (name && !isEffectUnlocked(name)) return; // refuse unauthorized
+    activeEffect.value = name;
+    await character.setEffect(name);
+    persist();
+    thumbnailDirty = true;
+    bump();
+  }
+
+  function isEffectUnlocked(name: string): boolean {
+    return unlocks.value.has(effectKey(name));
+  }
+
+  async function purchaseEffect(name: string): Promise<boolean> {
+    if (!character) return false;
+    const price = effectPrice(name);
+    if (unlocks.value.has(effectKey(name))) return true;
+    if (coinsBalance.value < price) return false;
+    unlocks.value.add(effectKey(name));
+    persistUnlocksLocal();
+    persistUnlockSupabaseEffect(name, price);
+    if (isPreviewing()) {
+      commitPreview();
+    } else {
+      await character.setEffect(name);
+    }
+    activeEffect.value = name;
+    persist();
+    thumbnailDirty = true;
+    bump();
+    return true;
+  }
+
+  async function persistUnlockSupabaseEffect(name: string, costPaid: number) {
+    const userId = backendStore.userId;
+    if (!userId) return;
+    try {
+      await supabase.from('user_avatar_unlocks').insert({
+        user_id: userId,
+        item_key: effectKey(name),
+        category: 'effect',
+        rarity: effectRarity(name),
+        cost_paid: costPaid,
+      });
+    } catch (e: any) {
+      console.warn('[avatar] persist effect unlock failed:', e?.message ?? e);
+    }
   }
 
   async function setColor(categoryName: string, colorIndex: number) {
@@ -3634,12 +3706,15 @@ export const useAvatarStore = defineStore('avatar', () => {
     if (previewSnapshot) return; // don't snapshot a try-on the user hasn't bought
     if (charCanvas.width === 0 || charCanvas.height === 0) return;
     try {
-      const sourceH = Math.round(charCanvas.height * 0.62);
-      const sourceW = Math.round(charCanvas.width * 0.5);
+      // Tight portrait crop centered on the character — narrow horizontal slice
+      // to exclude sidekicks/handhelds that sit out at canvas X ~0.15-0.25,
+      // top half vertically to skip legs.
+      const sourceW = Math.round(charCanvas.width * 0.30);
       const sourceX = Math.round((charCanvas.width - sourceW) / 2);
+      const sourceH = Math.round(charCanvas.height * 0.55);
       const sourceY = 0;
 
-      const targetH = 512;
+      const targetH = 640;
       const scale = targetH / sourceH;
       const targetW = Math.round(sourceW * scale);
 
@@ -3675,11 +3750,12 @@ export const useAvatarStore = defineStore('avatar', () => {
   }
 
   return {
-    ready, editorOpen, gender, version, thumbnailUrl, unlocks,
+    ready, editorOpen, gender, version, thumbnailUrl, unlocks, activeEffect,
     coinsEarned, coinsSpent, coinsBalance, collectionProgress,
     initialize, destroy, getCharacter, categoryViews, selectItem, setColor, changeGender,
     isUnlocked, purchase, captureThumbnailIfNeeded, getItemRarity, getItemPrice,
-    previewItem, cancelPreview, isPreviewing,
+    previewItem, previewEffect, cancelPreview, isPreviewing,
+    applyEffect, isEffectUnlocked, purchaseEffect,
   };
 });
 
