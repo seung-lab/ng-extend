@@ -109,9 +109,9 @@ export function itemKey(category: string, item: string): string {
 
 export const COIN_RATES = {
   edit: 1,
-  cellCompletion: 25,
+  cellCompletion: 10,  // power players complete many cells; the per-edit pay already rewards the work
   streakDay: 5,
-  badge: 10,        // there are many badges — keep this modest so they don't dominate
+  badge: 10,           // many badges over time — small bonus each
   joiningBonus: 200,
 };
 
