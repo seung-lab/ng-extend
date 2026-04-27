@@ -1,7 +1,10 @@
 // Connectome Coin economy for avatar items.
-// Costs are tiered: per-category base × rarity multiplier.
-// Jumpsuits are intentionally the most expensive items in the catalog —
-// a legendary jumpsuit tops out at 1500 coins.
+//
+// Pricing philosophy: most items are expensive enough that even power players
+// (10k+ edits/year) take years to fill the catalog. A small hand-picked set of
+// starter items priced flat at ◎ 50 lets new players try things on without
+// grinding. Body parts (hair, eyes, etc.) are always free — they're identity,
+// not loot.
 
 export const ITEM_COST_BY_CATEGORY: Record<string, number> = {
   // Head — body/identity choices, all free
@@ -14,23 +17,23 @@ export const ITEM_COST_BY_CATEGORY: Record<string, number> = {
   features: 0,
   skin: 0,
 
-  // Clothes — tiered
-  base: 0,
-  belt: 30,
-  glasses: 40,
-  shirt: 50,
-  pants: 50,
-  shoes: 60,
-  arm: 75,
-  mask: 75,
-  hat: 100,
-  jacket: 150,
-  jumpsuit: 500,
+  // Clothes — substantial baseline so items hold value
+  base: 0,        // default outfit, free
+  belt: 200,
+  glasses: 250,
+  shirt: 350,
+  pants: 350,
+  shoes: 400,
+  arm: 500,
+  mask: 500,
+  hat: 700,
+  jacket: 1200,
+  jumpsuit: 3000, // jumpsuits stay the most expensive item type
 
-  // Environment — premium tier
-  aura: 200,
-  handheld: 150,
-  sidekick: 250,
+  // Environment — premium / aspirational tier
+  handheld: 800,
+  aura: 1500,
+  sidekick: 2000,
 };
 
 export type Rarity = 'standard' | 'premium' | 'legendary';
@@ -47,8 +50,7 @@ export const RARITY_LABEL: Record<Rarity, string> = {
   legendary: 'Legendary',
 };
 
-// Hand-picked legendary items per category. Add sparingly — these are the
-// hero pieces that should feel rare and aspirational.
+// Hand-picked legendary items per category — the rarest hero pieces.
 const LEGENDARY_ITEMS_BY_CATEGORY: Record<string, string[]> = {
   shirt: ['play with nurro'],
   hat: ['nurro helmet', 'astronaut helmet', 'ultracortex', 'pharaoh headdress'],
@@ -60,8 +62,25 @@ const LEGENDARY_ITEMS_BY_CATEGORY: Record<string, string[]> = {
 const PREMIUM_NAME_PATTERN =
   /eyewire|brainstar|cellfie|neuron|myelin|microscope|nurro|pyr|chunkflow|hologalaxy|cortex|holographic|holojacket|holo /i;
 
+// Hand-picked starter items — flat ◎ 50 each, regardless of rarity. Limit
+// the list to keep the rest of the catalog aspirational.
+const STARTER_PRICE = 50;
+const STARTER_ITEMS_BY_CATEGORY: Record<string, string[]> = {
+  shirt:    ['blank shirt', 'tshirt base', 'striped shirt'],
+  pants:    ['pants', 'sweatpants'],
+  shoes:    ['spike boots', 'mecha boots'],
+  glasses:  ['glasses'],
+  hat:      ['cap', 'beanie', 'eyewire cap'],
+  belt:     ['Utility Belt', 'Agent Belt'],
+};
+
 function eqCI(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
+}
+
+export function isStarterItem(category: string, itemName: string): boolean {
+  const list = STARTER_ITEMS_BY_CATEGORY[category];
+  return !!list && list.some(n => eqCI(n, itemName));
 }
 
 export function itemRarity(category: string, itemName: string): Rarity {
@@ -74,10 +93,11 @@ export function itemRarity(category: string, itemName: string): Rarity {
 }
 
 export function itemCost(category: string): number {
-  return ITEM_COST_BY_CATEGORY[category] ?? 50;
+  return ITEM_COST_BY_CATEGORY[category] ?? 350;
 }
 
 export function itemPrice(category: string, itemName: string): number {
+  if (isStarterItem(category, itemName)) return STARTER_PRICE;
   const base = itemCost(category);
   if (base === 0) return 0;
   return Math.round(base * RARITY_MULTIPLIER[itemRarity(category, itemName)]);

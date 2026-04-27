@@ -3574,20 +3574,28 @@ export const useAvatarStore = defineStore('avatar', () => {
   });
 
   // Thumbnail capture — called by AvatarRenderer.vue after each render if dirty.
+  // Captures a portrait crop of the top ~62% of the canvas (head + torso) so
+  // the avatar fills the small profile thumb instead of being a tiny full-body
+  // figurine.
   function captureThumbnailIfNeeded(charCanvas: HTMLCanvasElement) {
     if (!thumbnailDirty || !ready.value) return;
     if (charCanvas.width === 0 || charCanvas.height === 0) return;
     try {
-      // Downsample to ~512px tall for storage efficiency.
+      const sourceH = Math.round(charCanvas.height * 0.62);
+      const sourceW = Math.round(charCanvas.width * 0.5);
+      const sourceX = Math.round((charCanvas.width - sourceW) / 2);
+      const sourceY = 0;
+
       const targetH = 512;
-      const scale = targetH / charCanvas.height;
-      const w = Math.round(charCanvas.width * scale);
+      const scale = targetH / sourceH;
+      const targetW = Math.round(sourceW * scale);
+
       const tmp = document.createElement('canvas');
-      tmp.width = w;
+      tmp.width = targetW;
       tmp.height = targetH;
       const tmpCtx = tmp.getContext('2d');
       if (!tmpCtx) return;
-      tmpCtx.drawImage(charCanvas, 0, 0, w, targetH);
+      tmpCtx.drawImage(charCanvas, sourceX, sourceY, sourceW, sourceH, 0, 0, targetW, targetH);
       const url = tmp.toDataURL('image/png');
       thumbnailUrl.value = url;
       try { localStorage.setItem(AVATAR_THUMB_LS_KEY, url); } catch {/* quota */}

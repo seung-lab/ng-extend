@@ -6,6 +6,7 @@ import AvatarRenderer from 'components/AvatarRenderer.vue';
 import AvatarEditor from 'components/AvatarEditor.vue';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, useAvatarStore, CellHistoryEntry} from '../store';
+import {formatCoins} from '../widgets/avatar/economy';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
@@ -507,6 +508,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
               <button v-else class="nge-profile-bio-add" @click="emit('open-settings')">
                 + Add a bio
+              </button>
+              <button class="nge-profile-coins-chip" @click="activeTab = 'avatar'" title="Open Avatar tab to spend Connectome Coins on items">
+                <span class="nge-profile-coins-icon">◎</span>
+                <span class="nge-profile-coins-num">{{ formatCoins(avatarStore.coinsBalance) }}</span>
+                <span class="nge-profile-coins-label">Connectome Coins</span>
               </button>
             </template>
             </div><!-- end nge-profile-header-text -->
@@ -1320,10 +1326,10 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* Avatar thumbnail (clickable — opens Avatar tab) */
 .nge-profile-avatar-thumb {
   flex-shrink: 0;
-  width: 76px;
-  height: 96px;
+  width: 110px;
+  height: 138px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid rgba(120, 200, 255, 0.25);
   background: linear-gradient(180deg, rgba(40, 60, 110, 0.5), rgba(15, 20, 50, 0.6));
   cursor: pointer;
@@ -1373,6 +1379,45 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   object-position: center center;
   margin: auto;
   filter: drop-shadow(0 0 6px rgba(120, 200, 255, 0.15));
+}
+
+/* Coin balance chip — clicks through to the Avatar tab. */
+.nge-profile-coins-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 11px 4px 9px;
+  background: linear-gradient(135deg, rgba(255, 200, 80, 0.12), rgba(255, 160, 60, 0.07));
+  border: 1px solid rgba(255, 200, 80, 0.4);
+  border-radius: 14px;
+  cursor: pointer;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  color: rgba(255, 220, 140, 0.95);
+  text-shadow: 0 0 8px rgba(255, 180, 60, 0.2);
+  transition: all 0.15s ease;
+}
+.nge-profile-coins-chip:hover {
+  background: linear-gradient(135deg, rgba(255, 200, 80, 0.2), rgba(255, 160, 60, 0.13));
+  box-shadow: 0 0 12px rgba(255, 180, 60, 0.25);
+  border-color: rgba(255, 200, 80, 0.6);
+}
+.nge-profile-coins-icon {
+  font-size: 1.05em;
+  line-height: 1;
+}
+.nge-profile-coins-num {
+  font-size: 0.95em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.nge-profile-coins-label {
+  font-family: 'Calibri', sans-serif;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 220, 140, 0.65);
 }
 
 .nge-profile-name-row {

@@ -127,9 +127,16 @@ export default class Renderer {
     options.centerX += localCamera.offsetX * options.cameraScaleMult;
     options.centerY += localCamera.offsetY * options.cameraScaleMult;
 
+    // Renderer was authored for a 1920x1080 reference. Originally amplified
+    // the X offset on narrower canvases (canvasRatio < goalRatio), which
+    // pushed sidekicks/auras/handhelds off the side. Clamping the spread
+    // multiplier to <= 1 means peripheral items keep their designed positions
+    // in narrow viewports (hugged closer to the character) instead of flying
+    // off-screen.
     const goalRatio = 1920 / 1080;
     const canvasRatio = ctx.canvas.width / ctx.canvas.height;
-    options.centerX = (options.centerX - 0.5) * cameraScale / canvasRatio * goalRatio + 0.5;
+    const xSpread = Math.min(goalRatio / canvasRatio, 1);
+    options.centerX = (options.centerX - 0.5) * cameraScale * xSpread + 0.5;
 
     ctx.drawImage(
         img, options.centerX * ctx.canvas.width - canvasImgWidth * options.imgCenterX,
