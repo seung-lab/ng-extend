@@ -237,7 +237,9 @@ export async function getCellStatus(
 
   // Try materialization query — resolves annotations by current root_id
   try {
-    const matUrl = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/latest/table/${cellStatusTable}/query`;
+    // return_pyarrow=false: materializer defaults to Apache Arrow IPC binary;
+    // the lightbulb parses the response as JSON, so we must opt out of arrow.
+    const matUrl = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/latest/table/${cellStatusTable}/query?return_pyarrow=false`;
     console.info(`[lightbulb] POST materialization query → ${matUrl}`);
     const res = await fetch(matUrl, {
       method: 'POST',
@@ -262,7 +264,7 @@ export async function getCellStatus(
 
   // Cell type via materialization
   try {
-    const matUrl = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/latest/table/${cellTypeTable}/query`;
+    const matUrl = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/latest/table/${cellTypeTable}/query?return_pyarrow=false`;
     const res = await fetch(matUrl, {
       method: 'POST',
       headers: authHeaders(caveServer),
