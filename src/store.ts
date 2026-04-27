@@ -3208,3 +3208,144 @@ export const useChatStore = defineStore('chat', () => {
 
   return { chatMessages, connected, unreadMessages, connect, sendMessage, markRead, disconnect };
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AVATAR STORE
+// ─────────────────────────────────────────────────────────────────────────────
+import Character, {Gender} from './widgets/avatar/character';
+import AvatarRenderer from './widgets/avatar/renderer';
+import {CanvasWrapper} from './widgets/avatar/canvas_interface';
+
+const AVATAR_LS_KEY = 'eyewireAvatar';
+
+export interface AvatarCategoryView {
+  section: string;
+  category: string;
+  items: string[];
+  activeItem: string | null;
+  optional: boolean;
+  colors: string[] | undefined;
+  activeColorIndex: number;
+}
+
+export const useAvatarStore = defineStore('avatar', () => {
+  const ready = ref(false);
+  const editorOpen = ref(false);
+  const gender = ref<Gender>(Gender.Female);
+  const version = ref(0); // bump to force editor view recompute
+  let character: Character | null = null;
+  let renderer: AvatarRenderer | null = null;
+
+  function bump() { version.value++; }
+
+  async function initialize(charCanvas: HTMLCanvasElement, bgCanvas: HTMLCanvasElement) {
+    if (renderer) return; // already initialized
+    const colorCanvas = document.createElement('canvas');
+    colorCanvas.width = 1; colorCanvas.height = 1;
+    const createImage = (c: CanvasWrapper): Promise<CanvasImageSource> =>
+        createImageBitmap(c as unknown as ImageBitmapSource);
+    renderer = new AvatarRenderer(charCanvas, bgCanvas, colorCanvas, createImage);
+
+    const saved = localStorage.getItem(AVATAR_LS_KEY);
+    if (saved) {
+      try {
+        character = await Character.createFromJSONString(saved, renderer);
+      } catch {
+        character = await Character.createCharacter(gender.value, renderer);
+      }
+    } else {
+      character = await Character.createCharacter(gender.value, renderer);
+    }
+    if (character) gender.value = character.gender;
+    ready.value = true;
+    bump();
+  }
+
+  function getCharacter(): Character | null { return character; }
+
+  function categoryViews(): AvatarCategoryView[] {
+    void version.value; // dependency
+    if (!character) return [];
+    const out: AvatarCategoryView[] = [];
+    for (const [section, cats] of character.sections.entries()) {
+      for (const catName of cats) {
+        const cat = character.categories.get(catName);
+        if (!cat) continue;
+        const activeItem = cat.activeItem;
+        const colors = activeItem?.colors;
+        const activeColorIndex = (colors && activeItem?.color)
+            ? colors.indexOf(activeItem.color)
+            : -1;
+        out.push({
+          section,
+          category: catName,
+          items: [...cat.getItemNames()],
+          activeItem: activeItem?.name ?? null,
+          optional: cat.optional,
+          colors,
+          activeColorIndex,
+        });
+      }
+    }
+    return out;
+  }
+
+  async function selectItem(categoryName: string, itemName: string | null) {
+    if (!character) return;
+    if (itemName === null) {
+      // Optional categories can be cleared
+      const cat = character.categories.get(categoryName);
+      if (cat?.activeItem) {
+        await cat.activeItem.disable();
+        cat.activeItem = null;
+        character.needsRender = true;
+      }
+    } else {
+      await character.selectItem(categoryName, itemName);
+    }
+    persist();
+    bump();
+  }
+
+  async function setColor(categoryName: string, colorIndex: number) {
+    if (!character) return;
+    const cat = character.categories.get(categoryName);
+    if (!cat?.activeItem) return;
+    await character.setItemColorOrVariant(cat.activeItem.name, categoryName, colorIndex);
+    persist();
+    bump();
+  }
+
+  async function changeGender(newGender: Gender) {
+    if (!character || !renderer || newGender === gender.value) return;
+    ready.value = false;
+    gender.value = newGender;
+    character.cancel();
+    character = await Character.createCharacter(newGender, renderer);
+    ready.value = true;
+    persist();
+    bump();
+  }
+
+  function persist() {
+    if (!character) return;
+    try {
+      localStorage.setItem(AVATAR_LS_KEY, character.toJSON());
+    } catch {/* quota or disabled — ignore */}
+  }
+
+  function destroy() {
+    character?.cancel();
+    character = null;
+    renderer = null;
+    ready.value = false;
+    editorOpen.value = false;
+  }
+
+  return {
+    ready, editorOpen, gender, version,
+    initialize, destroy, getCharacter, categoryViews, selectItem, setColor, changeGender,
+  };
+});
+
+export {Gender as AvatarGender};

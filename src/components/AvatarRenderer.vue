@@ -1,18 +1,16 @@
 <script setup lang="ts">
 import {ref, onMounted, onUnmounted} from 'vue';
-
-import Character, {Gender} from '../widgets/avatar/character';
-import {CanvasWrapper} from '../widgets/avatar/canvas_interface';
-import Renderer from '../widgets/avatar/renderer';
+import {storeToRefs} from 'pinia';
+import {useAvatarStore} from '../store';
 
 const charCanvasRef = ref<HTMLCanvasElement | null>(null);
 const bgCanvasRef = ref<HTMLCanvasElement | null>(null);
 const stageRef = ref<HTMLDivElement | null>(null);
-const loading = ref(true);
 const errorMsg = ref<string | null>(null);
 
-let character: Character | null = null;
-let renderer: Renderer | null = null;
+const store = useAvatarStore();
+const {ready} = storeToRefs(store);
+
 let animFrame = 0;
 let resizeObserver: ResizeObserver | null = null;
 
@@ -33,10 +31,12 @@ function sizeCanvases() {
     c.style.width = `${w}px`;
     c.style.height = `${h}px`;
   }
+  const character = store.getCharacter();
   if (character) character.needsRender = true;
 }
 
 function loop() {
+  const character = store.getCharacter();
   if (character) character.render(true);
   animFrame = requestAnimationFrame(loop);
 }
@@ -49,23 +49,12 @@ onMounted(async () => {
 
   sizeCanvases();
 
-  const colorCanvas = document.createElement('canvas');
-  colorCanvas.width = 1;
-  colorCanvas.height = 1;
-
-  const createImage = (canvas: CanvasWrapper): Promise<CanvasImageSource> =>
-      createImageBitmap(canvas as unknown as ImageBitmapSource);
-
-  renderer = new Renderer(charCanvas, bgCanvas, colorCanvas, createImage);
-
   try {
-    character = await Character.createCharacter(Gender.Female, renderer);
-    loading.value = false;
+    await store.initialize(charCanvas, bgCanvas);
     animFrame = requestAnimationFrame(loop);
   } catch (e) {
     console.error('Avatar load failed', e);
     errorMsg.value = 'Failed to load avatar assets.';
-    loading.value = false;
     return;
   }
 
@@ -76,9 +65,7 @@ onMounted(async () => {
 onUnmounted(() => {
   cancelAnimationFrame(animFrame);
   resizeObserver?.disconnect();
-  character?.cancel();
-  character = null;
-  renderer = null;
+  store.destroy();
 });
 </script>
 
@@ -86,7 +73,10 @@ onUnmounted(() => {
   <div ref="stageRef" class="nge-avatar-stage">
     <canvas ref="bgCanvasRef" class="nge-avatar-canvas nge-avatar-canvas--bg" />
     <canvas ref="charCanvasRef" class="nge-avatar-canvas nge-avatar-canvas--char" />
-    <div v-if="loading" class="nge-avatar-loading">Loading avatar…</div>
+    <div v-if="!ready && !errorMsg" class="nge-avatar-loading">
+      <div class="nge-avatar-loading-pulse"></div>
+      <div>Loading avatar…</div>
+    </div>
     <div v-else-if="errorMsg" class="nge-avatar-error">{{ errorMsg }}</div>
   </div>
 </template>
@@ -98,7 +88,7 @@ onUnmounted(() => {
   height: 100%;
   background: #191558;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 .nge-avatar-canvas {
   position: absolute;
@@ -114,13 +104,27 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 0.9em;
+  gap: 14px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.85em;
   font-style: italic;
+  letter-spacing: 0.05em;
   z-index: 2;
   pointer-events: none;
 }
 .nge-avatar-error { color: rgba(255, 140, 140, 0.85); }
+.nge-avatar-loading-pulse {
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(120, 200, 255, 0.15);
+  border-top-color: rgba(120, 200, 255, 0.7);
+  border-radius: 50%;
+  animation: nge-avatar-spin 0.9s linear infinite;
+}
+@keyframes nge-avatar-spin {
+  to { transform: rotate(360deg); }
+}
 </style>

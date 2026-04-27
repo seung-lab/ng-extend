@@ -3,8 +3,9 @@ import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AvatarRenderer from 'components/AvatarRenderer.vue';
+import AvatarEditor from 'components/AvatarEditor.vue';
 
-import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
+import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, useAvatarStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
@@ -93,6 +94,7 @@ const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
 const activeTab = ref<'overview' | 'trophyCase' | 'avatar'>('overview');
+const avatarStore = useAvatarStore();
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
 // All country flags A-Z (ISO 3166-1 alpha-2, sorted alphabetically)
@@ -400,7 +402,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
     :class="{ 'nge-profile-closing': closing }"
     @hide="handleClose"
   >
-    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase' }">
+    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--avatar': activeTab === 'avatar' }">
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
@@ -1060,13 +1062,28 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       <div v-else-if="activeTab === 'avatar'" class="nge-profile-body nge-profile-body--avatar">
         <div class="nge-avatar-shell">
           <div class="nge-avatar-header">
-            <div class="nge-avatar-title">YOUR AVATAR</div>
-            <div class="nge-avatar-subtitle">
-              Phase 1 — rendering a default avatar. Editor + Connectome Coin economy coming soon.
+            <div class="nge-avatar-header-left">
+              <div class="nge-avatar-title">YOUR AVATAR</div>
+              <div class="nge-avatar-subtitle">
+                Items unlock with <strong>Connectome Coins</strong> — economy coming soon.
+              </div>
             </div>
+            <button
+              class="nge-avatar-customize-btn"
+              :class="{ 'nge-avatar-customize-btn--open': avatarStore.editorOpen }"
+              @click="avatarStore.editorOpen = !avatarStore.editorOpen"
+            >
+              <span v-if="!avatarStore.editorOpen">✎ Customize</span>
+              <span v-else>✓ Done</span>
+            </button>
           </div>
-          <div class="nge-avatar-frame-wrap">
-            <AvatarRenderer />
+          <div class="nge-avatar-content" :class="{ 'nge-avatar-content--editing': avatarStore.editorOpen }">
+            <div class="nge-avatar-stage-wrap">
+              <AvatarRenderer />
+            </div>
+            <Transition name="nge-avatar-editor-slide">
+              <AvatarEditor v-if="avatarStore.editorOpen" />
+            </Transition>
           </div>
         </div>
       </div><!-- end Avatar -->
@@ -1177,6 +1194,10 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-shell--trophy {
   width: 85vw;
   max-width: 1200px;
+}
+.nge-profile-shell--avatar {
+  width: 92vw;
+  max-width: 1480px;
 }
 
 /* ── Topbar ── */
@@ -2423,8 +2444,19 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   background: linear-gradient(180deg, rgba(15, 20, 40, 0.6) 0%, rgba(10, 12, 28, 0.4) 100%);
 }
 .nge-avatar-header {
-  padding: 18px 28px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px 12px;
   border-bottom: 1px solid rgba(120, 200, 255, 0.08);
+  flex-shrink: 0;
+}
+.nge-avatar-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 .nge-avatar-title {
   font-family: 'Orbitron', sans-serif;
@@ -2433,29 +2465,78 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   letter-spacing: 0.18em;
   color: rgba(120, 200, 255, 0.85);
   text-shadow: 0 0 12px rgba(74, 158, 255, 0.25);
-  margin-bottom: 6px;
 }
 .nge-avatar-subtitle {
-  font-size: 0.78em;
-  color: rgba(255, 255, 255, 0.45);
-  font-style: italic;
-  max-width: 720px;
-  line-height: 1.4;
+  font-size: 0.74em;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.02em;
 }
-.nge-avatar-frame-wrap {
+.nge-avatar-subtitle strong {
+  color: rgba(180, 220, 255, 0.7);
+  font-weight: 500;
+}
+.nge-avatar-customize-btn {
+  padding: 7px 16px;
+  border: 1px solid rgba(120, 200, 255, 0.4);
+  background: rgba(120, 200, 255, 0.08);
+  color: rgba(180, 220, 255, 0.95);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  border-radius: 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  text-shadow: 0 0 6px rgba(74, 158, 255, 0.3);
+}
+.nge-avatar-customize-btn:hover {
+  background: rgba(120, 200, 255, 0.16);
+  border-color: rgba(120, 200, 255, 0.7);
+  box-shadow: 0 0 14px rgba(74, 158, 255, 0.3);
+}
+.nge-avatar-customize-btn--open {
+  background: rgba(110, 230, 180, 0.12);
+  border-color: rgba(110, 230, 180, 0.6);
+  color: rgba(180, 240, 220, 0.95);
+  text-shadow: 0 0 6px rgba(110, 230, 180, 0.3);
+}
+.nge-avatar-customize-btn--open:hover {
+  background: rgba(110, 230, 180, 0.2);
+  box-shadow: 0 0 14px rgba(110, 230, 180, 0.3);
+}
+
+.nge-avatar-content {
   flex: 1;
-  position: relative;
+  display: flex;
   margin: 12px 16px 16px;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   background: #191558;
-  box-shadow: 0 0 0 1px rgba(120, 200, 255, 0.12), 0 8px 30px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 0 0 1px rgba(120, 200, 255, 0.12),
+    0 0 30px rgba(74, 158, 255, 0.06) inset,
+    0 12px 40px rgba(0, 0, 0, 0.5);
+  min-height: 0;
 }
-.nge-avatar-frame {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  display: block;
+.nge-avatar-stage-wrap {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  transition: flex 0.25s ease;
+}
+.nge-avatar-content--editing .nge-avatar-stage-wrap {
+  border-right: 1px solid rgba(120, 200, 255, 0.08);
+}
+
+.nge-avatar-editor-slide-enter-active,
+.nge-avatar-editor-slide-leave-active {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.nge-avatar-editor-slide-enter-from,
+.nge-avatar-editor-slide-leave-to {
+  transform: translateX(40px);
+  opacity: 0;
 }
 
 /* Pulsing aura */
