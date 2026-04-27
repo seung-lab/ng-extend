@@ -3242,6 +3242,10 @@ export const useAvatarStore = defineStore('avatar', () => {
   let character: Character | null = null;
   let renderer: AvatarRenderer | null = null;
 
+  // Other stores we lean on for the economy + the user id used in Supabase.
+  const statsStore = useUserStatsStore();
+  const backendStore = useProofreadingBackendStore();
+
   function bump() { version.value++; }
 
   function loadUnlocks(): Set<string> {
@@ -3252,10 +3256,99 @@ export const useAvatarStore = defineStore('avatar', () => {
     return new Set();
   }
 
-  function persistUnlocks() {
+  function persistUnlocksLocal() {
     try {
       localStorage.setItem(AVATAR_UNLOCKS_LS_KEY, JSON.stringify([...unlocks.value]));
     } catch {/* ignore */}
+  }
+
+  // ── Supabase helpers ──────────────────────────────────────────────────────
+  // Source of truth is the DB when the user is logged in. localStorage stays
+  // as a hot cache so the editor can render instantly while the network call
+  // is in flight, and as a fallback for logged-out users.
+
+  async function loadAvatarFromSupabase(): Promise<{json: string | null; thumb: string | null; unlockKeys: string[]} | null> {
+    const userId = backendStore.userId;
+    if (!userId) return null;
+    try {
+      const [userRes, unlocksRes] = await Promise.all([
+        supabase.from('users').select('avatar_json, avatar_thumbnail_url').eq('id', userId).maybeSingle(),
+        supabase.from('user_avatar_unlocks').select('item_key').eq('user_id', userId),
+      ]);
+      return {
+        json: userRes.data?.avatar_json ?? null,
+        thumb: userRes.data?.avatar_thumbnail_url ?? null,
+        unlockKeys: (unlocksRes.data ?? []).map((r: any) => r.item_key),
+      };
+    } catch (e: any) {
+      console.warn('[avatar] load from Supabase failed:', e?.message ?? e);
+      return null;
+    }
+  }
+
+  let supaPersistTimeout: number | null = null;
+  function schedulePersistAvatarSupabase() {
+    if (supaPersistTimeout !== null) {
+      clearTimeout(supaPersistTimeout);
+    }
+    supaPersistTimeout = window.setTimeout(async () => {
+      supaPersistTimeout = null;
+      const userId = backendStore.userId;
+      if (!userId || !character) return;
+      try {
+        await supabase.from('users').update({
+          avatar_json: character.toJSON(),
+          avatar_thumbnail_url: thumbnailUrl.value,
+          avatar_coins_spent: coinsSpent.value,
+          avatar_updated_at: new Date().toISOString(),
+        }).eq('id', userId);
+      } catch (e: any) {
+        console.warn('[avatar] persist to Supabase failed:', e?.message ?? e);
+      }
+    }, 800);
+  }
+
+  async function persistUnlockSupabase(categoryName: string, itemName: string, costPaid: number) {
+    const userId = backendStore.userId;
+    if (!userId) return;
+    try {
+      await supabase.from('user_avatar_unlocks').insert({
+        user_id: userId,
+        item_key: itemKey(categoryName, itemName),
+        category: categoryName,
+        rarity: itemRarity(categoryName, itemName),
+        cost_paid: costPaid,
+      });
+    } catch (e: any) {
+      console.warn('[avatar] persist unlock failed:', e?.message ?? e);
+    }
+  }
+
+  async function bulkPersistUnlocksSupabase() {
+    const userId = backendStore.userId;
+    if (!userId || unlocks.value.size === 0) return;
+    const rows = [...unlocks.value].map(key => {
+      const slash = key.indexOf('/');
+      const cat = key.substring(0, slash);
+      const item = key.substring(slash + 1);
+      return {
+        user_id: userId,
+        item_key: key,
+        category: cat,
+        rarity: itemRarity(cat, item),
+        cost_paid: itemPrice(cat, item),
+      };
+    });
+    try {
+      await supabase.from('user_avatar_unlocks').upsert(rows, {onConflict: 'user_id,item_key'});
+    } catch (e: any) {
+      console.warn('[avatar] bulk unlock upsert failed:', e?.message ?? e);
+    }
+  }
+
+  function persistUnlocks() {
+    persistUnlocksLocal();
+    // Per-unlock writes happen in purchase() so we don't bulk-resend here.
   }
 
   async function initialize(charCanvas: HTMLCanvasElement, bgCanvas: HTMLCanvasElement) {
@@ -3266,10 +3359,36 @@ export const useAvatarStore = defineStore('avatar', () => {
         createImageBitmap(c as unknown as ImageBitmapSource);
     renderer = new AvatarRenderer(charCanvas, bgCanvas, colorCanvas, createImage);
 
-    const saved = localStorage.getItem(AVATAR_LS_KEY);
-    if (saved) {
+    // Try Supabase first if logged in, fall back to localStorage, then defaults.
+    const supa = await loadAvatarFromSupabase();
+    let needsMigration = false;
+    let avatarJsonToLoad: string | null = null;
+
+    if (supa) {
+      // Logged in — use Supabase as source of truth.
+      if (supa.unlockKeys.length > 0) {
+        unlocks.value = new Set(supa.unlockKeys);
+        persistUnlocksLocal();
+      } else {
+        // No unlocks in Supabase yet — keep whatever's in localStorage and flag for migration.
+        if (unlocks.value.size > 0) needsMigration = true;
+      }
+      if (supa.json) {
+        avatarJsonToLoad = supa.json;
+      } else {
+        // No Supabase avatar yet — try localStorage, mark for migration.
+        avatarJsonToLoad = localStorage.getItem(AVATAR_LS_KEY);
+        if (avatarJsonToLoad) needsMigration = true;
+      }
+      if (supa.thumb) thumbnailUrl.value = supa.thumb;
+    } else {
+      // Logged out — localStorage only.
+      avatarJsonToLoad = localStorage.getItem(AVATAR_LS_KEY);
+    }
+
+    if (avatarJsonToLoad) {
       try {
-        character = await Character.createFromJSONString(saved, renderer);
+        character = await Character.createFromJSONString(avatarJsonToLoad, renderer);
       } catch {
         character = await Character.createCharacter(gender.value, renderer);
       }
@@ -3277,17 +3396,24 @@ export const useAvatarStore = defineStore('avatar', () => {
       character = await Character.createCharacter(gender.value, renderer);
     }
     if (character) gender.value = character.gender;
-    // Grandfather any items currently equipped from saved state — they're unlocked for free.
     grandfatherEquippedItems();
     ready.value = true;
     thumbnailDirty = true;
     bump();
+
+    if (needsMigration) {
+      // Push the localStorage state up to Supabase so it survives device changes.
+      schedulePersistAvatarSupabase();
+      bulkPersistUnlocksSupabase();
+    }
   }
 
   function grandfatherEquippedItems() {
     if (!character) return;
     let added = false;
     for (const item of character.activeItems) {
+      // Free items are always available — no need to track them as unlocks.
+      if (itemPrice(item.categoryName, item.name) === 0) continue;
       const k = itemKey(item.categoryName, item.name);
       if (!unlocks.value.has(k)) {
         unlocks.value.add(k);
@@ -3361,7 +3487,8 @@ export const useAvatarStore = defineStore('avatar', () => {
     if (unlocks.value.has(itemKey(categoryName, itemName))) return true; // already owned
     if (coinsBalance.value < price) return false;
     unlocks.value.add(itemKey(categoryName, itemName));
-    persistUnlocks();
+    persistUnlocksLocal();
+    persistUnlockSupabase(categoryName, itemName, price); // fire and forget
     await character.selectItem(categoryName, itemName);
     persist();
     thumbnailDirty = true;
@@ -3400,9 +3527,6 @@ export const useAvatarStore = defineStore('avatar', () => {
   }
 
   // Coin balance — derives from existing user stats for "earned", subtracts unlock costs.
-  const statsStore = useUserStatsStore();
-  const backendStore = useProofreadingBackendStore();
-
   const coinsEarned = computed<number>(() => {
     void version.value;
     return computeEarnedCoins({
@@ -3473,9 +3597,12 @@ export const useAvatarStore = defineStore('avatar', () => {
 
   function persist() {
     if (!character) return;
+    // Local hot cache for instant load next session.
     try {
       localStorage.setItem(AVATAR_LS_KEY, character.toJSON());
     } catch {/* quota or disabled — ignore */}
+    // Supabase as source of truth (debounced).
+    schedulePersistAvatarSupabase();
   }
 
   function destroy() {
