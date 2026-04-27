@@ -91,6 +91,38 @@ function handleCaveAuthExpired(caveServer: string, realmHost?: string): void {
   }));
 }
 
+// ─── Materialization version resolver ──────────────────────────────────────
+// /materialize/api/v3/.../version/latest/ returns 404 — the route expects a
+// signed int, not the string "latest". /version/-1/ matches the route but
+// the /query handler doesn't resolve -1 to "newest" (only the precomputed
+// view route does). So we fetch /versions, take the max, cache per session.
+
+const _versionCache = new Map<string, number>();
+
+async function getLatestMaterializedVersion(
+    caveServer: string, datastack: string): Promise<number | null> {
+  const cacheKey = `${caveServer}:${datastack}`;
+  const cached = _versionCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  try {
+    const url = `${caveServer}/materialize/api/v3/datastack/${datastack}/versions`;
+    const res = await fetch(url, {headers: authHeaders(caveServer)});
+    if (!res.ok) {
+      console.warn(`[lightbulb] /versions ${res.status} — cannot resolve latest materialization`);
+      return null;
+    }
+    const versions: number[] = await res.json();
+    if (!Array.isArray(versions) || versions.length === 0) return null;
+    const latest = Math.max(...versions);
+    _versionCache.set(cacheKey, latest);
+    console.info(`[lightbulb] Resolved latest materialization version: ${latest} (from ${versions.length} versions)`);
+    return latest;
+  } catch (e) {
+    console.warn('[lightbulb] /versions fetch error:', e);
+    return null;
+  }
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface CellStatus {
@@ -230,16 +262,22 @@ export async function getCellStatus(
   const {cellStatusTable, cellTypeTable, datastack, cellTypeSchema} = dsCfg;
   if (!caveServer) return null;
 
-  console.info(`[lightbulb] Using dataset config: datastack=${datastack}, status=${cellStatusTable}, type=${cellTypeTable} (${cellTypeSchema})`);
+  // Resolve the latest materialization version (cached per session).
+  const version = await getLatestMaterializedVersion(caveServer, datastack);
+  console.info(`[lightbulb] Using dataset config: datastack=${datastack}, status=${cellStatusTable}, type=${cellTypeTable} (${cellTypeSchema}), version=${version ?? 'unresolved'}`);
 
   const status: CellStatus = {isComplete: false};
   let caveAvailable = false;
 
+  if (version === null) {
+    // Without a version we can't query the materializer — fall through to localStorage.
+    console.warn('[lightbulb] No materialization version available — using localStorage fallback');
+  } else {
   // Try materialization query — resolves annotations by current root_id
   try {
     // return_pyarrow=false: materializer defaults to Apache Arrow IPC binary;
     // the lightbulb parses the response as JSON, so we must opt out of arrow.
-    const matUrl = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/latest/table/${cellStatusTable}/query?return_pyarrow=false`;
+    const matUrl = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/${version}/table/${cellStatusTable}/query?return_pyarrow=false`;
     console.info(`[lightbulb] POST materialization query → ${matUrl}`);
     const res = await fetch(matUrl, {
       method: 'POST',
@@ -264,7 +302,7 @@ export async function getCellStatus(
 
   // Cell type via materialization
   try {
-    const matUrl = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/latest/table/${cellTypeTable}/query?return_pyarrow=false`;
+    const matUrl = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/${version}/table/${cellTypeTable}/query?return_pyarrow=false`;
     const res = await fetch(matUrl, {
       method: 'POST',
       headers: authHeaders(caveServer),
@@ -290,6 +328,7 @@ export async function getCellStatus(
     }
   } catch (e) {
     console.warn('[lightbulb] materialization query (cellType) error:', e);
+  }
   }
 
   // Fall back to localStorage if CAVE/materialization aren't reachable
