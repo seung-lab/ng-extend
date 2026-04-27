@@ -54,16 +54,32 @@ function authHeaders(caveServer: string): HeadersInit {
   };
 }
 
-/** Drop expired auth tokens for a CAVE server so neuroglancer's middleauth
- *  pipeline re-prompts on the next request, and notify the app shell so a
- *  banner can prompt the user. */
-function handleCaveAuthExpired(caveServer: string): void {
+/** Parse the auth realm hostname from a 401's WWW-Authenticate header.
+ *  CAVE 401s advertise `Bearer realm="https://global.daf-apis.com/sticky_auth/..."`,
+ *  and tokens in localStorage are keyed by that realm host — NOT the API host. */
+function parseAuthRealmHost(res: Response): string | undefined {
+  const m = res.headers.get('www-authenticate')?.match(/realm="([^"]+)"/);
+  if (!m) return undefined;
+  try { return new URL(m[1]).hostname; } catch { return undefined; }
+}
+
+/** Drop expired auth tokens so neuroglancer's middleauth pipeline re-prompts
+ *  on the next request, and notify the app shell so a banner can prompt the
+ *  user.
+ *
+ *  IMPORTANT: tokens are stored under the auth REALM hostname (parsed from
+ *  WWW-Authenticate, e.g. `global.daf-apis.com`), not the CAVE API hostname
+ *  (e.g. `minnie.microns-daf.com`). Always pass `realmHost` from a real 401;
+ *  the caveServer fallback only matches if the token happened to be stored
+ *  under that exact hostname (rare). */
+function handleCaveAuthExpired(caveServer: string, realmHost?: string): void {
+  const targetHost = realmHost ?? new URL(caveServer).hostname;
   try {
     for (const key of Object.keys(window.localStorage)) {
       if (!key.startsWith('auth_token_v2_')) continue;
       try {
         const data = JSON.parse(window.localStorage.getItem(key) || '{}');
-        if (new URL(data.url).hostname === new URL(caveServer).hostname) {
+        if (new URL(data.url).hostname === targetHost) {
           window.localStorage.removeItem(key);
           console.warn('[lightbulb] Cleared expired CAVE token for', data.url);
         }
@@ -348,7 +364,7 @@ export async function setCellComplete(
       if (res.status === 401) {
         const errText = await res.text().catch(() => '');
         console.error('[lightbulb] CAVE 401 — token expired:', errText);
-        handleCaveAuthExpired(caveServer);
+        handleCaveAuthExpired(caveServer, parseAuthRealmHost(res));
         return false;  // do NOT fake-save to localStorage on auth failure
       }
       if (res.ok) {
@@ -503,7 +519,7 @@ export async function saveCellType(
     if (res.status === 401) {
       const errText = await res.text().catch(() => '');
       console.error('[lightbulb] CAVE 401 — token expired:', errText);
-      handleCaveAuthExpired(caveServer);
+      handleCaveAuthExpired(caveServer, parseAuthRealmHost(res));
       return false;  // do NOT fake-save to localStorage on auth failure
     }
     if (res.ok) {
