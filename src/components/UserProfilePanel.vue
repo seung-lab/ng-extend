@@ -91,8 +91,7 @@ const BADGE_PREVIEW_LIMIT = 8;  // 2 rows of 4
 const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
-const activeTab = ref<'overview' | 'trophyCase' | 'avatar'>('overview');
-const AVATAR_PROTOTYPE_URL = 'https://seunglab.org/avatar-prototype/';
+const activeTab = ref<'overview' | 'trophyCase'>('overview');
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
 // All country flags A-Z (ISO 3166-1 alpha-2, sorted alphabetically)
@@ -420,12 +419,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           :class="{ 'nge-profile-tab--active': activeTab === 'trophyCase' }"
           @click="activeTab = 'trophyCase'"
         >🏆 Trophy Case</button>
-        <button
-          v-if="!viewingOtherUser"
-          class="nge-profile-tab"
-          :class="{ 'nge-profile-tab--active': activeTab === 'avatar' }"
-          @click="activeTab = 'avatar'"
-        >👤 Avatar</button>
       </div>
 
       <!-- ── Three-column body (Overview tab) ────────────────── -->
@@ -890,7 +883,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       </div><!-- end .nge-profile-body (Overview) -->
 
       <!-- ── Trophy Case tab ─────────────────────────────────── -->
-      <div v-else-if="activeTab === 'trophyCase'" class="nge-profile-body nge-profile-body--trophy">
+      <div v-else class="nge-profile-body nge-profile-body--trophy">
         <div class="nge-trophy-scroll">
 
           <!-- ── Featured badge banner ── -->
@@ -1055,27 +1048,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
         </div>
       </div><!-- end Trophy Case -->
-
-      <!-- ── Avatar tab ──────────────────────────────────────── -->
-      <div v-else-if="activeTab === 'avatar'" class="nge-profile-body nge-profile-body--avatar">
-        <div class="nge-avatar-shell">
-          <div class="nge-avatar-header">
-            <div class="nge-avatar-title">CUSTOMIZE YOUR AVATAR</div>
-            <div class="nge-avatar-subtitle">
-              Prototype — your selections aren't saved yet. Coming soon: link items to badges and persist your look across the site.
-            </div>
-          </div>
-          <div class="nge-avatar-frame-wrap">
-            <iframe
-              :src="AVATAR_PROTOTYPE_URL"
-              class="nge-avatar-frame"
-              title="Avatar Customization"
-              loading="lazy"
-              allow="fullscreen"
-            ></iframe>
-          </div>
-        </div>
-      </div><!-- end Avatar -->
 
     </div>
   </modal-overlay>
@@ -2412,56 +2384,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 @keyframes nge-trophy-orbit-outer {
   from { transform: rotate(calc(var(--j) * 45deg))       translateX(210px) rotate(calc(var(--j) * -45deg)); }
   to   { transform: rotate(calc(var(--j) * 45deg + 360deg)) translateX(210px) rotate(calc(var(--j) * -45deg - 360deg)); }
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   AVATAR TAB
-───────────────────────────────────────────────────────────────────────────── */
-.nge-profile-body--avatar {
-  display: block;
-  padding: 0;
-}
-.nge-avatar-shell {
-  display: flex;
-  flex-direction: column;
-  height: calc(90vh - 100px);
-  width: 100%;
-  background: linear-gradient(180deg, rgba(15, 20, 40, 0.6) 0%, rgba(10, 12, 28, 0.4) 100%);
-}
-.nge-avatar-header {
-  padding: 18px 28px 12px;
-  border-bottom: 1px solid rgba(120, 200, 255, 0.08);
-}
-.nge-avatar-title {
-  font-family: 'Orbitron', sans-serif;
-  font-size: 0.78em;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  color: rgba(120, 200, 255, 0.85);
-  text-shadow: 0 0 12px rgba(74, 158, 255, 0.25);
-  margin-bottom: 6px;
-}
-.nge-avatar-subtitle {
-  font-size: 0.78em;
-  color: rgba(255, 255, 255, 0.45);
-  font-style: italic;
-  max-width: 720px;
-  line-height: 1.4;
-}
-.nge-avatar-frame-wrap {
-  flex: 1;
-  position: relative;
-  margin: 12px 16px 16px;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #191558;
-  box-shadow: 0 0 0 1px rgba(120, 200, 255, 0.12), 0 8px 30px rgba(0, 0, 0, 0.4);
-}
-.nge-avatar-frame {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  display: block;
 }
 
 /* Pulsing aura */
