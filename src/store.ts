@@ -3215,7 +3215,7 @@ export const useChatStore = defineStore('chat', () => {
 import Character, {Gender} from './widgets/avatar/character';
 import AvatarRenderer from './widgets/avatar/renderer';
 import {CanvasWrapper} from './widgets/avatar/canvas_interface';
-import {itemCost, itemKey, computeEarnedCoins} from './widgets/avatar/economy';
+import {itemPrice, itemKey, itemRarity, computeEarnedCoins, Rarity} from './widgets/avatar/economy';
 
 const AVATAR_LS_KEY = 'eyewireAvatar';
 const AVATAR_UNLOCKS_LS_KEY = 'eyewireAvatarUnlocks';
@@ -3336,10 +3336,10 @@ export const useAvatarStore = defineStore('avatar', () => {
         character.needsRender = true;
       }
     } else {
-      const cost = itemCost(categoryName);
+      const price = itemPrice(categoryName, itemName);
       const k = itemKey(categoryName, itemName);
       // Free items are always allowed; paid items require unlock.
-      if (cost > 0 && !unlocks.value.has(k)) {
+      if (price > 0 && !unlocks.value.has(k)) {
         return; // refuse silently — UI should prevent this path
       }
       await character.selectItem(categoryName, itemName);
@@ -3350,16 +3350,16 @@ export const useAvatarStore = defineStore('avatar', () => {
   }
 
   function isUnlocked(categoryName: string, itemName: string): boolean {
-    if (itemCost(categoryName) === 0) return true;
+    if (itemPrice(categoryName, itemName) === 0) return true;
     return unlocks.value.has(itemKey(categoryName, itemName));
   }
 
   async function purchase(categoryName: string, itemName: string): Promise<boolean> {
     if (!character) return false;
-    const cost = itemCost(categoryName);
-    if (cost === 0) return true; // free
+    const price = itemPrice(categoryName, itemName);
+    if (price === 0) return true; // free
     if (unlocks.value.has(itemKey(categoryName, itemName))) return true; // already owned
-    if (coinsBalance.value < cost) return false;
+    if (coinsBalance.value < price) return false;
     unlocks.value.add(itemKey(categoryName, itemName));
     persistUnlocks();
     await character.selectItem(categoryName, itemName);
@@ -3367,6 +3367,14 @@ export const useAvatarStore = defineStore('avatar', () => {
     thumbnailDirty = true;
     bump();
     return true;
+  }
+
+  function getItemRarity(categoryName: string, itemName: string): Rarity {
+    return itemRarity(categoryName, itemName);
+  }
+
+  function getItemPrice(categoryName: string, itemName: string): number {
+    return itemPrice(categoryName, itemName);
   }
 
   async function setColor(categoryName: string, colorIndex: number) {
@@ -3411,12 +3419,35 @@ export const useAvatarStore = defineStore('avatar', () => {
     for (const k of unlocks.value) {
       const slash = k.indexOf('/');
       if (slash < 0) continue;
-      total += itemCost(k.substring(0, slash));
+      const cat = k.substring(0, slash);
+      const item = k.substring(slash + 1);
+      total += itemPrice(cat, item);
     }
     return total;
   });
 
-  const coinsBalance = computed<number>(() => coinsEarned.value - coinsSpent.value);
+  // Clamp to 0 so retroactive price changes don't push old saves negative.
+  const coinsBalance = computed<number>(() => Math.max(0, coinsEarned.value - coinsSpent.value));
+
+  // Collection progress — counts non-free items the user has unlocked.
+  const collectionProgress = computed<{owned: number; total: number}>(() => {
+    void version.value;
+    if (!character) return {owned: 0, total: 0};
+    let total = 0;
+    let owned = 0;
+    for (const [_, cats] of character.sections.entries()) {
+      for (const catName of cats) {
+        const cat = character.categories.get(catName);
+        if (!cat) continue;
+        for (const itemName of cat.getItemNames()) {
+          if (itemPrice(catName, itemName) === 0) continue;
+          total++;
+          if (unlocks.value.has(itemKey(catName, itemName))) owned++;
+        }
+      }
+    }
+    return {owned, total};
+  });
 
   // Thumbnail capture — called by AvatarRenderer.vue after each render if dirty.
   function captureThumbnailIfNeeded(charCanvas: HTMLCanvasElement) {
@@ -3457,9 +3488,9 @@ export const useAvatarStore = defineStore('avatar', () => {
 
   return {
     ready, editorOpen, gender, version, thumbnailUrl, unlocks,
-    coinsEarned, coinsSpent, coinsBalance,
+    coinsEarned, coinsSpent, coinsBalance, collectionProgress,
     initialize, destroy, getCharacter, categoryViews, selectItem, setColor, changeGender,
-    isUnlocked, purchase, captureThumbnailIfNeeded,
+    isUnlocked, purchase, captureThumbnailIfNeeded, getItemRarity, getItemPrice,
   };
 });
 
