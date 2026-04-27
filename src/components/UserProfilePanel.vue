@@ -12,6 +12,7 @@ import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import nurroDefault from '../../static/nurro/nurro-at-home.png';
+import connectomeCoin from '../../static/coin/connectome-coin.png';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 const props = defineProps<{
@@ -510,7 +511,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 + Add a bio
               </button>
               <button class="nge-profile-coins-chip" @click="activeTab = 'avatar'" title="Open Avatar tab to spend Connectome Coins on items">
-                <span class="nge-profile-coins-icon">◎</span>
+                <img :src="connectomeCoin" class="nge-profile-coins-img" alt="" />
                 <span class="nge-profile-coins-num">{{ formatCoins(avatarStore.coinsBalance) }}</span>
                 <span class="nge-profile-coins-label">Connectome Coins</span>
               </button>
@@ -1406,6 +1407,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-coins-icon {
   font-size: 1.05em;
   line-height: 1;
+}
+.nge-profile-coins-img {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  vertical-align: middle;
+  filter: drop-shadow(0 0 4px rgba(255, 200, 80, 0.4));
 }
 .nge-profile-coins-num {
   font-size: 0.95em;

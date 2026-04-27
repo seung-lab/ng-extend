@@ -3,6 +3,7 @@ import {computed, ref} from 'vue';
 import {storeToRefs} from 'pinia';
 import {useAvatarStore, AvatarGender} from '../store';
 import {itemPrice, itemRarity, formatCoins, RARITY_LABEL, COIN_RATES, Rarity, EFFECTS, EFFECT_DESCRIPTION, effectPrice, effectRarity} from '../widgets/avatar/economy';
+import connectomeCoin from '../../static/coin/connectome-coin.png';
 
 const store = useAvatarStore();
 const {gender, ready, version, coinsBalance, coinsEarned, coinsSpent, collectionProgress, activeEffect} = storeToRefs(store);
@@ -171,7 +172,7 @@ async function cancelPurchase() {
         :title="`${coinsBalance.toLocaleString()} Connectome Coins — click for earning details`"
         @click="showHowToEarn = !showHowToEarn"
       >
-        <span class="nge-avatar-balance-icon">◎</span>
+        <img :src="connectomeCoin" class="nge-coin nge-coin--lg" alt="" />
         <span class="nge-avatar-balance-num">{{ formatCoins(coinsBalance) }}</span>
       </button>
     </div>
@@ -179,17 +180,17 @@ async function cancelPurchase() {
     <Transition name="nge-avatar-earn-fade">
       <div v-if="showHowToEarn" class="nge-avatar-earn-card">
         <div class="nge-avatar-earn-title">HOW TO EARN</div>
-        <div class="nge-avatar-earn-row"><span>1 edit</span><span>◎ {{ COIN_RATES.edit }}</span></div>
-        <div class="nge-avatar-earn-row"><span>Cell completion</span><span>◎ {{ COIN_RATES.cellCompletion }}</span></div>
-        <div class="nge-avatar-earn-row"><span>Streak day</span><span>◎ {{ COIN_RATES.streakDay }}</span></div>
-        <div class="nge-avatar-earn-row"><span>Badge earned</span><span>◎ {{ COIN_RATES.badge }}</span></div>
-        <div class="nge-avatar-earn-row"><span>Joining bonus</span><span>◎ {{ COIN_RATES.joiningBonus }}</span></div>
+        <div class="nge-avatar-earn-row"><span>1 edit</span><span><img :src="connectomeCoin" class="nge-coin" alt="" />{{ COIN_RATES.edit }}</span></div>
+        <div class="nge-avatar-earn-row"><span>Cell completion</span><span><img :src="connectomeCoin" class="nge-coin" alt="" />{{ COIN_RATES.cellCompletion }}</span></div>
+        <div class="nge-avatar-earn-row"><span>Streak day</span><span><img :src="connectomeCoin" class="nge-coin" alt="" />{{ COIN_RATES.streakDay }}</span></div>
+        <div class="nge-avatar-earn-row"><span>Badge earned</span><span><img :src="connectomeCoin" class="nge-coin" alt="" />{{ COIN_RATES.badge }}</span></div>
+        <div class="nge-avatar-earn-row"><span>Joining bonus</span><span><img :src="connectomeCoin" class="nge-coin" alt="" />{{ COIN_RATES.joiningBonus }}</span></div>
         <div class="nge-avatar-earn-divider"></div>
         <div class="nge-avatar-earn-row nge-avatar-earn-row--total">
-          <span>Total earned</span><span>◎ {{ coinsEarned.toLocaleString() }}</span>
+          <span>Total earned</span><span><img :src="connectomeCoin" class="nge-coin" alt="" />{{ coinsEarned.toLocaleString() }}</span>
         </div>
         <div class="nge-avatar-earn-row nge-avatar-earn-row--spent">
-          <span>Spent</span><span>− ◎ {{ coinsSpent.toLocaleString() }}</span>
+          <span>Spent</span><span>−<img :src="connectomeCoin" class="nge-coin" alt="" />{{ coinsSpent.toLocaleString() }}</span>
         </div>
       </div>
     </Transition>
@@ -241,7 +242,7 @@ async function cancelPurchase() {
           <div class="nge-avatar-category-row">
             <div class="nge-avatar-category-head">
               <span class="nge-avatar-category-label">Active effect</span>
-              <span class="nge-avatar-cat-cost">◎ 800 – 2,400</span>
+              <span class="nge-avatar-cat-cost"><img :src="connectomeCoin" class="nge-coin nge-coin--xs" alt="" /> 800 – 2,400</span>
             </div>
             <div class="nge-avatar-items">
               <button
@@ -265,7 +266,7 @@ async function cancelPurchase() {
                 @click="handleEffectClick(fx)"
               >
                 <span class="nge-avatar-item-name">{{ fx }}</span>
-                <span v-if="!store.isEffectUnlocked(fx)" class="nge-avatar-item-price">◎{{ effectPrice(fx) }}</span>
+                <span v-if="!store.isEffectUnlocked(fx)" class="nge-avatar-item-price"><img :src="connectomeCoin" class="nge-coin nge-coin--xs" alt="" />{{ effectPrice(fx) }}</span>
               </button>
             </div>
           </div>
@@ -279,7 +280,7 @@ async function cancelPurchase() {
             <div class="nge-avatar-category-head">
               <span class="nge-avatar-category-label">{{ prettify(cat.category) }}</span>
               <span v-if="cat.maxPrice > 0" class="nge-avatar-cat-cost">
-                ◎{{ cat.minPrice }}<span v-if="cat.maxPrice !== cat.minPrice">–{{ cat.maxPrice }}</span>
+<img :src="connectomeCoin" class="nge-coin nge-coin--xs" alt="" />{{ cat.minPrice }}<span v-if="cat.maxPrice !== cat.minPrice">–{{ cat.maxPrice }}</span>
               </span>
             </div>
             <div v-if="cat.items.length === 0" class="nge-avatar-empty">No items match the filter.</div>
@@ -306,7 +307,7 @@ async function cancelPurchase() {
                 @click="handleItemClick(cat.category, it.name)"
               >
                 <span class="nge-avatar-item-name">{{ prettify(it.name) }}</span>
-                <span v-if="!it.unlocked" class="nge-avatar-item-price">◎{{ it.price }}</span>
+                <span v-if="!it.unlocked" class="nge-avatar-item-price"><img :src="connectomeCoin" class="nge-coin nge-coin--xs" alt="" />{{ it.price }}</span>
               </button>
             </div>
           </div>
@@ -333,11 +334,11 @@ async function cancelPurchase() {
           <div class="nge-avatar-purchase-cat">{{ prettify(purchasePrompt.category) }}</div>
           <div class="nge-avatar-purchase-tryon">↑ trying on — see how it looks ↑</div>
           <div class="nge-avatar-purchase-cost">
-            <span class="nge-avatar-balance-icon">◎</span>
+            <img :src="connectomeCoin" class="nge-coin nge-coin--lg" alt="" />
             <span>{{ purchasePrompt.price.toLocaleString() }}</span>
           </div>
           <div class="nge-avatar-purchase-after">
-            Balance after: <strong>◎ {{ (coinsBalance - purchasePrompt.price).toLocaleString() }}</strong>
+            Balance after: <strong><img :src="connectomeCoin" class="nge-coin" alt="" />{{ (coinsBalance - purchasePrompt.price).toLocaleString() }}</strong>
           </div>
           <div v-if="coinsBalance < purchasePrompt.price" class="nge-avatar-purchase-cant">
             Not enough Connectome Coins. Earn more by editing cells.
@@ -409,6 +410,18 @@ async function cancelPurchase() {
 }
 .nge-avatar-balance-icon { font-size: 1.05em; line-height: 1; }
 .nge-avatar-balance-num  { font-weight: 600; letter-spacing: 0.02em; }
+
+/* Connectome Coin icon — inline next to numbers. */
+.nge-coin {
+  display: inline-block;
+  height: 1em;
+  width: 1em;
+  vertical-align: -0.18em;
+  margin-right: 0.2em;
+  filter: drop-shadow(0 0 4px rgba(255, 200, 80, 0.3));
+}
+.nge-coin--xs { height: 0.85em; width: 0.85em; vertical-align: -0.1em; }
+.nge-coin--lg { height: 1.4em; width: 1.4em; vertical-align: -0.32em; }
 
 .nge-avatar-earn-card {
   margin: 0 16px;
