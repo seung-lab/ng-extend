@@ -28,7 +28,7 @@ const DATASETS: DatasetEntry[] = [
     layers: [
       {
         type: 'image',
-        source: 'precomputed://middleauth+https://minnie.microns-daf.com/render/precomputed/stroeh_mouse_retina_EM_layer',
+        source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2',
         name: 'em',
       },
       {
