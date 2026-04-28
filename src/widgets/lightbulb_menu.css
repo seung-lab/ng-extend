@@ -50,6 +50,15 @@
 
 .nge_lbmenu {
   min-width: 280px;
+  /* Constrain to viewport so the panel never overflows top/bottom on
+   * shorter laptop displays (1366×768 etc). Without this, positionContextMenu
+   * clamps `top` to a negative value when offsetHeight > viewportHeight,
+   * clipping Completion Status at the top and Change Log at the bottom.
+   * 56px = 40px extension bar + 16px breathing room — keeps the menu below
+   * the top bar even when clamped upward to fit a low click. */
+  max-height: calc(100vh - 56px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px 0;
   background: #2a2a2a;
   border-radius: 6px;
