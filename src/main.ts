@@ -27,6 +27,7 @@ import {Tool, restoreTool} from 'neuroglancer/ui/tool';
 import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/util/json';
 import {getLayerScales} from "./widgets/widget_utils";
 import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
+import pyrIconUrl from './images/pyr-icon.png';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 
@@ -49,35 +50,12 @@ function mergeTopBars() {
   topBarVueParent.appendChild(ngTopBar);
 }
 
-/* ── Neuron Favicon (data-URI SVG) ── */
+/* ── Pyr Favicon ── */
 function injectNeuronFavicon() {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-<defs><filter id="g" x="-50%" y="-50%" width="200%" height="200%">
-<feGaussianBlur stdDeviation="1.2"/></filter></defs>
-<rect width="32" height="32" rx="6" fill="#0a1223"/>
-<g filter="url(#g)" opacity="0.7">
-<path d="M16 14 L15.5 10 L15 6 L14 3" stroke="#18cfff" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-<path d="M15 6 L12 4" stroke="#15c8f8" stroke-width="1" stroke-linecap="round" fill="none"/>
-<path d="M15 6 L18 3.5" stroke="#15c8f8" stroke-width="1" stroke-linecap="round" fill="none"/>
-<path d="M15.5 10 L19 8 L22 7" stroke="#12c0f0" stroke-width="0.9" stroke-linecap="round" fill="none"/>
-<path d="M15.5 10 L12 8 L9 7.5" stroke="#12c0f0" stroke-width="0.9" stroke-linecap="round" fill="none"/>
-<path d="M14 16 L10 18 L6 22 L4 26" stroke="#18cfff" stroke-width="1.4" stroke-linecap="round" fill="none"/>
-<path d="M6 22 L4 20" stroke="#10b8e8" stroke-width="0.8" stroke-linecap="round" fill="none"/>
-<path d="M18 16 L22 18 L26 22 L28 26" stroke="#18cfff" stroke-width="1.4" stroke-linecap="round" fill="none"/>
-<path d="M26 22 L28 20" stroke="#10b8e8" stroke-width="0.8" stroke-linecap="round" fill="none"/>
-<path d="M15 16 L11 14" stroke="#15c8f8" stroke-width="1" stroke-linecap="round" fill="none"/>
-<path d="M17 16 L21 14" stroke="#15c8f8" stroke-width="1" stroke-linecap="round" fill="none"/>
-<path d="M16 17 L16 22 L15 27 L14.5 30" stroke="#18cfff" stroke-width="1.2" stroke-linecap="round" fill="none"/>
-<path d="M15 27 L12 28" stroke="#08a0d0" stroke-width="0.6" stroke-linecap="round" fill="none"/>
-<path d="M15 27 L17 29" stroke="#08a0d0" stroke-width="0.6" stroke-linecap="round" fill="none"/>
-</g>
-<ellipse cx="16" cy="15.5" rx="2.8" ry="2.4" fill="#20d0ff" opacity="0.9" filter="url(#g)"/>
-<ellipse cx="16" cy="15.5" rx="1.4" ry="1.2" fill="#b0f8ff" opacity="0.7"/>
-</svg>`;
   const link = document.createElement('link');
   link.rel = 'icon';
-  link.type = 'image/svg+xml';
-  link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+  link.type = 'image/png';
+  link.href = pyrIconUrl;
   document.head.appendChild(link);
   // Also set the page title
   document.title = 'EyeWire II — neuroglancer';
