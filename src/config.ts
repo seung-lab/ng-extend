@@ -17,8 +17,14 @@ export interface DatasetCaveConfig {
   alignedVolume: string;
   cellStatusTable: string;
   cellTypeTable: string;
-  /** Schema used for cellTypeTable ('cell_type_local' or 'bound_tag'). */
-  cellTypeSchema: 'cell_type_local' | 'bound_tag';
+  /** Schema used for cellTypeTable. 'cell_type_local' has cell_type +
+   *  classification_system fields; 'bound_tag' just has a single tag field;
+   *  'bound_tag_user' is bound_tag + a server-injected user_id column. */
+  cellTypeSchema: 'cell_type_local' | 'bound_tag' | 'bound_tag_user';
+  /** Schema used for cellStatusTable. Default is 'bound_tag'; use
+   *  'bound_tag_user' once the table is migrated to the user-tracked variant
+   *  (AnnotationEngine fills in user_id server-side from auth context). */
+  cellStatusSchema?: 'bound_tag' | 'bound_tag_user';
 
   // Default-view fields (all optional — when present, applied on dataset switch
   // so a fresh user lands on a visible cell instead of an empty 3D pane).

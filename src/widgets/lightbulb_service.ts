@@ -366,8 +366,14 @@ export async function getCellStatus(
   if (completionHit) {
     status.isComplete = true;
     status.annotationId = completionHit.id;
-    const decoded = decodeTag(completionHit.tag);
-    if (decoded.user) status.completedBy = decoded.user;
+    // Prefer server-injected user_id (bound_tag_user schema). Fall back to
+    // suffix-decoded user (interim hack on plain bound_tag tables).
+    if (completionHit.user_id !== undefined && completionHit.user_id !== null) {
+      status.completedBy = String(completionHit.user_id);
+    } else {
+      const decoded = decodeTag(completionHit.tag);
+      if (decoded.user) status.completedBy = decoded.user;
+    }
   }
 
   // Cell type — same hybrid path.
@@ -391,10 +397,17 @@ export async function getCellStatus(
         if (/[a-z]|@|\./.test(cs)) status.labeledBy = cs;
       }
     } else {
-      // bound_tag — parse `<cellType>|by:<user>` if present.
-      const decoded = decodeTag(latest.tag);
-      status.cellType = decoded.value;
-      if (decoded.user) status.labeledBy = decoded.user;
+      // bound_tag (or bound_tag_user). Prefer server-injected user_id when
+      // present (bound_tag_user); fall back to suffix-decoded user from the
+      // tag (interim hack on plain bound_tag tables).
+      if (latest.user_id !== undefined && latest.user_id !== null) {
+        status.cellType = latest.tag;  // tag is the cell type, no encoding
+        status.labeledBy = String(latest.user_id);
+      } else {
+        const decoded = decodeTag(latest.tag);
+        status.cellType = decoded.value;
+        if (decoded.user) status.labeledBy = decoded.user;
+      }
     }
     status.cellTypeAnnotationId = latest.id;
   }
@@ -470,10 +483,14 @@ export async function setCellComplete(
 
     if (complete) {
       const pos = getViewerPosition();
+      // bound_tag_user → server auto-fills user_id from auth context, no need
+      // to encode it into the tag. Plain bound_tag → use the interim suffix.
+      const dsCfg = getActiveDatasetConfig();
+      const usesAutoUserId = dsCfg.cellStatusSchema === 'bound_tag_user';
       const body = {
         annotations: [{
           pt: {position: pos},
-          tag: encodeTag('complete'),
+          tag: usesAutoUserId ? 'complete' : encodeTag('complete'),
         }],
       };
       console.info(`[lightbulb] POST completion → ${baseUrl}`, body);
@@ -619,23 +636,32 @@ export async function saveCellType(
     }
 
     // Create new annotation — schema-aware payload.
-    // Interim user attribution (no user_id column in stock schemas):
-    //   - cell_type_local: classification_system carries the user identifier
-    //     (currently '' for all ng-extend writes, so no collision with the
-    //     real classifications on the original 480 stroeh rows).
-    //   - bound_tag: tag carries `<cell_type>|by:<user>`; getCellStatus
-    //     parses the suffix on read.
+    //   - cell_type_local: classification_system carries the interim user
+    //     identifier (currently '' for all ng-extend writes; original 480
+    //     stroeh rows use AC/RGC there and stay untouched).
+    //   - bound_tag_user: tag is the bare cell_type; AnnotationEngine
+    //     auto-injects user_id server-side from g.auth_user["id"].
+    //   - bound_tag (legacy): tag carries `<cell_type>|by:<user>`; the read
+    //     path decodes the suffix.
     const userId = getUserIdentifier();
-    const annotation = cellTypeSchema === 'cell_type_local'
-      ? {
-          pt: {position: pos},
-          cell_type: cellType,
-          classification_system: userId !== 'anon' ? userId : '',
-        }
-      : {
-          pt: {position: pos},
-          tag: encodeTag(cellType),
-        };
+    let annotation: any;
+    if (cellTypeSchema === 'cell_type_local') {
+      annotation = {
+        pt: {position: pos},
+        cell_type: cellType,
+        classification_system: userId !== 'anon' ? userId : '',
+      };
+    } else if (cellTypeSchema === 'bound_tag_user') {
+      annotation = {
+        pt: {position: pos},
+        tag: cellType,  // server fills in user_id
+      };
+    } else {
+      annotation = {
+        pt: {position: pos},
+        tag: encodeTag(cellType),
+      };
+    }
     const body = {
       annotations: [annotation],
     };
