@@ -245,22 +245,30 @@ function makeExtendViewer() {
   }
 }
 
-/** Injects a small pip legend below the segment list (once). */
+/** Injects a small pip legend as the last child of the seg display tab so
+ *  it sits at the bottom of the panel as a sticky footer. Idempotent —
+ *  safe to call repeatedly; existing legends get reused (and shown/hidden
+ *  based on whether any segment entries are currently in the tab). */
 function injectSegmentLegend() {
-  // Find the segment list container — the scrollable parent of segment entries
-  const entry = document.querySelector('.neuroglancer-segment-list-entry');
-  if (!entry) return;
-  const listContainer = entry.closest('.neuroglancer-segment-list')
-      ?? entry.parentElement;
-  if (!listContainer || listContainer.querySelector('.nge-seg-legend')) return;
-
-  const legend = document.createElement('div');
-  legend.className = 'nge-seg-legend';
-  legend.innerHTML =
-    '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--complete"></span>Done</span>' +
-    '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--annotated"></span>Labeled</span>' +
-    '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--incomplete"></span>Todo</span>';
-  listContainer.appendChild(legend);
+  const tabs = document.querySelectorAll('.neuroglancer-segment-display-tab');
+  tabs.forEach(tab => {
+    let legend = tab.querySelector(':scope > .nge-seg-legend') as HTMLElement | null;
+    const hasEntries = !!tab.querySelector('.neuroglancer-segment-list-entry');
+    if (!legend) {
+      legend = document.createElement('div');
+      legend.className = 'nge-seg-legend';
+      legend.innerHTML =
+        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--complete"></span>Complete</span>' +
+        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--done"></span>Done</span>' +
+        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--annotated"></span>Typed</span>' +
+        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--incomplete"></span>Todo</span>';
+      tab.appendChild(legend);
+    } else if (legend.parentElement !== tab) {
+      // Move to the end of the tab if it ended up somewhere else
+      tab.appendChild(legend);
+    }
+    legend.style.display = hasEntries ? '' : 'none';
+  });
 }
 
 function observeSegmentSelect(targetNode: Element) {
@@ -306,7 +314,6 @@ function observeSegmentSelect(targetNode: Element) {
             button = buttonService.createButton(localServerURL, segmentIDString, dataset);
             button.classList.add('error')
             item.appendChild(button);
-            (<HTMLButtonElement>button).title = 'Click for opening context menu';
             // Inject a placeholder badge immediately; it will be updated once the
             // async CAVE status fetch completes inside _refreshButtonStatus.
             buttonService.updateLabelBadge(item as HTMLElement, null);

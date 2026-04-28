@@ -15,7 +15,8 @@ export class ButtonService {
       dataset: string): HTMLButtonElement {
     const button = document.createElement('button');
     button.className = 'nge-segment-button nge-lb-btn nge-lb-incomplete menu';
-    button.title = `Cell ${segmentIDString}`;
+    button.title = 'Click for proofreading and annotation status';
+    button.dataset.segmentId = segmentIDString;
     button.style.cssText =
         'background:transparent;border:none;box-shadow:none;cursor:pointer;padding:0 2px;display:flex;align-items:center;justify-content:center;';
 
@@ -25,9 +26,23 @@ export class ButtonService {
     // Async: fetch CAVE status and update the pip accordingly
     this._refreshButtonStatus(button, localServerURL, segmentIDString);
 
-    button.addEventListener('click', (event: MouseEvent) => {
+    button.addEventListener('click', (_event: MouseEvent) => {
       const menu = this.makeMenu(button, localServerURL, segmentIDString, dataset);
-      menu.show(<MouseEvent>{clientX: event.clientX - 200, clientY: event.clientY});
+      // Horizontal: open to the LEFT of the lightbulb button with a 32px gap
+      // so the popup has clear breathing room from the seg panel edge.
+      // Vertical: center in the viewport so a tall menu doesn't bleed off
+      // the bottom or feel pinned to wherever the user happened to click.
+      const rect = button.getBoundingClientRect();
+      const menuWidth = 290; // matches .nge_lbmenu min-width
+      const margin = 12;
+      const gap = 32;
+      const desired = rect.left - menuWidth - gap;
+      const x = Math.max(margin, Math.min(desired, window.innerWidth - menuWidth - margin));
+      menu.show(<MouseEvent>{clientX: x, clientY: 0});
+      // Override vertical positioning to center the menu in the viewport
+      const el = menu.element as HTMLElement;
+      el.style.top = '50%';
+      el.style.transform = 'translateY(-50%)';
     });
 
     // Listen for annotation changes from AnnotationPanel (or anywhere).
@@ -78,7 +93,7 @@ export class ButtonService {
     }
     // Check claim status
     const backend = useProofreadingBackendStore();
-    const segId = button.title.replace('Cell ', '');
+    const segId = button.dataset.segmentId || '';
     const claim = backend.isClaimedSegment(segId);
     if (claim.claimed) {
       button.classList.add('nge-lb-claimed');
@@ -120,19 +135,16 @@ export class ButtonService {
     if (!badge) {
       badge = document.createElement('span');
       badge.className = 'nge-label-badge';
-      // Insert after nickname (if exists) or after ID element
-      const nickname = row.querySelector('.nge-segment-nickname');
-      const idEl = row.querySelector('.neuroglancer-segment-list-entry-id');
-      const anchor = nickname || idEl;
-      if (anchor && anchor.nextSibling) {
-        anchor.parentNode!.insertBefore(badge, anchor.nextSibling);
-      } else if (anchor) {
-        anchor.parentNode!.appendChild(badge);
+      // Insert as a direct child of the row (sibling to .sticky and the
+      // lightbulb button) so it can flex-wrap onto its own row below the
+      // segment ID, instead of squishing inline next to the chip.
+      const sticky = row.querySelector('.neuroglancer-segment-list-entry-sticky');
+      if (sticky && sticky.nextSibling) {
+        row.insertBefore(badge, sticky.nextSibling);
+      } else if (sticky) {
+        row.appendChild(badge);
       } else {
-        // Fallback: put in name column
-        const nameSpan = row.querySelector('.neuroglancer-segment-list-entry-name');
-        if (nameSpan) nameSpan.prepend(badge);
-        else return;
+        row.appendChild(badge);
       }
     }
 
@@ -215,8 +227,21 @@ export class ButtonService {
       dataset: string): ContextMenu {
     const contextMenu = new ContextMenu(parent);
     const menu = contextMenu.element;
-    menu.style.left = `${parseInt(menu.style.left || '0') - 100}px`;
     menu.classList.add('neuroglancer-layer-group-viewer-context-menu', 'nge_lbmenu');
+
+    // ── Title bar ─────────────────────────────────────────────────────────
+    const header = document.createElement('div');
+    header.className = 'nge-lb-header';
+    const eyebrow = document.createElement('div');
+    eyebrow.className = 'nge-lb-header-eyebrow';
+    eyebrow.textContent = 'Cell Profile';
+    const segIdLabel = document.createElement('div');
+    segIdLabel.className = 'nge-lb-header-segid';
+    segIdLabel.textContent = segmentIDString;
+    segIdLabel.title = segmentIDString;
+    header.appendChild(eyebrow);
+    header.appendChild(segIdLabel);
+    menu.appendChild(header);
 
     const cachedStatus: CellStatus|null = (parent as any)._cellStatus ?? null;
 
@@ -382,7 +407,7 @@ export class ButtonService {
     const colorInput = document.createElement('input');
     colorInput.type = 'color';
     colorInput.value = '#44ff44';
-    colorInput.style.cssText = 'width:26px;height:22px;border:none;padding:0;cursor:pointer;background:transparent;';
+    colorInput.className = 'nge-color-picker-rainbow';
     colorInput.title = 'Custom color';
     colorInput.addEventListener('input', () => {
       const hex = colorInput.value;
@@ -408,11 +433,14 @@ export class ButtonService {
     colorSection.appendChild(resetColorBtn);
 
     // ── Section 4: Links ──────────────────────────────────────────────────
-    const paramStr = `${segmentIDString}&dataset=${dataset}&submit=true`;
+    // CAVE lineage_graph endpoint replaces the old /progress/api/v1/query
+    // which 503s on minnie. Returns JSON of merge/split history for the seg.
+    const lineageUrl = dataset
+      ? `${localServerURL}/segmentation/api/v1/table/${dataset}/root/${segmentIDString}/lineage_graph`
+      : '';
     const linksSection = this.generateSection(
         'Links', [],
-        [['Change Log', `${localServerURL}/progress/api/v1/query?rootid=${paramStr}`,
-          undefined]]);
+        lineageUrl ? [['Change Log', lineageUrl, undefined]] : []);
 
     // ── Section 5: Claim Cell ────────────────────────────────────────────
     const claimSection = document.createElement('div');

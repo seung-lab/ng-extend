@@ -5,7 +5,9 @@
  * Watches the stats store and triggers toasts for:
  *  - Badge unlocks (edit thresholds crossed)
  *  - Streak milestones (7d, 14d, 30d, 60d, 100d)
- *  - Cell completion milestones (10, 25, 50, 100, 250, 500, 1000)
+ *
+ * Cell-completion milestone toasts (10/25/50…) were removed — those moments
+ * are now covered by the proper exploration-badge hero popup.
  */
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
@@ -73,14 +75,19 @@ function onHeroClick() {
 }
 
 // ── Track previous values to detect threshold crossings ──────────────────────
+// Each stat needs its own "seen the real server value yet?" flag. Without this,
+// when stats load from Supabase AFTER the `initialized` timer flips, the watcher
+// sees 0 → realValue and treats already-earned badges as fresh unlocks (which
+// caused the Astrolabe popup on every incognito load).
 let prevEdits = 0;
 let prevCells = 0;
 let prevStreak = 0;
 let initialized = false;
-let statsSeenNonZero = false; // Wait for real stats from server
+let editsSeenReal = false;
+let cellsSeenReal = false;
+let streakSeenReal = false;
 
 const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
-const CELL_MILESTONES = [10, 25, 50, 100, 250, 500, 1000];
 
 onMounted(() => {
   // Capture initial values (don't toast for existing state)
@@ -110,7 +117,7 @@ onMounted(() => {
 watch(() => stats.value.editsAllTime, (newEdits) => {
   if (!initialized) { prevEdits = newEdits; return; }
   // First real update after init — just capture baseline, don't celebrate
-  if (!statsSeenNonZero && newEdits > 0) { statsSeenNonZero = true; prevEdits = newEdits; return; }
+  if (!editsSeenReal && newEdits > 0) { editsSeenReal = true; prevEdits = newEdits; return; }
   for (const badge of BUILDING_BADGES) {
     if (badge.threshold <= 0) continue;
     if (prevEdits < badge.threshold && newEdits >= badge.threshold) {
@@ -147,6 +154,9 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
 // Watch for exploration badge unlocks + cell milestones
 watch(() => stats.value.cellsSubmitted, (newCells) => {
   if (!initialized) { prevCells = newCells; return; }
+  // First real update from Supabase — just capture baseline, don't celebrate
+  // already-earned badges. Fixes phantom Astrolabe popup on every incognito load.
+  if (!cellsSeenReal && newCells > 0) { cellsSeenReal = true; prevCells = newCells; return; }
   // Exploration badge unlocks
   for (const badge of EXPLORATION_BADGES) {
     if (badge.threshold <= 0) continue;
@@ -162,25 +172,15 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
       fireConfetti('gold', 1.5);
     }
   }
-  // Cell milestones
-  for (const m of CELL_MILESTONES) {
-    if (prevCells < m && newCells >= m) {
-      addToast({
-        type: 'cells',
-        title: `${m} Cells Completed!`,
-        subtitle: `You've proofread ${m} neurons. Incredible!`,
-        icon: '🧠',
-        isImage: false,
-      });
-      fireConfetti('default', m >= 100 ? 2 : 1);
-    }
-  }
+  // Cell-completion milestone toasts removed — exploration badge hero popup
+  // covers these moments now.
   prevCells = newCells;
 });
 
 // Watch for streak milestones
 watch(() => stats.value.currentStreak, (newStreak) => {
   if (!initialized) { prevStreak = newStreak; return; }
+  if (!streakSeenReal && newStreak > 0) { streakSeenReal = true; prevStreak = newStreak; return; }
   for (const m of STREAK_MILESTONES) {
     if (prevStreak < m && newStreak >= m) {
       addToast({

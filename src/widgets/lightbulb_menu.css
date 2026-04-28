@@ -49,28 +49,55 @@
 /* ─── Context Menu ─────────────────────────────────────────────────────────── */
 
 .nge_lbmenu {
-  min-width: 280px;
-  /* Constrain to viewport so the panel never overflows top/bottom on
-   * shorter laptop displays (1366×768 etc). Without this, positionContextMenu
-   * clamps `top` to a negative value when offsetHeight > viewportHeight,
-   * clipping Completion Status at the top and Change Log at the bottom.
-   * 56px = 40px extension bar + 16px breathing room — keeps the menu below
-   * the top bar even when clamped upward to fit a low click. */
+  min-width: 290px;
   max-height: calc(100vh - 56px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 6px 0;
-  background: #2a2a2a;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  color: #e0e0e0;
-  font-size: 15px;
-  /* Re-enabled — lightbulb context menu for segment actions */
+  padding: 0 0 4px;
+  /* Match the side-panel theme: deep blue gradient, blue-accented border, soft glow */
+  background: linear-gradient(180deg, rgba(20, 32, 55, 0.97), rgba(10, 18, 35, 0.97));
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(74, 158, 255, 0.22);
+  border-radius: 8px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color: rgba(220, 230, 245, 0.92);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+}
+
+/* Title bar — matches the side-panel titlebar treatment */
+.nge-lb-header {
+  padding: 10px 14px 9px;
+  background: linear-gradient(135deg, rgba(25, 45, 75, 0.95), rgba(18, 30, 55, 0.95));
+  border-bottom: 1px solid rgba(74, 158, 255, 0.25);
+  border-radius: 8px 8px 0 0;
+  margin-bottom: 4px;
+}
+.nge-lb-header-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(120, 175, 230, 0.85);
+  margin-bottom: 3px;
+}
+.nge-lb-header-segid {
+  font-family: 'Consolas', 'SF Mono', 'Monaco', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(220, 230, 245, 0.95);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nge-lb-section {
-  padding: 8px 14px 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.08);
 }
 
 .nge-lb-section:last-child {
@@ -78,18 +105,20 @@
 }
 
 .nge-lb-section-title {
-  font-size: 12px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #8a8a8a;
-  margin-bottom: 6px;
+  color: rgba(120, 160, 210, 0.85);
+  margin-bottom: 7px;
 }
 
 .nge-lb-status-line {
-  font-size: 14px;
-  margin-bottom: 6px;
+  font-size: 13.5px;
+  margin-bottom: 7px;
   font-weight: 500;
+  color: rgba(210, 222, 240, 0.92);
 }
 
 /* ─── Buttons inside menu ──────────────────────────────────────────────────── */
@@ -98,19 +127,25 @@
   display: block;
   width: 100%;
   text-align: left;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  color: #e0e0e0;
-  font-size: 14px;
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.06), rgba(74, 158, 255, 0.02));
+  border: 1px solid rgba(74, 158, 255, 0.18);
+  border-radius: 5px;
+  color: rgba(220, 230, 245, 0.92);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
   padding: 7px 11px;
   cursor: pointer;
   margin-bottom: 4px;
-  transition: background-color 0.1s;
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
 }
 
 .nge-lb-section-button:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.14), rgba(74, 158, 255, 0.06));
+  border-color: rgba(74, 158, 255, 0.35);
+}
+.nge-lb-section-button:active {
+  transform: translateY(1px);
 }
 
 .nge-lb-section-button:disabled {
@@ -120,42 +155,108 @@
 
 /* Mark Complete button — accent green */
 .nge-lb-toggle-btn {
-  border-color: rgba(76, 175, 80, 0.4);
-  color: #81c784;
+  border-color: rgba(76, 175, 80, 0.45);
+  color: #A5D6A7;
+  background: linear-gradient(180deg, rgba(76, 175, 80, 0.1), rgba(76, 175, 80, 0.04));
 }
 
 .nge-lb-toggle-btn:hover {
-  background-color: rgba(76, 175, 80, 0.2);
+  background: linear-gradient(180deg, rgba(76, 175, 80, 0.22), rgba(76, 175, 80, 0.1));
+  border-color: rgba(76, 175, 80, 0.65);
 }
 
 /* Save Cell Type button — accent blue */
 .nge-lb-save-btn {
-  border-color: rgba(33, 150, 243, 0.4);
-  color: #64b5f6;
+  border-color: rgba(74, 158, 255, 0.45);
+  color: #90CAF9;
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.12), rgba(74, 158, 255, 0.04));
 }
 
 .nge-lb-save-btn:hover {
-  background-color: rgba(33, 150, 243, 0.2);
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.22), rgba(74, 158, 255, 0.08));
+  border-color: rgba(74, 158, 255, 0.65);
+}
+
+/* ─── Rainbow custom-color picker (inside the Segment Color section) ─────── */
+/* Native <input type="color"> shows the currently-selected color as the
+   swatch, which makes it look like just another preset. Override the swatch
+   to a rainbow gradient so users recognize it as the "any color" picker. */
+input[type="color"].nge-color-picker-rainbow {
+  width: 26px;
+  height: 22px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  border-radius: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="color"].nge-color-picker-rainbow::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 4px;
+}
+input[type="color"].nge-color-picker-rainbow::-webkit-color-swatch {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    #ff4444 0%,
+    #ff8800 14%,
+    #ffdd00 28%,
+    #44ff44 42%,
+    #00ddff 57%,
+    #4488ff 71%,
+    #aa44ff 85%,
+    #ff44aa 100%
+  );
+}
+input[type="color"].nge-color-picker-rainbow::-moz-color-swatch {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    #ff4444 0%,
+    #ff8800 14%,
+    #ffdd00 28%,
+    #44ff44 42%,
+    #00ddff 57%,
+    #4488ff 71%,
+    #aa44ff 85%,
+    #ff44aa 100%
+  );
+}
+input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 /* ─── Cell Type inputs ─────────────────────────────────────────────────────── */
 
 .nge-lb-select,
+.nge-lb-text-input,
+.nge-lb-section-button {
+  /* All three share the same width so they left-align cleanly inside a section */
+  display: block !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.nge-lb-select,
 .nge-lb-text-input {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  color: #e0e0e0;
-  font-size: 14px;
+  background: rgba(8, 14, 28, 0.7);
+  border: 1px solid rgba(74, 158, 255, 0.18);
+  border-radius: 5px;
+  color: rgba(220, 230, 245, 0.92);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
   padding: 7px 9px;
   padding-left: 9px; /* override browser-default select indent */
   margin-bottom: 6px;
   outline: none;
-  /* Allow the select to shrink on narrow menus */
-  max-width: 230px;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
 
 .nge-lb-select {
@@ -172,60 +273,69 @@
 
 .nge-lb-select:focus,
 .nge-lb-text-input:focus {
-  border-color: rgba(33, 150, 243, 0.6);
-  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.15);
+  border-color: rgba(74, 158, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.18);
 }
 
 .nge-lb-text-input::placeholder {
-  color: #666;
+  color: rgba(140, 160, 195, 0.5);
 }
 
 /* ─── Help / Second Opinion ────────────────────────────────────────────────── */
 .nge-lb-chip {
   padding: 4px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(74, 158, 255, 0.18);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  color: #aaa;
-  font-size: 13px;
+  background: rgba(74, 158, 255, 0.05);
+  color: rgba(180, 200, 230, 0.85);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.12s;
 }
 .nge-lb-chip:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ddd;
+  background: rgba(74, 158, 255, 0.14);
+  border-color: rgba(74, 158, 255, 0.35);
+  color: rgba(220, 230, 245, 0.95);
 }
 .nge-lb-chip--active {
-  background: rgba(255, 152, 0, 0.2);
-  border-color: rgba(255, 152, 0, 0.5);
+  background: linear-gradient(180deg, rgba(255, 152, 0, 0.22), rgba(255, 152, 0, 0.1));
+  border-color: rgba(255, 152, 0, 0.55);
   color: #ffb74d;
 }
 
 /* Ask for Help button — accent orange */
 .nge-lb-help-btn {
-  border-color: rgba(255, 152, 0, 0.4);
+  border-color: rgba(255, 152, 0, 0.45);
   color: #ffb74d;
+  background: linear-gradient(180deg, rgba(255, 152, 0, 0.1), rgba(255, 152, 0, 0.04));
 }
 .nge-lb-help-btn:hover {
-  background-color: rgba(255, 152, 0, 0.2);
+  background: linear-gradient(180deg, rgba(255, 152, 0, 0.22), rgba(255, 152, 0, 0.08));
+  border-color: rgba(255, 152, 0, 0.65);
 }
 
 /* Claim Cell button — accent golden */
 .nge-lb-claim-btn {
-  border-color: rgba(255, 215, 0, 0.4);
+  border-color: rgba(255, 215, 0, 0.45);
   color: #FFD700;
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.04));
 }
 .nge-lb-claim-btn:hover {
-  background-color: rgba(255, 215, 0, 0.2);
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.22), rgba(255, 215, 0, 0.08));
+  border-color: rgba(255, 215, 0, 0.65);
 }
 
 /* Release Claim button — muted */
 .nge-lb-release-btn {
-  border-color: rgba(158, 158, 158, 0.3);
-  color: #aaa;
+  border-color: rgba(140, 160, 195, 0.3);
+  color: rgba(180, 200, 230, 0.7);
+  background: linear-gradient(180deg, rgba(140, 160, 195, 0.06), rgba(140, 160, 195, 0.02));
 }
 .nge-lb-release-btn:hover {
-  background-color: rgba(158, 158, 158, 0.15);
+  background: linear-gradient(180deg, rgba(140, 160, 195, 0.14), rgba(140, 160, 195, 0.06));
+  border-color: rgba(140, 160, 195, 0.5);
 }
 
 /* ─── Links in menu ────────────────────────────────────────────────────────── */
@@ -234,148 +344,214 @@
   display: flex;
   flex-direction: row;
   white-space: nowrap;
-  color: #64b5f6;
+  color: rgba(120, 180, 240, 0.9);
   text-decoration: none;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 12px;
+  font-weight: 500;
   padding: 4px 0;
   transition: color 0.1s;
 }
 
 .nge-lb-section a:hover {
-  color: #90caf9;
+  color: rgba(170, 210, 250, 1);
   text-decoration: underline;
 }
 
 /* ── Status pip on segment buttons ── */
 .nge-lb-btn {
   position: relative;
-  padding: 2px 5px;
+  padding: 2px 6px;
   height: 22px;
   opacity: 1 !important;
   margin-left: auto;   /* Pin to right edge regardless of badge width */
   flex-shrink: 0;
+  border-radius: 5px;
+}
+.nge-lb-btn:hover {
+  background-color: rgba(74, 158, 255, 0.12) !important;
 }
 
-/* Dots overlay — absolutely positioned so they don't push the pip */
+/* Dots overlay removed — the delta itself is the only affordance. */
 .nge-lb-btn .nge-lb-dots {
-  position: absolute;
-  inset: 0;
-  display: flex;
+  display: none !important;
+}
+
+/* Status pip — always the same upward triangle glyph. Hollow vs filled is
+   controlled by `color` (transparent + text-stroke for hollow, solid for
+   filled), so all states render at identical visual size. */
+.nge-lb-pip {
+  width: 12px;
+  height: 12px;
+  background: transparent !important;
+  border-radius: 0 !important;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity 0.15s;
-  z-index: 1;
-}
-.neuroglancer-segment-list-entry:hover .nge-lb-btn .nge-lb-dots,
-.nge-lb-btn:focus .nge-lb-dots {
-  opacity: 1;
-}
-
-/* Pip is centered in the button, unaffected by dots */
-.nge-lb-pip {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  display: block;
   flex-shrink: 0;
+  position: relative;
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 0.15s, filter 0.15s;
+  -webkit-text-stroke-width: 0;
+}
+.nge-lb-pip::before {
+  content: '\25B2'; /* ▲ — always the same glyph for consistent sizing */
+  display: block;
 }
 
-/* Cell status states */
+.neuroglancer-segment-list-entry:hover .nge-lb-pip {
+  transform: scale(1.18);
+}
+
+/* Cell status states — color the delta + add a glow via drop-shadow */
 .nge-lb-btn.nge-lb-incomplete .nge-lb-pip {
-  background: #666;
+  /* Hollow: render only the outline via text-stroke so it visually matches
+     the filled deltas in size. Pulses gently to invite a click. */
+  color: transparent;
+  -webkit-text-stroke: 1.4px rgba(190, 215, 250, 0.95);
+  filter: drop-shadow(0 0 4px rgba(120, 170, 230, 0.6));
+  animation: nge-todo-pulse 2.4s ease-in-out infinite;
+}
+@keyframes nge-todo-pulse {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(120, 170, 230, 0.4)); }
+  50%      { filter: drop-shadow(0 0 6px rgba(140, 190, 255, 0.85)); }
+}
+.nge-lb-btn.nge-lb-incomplete:hover .nge-lb-pip {
+  -webkit-text-stroke-color: #ffffff;
+  filter: drop-shadow(0 0 6px rgba(180, 220, 255, 0.95));
 }
 .nge-lb-btn.nge-lb-annotated .nge-lb-pip {
-  background: #4CAF50;  /* green — typed but not completed */
-  box-shadow: 0 0 5px #4CAF5088;
+  color: #4CAF50;  /* green — typed but not completed */
+  filter: drop-shadow(0 0 4px #4CAF50aa);
 }
 .nge-lb-btn.nge-lb-done-unlabeled .nge-lb-pip {
-  background: #42A5F5;  /* blue — completed but not typed */
-  box-shadow: 0 0 5px #42A5F588;
+  color: #42A5F5;  /* blue — completed but not typed */
+  filter: drop-shadow(0 0 4px #42A5F5aa);
 }
 .nge-lb-btn.nge-lb-complete .nge-lb-pip {
-  background: #CE93D8;  /* purple — completed AND typed */
-  box-shadow: 0 0 5px #CE93D888;
+  color: #CE93D8;  /* purple — completed AND typed */
+  filter: drop-shadow(0 0 5px #CE93D8aa);
 }
-/* Claimed indicator — ring around pip */
+/* Claimed indicator — golden delta with stronger glow */
 .nge-lb-btn.nge-lb-claimed .nge-lb-pip {
-  outline: 2px solid #FFD700;
-  outline-offset: 1px;
+  color: #FFD700;
+  filter: drop-shadow(0 0 6px #FFD700cc);
 }
 
 /* Tint the dots text to match status */
 .nge-lb-btn.nge-lb-complete .nge-lb-dots { color: #CE93D8; }
 .nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #42A5F5; }
 .nge-lb-btn.nge-lb-annotated .nge-lb-dots { color: #4CAF50; }
-.nge-lb-btn.nge-lb-incomplete .nge-lb-dots { color: #999; }
+.nge-lb-btn.nge-lb-incomplete .nge-lb-dots { color: rgba(180, 195, 220, 0.85); }
 .nge-lb-btn.nge-lb-claimed .nge-lb-dots { color: #FFD700; }
 
 /* ── Label badge — placed inline after segment ID/nickname ── */
 .nge-label-badge {
   display: inline-flex;
   align-items: center;
-  font-size: 12px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11px;
   font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 3px;
+  letter-spacing: 0.01em;
+  padding: 2px 8px;
+  border-radius: 10px;
   margin-left: 6px;
   white-space: nowrap;
   vertical-align: middle;
   flex-shrink: 1;         /* Allow shrinking so pip stays aligned */
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 130px;       /* Cap badge width for long cell type names */
-  line-height: 1.4;
+  max-width: 140px;       /* Cap badge width for long cell type names */
+  line-height: 1.5;
+  border: 1px solid transparent;
+  transition: filter 0.15s, border-color 0.15s;
+}
+
+.neuroglancer-segment-list-entry:hover .nge-label-badge {
+  filter: brightness(1.15);
 }
 
 .nge-label-badge--complete {
-  color: #CE93D8;
-  background: rgba(206, 147, 216, 0.15);
+  color: #E1BEE7;
+  background: linear-gradient(180deg, rgba(206, 147, 216, 0.22), rgba(206, 147, 216, 0.12));
+  border-color: rgba(206, 147, 216, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .nge-label-badge--annotated {
-  color: #4CAF50;
-  background: rgba(76, 175, 80, 0.15);
+  color: #A5D6A7;
+  background: linear-gradient(180deg, rgba(76, 175, 80, 0.22), rgba(76, 175, 80, 0.12));
+  border-color: rgba(76, 175, 80, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .nge-label-badge--unlabeled {
   color: #CE93D8;
   background: rgba(206, 147, 216, 0.1);
+  border-color: rgba(206, 147, 216, 0.25);
 }
 
 .nge-label-badge--incomplete {
   display: none; /* hide badge for incomplete — only show when status is set */
 }
 
-/* ── Status legend (below segment list) ── */
+/* ── Status legend (footer below segment list): subtle, dark-blue themed ── */
 .nge-seg-legend {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  padding: 6px 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  margin-top: 2px;
+  padding: 7px 10px;
+  background: linear-gradient(180deg, rgba(12, 18, 32, 0.6), rgba(8, 12, 24, 0.85));
+  border-top: 1px solid rgba(74, 158, 255, 0.1);
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  opacity: 0.55;
+  transition: opacity 0.2s;
+}
+.neuroglancer-segment-list:hover .nge-seg-legend,
+.nge-seg-legend:hover {
+  opacity: 1;
 }
 .nge-seg-legend-item {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
-  color: #777;
-  letter-spacing: 0.02em;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(160, 175, 200, 0.7);
 }
 .nge-legend-pip {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: transparent;
+  border-radius: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  -webkit-text-stroke-width: 0;
 }
-.nge-legend-pip--complete     { background: #CE93D8; box-shadow: 0 0 4px #CE93D888; }
-.nge-legend-pip--annotated    { background: #4CAF50; box-shadow: 0 0 4px #4CAF5088; }
-.nge-legend-pip--unlabeled    { background: #CE93D8; box-shadow: 0 0 3px #CE93D888; }
-.nge-legend-pip--incomplete   { background: #666; }
+.nge-legend-pip::before {
+  content: '\25B2'; /* ▲ same glyph as row pip — sized via color/stroke */
+  display: block;
+}
+.nge-legend-pip--complete     { color: #CE93D8; filter: drop-shadow(0 0 3px #CE93D8aa); }  /* purple — done & typed */
+.nge-legend-pip--done         { color: #42A5F5; filter: drop-shadow(0 0 3px #42A5F5aa); }  /* blue — done, no type */
+.nge-legend-pip--annotated    { color: #4CAF50; filter: drop-shadow(0 0 3px #4CAF50aa); }  /* green — typed, not done */
+.nge-legend-pip--unlabeled    { color: #CE93D8; filter: drop-shadow(0 0 2px #CE93D888); }
+.nge-legend-pip--incomplete {
+  color: transparent;
+  -webkit-text-stroke: 1.2px rgba(190, 215, 250, 0.95);
+  filter: drop-shadow(0 0 3px rgba(120, 170, 230, 0.5));
+}
 
 /* ─── Segment nickname label ──────────────────────────────────────────────── */
 /* When set, the nickname becomes the primary label — the numeric ID collapses */

@@ -179,47 +179,262 @@
   font-size: 11pt !important;
 }
 
-/* ── Segment list entries ── */
+/* ── Segment list entries: two-row layout — icons + segID + pip on row 1,
+   annotation / cell-type label below the segID on row 2. ── */
 .neuroglancer-segment-list-entry {
   background: rgba(8, 12, 24, 0.95) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-  transition: background 0.12s;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.05);
+  transition: background 0.15s, box-shadow 0.15s;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  padding: 4px 22px 4px 6px !important;  /* roomy right padding so the delta breathes from the panel edge */
+  gap: 4px;
+  row-gap: 2px;
+  position: relative;
+}
+
+/* Sticky container (icons + chip) takes its natural width on row 1 */
+.neuroglancer-segment-list-entry-sticky {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Lightbulb pip: stays on row 1, pushed to the right edge with breathing room */
+.neuroglancer-segment-list-entry .nge-lb-btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+  margin-right: 6px;
+}
+
+/* Annotation name + label badge wrap to row 2, indented under the chip */
+.neuroglancer-segment-list-entry-name,
+.neuroglancer-segment-list-entry .nge-label-badge {
+  flex-basis: 100% !important;
+  order: 100;
+  margin-left: 38px !important;  /* roughly the width of star+eye icons */
+  margin-top: 0 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hide the empty annotation name when there's no annotation, so the row
+   doesn't reserve a phantom second line. */
+.neuroglancer-segment-list-entry-name:empty {
+  display: none !important;
+}
+
+.neuroglancer-segment-list-entry::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
 }
 
 .neuroglancer-segment-list-entry:hover {
-  background: rgba(74, 158, 255, 0.06) !important;
+  background: rgba(74, 158, 255, 0.07) !important;
+}
+.neuroglancer-segment-list-entry:hover::before {
+  background: rgba(74, 158, 255, 0.5);
 }
 
 .neuroglancer-segment-list-entry[data-selected="true"],
 .neuroglancer-selection-details-segment[data-selected="true"] {
-  background: rgba(74, 158, 255, 0.08) !important;
+  background: rgba(74, 158, 255, 0.1) !important;
+}
+.neuroglancer-segment-list-entry[data-selected="true"]::before {
+  background: rgba(74, 158, 255, 0.7);
 }
 
-/* ── Segment list row alignment: center star/eye/copy icons vertically ── */
-.neuroglancer-segment-list-entry {
-  align-items: center !important;
-}
 .neuroglancer-segment-list-entry-sticky {
   align-items: center !important;
+  gap: 3px;
 }
 
-/* ── Segment IDs: soften contrast, keep neuroglancer's per-segment inline colors ── */
+/* ── Segment ID chips: keep neuroglancer's inline per-segment color as the chip
+   background (so the chip matches the segment's mesh color in the viewer).
+   We only refine typography and add a subtle ring so the chip reads as a token. ── */
 .neuroglancer-segment-list-entry-id,
 .neuroglancer-selection-details-segment-id {
-  font-size: 0.85em !important;
-  border-radius: 3px;
-  padding: 1px 4px;
-  filter: saturate(0.8) brightness(0.85);
+  font-family: 'Consolas', 'SF Mono', 'Monaco', monospace !important;
+  font-size: 0.78em !important;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.neuroglancer-segment-list-entry:hover .neuroglancer-segment-list-entry-id {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* ── Icon overrides ───────────────────────────────────────────────────────
+   neuroglancer's base `.neuroglancer-icon` CSS hardcodes:
+     • svg { stroke: white }
+     • :hover { background-color: #db4437 (RED) }
+   Both clash with our blue panel theme. Override across every seg-list
+   context so star, eye, copy, and any other icon all read as blue tokens. */
+.neuroglancer-segment-list-entry .neuroglancer-icon > svg,
+.neuroglancer-segment-list-status .neuroglancer-icon > svg,
+.neuroglancer-segment-list-header .neuroglancer-icon > svg,
+.neuroglancer-selection-details-segment .neuroglancer-icon > svg,
+.neuroglancer-segmentation-toolbox .neuroglancer-icon > svg {
+  stroke: rgba(150, 175, 215, 0.85) !important;
+}
+
+/* Hover: blue accent surface + brighter icon, NOT the default red. */
+.neuroglancer-segment-list-entry .neuroglancer-icon:hover,
+.neuroglancer-segment-list-status .neuroglancer-icon:hover,
+.neuroglancer-segment-list-header .neuroglancer-icon:hover,
+.neuroglancer-selection-details-segment .neuroglancer-icon:hover,
+.neuroglancer-segmentation-toolbox .neuroglancer-icon:hover {
+  background-color: rgba(74, 158, 255, 0.18) !important;
+}
+.neuroglancer-segment-list-entry .neuroglancer-icon:hover > svg,
+.neuroglancer-segment-list-status .neuroglancer-icon:hover > svg,
+.neuroglancer-segment-list-header .neuroglancer-icon:hover > svg,
+.neuroglancer-selection-details-segment .neuroglancer-icon:hover > svg,
+.neuroglancer-segmentation-toolbox .neuroglancer-icon:hover > svg {
+  stroke: rgba(220, 230, 245, 0.98) !important;
+}
+
+/* Active / "on" states for star + eye — fill in blue */
+.neuroglancer-segment-list-entry .neuroglancer-star-icon.neuroglancer-starred > svg,
+.neuroglancer-segment-list-status .neuroglancer-star-icon.neuroglancer-starred > svg,
+.neuroglancer-segment-list-header .neuroglancer-star-icon.neuroglancer-starred > svg,
+.neuroglancer-selection-details-segment .neuroglancer-star-icon.neuroglancer-starred > svg {
+  fill: rgba(140, 180, 235, 0.95) !important;
+  stroke: rgba(140, 180, 235, 0.95) !important;
+}
+.neuroglancer-segment-list-entry .neuroglancer-star-icon.neuroglancer-indeterminate > svg,
+.neuroglancer-segment-list-status .neuroglancer-star-icon.neuroglancer-indeterminate > svg,
+.neuroglancer-segment-list-header .neuroglancer-star-icon.neuroglancer-indeterminate > svg {
+  fill: rgba(150, 175, 215, 0.4) !important;
+}
+.neuroglancer-segment-list-entry .neuroglancer-eye-icon.neuroglancer-visible > svg,
+.neuroglancer-segment-list-status .neuroglancer-eye-icon.neuroglancer-visible > svg,
+.neuroglancer-segment-list-header .neuroglancer-eye-icon.neuroglancer-visible > svg,
+.neuroglancer-selection-details-segment .neuroglancer-eye-icon.neuroglancer-visible > svg {
+  stroke: rgba(140, 200, 255, 0.95) !important;
+}
+
+/* Per-row icon affordance — dimmed at rest, brighter on hover */
+.neuroglancer-segment-list-entry .neuroglancer-star-icon,
+.neuroglancer-segment-list-entry .neuroglancer-eye-icon,
+.neuroglancer-segment-list-entry .neuroglancer-segment-list-entry-copy {
+  opacity: 0.72;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.neuroglancer-segment-list-entry .neuroglancer-star-icon.neuroglancer-starred,
+.neuroglancer-segment-list-entry .neuroglancer-eye-icon.neuroglancer-visible {
+  opacity: 1;
+}
+.neuroglancer-segment-list-entry .neuroglancer-star-icon:hover,
+.neuroglancer-segment-list-entry .neuroglancer-eye-icon:hover,
+.neuroglancer-segment-list-entry .neuroglancer-segment-list-entry-copy:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* ── Annotation text after ID (e.g. cell type / nickname): cleaner type ── */
+.neuroglancer-segment-list-entry-name {
+  font-family: 'Consolas', 'SF Mono', 'Monaco', monospace !important;
+  font-size: 0.78em !important;
+  color: rgba(180, 195, 220, 0.85);
+  font-weight: 400 !important;
+}
+
+/* ── Hide horizontal scrollbars on segment lists — chips fit the panel
+   width and the bars look like a glitch when the list contains long IDs. ── */
+.neuroglancer-segment-list {
+  overflow-x: hidden !important;
+}
+
+/* ── Visible-segments list: hide the vertical scrollbar UNTIL it's actually
+   needed (many entries that don't fit). With a fresh list of <10 segments
+   the bar showed up unnecessarily because the inner virtual-list spacer
+   over-allocated. Use auto only when content actually overflows. ── */
+.neuroglancer-segment-list:not(.neuroglancer-preview-list) {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.35) transparent;
+}
+.neuroglancer-segment-list:not(.neuroglancer-preview-list)::-webkit-scrollbar {
+  width: 8px;
+}
+.neuroglancer-segment-list:not(.neuroglancer-preview-list)::-webkit-scrollbar-track {
+  background: transparent;
+}
+.neuroglancer-segment-list:not(.neuroglancer-preview-list)::-webkit-scrollbar-thumb {
+  background: rgba(74, 158, 255, 0.25);
+  border-radius: 4px;
+}
+.neuroglancer-segment-list:not(.neuroglancer-preview-list)::-webkit-scrollbar-thumb:hover {
+  background: rgba(74, 158, 255, 0.5);
+}
+
+/* ── Segmentation toolbox (the row with the "Select" button at the top of
+   the Seg. tab): theme the tool button to the dark-blue palette. ── */
+.neuroglancer-segmentation-toolbox {
+  padding: 4px 6px;
+  gap: 4px;
+}
+
+.neuroglancer-segmentation-toolbox .neuroglancer-tool-button {
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.08), rgba(74, 158, 255, 0.02));
+  border: 1px solid rgba(74, 158, 255, 0.22);
+  border-radius: 5px;
+  padding: 3px 9px;
+  color: rgba(180, 200, 230, 0.9);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.neuroglancer-segmentation-toolbox .neuroglancer-tool-button:hover {
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.18), rgba(74, 158, 255, 0.06));
+  border-color: rgba(74, 158, 255, 0.45);
+  color: rgba(220, 230, 245, 0.98);
+}
+
+.neuroglancer-segmentation-toolbox .neuroglancer-tool-button-label {
+  color: inherit;
+}
+
+.neuroglancer-segmentation-toolbox .neuroglancer-tool-key-binding {
+  color: rgba(140, 170, 210, 0.65);
+  font-size: 10px;
+  margin-left: 4px;
+}
+.neuroglancer-segmentation-toolbox .neuroglancer-tool-key-binding::before,
+.neuroglancer-segmentation-toolbox .neuroglancer-tool-key-binding::after {
+  color: rgba(140, 170, 210, 0.45);
 }
 
 /* ── Segment list header ── */
 .neuroglancer-segment-list-entry.neuroglancer-segment-list-header {
-  background: rgba(15, 22, 40, 0.95) !important;
+  background: linear-gradient(180deg, rgba(20, 32, 55, 0.95), rgba(15, 22, 40, 0.95)) !important;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.18);
 }
 
 .neuroglancer-segment-list-header .neuroglancer-segment-list-entry-id {
   background: transparent !important;
   color: rgba(160, 175, 200, 0.7) !important;
+  filter: none;
+  box-shadow: none;
+  text-shadow: none;
 }
 
 /* ── Segment query/search input ── */
@@ -236,10 +451,32 @@
   border-color: rgba(74, 158, 255, 0.35) !important;
 }
 
-/* ── Segment list status bar ── */
+/* ── Segment list status bar (the "1 ids" / "2/2 visible" section header rows) ── */
 .neuroglancer-segment-list-status {
-  background: rgba(12, 18, 32, 0.95) !important;
-  border-top: 1px solid rgba(74, 158, 255, 0.08);
+  background: linear-gradient(180deg, rgba(18, 28, 50, 0.95), rgba(12, 18, 32, 0.95)) !important;
+  border-top: 1px solid rgba(74, 158, 255, 0.12);
+  border-bottom: 1px solid rgba(74, 158, 255, 0.08);
+  padding: 4px 6px !important;
+  gap: 4px;
+}
+
+.neuroglancer-segment-list-status-message {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(180, 200, 230, 0.85);
+  text-transform: uppercase;
+}
+
+.neuroglancer-segment-list-status .neuroglancer-star-icon,
+.neuroglancer-segment-list-status .neuroglancer-eye-icon {
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.neuroglancer-segment-list-status .neuroglancer-star-icon:hover,
+.neuroglancer-segment-list-status .neuroglancer-eye-icon:hover {
+  opacity: 1;
 }
 
 .neuroglancer-segment-query-errors {
@@ -265,12 +502,17 @@
   background: rgba(74, 158, 255, 0.06) !important;
 }
 
-/* ── Resize gutters between panels ── */
-.neuroglancer-resize-gutter-vertical {
-  background-color: rgba(74, 158, 255, 0.12) !important;
-}
+/* ── Resize gutters between panels: more visible so users discover they
+   can drag to resize. Subtle at rest, glow on hover. ── */
+.neuroglancer-resize-gutter-vertical,
 .neuroglancer-resize-gutter-horizontal {
-  background-color: rgba(74, 158, 255, 0.12) !important;
+  background-color: rgba(74, 158, 255, 0.2) !important;
+  transition: background-color 0.15s, box-shadow 0.15s;
+}
+.neuroglancer-resize-gutter-vertical:hover,
+.neuroglancer-resize-gutter-horizontal:hover {
+  background-color: rgba(74, 158, 255, 0.55) !important;
+  box-shadow: 0 0 6px rgba(74, 158, 255, 0.4);
 }
 
 /* ── Minimizable group titles (section headers inside panel) ── */
