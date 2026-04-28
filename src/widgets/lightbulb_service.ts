@@ -331,18 +331,27 @@ export async function getCellStatus(
   }
   }
 
-  // Fall back to localStorage if CAVE/materialization aren't reachable
-  if (!caveAvailable) {
-    console.info('[lightbulb] CAVE not available — using localStorage fallback');
+  // Always merge localStorage on top of CAVE results: writes are mirrored to
+  // localStorage immediately, but CAVE materialization runs only every other
+  // day. So a just-written annotation isn't in any materialized version yet
+  // and the /query above returns empty. The local mirror fills the gap.
+  // Local data only fills fields CAVE didn't already populate (CAVE wins ties).
+  {
     const store = getLocalAnnotations();
     const pos = getViewerPosition();
-    const key = ptKey(pos);
-    const local = store[key];
+    const local = store[ptKey(pos)];
     if (local) {
-      status.isComplete = local.isComplete;
-      status.cellType = local.cellType || '';
-      if (local.isComplete) status.annotationId = -1;
-      if (local.cellType) status.cellTypeAnnotationId = -1;
+      if (!status.isComplete && local.isComplete) {
+        status.isComplete = true;
+        if (status.annotationId === undefined) status.annotationId = -1;
+      }
+      if (!status.cellType && local.cellType) {
+        status.cellType = local.cellType;
+        if (status.cellTypeAnnotationId === undefined) status.cellTypeAnnotationId = -1;
+      }
+      if (!caveAvailable) {
+        console.info('[lightbulb] CAVE not reachable — using localStorage');
+      }
     }
   }
 
@@ -384,6 +393,9 @@ export async function setCellComplete(
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
         console.error(`[lightbulb] CAVE DELETE failed (${res.status}):`, errText);
+      } else {
+        // Clear local mirror so the lightbulb doesn't keep showing the deleted state.
+        deleteLocalAnnotation(ptKey(getViewerPosition()), 'isComplete');
       }
       return res.ok;
     }
@@ -410,6 +422,9 @@ export async function setCellComplete(
       }
       if (res.ok) {
         console.info(`[lightbulb] ✓ Completion saved to CAVE`);
+        // Mirror to localStorage so the lightbulb shows the write immediately,
+        // before the next materialization cron run (every other day on stroeh).
+        setLocalAnnotation(ptKey(pos), {isComplete: true});
         try {
           const backend = useProofreadingBackendStore();
           if (backend.userId) {
@@ -565,6 +580,9 @@ export async function saveCellType(
     }
     if (res.ok) {
       console.info(`[lightbulb] ✓ Cell type saved to CAVE`);
+      // Mirror to localStorage so the lightbulb shows the write immediately,
+      // before the next materialization cron run.
+      setLocalAnnotation(ptKey(pos), {cellType});
       try {
         const backend = useProofreadingBackendStore();
         if (backend.userId) {
