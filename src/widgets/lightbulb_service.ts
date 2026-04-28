@@ -91,6 +91,89 @@ function handleCaveAuthExpired(caveServer: string, realmHost?: string): void {
   }));
 }
 
+// ─── Materialization version + query body helpers ──────────────────────────
+
+const _versionCache = new Map<string, number>();
+
+async function getLatestMaterializedVersion(
+    caveServer: string, datastack: string): Promise<number | null> {
+  const cacheKey = `${caveServer}:${datastack}`;
+  const cached = _versionCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  try {
+    const res = await fetch(
+      `${caveServer}/materialize/api/v3/datastack/${datastack}/versions`,
+      {headers: authHeaders(caveServer)});
+    if (!res.ok) return null;
+    const versions: number[] = await res.json();
+    if (!Array.isArray(versions) || versions.length === 0) return null;
+    const latest = Math.max(...versions);
+    _versionCache.set(cacheKey, latest);
+    return latest;
+  } catch { return null; }
+}
+
+/** Build JSON body for /datastack/<ds>/query (live query). pt_root_id is
+ *  emitted as a JSON int literal (not quoted) — JS Number can't hold root_ids
+ *  precisely (> 2^53), and postgres BIGINT comparison against a quoted string
+ *  isn't reliable. We hand-build the JSON to bypass JS number precision. */
+function buildLiveQueryBody(table: string, timestamp: string, rootId: string): string {
+  return `{"table":"${table}","timestamp":"${timestamp}","filter_in_dict":{"${table}":{"pt_root_id":[${rootId}]}}}`;
+}
+
+/** Same idea for /version/<N>/table/<t>/query (frozen / materialized query). */
+function buildFrozenQueryBody(table: string, rootId: string): string {
+  return `{"filter_in_dict":{"${table}":{"pt_root_id":[${rootId}]}}}`;
+}
+
+/** Try live query first (catches writes after the latest materialization),
+ *  fall back to the materialized snapshot if live errors out. Returns the
+ *  parsed row array, or [] if both paths fail. */
+async function queryAnnotationsForRootId(
+    caveServer: string, datastack: string,
+    table: string, rootId: string): Promise<any[]> {
+  const nowIso = new Date().toISOString();
+  // Live query — returns rows including post-materialization writes.
+  try {
+    const res = await fetch(
+      `${caveServer}/materialize/api/v3/datastack/${datastack}/query?return_pyarrow=false`,
+      {
+        method: 'POST',
+        headers: authHeaders(caveServer),
+        body: buildLiveQueryBody(table, nowIso, rootId),
+      });
+    if (res.ok) {
+      const rows = await res.json();
+      console.info(`[lightbulb] live query ${table} → ${rows.length} rows`);
+      return rows;
+    }
+    console.warn(`[lightbulb] live query ${table} ${res.status} — falling back to materialized`);
+  } catch (e) {
+    console.warn(`[lightbulb] live query ${table} error — falling back to materialized:`, e);
+  }
+  // Fallback: materialized snapshot at the latest version.
+  const version = await getLatestMaterializedVersion(caveServer, datastack);
+  if (version === null) return [];
+  try {
+    const res = await fetch(
+      `${caveServer}/materialize/api/v3/datastack/${datastack}/version/${version}/table/${table}/query?return_pyarrow=false`,
+      {
+        method: 'POST',
+        headers: authHeaders(caveServer),
+        body: buildFrozenQueryBody(table, rootId),
+      });
+    if (res.ok) {
+      const rows = await res.json();
+      console.info(`[lightbulb] materialized v${version} ${table} → ${rows.length} rows`);
+      return rows;
+    }
+    console.warn(`[lightbulb] materialized v${version} ${table} ${res.status}`);
+  } catch (e) {
+    console.warn(`[lightbulb] materialized ${table} error:`, e);
+  }
+  return [];
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface CellStatus {
@@ -230,76 +313,34 @@ export async function getCellStatus(
   const {cellStatusTable, cellTypeTable, datastack, cellTypeSchema} = dsCfg;
   if (!caveServer) return null;
 
-  // Use the LIVE query endpoint (not /version/<N>/) so writes from any user
-  // — anywhere in the world — are visible immediately, without waiting for
-  // the materialization cron (every other day on stroeh). Live query joins
-  // each row's pt_position against current segmentation at the given
-  // timestamp to compute pt_root_id on the fly.
-  const liveQueryUrl = `${caveServer}/materialize/api/v3/datastack/${datastack}/query?return_pyarrow=false`;
-  const nowIso = new Date().toISOString();
-  console.info(`[lightbulb] Using dataset config: datastack=${datastack}, status=${cellStatusTable}, type=${cellTypeTable} (${cellTypeSchema}), live query @ ${nowIso}`);
+  console.info(`[lightbulb] getCellStatus: datastack=${datastack}, rootId=${rootId}`);
 
   const status: CellStatus = {isComplete: false};
   let caveAvailable = false;
 
-  // Try live query for cell completion
-  try {
-    console.info(`[lightbulb] POST live query (cell_status) → ${liveQueryUrl}`);
-    const res = await fetch(liveQueryUrl, {
-      method: 'POST',
-      headers: authHeaders(caveServer),
-      body: JSON.stringify({
-        table: cellStatusTable,
-        timestamp: nowIso,
-        filter_in_dict: { [cellStatusTable]: { pt_root_id: [rootId] } },
-      }),
-    });
-    if (res.ok) {
-      const rows: any[] = await res.json();
-      const hit = rows.find((a: any) => a.tag === 'complete');
-      if (hit) {
-        status.isComplete = true;
-        status.annotationId = hit.id;
-      }
-      caveAvailable = true;
-    } else {
-      console.warn(`[lightbulb] live query (completion) ${res.status}`);
-    }
-  } catch (e) {
-    console.warn('[lightbulb] live query (completion) error:', e);
+  // Cell completion — live query first, materialized fallback.
+  const completionRows = await queryAnnotationsForRootId(
+    caveServer, datastack, cellStatusTable, rootId);
+  if (completionRows.length > 0) caveAvailable = true;
+  const completionHit = completionRows.find((a: any) => a.tag === 'complete');
+  if (completionHit) {
+    status.isComplete = true;
+    status.annotationId = completionHit.id;
   }
 
-  // Live query for cell type
-  try {
-    console.info(`[lightbulb] POST live query (cell_type) → ${liveQueryUrl}`);
-    const res = await fetch(liveQueryUrl, {
-      method: 'POST',
-      headers: authHeaders(caveServer),
-      body: JSON.stringify({
-        table: cellTypeTable,
-        timestamp: nowIso,
-        filter_in_dict: { [cellTypeTable]: { pt_root_id: [rootId] } },
-      }),
-    });
-    if (res.ok) {
-      const rows: any[] = await res.json();
-      if (rows.length) {
-        const latest = rows[rows.length - 1];
-        // cell_type_local schema has 'cell_type' + 'classification_system'; bound_tag has 'tag'
-        status.cellType = cellTypeSchema === 'cell_type_local'
-          ? (latest.cell_type || latest.tag)
-          : latest.tag;
-        if (cellTypeSchema === 'cell_type_local' && latest.classification_system) {
-          status.classificationSystem = latest.classification_system;
-        }
-        status.cellTypeAnnotationId = latest.id;
-      }
-      caveAvailable = true;
-    } else {
-      console.warn(`[lightbulb] live query (cellType) ${res.status}`);
+  // Cell type — same hybrid path.
+  const cellTypeRows = await queryAnnotationsForRootId(
+    caveServer, datastack, cellTypeTable, rootId);
+  if (cellTypeRows.length > 0) caveAvailable = true;
+  if (cellTypeRows.length > 0) {
+    const latest = cellTypeRows[cellTypeRows.length - 1];
+    status.cellType = cellTypeSchema === 'cell_type_local'
+      ? (latest.cell_type || latest.tag)
+      : latest.tag;
+    if (cellTypeSchema === 'cell_type_local' && latest.classification_system) {
+      status.classificationSystem = latest.classification_system;
     }
-  } catch (e) {
-    console.warn('[lightbulb] live query (cellType) error:', e);
+    status.cellTypeAnnotationId = latest.id;
   }
 
   // Always merge localStorage on top of CAVE results: writes are mirrored to
