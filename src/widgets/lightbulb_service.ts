@@ -174,6 +174,40 @@ async function queryAnnotationsForRootId(
   return [];
 }
 
+// ─── User attribution (interim — CAVE schemas don't have user_id) ──────────
+// CAVE's bound_tag and cell_type_local schemas don't include a per-row user_id
+// column, so we encode the writer's identifier into the existing string fields
+// until the schema is extended:
+//   - cell_type_local: stash user in `classification_system` (currently always
+//     '' for ng-extend writes; the original 480 stroeh rows use AC/RGC there
+//     so we leave those untouched).
+//   - bound_tag tag='complete' (cell_status): write `complete|<user>`. Read
+//     filter accepts either bare 'complete' or the prefixed form.
+//   - bound_tag tag=<cell type> (cell_type_dev): write `<cell_type>|<user>`.
+//     Read parses the suffix.
+// USER_DELIMITER is unique enough not to collide with cell-type free text.
+const USER_DELIMITER = '|by:';
+
+function getUserIdentifier(): string {
+  try {
+    // Avoid a circular import at module load — resolve lazily.
+    const backend = useProofreadingBackendStore();
+    return backend.userName || backend.userEmail?.split('@')[0] || 'anon';
+  } catch { return 'anon'; }
+}
+
+function encodeTag(base: string): string {
+  const u = getUserIdentifier();
+  return u && u !== 'anon' ? `${base}${USER_DELIMITER}${u}` : base;
+}
+
+function decodeTag(stored: string | undefined): {value: string; user?: string} {
+  if (!stored) return {value: ''};
+  const i = stored.indexOf(USER_DELIMITER);
+  if (i < 0) return {value: stored};
+  return {value: stored.slice(0, i), user: stored.slice(i + USER_DELIMITER.length)};
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface CellStatus {
@@ -184,6 +218,10 @@ export interface CellStatus {
   /** Classification system (e.g. 'RGC', 'AC') from cell_type_local schema. */
   classificationSystem?: string;
   cellTypeAnnotationId?: number;
+  /** User who labeled the cell type (parsed from interim user attribution). */
+  labeledBy?: string;
+  /** User who marked the cell complete. */
+  completedBy?: string;
 }
 
 // ─── localStorage fallback for dev/testing ──────────────────────────────────
@@ -322,10 +360,14 @@ export async function getCellStatus(
   const completionRows = await queryAnnotationsForRootId(
     caveServer, datastack, cellStatusTable, rootId);
   if (completionRows.length > 0) caveAvailable = true;
-  const completionHit = completionRows.find((a: any) => a.tag === 'complete');
+  // Match both legacy bare 'complete' and new 'complete|by:<user>' encoding.
+  const completionHit = completionRows.find((a: any) =>
+    typeof a.tag === 'string' && (a.tag === 'complete' || a.tag.startsWith('complete' + USER_DELIMITER)));
   if (completionHit) {
     status.isComplete = true;
     status.annotationId = completionHit.id;
+    const decoded = decodeTag(completionHit.tag);
+    if (decoded.user) status.completedBy = decoded.user;
   }
 
   // Cell type — same hybrid path.
@@ -334,11 +376,25 @@ export async function getCellStatus(
   if (cellTypeRows.length > 0) caveAvailable = true;
   if (cellTypeRows.length > 0) {
     const latest = cellTypeRows[cellTypeRows.length - 1];
-    status.cellType = cellTypeSchema === 'cell_type_local'
-      ? (latest.cell_type || latest.tag)
-      : latest.tag;
-    if (cellTypeSchema === 'cell_type_local' && latest.classification_system) {
-      status.classificationSystem = latest.classification_system;
+    if (cellTypeSchema === 'cell_type_local') {
+      status.cellType = latest.cell_type || latest.tag;
+      // classification_system doubles as our interim user_id slot for ng-extend
+      // writes. The original 480 stroeh rows use real classifications (AC/RGC),
+      // so we pass that through unchanged when it doesn't look like a user id.
+      const cs: string = latest.classification_system || '';
+      if (cs) {
+        // Heuristic: real classifications are short/uppercase (AC, RGC, ON Bipolar
+        // Cell). User identifiers are typically lowercase or contain a dot/space.
+        // We treat everything as classificationSystem and ALSO surface it as
+        // labeledBy if it looks user-like; UIs can pick which to show.
+        status.classificationSystem = cs;
+        if (/[a-z]|@|\./.test(cs)) status.labeledBy = cs;
+      }
+    } else {
+      // bound_tag — parse `<cellType>|by:<user>` if present.
+      const decoded = decodeTag(latest.tag);
+      status.cellType = decoded.value;
+      if (decoded.user) status.labeledBy = decoded.user;
     }
     status.cellTypeAnnotationId = latest.id;
   }
@@ -417,7 +473,7 @@ export async function setCellComplete(
       const body = {
         annotations: [{
           pt: {position: pos},
-          tag: 'complete',
+          tag: encodeTag('complete'),
         }],
       };
       console.info(`[lightbulb] POST completion → ${baseUrl}`, body);
@@ -562,18 +618,23 @@ export async function saveCellType(
       }).catch(() => {});
     }
 
-    // Create new annotation — schema-aware payload
-    // cell_type_local: {pt, cell_type, classification_system}
-    // bound_tag:       {pt, tag}
+    // Create new annotation — schema-aware payload.
+    // Interim user attribution (no user_id column in stock schemas):
+    //   - cell_type_local: classification_system carries the user identifier
+    //     (currently '' for all ng-extend writes, so no collision with the
+    //     real classifications on the original 480 stroeh rows).
+    //   - bound_tag: tag carries `<cell_type>|by:<user>`; getCellStatus
+    //     parses the suffix on read.
+    const userId = getUserIdentifier();
     const annotation = cellTypeSchema === 'cell_type_local'
       ? {
           pt: {position: pos},
           cell_type: cellType,
-          classification_system: '',  // optional classification group
+          classification_system: userId !== 'anon' ? userId : '',
         }
       : {
           pt: {position: pos},
-          tag: cellType,
+          tag: encodeTag(cellType),
         };
     const body = {
       annotations: [annotation],
