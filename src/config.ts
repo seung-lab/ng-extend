@@ -82,7 +82,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
     defaultSegments:  ['648518346355727683'],
-    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5679507239337984',
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
   },
   pinky_training3: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -101,7 +101,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
     defaultSegments:  ['648518346355727683'],
-    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5679507239337984',
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
   },
 
   // ── Minnie (MICrONS) ────────────────────────────────────────────────────
