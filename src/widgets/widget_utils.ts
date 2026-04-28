@@ -9,3 +9,56 @@ export const getLayerScales = (coordinateSpace: any) => {
     }
     return scales
 }
+
+/**
+ * Select the segmentation layer, open the side panel, and switch to the
+ * Seg. tab. Used both after login (initial landing view) and after a
+ * dataset switch (so the user always sees the segment list immediately).
+ *
+ * Idempotent — safe to call repeatedly. Retries up to ~6 seconds in case
+ * the layer hasn't finished initializing yet.
+ */
+export function openSegPanel(retryAttempts = 3): void {
+  try {
+    const viewer: any = (window as any)['viewer'];
+    if (!viewer) return;
+    const segLayer = viewer.layerManager.managedLayers.find(
+      (l: any) => l.layer?.constructor?.name?.includes('Segmentation'),
+    );
+    if (!segLayer) {
+      if (retryAttempts > 0) {
+        setTimeout(() => openSegPanel(retryAttempts - 1), 2000);
+      } else {
+        console.log('[openSegPanel] No segmentation layer found after retries');
+      }
+      return;
+    }
+    viewer.selectedLayer.layer = segLayer;
+    viewer.selectedLayer.visible = true;
+    setTimeout(() => {
+      const tabLabels = document.querySelectorAll(
+        '.neuroglancer-layer-side-panel-tab, ' +
+        '.neuroglancer-tab-label, ' +
+        '[data-tab], ' +
+        '.neuroglancer-layer-group-viewer-tab'
+      );
+      for (const tab of tabLabels) {
+        const text = tab.textContent?.trim();
+        if (text === 'Seg.' || text === 'Seg' || text === 'Segments') {
+          (tab as HTMLElement).click();
+          return;
+        }
+      }
+      // Fallback: any leaf element with text "Seg."
+      const allEls = document.querySelectorAll('.neuroglancer-layer-side-panel *');
+      for (const el of allEls) {
+        if (el.children.length === 0 && el.textContent?.trim() === 'Seg.') {
+          (el as HTMLElement).click();
+          return;
+        }
+      }
+    }, 800);
+  } catch (e) {
+    console.warn('[openSegPanel] error:', e);
+  }
+}

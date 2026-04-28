@@ -7,6 +7,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useLayersStore } from '../store';
 import { CAVE_CONFIGS_BY_DATASET, getDatasetCaveConfig } from '../config';
+import { openSegPanel } from '../widgets/widget_utils';
 
 const emit = defineEmits({ hide: null });
 const layerStore = useLayersStore();
@@ -129,6 +130,9 @@ async function switchTo(ds: DatasetEntry) {
     currentDatasetId.value = ds.id;
     const cfg = getDatasetCaveConfig(ds.id);
     console.info(`[dataset-selector] Switched to ${ds.id} — CAVE: ${cfg.datastack}, tables: ${cfg.cellStatusTable}/${cfg.cellTypeTable}`);
+    // Open the Seg. panel so the user lands directly on the segment list,
+    // matching the original EyeWire II UX (broke at some point during dev).
+    openSegPanel();
   } catch (e) {
     console.error('[dataset-selector] Switch failed:', e);
   } finally {

@@ -11,6 +11,7 @@
  * Handles multiple concurrent login prompts (e.g. two auth servers).
  */
 import { ref, onMounted, onUnmounted } from 'vue';
+import { openSegPanel } from '../widgets/widget_utils';
 
 interface LoginPrompt {
   serverUrl: string;
@@ -188,69 +189,9 @@ function handleLoginSuccess() {
 
     // After login, auto-select the segmentation layer and open the Seg tab
     // so the user lands in the expected view.
-    setTimeout(() => selectSegLayerAndOpenPanel(), 1500);
+    setTimeout(() => openSegPanel(), 1500);
   }
   // Otherwise modal stays open — user clicks the next server's Login button
-}
-
-/**
- * After successful authentication, select the segmentation layer
- * (e.g. minnie65_public), open the side panel, and switch to the Seg. tab.
- * This gives the user the expected landing view from the screenshot.
- */
-function selectSegLayerAndOpenPanel() {
-  try {
-    const viewer: any = (window as any)['viewer'];
-    if (!viewer) return;
-
-    // Find the segmentation layer
-    const segLayer = viewer.layerManager.managedLayers.find(
-      (l: any) => l.layer?.constructor?.name?.includes('Segmentation'),
-    );
-    if (!segLayer) {
-      console.log('[LoginModal] No segmentation layer found, retrying in 2s');
-      setTimeout(() => selectSegLayerAndOpenPanel(), 2000);
-      return;
-    }
-
-    console.log('[LoginModal] Auto-selecting layer:', segLayer.name);
-
-    // Select the layer (this highlights it in the layer bar)
-    viewer.selectedLayer.layer = segLayer;
-    // Open the side panel
-    viewer.selectedLayer.visible = true;
-
-    // After the side panel renders, click the "Seg." tab
-    setTimeout(() => {
-      // Try neuroglancer's tab elements — they're typically simple text labels
-      const tabLabels = document.querySelectorAll(
-        '.neuroglancer-layer-side-panel-tab, ' +
-        '.neuroglancer-tab-label, ' +
-        '[data-tab], ' +
-        '.neuroglancer-layer-group-viewer-tab'
-      );
-      for (const tab of tabLabels) {
-        const text = tab.textContent?.trim();
-        if (text === 'Seg.' || text === 'Seg' || text === 'Segments') {
-          console.log('[LoginModal] Clicking Seg. tab');
-          (tab as HTMLElement).click();
-          return;
-        }
-      }
-      // Fallback: try any clickable element containing "Seg"
-      const allEls = document.querySelectorAll('.neuroglancer-layer-side-panel *');
-      for (const el of allEls) {
-        if (el.children.length === 0 && el.textContent?.trim() === 'Seg.') {
-          console.log('[LoginModal] Clicking Seg. tab (fallback)');
-          (el as HTMLElement).click();
-          return;
-        }
-      }
-      console.log('[LoginModal] Could not find Seg. tab');
-    }, 800);
-  } catch (e) {
-    console.warn('[LoginModal] Error selecting seg layer:', e);
-  }
 }
 
 /** Watch for #statusContainer to appear (it's created lazily by neuroglancer). */
