@@ -7,7 +7,7 @@ import {MiddleAuthCredentialsProvider} from 'neuroglancer/datasource/middleauth/
 import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {responseJson} from 'neuroglancer/util/http_request';
 
-import {Config, EYEWIRE_II_CAVE_CONFIG} from './config';
+import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
 import {supabase} from './supabase';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
@@ -301,8 +301,62 @@ export const useLayersStore = defineStore('layers', () => {
     refreshLayers();
   }
 
+  function parseHexColor(hex: string): {r: number, g: number, b: number} | null {
+    const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+    if (!m) return null;
+    const v = parseInt(m[1], 16);
+    return { r: (v >> 16) & 0xff, g: (v >> 8) & 0xff, b: v & 0xff };
+  }
+
+  // Skip the curated state-URL load for pinky_sandbox while a tutorial is active —
+  // Tutorial 1 uses pinky_sandbox and drives its own state via per-step `state:` fields.
+  // Lengths below are tracked manually; bump if a tutorial grows past these.
+  function isUserInActiveTutorial(): boolean {
+    try {
+      const active = parseInt(localStorage.getItem('nge-active-tutorial') ?? '1');
+      const stepKey = active === 2 ? 'nge-tutorial-2-step'
+                    : active === 3 ? 'nge-tutorial-3-step'
+                    : 'nge-tutorial-step';
+      // store-pyr defaults: T1 step starts at 0 (in-progress), T2/T3 at -1 (not started).
+      const defaultStep = active === 1 ? '0' : '-1';
+      const step = parseInt(localStorage.getItem(stepKey) ?? defaultStep);
+      // Tutorial step counts as of 2026-04: T1=18, T2=24, T3=TBD.
+      const tutorialLengths: Record<number, number> = { 1: 18, 2: 24, 3: 30 };
+      const length = tutorialLengths[active] ?? 30;
+      return step >= 0 && step < length;
+    } catch { return false; }
+  }
+
   async function selectLayers(layers: any[]) {
     if (!viewer) return;
+
+    // Detect the target dataset (by segmentation layer name) BEFORE restoring,
+    // so we can short-circuit to a curated state URL if one is configured.
+    const targetSegName = (() => {
+      for (const l of layers as any[]) {
+        if (l && l.type === 'segmentation' && typeof l.name === 'string') return l.name;
+      }
+      return '';
+    })();
+    const dsCfgEarly = targetSegName ? getDatasetCaveConfig(targetSegName) : undefined;
+    if (dsCfgEarly?.defaultStateUrl && !isUserInActiveTutorial()) {
+      // Apply via hash-only navigation when same-origin (so dev server doesn't bounce
+      // to production). Neuroglancer's hashchange handler picks up the new state URL
+      // and fetches+applies it. If the configured URL is on a different origin, the
+      // hash-only swap still works because the hash itself contains the full state URL.
+      const hashIdx = dsCfgEarly.defaultStateUrl.indexOf('#');
+      const hashPart = hashIdx >= 0 ? dsCfgEarly.defaultStateUrl.slice(hashIdx) : '';
+      console.info(`[layers] Loading curated view for ${targetSegName} → ${dsCfgEarly.defaultStateUrl}`);
+      if (hashPart) {
+        window.location.hash = hashPart;
+        // Force a reload so all layers/state are re-initialized cleanly from the saved URL.
+        window.location.reload();
+      } else {
+        window.location.assign(dsCfgEarly.defaultStateUrl);
+      }
+      return;
+    }
+
     viewer.layerSpecification.restoreState(layers);
     viewer.navigationState.reset();
 
@@ -312,19 +366,64 @@ export const useLayersStore = defineStore('layers', () => {
     if (segmentationLayer) {
       const segmentationLayerName = segmentationLayer.name;
       const SETTINGS = DEFAULT_SETTINGS[segmentationLayerName]
+      const dsCfg = getDatasetCaveConfig(segmentationLayerName);
       viewer!.coordinateSpace.restoreState({
         x: [SETTINGS.dimensions[0], "m"],
         y: [SETTINGS.dimensions[1], "m"],
         z: [SETTINGS.dimensions[2], "m"],
       });
 
-      const position = parsePositionString(SETTINGS.position, 3);
+      // Prefer dataset-config defaultPosition when set; fall back to DEFAULT_SETTINGS.position.
+      // SETTINGS.position is an array of numbers in the JSON config; parsePositionString
+      // is only used as a last-resort string parser for unexpected shapes.
+      let position: Float32Array | undefined;
+      if (dsCfg.defaultPosition) {
+        position = Float32Array.from(dsCfg.defaultPosition);
+      } else if (Array.isArray(SETTINGS.position)) {
+        position = Float32Array.from(SETTINGS.position);
+      } else if (typeof SETTINGS.position === 'string') {
+        position = parsePositionString(SETTINGS.position, 3);
+      }
       if (position !== undefined) {
         viewer!.navigationState.position.value = position;
       }
       viewer!.crossSectionScale.value = SETTINGS.crossSectionScale;
       viewer!.projectionScale.value = SETTINGS.projectionScale;
       viewer!.projectionOrientation.restoreState(SETTINGS.projectionOrientation);
+
+      // Add default segments + apply per-segment colors so the user lands on a visible cell.
+      // Re-applied in a setTimeout below because layer mount fires async callbacks that
+      // can clear the visible set + recenter the camera right after we set them.
+      const applyDefaults = () => {
+        if (position !== undefined) {
+          viewer!.navigationState.position.value = position;
+        }
+        if (!dsCfg.defaultSegments?.length) return;
+        try {
+          const segLayer = segmentationLayer.layer as SegmentationUserLayer;
+          const groupState = segLayer.displayState.segmentationGroupState.value;
+          const colorGroupState = segLayer.displayState.segmentationColorGroupState.value;
+          for (const idStr of dsCfg.defaultSegments) {
+            const segId = Uint64.parseString(idStr);
+            if (!groupState.visibleSegments.has(segId)) {
+              groupState.visibleSegments.add(segId);
+            }
+            const colorHex = dsCfg.segmentColors?.[idStr];
+            const rgb = colorHex ? parseHexColor(colorHex) : null;
+            if (rgb) {
+              // neuroglancer packs as 0xBBGGRR.
+              const packed = rgb.r | (rgb.g << 8) | (rgb.b << 16);
+              colorGroupState.segmentStatedColors.set(segId, new Uint64(packed, 0));
+            }
+          }
+          console.info(`[layers] Applied ${dsCfg.defaultSegments.length} default segment(s) for ${segmentationLayerName}`);
+        } catch (e) {
+          console.warn('[layers] Failed to apply default segments:', e);
+        }
+      };
+      applyDefaults();
+      // Re-apply once the layer's async mount has settled.
+      setTimeout(applyDefaults, 200);
     }
   }
 

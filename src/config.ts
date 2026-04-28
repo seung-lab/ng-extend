@@ -19,6 +19,19 @@ export interface DatasetCaveConfig {
   cellTypeTable: string;
   /** Schema used for cellTypeTable ('cell_type_local' or 'bound_tag'). */
   cellTypeSchema: 'cell_type_local' | 'bound_tag';
+
+  // Default-view fields (all optional — when present, applied on dataset switch
+  // so a fresh user lands on a visible cell instead of an empty 3D pane).
+  /** Root IDs to add to the visible-segments set. */
+  defaultSegments?: string[];
+  /** Per-segment colors keyed by root_id, hex form e.g. '#00aaff'. */
+  segmentColors?: Record<string, string>;
+  /** Voxel coords; overrides DEFAULT_SETTINGS.position when set. */
+  defaultPosition?: [number, number, number];
+  /** Saved-state URL. When set AND user is not mid-tutorial, dataset switch
+   *  redirects here so neuroglancer applies the curated view (camera, layers,
+   *  segments, etc.) baked into the URL hash. Used for pinky_sandbox. */
+  defaultStateUrl?: string;
 }
 
 export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
@@ -30,6 +43,11 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellStatusTable:  'eyewire_ii_cell_status',
     cellTypeTable:    'eyewire_ii_cell_type',
     cellTypeSchema:   'cell_type_local',
+    defaultSegments:  ['720575940569107563', '720575940565386350'],
+    segmentColors:    {
+      '720575940569107563': '#00aaff',
+      '720575940565386350': '#ffd700',
+    },
   },
   // Alias — neuroglancer layer name used in the viewer
   eyewire_ii: {
@@ -39,9 +57,17 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellStatusTable:  'eyewire_ii_cell_status',
     cellTypeTable:    'eyewire_ii_cell_type',
     cellTypeSchema:   'cell_type_local',
+    defaultSegments:  ['720575940569107563', '720575940565386350'],
+    segmentColors:    {
+      '720575940569107563': '#00aaff',
+      '720575940565386350': '#ffd700',
+    },
   },
 
   // ── Pinky sandbox (dev / testing) ────────────────────────────────────────
+  // The state URL is the user-curated sandbox view (saved on global.brain-wire-test.org).
+  // It's only applied when the user manually switches to pinky_sandbox AND is not
+  // in the active tutorial — Tutorial 1 uses pinky_sandbox and drives its own state.
   pinky_sandbox: {
     caveServer:       'https://minnie.microns-daf.com',
     datastack:        'pinky_sandbox',
@@ -49,6 +75,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellStatusTable:  'cell_status_dev',
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
+    defaultSegments:  ['648518346355727683'],
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5679507239337984',
   },
   pinky_training3: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -57,6 +85,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellStatusTable:  'cell_status_dev',
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
+    defaultSegments:  ['648518346355727683'],
   },
   pinky_nf_v2: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -65,6 +94,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellStatusTable:  'cell_status_dev',
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
+    defaultSegments:  ['648518346355727683'],
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5679507239337984',
   },
 
   // ── Minnie (MICrONS) ────────────────────────────────────────────────────
