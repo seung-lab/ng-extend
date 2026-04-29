@@ -127,6 +127,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellStatusTable:  'cell_status_dev',
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5757172763852800',
   },
   minnie65_public_v117: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -135,6 +136,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellStatusTable:  'cell_status_dev',
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5757172763852800',
   },
 
   // ── FlyWire (Drosophila FAFB) ───────────────────────────────────────────
