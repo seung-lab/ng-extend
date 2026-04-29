@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EyeWire II · CAVE tables</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --bg-2: #0f1424;
+    --panel: #131a2e;
+    --border: #1f2a44;
+    --text: #e6edf7;
+    --muted: #8a9bbf;
+    --accent: #00aaff;
+    --accent-2: #4fd0ff;
+    --green: #5ee0a3;
+    --pink: #ff4d8a;
+    --gold: #ffd700;
+    --row-hover: #182240;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: radial-gradient(ellipse at top, #131a2e 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    padding: 28px 36px 20px;
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(0,170,255,0.04), transparent);
+  }
+  h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  h1 .accent { color: var(--accent); }
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  main { padding: 24px 36px 60px; max-width: 1400px; margin: 0 auto; }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    padding: 10px 18px;
+    cursor: pointer;
+    color: var(--muted);
+    border: 0;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: all 120ms;
+    font-family: inherit;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab .count {
+    margin-left: 8px;
+    color: var(--muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  input.search {
+    flex: 1;
+    min-width: 200px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  input.search:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  button.btn {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color 120ms, background 120ms;
+  }
+  button.btn:hover {
+    border-color: var(--accent);
+    background: var(--row-hover);
+  }
+  button.btn.primary {
+    background: linear-gradient(135deg, #0066aa, #00aaff);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button.btn.primary:hover { filter: brightness(1.1); }
+  .status {
+    color: var(--muted);
+    font-size: 12px;
+    margin-left: auto;
+  }
+  .status.error { color: var(--pink); }
+  .status.success { color: var(--green); }
+
+  .table-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    background: var(--bg-2);
+    color: var(--muted);
+    text-align: left;
+    padding: 12px 14px;
+    font-weight: 500;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  thead th:hover { color: var(--text); }
+  thead th .sort {
+    opacity: 0.4;
+    margin-left: 4px;
+    font-size: 10px;
+  }
+  thead th.sorted .sort { opacity: 1; color: var(--accent); }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 120ms;
+  }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody tr:last-child { border-bottom: 0; }
+  tbody td {
+    padding: 11px 14px;
+    vertical-align: top;
+  }
+  td.id { color: var(--muted); font-variant-numeric: tabular-nums; }
+  td.tag { color: var(--text); font-weight: 500; }
+  td.tag.complete { color: var(--green); }
+  td.user { font-variant-numeric: tabular-nums; }
+  td.user .pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: rgba(0,170,255,0.14);
+    color: var(--accent-2);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  td.pos {
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  td.root {
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: color 120ms;
+  }
+  td.root:hover { color: var(--accent-2); }
+  td.root .copied { color: var(--green); margin-left: 6px; font-family: inherit; font-size: 11px; }
+  td.created {
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  td.created small { display: block; opacity: 0.6; font-size: 10px; }
+
+  .empty, .loading {
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty-emoji { font-size: 28px; margin-bottom: 10px; opacity: 0.4; }
+
+  /* Login prompt */
+  .login-prompt {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px;
+    margin: 60px auto;
+    max-width: 540px;
+    text-align: center;
+  }
+  .login-prompt h2 { margin: 0 0 10px; font-size: 18px; }
+  .login-prompt p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 18px; }
+
+  /* Footer */
+  footer {
+    color: var(--muted);
+    font-size: 11px;
+    text-align: center;
+    padding: 18px;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+  footer a { color: var(--accent-2); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="accent">EyeWire II</span> · CAVE tables</h1>
+  <div class="subtitle">stroeh_mouse_retina · v2 schema (<code>bound_tag_user</code>)</div>
+</header>
+
+<main>
+  <div class="tabs" id="tabs"></div>
+
+  <div class="toolbar">
+    <input class="search" id="search" placeholder="Filter by tag, user_id, or root_id…">
+    <button class="btn" id="refresh">↻ Refresh</button>
+    <button class="btn" id="copy-json">Copy JSON</button>
+    <span class="status" id="status">Loading…</span>
+  </div>
+
+  <div id="content"></div>
+</main>
+
+<footer>
+  AnnotationEngine API · <a href="https://minnie.microns-daf.com/annotation/api/v2/aligned_volume/stroeh_mouse_retina" target="_blank">minnie.microns-daf.com</a>
+  · Live data, refresh to see latest writes
+</footer>
+
+<script>
+const TABLES = [
+  { name: 'eyewire_ii_cell_type_v2',   label: 'Cell Type' },
+  { name: 'eyewire_ii_cell_status_v2', label: 'Cell Status' },
+];
+const ALIGNED_VOLUME = 'stroeh_mouse_retina';
+const CAVE = 'https://minnie.microns-daf.com';
+const TOKEN_KEY = 'auth_token_v2_https://global.daf-apis.com/sticky_auth';
+
+let activeTable = TABLES[0].name;
+let allRows = {};   // table → array of rows
+let counts = {};    // table → number
+let sortKey = 'id';
+let sortDir = 'desc';
+let searchText = '';
+
+function getToken() {
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw).accessToken || null;
+  } catch { return null; }
+}
+
+function setStatus(text, kind = '') {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+function renderLoginPrompt() {
+  document.getElementById('content').innerHTML = `
+    <div class="login-prompt">
+      <h2>Sign in required</h2>
+      <p>You need a CAVE auth token to view the tables. Open the EyeWire II viewer, complete the login flow, then come back to this page.</p>
+      <button class="btn primary" id="open-app">Open EyeWire II</button>
+    </div>`;
+  document.getElementById('open-app').onclick = () => {
+    window.location.href = '/';
+  };
+}
+
+async function fetchCount(table) {
+  const t = getToken();
+  const r = await fetch(
+    `${CAVE}/annotation/api/v2/aligned_volume/${ALIGNED_VOLUME}/table/${table}/count`,
+    { headers: { Authorization: 'Bearer ' + t } });
+  if (!r.ok) throw new Error(`count ${table}: ${r.status}`);
+  return parseInt(await r.text(), 10);
+}
+
+async function fetchRows(table, count) {
+  if (count === 0) return [];
+  const t = getToken();
+  const ids = Array.from({ length: count }, (_, i) => i + 1).join(',');
+  const r = await fetch(
+    `${CAVE}/annotation/api/v2/aligned_volume/${ALIGNED_VOLUME}/table/${table}/annotations?annotation_ids=${ids}`,
+    { headers: { Authorization: 'Bearer ' + t } });
+  if (!r.ok) throw new Error(`rows ${table}: ${r.status}`);
+  return JSON.parse(await r.text());
+}
+
+async function loadAll() {
+  const t = getToken();
+  if (!t) { renderLoginPrompt(); return; }
+  setStatus('Loading…');
+  try {
+    await Promise.all(TABLES.map(async ({ name }) => {
+      const c = await fetchCount(name);
+      counts[name] = c;
+      const rows = await fetchRows(name, c);
+      allRows[name] = rows;
+    }));
+    setStatus(`${counts[activeTable]} rows · loaded ${new Date().toLocaleTimeString()}`, 'success');
+    renderTabs();
+    renderTable();
+  } catch (e) {
+    setStatus(e.message, 'error');
+    console.error(e);
+  }
+}
+
+function renderTabs() {
+  const tabs = document.getElementById('tabs');
+  tabs.innerHTML = TABLES.map(({ name, label }) =>
+    `<button class="tab ${name === activeTable ? 'active' : ''}" data-name="${name}">
+       ${label}<span class="count">${counts[name] ?? '–'}</span>
+     </button>`).join('');
+  tabs.querySelectorAll('.tab').forEach(btn => {
+    btn.onclick = () => {
+      activeTable = btn.dataset.name;
+      renderTabs();
+      renderTable();
+      setStatus(`${counts[activeTable]} rows`, 'success');
+    };
+  });
+}
+
+function fmtCreated(ms) {
+  if (!ms) return '';
+  const d = new Date(typeof ms === 'number' ? ms : parseInt(ms, 10));
+  if (isNaN(d)) return String(ms);
+  const date = d.toISOString().slice(0, 10);
+  const time = d.toTimeString().slice(0, 5);
+  return { date, time };
+}
+
+function compare(a, b, key) {
+  const av = a[key], bv = b[key];
+  if (av == null && bv == null) return 0;
+  if (av == null) return 1;
+  if (bv == null) return -1;
+  if (typeof av === 'number' && typeof bv === 'number') return av - bv;
+  return String(av).localeCompare(String(bv), undefined, { numeric: true });
+}
+
+function rowMatches(row, q) {
+  if (!q) return true;
+  const lower = q.toLowerCase();
+  return [row.tag, row.user_id, row.pt_root_id, row.id]
+    .filter(v => v != null)
+    .some(v => String(v).toLowerCase().includes(lower));
+}
+
+function renderTable() {
+  const rows = (allRows[activeTable] || []).slice();
+  rows.sort((a, b) => compare(a, b, sortKey));
+  if (sortDir === 'desc') rows.reverse();
+  const filtered = rows.filter(r => rowMatches(r, searchText));
+
+  const content = document.getElementById('content');
+  if (rows.length === 0) {
+    content.innerHTML = `
+      <div class="table-wrap"><div class="empty">
+        <div class="empty-emoji">∅</div>
+        <div>No annotations yet.</div>
+      </div></div>`;
+    return;
+  }
+  if (filtered.length === 0) {
+    content.innerHTML = `
+      <div class="table-wrap"><div class="empty">
+        <div class="empty-emoji">⚲</div>
+        <div>No rows match "${escape(searchText)}"</div>
+      </div></div>`;
+    return;
+  }
+
+  const headers = [
+    { key: 'id', label: 'ID' },
+    { key: 'tag', label: 'Tag' },
+    { key: 'user_id', label: 'User' },
+    { key: 'pt_position_x', label: 'Position' },
+    { key: 'pt_root_id', label: 'Root ID' },
+    { key: 'created', label: 'Created' },
+  ];
+
+  let html = `<div class="table-wrap"><table><thead><tr>`;
+  for (const h of headers) {
+    const sorted = h.key === sortKey || (h.key === 'pt_position_x' && sortKey === 'pt_position_x');
+    const arrow = sorted ? (sortDir === 'asc' ? '▲' : '▼') : '↕';
+    html += `<th class="${sorted ? 'sorted' : ''}" data-sort="${h.key}">
+      ${h.label}<span class="sort">${arrow}</span>
+    </th>`;
+  }
+  html += `</tr></thead><tbody>`;
+
+  for (const r of filtered) {
+    const tagClass = r.tag === 'complete' ? 'tag complete' : 'tag';
+    const tagDisplay = r.tag === 'complete' ? '✓ complete' : escape(r.tag || '');
+    const c = fmtCreated(r.created);
+    const pos = (r.pt_position_x != null)
+      ? `${r.pt_position_x}, ${r.pt_position_y}, ${r.pt_position_z}`
+      : '';
+    html += `<tr>
+      <td class="id">${r.id}</td>
+      <td class="${tagClass}">${tagDisplay}</td>
+      <td class="user">${r.user_id != null ? `<span class="pill">${r.user_id}</span>` : '—'}</td>
+      <td class="pos">${pos}</td>
+      <td class="root" data-root="${r.pt_root_id || ''}" title="Click to copy">${r.pt_root_id || '—'}</td>
+      <td class="created">${c ? `${c.date}<small>${c.time} UTC</small>` : '—'}</td>
+    </tr>`;
+  }
+  html += `</tbody></table></div>`;
+  html += `<div style="color:var(--muted);font-size:11px;padding:10px 4px">Showing ${filtered.length}${filtered.length !== rows.length ? ` of ${rows.length}` : ''} rows</div>`;
+  content.innerHTML = html;
+
+  // Sort handlers
+  content.querySelectorAll('thead th').forEach(th => {
+    th.onclick = () => {
+      const key = th.dataset.sort;
+      if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortKey = key; sortDir = 'desc'; }
+      renderTable();
+    };
+  });
+
+  // Copy-on-click for root IDs
+  content.querySelectorAll('td.root').forEach(td => {
+    td.onclick = async () => {
+      const root = td.dataset.root;
+      if (!root) return;
+      try {
+        await navigator.clipboard.writeText(root);
+        const original = td.innerHTML;
+        td.innerHTML = `${root} <span class="copied">copied!</span>`;
+        setTimeout(() => { td.innerHTML = original; }, 1200);
+      } catch {}
+    };
+  });
+}
+
+function escape(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+// Wire toolbar
+document.getElementById('search').addEventListener('input', e => {
+  searchText = e.target.value;
+  renderTable();
+});
+document.getElementById('refresh').onclick = loadAll;
+document.getElementById('copy-json').onclick = async () => {
+  const json = JSON.stringify(allRows[activeTable] || [], null, 2);
+  try {
+    await navigator.clipboard.writeText(json);
+    setStatus(`Copied ${(allRows[activeTable] || []).length} rows as JSON`, 'success');
+  } catch {
+    setStatus('Copy failed', 'error');
+  }
+};
+
+loadAll();
+</script>
+</body>
+</html>

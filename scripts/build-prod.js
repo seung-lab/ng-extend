@@ -150,3 +150,13 @@ for (const track of ['building', 'exploration']) {
     console.log(`Copied ${track} badge art to ${destDir}`);
   }
 }
+
+// ── Copy standalone HTML pages (CAVE table viewer, etc.) ────────────────────
+const STATIC_DIR = path.join(__dirname, '..', 'static');
+const DIST_MIN = path.join(__dirname, '..', 'dist', 'min');
+for (const file of fs.readdirSync(STATIC_DIR)) {
+  if (file.endsWith('.html')) {
+    fs.copyFileSync(path.join(STATIC_DIR, file), path.join(DIST_MIN, file));
+    console.log(`Copied ${file} to ${DIST_MIN}`);
+  }
+}
