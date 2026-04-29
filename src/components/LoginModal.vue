@@ -12,6 +12,11 @@
  */
 import { ref, onMounted, onUnmounted } from 'vue';
 import { openSegPanel } from '../widgets/widget_utils';
+import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
+
+/** sticky_auth realm for the CAVE backend (minnie + global.daf-apis CAVE
+ *  endpoints). All datasets currently route through this realm. */
+const CAVE_STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
 
 interface LoginPrompt {
   serverUrl: string;
@@ -215,6 +220,33 @@ function attachContainerObserver(container: HTMLElement) {
   containerObserver.observe(container, { childList: true, subtree: true, characterData: true });
 }
 
+/**
+ * Proactively trigger neuroglancer's middleauth flow for the CAVE sticky_auth
+ * realm. If the user has no daf-apis token, this surfaces a "login required"
+ * status message that our scanner picks up — so the user gets prompted for
+ * BOTH brain-wire-test (state server) AND daf-apis (CAVE) in a single modal
+ * session.
+ *
+ * Without this, only whichever auth server neuroglancer happens to query
+ * first gets prompted; the other stays silently absent until much later
+ * (e.g. when the user clicks Mark Complete and gets a 401), at which point
+ * the user is stranded with no obvious recovery path.
+ *
+ * If the token is already in localStorage, provider.get() returns it
+ * immediately and no popup/modal appears. No-op for already-authed users.
+ */
+async function ensureCaveAuthPrompt() {
+  try {
+    const provider = defaultCredentialsManager.getCredentialsProvider(
+        'middleauth', CAVE_STICKY_AUTH_URL);
+    await provider.get();
+  } catch (e) {
+    // User dismissed popup, network error, etc. — non-fatal; the original
+    // 401-on-write flow will catch it later.
+    console.warn('[LoginModal] CAVE auth pre-prompt failed:', e);
+  }
+}
+
 onMounted(() => {
   // Listen for the middleauthlogin event (fired on successful auth)
   window.addEventListener('middleauthlogin', handleLoginSuccess);
@@ -240,6 +272,12 @@ onMounted(() => {
       }
     }, 1000);
   }
+
+  // Proactively prompt for CAVE auth if no daf-apis token exists, so the
+  // user logs into both auth servers up front instead of getting a 401
+  // surprise on their first save. Small delay so neuroglancer has time to
+  // register its credentials providers and surface the status container.
+  setTimeout(ensureCaveAuthPrompt, 1500);
 });
 
 onUnmounted(() => {
