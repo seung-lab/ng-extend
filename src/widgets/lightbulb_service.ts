@@ -59,40 +59,19 @@ function parseAuthRealmHost(res: Response): string | undefined {
 
 /** Notify the app shell on a CAVE 401 so a banner can prompt the user.
  *
- *  Only clears localStorage tokens whose `tokenExpiration` is actually past
- *  (Unix epoch seconds). A 401 from the server with a not-yet-expired token
- *  is most likely a server-side issue (e.g. middleauth hiccup, AnnotationEngine
- *  regression) — we leave the token in place so the user's next request can
- *  retry, instead of forcing a re-login loop that would also fail.
+ *  We deliberately do NOT clear the token here. Neuroglancer's middleauth
+ *  tokens don't carry a `tokenExpiration` field, so we can't tell whether
+ *  the token is actually past its TTL or whether the server is rejecting it
+ *  for another reason (server hiccup, scope mismatch, transient bug). Old
+ *  behavior was to clear on every 401, which forced a re-login loop where
+ *  every retry failed for the same reason and the user got stuck behind
+ *  the "session expired" banner indefinitely.
  *
- *  IMPORTANT: tokens are stored under the auth REALM hostname (parsed from
- *  WWW-Authenticate, e.g. `global.daf-apis.com`), not the CAVE API hostname
- *  (e.g. `minnie.microns-daf.com`). Always pass `realmHost` from a real 401. */
-function handleCaveAuthExpired(caveServer: string, realmHost?: string): void {
-  const targetHost = realmHost ?? new URL(caveServer).hostname;
-  const nowSec = Math.floor(Date.now() / 1000);
-  try {
-    for (const key of Object.keys(window.localStorage)) {
-      if (!key.startsWith('auth_token_v2_')) continue;
-      try {
-        const data = JSON.parse(window.localStorage.getItem(key) || '{}');
-        if (new URL(data.url).hostname !== targetHost) continue;
-        const exp = typeof data.tokenExpiration === 'number'
-            ? data.tokenExpiration : undefined;
-        if (exp !== undefined && exp > nowSec) {
-          // Token is not actually expired — server rejected it for another
-          // reason. Don't clear; let the banner prompt the user.
-          console.warn(
-              '[lightbulb] CAVE 401 for', data.url,
-              `but token still valid until ${new Date(exp*1000).toISOString()};`,
-              'leaving in place.');
-          continue;
-        }
-        window.localStorage.removeItem(key);
-        console.warn('[lightbulb] Cleared expired CAVE token for', data.url);
-      } catch { /* skip malformed entry */ }
-    }
-  } catch { /* localStorage unavailable */ }
+ *  Today: just dispatch the banner. If the token IS truly expired, the
+ *  user clicks "Refresh to log in again" and neuroglancer's middleauth
+ *  flow re-prompts naturally. If it's a server-side issue, the token stays
+ *  put and the next attempt succeeds once the server recovers. */
+function handleCaveAuthExpired(caveServer: string, _realmHost?: string): void {
   document.dispatchEvent(new CustomEvent('nge:cave-auth-expired', {
     detail: { server: caveServer },
   }));
