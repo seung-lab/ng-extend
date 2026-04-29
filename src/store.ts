@@ -339,7 +339,8 @@ export const useLayersStore = defineStore('layers', () => {
       return '';
     })();
     const dsCfgEarly = targetSegName ? getDatasetCaveConfig(targetSegName) : undefined;
-    if (dsCfgEarly?.defaultStateUrl && !isUserInActiveTutorial()) {
+    const skipStateUrl = dsCfgEarly?.skipStateUrlIfTutorialActive && isUserInActiveTutorial();
+    if (dsCfgEarly?.defaultStateUrl && !skipStateUrl) {
       // Apply via hash-only navigation when same-origin (so dev server doesn't bounce
       // to production). Neuroglancer's hashchange handler picks up the new state URL
       // and fetches+applies it. If the configured URL is on a different origin, the

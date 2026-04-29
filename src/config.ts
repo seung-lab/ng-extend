@@ -34,10 +34,14 @@ export interface DatasetCaveConfig {
   segmentColors?: Record<string, string>;
   /** Voxel coords; overrides DEFAULT_SETTINGS.position when set. */
   defaultPosition?: [number, number, number];
-  /** Saved-state URL. When set AND user is not mid-tutorial, dataset switch
-   *  redirects here so neuroglancer applies the curated view (camera, layers,
-   *  segments, etc.) baked into the URL hash. Used for pinky_sandbox. */
+  /** Saved-state URL. When set, dataset switch redirects here so neuroglancer
+   *  applies the curated view (camera, layers, segments, etc.) baked into the
+   *  URL hash. */
   defaultStateUrl?: string;
+  /** When true, skip the defaultStateUrl redirect if a tutorial is active.
+   *  Set on pinky_sandbox so Tutorial 1 (which drives sandbox state per-step)
+   *  isn't disrupted. Stroeh isn't part of any tutorial so leave this false. */
+  skipStateUrlIfTutorialActive?: boolean;
 }
 
 export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
@@ -54,6 +58,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
       '720575940569107563': '#00aaff',
       '720575940565386350': '#ffd700',
     },
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
   },
   // Alias — neuroglancer layer name used in the viewer
   eyewire_ii: {
@@ -68,6 +73,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
       '720575940569107563': '#00aaff',
       '720575940565386350': '#ffd700',
     },
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
   },
 
   // ── Pinky sandbox (dev / testing) ────────────────────────────────────────
@@ -83,6 +89,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeSchema:   'bound_tag',
     defaultSegments:  ['648518346355727683'],
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
+    skipStateUrlIfTutorialActive: true,
   },
   pinky_training3: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -102,6 +109,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeSchema:   'bound_tag',
     defaultSegments:  ['648518346355727683'],
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
+    skipStateUrlIfTutorialActive: true,
   },
 
   // ── Minnie (MICrONS) ────────────────────────────────────────────────────
