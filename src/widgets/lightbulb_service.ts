@@ -25,25 +25,19 @@ const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nur
 
 // ─── Auth token helpers (mirrors the pattern in store.ts) ───────────────────
 
-function getAuthToken(caveServer: string): string | null {
-  const TOKEN_PREFIX = 'auth_token_v2_';
-  let fallback: string | null = null;
+/** All CAVE backends we use (minnie.microns-daf.com, global.daf-apis.com, etc.)
+ *  authenticate through this single sticky_auth realm. Tokens for other realms
+ *  (e.g. global.brain-wire-test.org/sticky_auth, used by the state server) are
+ *  NOT valid for CAVE writes — sending them returns 401 "invalid_token". */
+const CAVE_STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
 
-  for (const key of Object.keys(window.localStorage)) {
-    if (!key.startsWith(TOKEN_PREFIX)) continue;
-    try {
-      const data = JSON.parse(window.localStorage.getItem(key) || '{}');
-      if (!data.accessToken) continue;
-      // Prefer a token whose URL matches the CAVE server hostname
-      try {
-        if (new URL(data.url).hostname === new URL(caveServer).hostname) {
-          return data.accessToken;
-        }
-      } catch {}
-      fallback = fallback ?? data.accessToken;
-    } catch {}
-  }
-  return fallback;
+function getAuthToken(_caveServer: string): string | null {
+  try {
+    const raw = window.localStorage.getItem(`auth_token_v2_${CAVE_STICKY_AUTH_URL}`);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data.accessToken ?? null;
+  } catch { return null; }
 }
 
 function authHeaders(caveServer: string): HeadersInit {
