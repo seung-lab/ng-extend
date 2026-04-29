@@ -50,10 +50,10 @@ async function hardReload() {
       <div v-if="authExpired" class="nge-auth-banner">
         <span class="nge-auth-banner-eye" aria-hidden="true"></span>
         <span class="nge-auth-banner-text">
-          <span class="nge-auth-banner-title">⟁ Sauron has severed your link to the cave lava mines</span>
-          <span class="nge-auth-banner-sub">Your last write was not witnessed</span>
+          <span class="nge-auth-banner-title">Sauron has severed your link to the cave connectome tables</span>
+          <span class="nge-auth-banner-sub">Your cell update was not saved.</span>
         </span>
-        <button class="nge-auth-banner-btn" @click="hardReload">Reignite the Eye</button>
+        <button class="nge-auth-banner-btn" @click="hardReload">Refresh</button>
         <button class="nge-auth-banner-close" @click="authExpired = false" title="Dismiss">×</button>
       </div>
     </transition>
@@ -140,7 +140,6 @@ async function hardReload() {
   box-shadow:
     inset 0 0 6px rgba(255, 220, 120, 0.6),
     0 0 14px rgba(255, 90, 0, 0.7);
-  animation: nge-sauron-iris 3.2s ease-in-out infinite;
 }
 .nge-auth-banner-eye::after {
   /* Vertical slit pupil */
@@ -154,7 +153,6 @@ async function hardReload() {
   border-radius: 2px;
   transform: translate(-50%, -50%);
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
-  animation: nge-sauron-pupil 3.2s ease-in-out infinite;
 }
 
 .nge-auth-banner-text {
@@ -182,6 +180,7 @@ async function hardReload() {
 }
 
 .nge-auth-banner-btn {
+  margin-left: 16px;
   padding: 6px 14px;
   background: linear-gradient(180deg, rgba(140, 35, 0, 0.65), rgba(60, 12, 0, 0.7));
   border: 1px solid rgba(255, 120, 40, 0.7);
@@ -247,14 +246,6 @@ async function hardReload() {
       inset 0 0 18px rgba(255, 50, 0, 0.05),
       0 8px 28px rgba(0, 0, 0, 0.7);
   }
-}
-@keyframes nge-sauron-iris {
-  0%, 100% { transform: scale(1, 0.92); filter: brightness(1); }
-  50%      { transform: scale(1.08, 1);  filter: brightness(1.18); }
-}
-@keyframes nge-sauron-pupil {
-  0%, 100% { height: 14px; }
-  50%      { height: 11px; }
 }
 @keyframes nge-sauron-pulse {
   0%, 100% { text-shadow: 0 0 5px rgba(255, 100, 0, 0.85), 0 0 14px rgba(255, 50, 0, 0.55); }
