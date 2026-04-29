@@ -46,13 +46,19 @@ export interface DatasetCaveConfig {
 
 export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
   // ── Stroeh mouse retina (EyeWire II production) ──────────────────────────
+  // Both v2 tables use schema `bound_tag_user`; AnnotationEngine auto-injects
+  // user_id from the authenticated session (no client-side encoding needed).
+  // For cell type, the cell-type string is stored in `tag`. The
+  // classification_system field of the legacy cell_type_local is dropped —
+  // we don't need it for EW2 today.
   stroeh_mouse_retina: {
     caveServer:       'https://minnie.microns-daf.com',
     datastack:        'stroeh_mouse_retina',
     alignedVolume:    'stroeh_mouse_retina',
-    cellStatusTable:  'eyewire_ii_cell_status',
-    cellTypeTable:    'eyewire_ii_cell_type',
-    cellTypeSchema:   'cell_type_local',
+    cellStatusTable:  'eyewire_ii_cell_status_v2',
+    cellTypeTable:    'eyewire_ii_cell_type_v2',
+    cellStatusSchema: 'bound_tag_user',
+    cellTypeSchema:   'bound_tag_user',
     defaultSegments:  ['720575940569107563', '720575940565386350'],
     segmentColors:    {
       '720575940569107563': '#00aaff',
@@ -65,9 +71,10 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     caveServer:       'https://minnie.microns-daf.com',
     datastack:        'stroeh_mouse_retina',
     alignedVolume:    'stroeh_mouse_retina',
-    cellStatusTable:  'eyewire_ii_cell_status',
-    cellTypeTable:    'eyewire_ii_cell_type',
-    cellTypeSchema:   'cell_type_local',
+    cellStatusTable:  'eyewire_ii_cell_status_v2',
+    cellTypeTable:    'eyewire_ii_cell_type_v2',
+    cellStatusSchema: 'bound_tag_user',
+    cellTypeSchema:   'bound_tag_user',
     defaultSegments:  ['720575940569107563', '720575940565386350'],
     segmentColors:    {
       '720575940569107563': '#00aaff',

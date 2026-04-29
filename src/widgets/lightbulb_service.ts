@@ -63,26 +63,39 @@ function parseAuthRealmHost(res: Response): string | undefined {
   try { return new URL(m[1]).hostname; } catch { return undefined; }
 }
 
-/** Drop expired auth tokens so neuroglancer's middleauth pipeline re-prompts
- *  on the next request, and notify the app shell so a banner can prompt the
- *  user.
+/** Notify the app shell on a CAVE 401 so a banner can prompt the user.
+ *
+ *  Only clears localStorage tokens whose `tokenExpiration` is actually past
+ *  (Unix epoch seconds). A 401 from the server with a not-yet-expired token
+ *  is most likely a server-side issue (e.g. middleauth hiccup, AnnotationEngine
+ *  regression) — we leave the token in place so the user's next request can
+ *  retry, instead of forcing a re-login loop that would also fail.
  *
  *  IMPORTANT: tokens are stored under the auth REALM hostname (parsed from
  *  WWW-Authenticate, e.g. `global.daf-apis.com`), not the CAVE API hostname
- *  (e.g. `minnie.microns-daf.com`). Always pass `realmHost` from a real 401;
- *  the caveServer fallback only matches if the token happened to be stored
- *  under that exact hostname (rare). */
+ *  (e.g. `minnie.microns-daf.com`). Always pass `realmHost` from a real 401. */
 function handleCaveAuthExpired(caveServer: string, realmHost?: string): void {
   const targetHost = realmHost ?? new URL(caveServer).hostname;
+  const nowSec = Math.floor(Date.now() / 1000);
   try {
     for (const key of Object.keys(window.localStorage)) {
       if (!key.startsWith('auth_token_v2_')) continue;
       try {
         const data = JSON.parse(window.localStorage.getItem(key) || '{}');
-        if (new URL(data.url).hostname === targetHost) {
-          window.localStorage.removeItem(key);
-          console.warn('[lightbulb] Cleared expired CAVE token for', data.url);
+        if (new URL(data.url).hostname !== targetHost) continue;
+        const exp = typeof data.tokenExpiration === 'number'
+            ? data.tokenExpiration : undefined;
+        if (exp !== undefined && exp > nowSec) {
+          // Token is not actually expired — server rejected it for another
+          // reason. Don't clear; let the banner prompt the user.
+          console.warn(
+              '[lightbulb] CAVE 401 for', data.url,
+              `but token still valid until ${new Date(exp*1000).toISOString()};`,
+              'leaving in place.');
+          continue;
         }
+        window.localStorage.removeItem(key);
+        console.warn('[lightbulb] Cleared expired CAVE token for', data.url);
       } catch { /* skip malformed entry */ }
     }
   } catch { /* localStorage unavailable */ }
