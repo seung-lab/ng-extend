@@ -45,10 +45,15 @@ fi
 cd "$DEPLOY_DIR"
 git add -A
 git commit -m "Deploy $(date +%Y-%m-%d\ %H:%M)" --allow-empty
-git push origin main
 
-echo ""
-echo "Deployed! Live at: https://amyleesterling.github.io/eyewire-ii/"
+if [ "${SKIP_PUSH:-0}" = "1" ]; then
+  echo "SKIP_PUSH=1 set — skipping git push origin main (dry run)."
+  echo "Would have pushed to: $DEPLOY_REPO"
+else
+  git push origin main
+  echo ""
+  echo "Deployed! Live at: https://amyleesterling.github.io/eyewire-ii/"
+fi
 
 # Cleanup
 rm -rf "$DEPLOY_DIR"
