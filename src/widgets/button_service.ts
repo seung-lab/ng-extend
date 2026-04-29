@@ -636,4 +636,116 @@ export class ButtonService {
       console.warn('[buttonService] Failed to reset segment color:', e);
     }
   }
+
+  /**
+   * Creates a "jump to segment" button (↗ icon, matching CellLibraryPanel).
+   * On click, computes the segment's mesh-bbox centroid and centers the view
+   * on it, then briefly blooms the segment so the user can identify which
+   * one they jumped to when many are visible.
+   */
+  createJumpButton(segmentIDString: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.className = 'nge-segment-button nge-jump-btn';
+    btn.title = 'Jump to segment';
+    btn.dataset.segmentId = segmentIDString;
+    btn.textContent = '↗'; // ↗
+    btn.addEventListener('click', (e: MouseEvent) => {
+      e.stopPropagation();
+      this._jumpToSegment(segmentIDString);
+    });
+    return btn;
+  }
+
+  /** Center the viewer on a segment's mesh-bbox centroid + bloom it. */
+  private _jumpToSegment(segIdStr: string): void {
+    try {
+      const viewer: any = (window as any)['viewer'];
+      if (!viewer) return;
+      const segLayer: any = viewer.layerManager.managedLayers.find(
+        (x: any) => x.layer instanceof SegmentationUserLayer,
+      )?.layer;
+      if (!segLayer) return;
+
+      const segId = Uint64.parseString(segIdStr);
+
+      // Use neuroglancer's built-in moveToSegment — it walks render layers,
+      // calls getObjectPosition on the first MultiscaleMeshLayer that has
+      // the manifest, and applies the per-layer transform via
+      // setLayerPosition (which we'd skip if we set navigationState.position
+      // directly). It also shows a temporary status message if no mesh
+      // position is loaded yet, which we want.
+      if (typeof segLayer.moveToSegment === 'function') {
+        segLayer.moveToSegment(segId);
+      } else {
+        // Fallback for layer types without moveToSegment
+        const renderLayers: any[] = segLayer.renderLayers || [];
+        for (const layer of renderLayers) {
+          if (layer && typeof layer.getObjectPosition === 'function') {
+            const pos = layer.getObjectPosition(segId);
+            if (pos) {
+              viewer.navigationState.position.value = Float32Array.from(pos);
+              break;
+            }
+          }
+        }
+      }
+
+      // Bloom regardless — even if the position didn't move (mesh not loaded),
+      // the user gets visual feedback that the click registered.
+      this._bloomSegment(segIdStr);
+    } catch (e) {
+      console.warn('[jumpToSegment] Failed:', e);
+    }
+  }
+
+  /**
+   * Briefly flashes the segment white so the user can spot which one they
+   * jumped to when many segments are in view. Restores the segment's prior
+   * color override (or default hash color if none) when the bloom completes.
+   */
+  private _bloomSegment(segIdStr: string): void {
+    try {
+      const viewer: any = (window as any)['viewer'];
+      if (!viewer) return;
+      const segLayer: any = viewer.layerManager.managedLayers.find(
+        (x: any) => x.layer instanceof SegmentationUserLayer,
+      )?.layer;
+      if (!segLayer) return;
+
+      const colorGroupState = segLayer.displayState
+        .segmentationColorGroupState.value;
+      const segmentStatedColors = colorGroupState.segmentStatedColors;
+      const segId = Uint64.parseString(segIdStr);
+
+      // Capture the prior stated color (if any) so we can restore it after
+      // the bloom. Uint64Map.get(key, valueOut) writes into the `valueOut`
+      // buffer and returns a boolean indicating whether the key was found.
+      const priorColor = new Uint64();
+      const hadOverride = segmentStatedColors.get(segId, priorColor);
+      // Snapshot as primitives so we don't mutate the saved value via later set/get.
+      const priorLow = hadOverride ? priorColor.low : 0;
+      const priorHigh = hadOverride ? priorColor.high : 0;
+
+      // Two-pulse bloom: white → cyan-blue accent → white → restore.
+      const whitePacked = 0xFFFFFF;
+      const accentPacked = 0x99CCFF; // soft cyan-blue mid-pulse
+
+      const setColor = (packed: number) => {
+        segmentStatedColors.set(segId, new Uint64(packed, 0));
+      };
+
+      setColor(whitePacked);
+      setTimeout(() => setColor(accentPacked), 250);
+      setTimeout(() => setColor(whitePacked), 500);
+      setTimeout(() => {
+        if (hadOverride) {
+          segmentStatedColors.set(segId, new Uint64(priorLow, priorHigh));
+        } else {
+          segmentStatedColors.delete(segId);
+        }
+      }, 900);
+    } catch (e) {
+      console.warn('[bloomSegment] Failed:', e);
+    }
+  }
 }

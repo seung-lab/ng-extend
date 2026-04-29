@@ -207,6 +207,35 @@
   margin-right: 6px;
 }
 
+/* Jump-to-segment button — sits just left of the delta on row 1 */
+.neuroglancer-segment-list-entry .nge-jump-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: rgba(150, 175, 215, 0.78);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  margin-right: 2px;
+  transition: color 0.15s, background 0.15s, transform 0.15s;
+}
+.neuroglancer-segment-list-entry .nge-jump-btn:hover {
+  color: rgba(220, 230, 250, 0.98);
+  background: rgba(74, 158, 255, 0.18);
+  transform: scale(1.15);
+}
+.neuroglancer-segment-list-entry .nge-jump-btn:active {
+  transform: scale(0.92);
+}
+
 /* Annotation name + label badge wrap to row 2, indented under the chip */
 .neuroglancer-segment-list-entry-name,
 .neuroglancer-segment-list-entry .nge-label-badge {

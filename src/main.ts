@@ -319,6 +319,18 @@ function observeSegmentSelect(targetNode: Element) {
             buttonService.updateLabelBadge(item as HTMLElement, null);
           }
 
+          // Jump-to-segment button (centers view + blooms the segment)
+          if (!item.querySelector('.nge-jump-btn')) {
+            const jumpBtn = buttonService.createJumpButton(segmentIDString);
+            // Place jump button just before the lightbulb (delta) button so the
+            // row reads: chip … jump … delta.
+            if (button && button.parentElement === item) {
+              item.insertBefore(jumpBtn, button);
+            } else {
+              item.appendChild(jumpBtn);
+            }
+          }
+
           // Clean up any leftover nickname labels (feature removed)
           const nameLabel = item.querySelector('.nge-segment-nickname');
           if (nameLabel) nameLabel.remove();
