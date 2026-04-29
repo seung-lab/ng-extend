@@ -215,19 +215,24 @@ export interface CellStatus {
 // full UI flow can be tested end-to-end.  Once real tables are created, the
 // CAVE API calls succeed and the fallback is never used.
 
-const LOCAL_ANNOTATION_KEY = 'nge_local_annotations_v2';
+// _v3 (2026-04-29): re-keyed by segment root ID instead of viewer position.
+// Position keying caused cross-row leakage in the seg-list — every row's
+// localStorage merge read the SAME current-viewer-position entry, so every
+// row showed the most recently written cellType. Bumping the key version
+// discards legacy positional entries (incompatible format).
+const LOCAL_ANNOTATION_KEY = 'nge_local_annotations_v3';
 
 interface LocalAnnotationStore {
-  /** Keys are "pt:x,y,z" for point-based entries. */
+  /** Keys are "seg:<rootId>" — one entry per segment root ID. */
   [key: string]: {
     isComplete: boolean;
     cellType: string;
   };
 }
 
-/** Generate a point-based localStorage key from viewer coordinates. */
-function ptKey(pos: [number, number, number]): string {
-  return `pt:${pos[0]},${pos[1]},${pos[2]}`;
+/** Generate a segment-keyed localStorage key from a root ID. */
+function segKey(rootId: string): string {
+  return `seg:${rootId}`;
 }
 
 function getLocalAnnotations(): LocalAnnotationStore {
@@ -403,10 +408,10 @@ export async function getCellStatus(
   // day. So a just-written annotation isn't in any materialized version yet
   // and the /query above returns empty. The local mirror fills the gap.
   // Local data only fills fields CAVE didn't already populate (CAVE wins ties).
+  // Mirror is keyed by rootId, so each per-segment read gets its own entry.
   {
     const store = getLocalAnnotations();
-    const pos = getViewerPosition();
-    const local = store[ptKey(pos)];
+    const local = store[segKey(rootId)];
     if (local) {
       if (!status.isComplete && local.isComplete) {
         status.isComplete = true;
@@ -446,8 +451,7 @@ export async function setCellComplete(
     if (!complete && existingAnnotationId !== undefined) {
       // Local annotation — just clear localStorage
       if (existingAnnotationId < 0) {
-        const pos = getViewerPosition();
-        deleteLocalAnnotation(ptKey(pos), 'isComplete');
+        deleteLocalAnnotation(segKey(rootId), 'isComplete');
         return true;
       }
       // CAVE v2 DELETE uses JSON body with annotation_ids
@@ -462,7 +466,7 @@ export async function setCellComplete(
         console.error(`[lightbulb] CAVE DELETE failed (${res.status}):`, errText);
       } else {
         // Clear local mirror so the lightbulb doesn't keep showing the deleted state.
-        deleteLocalAnnotation(ptKey(getViewerPosition()), 'isComplete');
+        deleteLocalAnnotation(segKey(rootId), 'isComplete');
       }
       return res.ok;
     }
@@ -495,7 +499,7 @@ export async function setCellComplete(
         console.info(`[lightbulb] ✓ Completion saved to CAVE`);
         // Mirror to localStorage so the lightbulb shows the write immediately,
         // before the next materialization cron run (every other day on stroeh).
-        setLocalAnnotation(ptKey(pos), {isComplete: true});
+        setLocalAnnotation(segKey(rootId), {isComplete: true});
         try {
           const backend = useProofreadingBackendStore();
           if (backend.userId) {
@@ -539,10 +543,10 @@ export async function setCellComplete(
     console.error('[lightbulb] setCellComplete — CAVE network error:', e);
   }
 
-  // localStorage fallback — save locally so UI still works (keyed by point)
+  // localStorage fallback — save locally so UI still works (keyed by rootId)
   const fallbackPos = getViewerPosition();
-  setLocalAnnotation(ptKey(fallbackPos), {isComplete: complete});
-  console.info(`[lightbulb] Saved completion locally at ${ptKey(fallbackPos)} (CAVE unavailable)`);
+  setLocalAnnotation(segKey(rootId), {isComplete: complete});
+  console.info(`[lightbulb] Saved completion locally for ${segKey(rootId)} (CAVE unavailable)`);
   // Update local cell history & stats so Profile UI reflects immediately
   try {
     const historyStore = useCellHistoryStore();
@@ -667,7 +671,7 @@ export async function saveCellType(
       console.info(`[lightbulb] ✓ Cell type saved to CAVE`);
       // Mirror to localStorage so the lightbulb shows the write immediately,
       // before the next materialization cron run.
-      setLocalAnnotation(ptKey(pos), {cellType});
+      setLocalAnnotation(segKey(rootId), {cellType});
       try {
         const backend = useProofreadingBackendStore();
         if (backend.userId) {
@@ -693,9 +697,9 @@ export async function saveCellType(
     console.error('[lightbulb] saveCellType — CAVE network error:', e);
   }
 
-  // localStorage fallback — save locally so UI still works (keyed by point)
-  setLocalAnnotation(ptKey(pos), {cellType});
-  console.info(`[lightbulb] Saved cell type locally at ${ptKey(pos)} (CAVE unavailable)`);
+  // localStorage fallback — save locally so UI still works (keyed by rootId)
+  setLocalAnnotation(segKey(rootId), {cellType});
+  console.info(`[lightbulb] Saved cell type locally for ${segKey(rootId)} (CAVE unavailable)`);
   // Update local cell history so Profile UI reflects immediately
   try {
     const historyStore = useCellHistoryStore();
