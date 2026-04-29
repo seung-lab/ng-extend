@@ -639,10 +639,20 @@ export const useUserStatsStore = defineStore('userStats', () => {
 
   /** Recalculate today/week/month stats from dailyLog to prevent stale accumulation. */
   function recalcFromDailyLog() {
-    const today = new Date().toISOString().slice(0, 10);
     const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().slice(0, 10);
-    const monthAgo = new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+    const today = now.toISOString().slice(0, 10);
+
+    // Start of current week (Monday) — matches the Mon–Sun range shown in WeeklyRecapPanel
+    const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const dayUTC = todayUTC.getUTCDay(); // 0 = Sun, 1 = Mon, …
+    const diffToMon = dayUTC === 0 ? -6 : 1 - dayUTC;
+    const monday = new Date(todayUTC);
+    monday.setUTCDate(todayUTC.getUTCDate() + diffToMon);
+    const weekStart = monday.toISOString().slice(0, 10);
+
+    // First day of the current calendar month — matches the "April 2026" label
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+      .toISOString().slice(0, 10);
 
     let editsToday = 0, mergesToday = 0, splitsToday = 0;
     let editsWeek = 0, mergesWeek = 0, splitsWeek = 0;
@@ -654,12 +664,12 @@ export const useUserStatsStore = defineStore('userStats', () => {
         mergesToday += entry.merges;
         splitsToday += entry.splits;
       }
-      if (entry.date >= weekAgo) {
+      if (entry.date >= weekStart) {
         editsWeek += entry.edits;
         mergesWeek += entry.merges;
         splitsWeek += entry.splits;
       }
-      if (entry.date >= monthAgo) {
+      if (entry.date >= monthStart) {
         editsMonth += entry.edits;
         mergesMonth += entry.merges;
         splitsMonth += entry.splits;
