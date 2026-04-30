@@ -17,6 +17,7 @@ import ChatPanel from "components/ChatPanel.vue";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
+import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -78,6 +79,39 @@ const {volumes} = useVolumesStore();
 
 const shareCopied = ref(false);
 let shareCopiedTimer: ReturnType<typeof setTimeout> | null = null;
+const showScreenshotDialog = ref(false);
+
+/** Share-toast button handlers. The toast normally fades after 2.5s; clicking
+ *  any of these cancels the fade, hides the toast immediately, and triggers
+ *  the secondary flow. */
+function dismissShareToast() {
+  if (shareCopiedTimer) {
+    clearTimeout(shareCopiedTimer);
+    shareCopiedTimer = null;
+  }
+  shareCopied.value = false;
+}
+function shareActionScreenshot() {
+  dismissShareToast();
+  showScreenshotDialog.value = true;
+}
+function shareActionEmail() {
+  dismissShareToast();
+  const subject = 'Check out this neuron in EyeWire II';
+  const body = `${window.location.href}\n`;
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+function shareActionX() {
+  dismissShareToast();
+  const text = 'Check out this neuron in EyeWire II';
+  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(window.location.href)}`;
+  window.open(url, '_blank', 'noopener,width=600,height=520');
+}
+function shareActionFacebook() {
+  dismissShareToast();
+  const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`;
+  window.open(url, '_blank', 'noopener,width=600,height=520');
+}
 
 onMounted(() => {
   // Keep Pyr icon in top-left (don't overwrite with CaveLogo)
@@ -398,8 +432,39 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           </svg>
         </div>
         <div class="nge-share-toast-text">Link copied to clipboard</div>
+        <div class="nge-share-toast-actions">
+          <button class="nge-share-action" title="Save screenshot"
+                  @click="shareActionScreenshot">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                 stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 8h3l2-2.5h8L18 8h3v11H3z"/>
+              <circle cx="12" cy="13.5" r="3.8"/>
+            </svg>
+          </button>
+          <button class="nge-share-action" title="Email link"
+                  @click="shareActionEmail">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                 stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="1.5"/>
+              <path d="M3.5 6.5l8.5 6.5 8.5-6.5"/>
+            </svg>
+          </button>
+          <button class="nge-share-action" title="Post to X"
+                  @click="shareActionX">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M17.5 3h3.2l-7 8 8.2 10h-6.4l-5-6.5L4.7 21H1.5l7.5-8.5L1.2 3h6.6l4.5 6zm-1.1 16.2h1.8L7.7 4.7H5.8z"/>
+            </svg>
+          </button>
+          <button class="nge-share-action" title="Share to Facebook"
+                  @click="shareActionFacebook">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M14 7h3V4h-3c-1.93 0-3.5 1.57-3.5 3.5V10H8v3h2.5v8h3v-8H16l1-3h-3.5V7.5c0-.28.22-.5.5-.5z"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </transition>
+    <screenshot-dialog :show="showScreenshotDialog" @close="showScreenshotDialog = false" />
     <button class="nge-dataset-btn" @click="showDatasetSelector = !showDatasetSelector"
             title="Switch Dataset">
       <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
@@ -659,7 +724,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   align-items: center;
   gap: 10px;
   padding: 18px 26px 16px;
-  min-width: 220px;
+  min-width: 240px;
   background: linear-gradient(135deg,
     rgba(8, 28, 48, 0.92) 0%,
     rgba(12, 18, 38, 0.94) 50%,
@@ -737,6 +802,40 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   text-shadow: 0 0 10px rgba(74, 200, 255, 0.4);
 }
 
+/* Action button row inside the share toast. The toast itself is
+   pointer-events: none so it doesn't block viewer interaction; buttons
+   override with pointer-events: auto so they're still clickable. */
+.nge-share-toast-actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.nge-share-action {
+  pointer-events: auto;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(74, 158, 255, 0.12);
+  border: 1px solid rgba(74, 200, 255, 0.32);
+  border-radius: 8px;
+  color: #cfeaff;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.nge-share-action:hover {
+  background: rgba(74, 200, 255, 0.28);
+  border-color: rgba(74, 200, 255, 0.7);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+.nge-share-action:active {
+  transform: translateY(0);
+}
+
 .nge-share-toast-enter-active { transition: opacity 0.28s ease-out, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
 .nge-share-toast-leave-active { transition: opacity 0.32s ease-in, transform 0.32s ease-in; }
 .nge-share-toast-enter-from { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.94); }
@@ -796,9 +895,10 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 }
 
 .nge-icon-btn {
-  font-size: 18px;
-  width: 32px;
-  height: 30px;
+  /* `font-size` controls SVG sizing (icons use width:1em/height:1em) */
+  font-size: 22px;
+  width: 38px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -806,7 +906,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  opacity: 0.7;
+  opacity: 0.78;
   transition: opacity 0.15s, background 0.15s;
   line-height: 1;
 }
@@ -857,11 +957,11 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 .nge-icon-btn--badge { position: relative; }
 
 .nge-toolbar-icon-img {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
   vertical-align: middle;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 .nge-toolbar-badge {
   position: absolute;
