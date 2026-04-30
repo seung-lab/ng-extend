@@ -96,7 +96,27 @@ export const steps: Step[] = [
     highlight: true,
   },
 
-  // ── 3. Dataset selector ──────────────────────────────────────
+  // ── 3. Share button ──────────────────────────────────────────
+  {
+    title: "Share",
+    text: `Click **Share** to copy a link to your current view — same dataset, same camera, same selected segments.
+
+Drop it into chat, email, or the forum and the recipient lands exactly where you are.`,
+    position: { element: '[title="Share State"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── 4. Help / "?" button ─────────────────────────────────────
+  {
+    title: "Keyboard Shortcuts (?)",
+    text: `The **?** button opens neuroglancer's keybinding reference: every mouse and keyboard shortcut for navigation, tools, and layer controls.
+
+Different from **⌘K** — the **?** is a *read-only cheat sheet*, ⌘K is an *action launcher*.`,
+    position: { element: '.neuroglancer-viewer-top-row > .neuroglancer-icon[title*="elp"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── 5. Dataset selector ──────────────────────────────────────
   {
     title: "Dataset Selector",
     text: `Switch between brain datasets here: **Pinky**, **Minnie65**, **Stroeh mouse retina**, **FlyWire**, and more.
@@ -106,7 +126,7 @@ Each dataset is a different volume of neural tissue with its own segments and to
     highlight: true,
   },
 
-  // ── 4. Streak chip ───────────────────────────────────────────
+  // ── 6. Streak chip ───────────────────────────────────────────
   {
     title: "🔥 Your Streak",
     text: `Every day you make at least one edit, your streak grows. Skip a day and it resets, so come back tomorrow!
@@ -116,10 +136,12 @@ Your streak is shown next to your name on the leaderboard.`,
     highlight: true,
   },
 
-  // ── 5. Command palette ───────────────────────────────────────
+  // ── 7. Command palette ───────────────────────────────────────
   {
     title: "⌘K Command Palette",
-    text: `Press **Ctrl+K** (or **⌘K** on Mac) to open the command palette: a fuzzy search across every action, panel, and recently-viewed cell.`,
+    text: `Press **Ctrl+K** (or **⌘K** on Mac) to *do something fast*: fuzzy-search every action, panel, and recently-viewed cell, then run it from the keyboard.
+
+Different from the **?** button, which is a static keybinding reference.`,
     position: { element: ".nge-cmd-trigger", side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
@@ -247,7 +269,7 @@ Drag the panel anywhere on screen.`,
   {
     title: "Profile Settings",
     titleIcon: ICON_SETTINGS,
-    text: `Set your **flag emoji**, **bio**, and (under **Advanced**) toggle viewer settings, edit raw JSON state, and manage logged-in sessions.`,
+    text: `Set your **flag emoji**, **bio**, **toolbar icons**, and (under **Advanced**) toggle viewer settings, edit raw JSON state, manage logged-in sessions, and more.`,
     position: { element: '[title^="Profile Settings"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
@@ -255,7 +277,9 @@ Drag the panel anywhere on screen.`,
   // ── 17. My Profile ───────────────────────────────────────────
   {
     title: "Your Researcher Profile",
-    text: `The person icon opens your **Researcher Profile**, home of stats, achievements, recent cells, and more.
+    text: `As a citizen scientist, you are officially contributing to scientific research.
+
+Click here to open up your profile — home of your stats, achievements, recent cells, and more.
 
 Click any user's name in chat or the leaderboard to open *their* profile.`,
     position: { element: "#profileBtn", side: "bottom", offset: { x: 0, y: 14 } },
@@ -265,33 +289,41 @@ Click any user's name in chat or the leaderboard to open *their* profile.`,
   // ── 18. Hamburger menu ───────────────────────────────────────
   {
     title: "☰ Tutorials & Help",
-    text: `The hamburger menu has three numbered tutorials:
-
-1. **Basics**: navigation
-2. **Advanced Interface**: every panel
-3. **Cut & Merge**: proofreading operations
-
-Plus links to the **Forum** and YouTube videos for each tool.`,
+    text: `Three numbered tutorials — **Basics** (navigation), **Advanced Interface** (every panel), and **Cut & Merge** (proofreading operations) — plus links to the **Forum** and YouTube videos for each tool.`,
     position: { element: "#hamburger", side: "left", offset: { x: -10, y: 0 } },
     highlight: true,
   },
 
-  // ── 19. The 3D viewer ────────────────────────────────────────
+  // ── 19. The Layers bar ───────────────────────────────────────
+  {
+    title: "The Layers Bar",
+    text: `Each chip at the bottom is a data layer (image volume, segmentation, annotation, etc.).
+
+**Click a layer chip** to open its side panel — that's where you find the **Source / Render / Seg. / Graph / Annotations** tabs you've seen throughout the tour.
+
+Drag to reorder, **+** to add a new layer.`,
+    position: { element: ".neuroglancer-layer-panel", side: "top", offset: { x: 0, y: -14 } },
+    highlight: true,
+  },
+
+  // ── 20. The 3D viewer ────────────────────────────────────────
   {
     title: "The 3D Viewer",
     text: `The right panel renders neurons as 3D meshes. **Drag** to rotate, **scroll** to zoom, **shift-drag** to pan.
 
 Click a segment to select it. A **Delta menu** next to the segment ID has completion, cell-type, and claim controls.`,
     position: VIEWER_3D,
+    highlight: true,
   },
 
-  // ── 20. The 2D viewer ────────────────────────────────────────
+  // ── 21. The 2D viewer ────────────────────────────────────────
   {
     title: "The 2D Slice Viewers",
     text: `The left panels show electron-microscopy slices through the brain. This is the raw data the segmentation was built from.
 
 **Scroll** to move through slices, **drag** to pan.`,
     position: VIEWER_2D,
+    highlight: true,
   },
 
   // ── 21. The end ──────────────────────────────────────────────
