@@ -165,8 +165,14 @@ async function syncDatastack(cfg) {
       // Without a user_id we can't attribute the completion — skip it.
       if (caveUserId === null || caveUserId === undefined) continue;
       if (segId === null || segId === undefined) continue;
-      // r.created is the row's insert timestamp (ISO 8601 string).
-      const completedAt = r.created || r.valid_at || new Date().toISOString();
+      // CAVE materializer can return `created` as either an ISO 8601
+      // string OR a Unix-epoch millisecond integer depending on the
+      // table version. Normalize to ISO before inserting (Postgres
+      // TIMESTAMPTZ rejects the bare ms integer with 22008).
+      const rawTs = r.created ?? r.valid_at ?? Date.now();
+      const completedAt = (typeof rawTs === 'number' || /^\d{10,}$/.test(String(rawTs)))
+        ? new Date(Number(rawTs)).toISOString()
+        : String(rawTs);
       toUpsert.push({
         cave_user_id: Number(caveUserId),
         dataset: cfg.dataset,
