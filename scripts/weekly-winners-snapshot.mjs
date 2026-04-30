@@ -2,9 +2,9 @@
 /**
  * weekly-winners-snapshot.mjs
  * Captures the top-3 contributors for the previous Mon→Sun week and
- * writes them into the `weekly_winners` table. Idempotent — the
- * snapshot_weekly_winners() Postgres function uses ON CONFLICT DO
- * NOTHING so re-runs for the same week are safe.
+ * writes them into the `weekly_winners` table — once for the edits
+ * metric and once for completions. Idempotent: snapshot_weekly_winners()
+ * uses ON CONFLICT DO NOTHING so re-runs for the same week are safe.
  *
  * Runs via GitHub Actions cron (Monday 00:05 UTC) or manually:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/weekly-winners-snapshot.mjs
@@ -24,8 +24,10 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 const targetWeekStart = process.argv[2] || null;
 
-async function callSnapshot(weekStart) {
-  const body = weekStart ? { target_week_start: weekStart } : {};
+async function callSnapshot(weekStart, metric) {
+  const body = {};
+  if (weekStart) body.target_week_start = weekStart;
+  body.target_metric = metric;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/snapshot_weekly_winners`, {
     method: 'POST',
     headers: {
@@ -43,20 +45,25 @@ async function callSnapshot(weekStart) {
 }
 
 (async () => {
-  try {
-    const winners = await callSnapshot(targetWeekStart);
-    if (!winners || winners.length === 0) {
-      console.log(targetWeekStart
-        ? `[snapshot] No new rows for ${targetWeekStart} (already captured or no edits).`
-        : '[snapshot] No new rows for the previous week (already captured or no edits).');
-      process.exit(0);
+  const metrics = ['edits', 'completions'];
+  let failed = 0;
+  for (const metric of metrics) {
+    try {
+      const winners = await callSnapshot(targetWeekStart, metric);
+      if (!winners || winners.length === 0) {
+        console.log(targetWeekStart
+          ? `[snapshot] ${metric}: no new rows for ${targetWeekStart} (already captured or no activity).`
+          : `[snapshot] ${metric}: no new rows for the previous week (already captured or no activity).`);
+        continue;
+      }
+      console.log(`[snapshot] ${metric}: captured ${winners.length} winners:`);
+      for (const w of winners) {
+        console.log(`  rank ${w.rank}: user_id=${w.user_id} count=${w.edits}`);
+      }
+    } catch (e) {
+      console.error(`[snapshot] ${metric}: failed:`, e.message);
+      failed++;
     }
-    console.log(`[snapshot] Captured ${winners.length} winners:`);
-    for (const w of winners) {
-      console.log(`  rank ${w.rank}: user_id=${w.user_id} edits=${w.edits}`);
-    }
-  } catch (e) {
-    console.error('[snapshot] Failed:', e.message);
-    process.exit(1);
   }
+  if (failed > 0) process.exit(1);
 })();

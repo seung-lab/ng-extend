@@ -43,13 +43,29 @@ async function loadOtherUser() {
 loadOtherUser();
 
 // ── Weekly podium counts (🥇/🥈/🥉) ─────────────────────────────────
+// Two podiums: edits (split+merge wins) and completions (cell-mark wins).
+// loadPodium fetches both metrics in parallel; the UI tile is hidden when
+// a metric has no podium history.
 const podium = ref<{ gold: number; silver: number; bronze: number }>({ gold: 0, silver: 0, bronze: 0 });
+const podiumCompletions = ref<{ gold: number; silver: number; bronze: number }>({ gold: 0, silver: 0, bronze: 0 });
 async function loadPodium() {
   const id = (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '';
-  if (!id) { podium.value = { gold: 0, silver: 0, bronze: 0 }; return; }
-  podium.value = await backendStore.loadWeeklyPodium(id);
+  if (!id) {
+    podium.value = { gold: 0, silver: 0, bronze: 0 };
+    podiumCompletions.value = { gold: 0, silver: 0, bronze: 0 };
+    return;
+  }
+  const [edits, completions] = await Promise.all([
+    backendStore.loadWeeklyPodium(id, 'edits'),
+    backendStore.loadWeeklyPodium(id, 'completions'),
+  ]);
+  podium.value = edits;
+  podiumCompletions.value = completions;
 }
 const podiumTotal = computed(() => podium.value.gold + podium.value.silver + podium.value.bronze);
+const podiumCompletionsTotal = computed(() =>
+  podiumCompletions.value.gold + podiumCompletions.value.silver + podiumCompletions.value.bronze);
+const anyPodium = computed(() => podiumTotal.value + podiumCompletionsTotal.value > 0);
 
 // Profile display name & email — works for both self and other users
 const profileName = computed(() => {
@@ -881,21 +897,45 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- Divider between badge and streak -->
           <div class="nge-profile-right-divider"></div>
 
-          <!-- Weekly podium counts (🥇 × N etc.) -->
-          <div v-if="podiumTotal > 0" class="nge-profile-section nge-profile-section--podium">
+          <!-- Weekly podium counts (🥇 × N etc.) — one row per metric -->
+          <div v-if="anyPodium" class="nge-profile-section nge-profile-section--podium">
             <div class="nge-profile-section-label nge-profile-section-label--amber">▌ Top of the Week</div>
-            <div class="nge-profile-podium-row">
-              <div v-if="podium.gold > 0" class="nge-profile-podium-tile nge-profile-podium-tile--gold" :title="`Finished 1st place ${podium.gold} week${podium.gold === 1 ? '' : 's'}`">
-                <span class="nge-profile-podium-medal">🥇</span>
-                <span class="nge-profile-podium-count">× {{ podium.gold }}</span>
+
+            <!-- Edits podium -->
+            <div v-if="podiumTotal > 0" class="nge-profile-podium-metric">
+              <div class="nge-profile-podium-metric-label">Edits</div>
+              <div class="nge-profile-podium-row">
+                <div v-if="podium.gold > 0" class="nge-profile-podium-tile nge-profile-podium-tile--gold" :title="`Finished 1st place in edits ${podium.gold} week${podium.gold === 1 ? '' : 's'}`">
+                  <span class="nge-profile-podium-medal">🥇</span>
+                  <span class="nge-profile-podium-count">× {{ podium.gold }}</span>
+                </div>
+                <div v-if="podium.silver > 0" class="nge-profile-podium-tile nge-profile-podium-tile--silver" :title="`Finished 2nd place in edits ${podium.silver} week${podium.silver === 1 ? '' : 's'}`">
+                  <span class="nge-profile-podium-medal">🥈</span>
+                  <span class="nge-profile-podium-count">× {{ podium.silver }}</span>
+                </div>
+                <div v-if="podium.bronze > 0" class="nge-profile-podium-tile nge-profile-podium-tile--bronze" :title="`Finished 3rd place in edits ${podium.bronze} week${podium.bronze === 1 ? '' : 's'}`">
+                  <span class="nge-profile-podium-medal">🥉</span>
+                  <span class="nge-profile-podium-count">× {{ podium.bronze }}</span>
+                </div>
               </div>
-              <div v-if="podium.silver > 0" class="nge-profile-podium-tile nge-profile-podium-tile--silver" :title="`Finished 2nd place ${podium.silver} week${podium.silver === 1 ? '' : 's'}`">
-                <span class="nge-profile-podium-medal">🥈</span>
-                <span class="nge-profile-podium-count">× {{ podium.silver }}</span>
-              </div>
-              <div v-if="podium.bronze > 0" class="nge-profile-podium-tile nge-profile-podium-tile--bronze" :title="`Finished 3rd place ${podium.bronze} week${podium.bronze === 1 ? '' : 's'}`">
-                <span class="nge-profile-podium-medal">🥉</span>
-                <span class="nge-profile-podium-count">× {{ podium.bronze }}</span>
+            </div>
+
+            <!-- Completions podium -->
+            <div v-if="podiumCompletionsTotal > 0" class="nge-profile-podium-metric">
+              <div class="nge-profile-podium-metric-label">Cells</div>
+              <div class="nge-profile-podium-row">
+                <div v-if="podiumCompletions.gold > 0" class="nge-profile-podium-tile nge-profile-podium-tile--gold" :title="`Finished 1st place in cells ${podiumCompletions.gold} week${podiumCompletions.gold === 1 ? '' : 's'}`">
+                  <span class="nge-profile-podium-medal">🥇</span>
+                  <span class="nge-profile-podium-count">× {{ podiumCompletions.gold }}</span>
+                </div>
+                <div v-if="podiumCompletions.silver > 0" class="nge-profile-podium-tile nge-profile-podium-tile--silver" :title="`Finished 2nd place in cells ${podiumCompletions.silver} week${podiumCompletions.silver === 1 ? '' : 's'}`">
+                  <span class="nge-profile-podium-medal">🥈</span>
+                  <span class="nge-profile-podium-count">× {{ podiumCompletions.silver }}</span>
+                </div>
+                <div v-if="podiumCompletions.bronze > 0" class="nge-profile-podium-tile nge-profile-podium-tile--bronze" :title="`Finished 3rd place in cells ${podiumCompletions.bronze} week${podiumCompletions.bronze === 1 ? '' : 's'}`">
+                  <span class="nge-profile-podium-medal">🥉</span>
+                  <span class="nge-profile-podium-count">× {{ podiumCompletions.bronze }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1568,6 +1608,20 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* ── Weekly Podium (🥇/🥈/🥉) ── */
 .nge-profile-section--podium {
   margin-bottom: 14px;
+}
+.nge-profile-podium-metric {
+  margin-top: 6px;
+}
+.nge-profile-podium-metric:first-of-type {
+  margin-top: 0;
+}
+.nge-profile-podium-metric-label {
+  font-size: 0.68em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(180, 195, 215, 0.55);
+  margin-bottom: 2px;
 }
 .nge-profile-podium-row {
   display: flex;

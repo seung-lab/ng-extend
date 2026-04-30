@@ -1,0 +1,73 @@
+name: CAVE Completions Sync
+
+# Pulls cell-completion annotations from CAVE's materialized cell_status
+# tables and upserts them into Supabase `cave_completions_mirror`. The
+# leaderboard view (user_edit_counts) joins this mirror to render the
+# "Cells" metric. See scripts/sync-cave-completions.mjs.
+
+on:
+  schedule:
+    # Every 30 minutes. CAVE materialization runs less often (~daily on
+    # stroeh) so most runs will be no-ops, but the cadence keeps fresh
+    # post-materialization completions in the leaderboard within minutes.
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      datastack:
+        description: 'Optional: only sync this one datastack (e.g. stroeh_mouse_retina)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'If "true", read from CAVE but skip the Supabase write'
+        required: false
+        default: 'false'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sync CAVE completions → Supabase mirror
+        # ──────────────────────────────────────────────────────────────────
+        # Required GitHub Actions secrets (Settings → Secrets and variables → Actions):
+        #
+        #   SUPABASE_URL                   already set (used by other workflows)
+        #   SUPABASE_SERVICE_ROLE_KEY      already set
+        #   CAVE_SERVICE_TOKEN             NEW — see "Provisioning" below.
+        #
+        # Provisioning CAVE_SERVICE_TOKEN
+        # -------------------------------
+        # As of 2026-04-30 daf-apis does not expose a generate-service-token
+        # button to end users. Two practical paths:
+        #
+        #  1. Mint a long-lived token from a service Google account by logging
+        #     into https://global.daf-apis.com/sticky_auth and copying
+        #     `localStorage.auth_token_v2_https://global.daf-apis.com/sticky_auth`
+        #     out of devtools. Tokens currently last ~6 months. When it
+        #     expires the workflow fails and we mint a new one.
+        #
+        #  2. Ask Forrest/Derrick (Slack: #shared_cave_seunglab) to provision
+        #     a real long-lived service token tied to a service account.
+        #
+        # Either way: paste the bearer string into GitHub Actions secrets as
+        # CAVE_SERVICE_TOKEN. The script sends it as `Authorization: Bearer
+        # <token>` to the CAVE materializer.
+        # ──────────────────────────────────────────────────────────────────
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.datastack }}" ]; then
+            ARGS="$ARGS --datastack ${{ inputs.datastack }}"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          node scripts/sync-cave-completions.mjs $ARGS

@@ -426,11 +426,17 @@ async function submitGuidedComplete(group: SegmentGroup) {
     batchProgress.value.current = i + 1;
     const segId = toSubmit[i];
     const pt = guide.value.points[segId];
+    // setCellComplete returns false on CAVE auth/network/HTTP failures without
+    // throwing — must check the return value or silent failures slip through
+    // (CAVE never receives the write, but localStorage is still set, so the
+    // lightbulb mistakenly shows complete).
+    let ok = false;
     try {
-      await setCellComplete(caveServer, segId, true, undefined, pt);
-    } catch {
-      batchProgress.value.errors.push(segId);
+      ok = await setCellComplete(caveServer, segId, true, undefined, pt);
+    } catch (e) {
+      console.error('[batch] setCellComplete threw for', segId, e);
     }
+    if (!ok) batchProgress.value.errors.push(segId);
   }
   const errCount = batchProgress.value.errors.length;
   flash(`Completed ${total - errCount}/${total}${errCount ? ` (${errCount} failed)` : ''}`);

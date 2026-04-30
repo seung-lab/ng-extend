@@ -31,15 +31,23 @@ const login = useLoginStore();
 const tutorialStore = useTutorialStore();
 const dropdownStore = useDropdownListStore();
 
-/** Sync the first valid login session to Supabase so userId is set. */
-function syncFirstSession() {
+/** Sync the first valid login session to Supabase so userId is set.
+ *  Also captures the user's CAVE numeric id (cave_user_id) for the
+ *  leaderboard's completions metric — see store.captureCaveUserId.
+ *  CAVE token may not be present on first sync (initial load before user
+ *  authenticates with daf-apis), so we run captureCaveUserId on every
+ *  middleauthlogin event; the function itself is idempotent. */
+async function syncFirstSession() {
   const session = login.sessions.find(s => s.status === undefined);
   if (session?.email) {
     const backend = useProofreadingBackendStore();
     if (!backend.userId) {
-      backend.syncUser(session.email, session.name || session.email.split('@')[0])
-        .then(() => backend.loadUserStats());
+      await backend.syncUser(session.email, session.name || session.email.split('@')[0]);
+      await backend.loadUserStats();
     }
+    // Idempotent — early-returns if cave_user_id is already stored or
+    // the daf-apis bearer token isn't available yet.
+    backend.captureCaveUserId();
   }
 }
 
@@ -122,26 +130,49 @@ interface ToolbarIcon {
   badge?: () => number;
 }
 
-// Branch-style SVG icons for split & merge (must match profile icons)
-const SPLIT_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#e06060"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.5" fill="currentColor"/><circle cx="4" cy="13" r="1.5" fill="currentColor"/><circle cx="12" cy="13" r="1.5" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-const MERGE_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#60c060"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.5" fill="currentColor"/><circle cx="12" cy="2.5" r="1.5" fill="currentColor"/><circle cx="8" cy="13" r="1.5" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-// Find-path icon: dotted route between two nodes
-const FINDPATH_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#c8a4ff"><circle cx="3" cy="13" r="1.8" fill="currentColor"/><circle cx="13" cy="3" r="1.8" fill="currentColor"/><path d="M5 12 Q7 9 8 8 Q9 7 11 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="1.4 1.8"/></svg>`;
+// ── Toolbar SVG icon set ────────────────────────────────────────────
+// All icons share the same 16x16 viewBox, 1.6px stroke width, currentColor
+// fill/stroke and a consistent visual rhythm. Tool icons (split/merge/find
+// path) keep their semantic colors so the user can spot them at a glance;
+// dashboard icons share a neutral blue-white palette so they read as a
+// single row.
+const TOOL_ICON_STYLE = 'width:18px;height:18px;vertical-align:middle;';
+const NEUTRAL_COLOR = '#cfdcef';        // muted blue-white
+const ACCENT_RED    = '#e06060';
+const ACCENT_GREEN  = '#60c060';
+const ACCENT_PURPLE = '#c8a4ff';
+const ACCENT_AMBER  = '#f5d142';
+
+const SPLIT_SVG     = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${ACCENT_RED}"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.4" fill="currentColor"/><circle cx="4" cy="13" r="1.4" fill="currentColor"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const MERGE_SVG     = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${ACCENT_GREEN}"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.4" fill="currentColor"/><circle cx="12" cy="2.5" r="1.4" fill="currentColor"/><circle cx="8" cy="13" r="1.4" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const FINDPATH_SVG  = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${ACCENT_PURPLE}"><circle cx="3" cy="13" r="1.6" fill="currentColor"/><circle cx="13" cy="3" r="1.6" fill="currentColor"/><path d="M5 12 Q7 9 8 8 Q9 7 11 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="1.4 1.8"/></svg>`;
+
+// Dashboard icons (neutral palette)
+const RECAP_SVG       = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><rect x="2" y="10" width="2.4" height="4" rx="0.5" fill="currentColor" opacity="0.45"/><rect x="5.5" y="7" width="2.4" height="7" rx="0.5" fill="currentColor" opacity="0.65"/><rect x="9" y="4" width="2.4" height="10" rx="0.5" fill="currentColor" opacity="0.85"/><rect x="12.5" y="1.5" width="2" height="12.5" rx="0.5" fill="currentColor"/></svg>`;
+const LEADERBOARD_SVG = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${ACCENT_AMBER}"><path d="M5 2h6v3.5a3 3 0 0 1-6 0V2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 3H3v.8a2 2 0 0 0 2 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11 3h2v.8a2 2 0 0 1-2 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M8 8.5v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M5.5 13h5l-.5-1.4h-4z" fill="currentColor"/></svg>`;
+const CELLS_SVG       = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><circle cx="8" cy="8" r="1.8" fill="currentColor"/><path d="M8 6.2V3M8 9.8V13M6.2 8H3M9.8 8H13M5.2 5.2L3.5 3.5M10.8 5.2L12.5 3.5M5.2 10.8L3.5 12.5M10.8 10.8L12.5 12.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const BATCH_SVG       = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><path d="M8 1.8L13.5 4.6V11L8 13.8L2.5 11V4.6L8 1.8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2.5 4.6L8 7.4L13.5 4.6M8 7.4V13.8" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+const HELP_SVG        = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><circle cx="6.6" cy="6.6" r="3.8" stroke="currentColor" stroke-width="1.6"/><path d="M9.6 9.6l3.8 3.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
+const NOTIF_SVG       = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><path d="M3.7 11.5h8.6c.5 0 .8-.5.5-.95L11.5 8.8V6.5a3.5 3.5 0 0 0-7 0v2.3L3.2 10.55c-.3.45 0 .95.5.95z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 13a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const CHAT_SVG        = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><path d="M2.5 5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2H7L4.5 14v-2.5a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+const SETTINGS_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><circle cx="8" cy="8" r="2.1" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v2.2M8 12.3v2.2M14.5 8h-2.2M3.7 8H1.5M12.6 3.4l-1.5 1.5M4.9 11.1l-1.5 1.5M3.4 3.4l1.5 1.5M11.1 11.1l1.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+const QUEST_SVG       = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><path d="M8 2.5C5.2 2.5 3 4.7 3 7.4c0 1.4.6 2.7 1.6 3.6.5.4.7 1 .7 1.6V14h5.4v-1.4c0-.6.2-1.2.7-1.6 1-.9 1.6-2.2 1.6-3.6 0-2.7-2.2-4.9-5-4.9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.8 14h4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+const FEED_SVG        = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><circle cx="3.2" cy="12.8" r="1.4" fill="currentColor"/><path d="M2 8.5a5.5 5.5 0 0 1 5.5 5.5M2 4a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 
 const toolbarDefs = computed<ToolbarIcon[]>(() => [
-  { id: 'split', emoji: '✂️', svg: SPLIT_SVG, label: 'Cut Mode (C)', action: () => activateTool('multicut') },
-  { id: 'merge', emoji: '🔗', svg: MERGE_SVG, label: 'Merge Mode (M)', action: () => activateTool('merge') },
-  { id: 'findPath', emoji: '🛤️', svg: FINDPATH_SVG, label: 'Find Path (F)', action: () => activateTool('findPath') },
-  { id: 'recap', emoji: '📊', svg: `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#a0c4ff"><rect x="1" y="10" width="3" height="5" rx="0.5" fill="currentColor" opacity="0.4"/><rect x="5" y="7" width="3" height="8" rx="0.5" fill="currentColor" opacity="0.6"/><rect x="9" y="4" width="3" height="11" rx="0.5" fill="currentColor" opacity="0.8"/><rect x="13" y="1" width="2.5" height="14" rx="0.5" fill="currentColor"/></svg>`, label: 'Your Week in Science', action: () => { showRecap.value = true; } },
-  { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard', action: () => { showLeaderboard.value = true; } },
-  { id: 'quest', emoji: '🧠', label: 'Brain Quest', action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
-  { id: 'cells', emoji: '🧬', img: neuronIcon, label: 'Cell Library', action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
-  { id: 'batch', emoji: '📦', label: 'Batch Processor', action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
-  { id: 'help', emoji: '🔍', label: 'Second Opinion Requests', action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => helpStore.pending.length },
-  { id: 'feed', emoji: '📡', label: 'Activity Feed', action: () => { showFeed.value = true; } },
-  { id: 'notif', emoji: '🔔', label: 'Notifications', action: () => { showNotifications.value = !showNotifications.value; console.debug('[nge] bell toggled →', showNotifications.value); }, badge: () => backendStore.unreadNotificationCount },
-  { id: 'chat', emoji: '💬', label: 'Chat', action: () => { showChat.value = !showChat.value; } },
-  { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
+  { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)',           action: () => activateTool('multicut') },
+  { id: 'merge',       emoji: '🔗', svg: MERGE_SVG,       label: 'Merge Mode (M)',         action: () => activateTool('merge') },
+  { id: 'findPath',    emoji: '🛤️', svg: FINDPATH_SVG,    label: 'Find Path (F)',          action: () => activateTool('findPath') },
+  { id: 'recap',       emoji: '📊', svg: RECAP_SVG,       label: 'Your Week in Science',   action: () => { showRecap.value = true; } },
+  { id: 'leaderboard', emoji: '🏆', svg: LEADERBOARD_SVG, label: 'Leaderboard',            action: () => { showLeaderboard.value = true; } },
+  { id: 'quest',       emoji: '🧠', svg: QUEST_SVG,       label: 'Brain Quest',            action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
+  { id: 'cells',       emoji: '🧬', svg: CELLS_SVG,       label: 'Cell Library',           action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
+  { id: 'batch',       emoji: '📦', svg: BATCH_SVG,       label: 'Batch Processor',        action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
+  { id: 'help',        emoji: '🔍', svg: HELP_SVG,        label: 'Second Opinion Requests',action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => helpStore.pending.length },
+  { id: 'feed',        emoji: '📡', svg: FEED_SVG,        label: 'Activity Feed',          action: () => { showFeed.value = true; } },
+  { id: 'notif',       emoji: '🔔', svg: NOTIF_SVG,       label: 'Notifications',          action: () => { showNotifications.value = !showNotifications.value; console.debug('[nge] bell toggled →', showNotifications.value); }, badge: () => backendStore.unreadNotificationCount },
+  { id: 'chat',        emoji: '💬', svg: CHAT_SVG,        label: 'Chat',                   action: () => { showChat.value = !showChat.value; } },
+  { id: 'settings',    emoji: '⚙️', svg: SETTINGS_SVG,    label: 'Profile Settings',       action: () => { showSettings.value = true; } },
 ]);
 
 const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'findPath', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'notif', 'chat', 'settings'];
@@ -733,15 +764,39 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   box-shadow: 0 1px 0 0 #4a9eff;
 }
 /* Drag-to-reorder visuals */
+.nge-icon-btn {
+  position: relative;
+}
 .nge-icon-btn--dragging {
   opacity: 0.35;
   cursor: grabbing;
 }
-.nge-icon-btn--drag-over {
-  background: rgba(120, 180, 255, 0.18);
-  box-shadow:
-    inset 0 0 0 1px rgba(120, 180, 255, 0.55),
-    0 0 8px rgba(120, 180, 255, 0.35);
+/* Vertical insertion bar shown to the LEFT of the drop target.
+ * Replaces the old square box-shadow highlight — reads as a cursor
+ * showing where the dragged icon will land. */
+.nge-icon-btn--drag-over::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(120, 180, 255, 0.95) 22%,
+    rgba(180, 215, 255, 1) 50%,
+    rgba(120, 180, 255, 0.95) 78%,
+    transparent 100%
+  );
+  border-radius: 1px;
+  box-shadow: 0 0 8px rgba(120, 180, 255, 0.7);
+  pointer-events: none;
+  animation: nge-icon-drop-pulse 0.9s ease-in-out infinite;
+}
+@keyframes nge-icon-drop-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
 }
 .nge-icon-btn--badge { position: relative; }
 

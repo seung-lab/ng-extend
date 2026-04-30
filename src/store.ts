@@ -2125,6 +2125,88 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
+  // ── CAVE user-id capture (Phase B leaderboard groundwork) ───────────────
+  /**
+   * Read the current CAVE bearer token from localStorage, call CAVE's
+   * /auth/api/v1/user/me, and persist the returned numeric `id` to
+   * users.cave_user_id. Used so the leaderboard can join cell-completion
+   * counts (written by AnnotationEngine into bound_tag_user tables, keyed
+   * on a numeric CAVE user_id) against this Supabase users row.
+   *
+   * Idempotent and silent on failure — if there's no token, the endpoint
+   * is unreachable, or the user already has a cave_user_id stored, this
+   * just returns. Safe to call after every middleauthlogin event.
+   */
+  async function captureCaveUserId(): Promise<void> {
+    if (!userId.value) {
+      console.info('[backend] captureCaveUserId: no userId yet, skipping');
+      return;
+    }
+    // CAVE's sticky_auth realm — same one lightbulb_service.ts reads from.
+    const STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
+    let token: string | null = null;
+    try {
+      const raw = window.localStorage.getItem(`auth_token_v2_${STICKY_AUTH_URL}`);
+      if (raw) token = JSON.parse(raw).accessToken ?? null;
+    } catch { /* ignore */ }
+    if (!token) {
+      console.info('[backend] captureCaveUserId: no CAVE token in localStorage, skipping');
+      return;
+    }
+
+    // Skip if we already have an id stored (idempotency — avoids a network
+    // round-trip on every login).
+    try {
+      const { data: existing } = await supabase
+        .from('users')
+        .select('cave_user_id')
+        .eq('id', userId.value)
+        .single();
+      if (existing?.cave_user_id) {
+        console.info('[backend] captureCaveUserId: already stored', existing.cave_user_id);
+        return;
+      }
+    } catch { /* fall through to lookup */ }
+
+    // Try the global daf-apis auth-me endpoint first, then minnie as a
+    // fallback. Both are sticky_auth-backed; one of them should answer.
+    const endpoints = [
+      'https://global.daf-apis.com/auth/api/v1/user/me',
+      'https://minnie.microns-daf.com/auth/api/v1/user/me',
+    ];
+    let caveId: number | null = null;
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) {
+          console.info(`[backend] captureCaveUserId: ${url} → ${res.status}`);
+          continue;
+        }
+        const me = await res.json();
+        // CAVE returns { id, email, name, ... }. The id is a Postgres
+        // bigint — JS Number is fine here (real CAVE ids are well under 2^53).
+        if (me && typeof me.id === 'number') {
+          caveId = me.id;
+          console.info(`[backend] captureCaveUserId: ${url} →`, me.id, me.email);
+          break;
+        }
+      } catch (e: any) {
+        console.info(`[backend] captureCaveUserId: ${url} error`, e?.message);
+      }
+    }
+    if (caveId === null) return;
+
+    try {
+      await supabase
+        .from('users')
+        .update({ cave_user_id: caveId, updated_at: new Date().toISOString() })
+        .eq('id', userId.value);
+      console.info('[backend] captureCaveUserId: persisted', caveId, 'for user', userId.value);
+    } catch (e: any) {
+      console.warn('[backend] captureCaveUserId: update failed:', e?.message);
+    }
+  }
+
   // ── Task management ───────────────────────────────────────────────────
   /** Load tasks for a dataset, with optional status filter. */
   async function loadTasks(dataset: string = 'eyewire_ii', statusFilter?: string) {
@@ -2622,14 +2704,23 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
 
   // ── Weekly podium counts: how many times a user finished top-3 ──────
-  /** Result shape: { gold, silver, bronze } counts for one user. */
-  async function loadWeeklyPodium(targetUserId: string): Promise<{ gold: number; silver: number; bronze: number }> {
+  /** Result shape: { gold, silver, bronze } counts for one user.
+   *  metric defaults to 'edits' for backward compatibility. Pass 'completions'
+   *  for the cell-completions podium. The weekly_winners table now carries
+   *  a `metric` column (Phase B) so both podiums coexist. */
+  async function loadWeeklyPodium(
+      targetUserId: string,
+      metric: 'edits' | 'completions' = 'edits',
+  ): Promise<{ gold: number; silver: number; bronze: number }> {
     const empty = { gold: 0, silver: 0, bronze: 0 };
     if (!targetUserId) return empty;
     try {
+      // Tolerant query: select metric so legacy rows (no column) and migrated
+      // rows ('edits' / 'completions') both work. We filter client-side so
+      // pre-migration rows (where metric IS NULL) are treated as 'edits'.
       const { data, error } = await supabase
         .from('weekly_winners')
-        .select('rank')
+        .select('rank, metric')
         .eq('user_id', targetUserId);
       if (error) {
         console.warn('[backend] loadWeeklyPodium error:', error.message);
@@ -2637,6 +2728,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       }
       const counts = { gold: 0, silver: 0, bronze: 0 };
       for (const row of (data ?? [])) {
+        const rowMetric = (row as any).metric ?? 'edits';
+        if (rowMetric !== metric) continue;
         if (row.rank === 1) counts.gold++;
         else if (row.rank === 2) counts.silver++;
         else if (row.rank === 3) counts.bronze++;
@@ -3318,7 +3411,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     leaderboard,
-    syncUser, loadTasks, claimTask, releaseTask, completeTask,
+    syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
