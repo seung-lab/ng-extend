@@ -203,7 +203,9 @@ Claim up to 3 cells at a time. Mark them complete when done.`,
   {
     title: "Batch Processor",
     titleIcon: ICON_BATCH,
-    text: `Apply actions to many cells at once: recolor, complete, annotate. Useful when you've built a list of cells of the same type.`,
+    text: `Apply actions to many cells at once: recolor, complete, annotate. Useful when you've built a list of cells of the same type.
+
+*Inspired by an extension originally built by citizen scientist KrzysztofKruk.*`,
     position: { element: '[title^="Batch Processor"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
