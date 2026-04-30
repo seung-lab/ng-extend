@@ -26,3 +26,12 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/weekly-winners-snapshot.mjs ${{ inputs.week_start }}
+
+      - name: Broadcast top-10 weekly champions notification
+        # Skip the broadcast on backfill runs (week_start input set) so we
+        # don't ping every user for a week they already lived through.
+        if: ${{ inputs.week_start == '' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/weekly-leaderboard-broadcast.mjs
