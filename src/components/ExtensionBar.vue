@@ -697,11 +697,14 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   align-items: center;
 }
 .nge-pyr-logo {
-  width: 28px;
-  height: 28px;
+  /* Sized to match the toolbar SVG icons (18px content) — was 28px and
+     visibly outsized everything else. The blue glow gives it identity
+     without needing the extra pixels. */
+  width: 22px;
+  height: 22px;
   object-fit: contain;
-  opacity: 0.9;
-  filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.3));
+  opacity: 0.95;
+  filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.35));
   transition: opacity 0.15s, filter 0.15s;
 }
 .nge-pyr-logo:hover {
