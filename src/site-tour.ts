@@ -225,7 +225,7 @@ Other citizen scientists can jump straight to your view, leave a note, link an a
   {
     title: "Notifications",
     titleIcon: ICON_NOTIF,
-    text: `Badge unlocks, help-request responses, weekly recaps, and admin announcements all land here.`,
+    text: `New achievements, help-request responses, weekly recaps, and admin announcements all land here.`,
     position: { element: '[title^="Notifications"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
@@ -235,6 +235,8 @@ Other citizen scientists can jump straight to your view, leave a note, link an a
     title: "Community Chat",
     titleIcon: ICON_CHAT,
     text: `Real-time chat with everyone currently online. Type **#segId** to share a clickable link to a segment, or **@name** to ping someone.
+
+You can also share your saved Links in chat.
 
 Drag the panel anywhere on screen.`,
     position: { element: '[title^="Chat"]', side: "bottom", offset: { x: 0, y: 14 } },
