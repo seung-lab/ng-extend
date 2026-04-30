@@ -512,7 +512,8 @@ function playBatchChime() {
           <div class="nge-batch-total-label">YOUR TOTAL</div>
           <div class="nge-batch-total">{{ cellCelebration.totalCells }}</div>
           <div class="nge-batch-total-sub">cells mapped</div>
-          <div class="nge-batch-thanks">For science. For the brain. For the connectome.</div>
+          <div class="nge-batch-thanks">Thank you for mapping the brain!</div>
+          <div class="nge-batch-rally">FOR SCIENCE!</div>
         </div>
       </div>
     </Transition>
@@ -1491,6 +1492,17 @@ function playBatchChime() {
   color: #aab;
   margin-top: 28px;
   font-style: italic;
+}
+.nge-batch-rally {
+  font-size: 1.1em;
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  color: rgba(255, 220, 130, 0.95);
+  text-shadow: 0 0 14px rgba(255, 200, 80, 0.7), 0 0 28px rgba(255, 180, 60, 0.4);
+  margin-top: 8px;
+  text-transform: uppercase;
+  /* Pad-right matches the letter-spacing so the text stays centered */
+  padding-right: 0.32em;
 }
 .nge-batch-hint {
   font-size: 0.72em;
