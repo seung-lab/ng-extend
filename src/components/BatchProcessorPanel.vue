@@ -6,7 +6,8 @@
  */
 import { ref, computed, onMounted } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
-import { setCellComplete, saveCellType } from '../widgets/lightbulb_service';
+import { setCellComplete, saveCellType, NURRO_IMAGES } from '../widgets/lightbulb_service';
+import { useProofreadingBackendStore, useUserStatsStore } from '../store';
 import { EYEWIRE_II_CAVE_CONFIG, RETINAL_CELL_TYPES } from '../config';
 
 const emit = defineEmits({ hide: null });
@@ -465,6 +466,13 @@ function jumpToCurrentSegment(group: SegmentGroup) {
 /** Begin the walk stage: pre-load all meshes, then center on the first cell. */
 function startWalk(group: SegmentGroup) {
   if (!guide.value) return;
+  // Force axis bars on so the user has orientation cues for crosshair placement.
+  try {
+    const viewer: any = (window as any)['viewer'];
+    if (viewer?.showAxisLines && viewer.showAxisLines.value === false) {
+      viewer.showAxisLines.value = true;
+    }
+  } catch {}
   // Pre-load all segments so meshes start streaming — the moveToSegment call
   // in jumpToCurrentSegment relies on a loaded mesh fragment for the centroid.
   loadAllSegmentsIntoViewer(group);
@@ -548,19 +556,40 @@ async function submitGuidedComplete(group: SegmentGroup) {
     // throwing — must check the return value or silent failures slip through
     // (CAVE never receives the write, but localStorage is still set, so the
     // lightbulb mistakenly shows complete).
+    // Pass suppressCelebration=true so the per-cell overlay doesn't pop N
+    // times during a batch; we fire one batch celebration after the loop.
     let ok = false;
     try {
-      ok = await setCellComplete(caveServer, segId, true, undefined, pt);
+      ok = await setCellComplete(caveServer, segId, true, undefined, pt, true);
     } catch (e) {
       console.error('[batch] setCellComplete threw for', segId, e);
     }
     if (!ok) batchProgress.value.errors.push(segId);
   }
   const errCount = batchProgress.value.errors.length;
+  const successCount = total - errCount;
   if (guide.value?.solo) restoreSoloSnapshot();
-  flash(`Completed ${total - errCount}/${total}${errCount ? ` (${errCount} failed)` : ''}`);
+  flash(`Completed ${successCount}/${total}${errCount ? ` (${errCount} failed)` : ''}`);
   batchProgress.value = null;
   guide.value = null;
+
+  // Single batch celebration once the entire loop finishes — replaces N pops
+  // of the per-cell overlay. Pulls the fresh total from Supabase so the count
+  // reflects all the writes that just landed.
+  if (successCount > 0) {
+    try {
+      const backend = useProofreadingBackendStore();
+      await backend.loadUserStats();
+      const statsStore = useUserStatsStore();
+      const newTotal = statsStore.stats.cellsSubmitted;
+      const nurro = NURRO_IMAGES[Math.floor(Math.random() * NURRO_IMAGES.length)];
+      backend.pendingCellCelebration = {
+        totalCells: newTotal,
+        imageUrl: nurro,
+        batchCount: successCount,
+      };
+    } catch { /* non-critical */ }
+  }
 }
 
 // Annotate (sequential with progress)

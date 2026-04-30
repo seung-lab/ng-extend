@@ -2963,7 +2963,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   /** Trigger badge celebration from notification click — AchievementToast watches this */
   const pendingBadgeCelebration = ref<{ title: string; body: string; imageUrl: string } | null>(null);
-  const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string } | null>(null);
+  const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number } | null>(null);
 
   const unreadNotificationCount = computed(() =>
     notifications.value.filter(n => !notificationReads.value.has(n.id)).length

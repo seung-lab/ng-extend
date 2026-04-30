@@ -21,7 +21,7 @@ import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
 import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
 import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
-const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
+export const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
 // ─── Auth token helpers (mirrors the pattern in store.ts) ───────────────────
 
@@ -438,7 +438,8 @@ export async function getCellStatus(
 export async function setCellComplete(
     caveServer: string, rootId: string, complete: boolean,
     existingAnnotationId?: number,
-    pointOverride?: [number, number, number]): Promise<boolean> {
+    pointOverride?: [number, number, number],
+    suppressCelebration?: boolean): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const {cellStatusTable, alignedVolume} = dsCfg;
   if (!caveServer) {
@@ -526,18 +527,23 @@ export async function setCellComplete(
           statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
           statsStore.logDailyCellComplete();
         } catch { /* non-critical */ }
-        // Celebration! Read fresh count from Supabase for accuracy
-        try {
-          const backend = useProofreadingBackendStore();
-          await backend.loadUserStats(); // refresh from DB
-          const statsStore = useUserStatsStore();
-          const total = statsStore.stats.cellsSubmitted;
-          const nurro = NURRO_IMAGES[Math.floor(Math.random() * NURRO_IMAGES.length)];
-          backend.pendingCellCelebration = {
-            totalCells: total,
-            imageUrl: nurro,
-          };
-        } catch { /* non-critical */ }
+        // Celebration! Read fresh count from Supabase for accuracy.
+        // Skipped when suppressCelebration is set — used by the batch wizard so
+        // we don't pop the overlay 25× during a batch; wizard fires its own
+        // single batch celebration once the loop finishes.
+        if (!suppressCelebration) {
+          try {
+            const backend = useProofreadingBackendStore();
+            await backend.loadUserStats(); // refresh from DB
+            const statsStore = useUserStatsStore();
+            const total = statsStore.stats.cellsSubmitted;
+            const nurro = NURRO_IMAGES[Math.floor(Math.random() * NURRO_IMAGES.length)];
+            backend.pendingCellCelebration = {
+              totalCells: total,
+              imageUrl: nurro,
+            };
+          } catch { /* non-critical */ }
+        }
         return true;
       }
       const errText = await res.text().catch(() => '');

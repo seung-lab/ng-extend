@@ -295,7 +295,7 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 });
 
 // ── Cell completion celebration ──
-const cellCelebration = ref<{ totalCells: number; imageUrl: string } | null>(null);
+const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number } | null>(null);
 
 watch(() => backend.pendingCellCelebration, (pending) => {
   if (!pending) return;
@@ -368,9 +368,16 @@ function dismissCellCelebration() {
         <div class="nge-cell-card">
           <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-cell-nurro" />
           <div class="nge-cell-text">
-            <div class="nge-cell-congrats">Congratulations, Cell Complete!</div>
+            <div class="nge-cell-congrats">
+              {{ cellCelebration.batchCount ? `${cellCelebration.batchCount} Cells Complete!` : 'Congratulations, Cell Complete!' }}
+            </div>
             <div class="nge-cell-thanks">Thank you for helping to map the brain. For science!</div>
-            <div class="nge-cell-stats">+1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong></div>
+            <div class="nge-cell-stats" v-if="cellCelebration.batchCount && cellCelebration.batchCount > 1">
+              +{{ cellCelebration.batchCount }} cells bring your total to <strong>{{ cellCelebration.totalCells }}</strong>
+            </div>
+            <div class="nge-cell-stats" v-else>
+              +1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong>
+            </div>
           </div>
           <div class="nge-cell-hint">Click to dismiss</div>
         </div>
