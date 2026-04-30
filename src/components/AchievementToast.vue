@@ -15,6 +15,7 @@ import { useUserStatsStore, useProofreadingQueueStore, useProofreadingBackendSto
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
+import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 const statsStore = useUserStatsStore();
 const { stats } = storeToRefs(statsStore);
@@ -476,8 +477,9 @@ function playBatchChime() {
         </div>
         <div class="nge-batch-shockwave"></div>
         <div class="nge-batch-shockwave nge-batch-shockwave--2"></div>
+        <!-- Background dust — particles rise with organic noise (wandering side-to-side). -->
         <div class="nge-batch-particles">
-          <span v-for="i in 30" :key="i" class="nge-batch-particle" :style="{ '--i': i }"></span>
+          <span v-for="i in 50" :key="i" class="nge-batch-particle" :style="{ '--i': i }"></span>
         </div>
         <div class="nge-batch-card" @click.stop>
           <button class="nge-batch-close" @click="dismissCellCelebration" aria-label="Dismiss">×</button>
@@ -486,17 +488,20 @@ function playBatchChime() {
           <span class="nge-batch-corner nge-batch-corner--bl"></span>
           <span class="nge-batch-corner nge-batch-corner--br"></span>
           <div class="nge-batch-aura"></div>
-          <div class="nge-batch-rings">
-            <div class="nge-batch-ring nge-batch-ring--1"></div>
-            <div class="nge-batch-ring nge-batch-ring--2"></div>
-            <div class="nge-batch-ring nge-batch-ring--3"></div>
+          <!-- Halo cloud — 60 particles in 3 concentric bands at varying radii.
+               Replaces the previous solid rotating rings with something softer and gaseous. -->
+          <div class="nge-batch-halo">
+            <span v-for="i in 72" :key="i" class="nge-batch-halo-particle" :style="{ '--i': i - 1 }"></span>
           </div>
           <div class="nge-batch-scanline"></div>
 
-          <div class="nge-batch-nurro-wrap">
-            <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-batch-nurro" />
-            <div class="nge-batch-runes">
-              <span v-for="(rune, i) in ['ᚠ','ᚢ','ᚦ','ᚨ','ᚱ','ᚲ']" :key="i" class="nge-batch-rune" :style="{ '--i': i }">{{ rune }}</span>
+          <div class="nge-batch-pyr-wrap">
+            <img :src="pyrIcon" class="nge-batch-pyr" alt="Pyr" />
+            <!-- Orbital particles around the Pyr icon — replaces the Norse runes
+                 with something more elegant: 24 small dots in 3 orbital bands at
+                 different speeds, like electrons / planets. -->
+            <div class="nge-batch-orbits">
+              <span v-for="i in 24" :key="i" class="nge-batch-orbit" :style="{ '--i': i - 1 }"></span>
             </div>
           </div>
 
@@ -1226,29 +1231,45 @@ function playBatchChime() {
   pointer-events: none;
 }
 
-/* Floating particles drifting up the screen */
+/* Floating particles — wander side-to-side as they rise (organic noise, like
+   dust in a sunbeam). Each particle has its own drift amplitude and direction
+   so the field never looks regimented. */
 .nge-batch-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .nge-batch-particle {
   position: absolute;
-  width: 3px;
-  height: 3px;
+  width: 2px;
+  height: 2px;
   border-radius: 50%;
-  background: rgba(120, 200, 255, 0.85);
-  box-shadow: 0 0 10px rgba(120, 200, 255, 0.9);
+  background: rgba(120, 200, 255, 0.8);
+  box-shadow: 0 0 8px rgba(120, 200, 255, 0.85);
   bottom: -10px;
-  left: calc((var(--i) - 1) * 3.33% + 1.5%);
-  animation: nge-batch-particle-rise calc(8s + var(--i) * 0.2s) linear infinite;
-  animation-delay: calc(var(--i) * 0.25s);
+  left: calc((var(--i) - 1) * 2% + 1%);
+  --drift: 1;
+  animation: nge-batch-particle-rise calc(11s + var(--i) * 0.15s) ease-in-out infinite;
+  animation-delay: calc(var(--i) * -0.4s);
+  filter: blur(0.3px);
 }
-.nge-batch-particle:nth-child(3n) { background: rgba(255, 200, 80, 0.85); box-shadow: 0 0 10px rgba(255, 200, 80, 0.9); }
-.nge-batch-particle:nth-child(5n) { width: 2px; height: 2px; }
-.nge-batch-particle:nth-child(7n) { width: 4px; height: 4px; }
+.nge-batch-particle:nth-child(3n)  { background: rgba(255, 200, 80, 0.78); box-shadow: 0 0 9px rgba(255, 200, 80, 0.85); }
+.nge-batch-particle:nth-child(7n)  { background: rgba(180, 230, 255, 0.7); box-shadow: 0 0 8px rgba(180, 230, 255, 0.7); }
+.nge-batch-particle:nth-child(11n) { background: rgba(255, 240, 200, 0.85); box-shadow: 0 0 12px rgba(255, 240, 200, 0.9); }
+.nge-batch-particle:nth-child(2n)  { width: 1px; height: 1px; }
+.nge-batch-particle:nth-child(5n)  { width: 3px; height: 3px; }
+.nge-batch-particle:nth-child(13n) { width: 4px; height: 4px; filter: blur(0.6px); }
+/* Stagger drift amplitudes so motion looks Brownian, not mechanical. */
+.nge-batch-particle:nth-child(4n)   { --drift: 1.4; }
+.nge-batch-particle:nth-child(4n+1) { --drift: 0.7; }
+.nge-batch-particle:nth-child(4n+2) { --drift: 1.0; }
+.nge-batch-particle:nth-child(4n+3) { --drift: -1.2; } /* negative flips the wave direction */
 @keyframes nge-batch-particle-rise {
-  0%   { transform: translateY(0) translateX(0); opacity: 0; }
-  10%  { opacity: 1; }
-  50%  { transform: translateY(-50vh) translateX(20px); }
-  90%  { opacity: 1; }
-  100% { transform: translateY(-105vh) translateX(-10px); opacity: 0; }
+  0%   { transform: translateY(0)     translateX(0); opacity: 0; }
+  6%   { opacity: 1; }
+  16%  { transform: translateY(-15vh) translateX(calc(var(--drift) * 22px)); }
+  30%  { transform: translateY(-30vh) translateX(calc(var(--drift) * -28px)); }
+  44%  { transform: translateY(-45vh) translateX(calc(var(--drift) * 32px)); }
+  58%  { transform: translateY(-60vh) translateX(calc(var(--drift) * -22px)); }
+  72%  { transform: translateY(-75vh) translateX(calc(var(--drift) * 26px)); }
+  86%  { transform: translateY(-90vh) translateX(calc(var(--drift) * -18px)); opacity: 1; }
+  100% { transform: translateY(-110vh) translateX(0); opacity: 0; }
 }
 
 /* Card */
@@ -1290,45 +1311,109 @@ function playBatchChime() {
   50%      { opacity: 1;    transform: scale(1.12); }
 }
 
-/* Rotating rings around the card */
-.nge-batch-rings {
+/* Halo cloud around the card — replaces the previous solid rings with 72
+   particles in 3 concentric bands (with intra-band radial scatter so it reads
+   as a gaseous cloud, not perfect circles). Different per-band rotation
+   speeds create depth/parallax. */
+.nge-batch-halo {
   position: absolute;
-  inset: -50px;
+  inset: 0;
   pointer-events: none;
   z-index: -1;
 }
-.nge-batch-ring {
+.nge-batch-halo-particle {
   position: absolute;
-  inset: 0;
-  border: 1px solid rgba(120, 200, 255, 0.25);
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 2px;
   border-radius: 50%;
-  animation: nge-batch-ring-rotate linear infinite;
+  --halo-r: 240px;
+  animation: nge-batch-halo-spin var(--halo-speed, 36s) linear infinite;
+  animation-delay: calc(var(--i) * -0.18s);
+  filter: blur(0.4px);
 }
-.nge-batch-ring--1 { animation-duration: 14s; border-style: dashed; }
-.nge-batch-ring--2 { inset: 25px; animation-duration: 22s; animation-direction: reverse; border-color: rgba(255, 200, 80, 0.2); }
-.nge-batch-ring--3 { inset: 50px; animation-duration: 30s; border-color: rgba(120, 200, 255, 0.13); }
-@keyframes nge-batch-ring-rotate {
-  0%   { transform: rotate(0); }
-  100% { transform: rotate(360deg); }
+/* Three bands, three speeds — slow outermost reads as deep background */
+.nge-batch-halo-particle:nth-child(3n)   { --halo-speed: 28s; background: rgba(120, 200, 255, 0.6);  box-shadow: 0 0 5px rgba(120, 200, 255, 0.75); }
+.nge-batch-halo-particle:nth-child(3n+1) { --halo-speed: 44s; background: rgba(255, 210, 110, 0.55); box-shadow: 0 0 5px rgba(255, 200, 100, 0.7); }
+.nge-batch-halo-particle:nth-child(3n+2) { --halo-speed: 62s; background: rgba(180, 230, 255, 0.45); box-shadow: 0 0 5px rgba(180, 230, 255, 0.55); }
+/* Radial scatter within each band so it's a cloud, not a ring */
+.nge-batch-halo-particle:nth-child(9n)   { --halo-r: 215px; }
+.nge-batch-halo-particle:nth-child(9n+1) { --halo-r: 232px; }
+.nge-batch-halo-particle:nth-child(9n+2) { --halo-r: 248px; }
+.nge-batch-halo-particle:nth-child(9n+3) { --halo-r: 268px; }
+.nge-batch-halo-particle:nth-child(9n+4) { --halo-r: 286px; }
+.nge-batch-halo-particle:nth-child(9n+5) { --halo-r: 304px; }
+.nge-batch-halo-particle:nth-child(9n+6) { --halo-r: 322px; }
+.nge-batch-halo-particle:nth-child(9n+7) { --halo-r: 348px; }
+.nge-batch-halo-particle:nth-child(9n+8) { --halo-r: 376px; }
+/* Size variation */
+.nge-batch-halo-particle:nth-child(5n)   { width: 1px; height: 1px; }
+.nge-batch-halo-particle:nth-child(7n)   { width: 3px; height: 3px; filter: blur(0.6px); }
+.nge-batch-halo-particle:nth-child(13n)  { width: 4px; height: 4px; filter: blur(0.8px); opacity: 0.85; }
+@keyframes nge-batch-halo-spin {
+  0%   { transform: translate(-50%, -50%) rotate(0deg)   translateY(var(--halo-r)); }
+  100% { transform: translate(-50%, -50%) rotate(360deg) translateY(var(--halo-r)); }
 }
 
-/* Nurro avatar — pulses gently */
-.nge-batch-nurro {
-  width: 92px;
-  height: 92px;
-  border-radius: 50%;
-  margin: 0 auto 22px;
-  display: block;
-  object-fit: cover;
-  border: 3px solid rgba(120, 200, 255, 0.55);
-  box-shadow: 0 0 50px rgba(74, 158, 255, 0.7), inset 0 0 20px rgba(120, 200, 255, 0.3);
-  animation: nge-batch-nurro-pulse 2.4s ease-in-out infinite;
+/* Pyr icon — central anchor of the celebration. Pulses gently with a soft
+   cyan halo. Replaces the random-pick nurro avatar. */
+.nge-batch-pyr-wrap {
   position: relative;
+  width: 200px;
+  height: 200px;
+  margin: 0 auto 18px;
+}
+.nge-batch-pyr {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 88px;
+  height: 88px;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 20px rgba(120, 200, 255, 0.85))
+    drop-shadow(0 0 40px rgba(74, 158, 255, 0.5));
+  animation: nge-batch-pyr-pulse 3.2s ease-in-out infinite;
+  z-index: 2;
+}
+@keyframes nge-batch-pyr-pulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1);    filter: drop-shadow(0 0 20px rgba(120, 200, 255, 0.85)) drop-shadow(0 0 40px rgba(74, 158, 255, 0.5)); }
+  50%      { transform: translate(-50%, -50%) scale(1.04); filter: drop-shadow(0 0 32px rgba(120, 200, 255, 1))    drop-shadow(0 0 60px rgba(74, 158, 255, 0.7)); }
+}
+
+/* Orbital particles around the Pyr icon — replaces the Norse runes.
+   24 particles in 3 orbital bands (8 per band) at different speeds.
+   Mix of cyan and gold. Each particle has its own --i for phase offset. */
+.nge-batch-orbits {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   z-index: 1;
 }
-@keyframes nge-batch-nurro-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 50px rgba(74, 158, 255, 0.7), inset 0 0 20px rgba(120, 200, 255, 0.3); }
-  50%      { transform: scale(1.06); box-shadow: 0 0 70px rgba(74, 158, 255, 0.9), inset 0 0 30px rgba(120, 200, 255, 0.5); }
+.nge-batch-orbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  --orbit-r: 60px;
+  animation: nge-batch-orbit-spin var(--orbit-speed, 8s) linear infinite;
+  animation-delay: calc(var(--i) * -0.35s);
+  filter: blur(0.2px);
+}
+.nge-batch-orbit:nth-child(3n)   { --orbit-r: 56px; --orbit-speed: 6.5s;  background: rgba(120, 200, 255, 0.95); box-shadow: 0 0 8px rgba(120, 200, 255, 1); }
+.nge-batch-orbit:nth-child(3n+1) { --orbit-r: 76px; --orbit-speed: 11s;   background: rgba(255, 215, 120, 0.9);  box-shadow: 0 0 8px rgba(255, 200, 100, 0.95); }
+.nge-batch-orbit:nth-child(3n+2) { --orbit-r: 94px; --orbit-speed: 17s;   background: rgba(180, 230, 255, 0.85); box-shadow: 0 0 9px rgba(180, 230, 255, 0.85); }
+/* Counter-rotate every other to add visual interest (like opposing orbits) */
+.nge-batch-orbit:nth-child(2n)   { animation-direction: reverse; }
+.nge-batch-orbit:nth-child(7n)   { width: 4px; height: 4px; }
+.nge-batch-orbit:nth-child(11n)  { width: 2px; height: 2px; opacity: 0.75; }
+@keyframes nge-batch-orbit-spin {
+  0%   { transform: translate(-50%, -50%) rotate(0deg)   translateY(var(--orbit-r)); }
+  100% { transform: translate(-50%, -50%) rotate(360deg) translateY(var(--orbit-r)); }
 }
 
 /* Cyan-themed count */
