@@ -236,28 +236,40 @@ function getSegLayer(): any {
 }
 
 // ── Segment color (for the wizard's color dots) ─────────────────────
-// Reads neuroglancer's stated-color override if the user has recolored the
-// segment, otherwise falls back to a deterministic hash so each cell still
-// gets a distinct, recognizable dot in the wizard list.
+// Returns the exact color neuroglancer renders for the segment so the pip
+// in the wizard list matches the cell in the viewer:
+//   1. segmentStatedColors override (the user-recolored case), or
+//   2. segmentColorHash.computeCssColor(id) — the same Murmur-style hash
+//      neuroglancer uses for auto-coloring (see segment_color.ts).
+// Falls back to a deterministic local hash only if neuroglancer state
+// isn't available yet (e.g. the seg layer hasn't mounted).
 function getSegmentColor(segIdStr: string): string {
   try {
     const layer = getSegLayer();
-    const map = layer?.displayState?.segmentationColorGroupState?.value?.segmentStatedColors;
-    if (map) {
+    const colorGroupState = layer?.displayState?.segmentationColorGroupState?.value;
+    if (colorGroupState) {
       const id = Uint64.parseString(segIdStr);
-      const out = new Uint64();
-      // Uint64HashMap.get(key, valueOut) → boolean; mutates valueOut.
-      if (map.get(id, out)) {
-        const packed = out.low >>> 0;  // 0xBBGGRR
-        const r = packed & 0xff;
-        const g = (packed >>> 8) & 0xff;
-        const b = (packed >>> 16) & 0xff;
-        return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+      // 1. Stated override (recolored)
+      const map = colorGroupState.segmentStatedColors;
+      if (map) {
+        const out = new Uint64();
+        // Uint64HashMap.get(key, valueOut) → boolean; mutates valueOut.
+        if (map.get(id, out)) {
+          const packed = out.low >>> 0;  // 0xBBGGRR
+          const r = packed & 0xff;
+          const g = (packed >>> 8) & 0xff;
+          const b = (packed >>> 16) & 0xff;
+          return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+        }
+      }
+      // 2. Auto-color via neuroglancer's own SegmentColorHash so the pip
+      //    matches what the viewer renders pixel-for-pixel.
+      if (colorGroupState.segmentColorHash?.computeCssColor) {
+        return colorGroupState.segmentColorHash.computeCssColor(id);
       }
     }
   } catch {}
-  // Java-style 32-bit hash → HSL. Won't match neuroglancer's auto-color,
-  // but is stable per segId so each cell gets a recognizable swatch.
+  // 3. Fallback if seg layer isn't mounted — deterministic per segId
   let h = 0;
   for (let i = 0; i < segIdStr.length; i++) {
     h = (h * 31 + segIdStr.charCodeAt(i)) | 0;
