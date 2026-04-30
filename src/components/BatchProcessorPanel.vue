@@ -723,7 +723,7 @@ const panelStyle = computed(() => ({
 .nge-bp-panel {
   position: fixed;
   z-index: 10010;
-  width: 420px;
+  width: 480px;
   max-height: 75vh;
   display: flex;
   flex-direction: column;
@@ -732,6 +732,7 @@ const panelStyle = computed(() => ({
   border-radius: 14px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   font-family: 'SF Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 14px;
   color: #ccd;
   overflow: hidden;
 }
@@ -751,16 +752,16 @@ const panelStyle = computed(() => ({
   border-bottom: 1px solid rgba(120, 140, 255, 0.08);
 }
 .nge-bp-dragging { cursor: grabbing; }
-.nge-bp-title { font-size: 0.9em; font-weight: 700; letter-spacing: 0.03em; color: #eef; }
-.nge-bp-close { background: none; border: none; color: #889; font-size: 1.4em; cursor: pointer; padding: 0 4px; line-height: 1; }
+.nge-bp-title { font-size: 1em; font-weight: 700; letter-spacing: 0.03em; color: #eef; }
+.nge-bp-close { background: none; border: none; color: #889; font-size: 1.5em; cursor: pointer; padding: 0 4px; line-height: 1; }
 .nge-bp-close:hover { color: #eef; }
 
 /* Flash message */
 .nge-bp-flash {
-  padding: 4px 12px;
+  padding: 5px 12px;
   background: rgba(74, 158, 255, 0.12);
   color: #8bf;
-  font-size: 0.72em;
+  font-size: 0.85em;
   text-align: center;
   font-weight: 600;
 }
@@ -779,31 +780,31 @@ const panelStyle = computed(() => ({
 
 /* Inputs */
 .nge-bp-input {
-  padding: 5px 8px;
+  padding: 6px 9px;
   border: 1px solid rgba(120, 140, 255, 0.12);
   border-radius: 5px;
   background: rgba(10, 10, 30, 0.5);
   color: #ccd;
-  font-size: 0.75em;
+  font-size: 0.9em;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
 }
 .nge-bp-input:focus { border-color: rgba(74, 158, 255, 0.3); }
 .nge-bp-input::placeholder { color: #556; }
-.nge-bp-input--sm { padding: 3px 6px; font-size: 0.7em; }
+.nge-bp-input--sm { padding: 4px 7px; font-size: 0.85em; }
 .nge-bp-input--flex { flex: 1; min-width: 0; }
 
 .nge-bp-create .nge-bp-input { flex: 1; }
 
 /* Buttons */
 .nge-bp-btn {
-  padding: 4px 10px;
+  padding: 6px 12px;
   border: 1px solid rgba(120, 140, 255, 0.15);
   border-radius: 5px;
   background: transparent;
   color: #8bf;
-  font-size: 0.72em;
+  font-size: 0.9em;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -813,18 +814,18 @@ const panelStyle = computed(() => ({
 .nge-bp-btn:hover { background: rgba(74, 158, 255, 0.1); }
 .nge-bp-btn--create { border-color: rgba(68, 170, 102, 0.25); color: #4a6; }
 .nge-bp-btn--create:hover { background: rgba(68, 170, 102, 0.12); }
-.nge-bp-btn--add { font-size: 0.68em; padding: 3px 7px; }
+.nge-bp-btn--add { font-size: 0.85em; padding: 5px 9px; }
 .nge-bp-btn--go { border-color: rgba(74, 158, 255, 0.3); color: #4af; }
 .nge-bp-btn--go:hover { background: rgba(74, 158, 255, 0.15); }
 .nge-bp-btn--go:disabled { opacity: 0.3; cursor: default; }
-.nge-bp-btn--sm { font-size: 0.65em; padding: 2px 6px; color: #889; }
+.nge-bp-btn--sm { font-size: 0.85em; padding: 5px 9px; color: #889; }
 
 /* Progress bar */
 .nge-bp-progress {
   padding: 6px 12px;
   background: rgba(74, 158, 255, 0.06);
 }
-.nge-bp-progress-label { font-size: 0.7em; color: #8bf; margin-bottom: 3px; }
+.nge-bp-progress-label { font-size: 0.85em; color: #8bf; margin-bottom: 3px; }
 .nge-bp-progress-bar {
   height: 3px;
   background: rgba(120, 140, 255, 0.1);
@@ -868,13 +869,13 @@ const panelStyle = computed(() => ({
   border-radius: 50%;
   flex-shrink: 0;
 }
-.nge-bp-group-chevron { font-size: 0.7em; color: #667; width: 10px; }
-.nge-bp-group-name { font-size: 0.82em; font-weight: 600; color: #dde; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nge-bp-group-chevron { font-size: 0.85em; color: #667; width: 10px; }
+.nge-bp-group-name { font-size: 0.95em; font-weight: 600; color: #dde; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nge-bp-group-count {
-  font-size: 0.65em;
+  font-size: 0.78em;
   background: rgba(120, 140, 255, 0.1);
   color: #8bf;
-  padding: 1px 5px;
+  padding: 2px 6px;
   border-radius: 4px;
   font-weight: 600;
 }
@@ -905,12 +906,12 @@ const panelStyle = computed(() => ({
 .nge-bp-chip {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px 6px;
+  gap: 3px;
+  padding: 3px 7px;
   background: rgba(120, 140, 255, 0.08);
   border: 1px solid rgba(120, 140, 255, 0.1);
   border-radius: 4px;
-  font-size: 0.68em;
+  font-size: 0.82em;
   color: #aab;
 }
 .nge-bp-chip-x {
@@ -925,7 +926,7 @@ const panelStyle = computed(() => ({
 .nge-bp-chip-x:hover { color: #f66; }
 
 .nge-bp-empty-segs {
-  font-size: 0.7em;
+  font-size: 0.85em;
   color: #556;
   padding: 6px 0;
   font-style: italic;
@@ -945,12 +946,12 @@ const panelStyle = computed(() => ({
   gap: 3px;
 }
 .nge-bp-act {
-  padding: 3px 7px;
+  padding: 6px 11px;
   border: 1px solid rgba(120, 140, 255, 0.1);
   border-radius: 4px;
   background: transparent;
   color: #889;
-  font-size: 0.65em;
+  font-size: 0.88em;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -976,7 +977,7 @@ const panelStyle = computed(() => ({
   gap: 6px;
   flex-wrap: wrap;
 }
-.nge-bp-sub-label { font-size: 0.68em; color: #889; font-weight: 600; }
+.nge-bp-sub-label { font-size: 0.85em; color: #889; font-weight: 600; }
 
 .nge-bp-swatches { display: flex; gap: 3px; flex-wrap: wrap; }
 .nge-bp-swatch {
@@ -999,12 +1000,12 @@ const panelStyle = computed(() => ({
 }
 
 .nge-bp-select {
-  padding: 3px 6px;
+  padding: 5px 7px;
   border: 1px solid rgba(120, 140, 255, 0.15);
   border-radius: 4px;
   background: rgba(10, 10, 30, 0.5);
   color: #ccd;
-  font-size: 0.7em;
+  font-size: 0.88em;
   font-family: inherit;
   outline: none;
   flex: 1;
@@ -1014,11 +1015,11 @@ const panelStyle = computed(() => ({
 /* Confirm dialog */
 .nge-bp-confirm {
   margin-top: 6px;
-  padding: 6px 8px;
+  padding: 7px 10px;
   background: rgba(255, 100, 100, 0.06);
   border: 1px solid rgba(255, 100, 100, 0.15);
   border-radius: 6px;
-  font-size: 0.72em;
+  font-size: 0.88em;
   color: #f99;
 }
 .nge-bp-confirm-btns { display: flex; gap: 4px; margin-top: 4px; }
@@ -1028,66 +1029,79 @@ const panelStyle = computed(() => ({
   padding: 24px 16px;
   text-align: center;
   color: #556;
-  font-size: 0.78em;
+  font-size: 0.92em;
 }
 
 /* ── Guided Mark Complete wizard ── */
 .nge-bp-guide {
   margin-top: 6px;
-  padding: 8px;
+  padding: 10px;
   background: rgba(74, 158, 255, 0.06);
   border: 1px solid rgba(74, 158, 255, 0.18);
   border-radius: 6px;
-  font-size: 0.78em;
+  font-size: 0.95em;
   color: #cde;
 }
 .nge-bp-guide-title {
   font-weight: 700;
-  font-size: 0.92em;
+  font-size: 1.05em;
   color: #cef;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 .nge-bp-guide-text {
-  font-size: 0.85em;
+  font-size: 0.92em;
   color: #aab;
-  line-height: 1.4;
-  margin: 0 0 8px;
+  line-height: 1.45;
+  margin: 0 0 10px;
 }
 .nge-bp-guide-stepper {
-  font-size: 0.85em;
+  font-size: 0.95em;
   color: #cde;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.nge-bp-guide-color {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+  vertical-align: middle;
 }
 .nge-bp-guide-segid {
   font-family: ui-monospace, 'Cascadia Code', monospace;
   color: #8bf;
 }
 .nge-bp-guide-status {
-  font-size: 0.82em;
-  margin-bottom: 6px;
+  font-size: 0.92em;
+  margin-bottom: 7px;
 }
 .nge-bp-guide-saved { color: #7ec07e; }
 .nge-bp-guide-skipped { color: #aab; font-style: italic; }
 .nge-bp-guide-pending { color: #aab; font-style: italic; }
 .nge-bp-guide-actions {
   display: flex;
-  gap: 4px;
+  gap: 5px;
   flex-wrap: wrap;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 .nge-bp-guide-nav {
   display: flex;
-  gap: 4px;
-  padding-top: 4px;
+  gap: 5px;
+  padding-top: 5px;
   border-top: 1px solid rgba(120, 140, 255, 0.08);
 }
 .nge-bp-guide-summary {
-  font-size: 0.85em;
+  font-size: 0.92em;
   color: #cde;
-  margin-bottom: 6px;
+  margin-bottom: 7px;
 }
 .nge-bp-guide-list {
-  max-height: 120px;
+  max-height: 160px;
   overflow-y: auto;
   margin-bottom: 8px;
   display: flex;
@@ -1097,16 +1111,24 @@ const panelStyle = computed(() => ({
 .nge-bp-guide-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 6px;
+  gap: 7px;
+  padding: 4px 7px;
   border-radius: 3px;
   cursor: pointer;
-  font-size: 0.85em;
+  font-size: 0.92em;
 }
 .nge-bp-guide-item:hover { background: rgba(74, 158, 255, 0.1); }
 .nge-bp-guide-item--saved { color: #7ec07e; }
 .nge-bp-guide-item--skipped { color: #777; font-style: italic; }
 .nge-bp-guide-item--pending { color: #ffd08a; }
-.nge-bp-guide-item-pip { width: 12px; text-align: center; flex-shrink: 0; }
+.nge-bp-guide-item-pip { width: 14px; text-align: center; flex-shrink: 0; }
+.nge-bp-guide-item-color {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+}
 .nge-bp-guide-item-id { font-family: ui-monospace, 'Cascadia Code', monospace; }
 </style>

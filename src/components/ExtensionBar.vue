@@ -183,6 +183,48 @@ const visibleToolbar = computed(() => {
   return order.map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
 });
 
+// ── Drag-to-reorder toolbar ─────────────────────────────────────────
+// Persists order to `prefs.toolbarIcons` via the user-preferences store.
+const dragId = ref<string | null>(null);
+const dragOverId = ref<string | null>(null);
+
+function onIconDragStart(e: DragEvent, id: string) {
+  if (!e.dataTransfer) return;
+  dragId.value = id;
+  e.dataTransfer.effectAllowed = 'move';
+  // Some browsers require non-empty data
+  e.dataTransfer.setData('text/plain', id);
+}
+function onIconDragEnd() {
+  dragId.value = null;
+  dragOverId.value = null;
+}
+function onIconDragOver(e: DragEvent, id: string) {
+  if (!dragId.value || dragId.value === id) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  dragOverId.value = id;
+}
+function onIconDragLeave(id: string) {
+  if (dragOverId.value === id) dragOverId.value = null;
+}
+function onIconDrop(e: DragEvent, id: string) {
+  e.preventDefault();
+  const src = dragId.value;
+  dragId.value = null;
+  dragOverId.value = null;
+  if (!src || src === id) return;
+  const prefsStore = useUserPreferencesStore();
+  const current = visibleToolbar.value.map(i => i.id);
+  const fromIdx = current.indexOf(src);
+  const toIdx = current.indexOf(id);
+  if (fromIdx < 0 || toIdx < 0) return;
+  const next = [...current];
+  next.splice(fromIdx, 1);
+  next.splice(toIdx, 0, src);
+  prefsStore.prefs.toolbarIcons = next;
+}
+
 function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   const viewer: any = (window as any)['viewer'];
   if (!viewer) return;
@@ -334,8 +376,16 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         :class="{
           'nge-icon-btn--badge': icon.badge && icon.badge() > 0,
           'nge-icon-btn--active': isIconActive(icon.id),
+          'nge-icon-btn--dragging': dragId === icon.id,
+          'nge-icon-btn--drag-over': dragOverId === icon.id && dragId !== icon.id,
         }"
-        :title="icon.label"
+        :title="icon.label + ' — drag to reorder'"
+        draggable="true"
+        @dragstart="onIconDragStart($event, icon.id)"
+        @dragend="onIconDragEnd"
+        @dragover="onIconDragOver($event, icon.id)"
+        @dragleave="onIconDragLeave(icon.id)"
+        @drop="onIconDrop($event, icon.id)"
         @click="icon.action()"
       ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge">{{ icon.badge() }}</span></button>
     </div>
@@ -681,6 +731,17 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   opacity: 1;
   background: rgba(74, 158, 255, 0.12);
   box-shadow: 0 1px 0 0 #4a9eff;
+}
+/* Drag-to-reorder visuals */
+.nge-icon-btn--dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+.nge-icon-btn--drag-over {
+  background: rgba(120, 180, 255, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 180, 255, 0.55),
+    0 0 8px rgba(120, 180, 255, 0.35);
 }
 .nge-icon-btn--badge { position: relative; }
 

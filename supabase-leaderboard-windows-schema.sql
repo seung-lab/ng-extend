@@ -97,6 +97,7 @@ CREATE POLICY "insert_weekly_winners" ON weekly_winners FOR INSERT WITH CHECK (t
 
 CREATE OR REPLACE FUNCTION snapshot_weekly_winners(target_week_start DATE DEFAULT NULL)
 RETURNS TABLE (rank INTEGER, user_id UUID, edits INTEGER) AS $$
+#variable_conflict use_column
 DECLARE
   ws DATE;
 BEGIN
