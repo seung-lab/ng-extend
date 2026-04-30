@@ -125,10 +125,13 @@ interface ToolbarIcon {
 // Branch-style SVG icons for split & merge (must match profile icons)
 const SPLIT_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#e06060"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.5" fill="currentColor"/><circle cx="4" cy="13" r="1.5" fill="currentColor"/><circle cx="12" cy="13" r="1.5" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 const MERGE_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#60c060"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.5" fill="currentColor"/><circle cx="12" cy="2.5" r="1.5" fill="currentColor"/><circle cx="8" cy="13" r="1.5" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+// Find-path icon: dotted route between two nodes
+const FINDPATH_SVG = `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#c8a4ff"><circle cx="3" cy="13" r="1.8" fill="currentColor"/><circle cx="13" cy="3" r="1.8" fill="currentColor"/><path d="M5 12 Q7 9 8 8 Q9 7 11 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="1.4 1.8"/></svg>`;
 
 const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'split', emoji: '✂️', svg: SPLIT_SVG, label: 'Cut Mode (C)', action: () => activateTool('multicut') },
   { id: 'merge', emoji: '🔗', svg: MERGE_SVG, label: 'Merge Mode (M)', action: () => activateTool('merge') },
+  { id: 'findPath', emoji: '🛤️', svg: FINDPATH_SVG, label: 'Find Path (F)', action: () => activateTool('findPath') },
   { id: 'recap', emoji: '📊', svg: `<svg viewBox="0 0 16 16" fill="none" style="width:18px;height:18px;vertical-align:middle;color:#a0c4ff"><rect x="1" y="10" width="3" height="5" rx="0.5" fill="currentColor" opacity="0.4"/><rect x="5" y="7" width="3" height="8" rx="0.5" fill="currentColor" opacity="0.6"/><rect x="9" y="4" width="3" height="11" rx="0.5" fill="currentColor" opacity="0.8"/><rect x="13" y="1" width="2.5" height="14" rx="0.5" fill="currentColor"/></svg>`, label: 'Your Week in Science', action: () => { showRecap.value = true; } },
   { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard', action: () => { showLeaderboard.value = true; } },
   { id: 'quest', emoji: '🧠', label: 'Brain Quest', action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
@@ -141,7 +144,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'settings', emoji: '⚙️', label: 'Profile Settings', action: () => { showSettings.value = true; } },
 ]);
 
-const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'notif', 'chat', 'settings'];
+const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'findPath', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'notif', 'chat', 'settings'];
 
 // Map icon IDs to their active (open) state
 const iconActiveState: Record<string, () => boolean> = {
@@ -163,10 +166,16 @@ const visibleToolbar = computed(() => {
   const prefs = useUserPreferencesStore().prefs;
   let order = prefs.toolbarIcons.length > 0 ? [...prefs.toolbarIcons] : DEFAULT_TOOLBAR_ORDER;
   // Auto-inject new toolbar icons that weren't in older saved prefs
-  for (const newId of ['batch', 'notif', 'chat']) {
+  for (const newId of ['batch', 'notif', 'chat', 'findPath']) {
     if (!order.includes(newId)) {
-      const settingsIdx = order.indexOf('settings');
-      order.splice(settingsIdx >= 0 ? settingsIdx : order.length, 0, newId);
+      // findPath inserts right after merge; others go before settings
+      if (newId === 'findPath') {
+        const mergeIdx = order.indexOf('merge');
+        order.splice(mergeIdx >= 0 ? mergeIdx + 1 : 0, 0, newId);
+      } else {
+        const settingsIdx = order.indexOf('settings');
+        order.splice(settingsIdx >= 0 ? settingsIdx : order.length, 0, newId);
+      }
     }
   }
   // Remove retired icons from saved prefs
@@ -174,7 +183,7 @@ const visibleToolbar = computed(() => {
   return order.map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
 });
 
-function activateTool(toolType: 'multicut' | 'merge') {
+function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   const viewer: any = (window as any)['viewer'];
   if (!viewer) return;
 
@@ -189,10 +198,14 @@ function activateTool(toolType: 'multicut' | 'merge') {
     }
   } catch { /* non-critical */ }
 
-  // 2. Dispatch keyboard shortcut to the viewer element where ng binds handlers
-  const key = toolType === 'multicut' ? 'c' : 'm';
+  // 2. Dispatch keyboard shortcut to the viewer element where ng binds handlers.
+  // CUSTOM_BINDINGS map (in dev-server / build-prod): keyc → grapheneMulticutSegments,
+  // keym → grapheneMergeSegments, keyf → grapheneFindPath.
+  const keyMap = { multicut: 'c', merge: 'm', findPath: 'f' } as const;
+  const codeMap = { multicut: 'KeyC', merge: 'KeyM', findPath: 'KeyF' } as const;
+  const key = keyMap[toolType];
   const eventInit: KeyboardEventInit = {
-    key, code: key === 'c' ? 'KeyC' : 'KeyM',
+    key, code: codeMap[toolType],
     bubbles: true, cancelable: true,
   };
   // Try viewer.element first (where global inputEventBindings live), then fallback

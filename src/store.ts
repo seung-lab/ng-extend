@@ -2621,6 +2621,33 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
+  // ── Weekly podium counts: how many times a user finished top-3 ──────
+  /** Result shape: { gold, silver, bronze } counts for one user. */
+  async function loadWeeklyPodium(targetUserId: string): Promise<{ gold: number; silver: number; bronze: number }> {
+    const empty = { gold: 0, silver: 0, bronze: 0 };
+    if (!targetUserId) return empty;
+    try {
+      const { data, error } = await supabase
+        .from('weekly_winners')
+        .select('rank')
+        .eq('user_id', targetUserId);
+      if (error) {
+        console.warn('[backend] loadWeeklyPodium error:', error.message);
+        return empty;
+      }
+      const counts = { gold: 0, silver: 0, bronze: 0 };
+      for (const row of (data ?? [])) {
+        if (row.rank === 1) counts.gold++;
+        else if (row.rank === 2) counts.silver++;
+        else if (row.rank === 3) counts.bronze++;
+      }
+      return counts;
+    } catch (e: any) {
+      console.warn('[backend] loadWeeklyPodium failed:', e.message);
+      return empty;
+    }
+  }
+
   // ── Sync user stats to Supabase ───────────────────────────────────────
   /** Push local stats to the users table. Call periodically or on significant events. */
   async function syncStats() {
@@ -3293,7 +3320,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     leaderboard,
     syncUser, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
-    importFromGoogleSheet, syncStats, loadUserStats, loadUserProfile, loadLeaderboard,
+    importFromGoogleSheet, syncStats, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
     claimCell, releaseCell, releaseBySegment, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
     refreshSegmentIds,

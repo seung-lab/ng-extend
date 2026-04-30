@@ -1,0 +1,28 @@
+name: Weekly Winners Snapshot
+
+on:
+  schedule:
+    # Every Monday at 00:05 UTC — captures the previous Mon→Sun week.
+    - cron: '5 0 * * 1'
+  workflow_dispatch:
+    inputs:
+      week_start:
+        description: 'Optional: backfill a specific week (YYYY-MM-DD, must be a Monday). Leave blank for previous week.'
+        required: false
+        default: ''
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Snapshot top-3 weekly winners
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/weekly-winners-snapshot.mjs ${{ inputs.week_start }}

@@ -168,6 +168,36 @@ function getSegLayer(): any {
   return null;
 }
 
+// ── Segment color (for the wizard's color dots) ─────────────────────
+// Reads neuroglancer's stated-color override if the user has recolored the
+// segment, otherwise falls back to a deterministic hash so each cell still
+// gets a distinct, recognizable dot in the wizard list.
+function getSegmentColor(segIdStr: string): string {
+  try {
+    const layer = getSegLayer();
+    const map = layer?.displayState?.segmentationColorGroupState?.value?.segmentStatedColors;
+    if (map) {
+      const id = Uint64.parseString(segIdStr);
+      const out = new Uint64();
+      // Uint64HashMap.get(key, valueOut) → boolean; mutates valueOut.
+      if (map.get(id, out)) {
+        const packed = out.low >>> 0;  // 0xBBGGRR
+        const r = packed & 0xff;
+        const g = (packed >>> 8) & 0xff;
+        const b = (packed >>> 16) & 0xff;
+        return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+      }
+    }
+  } catch {}
+  // Java-style 32-bit hash → HSL. Won't match neuroglancer's auto-color,
+  // but is stable per segId so each cell gets a recognizable swatch.
+  let h = 0;
+  for (let i = 0; i < segIdStr.length; i++) {
+    h = (h * 31 + segIdStr.charCodeAt(i)) | 0;
+  }
+  return `hsl(${(h >>> 0) % 360}, 65%, 60%)`;
+}
+
 // ── Batch actions ───────────────────────────────────────────────────
 
 // Recolor
@@ -290,20 +320,40 @@ function captureViewerPoint(): [number, number, number] | null {
   return [Math.round(pos[0]), Math.round(pos[1]), Math.round(pos[2])];
 }
 
+/**
+ * Add the current segment to the viewer and center on its mesh-bbox centroid.
+ * Uses the patched moveToSegment (see move_to_segment_patch.ts) which walks
+ * mesh fragments to compute a centroid. If the mesh hasn't streamed in yet,
+ * neuroglancer's moveToSegment is a quiet no-op — the user can hit
+ * "Show in viewer" again once the mesh has arrived.
+ */
 function jumpToCurrentSegment(group: SegmentGroup) {
   if (!guide.value) return;
   const segId = group.segmentIds[guide.value.index];
   const layer = getSegLayer();
   if (!layer) return;
-  // Center the viewer view on the segment by adding it to selectedSegments,
-  // which triggers Neuroglancer to focus. Position remains untouched (user
-  // places the crosshair manually).
   try {
+    const id = Uint64.parseString(segId);
     const groupState = layer.displayState?.segmentationGroupState?.value;
-    if (groupState?.visibleSegments) {
-      groupState.visibleSegments.add(Uint64.parseString(segId));
+    if (groupState?.visibleSegments && !groupState.visibleSegments.has(id)) {
+      groupState.visibleSegments.add(id);
     }
-  } catch {}
+    if (typeof layer.moveToSegment === 'function') {
+      layer.moveToSegment(id);
+    }
+  } catch (e) {
+    console.warn('[batch] jumpToCurrentSegment failed:', e);
+  }
+}
+
+/** Begin the walk stage: pre-load all meshes, then center on the first cell. */
+function startWalk(group: SegmentGroup) {
+  if (!guide.value) return;
+  // Pre-load all segments so meshes start streaming — the moveToSegment call
+  // in jumpToCurrentSegment relies on a loaded mesh fragment for the centroid.
+  loadAllSegmentsIntoViewer(group);
+  guide.value.stage = 'walk';
+  jumpToCurrentSegment(group);
 }
 
 function saveCurrentPoint(group: SegmentGroup) {
@@ -329,21 +379,26 @@ function nextSegment(group: SegmentGroup) {
   if (!guide.value) return;
   if (guide.value.index < group.segmentIds.length - 1) {
     guide.value.index++;
+    jumpToCurrentSegment(group);
   } else {
     guide.value.stage = 'review';
   }
 }
 
-function prevSegment() {
+function prevSegment(group: SegmentGroup) {
   if (!guide.value) return;
-  if (guide.value.index > 0) guide.value.index--;
+  if (guide.value.index > 0) {
+    guide.value.index--;
+    jumpToCurrentSegment(group);
+  }
 }
 
-function gotoSegment(idx: number) {
+function gotoSegment(group: SegmentGroup, idx: number) {
   if (!guide.value) return;
   if (idx >= 0) {
     guide.value.index = idx;
     guide.value.stage = 'walk';
+    jumpToCurrentSegment(group);
   }
 }
 
@@ -595,7 +650,7 @@ const panelStyle = computed(() => ({
                   </p>
                   <div class="nge-bp-guide-actions">
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="loadAllSegmentsIntoViewer(group)">Load all into viewer</button>
-                    <button class="nge-bp-btn nge-bp-btn--go" @click="guide.stage = 'walk'">Start →</button>
+                    <button class="nge-bp-btn nge-bp-btn--go" @click="startWalk(group)">Start →</button>
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="cancelCompleteWizard">Cancel</button>
                   </div>
                 </div>
@@ -604,7 +659,8 @@ const panelStyle = computed(() => ({
                 <div v-else-if="guide.stage === 'walk'" class="nge-bp-guide-walk">
                   <div class="nge-bp-guide-stepper">
                     Cell {{ guide.index + 1 }} of {{ group.segmentIds.length }}
-                    · <span class="nge-bp-guide-segid">{{ truncId(group.segmentIds[guide.index]) }}</span>
+                    · <span class="nge-bp-guide-color" :style="{ background: getSegmentColor(group.segmentIds[guide.index]) }"></span>
+                    <span class="nge-bp-guide-segid">{{ truncId(group.segmentIds[guide.index]) }}</span>
                   </div>
                   <div class="nge-bp-guide-status">
                     <span v-if="segStatus(group.segmentIds[guide.index]) === 'saved'" class="nge-bp-guide-saved">✓ Saved</span>
@@ -617,7 +673,7 @@ const panelStyle = computed(() => ({
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="skipCurrent(group)">Skip</button>
                   </div>
                   <div class="nge-bp-guide-nav">
-                    <button class="nge-bp-btn nge-bp-btn--sm" @click="prevSegment" :disabled="guide.index === 0">◂ Prev</button>
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="prevSegment(group)" :disabled="guide.index === 0">◂ Prev</button>
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="nextSegment(group)">
                       {{ guide.index === group.segmentIds.length - 1 ? 'Review →' : 'Next ▸' }}
                     </button>
@@ -634,8 +690,9 @@ const panelStyle = computed(() => ({
                     {{ group.segmentIds.length - Object.keys(guide.points).length - guide.skipped.size }} pending
                   </div>
                   <div class="nge-bp-guide-list">
-                    <div v-for="(segId, i) in group.segmentIds" :key="segId" class="nge-bp-guide-item" :class="`nge-bp-guide-item--${segStatus(segId)}`" @click="gotoSegment(i)">
+                    <div v-for="(segId, i) in group.segmentIds" :key="segId" class="nge-bp-guide-item" :class="`nge-bp-guide-item--${segStatus(segId)}`" @click="gotoSegment(group, i)">
                       <span class="nge-bp-guide-item-pip">{{ segStatus(segId) === 'saved' ? '✓' : segStatus(segId) === 'skipped' ? '—' : '?' }}</span>
+                      <span class="nge-bp-guide-item-color" :style="{ background: getSegmentColor(segId) }"></span>
                       <span class="nge-bp-guide-item-id">{{ truncId(segId) }}</span>
                     </div>
                   </div>

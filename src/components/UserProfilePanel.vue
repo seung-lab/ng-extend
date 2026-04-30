@@ -37,8 +37,19 @@ async function loadOtherUser() {
     otherUserProfile.value = null;
     backendStore.loadUserStats();
   }
+  // Load podium counts for whichever user we're showing
+  await loadPodium();
 }
 loadOtherUser();
+
+// ── Weekly podium counts (🥇/🥈/🥉) ─────────────────────────────────
+const podium = ref<{ gold: number; silver: number; bronze: number }>({ gold: 0, silver: 0, bronze: 0 });
+async function loadPodium() {
+  const id = (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '';
+  if (!id) { podium.value = { gold: 0, silver: 0, bronze: 0 }; return; }
+  podium.value = await backendStore.loadWeeklyPodium(id);
+}
+const podiumTotal = computed(() => podium.value.gold + podium.value.silver + podium.value.bronze);
 
 // Profile display name & email — works for both self and other users
 const profileName = computed(() => {
@@ -870,6 +881,25 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- Divider between badge and streak -->
           <div class="nge-profile-right-divider"></div>
 
+          <!-- Weekly podium counts (🥇 × N etc.) -->
+          <div v-if="podiumTotal > 0" class="nge-profile-section nge-profile-section--podium">
+            <div class="nge-profile-section-label nge-profile-section-label--amber">▌ Top of the Week</div>
+            <div class="nge-profile-podium-row">
+              <div v-if="podium.gold > 0" class="nge-profile-podium-tile nge-profile-podium-tile--gold" :title="`Finished 1st place ${podium.gold} week${podium.gold === 1 ? '' : 's'}`">
+                <span class="nge-profile-podium-medal">🥇</span>
+                <span class="nge-profile-podium-count">× {{ podium.gold }}</span>
+              </div>
+              <div v-if="podium.silver > 0" class="nge-profile-podium-tile nge-profile-podium-tile--silver" :title="`Finished 2nd place ${podium.silver} week${podium.silver === 1 ? '' : 's'}`">
+                <span class="nge-profile-podium-medal">🥈</span>
+                <span class="nge-profile-podium-count">× {{ podium.silver }}</span>
+              </div>
+              <div v-if="podium.bronze > 0" class="nge-profile-podium-tile nge-profile-podium-tile--bronze" :title="`Finished 3rd place ${podium.bronze} week${podium.bronze === 1 ? '' : 's'}`">
+                <span class="nge-profile-podium-medal">🥉</span>
+                <span class="nge-profile-podium-count">× {{ podium.bronze }}</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Streak + Activity Chart -->
           <div class="nge-profile-section nge-profile-section--streak">
             <div class="nge-profile-section-label nge-profile-section-label--amber">▌ Streak</div>
@@ -1534,6 +1564,51 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 .nge-profile-stat-icon--merge { color: rgba(120, 200, 255, 0.9); }
 .nge-profile-stat-icon--split { color: rgba(255, 160, 100, 0.9); }
+
+/* ── Weekly Podium (🥇/🥈/🥉) ── */
+.nge-profile-section--podium {
+  margin-bottom: 14px;
+}
+.nge-profile-podium-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.nge-profile-podium-tile {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-family: 'Orbitron', 'Rajdhani', sans-serif;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.nge-profile-podium-medal {
+  font-size: 1.25em;
+  line-height: 1;
+}
+.nge-profile-podium-count {
+  font-weight: 700;
+}
+.nge-profile-podium-tile--gold {
+  background: linear-gradient(135deg, rgba(255, 215, 100, 0.14), rgba(255, 180, 60, 0.08));
+  border: 1px solid rgba(255, 215, 100, 0.45);
+  color: #ffd964;
+  box-shadow: 0 0 10px rgba(255, 215, 100, 0.18);
+}
+.nge-profile-podium-tile--silver {
+  background: linear-gradient(135deg, rgba(220, 230, 240, 0.12), rgba(180, 200, 220, 0.06));
+  border: 1px solid rgba(220, 230, 240, 0.35);
+  color: #dde6f0;
+}
+.nge-profile-podium-tile--bronze {
+  background: linear-gradient(135deg, rgba(220, 140, 80, 0.13), rgba(180, 100, 50, 0.06));
+  border: 1px solid rgba(220, 140, 80, 0.35);
+  color: #e3a371;
+}
 
 /* ── Streak ── */
 .nge-profile-streak-row {
