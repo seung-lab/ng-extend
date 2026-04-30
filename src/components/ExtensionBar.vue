@@ -755,34 +755,35 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   user-select: none;
 }
 
-/* ── Dataset button: pill that matches the toolbar icon palette so the
-   top row reads as a single composed surface instead of three styles. ── */
+/* ── Dataset button: borderless to match the toolbar SVG icons.
+   Same gentle hover wash as .nge-icon-btn. ── */
 .nge-dataset-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 28px;
-  padding: 0 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  border-radius: 4px;
   color: #cfdcef;
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  opacity: 0.85;
+  transition: background 0.15s, opacity 0.15s, color 0.15s;
 }
 .nge-dataset-btn:hover {
-  background: rgba(74, 158, 255, 0.1);
-  border-color: rgba(74, 158, 255, 0.35);
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.06);
   color: #e0ecff;
 }
 .nge-dataset-btn .material-symbols-outlined {
   color: rgba(150, 175, 215, 0.9);
 }
 .nge-dataset-btn:hover .material-symbols-outlined {
-  color: #4a9eff;
+  color: #cfdcef;
 }
 
 /* ── Toolbar icon group ── */
@@ -891,22 +892,19 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   transition: opacity 0.15s, background 0.15s;
 }
 .nge-cmd-trigger:hover { opacity: 1; background: rgba(255, 255, 255, 0.06); }
+/* Borderless kbd so the ⌘K trigger reads like the rest of the toolbar
+   icons. Color/weight do the work that the box used to. */
 .nge-cmd-trigger kbd {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 0;
+  background: none;
+  border: none;
   color: #cfdcef;
   font-family: inherit;
   letter-spacing: 0.03em;
 }
-.nge-cmd-trigger:hover kbd {
-  background: rgba(74, 158, 255, 0.14);
-  border-color: rgba(74, 158, 255, 0.4);
-  color: #e0ecff;
-}
+.nge-cmd-trigger:hover kbd { color: #e0ecff; }
 
 /* ── Hamburger menu ── */
 #hamburger li {

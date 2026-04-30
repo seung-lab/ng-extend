@@ -98,46 +98,80 @@
   display: none !important;
 }
 
-/* ── Native top-row buttons (Help "?", Volumes, etc.) styled to match the
-   toolbar pill rhythm so the row reads as one composed surface instead
-   of three different button styles. ── */
+/* ── Native top-row buttons & icons: borderless, single neutral color.
+   Only the Share button keeps its own box treatment (it's the primary
+   call-to-action). Everything else (Help "?", layer side panel toggle,
+   selection details toggle, equalizer/sliders) sits flat next to our
+   SVG toolbar icons so the row reads as one row. ── */
 .neuroglancer-viewer-top-row > button {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 6px !important;
+  background: none !important;
+  border: none !important;
   color: #cfdcef !important;
   font-size: 12px !important;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 8px;
   margin: 0 2px;
+  border-radius: 4px !important;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  opacity: 0.85;
+  transition: background 0.15s, opacity 0.15s, color 0.15s;
 }
 .neuroglancer-viewer-top-row > button:hover {
-  background: rgba(74, 158, 255, 0.1) !important;
-  border-color: rgba(74, 158, 255, 0.35) !important;
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.06) !important;
   color: #e0ecff !important;
 }
-/* Help "?" button is a neuroglancer-icon, not <button>. Treat it as a
-   square icon tile so its rhythm matches the toolbar icons. */
+
+/* Share is the call-to-action — keep it boxed in our blue accent. */
+.neuroglancer-viewer-top-row > button.neuroglancer-state-share {
+  background: rgba(74, 158, 255, 0.18) !important;
+  border: 1px solid rgba(74, 158, 255, 0.45) !important;
+  color: #e0ecff !important;
+  opacity: 1;
+  font-weight: 600;
+}
+.neuroglancer-viewer-top-row > button.neuroglancer-state-share:hover {
+  background: rgba(74, 158, 255, 0.28) !important;
+  border-color: rgba(74, 158, 255, 0.7) !important;
+}
+
+/* The "?" help button + the layer / selection / settings panel toggles
+   render as .neuroglancer-icon (inline SVG, or text for "?"). Strip
+   their boxes and unify the stroke color so the equalizer/sliders icon
+   doesn't read as a different palette than the rest of the row. */
 .neuroglancer-viewer-top-row > .neuroglancer-icon {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 6px !important;
-  width: 30px !important;
+  background: none !important;
+  border: none !important;
+  width: auto !important;
+  min-width: 28px;
   height: 28px !important;
+  padding: 0 6px;
   margin: 0 2px;
-  transition: background 0.15s, border-color 0.15s;
+  border-radius: 4px !important;
+  color: #cfdcef !important;
+  opacity: 0.85;
+  transition: background 0.15s, opacity 0.15s;
 }
 .neuroglancer-viewer-top-row > .neuroglancer-icon > svg {
-  stroke: rgba(150, 175, 215, 0.85) !important;
+  stroke: #cfdcef !important;
+  fill: none !important;
 }
 .neuroglancer-viewer-top-row > .neuroglancer-icon:hover {
-  background: rgba(74, 158, 255, 0.1) !important;
-  border-color: rgba(74, 158, 255, 0.35) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  opacity: 1;
 }
 .neuroglancer-viewer-top-row > .neuroglancer-icon:hover > svg {
-  stroke: rgba(220, 235, 255, 0.98) !important;
+  stroke: #e0ecff !important;
+}
+/* Active (panel-open) state: blue underline instead of a fill, so the
+   button doesn't grow a box. */
+.neuroglancer-viewer-top-row > .neuroglancer-icon.neuroglancer-checkbox-icon-checked {
+  opacity: 1;
+  color: #4a9eff !important;
+  box-shadow: inset 0 -2px 0 0 #4a9eff;
+}
+.neuroglancer-viewer-top-row > .neuroglancer-icon.neuroglancer-checkbox-icon-checked > svg {
+  stroke: #4a9eff !important;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
