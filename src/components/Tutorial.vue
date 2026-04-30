@@ -9,19 +9,21 @@ import { supabase } from '../supabase';
 import { steps as steps1 } from '../tutorial-1';
 import { steps as steps2 } from '../tutorial-2';
 import { steps as steps3 } from '../tutorial-3';
+import { steps as steps4 } from '../site-tour';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4 };
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {
     if (store.activeTutorial === 1) return store.tutorialStep1;
     if (store.activeTutorial === 2) return store.tutorialStep2;
-    return store.tutorialStep3;
+    if (store.activeTutorial === 3) return store.tutorialStep3;
+    return store.tutorialStep4;
 });
 
 const activeStep = computed(() => {

@@ -177,6 +177,9 @@ export const useTutorialStore = defineStore("tutorial", () => {
   const tutorialStep3: Ref<number> = ref(
     parseInt(localStorage.getItem(`nge-tutorial-3-step`) ?? "-1")
   );
+  const tutorialStep4: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-4-step`) ?? "-1")
+  );
 
   // Track whether we've already hydrated for the current user so we don't
   // clobber locally-advanced progress on every re-render.
@@ -186,13 +189,15 @@ export const useTutorialStore = defineStore("tutorial", () => {
   function getTutorialStep() {
     if (activeTutorial.value === 1) return tutorialStep1.value;
     if (activeTutorial.value === 2) return tutorialStep2.value;
-    return tutorialStep3.value;
+    if (activeTutorial.value === 3) return tutorialStep3.value;
+    return tutorialStep4.value;
   }
 
   function setTutorialStep(val: number) {
     if (activeTutorial.value === 1) tutorialStep1.value = val;
     else if (activeTutorial.value === 2) tutorialStep2.value = val;
-    else tutorialStep3.value = val;
+    else if (activeTutorial.value === 3) tutorialStep3.value = val;
+    else tutorialStep4.value = val;
   }
 
   /** Pull tutorial state from Supabase for the logged-in user. We take the
@@ -273,6 +278,10 @@ export const useTutorialStore = defineStore("tutorial", () => {
     localStorage.setItem(`nge-tutorial-3-step`, `${tutorialStep3.value}`);
     scheduleSync();
   });
+  watch(tutorialStep4, () => {
+    localStorage.setItem(`nge-tutorial-4-step`, `${tutorialStep4.value}`);
+    // Tutorial 4 (site tour) is local-only — not persisted to Supabase
+  });
   watch(activeTutorial, () => {
     localStorage.setItem(`nge-active-tutorial`, `${activeTutorial.value}`);
     scheduleSync();
@@ -302,6 +311,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep1,
     tutorialStep2,
     tutorialStep3,
+    tutorialStep4,
     hydrateFromSupabase,
   };
 });

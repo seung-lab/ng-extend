@@ -426,6 +426,11 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       <template #buttonTitle>☰</template>
       <template #listItems>
         <li>
+          <div class="logoutButton button nge-tour-btn" @click="tutorialStore.activeTutorial = 4; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>🧭 Take the Site Tour</span>
+          </div>
+        </li>
+        <li>
           <div class="logoutButton button" @click="tutorialStore.activeTutorial = 1; tutorialStore.setTutorialStep(0); closeHamburger()">
             <span>Reset Tutorial 1</span>
           </div>
@@ -438,6 +443,11 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li v-if="tutorialStore.tutorialStep3 >= 0">
           <div class="logoutButton button" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
             <span>Reset Tutorial 3</span>
+          </div>
+        </li>
+        <li v-if="tutorialStore.tutorialStep4 >= 0">
+          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 4; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>Reset Site Tour</span>
           </div>
         </li>
         <li>
@@ -864,6 +874,20 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 
 #hamburger li:hover {
   background-color: #ffffff33;
+}
+
+/* Highlight the Site Tour entry so newcomers find it */
+#hamburger li .nge-tour-btn {
+  color: #b6e2ff;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  background: linear-gradient(90deg, rgba(0, 180, 255, 0.10) 0%, rgba(0, 180, 255, 0) 70%);
+  border-left: 2px solid rgba(0, 180, 255, 0.5);
+}
+#hamburger li:hover .nge-tour-btn {
+  color: #d8f0ff;
+  background: linear-gradient(90deg, rgba(0, 180, 255, 0.20) 0%, rgba(0, 180, 255, 0.05) 80%);
+  border-left-color: rgba(0, 180, 255, 0.85);
 }
 
 #hamburger li a {
