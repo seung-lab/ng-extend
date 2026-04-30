@@ -903,22 +903,25 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   font-size: 14px;
 }
 
+/* Hover treatment matches the Seg side-panel tab hover so the menu and
+   the right panel read as one design language. */
 #hamburger li:hover {
-  background-color: #ffffff33;
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
-/* Highlight the Site Tour entry so newcomers find it */
+/* Site Tour entry uses the same "selected tab" treatment as the Seg
+   panel: the rgba(74,158,255,0.1) fill + a 2px accent line on the
+   leading edge (left for a vertical menu, top for horizontal tabs). */
 #hamburger li .nge-tour-btn {
-  color: #b6e2ff;
+  color: rgba(220, 235, 255, 0.98);
   font-weight: 500;
   letter-spacing: 0.3px;
-  background: linear-gradient(90deg, rgba(0, 180, 255, 0.10) 0%, rgba(0, 180, 255, 0) 70%);
-  border-left: 2px solid rgba(0, 180, 255, 0.5);
+  background: rgba(74, 158, 255, 0.1);
+  border-left: 2px solid rgba(74, 158, 255, 0.5);
 }
 #hamburger li:hover .nge-tour-btn {
-  color: #d8f0ff;
-  background: linear-gradient(90deg, rgba(0, 180, 255, 0.20) 0%, rgba(0, 180, 255, 0.05) 80%);
-  border-left-color: rgba(0, 180, 255, 0.85);
+  background: rgba(74, 158, 255, 0.18);
+  border-left-color: rgba(74, 158, 255, 0.8);
 }
 
 #hamburger li a {
