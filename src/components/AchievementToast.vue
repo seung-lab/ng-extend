@@ -309,7 +309,9 @@ watch(() => backend.pendingCellCelebration, (pending) => {
     setTimeout(() => fireConfetti('gold', 2.0), 500);
     setTimeout(() => fireConfetti('cyan', 1.6), 1100);
     setTimeout(() => fireConfetti('gold', 1.4), 1800);
-    setTimeout(() => { cellCelebration.value = null; }, 12000);
+    playBatchChime();
+    // No auto-dismiss for the batch hero — user must click X or outside the
+    // card. Weeks of work deserve as long a stare as they want.
   } else {
     fireConfetti('cyan', 2);
     setTimeout(() => { cellCelebration.value = null; }, 6000);
@@ -318,6 +320,83 @@ watch(() => backend.pendingCellCelebration, (pending) => {
 
 function dismissCellCelebration() {
   cellCelebration.value = null;
+}
+
+/**
+ * Asgardian batch chime — procedural synth via Web Audio API. No asset files.
+ * Layers a low boom (Bifrost rumble) + bell chord (C4-G4-C5 with stagger)
+ * + high shimmer sparkle. ~2.5s total. Plays once when a batch celebration
+ * fires; needs a prior user gesture to satisfy autoplay policy (we get one
+ * via the wizard submit click).
+ */
+function playBatchChime() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const t0 = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.value = 0.55;
+    master.connect(ctx.destination);
+
+    // Low boom — the cosmic impact
+    const boom = ctx.createOscillator();
+    const boomGain = ctx.createGain();
+    boom.type = 'sine';
+    boom.frequency.setValueAtTime(80, t0);
+    boom.frequency.exponentialRampToValueAtTime(35, t0 + 0.9);
+    boomGain.gain.setValueAtTime(0.0001, t0);
+    boomGain.gain.exponentialRampToValueAtTime(0.45, t0 + 0.05);
+    boomGain.gain.exponentialRampToValueAtTime(0.001, t0 + 1.4);
+    boom.connect(boomGain).connect(master);
+    boom.start(t0);
+    boom.stop(t0 + 1.5);
+
+    // Bell chord — C4 + G4 + C5 with stagger for a chime arpeggio feel
+    const chord = [261.63, 392.00, 523.25];
+    chord.forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      const start = t0 + i * 0.08;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.22, start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0005, start + 2.6);
+      osc.connect(gain).connect(master);
+      osc.start(start);
+      osc.stop(start + 2.7);
+      // Octave overtone for crystal sparkle
+      const oct = ctx.createOscillator();
+      const octGain = ctx.createGain();
+      oct.type = 'triangle';
+      oct.frequency.value = f * 2;
+      octGain.gain.setValueAtTime(0.0001, start);
+      octGain.gain.exponentialRampToValueAtTime(0.06, start + 0.025);
+      octGain.gain.exponentialRampToValueAtTime(0.0005, start + 1.8);
+      oct.connect(octGain).connect(master);
+      oct.start(start);
+      oct.stop(start + 2.0);
+    });
+
+    // High shimmer — fast frequency sweep up
+    const shimmer = ctx.createOscillator();
+    const shimmerGain = ctx.createGain();
+    shimmer.type = 'triangle';
+    shimmer.frequency.setValueAtTime(2200, t0 + 0.35);
+    shimmer.frequency.exponentialRampToValueAtTime(4200, t0 + 1.4);
+    shimmerGain.gain.setValueAtTime(0.0001, t0 + 0.35);
+    shimmerGain.gain.exponentialRampToValueAtTime(0.06, t0 + 0.45);
+    shimmerGain.gain.exponentialRampToValueAtTime(0.0005, t0 + 2.0);
+    shimmer.connect(shimmerGain).connect(master);
+    shimmer.start(t0 + 0.35);
+    shimmer.stop(t0 + 2.0);
+
+    // Close the AudioContext after the sound finishes so we don't leak.
+    setTimeout(() => { ctx.close().catch(() => {}); }, 3000);
+  } catch (e) {
+    console.warn('[batch] chime failed:', e);
+  }
 }
 </script>
 
@@ -387,21 +466,40 @@ function dismissCellCelebration() {
       </div>
     </Transition>
 
-    <!-- Batch celebration overlay (hero treatment for batch completions) -->
+    <!-- Batch celebration overlay — Asgardian hero treatment -->
     <Transition name="nge-batch-celebrate">
       <div v-if="cellCelebration && cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-batch-overlay" @click="dismissCellCelebration">
         <div class="nge-batch-vignette"></div>
+        <div class="nge-batch-hexgrid"></div>
+        <div class="nge-batch-rays">
+          <div v-for="i in 8" :key="i" class="nge-batch-ray" :style="{ '--i': i - 1 }"></div>
+        </div>
+        <div class="nge-batch-shockwave"></div>
+        <div class="nge-batch-shockwave nge-batch-shockwave--2"></div>
         <div class="nge-batch-particles">
           <span v-for="i in 30" :key="i" class="nge-batch-particle" :style="{ '--i': i }"></span>
         </div>
-        <div class="nge-batch-card">
+        <div class="nge-batch-card" @click.stop>
+          <button class="nge-batch-close" @click="dismissCellCelebration" aria-label="Dismiss">×</button>
+          <span class="nge-batch-corner nge-batch-corner--tl"></span>
+          <span class="nge-batch-corner nge-batch-corner--tr"></span>
+          <span class="nge-batch-corner nge-batch-corner--bl"></span>
+          <span class="nge-batch-corner nge-batch-corner--br"></span>
           <div class="nge-batch-aura"></div>
           <div class="nge-batch-rings">
             <div class="nge-batch-ring nge-batch-ring--1"></div>
             <div class="nge-batch-ring nge-batch-ring--2"></div>
             <div class="nge-batch-ring nge-batch-ring--3"></div>
           </div>
-          <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-batch-nurro" />
+          <div class="nge-batch-scanline"></div>
+
+          <div class="nge-batch-nurro-wrap">
+            <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-batch-nurro" />
+            <div class="nge-batch-runes">
+              <span v-for="(rune, i) in ['ᚠ','ᚢ','ᚦ','ᚨ','ᚱ','ᚲ']" :key="i" class="nge-batch-rune" :style="{ '--i': i }">{{ rune }}</span>
+            </div>
+          </div>
+
           <div class="nge-batch-label">CELLS COMPLETE</div>
           <div class="nge-batch-count">+{{ cellCelebration.batchCount }}</div>
           <div class="nge-batch-cells-text">cells added to the connectome</div>
@@ -409,8 +507,7 @@ function dismissCellCelebration() {
           <div class="nge-batch-total-label">YOUR TOTAL</div>
           <div class="nge-batch-total">{{ cellCelebration.totalCells }}</div>
           <div class="nge-batch-total-sub">cells mapped</div>
-          <div class="nge-batch-thanks">Thank you for mapping the brain.</div>
-          <div class="nge-batch-hint">Click to dismiss</div>
+          <div class="nge-batch-thanks">For science. For the brain. For the connectome.</div>
         </div>
       </div>
     </Transition>
@@ -1322,4 +1419,214 @@ function dismissCellCelebration() {
 .nge-batch-celebrate-enter-active { transition: opacity 0.5s ease-out; }
 .nge-batch-celebrate-leave-active { transition: opacity 0.6s ease-in; }
 .nge-batch-celebrate-enter-from, .nge-batch-celebrate-leave-to { opacity: 0; }
+
+/* ── Asgardian additions ───────────────────────────────────────── */
+
+/* Hexagonal background grid — slow drift, low opacity */
+.nge-batch-hexgrid {
+  position: absolute;
+  inset: -50px;
+  pointer-events: none;
+  background-image:
+    linear-gradient(60deg, transparent 49.5%, rgba(120, 200, 255, 0.06) 49.5%, rgba(120, 200, 255, 0.06) 50.5%, transparent 50.5%),
+    linear-gradient(-60deg, transparent 49.5%, rgba(120, 200, 255, 0.06) 49.5%, rgba(120, 200, 255, 0.06) 50.5%, transparent 50.5%),
+    linear-gradient(0deg, transparent 49.5%, rgba(120, 200, 255, 0.06) 49.5%, rgba(120, 200, 255, 0.06) 50.5%, transparent 50.5%);
+  background-size: 60px 104px;
+  animation: nge-batch-hex-drift 40s linear infinite;
+  mask-image: radial-gradient(ellipse at center, black 0%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 0%, transparent 75%);
+}
+@keyframes nge-batch-hex-drift {
+  0%   { background-position: 0 0, 0 0, 0 0; }
+  100% { background-position: 60px 104px, -60px 104px, 0 104px; }
+}
+
+/* Prismatic rays radiating from center — Bifrost feel, gold/cyan dominant */
+.nge-batch-rays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nge-batch-ray {
+  position: absolute;
+  width: 2px;
+  height: 140vh;
+  top: 50%;
+  left: 50%;
+  transform-origin: center;
+  transform: translate(-50%, -50%) rotate(calc(var(--i) * 45deg));
+  background: linear-gradient(to bottom, transparent 0%, var(--ray-color, rgba(255, 200, 80, 0.5)) 50%, transparent 100%);
+  filter: blur(0.5px);
+  opacity: 0;
+  animation: nge-batch-ray-pulse 7s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.35s);
+}
+.nge-batch-ray:nth-child(odd)  { --ray-color: rgba(255, 200, 80, 0.55); }
+.nge-batch-ray:nth-child(even) { --ray-color: rgba(120, 200, 255, 0.5); }
+.nge-batch-ray:nth-child(3) { --ray-color: rgba(255, 230, 180, 0.6); }
+.nge-batch-ray:nth-child(7) { --ray-color: rgba(180, 230, 255, 0.55); }
+@keyframes nge-batch-ray-pulse {
+  0%, 100% { opacity: 0; }
+  40%, 60% { opacity: 0.5; }
+}
+
+/* Shockwave — single expanding ring on entry */
+.nge-batch-shockwave {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100px;
+  height: 100px;
+  border: 2px solid rgba(120, 200, 255, 0.8);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  animation: nge-batch-shockwave-fire 1.4s ease-out 0.1s 1 forwards;
+  box-shadow: 0 0 40px rgba(120, 200, 255, 0.6);
+}
+.nge-batch-shockwave--2 {
+  border-color: rgba(255, 200, 80, 0.7);
+  box-shadow: 0 0 40px rgba(255, 200, 80, 0.5);
+  animation-delay: 0.4s;
+  animation-duration: 1.6s;
+}
+@keyframes nge-batch-shockwave-fire {
+  0%   { transform: translate(-50%, -50%) scale(0);  opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(20); opacity: 0; }
+}
+
+/* Card border ornaments — Asgardian gold corner brackets */
+.nge-batch-corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+}
+.nge-batch-corner::before, .nge-batch-corner::after {
+  content: '';
+  position: absolute;
+  background: linear-gradient(135deg, rgba(255, 220, 130, 0.95), rgba(255, 180, 60, 0.6));
+  box-shadow: 0 0 8px rgba(255, 200, 80, 0.6);
+}
+.nge-batch-corner::before { width: 28px; height: 2px; }
+.nge-batch-corner::after  { width: 2px;  height: 28px; }
+.nge-batch-corner--tl { top: -1px; left: -1px; }
+.nge-batch-corner--tl::before { top: 0;   left: 0; }
+.nge-batch-corner--tl::after  { top: 0;   left: 0; }
+.nge-batch-corner--tr { top: -1px; right: -1px; }
+.nge-batch-corner--tr::before { top: 0;   right: 0; }
+.nge-batch-corner--tr::after  { top: 0;   right: 0; }
+.nge-batch-corner--bl { bottom: -1px; left: -1px; }
+.nge-batch-corner--bl::before { bottom: 0; left: 0; }
+.nge-batch-corner--bl::after  { bottom: 0; left: 0; }
+.nge-batch-corner--br { bottom: -1px; right: -1px; }
+.nge-batch-corner--br::before { bottom: 0; right: 0; }
+.nge-batch-corner--br::after  { bottom: 0; right: 0; }
+
+/* Vertical scanline that sweeps across the card once on entry */
+.nge-batch-scanline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom,
+    transparent 0%,
+    rgba(120, 200, 255, 0.9) 30%,
+    rgba(255, 230, 180, 1) 50%,
+    rgba(120, 200, 255, 0.9) 70%,
+    transparent 100%);
+  box-shadow: 0 0 12px rgba(120, 200, 255, 0.8), 0 0 24px rgba(120, 200, 255, 0.4);
+  left: -10px;
+  pointer-events: none;
+  animation: nge-batch-scanline-sweep 1.8s ease-out 0.4s 1 forwards;
+  opacity: 0;
+}
+@keyframes nge-batch-scanline-sweep {
+  0%   { left: -10px; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { left: calc(100% + 10px); opacity: 0; }
+}
+
+/* X close button — gold accent, subtle until hover */
+.nge-batch-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: rgba(255, 200, 80, 0.08);
+  border: 1px solid rgba(255, 200, 80, 0.25);
+  color: rgba(255, 220, 130, 0.85);
+  font-size: 1.4em;
+  font-weight: 300;
+  width: 32px;
+  height: 32px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  z-index: 10;
+  transition: all 0.18s;
+  font-family: inherit;
+}
+.nge-batch-close:hover {
+  background: rgba(255, 200, 80, 0.2);
+  border-color: rgba(255, 220, 130, 0.7);
+  color: #ffe;
+  box-shadow: 0 0 16px rgba(255, 200, 80, 0.5);
+  transform: scale(1.1) rotate(90deg);
+}
+
+/* Nurro wrapper — holds the avatar + the orbiting runes */
+.nge-batch-nurro-wrap {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  margin: 0 auto 22px;
+}
+.nge-batch-nurro-wrap .nge-batch-nurro {
+  margin: 0;
+}
+
+/* Orbiting Norse runes around the nurro */
+.nge-batch-runes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: nge-batch-runes-orbit 32s linear infinite;
+}
+@keyframes nge-batch-runes-orbit {
+  0%   { transform: rotate(0); }
+  100% { transform: rotate(360deg); }
+}
+.nge-batch-rune {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  --angle: calc(var(--i) * 60deg);
+  /* place on a circle of radius 90 around the nurro center, then counter-rotate
+     so the rune itself stays upright as the container spins */
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--angle))
+    translateY(-90px)
+    rotate(calc(-1 * var(--angle)));
+  font-size: 1.4em;
+  font-weight: 600;
+  color: rgba(255, 220, 130, 0.85);
+  text-shadow:
+    0 0 10px rgba(255, 200, 80, 0.85),
+    0 0 22px rgba(255, 180, 60, 0.5);
+  animation: nge-batch-rune-pulse 3.4s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.45s);
+}
+@keyframes nge-batch-rune-pulse {
+  0%, 100% { opacity: 0.4; filter: blur(0); }
+  50%      { opacity: 1;   filter: blur(0.4px); }
+}
 </style>
