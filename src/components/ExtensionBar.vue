@@ -21,7 +21,7 @@ import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
-import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore} from '../store';
+import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore} from '../store';
 import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
@@ -139,6 +139,7 @@ const statsStore = useUserStatsStore();
 const { stats } = storeToRefs(statsStore);
 const { activeSegId } = storeToRefsAnnot(useSegmentAnnotationStore());
 const helpStore = useHelpRequestStore();
+const chatStore = useChatStore();
 const queueStore = useProofreadingQueueStore();
 
 const showModal = ref(false);
@@ -204,7 +205,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => helpStore.pending.length },
   feed:        { action: () => { showFeed.value = true; } },
   notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
-  chat:        { action: () => { showChat.value = !showChat.value; } },
+  chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
   settings:    { action: () => { showSettings.value = true; } },
 };
 
@@ -504,7 +505,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         @dragleave="onIconDragLeave(icon.id)"
         @drop="onIconDrop($event, icon.id)"
         @click="icon.action()"
-      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge">{{ icon.badge() }}</span></button>
+      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat' }">{{ icon.badge() }}</span></button>
     </div>
 
     <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
@@ -986,6 +987,22 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   line-height: 13px;
   text-align: center;
   padding: 0 3px;
+  /* Soft entrance — pip pops in when a new unread arrives. */
+  animation: nge-badge-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Chat unread pip is green to read as "live conversation" rather than
+   the purple admin/notification accent. */
+.nge-toolbar-badge--chat {
+  background: #4ad07a;
+  color: #06170d;
+  box-shadow: 0 0 8px rgba(74, 208, 122, 0.55);
+}
+
+@keyframes nge-badge-pop {
+  0%   { opacity: 0; transform: scale(0.4); }
+  60%  { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
 .nge-cmd-trigger {

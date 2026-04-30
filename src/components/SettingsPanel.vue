@@ -10,11 +10,13 @@ const prefsStore = useUserPreferencesStore();
 const draftFlag = ref('');
 const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
+const draftChatMuted = ref(false);
 const saved      = ref(false);
 
 onMounted(() => {
   draftFlag.value = prefsStore.prefs.flag;
   draftBio.value  = prefsStore.prefs.bio;
+  draftChatMuted.value = !!prefsStore.prefs.chatMuted;
   const current = prefsStore.prefs.toolbarIcons;
   draftToolbar.value = current.length > 0 ? [...current] : [...DEFAULT_ORDER];
 });
@@ -24,6 +26,7 @@ function handleSave() {
     flag: draftFlag.value.trim(),
     bio:  draftBio.value.trim().slice(0, 280),
     toolbarIcons: draftToolbar.value,
+    chatMuted: draftChatMuted.value,
   });
   saved.value = true;
   setTimeout(() => { saved.value = false; }, 1800);
@@ -202,6 +205,15 @@ const emit = defineEmits({hide: null});
             </button>
           </div>
           <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
+        </div>
+
+        <div class="nge-settings-section">
+          <label class="nge-settings-label">Notifications</label>
+          <p class="nge-settings-hint">Control the green pip on the chat icon when new messages arrive.</p>
+          <label class="nge-settings-toggle">
+            <input type="checkbox" v-model="draftChatMuted" />
+            <span class="nge-settings-toggle-label">Mute chat unread badge</span>
+          </label>
         </div>
 
         <div class="nge-settings-section">
@@ -722,5 +734,25 @@ const emit = defineEmits({hide: null});
   transition: color 0.12s;
 }
 .nge-settings-toolbar-reset:hover { color: #889; }
+
+/* Notification mute toggle (Mute chat unread badge) */
+.nge-settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 0.92em;
+  color: #cde;
+}
+.nge-settings-toggle input {
+  accent-color: #4ad07a;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.nge-settings-toggle-label {
+  user-select: none;
+}
 
 </style>

@@ -716,10 +716,13 @@ export interface UserPreferences {
   bio: string;    // free-text, capped at 280 chars in the UI
   /** Which toolbar icons to show, in order. Empty = show all defaults. */
   toolbarIcons: string[];
+  /** Mute chat: skip the green unread pip on the toolbar. Defaults
+   *  to false (notifications on) when the key isn't set yet. */
+  chatMuted?: boolean;
 }
 
 export const useUserPreferencesStore = defineStore('userPrefs', () => {
-  const prefs: Ref<UserPreferences> = ref({ flag: '', bio: '', toolbarIcons: [] });
+  const prefs: Ref<UserPreferences> = ref({ flag: '', bio: '', toolbarIcons: [], chatMuted: false });
 
   function load() {
     try {
@@ -3539,6 +3542,9 @@ export const useChatStore = defineStore('chat', () => {
   const chatMessages = ref<ChatMessage[]>([]);
   const connected = ref(false);
   const unreadMessages = ref(false);
+  /** Numeric unread counter for the green pip on the chat toolbar
+   *  icon. Cleared on markRead(); muting prevents increments. */
+  const unreadCount = ref(0);
 
   let channel: ReturnType<typeof supabase.channel> | null = null;
   let lastMessageDate = '';
@@ -3589,7 +3595,13 @@ export const useChatStore = defineStore('chat', () => {
           dateTime: date,
           parts: parseMessageParts(name, text),
         });
-        unreadMessages.value = true;
+        // Skip the unread bump if the user has muted chat — they
+        // explicitly opted out of the green pip on the toolbar.
+        const prefs = useUserPreferencesStore();
+        if (!prefs.prefs.chatMuted) {
+          unreadMessages.value = true;
+          unreadCount.value++;
+        }
       })
       .on('broadcast', { event: 'join' }, (payload) => {
         const { name } = payload.payload;
@@ -3653,6 +3665,7 @@ export const useChatStore = defineStore('chat', () => {
 
   function markRead() {
     unreadMessages.value = false;
+    unreadCount.value = 0;
   }
 
   function disconnect() {
@@ -3670,5 +3683,5 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, unreadMessages, connect, sendMessage, markRead, disconnect };
+  return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect };
 });
