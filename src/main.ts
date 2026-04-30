@@ -18,6 +18,9 @@ import {disableContextMenu, disableWheel} from 'neuroglancer/ui/disable_default_
 import {DisplayContext} from 'neuroglancer/display_context';
 import {StatusMessage} from 'neuroglancer/status';
 import 'neuroglancer/sliceview/chunk_format_handlers';
+import './move_to_segment_patch';
+import './jump_to_list';
+import './drag_reorder';
 import {ButtonService} from "./widgets/button_service";
 import {AnnotationService, Point3D} from "./widgets/annotation_service";
 import {UrlHashBinding} from "neuroglancer/ui/url_hash_binding";
@@ -88,21 +91,33 @@ window.addEventListener('DOMContentLoaded', () => {
   // LoginModal doesn't fire — e.g. already authenticated or bypass).
   autoSelectSegLayer(viewer);
 
-  // Escape key handler: exit split/merge tools
-  document.addEventListener('keydown', (e) => {
+  // Escape key handler: exit split/merge tools.
+  //
+  // Attached to BOTH window and document in capture phase so we win against
+  // NG's own keybinder no matter how the bubbling resolves. We also check the
+  // DOM for the tool overlay since some NG versions don't immediately update
+  // layer.tool.value on activation, leaving store.toolActive stale.
+  const escHandler = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     const store = useSplitMergeOverlayStore();
-    // Check both store state AND DOM for tool presence (DOM is ground truth)
-    const toolDomPresent = document.querySelector('.graphene-multicut') || document.querySelector('.graphene-merge-segments');
+    const toolDomPresent = !!(
+      document.querySelector('.graphene-multicut') ||
+      document.querySelector('.graphene-merge-segments')
+    );
+    console.debug('[esc]', e.key, 'toolActive=', store.toolActive, 'toolDom=', toolDomPresent);
     if (!store.toolActive && !toolDomPresent) return;
     exitGrapheneTool();
-    // Also sync store if DOM showed the tool
     if (toolDomPresent && !store.toolActive) {
       store.setToolState(null);
     }
     e.preventDefault();
     e.stopPropagation();
-  }, true); // capture phase to catch before NG
+    e.stopImmediatePropagation();
+  };
+  // capture phase on both window AND document — whichever NG listens on, we
+  // intercept first.
+  window.addEventListener('keydown', escHandler, true);
+  document.addEventListener('keydown', escHandler, true);
 });
 
 /**

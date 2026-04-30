@@ -7,6 +7,7 @@ import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistor
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
+import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -87,8 +88,10 @@ const selectedSpecialBadge = ref<any | null>(null);
 const showFlagPicker = ref(false);
 const showAllBuilding    = ref(false);
 const showAllExploration = ref(false);
+const showAllSpecialModal = ref(false);
 const BADGE_PREVIEW_LIMIT = 8;  // 2 rows of 4
 const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
+const SPECIAL_PREVIEW_LIMIT = 8;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
 const activeTab = ref<'overview' | 'trophyCase'>('overview');
@@ -127,9 +130,14 @@ function emojiToCode(emoji: string): string {
 
 /** Get a flag image URL from an emoji flag. Returns '' for non-flag emoji like 🌐. */
 function flagImgUrl(emoji: string): string {
+  if (!emoji || emoji === EYEWIRE_FLAG) return '';
   const code = emojiToCode(emoji);
   if (!code || code.length !== 2) return '';
   return `https://flagcdn.com/w40/${code}.png`;
+}
+
+function isEyewireFlag(flag: string): boolean {
+  return flag === EYEWIRE_FLAG;
 }
 
 function setFlag(f: string) {
@@ -254,16 +262,37 @@ function formatDate(iso: string): string {
 const displayedBuildingBadges = computed(() => {
   const all = earnedBuildingBadges.value.earned;
   if (showAllBuilding.value) return all;
-  // If overflow, show 7 to leave room for "View All" tile
-  return all.length > BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
+  // When earned >= 8: show 7 + "View All" tile (8 total slots).
+  return all.length >= BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
 });
 const displayedExplorationBadges = computed(() => {
   const all = earnedExplorationBadges.value.earned;
   if (showAllExploration.value) return all;
-  return all.length > BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
+  return all.length >= BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
 });
-const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length > BADGE_PREVIEW_LIMIT);
-const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length > BADGE_PREVIEW_LIMIT);
+const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length >= BADGE_PREVIEW_LIMIT);
+const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length >= BADGE_PREVIEW_LIMIT);
+
+// ── Special Awards "View all" preview ───────────────────────────────────────
+const displayedSpecialBadges = computed(() => {
+  const all = profileSpecialBadges.value;
+  if (all.length > SPECIAL_PREVIEW_LIMIT) return all.slice(0, SPECIAL_PREVIEW_LIMIT - 1); // leave one slot for tile
+  return all.slice(0, SPECIAL_PREVIEW_LIMIT);
+});
+const showSpecialViewAll = computed(() => profileSpecialBadges.value.length > SPECIAL_PREVIEW_LIMIT);
+
+// ── Tooltip helpers for badges ───────────────────────────────────────────────
+function badgeTooltip(badge: BadgeDefinition): string {
+  const noun = badge.track === 'building' ? 'edits' : 'cells completed';
+  return `${badge.name} — Earned for ${badge.threshold.toLocaleString()} ${noun}`;
+}
+function specialBadgeTooltip(award: any): string {
+  const name = award.badge?.name || 'Award';
+  const reason = award.reason ? String(award.reason).trim() : '';
+  if (reason) return `${name} — ${reason}`;
+  if (award.badge?.description) return `${name} — ${award.badge.description}`;
+  return `${name} — special award`;
+}
 
 /** Label for the threshold in badge detail. */
 function thresholdLabel(badge: BadgeDefinition): string {
@@ -439,7 +468,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   @click="showFlagPicker = !showFlagPicker"
                   title="Click to change flag"
                 >
-                  <img v-if="flagImgUrl(profileFlag)" :src="flagImgUrl(profileFlag)" class="nge-flag-img" />
+                  <img v-if="isEyewireFlag(profileFlag)" :src="pyrIcon" class="nge-flag-img nge-pyr-icon" />
+                  <img v-else-if="flagImgUrl(profileFlag)" :src="flagImgUrl(profileFlag)" class="nge-flag-img" />
                   <img v-else :src="pyrIcon" class="nge-flag-img nge-pyr-icon" />
                 </button>
                 <Transition name="nge-flag-picker">
@@ -454,7 +484,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 </Transition>
               </div>
               <div v-else class="nge-profile-flag-wrap">
-                <img v-if="flagImgUrl(profileFlag)" :src="flagImgUrl(profileFlag)" class="nge-flag-img" style="width:28px;height:20px;" />
+                <img v-if="isEyewireFlag(profileFlag)" :src="pyrIcon" class="nge-flag-img nge-pyr-icon" style="width:24px;height:24px;" />
+                <img v-else-if="flagImgUrl(profileFlag)" :src="flagImgUrl(profileFlag)" class="nge-flag-img" style="width:28px;height:20px;" />
               </div>
 
               <div class="nge-profile-name">{{ profileName }}</div>
@@ -608,7 +639,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   'nge-profile-badge--selected': selectedBadge?.id === badge.id,
                   'nge-profile-badge--latest': latestEarnedBadge?.id === badge.id,
                 }"
-                :title="badge.name + ' — click to see detail'"
+                :title="badgeTooltip(badge)"
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
@@ -669,7 +700,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   'nge-profile-badge--selected': selectedBadge?.id === badge.id,
                   'nge-profile-badge--latest': latestEarnedBadge?.id === badge.id,
                 }"
-                :title="badge.name + ' — click to see detail'"
+                :title="badgeTooltip(badge)"
                 @click="onBadgeClick(badge)"
               >
                 <div class="nge-profile-badge-img">
@@ -714,17 +745,29 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-profile-section-label">★ Special Awards</div>
               <div class="nge-profile-badges-grid">
                 <div
-                  v-for="award in profileSpecialBadges"
+                  v-for="award in displayedSpecialBadges"
                   :key="award.id"
                   class="nge-profile-badge"
                   :class="{ 'nge-profile-badge--selected': selectedSpecialBadge?.id === award.id }"
-                  :title="(award.badge?.name || '') + (award.badge?.description ? ' — ' + award.badge.description : '')"
+                  :title="specialBadgeTooltip(award)"
                   @click="onSpecialBadgeClick(award)"
                 >
                   <div class="nge-profile-badge-img">
                     <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
                   </div>
                   <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
+                </div>
+                <!-- View All tile when overflow -->
+                <div
+                  v-if="showSpecialViewAll"
+                  class="nge-profile-badge nge-profile-badge--viewall"
+                  title="View all special awards"
+                  @click="showAllSpecialModal = true"
+                >
+                  <div class="nge-profile-badge-img">
+                    <div class="nge-profile-badge-viewall-icon">→</div>
+                  </div>
+                  <div class="nge-profile-badge-name">View all</div>
                 </div>
               </div>
             </div>
@@ -1037,6 +1080,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 :key="award.id"
                 class="nge-trophy-badge"
                 :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id }"
+                :title="specialBadgeTooltip(award)"
                 @click="onSpecialBadgeClick(award)"
               >
                 <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
@@ -1048,6 +1092,29 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
         </div>
       </div><!-- end Trophy Case -->
+
+      <!-- ── All Special Awards modal ── -->
+      <div v-if="showAllSpecialModal" class="nge-special-modal-backdrop" @click.self="showAllSpecialModal = false">
+        <div class="nge-special-modal">
+          <div class="nge-special-modal-head">
+            <span class="nge-special-modal-title">★ All Special Awards</span>
+            <button class="nge-special-modal-close" @click="showAllSpecialModal = false">×</button>
+          </div>
+          <div class="nge-special-modal-grid">
+            <div
+              v-for="award in profileSpecialBadges"
+              :key="award.id"
+              class="nge-special-modal-tile"
+              :title="specialBadgeTooltip(award)"
+              @click="onSpecialBadgeClick(award); showAllSpecialModal = false;"
+            >
+              <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-special-modal-icon" />
+              <div class="nge-special-modal-name">{{ award.badge?.name || 'Award' }}</div>
+              <div v-if="award.reason" class="nge-special-modal-reason">{{ award.reason }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
     </div>
   </modal-overlay>
@@ -1204,13 +1271,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 /* Left: stats + recent cells */
 .nge-profile-col--left {
-  width: 380px;
+  width: 460px;
   flex-shrink: 0;
 }
 
 /* Center: badges + streak + countdown */
 .nge-profile-col--center {
-  width: 380px;
+  width: 460px;
   flex-shrink: 0;
   overflow-x: hidden;
   border-left: 1px solid rgba(74, 158, 255, 0.08);
@@ -1220,7 +1287,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 /* Right: latest badge / badge detail */
 .nge-profile-col--right {
-  width: 310px;
+  width: 360px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -1387,7 +1454,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   margin-bottom: 8px;
 }
 .nge-profile-countdown-name { font-weight: 400; color: rgba(255,255,255,0.5); font-size: 0.82em; font-style: italic; }
-.nge-profile-countdown-remaining { font-size: 0.75em; color: #9e9e9e; }
+.nge-profile-countdown-remaining { font-size: 0.86em; color: #cde; }
 .nge-profile-countdown-track {
   height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;
 }
@@ -1436,8 +1503,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-profile-stat-sub {
-  font-size: 0.7em;
-  color: #444;
+  font-size: 0.78em;
+  color: #aab;
   font-family: ui-monospace, 'Cascadia Code', monospace;
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
@@ -1746,8 +1813,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-profile-badge-name {
-  font-size: 0.62em; color: #888; margin-top: 3px; line-height: 1.2;
-  max-width: 60px; word-break: break-word;
+  font-size: 0.78em; color: #cde; margin-top: 3px; line-height: 1.2;
+  max-width: 80px; word-break: break-word;
 }
 .nge-profile-badge-name--locked { color: #333; }
 
@@ -1842,15 +1909,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   margin-bottom: 2px;
 }
 .nge-cell-col-label {
-  font-size: 0.58em;
+  font-size: 0.78em;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(180, 195, 220, 0.55);
 }
 .nge-cell-col-label--id { flex: 1; }
-.nge-cell-col-label--type { width: 90px; text-align: left; }
-.nge-cell-col-label--time { width: 52px; text-align: right; padding-right: 18px; }
+.nge-cell-col-label--type { width: 110px; text-align: left; }
+.nge-cell-col-label--time { width: 64px; text-align: right; padding-right: 18px; }
 
 .nge-cell-list-dataset {
   font-size: 0.62em !important;
@@ -1880,12 +1947,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 5px 8px;
+  padding: 6px 8px;
   background: none;
   border: none;
   border-radius: 4px;
-  color: #bcc;
-  font-size: 0.78em;
+  color: #cde;
+  font-size: 0.95em;
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
@@ -1913,20 +1980,20 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 .nge-cell-id {
   font-family: ui-monospace, 'Cascadia Code', monospace;
-  font-size: 0.88em;
-  color: #8bf;
+  font-size: 0.95em;
+  color: #9cf;
   flex: 1;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 130px;
+  max-width: 150px;
 }
 
 .nge-cell-type {
   flex: 1;
-  font-size: 0.85em;
-  color: #666;
+  font-size: 0.95em;
+  color: #bcc;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1935,8 +2002,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 .nge-cell-time {
   flex-shrink: 0;
-  font-size: 0.8em;
-  color: #444;
+  font-size: 0.92em;
+  color: #889;
   white-space: nowrap;
 }
 
@@ -2400,5 +2467,86 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 @keyframes nge-trophy-aura-pulse {
   0%, 100% { transform: scale(1);    opacity: 0.5; }
   50%      { transform: scale(1.12); opacity: 0.85; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ALL SPECIAL AWARDS MODAL
+───────────────────────────────────────────────────────────────────────────── */
+.nge-special-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 4, 12, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: ngeSectionRollIn 0.18s ease-out;
+}
+.nge-special-modal {
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  background: linear-gradient(135deg, rgba(8, 12, 24, 0.98), rgba(12, 18, 32, 0.97));
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  border-radius: 12px;
+  padding: 18px 20px 24px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.55), 0 0 32px rgba(74, 158, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+}
+.nge-special-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.nge-special-modal-title {
+  font-size: 0.92em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #cde;
+  text-transform: uppercase;
+}
+.nge-special-modal-close {
+  background: none; border: none;
+  color: #889; font-size: 1.4em; cursor: pointer; line-height: 1;
+}
+.nge-special-modal-close:hover { color: #fff; }
+.nge-special-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 14px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.2) transparent;
+}
+.nge-special-modal-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 10px 6px;
+  cursor: pointer;
+  transition: transform 0.12s, background 0.12s, border-color 0.12s;
+}
+.nge-special-modal-tile:hover {
+  transform: scale(1.05);
+  background: rgba(74, 158, 255, 0.06);
+  border-color: rgba(74, 158, 255, 0.18);
+}
+.nge-special-modal-icon {
+  width: 56px; height: 56px; object-fit: contain;
+  margin-bottom: 6px;
+}
+.nge-special-modal-name {
+  font-size: 0.78em; color: #cde;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.nge-special-modal-reason {
+  font-size: 0.7em; color: #889;
+  margin-top: 4px; line-height: 1.3;
+  font-style: italic;
 }
 </style>

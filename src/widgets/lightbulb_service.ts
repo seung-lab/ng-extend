@@ -437,7 +437,8 @@ export async function getCellStatus(
  */
 export async function setCellComplete(
     caveServer: string, rootId: string, complete: boolean,
-    existingAnnotationId?: number): Promise<boolean> {
+    existingAnnotationId?: number,
+    pointOverride?: [number, number, number]): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const {cellStatusTable, alignedVolume} = dsCfg;
   if (!caveServer) {
@@ -472,7 +473,10 @@ export async function setCellComplete(
     }
 
     if (complete) {
-      const pos = getViewerPosition();
+      // pointOverride lets batch-complete supply per-segment crosshair points
+      // (otherwise CAVE would resolve every batch row to the live crosshair's
+      // pt_root_id — silently bogus).
+      const pos = pointOverride ?? getViewerPosition();
       // bound_tag_user → server auto-fills user_id from auth context, no need
       // to encode it into the tag. Plain bound_tag → use the interim suffix.
       const dsCfg = getActiveDatasetConfig();
@@ -503,7 +507,7 @@ export async function setCellComplete(
         try {
           const backend = useProofreadingBackendStore();
           if (backend.userId) {
-            const p = getViewerPosition();
+            const p = pointOverride ?? getViewerPosition();
             backend.logEdit({ operation: 'mark_complete', segment_after: rootId, coordinates: `${p[0]}, ${p[1]}, ${p[2]}`, metadata: { root_id: rootId } });
             backend.postActivity(`marked ...${rootId.slice(-4)} complete`, rootId);
           }

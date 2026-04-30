@@ -6,6 +6,9 @@ import {DEMO_USERS, DemoUser} from '../data/demo-users';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {useUserPreferencesStore, useProofreadingBackendStore} from '../store';
+import {EYEWIRE_FLAG} from '../data/countries';
+import nurroTrophy from '../../static/badges/pyr/nurro-trophy.png';
+import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 const {prefs} = storeToRefs(useUserPreferencesStore());
 const backendStore = useProofreadingBackendStore();
@@ -116,11 +119,21 @@ const RANK_MEDAL: Record<number, string> = {1: '🥇', 2: '🥈', 3: '🥉'};
 
 /** Convert flag emoji to a CDN image URL (cross-platform, Windows compat). */
 function flagImgUrl(emoji: string): string {
+  if (!emoji || emoji === EYEWIRE_FLAG) return '';
   const pts = [...emoji];
   if (pts.length < 2) return '';
   const code = pts.slice(0, 2).map(c => String.fromCharCode((c.codePointAt(0)! - 0x1F1E6) + 97)).join('');
   if (!code || code.length !== 2) return '';
   return `https://flagcdn.com/w40/${code}.png`;
+}
+
+function isEyewireFlag(flag: string): boolean {
+  return flag === EYEWIRE_FLAG;
+}
+
+/** The flag value to display for a leaderboard user (logged-in user uses live prefs). */
+function userFlag(user: DemoUser): string {
+  return (user.id === 'amy' || user.id === backendStore.userId) ? (prefs.value.flag || user.flag) : user.flag;
 }
 
 const emit = defineEmits({hide: null});
@@ -134,8 +147,12 @@ const emit = defineEmits({hide: null});
       <template v-if="!selectedUser">
 
         <div class="nge-lb-topbar">
-          <span class="nge-lb-title">🏆 Leaderboard</span>
+          <span class="nge-lb-title">Leaderboard</span>
           <button class="nge-lb-exit" @click="emit('hide')">×</button>
+        </div>
+
+        <div class="nge-lb-hero">
+          <img :src="nurroTrophy" alt="Nurro Trophy" class="nge-lb-hero-img" />
         </div>
 
         <div class="nge-lb-tabs">
@@ -171,9 +188,12 @@ const emit = defineEmits({hide: null});
                 </td>
                 <td class="nge-lb-td">
                   <!-- Use live prefs flag for the logged-in user's row -->
-                  <img v-if="flagImgUrl((user.id === 'amy' || user.id === backendStore.userId) ? (prefs.flag || user.flag) : user.flag)"
+                  <img v-if="isEyewireFlag(userFlag(user))"
+                       class="nge-lb-flag-img nge-lb-flag-img--logo"
+                       :src="pyrIcon" />
+                  <img v-else-if="flagImgUrl(userFlag(user))"
                        class="nge-lb-flag-img"
-                       :src="flagImgUrl((user.id === 'amy' || user.id === backendStore.userId) ? (prefs.flag || user.flag) : user.flag)" />
+                       :src="flagImgUrl(userFlag(user))" />
                   <span v-else class="nge-lb-flag-fallback">🌐</span>
                   <span class="nge-lb-name nge-lb-name--clickable" @click.stop="openFullProfile(user.id)" title="View profile">{{ user.name }}</span>
                   <span v-if="user.id === 'amy' || user.id === backendStore.userId" class="nge-lb-you-tag">you</span>
@@ -213,7 +233,8 @@ const emit = defineEmits({hide: null});
 
           <div class="nge-lb-detail-header">
             <div class="nge-lb-detail-name-row">
-              <img v-if="flagImgUrl(selectedUser.flag)" class="nge-lb-flag-img nge-lb-flag-img--detail" :src="flagImgUrl(selectedUser.flag)" />
+              <img v-if="isEyewireFlag(selectedUser.flag)" class="nge-lb-flag-img nge-lb-flag-img--detail nge-lb-flag-img--logo" :src="pyrIcon" />
+              <img v-else-if="flagImgUrl(selectedUser.flag)" class="nge-lb-flag-img nge-lb-flag-img--detail" :src="flagImgUrl(selectedUser.flag)" />
               <span v-else class="nge-lb-flag-fallback nge-lb-flag-fallback--detail">🌐</span>
               <div class="nge-lb-detail-name">{{ selectedUser.name }}</div>
             </div>
@@ -394,6 +415,23 @@ const emit = defineEmits({hide: null});
   color: #e0e0e0;
 }
 
+.nge-lb-hero {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 4px;
+}
+.nge-lb-hero-img {
+  width: 110px;
+  height: 110px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 18px rgba(120, 140, 255, 0.18));
+  animation: nge-lb-hero-float 6s ease-in-out infinite;
+}
+@keyframes nge-lb-hero-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
 .nge-lb-exit {
   background: none;
   border: none;
@@ -517,6 +555,14 @@ const emit = defineEmits({hide: null});
 }
 .nge-lb-flag-img--detail {
   width: 32px; height: 22px;
+}
+.nge-lb-flag-img--logo {
+  width: 18px; height: 18px;
+  object-fit: contain;
+  border-radius: 0;
+}
+.nge-lb-flag-img--logo.nge-lb-flag-img--detail {
+  width: 26px; height: 26px;
 }
 
 .nge-lb-flag-fallback {

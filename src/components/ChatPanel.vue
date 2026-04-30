@@ -117,11 +117,23 @@ const positionStyle = computed(() => {
   return {}; // use CSS defaults (bottom-right)
 });
 
-// Connect on mount, mark read
+// Connect on mount only if logged in — otherwise show login-gate empty state.
+// Auto-connect when login resolves (user logs in mid-session).
+const isLoggedIn = computed(() => !!backendStore.userId && !!backendStore.userName);
+
 onMounted(() => {
-  chatStore.connect();
-  chatStore.markRead();
+  if (isLoggedIn.value) {
+    chatStore.connect();
+    chatStore.markRead();
+  }
   nextTick(() => inputEl.value?.focus());
+});
+
+watch(isLoggedIn, (loggedIn) => {
+  if (loggedIn && !connected.value) {
+    chatStore.connect();
+    chatStore.markRead();
+  }
 });
 
 onUnmounted(() => {
@@ -310,7 +322,10 @@ function toggleCollapse() {
                 </div>
               </template>
 
-              <div v-if="chatMessages.length === 0" class="nge-chat-empty">
+              <div v-if="!isLoggedIn" class="nge-chat-empty">
+                Log in to chat
+              </div>
+              <div v-else-if="chatMessages.length === 0" class="nge-chat-empty">
                 Say hello!
               </div>
             </div>
@@ -330,14 +345,14 @@ function toggleCollapse() {
             ref="inputEl"
             v-model="messageInput"
             class="nge-chat-input"
-            placeholder="Message..."
+            :placeholder="isLoggedIn ? 'Message...' : 'Log in to chat'"
             @keydown.stop
             @keyup.stop
             @keypress.stop
             @keydown.enter.exact.prevent="send"
             spellcheck="true"
             autocomplete="off"
-            :disabled="!connected"
+            :disabled="!isLoggedIn || !connected"
           />
         </div>
       </template>
@@ -519,25 +534,25 @@ function toggleCollapse() {
 
 /* ── Message line — inline name + text ── */
 .nge-chat-msg {
-  padding: 2px 4px;
-  line-height: 1.4;
-  font-size: 13px;
+  padding: 3px 4px;
+  line-height: 1.45;
+  font-size: 14.5px;
 }
 .nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
 
 .nge-chat-msg-time {
-  font-size: 9px;
-  color: #445;
-  margin-right: 4px;
+  font-size: 11px;
+  color: #556;
+  margin-right: 5px;
   flex-shrink: 0;
 }
-.nge-chat-msg:hover .nge-chat-msg-time { color: #667; }
+.nge-chat-msg:hover .nge-chat-msg-time { color: #889; }
 
-.nge-chat-msg-trophy { font-size: 10px; margin-right: 1px; }
+.nge-chat-msg-trophy { font-size: 12px; margin-right: 1px; }
 
 .nge-chat-msg-name {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14.5px;
   margin-right: 4px;
 }
 .nge-chat-msg-name--clickable {
@@ -547,7 +562,7 @@ function toggleCollapse() {
   cursor: pointer;
   font: inherit;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14.5px;
   transition: opacity 0.15s;
 }
 .nge-chat-msg-name--clickable:hover {
@@ -563,7 +578,7 @@ function toggleCollapse() {
   color: #4a9eff;
   text-decoration: none;
   word-break: break-all;
-  font-size: 13px;
+  font-size: 14.5px;
 }
 .nge-chat-link:hover { text-decoration: underline; }
 
@@ -585,21 +600,21 @@ function toggleCollapse() {
 
 /* System messages */
 .nge-chat-sys {
-  font-size: 11px;
-  color: #556;
+  font-size: 12.5px;
+  color: #6a7282;
   font-style: italic;
-  padding: 0 4px;
+  padding: 1px 4px;
 }
 .nge-chat-sys--warn { color: #c08030; }
 
 /* Time separator */
 .nge-chat-time-sep {
   text-align: center;
-  padding: 2px 0;
+  padding: 3px 0;
 }
 .nge-chat-time-sep span {
-  font-size: 10px;
-  color: #556;
+  font-size: 11.5px;
+  color: #6a7282;
   padding: 0 6px;
 }
 
@@ -638,9 +653,9 @@ function toggleCollapse() {
   background: rgba(20, 24, 40, 0.9);
   border: 1px solid rgba(100, 180, 255, 0.15);
   border-radius: 4px;
-  padding: 5px 8px;
+  padding: 6px 8px;
   color: #e0e4ec;
-  font-size: 13px;
+  font-size: 14.5px;
   font-family: inherit;
   outline: none;
   transition: border-color 0.12s;
@@ -653,8 +668,9 @@ function toggleCollapse() {
 /* Empty state */
 .nge-chat-empty {
   text-align: center;
-  padding: 16px 8px;
-  color: #556;
-  font-size: 12px;
+  padding: 20px 8px;
+  color: #889;
+  font-size: 13.5px;
+  font-style: italic;
 }
 </style>

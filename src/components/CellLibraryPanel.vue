@@ -7,12 +7,15 @@ import {
   useCellHistoryStore,
   useHelpRequestStore,
   useUserStatsStore,
+  useWorkingLinksStore,
   type ProofreadingTask,
   type HelpRequest,
+  type WorkingLink,
   type ClaimPoint,
 } from '../store';
 import { EYEWIRE_II_CAVE_CONFIG } from '../config';
 import { getAccessToken } from '../widgets/google_sheets_auth';
+import { findDatasetBySegName, switchToDataset, canonicalDataset, type DatasetEntry } from '../datasets';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 const props = defineProps<{ initialTab?: string }>();
@@ -22,9 +25,10 @@ const queue = useProofreadingQueueStore();
 const login = useLoginStore();
 const history = useCellHistoryStore();
 const helpStore = useHelpRequestStore();
+const linksStore = useWorkingLinksStore();
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links'>(
   (props.initialTab as any) || 'mine',
 );
 const search = ref('');
@@ -69,6 +73,8 @@ onMounted(async () => {
   resolveClaimPoints();
   // Refresh help requests from Supabase
   helpStore.load();
+  // Capture the active dataset so the Help tab can group by dataset
+  activeDataset.value = getCurrentDatasetName();
 });
 
 // ── Derived data ─────────────────────────────────────────────────────
@@ -449,6 +455,170 @@ const activeHelpId = ref<string | null>(null);
 const pendingHelp = computed(() => helpStore.requests.filter(r => !r.resolved));
 const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
 
+// ── Dataset grouping for pending help requests ──────────────────────
+// `activeDataset` holds the segmentation-layer name currently in the viewer.
+// We group pending requests by their `dataset` field so users see only
+// requests from the dataset they're actually looking at; cross-dataset
+// requests are tucked under a collapsible header so they don't disappear.
+const activeDataset = ref('');
+const collapsedDatasets = ref<Set<string>>(new Set());
+
+interface HelpDatasetGroup {
+  dataset: string;
+  label: string;
+  isCurrent: boolean;
+  requests: HelpRequest[];
+}
+
+const pendingHelpByDataset = computed<HelpDatasetGroup[]>(() => {
+  // Bucket by canonical dataset key so legacy variants ('eyewire_ii',
+  // 'minnie65_public_v117', etc.) collapse with their current sibling.
+  const groups = new Map<string, { label: string; requests: HelpRequest[] }>();
+  const currentRaw = activeDataset.value;
+  const currentKey = canonicalDataset(currentRaw);
+
+  for (const req of pendingHelp.value) {
+    // Treat empty/missing dataset as belonging to the current viewer dataset.
+    const raw = req.dataset || currentRaw || 'Unknown';
+    const key = canonicalDataset(raw) || raw;
+    let g = groups.get(key);
+    if (!g) {
+      // Display label: prefer the current viewer's name when this is the
+      // current dataset's bucket; otherwise show the first variant we saw.
+      const label = (currentKey && key === currentKey && currentRaw) ? currentRaw : raw;
+      g = { label, requests: [] };
+      groups.set(key, g);
+    }
+    g.requests.push(req);
+  }
+
+  const result: HelpDatasetGroup[] = [];
+  if (currentKey && groups.has(currentKey)) {
+    const g = groups.get(currentKey)!;
+    result.push({ dataset: currentKey, label: g.label, isCurrent: true, requests: g.requests });
+    groups.delete(currentKey);
+  }
+  let firstFallback = true;
+  for (const [key, g] of groups) {
+    const isCurr = !currentKey && firstFallback;
+    firstFallback = false;
+    result.push({ dataset: key, label: g.label, isCurrent: isCurr, requests: g.requests });
+    if (currentKey && key !== currentKey && !collapsedDatasets.value.has(key)) {
+      collapsedDatasets.value.add(key);
+    }
+  }
+  return result;
+});
+
+const hasMultipleHelpDatasets = computed(() => pendingHelpByDataset.value.length > 1);
+
+function toggleDatasetGroup(ds: string) {
+  if (collapsedDatasets.value.has(ds)) collapsedDatasets.value.delete(ds);
+  else collapsedDatasets.value.add(ds);
+}
+
+function isCrossDatasetReq(req: HelpRequest): boolean {
+  if (!req.dataset || !activeDataset.value) return false;
+  // Compare canonical keys so legacy aliases (eyewire_ii ⇄ stroeh_mouse_retina,
+  // minnie65_public ⇄ minnie65_public_v117) aren't flagged as cross-dataset.
+  return canonicalDataset(req.dataset) !== canonicalDataset(activeDataset.value);
+}
+
+// ── Cross-dataset jump confirmation ─────────────────────────────────
+const jumpConfirmReq = ref<HelpRequest | null>(null);
+const jumpConfirmTargetDs = ref<DatasetEntry | null>(null);
+const jumpConfirmCopied = ref(false);
+
+function copyJumpConfirmUrl() {
+  try {
+    navigator.clipboard.writeText(window.location.href);
+    jumpConfirmCopied.value = true;
+    setTimeout(() => { jumpConfirmCopied.value = false; }, 1500);
+  } catch {}
+}
+
+function cancelJumpConfirm() {
+  jumpConfirmReq.value = null;
+  jumpConfirmTargetDs.value = null;
+  jumpConfirmCopied.value = false;
+  pendingLinkOpen.value = null;
+}
+
+async function confirmJump() {
+  const req = jumpConfirmReq.value;
+  const target = jumpConfirmTargetDs.value;
+  const linkBeingOpened = pendingLinkOpen.value;
+  if (!req) return cancelJumpConfirm();
+  if (target) {
+    const ok = await switchToDataset(target);
+    if (ok) {
+      activeDataset.value = target.layers.find((l: any) => l.type === 'segmentation')?.name ?? '';
+      // Give neuroglancer one tick to swap layers before navigating.
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+  if (linkBeingOpened) {
+    // For working-link opens, navigate to the link's saved URL (preserves the full state).
+    cancelJumpConfirm();
+    pendingLinkOpen.value = null;
+    window.location.href = linkBeingOpened.url;
+    return;
+  }
+  activeHelpId.value = req.id;
+  history.jumpToCell(req.segId, req.position);
+  cancelJumpConfirm();
+}
+
+/** Save the current view URL as a working link from the cross-dataset modal. */
+async function saveCurrentAsLink() {
+  if (!backend.userId) {
+    alert('Log in to save working links.');
+    return;
+  }
+  const url = window.location.href;
+  const pos = getViewerPosition();
+  const ds = activeDataset.value || getCurrentDatasetName();
+  await linksStore.add({
+    title: `${ds || 'View'} — ${new Date().toLocaleString()}`,
+    note: 'Saved before switching dataset',
+    url,
+    dataset: ds,
+    position: pos.length === 3 ? [pos[0], pos[1], pos[2]] : undefined,
+    visibleSegments: getVisibleSegmentIds(),
+  });
+  jumpConfirmCopied.value = true;
+  setTimeout(() => { jumpConfirmCopied.value = false; }, 1500);
+}
+
+function jumpConfirmTargetServerHasAuth(): boolean {
+  // Stroeh / pinky / minnie65 all share minnie.microns-daf.com — if any
+  // auth_token_v2_* key exists for that host, we treat it as authed.
+  // Returns true when no warning is needed.
+  const target = jumpConfirmTargetDs.value;
+  if (!target) return true;
+  try {
+    const segLayer = target.layers.find((l: any) => l.type === 'segmentation');
+    const url: string = (typeof segLayer?.source === 'object' ? segLayer.source.url : segLayer?.source) ?? '';
+    const m = url.match(/middleauth\+https?:\/\/([^/]+)/);
+    if (!m) return true;
+    const host = m[1];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) ?? '';
+      if (k.startsWith('auth_token_v2_') && k.includes(host)) return true;
+    }
+    return false;
+  } catch { return true; }
+}
+
+function getCurrentUrl(): string {
+  try { return window.location.href; } catch { return ''; }
+}
+
+function selectInputContents(e: Event) {
+  const t = e.target as HTMLInputElement | null;
+  t?.select();
+}
+
 // ── Create help request form ─────────────────────────────────────────
 const showCreateHelp = ref(false);
 const newHelpIssue = ref('Unsure');
@@ -579,6 +749,14 @@ function relativeTime(iso: string): string {
 }
 
 function jumpToReq(req: HelpRequest) {
+  if (isCrossDatasetReq(req)) {
+    // Different dataset — show a confirmation modal so the user can save
+    // their current state URL before the viewer reloads with new layers.
+    jumpConfirmReq.value = req;
+    jumpConfirmTargetDs.value = findDatasetBySegName(req.dataset!) ?? null;
+    jumpConfirmCopied.value = false;
+    return;
+  }
   activeHelpId.value = req.id;
   history.jumpToCell(req.segId, req.position);
 }
@@ -607,6 +785,135 @@ function copyCurrentState() {
 function removeReq(req: HelpRequest) {
   helpStore.remove(req.id);
   helpStore.refreshPending();
+}
+
+// ── Working Links tab ────────────────────────────────────────────────
+const linksSearch = ref('');
+const showSaveLinkForm = ref(false);
+const newLinkTitle = ref('');
+const newLinkNote = ref('');
+const newLinkPublic = ref(false);
+const renamingLinkId = ref<string | null>(null);
+const renamingLinkValue = ref('');
+const linksOwnershipFilter = ref<'all' | 'mine' | 'shared'>('all');
+
+const visibleLinks = computed<WorkingLink[]>(() => {
+  const q = linksSearch.value.trim().toLowerCase();
+  let list = linksStore.links;
+  if (linksOwnershipFilter.value === 'mine') list = list.filter(l => l.userId === backend.userId);
+  else if (linksOwnershipFilter.value === 'shared') list = list.filter(l => l.userId !== backend.userId);
+  if (q) {
+    list = list.filter(l =>
+      (l.title || '').toLowerCase().includes(q) ||
+      (l.note || '').toLowerCase().includes(q) ||
+      (l.dataset || '').toLowerCase().includes(q));
+  }
+  // Starred first, then most recent
+  return [...list].sort((a, b) => {
+    if (a.starred !== b.starred) return a.starred ? -1 : 1;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+});
+
+function getVisibleSegmentIds(): string[] {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const layer = ml.layer;
+      if (!layer) continue;
+      const className = layer.constructor?.name || '';
+      if (!className.includes('Segmentation')) continue;
+      const visible = layer.displayState?.segmentationGroupState?.value?.visibleSegments;
+      if (!visible) continue;
+      const ids: string[] = [];
+      for (const seg of visible) ids.push(seg.toString());
+      return ids;
+    }
+  } catch {}
+  return [];
+}
+
+async function submitNewLink() {
+  if (!backend.userId) {
+    alert('Log in to save working links.');
+    return;
+  }
+  const url = window.location.href;
+  const pos = getViewerPosition();
+  const id = await linksStore.add({
+    title: newLinkTitle.value.trim() || `${getCurrentDatasetName() || 'View'} — ${new Date().toLocaleString()}`,
+    note: newLinkNote.value.trim(),
+    url,
+    dataset: getCurrentDatasetName(),
+    position: pos.length === 3 ? [pos[0], pos[1], pos[2]] : undefined,
+    visibleSegments: getVisibleSegmentIds(),
+    isPublic: newLinkPublic.value,
+  });
+  if (id) {
+    showSaveLinkForm.value = false;
+    newLinkTitle.value = '';
+    newLinkNote.value = '';
+    newLinkPublic.value = false;
+  }
+}
+
+function startRename(link: WorkingLink) {
+  renamingLinkId.value = link.id;
+  renamingLinkValue.value = link.title;
+}
+
+async function commitRename(link: WorkingLink) {
+  const v = renamingLinkValue.value.trim();
+  if (v && v !== link.title) await linksStore.update(link.id, { title: v });
+  renamingLinkId.value = null;
+}
+
+function openLink(link: WorkingLink) {
+  // Same dataset → cross-dataset behavior matches help-request flow.
+  const targetDs = link.dataset && findDatasetBySegName(link.dataset);
+  const current = activeDataset.value;
+  if (link.dataset && current && link.dataset !== current && targetDs) {
+    // Reuse the cross-dataset confirmation pattern (synthesize a HelpRequest-shaped object).
+    jumpConfirmReq.value = {
+      id: `link:${link.id}`,
+      segId: link.visibleSegments[0] ?? '',
+      position: link.position ?? [0, 0, 0],
+      note: link.note,
+      issueType: '',
+      createdAt: link.createdAt,
+      resolved: false,
+      dataset: link.dataset,
+    } as HelpRequest;
+    jumpConfirmTargetDs.value = targetDs;
+    jumpConfirmCopied.value = false;
+    // Override: continue should navigate via the URL itself, not just the segment.
+    pendingLinkOpen.value = link;
+    return;
+  }
+  // Same dataset: open URL directly (replaces current state)
+  window.location.href = link.url;
+}
+
+const pendingLinkOpen = ref<WorkingLink | null>(null);
+
+async function shareLinkToChat(link: WorkingLink) {
+  // Post the title + URL into the global chat broadcast.
+  try {
+    const chat = (await import('../store')).useChatStore();
+    chat.sendMessage(`📎 ${link.title}\n${link.url}`);
+  } catch (e) {
+    console.warn('[workingLinks] share to chat failed:', e);
+  }
+}
+
+function relativeTimeShort(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  return `${Math.floor(hrs / 24)}d`;
 }
 
 // ── Drag ─────────────────────────────────────────────────────────────
@@ -664,6 +971,9 @@ const panelStyle = computed(() => ({
           <button :class="{ active: filter === 'help', 'nge-cl-help-tab': true }" @click="filter = 'help'">
             Help ({{ pendingHelp.length }})
           </button>
+          <button :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'">
+            Links ({{ linksStore.links.length }})
+          </button>
           <button
             v-if="filter === 'help'"
             class="nge-cl-help-create-btn"
@@ -672,11 +982,21 @@ const panelStyle = computed(() => ({
           >+</button>
         </div>
 
-        <!-- Search (not shown on Help tab) -->
-        <div v-if="filter !== 'help'" class="nge-cl-search">
+        <!-- Search (not shown on Help / Links tabs) -->
+        <div v-if="filter !== 'help' && filter !== 'links'" class="nge-cl-search">
           <input
             v-model="search"
             placeholder="Search by ID, name, or notes..."
+            class="nge-cl-search-input"
+            @keydown.stop @keyup.stop @keypress.stop
+          />
+        </div>
+
+        <!-- Search on Links tab -->
+        <div v-if="filter === 'links'" class="nge-cl-search">
+          <input
+            v-model="linksSearch"
+            placeholder="Search links by title, note, or dataset..."
             class="nge-cl-search-input"
             @keydown.stop @keyup.stop @keypress.stop
           />
@@ -722,35 +1042,66 @@ const panelStyle = computed(() => ({
           <div v-else-if="pendingHelp.length === 0" class="nge-cl-no-results">No pending requests</div>
 
           <div
-            v-for="req in pendingHelp"
-            :key="req.id"
-            class="nge-cl-help-item"
-            :class="{ 'nge-cl-help-item--active': activeHelpId === req.id }"
+            v-for="group in pendingHelpByDataset"
+            :key="group.dataset"
+            class="nge-cl-help-ds-group"
+            :class="{ 'nge-cl-help-ds-group--cross': !group.isCurrent }"
           >
-            <div class="nge-cl-row">
-              <div class="nge-cl-row-left">
-                <span class="nge-cl-pip nge-cl-status--help"></span>
-                <div class="nge-cl-row-info">
-                  <div class="nge-cl-row-name" @click="copyId(req.segId)" :title="'Click to copy ' + req.segId">
-                    {{ req.segId }}
-                    <span v-if="copiedId === req.segId" class="nge-cl-copied">copied</span>
-                  </div>
-                  <div class="nge-cl-row-meta">
-                    <span class="nge-cl-badge nge-cl-status--help">{{ req.issueType }}</span>
-                    <span v-if="req.userName" class="nge-cl-notes">by {{ req.userName }}</span>
-                    <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
-                  </div>
-                  <div v-if="req.note" class="nge-cl-help-note" :class="{ 'nge-cl-help-note--expanded': expandedNotes.has(req.id) }" @click="toggleNoteExpand(req.id)">{{ req.note }}</div>
-                </div>
-              </div>
-              <div class="nge-cl-row-actions">
-                <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
-                <button class="nge-cl-btn nge-cl-btn--respond" @click="toggleResponseForm(req.id)" :title="respondingTo === req.id ? 'Cancel' : 'Respond'">
-                  {{ respondingTo === req.id ? '▾' : '💬' }}
-                </button>
-                <button class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(req)">Resolve</button>
-              </div>
+            <!-- Dataset section header (only when there's more than one group) -->
+            <div
+              v-if="hasMultipleHelpDatasets"
+              class="nge-cl-help-ds-header"
+              @click="toggleDatasetGroup(group.dataset)"
+            >
+              <span
+                class="nge-cl-help-ds-arrow"
+                :class="{ 'nge-cl-help-ds-arrow--collapsed': !group.isCurrent && collapsedDatasets.has(group.dataset) }"
+              >▾</span>
+              <span class="nge-cl-help-ds-name">{{ group.label }}</span>
+              <span v-if="group.isCurrent" class="nge-cl-help-ds-tag nge-cl-help-ds-tag--current">current</span>
+              <span v-else class="nge-cl-help-ds-tag nge-cl-help-ds-tag--other">other dataset</span>
+              <span class="nge-cl-help-ds-count">{{ group.requests.length }}</span>
             </div>
+
+            <!-- Requests: current dataset always shown; others only when expanded -->
+            <template v-if="group.isCurrent || !collapsedDatasets.has(group.dataset)">
+              <div
+                v-for="req in group.requests"
+                :key="req.id"
+                class="nge-cl-help-item"
+                :class="{
+                  'nge-cl-help-item--active': activeHelpId === req.id,
+                  'nge-cl-help-item--cross': !group.isCurrent,
+                }"
+              >
+                <div class="nge-cl-row">
+                  <div class="nge-cl-row-left">
+                    <span class="nge-cl-pip nge-cl-status--help"></span>
+                    <div class="nge-cl-row-info">
+                      <div class="nge-cl-row-name" @click="copyId(req.segId)" :title="'Click to copy ' + req.segId">
+                        {{ req.segId }}
+                        <span v-if="copiedId === req.segId" class="nge-cl-copied">copied</span>
+                      </div>
+                      <div class="nge-cl-row-meta">
+                        <span class="nge-cl-badge nge-cl-status--help">{{ req.issueType }}</span>
+                        <span v-if="req.userName" class="nge-cl-notes">by {{ req.userName }}</span>
+                        <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
+                      </div>
+                      <div v-if="req.note" class="nge-cl-help-note" :class="{ 'nge-cl-help-note--expanded': expandedNotes.has(req.id) }" @click="toggleNoteExpand(req.id)">{{ req.note }}</div>
+                    </div>
+                  </div>
+                  <div class="nge-cl-row-actions">
+                    <button
+                      class="nge-cl-btn nge-cl-btn--jump"
+                      @click="jumpToReq(req)"
+                      :title="!group.isCurrent ? `Switch to ${group.label} and jump` : 'Jump to segment'"
+                    >↗</button>
+                    <button class="nge-cl-btn nge-cl-btn--respond" @click="toggleResponseForm(req.id)" :title="respondingTo === req.id ? 'Cancel' : 'Respond'">
+                      {{ respondingTo === req.id ? '▾' : '💬' }}
+                    </button>
+                    <button class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(req)">Resolve</button>
+                  </div>
+                </div>
 
             <!-- Show existing response thread -->
             <div v-if="req.responseNote" class="nge-cl-response-display">
@@ -799,6 +1150,8 @@ const panelStyle = computed(() => ({
                 @click="submitResponse(req, true)"
               >Submit & Resolve</button>
             </div>
+              </div>
+            </template>
           </div>
 
           <!-- Resolved section -->
@@ -840,6 +1193,112 @@ const panelStyle = computed(() => ({
               </div>
             </div>
           </template>
+        </div>
+
+        <!-- ═══ LINKS TAB ═══ -->
+        <div v-else-if="filter === 'links'" class="nge-cl-list">
+
+          <!-- Save current view form -->
+          <Transition name="nge-slide">
+            <div v-if="showSaveLinkForm" class="nge-cl-help-create">
+              <div class="nge-cl-help-create-title">Save Current View</div>
+              <div class="nge-cl-help-create-hint">
+                Captures the current URL, dataset, position, and visible segments.
+              </div>
+              <input
+                v-model="newLinkTitle"
+                class="nge-cl-search-input"
+                placeholder="Title (e.g. 'Tricky merge near soma')"
+                @keydown.stop @keyup.stop @keypress.stop
+                @keydown.enter.exact.prevent="submitNewLink"
+              />
+              <textarea
+                v-model="newLinkNote"
+                class="nge-cl-help-create-note"
+                placeholder="Optional note..."
+                rows="2"
+                @keydown.stop @keyup.stop @keypress.stop
+              ></textarea>
+              <label class="nge-cl-link-public-row">
+                <input type="checkbox" v-model="newLinkPublic" />
+                Make public (anyone in the lab can see)
+              </label>
+              <div class="nge-cl-help-create-actions">
+                <button class="nge-cl-help-create-submit" @click="submitNewLink">💾 Save Link</button>
+                <button class="nge-cl-help-create-cancel" @click="showSaveLinkForm = false">Cancel</button>
+              </div>
+            </div>
+          </Transition>
+
+          <!-- Ownership filter chips + Save new -->
+          <div class="nge-cl-link-ownership">
+            <button
+              class="nge-cl-link-save-new"
+              :class="{ active: showSaveLinkForm }"
+              @click="showSaveLinkForm = !showSaveLinkForm"
+              title="Save the current view as a working link"
+            >+ Save new</button>
+            <span class="nge-cl-link-ownership-divider"></span>
+            <button :class="{ active: linksOwnershipFilter === 'all' }" @click="linksOwnershipFilter = 'all'">All</button>
+            <button :class="{ active: linksOwnershipFilter === 'mine' }" @click="linksOwnershipFilter = 'mine'">Mine</button>
+            <button :class="{ active: linksOwnershipFilter === 'shared' }" @click="linksOwnershipFilter = 'shared'">Shared</button>
+          </div>
+
+          <!-- Empty state -->
+          <div v-if="visibleLinks.length === 0 && !showSaveLinkForm" class="nge-cl-empty">
+            No saved links yet. Click <strong>+</strong> above to save the current view.
+          </div>
+
+          <!-- Link rows -->
+          <div
+            v-for="link in visibleLinks"
+            :key="link.id"
+            class="nge-cl-help-item nge-cl-link-item"
+            :class="{ 'nge-cl-link-item--starred': link.starred }"
+          >
+            <div class="nge-cl-row">
+              <div class="nge-cl-row-left">
+                <span class="nge-cl-pip" :style="{ background: link.starred ? '#f5d142' : '#557' }"></span>
+                <div class="nge-cl-row-info">
+                  <div v-if="renamingLinkId === link.id" class="nge-cl-link-rename">
+                    <input
+                      v-model="renamingLinkValue"
+                      class="nge-cl-search-input"
+                      @keydown.stop @keyup.stop @keypress.stop
+                      @keydown.enter.exact.prevent="commitRename(link)"
+                      @blur="commitRename(link)"
+                      ref="renameInput"
+                      autofocus
+                    />
+                  </div>
+                  <div v-else class="nge-cl-row-name nge-cl-link-title" @dblclick="startRename(link)" :title="'Double-click to rename · ' + link.title">
+                    {{ link.title }}
+                  </div>
+                  <div class="nge-cl-row-meta">
+                    <span v-if="link.dataset" class="nge-cl-badge" :style="{ background: 'rgba(120,140,255,0.12)', color: '#abf' }">{{ link.dataset }}</span>
+                    <span v-if="link.userId !== backend.userId && link.userName" class="nge-cl-notes">by {{ link.userName }}</span>
+                    <span v-if="link.isPublic" class="nge-cl-notes" style="color:#7f8;">🌐 public</span>
+                    <span class="nge-cl-notes">{{ relativeTimeShort(link.createdAt) }}</span>
+                  </div>
+                  <div v-if="link.note" class="nge-cl-help-note">{{ link.note }}</div>
+                </div>
+              </div>
+              <div class="nge-cl-row-actions">
+                <button class="nge-cl-btn nge-cl-btn--jump" @click="openLink(link)" title="Open link in viewer">↗</button>
+                <button class="nge-cl-btn" @click="linksStore.toggleStar(link.id)" :title="link.starred ? 'Unstar' : 'Star'">
+                  {{ link.starred ? '★' : '☆' }}
+                </button>
+                <button class="nge-cl-btn" @click="startRename(link)" title="Rename">✏️</button>
+                <button class="nge-cl-btn" @click="shareLinkToChat(link)" title="Share to chat">💬</button>
+                <button
+                  v-if="link.userId === backend.userId"
+                  class="nge-cl-btn nge-cl-btn--release"
+                  @click="linksStore.remove(link.id)"
+                  title="Delete"
+                >×</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- ═══ CELL TABS ═══ -->
@@ -927,13 +1386,65 @@ const panelStyle = computed(() => ({
       </div>
     </Transition>
   </Teleport>
+
+  <!-- Cross-dataset jump confirmation modal -->
+  <Teleport to="body">
+    <div
+      v-if="jumpConfirmReq"
+      class="nge-cl-jumpconfirm-backdrop"
+      @click.self="cancelJumpConfirm"
+    >
+      <div class="nge-cl-jumpconfirm">
+        <div class="nge-cl-jumpconfirm-title">⚠ Switching dataset</div>
+        <div class="nge-cl-jumpconfirm-body">
+          This help request is on
+          <strong>{{ jumpConfirmReq.dataset }}</strong>.
+          You're currently viewing
+          <strong>{{ activeDataset || 'an unknown dataset' }}</strong>.
+          The viewer will reload with new layers — copy your current state URL first
+          if you don't want to lose your spot.
+        </div>
+        <div v-if="!jumpConfirmTargetDs" class="nge-cl-jumpconfirm-warn">
+          ⚠ This dataset isn't in the known dataset list. We'll jump to the segment
+          but won't auto-switch layers — you may need to load it manually.
+        </div>
+        <div v-else-if="!jumpConfirmTargetServerHasAuth()" class="nge-cl-jumpconfirm-warn">
+          ⚠ You haven't logged into this dataset's server yet. You'll be prompted
+          to log in after the switch.
+        </div>
+        <div class="nge-cl-jumpconfirm-url-row">
+          <input
+            class="nge-cl-jumpconfirm-url"
+            :value="getCurrentUrl()"
+            readonly
+            @click="selectInputContents"
+            title="Click to select, then copy"
+          />
+          <button class="nge-cl-jumpconfirm-copy" @click="copyJumpConfirmUrl">
+            {{ jumpConfirmCopied ? '✓ Copied' : '📋 Copy URL' }}
+          </button>
+        </div>
+        <div class="nge-cl-jumpconfirm-save-row">
+          <button class="nge-cl-jumpconfirm-save" @click="saveCurrentAsLink" :disabled="!backend.userId">
+            💾 Save link before switching
+          </button>
+        </div>
+        <div class="nge-cl-jumpconfirm-actions">
+          <button class="nge-cl-jumpconfirm-cancel" @click="cancelJumpConfirm">Cancel</button>
+          <button class="nge-cl-jumpconfirm-go" @click="confirmJump">
+            {{ jumpConfirmTargetDs ? 'Switch & Jump' : 'Jump anyway' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
 .nge-cl-panel {
   position: fixed;
   z-index: 10010;
-  width: 440px;
+  width: 480px;
   max-height: 70vh;
   display: flex;
   flex-direction: column;
@@ -1530,5 +2041,266 @@ const panelStyle = computed(() => ({
 }
 .nge-slide-enter-to, .nge-slide-leave-from {
   max-height: 250px;
+}
+
+/* ── Dataset grouping for Help tab ── */
+.nge-cl-help-ds-group {
+  margin-bottom: 4px;
+}
+.nge-cl-help-ds-group--cross .nge-cl-help-item {
+  opacity: 0.78;
+}
+.nge-cl-help-ds-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 6px 0 4px;
+  border-radius: 5px;
+  background: rgba(120, 140, 255, 0.04);
+  border: 1px solid rgba(120, 140, 255, 0.1);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+.nge-cl-help-ds-header:hover {
+  background: rgba(120, 140, 255, 0.08);
+}
+.nge-cl-help-ds-arrow {
+  font-size: 0.7em;
+  color: #667;
+  display: inline-block;
+  transition: transform 0.15s;
+  width: 8px;
+  text-align: center;
+}
+.nge-cl-help-ds-arrow--collapsed {
+  transform: rotate(-90deg);
+}
+.nge-cl-help-ds-name {
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #bcd;
+  flex: 1;
+}
+.nge-cl-help-ds-tag {
+  font-size: 0.62em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+.nge-cl-help-ds-tag--current {
+  background: rgba(127, 255, 136, 0.1);
+  border: 1px solid rgba(127, 255, 136, 0.2);
+  color: #7f8;
+}
+.nge-cl-help-ds-tag--other {
+  background: rgba(245, 166, 35, 0.08);
+  border: 1px solid rgba(245, 166, 35, 0.18);
+  color: rgba(245, 166, 35, 0.85);
+}
+.nge-cl-help-ds-count {
+  font-size: 0.7em;
+  font-weight: 700;
+  color: #889;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  min-width: 20px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 5px;
+}
+.nge-cl-help-item--cross {
+  border-left: 2px solid rgba(245, 166, 35, 0.3);
+}
+
+/* ── Cross-dataset jump confirmation modal ── */
+.nge-cl-jumpconfirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 16, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nge-cl-jumpconfirm {
+  background: linear-gradient(180deg, #0f1626 0%, #0a1020 100%);
+  border: 1px solid rgba(245, 166, 35, 0.3);
+  border-radius: 10px;
+  padding: 22px 24px;
+  width: 460px;
+  max-width: 92vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
+              0 0 40px rgba(245, 166, 35, 0.08) inset;
+  color: #e0e0e0;
+}
+.nge-cl-jumpconfirm-title {
+  font-size: 1.05em;
+  font-weight: 700;
+  color: #f5a623;
+  margin-bottom: 10px;
+}
+.nge-cl-jumpconfirm-body {
+  font-size: 0.88em;
+  line-height: 1.5;
+  color: #bcc;
+  margin-bottom: 12px;
+}
+.nge-cl-jumpconfirm-body strong {
+  color: #fff;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+}
+.nge-cl-jumpconfirm-warn {
+  font-size: 0.82em;
+  color: #f5a623;
+  background: rgba(245, 166, 35, 0.06);
+  border: 1px solid rgba(245, 166, 35, 0.18);
+  padding: 8px 10px;
+  border-radius: 5px;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+.nge-cl-jumpconfirm-url-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.nge-cl-jumpconfirm-url {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(120, 140, 255, 0.18);
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: #abc;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.78em;
+  outline: none;
+}
+.nge-cl-jumpconfirm-url:focus {
+  border-color: rgba(120, 140, 255, 0.4);
+}
+.nge-cl-jumpconfirm-copy {
+  background: rgba(120, 140, 255, 0.1);
+  border: 1px solid rgba(120, 140, 255, 0.25);
+  border-radius: 4px;
+  color: #abf;
+  font-size: 0.85em;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.nge-cl-jumpconfirm-copy:hover {
+  background: rgba(120, 140, 255, 0.2);
+}
+.nge-cl-jumpconfirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.nge-cl-jumpconfirm-cancel,
+.nge-cl-jumpconfirm-go {
+  padding: 7px 16px;
+  border-radius: 5px;
+  font-size: 0.92em;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.nge-cl-jumpconfirm-cancel {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #abc;
+}
+.nge-cl-jumpconfirm-cancel:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.nge-cl-jumpconfirm-go {
+  background: rgba(245, 166, 35, 0.15);
+  border: 1px solid rgba(245, 166, 35, 0.4);
+  color: #f5a623;
+  font-weight: 600;
+}
+.nge-cl-jumpconfirm-go:hover {
+  background: rgba(245, 166, 35, 0.25);
+}
+
+/* ── Save-link row inside cross-dataset modal ── */
+.nge-cl-jumpconfirm-save-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.nge-cl-jumpconfirm-save {
+  background: rgba(127, 255, 136, 0.08);
+  border: 1px solid rgba(127, 255, 136, 0.25);
+  color: #7f8;
+  border-radius: 5px;
+  padding: 7px 14px;
+  font-size: 0.88em;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.nge-cl-jumpconfirm-save:hover:not(:disabled) {
+  background: rgba(127, 255, 136, 0.18);
+}
+.nge-cl-jumpconfirm-save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Links tab ── */
+.nge-cl-links-tab.active {
+  background: rgba(120, 140, 255, 0.14);
+  color: #abf;
+  border-color: rgba(120, 140, 255, 0.28);
+}
+.nge-cl-link-ownership {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px 4px;
+}
+.nge-cl-link-ownership button {
+  background: transparent;
+  border: 1px solid rgba(120, 140, 255, 0.18);
+  color: #99a;
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 0.78em;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.nge-cl-link-ownership button:hover {
+  background: rgba(120, 140, 255, 0.08);
+}
+.nge-cl-link-ownership button.active {
+  background: rgba(120, 140, 255, 0.16);
+  color: #abf;
+  border-color: rgba(120, 140, 255, 0.4);
+}
+.nge-cl-link-public-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82em;
+  color: #99a;
+  margin: 6px 0 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.nge-cl-link-item--starred {
+  background: rgba(245, 209, 66, 0.04);
+}
+.nge-cl-link-title {
+  font-weight: 600;
+  color: #cde;
+}
+.nge-cl-link-rename input {
+  font-size: 0.95em;
 }
 </style>

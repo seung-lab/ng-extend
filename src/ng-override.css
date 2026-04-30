@@ -236,6 +236,87 @@
   transform: scale(0.92);
 }
 
+/* Alt+click-from-3D flash: highlights the row the user just landed on. Holds
+   bright ~3s so the eye can lock on, then fades over the remaining 2s. */
+.neuroglancer-segment-list-entry.nge-list-jump-flash {
+  animation: nge-list-jump-flash 5s ease-out;
+}
+/* Quick fade-out for the *previous* flashed row when the user alt+clicks a
+   new segment mid-animation. JS removes nge-list-jump-flash and adds this
+   for ~350ms so the old highlight glides away. */
+.neuroglancer-segment-list-entry.nge-list-jump-fadeout {
+  transition: background 0.35s ease-out, box-shadow 0.35s ease-out;
+  background: rgba(8, 12, 24, 0.95) !important;
+  box-shadow: none !important;
+}
+
+/* Drag-reorder: dim the row that's being dragged and signal "in motion". */
+.neuroglancer-segment-list-entry.nge-drag-source {
+  opacity: 0.4 !important;
+  background: rgba(74, 158, 255, 0.18) !important;
+  cursor: grabbing;
+}
+/* Hover affordance on the chip so users discover the drag handle. The
+   user-select:none keeps drag from selecting the segment ID text mid-grab. */
+.neuroglancer-segment-list-entry .neuroglancer-segment-list-entry-id {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.neuroglancer-segment-list-entry.nge-drag-source .neuroglancer-segment-list-entry-id {
+  cursor: grabbing;
+}
+/* While a drag is in flight, suppress text selection on the whole list so
+   marquee selection of neighboring chips/labels doesn't ride along. */
+.neuroglancer-segment-list:has(.nge-drag-source) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Floating drop indicator follows the cursor between rows. */
+.nge-drop-line {
+  position: fixed;
+  height: 2px;
+  background: rgba(74, 158, 255, 0.95);
+  box-shadow: 0 0 10px rgba(74, 158, 255, 0.7), 0 0 4px rgba(74, 158, 255, 0.95);
+  pointer-events: none;
+  z-index: 99999;
+  transition: top 80ms ease-out;
+  border-radius: 1px;
+}
+/* Sustained pulse on the dropped row so the eye can verify the new position.
+   Holds bright ~1s, fades over the remaining ~1.5s. */
+.neuroglancer-segment-list-entry.nge-drop-flash {
+  animation: nge-drop-flash 2.5s ease-out;
+}
+@keyframes nge-drop-flash {
+  0% {
+    background: rgba(74, 158, 255, 0.55) !important;
+    box-shadow: inset 0 0 0 2px rgba(74, 158, 255, 0.95), 0 0 18px rgba(74, 158, 255, 0.4);
+  }
+  40% {
+    background: rgba(74, 158, 255, 0.4) !important;
+    box-shadow: inset 0 0 0 2px rgba(74, 158, 255, 0.78), 0 0 12px rgba(74, 158, 255, 0.28);
+  }
+  100% {
+    background: rgba(8, 12, 24, 0.95);
+    box-shadow: none;
+  }
+}
+@keyframes nge-list-jump-flash {
+  0% {
+    background: rgba(74, 158, 255, 0.55) !important;
+    box-shadow: inset 0 0 0 2px rgba(74, 158, 255, 0.95), 0 0 22px rgba(74, 158, 255, 0.55);
+  }
+  60% {
+    background: rgba(74, 158, 255, 0.42) !important;
+    box-shadow: inset 0 0 0 2px rgba(74, 158, 255, 0.78), 0 0 18px rgba(74, 158, 255, 0.4);
+  }
+  100% {
+    background: rgba(8, 12, 24, 0.95) !important;
+    box-shadow: none;
+  }
+}
+
 /* Annotation name + label badge wrap to row 2, indented under the chip */
 .neuroglancer-segment-list-entry-name,
 .neuroglancer-segment-list-entry .nge-label-badge {
@@ -393,21 +474,21 @@
    needed (many entries that don't fit). With a fresh list of <10 segments
    the bar showed up unnecessarily because the inner virtual-list spacer
    over-allocated. Use auto only when content actually overflows. ── */
-.neuroglancer-segment-list:not(.neuroglancer-preview-list) {
+.neuroglancer-segment-list {
   scrollbar-width: thin;
   scrollbar-color: rgba(74, 158, 255, 0.35) transparent;
 }
-.neuroglancer-segment-list:not(.neuroglancer-preview-list)::-webkit-scrollbar {
+.neuroglancer-segment-list::-webkit-scrollbar {
   width: 8px;
 }
-.neuroglancer-segment-list:not(.neuroglancer-preview-list)::-webkit-scrollbar-track {
+.neuroglancer-segment-list::-webkit-scrollbar-track {
   background: transparent;
 }
-.neuroglancer-segment-list:not(.neuroglancer-preview-list)::-webkit-scrollbar-thumb {
+.neuroglancer-segment-list::-webkit-scrollbar-thumb {
   background: rgba(74, 158, 255, 0.25);
   border-radius: 4px;
 }
-.neuroglancer-segment-list:not(.neuroglancer-preview-list)::-webkit-scrollbar-thumb:hover {
+.neuroglancer-segment-list::-webkit-scrollbar-thumb:hover {
   background: rgba(74, 158, 255, 0.5);
 }
 

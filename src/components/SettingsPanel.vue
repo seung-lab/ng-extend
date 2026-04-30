@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import {ref, onMounted, watch} from 'vue';
+import {ref, onMounted, watch, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useProofreadingBackendStore, useLoginStore, loginSession} from '../store';
+import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
+import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 const prefsStore = useUserPreferencesStore();
 const backend = useProofreadingBackendStore();
@@ -282,7 +284,38 @@ function resetToolbar() {
   draftToolbar.value = [...DEFAULT_ORDER];
 }
 
-const QUICK_FLAGS = ['🇺🇸','🇬🇧','🇨🇦','🇩🇪','🇫🇷','🇯🇵','🇰🇷','🇨🇳','🇧🇷','🇮🇳','🇦🇺','🇳🇬','🇹🇼','🇵🇹','🇩🇰','🇸🇦'];
+// ── Country dropdown state ──
+const countrySearch = ref('');
+const showCountryList = ref(false);
+const filteredCountries = computed(() => {
+  const q = countrySearch.value.trim().toLowerCase();
+  if (!q) return COUNTRIES;
+  return COUNTRIES.filter(c => c.name.toLowerCase().includes(q));
+});
+const selectedCountry = computed(() => findCountryByCode(draftFlag.value));
+
+function selectCountry(code: string) {
+  draftFlag.value = code;
+  countrySearch.value = '';
+  showCountryList.value = false;
+}
+
+/** Image URL for a flag emoji (cross-platform via flagcdn). */
+function flagImgUrl(emoji: string): string {
+  if (!emoji || emoji === EYEWIRE_FLAG) return '';
+  const pts = [...emoji];
+  if (pts.length < 2) return '';
+  const code = pts.slice(0, 2).map(c => String.fromCharCode((c.codePointAt(0)! - 0x1F1E6) + 97)).join('');
+  if (!code || code.length !== 2) return '';
+  return `https://flagcdn.com/w40/${code}.png`;
+}
+
+// Close country dropdown when clicking outside
+function handleCountryGlobalClick(e: MouseEvent) {
+  const el = document.getElementById('nge-settings-country-wrap');
+  if (el && !el.contains(e.target as Node)) showCountryList.value = false;
+}
+onMounted(() => document.addEventListener('click', handleCountryGlobalClick, true));
 
 function openNgSettings() {
   const viewer = (window as any)['viewer'];
@@ -343,10 +376,44 @@ const emit = defineEmits({hide: null});
       <div class="nge-settings-content" v-if="activeTab === 'profile'">
         <div class="nge-settings-section">
           <label class="nge-settings-label">Country / Flag</label>
-          <p class="nge-settings-hint">Type or paste any flag emoji, or pick one below.</p>
-          <input v-model="draftFlag" class="nge-settings-input" maxlength="8" placeholder="e.g. 🇺🇸" spellcheck="false" autocomplete="off" />
-          <div class="nge-settings-flags">
-            <button v-for="f in QUICK_FLAGS" :key="f" class="nge-settings-flag-btn" :class="{ 'nge-settings-flag-btn--active': draftFlag === f }" @click="draftFlag = f">{{ f }}</button>
+          <p class="nge-settings-hint">Pick your country or the EyeWire logo.</p>
+          <div id="nge-settings-country-wrap" class="nge-settings-country-wrap" @click.stop>
+            <button class="nge-settings-country-btn" @click="showCountryList = !showCountryList">
+              <span class="nge-settings-country-flag-cell">
+                <img v-if="draftFlag === 'eyewire'" :src="pyrIcon" class="nge-settings-country-flag-img nge-settings-country-flag-img--logo" />
+                <img v-else-if="flagImgUrl(draftFlag)" :src="flagImgUrl(draftFlag)" class="nge-settings-country-flag-img" />
+                <span v-else class="nge-settings-country-flag-placeholder">🌐</span>
+              </span>
+              <span class="nge-settings-country-name">{{ selectedCountry?.name || 'Choose a country' }}</span>
+              <span class="nge-settings-country-caret">▾</span>
+            </button>
+            <div v-if="showCountryList" class="nge-settings-country-dropdown">
+              <input
+                v-model="countrySearch"
+                type="text"
+                class="nge-settings-country-search"
+                placeholder="Search country..."
+                autocomplete="off"
+                spellcheck="false"
+                @click.stop
+              />
+              <div class="nge-settings-country-list">
+                <button
+                  v-for="c in filteredCountries"
+                  :key="c.code"
+                  class="nge-settings-country-opt"
+                  :class="{ 'nge-settings-country-opt--active': draftFlag === c.code }"
+                  @click="selectCountry(c.code)"
+                >
+                  <span class="nge-settings-country-opt-flag">
+                    <img v-if="c.code === 'eyewire'" :src="pyrIcon" class="nge-settings-country-flag-img nge-settings-country-flag-img--logo" />
+                    <img v-else-if="flagImgUrl(c.code)" :src="flagImgUrl(c.code)" class="nge-settings-country-flag-img" />
+                  </span>
+                  <span class="nge-settings-country-opt-name">{{ c.name }}</span>
+                </button>
+                <div v-if="filteredCountries.length === 0" class="nge-settings-country-empty">No matches</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -709,6 +776,154 @@ const emit = defineEmits({hide: null});
 .nge-settings-flag-btn--active {
   border-color: rgba(74,158,255,0.65);
   background: rgba(74,158,255,0.12);
+}
+
+/* ── Country dropdown ── */
+.nge-settings-country-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+}
+
+.nge-settings-country-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-size: 0.95em;
+  padding: 8px 10px;
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+}
+
+.nge-settings-country-btn:hover {
+  border-color: rgba(74,158,255,0.45);
+}
+
+.nge-settings-country-flag-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.nge-settings-country-flag-img {
+  width: 24px;
+  height: 18px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.nge-settings-country-flag-img--logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 0;
+}
+
+.nge-settings-country-flag-placeholder {
+  font-size: 1.2em;
+  opacity: 0.5;
+}
+
+.nge-settings-country-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nge-settings-country-caret {
+  color: #aaa;
+  font-size: 0.85em;
+  flex-shrink: 0;
+}
+
+/* Dropdown — white background per user spec */
+.nge-settings-country-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.nge-settings-country-search {
+  background: #ffffff;
+  color: #222;
+  border: none;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+  padding: 8px 10px;
+  font-size: 0.95em;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.nge-settings-country-search::placeholder { color: #888; }
+
+.nge-settings-country-list {
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.25) #fff;
+}
+
+.nge-settings-country-list::-webkit-scrollbar { width: 6px; }
+.nge-settings-country-list::-webkit-scrollbar-track { background: #f4f4f4; }
+.nge-settings-country-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.25); border-radius: 3px; }
+
+.nge-settings-country-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: #ffffff;
+  border: none;
+  color: #222;
+  font-size: 0.92em;
+  padding: 7px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nge-settings-country-opt:hover {
+  background: rgba(74,158,255,0.12);
+}
+
+.nge-settings-country-opt--active {
+  background: rgba(74,158,255,0.18);
+  font-weight: 600;
+}
+
+.nge-settings-country-opt-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  flex-shrink: 0;
+}
+
+.nge-settings-country-opt-name { flex: 1; }
+
+.nge-settings-country-empty {
+  padding: 10px 12px;
+  color: #888;
+  font-size: 0.88em;
+  text-align: center;
 }
 
 /* Bio textarea */

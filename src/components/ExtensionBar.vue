@@ -368,6 +368,12 @@ function activateTool(toolType: 'multicut' | 'merge') {
                 Guide</a></span>
           </div>
         </li>
+        <!--
+          TODO: User reports Merge (48GS9Sizrvw) and Split (DB6wmQWGsck) videos
+          are unreachable for them while Find path (CGooeAhSryg) works. URLs
+          return HTTP 200 but may be unlisted/region-restricted. Verify with the
+          EyeWire YouTube channel and replace if needed.
+        -->
         <li>
           <div class="logoutButton button">
             <span><a target="_blank" href="https://youtu.be/48GS9Sizrvw">Merge</a></span>
@@ -714,12 +720,17 @@ function activateTool(toolType: 'multicut' | 'merge') {
 
 /* ── Hamburger menu ── */
 #hamburger li {
-  padding: 10px;
+  padding: 10px 14px;
   cursor: pointer;
   display: grid;
   justify-content: center;
   align-content: center;
   white-space: nowrap;
+  font-size: 14px;
+}
+
+#hamburger li .logoutButton {
+  font-size: 14px;
 }
 
 #hamburger li:hover {
@@ -729,5 +740,6 @@ function activateTool(toolType: 'multicut' | 'merge') {
 #hamburger li a {
   color: unset;
   text-decoration: unset;
+  font-size: inherit;
 }
 </style>

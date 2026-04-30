@@ -1285,6 +1285,203 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   return { requests, pending, add, resolve, respond, remove, refreshPending, load, subscribe, unsubscribe };
 });
 
+// ── Working Links ─────────────────────────────────────────────────────────
+// Saved viewer-state URLs (snapshots). Backed by Supabase `working_links`.
+
+export interface WorkingLink {
+  id: string;
+  userId: string;
+  userName?: string;
+  title: string;
+  note: string;
+  url: string;
+  starred: boolean;
+  dataset?: string;
+  position?: [number, number, number];
+  visibleSegments: string[];
+  isPublic: boolean;
+  sharedGroupId?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function rowToWorkingLink(row: any): WorkingLink {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    userName: row.user_name ?? undefined,
+    title: row.title ?? 'Untitled',
+    note: row.note ?? '',
+    url: row.url ?? '',
+    starred: !!row.starred,
+    dataset: row.dataset ?? undefined,
+    position: (row.position_x != null && row.position_y != null && row.position_z != null)
+      ? [row.position_x, row.position_y, row.position_z] : undefined,
+    visibleSegments: Array.isArray(row.visible_segments) ? row.visible_segments : [],
+    isPublic: !!row.is_public,
+    sharedGroupId: row.shared_group_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export const useWorkingLinksStore = defineStore('workingLinks', () => {
+  const links = ref<WorkingLink[]>([]);
+  let realtimeChannel: any = null;
+
+  /** Load all links visible to this user (own + public + shared-to-group). */
+  async function load() {
+    try {
+      const { data, error } = await supabase
+        .from('working_links')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (error) {
+        console.warn('[workingLinks] load error:', error.message);
+        return;
+      }
+      links.value = (data ?? []).map(rowToWorkingLink);
+    } catch (e) {
+      console.warn('[workingLinks] load failed:', e);
+    }
+  }
+
+  function subscribe() {
+    if (realtimeChannel) return;
+    realtimeChannel = supabase
+      .channel('working_links_realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'working_links' }, (payload: any) => {
+        const link = rowToWorkingLink(payload.new);
+        if (!links.value.find(l => l.id === link.id)) links.value.unshift(link);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'working_links' }, (payload: any) => {
+        const updated = rowToWorkingLink(payload.new);
+        const idx = links.value.findIndex(l => l.id === updated.id);
+        if (idx >= 0) links.value[idx] = updated;
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'working_links' }, (payload: any) => {
+        const id = payload.old?.id;
+        if (id) links.value = links.value.filter(l => l.id !== id);
+      })
+      .subscribe();
+  }
+
+  function unsubscribe() {
+    if (realtimeChannel) {
+      supabase.removeChannel(realtimeChannel);
+      realtimeChannel = null;
+    }
+  }
+
+  /** Save a new working link. Returns the inserted row's id, or null on failure. */
+  async function add(input: {
+    title: string;
+    note?: string;
+    url: string;
+    dataset?: string;
+    position?: [number, number, number];
+    visibleSegments?: string[];
+    starred?: boolean;
+    isPublic?: boolean;
+    sharedGroupId?: number | null;
+  }): Promise<string | null> {
+    const backend = useProofreadingBackendStore();
+    if (!backend.userId) {
+      console.warn('[workingLinks] cannot save without login');
+      return null;
+    }
+    const row: any = {
+      user_id: backend.userId,
+      title: input.title || 'Untitled',
+      note: input.note ?? '',
+      url: input.url,
+      starred: !!input.starred,
+      dataset: input.dataset ?? null,
+      position_x: input.position?.[0] ?? null,
+      position_y: input.position?.[1] ?? null,
+      position_z: input.position?.[2] ?? null,
+      visible_segments: input.visibleSegments ?? [],
+      is_public: !!input.isPublic,
+      shared_group_id: input.sharedGroupId ?? null,
+    };
+    try {
+      const { data, error } = await supabase
+        .from('working_links')
+        .insert(row)
+        .select()
+        .single();
+      if (error) {
+        console.warn('[workingLinks] insert error:', error.message);
+        return null;
+      }
+      const link = rowToWorkingLink(data);
+      // Optimistic local insert (realtime will dedupe)
+      if (!links.value.find(l => l.id === link.id)) links.value.unshift(link);
+      return link.id;
+    } catch (e) {
+      console.warn('[workingLinks] insert failed:', e);
+      return null;
+    }
+  }
+
+  async function update(id: string, patch: Partial<{
+    title: string;
+    note: string;
+    starred: boolean;
+    isPublic: boolean;
+    sharedGroupId: number | null;
+  }>): Promise<boolean> {
+    const row: any = { updated_at: new Date().toISOString() };
+    if (patch.title !== undefined) row.title = patch.title;
+    if (patch.note !== undefined) row.note = patch.note;
+    if (patch.starred !== undefined) row.starred = patch.starred;
+    if (patch.isPublic !== undefined) row.is_public = patch.isPublic;
+    if (patch.sharedGroupId !== undefined) row.shared_group_id = patch.sharedGroupId;
+    try {
+      const { error } = await supabase.from('working_links').update(row).eq('id', id);
+      if (error) {
+        console.warn('[workingLinks] update error:', error.message);
+        return false;
+      }
+      // Optimistic local update
+      const idx = links.value.findIndex(l => l.id === id);
+      if (idx >= 0) links.value[idx] = { ...links.value[idx], ...patch, updatedAt: row.updated_at } as WorkingLink;
+      return true;
+    } catch (e) {
+      console.warn('[workingLinks] update failed:', e);
+      return false;
+    }
+  }
+
+  async function remove(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('working_links').delete().eq('id', id);
+      if (error) {
+        console.warn('[workingLinks] delete error:', error.message);
+        return false;
+      }
+      links.value = links.value.filter(l => l.id !== id);
+      return true;
+    } catch (e) {
+      console.warn('[workingLinks] delete failed:', e);
+      return false;
+    }
+  }
+
+  async function toggleStar(id: string): Promise<boolean> {
+    const link = links.value.find(l => l.id === id);
+    if (!link) return false;
+    return update(id, { starred: !link.starred });
+  }
+
+  // Initialize
+  load();
+  subscribe();
+
+  return { links, load, subscribe, unsubscribe, add, update, remove, toggleStar };
+});
+
 // ── Proofreading Queue ─────────────────────────────────────────────────────
 // Loads a queue of segments to review from a published Google Sheet (CSV).
 // Users cycle through items, mark them reviewed, and track session progress.
@@ -3216,7 +3413,15 @@ export const useChatStore = defineStore('chat', () => {
     if (channel) return; // already connected
 
     const backend = useProofreadingBackendStore();
-    const displayName = backend.userName || 'Anonymous';
+    // Login gate: don't connect anonymous users — chat needs an authenticated identity.
+    if (!backend.userId || !backend.userName) {
+      console.warn('[chat] connect: skipped — user not logged in');
+      return;
+    }
+    const displayName = backend.userName;
+    if (displayName === 'Anonymous') {
+      console.warn('[chat] connect: displayName fell through to "Anonymous" — defensive only');
+    }
 
     channel = supabase.channel('eyewire-ii-chat', {
       config: { broadcast: { self: true } },

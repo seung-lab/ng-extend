@@ -35,6 +35,23 @@ const selectedCellType = ref('');
 const flashMessage = ref('');
 let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
+// ── Guided "Mark Complete" wizard state ─────────────────────────────
+// Each batch row needs its own crosshair point so CAVE materializer maps
+// pt.position → the correct pt_root_id (one root_id per row). Otherwise every
+// row gets tagged on whichever cell the live crosshair was inside.
+type GuideStage = 'intro' | 'walk' | 'review';
+interface GuideState {
+  groupId: string;
+  stage: GuideStage;
+  /** Index into group.segmentIds — current cell being placed. */
+  index: number;
+  /** Captured points per segId (set on Save). */
+  points: Record<string, [number, number, number]>;
+  /** Skipped segIds. */
+  skipped: Set<string>;
+}
+const guide = ref<GuideState | null>(null);
+
 // ── Persistence ─────────────────────────────────────────────────────
 function loadGroups(): SegmentGroup[] {
   try {
@@ -227,26 +244,143 @@ function batchRemoveFromViewer(group: SegmentGroup) {
   flash(`Removed ${removed} from viewer`);
 }
 
-// Complete (sequential with progress)
-async function batchComplete(group: SegmentGroup) {
+// ── Guided Mark Complete wizard ──────────────────────────────────────
+// CAVE's annotation engine resolves pt.position → pt_root_id, so each row
+// in a batch must carry its own crosshair point — otherwise every segment
+// gets tagged at whichever cell the user's crosshair was sitting in.
+function startCompleteWizard(group: SegmentGroup) {
+  if (group.segmentIds.length === 0) return;
+  guide.value = {
+    groupId: group.id,
+    stage: 'intro',
+    index: 0,
+    points: {},
+    skipped: new Set(),
+  };
+  confirmAction.value = null;
+}
+
+function cancelCompleteWizard() {
+  guide.value = null;
+}
+
+function loadAllSegmentsIntoViewer(group: SegmentGroup) {
+  const layer = getSegLayer();
+  if (!layer) { flash('No segmentation layer'); return; }
+  const groupState = layer.displayState?.segmentationGroupState?.value;
+  if (!groupState?.visibleSegments) { flash('No visible-segments state'); return; }
+  let added = 0;
+  for (const segId of group.segmentIds) {
+    try {
+      const id = Uint64.parseString(segId);
+      if (!groupState.visibleSegments.has(id)) {
+        groupState.visibleSegments.add(id);
+        added++;
+      }
+    } catch {}
+  }
+  flash(`Loaded ${added} into viewer`);
+}
+
+/** Read a snapshot of the viewer's current position. */
+function captureViewerPoint(): [number, number, number] | null {
+  const viewer: any = (window as any)['viewer'];
+  const pos = viewer?.navigationState?.position?.value;
+  if (!pos || pos.length < 3) return null;
+  return [Math.round(pos[0]), Math.round(pos[1]), Math.round(pos[2])];
+}
+
+function jumpToCurrentSegment(group: SegmentGroup) {
+  if (!guide.value) return;
+  const segId = group.segmentIds[guide.value.index];
+  const layer = getSegLayer();
+  if (!layer) return;
+  // Center the viewer view on the segment by adding it to selectedSegments,
+  // which triggers Neuroglancer to focus. Position remains untouched (user
+  // places the crosshair manually).
+  try {
+    const groupState = layer.displayState?.segmentationGroupState?.value;
+    if (groupState?.visibleSegments) {
+      groupState.visibleSegments.add(Uint64.parseString(segId));
+    }
+  } catch {}
+}
+
+function saveCurrentPoint(group: SegmentGroup) {
+  if (!guide.value) return;
+  const segId = group.segmentIds[guide.value.index];
+  const pt = captureViewerPoint();
+  if (!pt || (pt[0] === 0 && pt[1] === 0 && pt[2] === 0)) {
+    flash('Place crosshairs in the cell first');
+    return;
+  }
+  guide.value.points[segId] = pt;
+  guide.value.skipped.delete(segId);
+}
+
+function skipCurrent(group: SegmentGroup) {
+  if (!guide.value) return;
+  const segId = group.segmentIds[guide.value.index];
+  guide.value.skipped.add(segId);
+  delete guide.value.points[segId];
+}
+
+function nextSegment(group: SegmentGroup) {
+  if (!guide.value) return;
+  if (guide.value.index < group.segmentIds.length - 1) {
+    guide.value.index++;
+  } else {
+    guide.value.stage = 'review';
+  }
+}
+
+function prevSegment() {
+  if (!guide.value) return;
+  if (guide.value.index > 0) guide.value.index--;
+}
+
+function gotoSegment(idx: number) {
+  if (!guide.value) return;
+  if (idx >= 0) {
+    guide.value.index = idx;
+    guide.value.stage = 'walk';
+  }
+}
+
+/** Status per segment: 'saved' | 'skipped' | 'pending'. */
+function segStatus(segId: string): 'saved' | 'skipped' | 'pending' {
+  if (!guide.value) return 'pending';
+  if (guide.value.points[segId]) return 'saved';
+  if (guide.value.skipped.has(segId)) return 'skipped';
+  return 'pending';
+}
+
+// Submit (only segments with saved points)
+async function submitGuidedComplete(group: SegmentGroup) {
   const caveServer = EYEWIRE_II_CAVE_CONFIG.caveServerOverride || '';
   if (!caveServer) { flash('No CAVE server'); return; }
+  if (!guide.value) return;
 
-  const total = group.segmentIds.length;
+  const toSubmit = group.segmentIds.filter(s => guide.value!.points[s]);
+  if (toSubmit.length === 0) { flash('No points captured'); return; }
+
+  const total = toSubmit.length;
   batchProgress.value = { groupId: group.id, action: 'complete', current: 0, total, errors: [] };
-  confirmAction.value = null;
 
   for (let i = 0; i < total; i++) {
     batchProgress.value.current = i + 1;
+    const segId = toSubmit[i];
+    const pt = guide.value.points[segId];
     try {
-      await setCellComplete(caveServer, group.segmentIds[i], true);
-    } catch (e: any) {
-      batchProgress.value.errors.push(group.segmentIds[i]);
+      await setCellComplete(caveServer, segId, true, undefined, pt);
+    } catch {
+      batchProgress.value.errors.push(segId);
     }
   }
   const errCount = batchProgress.value.errors.length;
   flash(`Completed ${total - errCount}/${total}${errCount ? ` (${errCount} failed)` : ''}`);
   batchProgress.value = null;
+  guide.value = null;
 }
 
 // Annotate (sequential with progress)
@@ -403,7 +537,7 @@ const panelStyle = computed(() => ({
                 <button class="nge-bp-act nge-bp-act--color" @click.stop="colorPickerGroupId = colorPickerGroupId === group.id ? null : group.id" :disabled="group.segmentIds.length === 0">
                   🎨 Recolor
                 </button>
-                <button class="nge-bp-act nge-bp-act--complete" @click.stop="confirmAction = { groupId: group.id, action: 'complete' }" :disabled="group.segmentIds.length === 0">
+                <button class="nge-bp-act nge-bp-act--complete" @click.stop="startCompleteWizard(group)" :disabled="group.segmentIds.length === 0">
                   ✓ Complete
                 </button>
                 <button class="nge-bp-act nge-bp-act--annotate" @click.stop="annotateGroupId = annotateGroupId === group.id ? null : group.id; selectedCellType = ''" :disabled="group.segmentIds.length === 0">
@@ -438,17 +572,80 @@ const panelStyle = computed(() => ({
                 <button class="nge-bp-btn nge-bp-btn--go" @click="batchAnnotate(group)" :disabled="!selectedCellType">Apply</button>
               </div>
 
-              <!-- Confirm dialog -->
+              <!-- Confirm dialog (used for 'remove' only — 'complete' uses the guided wizard) -->
               <div v-if="confirmAction && confirmAction.groupId === group.id" class="nge-bp-confirm">
-                <span v-if="confirmAction.action === 'complete'">
-                  Mark {{ group.segmentIds.length }} segments complete?
-                </span>
-                <span v-else-if="confirmAction.action === 'remove'">
+                <span v-if="confirmAction.action === 'remove'">
                   Remove {{ group.segmentIds.length }} segments from viewer?
                 </span>
                 <div class="nge-bp-confirm-btns">
-                  <button class="nge-bp-btn nge-bp-btn--go" @click="confirmAction.action === 'complete' ? batchComplete(group) : batchRemoveFromViewer(group)">Yes</button>
+                  <button class="nge-bp-btn nge-bp-btn--go" @click="batchRemoveFromViewer(group)">Yes</button>
                   <button class="nge-bp-btn nge-bp-btn--sm" @click="confirmAction = null">Cancel</button>
+                </div>
+              </div>
+
+              <!-- ── Guided "Mark Complete" wizard ── -->
+              <div v-if="guide && guide.groupId === group.id" class="nge-bp-guide">
+                <!-- Stage 1: Intro -->
+                <div v-if="guide.stage === 'intro'" class="nge-bp-guide-intro">
+                  <div class="nge-bp-guide-title">Place crosshairs in each cell</div>
+                  <p class="nge-bp-guide-text">
+                    To batch-complete {{ group.segmentIds.length }} cells, you'll
+                    place crosshairs inside each one so CAVE can map points to
+                    the right segment. Each cell needs its own point.
+                  </p>
+                  <div class="nge-bp-guide-actions">
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="loadAllSegmentsIntoViewer(group)">Load all into viewer</button>
+                    <button class="nge-bp-btn nge-bp-btn--go" @click="guide.stage = 'walk'">Start →</button>
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="cancelCompleteWizard">Cancel</button>
+                  </div>
+                </div>
+
+                <!-- Stage 2: Walk -->
+                <div v-else-if="guide.stage === 'walk'" class="nge-bp-guide-walk">
+                  <div class="nge-bp-guide-stepper">
+                    Cell {{ guide.index + 1 }} of {{ group.segmentIds.length }}
+                    · <span class="nge-bp-guide-segid">{{ truncId(group.segmentIds[guide.index]) }}</span>
+                  </div>
+                  <div class="nge-bp-guide-status">
+                    <span v-if="segStatus(group.segmentIds[guide.index]) === 'saved'" class="nge-bp-guide-saved">✓ Saved</span>
+                    <span v-else-if="segStatus(group.segmentIds[guide.index]) === 'skipped'" class="nge-bp-guide-skipped">— Skipped</span>
+                    <span v-else class="nge-bp-guide-pending">Place crosshairs in the cell</span>
+                  </div>
+                  <div class="nge-bp-guide-actions">
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="jumpToCurrentSegment(group)">Show in viewer</button>
+                    <button class="nge-bp-btn nge-bp-btn--go" @click="saveCurrentPoint(group)">Save Point</button>
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="skipCurrent(group)">Skip</button>
+                  </div>
+                  <div class="nge-bp-guide-nav">
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="prevSegment" :disabled="guide.index === 0">◂ Prev</button>
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="nextSegment(group)">
+                      {{ guide.index === group.segmentIds.length - 1 ? 'Review →' : 'Next ▸' }}
+                    </button>
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="cancelCompleteWizard">Cancel</button>
+                  </div>
+                </div>
+
+                <!-- Stage 3: Review -->
+                <div v-else-if="guide.stage === 'review'" class="nge-bp-guide-review">
+                  <div class="nge-bp-guide-title">Ready to submit</div>
+                  <div class="nge-bp-guide-summary">
+                    {{ Object.keys(guide.points).length }} ready ·
+                    {{ guide.skipped.size }} skipped ·
+                    {{ group.segmentIds.length - Object.keys(guide.points).length - guide.skipped.size }} pending
+                  </div>
+                  <div class="nge-bp-guide-list">
+                    <div v-for="(segId, i) in group.segmentIds" :key="segId" class="nge-bp-guide-item" :class="`nge-bp-guide-item--${segStatus(segId)}`" @click="gotoSegment(i)">
+                      <span class="nge-bp-guide-item-pip">{{ segStatus(segId) === 'saved' ? '✓' : segStatus(segId) === 'skipped' ? '—' : '?' }}</span>
+                      <span class="nge-bp-guide-item-id">{{ truncId(segId) }}</span>
+                    </div>
+                  </div>
+                  <div class="nge-bp-guide-actions">
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="guide.stage = 'walk'">◂ Back to walk</button>
+                    <button class="nge-bp-btn nge-bp-btn--go" @click="submitGuidedComplete(group)" :disabled="Object.keys(guide.points).length === 0">
+                      Submit ({{ Object.keys(guide.points).length }})
+                    </button>
+                    <button class="nge-bp-btn nge-bp-btn--sm" @click="cancelCompleteWizard">Cancel</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -776,4 +973,83 @@ const panelStyle = computed(() => ({
   color: #556;
   font-size: 0.78em;
 }
+
+/* ── Guided Mark Complete wizard ── */
+.nge-bp-guide {
+  margin-top: 6px;
+  padding: 8px;
+  background: rgba(74, 158, 255, 0.06);
+  border: 1px solid rgba(74, 158, 255, 0.18);
+  border-radius: 6px;
+  font-size: 0.78em;
+  color: #cde;
+}
+.nge-bp-guide-title {
+  font-weight: 700;
+  font-size: 0.92em;
+  color: #cef;
+  margin-bottom: 4px;
+}
+.nge-bp-guide-text {
+  font-size: 0.85em;
+  color: #aab;
+  line-height: 1.4;
+  margin: 0 0 8px;
+}
+.nge-bp-guide-stepper {
+  font-size: 0.85em;
+  color: #cde;
+  margin-bottom: 4px;
+}
+.nge-bp-guide-segid {
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  color: #8bf;
+}
+.nge-bp-guide-status {
+  font-size: 0.82em;
+  margin-bottom: 6px;
+}
+.nge-bp-guide-saved { color: #7ec07e; }
+.nge-bp-guide-skipped { color: #aab; font-style: italic; }
+.nge-bp-guide-pending { color: #aab; font-style: italic; }
+.nge-bp-guide-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.nge-bp-guide-nav {
+  display: flex;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(120, 140, 255, 0.08);
+}
+.nge-bp-guide-summary {
+  font-size: 0.85em;
+  color: #cde;
+  margin-bottom: 6px;
+}
+.nge-bp-guide-list {
+  max-height: 120px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nge-bp-guide-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.nge-bp-guide-item:hover { background: rgba(74, 158, 255, 0.1); }
+.nge-bp-guide-item--saved { color: #7ec07e; }
+.nge-bp-guide-item--skipped { color: #777; font-style: italic; }
+.nge-bp-guide-item--pending { color: #ffd08a; }
+.nge-bp-guide-item-pip { width: 12px; text-align: center; flex-shrink: 0; }
+.nge-bp-guide-item-id { font-family: ui-monospace, 'Cascadia Code', monospace; }
 </style>
