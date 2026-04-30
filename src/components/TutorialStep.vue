@@ -874,6 +874,65 @@ onUnmounted(() => {
 }
 .nge-tour-welcome-body p { margin: 0; }
 
+/* Final step (Option B): hero render + gratitude. The boxes-of-CTAs
+   layout was busy and the toolbar already covers Cell Library / ⌘K /
+   Leaderboard one click away — let the gratitude be the payoff. */
+.nge-tour-finale {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 4px 6px 0;
+    text-align: center;
+}
+.nge-tour-finale-hero {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(120, 180, 240, 0.18);
+    background: rgba(0, 0, 0, 0.4);
+    line-height: 0;
+}
+.nge-tour-finale-hero img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 260px;
+    object-fit: cover;
+    object-position: center;
+}
+.nge-tour-finale-lead {
+    margin: 8px 12px 0;
+    font-size: 16px;
+    line-height: 1.45;
+    color: #e6f0ff;
+    font-weight: 500;
+}
+.nge-tour-finale-sub {
+    margin: 0 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: rgba(220, 232, 250, 0.85);
+}
+.nge-tour-finale-contact {
+    margin: 6px 12px 0;
+    font-size: 13px;
+    color: rgba(190, 215, 240, 0.75);
+}
+.nge-tour-finale-contact a {
+    color: #9fdcff;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(159, 220, 255, 0.4);
+}
+.nge-tour-finale-tag {
+    margin: 12px 12px 4px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #9fdcff;
+    text-shadow: 0 0 16px rgba(120, 200, 255, 0.5);
+}
+
 /* Final-step "ready to explore" grid of next-step cards */
 .nge-tour-grid {
     display: grid;

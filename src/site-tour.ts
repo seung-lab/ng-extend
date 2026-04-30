@@ -1,6 +1,7 @@
 import { Step } from "./store-pyr";
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
 import mossyFibersHero from '../static/tour-mossy-fibers.png';
+import brainToSynapseHero from '../static/tour-brain-to-synapse.png';
 
 /* ─────────────────────────────────────────────────────────────────────────
    Title icons — the same SVGs that live in the top toolbar
@@ -326,45 +327,30 @@ Click a segment to select it. A **Delta menu** next to the segment ID has comple
     highlight: true,
   },
 
-  // ── 21. The end ──────────────────────────────────────────────
+  // ── 22. The end ──────────────────────────────────────────────
   {
     title: "You're ready to explore!",
     html: `
-<p style="text-align:center;font-size:15px;line-height:1.55;color:#dfeeff;margin:0 12px 16px;">
-  Thank you for being part of our citizen science community.<br/>
-  Every edit you make helps map the brain.
-</p>
-<div class="nge-tour-grid">
-  <div class="nge-tour-card">
-    <div class="nge-tour-card-icon"><img src="${neuronIcon}" alt="" style="width:24px;height:24px;display:block;margin:0 auto;"/></div>
-    <div class="nge-tour-card-title">Cell Library</div>
-    <div class="nge-tour-card-sub">Claim a neuron</div>
+<div class="nge-tour-finale">
+  <div class="nge-tour-finale-hero">
+    <img src="${brainToSynapseHero}" alt="From the human brain to a single synapse" />
   </div>
-  <div class="nge-tour-card">
-    <div class="nge-tour-card-icon">📖</div>
-    <div class="nge-tour-card-title">Tutorial 1</div>
-    <div class="nge-tour-card-sub">Hands-on practice</div>
-  </div>
-  <div class="nge-tour-card">
-    <div class="nge-tour-card-icon">🏆</div>
-    <div class="nge-tour-card-title">Leaderboard</div>
-    <div class="nge-tour-card-sub">Star community contributors</div>
-  </div>
-  <div class="nge-tour-card">
-    <div class="nge-tour-card-icon">⌘K</div>
-    <div class="nge-tour-card-title">Palette</div>
-    <div class="nge-tour-card-sub">Power-user shortcuts</div>
-  </div>
-</div>
-<p style="text-align:center;font-size:13px;margin:16px 12px 4px;color:rgba(190,215,240,0.75);">
-  Drop us a note if you have any questions: <a href="mailto:support@eyewire.org" style="color:#9fdcff;text-decoration:none;border-bottom:1px solid rgba(159,220,255,0.4);">support@eyewire.org</a>
-</p>
-<p style="text-align:center;font-size:14px;margin:8px 12px 0;color:#9fdcff;font-style:italic;letter-spacing:0.4px;">
-  Happy proofreading!
-</p>`,
+  <p class="nge-tour-finale-lead">
+    Thank you for being a part of the EyeWire brain mapping community!
+  </p>
+  <p class="nge-tour-finale-sub">
+    Every edit you make brings us closer to mapping the brain.
+  </p>
+  <p class="nge-tour-finale-contact">
+    Questions? <a href="mailto:support@eyewire.org">support@eyewire.org</a>
+  </p>
+  <p class="nge-tour-finale-tag">
+    For Science!
+  </p>
+</div>`,
     position: MIDDLE,
     modal: true,
-    width: "560px",
+    width: "640px",
     nextLabel: "finish",
   },
 ];

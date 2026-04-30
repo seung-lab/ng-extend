@@ -374,15 +374,18 @@ function buildActions(): PaletteItem[] {
     'move-to-mouse-position':       { label: 'Move to Mouse Position', icon: '🎯', aliases: ['jump', 'center'] },
   };
 
-  // Skip noisy/redundant bindings
-  const SKIP_ACTIONS = new Set([
-    'annotate', 'move-annotation', 'delete-annotation', 'pin-annotation', 'move-to-annotation',
-    'select-position', 'star', 'z+1-via-wheel', 'z+10-via-wheel',
-    'zoom-via-wheel', 'zoom-via-touchpinch', 'adjust-depth-range-via-wheel',
+  // Pure mouse/touch gestures we can't fire from a keyboard event. They
+  // still show up in the palette (so users searching "rotate" or "drag"
+  // see the right gesture), but clicking them opens the help panel
+  // instead of dispatching a key. Anything outside this set is treated
+  // as a real keyboard binding and dispatched directly.
+  const NON_KEYBOARD_ACTIONS = new Set([
     'rotate-via-mouse-drag', 'translate-via-mouse-drag',
+    'zoom-via-wheel', 'adjust-depth-range-via-wheel',
+    'z+1-via-wheel', 'z+10-via-wheel',
+    'zoom-via-touchpinch',
     'rotate-in-plane-via-touchrotate', 'translate-in-plane-via-touchtranslate',
     'rotate-out-of-plane-via-touchtranslate', 'translate-z-via-touchtranslate',
-    'depth-range-decrease', 'depth-range-increase',
   ]);
 
   // Format raw key codes to readable shortcuts
@@ -421,16 +424,13 @@ function buildActions(): PaletteItem[] {
 
       for (const [group, eventMap] of sources) {
         if (!eventMap?.bindings) continue;
-        // Walk the map and its parents
+        // Walk the map and its parents — same traversal the help panel
+        // uses (`?`), so the palette ends up with the same set of bindings.
         const walkMap = (map: any) => {
           if (!map?.bindings) return;
           for (const [event, eventAction] of map.bindings.entries()) {
             const action = typeof eventAction === 'string' ? eventAction : eventAction?.action;
-            if (!action || SKIP_ACTIONS.has(action)) continue;
-            // Skip touch events and layer toggle/select/pick (too many)
-            if (event.includes('touch') || event.includes('wheel')) continue;
-            if (/toggle-layer-|select-layer-|toggle-pick-layer-/.test(action)) continue;
-            if (/^tool-[A-Z]$/.test(action)) continue; // tool-A through tool-Z
+            if (!action) continue;
 
             const dedupeKey = action;
             if (seen.has(dedupeKey)) continue;
@@ -442,12 +442,16 @@ function buildActions(): PaletteItem[] {
             const label = friendly?.label || action.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             const icon = friendly?.icon || '⌨️';
 
+            const isMouseGesture = NON_KEYBOARD_ACTIONS.has(action) ||
+              event.includes('touch') || event.includes('wheel') ||
+              event.includes('mouse') || event.includes('drag');
+
             items.push({
               id: `shortcut-${action}`,
               label,
-              description: `${group} shortcut`,
+              description: isMouseGesture ? `${group} mouse/touch gesture` : `${group} shortcut`,
               category: 'shortcut',
-              icon,
+              icon: isMouseGesture ? '🖱' : icon,
               shortcut: shortcutStr,
               aliases: [
                 action, action.replace(/-/g, ' '),
@@ -455,23 +459,25 @@ function buildActions(): PaletteItem[] {
               ],
               action: action === 'help'
                 ? () => { close(); try { viewer.toggleHelpPanel?.(); } catch {} }
-                : () => {
-                    close();
-                    // Dispatch the original key event
-                    const parts = rawKey.split('+');
-                    const keyPart = parts[parts.length - 1];
-                    const code = keyPart.startsWith('key') ? keyPart.charAt(0).toUpperCase() + keyPart.slice(1)
-                      : keyPart.startsWith('digit') ? keyPart.charAt(0).toUpperCase() + keyPart.slice(1)
-                      : keyPart.charAt(0).toUpperCase() + keyPart.slice(1);
-                    document.dispatchEvent(new KeyboardEvent('keydown', {
-                      key: keyPart.replace(/^key/, '').replace(/^digit/, ''),
-                      code,
-                      ctrlKey: rawKey.includes('control'),
-                      shiftKey: rawKey.includes('shift'),
-                      altKey: rawKey.includes('alt'),
-                      bubbles: true,
-                    }));
-                  },
+                : isMouseGesture
+                  ? () => { close(); try { viewer.toggleHelpPanel?.(); } catch {} }
+                  : () => {
+                      close();
+                      // Dispatch the original key event
+                      const parts = rawKey.split('+');
+                      const keyPart = parts[parts.length - 1];
+                      const code = keyPart.startsWith('key') ? keyPart.charAt(0).toUpperCase() + keyPart.slice(1)
+                        : keyPart.startsWith('digit') ? keyPart.charAt(0).toUpperCase() + keyPart.slice(1)
+                        : keyPart.charAt(0).toUpperCase() + keyPart.slice(1);
+                      document.dispatchEvent(new KeyboardEvent('keydown', {
+                        key: keyPart.replace(/^key/, '').replace(/^digit/, ''),
+                        code,
+                        ctrlKey: rawKey.includes('control'),
+                        shiftKey: rawKey.includes('shift'),
+                        altKey: rawKey.includes('alt'),
+                        bubbles: true,
+                      }));
+                    },
             });
           }
           // Walk parents
@@ -483,6 +489,41 @@ function buildActions(): PaletteItem[] {
         };
         walkMap(eventMap);
       }
+
+      // Tool bindings (Shift+keyX) — what the help panel lists under
+      // "Tool bindings for layer ...". These are user-bound tools that
+      // act on a specific layer (e.g. Shift+M = merge on segmentation
+      // layer). The palette previously skipped tool-* entirely.
+      try {
+        const toolBinder = viewer.globalToolBinder;
+        if (toolBinder?.bindings) {
+          for (const [key, tool] of toolBinder.bindings) {
+            const id = `tool-binding-${key}`;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            const layerName = tool.context?.managedLayer?.name || tool.context?.constructor?.name || 'layer';
+            const desc = tool.description || 'Layer tool';
+            items.push({
+              id,
+              label: desc,
+              description: `Tool on ${layerName}`,
+              category: 'shortcut',
+              icon: '🛠',
+              shortcut: `Shift+${key}`,
+              aliases: [desc.toLowerCase(), 'tool', layerName.toLowerCase()],
+              action: () => {
+                close();
+                document.dispatchEvent(new KeyboardEvent('keydown', {
+                  key: key.toLowerCase(),
+                  code: 'Key' + key.toUpperCase(),
+                  shiftKey: true,
+                  bubbles: true,
+                }));
+              },
+            });
+          }
+        }
+      } catch {}
     }
   } catch {};
 
