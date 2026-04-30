@@ -149,7 +149,13 @@ const showLeaderboard = ref(false);
 const showSettings = ref(false);
 const showQueue = ref(false);
 const showFeed = ref(false);
-const showChat = ref(true);
+/** Chat visibility persists across reloads so closing it stays closed.
+ *  Default = open on first visit (key absent in localStorage). */
+const CHAT_VISIBLE_KEY = 'nge_chat_visible_v1';
+const showChat = ref(localStorage.getItem(CHAT_VISIBLE_KEY) !== '0');
+watch(showChat, (v) => {
+  try { localStorage.setItem(CHAT_VISIBLE_KEY, v ? '1' : '0'); } catch {}
+});
 const showCellLibrary = ref(false);
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
