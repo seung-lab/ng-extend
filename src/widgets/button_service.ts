@@ -61,8 +61,11 @@ export class ButtonService {
           button.classList.remove('nge-lb-claimed');
           this._refreshButtonStatus(button, localServerURL, segmentIDString);
         } else if (detail.status && typeof detail.status === 'object') {
-          // Full CellStatus object from annotation changes
-          this._applyStatus(button, detail.status as CellStatus);
+          // Full or PARTIAL CellStatus from annotation changes — merge with
+          // the cached status so partial events (e.g. setCellComplete only
+          // knows isComplete, not cellType) don't drop other fields.
+          const cached = (button as any)._cellStatus || {};
+          this._applyStatus(button, { ...cached, ...detail.status } as CellStatus);
         } else {
           // No status provided — re-fetch as fallback
           this._refreshButtonStatus(button, localServerURL, segmentIDString);

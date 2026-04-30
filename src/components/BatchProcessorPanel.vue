@@ -634,6 +634,24 @@ function copySegId(segId: string) {
   });
 }
 
+/** Demo trigger for the batch celebration overlay. Pulls real total from
+ *  Supabase if available so the preview reflects the actual count. */
+async function previewBatchCelebration() {
+  const backend = useProofreadingBackendStore();
+  let total = 42;
+  try {
+    await backend.loadUserStats();
+    const statsStore = useUserStatsStore();
+    if (statsStore.stats.cellsSubmitted > 0) total = statsStore.stats.cellsSubmitted;
+  } catch {}
+  const nurro = NURRO_IMAGES[Math.floor(Math.random() * NURRO_IMAGES.length)];
+  backend.pendingCellCelebration = {
+    totalCells: total,
+    imageUrl: nurro,
+    batchCount: 12,
+  };
+}
+
 function flash(msg: string) {
   flashMessage.value = msg;
   if (flashTimer) clearTimeout(flashTimer);
@@ -670,6 +688,7 @@ const panelStyle = computed(() => ({
         <!-- Top bar -->
         <div class="nge-bp-topbar" @mousedown="startDrag" :class="{ 'nge-bp-dragging': isDragging }">
           <div class="nge-bp-title">📦 Batch Processor</div>
+          <button class="nge-bp-preview" @click.stop="previewBatchCelebration" title="Preview batch celebration">🎉</button>
           <button class="nge-bp-close" @click="emit('hide')">×</button>
         </div>
 
@@ -946,6 +965,26 @@ const panelStyle = computed(() => ({
 .nge-bp-title { font-size: 1em; font-weight: 700; letter-spacing: 0.03em; color: #eef; }
 .nge-bp-close { background: none; border: none; color: #889; font-size: 1.5em; cursor: pointer; padding: 0 4px; line-height: 1; }
 .nge-bp-close:hover { color: #eef; }
+.nge-bp-preview {
+  background: none;
+  border: none;
+  color: #aab;
+  font-size: 1em;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  margin-right: 4px;
+  transition: all 0.15s;
+  filter: grayscale(0.3);
+  opacity: 0.7;
+}
+.nge-bp-preview:hover {
+  background: rgba(74, 158, 255, 0.12);
+  filter: grayscale(0);
+  opacity: 1;
+  transform: scale(1.15);
+}
 
 /* Flash message */
 .nge-bp-flash {

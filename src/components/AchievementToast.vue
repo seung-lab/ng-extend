@@ -300,10 +300,20 @@ const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?:
 watch(() => backend.pendingCellCelebration, (pending) => {
   if (!pending) return;
   cellCelebration.value = { ...pending };
-  fireConfetti('cyan', 2);
   backend.pendingCellCelebration = null;
-  // Auto-dismiss after 6s
-  setTimeout(() => { cellCelebration.value = null; }, 6000);
+  // Batch completions get the hero treatment: cascading confetti bursts
+  // (cyan → gold → magenta → cyan) and a longer dwell so the user can take
+  // it in. Single-cell stays as the original quick cyan pop.
+  if (pending.batchCount && pending.batchCount > 1) {
+    fireConfetti('cyan', 2.2);
+    setTimeout(() => fireConfetti('gold', 2.0), 500);
+    setTimeout(() => fireConfetti('cyan', 1.6), 1100);
+    setTimeout(() => fireConfetti('gold', 1.4), 1800);
+    setTimeout(() => { cellCelebration.value = null; }, 12000);
+  } else {
+    fireConfetti('cyan', 2);
+    setTimeout(() => { cellCelebration.value = null; }, 6000);
+  }
 });
 
 function dismissCellCelebration() {
@@ -362,24 +372,45 @@ function dismissCellCelebration() {
       </div>
     </Transition>
 
-    <!-- Cell completion celebration overlay -->
+    <!-- Single-cell celebration overlay (compact) -->
     <Transition name="nge-cell-celebrate">
-      <div v-if="cellCelebration" class="nge-cell-overlay" @click="dismissCellCelebration">
+      <div v-if="cellCelebration && (!cellCelebration.batchCount || cellCelebration.batchCount <= 1)" class="nge-cell-overlay" @click="dismissCellCelebration">
         <div class="nge-cell-card">
           <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-cell-nurro" />
           <div class="nge-cell-text">
-            <div class="nge-cell-congrats">
-              {{ cellCelebration.batchCount ? `${cellCelebration.batchCount} Cells Complete!` : 'Congratulations, Cell Complete!' }}
-            </div>
+            <div class="nge-cell-congrats">Congratulations, Cell Complete!</div>
             <div class="nge-cell-thanks">Thank you for helping to map the brain. For science!</div>
-            <div class="nge-cell-stats" v-if="cellCelebration.batchCount && cellCelebration.batchCount > 1">
-              +{{ cellCelebration.batchCount }} cells bring your total to <strong>{{ cellCelebration.totalCells }}</strong>
-            </div>
-            <div class="nge-cell-stats" v-else>
-              +1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong>
-            </div>
+            <div class="nge-cell-stats">+1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong></div>
           </div>
           <div class="nge-cell-hint">Click to dismiss</div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Batch celebration overlay (hero treatment for batch completions) -->
+    <Transition name="nge-batch-celebrate">
+      <div v-if="cellCelebration && cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-batch-overlay" @click="dismissCellCelebration">
+        <div class="nge-batch-vignette"></div>
+        <div class="nge-batch-particles">
+          <span v-for="i in 30" :key="i" class="nge-batch-particle" :style="{ '--i': i }"></span>
+        </div>
+        <div class="nge-batch-card">
+          <div class="nge-batch-aura"></div>
+          <div class="nge-batch-rings">
+            <div class="nge-batch-ring nge-batch-ring--1"></div>
+            <div class="nge-batch-ring nge-batch-ring--2"></div>
+            <div class="nge-batch-ring nge-batch-ring--3"></div>
+          </div>
+          <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-batch-nurro" />
+          <div class="nge-batch-label">CELLS COMPLETE</div>
+          <div class="nge-batch-count">+{{ cellCelebration.batchCount }}</div>
+          <div class="nge-batch-cells-text">cells added to the connectome</div>
+          <div class="nge-batch-divider"></div>
+          <div class="nge-batch-total-label">YOUR TOTAL</div>
+          <div class="nge-batch-total">{{ cellCelebration.totalCells }}</div>
+          <div class="nge-batch-total-sub">cells mapped</div>
+          <div class="nge-batch-thanks">Thank you for mapping the brain.</div>
+          <div class="nge-batch-hint">Click to dismiss</div>
         </div>
       </div>
     </Transition>
@@ -1073,4 +1104,222 @@ function dismissCellCelebration() {
 .nge-cell-celebrate-enter-active { transition: opacity 0.4s ease-out; }
 .nge-cell-celebrate-leave-active { transition: opacity 0.5s ease-in; }
 .nge-cell-celebrate-enter-from, .nge-cell-celebrate-leave-to { opacity: 0; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Batch celebration overlay — hero treatment for users who've spent
+   weeks tracing cells. Big count, total card, rotating rings, particles.
+   ───────────────────────────────────────────────────────────────────── */
+.nge-batch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: radial-gradient(ellipse at center, rgba(20, 30, 60, 0.88) 0%, rgba(0, 0, 0, 0.96) 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+.nge-batch-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.5) 100%);
+  pointer-events: none;
+}
+
+/* Floating particles drifting up the screen */
+.nge-batch-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.nge-batch-particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(120, 200, 255, 0.85);
+  box-shadow: 0 0 10px rgba(120, 200, 255, 0.9);
+  bottom: -10px;
+  left: calc((var(--i) - 1) * 3.33% + 1.5%);
+  animation: nge-batch-particle-rise calc(8s + var(--i) * 0.2s) linear infinite;
+  animation-delay: calc(var(--i) * 0.25s);
+}
+.nge-batch-particle:nth-child(3n) { background: rgba(255, 200, 80, 0.85); box-shadow: 0 0 10px rgba(255, 200, 80, 0.9); }
+.nge-batch-particle:nth-child(5n) { width: 2px; height: 2px; }
+.nge-batch-particle:nth-child(7n) { width: 4px; height: 4px; }
+@keyframes nge-batch-particle-rise {
+  0%   { transform: translateY(0) translateX(0); opacity: 0; }
+  10%  { opacity: 1; }
+  50%  { transform: translateY(-50vh) translateX(20px); }
+  90%  { opacity: 1; }
+  100% { transform: translateY(-105vh) translateX(-10px); opacity: 0; }
+}
+
+/* Card */
+.nge-batch-card {
+  position: relative;
+  background: linear-gradient(135deg, rgba(40, 50, 80, 0.92), rgba(20, 25, 50, 0.96));
+  border: 1px solid rgba(120, 200, 255, 0.32);
+  border-radius: 24px;
+  padding: 50px 70px 36px;
+  text-align: center;
+  font-family: 'SF Mono', ui-monospace, 'Cascadia Code', sans-serif;
+  color: #cce;
+  box-shadow:
+    0 0 80px rgba(74, 158, 255, 0.42),
+    0 0 160px rgba(74, 158, 255, 0.18),
+    0 20px 60px rgba(0,0,0,0.6);
+  min-width: 380px;
+  max-width: 90vw;
+  z-index: 2;
+  animation: nge-batch-card-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes nge-batch-card-in {
+  0%   { opacity: 0; transform: scale(0.78) translateY(50px); filter: blur(8px); }
+  60%  { filter: blur(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Pulsing aura behind the card */
+.nge-batch-aura {
+  position: absolute;
+  inset: -100px;
+  background: radial-gradient(ellipse at center, rgba(74, 158, 255, 0.18) 0%, transparent 60%);
+  pointer-events: none;
+  animation: nge-batch-aura-pulse 3s ease-in-out infinite;
+  z-index: -1;
+}
+@keyframes nge-batch-aura-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.12); }
+}
+
+/* Rotating rings around the card */
+.nge-batch-rings {
+  position: absolute;
+  inset: -50px;
+  pointer-events: none;
+  z-index: -1;
+}
+.nge-batch-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(120, 200, 255, 0.25);
+  border-radius: 50%;
+  animation: nge-batch-ring-rotate linear infinite;
+}
+.nge-batch-ring--1 { animation-duration: 14s; border-style: dashed; }
+.nge-batch-ring--2 { inset: 25px; animation-duration: 22s; animation-direction: reverse; border-color: rgba(255, 200, 80, 0.2); }
+.nge-batch-ring--3 { inset: 50px; animation-duration: 30s; border-color: rgba(120, 200, 255, 0.13); }
+@keyframes nge-batch-ring-rotate {
+  0%   { transform: rotate(0); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Nurro avatar — pulses gently */
+.nge-batch-nurro {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  margin: 0 auto 22px;
+  display: block;
+  object-fit: cover;
+  border: 3px solid rgba(120, 200, 255, 0.55);
+  box-shadow: 0 0 50px rgba(74, 158, 255, 0.7), inset 0 0 20px rgba(120, 200, 255, 0.3);
+  animation: nge-batch-nurro-pulse 2.4s ease-in-out infinite;
+  position: relative;
+  z-index: 1;
+}
+@keyframes nge-batch-nurro-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 50px rgba(74, 158, 255, 0.7), inset 0 0 20px rgba(120, 200, 255, 0.3); }
+  50%      { transform: scale(1.06); box-shadow: 0 0 70px rgba(74, 158, 255, 0.9), inset 0 0 30px rgba(120, 200, 255, 0.5); }
+}
+
+/* Cyan-themed count */
+.nge-batch-label {
+  font-size: 0.7em;
+  letter-spacing: 0.45em;
+  color: rgba(120, 200, 255, 0.85);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.nge-batch-count {
+  font-size: 5.5em;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  background: linear-gradient(180deg, #aef 0%, #4af 55%, #28b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 28px rgba(74, 158, 255, 0.7));
+  line-height: 1;
+  animation: nge-batch-count-in 0.9s 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+@keyframes nge-batch-count-in {
+  0%   { opacity: 0; transform: scale(0.3) rotate(-8deg); }
+  60%  { transform: scale(1.18) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+.nge-batch-cells-text {
+  font-size: 0.88em;
+  color: #aab;
+  margin-top: 10px;
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+
+/* Divider between count and total */
+.nge-batch-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(120, 200, 255, 0.45), transparent);
+  margin: 22px 0 18px;
+}
+
+/* Gold-themed total */
+.nge-batch-total-label {
+  font-size: 0.65em;
+  letter-spacing: 0.45em;
+  color: rgba(255, 200, 80, 0.82);
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.nge-batch-total {
+  font-size: 3.6em;
+  font-weight: 800;
+  background: linear-gradient(180deg, #fea 0%, #fc4 55%, #b80 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 18px rgba(255, 200, 80, 0.55));
+  line-height: 1;
+  animation: nge-batch-count-in 0.9s 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+.nge-batch-total-sub {
+  font-size: 0.82em;
+  color: #889;
+  margin-top: 6px;
+  letter-spacing: 0.05em;
+}
+
+.nge-batch-thanks {
+  font-size: 0.92em;
+  color: #aab;
+  margin-top: 28px;
+  font-style: italic;
+}
+.nge-batch-hint {
+  font-size: 0.72em;
+  color: #667;
+  margin-top: 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Transition */
+.nge-batch-celebrate-enter-active { transition: opacity 0.5s ease-out; }
+.nge-batch-celebrate-leave-active { transition: opacity 0.6s ease-in; }
+.nge-batch-celebrate-enter-from, .nge-batch-celebrate-leave-to { opacity: 0; }
 </style>

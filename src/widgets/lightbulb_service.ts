@@ -505,6 +505,12 @@ export async function setCellComplete(
         // Mirror to localStorage so the lightbulb shows the write immediately,
         // before the next materialization cron run (every other day on stroeh).
         setLocalAnnotation(segKey(rootId), {isComplete: true});
+        // Notify all rendered lightbulbs in the seg panel so their triangle
+        // pip flips immediately. Without this, the pip stays gray until page
+        // reload — particularly visible after batch completions.
+        document.dispatchEvent(new CustomEvent('nge:seg-status-changed', {
+          detail: { segId: rootId, status: { isComplete: true } },
+        }));
         try {
           const backend = useProofreadingBackendStore();
           if (backend.userId) {
