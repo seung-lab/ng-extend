@@ -13,52 +13,80 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 const {prefs} = storeToRefs(useUserPreferencesStore());
 const backendStore = useProofreadingBackendStore();
 
-type Tab = 'week' | 'month' | 'alltime';
-const activeTab    = ref<Tab>('alltime');
+type Tab = 'day' | 'week' | 'alltime';
+const activeTab    = ref<Tab>('day');
+
+// Metric toggle: ranks by edits (split+merge) or completions (mark_complete).
+// Persists across sessions in localStorage.
+type Metric = 'edits' | 'completions';
+const METRIC_STORAGE_KEY = 'nge-leaderboard-metric';
+const initialMetric = (localStorage.getItem(METRIC_STORAGE_KEY) as Metric) || 'edits';
+const metric = ref<Metric>(initialMetric === 'completions' ? 'completions' : 'edits');
+function setMetric(m: Metric) {
+  metric.value = m;
+  try { localStorage.setItem(METRIC_STORAGE_KEY, m); } catch {}
+}
 const selectedUser = ref<DemoUser | null>(null);
 const selectedBadgeId = ref<number | null>(null);
 
 // Load real leaderboard from Supabase on mount
 onMounted(() => { backendStore.loadLeaderboard(); });
 
-// Convert Supabase user rows to DemoUser shape for display
+// Convert Supabase user rows to DemoUser shape for display.
+// `edits_*` and `completions_*` come from the `user_edit_counts` view;
+// `total_edits` / `cells_completed` are the all-time fallbacks when the
+// view isn't deployed yet. The DemoUser stats fields are reused as
+// generic time-window slots — the leaderboard's metric/tab selection
+// decides how to interpret them.
 const supabaseUsers = computed<DemoUser[]>(() => {
-  return backendStore.leaderboard.map((u: any) => ({
-    id: u.id,
-    name: u.display_name || 'Anonymous',
-    flag: u.flag || '',
-    bio: '',
-    stats: {
-      editsAllTime: u.total_edits || 0,
-      mergesAllTime: u.total_merges || 0,
-      splitsAllTime: u.total_splits || 0,
-      editsThisWeek: u.total_edits || 0,
-      mergesThisWeek: u.total_merges || 0,
-      splitsThisWeek: u.total_splits || 0,
-      editsThisMonth: u.total_edits || 0,
-      mergesThisMonth: u.total_merges || 0,
-      splitsThisMonth: u.total_splits || 0,
-      cellsSubmitted: u.cells_completed || 0,
-      currentStreak: u.current_streak || 0,
-      longestStreak: u.longest_streak || 0,
-    },
-  }));
+  return backendStore.leaderboard.map((u: any) => {
+    const isCompletions = metric.value === 'completions';
+    const day  = isCompletions ? (u.completions_24h ?? 0)      : (u.edits_24h ?? 0);
+    const week = isCompletions ? (u.completions_week ?? 0)     : (u.edits_week ?? 0);
+    const all  = isCompletions ? (u.completions_alltime ?? u.cells_completed ?? 0)
+                               : (u.edits_alltime      ?? u.total_edits      ?? 0);
+    return {
+      id: u.id,
+      name: u.display_name || 'Anonymous',
+      flag: u.flag || '',
+      bio: '',
+      stats: {
+        editsAllTime: all,
+        mergesAllTime: u.total_merges || 0,
+        splitsAllTime: u.total_splits || 0,
+        editsThisWeek: week,
+        mergesThisWeek: 0,
+        splitsThisWeek: 0,
+        editsThisMonth: day,    // repurposed: now means 24h window
+        mergesThisMonth: 0,
+        splitsThisMonth: 0,
+        cellsSubmitted: u.cells_completed || 0,
+        currentStreak: u.current_streak || 0,
+        longestStreak: u.longest_streak || 0,
+      },
+    };
+  });
 });
+
+const metricLabel = computed(() => metric.value === 'completions' ? 'Cells' : 'Edits');
 
 // Use Supabase users if available, otherwise fall back to demo data
 const userSource = computed(() => supabaseUsers.value.length > 0 ? supabaseUsers.value : DEMO_USERS);
 
-// Sort users by the active tab's edit metric
+// Sort users by the active tab's edit metric.
+//   day → editsThisMonth field (now repurposed to hold edits_24h)
+//   week → editsThisWeek
+//   alltime → editsAllTime
 const rankedUsers = computed(() => {
-  const key = activeTab.value === 'week'  ? 'editsThisWeek'
-            : activeTab.value === 'month' ? 'editsThisMonth'
-                                          : 'editsAllTime';
+  const key = activeTab.value === 'week' ? 'editsThisWeek'
+            : activeTab.value === 'day'  ? 'editsThisMonth'
+                                         : 'editsAllTime';
   return [...userSource.value].sort((a, b) => b.stats[key] - a.stats[key]);
 });
 
 function editCountForTab(user: DemoUser): number {
-  if (activeTab.value === 'week')  return user.stats.editsThisWeek;
-  if (activeTab.value === 'month') return user.stats.editsThisMonth;
+  if (activeTab.value === 'week') return user.stats.editsThisWeek;
+  if (activeTab.value === 'day')  return user.stats.editsThisMonth;
   return user.stats.editsAllTime;
 }
 
@@ -170,12 +198,26 @@ const emit = defineEmits({hide: null});
         </div>
 
         <div class="nge-lb-tabs">
-          <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'alltime' }"
-                  @click="activeTab = 'alltime'">All Time</button>
-          <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'month' }"
-                  @click="activeTab = 'month'">Month</button>
+          <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'day' }"
+                  @click="activeTab = 'day'">24h</button>
           <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'week' }"
                   @click="activeTab = 'week'">Week</button>
+          <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'alltime' }"
+                  @click="activeTab = 'alltime'">All Time</button>
+        </div>
+
+        <!-- Metric toggle: edits vs completions -->
+        <div class="nge-lb-metric-toggle">
+          <button
+            class="nge-lb-metric"
+            :class="{ 'nge-lb-metric--active': metric === 'edits' }"
+            @click="setMetric('edits')"
+          >Edits</button>
+          <button
+            class="nge-lb-metric"
+            :class="{ 'nge-lb-metric--active': metric === 'completions' }"
+            @click="setMetric('completions')"
+          >Cells</button>
         </div>
 
         <div class="nge-lb-content">
@@ -184,7 +226,7 @@ const emit = defineEmits({hide: null});
               <tr>
                 <th class="nge-lb-th nge-lb-th--rank">#</th>
                 <th class="nge-lb-th">Name</th>
-                <th class="nge-lb-th nge-lb-th--num">Edits</th>
+                <th class="nge-lb-th nge-lb-th--num">{{ metricLabel }}</th>
                 <th class="nge-lb-th nge-lb-th--badge">★</th>
               </tr>
             </thead>
@@ -666,12 +708,69 @@ const emit = defineEmits({hide: null});
   transform: translateX(-50%);
 }
 
+/* ── Metric toggle (Edits / Cells) ── */
+.nge-lb-metric-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 14px 0;
+  flex-shrink: 0;
+}
+.nge-lb-metric {
+  padding: 4px 14px;
+  font-family: 'Orbitron', 'Rajdhani', sans-serif;
+  font-size: 0.66em;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid rgba(120, 180, 255, 0.12);
+  color: rgba(160, 195, 230, 0.55);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.nge-lb-metric:hover {
+  background: rgba(120, 180, 255, 0.06);
+  color: rgba(180, 215, 245, 0.85);
+}
+.nge-lb-metric--active {
+  background: rgba(120, 180, 255, 0.12);
+  border-color: rgba(120, 180, 255, 0.45);
+  color: #cfe6ff;
+}
+
 /* ── Scrollable content ── */
 .nge-lb-content {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
   padding: 10px 0 16px;
+  /* Dark sci-fi scrollbar (Firefox) */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 180, 255, 0.35) rgba(8, 14, 26, 0.6);
+}
+/* Dark sci-fi scrollbar (WebKit / Chrome / Edge) */
+.nge-lb-content::-webkit-scrollbar {
+  width: 10px;
+}
+.nge-lb-content::-webkit-scrollbar-track {
+  background: rgba(8, 14, 26, 0.6);
+  border-left: 1px solid rgba(120, 180, 255, 0.08);
+}
+.nge-lb-content::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(120, 180, 255, 0.4), rgba(80, 140, 255, 0.25));
+  border-radius: 5px;
+  border: 2px solid rgba(8, 14, 26, 0.6);
+  background-clip: padding-box;
+}
+.nge-lb-content::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(150, 200, 255, 0.55), rgba(100, 160, 255, 0.4));
+  background-clip: padding-box;
+  border: 2px solid rgba(8, 14, 26, 0.6);
+}
+.nge-lb-content::-webkit-scrollbar-corner {
+  background: rgba(8, 14, 26, 0.6);
 }
 
 /* ── Table ── */

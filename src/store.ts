@@ -2578,6 +2578,27 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const leaderboard: Ref<any[]> = ref([]);
 
   async function loadLeaderboard() {
+    // Pull from the `user_edit_counts` view so we get distinct edits_24h,
+    // edits_week, and edits_alltime per user (used by the leaderboard
+    // panel's three tabs). Falls back to the `users` table if the view
+    // hasn't been deployed yet.
+    try {
+      const { data, error } = await supabase
+        .from('user_edit_counts')
+        .select('id, display_name, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, edits_24h, edits_week, edits_alltime, completions_24h, completions_week, completions_alltime')
+        .order('total_edits', { ascending: false })
+        .limit(50);
+      if (!error && data) {
+        leaderboard.value = data;
+        return;
+      }
+      if (error) {
+        console.warn('[backend] user_edit_counts view query failed, falling back to users:', error.message);
+      }
+    } catch (e: any) {
+      console.warn('[backend] loadLeaderboard view error:', e.message);
+    }
+    // Fallback path
     try {
       const { data } = await supabase
         .from('users')
@@ -2585,10 +2606,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         .order('total_edits', { ascending: false })
         .limit(50);
       if (data) {
-        leaderboard.value = data;
+        leaderboard.value = data.map((u: any) => ({
+          ...u,
+          edits_24h: 0,
+          edits_week: 0,
+          edits_alltime: u.total_edits ?? 0,
+          completions_24h: 0,
+          completions_week: 0,
+          completions_alltime: u.cells_completed ?? 0,
+        }));
       }
     } catch (e: any) {
-      console.warn('[backend] loadLeaderboard error:', e.message);
+      console.warn('[backend] loadLeaderboard fallback error:', e.message);
     }
   }
 
