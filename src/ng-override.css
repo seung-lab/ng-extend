@@ -3,14 +3,14 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Top bar ── */
+/* Same near-black blue gradient as the side-panel title bar so the top
+   row and the right panel read as one color family (was a neutral grey
+   that visibly clashed with the blue-tinted side panel). */
 .neuroglancer-viewer-top-row {
-  background-color: var(--color-dark-bg);
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 100%);
   margin-bottom: unset;
-  opacity: 0.72;
-  transition: opacity 0.2s;
-}
-.neuroglancer-viewer-top-row:hover {
   opacity: 1;
+  transition: opacity 0.2s;
 }
 
 /* ── Panel hover border: subtle dark blue instead of white ── */
