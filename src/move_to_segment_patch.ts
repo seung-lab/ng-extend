@@ -47,11 +47,13 @@ if (!(MeshLayer.prototype as any).getObjectPosition) {
     const fragmentIds = manifestChunk?.fragmentIds;
     if (!fragmentIds || fragmentIds.length === 0) return undefined;
 
-    // Bbox over loaded fragments. One fragment is usually enough to land near
-    // the segment, but unioning gives a stabler centroid for multi-fragment cells.
+    // Pass 1: bbox over loaded fragments. One fragment is usually enough to
+    // land near the segment, but unioning gives a stabler centroid for
+    // multi-fragment cells. Also remember every fragment's vertex array so
+    // pass 2 can walk them.
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    let any = false;
+    const vertArrays: Float32Array[] = [];
 
     const fragmentChunks = this.source.fragmentSource.chunks;
     for (const fragmentId of fragmentIds) {
@@ -59,6 +61,7 @@ if (!(MeshLayer.prototype as any).getObjectPosition) {
       const fragment = fragmentChunks.get(key);
       const verts = fragment?.meshData?.vertexPositions;
       if (!(verts instanceof Float32Array) || verts.length < 3) continue;
+      vertArrays.push(verts);
 
       for (let i = 0; i + 2 < verts.length; i += 3) {
         const x = verts[i], y = verts[i + 1], z = verts[i + 2];
@@ -69,15 +72,42 @@ if (!(MeshLayer.prototype as any).getObjectPosition) {
         if (y > maxY) maxY = y;
         if (z > maxZ) maxZ = z;
       }
-      any = true;
     }
-    if (!any) return undefined;
+    if (vertArrays.length === 0) return undefined;
+
+    const cx = (minX + maxX) * 0.5;
+    const cy = (minY + maxY) * 0.5;
+    const cz = (minZ + maxZ) * 0.5;
+
+    // Pass 2: snap to the vertex closest to the bbox centroid. Branching
+    // neurons are highly non-convex — the raw bbox center often lands in
+    // the void between dendrites. Returning the nearest mesh vertex
+    // guarantees the camera lands on actual cell surface, which means the
+    // 2D cross-section shows the cell instead of empty space and the user
+    // can place their crosshair directly. Surface, not interior — but for
+    // crosshair-placement workflows that's enough.
+    let bestX = cx, bestY = cy, bestZ = cz;
+    let bestDistSq = Infinity;
+    for (const verts of vertArrays) {
+      for (let i = 0; i + 2 < verts.length; i += 3) {
+        const dx = verts[i]     - cx;
+        const dy = verts[i + 1] - cy;
+        const dz = verts[i + 2] - cz;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < bestDistSq) {
+          bestDistSq = d2;
+          bestX = verts[i];
+          bestY = verts[i + 1];
+          bestZ = verts[i + 2];
+        }
+      }
+    }
 
     const rank = transform.rank;
     const modelCenter = new Float32Array(rank);
-    modelCenter[0] = (minX + maxX) * 0.5;
-    modelCenter[1] = (minY + maxY) * 0.5;
-    modelCenter[2] = (minZ + maxZ) * 0.5;
+    modelCenter[0] = bestX;
+    modelCenter[1] = bestY;
+    modelCenter[2] = bestZ;
 
     const layerCenter = new Float32Array(rank);
     matrix.transformPoint(
