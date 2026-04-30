@@ -29,23 +29,15 @@ function handleSave() {
   setTimeout(() => { saved.value = false; }, 1800);
 }
 
-// ── Toolbar icon choices ──────────────────────────────────────
-const SPLIT_SVG_SM = `<svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px;vertical-align:middle;color:#e06060"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.5" fill="currentColor"/><circle cx="4" cy="13" r="1.5" fill="currentColor"/><circle cx="12" cy="13" r="1.5" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-const MERGE_SVG_SM = `<svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px;vertical-align:middle;color:#60c060"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.5" fill="currentColor"/><circle cx="12" cy="2.5" r="1.5" fill="currentColor"/><circle cx="8" cy="13" r="1.5" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-const RECAP_SVG_SM = `<svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px;vertical-align:middle;color:#a0c4ff"><rect x="1" y="10" width="3" height="5" rx="0.5" fill="currentColor" opacity="0.4"/><rect x="5" y="7" width="3" height="8" rx="0.5" fill="currentColor" opacity="0.6"/><rect x="9" y="4" width="3" height="11" rx="0.5" fill="currentColor" opacity="0.8"/><rect x="13" y="1" width="2.5" height="14" rx="0.5" fill="currentColor"/></svg>`;
-const TOOLBAR_ICON_OPTIONS = [
-  { id: 'split', emoji: '✂️', svg: SPLIT_SVG_SM, label: 'Split Mode' },
-  { id: 'merge', emoji: '🔗', svg: MERGE_SVG_SM, label: 'Merge Mode' },
-  { id: 'recap', emoji: '📊', svg: RECAP_SVG_SM, label: 'Weekly Recap' },
-  { id: 'leaderboard', emoji: '🏆', label: 'Leaderboard' },
-  { id: 'cells', emoji: '🧬', label: 'Cell Library' },
-  { id: 'help', emoji: '🔍', label: 'Help Requests' },
-  { id: 'notif', emoji: '🔔', label: 'Notifications' },
-  { id: 'chat', emoji: '💬', label: 'Chat' },
-  { id: 'settings', emoji: '⚙️', label: 'Settings' },
-];
+// ── Toolbar icon choices (shared with the actual top bar) ──────
+import { TOOLBAR_ICON_DEFS } from '../data/toolbar-icons';
 
-const DEFAULT_ORDER = ['split', 'merge', 'recap', 'leaderboard', 'help', 'feed', 'notif', 'chat', 'settings'];
+const TOOLBAR_ICON_OPTIONS = TOOLBAR_ICON_DEFS;
+
+const DEFAULT_ORDER = [
+  'split', 'merge', 'findPath', 'recap', 'leaderboard',
+  'cells', 'batch', 'help', 'notif', 'chat', 'settings',
+];
 
 function isToolbarIconEnabled(id: string) {
   return draftToolbar.value.includes(id);
@@ -204,6 +196,7 @@ const emit = defineEmits({hide: null});
           <div class="nge-settings-toolbar-grid">
             <button v-for="opt in TOOLBAR_ICON_OPTIONS" :key="opt.id" class="nge-settings-toolbar-item" :class="{ 'nge-settings-toolbar-item--active': isToolbarIconEnabled(opt.id) }" @click="toggleToolbarIcon(opt.id)">
               <span v-if="opt.svg" class="nge-settings-toolbar-emoji" v-html="opt.svg"></span>
+              <img v-else-if="opt.img" :src="opt.img" class="nge-settings-toolbar-icon-img" :alt="opt.label" />
               <span v-else class="nge-settings-toolbar-emoji">{{ opt.emoji }}</span>
               <span class="nge-settings-toolbar-label">{{ opt.label }}</span>
             </button>
@@ -695,7 +688,22 @@ const emit = defineEmits({hide: null});
 }
 
 .nge-settings-toolbar-emoji {
-  font-size: 1.1em;
+  /* SVG icons use 1em sizing, so `font-size` here controls render size.
+     14px matches the original Settings list density; the actual top
+     bar uses 18px. */
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.nge-settings-toolbar-icon-img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  vertical-align: middle;
 }
 
 .nge-settings-toolbar-label {
