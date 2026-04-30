@@ -121,16 +121,30 @@ async function fetchPage(caveServer, datastack, version, table, offset) {
 
 async function upsertBatch(rows) {
   if (rows.length === 0) return;
+  // Dedupe within the batch by the (cave_user_id, dataset, segment_id) PK.
+  // CAVE materializer can return multiple cell_status rows per segment
+  // (re-completions, root id reassignments after merges, etc). Postgres
+  // ON CONFLICT DO UPDATE rejects duplicates within a single statement
+  // ("cannot affect row a second time"), so we keep the most-recent
+  // completed_at per PK and drop the rest.
+  const byKey = new Map();
+  for (const r of rows) {
+    const k = `${r.cave_user_id}|${r.dataset}|${r.segment_id}`;
+    const prev = byKey.get(k);
+    if (!prev || (r.completed_at && r.completed_at > prev.completed_at)) {
+      byKey.set(k, r);
+    }
+  }
+  const deduped = [...byKey.values()];
   if (dryRun) {
-    console.log(`[sync] DRY-RUN would upsert ${rows.length} rows`);
+    console.log(`[sync] DRY-RUN would upsert ${deduped.length} rows (deduped from ${rows.length})`);
     return;
   }
-  // PostgREST upsert via ?on_conflict=cave_user_id,dataset,segment_id
   const url = `${SUPABASE_URL}/rest/v1/cave_completions_mirror?on_conflict=cave_user_id,dataset,segment_id`;
   const res = await fetch(url, {
     method: 'POST',
     headers: supabaseHeaders,
-    body: JSON.stringify(rows),
+    body: JSON.stringify(deduped),
   });
   if (!res.ok) throw new Error(`upsert failed: ${res.status} ${await res.text()}`);
 }
