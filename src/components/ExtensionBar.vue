@@ -54,6 +54,16 @@ async function syncFirstSession() {
 function closeHamburger() {
   dropdownStore.activeDropdowns['extension-bar-right'] = undefined;
 }
+
+/** Pyr-icon click: bypass the browser cache so a freshly-deployed bundle
+ *  is picked up without the user hunting for Ctrl+F5. The standard
+ *  `location.reload()` API stopped accepting `forceReload` years ago, so
+ *  we cache-bust by appending a timestamp to the URL. */
+function hardRefresh() {
+  const url = new URL(window.location.href);
+  url.searchParams.set('_r', Date.now().toString());
+  window.location.replace(url.toString());
+}
 window.addEventListener("middleauthlogin", () => {
   login.update().then(syncFirstSession);
 });
@@ -327,7 +337,11 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <chat-panel v-if="showChat" @hide="showChat = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
-      <a href="https://eyewire.org" target="_blank" title="EyeWire II">
+      <!-- Click → hard refresh. Reloads the bundle from the server (skips
+           the disk cache so a freshly-deployed JS hits the user without a
+           manual Ctrl+F5). Tour step #2 explains this. -->
+      <a href="#" title="EyeWire II — click to hard refresh"
+         @click.prevent="hardRefresh">
         <img :src="pyrIcon" class="nge-pyr-logo" />
       </a>
     </div>
@@ -873,19 +887,25 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  opacity: 0.45;
+  opacity: 0.85;
   transition: opacity 0.15s, background 0.15s;
 }
-.nge-cmd-trigger:hover { opacity: 0.9; background: rgba(255, 255, 255, 0.06); }
+.nge-cmd-trigger:hover { opacity: 1; background: rgba(255, 255, 255, 0.06); }
 .nge-cmd-trigger kbd {
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 600;
   padding: 2px 7px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #888;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #cfdcef;
   font-family: inherit;
   letter-spacing: 0.03em;
+}
+.nge-cmd-trigger:hover kbd {
+  background: rgba(74, 158, 255, 0.14);
+  border-color: rgba(74, 158, 255, 0.4);
+  color: #e0ecff;
 }
 
 /* ── Hamburger menu ── */

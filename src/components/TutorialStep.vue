@@ -481,10 +481,12 @@ onUnmounted(() => {
     font-weight: 300;
     grid-row-gap: 15px;
 
-    border: 1px solid rgba(160, 200, 240, 0.2);
-    background: linear-gradient(135deg, rgba(10, 15, 35, 0.78), rgba(20, 12, 45, 0.75));
-    backdrop-filter: blur(20px);
-    box-shadow: 0 0 20px rgba(80, 140, 255, 0.1);
+    border: 1px solid rgba(160, 200, 240, 0.22);
+    /* Higher base opacity so the chip reads cleanly even when it floats
+       over a busy panel (segment list, tab bar, etc.). */
+    background: linear-gradient(135deg, rgba(8, 12, 26, 0.95), rgba(14, 10, 36, 0.93));
+    backdrop-filter: blur(20px) saturate(1.1);
+    box-shadow: 0 0 20px rgba(80, 140, 255, 0.1), 0 8px 32px rgba(0, 0, 0, 0.45);
 }
 
 /* Microchip-inspired corner traces */
@@ -835,6 +837,42 @@ onUnmounted(() => {
             0 0 26px 4px rgba(0, 220, 255, 0.75);
     }
 }
+
+/* Welcome step: hero render on top, copy below. The .chip's grid-row-gap
+   keeps the spacing between the hero and the buttons consistent with
+   every other step. */
+.nge-tour-welcome {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 4px 6px 0;
+}
+.nge-tour-welcome-hero {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(120, 180, 240, 0.18);
+    background: rgba(0, 0, 0, 0.35);
+    line-height: 0;
+}
+.nge-tour-welcome-hero img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 280px;
+    object-fit: cover;
+    object-position: center;
+}
+.nge-tour-welcome-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 4px;
+    line-height: 1.5;
+    font-size: 15px;
+    color: #dfeeff;
+}
+.nge-tour-welcome-body p { margin: 0; }
 
 /* Final-step "ready to explore" grid of next-step cards */
 .nge-tour-grid {

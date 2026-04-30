@@ -1,5 +1,6 @@
 import { Step } from "./store-pyr";
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
+import mossyFibersHero from '../static/tour-mossy-fibers.png';
 
 /* ─────────────────────────────────────────────────────────────────────────
    Title icons — the same SVGs that live in the top toolbar
@@ -69,19 +70,28 @@ export const steps: Step[] = [
   // ── 1. Welcome ───────────────────────────────────────────────
   {
     title: "Welcome to EyeWire II",
-    text: `This quick tour walks you through the main features of EyeWire II: the **toolbar**, **panels**, **profile**, and **viewer**.
-
-Use **Next** / **Back** (or **Enter**) to navigate. Press **×** to exit.`,
+    html: `
+<div class="nge-tour-welcome">
+  <div class="nge-tour-welcome-hero">
+    <img src="${mossyFibersHero}" alt="CA3 sea of mossy fibers" />
+  </div>
+  <div class="nge-tour-welcome-body">
+    <p>This quick tour walks you through the main features of EyeWire II: the <strong>toolbar</strong>, <strong>panels</strong>, <strong>profile</strong>, and <strong>viewer</strong>.</p>
+    <p>Use <strong>Next</strong> / <strong>Back</strong> (or <strong>Enter</strong>) to navigate. Press <strong>×</strong> to exit.</p>
+  </div>
+</div>`,
     position: MIDDLE,
     modal: true,
-    width: "560px",
+    width: "640px",
     onEnter: closeAllPanels,
   },
 
   // ── 2. The Pyr logo / brand ──────────────────────────────────
   {
     title: "The Pyr Logo",
-    text: `That little neuron in the top-left is **Pyr**, our pyramidal mascot. Click it any time to go home.`,
+    text: `That little neuron in the top-left is **Pyr**, our pyramidal mascot.
+
+**Click Pyr to hard-refresh the page** — the fastest way to pull in a fresh deploy without hunting for Ctrl+F5.`,
     position: { element: ".nge-pyr-logo", side: "bottom", offset: { x: 0, y: 12 } },
     highlight: true,
   },
@@ -146,7 +156,7 @@ When pieces of the same neuron are split into multiple segments, **Merge Mode** 
 
 **Alt+click** two points on a neuron and Find Path traces the shortest route between them.
 
-This is the easiest way to find the origin of a tricky merger — drop a point on each end of the wrong-looking branch and the path lights up the offending bridge.`,
+Drop a point on the right cell and somewhere on the merged cell to find where it originated.`,
     position: { element: '[title^="Find Path"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
@@ -157,9 +167,7 @@ This is the easiest way to find the origin of a tricky merger — drop a point o
     titleIcon: ICON_RECAP,
     text: `A weekly recap of your edits, completions, streak, plus a science fact or two.
 
-We're grateful to you for being a citizen scientist. Every edit brings us closer to mapping the brain!
-
-Sent automatically every Sunday as a notification.`,
+We're grateful to you for being a citizen scientist. Every edit brings us closer to mapping the brain!`,
     position: { element: '[title^="Your Week in Science"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
@@ -179,11 +187,12 @@ Click any name to view profile.`,
   {
     title: "Cell Library",
     titleIcon: ICON_CELLS,
-    text: `The community workshop. Six tabs:
+    text: `The community workshop. Seven tabs:
 
 - **My Cells**: claims + your completed
 - **All / Available / Claimed / Completed**: explore the full library
 - **Help**: open second-opinion requests
+- **Links**: your saved cells and references
 
 Claim up to 3 cells at a time. Mark them complete when done.`,
     position: { element: '[title^="Cell Library"]', side: "bottom", offset: { x: 0, y: 14 } },
