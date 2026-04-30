@@ -141,6 +141,10 @@ interface InsideElementPostition {
 
 export interface Step {
   title?: string;
+  /** Inline SVG/HTML rendered before the title (used by the Site Tour to
+   *  show the same icon that lives in the top toolbar so "Find Path" in
+   *  the popup matches "Find Path" in the toolbar). */
+  titleIcon?: string;
   text?: string;
   html?: string;
   position: NextToElementPostition | InsideElementPostition;

@@ -49,6 +49,7 @@ interface ComputedStep {
     first: boolean,
     last: boolean,
     title?: string,
+    titleIcon?: string,
     text?: string,
     html?: string,
     video?: string,
@@ -219,6 +220,7 @@ async function updateChipPosition() {
         first: props.first,
         last: props.last,
         title: step.title,
+        titleIcon: step.titleIcon,
         video: step.video,
         image: step.image,
         html,
@@ -359,6 +361,7 @@ onUnmounted(() => {
                 <span class="corner corner-br"></span>
                 <button class="exit" @click="inExitConfirm = true">×</button>
                 <div class="title" v-if="computedStep.title">
+                  <span v-if="computedStep.titleIcon" class="title-icon" v-html="computedStep.titleIcon"></span>
                   <span v-for="(char, i) in [...computedStep.title]" :key="i"
                     class="title-letter"
                     :style="{ animationDelay: (computedStep.modal ? i * 0.06 : Math.min(i * 0.015, 0.18)) + 's' }"
@@ -619,8 +622,10 @@ onUnmounted(() => {
 .chip .title {
     font-size: 22px;
     display: flex;
+    align-items: center;
     justify-content: center;
     flex-wrap: wrap;
+    gap: 2px;
 }
 
 @keyframes letterReveal {
@@ -633,6 +638,23 @@ onUnmounted(() => {
     display: inline-block;
     opacity: 0;
     animation: letterReveal 0.4s ease-out forwards;
+}
+
+/* Toolbar icon shown alongside the title (e.g. the same Find Path icon
+   that lives in the top toolbar). Sized to match the title font and
+   pulled into rhythm with the letter-by-letter reveal. */
+.title-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+    opacity: 0;
+    animation: letterReveal 0.4s ease-out 0s forwards;
+}
+.title-icon :deep(svg) {
+    width: 26px;
+    height: 26px;
+    vertical-align: middle;
 }
 
 .chip video,

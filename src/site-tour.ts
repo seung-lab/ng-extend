@@ -1,6 +1,32 @@
 import { Step } from "./store-pyr";
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Title icons — the same SVGs that live in the top toolbar
+   (`ExtensionBar.vue`), re-emitted here at the size the tour title
+   expects (24px) so each step's popup wears its toolbar's face. Keep the
+   strokes, fills, and palette identical to ExtensionBar.vue so a user who
+   recognizes the toolbar icon recognizes the step.
+   ───────────────────────────────────────────────────────────────────────── */
+const TI_STYLE = 'width:24px;height:24px;vertical-align:middle;display:block;';
+const TI_NEUTRAL = '#cfdcef';
+const TI_RED     = '#e06060';
+const TI_GREEN   = '#60c060';
+const TI_PURPLE  = '#c8a4ff';
+const TI_AMBER   = '#f5d142';
+
+const ICON_SPLIT       = `<svg viewBox="0 0 16 16" fill="none" style="${TI_STYLE}color:${TI_RED}"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.4" fill="currentColor"/><circle cx="4" cy="13" r="1.4" fill="currentColor"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const ICON_MERGE       = `<svg viewBox="0 0 16 16" fill="none" style="${TI_STYLE}color:${TI_GREEN}"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.4" fill="currentColor"/><circle cx="12" cy="2.5" r="1.4" fill="currentColor"/><circle cx="8" cy="13" r="1.4" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const ICON_FINDPATH    = `<svg viewBox="0 0 16 16" fill="none" style="${TI_STYLE}color:${TI_PURPLE}"><circle cx="3" cy="13" r="1.6" fill="currentColor"/><circle cx="13" cy="3" r="1.6" fill="currentColor"/><path d="M5 12 Q7 9 8 8 Q9 7 11 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="1.4 1.8"/></svg>`;
+const ICON_RECAP       = `<svg viewBox="0 0 16 16" fill="none" style="${TI_STYLE}color:${TI_NEUTRAL}"><rect x="2" y="10" width="2.4" height="4" rx="0.5" fill="currentColor" opacity="0.45"/><rect x="5.5" y="7" width="2.4" height="7" rx="0.5" fill="currentColor" opacity="0.65"/><rect x="9" y="4" width="2.4" height="10" rx="0.5" fill="currentColor" opacity="0.85"/><rect x="12.5" y="1.5" width="2" height="12.5" rx="0.5" fill="currentColor"/></svg>`;
+const ICON_LEADERBOARD = `<svg viewBox="0 0 16 16" fill="none" style="${TI_STYLE}color:${TI_AMBER}"><path d="M5 2h6v3.5a3 3 0 0 1-6 0V2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 3H3v.8a2 2 0 0 0 2 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11 3h2v.8a2 2 0 0 1-2 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M8 8.5v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M5.5 13h5l-.5-1.4h-4z" fill="currentColor"/></svg>`;
+const ICON_BATCH       = `<svg viewBox="0 0 16 16" fill="none" style="${TI_STYLE}color:${TI_NEUTRAL}"><path d="M8 1.8L13.5 4.6V11L8 13.8L2.5 11V4.6L8 1.8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2.5 4.6L8 7.4L13.5 4.6M8 7.4V13.8" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+const ICON_HELP        = `<svg viewBox="0 0 16 16" fill="none" style="${TI_STYLE}color:${TI_NEUTRAL}"><circle cx="6.6" cy="6.6" r="3.8" stroke="currentColor" stroke-width="1.6"/><path d="M9.6 9.6l3.8 3.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
+const ICON_NOTIF       = `<svg viewBox="0 0 16 16" fill="none" style="${TI_STYLE}color:${TI_NEUTRAL}"><path d="M3.7 11.5h8.6c.5 0 .8-.5.5-.95L11.5 8.8V6.5a3.5 3.5 0 0 0-7 0v2.3L3.2 10.55c-.3.45 0 .95.5.95z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 13a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const ICON_CHAT        = `<svg viewBox="0 0 16 16" fill="none" style="${TI_STYLE}color:${TI_NEUTRAL}"><path d="M2.5 5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2H7L4.5 14v-2.5a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+const ICON_SETTINGS    = `<svg viewBox="0 0 24 24" fill="none" style="${TI_STYLE}color:${TI_NEUTRAL}"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 0 1 0 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 0 1 0-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.213-1.281Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" stroke="currentColor" stroke-width="1.5"/></svg>`;
+const ICON_CELLS       = `<img src="${neuronIcon}" alt="" style="width:22px;height:22px;display:block;opacity:0.92" />`;
+
 /**
  * Tutorial 4 : Site Tour
  * --------------------------------------------------------------
@@ -43,12 +69,9 @@ export const steps: Step[] = [
   // ── 1. Welcome ───────────────────────────────────────────────
   {
     title: "Welcome to EyeWire II",
-    text: `
-This quick tour walks you through every feature in the community interface: the **toolbar**, **panels**, **profile**, and **viewer**.
+    text: `This quick tour walks you through the main features of EyeWire II: the **toolbar**, **panels**, **profile**, and **viewer**.
 
-Use **Next** / **Back** (or **Enter**) to navigate. Press **×** to exit.
-
-*Takes about 2 minutes.*`,
+Use **Next** / **Back** (or **Enter**) to navigate. Press **×** to exit.`,
     position: MIDDLE,
     modal: true,
     width: "560px",
@@ -93,7 +116,8 @@ Your streak is shown next to your name on the leaderboard.`,
 
   // ── 6. Cut Mode ──────────────────────────────────────────────
   {
-    title: "✂️ Cut Mode",
+    title: "Cut Mode",
+    titleIcon: ICON_SPLIT,
     text: `**Shortcut: C**
 
 When two neurons are incorrectly merged into one segment, **Cut Mode** lets you separate them. Place red dots on one neuron, blue dots on the other, then submit.
@@ -105,7 +129,8 @@ The Cut/Merge tutorial covers this in depth.`,
 
   // ── 7. Merge Mode ────────────────────────────────────────────
   {
-    title: "🔗 Merge Mode",
+    title: "Merge Mode",
+    titleIcon: ICON_MERGE,
     text: `**Shortcut: M**
 
 When pieces of the same neuron are split into multiple segments, **Merge Mode** stitches them back together. Click on each piece and the AI joins them into one root.`,
@@ -115,20 +140,24 @@ When pieces of the same neuron are split into multiple segments, **Merge Mode** 
 
   // ── 8. Find Path ─────────────────────────────────────────────
   {
-    title: "🛤️ Find Path",
+    title: "Find Path",
+    titleIcon: ICON_FINDPATH,
     text: `**Shortcut: F**
 
-Drop two points on a neuron and Find Path traces the shortest route between them. Perfect for verifying a long dendrite is fully connected.`,
+**Alt+click** two points on a neuron and Find Path traces the shortest route between them.
+
+This is the easiest way to find the origin of a tricky merger — drop a point on each end of the wrong-looking branch and the path lights up the offending bridge.`,
     position: { element: '[title^="Find Path"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
   // ── 9. Week in Science ───────────────────────────────────────
   {
-    title: "📊 Your Week in Science",
+    title: "Your Week in Science",
+    titleIcon: ICON_RECAP,
     text: `A weekly recap of your edits, completions, streak, plus a science fact or two.
 
-We're so grateful for the contributions of our citizen science community. Every edit helps map the brain.
+We're grateful to you for being a citizen scientist. Every edit brings us closer to mapping the brain!
 
 Sent automatically every Sunday as a notification.`,
     position: { element: '[title^="Your Week in Science"]', side: "bottom", offset: { x: 0, y: 14 } },
@@ -137,17 +166,19 @@ Sent automatically every Sunday as a notification.`,
 
   // ── 10. Leaderboard ──────────────────────────────────────────
   {
-    title: "🏆 Leaderboard",
+    title: "Leaderboard",
+    titleIcon: ICON_LEADERBOARD,
     text: `See who's leading the community. Toggle between **All Time / Month / Week**, and switch the metric between **edits** and **cells completed**.
 
-Click any name to view their full Researcher Profile.`,
+Click any name to view profile.`,
     position: { element: '[title^="Leaderboard"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
   // ── 11. Cell Library ─────────────────────────────────────────
   {
-    title: "🧬 Cell Library",
+    title: "Cell Library",
+    titleIcon: ICON_CELLS,
     text: `The community workshop. Six tabs:
 
 - **My Cells**: claims + your completed
@@ -161,7 +192,8 @@ Claim up to 3 cells at a time. Mark them complete when done.`,
 
   // ── 12. Batch Processor ──────────────────────────────────────
   {
-    title: "📦 Batch Processor",
+    title: "Batch Processor",
+    titleIcon: ICON_BATCH,
     text: `Apply actions to many cells at once: recolor, complete, annotate. Useful when you've built a list of cells of the same type.`,
     position: { element: '[title^="Batch Processor"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
@@ -169,7 +201,8 @@ Claim up to 3 cells at a time. Mark them complete when done.`,
 
   // ── 13. Second-opinion / Help ────────────────────────────────
   {
-    title: "🔍 Second Opinion",
+    title: "Second Opinion",
+    titleIcon: ICON_HELP,
     text: `Stuck on a tricky cell? Request a second opinion. Other proofreaders can jump straight to your view, leave a note, and link an annotation layer with their suggestions.`,
     position: { element: '[title^="Second Opinion"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
@@ -177,7 +210,8 @@ Claim up to 3 cells at a time. Mark them complete when done.`,
 
   // ── 14. Notifications ────────────────────────────────────────
   {
-    title: "🔔 Notifications",
+    title: "Notifications",
+    titleIcon: ICON_NOTIF,
     text: `Badge unlocks, help-request responses, weekly recaps, and admin announcements all land here.`,
     position: { element: '[title^="Notifications"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
@@ -185,7 +219,8 @@ Claim up to 3 cells at a time. Mark them complete when done.`,
 
   // ── 15. Chat ─────────────────────────────────────────────────
   {
-    title: "💬 Community Chat",
+    title: "Community Chat",
+    titleIcon: ICON_CHAT,
     text: `Real-time chat with everyone currently online. Type **#segId** to share a clickable link to a segment, or **@name** to ping someone.
 
 Drag the panel anywhere on screen.`,
@@ -195,7 +230,8 @@ Drag the panel anywhere on screen.`,
 
   // ── 16. Settings ─────────────────────────────────────────────
   {
-    title: "⚙️ Profile Settings",
+    title: "Profile Settings",
+    titleIcon: ICON_SETTINGS,
     text: `Set your **flag emoji**, **bio**, and (under **Advanced**) toggle viewer settings, edit raw JSON state, and manage logged-in sessions.`,
     position: { element: '[title^="Profile Settings"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
