@@ -147,12 +147,26 @@ const emit = defineEmits({hide: null});
       <template v-if="!selectedUser">
 
         <div class="nge-lb-topbar">
-          <span class="nge-lb-title">Leaderboard</span>
-          <button class="nge-lb-exit" @click="emit('hide')">×</button>
+          <button class="nge-lb-exit nge-lb-exit--abs" @click="emit('hide')">×</button>
         </div>
 
         <div class="nge-lb-hero">
-          <img :src="nurroTrophy" alt="Nurro Trophy" class="nge-lb-hero-img" />
+          <div class="nge-lb-hero-grid"></div>
+          <div class="nge-lb-hero-scanline"></div>
+          <div class="nge-lb-hero-img-wrap">
+            <img :src="nurroTrophy" alt="Nurro Trophy" class="nge-lb-hero-img" />
+            <div class="nge-lb-hero-shadow"></div>
+          </div>
+          <div class="nge-lb-title-block">
+            <div class="nge-lb-title-rule"></div>
+            <h2 class="nge-lb-title-treat">
+              <span class="nge-lb-title-bracket">▮</span>
+              <span class="nge-lb-title-text">LEADERBOARD</span>
+              <span class="nge-lb-title-bracket">▮</span>
+            </h2>
+            <div class="nge-lb-title-sub">RANKED&nbsp;//&nbsp;TOP&nbsp;CONTRIBUTORS</div>
+            <div class="nge-lb-title-rule"></div>
+          </div>
         </div>
 
         <div class="nge-lb-tabs">
@@ -399,37 +413,185 @@ const emit = defineEmits({hide: null});
   height: 100%;
 }
 
-/* ── Top bar ── */
+/* ── Top bar (hero now owns the title) ── */
 .nge-lb-topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 16px 10px;
+  position: relative;
+  height: 0;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.nge-lb-exit--abs {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 5;
 }
 
-.nge-lb-title {
-  font-size: 1.05em;
-  font-weight: 600;
-  color: #e0e0e0;
-}
-
+/* ── Hero (sci-fi treatment) ────────────────────────────────────── */
 .nge-lb-hero {
+  position: relative;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 16px 18px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(120, 180, 255, 0.12);
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 30%, rgba(80, 150, 255, 0.10) 0%, rgba(80, 150, 255, 0) 60%),
+    linear-gradient(180deg, rgba(10, 16, 32, 0.6) 0%, rgba(8, 12, 24, 0.0) 100%);
+}
+
+/* Faint blueprint grid behind the hero */
+.nge-lb-hero-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(120, 180, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(120, 180, 255, 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse 80% 75% at 50% 45%, black 30%, transparent 90%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 75% at 50% 45%, black 30%, transparent 90%);
+  pointer-events: none;
+}
+
+/* Slow scanline drift */
+.nge-lb-hero-scanline {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 3px,
+      rgba(120, 180, 255, 0.018) 3px,
+      rgba(120, 180, 255, 0.018) 4px
+    );
+  pointer-events: none;
+  animation: nge-lb-scanline-drift 9s linear infinite;
+}
+@keyframes nge-lb-scanline-drift {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(8px); }
+}
+
+/* Hero image — bigger, hovering with ground glow + gentle bob */
+.nge-lb-hero-img-wrap {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 14px 0 4px;
+  margin-bottom: 14px;
 }
 .nge-lb-hero-img {
-  width: 110px;
-  height: 110px;
+  width: 200px;
+  height: 200px;
   object-fit: contain;
-  filter: drop-shadow(0 4px 18px rgba(120, 140, 255, 0.18));
-  animation: nge-lb-hero-float 6s ease-in-out infinite;
+  filter:
+    drop-shadow(0 0 14px rgba(120, 180, 255, 0.45))
+    drop-shadow(0 12px 22px rgba(80, 140, 255, 0.28));
+  animation:
+    nge-lb-hero-float 5.5s ease-in-out infinite,
+    nge-lb-hero-glow 3.6s ease-in-out infinite;
+  position: relative;
+  z-index: 2;
+}
+.nge-lb-hero-shadow {
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 130px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(120, 180, 255, 0.45) 0%, rgba(120, 180, 255, 0) 70%);
+  filter: blur(3px);
+  animation: nge-lb-hero-shadow-breathe 5.5s ease-in-out infinite;
+  z-index: 1;
 }
 @keyframes nge-lb-hero-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50%      { transform: translateY(-8px) rotate(1deg); }
+}
+@keyframes nge-lb-hero-glow {
+  0%, 100% {
+    filter:
+      drop-shadow(0 0 14px rgba(120, 180, 255, 0.45))
+      drop-shadow(0 12px 22px rgba(80, 140, 255, 0.28));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 22px rgba(150, 200, 255, 0.65))
+      drop-shadow(0 14px 28px rgba(80, 140, 255, 0.42));
+  }
+}
+@keyframes nge-lb-hero-shadow-breathe {
+  0%, 100% { transform: translateX(-50%) scale(1);   opacity: 0.85; }
+  50%      { transform: translateX(-50%) scale(0.7); opacity: 0.45; }
+}
+
+/* Title treatment — Orbitron, wide tracking, gradient + glow */
+.nge-lb-title-block {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 2;
+}
+.nge-lb-title-rule {
+  width: 220px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(120, 180, 255, 0.5) 50%,
+    transparent 100%
+  );
+}
+.nge-lb-title-treat {
+  margin: 4px 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: 'Orbitron', 'Rajdhani', sans-serif;
+  font-size: 1.5em;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  background: linear-gradient(
+    180deg,
+    #e8f3ff 0%,
+    #9bc8ff 55%,
+    #5b9eff 100%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow:
+    0 0 12px rgba(120, 180, 255, 0.5),
+    0 0 24px rgba(120, 180, 255, 0.25);
+  animation: nge-lb-title-pulse 4s ease-in-out infinite;
+}
+@keyframes nge-lb-title-pulse {
+  0%, 100% { filter: brightness(1)    drop-shadow(0 0 6px rgba(120, 180, 255, 0.35)); }
+  50%      { filter: brightness(1.18) drop-shadow(0 0 12px rgba(150, 200, 255, 0.55)); }
+}
+.nge-lb-title-bracket {
+  font-size: 0.55em;
+  color: rgba(120, 180, 255, 0.7);
+  -webkit-text-fill-color: rgba(120, 180, 255, 0.7);
+  letter-spacing: 0;
+}
+.nge-lb-title-text {
+  /* Inherit gradient fill */
+}
+.nge-lb-title-sub {
+  font-family: 'Orbitron', 'Rajdhani', sans-serif;
+  font-size: 0.6em;
+  letter-spacing: 0.4em;
+  color: rgba(120, 180, 255, 0.55);
+  text-transform: uppercase;
+  margin-bottom: 4px;
 }
 
 .nge-lb-exit {
@@ -455,33 +617,53 @@ const emit = defineEmits({hide: null});
 
 .nge-lb-back:hover { color: rgba(160, 220, 255, 1); }
 
-/* ── Tabs ── */
+/* ── Tabs (sci-fi pill row) ── */
 .nge-lb-tabs {
   display: flex;
-  padding: 10px 14px 0;
+  gap: 8px;
+  padding: 12px 14px 6px;
   flex-shrink: 0;
+  justify-content: center;
 }
 
 .nge-lb-tab {
-  flex: 1;
-  padding: 7px 0;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #888;
-  font-size: 0.8em;
+  position: relative;
+  padding: 7px 18px;
+  background: rgba(120, 180, 255, 0.04);
+  border: 1px solid rgba(120, 180, 255, 0.18);
+  color: rgba(180, 200, 230, 0.7);
+  font-family: 'Orbitron', 'Rajdhani', sans-serif;
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  border-radius: 3px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
-.nge-lb-tab:first-child { border-radius: 6px 0 0 6px; }
-.nge-lb-tab:last-child  { border-radius: 0 6px 6px 0; }
-.nge-lb-tab + .nge-lb-tab { border-left: none; }
+.nge-lb-tab:hover {
+  background: rgba(120, 180, 255, 0.10);
+  color: rgba(200, 220, 245, 0.9);
+}
 
 .nge-lb-tab--active {
-  background: rgba(74, 158, 255, 0.16);
-  border-color: rgba(74, 158, 255, 0.4);
-  color: rgba(160, 220, 255, 0.95);
-  font-weight: 600;
+  background: linear-gradient(180deg, rgba(120, 180, 255, 0.22) 0%, rgba(80, 140, 255, 0.12) 100%);
+  border-color: rgba(120, 180, 255, 0.6);
+  color: #d8ecff;
+  box-shadow:
+    0 0 12px rgba(120, 180, 255, 0.35),
+    inset 0 0 8px rgba(120, 180, 255, 0.18);
+}
+.nge-lb-tab--active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 24px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(120, 180, 255, 0.9), transparent);
+  transform: translateX(-50%);
 }
 
 /* ── Scrollable content ── */
