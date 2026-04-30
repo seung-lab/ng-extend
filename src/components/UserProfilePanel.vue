@@ -2,6 +2,7 @@
 import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
+import AdminHub from 'components/AdminHub.vue';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
@@ -121,7 +122,7 @@ const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
 const SPECIAL_PREVIEW_LIMIT = 8;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
-const activeTab = ref<'overview' | 'trophyCase'>('overview');
+const activeTab = ref<'overview' | 'trophyCase' | 'adminHub'>('overview');
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
 // All country flags A-Z (ISO 3166-1 alpha-2, sorted alphabetically)
@@ -455,7 +456,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
     :class="{ 'nge-profile-closing': closing }"
     @hide="handleClose"
   >
-    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase' }">
+    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub' }">
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
@@ -475,6 +476,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           :class="{ 'nge-profile-tab--active': activeTab === 'trophyCase' }"
           @click="activeTab = 'trophyCase'"
         >🏆 Trophy Case</button>
+        <button
+          v-if="!viewingOtherUser && backendStore.isAdmin"
+          class="nge-profile-tab"
+          :class="{ 'nge-profile-tab--active': activeTab === 'adminHub' }"
+          @click="activeTab = 'adminHub'"
+        >🛠 Admin Hub</button>
       </div>
 
       <!-- ── Three-column body (Overview tab) ────────────────── -->
@@ -996,7 +1003,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       </div><!-- end .nge-profile-body (Overview) -->
 
       <!-- ── Trophy Case tab ─────────────────────────────────── -->
-      <div v-else class="nge-profile-body nge-profile-body--trophy">
+      <div v-else-if="activeTab === 'trophyCase'" class="nge-profile-body nge-profile-body--trophy">
         <div class="nge-trophy-scroll">
 
           <!-- ── Featured badge banner ── -->
@@ -1163,6 +1170,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         </div>
       </div><!-- end Trophy Case -->
 
+      <!-- ── Admin Hub tab ─────────────────────────────────────── -->
+      <div v-if="activeTab === 'adminHub'" class="nge-profile-body nge-profile-body--admin">
+        <AdminHub />
+      </div>
+
       <!-- ── All Special Awards modal ── -->
       <div v-if="showAllSpecialModal" class="nge-special-modal-backdrop" @click.self="showAllSpecialModal = false">
         <div class="nge-special-modal">
@@ -1292,6 +1304,10 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-shell--trophy {
   width: 85vw;
   max-width: 1200px;
+}
+.nge-profile-shell--admin {
+  width: 720px;
+  max-width: 90vw;
 }
 
 /* ── Topbar ── */
@@ -1497,17 +1513,17 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 /* Section label: "▌ EDITS" style */
 .nge-profile-section-label {
-  font-size: 0.63em;
+  font-size: 0.78em;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.13em;
-  color: rgba(74, 158, 255, 0.65);
+  color: rgba(120, 180, 255, 0.95);
   margin-bottom: 12px;
 }
 
-.nge-profile-section-label--amber { color: rgba(245, 166, 35, 0.65); }
+.nge-profile-section-label--amber { color: rgba(255, 195, 110, 0.95); }
 
-.nge-profile-section-label--green { color: rgba(127, 255, 136, 0.65); }
+.nge-profile-section-label--green { color: rgba(160, 255, 175, 0.95); }
 
 /* Section roll-in delays */
 .nge-profile-section--edits     { animation: ngeSectionRollIn 0.2s ease-out 0.18s both; }
@@ -1550,10 +1566,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-profile-stat-label {
-  font-size: 0.68em;
-  color: #555;
+  font-size: 0.78em;
+  color: #9bb;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  font-weight: 600;
   margin-bottom: 4px;
 }
 
@@ -1704,8 +1721,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   gap: 4px;
   font-size: 0.82em;
 }
-.nge-profile-streak-best-label { color: #555; }
-.nge-profile-streak-best-val   { color: #888; font-weight: 600; }
+.nge-profile-streak-best-label { color: #9bb; }
+.nge-profile-streak-best-val   { color: #cde; font-weight: 600; }
 
 /* ── Activity chart ────────────────────────────────────────── */
 .nge-profile-activity-chart {
@@ -1715,10 +1732,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-profile-chart-label {
-  font-size: 0.68em;
-  color: #556;
+  font-size: 0.78em;
+  color: #9bb;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  font-weight: 600;
   margin-bottom: 6px;
 }
 
@@ -2208,6 +2226,16 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-body--trophy {
   display: block;
   padding: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ADMIN HUB TAB — fills the body, AdminHub.vue handles internal padding
+───────────────────────────────────────────────────────────────────────────── */
+.nge-profile-body--admin {
+  display: block;
+  padding: 0;
+  max-height: calc(90vh - 100px);
+  overflow: hidden;
 }
 
 .nge-trophy-scroll {

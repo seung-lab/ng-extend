@@ -98,22 +98,82 @@
   display: none !important;
 }
 
+/* ── Native top-row buttons (Help "?", Volumes, etc.) styled to match the
+   toolbar pill rhythm so the row reads as one composed surface instead
+   of three different button styles. ── */
+.neuroglancer-viewer-top-row > button {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 6px !important;
+  color: #cfdcef !important;
+  font-size: 12px !important;
+  height: 28px;
+  padding: 0 10px;
+  margin: 0 2px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.neuroglancer-viewer-top-row > button:hover {
+  background: rgba(74, 158, 255, 0.1) !important;
+  border-color: rgba(74, 158, 255, 0.35) !important;
+  color: #e0ecff !important;
+}
+/* Help "?" button is a neuroglancer-icon, not <button>. Treat it as a
+   square icon tile so its rhythm matches the toolbar icons. */
+.neuroglancer-viewer-top-row > .neuroglancer-icon {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 6px !important;
+  width: 30px !important;
+  height: 28px !important;
+  margin: 0 2px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.neuroglancer-viewer-top-row > .neuroglancer-icon > svg {
+  stroke: rgba(150, 175, 215, 0.85) !important;
+}
+.neuroglancer-viewer-top-row > .neuroglancer-icon:hover {
+  background: rgba(74, 158, 255, 0.1) !important;
+  border-color: rgba(74, 158, 255, 0.35) !important;
+}
+.neuroglancer-viewer-top-row > .neuroglancer-icon:hover > svg {
+  stroke: rgba(220, 235, 255, 0.98) !important;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
-   RIGHT-HAND SIDE PANEL — Beautiful dark theme overhaul
+   RIGHT-HAND SIDE PANEL — Match the app's sci-fi black aesthetic.
+   Title bar, tab bar, and content area all sit on the same near-black
+   gradient as ModalOverlay so the right panel reads as part of the app
+   rather than a separate slate-blue widget.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Panel title bar: deep blue instead of garish #03c / #393 ── */
+/* ── Panel title bar: same deep-black gradient as our modal panels ── */
 .neuroglancer-side-panel-titlebar {
-  background: linear-gradient(135deg, rgba(20, 35, 65, 0.95), rgba(15, 25, 50, 0.95)) !important;
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 100%) !important;
   font-size: 11pt !important;
   padding: 6px 8px !important;
   border-bottom: 1px solid rgba(74, 158, 255, 0.15);
 }
 
-/* Override the ugly green for unpinned layer panels */
+/* Unpinned layer panel — slightly lifted accent, still on the deep base */
 [data-neuroglancer-layer-panel-pinned="false"] .neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title {
-  background: linear-gradient(135deg, rgba(25, 45, 70, 0.95), rgba(20, 35, 55, 0.95)) !important;
-  border-bottom: 1px solid rgba(74, 158, 255, 0.25);
+  background: linear-gradient(135deg, rgba(8, 12, 24, 0.97) 0%, rgba(12, 18, 32, 0.95) 100%) !important;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.22);
+}
+
+/* Title-bar icons (pin / select-arrow / trash / close): blue-token palette
+   instead of neuroglancer's default white-on-red hover. */
+.neuroglancer-side-panel-titlebar .neuroglancer-icon > svg {
+  stroke: rgba(150, 175, 215, 0.85) !important;
+}
+.neuroglancer-side-panel-titlebar .neuroglancer-icon {
+  border-radius: 4px;
+}
+.neuroglancer-side-panel-titlebar .neuroglancer-icon:hover {
+  background-color: rgba(74, 158, 255, 0.18) !important;
+}
+.neuroglancer-side-panel-titlebar .neuroglancer-icon:hover > svg {
+  stroke: rgba(220, 235, 255, 0.98) !important;
 }
 
 /* ── Layer name input ── */
@@ -126,46 +186,51 @@
 
 /* ── Layer type dropdown ── */
 .neuroglancer-layer-side-panel-type {
-  background: rgba(10, 18, 35, 0.7) !important;
-  border: 1px solid rgba(74, 158, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 4px;
   color: rgba(180, 200, 230, 0.9) !important;
   font-size: 9pt !important;
   padding: 2px 6px !important;
+  transition: border-color 0.15s, background 0.15s;
+}
+.neuroglancer-layer-side-panel-type:hover {
+  border-color: rgba(74, 158, 255, 0.3) !important;
+  background: rgba(74, 158, 255, 0.06) !important;
 }
 
-/* ── Tab bar: refined dark treatment ── */
+/* ── Tab bar: same near-black panel as the rest of the app ── */
 .neuroglancer-tab-view-bar {
-  background: rgba(12, 16, 28, 0.95) !important;
+  background: linear-gradient(180deg, rgba(4, 6, 14, 0.97) 0%, rgba(6, 10, 20, 0.95) 100%) !important;
   border-bottom: 1px solid rgba(74, 158, 255, 0.12) !important;
   padding: 2px 4px 0 4px;
 }
 
 .neuroglancer-tab-label {
   font-size: 10pt !important;
-  border-top: 1px solid transparent !important;
-  border-left: 1px solid transparent !important;
-  border-right: 1px solid transparent !important;
+  border: 1px solid transparent !important;
   border-bottom: none !important;
   color: rgba(160, 175, 200, 0.7) !important;
-  padding: 4px 8px 3px 8px !important;
+  padding: 4px 9px 3px 9px !important;
   border-radius: 4px 4px 0 0;
-  transition: color 0.15s, background 0.15s;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
   margin-right: 2px !important;
+  background: transparent !important;
 }
 
 .neuroglancer-tab-label:hover {
-  color: rgba(74, 158, 255, 0.9) !important;
-  background: rgba(74, 158, 255, 0.06);
+  color: rgba(220, 230, 245, 0.95) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  border-bottom-color: transparent !important;
 }
 
 .neuroglancer-tab-label.neuroglancer-selected-tab-label {
   background: rgba(74, 158, 255, 0.1) !important;
-  border-top: 1px solid rgba(74, 158, 255, 0.4) !important;
-  border-left: 1px solid rgba(74, 158, 255, 0.15) !important;
-  border-right: 1px solid rgba(74, 158, 255, 0.15) !important;
-  border-bottom: 1px solid transparent !important;
-  color: rgba(200, 220, 255, 0.95) !important;
+  border-color: rgba(74, 158, 255, 0.3) !important;
+  border-top-color: rgba(74, 158, 255, 0.5) !important;
+  border-bottom-color: transparent !important;
+  color: rgba(220, 235, 255, 0.98) !important;
   margin-bottom: -1px;
 }
 

@@ -155,7 +155,8 @@ const BATCH_SVG       = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON
 const HELP_SVG        = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><circle cx="6.6" cy="6.6" r="3.8" stroke="currentColor" stroke-width="1.6"/><path d="M9.6 9.6l3.8 3.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 const NOTIF_SVG       = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><path d="M3.7 11.5h8.6c.5 0 .8-.5.5-.95L11.5 8.8V6.5a3.5 3.5 0 0 0-7 0v2.3L3.2 10.55c-.3.45 0 .95.5.95z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 13a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 const CHAT_SVG        = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><path d="M2.5 5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2H7L4.5 14v-2.5a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
-const SETTINGS_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><circle cx="8" cy="8" r="2.1" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v2.2M8 12.3v2.2M14.5 8h-2.2M3.7 8H1.5M12.6 3.4l-1.5 1.5M4.9 11.1l-1.5 1.5M3.4 3.4l1.5 1.5M11.1 11.1l1.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+// Cog-6-tooth gear (Heroicons) — proper teeth, not radial lines.
+const SETTINGS_SVG    = `<svg viewBox="0 0 24 24" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 0 1 0 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 0 1 0-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.213-1.281Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" stroke="currentColor" stroke-width="1.5"/></svg>`;
 const QUEST_SVG       = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><path d="M8 2.5C5.2 2.5 3 4.7 3 7.4c0 1.4.6 2.7 1.6 3.6.5.4.7 1 .7 1.6V14h5.4v-1.4c0-.6.2-1.2.7-1.6 1-.9 1.6-2.2 1.6-3.6 0-2.7-2.2-4.9-5-4.9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.8 14h4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 const FEED_SVG        = `<svg viewBox="0 0 16 16" fill="none" style="${TOOL_ICON_STYLE}color:${NEUTRAL_COLOR}"><circle cx="3.2" cy="12.8" r="1.4" fill="currentColor"/><path d="M2 8.5a5.5 5.5 0 0 1 5.5 5.5M2 4a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 
@@ -738,6 +739,36 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   white-space: nowrap;
   cursor: default;
   user-select: none;
+}
+
+/* ── Dataset button: pill that matches the toolbar icon palette so the
+   top row reads as a single composed surface instead of three styles. ── */
+.nge-dataset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #cfdcef;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.nge-dataset-btn:hover {
+  background: rgba(74, 158, 255, 0.1);
+  border-color: rgba(74, 158, 255, 0.35);
+  color: #e0ecff;
+}
+.nge-dataset-btn .material-symbols-outlined {
+  color: rgba(150, 175, 215, 0.9);
+}
+.nge-dataset-btn:hover .material-symbols-outlined {
+  color: #4a9eff;
 }
 
 /* ── Toolbar icon group ── */
