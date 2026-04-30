@@ -268,6 +268,24 @@ async function updateChipPosition() {
 
 const ready = ref(false);
 
+// Element currently wearing the .nge-tour-target highlight class so we can
+// remove it when the step changes or unmounts.
+let highlightedEl: Element | null = null;
+
+async function applyHighlight() {
+    // Remove any prior highlight
+    if (highlightedEl) {
+        highlightedEl.classList.remove('nge-tour-target');
+        highlightedEl = null;
+    }
+    if (!props.step.highlight) return;
+    const el = await waitForElement(props.step.position.element);
+    if (el) {
+        el.classList.add('nge-tour-target');
+        highlightedEl = el;
+    }
+}
+
 onMounted(async () => {
     const startT = performance.now();
     console.log("test propo", props.step.state);
@@ -284,6 +302,7 @@ onMounted(async () => {
     }
     console.log('updating position', performance.now() - startT);
     updateChipPosition();
+    applyHighlight();
     ready.value = true;
 });
 
@@ -316,6 +335,10 @@ onUnmounted(() => {
     window.removeEventListener('keydown', onKeyDown, true);
     // Clean up any injected tutorial highlight styles
     document.getElementById('nge-tutorial-highlight')?.remove();
+    if (highlightedEl) {
+        highlightedEl.classList.remove('nge-tour-target');
+        highlightedEl = null;
+    }
 });
 
 </script>
@@ -323,7 +346,8 @@ onUnmounted(() => {
 <template>
     <div v-if="ready" ref="root" class="introductionStep" :class="{ hasVideo: computedStep.video !== undefined }">
         <div v-if="computedStep.modal" class="nge-overlay-blocker" @mousedown.stop.prevent></div>
-        <div class="ng-extend introductionStepAnchor chipBuildIn" :class="computedStep.cssClass"
+        <div class="ng-extend introductionStepAnchor chipBuildIn"
+            :class="[computedStep.cssClass, { 'nge-no-arrow': !!step.highlight, 'nge-quick-anim': !computedStep.modal }]"
             :style="{ left: computedStep.left, top: computedStep.top }">
             <div class="arrow"></div>
 
@@ -335,9 +359,9 @@ onUnmounted(() => {
                 <span class="corner corner-br"></span>
                 <button class="exit" @click="inExitConfirm = true">×</button>
                 <div class="title" v-if="computedStep.title">
-                  <span v-for="(char, i) in computedStep.title.split('')" :key="i"
+                  <span v-for="(char, i) in [...computedStep.title]" :key="i"
                     class="title-letter"
-                    :style="{ animationDelay: (i * 0.06) + 's' }"
+                    :style="{ animationDelay: (computedStep.modal ? i * 0.06 : Math.min(i * 0.015, 0.18)) + 's' }"
                   >{{ char === ' ' ? '\u00A0' : char }}</span>
                 </div>
                 <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline
@@ -748,5 +772,87 @@ onUnmounted(() => {
 .floatingImageSway {
     width: 100%;
     animation: floatSway 3s ease-in-out infinite;
+}
+
+/* ── Site Tour: highlight ring + no-arrow + quick build-in ─────────── */
+
+/* Hide the chip's pointer arrow when the step uses an element highlight */
+.introductionStepAnchor.nge-no-arrow .arrow {
+    display: none;
+}
+
+/* Faster entrance for non-modal element-pointer cards: skip the
+   long letter-by-letter stagger and just fade in. */
+.introductionStepAnchor.nge-quick-anim {
+    animation: chipFadeIn 0.18s ease-out both;
+}
+</style>
+
+<style>
+/* UNSCOPED: target elements outside this component (toolbar buttons,
+   side panels, etc.) get a pulsing cyan ring while they're the focus
+   of the active tour step. */
+.nge-tour-target {
+    position: relative;
+    z-index: 88;
+    outline: 2px solid rgba(0, 200, 255, 0.85) !important;
+    outline-offset: 3px;
+    border-radius: 6px;
+    animation: nge-tour-pulse 1.6s ease-in-out infinite;
+    transition: outline-color 0.2s;
+}
+@keyframes nge-tour-pulse {
+    0%, 100% {
+        box-shadow:
+            0 0 0 0 rgba(0, 200, 255, 0.45),
+            0 0 18px 2px rgba(0, 180, 255, 0.55);
+    }
+    50% {
+        box-shadow:
+            0 0 0 6px rgba(0, 200, 255, 0),
+            0 0 26px 4px rgba(0, 220, 255, 0.75);
+    }
+}
+
+/* Final-step "ready to explore" grid of next-step cards */
+.nge-tour-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    max-width: 460px;
+    margin: 0 auto;
+}
+.nge-tour-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 14px 12px;
+    border: 1px solid rgba(120, 180, 240, 0.22);
+    border-radius: 6px;
+    background: linear-gradient(135deg, rgba(20, 35, 60, 0.55), rgba(30, 20, 60, 0.45));
+    text-align: center;
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.nge-tour-card:hover {
+    border-color: rgba(120, 200, 255, 0.55);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 18px rgba(80, 160, 255, 0.18);
+}
+.nge-tour-card-icon {
+    font-size: 22px;
+    margin-bottom: 4px;
+    line-height: 1;
+}
+.nge-tour-card-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #d6ebff;
+    letter-spacing: 0.3px;
+}
+.nge-tour-card-sub {
+    font-size: 11.5px;
+    color: rgba(190, 215, 240, 0.65);
+    margin-top: 2px;
 }
 </style>

@@ -157,6 +157,9 @@ export interface Step {
   clickAfterState?: string;
   floatingImage?: string;
   onEnter?: () => void | Promise<void>;
+  /** Glow-ring around the targeted element + hide the chip arrow.
+   *  Used by the Site Tour (Tutorial 4); existing tutorials keep arrows. */
+  highlight?: boolean;
 }
 
 export const useTutorialStore = defineStore("tutorial", () => {
