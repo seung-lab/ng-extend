@@ -18,6 +18,10 @@ interface SegmentGroup {
   segmentIds: string[];
   color?: string;
   createdAt: number;
+  /** Layer name of the segmentation that was active when the group was created.
+   *  Used to keep cross-dataset segIds separate (a stroeh root_id is not the
+   *  same root_id on minnie65). Empty/missing = treat as current dataset. */
+  dataset?: string;
 }
 
 const STORAGE_KEY = 'nge_batch_groups_v1';
@@ -25,6 +29,8 @@ const groups = ref<SegmentGroup[]>([]);
 const expandedGroupId = ref<string | null>(null);
 const newGroupName = ref('');
 const addSegInput = ref<Record<string, string>>({});
+const activeDataset = ref('');
+const collapsedDatasets = ref<Set<string>>(new Set());
 
 // ── Batch operation state ───────────────────────────────────────────
 const batchProgress = ref<{ groupId: string; action: string; current: number; total: number; errors: string[] } | null>(null);
@@ -49,6 +55,11 @@ interface GuideState {
   points: Record<string, [number, number, number]>;
   /** Skipped segIds. */
   skipped: Set<string>;
+  /** Solo mode: hide every other cell so the active one is unambiguous. */
+  solo: boolean;
+  /** Snapshot of visibleSegments at the moment solo was enabled, so we can
+   *  restore the user's original viewer state on toggle-off / cancel / submit. */
+  soloSnapshot: string[] | null;
 }
 const guide = ref<GuideState | null>(null);
 
@@ -65,7 +76,61 @@ function persist() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(groups.value)); } catch {}
 }
 
-onMounted(() => { groups.value = loadGroups(); });
+onMounted(() => {
+  groups.value = loadGroups();
+  activeDataset.value = currentDataset();
+});
+
+/** Active segmentation layer name — used to tag groups by dataset. Same
+ *  detection pattern as HelpRequestsPanel so cross-dataset behavior matches. */
+function currentDataset(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const typeName = ml.layer?.constructor?.name ?? '';
+      if (typeName.includes('Segmentation')) return ml.name ?? '';
+      const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (url.includes('graphene') || url.includes('segmentation')) return ml.name ?? '';
+    }
+  } catch {}
+  return '';
+}
+
+// ── Dataset sectioning ──────────────────────────────────────────────
+interface DatasetSection {
+  dataset: string;
+  label: string;
+  isCurrent: boolean;
+  groups: SegmentGroup[];
+}
+
+const groupsByDataset = computed<DatasetSection[]>(() => {
+  const buckets = new Map<string, SegmentGroup[]>();
+  const current = activeDataset.value;
+  for (const g of groups.value) {
+    const ds = g.dataset || current || 'Unknown';
+    if (!buckets.has(ds)) buckets.set(ds, []);
+    buckets.get(ds)!.push(g);
+  }
+  const result: DatasetSection[] = [];
+  if (current && buckets.has(current)) {
+    result.push({ dataset: current, label: current, isCurrent: true, groups: buckets.get(current)! });
+    buckets.delete(current);
+  }
+  for (const [ds, gs] of buckets) {
+    result.push({ dataset: ds, label: ds, isCurrent: !current, groups: gs });
+    // Auto-collapse non-current sections on first display.
+    if (current && ds !== current && !collapsedDatasets.value.has(ds)) {
+      collapsedDatasets.value.add(ds);
+    }
+  }
+  return result;
+});
+
+function toggleDatasetSection(ds: string) {
+  if (collapsedDatasets.value.has(ds)) collapsedDatasets.value.delete(ds);
+  else collapsedDatasets.value.add(ds);
+}
 
 // ── Group CRUD ──────────────────────────────────────────────────────
 function createGroup() {
@@ -75,6 +140,7 @@ function createGroup() {
     name,
     segmentIds: [],
     createdAt: Date.now(),
+    dataset: activeDataset.value || currentDataset() || undefined,
   });
   newGroupName.value = '';
   expandedGroupId.value = groups.value[0].id;
@@ -286,12 +352,56 @@ function startCompleteWizard(group: SegmentGroup) {
     index: 0,
     points: {},
     skipped: new Set(),
+    solo: false,
+    soloSnapshot: null,
   };
   confirmAction.value = null;
 }
 
 function cancelCompleteWizard() {
+  if (guide.value?.solo) restoreSoloSnapshot();
   guide.value = null;
+}
+
+/** Restore the visible-segments set captured when solo mode was turned on. */
+function restoreSoloSnapshot() {
+  if (!guide.value?.soloSnapshot) return;
+  const layer = getSegLayer();
+  const visibleSegments = layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+  if (!visibleSegments) return;
+  // Clear current visible set, then restore the snapshot. visibleSegments is a
+  // Uint64Set — iterate to a list before deleting to avoid mutating during iteration.
+  const current: any[] = [];
+  for (const seg of visibleSegments) current.push(seg);
+  for (const seg of current) visibleSegments.delete(seg);
+  for (const idStr of guide.value.soloSnapshot) {
+    try { visibleSegments.add(Uint64.parseString(idStr)); } catch {}
+  }
+}
+
+/**
+ * Toggle solo mode for the active wizard cell. When ON, every other segment
+ * is hidden so the user can't mistake which cell to crosshair. When OFF, the
+ * pre-solo visible set is restored.
+ */
+function toggleSolo(group: SegmentGroup) {
+  if (!guide.value) return;
+  const layer = getSegLayer();
+  const visibleSegments = layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+  if (!visibleSegments) return;
+
+  if (guide.value.solo) {
+    restoreSoloSnapshot();
+    guide.value.solo = false;
+    guide.value.soloSnapshot = null;
+  } else {
+    const snapshot: string[] = [];
+    for (const seg of visibleSegments) snapshot.push(seg.toString());
+    guide.value.soloSnapshot = snapshot;
+    guide.value.solo = true;
+    // Re-run navigation so the active cell becomes the only visible one + center.
+    jumpToCurrentSegment(group);
+  }
 }
 
 function loadAllSegmentsIntoViewer(group: SegmentGroup) {
@@ -334,9 +444,15 @@ function jumpToCurrentSegment(group: SegmentGroup) {
   if (!layer) return;
   try {
     const id = Uint64.parseString(segId);
-    const groupState = layer.displayState?.segmentationGroupState?.value;
-    if (groupState?.visibleSegments && !groupState.visibleSegments.has(id)) {
-      groupState.visibleSegments.add(id);
+    const visibleSegments = layer.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (visibleSegments) {
+      if (guide.value.solo) {
+        // Solo mode: hide every other cell so only the active one is visible.
+        const current: any[] = [];
+        for (const seg of visibleSegments) current.push(seg);
+        for (const seg of current) visibleSegments.delete(seg);
+      }
+      if (!visibleSegments.has(id)) visibleSegments.add(id);
     }
     if (typeof layer.moveToSegment === 'function') {
       layer.moveToSegment(id);
@@ -353,7 +469,9 @@ function startWalk(group: SegmentGroup) {
   // in jumpToCurrentSegment relies on a loaded mesh fragment for the centroid.
   loadAllSegmentsIntoViewer(group);
   guide.value.stage = 'walk';
-  jumpToCurrentSegment(group);
+  // Default solo ON: snapshot the now-loaded set, then hide everything except
+  // the active cell. toggleSolo also calls jumpToCurrentSegment to center.
+  toggleSolo(group);
 }
 
 function saveCurrentPoint(group: SegmentGroup) {
@@ -439,6 +557,7 @@ async function submitGuidedComplete(group: SegmentGroup) {
     if (!ok) batchProgress.value.errors.push(segId);
   }
   const errCount = batchProgress.value.errors.length;
+  if (guide.value?.solo) restoreSoloSnapshot();
   flash(`Completed ${total - errCount}/${total}${errCount ? ` (${errCount} failed)` : ''}`);
   batchProgress.value = null;
   guide.value = null;
@@ -476,6 +595,14 @@ function inputValue(e: Event): string {
 
 function truncId(id: string) {
   return id.length > 8 ? '…' + id.slice(-6) : id;
+}
+
+function copySegId(segId: string) {
+  navigator.clipboard.writeText(segId).then(() => {
+    flash(`Copied ${truncId(segId)}`);
+  }).catch(() => {
+    flash('Copy failed');
+  });
 }
 
 function flash(msg: string) {
@@ -545,9 +672,20 @@ const panelStyle = computed(() => ({
           </div>
         </div>
 
-        <!-- Group list -->
+        <!-- Group list, sectioned by dataset -->
         <div class="nge-bp-list" v-if="groups.length > 0">
-          <div v-for="group in groups" :key="group.id" class="nge-bp-group">
+          <div v-for="section in groupsByDataset" :key="section.dataset" class="nge-bp-dataset-section" :class="{ 'nge-bp-dataset-section--cross': !section.isCurrent }">
+            <div class="nge-bp-dataset-header" @click="toggleDatasetSection(section.dataset)">
+              <span class="nge-bp-dataset-arrow" :class="{ 'nge-bp-dataset-arrow--collapsed': collapsedDatasets.has(section.dataset) }">▾</span>
+              <span class="nge-bp-dataset-name">
+                {{ section.label }}
+                <span v-if="section.isCurrent" class="nge-bp-dataset-tag nge-bp-dataset-tag--current">current</span>
+                <span v-else class="nge-bp-dataset-tag nge-bp-dataset-tag--other">other dataset</span>
+              </span>
+              <span class="nge-bp-dataset-count">{{ section.groups.length }}</span>
+            </div>
+            <template v-if="!collapsedDatasets.has(section.dataset)">
+          <div v-for="group in section.groups" :key="group.id" class="nge-bp-group">
             <!-- Group header -->
             <div class="nge-bp-group-header" @click="toggleExpand(group.id)">
               <span class="nge-bp-group-color" v-if="group.color" :style="{ background: group.color }"></span>
@@ -667,12 +805,22 @@ const panelStyle = computed(() => ({
                     Cell {{ guide.index + 1 }} of {{ group.segmentIds.length }}
                     · <span class="nge-bp-guide-color" :style="{ background: getSegmentColor(group.segmentIds[guide.index]) }"></span>
                     <span class="nge-bp-guide-segid">{{ truncId(group.segmentIds[guide.index]) }}</span>
+                    <button class="nge-bp-guide-copy" @click="copySegId(group.segmentIds[guide.index])" title="Copy full ID" aria-label="Copy segment ID">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                    </button>
                   </div>
                   <div class="nge-bp-guide-status">
                     <span v-if="segStatus(group.segmentIds[guide.index]) === 'saved'" class="nge-bp-guide-saved">✓ Saved</span>
                     <span v-else-if="segStatus(group.segmentIds[guide.index]) === 'skipped'" class="nge-bp-guide-skipped">— Skipped</span>
                     <span v-else class="nge-bp-guide-pending">Place crosshairs in the cell</span>
                   </div>
+                  <label class="nge-bp-guide-solo">
+                    <input type="checkbox" :checked="guide.solo" @change="toggleSolo(group)" />
+                    <span>Hide other cells</span>
+                  </label>
                   <div class="nge-bp-guide-actions">
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="jumpToCurrentSegment(group)">Show in viewer</button>
                     <button class="nge-bp-btn nge-bp-btn--go" @click="saveCurrentPoint(group)">Save Point</button>
@@ -700,6 +848,12 @@ const panelStyle = computed(() => ({
                       <span class="nge-bp-guide-item-pip">{{ segStatus(segId) === 'saved' ? '✓' : segStatus(segId) === 'skipped' ? '—' : '?' }}</span>
                       <span class="nge-bp-guide-item-color" :style="{ background: getSegmentColor(segId) }"></span>
                       <span class="nge-bp-guide-item-id">{{ truncId(segId) }}</span>
+                      <button class="nge-bp-guide-copy" @click.stop="copySegId(segId)" title="Copy full ID" aria-label="Copy segment ID">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                      </button>
                     </div>
                   </div>
                   <div class="nge-bp-guide-actions">
@@ -712,6 +866,8 @@ const panelStyle = computed(() => ({
                 </div>
               </div>
             </div>
+          </div>
+            </template>
           </div>
         </div>
 
@@ -853,6 +1009,62 @@ const panelStyle = computed(() => ({
 }
 .nge-bp-list::-webkit-scrollbar { width: 4px; }
 .nge-bp-list::-webkit-scrollbar-thumb { background: rgba(120, 140, 255, 0.15); border-radius: 2px; }
+
+/* Dataset section header */
+.nge-bp-dataset-section { margin-bottom: 4px; }
+.nge-bp-dataset-section--cross { opacity: 0.78; }
+.nge-bp-dataset-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  background: rgba(20, 20, 40, 0.55);
+  border-bottom: 1px solid rgba(120, 140, 255, 0.06);
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.82em;
+  color: #aab;
+  letter-spacing: 0.02em;
+}
+.nge-bp-dataset-header:hover { background: rgba(74, 158, 255, 0.07); color: #cde; }
+.nge-bp-dataset-arrow {
+  font-size: 0.85em;
+  color: #667;
+  transition: transform 0.15s;
+  width: 10px;
+}
+.nge-bp-dataset-arrow--collapsed { transform: rotate(-90deg); }
+.nge-bp-dataset-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.nge-bp-dataset-tag {
+  font-size: 0.85em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.nge-bp-dataset-tag--current {
+  background: rgba(74, 158, 255, 0.15);
+  color: #4af;
+}
+.nge-bp-dataset-tag--other {
+  background: rgba(255, 170, 68, 0.12);
+  color: #fa4;
+}
+.nge-bp-dataset-count {
+  font-size: 0.85em;
+  background: rgba(120, 140, 255, 0.1);
+  color: #8bf;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
 
 .nge-bp-group {
   border-bottom: 1px solid rgba(120, 140, 255, 0.04);
@@ -1089,6 +1301,24 @@ const panelStyle = computed(() => ({
 .nge-bp-guide-saved { color: #7ec07e; }
 .nge-bp-guide-skipped { color: #aab; font-style: italic; }
 .nge-bp-guide-pending { color: #aab; font-style: italic; }
+.nge-bp-guide-solo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+  font-size: 0.92em;
+  color: #aab;
+  cursor: pointer;
+  user-select: none;
+}
+.nge-bp-guide-solo:hover { color: #cde; }
+.nge-bp-guide-solo input[type="checkbox"] {
+  accent-color: #4af;
+  cursor: pointer;
+  margin: 0;
+  width: 14px;
+  height: 14px;
+}
 .nge-bp-guide-actions {
   display: flex;
   gap: 5px;
@@ -1136,5 +1366,28 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(255, 255, 255, 0.18);
   flex-shrink: 0;
 }
-.nge-bp-guide-item-id { font-family: ui-monospace, 'Cascadia Code', monospace; }
+.nge-bp-guide-item-id { font-family: ui-monospace, 'Cascadia Code', monospace; flex: 1; }
+.nge-bp-guide-copy {
+  background: none;
+  border: none;
+  color: #889;
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 3px;
+  transition: all 0.12s;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.nge-bp-guide-copy svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+.nge-bp-guide-copy:hover {
+  background: rgba(120, 140, 255, 0.15);
+  color: #cde;
+}
 </style>

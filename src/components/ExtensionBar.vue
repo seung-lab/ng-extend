@@ -166,7 +166,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => [
   { id: 'recap',       emoji: '📊', svg: RECAP_SVG,       label: 'Your Week in Science',   action: () => { showRecap.value = true; } },
   { id: 'leaderboard', emoji: '🏆', svg: LEADERBOARD_SVG, label: 'Leaderboard',            action: () => { showLeaderboard.value = true; } },
   { id: 'quest',       emoji: '🧠', svg: QUEST_SVG,       label: 'Brain Quest',            action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
-  { id: 'cells',       emoji: '🧬', svg: CELLS_SVG,       label: 'Cell Library',           action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
+  { id: 'cells',       emoji: '🧬', img: neuronIcon,       label: 'Cell Library',           action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
   { id: 'batch',       emoji: '📦', svg: BATCH_SVG,       label: 'Batch Processor',        action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
   { id: 'help',        emoji: '🔍', svg: HELP_SVG,        label: 'Second Opinion Requests',action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => helpStore.pending.length },
   { id: 'feed',        emoji: '📡', svg: FEED_SVG,        label: 'Activity Feed',          action: () => { showFeed.value = true; } },
