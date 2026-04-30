@@ -214,7 +214,9 @@ Claim up to 3 cells at a time. Mark them complete when done.`,
   {
     title: "Second Opinion",
     titleIcon: ICON_HELP,
-    text: `Stuck on a tricky cell? Request a second opinion. Other proofreaders can jump straight to your view, leave a note, and link an annotation layer with their suggestions.`,
+    text: `Stuck on a tricky cell? Request Help.
+
+Other citizen scientists can jump straight to your view, leave a note, link an annotation layer with their suggestions, and help you out!`,
     position: { element: '[title^="Second Opinion"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
