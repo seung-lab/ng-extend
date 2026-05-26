@@ -150,10 +150,12 @@ export function buildViewerState(
   };
 }
 
-// Voxel-space positions of every token, grouped by cluster label — the
-// centres of the ellipsoid annotations buildViewerState() emits.  Used
-// to seed the graphene multicut tool: one cluster's points become the
-// sinks, the other's the sources.
+// Positions of every token in the GLOBAL coordinate space (the same
+// voxel coords as the ellipsoid annotations buildViewerState() emits),
+// grouped by cluster label.  Used to seed the graphene multicut tool:
+// one cluster's points become the sinks, the other's the sources.  The
+// multicut bridge re-projects these into the segmentation layer's own
+// coordinate space before storing them (see multicut.ts).
 export function clusterPositions(
   window_: ReviewWindow,
 ): Map<number, number[][]> {
