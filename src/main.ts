@@ -4,6 +4,7 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import App from "#src/components/App.vue";
 import { useLayersStore, useVolumesStore } from "#src/store.js";
+import { useMergeReviewStore } from "#src/merge_review/store.js";
 
 function mergeTopBars() {
   const ngTopBar = document.querySelector(".neuroglancer-viewer")!.children[0];
@@ -24,5 +25,8 @@ window.addEventListener("DOMContentLoaded", () => {
   initializeWithViewer(viewer);
   const { loadVolumes } = useVolumesStore();
   loadVolumes(viewer);
+  // Hand the embedded viewer to the merge-review store so window
+  // selection can drive it via viewer.state.restoreState(...).
+  useMergeReviewStore().initializeWithViewer(viewer);
   mergeTopBars();
 });

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ExtensionBar from "#src/components/ExtensionBar.vue";
+import MergeReview from "#src/components/merge_review/MergeReview.vue";
 </script>
 
 <template>
@@ -10,6 +11,7 @@ import ExtensionBar from "#src/components/ExtensionBar.vue";
     <div id="content">
       <div id="neuroglancer-container"></div>
     </div>
+    <MergeReview />
   </div>
 </template>
 

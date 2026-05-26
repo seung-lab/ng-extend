@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import VolumesOverlay from "#src/components/VolumesOverlay.vue";
 import DropdownList from "#src/components/DropdownList.vue";
+import MergeReviewBar from "#src/components/merge_review/MergeReviewBar.vue";
 import { loginSession, useLoginStore, useVolumesStore } from "#src/store.js";
 import logoImage from "#src/CaveLogo-clear.png";
 
@@ -41,6 +42,7 @@ function logout(session: loginSession) {
         <img src="insert-logo" title="Cave Explorer" />
       </a>
     </div>
+    <merge-review-bar />
     <div id="insertNGTopBar" class="flex-fill"></div>
     <button v-if="volumes.length" @click="showVolumes = true">
       Volumes ({{ volumes.length }})

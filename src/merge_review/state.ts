@@ -1,0 +1,151 @@
+// Builds the neuroglancer viewer state for a single review window.
+//
+// This is the ng-extend port of the original demo's
+// buildSpelunkerUrl(): instead of serialising the state into a
+// spelunker `#!{...}` URL for an iframe, we return the plain state
+// object and hand it to the embedded viewer via
+// viewer.state.restoreState() (see store.ts).  The state schema is
+// identical to what neuroglancer loads from its URL hash.
+
+import type { Bundle, ReviewWindow, ViewerState } from "#src/merge_review/types.js";
+
+// 4 nm xy → 1 voxel = 4nm; 1 µm = 250 vox
+export const UM_TO_VOXEL_X = 250.0;
+// 40 nm z → 1 voxel = 40nm; 1 µm = 25 vox
+export const UM_TO_VOXEL_Z = 25.0;
+
+// Cluster colour palette (max ~7 clusters in practice).  Deliberately
+// avoids red and blue families so the dots stay distinguishable from
+// the underlying segmentation meshes (latest_root = #8888ff blue,
+// old_root = #ff6688 pink).
+export const CLUSTER_COLORS = [
+  "#ffe119", // yellow
+  "#3cb44b", // saturated green
+  "#ff8c00", // orange
+  "#aa44ff", // purple
+  "#bfef45", // lime
+  "#00d0a0", // teal
+  "#ee44ff", // magenta-violet (distinct from the pinker old-root)
+];
+
+export function clusterColor(label: number): string {
+  return CLUSTER_COLORS[label % CLUSTER_COLORS.length];
+}
+
+const EM_SOURCE =
+  "precomputed://https://bossdb-open-data.s3.amazonaws.com/" +
+  "iarpa_microns/minnie/minnie65/em";
+
+function segmentationSources(datastack: string): string[] {
+  return [
+    "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/" +
+      datastack,
+    "precomputed://middleauth+https://minnie.microns-daf.com/skeletoncache/" +
+      "api/v1/" +
+      datastack +
+      "/precomputed/skeleton/",
+  ];
+}
+
+export function buildViewerState(
+  bundle: Bundle,
+  window_: ReviewWindow,
+): ViewerState {
+  const n = bundle.neuron;
+  const c = window_.center_um;
+  const datastack = n.datastack || "minnie65_public";
+
+  // Build the segments list: latest root in blue + every old root in
+  // pink.  Old roots come from `old_root_ids` (preferred) or the
+  // legacy single-string `old_root_id` (back-compat).
+  const segs: string[] = [String(n.latest_root_id)];
+  const segColors: Record<string, string> = {};
+  segColors[String(n.latest_root_id)] = "#8888ff";
+
+  let oldRoots: string[] = [];
+  if (Array.isArray(n.old_root_ids)) {
+    oldRoots = n.old_root_ids.filter(Boolean).map(String);
+  } else if (n.old_root_id) {
+    oldRoots = [String(n.old_root_id)];
+  }
+  for (const oid of oldRoots) {
+    if (oid && oid !== String(n.latest_root_id)) {
+      segs.push(oid);
+      segColors[oid] = "#ff6688";
+    }
+  }
+
+  const layers: Record<string, unknown>[] = [
+    {
+      type: "image",
+      source: EM_SOURCE,
+      tab: "source",
+      name: "imagery",
+    },
+    {
+      type: "segmentation",
+      source: segmentationSources(datastack),
+      tab: "source",
+      segments: segs,
+      segmentColors: segColors,
+      name: "segmentation",
+    },
+  ];
+
+  if (window_.tokens && window_.tokens.pos_rel_um && window_.tokens.labels) {
+    const positions = window_.tokens.pos_rel_um;
+    const labels = window_.tokens.labels;
+    const byCluster: Record<string, { pt: number[]; desc: string }[]> = {};
+    for (let i = 0; i < positions.length; i++) {
+      const lab = labels[i];
+      if (!byCluster[lab]) byCluster[lab] = [];
+      const p = positions[i];
+      byCluster[lab].push({
+        pt: [
+          (c[0] + p[0]) * UM_TO_VOXEL_X,
+          (c[1] + p[1]) * UM_TO_VOXEL_X,
+          (c[2] + p[2]) * UM_TO_VOXEL_Z,
+        ],
+        desc: `T${i} cluster=${lab}`,
+      });
+    }
+    // Use ELLIPSOID annotations (200 nm radius spheres ≈ 50 voxels xy /
+    // 5 voxels z) so the cluster overlay reads as bigger soft blobs on
+    // top of the EM image, with reduced fill opacity so the underlying
+    // segmentation remains visible.
+    Object.keys(byCluster)
+      .sort((a, b) => Number(a) - Number(b))
+      .forEach((lab) => {
+        const color = clusterColor(Number(lab));
+        layers.push({
+          type: "annotation",
+          source: "local://annotations",
+          tab: "annotations",
+          annotationColor: color,
+          annotationFillOpacity: 0.35,
+          annotations: byCluster[lab].map((a, i) => ({
+            type: "ellipsoid",
+            center: a.pt,
+            radii: [50, 50, 5],
+            id: `c${lab}_t${i}`,
+            description: a.desc,
+          })),
+          name: `cluster-${lab}`,
+        });
+      });
+  }
+
+  return {
+    dimensions: { x: [4e-9, "m"], y: [4e-9, "m"], z: [4e-8, "m"] },
+    position: [
+      c[0] * UM_TO_VOXEL_X,
+      c[1] * UM_TO_VOXEL_X,
+      c[2] * UM_TO_VOXEL_Z,
+    ],
+    crossSectionScale: 1.0,
+    projectionScale: 12000,
+    layers,
+    selectedLayer: { layer: "segmentation", visible: true },
+    layout: "xy-3d",
+  };
+}

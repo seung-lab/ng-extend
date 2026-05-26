@@ -1,0 +1,426 @@
+/* MERGER FREE review UI, ported from the original demo's style.css.
+   Scoped under .merge-review so it overlays the embedded neuroglancer
+   viewer without colliding with neuroglancer / ng-extend styles.  The
+   full-screen iframe and page-header rules from the original are gone:
+   the viewer is now the bundled neuroglancer canvas and the toolbar
+   lives in the ng-extend ExtensionBar. */
+
+/* ── Floating windows (Windows + Decision panels) ────────────────── */
+.merge-review .floating-window {
+  position: fixed;
+  background: rgba(28, 28, 32, 0.97);
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+  z-index: 50;
+  min-width: 260px;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  resize: both;
+  color: #ddd;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.merge-review .floating-window.collapsed {
+  resize: none;
+  height: auto !important;
+  min-height: 0;
+}
+.merge-review .floating-window.collapsed .panel-body {
+  display: none;
+}
+
+.merge-review .panel-header {
+  cursor: grab;
+  user-select: none;
+  background: linear-gradient(180deg, #2c2f3a, #24262e);
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid #444;
+  flex: 0 0 auto;
+}
+.merge-review .panel-header:active {
+  cursor: grabbing;
+}
+.merge-review .panel-header .grip {
+  color: #6088ff;
+  font-size: 16px;
+  cursor: grab;
+  line-height: 1;
+  padding: 0 2px;
+}
+.merge-review .panel-header .title {
+  flex: 1;
+  font-size: 12px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  color: #cfd2db;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.merge-review .panel-min,
+.merge-review .panel-close {
+  background: #383b46;
+  color: #ccc;
+  border: 1px solid #555;
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.merge-review .panel-min:hover {
+  background: #4a4d58;
+}
+.merge-review .panel-close:hover {
+  background: #aa3333;
+  border-color: #cc4444;
+}
+
+.merge-review .panel-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 10px 12px;
+}
+
+/* ── Default panel positions ─────────────────────────────────────── */
+.merge-review #left-panel {
+  left: 12px;
+  top: 48px;
+  width: 320px;
+  height: 40vh;
+}
+.merge-review #decision-panel {
+  right: 12px;
+  bottom: 16px;
+  width: 540px;
+  max-width: 96vw;
+}
+
+/* ── Left panel (windows list) interior ──────────────────────────── */
+.merge-review #left-panel .panel-body h3 {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.merge-review #left-panel .panel-body h3:first-child {
+  margin-top: 0;
+}
+.merge-review .meta-line {
+  font-size: 11px;
+  color: #9aa;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  margin: 0 0 8px;
+  word-break: break-all;
+}
+
+.merge-review #tab-toggle {
+  display: flex;
+  gap: 4px;
+}
+.merge-review #tab-toggle button {
+  flex: 1;
+  background: #222;
+  color: #aaa;
+  border: 1px solid #444;
+  padding: 6px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.merge-review #tab-toggle button.active {
+  background: #2a4a7a;
+  color: #fff;
+  border-color: #5577aa;
+}
+
+.merge-review #window-list {
+  font-size: 12px;
+}
+.merge-review .win-row {
+  padding: 6px 8px;
+  border-bottom: 1px solid #2a2a2a;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.merge-review .win-row:hover {
+  background: #232b3a;
+}
+.merge-review .win-row.selected {
+  background: #2a4a7a;
+  color: #fff;
+}
+.merge-review .win-row .idx {
+  color: #aaf;
+  font-family: monospace;
+  min-width: 42px;
+}
+.merge-review .win-row .prob {
+  font-family: monospace;
+  color: #fa6;
+  min-width: 48px;
+  text-align: right;
+  font-size: 11px;
+}
+.merge-review .win-row .verdict-tag {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+.merge-review .win-row .verdict-tag.yes {
+  background: #2a8a3a;
+  color: #fff;
+}
+.merge-review .win-row .verdict-tag.no {
+  background: #aa2a2a;
+  color: #fff;
+}
+.merge-review .win-row .verdict-tag.skip {
+  background: #555;
+  color: #ddd;
+}
+.merge-review .win-row .verdict-tag.unsure {
+  background: #aa8a2a;
+  color: #fff;
+}
+.merge-review .win-row .verdict-tag.affinity-tag {
+  background: transparent;
+  color: #aaa;
+  border: 1px solid #555;
+  margin-left: 4px;
+}
+.merge-review .win-row.is-suspect .idx {
+  font-weight: bold;
+}
+.merge-review .empty-list {
+  padding: 10px;
+  color: #666;
+}
+
+/* ── Decision panel interior ─────────────────────────────────────── */
+.merge-review #decision-panel .panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.merge-review .decision-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.merge-review .dg-label {
+  font-size: 11px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 92px;
+}
+.merge-review .dg-buttons {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.merge-review .dg-buttons button {
+  background: #222;
+  color: #ddd;
+  border: 1px solid #444;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.merge-review .dg-buttons button:hover {
+  background: #333;
+}
+.merge-review .dg-buttons button.active.v-yes {
+  background: #2a8a3a;
+  border-color: #4a4;
+  color: #fff;
+}
+.merge-review .dg-buttons button.active.v-no {
+  background: #aa2a2a;
+  border-color: #c44;
+  color: #fff;
+}
+.merge-review .dg-buttons button.active.v-skip {
+  background: #555;
+  border-color: #777;
+}
+.merge-review .dg-buttons button.active.v-unsure {
+  background: #aa8a2a;
+  border-color: #cb6;
+  color: #fff;
+}
+/* SPLIT WHICH per-cluster button: background colour is set inline
+   (matches the EM annotation colour for that cluster); we only style
+   geometry + the muted/active states here. */
+.merge-review .dg-buttons button.split-cluster-btn {
+  color: #000;
+  padding: 6px 10px;
+  min-width: 36px;
+  border: 2px solid #444;
+  opacity: 0.45;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.6);
+}
+.merge-review .dg-buttons button.split-cluster-btn:hover {
+  opacity: 0.75;
+}
+.merge-review .dg-buttons button.split-cluster-btn.active {
+  opacity: 1;
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+.merge-review #cur-notes {
+  background: #222;
+  color: #eee;
+  border: 1px solid #444;
+  padding: 6px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+}
+.merge-review .dim {
+  color: #999;
+}
+.merge-review .btn-next {
+  background: #2a8a3a;
+  color: #fff;
+  border: 1px solid #4caf50;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.merge-review .btn-next:hover {
+  background: #3aaa4a;
+}
+.merge-review .btn-back {
+  background: #444a55;
+  color: #ddd;
+  border: 1px solid #666;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.merge-review .btn-back:hover {
+  background: #565c68;
+}
+
+/* ── Top-bar controls (in the ExtensionBar) ──────────────────────── */
+.merge-review-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+}
+.merge-review-bar button {
+  background: #2a4a7a;
+  color: #fff;
+  border: 1px solid #5577aa;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.merge-review-bar button:hover {
+  background: #3a5a8a;
+}
+.merge-review-bar button.panel-toggle {
+  background: #333;
+  border-color: #555;
+  color: #ddd;
+}
+.merge-review-bar button.panel-toggle:hover {
+  background: #444;
+}
+.merge-review-bar .brand {
+  font-weight: 700;
+  font-size: 14px;
+  color: #eee;
+}
+
+/* ── Welcome overlay ─────────────────────────────────────────────── */
+.merge-review #welcome-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.merge-review #welcome-overlay .card {
+  background: #1f1f1f;
+  color: #ddd;
+  max-width: 600px;
+  max-height: 88vh;
+  overflow: auto;
+  padding: 22px 26px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  line-height: 1.55;
+}
+.merge-review #welcome-overlay h2 {
+  margin: 0 0 12px;
+}
+.merge-review #welcome-overlay .dim {
+  color: #999;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+.merge-review #welcome-overlay kbd {
+  background: #333;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid #555;
+  font-size: 11px;
+  font-family: monospace;
+}
+.merge-review #welcome-overlay .link-btn {
+  background: #2a4a7a;
+  color: #fff;
+  border: 1px solid #5577aa;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: inherit;
+}
+.merge-review #welcome-overlay .link-btn:hover {
+  background: #3a5a8a;
+}
+.merge-review #welcome-overlay .link-btn.primary {
+  background: #2a8a3a;
+  border-color: #4caf50;
+  font-weight: 600;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+.merge-review #welcome-overlay .link-btn.primary:hover {
+  background: #3aaa4a;
+}
+.merge-review .welcome-questions {
+  padding-left: 18px;
+}
