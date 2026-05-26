@@ -286,6 +286,15 @@
   border-color: #fff;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
 }
+.merge-review .dg-buttons button.btn-create-split {
+  background: #6a3aa0;
+  border: 1px solid #9a6ad0;
+  color: #fff;
+  margin-left: 6px;
+}
+.merge-review .dg-buttons button.btn-create-split:hover {
+  background: #7d4ab8;
+}
 .merge-review #cur-notes {
   background: #222;
   color: #eee;

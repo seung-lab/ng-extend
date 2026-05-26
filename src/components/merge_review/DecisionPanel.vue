@@ -153,6 +153,14 @@ function onNotesInput() {
             >
               Skip
             </button>
+            <button
+              v-if="store.canCreateSplit"
+              class="btn-create-split"
+              title="Seed the graphene multicut tool: one cluster's annotations become the sinks, the other's the sources, then activate multicut"
+              @click="store.createSplit()"
+            >
+              ✂ Create split
+            </button>
           </template>
           <span v-else class="dim">(no token labels for this window)</span>
         </div>

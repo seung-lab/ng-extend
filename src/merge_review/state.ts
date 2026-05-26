@@ -149,3 +149,29 @@ export function buildViewerState(
     layout: "xy-3d",
   };
 }
+
+// Voxel-space positions of every token, grouped by cluster label — the
+// centres of the ellipsoid annotations buildViewerState() emits.  Used
+// to seed the graphene multicut tool: one cluster's points become the
+// sinks, the other's the sources.
+export function clusterPositions(
+  window_: ReviewWindow,
+): Map<number, number[][]> {
+  const map = new Map<number, number[][]>();
+  const t = window_.tokens;
+  if (!t || !t.pos_rel_um || !t.labels) return map;
+  const c = window_.center_um;
+  for (let i = 0; i < t.pos_rel_um.length; i++) {
+    const lab = t.labels[i];
+    const p = t.pos_rel_um[i];
+    const pt = [
+      (c[0] + p[0]) * UM_TO_VOXEL_X,
+      (c[1] + p[1]) * UM_TO_VOXEL_X,
+      (c[2] + p[2]) * UM_TO_VOXEL_Z,
+    ];
+    const arr = map.get(lab);
+    if (arr) arr.push(pt);
+    else map.set(lab, [pt]);
+  }
+  return map;
+}

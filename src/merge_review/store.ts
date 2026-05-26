@@ -19,7 +19,8 @@ import type {
   DecisionMap,
   ReviewWindow,
 } from "#src/merge_review/types.js";
-import { buildViewerState } from "#src/merge_review/state.js";
+import { buildViewerState, clusterPositions } from "#src/merge_review/state.js";
+import { seedMulticut } from "#src/merge_review/multicut.js";
 import {
   clearDecisionField,
   isDecided,
@@ -187,6 +188,39 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     setField(currentIdx.value, "notes", notes || "");
   }
 
+  // True when exactly two clusters are selected in SPLIT WHICH — the
+  // condition under which a multicut split can be seeded.
+  const canCreateSplit = computed(() => {
+    if (currentIdx.value == null) return false;
+    const split = decisions.value[currentIdx.value]?.split;
+    return Array.isArray(split) && split.length === 2;
+  });
+
+  // Seed the graphene multicut tool from the two selected clusters
+  // (one → sinks, the other → sources) and activate it.
+  function createSplit() {
+    if (!viewer || !bundle.value || currentIdx.value == null) return;
+    const w = currentWindow.value;
+    if (!w) return;
+    const split = decisions.value[currentIdx.value]?.split;
+    if (!Array.isArray(split) || split.length !== 2) return;
+
+    const [labA, labB] = split.map(Number).sort((a, b) => a - b);
+    const posByLabel = clusterPositions(w);
+    const posA = posByLabel.get(labA) || [];
+    const posB = posByLabel.get(labB) || [];
+    if (posA.length === 0 || posB.length === 0) {
+      alert("Selected clusters have no token annotations in this window.");
+      return;
+    }
+    seedMulticut(
+      viewer,
+      String(bundle.value.neuron.latest_root_id),
+      posA,
+      posB,
+    );
+  }
+
   // ─────────────────────── navigation ──────────────────────────
   function jumpRow(delta: number) {
     const visible = visibleWindows.value.map((w) => w.idx);
@@ -331,12 +365,14 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     visibleWindows,
     nReviewed,
     meta,
+    canCreateSplit,
     // actions
     initializeWithViewer,
     selectWindow,
     applyMerge,
     toggleSplitCluster,
     toggleSplitSkip,
+    createSplit,
     setNotes,
     jumpRow,
     goNextUndecided,
