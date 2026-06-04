@@ -129,7 +129,7 @@ function onNotesInput() {
       <div class="decision-group">
         <span
           class="dg-label"
-          title="Pick which colored clusters should actually be split off (multi-select).  Skip = defer."
+          title="Highlight the clusters for one side of the split; every cluster you leave un-highlighted becomes the other side.  One Create-split always = two groups.  Skip = defer."
           >SPLIT WHICH?</span
         >
         <div class="dg-buttons">
@@ -140,7 +140,7 @@ function onNotesInput() {
               class="split-cluster-btn"
               :class="{ active: selectedClusters.has(String(lab)) }"
               :style="{ background: clusterColor(lab), borderColor: clusterColor(lab) }"
-              :title="'Split off cluster ' + lab"
+              :title="'Highlight cluster ' + lab + ' onto one side of the split'"
               @click="store.toggleSplitCluster(lab)"
             >
               C{{ lab }}
@@ -156,7 +156,7 @@ function onNotesInput() {
             <button
               v-if="store.canCreateSplit"
               class="btn-create-split"
-              title="Seed the graphene multicut tool: one cluster's annotations become the sinks, the other's the sources, then activate multicut"
+              title="Seed graphene multicut as a binary split: highlighted clusters → one side (sinks), all remaining clusters → the other side (sources), then activate multicut"
               @click="store.createSplit()"
             >
               ✂ Create split
