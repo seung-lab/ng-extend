@@ -20,7 +20,12 @@ import type {
   ReviewWindow,
 } from "#src/merge_review/types.js";
 import { buildViewerState, clusterPositions } from "#src/merge_review/state.js";
-import { seedMulticut } from "#src/merge_review/multicut.js";
+import {
+  seedMulticut,
+  startManualMulticut,
+  setMulticutSide,
+  clearMulticutSeeds,
+} from "#src/merge_review/multicut.js";
 import {
   clearDecisionField,
   isDecided,
@@ -230,16 +235,44 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       );
       return;
     }
-    // Demo: the merge error lives in the OLD (pre-proofread) root —
-    // that's the segment to multicut — so seed against the old root,
-    // not the latest. Fall back to the latest root if no old root.
-    const n = bundle.value.neuron;
+    seedMulticut(viewer, String(splitRootId()), posA, posB);
+  }
+
+  // The segment to multicut.  Demo: the merge error lives in the OLD
+  // (pre-proofread) root, so cut against that; fall back to the latest.
+  function splitRootId(): string | number {
+    const n = bundle.value!.neuron;
     const oldRoot =
       Array.isArray(n.old_root_ids) && n.old_root_ids.length
         ? n.old_root_ids[0]
         : n.old_root_id;
-    const rootForSplit = oldRoot != null ? oldRoot : n.latest_root_id;
-    seedMulticut(viewer, String(rootForSplit), posA, posB);
+    return oldRoot != null ? oldRoot : n.latest_root_id;
+  }
+
+  // ─────────────────────── manual split (Option C) ─────────────────
+  // Free-form seed editing: which side ("red"=A / "blue"=B) the next
+  // viewer-clicks add a supervoxel to.  Tracked here only for UI state;
+  // the source of truth is graphene's MulticutState.
+  const activeSplitSide = ref<"red" | "blue">("red");
+
+  // Start a blank manual multicut: no cluster seeds, reviewer hand-places
+  // every point by clicking supervoxels in the viewer.
+  function startManualSplit() {
+    if (!viewer || !bundle.value) return;
+    const res = startManualMulticut(viewer, String(splitRootId()));
+    if (res.ok) activeSplitSide.value = "red";
+  }
+
+  // Switch which side subsequent clicks land on.
+  function setSplitSide(side: "red" | "blue") {
+    if (!viewer) return;
+    if (setMulticutSide(viewer, side)) activeSplitSide.value = side;
+  }
+
+  // Drop all seeds (manual + cluster-derived) and restart placement.
+  function clearSplitSeeds() {
+    if (!viewer) return;
+    if (clearMulticutSeeds(viewer)) activeSplitSide.value = "red";
   }
 
   // ─────────────────────── navigation ──────────────────────────
@@ -387,6 +420,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     nReviewed,
     meta,
     canCreateSplit,
+    activeSplitSide,
     // actions
     initializeWithViewer,
     selectWindow,
@@ -394,6 +428,9 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     toggleSplitCluster,
     toggleSplitSkip,
     createSplit,
+    startManualSplit,
+    setSplitSide,
+    clearSplitSeeds,
     setNotes,
     jumpRow,
     goNextUndecided,

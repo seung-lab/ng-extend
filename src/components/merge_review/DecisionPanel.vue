@@ -166,6 +166,46 @@ function onNotesInput() {
         </div>
       </div>
 
+      <div class="decision-group">
+        <span
+          class="dg-label"
+          title="Place the split's sink/source points by hand in the viewer when the cluster-derived points are wrong.  Pick a side, then click supervoxels in the view (click again to remove).  Works on its own or to fix up a Create-split.  Submit in the multicut tool."
+          >ADJUST POINTS</span
+        >
+        <div class="dg-buttons">
+          <button
+            class="btn-manual-split"
+            title="Start a blank manual multicut on this segment — no cluster seeds; you place every point by hand"
+            @click="store.startManualSplit()"
+          >
+            ✋ Hand-seed
+          </button>
+          <button
+            class="split-side-btn side-red"
+            :class="{ active: store.activeSplitSide === 'red' }"
+            title="Next clicks add supervoxels to side A (red / sinks)"
+            @click="store.setSplitSide('red')"
+          >
+            ● A
+          </button>
+          <button
+            class="split-side-btn side-blue"
+            :class="{ active: store.activeSplitSide === 'blue' }"
+            title="Next clicks add supervoxels to side B (blue / sources)"
+            @click="store.setSplitSide('blue')"
+          >
+            ● B
+          </button>
+          <button
+            class="v-skip"
+            title="Drop all placed points and start over"
+            @click="store.clearSplitSeeds()"
+          >
+            ⟲ Clear
+          </button>
+        </div>
+      </div>
+
       <input
         id="cur-notes"
         v-model="notes"
