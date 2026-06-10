@@ -169,6 +169,10 @@ export function buildViewerState(
     ],
     crossSectionScale: 1.0,
     projectionScale: 12000,
+    // Hide the cross-section slice planes in the 3D/mesh view by default
+    // (the "Sections" toggle in the perspective panel).  Reviewers can
+    // still turn them back on from that checkbox.
+    showSlices: false,
     layers,
     selectedLayer: { layer: "segmentation", visible: true },
     layout: "xy-3d",
