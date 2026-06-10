@@ -141,12 +141,12 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     viewer.state.restoreState(state);
   }
 
-  // Re-apply a rebuilt state WITHOUT yanking the camera or reloading the
-  // segmentation — used after a point edit.  We copy the live camera
-  // fields over the freshly-built (window-centred) ones, then restore
-  // WITHOUT reset() so neuroglancer reconciles layers by name in place:
-  // the segmentation layer is untouched and only the cluster annotation
-  // layers change (no flicker / no refetch).
+  // Re-apply a rebuilt state after a point edit while keeping the
+  // reviewer's camera.  We copy the live camera fields over the freshly
+  // built (window-centred) ones, then go through the same reset()+
+  // restoreState() path selectWindow() uses (a partial restoreState
+  // without reset leaves layers half-initialised and throws on
+  // localPosition).
   function applyStatePreservingCamera(state: Record<string, unknown>) {
     if (!viewer) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -160,7 +160,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     ]) {
       if (cur[k] !== undefined) state[k] = cur[k];
     }
-    viewer.state.restoreState(state); // no reset → in-place layer update
+    applyStateToViewer(state);
   }
 
   // Rebuild + re-apply the current window's annotations from the current
