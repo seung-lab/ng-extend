@@ -47,9 +47,28 @@ function segmentationSources(datastack: string): string[] {
   ];
 }
 
+// Per-window manual point edits, keyed by GLOBAL token index:
+//   number → re-assign the token to that cluster label (recolour)
+//   "x"    → delete the token (drop it from both split sides)
+// Empty / missing entry → use the token's original cluster label.
+export type TokenEdits = Record<number, number | "x">;
+
+// Effective cluster label of a token after edits, or null if deleted.
+export function effectiveLabel(
+  origLabel: number,
+  tokenIdx: number,
+  edits: TokenEdits,
+): number | null {
+  const e = edits[tokenIdx];
+  if (e === undefined) return origLabel;
+  if (e === "x") return null;
+  return e;
+}
+
 export function buildViewerState(
   bundle: Bundle,
   window_: ReviewWindow,
+  edits: TokenEdits = {},
 ): ViewerState {
   const n = bundle.neuron;
   const c = window_.center_um;
@@ -95,9 +114,12 @@ export function buildViewerState(
   if (window_.tokens && window_.tokens.pos_rel_um && window_.tokens.labels) {
     const positions = window_.tokens.pos_rel_um;
     const labels = window_.tokens.labels;
-    const byCluster: Record<string, { pt: number[]; desc: string }[]> = {};
+    const byCluster: Record<string, { pt: number[]; desc: string; tok: number }[]> = {};
     for (let i = 0; i < positions.length; i++) {
-      const lab = labels[i];
+      // Honour manual edits: a recoloured token moves to its new cluster,
+      // a deleted token (null) is skipped entirely.
+      const lab = effectiveLabel(labels[i], i, edits);
+      if (lab === null) continue;
       if (!byCluster[lab]) byCluster[lab] = [];
       const p = positions[i];
       byCluster[lab].push({
@@ -107,6 +129,7 @@ export function buildViewerState(
           (c[2] + p[2]) * UM_TO_VOXEL_Z,
         ],
         desc: `T${i} cluster=${lab}`,
+        tok: i,
       });
     }
     // Use ELLIPSOID annotations (200 nm radius spheres ≈ 50 voxels xy /
@@ -123,11 +146,13 @@ export function buildViewerState(
           tab: "annotations",
           annotationColor: color,
           annotationFillOpacity: 0.35,
-          annotations: byCluster[lab].map((a, i) => ({
+          annotations: byCluster[lab].map((a) => ({
             type: "ellipsoid",
             center: a.pt,
             radii: [50, 50, 5],
-            id: `c${lab}_t${i}`,
+            // id encodes the GLOBAL token index so a hovered annotation
+            // maps straight back to the token for manual edits.
+            id: `tok${a.tok}`,
             description: a.desc,
           })),
           name: `cluster-${lab}`,
@@ -158,13 +183,15 @@ export function buildViewerState(
 // coordinate space before storing them (see multicut.ts).
 export function clusterPositions(
   window_: ReviewWindow,
+  edits: TokenEdits = {},
 ): Map<number, number[][]> {
   const map = new Map<number, number[][]>();
   const t = window_.tokens;
   if (!t || !t.pos_rel_um || !t.labels) return map;
   const c = window_.center_um;
   for (let i = 0; i < t.pos_rel_um.length; i++) {
-    const lab = t.labels[i];
+    const lab = effectiveLabel(t.labels[i], i, edits); // honour edits
+    if (lab === null) continue; // deleted token
     const p = t.pos_rel_um[i];
     const pt = [
       (c[0] + p[0]) * UM_TO_VOXEL_X,
@@ -176,4 +203,21 @@ export function clusterPositions(
     else map.set(lab, [pt]);
   }
   return map;
+}
+
+// Unique cluster labels present in a window AFTER edits (sorted).  Drives
+// the SPLIT WHICH buttons and the digit-key cluster mapping so both stay
+// in sync with manual recolours/deletes.
+export function editedClusterLabels(
+  window_: ReviewWindow,
+  edits: TokenEdits = {},
+): number[] {
+  const t = window_.tokens;
+  if (!t || !t.labels) return [];
+  const set = new Set<number>();
+  for (let i = 0; i < t.labels.length; i++) {
+    const lab = effectiveLabel(t.labels[i], i, edits);
+    if (lab !== null) set.add(lab);
+  }
+  return Array.from(set).sort((a, b) => a - b);
 }

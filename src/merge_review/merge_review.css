@@ -295,36 +295,33 @@
 .merge-review .dg-buttons button.btn-create-split:hover {
   background: #7d4ab8;
 }
-.merge-review .dg-buttons button.btn-manual-split {
-  background: #2a5a8a;
-  border: 1px solid #4a7ab8;
-  color: #fff;
+.merge-review .split-edit-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #aaa;
 }
-.merge-review .dg-buttons button.btn-manual-split:hover {
-  background: #356bb0;
+.merge-review .split-edit-hint kbd {
+  background: #333;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 10px;
+  color: #eee;
 }
-/* Side toggles for manual seed placement (red = side A, blue = side B). */
-.merge-review .dg-buttons button.split-side-btn {
-  color: #fff;
-  padding: 6px 10px;
-  min-width: 34px;
-  opacity: 0.5;
+.merge-review .split-edit-hint .btn-reset-edits {
+  margin-left: 8px;
+  background: #444;
+  color: #eee;
+  border: 1px solid #666;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
 }
-.merge-review .dg-buttons button.split-side-btn.side-red {
-  background: #b03030;
-  border: 2px solid #b03030;
-}
-.merge-review .dg-buttons button.split-side-btn.side-blue {
-  background: #3050b0;
-  border: 2px solid #3050b0;
-}
-.merge-review .dg-buttons button.split-side-btn:hover {
-  opacity: 0.8;
-}
-.merge-review .dg-buttons button.split-side-btn.active {
-  opacity: 1;
-  border-color: #fff;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+.merge-review .split-edit-hint .btn-reset-edits:hover {
+  background: #555;
 }
 .merge-review #cur-notes {
   background: #222;

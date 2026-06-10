@@ -30,11 +30,8 @@ interface SegmentSelection {
 interface MulticutStateLike {
   reset(): void;
   focusSegment: { value: bigint | undefined };
-  // false → clicks land in `sinks` (red / side A); true → `sources`
-  // (blue / side B).  This is graphene's own active-group toggle.
-  blueGroup: { value: boolean };
-  sinks: { add(x: SegmentSelection): void; size: number };
-  sources: { add(x: SegmentSelection): void; size: number };
+  sinks: { add(x: SegmentSelection): void };
+  sources: { add(x: SegmentSelection): void };
 }
 
 interface RenderLayerLike {
@@ -232,84 +229,4 @@ export function seedMulticut(
   const msg = `Multicut seeded: ${sinks.length} sink + ${sources.length} source supervoxels.`;
   StatusMessage.showTemporaryMessage(msg, 6000);
   return { ok: true, message: msg };
-}
-
-// ───────────────────────── manual multicut ──────────────────────────
-// Free-form seed editing (Option C): instead of (or on top of) the
-// cluster-derived seeds, the reviewer places every sink/source point by
-// hand — clicking supervoxels directly in the viewer.  These helpers
-// drive graphene's own MulticutState so the actual cut still happens in
-// the native multicut tool; we only expose blank-activate, side-toggle,
-// and clear so the reviewer never has to hunt for ng's hidden controls.
-
-function activateMulticutTool(viewer: Viewer, userLayer: object): void {
-  const tool = restoreTool(userLayer, GRAPHENE_MULTICUT_SEGMENTS_TOOL_ID);
-  if (tool) viewer.activateTool("C", tool);
-}
-
-// Start a BLANK multicut on the given root: clear any existing seeds,
-// focus the root, default to the red (side-A) group, and activate the
-// tool.  After this the reviewer clicks supervoxels in the viewer to add
-// points; clicking an existing point removes it (native graphene
-// behaviour).  Use setMulticutSide() to switch which side clicks add to.
-export function startManualMulticut(
-  viewer: Viewer,
-  rootIdStr: string,
-): SeedMulticutResult {
-  const found = findGrapheneLayer(viewer);
-  if (!found) {
-    const msg = "No graphene segmentation layer with multicut support.";
-    StatusMessage.showTemporaryMessage(msg, 7000);
-    return { ok: false, message: msg };
-  }
-  let rootId: bigint;
-  try {
-    rootId = BigInt(rootIdStr);
-  } catch {
-    const msg = `Invalid root id: ${rootIdStr}`;
-    StatusMessage.showTemporaryMessage(msg, 7000);
-    return { ok: false, message: msg };
-  }
-  const { userLayer, multicutState } = found;
-  multicutState.reset();
-  multicutState.focusSegment.value = rootId;
-  multicutState.blueGroup.value = false; // start on side A (red / sinks)
-  activateMulticutTool(viewer, userLayer);
-  const msg =
-    "Manual split: click supervoxels to add points to the active side; " +
-    "click a point again to remove it.";
-  StatusMessage.showTemporaryMessage(msg, 6000);
-  return { ok: true, message: msg };
-}
-
-// Choose which side the reviewer's next viewer-clicks land on.
-// "red" → sinks (side A), "blue" → sources (side B).
-export function setMulticutSide(
-  viewer: Viewer,
-  side: "red" | "blue",
-): boolean {
-  const found = findGrapheneLayer(viewer);
-  if (!found) return false;
-  found.multicutState.blueGroup.value = side === "blue";
-  return true;
-}
-
-// Drop every manually-placed (and cluster-derived) seed without leaving
-// the tool, so the reviewer can restart placement from scratch.
-export function clearMulticutSeeds(viewer: Viewer): boolean {
-  const found = findGrapheneLayer(viewer);
-  if (!found) return false;
-  found.multicutState.reset();
-  return true;
-}
-
-// Current seed counts, for a live readout in the panel.  Returns null
-// when no graphene layer is present.
-export function getMulticutCounts(
-  viewer: Viewer,
-): { sinks: number; sources: number; blue: boolean } | null {
-  const found = findGrapheneLayer(viewer);
-  if (!found) return null;
-  const m = found.multicutState;
-  return { sinks: m.sinks.size, sources: m.sources.size, blue: m.blueGroup.value };
 }

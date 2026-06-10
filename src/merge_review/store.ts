@@ -19,13 +19,13 @@ import type {
   DecisionMap,
   ReviewWindow,
 } from "#src/merge_review/types.js";
-import { buildViewerState, clusterPositions } from "#src/merge_review/state.js";
 import {
-  seedMulticut,
-  startManualMulticut,
-  setMulticutSide,
-  clearMulticutSeeds,
-} from "#src/merge_review/multicut.js";
+  buildViewerState,
+  clusterPositions,
+  editedClusterLabels,
+  type TokenEdits,
+} from "#src/merge_review/state.js";
+import { seedMulticut } from "#src/merge_review/multicut.js";
 import {
   clearDecisionField,
   isDecided,
@@ -48,6 +48,11 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   // write-through on every mutation.
   const decisions: Ref<DecisionMap> = ref({});
 
+  // Manual point edits (recolour / delete) per window, keyed by window
+  // idx → { tokenIdx → newLabel | "x" }.  In-memory for the session;
+  // they refine the split grouping that feeds createSplit().
+  const tokenEdits: Ref<Record<number, TokenEdits>> = ref({});
+
   // Floating-panel chrome (re-openable from the top bar).
   const windowsOpen = ref(true);
   const windowsCollapsed = ref(false);
@@ -65,6 +70,24 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     if (!bundle.value || currentIdx.value == null) return null;
     return bundle.value.windows.find((w) => w.idx === currentIdx.value) ?? null;
   });
+
+  // Edits for the current window (empty object if none).
+  const currentEdits = computed<TokenEdits>(() =>
+    currentIdx.value == null ? {} : tokenEdits.value[currentIdx.value] ?? {},
+  );
+
+  // Cluster labels present in the current window AFTER edits — drives the
+  // SPLIT WHICH buttons and the digit-key mapping.
+  const splitClusterLabels = computed<number[]>(() =>
+    currentWindow.value
+      ? editedClusterLabels(currentWindow.value, currentEdits.value)
+      : [],
+  );
+
+  // Whether the current window has any manual point edits.
+  const hasTokenEdits = computed<boolean>(
+    () => Object.keys(currentEdits.value).length > 0,
+  );
 
   // The ordered, filtered window list shown in the list panel — also
   // the single source of truth used by keyboard/next navigation.
@@ -118,6 +141,37 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     viewer.state.restoreState(state);
   }
 
+  // Re-apply a rebuilt state WITHOUT yanking the camera or reloading the
+  // segmentation — used after a point edit.  We copy the live camera
+  // fields over the freshly-built (window-centred) ones, then restore
+  // WITHOUT reset() so neuroglancer reconciles layers by name in place:
+  // the segmentation layer is untouched and only the cluster annotation
+  // layers change (no flicker / no refetch).
+  function applyStatePreservingCamera(state: Record<string, unknown>) {
+    if (!viewer) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cur = (viewer.state as any).toJSON?.() ?? {};
+    for (const k of [
+      "position",
+      "crossSectionScale",
+      "crossSectionOrientation",
+      "projectionScale",
+      "projectionOrientation",
+    ]) {
+      if (cur[k] !== undefined) state[k] = cur[k];
+    }
+    viewer.state.restoreState(state); // no reset → in-place layer update
+  }
+
+  // Rebuild + re-apply the current window's annotations from the current
+  // edits, preserving the camera.
+  function rerenderCurrentWindow() {
+    if (!viewer || !bundle.value || !currentWindow.value) return;
+    applyStatePreservingCamera(
+      buildViewerState(bundle.value, currentWindow.value, currentEdits.value),
+    );
+  }
+
   // ─────────────────────── decisions helpers ───────────────────
   function reloadDecisions() {
     decisions.value = root.value != null ? loadDecisions(root.value) : {};
@@ -145,7 +199,9 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     const w = bundle.value.windows.find((x) => x.idx === idx);
     if (!w) return;
     currentIdx.value = idx;
-    applyStateToViewer(buildViewerState(bundle.value, w));
+    applyStateToViewer(
+      buildViewerState(bundle.value, w, tokenEdits.value[idx] ?? {}),
+    );
   }
 
   // ─────────────────────── merge verdict ───────────────────────
@@ -202,10 +258,9 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     if (currentIdx.value == null) return false;
     const split = decisions.value[currentIdx.value]?.split;
     if (!Array.isArray(split) || split.length === 0) return false;
-    const w = currentWindow.value;
-    const labels = w?.tokens?.labels;
-    if (!labels) return false;
-    const total = new Set(labels).size;
+    // Count clusters after edits so recolours/deletes stay consistent.
+    const total = splitClusterLabels.value.length;
+    if (total === 0) return false;
     // ≥1 highlighted and ≥1 not highlighted → both sides non-empty.
     return split.length >= 1 && split.length < total;
   });
@@ -221,7 +276,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     if (!Array.isArray(split) || split.length === 0) return;
 
     const selected = new Set(split.map(Number));
-    const posByLabel = clusterPositions(w);
+    const posByLabel = clusterPositions(w, currentEdits.value);
     // posA = union of all highlighted clusters; posB = union of the rest.
     const posA: number[][] = [];
     const posB: number[][] = [];
@@ -249,30 +304,53 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     return oldRoot != null ? oldRoot : n.latest_root_id;
   }
 
-  // ─────────────────────── manual split (Option C) ─────────────────
-  // Free-form seed editing: which side ("red"=A / "blue"=B) the next
-  // viewer-clicks add a supervoxel to.  Tracked here only for UI state;
-  // the source of truth is graphene's MulticutState.
-  const activeSplitSide = ref<"red" | "blue">("red");
-
-  // Start a blank manual multicut: no cluster seeds, reviewer hand-places
-  // every point by clicking supervoxels in the viewer.
-  function startManualSplit() {
-    if (!viewer || !bundle.value) return;
-    const res = startManualMulticut(viewer, String(splitRootId()));
-    if (res.ok) activeSplitSide.value = "red";
+  // ─────────────────────── manual point edits ──────────────────
+  // Apply an edit to one token of the current window: a number recolours
+  // it to that cluster label, "x" deletes it.  Re-renders in place so the
+  // viewer updates colour/removes the point without moving the camera.
+  function editToken(tokenIdx: number, action: number | "x") {
+    if (currentIdx.value == null || !currentWindow.value) return;
+    const idx = currentIdx.value;
+    const map = { ...(tokenEdits.value[idx] ?? {}) };
+    const orig = currentWindow.value.tokens?.labels?.[tokenIdx];
+    if (action !== "x" && orig === action) {
+      delete map[tokenIdx]; // recolour back to original → drop the edit
+    } else {
+      map[tokenIdx] = action;
+    }
+    tokenEdits.value = { ...tokenEdits.value, [idx]: map };
+    rerenderCurrentWindow();
   }
 
-  // Switch which side subsequent clicks land on.
-  function setSplitSide(side: "red" | "blue") {
-    if (!viewer) return;
-    if (setMulticutSide(viewer, side)) activeSplitSide.value = side;
+  // The token currently hovered in the viewer, or null.  Reads
+  // neuroglancer's pick state; our ellipsoid ids are `tok<globalIdx>`.
+  function hoveredTokenIdx(): number | null {
+    if (!viewer) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const id = (viewer as any).mouseState?.pickedAnnotationId as
+      | string
+      | undefined;
+    if (!id || !id.startsWith("tok")) return null;
+    const n = Number(id.slice(3));
+    return Number.isFinite(n) ? n : null;
   }
 
-  // Drop all seeds (manual + cluster-derived) and restart placement.
-  function clearSplitSeeds() {
-    if (!viewer) return;
-    if (clearMulticutSeeds(viewer)) activeSplitSide.value = "red";
+  // Edit whatever token is hovered right now; returns true if it acted
+  // (so the key handler knows whether to swallow the event).
+  function editHoveredToken(action: number | "x"): boolean {
+    const tok = hoveredTokenIdx();
+    if (tok == null) return false;
+    editToken(tok, action);
+    return true;
+  }
+
+  // Drop all manual edits for the current window and re-render.
+  function resetTokenEdits() {
+    if (currentIdx.value == null) return;
+    const { [currentIdx.value]: _drop, ...rest } = tokenEdits.value;
+    void _drop;
+    tokenEdits.value = rest;
+    rerenderCurrentWindow();
   }
 
   // ─────────────────────── navigation ──────────────────────────
@@ -314,6 +392,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       }
       bundle.value = obj;
       currentIdx.value = null;
+      tokenEdits.value = {}; // fresh neuron → drop any prior point edits
       reloadDecisions();
       // Auto-select the first window in the visible list so the
       // reviewer is dropped straight into the EM view.
@@ -420,7 +499,8 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     nReviewed,
     meta,
     canCreateSplit,
-    activeSplitSide,
+    splitClusterLabels,
+    hasTokenEdits,
     // actions
     initializeWithViewer,
     selectWindow,
@@ -428,9 +508,9 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     toggleSplitCluster,
     toggleSplitSkip,
     createSplit,
-    startManualSplit,
-    setSplitSide,
-    clearSplitSeeds,
+    editToken,
+    editHoveredToken,
+    resetTokenEdits,
     setNotes,
     jumpRow,
     goNextUndecided,

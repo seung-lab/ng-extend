@@ -40,14 +40,9 @@ const mergeValue = computed(
   () => currentDecision.value.merge || currentDecision.value.verdict,
 );
 
-// Unique cluster labels present in the current window's tokens.
-const clusterLabels = computed<number[]>(() => {
-  const w = store.currentWindow;
-  if (!w || !w.tokens || !Array.isArray(w.tokens.labels)) return [];
-  return Array.from(new Set(w.tokens.labels))
-    .map(Number)
-    .sort((a, b) => a - b);
-});
+// Cluster labels present in the current window AFTER manual point edits
+// (recolours/deletes), sourced from the store so the buttons stay in sync.
+const clusterLabels = computed<number[]>(() => store.splitClusterLabels);
 const hasTokens = computed(() => clusterLabels.value.length > 0);
 
 const selectedClusters = computed<Set<string>>(() => {
@@ -164,44 +159,17 @@ function onNotesInput() {
           </template>
           <span v-else class="dim">(no token labels for this window)</span>
         </div>
-      </div>
-
-      <div class="decision-group">
-        <span
-          class="dg-label"
-          title="Place the split's sink/source points by hand in the viewer when the cluster-derived points are wrong.  Pick a side, then click supervoxels in the view (click again to remove).  Works on its own or to fix up a Create-split.  Submit in the multicut tool."
-          >ADJUST POINTS</span
-        >
-        <div class="dg-buttons">
+        <div v-if="hasTokens" class="split-edit-hint">
+          Fix points: hover a point in the view, press
+          <kbd>X</kbd> to delete it, or a digit
+          <kbd>0</kbd>–<kbd>9</kbd> to recolour it to that cluster.
           <button
-            class="btn-manual-split"
-            title="Start a blank manual multicut on this segment — no cluster seeds; you place every point by hand"
-            @click="store.startManualSplit()"
+            v-if="store.hasTokenEdits"
+            class="btn-reset-edits"
+            title="Undo all manual point edits for this window"
+            @click="store.resetTokenEdits()"
           >
-            ✋ Hand-seed
-          </button>
-          <button
-            class="split-side-btn side-red"
-            :class="{ active: store.activeSplitSide === 'red' }"
-            title="Next clicks add supervoxels to side A (red / sinks)"
-            @click="store.setSplitSide('red')"
-          >
-            ● A
-          </button>
-          <button
-            class="split-side-btn side-blue"
-            :class="{ active: store.activeSplitSide === 'blue' }"
-            title="Next clicks add supervoxels to side B (blue / sources)"
-            @click="store.setSplitSide('blue')"
-          >
-            ● B
-          </button>
-          <button
-            class="v-skip"
-            title="Drop all placed points and start over"
-            @click="store.clearSplitSeeds()"
-          >
-            ⟲ Clear
+            reset edits
           </button>
         </div>
       </div>
