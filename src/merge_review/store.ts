@@ -142,13 +142,22 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   }
 
   // Re-apply a rebuilt state after a point edit while keeping the
-  // reviewer's camera.  We copy the live camera fields over the freshly
-  // built (window-centred) ones, then go through the same reset()+
-  // restoreState() path selectWindow() uses (a partial restoreState
-  // without reset leaves layers half-initialised and throws on
-  // localPosition).
+  // reviewer's camera.  Copy the live camera fields over the freshly
+  // built (window-centred) ones, then reset()+restoreState() (the path
+  // selectWindow() uses).
+  //
+  // Crucially, deactivate the mouse pick FIRST: the edit is triggered
+  // while hovering an annotation, so mouseState.active is true.  As soon
+  // as restoreState() tears down the old cluster layers, neuroglancer's
+  // LayerSelectedValues.update() loop runs over the transient layers and
+  // hits an uninitialised selectionState → "Cannot set properties of
+  // undefined (setting 'localPositionValid')".  setActive(false) makes
+  // that loop skip until the next mouse move, when the new layers are
+  // fully built.
   function applyStatePreservingCamera(state: Record<string, unknown>) {
     if (!viewer) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (viewer as any).mouseState?.setActive?.(false);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cur = (viewer.state as any).toJSON?.() ?? {};
     for (const k of [
