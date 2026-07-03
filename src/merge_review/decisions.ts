@@ -9,9 +9,39 @@
 // read/write so older exports keep working.
 
 import type { Decision, DecisionMap } from "#src/merge_review/types.js";
+import type { TokenEdits } from "#src/merge_review/state.js";
 
 function decisionsKey(root: string | number): string {
   return `decisions.${root}`;
+}
+
+// Per-window manual point edits persist alongside the decisions so a page
+// reload / crash no longer wipes the reviewer's fine-grained skeleton
+// re-grouping.  Keyed by latest_root, value is { windowIdx → TokenEdits }.
+function tokenEditsKey(root: string | number): string {
+  return `token_edits.${root}`;
+}
+
+export function loadTokenEdits(
+  root: string | number,
+): Record<number, TokenEdits> {
+  try {
+    const raw = localStorage.getItem(tokenEditsKey(root));
+    return raw ? (JSON.parse(raw) as Record<number, TokenEdits>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveTokenEdits(
+  root: string | number,
+  edits: Record<number, TokenEdits>,
+): void {
+  try {
+    localStorage.setItem(tokenEditsKey(root), JSON.stringify(edits));
+  } catch {
+    /* quota exceeded / storage disabled — ignore, in-memory still holds */
+  }
 }
 
 export function loadDecisions(root: string | number): DecisionMap {

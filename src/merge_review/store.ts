@@ -30,7 +30,9 @@ import {
   clearDecisionField,
   isDecided,
   loadDecisions,
+  loadTokenEdits,
   saveDecisions,
+  saveTokenEdits,
   setDecisionField,
 } from "#src/merge_review/decisions.js";
 
@@ -314,6 +316,13 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   }
 
   // ─────────────────────── manual point edits ──────────────────
+  // Write-through the in-memory point edits to localStorage, keyed by the
+  // current root, so a page reload / crash no longer wipes the reviewer's
+  // fine-grained skeleton re-grouping.
+  function persistTokenEdits() {
+    if (root.value != null) saveTokenEdits(root.value, tokenEdits.value);
+  }
+
   // Apply an edit to one token of the current window: a number recolours
   // it to that cluster label, "x" deletes it.  Re-renders in place so the
   // viewer updates colour/removes the point without moving the camera.
@@ -328,6 +337,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       map[tokenIdx] = action;
     }
     tokenEdits.value = { ...tokenEdits.value, [idx]: map };
+    persistTokenEdits();
     rerenderCurrentWindow();
   }
 
@@ -359,6 +369,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     const { [currentIdx.value]: _drop, ...rest } = tokenEdits.value;
     void _drop;
     tokenEdits.value = rest;
+    persistTokenEdits();
     rerenderCurrentWindow();
   }
 
@@ -401,7 +412,9 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       }
       bundle.value = obj;
       currentIdx.value = null;
-      tokenEdits.value = {}; // fresh neuron → drop any prior point edits
+      // Restore any point edits previously saved for this root (survives
+      // reloads).  Fresh neuron with no saved edits → empty map.
+      tokenEdits.value = root.value != null ? loadTokenEdits(root.value) : {};
       reloadDecisions();
       // Auto-select the first window in the visible list so the
       // reviewer is dropped straight into the EM view.
@@ -437,30 +450,52 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
         return;
       }
       const cur = loadDecisions(root.value);
+      const restoredEdits: Record<number, TokenEdits> = { ...tokenEdits.value };
       let n = 0;
+      let nEdits = 0;
       for (const k of Object.keys(entries)) {
-        const v = entries[k];
-        if (
-          v &&
-          typeof v === "object" &&
-          (v.merge || v.verdict || v.split || v.affinity)
-        ) {
-          // Normalise legacy: verdict → merge, affinity → split.
-          if (v.verdict && !v.merge) {
-            v.merge = v.verdict;
-            delete v.verdict;
+        // Loosely typed: a v3 record also carries `edits` (per-token
+        // re-grouping) and `tokens` alongside the merge/split verdict.
+        const v = entries[k] as unknown as Record<string, unknown>;
+        if (!v || typeof v !== "object") continue;
+        // Normalise legacy: verdict → merge, affinity → split.
+        if (v.verdict && !v.merge) {
+          v.merge = v.verdict;
+          delete v.verdict;
+        }
+        if (v.affinity && !v.split) {
+          v.split = v.affinity;
+          delete v.affinity;
+        }
+        // Restore the per-token skeleton re-grouping (multi-way splits).
+        // The old import dropped this: the edits were written to the file
+        // but never re-loaded into the in-memory map that drives rendering,
+        // so re-importing looked like the edits had vanished.
+        const rawEdits = v.edits;
+        if (rawEdits && typeof rawEdits === "object") {
+          const te: TokenEdits = {};
+          for (const t of Object.keys(rawEdits as Record<string, unknown>)) {
+            const val = (rawEdits as Record<string, unknown>)[t];
+            te[Number(t)] = val === "x" ? "x" : Number(val);
           }
-          if (v.affinity && !v.split) {
-            v.split = v.affinity;
-            delete v.affinity;
+          if (Object.keys(te).length) {
+            restoredEdits[Number(k)] = te;
+            nEdits++;
           }
-          cur[k] = v;
+        }
+        // Keep a decision entry only when it carries a merge/split verdict
+        // (a window with only point edits is restored above, not here).
+        if (v.merge || v.split) {
+          cur[k] = v as unknown as Decision;
           n++;
         }
       }
       saveDecisions(root.value, cur);
+      tokenEdits.value = restoredEdits;
+      persistTokenEdits();
       reloadDecisions();
-      alert(`Merged ${n} prior decision(s).`);
+      if (currentIdx.value != null) rerenderCurrentWindow();
+      alert(`Merged ${n} decision(s), restored ${nEdits} window edit(s).`);
     } catch (e) {
       alert("Failed to parse decisions JSON: " + (e as Error).message);
     }
@@ -469,12 +504,62 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   function exportDecisions() {
     if (!bundle.value || root.value == null) return;
     const all = loadDecisions(root.value);
+    const editsByIdx = tokenEdits.value;
+    // window idx -> bundle window, so we can inline token positions/labels
+    const winByIdx = new Map<number, ReviewWindow>();
+    for (const w of bundle.value.windows) winByIdx.set(w.idx, w);
+
+    // every window that has a saved decision OR in-session token edits
+    const idxKeys = new Set<string>([
+      ...Object.keys(all),
+      ...Object.keys(editsByIdx),
+    ]);
+
+    // Self-contained per-window record: decision + raw per-token edits +
+    // token positions + original/effective grouping + a `modified` flag.
+    // This is the hardcase ("错题本") feed — no need to re-join the bundle.
+    const records: Record<string, unknown> = {};
+    let nModified = 0;
+    for (const key of idxKeys) {
+      const idx = Number(key);
+      const dec: Decision = all[key] ?? {};
+      const wEdits: TokenEdits = editsByIdx[idx] ?? {};
+      const w = winByIdx.get(idx);
+      const tk = w?.tokens;
+      const origLabels = tk?.labels ?? [];
+      // grouping after the user's recolour/delete edits ("x" → -1 = deleted)
+      const effLabels = origLabels.map((l, i) =>
+        i in wEdits ? (wEdits[i] === "x" ? -1 : (wEdits[i] as number)) : l,
+      );
+      const splitDecided =
+        dec.split != null &&
+        dec.split !== "skip" &&
+        (Array.isArray(dec.split) ? dec.split.length > 0 : true);
+      const modified = Object.keys(wEdits).length > 0 || splitDecided;
+      if (modified) nModified++;
+      records[key] = {
+        ...dec,
+        modified, // a correction (recolour/delete or split) was made here
+        edits: wEdits, // tokenIdx -> new cluster label, or "x" = deleted
+        center_um: w?.center_um ?? null,
+        verify_prob: w?.verify_prob ?? null,
+        tokens: tk
+          ? {
+              pos_rel_um: tk.pos_rel_um, // per-token position (window-relative µm)
+              labels: origLabels, // original model grouping
+              labels_effective: effLabels, // grouping after user edits
+            }
+          : null,
+      };
+    }
+
     const payload = {
-      schema: "merge-review-decisions/v2",
+      schema: "merge-review-decisions/v3",
       root_id: root.value,
       exported_at: new Date().toISOString(),
       n_decisions: Object.values(all).filter(isDecided).length,
-      decisions: all,
+      n_modified: nModified,
+      decisions: records,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
