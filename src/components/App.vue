@@ -63,6 +63,7 @@ async function hardReload() {
 <style>
 @import "../common.css";
 @import "../ng-override.css";
+@import "../responsive.css";
 
 #vueMain {
   position: relative;

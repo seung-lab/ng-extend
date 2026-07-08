@@ -1,0 +1,147 @@
+/* ============================================================================
+   Responsive layout — laptops & small viewports
+   ----------------------------------------------------------------------------
+   The custom UI was tuned on a large monitor with fixed pixel sizes and no
+   breakpoints. On a laptop (and especially at 125–150% OS scaling, which
+   shrinks the effective CSS width to ~1000–1230px) the top bar ran out of
+   room: the fixed right-side cluster (Dataset button, streak chip, 13 toolbar
+   icons, profile, hamburger) plus the coordinate readout couldn't coexist, so
+   the profile button and hamburger menu clipped off the right edge.
+
+   Strategy — adapt WITHOUT shrinking the toolbar icons (they already read as
+   small on a laptop):
+     1. Designate elastic zones. The neuroglancer top-bar area and the toolbar
+        icon row are allowed to shrink/scroll; the discrete controls (logo,
+        dataset, streak, profile, hamburger) hold their natural size and stay
+        on screen.
+     2. De-cram progressively at breakpoints (collapse the "Dataset" text to
+        its glyph, tighten the coordinate readout and toolbar gaps) so the
+        icon row rarely needs to scroll on a typical laptop.
+     3. Clamp floating panels/modals to the viewport so nothing overruns a
+        short (≈768px tall) laptop screen.
+   ============================================================================ */
+
+/* ── Top bar: keep every control on screen ────────────────────────────────── */
+
+/* Constrain the bar to the viewport. Without this the flex row grows to fit
+   its content and overflows the page, so flex-shrink never engages and the
+   right-side controls sail off the edge. The min-width:0 chain stops ancestors
+   from stretching to the bar's intrinsic width. */
+#vueMain,
+.ng-extend {
+  min-width: 0;
+}
+#extensionBar {
+  max-width: 100vw;
+  box-sizing: border-box;
+}
+
+/* Discrete controls hold their size; only the two elastic zones give way. */
+#extensionBar > * {
+  flex-shrink: 0;
+}
+#extensionBar > #insertNGTopBar.flex-fill,
+#extensionBar > .nge-toolbar-icons {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/* Safety valve: if the icon row still can't fit, it scrolls horizontally
+   rather than pushing the profile + menu (which follow it in the DOM) off the
+   edge. Scrollbar hidden — the row nudges on wheel/trackpad. */
+.nge-toolbar-icons {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.nge-toolbar-icons::-webkit-scrollbar {
+  height: 0;
+}
+
+/* ≤1366px — de-cram without shrinking the icons. */
+@media (max-width: 1366px) {
+  .nge-dataset-btn {
+    gap: 0;
+    padding: 0 6px;
+  }
+  .nge-dataset-label {
+    display: none;
+  }
+  .nge-streak-chip {
+    padding: 0 7px;
+  }
+  /* Coordinate readout is the single biggest item in the elastic zone —
+     trimming its type frees the most room for everything else. */
+  .neuroglancer-position-widget {
+    font-size: 0.74em;
+    padding: 4px 5px;
+  }
+}
+
+/* ≤1120px — last resort. Drop the streak chip (least essential). Icons stay
+   full-size; if the row still can't fit it scrolls (see safety valve above). */
+@media (max-width: 1120px) {
+  .nge-streak-chip {
+    display: none;
+  }
+}
+
+/* ── Laptop: enlarge the icons ─────────────────────────────────────────────
+   The toolbar icons were meant to be 22px but a higher-specificity rule
+   (`#extensionBar button { font-size: 10pt }`) has been quietly overriding
+   that to ~13px — so they render tiny, worst of all on a high-DPI laptop.
+   These rules are scoped under `#extensionBar` (specificity 1,1,0) so they
+   actually win over that `#extensionBar button` (1,0,1) rule. Bar height is
+   unchanged — icons grow within the existing 40px row — and the elastic
+   layout above absorbs the extra width. Big monitors (>1600px) keep the
+   original look. */
+@media (max-width: 1600px) {
+  #extensionBar .nge-icon-btn {
+    font-size: 26px;   /* SVGs are sized in em, so this is the icon size */
+    width: 32px;       /* snug to the icon so buttons sit close together */
+  }
+  /* Tighten the spacing between icons horizontally. */
+  #extensionBar .nge-toolbar-icons {
+    gap: 2px;
+    padding: 0 4px;
+  }
+  #extensionBar .nge-cmd-trigger {
+    font-size: 15px;   /* the ⌘K chip, kept proportional */
+  }
+  /* Profile glyph + neuroglancer's own top-bar glyphs, bumped to match. */
+  #extensionBar #profileBtn svg {
+    width: 18px;
+    height: 18px;
+  }
+  #insertNGTopBar .neuroglancer-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* ── Floating panels & modals: never exceed the viewport ──────────────────── */
+
+/* Shared modal wrapper (Leaderboard, Settings, Profile, Recap, …). Keeps tall
+   panels from spilling off the top/bottom of a short laptop screen; content
+   scrolls inside instead. */
+.nge-overlay-blocker .nge-overlay-content {
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* Edge-pinned side panels — clamp width to the viewport and height to the
+   space below the top bar, with internal scroll. */
+.nge-cl-panel,
+.nge-bp-panel,
+.nge-notif-panel,
+.nge-quest-board,
+.nge-dataset-panel,
+.nge-tag-panel,
+.nge-ann-panel,
+.nge-chat-float {
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 52px);
+  box-sizing: border-box;
+}

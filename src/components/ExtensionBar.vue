@@ -475,7 +475,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <button class="nge-dataset-btn" @click="showDatasetSelector = !showDatasetSelector"
             title="Switch Dataset">
       <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
-      Dataset
+      <span class="nge-dataset-label">Dataset</span>
     </button>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
