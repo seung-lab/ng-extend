@@ -1,8 +1,21 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onBeforeUnmount } from 'vue';
 
-const props = defineProps<{ show: boolean }>();
-const emit = defineEmits<{ (e: 'close'): void }>();
+const props = withDefaults(defineProps<{
+  show: boolean;
+  /** 'download' (default) saves to disk; 'attach' uploads to Firebase Storage
+   *  and emits the public URL via the `attached` event. */
+  mode?: 'download' | 'attach';
+}>(), { mode: 'download' });
+const emit = defineEmits<{
+  (e: 'close'): void;
+  (e: 'attached', payload: { url: string }): void;
+}>();
+
+/** Cloud Function that mints short-lived signed PUT URLs for screenshot
+ *  uploads. Implementation lives at ytho-4bff2 (see firebase-screenshot-
+ *  upload-draft.md). Update this endpoint after deploying. */
+const SCREENSHOT_SIGN_URL = 'https://us-central1-ytho-4bff2.cloudfunctions.net/signScreenshotUpload';
 
 const PREVIEW_W = 480;
 const PREVIEW_H = 270;
@@ -378,6 +391,51 @@ watch([showScaleBar, transparent], () => {
 
 onBeforeUnmount(() => { drawing = false; });
 
+/** Upload a PNG blob to Firebase Storage via the signed-URL Cloud Function.
+ *  Returns the public download URL of the uploaded object. */
+async function uploadBlob(blob: Blob): Promise<string> {
+  // Optional context — purely metadata for the function; failure to import
+  // the store should never block the upload, so swallow errors here.
+  let userId: string | null = null;
+  let segId: string | null = null;
+  try {
+    const { useProofreadingBackendStore, useSegmentAnnotationStore } = await import('../store');
+    const backend = useProofreadingBackendStore();
+    userId = backend.userId || null;
+    const seg = useSegmentAnnotationStore();
+    segId = (seg as any).activeSegId || null;
+  } catch (e) {
+    console.warn('[screenshot] could not read user/seg context:', e);
+  }
+
+  const signRes = await fetch(SCREENSHOT_SIGN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId,
+      segId,
+      contentType: 'image/png',
+      size: blob.size,
+    }),
+  });
+  if (!signRes.ok) {
+    const t = await signRes.text().catch(() => '');
+    throw new Error(`Sign URL failed (${signRes.status}): ${t.slice(0, 200)}`);
+  }
+  const { uploadUrl, publicUrl } = await signRes.json();
+  if (!uploadUrl || !publicUrl) throw new Error('Sign URL response missing fields');
+
+  const putRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'image/png' },
+    body: blob,
+  });
+  if (!putRes.ok) {
+    throw new Error(`Upload PUT failed (${putRes.status})`);
+  }
+  return publicUrl;
+}
+
 async function download() {
   errorMsg.value = '';
   const w = Math.max(16, Math.min(8192, Math.floor(width.value || 0)));
@@ -450,6 +508,13 @@ async function download() {
       off.toBlob(b => b ? resolve(b) : reject(new Error('toBlob returned null')), 'image/png');
     });
 
+    if (props.mode === 'attach') {
+      const publicUrl = await uploadBlob(blob);
+      emit('attached', { url: publicUrl });
+      emit('close');
+      return;
+    }
+
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -475,7 +540,7 @@ async function download() {
     <div class="nge-shotdlg" role="dialog" aria-label="Save screenshot">
       <div class="nge-shotdlg-header">
         <span class="material-symbols-outlined nge-shotdlg-ico">photo_camera</span>
-        <span>Save screenshot</span>
+        <span>{{ props.mode === 'attach' ? 'Attach screenshot' : 'Save screenshot' }}</span>
         <button class="nge-shotdlg-close" @click="close" aria-label="Close">×</button>
       </div>
 
@@ -554,7 +619,9 @@ async function download() {
       <div class="nge-shotdlg-actions">
         <button class="nge-shotdlg-cancel" @click="close" :disabled="busy">Cancel</button>
         <button class="nge-shotdlg-primary" @click="download" :disabled="busy">
-          {{ busy ? 'Rendering…' : 'Download' }}
+          {{ busy
+              ? (props.mode === 'attach' ? 'Uploading…' : 'Rendering…')
+              : (props.mode === 'attach' ? 'Attach' : 'Download') }}
         </button>
       </div>
     </div>

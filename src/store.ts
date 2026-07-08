@@ -1023,6 +1023,8 @@ export interface HelpRequest {
   responseUrl?: string;
   /** Optional annotation layer name referenced by the resolver */
   responseAnnotationLayer?: string;
+  /** Public URL of an attached screenshot (Firebase Storage). */
+  screenshotUrl?: string;
 }
 
 /** Map Supabase row → HelpRequest interface */
@@ -1044,6 +1046,7 @@ function rowToHelpRequest(row: any): HelpRequest {
     responseNote: row.response_note ?? undefined,
     responseUrl: row.response_url ?? undefined,
     responseAnnotationLayer: row.response_annotation_layer ?? undefined,
+    screenshotUrl: row.screenshot_url ?? undefined,
   };
 }
 
@@ -1138,6 +1141,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       dataset: req.dataset || 'eyewire_ii',
       cell_type: req.cellType || null,
       nickname: req.nickname || null,
+      screenshot_url: req.screenshotUrl || null,
     };
 
     const { data, error } = await supabase

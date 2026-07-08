@@ -17,6 +17,7 @@ import { EYEWIRE_II_CAVE_CONFIG } from '../config';
 import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, type DatasetEntry } from '../datasets';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
+import ScreenshotDialog from './ScreenshotDialog.vue';
 
 const props = defineProps<{ initialTab?: string }>();
 const emit = defineEmits({ hide: null });
@@ -623,7 +624,16 @@ function selectInputContents(e: Event) {
 const showCreateHelp = ref(false);
 const newHelpIssue = ref('Unsure');
 const newHelpNote = ref('');
+const newHelpScreenshotUrl = ref('');
+const showHelpScreenshotDialog = ref(false);
 const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branch', 'Other'];
+
+function onHelpScreenshotAttached(payload: { url: string }) {
+  newHelpScreenshotUrl.value = payload.url;
+}
+function clearHelpScreenshot() {
+  newHelpScreenshotUrl.value = '';
+}
 
 function getActiveSegId(): string {
   try {
@@ -671,11 +681,13 @@ async function submitNewHelp() {
     dataset: getCurrentDatasetName(),
     cellType: '',
     nickname: '',
+    screenshotUrl: newHelpScreenshotUrl.value || undefined,
   });
   helpStore.refreshPending();
   showCreateHelp.value = false;
   newHelpNote.value = '';
   newHelpIssue.value = 'Unsure';
+  newHelpScreenshotUrl.value = '';
 }
 
 // ── Help note expand state ──────────────────────────────────────────
@@ -1028,6 +1040,28 @@ const panelStyle = computed(() => ({
                 rows="2"
                 @keydown.stop @keyup.stop @keypress.stop
               ></textarea>
+
+              <!-- Optional screenshot attachment -->
+              <div class="nge-cl-help-shot-row">
+                <button v-if="!newHelpScreenshotUrl"
+                        class="nge-cl-help-shot-btn"
+                        @click="showHelpScreenshotDialog = true"
+                        title="Attach a screenshot of the current view">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                       stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 8h3l2-2.5h8L18 8h3v11H3z"/>
+                    <circle cx="12" cy="13.5" r="3.8"/>
+                  </svg>
+                  <span>Attach screenshot</span>
+                </button>
+                <div v-else class="nge-cl-help-shot-preview">
+                  <img :src="newHelpScreenshotUrl" alt="Attached screenshot" />
+                  <button class="nge-cl-help-shot-remove"
+                          @click="clearHelpScreenshot"
+                          title="Remove screenshot">×</button>
+                </div>
+              </div>
+
               <div class="nge-cl-help-create-actions">
                 <button class="nge-cl-help-create-submit" @click="submitNewHelp">🔍 Submit Request</button>
                 <button class="nge-cl-help-create-cancel" @click="showCreateHelp = false">Cancel</button>
@@ -1088,6 +1122,10 @@ const panelStyle = computed(() => ({
                         <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
                       </div>
                       <div v-if="req.note" class="nge-cl-help-note" :class="{ 'nge-cl-help-note--expanded': expandedNotes.has(req.id) }" @click="toggleNoteExpand(req.id)">{{ req.note }}</div>
+                      <a v-if="req.screenshotUrl" :href="req.screenshotUrl" target="_blank" rel="noopener"
+                         class="nge-cl-help-shot-thumb" :title="'Open full screenshot'">
+                        <img :src="req.screenshotUrl" alt="Help screenshot" />
+                      </a>
                     </div>
                   </div>
                   <div class="nge-cl-row-actions">
@@ -1438,6 +1476,14 @@ const panelStyle = computed(() => ({
       </div>
     </div>
   </Teleport>
+
+  <!-- Screenshot attach dialog for help requests -->
+  <ScreenshotDialog
+    :show="showHelpScreenshotDialog"
+    mode="attach"
+    @close="showHelpScreenshotDialog = false"
+    @attached="onHelpScreenshotAttached"
+  />
 </template>
 
 <style scoped>
@@ -1993,6 +2039,81 @@ const panelStyle = computed(() => ({
 .nge-cl-help-create-note:focus {
   outline: none;
   border-color: rgba(255, 136, 170, 0.3);
+}
+
+.nge-cl-help-shot-row {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.nge-cl-help-shot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px dashed rgba(255, 136, 170, 0.35);
+  background: rgba(255, 136, 170, 0.06);
+  color: #f8a;
+  font-size: 0.78em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.nge-cl-help-shot-btn:hover {
+  background: rgba(255, 136, 170, 0.14);
+  border-color: rgba(255, 136, 170, 0.6);
+}
+.nge-cl-help-shot-preview {
+  position: relative;
+  display: inline-block;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 136, 170, 0.3);
+}
+.nge-cl-help-shot-preview img {
+  display: block;
+  width: 110px;
+  height: 62px;
+  object-fit: cover;
+}
+.nge-cl-help-shot-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.nge-cl-help-shot-remove:hover { background: rgba(255, 80, 80, 0.85); }
+
+.nge-cl-help-shot-thumb {
+  display: inline-block;
+  margin-top: 4px;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: border-color 0.15s, transform 0.1s;
+}
+.nge-cl-help-shot-thumb:hover {
+  border-color: rgba(74, 200, 255, 0.55);
+  transform: translateY(-1px);
+}
+.nge-cl-help-shot-thumb img {
+  display: block;
+  width: 96px;
+  height: 54px;
+  object-fit: cover;
 }
 
 .nge-cl-help-create-actions {
