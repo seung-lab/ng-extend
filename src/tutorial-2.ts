@@ -1,5 +1,8 @@
 import { Step } from "./store-pyr";
 import scytheHero from './images/scythe_hero.png';
+import imgWheresNurro from './images/wheres-nurro.png';
+import imgNurroAtHome from './images/nurro-at-home600.png';
+import imgTutorialFinal from './images/ng-tutorial-final-image.png';
 
 const MIDDLE = {
   element: "body",
@@ -29,7 +32,7 @@ export const steps: Step[] = [
     text: `
 Now that you've gotten familiar with the basics, let's take a deeper dive into the interface.`,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
+      imgWheresNurro,
     position: MIDDLE,
     width: "400px",
     state:
@@ -42,7 +45,7 @@ During this tutorial, you may make a mistake, accidentally delete something or b
 
 You can step backwards in the tutorial to retry. If you are still lost, just keep going and we will restore the workspace within 1 or 2 slides.`,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
+      imgWheresNurro,
     position: MIDDLE,
     width: "400px",
     state:
@@ -57,7 +60,7 @@ If you are using another country's keyboard layout, you can <a href="https://kbd
 
 Here's a <a href="https://kbdlayout.info/kbdus" target="blank">quick link to the QWERTY keyboard</a> as well.`,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/wheres-nurro.png?raw=true",
+      imgWheresNurro,
     position: MIDDLE,
     width: "400px",
     state:
@@ -70,7 +73,7 @@ Many elements in the interface have hover states with help text. Try hovering yo
 
 If you get confused in the future, hovering may help!`,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/celia-tutorial/src/images/nurro-at-home600.png?raw=true",
+      imgNurroAtHome,
     position: MIDDLE,
     width: "400px",
     state:
@@ -488,6 +491,6 @@ Note that the <span style="color: #7df;">CYAN TEXT</span> indicates a KEYBOARD o
 When you're ready, submit a set of **10 annotated test edits** (5 splits and 5 merges) to <a href="mailto:support@eyewire.org" style="color: #7df;">support@eyewire.org</a> to gain access to the Production dataset. Thanks for being a part of the neuroscience community! 🧠 For Science!`,
     position: MIDDLE,
     image:
-      "https://github.com/seung-lab/ng-extend/blob/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png?raw=true",
+      imgTutorialFinal,
   },
 ];

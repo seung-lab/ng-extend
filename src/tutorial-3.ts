@@ -1,4 +1,6 @@
 import { Step } from "./store-pyr";
+import imgSynapsesTutorial from './images/synapses-tutorial.png';
+import imgBravoNurro from './images/bravo-nurro.png';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function getViewer(): any {
@@ -59,7 +61,7 @@ Every correction you make improves the connectome — the wiring diagram of the 
 These two operations are the bread and butter of proofreading. Let's start with Merge.`,
     position: MIDDLE,
     width: "480px",
-    image: "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/synapses-tutorial.jpg",
+    image: imgSynapsesTutorial,
   },
 
   // ═══════════════════════════════════════
@@ -294,6 +296,6 @@ The brain is vast and full of mysteries — and every correction you make brings
 Happy proofreading!`,
     position: MIDDLE,
     width: "480px",
-    image: "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/bravo-nurro.png",
+    image: imgBravoNurro,
   },
 ];

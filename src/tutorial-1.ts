@@ -1,4 +1,13 @@
 import { Step } from "./store-pyr";
+import imgMainBanner from './images/main-banner-vF.png';
+import imgSegmentation from './images/segmentation-tutorial.png';
+import imgSynapseWide from './images/synapse-wide.png';
+import imgSandboxExplosion from './images/sandbox-explosion.png';
+import imgInspectorNurro from './images/inspector-nurro-2.png';
+import imgNurroSuccessTiny from './images/nurro-success-tutorial-tiny.png';
+import imgBravoNurro from './images/bravo-nurro.png';
+import imgRikaSuccess from './images/rika-success.png';
+import imgTutorialFinal from './images/ng-tutorial-final-image.png';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function getViewer(): any {
@@ -78,7 +87,7 @@ We’re a community  of researchers, citizen scientists, and engineers from arou
 
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
     image:
-      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/main-banner-vF.jpg",
+      imgMainBanner,
     position: MIDDLE,
     width: "1000px",
     state: 
@@ -90,7 +99,7 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
 To create a connectomics dataset, we start with a brain. It is sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI.`,
     position: MIDDLE,
     image:
-      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/segmentation-tutorial.jpg",
+      imgSegmentation,
     width: "500px"
   },
   //4
@@ -103,7 +112,7 @@ Although AI reconstructions are impressive, there are still many mistakes. The A
 The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck. Ready to get started?`,
     position: MIDDLE,
     image:
-      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/synapse-wide.png",
+      imgSynapseWide,
     width: "500px",
     nextLabel: "Let's go!",
   },
@@ -113,7 +122,7 @@ The flexibility and big-picture thinking of the human mind enables humans to sol
 Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them. The sandbox uses data from the MICrONS project. The cell behind this box is a pyramidal neuron from mouse visual cortex.`,
     position: MIDDLE,
     image:
-      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/sandbox-explosion.jpg",
+      imgSandboxExplosion,
     width: "500px",
     state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/5789745012539392",
     nextLabel: "ONWARD!",
@@ -187,7 +196,7 @@ This box won't go away when you click outside it.`,
 Don't worry if you can't find it - the Next button will take you there.`,
     position: OVER_3D,
     image:
-      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/inspector-nurro-2.png",
+      imgInspectorNurro,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
     onEnter: () => { setAnnotationColor('#ffff00'); },
@@ -200,7 +209,7 @@ It missed a branch. Let's see if we can find it.`,
 
     position: OVER_3D,
     image:
-      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/nurro-success-tutorial-tiny.png",
+      imgNurroSuccessTiny,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
     width: "200px",
@@ -282,14 +291,14 @@ Hit next to reveal the answer.`,
       y: 0.12,
     },
     floatingImage:
-      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/bravo-nurro.png",
+      imgBravoNurro,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5114308439572480",
   },
   {
     text: `Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore.`,
     image:
-      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/rika-success.png",
+      imgRikaSuccess,
     position: OVER_3D,
   },
   {
@@ -394,7 +403,7 @@ Email support at eyewire.ai with any questions.
 Thanks for being a part of the neuroscience community. For Science!`,
     position: MIDDLE,
     image:
-      "https://raw.githubusercontent.com/seung-lab/ng-extend/cj-ca3-tutorial/src/images/ng-tutorial-final-image.png",
+      imgTutorialFinal,
     width: "600px",
     onEnter: () => {
       const viewer = getViewer();
