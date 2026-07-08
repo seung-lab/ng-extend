@@ -904,12 +904,18 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   height: 100%;
 }
 
-.nge-icon-btn {
+#extensionBar .nge-icon-btn {
   /* `font-size` controls SVG sizing (icons use width:1em/height:1em). The
      icon viewBoxes are cropped tight to their artwork (see toolbar-icons.ts),
-     so the glyph now fills the box and font-size ≈ rendered glyph size. */
-  font-size: 24px;
-  width: 40px;
+     so the glyph now fills the box and font-size ≈ rendered glyph size.
+
+     Scoped under #extensionBar (specificity 1,1,0) so it beats the blanket
+     `#extensionBar button { font-size: 10pt }` rule above — otherwise the
+     icons fall back to 13px on wide screens. clamp() ramps the size gently
+     with viewport width instead of stepping: never cramped-huge on a laptop,
+     never a tiny speck on a big monitor. */
+  font-size: clamp(20px, 1.4vw, 26px);
+  width: clamp(32px, 2.5vw, 40px);
   height: 38px;
   display: flex;
   align-items: center;
@@ -969,8 +975,11 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 .nge-icon-btn--badge { position: relative; }
 
 .nge-toolbar-icon-img {
-  width: 24px;
-  height: 24px;
+  /* Track the same em sizing as the SVG icons so the Cell Library PNG
+     scales with the clamp() on .nge-icon-btn instead of staying a fixed
+     24px while its neighbours shrink/grow. */
+  width: 1em;
+  height: 1em;
   object-fit: contain;
   vertical-align: middle;
   opacity: 0.9;

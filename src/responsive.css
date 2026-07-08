@@ -86,20 +86,14 @@
   }
 }
 
-/* ── Laptop: enlarge the icons ─────────────────────────────────────────────
-   The toolbar icons were meant to be 22px but a higher-specificity rule
-   (`#extensionBar button { font-size: 10pt }`) has been quietly overriding
-   that to ~13px — so they render tiny, worst of all on a high-DPI laptop.
-   These rules are scoped under `#extensionBar` (specificity 1,1,0) so they
-   actually win over that `#extensionBar button` (1,0,1) rule. Bar height is
-   unchanged — icons grow within the existing 40px row — and the elastic
-   layout above absorbs the extra width. Big monitors (>1600px) keep the
-   original look. */
+/* ── Laptop: de-cram the icon row ───────────────────────────────────────────
+   The icon SIZE itself is now handled by a viewport-scaled clamp() on
+   `#extensionBar .nge-icon-btn` in ExtensionBar.vue, so it ramps smoothly and
+   no longer needs a per-breakpoint step (which previously inverted — huge on
+   laptops, tiny on big monitors, because the base rule lost specificity to
+   `#extensionBar button`). Here we only tighten the surrounding spacing so the
+   row fits on a narrower bar. */
 @media (max-width: 1600px) {
-  #extensionBar .nge-icon-btn {
-    font-size: 26px;   /* SVGs are sized in em, so this is the icon size */
-    width: 32px;       /* snug to the icon so buttons sit close together */
-  }
   /* Tighten the spacing between icons horizontally. */
   #extensionBar .nge-toolbar-icons {
     gap: 2px;
