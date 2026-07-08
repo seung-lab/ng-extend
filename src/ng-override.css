@@ -38,6 +38,19 @@
   color: rgba(200, 210, 230, 0.9) !important;
 }
 
+/* ── Mouse-hover coordinate readout (orange "x y z" that appears while
+   hovering a neuron) ──
+   It's a flex:1 item with white-space:pre, so by default (min-width:auto)
+   it refuses to shrink below its text's intrinsic width. As the cursor
+   moves the digit count changes every frame, its min width oscillates,
+   and that forces the whole top row (and the panel layout below it) to
+   reflow, which reads as the 2D/3D panels shaking. Letting it shrink to 0
+   pins the box width so only the clipped text changes, not the layout. */
+.neuroglancer-mouse-position-widget {
+  min-width: 0;
+  overflow: hidden;
+}
+
 /* ── Layer bar (bottom: "1img", "2pinky_training6", "+") ── */
 .neuroglancer-layer-panel {
   background: rgba(4, 8, 18, 0.9) !important;
