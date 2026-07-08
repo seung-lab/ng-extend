@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { marked } from 'marked';
 import { useProofreadingBackendStore } from '../store';
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
@@ -95,12 +96,29 @@ function openHelpTab() {
   emit('open-help');
 }
 
-/** Convert URLs in text to clickable <a> tags */
-function linkify(text: string): string {
-  const urlPattern = /(https?:\/\/[^\s<]+)/g;
-  return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(urlPattern, '<a href="$1" target="_blank" rel="noopener" class="nge-notif-link">$1</a>');
+/** Render a notification body (markdown) to safe HTML.
+ *  HTML is escaped FIRST — bodies can carry user text (e.g. help-response
+ *  responder names / note previews, see store.createNotification), and there's
+ *  no sanitizer dep — so raw tags become inert text. marked then turns
+ *  **bold** / _italic_ / links / lists into markup (gfm autolinks bare URLs,
+ *  breaks turns newlines into <br>). Links get target/rel + the panel link
+ *  class via a post-pass so they still open in a new tab. */
+function renderMarkdown(text: string): string {
+  const escaped = (text || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const html = marked.parse(escaped, { gfm: true, breaks: true, async: false }) as string;
+  return html.replace(/<a /g, '<a target="_blank" rel="noopener" class="nge-notif-link" ');
+}
+
+/** Markdown stripped to plain text, for the compact card preview line. */
+function plainText(text: string): string {
+  return (text || '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/^\s*#+\s*/gm, '')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '$1');
 }
 </script>
 
@@ -150,7 +168,7 @@ function linkify(text: string): string {
                 title="Dismiss"
               >×</button>
             </div>
-            <div class="nge-notif-card-body nge-notif-card-body--preview">{{ notif.body }}</div>
+            <div class="nge-notif-card-body nge-notif-card-body--preview">{{ plainText(notif.body) }}</div>
           </div>
         </div>
       </div>
@@ -185,7 +203,7 @@ function linkify(text: string): string {
                 <h2 class="nge-notif-detail-title">{{ openNotif.title }}</h2>
                 <div
                   class="nge-notif-detail-body"
-                  v-html="linkify(openNotif.body)"
+                  v-html="renderMarkdown(openNotif.body)"
                 ></div>
                 <button
                   v-if="isHelpNotification(openNotif)"
@@ -454,9 +472,21 @@ function linkify(text: string): string {
   font-size: 0.95em;
   color: #b0b0b8;
   line-height: 1.65;
-  white-space: pre-wrap;
+  /* marked emits <p>/<br>/lists now, so it owns line breaks — pre-wrap here
+     would double every gap. */
+  white-space: normal;
   word-break: break-word;
 }
+/* Rendered-markdown block spacing. */
+.nge-notif-detail-body :deep(p) { margin: 0 0 0.7em; }
+.nge-notif-detail-body :deep(p:last-child) { margin-bottom: 0; }
+.nge-notif-detail-body :deep(strong) { color: #dfe6f0; font-weight: 650; }
+.nge-notif-detail-body :deep(ul),
+.nge-notif-detail-body :deep(ol) { margin: 0 0 0.7em; padding-left: 1.3em; }
+.nge-notif-detail-body :deep(li) { margin: 0.15em 0; }
+.nge-notif-detail-body :deep(h1),
+.nge-notif-detail-body :deep(h2),
+.nge-notif-detail-body :deep(h3) { font-size: 1.05em; margin: 0.2em 0 0.5em; color: #dfe6f0; }
 
 .nge-notif-detail-body :deep(.nge-notif-link) {
   color: #4a9eff;
