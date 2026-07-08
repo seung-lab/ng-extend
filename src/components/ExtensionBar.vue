@@ -911,11 +911,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 
      Scoped under #extensionBar (specificity 1,1,0) so it beats the blanket
      `#extensionBar button { font-size: 10pt }` rule above — otherwise the
-     icons fall back to 13px on wide screens. clamp() ramps the size gently
-     with viewport width instead of stepping: never cramped-huge on a laptop,
-     never a tiny speck on a big monitor. */
-  font-size: clamp(20px, 1.4vw, 26px);
-  width: clamp(32px, 2.5vw, 40px);
+     icons fall back to 13px on wide screens (the original bug). A FIXED size
+     is deliberate: viewport-scaling (vw) grew the icons on big monitors,
+     which read as comically large. Toolbar glyphs want one consistent,
+     modest size at every width, not one that tracks the screen. */
+  font-size: 20px;
+  width: 34px;
   height: 38px;
   display: flex;
   align-items: center;
