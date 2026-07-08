@@ -1,5 +1,5 @@
 import { Step } from "./store-pyr";
-import imgSynapsesTutorial from './images/synapses-tutorial.png';
+import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

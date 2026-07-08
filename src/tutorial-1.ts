@@ -1,8 +1,8 @@
 import { Step } from "./store-pyr";
-import imgMainBanner from './images/main-banner-vF.png';
-import imgSegmentation from './images/segmentation-tutorial.png';
+import imgMainBanner from './images/main-banner-vF.jpg';
+import imgSegmentation from './images/segmentation-tutorial.jpg';
 import imgSynapseWide from './images/synapse-wide.png';
-import imgSandboxExplosion from './images/sandbox-explosion.png';
+import imgSandboxExplosion from './images/sandbox-explosion.jpg';
 import imgInspectorNurro from './images/inspector-nurro-2.png';
 import imgNurroSuccessTiny from './images/nurro-success-tutorial-tiny.png';
 import imgBravoNurro from './images/bravo-nurro.png';

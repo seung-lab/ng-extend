@@ -4,7 +4,7 @@
   "private": true,
   "description": "Test of a vite project that depends on Neuroglancer.",
   "scripts": {
-    "postinstall": "node scripts/patch-bundle-config.js",
+    "postinstall": "node scripts/patch-bundle-config.js && node scripts/patch-esbuild-loaders.js",
     "generate-code": "node ./node_modules/neuroglancer/config/generate_code.js",
     "build-min": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
     "build": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
