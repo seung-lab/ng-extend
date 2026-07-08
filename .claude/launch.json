@@ -4,7 +4,7 @@
     {
       "name": "ng-extend-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev-server"],
+      "runtimeArgs": ["run", "dev-server-win"],
       "port": 8080
     }
   ]
