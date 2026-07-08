@@ -508,7 +508,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat' }">{{ icon.badge() }}</span></button>
     </div>
 
-    <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
+    <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
     <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
       <template #buttonTitle>☰</template>
       <template #listItems>
@@ -905,10 +905,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 }
 
 .nge-icon-btn {
-  /* `font-size` controls SVG sizing (icons use width:1em/height:1em) */
-  font-size: 22px;
-  width: 38px;
-  height: 36px;
+  /* `font-size` controls SVG sizing (icons use width:1em/height:1em). The
+     icon viewBoxes are cropped tight to their artwork (see toolbar-icons.ts),
+     so the glyph now fills the box and font-size ≈ rendered glyph size. */
+  font-size: 24px;
+  width: 40px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -967,8 +969,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 .nge-icon-btn--badge { position: relative; }
 
 .nge-toolbar-icon-img {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
   vertical-align: middle;
   opacity: 0.9;
