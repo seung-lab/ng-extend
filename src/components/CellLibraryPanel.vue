@@ -14,6 +14,7 @@ import {
   type ClaimPoint,
 } from '../store';
 import { EYEWIRE_II_CAVE_CONFIG } from '../config';
+import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, type DatasetEntry } from '../datasets';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
@@ -275,8 +276,29 @@ async function completeCell(cell: typeof cells.value[0]) {
   await backend.completeTask(cell.taskId, cell.finalSegId || undefined, cell.somaCoords || undefined);
   // Write completion to Google Sheet (best-effort)
   writeCompletionToSheet(cell.segId, backend.userName, cell.finalSegId || '', cell.somaCoords || '');
-  // Log as mark_complete for stats
-  await backend.logEdit({ operation: 'mark_complete', task_id: cell.taskId });
+
+  // Record the completion in CAVE (cell_status annotation) so it materializes
+  // to the leaderboard — same path ProofreadingQueuePanel uses. The root is the
+  // proofread final segment (fall back to the original). setCellComplete logs
+  // the 'mark_complete' edit + activity internally on success, so we only log
+  // here as a fallback — that keeps cells_completed incrementing exactly once.
+  let loggedViaCave = false;
+  try {
+    const caveServer = EYEWIRE_II_CAVE_CONFIG.caveServerOverride || '';
+    const rootId = cell.finalSegId || cell.segId;
+    if (caveServer && rootId) {
+      const nums = (cell.somaCoords || '').split(/[\s,]+/).map(Number).filter(n => !Number.isNaN(n));
+      const pt = nums.length === 3 ? (nums as [number, number, number]) : undefined;
+      // suppressCelebration: completeCell runs its own triggerCellCelebration()
+      loggedViaCave = await setCellComplete(caveServer, rootId, true, undefined, pt, true);
+    }
+  } catch (e) {
+    console.warn('[cellLibrary] CAVE completion write failed (non-blocking):', e);
+  }
+  if (!loggedViaCave) {
+    // Log as mark_complete for stats (CAVE write didn't record it)
+    await backend.logEdit({ operation: 'mark_complete', task_id: cell.taskId });
+  }
   // Notify UI that status changed (claim is already cleared by completeTask)
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
   await backend.loadTasks('eyewire_ii');
