@@ -8,6 +8,7 @@ import { ref, computed, nextTick, watch } from "vue";
 import { marked } from "marked";
 import { buildAppContext, type UiState } from "../assistant/context";
 import { buildUiReference } from "../assistant/knowledge";
+import { getMaterializationInfo } from "../assistant/materialization";
 import { dispatch } from "../assistant/dispatch";
 import type { AssistantAction } from "../assistant/actions";
 
@@ -130,7 +131,7 @@ async function send(text?: string) {
     content: m.text,
   }));
 
-  let appContext = {};
+  let appContext: any = {};
   let uiReference = "";
   try {
     appContext = buildAppContext(props.uiState || {});
@@ -139,14 +140,32 @@ async function send(text?: string) {
     console.warn("[assistant] context/reference build failed:", e);
   }
 
+  // Grounds "why can't I see my edits?" in the real materialization lag.
+  // Best-effort + cached; never blocks the answer if CAVE is unreachable.
+  try {
+    const mat = await getMaterializationInfo(appContext.caveServer, appContext.datastack);
+    if (mat) appContext.materialization = mat;
+  } catch (e) {
+    console.warn("[assistant] materialization fetch failed:", e);
+  }
+
   try {
     const resp = await fetch(GUIDE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, history, appContext, uiReference }),
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      // Rate-limited (429) and other errors carry a friendly `reply` to show.
+      messages.value.push({
+        role: "assistant",
+        text: data?.reply || (resp.status === 429
+          ? "You're going a little fast — give me a few seconds and try again."
+          : "I couldn't reach the guide just now. Please try again in a moment."),
+      });
+      return;
+    }
     const reply: string = data?.reply || "…";
     const actions: AssistantAction[] = Array.isArray(data?.actions) ? data.actions : [];
 
