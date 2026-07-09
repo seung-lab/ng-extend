@@ -184,7 +184,8 @@ const assistantUiState = computed(() => {
   if (showRecap.value) openPanels.push('recap');
   if (showBatchProcessor.value) openPanels.push('batch');
   if (showDatasetSelector.value) openPanels.push('datasetSelector');
-  return { openPanels, toolMode: assistantToolMode.value };
+  const commandCatalog = (cmdPalette.value as any)?.commandCatalog?.() || [];
+  return { openPanels, toolMode: assistantToolMode.value, commandCatalog };
 });
 
 function setAssistantPanel(panel: string, open: boolean) {

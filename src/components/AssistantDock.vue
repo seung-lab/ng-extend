@@ -7,6 +7,7 @@
 import { ref, computed, nextTick, watch } from "vue";
 import { marked } from "marked";
 import { buildAppContext, type UiState } from "../assistant/context";
+import { buildUiReference } from "../assistant/knowledge";
 import { dispatch } from "../assistant/dispatch";
 import type { AssistantAction } from "../assistant/actions";
 
@@ -130,17 +131,19 @@ async function send(text?: string) {
   }));
 
   let appContext = {};
+  let uiReference = "";
   try {
     appContext = buildAppContext(props.uiState || {});
+    uiReference = buildUiReference(props.uiState?.commandCatalog);
   } catch (e) {
-    console.warn("[assistant] buildAppContext failed:", e);
+    console.warn("[assistant] context/reference build failed:", e);
   }
 
   try {
     const resp = await fetch(GUIDE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history, appContext }),
+      body: JSON.stringify({ message, history, appContext, uiReference }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();

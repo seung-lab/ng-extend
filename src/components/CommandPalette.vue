@@ -738,8 +738,25 @@ const groupedResults = computed(() => {
   return groups;
 });
 
+// Metadata-only view of the command list (no action closures), for the AI
+// Guide's auto-generated knowledge base. Reuses buildActions() so it stays in
+// sync with the real palette.
+function commandCatalog() {
+  try {
+    return buildActions().map((i) => ({
+      id: i.id,
+      label: i.label,
+      description: i.description,
+      category: i.category,
+      shortcut: i.shortcut,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // Expose open/close for parent
-defineExpose({ open, close, toggle });
+defineExpose({ open, close, toggle, commandCatalog });
 </script>
 
 <template>

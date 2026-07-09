@@ -24,6 +24,8 @@ export interface AppContext {
 export interface UiState {
   openPanels?: string[];
   toolMode?: string;
+  /** Command-palette catalog (metadata only) for the auto-generated KB. */
+  commandCatalog?: import("./knowledge").CommandMeta[];
 }
 
 function getViewer(): any {
