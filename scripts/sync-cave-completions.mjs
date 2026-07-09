@@ -65,12 +65,22 @@ const DATASTACKS = [
     datastack:       'stroeh_mouse_retina',
     cellStatusTable: 'eyewire_ii_cell_status_v2',
   },
-  // Add more datastacks here as they migrate to bound_tag_user / *_v2 tables.
-  // Example future row:
+  {
+    dataset:         'pinky_sandbox',
+    caveServer:      'https://minnie.microns-daf.com',
+    datastack:       'pinky_sandbox',
+    cellStatusTable: 'eyewire_ii_cell_status_v2',
+  },
+  // minnie65: the table is created on minnie65_sandbox (aligned_volume
+  // minnie65_phase3, shared with minnie65_public) and the app writes
+  // completions there — BUT minnie65_sandbox has no materialization running
+  // (versions == []), so the sync can't read it yet. Re-enable this row once
+  // CAVE materialization is turned on for minnie65_sandbox, else the sync
+  // throws "versions endpoint returned empty array" every run.
   // {
-  //   dataset:         'pinky_sandbox',
+  //   dataset:         'minnie65_public',
   //   caveServer:      'https://minnie.microns-daf.com',
-  //   datastack:       'pinky_sandbox',
+  //   datastack:       'minnie65_sandbox',
   //   cellStatusTable: 'eyewire_ii_cell_status_v2',
   // },
 ];
@@ -164,8 +174,22 @@ async function syncDatastack(cfg) {
   // For a 'complete' row the tag matches /^complete($|\|)/.
   // user_id is the per-row CAVE user (bound_tag_user schema).
   while (true) {
-    const rows = await fetchPage(
-      cfg.caveServer, cfg.datastack, version, cfg.cellStatusTable, offset);
+    let rows;
+    try {
+      rows = await fetchPage(
+        cfg.caveServer, cfg.datastack, version, cfg.cellStatusTable, offset);
+    } catch (e) {
+      // A freshly-created table isn't part of the current materialized
+      // version until the next materialization run. Treat "table not found
+      // for version" as "no completions yet" and skip this datastack
+      // gracefully rather than failing the whole job (which would resume the
+      // every-30-min failure emails).
+      if (/not found for version|not materialized|Analysis table/i.test(e.message)) {
+        console.log(`[sync] ${cfg.dataset}: table ${cfg.cellStatusTable} not yet materialized (v${version}) — skipping until next materialization`);
+        return;
+      }
+      throw e;
+    }
     if (!Array.isArray(rows) || rows.length === 0) break;
     totalRead += rows.length;
 
