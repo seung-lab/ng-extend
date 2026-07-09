@@ -12,6 +12,8 @@
 // refs, calls activateTool(), opens the command palette, or loads a segment —
 // so the app's real state stays in one place.
 
+import { SPOTLIGHT_TARGETS } from "./spotlight";
+
 export interface AssistantAction {
   name: string;
   args?: Record<string, any>;
@@ -50,6 +52,23 @@ export const ACTION_REGISTRY: Record<string, Validator> = {
   openCommandPalette: (args) => {
     const query = typeof args?.query === "string" ? args.query : "";
     return { query };
+  },
+
+  // Ring a known UI control with the tour glow. `target` must be a known key
+  // (see spotlight.ts); arbitrary selectors are rejected.
+  spotlight: (args) => {
+    const target = String(args?.target ?? "");
+    if (!(target in SPOTLIGHT_TARGETS)) return null;
+    const note = typeof args?.note === "string" ? args.note.slice(0, 200) : "";
+    return { target, note };
+  },
+
+  // Launch a tutorial (1-3) or the site tour (4) at an optional step.
+  startTutorial: (args) => {
+    const id = Number(args?.id);
+    if (![1, 2, 3, 4].includes(id)) return null;
+    const step = Number.isFinite(Number(args?.step)) ? Math.max(0, Math.floor(Number(args.step))) : 0;
+    return { id, step };
   },
 };
 

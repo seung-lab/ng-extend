@@ -15,6 +15,7 @@ import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
 import AssistantDock from "components/AssistantDock.vue";
+import { runSpotlight } from "../assistant/spotlight";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
@@ -252,6 +253,11 @@ function handleAssistantAction(e: Event) {
       break;
     case 'openCommandPalette': cmdPalette.value?.open(); break;
     case 'goToSegment': if (args?.segId) assistantGoToSegment(String(args.segId)); break;
+    case 'spotlight': if (args?.target) runSpotlight(String(args.target), args?.note); break;
+    case 'startTutorial':
+      tutorialStore.activeTutorial = Number(args?.id) || 4;
+      tutorialStore.setTutorialStep(Number(args?.step) || 0);
+      break;
   }
 }
 
@@ -591,6 +597,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       <button
         v-for="icon in visibleToolbar"
         :key="icon.id"
+        :data-icon-id="icon.id"
         class="nge-icon-btn"
         :class="{
           'nge-icon-btn--badge': icon.badge && icon.badge() > 0,
