@@ -10,6 +10,7 @@ import { buildAppContext, type UiState } from "../assistant/context";
 import { buildUiReference } from "../assistant/knowledge";
 import { getMaterializationInfo } from "../assistant/materialization";
 import { dispatch } from "../assistant/dispatch";
+import nurroAvatar from "../images/inspector-nurro-2.png";
 
 const props = defineProps<{
   show: boolean;
@@ -272,7 +273,9 @@ function onKeydown(e: KeyboardEvent) {
     <div class="nge-guide-resize nge-guide-resize--top" @mousedown="startResize($event, 'top')"></div>
     <div class="nge-guide-resize nge-guide-resize--left" @mousedown="startResize($event, 'left')"></div>
     <div class="nge-guide-header">
-      <span class="nge-guide-dot"></span>
+      <span class="nge-guide-avatar" :style="{ backgroundImage: `url(${nurroAvatar})` }">
+        <span class="nge-guide-status"></span>
+      </span>
       <span class="nge-guide-title">EyeWire II Guide</span>
       <button class="nge-guide-close" title="Close" @click="emit('hide')">✕</button>
     </div>
@@ -401,6 +404,26 @@ function onKeydown(e: KeyboardEvent) {
   width: 7px; height: 7px; border-radius: 50%;
   background: #0fb18b;
   box-shadow: 0 0 6px rgba(15, 177, 139, 0.6);
+}
+/* Nurro avatar (the guide's profile pic) */
+.nge-guide-avatar {
+  position: relative;
+  width: 30px; height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background-color: #0e1830;
+  background-repeat: no-repeat;
+  background-size: 200%;
+  background-position: 47% 16%;   /* zoomed onto Nurro's face + magnifying glass */
+  border: 1px solid rgba(74, 158, 255, 0.35);
+  box-shadow: 0 0 8px rgba(74, 158, 255, 0.2);
+}
+.nge-guide-status {
+  position: absolute; right: -1px; bottom: -1px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #0fb18b;
+  box-shadow: 0 0 5px rgba(15, 177, 139, 0.7);
+  border: 1.5px solid rgba(6, 10, 20, 0.95);
 }
 .nge-guide-title {
   font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
