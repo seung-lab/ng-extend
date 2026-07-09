@@ -10,7 +10,6 @@ import { buildAppContext, type UiState } from "../assistant/context";
 import { buildUiReference } from "../assistant/knowledge";
 import { getMaterializationInfo } from "../assistant/materialization";
 import { dispatch } from "../assistant/dispatch";
-import type { AssistantAction } from "../assistant/actions";
 
 const props = defineProps<{
   show: boolean;
@@ -153,11 +152,12 @@ async function send(text?: string) {
     const resp = await fetch(GUIDE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history, appContext, uiReference }),
+      body: JSON.stringify({ message, history, appContext, uiReference, stream: true }),
     });
-    const data = await resp.json().catch(() => ({}));
+
     if (!resp.ok) {
-      // Rate-limited (429) and other errors carry a friendly `reply` to show.
+      // Rate-limited (429) and other errors return JSON with a friendly `reply`.
+      const data = await resp.json().catch(() => ({} as any));
       messages.value.push({
         role: "assistant",
         text: data?.reply || (resp.status === 429
@@ -166,20 +166,58 @@ async function send(text?: string) {
       });
       return;
     }
-    const reply: string = data?.reply || "…";
-    const actions: AssistantAction[] = Array.isArray(data?.actions) ? data.actions : [];
 
-    messages.value.push({
-      role: "assistant",
-      text: reply,
-      logId: typeof data?.logId === "string" ? data.logId : undefined,
-      feedback: null,
-      correcting: false,
-      correctionText: "",
-      feedbackDone: false,
-    });
-    // Run allow-listed UI actions after the reply is shown.
-    dispatch(actions);
+    // Stream the NDJSON reply, filling one assistant message as tokens arrive.
+    const reader = resp.body?.getReader();
+    if (!reader) throw new Error("no stream");
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let idx = -1;
+    const ensureMsg = () => {
+      if (idx === -1) {
+        messages.value.push({
+          role: "assistant", text: "", logId: undefined,
+          feedback: null, correcting: false, correctionText: "", feedbackDone: false,
+        });
+        idx = messages.value.length - 1;
+        loading.value = false; // hide the typing dots once real text starts
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        let evt: any;
+        try { evt = JSON.parse(line); } catch { continue; }
+
+        if (evt.type === "text") {
+          ensureMsg();
+          messages.value[idx].text += evt.delta;
+          scrollToBottom();
+        } else if (evt.type === "done") {
+          ensureMsg();
+          if (!messages.value[idx].text) messages.value[idx].text = evt.reply || "…";
+          messages.value[idx].logId = typeof evt.logId === "string" ? evt.logId : undefined;
+          dispatch(Array.isArray(evt.actions) ? evt.actions : []);
+        } else if (evt.type === "error") {
+          ensureMsg();
+          messages.value[idx].text = evt.reply || "The guide had trouble just now. Please try again.";
+        }
+      }
+    }
+
+    if (idx === -1) {
+      messages.value.push({
+        role: "assistant",
+        text: "The guide had trouble just now. Please try again in a moment.",
+      });
+    }
   } catch (e) {
     console.error("[assistant] send failed:", e);
     messages.value.push({
