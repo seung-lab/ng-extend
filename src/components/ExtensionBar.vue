@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onMounted, ref, watch} from "vue";
+import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
 import UserProfilePanel from "components/UserProfilePanel.vue";
@@ -14,6 +14,7 @@ import AchievementToast from "components/AchievementToast.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
+import AssistantDock from "components/AssistantDock.vue";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
@@ -163,6 +164,99 @@ const showBatchProcessor = ref(false);
 const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
+
+// ── EyeWire II Guide (AI assistant) ──────────────────────────────────────
+const showAssistant = ref(false);
+// Best-effort record of the tool mode the assistant last entered, sent back to
+// the backend as context. (Direct keyboard tool switches aren't captured.)
+const assistantToolMode = ref<'merge' | 'split' | 'findPath' | 'none'>('none');
+
+// Snapshot of UI-only state the AssistantDock can't read itself: which panels
+// are open and the current tool. Read fresh on each assistant message.
+const assistantUiState = computed(() => {
+  const openPanels: string[] = [];
+  if (showCellLibrary.value) openPanels.push('cellLibrary');
+  if (showLeaderboard.value) openPanels.push('leaderboard');
+  if (showNotifications.value) openPanels.push('notifications');
+  if (showSettings.value) openPanels.push('settings');
+  if (showChat.value) openPanels.push('chat');
+  if (showRecap.value) openPanels.push('recap');
+  if (showBatchProcessor.value) openPanels.push('batch');
+  if (showDatasetSelector.value) openPanels.push('datasetSelector');
+  return { openPanels, toolMode: assistantToolMode.value };
+});
+
+function setAssistantPanel(panel: string, open: boolean) {
+  switch (panel) {
+    case 'cellLibrary': showCellLibrary.value = open; break;
+    case 'leaderboard': showLeaderboard.value = open; break;
+    case 'notifications': showNotifications.value = open; break;
+    case 'settings': showSettings.value = open; break;
+    case 'chat': showChat.value = open; break;
+    case 'recap': showRecap.value = open; break;
+    case 'batch': showBatchProcessor.value = open; break;
+    case 'datasetSelector': showDatasetSelector.value = open; break;
+  }
+}
+
+// Clear the active tool (best-effort: send Escape to the viewer).
+function clearToolMode() {
+  const viewer: any = (window as any)['viewer'];
+  const el = viewer?.element;
+  if (el instanceof HTMLElement) {
+    el.focus();
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+  }
+}
+
+// Add a segment to the visible set and recenter on it. Mirrors ChatPanel's
+// #SegID pill. Read-only navigation — never edits.
+function assistantGoToSegment(segId: string) {
+  try {
+    const viewer: any = (window as any)['viewer'];
+    if (!viewer) return;
+    const segLayer = viewer.layerManager?.managedLayers?.find((x: any) => {
+      const layer = x.layer;
+      if (!layer) return false;
+      const cn = layer.constructor?.name || '';
+      return cn.includes('Segmentation') || layer.type === 'segmentation';
+    });
+    if (!segLayer?.layer) return;
+    const { Uint64 } = require('neuroglancer/util/uint64');
+    const seg = Uint64.parseString(segId);
+    const groupState = segLayer.layer.displayState?.segmentationGroupState?.value;
+    if (groupState?.visibleSegments && !groupState.visibleSegments.has(seg)) {
+      groupState.visibleSegments.add(seg);
+    }
+    // Recenter via the patched moveToSegment (move_to_segment_patch.ts).
+    try { segLayer.layer.moveToSegment?.(seg); } catch { /* non-critical */ }
+  } catch (e) {
+    console.warn('[assistant] goToSegment failed:', e);
+  }
+}
+
+// Single listener for allow-listed assistant actions (emitted by
+// assistant/actions.ts). This is the only place assistant intent touches app
+// state. All actions here are non-destructive.
+function handleAssistantAction(e: Event) {
+  const detail = (e as CustomEvent).detail || {};
+  const { name, args } = detail;
+  switch (name) {
+    case 'openPanel': setAssistantPanel(args?.panel, true); break;
+    case 'closePanel': setAssistantPanel(args?.panel, false); break;
+    case 'setToolMode':
+      if (args?.mode === 'merge') { activateTool('merge'); assistantToolMode.value = 'merge'; }
+      else if (args?.mode === 'split') { activateTool('multicut'); assistantToolMode.value = 'split'; }
+      else if (args?.mode === 'findPath') { activateTool('findPath'); assistantToolMode.value = 'findPath'; }
+      else { clearToolMode(); assistantToolMode.value = 'none'; }
+      break;
+    case 'openCommandPalette': cmdPalette.value?.open(); break;
+    case 'goToSegment': if (args?.segId) assistantGoToSegment(String(args.segId)); break;
+  }
+}
+
+onMounted(() => document.addEventListener('nge:assistant-action', handleAssistantAction as EventListener));
+onUnmounted(() => document.removeEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 const backendStore = useProofreadingBackendStore();
 const { tutorialStep } = storeToRefs(useTutorialStore());
 
@@ -376,6 +470,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
+  <assistant-dock :show="showAssistant" :ui-state="assistantUiState" @hide="showAssistant = false" />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <!-- Click → hard refresh. Reloads the bundle from the server (skips
@@ -472,6 +567,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       </div>
     </transition>
     <screenshot-dialog :show="showScreenshotDialog" @close="showScreenshotDialog = false" />
+    <button class="nge-ask-btn" :class="{ 'nge-ask-btn--active': showAssistant }"
+            @click="showAssistant = !showAssistant"
+            title="Ask the EyeWire II Guide">
+      <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">forum</span>
+      <span class="nge-ask-label">Ask</span>
+    </button>
     <button class="nge-dataset-btn" @click="showDatasetSelector = !showDatasetSelector"
             title="Switch Dataset">
       <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
@@ -893,6 +994,36 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 }
 .nge-dataset-btn:hover .material-symbols-outlined {
   color: #cfdcef;
+}
+
+/* ── Ask (EyeWire II Guide) button ── */
+.nge-ask-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: rgba(74, 158, 255, 0.12);
+  border: 1px solid rgba(74, 158, 255, 0.28);
+  border-radius: 14px;
+  color: #cfe0f5;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.nge-ask-btn:hover {
+  background: rgba(74, 158, 255, 0.22);
+  border-color: rgba(74, 158, 255, 0.5);
+  color: #eaf2ff;
+}
+.nge-ask-btn--active {
+  background: rgba(74, 158, 255, 0.28);
+  border-color: rgba(74, 158, 255, 0.6);
+}
+.nge-ask-btn .material-symbols-outlined {
+  color: #6fb2ff;
 }
 
 /* ── Toolbar icon group ── */
