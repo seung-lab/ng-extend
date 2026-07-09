@@ -4,7 +4,7 @@
 // Cloud Function and runs the returned actions through the allow-list in
 // dispatch(). Styling mirrors ChatPanel.vue.
 
-import { ref, nextTick, watch } from "vue";
+import { ref, computed, nextTick, watch } from "vue";
 import { marked } from "marked";
 import { buildAppContext, type UiState } from "../assistant/context";
 import { dispatch } from "../assistant/dispatch";
@@ -29,6 +29,55 @@ const input = ref("");
 const loading = ref(false);
 const scrollEl = ref<HTMLElement | null>(null);
 const inputEl = ref<HTMLTextAreaElement | null>(null);
+
+// ── Resize (anchored bottom-right; drags grow the panel up and to the left) ──
+const W_KEY = "nge-guide-width";
+const H_KEY = "nge-guide-height";
+const MIN_W = 280, MAX_W = 720;
+const MIN_H = 220, MAX_H = 760;
+
+function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+function loadSize(key: string, fallback: number) {
+  const n = parseInt(localStorage.getItem(key) || "", 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+const dockWidth = ref(loadSize(W_KEY, 340));
+const dockHeight = ref(loadSize(H_KEY, 460));
+
+const dockStyle = computed(() => ({
+  width: dockWidth.value + "px",
+  height: dockHeight.value + "px",
+}));
+
+let resizeAxis: "corner" | "left" | "top" = "corner";
+let resizeStart = { mx: 0, my: 0, w: 0, h: 0 };
+
+function startResize(e: MouseEvent, axis: "corner" | "left" | "top") {
+  e.preventDefault();
+  resizeAxis = axis;
+  resizeStart = { mx: e.clientX, my: e.clientY, w: dockWidth.value, h: dockHeight.value };
+  document.addEventListener("mousemove", onResize);
+  document.addEventListener("mouseup", stopResize);
+}
+
+function onResize(e: MouseEvent) {
+  if (resizeAxis === "corner" || resizeAxis === "left") {
+    // Anchored right → dragging left (negative dx) widens the panel.
+    dockWidth.value = clamp(resizeStart.w - (e.clientX - resizeStart.mx), MIN_W, Math.min(MAX_W, window.innerWidth - 16));
+  }
+  if (resizeAxis === "corner" || resizeAxis === "top") {
+    // Anchored bottom → dragging up (negative dy) grows the panel taller.
+    dockHeight.value = clamp(resizeStart.h - (e.clientY - resizeStart.my), MIN_H, Math.min(MAX_H, window.innerHeight - 80));
+  }
+}
+
+function stopResize() {
+  document.removeEventListener("mousemove", onResize);
+  document.removeEventListener("mouseup", stopResize);
+  localStorage.setItem(W_KEY, String(dockWidth.value));
+  localStorage.setItem(H_KEY, String(dockHeight.value));
+}
 
 const SUGGESTIONS = [
   "Take me to the leaderboard",
@@ -111,7 +160,11 @@ function onKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div v-if="show" class="nge-guide">
+  <div v-if="show" class="nge-guide" :style="dockStyle">
+    <!-- Resize handles (top edge, left edge, top-left corner) -->
+    <div class="nge-guide-resize nge-guide-resize--corner" title="Drag to resize" @mousedown="startResize($event, 'corner')"></div>
+    <div class="nge-guide-resize nge-guide-resize--top" @mousedown="startResize($event, 'top')"></div>
+    <div class="nge-guide-resize nge-guide-resize--left" @mousedown="startResize($event, 'left')"></div>
     <div class="nge-guide-header">
       <span class="nge-guide-dot"></span>
       <span class="nge-guide-title">EyeWire II Guide</span>
@@ -180,6 +233,28 @@ function onKeydown(e: KeyboardEvent) {
   font-family: 'Inter', 'Roboto', sans-serif;
   color: #dbe4f0;
 }
+
+/* ── Resize handles ── */
+.nge-guide-resize { position: absolute; z-index: 20; }
+.nge-guide-resize--corner {
+  top: 0; left: 0; width: 16px; height: 16px; cursor: nwse-resize;
+}
+.nge-guide-resize--corner::after {
+  content: ''; position: absolute; top: 4px; left: 4px;
+  width: 6px; height: 6px;
+  border-top: 2px solid rgba(74, 158, 255, 0.3);
+  border-left: 2px solid rgba(74, 158, 255, 0.3);
+  border-radius: 1px; transition: border-color 0.15s;
+}
+.nge-guide-resize--corner:hover::after { border-color: rgba(74, 158, 255, 0.75); }
+.nge-guide-resize--top {
+  top: 0; left: 16px; right: 0; height: 5px; cursor: ns-resize;
+}
+.nge-guide-resize--top:hover { background: rgba(74, 158, 255, 0.18); }
+.nge-guide-resize--left {
+  top: 16px; left: 0; width: 5px; bottom: 0; cursor: ew-resize;
+}
+.nge-guide-resize--left:hover { background: rgba(74, 158, 255, 0.18); }
 
 .nge-guide-header {
   display: flex;
