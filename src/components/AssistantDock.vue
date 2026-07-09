@@ -282,6 +282,19 @@ function onKeydown(e: KeyboardEvent) {
 .nge-guide-scroll {
   flex: 1; overflow-y: auto; padding: 10px;
   display: flex; flex-direction: column; gap: 8px;
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.35) transparent;
+}
+/* Chrome / Edge / Safari */
+.nge-guide-scroll::-webkit-scrollbar { width: 8px; }
+.nge-guide-scroll::-webkit-scrollbar-track { background: transparent; }
+.nge-guide-scroll::-webkit-scrollbar-thumb {
+  background: rgba(74, 158, 255, 0.3);
+  border-radius: 4px;
+}
+.nge-guide-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(74, 158, 255, 0.5);
 }
 
 .nge-guide-empty { display: flex; flex-direction: column; gap: 6px; }
@@ -340,6 +353,10 @@ function onKeydown(e: KeyboardEvent) {
   font-family: inherit; line-height: 1.4;
 }
 .nge-guide-input:focus { outline: none; border-color: rgba(74,158,255,0.45); }
+.nge-guide-input { scrollbar-width: thin; scrollbar-color: rgba(74, 158, 255, 0.35) transparent; }
+.nge-guide-input::-webkit-scrollbar { width: 8px; }
+.nge-guide-input::-webkit-scrollbar-track { background: transparent; }
+.nge-guide-input::-webkit-scrollbar-thumb { background: rgba(74, 158, 255, 0.3); border-radius: 4px; }
 .nge-guide-send {
   flex-shrink: 0; width: 30px; height: 30px; border-radius: 6px;
   background: rgba(74, 158, 255, 0.85); color: #fff; border: none;
