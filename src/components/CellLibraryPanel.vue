@@ -13,7 +13,7 @@ import {
   type WorkingLink,
   type ClaimPoint,
 } from '../store';
-import { EYEWIRE_II_CAVE_CONFIG } from '../config';
+import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, type DatasetEntry } from '../datasets';
@@ -60,23 +60,32 @@ function copyId(id: string) {
 }
 
 // ── Data loading ─────────────────────────────────────────────────────
+/** Load the Cell Library sheet for the currently-active dataset, tagging every
+ *  cell with that dataset. Each dataset keeps its own sheet (config
+ *  `cellLibrarySheetUrl`); we only (re)load when the active dataset's sheet
+ *  isn't already the one in the queue. */
+async function loadCellsForActiveDataset() {
+  const dsName = getCurrentDatasetName();
+  activeDataset.value = dsName;
+  const cfg = getDatasetCaveConfig(dsName);
+  const sheetUrl = cfg.cellLibrarySheetUrl || EYEWIRE_II_CAVE_CONFIG.cellLibrarySheetUrl;
+  if (!sheetUrl) return;
+  if (queue.sheetUrl !== sheetUrl || queue.items.length === 0) {
+    await queue.loadFromSheet(sheetUrl, canonicalDataset(dsName));
+  }
+}
+
 onMounted(async () => {
   loading.value = true;
   // Load tasks from Supabase — these have claim/completion status
   await backend.loadTasks('eyewire_ii');
-  // Also ensure queue items are loaded (from Google Sheet)
-  // Use configured default sheet URL if none saved in localStorage
-  const sheetSource = queue.sheetUrl || EYEWIRE_II_CAVE_CONFIG.cellLibrarySheetUrl;
-  if (sheetSource && queue.items.length === 0) {
-    await queue.loadFromSheet(sheetSource);
-  }
+  // Load the cell list for the active dataset (each dataset has its own sheet)
+  await loadCellsForActiveDataset();
   loading.value = false;
   // Fire-and-forget: resolve claim points to current root IDs via PCG
   resolveClaimPoints();
   // Refresh help requests from Supabase
   helpStore.load();
-  // Capture the active dataset so the Help tab can group by dataset
-  activeDataset.value = getCurrentDatasetName();
 });
 
 // ── Derived data ─────────────────────────────────────────────────────
@@ -90,6 +99,18 @@ function taskClaimPoint(t: ProofreadingTask): ClaimPoint | null {
     return [t.claim_point_x, t.claim_point_y, t.claim_point_z];
   }
   return null;
+}
+
+/** Map a sheet 'Status' string (Stroeh sheet) to the cell status enum. Used
+ *  for cells that have no Supabase task (their status lives in the sheet). */
+function mapSheetStatus(s?: string): 'pending' | 'in_progress' | 'completed' {
+  const t = (s || '').toLowerCase();
+  if (!t) return 'pending';
+  // 'Complete', 'Complete (cut off)', and 'Not BC' are all dispositioned —
+  // treat as done so they don't show as available to claim.
+  if (t.includes('complete') || t.includes('done') || t.includes('finished') || t.includes('not bc') || t.includes('notbc')) return 'completed';
+  if (t.includes('progress') || t.includes('claim') || t.includes('working') || t.includes('started')) return 'in_progress';
+  return 'pending';
 }
 
 const cells = computed(() => {
@@ -111,10 +132,12 @@ const cells = computed(() => {
         nucCoords: item.nucCoords,
         somaCoords: task?.soma_coords || item.somaCoords || '',
         notes: item.notes,
-        dataset: item.dataset || '',            // from the sheet 'dataset' column
-        // Supabase status
+        dataset: item.dataset || '',            // dataset this cell's sheet is for
+        sheetAssignee: item.assignee || '',     // proofreader name from the sheet (display only)
+        // Supabase task is source of truth for status/claim when it exists;
+        // otherwise fall back to the sheet's own Status column (Stroeh).
         taskId: task?.id ?? null,
-        status: task?.status ?? 'pending',
+        status: task?.status ?? mapSheetStatus(item.sheetStatus),
         assignedTo: task?.assigned_to ?? null,
         finalSegId: task?.final_segment_id ?? null,
         completedByName: null as string | null,
@@ -133,6 +156,7 @@ const cells = computed(() => {
         somaCoords: t.soma_coords || '',
         notes: t.notes || '',
         dataset: (t as any).dataset || '',
+        sheetAssignee: '',
         taskId: t.id,
         status: t.status,
         assignedTo: t.assigned_to,
@@ -152,6 +176,7 @@ const cells = computed(() => {
     somaCoords: t.soma_coords || '',
     notes: t.notes || '',
     dataset: (t as any).dataset || '',
+    sheetAssignee: '',
     taskId: t.id,
     status: t.status,
     assignedTo: t.assigned_to,
@@ -358,7 +383,8 @@ async function releaseCell(cell: typeof cells.value[0]) {
 // ── Google Sheet write-back ──────────────────────────────────────────
 async function writeClaimToSheet(segId: string, userName: string) {
   try {
-    await writeToSheetColumn(segId, 'claimedby', userName);
+    // Stroeh sheet tracks the worker in 'Proofreader'; other sheets may use 'claimedby'.
+    await writeToSheetColumn(segId, ['proofreader', 'claimedby'], userName);
   } catch (e) {
     console.warn('[cellLibrary] Sheet claim write-back failed:', e);
   }
@@ -367,17 +393,43 @@ async function writeClaimToSheet(segId: string, userName: string) {
 async function writeCompletionToSheet(segId: string, userName: string, finalSegId: string, somaCoords: string) {
   try {
     const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    await writeToSheetColumn(segId, 'completedby', userName);
-    if (finalSegId) await writeToSheetColumn(segId, 'finalseg', finalSegId);
-    if (somaCoords) await writeToSheetColumn(segId, 'somacoord', somaCoords);
-    await writeToSheetColumn(segId, 'completedtime', timestamp);
+    await writeToSheetColumn(segId, ['proofreader', 'completedby'], userName);
+    await writeToSheetColumn(segId, ['status'], 'Complete');
+    if (finalSegId) await writeToSheetColumn(segId, ['finalseg'], finalSegId);
+    // Corrected coords go to a dedicated column on the Stroeh sheet; the pinky
+    // sheet just has 'SOMA COORDS'.
+    if (somaCoords) await writeToSheetColumn(segId, ['correctedsoma', 'somacoord'], somaCoords);
+    await writeToSheetColumn(segId, ['datecomplete', 'completedtime'], timestamp);
   } catch (e) {
     console.warn('[cellLibrary] Sheet completion write-back failed:', e);
   }
 }
 
-/** Generic write-back: find a column by name pattern and write a value for the row matching segId. */
-async function writeToSheetColumn(segId: string, columnPattern: string, value: string) {
+/** CSV → grid, honoring quoted fields that contain commas/newlines. A naive
+ *  split(',') would misalign columns on sheets whose coord cells look like
+ *  "48469, 47551, 2014" — and misalignment means writing to the wrong cell. */
+function parseCsvGrid(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [], field = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += ch;
+    } else if (ch === '"') { inQ = true; }
+    else if (ch === ',') { row.push(field); field = ''; }
+    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (ch !== '\r') { field += ch; }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+/** Generic write-back: find a column by name pattern(s) and write a value for
+ *  the row matching segId. Accepts a list of patterns and writes to the first
+ *  column that exists, so it works across the different per-dataset sheet
+ *  layouts. */
+async function writeToSheetColumn(segId: string, columnPatterns: string | string[], value: string) {
   const source = queue.sheetUrl;
   if (!source) return;
 
@@ -391,31 +443,35 @@ async function writeToSheetColumn(segId: string, columnPattern: string, value: s
   const res = await fetch(csvUrl);
   if (!res.ok) return;
   const text = await res.text();
-  const rows = text.split('\n').map(l => l.trim()).filter(l => l);
+  const rows = parseCsvGrid(text);
+  if (rows.length < 2) return;
 
-  // Find header row
-  let headerIdx = 0;
+  const norm = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const segPatterns = ['startseg', 'segmentid', 'segment', 'segid'];
+
+  // Header row = first of the first 10 rows that has a segment-id-like column.
+  let headerIdx = -1, header: string[] = [], segColIdx = -1;
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
-    if (rows[i].toLowerCase().includes('segment')) { headerIdx = i; break; }
+    const h = rows[i].map(norm);
+    const sc = h.findIndex(c => segPatterns.some(p => c.includes(p)));
+    if (sc >= 0) { headerIdx = i; header = h; segColIdx = sc; break; }
   }
+  if (segColIdx < 0) { console.warn('[cellLibrary] No segment column found in sheet'); return; }
 
-  const header = rows[headerIdx].split(',').map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
-  const colIdx = header.findIndex(h => h.includes(columnPattern));
+  const patterns = Array.isArray(columnPatterns) ? columnPatterns : [columnPatterns];
+  let colIdx = -1;
+  for (const p of patterns) { colIdx = header.findIndex(h => h.includes(p)); if (colIdx >= 0) break; }
   if (colIdx < 0) {
-    console.warn(`[cellLibrary] No "${columnPattern}" column found in sheet`);
+    console.warn(`[cellLibrary] No "${patterns.join('/')}" column found in sheet`);
     return;
   }
 
-  // Find the row with this segId
-  const segColIdx = header.findIndex(h => h.includes('segmentid') || h.includes('segment'));
-  if (segColIdx < 0) return;
-
+  // Find the row with this segId (exact match on the segment column).
   let rowIdx = -1;
   for (let r = headerIdx + 1; r < rows.length; r++) {
-    const fields = rows[r].split(',').map(f => f.trim().replace(/^"|"$/g, ''));
-    if (fields[segColIdx] === segId) { rowIdx = r; break; }
+    if ((rows[r][segColIdx] || '').trim() === segId) { rowIdx = r; break; }
   }
-  if (rowIdx < 0) return;
+  if (rowIdx < 0) { console.warn(`[cellLibrary] segId ${segId} not found in sheet — skipping write`); return; }
 
   // Convert to A1 notation
   const colLetter = (idx: number) => {

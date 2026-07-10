@@ -1511,7 +1511,9 @@ export interface QueueItem {
   finalSegId: string;         // final segment ID after proofreading
   finalNucId: string;         // final nucleus ID
   notes: string;
-  dataset: string;            // dataset the cell belongs to (from sheet 'dataset' column; '' if untagged)
+  dataset: string;            // dataset the cell belongs to (tagged at load time from its sheet)
+  sheetStatus?: string;       // status text from the sheet (Stroeh: 'Status' column); '' if none
+  assignee?: string;          // who's on it, from the sheet (Stroeh: 'Proofreader'); '' if none
 }
 
 export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => {
@@ -1619,7 +1621,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
    * Expected columns: Index, Nuc Coords, Soma Coords, Segment ID,
    *                   Final SegID, Final NucID, Notes
    */
-  async function loadFromSheet(url?: string) {
+  async function loadFromSheet(url?: string, datasetName?: string) {
     const sheetSource = url || sheetUrl.value;
     if (!sheetSource) { error.value = 'No sheet URL configured'; return; }
 
@@ -1654,16 +1656,25 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
       const col = (name: string) =>
         header.findIndex(h => h.includes(name));
 
+      // First matching column index from a list of patterns (in priority order).
+      const firstCol = (...names: string[]) => {
+        for (const n of names) { const i = col(n); if (i >= 0) return i; }
+        return -1;
+      };
+
       const iIndex    = col('index');
       const iNuc      = col('nuccoord') >= 0 ? col('nuccoord') : col('nuc');
-      const iSoma     = col('somacoord') >= 0 ? col('somacoord') : col('soma');
-      const iSeg      = col('segmentid') >= 0 ? col('segmentid') : col('segment');
+      const iSoma     = firstCol('somacoord', 'somaorstem', 'soma');
+      // 'startseg' (Stroeh "Start SegID") before generic — avoids matching "Final SegID".
+      const iSeg      = firstCol('startseg', 'segmentid', 'segment');
       const iFinal    = col('finalseg');
       const iFinalNuc = col('finalnuc');
       const iNotes    = col('note');
       const iDataset  = col('dataset');
+      const iStatus   = col('status');
+      const iAssignee = firstCol('proofreader', 'claimedby', 'assignee');
 
-      if (iSeg < 0) { error.value = 'Could not find "Segment ID" column'; loading.value = false; return; }
+      if (iSeg < 0) { error.value = 'Could not find a Segment ID column'; loading.value = false; return; }
 
       const parsed: QueueItem[] = [];
       for (let r = headerIdx + 1; r < rows.length; r++) {
@@ -1679,7 +1690,11 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
           finalSegId: (iFinal >= 0 ? row[iFinal] : '') || '',
           finalNucId: (iFinalNuc >= 0 ? row[iFinalNuc] : '') || '',
           notes:      (iNotes >= 0 ? row[iNotes] : '') || '',
-          dataset:    (iDataset >= 0 ? (row[iDataset] || '').trim() : '') || '',
+          // Tag with the dataset this sheet was loaded for; fall back to a
+          // 'dataset' column if the sheet has one, else empty.
+          dataset:    (datasetName || (iDataset >= 0 ? (row[iDataset] || '').trim() : '')) || '',
+          sheetStatus: (iStatus >= 0 ? (row[iStatus] || '').trim() : '') || '',
+          assignee:    (iAssignee >= 0 ? (row[iAssignee] || '').trim() : '') || '',
         });
       }
 

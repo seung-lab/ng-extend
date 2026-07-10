@@ -42,6 +42,10 @@ export interface DatasetCaveConfig {
    *  Set on pinky_sandbox so Tutorial 1 (which drives sandbox state per-step)
    *  isn't disrupted. Stroeh isn't part of any tutorial so leave this false. */
   skipStateUrlIfTutorialActive?: boolean;
+  /** Google Sheet (cell list) for THIS dataset's Cell Library. Each dataset
+   *  keeps its own sheet; the Cell Library loads the one for the active dataset.
+   *  Include the gid in the URL for multi-tab sheets. */
+  cellLibrarySheetUrl?: string;
 }
 
 export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
@@ -65,6 +69,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
       '720575940565386350': '#ffd700',
     },
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
+    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1H9KV0-CDGAzd3nvM0Vp1iXun9okwkpe-7tHhpkJbfWc/edit?gid=37544110',
   },
   // Alias — neuroglancer layer name used in the viewer
   eyewire_ii: {
@@ -81,6 +86,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
       '720575940565386350': '#ffd700',
     },
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
+    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1H9KV0-CDGAzd3nvM0Vp1iXun9okwkpe-7tHhpkJbfWc/edit?gid=37544110',
   },
 
   // ── Pinky sandbox (dev / testing) ────────────────────────────────────────
@@ -98,6 +104,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultSegments:  ['648518346355727683'],
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
     skipStateUrlIfTutorialActive: true,
+    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
   },
   pinky_training3: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -108,6 +115,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
     defaultSegments:  ['648518346355727683'],
+    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
   },
   pinky_nf_v2: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -120,6 +128,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultSegments:  ['648518346355727683'],
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
     skipStateUrlIfTutorialActive: true,
+    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
   },
 
   // ── Minnie (MICrONS) ────────────────────────────────────────────────────
