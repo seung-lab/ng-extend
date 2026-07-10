@@ -473,6 +473,13 @@ async function writeToSheetColumn(segId: string, columnPatterns: string | string
   }
   if (rowIdx < 0) { console.warn(`[cellLibrary] segId ${segId} not found in sheet — skipping write`); return; }
 
+  // SAFETY: only fill empty cells. Never overwrite existing data in the sheet.
+  const existingVal = (rows[rowIdx][colIdx] || '').trim();
+  if (existingVal) {
+    console.info(`[cellLibrary] segId ${segId}: "${patterns[0]}" cell already has "${existingVal}" — not overwriting`);
+    return;
+  }
+
   // Convert to A1 notation
   const colLetter = (idx: number) => {
     let s = '';
