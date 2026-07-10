@@ -1511,6 +1511,7 @@ export interface QueueItem {
   finalSegId: string;         // final segment ID after proofreading
   finalNucId: string;         // final nucleus ID
   notes: string;
+  dataset: string;            // dataset the cell belongs to (from sheet 'dataset' column; '' if untagged)
 }
 
 export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => {
@@ -1660,6 +1661,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
       const iFinal    = col('finalseg');
       const iFinalNuc = col('finalnuc');
       const iNotes    = col('note');
+      const iDataset  = col('dataset');
 
       if (iSeg < 0) { error.value = 'Could not find "Segment ID" column'; loading.value = false; return; }
 
@@ -1677,6 +1679,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
           finalSegId: (iFinal >= 0 ? row[iFinal] : '') || '',
           finalNucId: (iFinalNuc >= 0 ? row[iFinalNuc] : '') || '',
           notes:      (iNotes >= 0 ? row[iNotes] : '') || '',
+          dataset:    (iDataset >= 0 ? (row[iDataset] || '').trim() : '') || '',
         });
       }
 

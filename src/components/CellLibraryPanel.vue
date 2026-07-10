@@ -111,6 +111,7 @@ const cells = computed(() => {
         nucCoords: item.nucCoords,
         somaCoords: task?.soma_coords || item.somaCoords || '',
         notes: item.notes,
+        dataset: item.dataset || '',            // from the sheet 'dataset' column
         // Supabase status
         taskId: task?.id ?? null,
         status: task?.status ?? 'pending',
@@ -131,6 +132,7 @@ const cells = computed(() => {
         nucCoords: t.nucleus_coords || '',
         somaCoords: t.soma_coords || '',
         notes: t.notes || '',
+        dataset: (t as any).dataset || '',
         taskId: t.id,
         status: t.status,
         assignedTo: t.assigned_to,
@@ -149,6 +151,7 @@ const cells = computed(() => {
     nucCoords: t.nucleus_coords || '',
     somaCoords: t.soma_coords || '',
     notes: t.notes || '',
+    dataset: (t as any).dataset || '',
     taskId: t.id,
     status: t.status,
     assignedTo: t.assigned_to,
@@ -160,6 +163,16 @@ const cells = computed(() => {
 
 const filteredCells = computed(() => {
   let list = cells.value;
+  // Dataset scoping: when a dataset is active, hide cells tagged for a different
+  // dataset. Untagged cells (no dataset value yet, pre-backfill) always show so
+  // nothing silently vanishes during the sheet migration.
+  const activeDs = canonicalDataset(activeDataset.value);
+  if (activeDs) {
+    list = list.filter(c => {
+      const cd = canonicalDataset(c.dataset);
+      return !cd || cd === activeDs;
+    });
+  }
   if (filter.value === 'mine') {
     // My claimed cells first, then my completed cells
     const myClaimed = list.filter(c => isMyClaim(c));
