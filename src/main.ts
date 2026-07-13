@@ -515,8 +515,11 @@ function observeSplitMergeTools() {
   let prevSourceCount = 0;
   let wasMulticutActive = false;
   let wasMergeActive = false;
-  let hadPointsPlaced = false;
-  let multicutOpenTime = 0;
+  // True once we've seen a genuine split SUBMIT this session (Enter pressed:
+  // NG starts "Splitting..." and/or the placed points reset to 0 without a
+  // Clear). Only a real submit should show the "Split complete" success bar on
+  // exit — plain Cancel/Clear/toggle-off must close silently.
+  let splitSubmitted = false;
 
   // Track NG status bar messages to capture split/merge errors
   let lastStatusText = '';
@@ -556,7 +559,9 @@ function observeSplitMergeTools() {
         store.showResult('error', cleanText, 6000);
         store.submitting = false;
       } else if (lower.includes('splitting') || lower.includes('finding split')) {
-        // Neuroglancer shows "Splitting source from sink..." during processing
+        // Neuroglancer shows "Splitting source from sink..." during processing —
+        // the authoritative signal that a split was actually submitted.
+        splitSubmitted = true;
         store.submitting = true;
         store.setStatusMessage('Splitting...');
       }
@@ -582,7 +587,6 @@ function observeSplitMergeTools() {
 
       // Read point counts from internal multicut state (sinks = red, sources = blue)
       const viewer: any = (<any>window)['viewer'];
-      let gotInternalCounts = false;
       try {
         const segLayer = viewer?.selectedLayer?.layer?.layer;
         const gc = segLayer?.graphConnection?.value;
@@ -591,31 +595,30 @@ function observeSplitMergeTools() {
           const sinkCount = ms.sinks?.size ?? 0;
           const sourceCount = ms.sources?.size ?? 0;
           store.updatePointCounts(sinkCount, sourceCount);
-          if (sinkCount > 0 || sourceCount > 0) hadPointsPlaced = true;
-          gotInternalCounts = true;
 
-          // Detect submit: points reset to 0 means user submitted
+          // Points reset from >0 to 0 — either the user pressed Enter (submit)
+          // or clicked Clear. Clear stamps store.clearedAt just before wiping
+          // the points, so we treat a reset inside that window as a Clear (bar
+          // returns to its normal look) and everything else as a submit.
           if (wasMulticutActive &&
               (prevSinkCount > 0 || prevSourceCount > 0) &&
               sinkCount === 0 && sourceCount === 0) {
-            store.submitting = true;
-            store.setStatusMessage('Submitting split...');
+            const justCleared = Date.now() - store.clearedAt < 1500;
+            if (justCleared) {
+              store.submitting = false;
+              store.setStatusMessage('');
+            } else {
+              splitSubmitted = true;
+              store.submitting = true;
+              store.setStatusMessage('Submitting split...');
+            }
           }
           prevSinkCount = sinkCount;
           prevSourceCount = sourceCount;
         }
-      } catch { /* fallback below */ }
+      } catch { /* non-critical: internal multicut state unavailable */ }
 
-      // Fallback: detect points from DOM if internal state access failed
-      if (!gotInternalCounts) {
-        const annotations = multicutEl.querySelectorAll('[class*="annotation"], [class*="point"], circle, .neuroglancer-annotation-layer-view');
-        if (annotations.length > 0) hadPointsPlaced = true;
-        // Also check if the multicut UI shows any point count text
-        const text = multicutEl.textContent || '';
-        if (/\d+\s*(source|sink|point)/i.test(text)) hadPointsPlaced = true;
-      }
-
-      if (!wasMulticutActive) multicutOpenTime = Date.now();
+      if (!wasMulticutActive) splitSubmitted = false;
       wasMulticutActive = true;
       wasMergeActive = false;
 
@@ -677,23 +680,18 @@ function observeSplitMergeTools() {
     } else {
       // Tool DOM disappeared
       if (wasMulticutActive) {
-        // Tool was open long enough that user likely placed points and submitted,
-        // even if we couldn't detect points via internal state
-        const toolWasUsed = store.submitting || hadPointsPlaced ||
-          (Date.now() - multicutOpenTime > 3000);
         const recentError = store.resultFlash === 'error';
-        if (toolWasUsed && !recentError) {
-          // Had points placed and tool disappeared — likely submitted
+        if (splitSubmitted && !recentError) {
+          // A split was actually submitted (saw "Splitting..." / points cleared
+          // via Enter) and the tool closed — celebrate the completion.
           store.beginSuccessClose('Split complete');
-        } else if (recentError) {
-          // Split failed — don't override the error with success, just clean up tool state
-          store.setToolState(null);
         } else {
-          // No points were ever placed — cancelled immediately
+          // Cancelled, cleared, or toggled off without submitting (also the
+          // error case) — just close the bar silently.
           store.setToolState(null);
         }
         wasMulticutActive = false;
-        hadPointsPlaced = false;
+        splitSubmitted = false;
       } else if (wasMergeActive) {
         // Merge tool exited — just close silently
         // (merge successes/errors were already shown inline during session)
@@ -704,7 +702,6 @@ function observeSplitMergeTools() {
       }
       prevSinkCount = 0;
       prevSourceCount = 0;
-      hadPointsPlaced = false;
       prevMergeStatuses = [];
       lastStatusText = '';
 

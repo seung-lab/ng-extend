@@ -56,6 +56,9 @@ function swapGroup() {
 
 /** Click NG's Clear button to reset all placed points */
 function clearPoints() {
+  // Flag the clear FIRST so the DOM scanner doesn't misread the points
+  // resetting to 0 as a split submit ("Submitting split...").
+  store.markCleared();
   const multicutEl = document.querySelector('.graphene-multicut');
   if (multicutEl) {
     const icons = multicutEl.querySelectorAll('.neuroglancer-icon');

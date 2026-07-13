@@ -1936,8 +1936,19 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   const pendingClose = ref(false);
   /** Which tool was active before pendingClose (for display) */
   const closingTool = ref<'multicut' | 'merge' | null>(null);
+  /** Timestamp of the last "Clear points" click. The DOM scanner uses this to
+   *  distinguish a Clear (points reset to 0, no submit) from an actual split
+   *  submit (points also reset to 0, but the operation is processing). */
+  const clearedAt = ref(0);
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Record that the user just cleared the placed points. */
+  function markCleared() {
+    clearedAt.value = Date.now();
+    submitting.value = false;
+    statusMessage.value = '';
+  }
 
   function setToolState(tool: 'multicut' | 'merge' | null) {
     if (pendingClose.value) return; // don't interfere during close animation
@@ -2034,9 +2045,9 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   return {
     toolActive, activeGroup, redPointCount, bluePointCount,
     mergeSubmissionCount, mergeSegments, autoSubmit, submitting, statusMessage, resultFlash, resultText,
-    pendingClose, closingTool,
+    pendingClose, closingTool, clearedAt,
     setToolState, setActiveGroup, updatePointCounts, setStatusMessage,
-    showResult, beginSuccessClose, removeMergeSegment,
+    showResult, beginSuccessClose, removeMergeSegment, markCleared,
   };
 });
 
@@ -3569,6 +3580,7 @@ export const useChatStore = defineStore('chat', () => {
   const unreadCount = ref(0);
 
   let channel: ReturnType<typeof supabase.channel> | null = null;
+  let connecting = false;
   let lastMessageDate = '';
 
   function addTimeSeparatorIfNeeded(date: Date) {
@@ -3586,8 +3598,36 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function connect() {
-    if (channel) return; // already connected
+  /** Seed the panel with the most recent persisted messages (chronological, with
+   *  timestamps) so users see context instead of a blank chat on open. Silently
+   *  no-ops if the `chat_messages` table isn't present yet. */
+  async function loadRecentMessages(limit = 5) {
+    try {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('name, rank, text, created_at')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error || !data) return;
+      for (const r of data.slice().reverse()) {          // reverse → chronological
+        const date = new Date(r.created_at);
+        addTimeSeparatorIfNeeded(date);
+        chatMessages.value.push({
+          type: 'message',
+          name: r.name,
+          rank: r.rank || 'player',
+          time: formatTime(date),
+          dateTime: date,
+          parts: parseMessageParts(r.name, r.text),
+        });
+      }
+    } catch (e) {
+      console.warn('[chat] loadRecentMessages failed:', e);
+    }
+  }
+
+  async function connect() {
+    if (channel || connecting) return; // already connected / connecting
 
     const backend = useProofreadingBackendStore();
     // Login gate: don't connect anonymous users — chat needs an authenticated identity.
@@ -3599,6 +3639,10 @@ export const useChatStore = defineStore('chat', () => {
     if (displayName === 'Anonymous') {
       console.warn('[chat] connect: displayName fell through to "Anonymous" — defensive only');
     }
+
+    connecting = true;
+    // Show the recent conversation before we announce the join / go live.
+    await loadRecentMessages();
 
     channel = supabase.channel('eyewire-ii-chat', {
       config: { broadcast: { self: true } },
@@ -3667,22 +3711,28 @@ export const useChatStore = defineStore('chat', () => {
           connected.value = false;
         }
       });
+    connecting = false; // channel is now assigned; the guard above holds
   }
 
   function sendMessage(text: string) {
     if (!channel || !connected.value) return;
     const backend = useProofreadingBackendStore();
     const name = backend.userName || 'Anonymous';
+    const rank = backend.isAdmin ? 'admin' : 'player';
     channel.send({
       type: 'broadcast',
       event: 'message',
       payload: {
         name,
-        rank: backend.isAdmin ? 'admin' : 'player',
+        rank,
         text,
         timestamp: new Date().toISOString(),
       },
     });
+    // Persist for history so the last messages show on next open (best-effort;
+    // no-ops if the chat_messages table isn't present).
+    supabase.from('chat_messages').insert({ name, rank, text })
+      .then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); });
   }
 
   function markRead() {
@@ -3702,6 +3752,7 @@ export const useChatStore = defineStore('chat', () => {
       supabase.removeChannel(channel);
       channel = null;
       connected.value = false;
+      connecting = false;
     }
   }
 
