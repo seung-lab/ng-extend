@@ -3,6 +3,7 @@ import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
+import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
@@ -14,6 +15,7 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 // ── Props ─────────────────────────────────────────────────────────────────────
 const props = defineProps<{
   viewUserId?: string | null;
+  initialTab?: string | null;
 }>();
 
 // ── Stores ────────────────────────────────────────────────────────────────────
@@ -122,7 +124,58 @@ const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
 const SPECIAL_PREVIEW_LIMIT = 8;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
-const activeTab = ref<'overview' | 'trophyCase' | 'adminHub'>('overview');
+const activeTab = ref<'overview' | 'trophyCase' | 'weekInScience' | 'adminHub'>('overview');
+
+/** Monday-anchored key for the current week, e.g. "2026-07-13". */
+function isoWeekKey(): string {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  const mon = new Date(now);
+  mon.setDate(now.getDate() + diffToMon);
+  mon.setHours(0, 0, 0, 0);
+  return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, '0')}-${String(mon.getDate()).padStart(2, '0')}`;
+}
+
+/** Push the user's weekly recap into their notification feed — once per week.
+ *  Deduped via a per-user, per-week localStorage flag so re-opening the tab
+ *  doesn't spam. */
+async function maybeSendWeeklyRecapNotification() {
+  const uid = backendStore.userId;
+  if (!uid) return;
+  const key = `nge_recap_notif_${uid}_${isoWeekKey()}`;
+  if (localStorage.getItem(key)) return;
+  localStorage.setItem(key, '1'); // set first so a rapid re-open can't double-send
+  try {
+    const s = stats.value;
+    const body = `${s.editsThisWeek.toLocaleString()} edits · ${s.mergesThisWeek.toLocaleString()} merges · ${s.splitsThisWeek.toLocaleString()} splits this week. Open your profile → Week in Science for the full recap.`;
+    const { supabase } = await import('../supabase');
+    await supabase.from('notifications').insert({
+      title: '📊 Your Week in Science',
+      body,
+      target_type: 'user',
+      target_id: uid,
+      send_at: new Date().toISOString(),
+      created_by: uid,
+    });
+  } catch (e) {
+    console.warn('[profile] weekly recap notification failed:', e);
+    localStorage.removeItem(key); // allow a retry next time
+  }
+}
+
+function openWeekInScience() {
+  activeTab.value = 'weekInScience';
+  maybeSendWeeklyRecapNotification();
+}
+
+// Deep-link: open directly on a given tab (e.g. from the toolbar/command palette
+// "Your Week in Science" action).
+onMounted(() => {
+  if (props.initialTab === 'weekInScience' && !viewingOtherUser.value) {
+    openWeekInScience();
+  }
+});
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
 // All country flags A-Z (ISO 3166-1 alpha-2, sorted alphabetically)
@@ -476,6 +529,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           :class="{ 'nge-profile-tab--active': activeTab === 'trophyCase' }"
           @click="activeTab = 'trophyCase'"
         >🏆 Trophy Case</button>
+        <button
+          v-if="!viewingOtherUser"
+          class="nge-profile-tab"
+          :class="{ 'nge-profile-tab--active': activeTab === 'weekInScience' }"
+          @click="openWeekInScience()"
+        >📊 Week in Science</button>
         <button
           v-if="!viewingOtherUser && backendStore.isAdmin"
           class="nge-profile-tab"
@@ -1169,6 +1228,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
         </div>
       </div><!-- end Trophy Case -->
+
+      <!-- ── Week in Science tab ───────────────────────────────── -->
+      <div v-if="activeTab === 'weekInScience'" class="nge-profile-body nge-profile-body--week">
+        <WeeklyRecapPanel embedded />
+      </div>
 
       <!-- ── Admin Hub tab ─────────────────────────────────────── -->
       <div v-if="activeTab === 'adminHub'" class="nge-profile-body nge-profile-body--admin">
@@ -2226,6 +2290,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-body--trophy {
   display: block;
   padding: 0;
+}
+
+/* Week in Science tab — embedded recap, scrolls within the profile body. */
+.nge-profile-body--week {
+  display: block;
+  padding: 0;
+  max-height: calc(90vh - 100px);
+  overflow-y: auto;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

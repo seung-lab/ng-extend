@@ -3,7 +3,6 @@ import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
 import UserProfilePanel from "components/UserProfilePanel.vue";
-import WeeklyRecapPanel from "components/WeeklyRecapPanel.vue";
 import LeaderboardPanel from "components/LeaderboardPanel.vue";
 import SettingsPanel from "components/SettingsPanel.vue";
 import AnnotationPanel from "components/AnnotationPanel.vue";
@@ -17,6 +16,7 @@ import ChatPanel from "components/ChatPanel.vue";
 import AssistantDock from "components/AssistantDock.vue";
 import { runSpotlight } from "../assistant/spotlight";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
+import FeedbackModal from "components/FeedbackModal.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
@@ -147,7 +147,16 @@ const queueStore = useProofreadingQueueStore();
 const showModal = ref(false);
 const showProfile = ref(false);
 const profileUserId = ref<string | null>(null);
+// "Your Week in Science" now lives as a tab inside the profile rather than its
+// own modal. This tells the profile which tab to open on mount.
+const profileInitialTab = ref<string | undefined>(undefined);
+function openWeekRecap() {
+  profileUserId.value = null;
+  profileInitialTab.value = 'weekInScience';
+  showProfile.value = true;
+}
 const showRecap = ref(false);
+const showFeedback = ref(false);
 const showLeaderboard = ref(false);
 const showSettings = ref(false);
 const showQueue = ref(false);
@@ -298,7 +307,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   split:       { action: () => activateTool('multicut') },
   merge:       { action: () => activateTool('merge') },
   findPath:    { action: () => activateTool('findPath') },
-  recap:       { action: () => { showRecap.value = true; } },
+  recap:       { action: () => { openWeekRecap(); } },
   leaderboard: { action: () => { showLeaderboard.value = true; } },
   quest:       { action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
   cells:       { action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
@@ -332,7 +341,7 @@ const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'findPath', 'recap', 'leaderboa
 
 // Map icon IDs to their active (open) state
 const iconActiveState: Record<string, () => boolean> = {
-  recap: () => showRecap.value,
+  recap: () => showProfile.value && profileInitialTab.value === 'weekInScience',
   leaderboard: () => showLeaderboard.value,
   quest: () => showQueue.value,
   cells: () => showCellLibrary.value,
@@ -455,7 +464,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <command-palette
     ref="cmdPalette"
     @open-profile="showProfile = true"
-    @open-recap="showRecap = true"
+    @open-recap="openWeekRecap()"
     @open-leaderboard="showLeaderboard = true"
     @open-settings="showSettings = true"
     @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true"
@@ -471,8 +480,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <batch-processor-panel v-if="showBatchProcessor" @hide="showBatchProcessor = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
-  <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" @hide="showProfile = false; profileUserId = null" @open-settings="showSettings = true" />
-  <weekly-recap-panel v-if="showRecap" @hide="showRecap = false" />
+  <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="showSettings = true" />
+  <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
@@ -591,9 +600,13 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       🔥 {{ stats.currentStreak }}
     </div>
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
-      <button class="nge-cmd-trigger" title="Command Palette (Ctrl+K)"
-              @click="cmdPalette?.open()">
-        <kbd>⌘K</kbd>
+      <button class="nge-cmd-trigger nge-feedback-trigger" title="Submit an issue or feedback"
+              @click="showFeedback = true">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>Feedback</span>
       </button>
       <button
         v-for="icon in visibleToolbar"
@@ -1182,6 +1195,14 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   letter-spacing: 0.03em;
 }
 .nge-cmd-trigger:hover kbd { color: #e0ecff; }
+/* Feedback trigger reuses the ⌘K trigger's minimal look: icon + label. */
+.nge-feedback-trigger { gap: 5px; color: #cfdcef; }
+.nge-feedback-trigger span {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.nge-feedback-trigger:hover { color: #e0ecff; }
 
 /* ── Hamburger menu ── */
 #hamburger li {

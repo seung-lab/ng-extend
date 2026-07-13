@@ -8,6 +8,9 @@ import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badg
 
 const { stats } = storeToRefs(useUserStatsStore());
 const emit = defineEmits({ hide: null });
+// When embedded (e.g. inside the profile's "Week in Science" tab) we drop the
+// modal chrome and render the content inline.
+const props = defineProps<{ embedded?: boolean }>();
 
 // ── Week date range label: "Feb 23 – Mar 1, 2026" ────────────────────────
 const weekRange = computed<string>(() => {
@@ -115,11 +118,16 @@ function jumpToCell(segId: string) {
 </script>
 
 <template>
-  <modal-overlay id="nge-recap-modal" class="nge-recap-modal" @hide="emit('hide')">
-    <div class="nge-recap-shell">
+  <component
+    :is="props.embedded ? 'div' : ModalOverlay"
+    :id="props.embedded ? undefined : 'nge-recap-modal'"
+    :class="props.embedded ? 'nge-recap-embedded' : 'nge-recap-modal'"
+    @hide="emit('hide')"
+  >
+    <div class="nge-recap-shell" :class="{ 'nge-recap-shell--embedded': props.embedded }">
 
-      <!-- Non-scrolling topbar -->
-      <div class="nge-recap-topbar">
+      <!-- Non-scrolling topbar (modal only) -->
+      <div v-if="!props.embedded" class="nge-recap-topbar">
         <button class="nge-recap-exit" @click="emit('hide')">×</button>
       </div>
 
@@ -263,7 +271,7 @@ function jumpToCell(segId: string) {
 
       </div>
     </div>
-  </modal-overlay>
+  </component>
 </template>
 
 <style scoped>
@@ -277,6 +285,9 @@ function jumpToCell(segId: string) {
   flex-direction: column;
   max-height: 88vh;
 }
+/* Embedded in the profile tab: no modal height cap, let the profile body scroll. */
+.nge-recap-shell--embedded { max-height: none; }
+.nge-recap-embedded { display: block; width: 100%; }
 
 /* ── Sci-fi materialize ── */
 .nge-recap-modal :deep(.nge-overlay) {

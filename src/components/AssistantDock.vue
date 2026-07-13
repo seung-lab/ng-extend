@@ -10,7 +10,10 @@ import { buildAppContext, type UiState } from "../assistant/context";
 import { buildUiReference } from "../assistant/knowledge";
 import { getMaterializationInfo } from "../assistant/materialization";
 import { dispatch } from "../assistant/dispatch";
+import { useProofreadingBackendStore } from "../store";
 import nurroAvatar from "../images/inspector-nurro-2.png";
+
+const backend = useProofreadingBackendStore();
 
 const props = defineProps<{
   show: boolean;
@@ -251,6 +254,7 @@ async function submitFeedback(msg: Msg, verdict: "up" | "down") {
         verdict,
         correction,
         reply: msg.text,
+        user: backend.userName || "",
       }),
     });
   } catch (e) {
