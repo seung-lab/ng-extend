@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import {
   useProofreadingBackendStore,
   useProofreadingQueueStore,
@@ -16,7 +16,7 @@ import {
 import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
-import { findDatasetBySegName, switchToDataset, canonicalDataset, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, DATASETS, type DatasetEntry } from '../datasets';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import ScreenshotDialog from './ScreenshotDialog.vue';
 
@@ -52,6 +52,9 @@ async function resolveClaimPoints() {
 }
 
 const copiedId = ref<string | null>(null);
+/** Last cell the user jumped to — highlighted in the list so it's easy to find
+ *  again when the Available list is long. */
+const jumpedSegId = ref<string | null>(null);
 function copyId(id: string) {
   navigator.clipboard.writeText(id).then(() => {
     copiedId.value = id;
@@ -186,18 +189,22 @@ const cells = computed(() => {
   }));
 });
 
-const filteredCells = computed(() => {
-  let list = cells.value;
-  // Dataset scoping: when a dataset is active, hide cells tagged for a different
-  // dataset. Untagged cells (no dataset value yet, pre-backfill) always show so
-  // nothing silently vanishes during the sheet migration.
+/** Cells scoped to the dataset currently in the viewer. When a dataset is
+ *  active we hide cells tagged for a different dataset; untagged cells (no
+ *  dataset value yet, pre-backfill) always show so nothing silently vanishes
+ *  during the sheet migration. Tab counts and every filtered view derive from
+ *  this so "Available (N)" always matches the list you can actually claim. */
+const datasetScopedCells = computed(() => {
   const activeDs = canonicalDataset(activeDataset.value);
-  if (activeDs) {
-    list = list.filter(c => {
-      const cd = canonicalDataset(c.dataset);
-      return !cd || cd === activeDs;
-    });
-  }
+  if (!activeDs) return cells.value;
+  return cells.value.filter(c => {
+    const cd = canonicalDataset(c.dataset);
+    return !cd || cd === activeDs;
+  });
+});
+
+const filteredCells = computed(() => {
+  let list = datasetScopedCells.value;
   if (filter.value === 'mine') {
     // My claimed cells first, then my completed cells
     const myClaimed = list.filter(c => isMyClaim(c));
@@ -221,11 +228,30 @@ const filteredCells = computed(() => {
   return list;
 });
 
-const myClaimCount = computed(() => cells.value.filter(c => isMyClaim(c)).length);
+const myClaimCount = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c)).length);
 
-const availableCount = computed(() => cells.value.filter(c => c.status === 'pending').length);
-const completedCount = computed(() => cells.value.filter(c => c.status === 'completed').length);
-const claimedCount = computed(() => cells.value.filter(c => c.status === 'assigned' || c.status === 'in_progress').length);
+const availableCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'pending').length);
+const completedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'completed').length);
+const claimedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'assigned' || c.status === 'in_progress').length);
+
+// ── Dataset labels for the empty-Available prompt ────────────────────
+/** Friendly label of the dataset currently in the viewer. */
+const currentDatasetLabel = computed(() => {
+  const raw = activeDataset.value;
+  const entry = findDatasetBySegName(raw)
+    || DATASETS.find(d => canonicalDataset(segLayerName(d)) === canonicalDataset(raw));
+  return entry?.label || raw || 'this dataset';
+});
+/** A known claimable dataset other than the current one — prefer EyeWire II
+ *  Retina (the main cell library), else the first other known dataset. Used to
+ *  tell the user where to go when the current dataset has no cells to claim. */
+const suggestedClaimDataset = computed(() => {
+  const curKey = canonicalDataset(activeDataset.value);
+  const stroeh = DATASETS.find(d => d.id === 'stroeh_mouse_retina');
+  if (stroeh && canonicalDataset(segLayerName(stroeh)) !== curKey) return stroeh.label;
+  const other = DATASETS.find(d => canonicalDataset(segLayerName(d)) !== curKey);
+  return other?.label || '';
+});
 
 // ── User name lookup (for claimed tab) ───────────────────────────────
 const userNameCache = ref<Record<string, string>>({});
@@ -266,6 +292,7 @@ function getCachedUserName(userId: string): string {
 function jumpToCell(segId: string, coords: string) {
   const pos = parseCoords(coords);
   history.jumpToCell(segId, pos[0] || pos[1] || pos[2] ? pos : undefined);
+  jumpedSegId.value = segId;
 }
 
 function parseCoords(s: string): [number, number, number] {
@@ -718,13 +745,20 @@ function selectInputContents(e: Event) {
   t?.select();
 }
 
-// ── Create help request form ─────────────────────────────────────────
-const showCreateHelp = ref(false);
+// ── Create help request (always-visible quick-add at top of the Help list) ──
+const newHelpSegId = ref('');
 const newHelpIssue = ref('Unsure');
 const newHelpNote = ref('');
 const newHelpScreenshotUrl = ref('');
+const newHelpError = ref('');
 const showHelpScreenshotDialog = ref(false);
 const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branch', 'Other'];
+
+// Pre-fill the segment ID from the current viewer selection when the Help tab
+// opens, so the common case is one click. The user can still edit/paste any ID.
+watch(() => filter.value, (f) => {
+  if (f === 'help' && !newHelpSegId.value.trim()) newHelpSegId.value = getActiveSegId();
+}, { immediate: true });
 
 function onHelpScreenshotAttached(payload: { url: string }) {
   newHelpScreenshotUrl.value = payload.url;
@@ -766,14 +800,19 @@ function getCurrentDatasetName(): string {
 }
 
 async function submitNewHelp() {
-  const segId = getActiveSegId();
-  if (!segId) {
-    alert('No segment selected. Select a segment first, then create a help request.');
+  // Prefer a typed/pasted ID; fall back to the current viewer selection.
+  const segId = (newHelpSegId.value.trim() || getActiveSegId()).trim();
+  if (!/^\d{6,}$/.test(segId)) {
+    newHelpError.value = 'Enter a valid segment ID (or select a segment in the viewer).';
     return;
   }
+  newHelpError.value = '';
+  // Only attach the viewer position when the request is for the selected
+  // segment — a hand-typed ID isn't at the current crosshair.
+  const isSelected = segId === getActiveSegId();
   await helpStore.add({
     segId,
-    position: getViewerPosition(),
+    position: isSelected ? getViewerPosition() : [],
     note: newHelpNote.value.trim(),
     issueType: newHelpIssue.value,
     dataset: getCurrentDatasetName(),
@@ -782,7 +821,7 @@ async function submitNewHelp() {
     screenshotUrl: newHelpScreenshotUrl.value || undefined,
   });
   helpStore.refreshPending();
-  showCreateHelp.value = false;
+  newHelpSegId.value = '';
   newHelpNote.value = '';
   newHelpIssue.value = 'Unsure';
   newHelpScreenshotUrl.value = '';
@@ -1042,9 +1081,43 @@ function startDrag(e: MouseEvent) {
   window.addEventListener('mouseup', up);
 }
 
+// ── Resize ───────────────────────────────────────────────────────────
+const MIN_PANEL_W = 340;
+const MIN_PANEL_H = 260;
+const panelWidth = ref(480);
+// null = let content drive the height (capped by CSS max-height) until the
+// user drags the corner, at which point we take over with an explicit height.
+const resizedHeight = ref<number | null>(null);
+
+function startResize(e: MouseEvent) {
+  e.stopPropagation();
+  e.preventDefault();
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const startW = panelWidth.value;
+  const panelEl = (e.currentTarget as HTMLElement).closest('.nge-cl-panel') as HTMLElement | null;
+  const startH = resizedHeight.value ?? panelEl?.offsetHeight ?? 420;
+  const move = (ev: MouseEvent) => {
+    const maxW = window.innerWidth - panelPos.value.x - 12;
+    const maxH = window.innerHeight - panelPos.value.y - 12;
+    panelWidth.value = Math.max(MIN_PANEL_W, Math.min(maxW, startW + (ev.clientX - startX)));
+    resizedHeight.value = Math.max(MIN_PANEL_H, Math.min(maxH, startH + (ev.clientY - startY)));
+  };
+  const up = () => {
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+
 const panelStyle = computed(() => ({
   left: panelPos.value.x + 'px',
   top: panelPos.value.y + 'px',
+  width: panelWidth.value + 'px',
+  ...(resizedHeight.value != null
+    ? { height: resizedHeight.value + 'px', maxHeight: 'none' }
+    : {}),
 }));
 </script>
 
@@ -1066,14 +1139,14 @@ const panelStyle = computed(() => ({
           <button :class="{ active: filter === 'mine' }" @click="filter = 'mine'">
             My Cells ({{ myClaimCount }})
           </button>
-          <button :class="{ active: filter === 'all' }" @click="filter = 'all'">
-            All ({{ cells.length }})
-          </button>
           <button :class="{ active: filter === 'available' }" @click="filter = 'available'">
             Available ({{ availableCount }})
           </button>
           <button :class="{ active: filter === 'claimed', 'nge-cl-claimed-tab': true }" @click="filter = 'claimed'">
             Claimed ({{ claimedCount }})
+          </button>
+          <button :class="{ active: filter === 'all' }" @click="filter = 'all'">
+            All ({{ datasetScopedCells.length }})
           </button>
           <button :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
             Completed ({{ completedCount }})
@@ -1082,14 +1155,8 @@ const panelStyle = computed(() => ({
             Help ({{ pendingHelp.length }})
           </button>
           <button :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'">
-            Links ({{ linksStore.links.length }})
+            My Saved Links ({{ linksStore.links.length }})
           </button>
-          <button
-            v-if="filter === 'help'"
-            class="nge-cl-help-create-btn"
-            @click="showCreateHelp = !showCreateHelp"
-            title="Create a new help request for the selected segment"
-          >+</button>
         </div>
 
         <!-- Search (not shown on Help / Links tabs) -->
@@ -1115,61 +1182,65 @@ const panelStyle = computed(() => ({
         <!-- ═══ HELP TAB ═══ -->
         <div v-if="filter === 'help'" class="nge-cl-list">
 
-          <!-- Create help request form -->
-          <Transition name="nge-slide">
-            <div v-if="showCreateHelp" class="nge-cl-help-create">
-              <div class="nge-cl-help-create-title">New Help Request</div>
-              <div class="nge-cl-help-create-hint">Select a segment in the viewer, then describe the issue.</div>
-              <div class="nge-cl-help-create-row">
-                <label class="nge-cl-help-create-label">Issue type</label>
-                <div class="nge-cl-help-create-chips">
-                  <button
-                    v-for="t in HELP_ISSUE_TYPES" :key="t"
-                    class="nge-cl-help-chip"
-                    :class="{ 'nge-cl-help-chip--active': newHelpIssue === t }"
-                    @click="newHelpIssue = t"
-                  >{{ t }}</button>
-                </div>
-              </div>
-              <textarea
-                v-model="newHelpNote"
-                class="nge-cl-help-create-note"
-                placeholder="Describe what looks wrong (optional)..."
-                rows="2"
+          <!-- Always-visible quick-add: submit a new help request from the top -->
+          <div class="nge-cl-help-quickadd">
+            <div class="nge-cl-help-quickadd-title">Submit a help request</div>
+            <div class="nge-cl-help-quickadd-row">
+              <input
+                v-model="newHelpSegId"
+                class="nge-cl-help-segid-input"
+                placeholder="Segment ID"
+                inputmode="numeric"
                 @keydown.stop @keyup.stop @keypress.stop
-              ></textarea>
-
-              <!-- Optional screenshot attachment -->
-              <div class="nge-cl-help-shot-row">
-                <button v-if="!newHelpScreenshotUrl"
-                        class="nge-cl-help-shot-btn"
-                        @click="showHelpScreenshotDialog = true"
-                        title="Attach a screenshot of the current view">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-                       stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 8h3l2-2.5h8L18 8h3v11H3z"/>
-                    <circle cx="12" cy="13.5" r="3.8"/>
-                  </svg>
-                  <span>Attach screenshot</span>
-                </button>
-                <div v-else class="nge-cl-help-shot-preview">
-                  <img :src="newHelpScreenshotUrl" alt="Attached screenshot" />
-                  <button class="nge-cl-help-shot-remove"
-                          @click="clearHelpScreenshot"
-                          title="Remove screenshot">×</button>
-                </div>
-              </div>
-
-              <div class="nge-cl-help-create-actions">
-                <button class="nge-cl-help-create-submit" @click="submitNewHelp">🔍 Submit Request</button>
-                <button class="nge-cl-help-create-cancel" @click="showCreateHelp = false">Cancel</button>
-              </div>
+                @input="newHelpError = ''"
+              />
+              <button
+                class="nge-cl-help-segid-use"
+                @click="newHelpSegId = getActiveSegId(); newHelpError = ''"
+                title="Use the segment currently selected in the viewer"
+              >Use selected</button>
+              <select
+                v-model="newHelpIssue"
+                class="nge-cl-help-issue-select"
+                @keydown.stop
+                title="Issue type"
+              >
+                <option v-for="t in HELP_ISSUE_TYPES" :key="t" :value="t">{{ t }}</option>
+              </select>
             </div>
-          </Transition>
+            <div class="nge-cl-help-quickadd-row">
+              <input
+                v-model="newHelpNote"
+                class="nge-cl-help-note-input"
+                placeholder="Describe what looks wrong, then press Enter…"
+                @keydown.stop @keyup.stop @keypress.stop
+                @keydown.enter.prevent="submitNewHelp"
+                @input="newHelpError = ''"
+              />
+              <button
+                v-if="!newHelpScreenshotUrl"
+                class="nge-cl-help-shot-icon"
+                @click="showHelpScreenshotDialog = true"
+                title="Attach a screenshot of the current view"
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 8h3l2-2.5h8L18 8h3v11H3z"/>
+                  <circle cx="12" cy="13.5" r="3.8"/>
+                </svg>
+              </button>
+              <button class="nge-cl-help-quickadd-submit" @click="submitNewHelp" title="Submit help request">Submit</button>
+            </div>
+            <div v-if="newHelpScreenshotUrl" class="nge-cl-help-shot-preview nge-cl-help-shot-preview--sm">
+              <img :src="newHelpScreenshotUrl" alt="Attached screenshot" />
+              <button class="nge-cl-help-shot-remove" @click="clearHelpScreenshot" title="Remove screenshot">×</button>
+            </div>
+            <div v-if="newHelpError" class="nge-cl-help-create-err">{{ newHelpError }}</div>
+          </div>
 
           <!-- Pending help requests -->
-          <div v-if="pendingHelp.length === 0 && resolvedHelp.length === 0 && !showCreateHelp" class="nge-cl-empty">
-            No help requests yet. Click <strong>+</strong> above or use "Ask for Second Opinion" in the annotation panel.
+          <div v-if="pendingHelp.length === 0 && resolvedHelp.length === 0" class="nge-cl-empty">
+            No help requests yet. Use the box above to submit one.
           </div>
           <div v-else-if="pendingHelp.length === 0" class="nge-cl-no-results">No pending requests</div>
 
@@ -1457,6 +1528,12 @@ const panelStyle = computed(() => ({
           <div v-if="filteredCells.length === 0 && filter === 'mine'" class="nge-cl-no-results">
             No claimed cells yet. Claim cells from the All or Available tabs!
           </div>
+          <div v-else-if="filteredCells.length === 0 && filter === 'available' && !search.trim()" class="nge-cl-no-results">
+            No available cells in <strong>{{ currentDatasetLabel }}</strong>.
+            <template v-if="suggestedClaimDataset">
+              <br />Switch to <strong>{{ suggestedClaimDataset }}</strong> to claim a cell.
+            </template>
+          </div>
           <div v-else-if="filteredCells.length === 0" class="nge-cl-no-results">No matching cells</div>
 
           <div
@@ -1466,6 +1543,7 @@ const panelStyle = computed(() => ({
             :class="{
               'nge-cl-row--done': cell.status === 'completed',
               'nge-cl-row--mine': isMyClaim(cell),
+              'nge-cl-row--jumped': cell.segId === jumpedSegId,
             }"
           >
             <!-- Left: status pip + name -->
@@ -1477,6 +1555,7 @@ const panelStyle = computed(() => ({
                   <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
                 </div>
                 <div class="nge-cl-row-meta">
+                  <span v-if="cell.segId === jumpedSegId" class="nge-cl-viewing">● viewing</span>
                   <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
@@ -1488,8 +1567,9 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-row-actions">
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
+                :class="{ 'nge-cl-btn--jump-active': cell.segId === jumpedSegId }"
                 @click="jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords)"
-                title="Jump to segment"
+                :title="cell.segId === jumpedSegId ? 'Currently viewing — jump again' : 'Jump to segment'"
               >↗</button>
 
               <button
@@ -1517,6 +1597,13 @@ const panelStyle = computed(() => ({
         <!-- Login prompt -->
         <div v-if="!isLoggedIn && cells.length > 0" class="nge-cl-login-hint">
           Log in to claim and complete cells
+        </div>
+
+        <!-- Resize handle (bottom-right corner) -->
+        <div class="nge-cl-resize" @mousedown="startResize" title="Drag to resize">
+          <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.2">
+            <path d="M11 5 L5 11 M11 9 L9 11" />
+          </svg>
         </div>
 
       </div>
@@ -1604,6 +1691,23 @@ const panelStyle = computed(() => ({
 /* Enter/leave transition */
 .nge-cl-enter-active, .nge-cl-leave-active { transition: opacity 0.2s, transform 0.2s; }
 .nge-cl-enter-from, .nge-cl-leave-to { opacity: 0; transform: translateY(10px) scale(0.97); }
+
+/* Resize handle — bottom-right corner. */
+.nge-cl-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 2px;
+  cursor: nwse-resize;
+  color: rgba(160, 175, 230, 0.5);
+  z-index: 2;
+}
+.nge-cl-resize:hover { color: rgba(160, 175, 230, 0.9); }
 
 .nge-cl-topbar {
   display: flex;
@@ -1699,6 +1803,20 @@ const panelStyle = computed(() => ({
 .nge-cl-row:hover { background: rgba(74, 158, 255, 0.04); }
 .nge-cl-row--done { opacity: 0.65; }
 .nge-cl-row--mine { background: rgba(74, 158, 255, 0.06); }
+/* The cell you last jumped to — stands out even in a long Available list. */
+.nge-cl-row--jumped {
+  background: rgba(0, 220, 160, 0.10);
+  box-shadow: inset 3px 0 0 rgba(0, 230, 160, 0.9);
+}
+.nge-cl-row--jumped:hover { background: rgba(0, 220, 160, 0.14); }
+.nge-cl-viewing {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #34e6a8;
+  text-shadow: 0 0 6px rgba(0, 230, 160, 0.4);
+  white-space: nowrap;
+}
 
 .nge-cl-row-left {
   display: flex;
@@ -1796,6 +1914,11 @@ const panelStyle = computed(() => ({
   color: #889;
 }
 .nge-cl-btn--jump:hover { color: #bbf; }
+.nge-cl-btn--jump-active {
+  color: #34e6a8;
+  border-color: rgba(0, 230, 160, 0.5);
+  background: rgba(0, 220, 160, 0.12);
+}
 
 .nge-cl-btn--claim {
   border-color: rgba(68, 170, 102, 0.25);
@@ -2058,6 +2181,142 @@ const panelStyle = computed(() => ({
   background: rgba(255, 136, 170, 0.22);
   transform: scale(1.1);
 }
+.nge-cl-help-create-btn.active {
+  background: rgba(255, 136, 170, 0.28);
+  color: #ffd0e0;
+}
+
+/* Prominent "New help request" call-to-action in the empty state. */
+.nge-cl-help-create-cta {
+  margin-top: 10px;
+  padding: 7px 14px;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: #ffd0e0;
+  background: rgba(255, 136, 170, 0.14);
+  border: 1px solid rgba(255, 136, 170, 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.nge-cl-help-create-cta:hover { background: rgba(255, 136, 170, 0.26); }
+
+/* Segment-ID field in the create form. */
+.nge-cl-help-segid-wrap {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.nge-cl-help-segid-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #ccd;
+  font-size: 0.78em;
+  font-family: inherit;
+  padding: 5px 8px;
+}
+.nge-cl-help-segid-input:focus {
+  outline: none;
+  border-color: rgba(255, 136, 170, 0.4);
+}
+.nge-cl-help-segid-input::placeholder { color: #556; }
+.nge-cl-help-segid-use {
+  flex-shrink: 0;
+  font-size: 0.72em;
+  padding: 4px 8px;
+  color: #bcd;
+  background: rgba(120, 140, 255, 0.1);
+  border: 1px solid rgba(120, 140, 255, 0.22);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nge-cl-help-segid-use:hover { background: rgba(120, 140, 255, 0.2); }
+.nge-cl-help-create-err {
+  color: #ff9d9d;
+  font-size: 0.74em;
+  margin: -2px 0 8px;
+}
+
+/* ── Help quick-add bar (always visible at top of Help list) ── */
+.nge-cl-help-quickadd {
+  background: rgba(255, 136, 170, 0.05);
+  border: 1px solid rgba(255, 136, 170, 0.16);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 10px;
+}
+.nge-cl-help-quickadd-title {
+  font-size: 0.8em;
+  font-weight: 700;
+  color: #f8b3c6;
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+.nge-cl-help-quickadd-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.nge-cl-help-quickadd-row:last-of-type { margin-bottom: 0; }
+.nge-cl-help-issue-select {
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #ccd;
+  font-size: 0.76em;
+  font-family: inherit;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+.nge-cl-help-issue-select:focus { outline: none; border-color: rgba(255, 136, 170, 0.4); }
+.nge-cl-help-note-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #ccd;
+  font-size: 0.8em;
+  font-family: inherit;
+  padding: 6px 9px;
+}
+.nge-cl-help-note-input:focus { outline: none; border-color: rgba(255, 136, 170, 0.4); }
+.nge-cl-help-note-input::placeholder { color: #667; }
+.nge-cl-help-shot-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: #bcd;
+  background: rgba(120, 140, 255, 0.1);
+  border: 1px solid rgba(120, 140, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nge-cl-help-shot-icon:hover { background: rgba(120, 140, 255, 0.2); color: #dde; }
+.nge-cl-help-quickadd-submit {
+  flex-shrink: 0;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(230, 120, 160, 0.85);
+  border: 1px solid rgba(255, 150, 185, 0.7);
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.nge-cl-help-quickadd-submit:hover { background: rgba(240, 135, 175, 1); }
+.nge-cl-help-shot-preview--sm { margin-top: 6px; }
+.nge-cl-help-shot-preview--sm img { max-height: 48px; border-radius: 4px; }
 
 /* ── Help Request Create Form ── */
 .nge-cl-help-create {
