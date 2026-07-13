@@ -90,6 +90,30 @@ let streakSeenReal = false;
 
 const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
 
+// ── Idempotent badge awards ──────────────────────────────────────────────────
+// A badge must toast at most once, ever. Without a persistent record the
+// threshold-crossing watcher re-fires whenever cellsSubmitted/editsAllTime
+// bounces across a threshold — e.g. Supabase reloading a slightly-stale value,
+// or the browse-time edit heuristic bumping the counter — which produced the
+// repeated "Abacus" popups in Pinky Sandbox. We remember earned badge ids in
+// localStorage and skip anything already granted.
+const AWARDED_BADGES_KEY = 'nge_awarded_badges_v1';
+const awardedBadges = new Set<string>(loadAwardedBadges());
+function loadAwardedBadges(): string[] {
+  try {
+    const raw = localStorage.getItem(AWARDED_BADGES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+/** Returns true if this is the first time we've seen this badge (and records
+ *  it). Returns false if it was already awarded before. */
+function claimBadgeOnce(id: string): boolean {
+  if (awardedBadges.has(id)) return false;
+  awardedBadges.add(id);
+  try { localStorage.setItem(AWARDED_BADGES_KEY, JSON.stringify([...awardedBadges])); } catch { /* quota — non-critical */ }
+  return true;
+}
+
 onMounted(() => {
   // Capture initial values (don't toast for existing state)
   prevEdits = stats.value.editsAllTime;
@@ -122,6 +146,7 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
   for (const badge of BUILDING_BADGES) {
     if (badge.threshold <= 0) continue;
     if (prevEdits < badge.threshold && newEdits >= badge.threshold) {
+      if (!claimBadgeOnce(badge.id != null ? `b:${badge.id}` : `b:${badge.slug}`)) continue;
       const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
       addToast({
         type: 'badge',
@@ -162,6 +187,7 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
   for (const badge of EXPLORATION_BADGES) {
     if (badge.threshold <= 0) continue;
     if (prevCells < badge.threshold && newCells >= badge.threshold) {
+      if (!claimBadgeOnce(badge.id != null ? `e:${badge.id}` : `e:${badge.slug}`)) continue;
       const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
       addToast({
         type: 'badge',

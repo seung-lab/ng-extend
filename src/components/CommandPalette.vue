@@ -14,6 +14,8 @@ import {
   useProofreadingQueueStore,
   CellHistoryEntry,
 } from '../store';
+import { setCellComplete } from '../widgets/lightbulb_service';
+import { EYEWIRE_II_CAVE_CONFIG } from '../config';
 
 const emit = defineEmits({
   'open-profile': null,
@@ -66,10 +68,7 @@ function buildActions(): PaletteItem[] {
       category: 'action',
       icon: '✓',
       shortcut: 'Ctrl+Shift+C',
-      action: () => {
-        const btn = document.querySelector('.nge-ann-btn') as HTMLButtonElement;
-        if (btn) btn.click();
-      },
+      action: () => { markActiveSegmentComplete(); close(); },
     });
     items.push({
       id: 'set-cell-type',
@@ -546,6 +545,27 @@ function buildActions(): PaletteItem[] {
   return items;
 }
 
+// ── Mark the selected segment complete ───────────────────────────────────────
+// The floating AnnotationPanel (which used to own the ".nge-ann-btn" complete
+// button) is disabled — users work from the Cell Library instead — so the old
+// "click the DOM button" trick did nothing. Write the CAVE completion directly;
+// setCellComplete() handles the annotation write plus the pip update, edit log,
+// activity feed, cell history, stats bump and celebration.
+const marking = ref(false);
+async function markActiveSegmentComplete() {
+  const seg = activeSegId.value;
+  if (!seg || marking.value) return;
+  marking.value = true;
+  try {
+    const caveServer = annotStore.caveUrl || EYEWIRE_II_CAVE_CONFIG.caveServerOverride || '';
+    await setCellComplete(caveServer, seg, true);
+  } catch (e) {
+    console.warn('[cmdPalette] mark complete failed:', e);
+  } finally {
+    marking.value = false;
+  }
+}
+
 // ── Tool activation (same logic as ExtensionBar) ─────────────────────────────
 function activateTool(toolType: 'multicut' | 'merge') {
   const viewer = (window as any)['viewer'];
@@ -695,7 +715,12 @@ function globalKeyHandler(e: KeyboardEvent) {
   // Shortcuts only when palette is closed
   if (visible.value) return;
 
-  if (e.ctrlKey && e.shiftKey && e.key === 'P') {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.code === 'KeyC')) {
+    if (!activeSegId.value) return; // nothing selected — let the browser have it
+    e.preventDefault();
+    e.stopPropagation();
+    markActiveSegmentComplete();
+  } else if (e.ctrlKey && e.shiftKey && e.key === 'P') {
     e.preventDefault();
     emit('open-profile');
   } else if (e.ctrlKey && e.shiftKey && e.key === 'L') {
