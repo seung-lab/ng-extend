@@ -600,13 +600,14 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       🔥 {{ stats.currentStreak }}
     </div>
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
-      <button class="nge-cmd-trigger nge-feedback-trigger" title="Submit an issue or feedback"
+      <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#dfe6f2"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="12" y1="8" x2="12" y2="12.5"/>
+          <line x1="12" y1="16" x2="12" y2="16"/>
         </svg>
-        <span>Feedback</span>
       </button>
       <button
         v-for="icon in visibleToolbar"
@@ -1195,14 +1196,6 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   letter-spacing: 0.03em;
 }
 .nge-cmd-trigger:hover kbd { color: #e0ecff; }
-/* Feedback trigger reuses the ⌘K trigger's minimal look: icon + label. */
-.nge-feedback-trigger { gap: 5px; color: #cfdcef; }
-.nge-feedback-trigger span {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.nge-feedback-trigger:hover { color: #e0ecff; }
 
 /* ── Hamburger menu ── */
 #hamburger li {
