@@ -101,13 +101,15 @@
   color: rgba(74, 158, 255, 0.7) !important;
 }
 
-/* ── Hide neuroglancer settings gear + JSON editor + layer list panel from top bar ── */
-/* They are moved into our Settings panel */
+/* ── Hide neuroglancer settings gear + JSON editor from top bar ── */
+/* They are moved into our Settings panel.
+   The layer-list toggle is deliberately NOT hidden: it's the only way to reach
+   the layer panel, and with it hidden there was no discoverable path to the
+   hidden layers. It keeps the shared neutral top-row icon treatment below
+   (and the blue active underline when open) — never neuroglancer's red. */
 .neuroglancer-viewer-top-row > [title="Show settings panel"],
 .neuroglancer-viewer-top-row > [title="Hide settings panel"],
-.neuroglancer-viewer-top-row > [title="Edit JSON state"],
-.neuroglancer-viewer-top-row > [title="Show layer list panel"],
-.neuroglancer-viewer-top-row > [title="Hide layer list panel"] {
+.neuroglancer-viewer-top-row > [title="Edit JSON state"] {
   display: none !important;
 }
 
@@ -177,14 +179,30 @@
   stroke: #e0ecff !important;
 }
 /* Active (panel-open) state: blue underline instead of a fill, so the
-   button doesn't grow a box. */
-.neuroglancer-viewer-top-row > .neuroglancer-icon.neuroglancer-checkbox-icon-checked {
+   button doesn't grow a box.
+
+   NOTE: neuroglancer's CheckboxIcon marks the active state with the ATTRIBUTE
+   `data-checked="true"` (see widget/checkbox_icon.ts), not a
+   `-checked` class — the class selector below never matched anything. It's kept
+   only so any older build that did use it still gets the blue treatment.
+   The attribute selector is the one that actually does the work, and it also
+   cancels checkbox_icon.css's translucent-white background wash so the toggle
+   (e.g. the layers panel icon) reads as our blue accent and never a coloured
+   box. */
+.neuroglancer-viewer-top-row > .neuroglancer-icon.neuroglancer-checkbox-icon-checked,
+.neuroglancer-viewer-top-row > .neuroglancer-icon[data-checked="true"] {
   opacity: 1;
   color: #4a9eff !important;
+  background: none !important;
   box-shadow: inset 0 -2px 0 0 #4a9eff;
 }
-.neuroglancer-viewer-top-row > .neuroglancer-icon.neuroglancer-checkbox-icon-checked > svg {
+.neuroglancer-viewer-top-row > .neuroglancer-icon.neuroglancer-checkbox-icon-checked > svg,
+.neuroglancer-viewer-top-row > .neuroglancer-icon[data-checked="true"] > svg {
   stroke: #4a9eff !important;
+}
+/* Keep the hover wash subtle on the active toggle too. */
+.neuroglancer-viewer-top-row > .neuroglancer-icon[data-checked="true"]:hover {
+  background: rgba(74, 158, 255, 0.10) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

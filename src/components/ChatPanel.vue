@@ -19,6 +19,8 @@ const inputEl = ref<HTMLInputElement | null>(null);
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const isScrolledUp = ref(false);
 const collapsed = ref(false);
+/** Segment id most recently copied, for the brief "copied" tick. */
+const copiedSegId = ref<string | null>(null);
 
 // ── Drag state ──
 const panelEl = ref<HTMLDivElement | null>(null);
@@ -216,17 +218,42 @@ function loadSegment(segRef: string) {
     });
     if (segLayer?.layer) {
       const groupState = segLayer.layer.displayState?.segmentationGroupState?.value;
+      const { Uint64 } = require('neuroglancer/util/uint64');
+      const seg = Uint64.parseString(segId);
       if (groupState?.visibleSegments) {
-        const { Uint64 } = require('neuroglancer/util/uint64');
-        const seg = Uint64.parseString(segId);
         if (!groupState.visibleSegments.has(seg)) {
           groupState.visibleSegments.add(seg);
         }
       }
+      // Adding the segment only makes it visible — it does NOT move the camera,
+      // so sharing an ID in chat used to load the cell somewhere off-screen and
+      // look like nothing happened. Actually jump to it. `moveToSegment` is the
+      // same path the segment-list jump button uses, and move_to_segment_patch
+      // extends it to work on graphene MeshLayer datasets too. The mesh may not
+      // be loaded yet, so retry briefly before giving up.
+      const jump = (attempt = 0) => {
+        try {
+          segLayer.layer.moveToSegment(seg);
+        } catch {
+          if (attempt < 10) setTimeout(() => jump(attempt + 1), 300);
+        }
+      };
+      jump();
     }
   } catch (e) {
     console.warn('[chat] loadSegment error:', e);
   }
+}
+
+/** Copy a shared segment ID to the clipboard (the chip is also selectable). */
+async function copySegId(segRef: string, ev: Event) {
+  ev.stopPropagation();
+  const segId = segRef.replace('#', '');
+  try {
+    await navigator.clipboard.writeText(segId);
+    copiedSegId.value = segId;
+    setTimeout(() => { if (copiedSegId.value === segId) copiedSegId.value = null; }, 1200);
+  } catch { /* clipboard blocked — the chip text is still selectable */ }
 }
 
 // ── Open user profile from chat name click ──
@@ -326,7 +353,18 @@ function toggleCollapse() {
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <a v-else-if="part.type === 'link'" :href="part.text" target="_blank" rel="noopener" class="nge-chat-link">{{ part.text }}</a>
-                    <button v-else-if="part.type === 'segment'" class="nge-chat-seg-link" @click="loadSegment(part.text)" :title="'Load segment ' + part.text.slice(1)">{{ part.text }}</button>
+                    <span v-else-if="part.type === 'segment'" class="nge-chat-seg-chip"><span
+                        class="nge-chat-seg-link"
+                        role="button"
+                        tabindex="0"
+                        @click="loadSegment(part.text)"
+                        @keydown.enter="loadSegment(part.text)"
+                        :title="'Jump to segment ' + part.text.slice(1)"
+                      >{{ part.text }}</span><button
+                        class="nge-chat-seg-copy"
+                        @click="copySegId(part.text, $event)"
+                        :title="'Copy ' + part.text.slice(1)"
+                      >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
                     <span v-else class="nge-chat-msg-text">{{ part.text }}</span>
                   </template>
                 </div>
@@ -592,21 +630,48 @@ function toggleCollapse() {
 }
 .nge-chat-link:hover { text-decoration: underline; }
 
-.nge-chat-seg-link {
+/* Shared segment id: click the id to jump, click ⧉ to copy — and the id text
+   itself is selectable so it can be dragged out / copied manually. It used to
+   be a <button>, which browsers don't let you select text inside, so a shared
+   ID could neither be copied nor (see loadSegment) actually jumped to. */
+.nge-chat-seg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   background: rgba(0, 220, 120, 0.1);
   border: 1px solid rgba(0, 220, 120, 0.25);
-  color: #80ffc0;
-  padding: 1px 6px;
   border-radius: 4px;
-  font-size: 12px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
-.nge-chat-seg-link:hover {
+.nge-chat-seg-chip:hover {
   background: rgba(0, 220, 120, 0.2);
   border-color: rgba(0, 220, 120, 0.4);
 }
+.nge-chat-seg-link {
+  color: #80ffc0;
+  padding: 1px 2px 1px 6px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  cursor: pointer;
+  /* The chat body sets user-select: none; re-enable it here so the id can be
+     highlighted and copied by hand. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+.nge-chat-seg-link:focus-visible {
+  outline: 1px solid rgba(0, 220, 120, 0.7);
+  outline-offset: 1px;
+}
+.nge-chat-seg-copy {
+  background: none;
+  border: none;
+  color: rgba(128, 255, 192, 0.6);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 5px 2px 2px;
+}
+.nge-chat-seg-copy:hover { color: #80ffc0; background: none; }
 
 /* System messages */
 .nge-chat-sys {
