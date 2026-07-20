@@ -22,6 +22,47 @@
   --color-pyr-purple: #a46fe2ba;
 }
 
+/* ── Global scrollbar theme ──────────────────────────────────────────────────
+   NO light/default scrollbars anywhere. The browser paints its default
+   light-theme scrollbar on any element that scrolls, which shows up as a stark
+   white bar against this dark UI (most visibly on the modal panels, which
+   scroll once they're clamped to the viewport).
+
+   `color-scheme: dark` on the root tells the UA to render native chrome
+   (scrollbars, form controls, pickers) in dark mode; the explicit rules below
+   then style the WebKit scrollbars to the blue accent so it matches rather
+   than merely being dark.
+
+   These use the universal selector on purpose so nothing is missed, including
+   neuroglancer's own panels. Specificity is 0, so any component that
+   deliberately needs a different scrollbar (e.g. the white country dropdown in
+   Settings) still wins with its own class rule. */
+:root {
+  color-scheme: dark;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.32) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(74, 158, 255, 0.28);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(74, 158, 255, 0.5);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .ng-extend button {
   display: inline-block;
   border: none;

@@ -678,13 +678,16 @@ onMounted(() => {
      invisible. `color-scheme: dark` switches the whole native widget to dark. */
   color-scheme: dark;
 }
-/* Belt-and-braces for Chromium: force the picker glyph light even if the UA
-   ignores color-scheme on this control. */
+/* Do NOT add `filter: invert(1)` here. `color-scheme: dark` above already
+   renders the picker glyph light; inverting it flipped it straight back to
+   black, which is what kept the icon invisible after the first fix. Only
+   brighten it slightly and make it obviously clickable. */
 .nge-admin-date-input::-webkit-calendar-picker-indicator {
-  filter: invert(1) brightness(1.6);
-  opacity: 0.75;
+  filter: brightness(1.8);
+  opacity: 0.85;
   cursor: pointer;
 }
+.nge-admin-date-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .nge-admin-date-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .nge-admin-date-input:focus { border-color: rgba(74, 158, 255, 0.5); }
 .nge-admin-tz {
