@@ -295,11 +295,16 @@ function injectSegmentLegend() {
     if (!legend) {
       legend = document.createElement('div');
       legend.className = 'nge-seg-legend';
+      // Ordered as the workflow actually progresses: Todo -> Proofread ->
+      // Typed -> Done. The pip CLASS names are unchanged (they're set from
+      // CAVE status in button_service and referenced by the restyle CSS);
+      // only the labels and their order change. "Complete" was relabelled
+      // "Proofread" to say what the user actually did to the cell.
       legend.innerHTML =
-        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--complete"></span>Complete</span>' +
-        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--done"></span>Done</span>' +
+        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--incomplete"></span>Todo</span>' +
+        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--complete"></span>Proofread</span>' +
         '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--annotated"></span>Typed</span>' +
-        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--incomplete"></span>Todo</span>';
+        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--done"></span>Done</span>';
       tab.appendChild(legend);
     } else if (legend.parentElement !== tab) {
       // Move to the end of the tab if it ended up somewhere else

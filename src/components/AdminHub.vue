@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ref, computed, watch, onMounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
-import {etNaiveToUtcIso, formatEt} from '../util/et_time';
+import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 
 const backend = useProofreadingBackendStore();
 
@@ -33,6 +33,59 @@ const notifConfirm = ref('');
 /** Pending delete awaiting confirmation, and the post-delete acknowledgement. */
 const pendingDelete = ref<any | null>(null);
 const deleteDone = ref('');
+
+/** Id of the notification currently being edited (null = composing a new one). */
+const editingId = ref<number | null>(null);
+
+/**
+ * Notifications split by lifecycle stage.
+ *
+ * Derived from the single paginated admin list rather than three queries.
+ * Ordering is send_at DESC, so future-dated rows sort to the top and the
+ * scheduled queue is always on the first page.
+ */
+function notifStage(n: any): 'scheduled' | 'active' | 'expired' {
+  const now = Date.now();
+  if (n.expires_at && new Date(n.expires_at).getTime() <= now) return 'expired';
+  if (n.send_at && new Date(n.send_at).getTime() > now + 60_000) return 'scheduled';
+  return 'active';
+}
+const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled'));
+const activeNotifs    = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'active'));
+const expiredNotifs   = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'expired'));
+
+/** Load an existing notification into the compose form for editing. */
+function startEdit(n: any) {
+  editingId.value = n.id;
+  notifTitle.value = n.title || '';
+  notifBody.value = n.body || '';
+  notifTargetType.value = n.target_type || 'all';
+  notifTargetId.value = n.target_id || '';
+  notifPostToChat.value = !!n.post_to_chat;
+  notifSendAt.value = n.send_at ? utcIsoToEtNaive(n.send_at) : '';
+  notifExpiresAt.value = n.expires_at ? utcIsoToEtNaive(n.expires_at) : '';
+  notifConfirm.value = '';
+  notifError.value = '';
+  // Images aren't re-loaded into file inputs; leaving them untouched keeps the
+  // existing artwork unless a new file is picked.
+  notifImageFile.value = null;
+  notifIconFile.value = null;
+}
+
+function cancelEdit() {
+  editingId.value = null;
+  notifTitle.value = '';
+  notifBody.value = '';
+  notifTargetType.value = 'all';
+  notifTargetId.value = '';
+  notifPostToChat.value = false;
+  notifSendAt.value = '';
+  notifExpiresAt.value = '';
+  notifImageFile.value = null;
+  notifIconFile.value = null;
+  notifError.value = '';
+  clearDraft();
+}
 
 // ── Draft persistence ───────────────────────────────────────────────────────
 // The Admin Hub lives inside a modal, so a stray click on the backdrop used to
@@ -97,6 +150,29 @@ async function sendNotification() {
     if (notifIconFile.value) {
       thumbnailUrl = await backend.uploadAdminIcon(notifIconFile.value);
     }
+
+    // ── Editing an existing notification ──
+    if (editingId.value != null) {
+      await backend.updateNotification(editingId.value, {
+        title: notifTitle.value.trim(),
+        body: notifBody.value.trim(),
+        target_type: notifTargetType.value,
+        target_id: notifTargetType.value !== 'all' ? notifTargetId.value : null,
+        post_to_chat: notifPostToChat.value,
+        send_at: notifSendAt.value ? etNaiveToUtcIso(notifSendAt.value) : undefined,
+        expires_at: notifExpiresAt.value ? etNaiveToUtcIso(notifExpiresAt.value) : null,
+        // Only overwrite artwork when a new file was actually chosen.
+        ...(imageUrl ? { image_url: imageUrl } : {}),
+        ...(thumbnailUrl ? { thumbnail_url: thumbnailUrl } : {}),
+      });
+      notifConfirm.value = `Updated “${notifTitle.value.trim()}”.`;
+      cancelEdit();
+      notifSent.value = true;
+      setTimeout(() => { notifSent.value = false; }, 2000);
+      await backend.loadAdminNotifications();
+      return;
+    }
+
     await backend.createNotification({
       title: notifTitle.value.trim(),
       body: notifBody.value.trim(),
@@ -135,8 +211,8 @@ async function sendNotification() {
     clearDraft();
     notifSent.value = true;
     setTimeout(() => { notifSent.value = false; }, 2000);
-    // Refresh the queue so a newly-scheduled notification appears in it.
-    await backend.loadScheduledNotifications();
+    // Refresh the admin list so a newly-scheduled notification appears in it.
+    await backend.loadAdminNotifications();
   } catch (e: any) {
     notifError.value = e.message || 'Failed to send notification';
     console.error('[admin] sendNotification failed:', e);
@@ -329,7 +405,7 @@ onMounted(() => {
   backend.loadGroups();
   backend.loadSpecialBadges();
   backend.loadNotifications();
-  backend.loadScheduledNotifications();
+  backend.loadAdminNotifications();
   restoreDraft();
 });
 </script>
@@ -368,7 +444,12 @@ onMounted(() => {
     <!-- ── Notifications ── -->
     <div v-if="adminSubTab === 'notifications'" class="nge-admin-section">
       <div class="nge-admin-block">
-        <label class="nge-admin-label">Send Notification</label>
+        <label class="nge-admin-label">
+          {{ editingId != null ? 'Editing Notification' : 'Send Notification' }}
+        </label>
+        <div v-if="editingId != null" class="nge-admin-editing-banner">
+          Editing an existing notification. Changes apply to everyone who can see it.
+        </div>
         <input v-model="notifTitle" class="nge-admin-input" placeholder="Title" />
         <textarea v-model="notifBody" class="nge-admin-textarea" rows="3" placeholder="Message body..."></textarea>
         <div class="nge-admin-row">
@@ -415,11 +496,15 @@ onMounted(() => {
           </label>
         </div>
         <p class="nge-admin-hint">Images up to 8 MB (PNG, JPEG, WebP, GIF). The feed always loads the small icon, not the full image.</p>
-        <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
-          <span v-if="notifSent">✓ Sent!</span>
-          <span v-else-if="notifSending">Sending...</span>
-          <span v-else>Send Notification</span>
-        </button>
+        <div class="nge-admin-row">
+          <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
+            <span v-if="notifSent">✓ Saved!</span>
+            <span v-else-if="notifSending">Saving...</span>
+            <span v-else-if="editingId != null">Save Changes</span>
+            <span v-else>Send Notification</span>
+          </button>
+          <button v-if="editingId != null" class="nge-admin-cancel-btn" @click="cancelEdit">Cancel edit</button>
+        </div>
         <div v-if="notifError" class="nge-admin-error">⚠ {{ notifError }}</div>
         <!-- Explicit confirmation of what actually happened, including the
              scheduled time, rather than a transient "Sent!" on the button. -->
@@ -429,11 +514,14 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Scheduled queue: these are invisible to loadNotifications() until
-           their send time, so without this an admin can't see or cancel them. -->
-      <div class="nge-admin-block" v-if="backend.scheduledNotifications.length > 0">
-        <label class="nge-admin-label">Scheduled ({{ backend.scheduledNotifications.length }})</label>
-        <div v-for="n in backend.scheduledNotifications" :key="n.id" class="nge-admin-notif-row nge-admin-notif-row--queued">
+      <!-- Notifications by lifecycle stage. All three come from ONE paginated
+           admin query (send_at DESC), so future-dated rows sort to the top and
+           the scheduled queue is always on the first page. Loading every
+           notification ever just to render this panel would get slow for no
+           benefit, hence "Load more". -->
+      <div class="nge-admin-block" v-if="scheduledNotifs.length > 0">
+        <label class="nge-admin-label">Scheduled ({{ scheduledNotifs.length }})</label>
+        <div v-for="n in scheduledNotifs" :key="n.id" class="nge-admin-notif-row nge-admin-notif-row--queued">
           <div class="nge-admin-notif-info">
             <strong>{{ n.title }}</strong>
             <span class="nge-admin-notif-meta">
@@ -441,20 +529,41 @@ onMounted(() => {
               <span v-if="n.post_to_chat"> · posts to chat</span>
             </span>
           </div>
-          <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Cancel this scheduled notification">×</button>
+          <button class="nge-admin-edit-btn" @click="startEdit(n)" title="Edit">&#9998;</button>
+          <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Cancel this scheduled notification">&times;</button>
         </div>
       </div>
 
-      <!-- Recent notifications -->
-      <div class="nge-admin-block" v-if="backend.notifications.length > 0">
-        <label class="nge-admin-label">Recent Notifications</label>
-        <div v-for="n in backend.notifications.slice(0, 10)" :key="n.id" class="nge-admin-notif-row">
+      <div class="nge-admin-block" v-if="activeNotifs.length > 0">
+        <label class="nge-admin-label">Active ({{ activeNotifs.length }})</label>
+        <div v-for="n in activeNotifs" :key="n.id" class="nge-admin-notif-row nge-admin-notif-row--active">
           <div class="nge-admin-notif-info">
             <strong>{{ n.title }}</strong>
-            <span class="nge-admin-notif-meta">{{ n.target_type }} · {{ formatEt(n.send_at) }}</span>
+            <span class="nge-admin-notif-meta">
+              {{ n.target_type }} · sent {{ formatEt(n.send_at) }}
+              <span v-if="n.expires_at"> · expires {{ formatEt(n.expires_at) }}</span>
+            </span>
           </div>
-          <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Delete">×</button>
+          <button class="nge-admin-edit-btn" @click="startEdit(n)" title="Edit">&#9998;</button>
+          <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Delete">&times;</button>
         </div>
+      </div>
+
+      <!-- Expired: no edit button. Editing something nobody can see any more
+           would just be misleading, so these are read-only apart from delete. -->
+      <div class="nge-admin-block" v-if="expiredNotifs.length > 0">
+        <label class="nge-admin-label">Expired ({{ expiredNotifs.length }})</label>
+        <div v-for="n in expiredNotifs" :key="n.id" class="nge-admin-notif-row nge-admin-notif-row--expired">
+          <div class="nge-admin-notif-info">
+            <strong>{{ n.title }}</strong>
+            <span class="nge-admin-notif-meta">{{ n.target_type }} · expired {{ formatEt(n.expires_at) }}</span>
+          </div>
+          <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Delete">&times;</button>
+        </div>
+      </div>
+
+      <div class="nge-admin-block" v-if="backend.adminNotifHasMore">
+        <button class="nge-admin-more-btn" @click="backend.loadAdminNotifications(true)">Load more</button>
       </div>
     </div>
 
@@ -745,9 +854,67 @@ onMounted(() => {
 
 .nge-admin-file-label--icon { border-style: dotted; }
 
+/* Lifecycle stage is colour-coded on the left edge: amber = still to come,
+   blue = live now, grey = done. */
 .nge-admin-notif-row--queued {
   border-left: 2px solid rgba(245, 166, 35, 0.5);
   padding-left: 8px;
+}
+.nge-admin-notif-row--active {
+  border-left: 2px solid rgba(74, 158, 255, 0.5);
+  padding-left: 8px;
+}
+.nge-admin-notif-row--expired {
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
+  padding-left: 8px;
+  opacity: 0.65;
+}
+
+.nge-admin-edit-btn {
+  background: none;
+  border: none;
+  color: rgba(150, 175, 215, 0.75);
+  cursor: pointer;
+  font-size: 0.95em;
+  padding: 0 6px;
+}
+.nge-admin-edit-btn:hover { color: #4a9eff; }
+
+.nge-admin-more-btn {
+  width: 100%;
+  padding: 7px 0;
+  background: none;
+  border: 1px dashed rgba(74, 158, 255, 0.3);
+  border-radius: 6px;
+  color: rgba(150, 175, 215, 0.9);
+  font-size: 0.82em;
+  cursor: pointer;
+}
+.nge-admin-more-btn:hover {
+  border-color: rgba(74, 158, 255, 0.55);
+  color: #cfdcef;
+  background: rgba(74, 158, 255, 0.06);
+}
+
+.nge-admin-cancel-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  color: #aab;
+  font-size: 0.82em;
+  padding: 0 12px;
+  cursor: pointer;
+}
+.nge-admin-cancel-btn:hover { background: rgba(255, 255, 255, 0.06); color: #cfd6e6; }
+
+.nge-admin-editing-banner {
+  margin: 6px 0 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.3);
+  color: #f0d0a0;
+  font-size: 0.78em;
 }
 
 /* Confirm dialog */

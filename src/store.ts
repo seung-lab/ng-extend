@@ -3139,24 +3139,62 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
 
   /**
-   * Notifications whose send_at is still in the future — the admin "queue".
+   * The admin's view of notifications — ALL of them, not just the ones a user
+   * would see.
    *
-   * loadNotifications() deliberately filters these out (`send_at <= now`), so
-   * without a separate query a scheduled notification is invisible after you
-   * create it and there's no way to see or cancel what's pending.
+   * loadNotifications() filters to `send_at <= now` and the current user's
+   * targeting, so an admin can't see what's scheduled, what's expired, or
+   * anything aimed at someone else. This is the management list instead.
+   *
+   * Paginated deliberately: a project that has been running a while
+   * accumulates notifications, and loading every one to render a settings
+   * panel gets slow for no benefit. Newest first, a page at a time.
+   * Ordering by send_at DESC also means future-dated (scheduled) rows sort to
+   * the top, so the queue is always on the first page.
    */
-  const scheduledNotifications = ref<Notification[]>([]);
+  const adminNotifications = ref<Notification[]>([]);
+  const adminNotifHasMore = ref(false);
+  const ADMIN_NOTIF_PAGE = 15;
 
-  async function loadScheduledNotifications() {
+  async function loadAdminNotifications(append = false) {
     if (!isAdmin.value) return;
+    const offset = append ? adminNotifications.value.length : 0;
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
-      .gt('send_at', new Date().toISOString())
-      .order('send_at', { ascending: true })
-      .limit(50);
-    if (error) { console.warn('[admin] loadScheduled failed:', error.message); return; }
-    scheduledNotifications.value = data || [];
+      .order('send_at', { ascending: false })
+      .range(offset, offset + ADMIN_NOTIF_PAGE - 1);
+    if (error) { console.warn('[admin] loadAdminNotifications failed:', error.message); return; }
+    const rows = data || [];
+    // A full page back implies there may be more; a short page means the end.
+    adminNotifHasMore.value = rows.length === ADMIN_NOTIF_PAGE;
+    adminNotifications.value = append ? [...adminNotifications.value, ...rows] : rows;
+  }
+
+  /**
+   * Edit an existing notification.
+   *
+   * Callers must not offer this for expired notifications — editing something
+   * nobody can see any more is misleading. Enforced in the UI (the edit button
+   * is hidden) rather than here, so an admin script could still repair a row.
+   */
+  async function updateNotification(id: number, fields: {
+    title?: string; body?: string;
+    image_url?: string | null; thumbnail_url?: string | null;
+    send_at?: string; expires_at?: string | null;
+    target_type?: string; target_id?: string | null;
+    post_to_chat?: boolean;
+  }) {
+    if (!isAdmin.value) return;
+    const { error } = await supabase.from('notifications').update(fields).eq('id', id);
+    if (error) { console.warn('[admin] updateNotification failed:', error.message); throw new Error(error.message); }
+    // Reflect locally without a full refetch.
+    const patch = (list: Notification[]) => {
+      const i = list.findIndex(n => n.id === id);
+      if (i >= 0) list[i] = { ...list[i], ...fields } as Notification;
+    };
+    patch(adminNotifications.value);
+    patch(notifications.value);
   }
 
   async function markNotificationRead(notifId: number) {
@@ -3259,7 +3297,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifications.value = notifications.value.filter(n => n.id !== notifId);
     // Also drop it from the scheduled queue — deleting a pending notification
     // is how an admin cancels it.
-    scheduledNotifications.value = scheduledNotifications.value.filter(n => n.id !== notifId);
+    adminNotifications.value = adminNotifications.value.filter(n => n.id !== notifId);
   }
 
   /** Delete (permanently hide) one notification for the current user. */
@@ -3698,7 +3736,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     isAdmin, checkAdmin,
     // Notifications
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
-    scheduledNotifications, loadScheduledNotifications,
+    adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,
     createNotification, createSelfNotification, deleteNotification, dismissNotification,
     dismissAllNotifications,
