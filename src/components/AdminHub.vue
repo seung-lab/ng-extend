@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref, computed, onMounted} from 'vue';
+import {ref, computed, watch, onMounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
 import {etNaiveToUtcIso, formatEt} from '../util/et_time';
 
@@ -24,9 +24,61 @@ const isScheduledForLater = computed(() => {
 const notifSendAt = ref('');
 const notifExpiresAt = ref('');
 const notifImageFile = ref<File | null>(null);
+const notifIconFile = ref<File | null>(null);
 const notifSending = ref(false);
 const notifSent = ref(false);
 const notifError = ref('');
+/** Post-send confirmation describing exactly what happened. */
+const notifConfirm = ref('');
+/** Pending delete awaiting confirmation, and the post-delete acknowledgement. */
+const pendingDelete = ref<any | null>(null);
+const deleteDone = ref('');
+
+// ── Draft persistence ───────────────────────────────────────────────────────
+// The Admin Hub lives inside a modal, so a stray click on the backdrop used to
+// throw away a half-written notification. Mirror the form to localStorage on
+// every change and restore it on mount; cleared only on a successful send.
+const DRAFT_KEY = 'nge-admin-notif-draft';
+
+function saveDraft() {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      title: notifTitle.value,
+      body: notifBody.value,
+      targetType: notifTargetType.value,
+      targetId: notifTargetId.value,
+      postToChat: notifPostToChat.value,
+      sendAt: notifSendAt.value,
+      expiresAt: notifExpiresAt.value,
+      // Files can't be serialised; the admin re-picks those.
+    }));
+  } catch { /* quota or private mode */ }
+}
+
+function restoreDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    notifTitle.value = d.title || '';
+    notifBody.value = d.body || '';
+    notifTargetType.value = d.targetType || 'all';
+    notifTargetId.value = d.targetId || '';
+    notifPostToChat.value = !!d.postToChat;
+    notifSendAt.value = d.sendAt || '';
+    notifExpiresAt.value = d.expiresAt || '';
+  } catch { /* ignore malformed draft */ }
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+}
+
+const hasDraft = computed(() =>
+  !!(notifTitle.value.trim() || notifBody.value.trim() || notifSendAt.value));
+
+watch([notifTitle, notifBody, notifTargetType, notifTargetId,
+       notifPostToChat, notifSendAt, notifExpiresAt], saveDraft);
 
 async function sendNotification() {
   if (!notifTitle.value.trim() || !notifBody.value.trim()) return;
@@ -39,6 +91,11 @@ async function sendNotification() {
       const urls = await backend.uploadAdminImage(notifImageFile.value, 'notifications');
       imageUrl = urls.fullUrl;
       thumbnailUrl = urls.thumbUrl;
+    }
+    // An explicitly-supplied icon wins over the thumbnail auto-cropped from the
+    // hero image — that crop often reads badly at feed size.
+    if (notifIconFile.value) {
+      thumbnailUrl = await backend.uploadAdminIcon(notifIconFile.value);
     }
     await backend.createNotification({
       title: notifTitle.value.trim(),
@@ -56,16 +113,30 @@ async function sendNotification() {
       image_url: imageUrl,
       thumbnail_url: thumbnailUrl,
     });
+    // Build the confirmation BEFORE clearing the form, so it can quote the
+    // scheduled time back and the admin knows exactly what was queued.
+    const audience = notifTargetType.value === 'all' ? 'all users'
+      : notifTargetType.value === 'group' ? 'the selected group'
+      : 'that user';
+    notifConfirm.value = isScheduledForLater.value
+      ? `Scheduled for ${formatEt(etNaiveToUtcIso(notifSendAt.value))} to ${audience}.`
+        + (notifPostToChat.value ? ' It will post to chat when it sends.' : '')
+      : `Sent now to ${audience}.`;
+
     notifTitle.value = '';
     notifBody.value = '';
     notifImageFile.value = null;
+    notifIconFile.value = null;
     notifTargetType.value = 'all';
     notifTargetId.value = '';
     notifPostToChat.value = false;
     notifSendAt.value = '';
     notifExpiresAt.value = '';
+    clearDraft();
     notifSent.value = true;
     setTimeout(() => { notifSent.value = false; }, 2000);
+    // Refresh the queue so a newly-scheduled notification appears in it.
+    await backend.loadScheduledNotifications();
   } catch (e: any) {
     notifError.value = e.message || 'Failed to send notification';
     console.error('[admin] sendNotification failed:', e);
@@ -76,7 +147,42 @@ async function sendNotification() {
 
 function onNotifImageChange(e: Event) {
   const input = e.target as HTMLInputElement;
-  if (input.files?.[0]) notifImageFile.value = input.files[0];
+  const file = input.files?.[0];
+  if (!file) return;
+  // Validate up front rather than failing halfway through a send.
+  const invalid = backend.validateAdminImage(file);
+  if (invalid) { notifError.value = invalid; input.value = ''; return; }
+  notifError.value = '';
+  notifImageFile.value = file;
+}
+
+function onNotifIconChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  const invalid = backend.validateAdminImage(file);
+  if (invalid) { notifError.value = invalid; input.value = ''; return; }
+  notifError.value = '';
+  notifIconFile.value = file;
+}
+
+/** Step 1 of delete: ask. Step 2 is confirmDelete(). */
+function requestDelete(n: any) {
+  pendingDelete.value = n;
+  deleteDone.value = '';
+}
+
+async function confirmDelete() {
+  const n = pendingDelete.value;
+  if (!n) return;
+  pendingDelete.value = null;
+  try {
+    await backend.deleteNotification(n.id);
+    deleteDone.value = `Deleted “${n.title}”.`;
+    setTimeout(() => { deleteDone.value = ''; }, 4000);
+  } catch (e: any) {
+    notifError.value = e?.message || 'Delete failed';
+  }
 }
 
 // ── Group management ──
@@ -223,11 +329,35 @@ onMounted(() => {
   backend.loadGroups();
   backend.loadSpecialBadges();
   backend.loadNotifications();
+  backend.loadScheduledNotifications();
+  restoreDraft();
 });
 </script>
 
 <template>
   <div class="nge-admin-hub">
+    <!-- Delete is irreversible and removes the notification for EVERYONE, so
+         it takes a deliberate confirm, then acknowledges that it happened. -->
+    <div v-if="pendingDelete" class="nge-admin-modal-backdrop" @click.self="pendingDelete = null">
+      <div class="nge-admin-modal">
+        <div class="nge-admin-modal-title">Delete this notification?</div>
+        <div class="nge-admin-modal-body">
+          “{{ pendingDelete.title }}”<br />
+          <span class="nge-admin-modal-sub">
+            This removes it for every user and can't be undone.
+          </span>
+        </div>
+        <div class="nge-admin-modal-actions">
+          <button class="nge-admin-modal-danger" @click="confirmDelete">Delete</button>
+          <button class="nge-admin-modal-cancel" @click="pendingDelete = null">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="deleteDone" class="nge-admin-toast">
+      ✓ {{ deleteDone }}
+      <button class="nge-admin-confirm-x" @click="deleteDone = ''">×</button>
+    </div>
     <!-- Sub-tabs -->
     <div class="nge-admin-subtabs">
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'notifications' }" @click="adminSubTab = 'notifications'">Notifications</button>
@@ -269,20 +399,50 @@ onMounted(() => {
         <p v-else class="nge-admin-hint">Leave "Send at" empty to send immediately</p>
         <div class="nge-admin-row">
           <label class="nge-admin-check"><input type="checkbox" v-model="notifPostToChat" /> Also post to chat</label>
-          <span v-if="notifPostToChat && isScheduledForLater" class="nge-admin-warn-inline">
-            Chat post is skipped for scheduled sends (it would announce a notification nobody can see yet).
+          <span v-if="notifPostToChat && isScheduledForLater" class="nge-admin-note-inline">
+            Chat post happens when it sends, not now.
           </span>
           <label class="nge-admin-file-label">
-            <input type="file" accept="image/*" @change="onNotifImageChange" class="nge-admin-file-input" />
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="onNotifImageChange" class="nge-admin-file-input" />
             {{ notifImageFile ? notifImageFile.name : 'Attach image...' }}
           </label>
+          <!-- Optional small icon. The feed renders a thumbnail per card, so a
+               purpose-made icon both looks better at 120px than an auto-crop of
+               the hero image and keeps the feed light. -->
+          <label class="nge-admin-file-label nge-admin-file-label--icon">
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="onNotifIconChange" class="nge-admin-file-input" />
+            {{ notifIconFile ? notifIconFile.name : 'Feed icon (optional)...' }}
+          </label>
         </div>
+        <p class="nge-admin-hint">Images up to 8 MB (PNG, JPEG, WebP, GIF). The feed always loads the small icon, not the full image.</p>
         <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
           <span v-if="notifSent">✓ Sent!</span>
           <span v-else-if="notifSending">Sending...</span>
           <span v-else>Send Notification</span>
         </button>
         <div v-if="notifError" class="nge-admin-error">⚠ {{ notifError }}</div>
+        <!-- Explicit confirmation of what actually happened, including the
+             scheduled time, rather than a transient "Sent!" on the button. -->
+        <div v-if="notifConfirm" class="nge-admin-confirm">
+          ✓ {{ notifConfirm }}
+          <button class="nge-admin-confirm-x" @click="notifConfirm = ''">×</button>
+        </div>
+      </div>
+
+      <!-- Scheduled queue: these are invisible to loadNotifications() until
+           their send time, so without this an admin can't see or cancel them. -->
+      <div class="nge-admin-block" v-if="backend.scheduledNotifications.length > 0">
+        <label class="nge-admin-label">Scheduled ({{ backend.scheduledNotifications.length }})</label>
+        <div v-for="n in backend.scheduledNotifications" :key="n.id" class="nge-admin-notif-row nge-admin-notif-row--queued">
+          <div class="nge-admin-notif-info">
+            <strong>{{ n.title }}</strong>
+            <span class="nge-admin-notif-meta">
+              {{ n.target_type }} · sends {{ formatEt(n.send_at) }}
+              <span v-if="n.post_to_chat"> · posts to chat</span>
+            </span>
+          </div>
+          <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Cancel this scheduled notification">×</button>
+        </div>
       </div>
 
       <!-- Recent notifications -->
@@ -293,7 +453,7 @@ onMounted(() => {
             <strong>{{ n.title }}</strong>
             <span class="nge-admin-notif-meta">{{ n.target_type }} · {{ formatEt(n.send_at) }}</span>
           </div>
-          <button class="nge-admin-delete-btn" @click="backend.deleteNotification(n.id)" title="Delete">×</button>
+          <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Delete">×</button>
         </div>
       </div>
     </div>
@@ -538,6 +698,101 @@ onMounted(() => {
   line-height: 1.35;
   max-width: 320px;
 }
+.nge-admin-note-inline {
+  color: rgba(150, 175, 215, 0.9);
+  font-size: 0.75em;
+  line-height: 1.35;
+  max-width: 320px;
+}
+
+/* Post-send confirmation, and the post-delete acknowledgement. */
+.nge-admin-confirm,
+.nge-admin-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 255, 150, 0.09);
+  border: 1px solid rgba(0, 255, 150, 0.28);
+  color: #9ff0c8;
+  font-size: 0.82em;
+  line-height: 1.4;
+}
+.nge-admin-toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10050;
+  margin: 0;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+.nge-admin-confirm-x {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 1.1em;
+  cursor: pointer;
+}
+.nge-admin-confirm-x:hover { opacity: 1; }
+
+.nge-admin-file-label--icon { border-style: dotted; }
+
+.nge-admin-notif-row--queued {
+  border-left: 2px solid rgba(245, 166, 35, 0.5);
+  padding-left: 8px;
+}
+
+/* Confirm dialog */
+.nge-admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10040;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nge-admin-modal {
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  padding: 18px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(8, 10, 20, 0.98), rgba(12, 16, 28, 0.98));
+  border: 1px solid rgba(224, 96, 96, 0.35);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+.nge-admin-modal-title {
+  font-size: 1.05em;
+  font-weight: 600;
+  color: #ffd0d0;
+  margin-bottom: 8px;
+}
+.nge-admin-modal-body { font-size: 0.88em; color: #cfd6e6; line-height: 1.5; }
+.nge-admin-modal-sub { color: #8b93a7; font-size: 0.92em; }
+.nge-admin-modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+.nge-admin-modal-danger,
+.nge-admin-modal-cancel {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: 6px;
+  font-size: 0.88em;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: none;
+  color: #cfd6e6;
+}
+.nge-admin-modal-danger {
+  border-color: rgba(224, 96, 96, 0.55);
+  color: #ff9b9b;
+}
+.nge-admin-modal-danger:hover { background: rgba(224, 96, 96, 0.18); }
+.nge-admin-modal-cancel:hover { background: rgba(255, 255, 255, 0.06); }
 
 .nge-admin-check {
   display: flex;

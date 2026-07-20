@@ -3133,6 +3133,27 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
+  /**
+   * Notifications whose send_at is still in the future — the admin "queue".
+   *
+   * loadNotifications() deliberately filters these out (`send_at <= now`), so
+   * without a separate query a scheduled notification is invisible after you
+   * create it and there's no way to see or cancel what's pending.
+   */
+  const scheduledNotifications = ref<Notification[]>([]);
+
+  async function loadScheduledNotifications() {
+    if (!isAdmin.value) return;
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .gt('send_at', new Date().toISOString())
+      .order('send_at', { ascending: true })
+      .limit(50);
+    if (error) { console.warn('[admin] loadScheduled failed:', error.message); return; }
+    scheduledNotifications.value = data || [];
+  }
+
   async function markNotificationRead(notifId: number) {
     if (!userId.value) return;
     notificationReads.value.add(notifId);
@@ -3185,11 +3206,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Tuesday still announced it in chat the instant you hit Send, pointing
     // everyone at something that `send_at` keeps hidden until Tuesday.
     //
-    // The `post_to_chat` flag is persisted on the row, so a scheduled
-    // announcement can be posted at the right time by a server-side job later
-    // (see notifyScheduledChatPosts in the TODO below). Posting it from the
-    // clients themselves is not an option: every client that polls would post
-    // its own copy.
+    // The `post_to_chat` flag is persisted on the row, and the scheduled
+    // announcement is posted at its send time by
+    // scripts/post-due-chat-announcements.mjs (cron, idempotent via
+    // notifications.chat_posted_at). Posting it from the clients themselves is
+    // not an option: every client that polls would post its own copy.
     const sendAtMs = new Date(row.send_at).getTime();
     const isScheduledForLater = Number.isFinite(sendAtMs) && sendAtMs > Date.now() + 60_000;
     if (data.post_to_chat && !isScheduledForLater) {
@@ -3228,8 +3249,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   async function deleteNotification(notifId: number) {
     if (!isAdmin.value) return;
-    await supabase.from('notifications').delete().eq('id', notifId);
+    const { error } = await supabase.from('notifications').delete().eq('id', notifId);
+    if (error) { console.warn('[admin] deleteNotification failed:', error.message); throw new Error(error.message); }
     notifications.value = notifications.value.filter(n => n.id !== notifId);
+    // Also drop it from the scheduled queue — deleting a pending notification
+    // is how an admin cancels it.
+    scheduledNotifications.value = scheduledNotifications.value.filter(n => n.id !== notifId);
   }
 
   /** Delete (permanently hide) one notification for the current user. */
@@ -3500,9 +3525,34 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   // ── Image Upload ──────────────────────────────────────────────────────
 
+  /**
+   * Upload limits for admin images.
+   *
+   * The feed renders the thumbnail for every card, so a heavy image is paid for
+   * on every open by every user. 8 MB is generous for a source image while
+   * still rejecting an accidental raw camera/screenshot dump; the feed itself
+   * always loads the small thumbnail, never the full file.
+   */
+  const MAX_ADMIN_IMAGE_BYTES = 8 * 1024 * 1024;
+  const ALLOWED_ADMIN_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+  /** Validate before upload. Returns an error string, or '' when acceptable. */
+  function validateAdminImage(file: File): string {
+    if (!ALLOWED_ADMIN_IMAGE_TYPES.includes(file.type)) {
+      return `Unsupported format (${file.type || 'unknown'}). Use PNG, JPEG, WebP or GIF.`;
+    }
+    if (file.size > MAX_ADMIN_IMAGE_BYTES) {
+      const mb = (file.size / (1024 * 1024)).toFixed(1);
+      return `Image is ${mb} MB — the limit is ${MAX_ADMIN_IMAGE_BYTES / (1024 * 1024)} MB. Please resize it.`;
+    }
+    return '';
+  }
+
   async function uploadAdminImage(
     file: File, type: 'notifications' | 'badges',
   ): Promise<{fullUrl: string; thumbUrl: string}> {
+    const invalid = validateAdminImage(file);
+    if (invalid) throw new Error(invalid);
     const timestamp = Date.now();
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const fullPath = `${type}/${timestamp}-${safeName}`;
@@ -3525,6 +3575,27 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const { data: thumbData } = supabase.storage.from('admin-uploads').getPublicUrl(thumbPath);
 
     return { fullUrl: fullData.publicUrl, thumbUrl: thumbData.publicUrl };
+  }
+
+  /**
+   * Upload a small icon used as the notification's feed thumbnail.
+   *
+   * The feed shows a thumbnail per card. Deriving it from a large hero image
+   * gives a crop that often reads poorly at 120px, so an admin can supply a
+   * purpose-made icon instead. Downscaled to 128px on upload regardless of what
+   * was picked, so the feed always loads something small.
+   */
+  async function uploadAdminIcon(file: File): Promise<string> {
+    const invalid = validateAdminImage(file);
+    if (invalid) throw new Error(invalid);
+    const iconBlob = await generateThumbnail(file, 128);
+    const path = `notifications/icon-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}.png`;
+    const { error } = await supabase.storage
+      .from('admin-uploads')
+      .upload(path, iconBlob, { contentType: 'image/png', upsert: true });
+    if (error) throw new Error('Icon upload failed: ' + error.message);
+    const { data } = supabase.storage.from('admin-uploads').getPublicUrl(path);
+    return data.publicUrl;
   }
 
   function generateThumbnail(file: File, maxWidth: number): Promise<Blob> {
@@ -3594,6 +3665,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     isAdmin, checkAdmin,
     // Notifications
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
+    scheduledNotifications, loadScheduledNotifications,
     markNotificationRead, markAllNotificationsRead,
     createNotification, createSelfNotification, deleteNotification, dismissNotification,
     dismissAllNotifications,
@@ -3608,7 +3680,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload
-    uploadAdminImage,
+    uploadAdminImage, uploadAdminIcon, validateAdminImage, MAX_ADMIN_IMAGE_BYTES,
     // Favorite Badge
     favoriteBadgeSlug, loadFavoriteBadge, saveFavoriteBadge,
   };

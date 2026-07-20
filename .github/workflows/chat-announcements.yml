@@ -1,0 +1,46 @@
+# ============================================================================
+# chat-announcements — post scheduled notifications to chat when they send.
+# ----------------------------------------------------------------------------
+# A notification created with "Also post to chat" plus a future send_at is
+# announced in chat at its send time, not at creation. This job is the single
+# actor that does it: the admin's browser only knows about it when it's
+# created, and every other client polls, so letting clients post would produce
+# one duplicate per connected user.
+#
+# Runs every 10 minutes: frequent enough that an announcement lands close to
+# its scheduled minute, cheap enough to ignore (one indexed query, usually
+# returning nothing). Idempotent via notifications.chat_posted_at.
+# ============================================================================
+name: Chat Announcements
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List what would be posted without posting'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Post due chat announcements
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="--dry-run"
+          fi
+          node scripts/post-due-chat-announcements.mjs $ARGS
