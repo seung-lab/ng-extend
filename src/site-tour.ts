@@ -190,7 +190,7 @@ Drop a point on the right cell and somewhere on the merged cell to find where it
     titleIcon: ICON_RECAP,
     text: `A weekly recap of your edits, completions, streak, plus a science fact or two.
 
-We're grateful to you for being a citizen scientist. Every edit brings us closer to mapping the brain!`,
+We're grateful for your contribution to shared scientific resources. Every edit brings us closer to mapping the brain!`,
     position: { element: '[title^="Your Week in Science"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
