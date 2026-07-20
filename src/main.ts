@@ -118,6 +118,29 @@ window.addEventListener('DOMContentLoaded', () => {
   // intercept first.
   window.addEventListener('keydown', escHandler, true);
   document.addEventListener('keydown', escHandler, true);
+
+  /**
+   * Re-enable the native context menu inside text fields.
+   *
+   * Neuroglancer calls `disableContextMenu()`, which registers a document-level
+   * `contextmenu` listener that unconditionally `preventDefault()`s — right
+   * click is bound to viewer navigation. The side effect is that the browser's
+   * native menu is dead EVERYWHERE, including our own inputs, so a user can't
+   * right-click a red-underlined word to get spellcheck corrections (or use
+   * copy/paste) in the feedback box, chat input, notes, or search fields.
+   *
+   * Fix it here rather than by editing vendored neuroglancer: a capture-phase
+   * listener runs before NG's document-level (bubble) handler, so stopping
+   * propagation for editable targets means NG never gets to preventDefault. The
+   * viewer canvas is untouched, so right-click navigation still works.
+   */
+  document.addEventListener('contextmenu', (e: MouseEvent) => {
+    const target = e.target as Element | null;
+    if (!target || typeof target.closest !== 'function') return;
+    if (target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) {
+      e.stopPropagation();
+    }
+  }, true);
 });
 
 /**

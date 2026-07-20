@@ -190,9 +190,44 @@ export const useLayersStore = defineStore('layers', () => {
     const pendingRemoved = new Set<string>(); // specific segments removed during this operation
     const pendingAdded   = new Set<string>(); // specific segments added during this operation
     const EDIT_DEBOUNCE_MS = 3000; // 3s to allow failed merges to revert before counting
+    /** Which graphene tool was engaged when this operation's changes arrived. */
+    let pendingTool: 'multicut' | 'merge' | null = null;
+
+    /**
+     * The graphene tool currently engaged, or null if none.
+     *
+     * `visibleSegments` changes for many innocent reasons — jumping to a cell,
+     * clicking a row in the segment list, loading a `#segId` from chat, or
+     * applying a dataset's default segments. Previously every one of those was
+     * counted as a merge/split, which inflated users' edit totals, streaks,
+     * badges and leaderboard rank, and wrote bogus rows to `edit_log`.
+     * A real graph edit only ever happens through the multicut/merge tools, so
+     * require one to be engaged before counting anything.
+     *
+     * `closingTool` covers the success-hold window: the new root IDs land while
+     * the bar is still showing the result and the tool has begun closing.
+     */
+    function engagedTool(): 'multicut' | 'merge' | null {
+      try {
+        const smo = useSplitMergeOverlayStore();
+        return smo.toolActive ?? smo.closingTool ?? null;
+      } catch { return null; }
+    }
 
     // Signal fires (segId, wasAdded) — track the specific segments involved
     const handler = (changedId?: any, wasAdded?: boolean) => {
+      const newCount = visibleSegs.size;
+
+      // Gate before accumulating so selection-only changes never count.
+      const tool = engagedTool();
+      if (!tool) {
+        // Still re-baseline, or the next real edit would measure its delta
+        // against a stale count and be mis-sized.
+        prevCount = newCount;
+        return;
+      }
+      pendingTool = tool;
+
       // Capture the specific segment IDs from the signal
       try {
         if (changedId != null) {
@@ -205,7 +240,6 @@ export const useLayersStore = defineStore('layers', () => {
         }
       } catch { /* Uint64 toString may fail */ }
 
-      const newCount = visibleSegs.size;
       if (newCount === prevCount) return;
 
       // Accumulate net segment change (merge = negative, split = positive)
@@ -218,17 +252,28 @@ export const useLayersStore = defineStore('layers', () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         const net = pendingNetDiff;
+        const tool = pendingTool;
         pendingNetDiff = 0;
+        pendingTool = null;
         // Grab & clear the tracked segment IDs for this operation
         const removedIds = pendingRemoved.size ? [...pendingRemoved].join(',') : null;
         const addedIds   = pendingAdded.size   ? [...pendingAdded].join(',')   : null;
         pendingRemoved.clear();
         pendingAdded.clear();
         if (net === 0) return; // changes cancelled out
+        if (!tool) return;     // not a graphene edit — nothing to count
+
+        // The tool decides what happened; the direction must agree with it.
+        // A merge collapses segments (net < 0), a split produces one more
+        // (net > 0). This drops the residual case of selecting an extra
+        // segment while a tool happens to be open.
+        const operation: 'merge' | 'split' = tool === 'merge' ? 'merge' : 'split';
+        if (operation === 'merge' && net >= 0) return;
+        if (operation === 'split' && net <= 0) return;
 
         const statsStore = useUserStatsStore();
         // Count as exactly 1 operation per debounce window
-        if (net < 0) {
+        if (operation === 'merge') {
           statsStore.setStats({
             editsAllTime:   statsStore.stats.editsAllTime   + 1,
             mergesAllTime:  statsStore.stats.mergesAllTime  + 1,
@@ -252,8 +297,8 @@ export const useLayersStore = defineStore('layers', () => {
           });
         }
 
-        statsStore.logDailyEdit(net < 0 ? 'merge' : 'split');
-        statsStore.signalEdit(net < 0 ? 'merge' : 'split');
+        statsStore.logDailyEdit(operation);
+        statsStore.signalEdit(operation);
         localEditAccum += 1;
         if (localEditAccum >= 5) {
           statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
@@ -267,7 +312,6 @@ export const useLayersStore = defineStore('layers', () => {
             const viewer: any = (window as any)['viewer'];
             const pos = viewer?.navigationState?.position?.value;
             const coords = pos ? `${pos[0]}, ${pos[1]}, ${pos[2]}` : null;
-            const operation = net < 0 ? 'merge' : 'split';
             backendStore.logEdit({
               operation,
               segment_before: removedIds,
@@ -2992,9 +3036,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   const notifications = ref<Notification[]>([]);
   const notificationReads = ref<Set<number>>(new Set());
-  const notificationDismissals = ref<Set<number>>(new Set(
-    JSON.parse(localStorage.getItem('nge-notification-dismissals') || '[]')
-  ));
+  /**
+   * Dismissed notification ids — intentionally SESSION-ONLY (in memory).
+   *
+   * These used to be persisted to localStorage['nge-notification-dismissals']
+   * and filtered out of loadNotifications() forever. Because the × dismiss
+   * button sits directly beside the admin 🗑 delete, one stray click hid a
+   * notification permanently — no confirmation, no undo, no "show dismissed",
+   * and it never came back on reload. That is how users lost their whole feed.
+   *
+   * Dismiss is now just "hide it for now"; a reload brings it back. Unread
+   * state is already handled properly by `notification_reads`, so nothing is
+   * lost by making this ephemeral.
+   */
+  const notificationDismissals = ref<Set<number>>(new Set());
+
+  // One-time cleanup: drop any permanently-stored dismissals from the old
+  // behaviour, so notifications hidden by an accidental click reappear.
+  try { localStorage.removeItem('nge-notification-dismissals'); } catch { /* private mode */ }
   let notifSubscription: any = null;
 
   /** Trigger badge celebration from notification click — AchievementToast watches this */
@@ -3130,9 +3189,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifications.value = notifications.value.filter(n => n.id !== notifId);
   }
 
+  /** Hide a notification for this session only — it returns on reload. */
   function dismissNotification(notifId: number) {
     notificationDismissals.value.add(notifId);
-    localStorage.setItem('nge-notification-dismissals', JSON.stringify([...notificationDismissals.value]));
     notifications.value = notifications.value.filter(n => n.id !== notifId);
   }
 
@@ -3650,7 +3709,7 @@ export const useChatStore = defineStore('chat', () => {
 
     channel
       .on('broadcast', { event: 'message' }, (payload) => {
-        const { name, rank, text, timestamp } = payload.payload;
+        const { name, rank, text, timestamp, senderId } = payload.payload;
         const date = new Date(timestamp);
         addTimeSeparatorIfNeeded(date);
         chatMessages.value.push({
@@ -3661,10 +3720,18 @@ export const useChatStore = defineStore('chat', () => {
           dateTime: date,
           parts: parseMessageParts(name, text),
         });
-        // Skip the unread bump if the user has muted chat — they
-        // explicitly opted out of the green pip on the toolbar.
+        // The channel runs with `broadcast: { self: true }` so the sender also
+        // receives their own message — that's how it lands in their own list.
+        // But you can't have unread mail from yourself, so don't let it light
+        // up the green toolbar pip. Prefer the sender id; fall back to the
+        // display name for clients built before senderId was in the payload.
+        const isOwnMessage = senderId
+          ? senderId === backend.userId
+          : name === backend.userName;
+        // Also skip the bump if the user muted chat — they explicitly opted
+        // out of the green pip on the toolbar.
         const prefs = useUserPreferencesStore();
-        if (!prefs.prefs.chatMuted) {
+        if (!isOwnMessage && !prefs.prefs.chatMuted) {
           unreadMessages.value = true;
           unreadCount.value++;
         }
@@ -3727,6 +3794,9 @@ export const useChatStore = defineStore('chat', () => {
         rank,
         text,
         timestamp: new Date().toISOString(),
+        // Lets the receiving handler recognise this message as our own and
+        // skip the unread bump (the channel echoes it back via self: true).
+        senderId: backend.userId || null,
       },
     });
     // Persist for history so the last messages show on next open (best-effort;

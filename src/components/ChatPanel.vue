@@ -106,6 +106,16 @@ function stopResize() {
 
 // ── Position style ──
 const positionStyle = computed(() => {
+  // Collapsed: always settle at the bottom of the screen. Keep whatever
+  // horizontal position the user dragged to, but drop the dragged `top` so the
+  // CSS default (bottom: 36px) applies again. Without this the collapsed strip
+  // stays pinned at the expanded panel's top edge and appears to collapse
+  // upward, leaving it stranded mid-screen.
+  if (collapsed.value) {
+    return posX.value !== null
+      ? { left: posX.value + 'px', right: 'auto', top: 'auto' }
+      : {};
+  }
   if (posX.value !== null && posY.value !== null) {
     return {
       left: posX.value + 'px',
@@ -114,7 +124,7 @@ const positionStyle = computed(() => {
       bottom: 'auto',
     };
   }
-  return {}; // use CSS defaults (bottom-right)
+  return {}; // use CSS defaults (bottom-left)
 });
 
 // Connect on mount only if logged in — otherwise show login-gate empty state.

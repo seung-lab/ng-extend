@@ -10,10 +10,11 @@ import { buildAppContext, type UiState } from "../assistant/context";
 import { buildUiReference } from "../assistant/knowledge";
 import { getMaterializationInfo } from "../assistant/materialization";
 import { dispatch } from "../assistant/dispatch";
-import { useProofreadingBackendStore } from "../store";
+import { useProofreadingBackendStore, useSplitMergeOverlayStore } from "../store";
 import nurroAvatar from "../images/inspector-nurro-2.png";
 
 const backend = useProofreadingBackendStore();
+const splitMerge = useSplitMergeOverlayStore();
 
 const props = defineProps<{
   show: boolean;
@@ -61,10 +62,31 @@ function loadSize(key: string, fallback: number) {
 const dockWidth = ref(loadSize(W_KEY, 340));
 const dockHeight = ref(loadSize(H_KEY, 460));
 
-const dockStyle = computed(() => ({
-  width: dockWidth.value + "px",
-  height: dockHeight.value + "px",
-}));
+/**
+ * The split/merge banner is a FULL-WIDTH bar (`left:0; right:0`) pinned at
+ * bottom:28px with a 48px min-height and z-index 9500 — above this dock. At the
+ * dock's resting bottom:36px the banner simply sits on top of the conversation.
+ * Raising the dock's z-index would just invert the problem, so instead lift the
+ * dock clear of the bar while a graphene tool is engaged. `pendingClose` keeps
+ * it lifted through the bar's success-hold animation so it doesn't snap down
+ * early. 28 (offset) + 48 (min-height) + 16 breathing room.
+ */
+const SPLIT_MERGE_CLEARANCE = 92;
+
+const dockStyle = computed(() => {
+  const lifted = splitMerge.toolActive !== null || splitMerge.pendingClose;
+  return {
+    width: dockWidth.value + "px",
+    height: dockHeight.value + "px",
+    ...(lifted
+      ? {
+          bottom: SPLIT_MERGE_CLEARANCE + "px",
+          // Re-clamp so lifting can't push the dock off the top of a short screen.
+          maxHeight: `calc(100vh - ${SPLIT_MERGE_CLEARANCE + 44}px)`,
+        }
+      : {}),
+  };
+});
 
 let resizeAxis: "corner" | "left" | "top" = "corner";
 let resizeStart = { mx: 0, my: 0, w: 0, h: 0 };
@@ -356,6 +378,9 @@ function onKeydown(e: KeyboardEvent) {
 <style scoped>
 .nge-guide {
   position: fixed;
+  /* `bottom` is raised inline (see SPLIT_MERGE_CLEARANCE) while a graphene
+     tool is open so the full-width split/merge banner can't cover the dock. */
+  transition: bottom 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   bottom: 36px;
   right: 8px;
   width: 340px;

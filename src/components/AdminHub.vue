@@ -494,7 +494,19 @@ onMounted(() => {
   padding: 6px 8px;
   outline: none;
   font-family: inherit;
+  /* Without this the browser paints the native calendar glyph (and the picker
+     popup) in its light-theme colours — a black icon on our black input, i.e.
+     invisible. `color-scheme: dark` switches the whole native widget to dark. */
+  color-scheme: dark;
 }
+/* Belt-and-braces for Chromium: force the picker glyph light even if the UA
+   ignores color-scheme on this control. */
+.nge-admin-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.6);
+  opacity: 0.75;
+  cursor: pointer;
+}
+.nge-admin-date-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .nge-admin-date-input:focus { border-color: rgba(74, 158, 255, 0.5); }
 
 .nge-admin-check {
