@@ -1,0 +1,55 @@
+# ============================================================================
+# cave-edits-probe — DIAGNOSTIC ONLY, manual trigger, writes nothing.
+# ----------------------------------------------------------------------------
+# Edit counts are moving off the client-side heuristic and onto real CAVE
+# PyChunkedGraph operations. Before writing that sync we need to know which
+# per-user operations endpoint this CAVE deployment actually exposes — the app
+# currently only uses per-ROOT change logs, which can't answer "how many edits
+# has user X made".
+#
+# This job runs scripts/probe-cave-edits.mjs, which GETs a handful of candidate
+# endpoints and prints their status + response shape. It never writes to CAVE
+# or Supabase. Run it from the Actions tab, then read the summary at the bottom
+# of the log to decide what the real sync should call.
+#
+# Deliberately no `schedule:` — this is a one-off investigation, not a job.
+# ============================================================================
+name: CAVE edits probe (diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: 'CAVE user id to probe with (blank = look one up from Supabase)'
+        required: false
+        default: ''
+      table:
+        description: 'PCG table to probe'
+        required: false
+        default: 'stroeh_mouse_retina'
+      days:
+        description: 'Lookback window in days for time-ranged endpoints'
+        required: false
+        default: '30'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Probe CAVE for a per-user operations endpoint
+        env:
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          ARGS="--table ${{ inputs.table }} --days ${{ inputs.days }}"
+          if [ -n "${{ inputs.user_id }}" ]; then
+            ARGS="$ARGS --user-id ${{ inputs.user_id }}"
+          fi
+          node scripts/probe-cave-edits.mjs $ARGS
