@@ -19,6 +19,11 @@ const usernameOk = ref('');
 const checkingUsername = ref(false);
 let usernameTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Open the username dialog (the same one shown after Tutorial 1). */
+function openUsernameDialog() {
+  document.dispatchEvent(new CustomEvent('nge:prompt-username', { detail: { force: true } }));
+}
+
 function onUsernameInput() {
   usernameError.value = '';
   usernameOk.value = '';
@@ -216,6 +221,13 @@ const emit = defineEmits({hide: null});
           <div v-if="checkingUsername" class="nge-settings-username-note">Checking…</div>
           <div v-else-if="usernameError" class="nge-settings-username-note nge-settings-username-note--err">{{ usernameError }}</div>
           <div v-else-if="usernameOk" class="nge-settings-username-note nge-settings-username-note--ok">{{ usernameOk }}</div>
+          <!-- Opens the same dialog the post-tutorial prompt uses. `force`
+               bypasses its "only ask once" guards, so it works even when you
+               already have a handle (and is the only way to see that flow
+               again once you do). -->
+          <button class="nge-settings-username-btn" @click="openUsernameDialog">
+            {{ backendStore.username ? 'Change username…' : 'Pick a username…' }}
+          </button>
         </div>
 
         <div class="nge-settings-section">
@@ -864,6 +876,23 @@ const emit = defineEmits({hide: null});
 }
 .nge-settings-username-note--err { color: #ff9b9b; }
 .nge-settings-username-note--ok { color: #7fe0a8; }
+
+.nge-settings-username-btn {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 6px;
+  color: rgba(180, 200, 230, 0.9);
+  font-size: 0.78em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.nge-settings-username-btn:hover {
+  background: rgba(74, 158, 255, 0.12);
+  border-color: rgba(74, 158, 255, 0.55);
+  color: #e0ecff;
+}
 
 /* Notification mute toggle (Mute chat unread badge) */
 .nge-settings-toggle {

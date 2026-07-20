@@ -53,12 +53,37 @@ async function waitForCelebration(maxMs = 45000) {
   }
 }
 
-/** Open the prompt, unless the user already has a handle or waved it away. */
-async function maybeOpen() {
+/**
+ * 'claim'  — the one-time prompt after Tutorial 1.
+ * 'change' — opened deliberately from Settings, so none of the "only ask once"
+ *            guards apply and there's no celebration to wait for.
+ */
+const mode = ref<'claim' | 'change'>('claim');
+/** True when opened deliberately from Settings rather than by the auto-prompt. */
+const forcedOpen = ref(false);
+
+/** Open the prompt. `detail.force` (from Settings) bypasses the one-time guards. */
+async function maybeOpen(e?: Event) {
   if (visible.value) return;
+  if (!backend.userId) return;                               // not signed in yet
+  const force = !!(e as CustomEvent)?.detail?.force;
+
+  forcedOpen.value = force;
+  if (force) {
+    mode.value = backend.username ? 'change' : 'claim';
+    claimed.value = '';
+    error.value = '';
+    ok.value = '';
+    visible.value = true;
+    // Start from the current handle when changing; otherwise suggest one.
+    if (backend.username) value.value = backend.username;
+    else { try { value.value = await backend.suggestUsername(); } catch { /* blank */ } }
+    return;
+  }
+
   if (backend.username) return;                              // already has one
   if (localStorage.getItem(DISMISS_KEY) === '1') return;     // asked and declined
-  if (!backend.userId) return;                               // not signed in yet
+  mode.value = 'claim';
   await waitForCelebration();
   if (backend.username) return;                              // set in the meantime
   visible.value = true;
@@ -69,7 +94,11 @@ async function maybeOpen() {
 
 function dismiss() {
   visible.value = false;
-  try { localStorage.setItem(DISMISS_KEY, '1'); } catch { /* private mode */ }
+  // Only the automatic prompt counts as "asked and declined". Cancelling a
+  // dialog you opened yourself from Settings shouldn't suppress the real ask.
+  if (!forcedOpen.value) {
+    try { localStorage.setItem(DISMISS_KEY, '1'); } catch { /* private mode */ }
+  }
 }
 
 function onInput() {
@@ -121,7 +150,7 @@ document.addEventListener('nge:prompt-username', maybeOpen as EventListener);
         <!-- Success state: confirm the handle rather than just vanishing. -->
         <div v-if="claimed" class="nge-un-modal nge-un-modal--done">
           <img :src="pyrIcon" class="nge-un-icon nge-un-icon--done" alt="" />
-          <div class="nge-un-title">You're locked in</div>
+          <div class="nge-un-title">{{ mode === 'change' ? 'Username updated' : "You're locked in" }}</div>
           <p class="nge-un-sub">
             Teammates can now tag you as <strong>@{{ claimed }}</strong> in chat.
             You can change it any time in Settings.
@@ -130,9 +159,11 @@ document.addEventListener('nge:prompt-username', maybeOpen as EventListener);
         </div>
 
         <div v-else class="nge-un-modal">
-          <button class="nge-un-x" @click="dismiss" title="Not now">×</button>
+          <button class="nge-un-x" @click="dismiss" :title="mode === 'change' ? 'Cancel' : 'Not now'">×</button>
           <img :src="pyrIcon" class="nge-un-icon" alt="" />
-          <div class="nge-un-title">Lock in your username</div>
+          <div class="nge-un-title">
+            {{ mode === 'change' ? 'Change your username' : 'Lock in your username' }}
+          </div>
           <p class="nge-un-sub">
             This is how you'll appear in chat, and how teammates tag you:
             <strong>@{{ value || 'yourname' }}</strong>
@@ -165,8 +196,8 @@ document.addEventListener('nge:prompt-username', maybeOpen as EventListener);
               class="nge-un-save"
               :disabled="saving || !!error || !value.trim()"
               @click="lockIn"
-            >{{ saving ? 'Locking in…' : 'Lock it in' }}</button>
-            <button class="nge-un-later" @click="dismiss">Not now</button>
+            >{{ saving ? 'Saving…' : (mode === 'change' ? 'Save username' : 'Lock it in') }}</button>
+            <button class="nge-un-later" @click="dismiss">{{ mode === 'change' ? 'Cancel' : 'Not now' }}</button>
           </div>
         </div>
       </div>
