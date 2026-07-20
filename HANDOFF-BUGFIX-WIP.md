@@ -238,9 +238,16 @@ bootstrap failure), active `dataset`, `user_agent`, `component`, and `build`
 (short git sha, injected by `scripts/build-prod.js`). `url` is **pathname only** —
 the neuroglancer hash is multiple KB of viewer state.
 
-⚠️ The CI workflow has its own build command that does not define `NGE_BUILD`;
-`main.ts` guards with `typeof` so the identifier being absent is safe. Errors from
-CI-built deploys will simply have a null `build`.
+`main.ts` guards `NGE_BUILD` with `typeof`, so a build path that doesn't define it
+degrades to a null `build` rather than a ReferenceError. (CI does use
+`build-prod.js`, so deploys are stamped — verified live: `build = "f33cccb"`.)
+
+**Verified in production** after the migration was applied:
+- Vue `errorHandler` installed, build stamp correct
+- a probe error inserted → **HTTP 201**
+- reading `client_errors` with the anon key scraped from the shipped bundle →
+  **HTTP 200 `[]`**, i.e. RLS hides rows that demonstrably exist. The INSERT-only
+  policy does what it claims.
 
 ---
 
