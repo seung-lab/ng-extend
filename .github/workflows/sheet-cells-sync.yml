@@ -1,0 +1,61 @@
+# ============================================================================
+# sheet-cells-sync — nightly import of new Cell Library rows into Supabase.
+# ----------------------------------------------------------------------------
+# Adds cells that have appeared in a dataset's Google Sheet since the last run
+# so they show up under "Available" without a manual re-import.
+#
+# APPEND-ONLY: rows removed from a sheet are never deleted from Supabase —
+# someone may already have claimed or completed that cell.
+#
+# TIMING: the ask is midnight Eastern. GitHub cron is UTC-only and midnight ET
+# is 04:00 UTC under EDT but 05:00 UTC under EST, so we fire at BOTH and let
+# the script's ET guard no-op the wrong one. That yields exactly one run per
+# night year-round without a DST-aware scheduler. `--force` on manual runs
+# bypasses the guard.
+# ============================================================================
+name: Sheet Cells Sync
+
+on:
+  schedule:
+    - cron: '0 4 * * *'   # midnight ET while EDT is in effect
+    - cron: '0 5 * * *'   # midnight ET while EST is in effect
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: 'Only sync this dataset (blank = all)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Report what would be inserted without writing'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Import new cells from the Cell Library sheets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          ARGS=""
+          # Manual runs should act immediately rather than waiting for the ET
+          # guard to line up, so force them.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ARGS="$ARGS --force"
+          fi
+          if [ -n "${{ inputs.dataset }}" ]; then
+            ARGS="$ARGS --dataset ${{ inputs.dataset }}"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          node scripts/sync-sheet-cells.mjs $ARGS
