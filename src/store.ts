@@ -2821,8 +2821,31 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
+  /**
+   * Persist the profile fields a user edits in Settings (flag, bio).
+   *
+   * Settings previously only wrote to localStorage via useUserPreferencesStore,
+   * so a saved flag/bio never reached Supabase — the profile and leaderboard
+   * read `users.flag`, so the change appeared not to save at all. `syncStats`
+   * would have written these, but nothing ever called it.
+   *
+   * Deliberately NARROW: it must not push edit/merge/split counts. Those are
+   * CAVE-derived, and having the client overwrite them with locally-inferred
+   * numbers is exactly the bug we're removing.
+   */
+  async function saveProfileFields(fields: { flag?: string; bio?: string }) {
+    if (!userId.value) return;
+    const update: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (fields.flag !== undefined) update.flag = fields.flag;
+    if (fields.bio !== undefined) update.bio = fields.bio;
+    const { error } = await supabase.from('users').update(update).eq('id', userId.value);
+    if (error) console.warn('[settings] saveProfileFields failed:', error.message);
+  }
+
   // ── Sync user stats to Supabase ───────────────────────────────────────
-  /** Push local stats to the users table. Call periodically or on significant events. */
+  /** Push local stats to the users table. Call periodically or on significant events.
+   *  NOTE: currently unreferenced. Do not wire this up for stats — see the
+   *  CAVE-sourced stats work; use saveProfileFields for profile edits. */
   async function syncStats() {
     if (!userId.value) return;
     const statsStore = useUserStatsStore();
@@ -3548,7 +3571,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     leaderboard,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
-    importFromGoogleSheet, syncStats, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
+    importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
     claimCell, releaseCell, releaseBySegment, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
     refreshSegmentIds,

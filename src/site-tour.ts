@@ -298,12 +298,16 @@ Click any user's name in chat or the leaderboard to open *their* profile.`,
   // ── 19. The Layers bar ───────────────────────────────────────
   {
     title: "The Layers Bar",
-    text: `Each chip at the bottom is a data layer (image volume, segmentation, annotation, etc.).
+    text: `Each chip at the top is a data layer (image volume, segmentation, annotation, etc.).
 
-**Click a layer chip** to open its side panel — that's where you find the **Source / Render / Seg. / Graph / Annotations** tabs you've seen throughout the tour.
+**Click a layer chip** to open its side panel. That's where you find the **Source / Render / Seg. / Graph / Annotations** tabs you've seen throughout the tour.
 
 Drag to reorder, **+** to add a new layer.`,
-    position: { element: ".neuroglancer-layer-panel", side: "top", offset: { x: 0, y: -14 } },
+    // The layer bar sits at the TOP of the viewer, so there is no room above
+    // it: anchoring the chip to "top" pushed it off-screen, and the on-screen
+    // clamping in TutorialStep then dropped it straight back down on top of
+    // the bar it was meant to be pointing at. Anchor below it instead.
+    position: { element: ".neuroglancer-layer-panel", side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 

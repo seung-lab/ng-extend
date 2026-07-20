@@ -118,7 +118,15 @@
 /* Shared modal wrapper (Leaderboard, Settings, Profile, Recap, …). Keeps tall
    panels from spilling off the top/bottom of a short laptop screen; content
    scrolls inside instead. */
-.nge-overlay-blocker .nge-overlay-content {
+/* NOTE on the second selector: ModalOverlay.vue sets
+   `.nge-overlay.modal.overlay-content { overflow: visible }` (specificity
+   0,3,0) so glows aren't clipped. That out-ranked the single-class rule below
+   (0,2,0), so `overflow-y: auto` never applied — the max-height took effect but
+   the content spilled past it with no scrollbar, which is why tall panels were
+   cut off at the bottom of small screens with no way to reach their buttons.
+   Matching ModalOverlay's specificity (0,4,0 here) lets the scroll win. */
+.nge-overlay-blocker .nge-overlay-content,
+.nge-overlay-blocker .nge-overlay.modal.overlay-content {
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   overflow-y: auto;

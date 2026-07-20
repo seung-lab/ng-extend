@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ref, onMounted, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
-import {useUserPreferencesStore, useLoginStore, loginSession} from '../store';
+import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, loginSession} from '../store';
 import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -21,15 +21,19 @@ onMounted(() => {
   draftToolbar.value = current.length > 0 ? [...current] : [...DEFAULT_ORDER];
 });
 
-function handleSave() {
-  prefsStore.save({
-    flag: draftFlag.value.trim(),
-    bio:  draftBio.value.trim().slice(0, 280),
-    toolbarIcons: draftToolbar.value,
-    chatMuted: draftChatMuted.value,
-  });
+async function handleSave() {
+  const flag = draftFlag.value.trim();
+  const bio = draftBio.value.trim().slice(0, 280);
+  // Local prefs (toolbar order, chat mute) stay in localStorage.
+  prefsStore.save({ flag, bio, toolbarIcons: draftToolbar.value, chatMuted: draftChatMuted.value });
   saved.value = true;
   setTimeout(() => { saved.value = false; }, 1800);
+  // Flag and bio are also part of the PUBLIC profile: the profile panel and
+  // the leaderboard read users.flag / users.bio from Supabase. Writing only to
+  // localStorage made a save look like it did nothing to anyone else (and to
+  // you on another machine), so push those two fields as well.
+  const backend = useProofreadingBackendStore();
+  await backend.saveProfileFields({ flag, bio });
 }
 
 // ── Toolbar icon choices (shared with the actual top bar) ──────
@@ -238,13 +242,18 @@ const emit = defineEmits({hide: null});
           </div>
         </div>
 
-        <div class="nge-settings-actions">
-          <button class="nge-settings-save" @click="handleSave">
-            <span v-if="saved">✓ Saved!</span>
-            <span v-else>Save</span>
-          </button>
-          <button class="nge-settings-cancel" @click="emit('hide')">Cancel</button>
-        </div>
+      </div>
+
+      <!-- Pinned footer: moved OUT of .nge-settings-content so Save stays
+           reachable on short screens. Previously it scrolled with the body,
+           and on a small laptop the whole panel simply overflowed the viewport
+           with no scrollbar, putting Save off-screen entirely. -->
+      <div class="nge-settings-actions">
+        <button class="nge-settings-save" @click="handleSave">
+          <span v-if="saved">✓ Saved!</span>
+          <span v-else>Save</span>
+        </button>
+        <button class="nge-settings-cancel" @click="emit('hide')">Cancel</button>
       </div>
 
     </div>
@@ -292,6 +301,11 @@ const emit = defineEmits({hide: null});
   display: flex;
   flex-direction: column;
   width: 460px;
+  /* Never exceed the viewport. Without this the panel grew to its natural
+     height and simply ran off the bottom of a small laptop screen, taking the
+     Save button with it. */
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 32px);
 }
 
 .nge-settings-topbar {
@@ -323,10 +337,16 @@ const emit = defineEmits({hide: null});
 
 /* ── Content ── */
 .nge-settings-content {
-  padding: 20px 22px 22px;
+  padding: 20px 22px 12px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  /* The scrolling region. `min-height: 0` is required: a flex child defaults to
+     min-height:auto, which refuses to shrink below its content and would keep
+     the panel taller than the viewport no matter the max-height above. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .nge-settings-section {
@@ -572,7 +592,11 @@ const emit = defineEmits({hide: null});
 .nge-settings-actions {
   display: flex;
   gap: 10px;
-  margin-top: 4px;
+  /* Pinned footer — never scrolls away, never shrinks. */
+  flex-shrink: 0;
+  padding: 12px 22px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: inherit;
 }
 
 .nge-settings-save {
