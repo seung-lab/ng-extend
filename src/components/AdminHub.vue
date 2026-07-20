@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {ref, onMounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
+import {etNaiveToUtcIso, formatEt} from '../util/et_time';
 
 const backend = useProofreadingBackendStore();
 
@@ -38,8 +39,13 @@ async function sendNotification() {
       target_type: notifTargetType.value,
       target_id: notifTargetType.value !== 'all' ? notifTargetId.value : undefined,
       post_to_chat: notifPostToChat.value,
-      send_at: notifSendAt.value ? new Date(notifSendAt.value).toISOString() : undefined,
-      expires_at: notifExpiresAt.value ? new Date(notifExpiresAt.value).toISOString() : undefined,
+      // Interpret the picker's naive value as EASTERN time, not the admin's
+      // local zone — `new Date("2026-07-20T08:00")` would parse in whatever
+      // zone the admin's browser is in, so a West-Coast admin scheduling 08:00
+      // was really scheduling 11:00 ET. etNaiveToUtcIso pins it to ET and
+      // handles EST/EDT for the specific date.
+      send_at: notifSendAt.value ? etNaiveToUtcIso(notifSendAt.value) : undefined,
+      expires_at: notifExpiresAt.value ? etNaiveToUtcIso(notifExpiresAt.value) : undefined,
       image_url: imageUrl,
       thumbnail_url: thumbnailUrl,
     });
@@ -242,15 +248,18 @@ onMounted(() => {
         </div>
         <div class="nge-admin-row nge-admin-row--dates">
           <label class="nge-admin-date-label">
-            <span>Send at</span>
+            <span>Send at <em class="nge-admin-tz">(ET)</em></span>
             <input type="datetime-local" v-model="notifSendAt" class="nge-admin-date-input" />
           </label>
           <label class="nge-admin-date-label">
-            <span>Expires at</span>
+            <span>Expires at <em class="nge-admin-tz">(ET)</em></span>
             <input type="datetime-local" v-model="notifExpiresAt" class="nge-admin-date-input" />
           </label>
         </div>
-        <p v-if="!notifSendAt" class="nge-admin-hint">Leave "Send at" empty to send immediately</p>
+        <p v-if="notifSendAt" class="nge-admin-hint">
+          Sends {{ formatEt(etNaiveToUtcIso(notifSendAt)) }} — times are Eastern regardless of your own timezone.
+        </p>
+        <p v-else class="nge-admin-hint">Leave "Send at" empty to send immediately</p>
         <div class="nge-admin-row">
           <label class="nge-admin-check"><input type="checkbox" v-model="notifPostToChat" /> Also post to chat</label>
           <label class="nge-admin-file-label">
@@ -272,7 +281,7 @@ onMounted(() => {
         <div v-for="n in backend.notifications.slice(0, 10)" :key="n.id" class="nge-admin-notif-row">
           <div class="nge-admin-notif-info">
             <strong>{{ n.title }}</strong>
-            <span class="nge-admin-notif-meta">{{ n.target_type }} · {{ new Date(n.send_at).toLocaleDateString() }}</span>
+            <span class="nge-admin-notif-meta">{{ n.target_type }} · {{ formatEt(n.send_at) }}</span>
           </div>
           <button class="nge-admin-delete-btn" @click="backend.deleteNotification(n.id)" title="Delete">×</button>
         </div>
@@ -508,6 +517,11 @@ onMounted(() => {
 }
 .nge-admin-date-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .nge-admin-date-input:focus { border-color: rgba(74, 158, 255, 0.5); }
+.nge-admin-tz {
+  font-style: normal;
+  color: rgba(74, 158, 255, 0.75);
+  font-size: 0.9em;
+}
 
 .nge-admin-check {
   display: flex;

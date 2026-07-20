@@ -21,15 +21,34 @@ function onDocClick(e: MouseEvent) {
   }
 }
 
+/**
+ * Poll for notifications whose scheduled send time has arrived.
+ *
+ * The realtime subscription only fires on INSERT, which happens when the admin
+ * CREATES the notification — but a scheduled one is filtered out at that moment
+ * by `send_at <= now`. Nothing re-ran the query at the actual send time, so a
+ * notification scheduled for later never appeared until the user happened to
+ * reload the page. A modest poll closes that gap; the query is a single
+ * indexed select and the app is a long-lived session.
+ */
+const SCHEDULED_POLL_MS = 60_000;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
 onMounted(() => {
   backend.loadNotifications();
   backend.subscribeToNotifications();
   document.addEventListener('mousedown', onDocClick, true);
+  pollTimer = setInterval(() => {
+    // Skip while the tab is hidden — it'll refresh on the next visible tick.
+    if (document.hidden) return;
+    backend.loadNotifications();
+  }, SCHEDULED_POLL_MS);
 });
 
 onUnmounted(() => {
   backend.unsubscribeFromNotifications();
   document.removeEventListener('mousedown', onDocClick, true);
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 });
 
 // Panel mounts before auth completes (v-show), so reload once userId is available
