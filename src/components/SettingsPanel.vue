@@ -12,38 +12,13 @@ const backendStore = useProofreadingBackendStore();
 // ── Username ────────────────────────────────────────────────────────────────
 // Chat shows this instead of the display name, and @mentions match it. It's
 // unique and space-free, so "@celia" resolves to exactly one person — display
-// names are neither.
-const draftUsername = ref('');
-const usernameError = ref('');
-const usernameOk = ref('');
-const checkingUsername = ref(false);
-let usernameTimer: ReturnType<typeof setTimeout> | null = null;
+// names are neither. Changing it is a deliberate action routed through the
+// dedicated dialog (validation + availability + save all live there), not an
+// always-live text field in this panel.
 
 /** Open the username dialog (the same one shown after Tutorial 1). */
 function openUsernameDialog() {
   document.dispatchEvent(new CustomEvent('nge:prompt-username', { detail: { force: true } }));
-}
-
-function onUsernameInput() {
-  usernameError.value = '';
-  usernameOk.value = '';
-  if (usernameTimer) clearTimeout(usernameTimer);
-  const value = draftUsername.value.trim();
-  if (!value || value === backendStore.username) return;
-  const invalid = backendStore.validateUsername(value);
-  if (invalid) { usernameError.value = invalid; return; }
-  // Debounced so we aren't querying on every keystroke.
-  checkingUsername.value = true;
-  usernameTimer = setTimeout(async () => {
-    try {
-      const free = await backendStore.isUsernameAvailable(value);
-      if (draftUsername.value.trim() !== value) return;  // raced ahead
-      if (free) usernameOk.value = `“${value}” is available.`;
-      else usernameError.value = 'That username is taken.';
-    } finally {
-      checkingUsername.value = false;
-    }
-  }, 400);
 }
 
 const draftFlag = ref('');
@@ -53,7 +28,6 @@ const draftChatMuted = ref(false);
 const saved      = ref(false);
 
 onMounted(() => {
-  draftUsername.value = backendStore.username || '';
   draftFlag.value = prefsStore.prefs.flag;
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
@@ -74,19 +48,11 @@ async function handleSave() {
   // you on another machine), so push those two fields as well.
   const backend = useProofreadingBackendStore();
   await backend.saveProfileFields({ flag, bio });
-  // Username saves separately: it's unique, so it can legitimately fail (taken)
-  // in a way flag/bio can't, and that must surface rather than fail silently.
-  const wanted = draftUsername.value.trim();
-  if (wanted && wanted !== backendStore.username) {
-    try {
-      await backendStore.saveUsername(wanted);
-      usernameOk.value = `Username set to “${wanted}”.`;
-      usernameError.value = '';
-    } catch (e: any) {
-      usernameError.value = e?.message || 'Could not save username.';
-      usernameOk.value = '';
-    }
-  }
+  // Username is NOT saved here. It changes only through the dedicated dialog
+  // (opened from the read-only Username row below), which owns its own
+  // validation, availability check, and save. Saving it from here as well would
+  // let a stale draft — e.g. if you renamed via the dialog with Settings still
+  // open — clobber the new name on Save.
 }
 
 // ── Toolbar icon choices (shared with the actual top bar) ──────
@@ -201,36 +167,6 @@ const emit = defineEmits({hide: null});
       <!-- Settings content -->
       <div class="nge-settings-content">
         <div class="nge-settings-section">
-          <label class="nge-settings-label">Username</label>
-          <p class="nge-settings-hint">
-            How you appear in chat, and how others tag you: <strong>@{{ draftUsername || 'yourname' }}</strong>.
-            3-20 characters, letters/numbers/underscore, no spaces.
-          </p>
-          <div class="nge-settings-username-row">
-            <span class="nge-settings-username-at">@</span>
-            <input
-              v-model="draftUsername"
-              class="nge-settings-username-input"
-              maxlength="20"
-              placeholder="yourname"
-              spellcheck="false"
-              autocomplete="off"
-              @input="onUsernameInput"
-            />
-          </div>
-          <div v-if="checkingUsername" class="nge-settings-username-note">Checking…</div>
-          <div v-else-if="usernameError" class="nge-settings-username-note nge-settings-username-note--err">{{ usernameError }}</div>
-          <div v-else-if="usernameOk" class="nge-settings-username-note nge-settings-username-note--ok">{{ usernameOk }}</div>
-          <!-- Opens the same dialog the post-tutorial prompt uses. `force`
-               bypasses its "only ask once" guards, so it works even when you
-               already have a handle (and is the only way to see that flow
-               again once you do). -->
-          <button class="nge-settings-username-btn" @click="openUsernameDialog">
-            {{ backendStore.username ? 'Change username…' : 'Pick a username…' }}
-          </button>
-        </div>
-
-        <div class="nge-settings-section">
           <label class="nge-settings-label">Country / Flag</label>
           <p class="nge-settings-hint">Pick your country or the EyeWire logo.</p>
           <div id="nge-settings-country-wrap" class="nge-settings-country-wrap" @click.stop>
@@ -322,6 +258,27 @@ const emit = defineEmits({hide: null});
               </div>
               <button class="nge-settings-logout-btn" @click="logoutSession(session)">Logout</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Username lives at the bottom and is deliberately NOT an always-live
+             text field: it's how everyone tags you, so changing it should be a
+             deliberate act. Show the current handle read-only; the actual edit
+             happens in the dedicated dialog (validation + availability check),
+             opened by the button. `force` bypasses the dialog's "ask once"
+             guards so it works when you already have a handle. -->
+        <div class="nge-settings-section">
+          <label class="nge-settings-label">Username</label>
+          <p class="nge-settings-hint">
+            How you appear in chat, and how others tag you. 3-20 characters, letters/numbers/underscore, no spaces.
+          </p>
+          <div class="nge-settings-username-display">
+            <span class="nge-settings-username-current" :class="{ 'nge-settings-username-current--empty': !backendStore.username }">
+              {{ backendStore.username ? '@' + backendStore.username : 'No username set yet' }}
+            </span>
+            <button class="nge-settings-username-btn" @click="openUsernameDialog">
+              {{ backendStore.username ? 'Change username…' : 'Pick a username…' }}
+            </button>
           </div>
         </div>
 
@@ -843,39 +800,32 @@ const emit = defineEmits({hide: null});
 .nge-settings-toolbar-reset:hover { color: #889; }
 
 /* Username field */
-.nge-settings-username-row {
+.nge-settings-username-display {
   display: flex;
   align-items: center;
-  gap: 0;
+  justify-content: space-between;
+  gap: 12px;
   max-width: 360px;
+  padding: 8px 12px;
   background: rgba(0, 0, 0, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
-  overflow: hidden;
 }
-.nge-settings-username-row:focus-within { border-color: rgba(74, 158, 255, 0.5); }
-.nge-settings-username-at {
-  padding: 0 2px 0 10px;
-  color: rgba(150, 175, 215, 0.8);
-  font-family: 'Consolas', 'Monaco', monospace;
-}
-.nge-settings-username-input {
-  flex: 1;
-  background: none;
-  border: none;
-  outline: none;
+.nge-settings-username-current {
   color: #e0e0e0;
   font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 0.92em;
-  padding: 8px 10px 8px 2px;
+  font-size: 0.95em;
 }
-.nge-settings-username-note {
-  margin-top: 5px;
-  font-size: 0.78em;
-  color: #8b93a7;
+.nge-settings-username-current--empty {
+  color: rgba(150, 175, 215, 0.6);
+  font-style: normal;
 }
-.nge-settings-username-note--err { color: #ff9b9b; }
-.nge-settings-username-note--ok { color: #7fe0a8; }
+/* Inside the read-only display the button sits inline, so drop the stacked
+   top margin the standalone button used. */
+.nge-settings-username-display .nge-settings-username-btn {
+  margin-top: 0;
+  flex-shrink: 0;
+}
 
 .nge-settings-username-btn {
   margin-top: 8px;

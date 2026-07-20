@@ -3348,13 +3348,33 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // scripts/post-due-chat-announcements.mjs (cron, idempotent via
     // notifications.chat_posted_at). Posting it from the clients themselves is
     // not an option: every client that polls would post its own copy.
-    const sendAtMs = new Date(row.send_at).getTime();
-    const isScheduledForLater = Number.isFinite(sendAtMs) && sendAtMs > Date.now() + 60_000;
+    // "Scheduled" means the admin explicitly picked a future send time. Post to
+    // chat instantly ONLY for send-now notifications — either no send_at, or one
+    // whose time has already arrived. Key off `data.send_at` (undefined for a
+    // send-now) rather than `row.send_at` (which defaults to now), and use only
+    // a small jitter skew.
+    //
+    // The old guard allowed a 60-second grace: anything less than a minute ahead
+    // counted as "now" and fired an instant post. But scheduling for the current
+    // or next minute — exactly how this feature gets tested — lands inside that
+    // window, so a "scheduled" notification announced itself in chat the instant
+    // it was created (e.g. one set for 20:44 posted at 20:43:48).
+    const scheduledMs = data.send_at ? new Date(data.send_at).getTime() : NaN;
+    const isScheduledForLater = Number.isFinite(scheduledMs) && scheduledMs > Date.now() + 2_000;
     if (data.post_to_chat && !isScheduledForLater) {
       try {
         const chatStore = useChatStore();
         if (chatStore.connected) {
           chatStore.sendMessage(`📢 ${data.title}`, newNotifId);
+          // Record that the announcement already went out, so the every-10-min
+          // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
+          // Only mark it when we actually sent: if chat was offline we couldn't
+          // post, so leave chat_posted_at null and let the cron be the fallback.
+          if (newNotifId != null) {
+            await supabase.from('notifications')
+              .update({ chat_posted_at: new Date().toISOString() })
+              .eq('id', newNotifId);
+          }
         }
       } catch (e) { console.warn('[admin] post_to_chat failed:', e); }
     }

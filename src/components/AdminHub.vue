@@ -15,11 +15,17 @@ const notifTargetType = ref<'all' | 'group' | 'user'>('all');
 const notifTargetId = ref('');
 const notifPostToChat = ref(false);
 
-/** True when "Send at" is far enough ahead that this is a scheduled send. */
+/**
+ * True when a future "Send at" was picked, i.e. this is a scheduled send that
+ * the cron posts at send time rather than posting to chat now. Matches the
+ * store guard in createNotification: any future pick counts (only a small
+ * jitter skew), so scheduling for the next minute is treated as scheduled, not
+ * as "send now".
+ */
 const isScheduledForLater = computed(() => {
   if (!notifSendAt.value) return false;
   const ms = new Date(etNaiveToUtcIso(notifSendAt.value)).getTime();
-  return Number.isFinite(ms) && ms > Date.now() + 60_000;
+  return Number.isFinite(ms) && ms > Date.now() + 2_000;
 });
 const notifSendAt = ref('');
 const notifExpiresAt = ref('');
@@ -47,7 +53,10 @@ const editingId = ref<number | null>(null);
 function notifStage(n: any): 'scheduled' | 'active' | 'expired' {
   const now = Date.now();
   if (n.expires_at && new Date(n.expires_at).getTime() <= now) return 'expired';
-  if (n.send_at && new Date(n.send_at).getTime() > now + 60_000) return 'scheduled';
+  // Any future send time counts as scheduled (only a small jitter skew), so the
+  // bucket matches the send/post-to-chat guard: a notification queued for even a
+  // minute out is "Scheduled", not "Active".
+  if (n.send_at && new Date(n.send_at).getTime() > now + 2_000) return 'scheduled';
   return 'active';
 }
 const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled'));
