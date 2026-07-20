@@ -92,7 +92,13 @@ Partial result so far (from an expired-token run): `user_operations`, `change_lo
 
 > ⚠️ `.github/workflows/cave-edits-probe.yml` exists but **cannot be dispatched**: GitHub only runs `workflow_dispatch` from the default branch, which is `main`, and this workflow lives on `eyewire-ii-community`. Do **not** push it to `main` to work around that — the deploy workflow is `branches-ignore: master` while the default branch is `main`, so any push to `main` triggers an App Engine deploy of a `main` version.
 
-**CAVE tokens last ~6 months.** The `CAVE_SERVICE_TOKEN` secret will expire silently and completions sync will start failing every 30 min, quietly staling the leaderboard's "Cells" metric.
+**On token lifetime:** the comment in `cave-completions-sync.yml` claims tokens last ~6 months. Per Amy (who works with CAVE daily) they do **not** expire — treat that comment as stale. One observed counter-example worth keeping in mind: a token sitting in a browser's `localStorage` did return `{"error":"invalid_token","message":"Unauthorized - Token is Invalid or Expired"}`, so a *browser session* token can still become invalid (revoked/rotated/replaced) even if service tokens don't age out. The CI secret has stayed valid throughout.
+
+**Running the probe without anyone's personal token:** the dedicated probe workflow can't be dispatched (see above), but `cave-completions-sync.yml` **is** registered on `main`, and dispatching a workflow with a `--ref` executes that file *from the ref*. A probe step was therefore added to it on this branch, gated on the existing `dry_run` input (which already means "read, don't write"):
+```bash
+gh workflow run cave-completions-sync.yml --ref eyewire-ii-community -f dry_run=true
+```
+That reaches the valid `CAVE_SERVICE_TOKEN` secret with no token handling by hand.
 
 ### 3.2 `cellsSubmitted` inflation
 `watchSegmentEdits` still does `cellsSubmitted += 1` every 5 edits "to animate the cell-dot canvas". But `cellsSubmitted` is a **real stat** — the key for the whole Exploration badge track and the profile's Cells number. Amy's CAVE directive implies this should come from `cave_completions_mirror` instead. **Remove as part of §3.1.**
