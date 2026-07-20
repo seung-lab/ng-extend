@@ -11,6 +11,8 @@ import { openSegPanel } from './widgets/widget_utils';
 export interface DatasetEntry {
   id: string;
   label: string;
+  /** Compact name for inline UI (chat chips, badges) where `label` is too long. */
+  shortLabel: string;
   description: string;
   layers: any[];
 }
@@ -19,6 +21,7 @@ export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
     label: 'EyeWire II: Retina',
+    shortLabel: 'EyeWire II',
     description: 'EyeWire II — mouse retinal connectome (16×16×40 nm)',
     layers: [
       {
@@ -40,6 +43,7 @@ export const DATASETS: DatasetEntry[] = [
   {
     id: 'pinky_sandbox',
     label: 'Pinky Sandbox',
+    shortLabel: 'Pinky',
     description: 'MICrONS pinky — small cortex volume for testing (4×4×40 nm)',
     layers: [
       {
@@ -61,6 +65,7 @@ export const DATASETS: DatasetEntry[] = [
   {
     id: 'minnie65',
     label: 'MICrONS Minnie65',
+    shortLabel: 'MICrONS',
     description: 'MICrONS — 1mm³ mouse visual cortex (8×8×40 nm)',
     layers: [
       {
@@ -111,6 +116,28 @@ export function canonicalDataset(name: string | undefined | null): string {
   if (n.startsWith('minnie65')) return 'minnie65_public';
   if (n.startsWith('flywire') || n.includes('fly_v')) return 'flywire_fafb_sandbox';
   return n;
+}
+
+/**
+ * Short, human-facing name for any dataset-name variant.
+ *
+ * Used wherever a dataset is shown inline (e.g. the chat #SegID chip) so those
+ * labels match the Dataset selector instead of leaking raw layer names like
+ * `pinky_nf_v2`. Canonicalises first, so every historical alias resolves to the
+ * same friendly name.
+ *
+ * FlyWire has no DATASETS entry (it isn't offered in the switcher) but can
+ * still appear on older records, so it gets an explicit fallback.
+ */
+const EXTRA_SHORT_LABELS: Record<string, string> = {
+  flywire_fafb_sandbox: 'FlyWire',
+};
+
+export function datasetDisplayName(name: string | undefined | null): string {
+  if (!name) return '';
+  const canon = canonicalDataset(name);
+  const entry = DATASETS.find(ds => canonicalDataset(segLayerName(ds)) === canon);
+  return entry?.shortLabel ?? EXTRA_SHORT_LABELS[canon] ?? name;
 }
 
 /**

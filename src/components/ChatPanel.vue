@@ -8,7 +8,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useChatStore, useProofreadingBackendStore, ChatMessage } from '../store';
-import { canonicalDataset } from '../datasets';
+import { canonicalDataset, datasetDisplayName } from '../datasets';
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -206,6 +206,22 @@ function send() {
   inputEl.value?.focus();
 }
 
+/**
+ * Is this @mention aimed at the current user?
+ *
+ * Matched loosely because display names vary ("Amy S.", "Amy Sterling") and the
+ * mention token only captures up to two words. Compares against both the full
+ * display name and its first word, case-insensitively, ignoring trailing dots.
+ */
+function isSelfMention(token: string): boolean {
+  const me = (backend.userName || '').trim();
+  if (!me) return false;
+  const norm = (s: string) => s.replace(/[.\s]+$/, '').trim().toLowerCase();
+  const target = norm(token.slice(1));
+  if (!target) return false;
+  return target === norm(me) || target === norm(me.split(' ')[0]);
+}
+
 /** Active segmentation layer name, for comparing against a message's dataset. */
 function activeDatasetName(): string | null {
   try {
@@ -218,10 +234,11 @@ function activeDatasetName(): string | null {
   return null;
 }
 
-/** Short label for the dataset chip (the full name is in the tooltip). */
+/** Short label for the dataset chip — matches the Dataset selector's naming
+ *  rather than leaking the raw layer name (e.g. "Pinky", not "pinky_nf_v2"). */
 function datasetLabel(ds: string | null | undefined): string {
   if (!ds) return 'unknown dataset';
-  return canonicalDataset(ds) || ds;
+  return datasetDisplayName(ds) || ds;
 }
 
 /**
@@ -404,6 +421,16 @@ function toggleCollapse() {
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <a v-else-if="part.type === 'link'" :href="part.text" target="_blank" rel="noopener" class="nge-chat-link">{{ part.text }}</a>
+                    <span
+                      v-else-if="part.type === 'mention'"
+                      class="nge-chat-mention"
+                      :class="{ 'nge-chat-mention--me': isSelfMention(part.text) }"
+                      role="button"
+                      tabindex="0"
+                      @click="openUserProfile(part.text.slice(1))"
+                      @keydown.enter="openUserProfile(part.text.slice(1))"
+                      :title="'Open ' + part.text.slice(1) + '’s profile'"
+                    >{{ part.text }}</span>
                     <span v-else-if="part.type === 'segment'" class="nge-chat-seg-chip"><span
                         class="nge-chat-seg-link"
                         role="button"
@@ -739,6 +766,25 @@ function toggleCollapse() {
   padding: 2px 5px 2px 2px;
 }
 .nge-chat-seg-copy:hover { color: #80ffc0; background: none; }
+/* @mention: click to open that person's profile. Highlighted more strongly
+   when it's you being mentioned, so it's noticeable in a busy channel. */
+.nge-chat-mention {
+  color: #9db8ff;
+  background: rgba(74, 158, 255, 0.12);
+  border-radius: 3px;
+  padding: 0 3px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.nge-chat-mention:hover { background: rgba(74, 158, 255, 0.25); color: #cfe0ff; }
+.nge-chat-mention--me {
+  color: #ffe6a8;
+  background: rgba(245, 166, 35, 0.2);
+  font-weight: 600;
+}
+.nge-chat-mention--me:hover { background: rgba(245, 166, 35, 0.32); color: #fff2cf; }
+.nge-chat-mention:focus-visible { outline: 1px solid rgba(74, 158, 255, 0.7); outline-offset: 1px; }
+
 /* Which segmentation the id belongs to — a bare root ID is ambiguous without it. */
 .nge-chat-seg-ds {
   color: rgba(128, 255, 192, 0.55);

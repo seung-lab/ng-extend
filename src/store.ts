@@ -3658,7 +3658,7 @@ export const useVolumesStore = defineStore('volumes', () => {
 // ════════════════════════════════════════════════════════════════════════════════
 
 export interface MessagePart {
-  type: 'text' | 'link' | 'sender' | 'segment';
+  type: 'text' | 'link' | 'sender' | 'segment' | 'mention';
   text: string;
 }
 
@@ -3697,8 +3697,17 @@ function currentDatasetName(): string | null {
 /** Parse message text into parts (text + auto-detected links + #SegID references) */
 function parseMessageParts(name: string, text: string): MessagePart[] {
   const parts: MessagePart[] = [{ type: 'sender', text: name }];
-  // Split on URLs and #SegmentID references
-  const tokenRegex = /(https?:\/\/\S+|#\d{5,})/g;
+  // Split on URLs, #SegmentID references, and @mentions.
+  //
+  // A mention is a SINGLE token: we can't reliably guess where a multi-word
+  // display name ends in free text ("@Amy S. and Bob" vs "@celia look at this"
+  // are indistinguishable), and trying to swallow a second word grabbed the
+  // following ordinary word instead. So match one token and let the self-match
+  // below compare against the first word of a display name.
+  //
+  // The lookbehind prevents matching the "@" inside an email address
+  // (a@b.com) or a doubled "@@".
+  const tokenRegex = /(https?:\/\/\S+|#\d{5,}|(?<![\w@.])@[A-Za-z0-9._-]{2,})/g;
   const segments = text.split(tokenRegex);
   for (const seg of segments) {
     if (!seg) continue;
@@ -3706,6 +3715,8 @@ function parseMessageParts(name: string, text: string): MessagePart[] {
       parts.push({ type: 'link', text: seg });
     } else if (/^#\d{5,}$/.test(seg)) {
       parts.push({ type: 'segment', text: seg });
+    } else if (/^@[A-Za-z0-9._-]/.test(seg)) {
+      parts.push({ type: 'mention', text: seg });
     } else {
       parts.push({ type: 'text', text: seg });
     }
