@@ -15,7 +15,10 @@ const emit = defineEmits<{
 /** Cloud Function that mints short-lived signed PUT URLs for screenshot
  *  uploads. Implementation lives at ytho-4bff2 (see firebase-screenshot-
  *  upload-draft.md). Update this endpoint after deploying. */
-const SCREENSHOT_SIGN_URL = 'https://us-central1-ytho-4bff2.cloudfunctions.net/signScreenshotUpload';
+// NOTE: the signScreenshotUpload Cloud Function is no longer used. It minted a
+// v4 signed upload URL, which needs the runtime service account to sign via the
+// IAM signBlob API — a permission it never had, so it returned 500 on every
+// request. Uploads now go directly to Supabase Storage (see uploadBlob).
 
 const PREVIEW_W = 480;
 const PREVIEW_H = 270;
@@ -391,49 +394,18 @@ watch([showScaleBar, transparent], () => {
 
 onBeforeUnmount(() => { drawing = false; });
 
-/** Upload a PNG blob to Firebase Storage via the signed-URL Cloud Function.
- *  Returns the public download URL of the uploaded object. */
+/** Upload a PNG blob to Supabase Storage. Returns its public URL. */
 async function uploadBlob(blob: Blob): Promise<string> {
-  // Optional context — purely metadata for the function; failure to import
-  // the store should never block the upload, so swallow errors here.
-  let userId: string | null = null;
-  let segId: string | null = null;
-  try {
-    const { useProofreadingBackendStore, useSegmentAnnotationStore } = await import('../store');
-    const backend = useProofreadingBackendStore();
-    userId = backend.userId || null;
-    const seg = useSegmentAnnotationStore();
-    segId = (seg as any).activeSegId || null;
-  } catch (e) {
-    console.warn('[screenshot] could not read user/seg context:', e);
-  }
-
-  const signRes = await fetch(SCREENSHOT_SIGN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      userId,
-      segId,
-      contentType: 'image/png',
-      size: blob.size,
-    }),
-  });
-  if (!signRes.ok) {
-    const t = await signRes.text().catch(() => '');
-    throw new Error(`Sign URL failed (${signRes.status}): ${t.slice(0, 200)}`);
-  }
-  const { uploadUrl, publicUrl } = await signRes.json();
-  if (!uploadUrl || !publicUrl) throw new Error('Sign URL response missing fields');
-
-  const putRes = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'image/png' },
-    body: blob,
-  });
-  if (!putRes.ok) {
-    throw new Error(`Upload PUT failed (${putRes.status})`);
-  }
-  return publicUrl;
+  // Upload straight to Supabase Storage.
+  //
+  // This used to POST to the signScreenshotUpload Cloud Function for a v4
+  // signed URL and then PUT the blob to it. Signing requires the function's
+  // runtime service account to call the IAM signBlob API, a permission it was
+  // never granted, so every attach failed with "Sign URL failed (500)".
+  // Supabase Storage needs no signing round trip, no extra IAM and no Cloud
+  // Function — the bucket and policies already exist for admin uploads.
+  const { useProofreadingBackendStore: useBackend } = await import('../store');
+  return await useBackend().uploadHelpScreenshot(blob);
 }
 
 async function download() {

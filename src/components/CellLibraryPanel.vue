@@ -18,9 +18,7 @@ import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, DATASETS, type DatasetEntry } from '../datasets';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
-// NOTE: ScreenshotDialog import removed with the disabled attach feature.
-// The component itself is untouched and still used by ExtensionBar for the
-// working "Share → Screenshot" download.
+import ScreenshotDialog from './ScreenshotDialog.vue';
 
 const props = defineProps<{ initialTab?: string }>();
 const emit = defineEmits({ hide: null });
@@ -753,6 +751,9 @@ const newHelpIssue = ref('Unsure');
 const newHelpNote = ref('');
 const newHelpScreenshotUrl = ref('');
 const newHelpError = ref('');
+const showHelpScreenshotDialog = ref(false);
+/** Annotation layer attached to the INITIAL request (mirrors the reply form). */
+const newHelpAnnotationLayer = ref('');
 const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branch', 'Other'];
 
 // Pre-fill the segment ID from the current viewer selection when the Help tab
@@ -761,10 +762,12 @@ watch(() => filter.value, (f) => {
   if (f === 'help' && !newHelpSegId.value.trim()) newHelpSegId.value = getActiveSegId();
 }, { immediate: true });
 
-// TODO(screenshot): attach handlers removed with the button — see the note in
-// the Help quick-add template. `newHelpScreenshotUrl` is kept (always empty)
-// so the submit payload shape and the rendering of screenshots on EXISTING
-// help requests are both unchanged.
+function onHelpScreenshotAttached(payload: { url: string }) {
+  newHelpScreenshotUrl.value = payload.url;
+}
+function clearHelpScreenshot() {
+  newHelpScreenshotUrl.value = '';
+}
 
 function getActiveSegId(): string {
   try {
@@ -818,12 +821,14 @@ async function submitNewHelp() {
     cellType: '',
     nickname: '',
     screenshotUrl: newHelpScreenshotUrl.value || undefined,
+    annotationLayer: newHelpAnnotationLayer.value.trim() || undefined,
   });
   helpStore.refreshPending();
   newHelpSegId.value = '';
   newHelpNote.value = '';
   newHelpIssue.value = 'Unsure';
   newHelpScreenshotUrl.value = '';
+  newHelpAnnotationLayer.value = '';
 }
 
 // ── Help note expand state ──────────────────────────────────────────
@@ -1083,10 +1088,45 @@ function startDrag(e: MouseEvent) {
 // ── Resize ───────────────────────────────────────────────────────────
 const MIN_PANEL_W = 340;
 const MIN_PANEL_H = 260;
-const panelWidth = ref(480);
+
+/**
+ * Remembered panel size.
+ *
+ * This is a working surface people keep open for a whole session, so being
+ * made to re-drag it to a usable size on every reload is a real annoyance.
+ * Size is persisted; position deliberately is NOT — a saved position can end
+ * up off-screen after a monitor or resolution change, whereas the default
+ * centring is always reachable.
+ */
+const CL_SIZE_KEY = 'nge_cell_library_size_v1';
+
+function loadSavedSize(): { w: number; h: number | null } {
+  try {
+    const raw = localStorage.getItem(CL_SIZE_KEY);
+    if (!raw) return { w: 480, h: null };
+    const s = JSON.parse(raw);
+    // Clamp to the CURRENT viewport: a size saved on a big monitor must not
+    // strand the panel off the edge of a laptop screen.
+    const w = Math.max(MIN_PANEL_W, Math.min(Number(s.w) || 480, window.innerWidth - 24));
+    const h = s.h == null ? null
+      : Math.max(MIN_PANEL_H, Math.min(Number(s.h), window.innerHeight - 24));
+    return { w, h };
+  } catch { return { w: 480, h: null }; }
+}
+
+const saved = loadSavedSize();
+const panelWidth = ref(saved.w);
 // null = let content drive the height (capped by CSS max-height) until the
 // user drags the corner, at which point we take over with an explicit height.
-const resizedHeight = ref<number | null>(null);
+const resizedHeight = ref<number | null>(saved.h);
+
+function persistSize() {
+  try {
+    localStorage.setItem(CL_SIZE_KEY, JSON.stringify({
+      w: panelWidth.value, h: resizedHeight.value,
+    }));
+  } catch { /* quota or private mode */ }
+}
 
 function startResize(e: MouseEvent) {
   e.stopPropagation();
@@ -1105,6 +1145,8 @@ function startResize(e: MouseEvent) {
   const up = () => {
     window.removeEventListener('mousemove', move);
     window.removeEventListener('mouseup', up);
+    // Save on release rather than on every mousemove frame.
+    persistSize();
   };
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
@@ -1206,6 +1248,19 @@ const panelStyle = computed(() => ({
               >
                 <option v-for="t in HELP_ISSUE_TYPES" :key="t" :value="t">{{ t }}</option>
               </select>
+              <!-- Same annotation-layer picker the reply form has: point a
+                   reviewer at the layer holding your marks from the start,
+                   instead of only being able to add one when replying. -->
+              <select
+                v-if="getAnnotationLayers().length > 0"
+                v-model="newHelpAnnotationLayer"
+                class="nge-cl-help-issue-select"
+                @keydown.stop
+                title="Attach an annotation layer (optional)"
+              >
+                <option value="">No annotation layer</option>
+                <option v-for="layer in getAnnotationLayers()" :key="layer" :value="layer">{{ layer }}</option>
+              </select>
             </div>
             <div class="nge-cl-help-quickadd-row">
               <input
@@ -1216,14 +1271,24 @@ const panelStyle = computed(() => ({
                 @keydown.enter.prevent="submitNewHelp"
                 @input="newHelpError = ''"
               />
-              <!-- TODO(screenshot): the "attach a screenshot" button was removed
-                   because uploads fail server-side — the signScreenshotUpload
-                   Cloud Function can't mint a signed URL (its runtime service
-                   account lacks roles/iam.serviceAccountTokenCreator, so the
-                   IAM signBlob call is denied and every request 500s). Restore
-                   this button once that grant is in place; the upload code in
-                   ScreenshotDialog (mode="attach") is unchanged and still works.
-                   Existing screenshots on old requests still render below. -->
+              <button
+                v-if="!newHelpScreenshotUrl"
+                class="nge-cl-help-shot-icon"
+                @click="showHelpScreenshotDialog = true"
+                title="Attach a screenshot of the current view"
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 8h3l2-2.5h8L18 8h3v11H3z"/>
+                  <circle cx="12" cy="13.5" r="3.8"/>
+                </svg>
+              </button>
+              <button
+                v-else
+                class="nge-cl-help-shot-icon nge-cl-help-shot-icon--attached"
+                @click="clearHelpScreenshot"
+                title="Screenshot attached — click to remove"
+              >✓</button>
               <button class="nge-cl-help-quickadd-submit" @click="submitNewHelp" title="Submit help request">Submit</button>
             </div>
             <div v-if="newHelpScreenshotUrl" class="nge-cl-help-shot-preview nge-cl-help-shot-preview--sm">
@@ -1657,9 +1722,13 @@ const panelStyle = computed(() => ({
     </div>
   </Teleport>
 
-  <!-- TODO(screenshot): the attach dialog is disabled — see the note by the
-       Help quick-add Submit button. Re-mount this once the Cloud Function's
-       service account can sign upload URLs. -->
+  <!-- Screenshot attach dialog for help requests -->
+  <ScreenshotDialog
+    :show="showHelpScreenshotDialog"
+    mode="attach"
+    @close="showHelpScreenshotDialog = false"
+    @attached="onHelpScreenshotAttached"
+  />
 </template>
 
 <style scoped>
@@ -2255,18 +2324,48 @@ const panelStyle = computed(() => ({
   margin-bottom: 6px;
 }
 .nge-cl-help-quickadd-row:last-of-type { margin-bottom: 0; }
+/* ── Themed <select> ──────────────────────────────────────────────────────
+   The dropdown POPUP is drawn by the operating system, not by our CSS, so a
+   dark-styled control still opened a light grey list with a blue highlight
+   that looked nothing like the rest of the UI (and was hard to read).
+   `color-scheme: dark` switches that native popup to dark chrome, and styling
+   `option` sets the row colours Chrome honours. `appearance: none` plus a
+   drawn chevron replaces the default OS arrow on the closed control. */
+.nge-cl-help-issue-select,
+select.nge-cl-response-input {
+  color-scheme: dark;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%238fa6c8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 11px;
+  padding-right: 24px;
+}
+.nge-cl-help-issue-select option,
+select.nge-cl-response-input option {
+  background: #0c1020;
+  color: #cfdcef;
+}
+.nge-cl-help-issue-select:hover,
+select.nge-cl-response-input:hover {
+  border-color: rgba(74, 158, 255, 0.35);
+}
+
 .nge-cl-help-issue-select {
   flex-shrink: 0;
-  background: rgba(0, 0, 0, 0.25);
+  background-color: rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
-  color: #ccd;
+  /* Was #ccd, which sat too dim against the panel. */
+  color: #cfdcef;
   font-size: 0.76em;
   font-family: inherit;
   padding: 5px 6px;
   cursor: pointer;
+  transition: border-color 0.15s;
 }
-.nge-cl-help-issue-select:focus { outline: none; border-color: rgba(255, 136, 170, 0.4); }
+.nge-cl-help-issue-select:focus { outline: none; border-color: rgba(74, 158, 255, 0.5); }
 .nge-cl-help-note-input {
   flex: 1;
   min-width: 0;

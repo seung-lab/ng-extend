@@ -1056,6 +1056,8 @@ export interface HelpRequest {
   nickname?: string;
   /** Dataset/layer name this request belongs to (for cross-dataset filtering). */
   dataset?: string;
+  /** Annotation layer attached to the ORIGINAL request (replies have their own). */
+  annotationLayer?: string;
   /** Who created this request */
   userId?: string;
   userName?: string;
@@ -1091,6 +1093,7 @@ function rowToHelpRequest(row: any): HelpRequest {
     responseUrl: row.response_url ?? undefined,
     responseAnnotationLayer: row.response_annotation_layer ?? undefined,
     screenshotUrl: row.screenshot_url ?? undefined,
+    annotationLayer: row.annotation_layer ?? undefined,
   };
 }
 
@@ -1186,6 +1189,8 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       cell_type: req.cellType || null,
       nickname: req.nickname || null,
       screenshot_url: req.screenshotUrl || null,
+      // Column added by supabase-help-responses-schema.sql.
+      annotation_layer: req.annotationLayer || null,
     };
 
     const { data, error } = await supabase
@@ -3578,6 +3583,34 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
 
   /**
+   * Upload a help-request screenshot and return its public URL.
+   *
+   * Deliberately goes straight to Supabase Storage rather than through the
+   * signScreenshotUpload Cloud Function. That function mints a v4 signed URL,
+   * which requires the runtime service account to sign via the IAM signBlob
+   * API — a permission it was never granted, so every request 500'd and
+   * screenshot attach was broken. Supabase Storage needs no signing step, no
+   * extra IAM, and no Cloud Function: the bucket and its policies already
+   * exist for admin uploads, and the same anon key already in the bundle can
+   * write to it. Fewer moving parts and nothing new to pay for.
+   */
+  async function uploadHelpScreenshot(blob: Blob): Promise<string> {
+    if (blob.size > MAX_ADMIN_IMAGE_BYTES) {
+      const mb = (blob.size / (1024 * 1024)).toFixed(1);
+      throw new Error(`Screenshot is ${mb} MB — the limit is ${MAX_ADMIN_IMAGE_BYTES / (1024 * 1024)} MB. Try a smaller size.`);
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    const rand = Math.random().toString(36).slice(2, 10);
+    const path = `help-screenshots/${day}/${userId.value || 'anon'}-${rand}.png`;
+    const { error } = await supabase.storage
+      .from('admin-uploads')
+      .upload(path, blob, { contentType: 'image/png', upsert: false });
+    if (error) throw new Error('Screenshot upload failed: ' + error.message);
+    const { data } = supabase.storage.from('admin-uploads').getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  /**
    * Upload a small icon used as the notification's feed thumbnail.
    *
    * The feed shows a thumbnail per card. Deriving it from a large hero image
@@ -3680,7 +3713,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload
-    uploadAdminImage, uploadAdminIcon, validateAdminImage, MAX_ADMIN_IMAGE_BYTES,
+    uploadAdminImage, uploadAdminIcon, uploadHelpScreenshot, validateAdminImage, MAX_ADMIN_IMAGE_BYTES,
     // Favorite Badge
     favoriteBadgeSlug, loadFavoriteBadge, saveFavoriteBadge,
   };
