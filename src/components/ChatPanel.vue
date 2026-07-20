@@ -8,6 +8,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useChatStore, useProofreadingBackendStore, ChatMessage } from '../store';
+import { canonicalDataset } from '../datasets';
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -21,6 +22,8 @@ const isScrolledUp = ref(false);
 const collapsed = ref(false);
 /** Segment id most recently copied, for the brief "copied" tick. */
 const copiedSegId = ref<string | null>(null);
+/** Pending cross-dataset jump awaiting confirmation. */
+const pendingSegJump = ref<{ segRef: string; from: string | null; to: string } | null>(null);
 
 // ── Drag state ──
 const panelEl = ref<HTMLDivElement | null>(null);
@@ -203,6 +206,54 @@ function send() {
   inputEl.value?.focus();
 }
 
+/** Active segmentation layer name, for comparing against a message's dataset. */
+function activeDatasetName(): string | null {
+  try {
+    const viewer: any = (window as any)['viewer'];
+    for (const l of viewer?.layerManager?.managedLayers || []) {
+      const cn = l?.layer?.constructor?.name || '';
+      if (cn.includes('Segmentation') || l?.layer?.type === 'segmentation') return l.name || null;
+    }
+  } catch { /* viewer not ready */ }
+  return null;
+}
+
+/** Short label for the dataset chip (the full name is in the tooltip). */
+function datasetLabel(ds: string | null | undefined): string {
+  if (!ds) return 'unknown dataset';
+  return canonicalDataset(ds) || ds;
+}
+
+/**
+ * Guarded click on a shared #SegID.
+ *
+ * Root IDs only exist within one segmentation, so jumping to a stroeh id while
+ * the reader has pinky open lands on a different cell — or nothing — and looks
+ * authoritative either way. Only jump when we know the datasets agree; if they
+ * don't (or the message predates dataset stamping) ask first.
+ */
+function onSegClick(segRef: string, msgDataset: string | null | undefined) {
+  const active = activeDatasetName();
+  const sameDataset = msgDataset && active &&
+    (msgDataset === active || canonicalDataset(msgDataset) === canonicalDataset(active));
+  if (sameDataset || (!msgDataset && !active)) {
+    loadSegment(segRef);
+    return;
+  }
+  pendingSegJump.value = {
+    segRef,
+    from: msgDataset ? datasetLabel(msgDataset) : null,
+    to: active ? datasetLabel(active) : 'your current view',
+  };
+}
+
+/** User confirmed jumping to a segment shared from another dataset. */
+function confirmSegJump() {
+  const p = pendingSegJump.value;
+  pendingSegJump.value = null;
+  if (p) loadSegment(p.segRef);
+}
+
 // ── Load segment from #SegID click ──
 function loadSegment(segRef: string) {
   const segId = segRef.replace('#', '');
@@ -357,10 +408,13 @@ function toggleCollapse() {
                         class="nge-chat-seg-link"
                         role="button"
                         tabindex="0"
-                        @click="loadSegment(part.text)"
-                        @keydown.enter="loadSegment(part.text)"
-                        :title="'Jump to segment ' + part.text.slice(1)"
-                      >{{ part.text }}</span><button
+                        @click="onSegClick(part.text, msg.dataset)"
+                        @keydown.enter="onSegClick(part.text, msg.dataset)"
+                        :title="'Jump to segment ' + part.text.slice(1) + (msg.dataset ? ' in ' + msg.dataset : '')"
+                      >{{ part.text }}</span><span
+                        class="nge-chat-seg-ds"
+                        :title="msg.dataset || 'Sent before the dataset was recorded'"
+                      >{{ datasetLabel(msg.dataset) }}</span><button
                         class="nge-chat-seg-copy"
                         @click="copySegId(part.text, $event)"
                         :title="'Copy ' + part.text.slice(1)"
@@ -386,6 +440,19 @@ function toggleCollapse() {
             ↓ new
           </div>
         </Transition>
+
+        <!-- Cross-dataset jump guard: a root ID from another segmentation would
+             land on a different cell (or nothing) without warning. -->
+        <div v-if="pendingSegJump" class="nge-chat-segwarn">
+          <div class="nge-chat-segwarn-text">
+            This ID is from <strong>{{ pendingSegJump.from || 'an unknown dataset' }}</strong>,
+            but you're viewing <strong>{{ pendingSegJump.to }}</strong>. It may not exist here.
+          </div>
+          <div class="nge-chat-segwarn-actions">
+            <button class="nge-chat-segwarn-go" @click="confirmSegJump">Jump anyway</button>
+            <button class="nge-chat-segwarn-no" @click="pendingSegJump = null">Cancel</button>
+          </div>
+        </div>
 
         <!-- Input -->
         <div class="nge-chat-input-wrap">
@@ -672,6 +739,40 @@ function toggleCollapse() {
   padding: 2px 5px 2px 2px;
 }
 .nge-chat-seg-copy:hover { color: #80ffc0; background: none; }
+/* Which segmentation the id belongs to — a bare root ID is ambiguous without it. */
+.nge-chat-seg-ds {
+  color: rgba(128, 255, 192, 0.55);
+  font-size: 10px;
+  padding: 0 2px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.nge-chat-segwarn {
+  margin: 4px 6px;
+  padding: 7px 9px;
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.3);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: #f0d0a0;
+}
+.nge-chat-segwarn-text { line-height: 1.35; }
+.nge-chat-segwarn-text strong { color: #ffd9a3; font-weight: 600; }
+.nge-chat-segwarn-actions { display: flex; gap: 6px; margin-top: 6px; }
+.nge-chat-segwarn-go,
+.nge-chat-segwarn-no {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.nge-chat-segwarn-go { color: #ffc98a; border-color: rgba(245, 166, 35, 0.5); }
+.nge-chat-segwarn-go:hover { background: rgba(245, 166, 35, 0.18); }
+.nge-chat-segwarn-no { color: #99a; }
+.nge-chat-segwarn-no:hover { background: rgba(255, 255, 255, 0.06); }
 
 /* System messages */
 .nge-chat-sys {

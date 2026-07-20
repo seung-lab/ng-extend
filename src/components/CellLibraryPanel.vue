@@ -18,7 +18,9 @@ import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, DATASETS, type DatasetEntry } from '../datasets';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
-import ScreenshotDialog from './ScreenshotDialog.vue';
+// NOTE: ScreenshotDialog import removed with the disabled attach feature.
+// The component itself is untouched and still used by ExtensionBar for the
+// working "Share → Screenshot" download.
 
 const props = defineProps<{ initialTab?: string }>();
 const emit = defineEmits({ hide: null });
@@ -751,7 +753,6 @@ const newHelpIssue = ref('Unsure');
 const newHelpNote = ref('');
 const newHelpScreenshotUrl = ref('');
 const newHelpError = ref('');
-const showHelpScreenshotDialog = ref(false);
 const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branch', 'Other'];
 
 // Pre-fill the segment ID from the current viewer selection when the Help tab
@@ -760,12 +761,10 @@ watch(() => filter.value, (f) => {
   if (f === 'help' && !newHelpSegId.value.trim()) newHelpSegId.value = getActiveSegId();
 }, { immediate: true });
 
-function onHelpScreenshotAttached(payload: { url: string }) {
-  newHelpScreenshotUrl.value = payload.url;
-}
-function clearHelpScreenshot() {
-  newHelpScreenshotUrl.value = '';
-}
+// TODO(screenshot): attach handlers removed with the button — see the note in
+// the Help quick-add template. `newHelpScreenshotUrl` is kept (always empty)
+// so the submit payload shape and the rendering of screenshots on EXISTING
+// help requests are both unchanged.
 
 function getActiveSegId(): string {
   try {
@@ -1217,18 +1216,14 @@ const panelStyle = computed(() => ({
                 @keydown.enter.prevent="submitNewHelp"
                 @input="newHelpError = ''"
               />
-              <button
-                v-if="!newHelpScreenshotUrl"
-                class="nge-cl-help-shot-icon"
-                @click="showHelpScreenshotDialog = true"
-                title="Attach a screenshot of the current view"
-              >
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-                     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 8h3l2-2.5h8L18 8h3v11H3z"/>
-                  <circle cx="12" cy="13.5" r="3.8"/>
-                </svg>
-              </button>
+              <!-- TODO(screenshot): the "attach a screenshot" button was removed
+                   because uploads fail server-side — the signScreenshotUpload
+                   Cloud Function can't mint a signed URL (its runtime service
+                   account lacks roles/iam.serviceAccountTokenCreator, so the
+                   IAM signBlob call is denied and every request 500s). Restore
+                   this button once that grant is in place; the upload code in
+                   ScreenshotDialog (mode="attach") is unchanged and still works.
+                   Existing screenshots on old requests still render below. -->
               <button class="nge-cl-help-quickadd-submit" @click="submitNewHelp" title="Submit help request">Submit</button>
             </div>
             <div v-if="newHelpScreenshotUrl" class="nge-cl-help-shot-preview nge-cl-help-shot-preview--sm">
@@ -1662,13 +1657,9 @@ const panelStyle = computed(() => ({
     </div>
   </Teleport>
 
-  <!-- Screenshot attach dialog for help requests -->
-  <ScreenshotDialog
-    :show="showHelpScreenshotDialog"
-    mode="attach"
-    @close="showHelpScreenshotDialog = false"
-    @attached="onHelpScreenshotAttached"
-  />
+  <!-- TODO(screenshot): the attach dialog is disabled — see the note by the
+       Help quick-add Submit button. Re-mount this once the Cloud Function's
+       service account can sign upload URLs. -->
 </template>
 
 <style scoped>

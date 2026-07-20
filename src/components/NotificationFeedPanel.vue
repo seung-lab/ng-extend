@@ -47,6 +47,12 @@ watch(() => props.visible, (v) => {
 
 const lightboxUrl = ref<string | null>(null);
 const openNotif = ref<any | null>(null);
+const confirmDeleteAll = ref(false);
+
+async function doDeleteAll() {
+  confirmDeleteAll.value = false;
+  await backend.dismissAllNotifications();
+}
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -133,8 +139,25 @@ function plainText(text: string): string {
           class="nge-notif-mark-all"
           @click="backend.markAllNotificationsRead()"
         >Mark all read</button>
+        <!-- Separate from "mark all read" on purpose: read state controls the
+             unread pip, this clears the feed. Only hides them for THIS user —
+             the underlying notification rows are untouched. -->
+        <button
+          v-if="backend.notifications.length > 0"
+          class="nge-notif-delete-all"
+          @click="confirmDeleteAll = true"
+          title="Delete all notifications (only affects your feed)"
+        >Delete all</button>
         <button class="nge-notif-close" @click.stop="emit('hide')">×</button>
       </div>
+    </div>
+
+    <!-- Deleting the whole feed is irreversible, so make it a deliberate two
+         step action rather than a single click next to the close button. -->
+    <div v-if="confirmDeleteAll" class="nge-notif-confirm">
+      <span>Delete all {{ backend.notifications.length }} notifications?</span>
+      <button class="nge-notif-confirm-yes" @click="doDeleteAll">Delete all</button>
+      <button class="nge-notif-confirm-no" @click="confirmDeleteAll = false">Cancel</button>
     </div>
 
     <div class="nge-notif-list" v-if="backend.notifications.length > 0">
@@ -270,6 +293,43 @@ function plainText(text: string): string {
   cursor: pointer;
 }
 .nge-notif-mark-all:hover { color: #4a9eff; border-color: rgba(74, 158, 255, 0.4); }
+
+/* Destructive, so it reads warm rather than in the blue accent. */
+.nge-notif-delete-all {
+  background: none;
+  border: 1px solid rgba(224, 96, 96, 0.22);
+  color: rgba(224, 120, 120, 0.75);
+  font-size: 0.72em;
+  padding: 2px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.nge-notif-delete-all:hover { color: #e06060; border-color: rgba(224, 96, 96, 0.5); }
+
+.nge-notif-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(224, 96, 96, 0.08);
+  border-bottom: 1px solid rgba(224, 96, 96, 0.2);
+  font-size: 0.78em;
+  color: #e8c0c0;
+}
+.nge-notif-confirm span { flex: 1; }
+.nge-notif-confirm-yes,
+.nge-notif-confirm-no {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 1em;
+  cursor: pointer;
+}
+.nge-notif-confirm-yes { color: #ff8f8f; border-color: rgba(224, 96, 96, 0.5); }
+.nge-notif-confirm-yes:hover { background: rgba(224, 96, 96, 0.18); }
+.nge-notif-confirm-no { color: #aab; }
+.nge-notif-confirm-no:hover { background: rgba(255, 255, 255, 0.06); }
 
 .nge-notif-close {
   background: none; border: none; color: #666; font-size: 1.2em;

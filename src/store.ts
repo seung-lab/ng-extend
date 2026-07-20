@@ -3037,22 +3037,19 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const notifications = ref<Notification[]>([]);
   const notificationReads = ref<Set<number>>(new Set());
   /**
-   * Dismissed notification ids — intentionally SESSION-ONLY (in memory).
+   * Dismissed notification ids for the current user.
    *
-   * These used to be persisted to localStorage['nge-notification-dismissals']
-   * and filtered out of loadNotifications() forever. Because the × dismiss
-   * button sits directly beside the admin 🗑 delete, one stray click hid a
-   * notification permanently — no confirmation, no undo, no "show dismissed",
-   * and it never came back on reload. That is how users lost their whole feed.
-   *
-   * Dismiss is now just "hide it for now"; a reload brings it back. Unread
-   * state is already handled properly by `notification_reads`, so nothing is
-   * lost by making this ephemeral.
+   * Previously this lived in localStorage and hid a notification FOREVER, per
+   * browser, with no undo — one stray click on the × (which sits next to the
+   * admin 🗑) wiped it from the feed permanently. It now lives in Supabase on
+   * `notification_reads.dismissed`, so it is per-user rather than per-browser,
+   * survives a machine change, and is separable from read state: you can mark
+   * everything read without deleting it, or delete all without reading.
    */
   const notificationDismissals = ref<Set<number>>(new Set());
 
-  // One-time cleanup: drop any permanently-stored dismissals from the old
-  // behaviour, so notifications hidden by an accidental click reappear.
+  // One-time cleanup: drop the old browser-local dismissal list so anything
+  // hidden by an accidental click under the previous behaviour comes back.
   try { localStorage.removeItem('nge-notification-dismissals'); } catch { /* private mode */ }
   let notifSubscription: any = null;
 
@@ -3096,12 +3093,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       return false;
     });
 
-    // Load read status
+    // Load read + dismissed status together (both live on notification_reads).
     const { data: reads } = await supabase
       .from('notification_reads')
-      .select('notification_id')
+      .select('notification_id, dismissed')
       .eq('user_id', userId.value);
     notificationReads.value = new Set((reads || []).map((r: any) => r.notification_id));
+    notificationDismissals.value = new Set(
+      (reads || []).filter((r: any) => r.dismissed).map((r: any) => r.notification_id));
+
+    // Dismissed notifications are hidden from the feed. Done after the read
+    // query so the freshly-loaded dismissal set is applied to this batch.
+    if (notificationDismissals.value.size) {
+      notifications.value = notifications.value.filter(
+        n => !notificationDismissals.value.has(n.id));
+    }
   }
 
   async function markNotificationRead(notifId: number) {
@@ -3189,10 +3195,44 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifications.value = notifications.value.filter(n => n.id !== notifId);
   }
 
-  /** Hide a notification for this session only — it returns on reload. */
-  function dismissNotification(notifId: number) {
+  /** Delete (permanently hide) one notification for the current user. */
+  async function dismissNotification(notifId: number) {
     notificationDismissals.value.add(notifId);
     notifications.value = notifications.value.filter(n => n.id !== notifId);
+    if (!userId.value) return;
+    const { error } = await supabase.from('notification_reads').upsert({
+      notification_id: notifId,
+      user_id: userId.value,
+      dismissed: true,
+      dismissed_at: new Date().toISOString(),
+    }, { onConflict: 'notification_id,user_id' });
+    if (error) console.warn('[notifications] dismiss failed:', error.message);
+  }
+
+  /**
+   * Delete all of the current user's visible notifications.
+   *
+   * Deliberately separate from "mark all read": read state controls the unread
+   * pip, this clears the feed. Neither one deletes the underlying
+   * `notifications` row (that stays admin-only) — it only hides them for this
+   * user, so one person clearing their feed never affects anyone else's.
+   */
+  async function dismissAllNotifications() {
+    if (!userId.value) return;
+    const visible = notifications.value.slice();
+    if (!visible.length) return;
+    for (const n of visible) notificationDismissals.value.add(n.id);
+    notifications.value = [];
+    const rows = visible.map(n => ({
+      notification_id: n.id,
+      user_id: userId.value,
+      dismissed: true,
+      dismissed_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase
+      .from('notification_reads')
+      .upsert(rows, { onConflict: 'notification_id,user_id' });
+    if (error) console.warn('[notifications] dismiss-all failed:', error.message);
   }
 
   function subscribeToNotifications() {
@@ -3519,6 +3559,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
     markNotificationRead, markAllNotificationsRead,
     createNotification, createSelfNotification, deleteNotification, dismissNotification,
+    dismissAllNotifications,
     subscribeToNotifications, unsubscribeFromNotifications,
     pendingBadgeCelebration,
     pendingCellCelebration,
@@ -3605,6 +3646,29 @@ export interface ChatMessage {
   time?: string;
   dateTime: Date;
   parts: MessagePart[];
+  /** Segmentation layer the sender was viewing, for #SegID disambiguation.
+   *  Null on messages sent before this was recorded. */
+  dataset?: string | null;
+}
+
+/**
+ * Name of the active segmentation layer — our dataset key.
+ *
+ * Root IDs only mean anything within a single segmentation, so anything that
+ * shares a segment ID between users has to record which dataset it came from.
+ */
+function currentDatasetName(): string | null {
+  try {
+    const viewer: any = (window as any)['viewer'];
+    const layers = viewer?.layerManager?.managedLayers || [];
+    for (const l of layers) {
+      const cn = l?.layer?.constructor?.name || '';
+      if (cn.includes('Segmentation') || l?.layer?.type === 'segmentation') {
+        return l.name || null;
+      }
+    }
+  } catch { /* viewer not ready */ }
+  return null;
 }
 
 /** Parse message text into parts (text + auto-detected links + #SegID references) */
@@ -3664,7 +3728,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const { data, error } = await supabase
         .from('chat_messages')
-        .select('name, rank, text, created_at')
+        .select('name, rank, text, created_at, dataset')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error || !data) return;
@@ -3678,6 +3742,7 @@ export const useChatStore = defineStore('chat', () => {
           time: formatTime(date),
           dateTime: date,
           parts: parseMessageParts(r.name, r.text),
+          dataset: r.dataset ?? null,
         });
       }
     } catch (e) {
@@ -3709,7 +3774,7 @@ export const useChatStore = defineStore('chat', () => {
 
     channel
       .on('broadcast', { event: 'message' }, (payload) => {
-        const { name, rank, text, timestamp, senderId } = payload.payload;
+        const { name, rank, text, timestamp, senderId, dataset } = payload.payload;
         const date = new Date(timestamp);
         addTimeSeparatorIfNeeded(date);
         chatMessages.value.push({
@@ -3719,6 +3784,7 @@ export const useChatStore = defineStore('chat', () => {
           time: formatTime(date),
           dateTime: date,
           parts: parseMessageParts(name, text),
+          dataset: dataset ?? null,
         });
         // The channel runs with `broadcast: { self: true }` so the sender also
         // receives their own message — that's how it lands in their own list.
@@ -3797,11 +3863,16 @@ export const useChatStore = defineStore('chat', () => {
         // Lets the receiving handler recognise this message as our own and
         // skip the unread bump (the channel echoes it back via self: true).
         senderId: backend.userId || null,
+        // Root IDs are only meaningful inside ONE segmentation, so a shared
+        // #SegID is meaningless (or silently wrong) without knowing which
+        // dataset the sender was looking at. Stamp it so the reader can warn /
+        // offer to switch instead of jumping to a different cell entirely.
+        dataset: currentDatasetName(),
       },
     });
     // Persist for history so the last messages show on next open (best-effort;
     // no-ops if the chat_messages table isn't present).
-    supabase.from('chat_messages').insert({ name, rank, text })
+    supabase.from('chat_messages').insert({ name, rank, text, dataset: currentDatasetName() })
       .then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); });
   }
 
