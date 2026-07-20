@@ -340,7 +340,33 @@ interface ToolbarIcon {
 // ../data/toolbar-icons so SettingsPanel can render the exact same
 // set in its customization grid. Here we only attach the action
 // handlers and (where relevant) badge counters.
-import { TOOLBAR_ICON_DEFS } from '../data/toolbar-icons';
+import { TOOLBAR_ICON_DEFS, resolveToolbarOrder } from '../data/toolbar-icons';
+
+// ── Layers: the neuroglancer layer-list panel, driven from our toolbar ──
+// The native top-row toggle is hidden in ng-override.css; this icon replaces it
+// so it participates in the Settings toolbar prefs like everything else.
+// `window['viewer']` is not reactive, so mirror the panel's visibility into a
+// Vue ref (subscribing to the neuroglancer signal) to drive the active-state
+// underline. The viewer may not exist at mount, so retry attaching.
+const layerPanelOpen = ref(false);
+let layerPanelWatchable: any = null;
+const syncLayerPanelOpen = () => { layerPanelOpen.value = !!layerPanelWatchable?.value; };
+function layerListWatchable(): any {
+  return (window as any)['viewer']?.layerListPanelState?.location?.watchableVisible ?? null;
+}
+function toggleLayerListPanel() {
+  const w = layerListWatchable();
+  if (w) w.value = !w.value;
+}
+function wireLayerPanelState(attempt = 0) {
+  const w = layerListWatchable();
+  if (!w) { if (attempt < 12) setTimeout(() => wireLayerPanelState(attempt + 1), 500); return; }
+  layerPanelWatchable = w;
+  syncLayerPanelOpen();
+  w.changed.add(syncLayerPanelOpen);
+}
+onMounted(() => wireLayerPanelState());
+onUnmounted(() => { try { layerPanelWatchable?.changed.remove(syncLayerPanelOpen); } catch { /* ignore */ } });
 
 interface ToolbarAction {
   action: () => void;
@@ -351,12 +377,14 @@ const toolbarActions: Record<string, ToolbarAction> = {
   split:       { action: () => activateTool('multicut') },
   merge:       { action: () => activateTool('merge') },
   findPath:    { action: () => activateTool('findPath') },
+  layers:      { action: () => toggleLayerListPanel() },
   recap:       { action: () => { openWeekRecap(); } },
   leaderboard: { action: () => { showLeaderboard.value = true; } },
   quest:       { action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
   cells:       { action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
   batch:       { action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
-  help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => helpStore.pending.length },
+  // Badge suppressed when the user mutes help requests (Settings → Notifications).
+  help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
   feed:        { action: () => { showFeed.value = true; } },
   notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
@@ -381,10 +409,9 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => {
     .filter((x): x is ToolbarIcon => x !== null);
 });
 
-const DEFAULT_TOOLBAR_ORDER = ['split', 'merge', 'findPath', 'recap', 'leaderboard', 'cells', 'batch', 'help', 'notif', 'chat', 'settings'];
-
 // Map icon IDs to their active (open) state
 const iconActiveState: Record<string, () => boolean> = {
+  layers: () => layerPanelOpen.value,
   recap: () => showProfile.value && profileInitialTab.value === 'weekInScience',
   leaderboard: () => showLeaderboard.value,
   quest: () => showQueue.value,
@@ -401,22 +428,10 @@ function isIconActive(id: string): boolean {
 
 const visibleToolbar = computed(() => {
   const prefs = useUserPreferencesStore().prefs;
-  let order = prefs.toolbarIcons.length > 0 ? [...prefs.toolbarIcons] : DEFAULT_TOOLBAR_ORDER;
-  // Auto-inject new toolbar icons that weren't in older saved prefs
-  for (const newId of ['batch', 'notif', 'chat', 'findPath']) {
-    if (!order.includes(newId)) {
-      // findPath inserts right after merge; others go before settings
-      if (newId === 'findPath') {
-        const mergeIdx = order.indexOf('merge');
-        order.splice(mergeIdx >= 0 ? mergeIdx + 1 : 0, 0, newId);
-      } else {
-        const settingsIdx = order.indexOf('settings');
-        order.splice(settingsIdx >= 0 ? settingsIdx : order.length, 0, newId);
-      }
-    }
-  }
-  // Remove retired icons from saved prefs
-  order = order.filter(id => !['quest', 'feed'].includes(id));
+  // resolveToolbarOrder handles default-fallback, injecting icons added since
+  // the prefs were saved, and dropping retired ids — shared with SettingsPanel
+  // so the grid and the real toolbar can't disagree.
+  const order = resolveToolbarOrder(prefs.toolbarIcons);
   return order.map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
 });
 

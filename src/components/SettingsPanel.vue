@@ -25,21 +25,24 @@ const draftFlag = ref('');
 const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
 const draftChatMuted = ref(false);
+const draftHelpMuted = ref(false);
 const saved      = ref(false);
 
 onMounted(() => {
   draftFlag.value = prefsStore.prefs.flag;
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
-  const current = prefsStore.prefs.toolbarIcons;
-  draftToolbar.value = current.length > 0 ? [...current] : [...DEFAULT_ORDER];
+  draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
+  // Seed via the same resolver the toolbar uses, so the grid reflects exactly
+  // what's in the top bar — including icons auto-injected into older prefs.
+  draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons);
 });
 
 async function handleSave() {
   const flag = draftFlag.value.trim();
   const bio = draftBio.value.trim().slice(0, 280);
-  // Local prefs (toolbar order, chat mute) stay in localStorage.
-  prefsStore.save({ flag, bio, toolbarIcons: draftToolbar.value, chatMuted: draftChatMuted.value });
+  // Local prefs (toolbar order, chat/help mute) stay in localStorage.
+  prefsStore.save({ flag, bio, toolbarIcons: draftToolbar.value, chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value });
   saved.value = true;
   setTimeout(() => { saved.value = false; }, 1800);
   // Flag and bio are also part of the PUBLIC profile: the profile panel and
@@ -56,14 +59,14 @@ async function handleSave() {
 }
 
 // ── Toolbar icon choices (shared with the actual top bar) ──────
-import { TOOLBAR_ICON_DEFS } from '../data/toolbar-icons';
+import { TOOLBAR_ICON_DEFS, RETIRED_TOOLBAR_ICON_IDS, DEFAULT_TOOLBAR_ORDER, resolveToolbarOrder } from '../data/toolbar-icons';
 
-const TOOLBAR_ICON_OPTIONS = TOOLBAR_ICON_DEFS;
+// Only offer icons the top bar can actually show — exclude retired ones so this
+// grid matches the real toolbar rather than listing dead toggles.
+const TOOLBAR_ICON_OPTIONS = TOOLBAR_ICON_DEFS.filter(d => !RETIRED_TOOLBAR_ICON_IDS.includes(d.id));
 
-const DEFAULT_ORDER = [
-  'split', 'merge', 'findPath', 'recap', 'leaderboard',
-  'cells', 'batch', 'help', 'notif', 'chat', 'settings',
-];
+// Same default as the toolbar itself, imported so the two can't drift.
+const DEFAULT_ORDER = DEFAULT_TOOLBAR_ORDER;
 
 function isToolbarIconEnabled(id: string) {
   return draftToolbar.value.includes(id);
@@ -232,10 +235,14 @@ const emit = defineEmits({hide: null});
 
         <div class="nge-settings-section">
           <label class="nge-settings-label">Notifications</label>
-          <p class="nge-settings-hint">Control the green pip on the chat icon when new messages arrive.</p>
+          <p class="nge-settings-hint">Control the badges on your toolbar icons.</p>
           <label class="nge-settings-toggle">
             <input type="checkbox" v-model="draftChatMuted" />
             <span class="nge-settings-toggle-label">Mute chat unread badge</span>
+          </label>
+          <label class="nge-settings-toggle">
+            <input type="checkbox" v-model="draftHelpMuted" />
+            <span class="nge-settings-toggle-label">Mute help requests</span>
           </label>
         </div>
 

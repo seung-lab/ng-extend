@@ -40,6 +40,11 @@ const S = 'width:1em;height:1em;vertical-align:middle;';
 const SPLIT_SVG     = `<svg viewBox="-0.05 -0.3 16.1 16.1" fill="none" style="${S}color:${ACCENT_RED}"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.4" fill="currentColor"/><circle cx="4" cy="13" r="1.4" fill="currentColor"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 const MERGE_SVG     = `<svg viewBox="-0.05 -0.3 16.1 16.1" fill="none" style="${S}color:${ACCENT_GREEN}"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.4" fill="currentColor"/><circle cx="12" cy="2.5" r="1.4" fill="currentColor"/><circle cx="8" cy="13" r="1.4" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 const FINDPATH_SVG  = `<svg viewBox="0.0 0.0 16.0 16.0" fill="none" style="${S}color:${ACCENT_PURPLE}"><circle cx="3" cy="13" r="1.6" fill="currentColor"/><circle cx="13" cy="3" r="1.6" fill="currentColor"/><path d="M5 12 Q7 9 8 8 Q9 7 11 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="1.4 1.8"/></svg>`;
+// Stacked sheets — the neuroglancer layer-list toggle, brought into our toolbar
+// so it's reorderable and toggleable like every other icon (the native button
+// is hidden in ng-override.css). A flat top diamond over two offset sheets, kept
+// distinct from the batch cube.
+const LAYERS_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M8 1.7 14.4 5 8 8.3 1.6 5 8 1.7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2.2 8 8 11 13.8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.2 11 8 14 13.8 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 // A week (calendar frame with day ticks) containing a rising trend line, so the
 // icon says "your week" + "progress" rather than the generic bar chart it was,
 // which was indistinguishable from any other stats/analytics glyph.
@@ -58,6 +63,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)' },
   { id: 'merge',       emoji: '🔗', svg: MERGE_SVG,       label: 'Merge Mode (M)' },
   { id: 'findPath',    emoji: '🛤️', svg: FINDPATH_SVG,    label: 'Find Path (F)' },
+  { id: 'layers',      emoji: '🗂️', svg: LAYERS_SVG,      label: 'Layers' },
   { id: 'recap',       emoji: '📊', svg: RECAP_SVG,       label: 'Your Week in Science' },
   { id: 'leaderboard', emoji: '🏆', svg: LEADERBOARD_SVG, label: 'Leaderboard' },
   { id: 'quest',       emoji: '🧠', svg: QUEST_SVG,       label: 'Brain Quest' },
@@ -72,4 +78,61 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
 
 export function getToolbarIconDef(id: string): ToolbarIconDef | undefined {
   return TOOLBAR_ICON_DEFS.find(d => d.id === id);
+}
+
+/**
+ * Icon ids that are still defined (they keep their action/label) but are no
+ * longer shown in the toolbar. Single source of truth so the actual toolbar
+ * (ExtensionBar) and the Settings customization grid stay in sync — the grid
+ * must only offer icons that can really appear in the top bar.
+ */
+export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed'];
+
+/**
+ * Default toolbar icon order for a user with no saved preference. Shared by the
+ * actual toolbar (ExtensionBar) and the Settings "Reset to defaults" grid so
+ * the two never drift — a mismatch here is exactly what left the Layers icon
+ * in the top bar but absent from Settings.
+ */
+export const DEFAULT_TOOLBAR_ORDER = [
+  'split', 'merge', 'findPath', 'layers', 'recap', 'leaderboard',
+  'cells', 'batch', 'help', 'notif', 'chat', 'settings',
+];
+
+/**
+ * Icons added after this feature shipped, so they're missing from older saved
+ * prefs. Auto-injected at a sensible slot by resolveToolbarOrder. Position is
+ * relative to an anchor so they land where they belong rather than at the end.
+ */
+const AUTO_INJECT_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: string }[] = [
+  { id: 'batch',    beforeFallback: 'settings' },
+  { id: 'notif',    beforeFallback: 'settings' },
+  { id: 'chat',     beforeFallback: 'settings' },
+  { id: 'findPath', after: 'merge' },
+  { id: 'layers',   after: 'findPath', beforeFallback: 'settings' },
+];
+
+/**
+ * Canonical toolbar order for a given saved preference. The ONE place that
+ * turns a user's stored `toolbarIcons` into what actually renders: fall back to
+ * the default when empty, inject icons added since the prefs were saved, and
+ * drop retired ids. Both the live toolbar (ExtensionBar) and the Settings grid
+ * call this, so what you toggle in Settings is exactly what the top bar shows.
+ *
+ * `findPath` is injected before `layers` in this list, because `layers` anchors
+ * itself after `findPath`.
+ */
+export function resolveToolbarOrder(saved: string[]): string[] {
+  const order = saved.length > 0 ? [...saved] : [...DEFAULT_TOOLBAR_ORDER];
+  for (const spec of AUTO_INJECT_TOOLBAR_ICONS) {
+    if (order.includes(spec.id)) continue;
+    let at = order.length;
+    if (spec.after && order.indexOf(spec.after) >= 0) {
+      at = order.indexOf(spec.after) + 1;
+    } else if (spec.beforeFallback && order.indexOf(spec.beforeFallback) >= 0) {
+      at = order.indexOf(spec.beforeFallback);
+    }
+    order.splice(at, 0, spec.id);
+  }
+  return order.filter(id => !RETIRED_TOOLBAR_ICON_IDS.includes(id));
 }

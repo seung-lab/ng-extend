@@ -763,10 +763,13 @@ export interface UserPreferences {
   /** Mute chat: skip the green unread pip on the toolbar. Defaults
    *  to false (notifications on) when the key isn't set yet. */
   chatMuted?: boolean;
+  /** Mute help requests: hide the pending count on the Second Opinion toolbar
+   *  icon. Defaults to false (badge shown) when the key isn't set yet. */
+  helpMuted?: boolean;
 }
 
 export const useUserPreferencesStore = defineStore('userPrefs', () => {
-  const prefs: Ref<UserPreferences> = ref({ flag: '', bio: '', toolbarIcons: [], chatMuted: false });
+  const prefs: Ref<UserPreferences> = ref({ flag: '', bio: '', toolbarIcons: [], chatMuted: false, helpMuted: false });
 
   function load() {
     try {

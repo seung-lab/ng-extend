@@ -101,15 +101,19 @@
   color: rgba(74, 158, 255, 0.7) !important;
 }
 
-/* ── Hide neuroglancer settings gear + JSON editor from top bar ── */
-/* They are moved into our Settings panel.
-   The layer-list toggle is deliberately NOT hidden: it's the only way to reach
-   the layer panel, and with it hidden there was no discoverable path to the
-   hidden layers. It keeps the shared neutral top-row icon treatment below
-   (and the blue active underline when open) — never neuroglancer's red. */
+/* ── Hide neuroglancer settings gear + JSON editor + layer-list toggle ── */
+/* Settings and JSON are moved into our Settings panel. The layer-list toggle is
+   now the reorderable "Layers" icon in our own toolbar (see ExtensionBar +
+   toolbar-icons.ts), which drives the same layerListPanelState — so the native
+   one is hidden here to avoid two buttons for one panel. Do NOT re-hide this
+   without keeping the toolbar Layers icon: it's the only path to the layer
+   panel. Both title states are listed because the button is a checkbox that
+   flips its title when the panel is open. */
 .neuroglancer-viewer-top-row > [title="Show settings panel"],
 .neuroglancer-viewer-top-row > [title="Hide settings panel"],
-.neuroglancer-viewer-top-row > [title="Edit JSON state"] {
+.neuroglancer-viewer-top-row > [title="Edit JSON state"],
+.neuroglancer-viewer-top-row > [title="Show layer list panel"],
+.neuroglancer-viewer-top-row > [title="Hide layer list panel"] {
   display: none !important;
 }
 
