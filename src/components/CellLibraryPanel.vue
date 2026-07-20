@@ -264,10 +264,13 @@ async function resolveUserName(userId: string): Promise<string> {
     const { supabase } = await import('../supabase');
     const { data } = await supabase
       .from('users')
-      .select('display_name, middleauth_email')
+      .select('display_name, username')
       .eq('id', userId)
       .single();
-    const name = data?.display_name || data?.middleauth_email?.split('@')[0] || userId.slice(0, 8);
+    // Was falling back to the local part of middleauth_email, which pulled
+    // other people's full addresses to the client just to derive a label.
+    // The username is the public identifier, so use that instead.
+    const name = data?.display_name || data?.username || userId.slice(0, 8);
     userNameCache.value = { ...userNameCache.value, [userId]: name };
     return name;
   } catch {

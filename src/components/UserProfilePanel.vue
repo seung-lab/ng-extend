@@ -75,10 +75,10 @@ const profileName = computed(() => {
   if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.display_name || 'Anonymous';
   return backendStore.userName || sessions.value?.[0]?.name || 'Researcher';
 });
-const profileEmail = computed(() => {
-  if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.middleauth_email || '';
-  return backendStore.userEmail || sessions.value?.[0]?.email || '';
-});
+// NOTE: a `profileEmail` computed used to live here and was rendered on the
+// profile. Removed rather than merely hidden — it resolved the email of
+// whichever user's profile was open, so clicking a name in chat revealed that
+// person's address. The username is the public identifier now.
 /** Chat handle. Empty until the user sets one — the row is hidden in that case. */
 const profileUsername = computed(() => {
   if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.username || '';
@@ -597,7 +597,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                  belongs on the profile next to the name. -->
             <div v-if="profileUsername" class="nge-profile-username">@{{ profileUsername }}</div>
 
-            <div class="nge-profile-email">{{ profileEmail }}</div>
+            <!-- Email is deliberately NOT shown. It was rendered for whoever's
+                 profile was open, which exposed other users' addresses to
+                 anyone who clicked their name in chat. The username is the
+                 public identifier; the address stays private. -->
+
 
             <template v-if="!viewingOtherUser">
               <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
