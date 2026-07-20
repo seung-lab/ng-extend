@@ -752,6 +752,24 @@ const newHelpNote = ref('');
 const newHelpScreenshotUrl = ref('');
 const newHelpError = ref('');
 const showHelpScreenshotDialog = ref(false);
+
+/**
+ * Whether the "Submit a help request" form is expanded.
+ *
+ * It used to sit permanently open at the top of the Help tab in pink, which
+ * read as an error banner rather than an action you could take. Collapsed to a
+ * button by default; the choice is remembered so anyone who files requests
+ * constantly can leave it open.
+ */
+const HELP_FORM_KEY = 'nge_cl_help_form_open_v1';
+const helpFormOpen = ref(localStorage.getItem(HELP_FORM_KEY) === '1');
+
+function toggleHelpForm() {
+  helpFormOpen.value = !helpFormOpen.value;
+  try { localStorage.setItem(HELP_FORM_KEY, helpFormOpen.value ? '1' : '0'); } catch { /* ignore */ }
+  // Prefill from the current selection when opening, matching the old behaviour.
+  if (helpFormOpen.value && !newHelpSegId.value.trim()) newHelpSegId.value = getActiveSegId();
+}
 /** Annotation layer attached to the INITIAL request (mirrors the reply form). */
 const newHelpAnnotationLayer = ref('');
 const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branch', 'Other'];
@@ -1224,8 +1242,22 @@ const panelStyle = computed(() => ({
         <div v-if="filter === 'help'" class="nge-cl-list">
 
           <!-- Always-visible quick-add: submit a new help request from the top -->
-          <div class="nge-cl-help-quickadd">
-            <div class="nge-cl-help-quickadd-title">Submit a help request</div>
+          <!-- Collapsed by default: a permanently-open form at the top of the
+               tab read as an alert rather than an action. -->
+          <button
+            v-if="!helpFormOpen"
+            class="nge-cl-help-open-btn"
+            @click="toggleHelpForm"
+            title="Ask another proofreader to look at a cell"
+          >
+            <span class="nge-cl-help-open-plus">+</span> Submit a help request
+          </button>
+
+          <div v-else class="nge-cl-help-quickadd">
+            <div class="nge-cl-help-quickadd-title">
+              Submit a help request
+              <button class="nge-cl-help-collapse" @click="toggleHelpForm" title="Collapse">▾</button>
+            </div>
             <div class="nge-cl-help-quickadd-row">
               <input
                 v-model="newHelpSegId"
@@ -2303,20 +2335,61 @@ const panelStyle = computed(() => ({
 }
 
 /* ── Help quick-add bar (always visible at top of Help list) ── */
+/* Collapsed state: a quiet action button rather than a standing panel. */
+.nge-cl-help-open-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  background: rgba(74, 158, 255, 0.07);
+  border: 1px dashed rgba(74, 158, 255, 0.28);
+  border-radius: 8px;
+  color: rgba(180, 200, 230, 0.9);
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.nge-cl-help-open-btn:hover {
+  background: rgba(74, 158, 255, 0.14);
+  border-color: rgba(74, 158, 255, 0.5);
+  color: #e0ecff;
+}
+.nge-cl-help-open-plus { font-size: 1.15em; line-height: 1; opacity: 0.8; }
+
+/* Expanded form. Recoloured from pink to the blue accent: the old
+   rgba(255,136,170,…) treatment read as an error/alert sitting permanently at
+   the top of the tab, rather than a form you could choose to use. */
 .nge-cl-help-quickadd {
-  background: rgba(255, 136, 170, 0.05);
-  border: 1px solid rgba(255, 136, 170, 0.16);
+  background: rgba(74, 158, 255, 0.06);
+  border: 1px solid rgba(74, 158, 255, 0.2);
   border-radius: 8px;
   padding: 10px 12px;
   margin: 0 0 10px;
 }
 .nge-cl-help-quickadd-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 0.8em;
   font-weight: 700;
-  color: #f8b3c6;
+  color: #9fc4f5;
   margin-bottom: 8px;
   letter-spacing: 0.02em;
 }
+.nge-cl-help-collapse {
+  background: none;
+  border: none;
+  color: rgba(150, 175, 215, 0.7);
+  font-size: 1em;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.nge-cl-help-collapse:hover { color: #cfdcef; }
 .nge-cl-help-quickadd-row {
   display: flex;
   gap: 6px;
@@ -2398,13 +2471,13 @@ select.nge-cl-response-input:hover {
   font-size: 0.78em;
   font-weight: 600;
   color: #fff;
-  background: rgba(230, 120, 160, 0.85);
-  border: 1px solid rgba(255, 150, 185, 0.7);
+  background: rgba(74, 158, 255, 0.85);
+  border: 1px solid rgba(120, 185, 255, 0.7);
   border-radius: 6px;
   padding: 6px 14px;
   cursor: pointer;
 }
-.nge-cl-help-quickadd-submit:hover { background: rgba(240, 135, 175, 1); }
+.nge-cl-help-quickadd-submit:hover { background: rgba(96, 175, 255, 1); }
 .nge-cl-help-shot-preview--sm { margin-top: 6px; }
 .nge-cl-help-shot-preview--sm img { max-height: 48px; border-radius: 4px; }
 

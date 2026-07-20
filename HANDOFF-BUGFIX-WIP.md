@@ -156,3 +156,39 @@ Error: Permission 'iam.serviceAccounts.signBlob' denied on resource
 - **`window['viewer']` is not reactive.** Components detect the segmentation layer by class-name heuristics.
 - **Deploy protocol:** remote `amy` = fork (CI only), `origin` = seung-lab (**the deploy target**).
 - **Verification limits:** most UI here can't be exercised without a middleauth login, so changes are typically verified by `tsc --noEmit` + `node scripts/build-prod.js` + reading the code path. Say so rather than implying it was driven end-to-end.
+
+### ⚠️ `.vue` files are NOT type-checked. At all.
+
+`npm run typecheck` (`tsc --noEmit`) checks **zero** single-file components:
+`tsconfig.json` has no `include`, so TypeScript falls back to "every recognised
+extension under the project root", and `.vue` is not a recognised extension.
+`build-prod.js` doesn't help either — esbuild transpiles without checking
+bindings.
+
+This is not theoretical. A chat-breaking `ReferenceError: backend is not
+defined` shipped to production because a `<script setup>` block referenced the
+wrong identifier (`backend` instead of `backendStore`) and **nothing looked at
+it**. It threw on every render, so the whole chat panel failed to mount.
+
+**`vue-tsc` cannot currently fill the gap.** This project is on TypeScript
+**7.0.2** (the new native compiler), which removed `./lib/tsc` from its package
+exports. vue-tsc 2.x requires exactly that path and crashes on startup:
+```
+Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath './lib/tsc' is not
+defined by "exports" in node_modules/typescript/package.json
+```
+Worse, it crashes *loudly but non-zero-matching* — piping it through a grep for
+errors yields "0 errors", which looks like a pass. It was installed, evaluated,
+and removed again rather than leave a dependency that no-ops.
+
+Options, none free:
+1. Pin a second, older TypeScript purely for vue-tsc (npm alias) and run it as
+   a separate script.
+2. Install ESLint + `eslint-plugin-vue` and rely on `no-undef`. Note ESLint is
+   **not currently installed** despite the `lint` script in package.json.
+3. Wait for a vue-tsc release supporting TS 7.
+
+Until one of those lands: when editing an SFC, **manually confirm every
+identifier used in `<template>` and `<script setup>` is actually declared** —
+especially store bindings, whose names vary by file (`backend` vs
+`backendStore` vs `chatStore`).
