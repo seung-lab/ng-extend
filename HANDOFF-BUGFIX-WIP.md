@@ -131,6 +131,10 @@ CAVE_SERVICE_TOKEN=<token> node scripts/probe-cave-edits.mjs --user-id <cave-use
 
 **The remaining blocker is a CAVE permission, not code.** The account behind `CAVE_SERVICE_TOKEN` needs **`admin_view` on the `stroeh-mouse-retina` auth dataset**. Ask the CAVE admins (the sync workflow's own comment points at Forrest/Derrick, Slack `#shared_cave_seunglab`) for either that grant or a service token that already carries it.
 
+**Amy's personal token does NOT have this permission either — verified 2026-07-20.** Re-running the probe with the token at `~/.cloudvolume/secrets/cave-secret.json` reproduced the identical 403 on both `user_operations` variants, with the control still returning 200. So this is not a CI-secret-versus-personal-token mismatch; nobody on the team currently holds the grant.
+
+Do not be misled by the auth API: `GET https://global.daf-apis.com/auth/api/v1/user/cache` reports `"admin": true` for Amy (CAVE user id 122), but that is a **global site-admin flag and does not gate this endpoint**. The fields that do are `datasets_admin` and `groups_admin`, both **empty**, and `permissions_v2["stroeh-mouse-retina"]`, which is only `["view", "edit"]`. The precise ask is therefore: **add `stroeh-mouse-retina` to `datasets_admin` (equivalently, `admin_view` in `permissions_v2`) for user id 122 and/or the service account behind `CAVE_SERVICE_TOKEN`.** That endpoint is also the cheapest way to check any token's permissions without exposing the token itself.
+
 Once granted, `sync-cave-edits.mjs` can be written directly against `user_operations`, iterating the `cave_user_id`s we already hold — the probe confirmed those are populated (e.g. `Celia D=28`, `Amy R. Sterling=122`, `LArrow=10645`).
 
 If the grant is refused, the fallback is enumerating per-root `tabular_change_log` over known roots — partial coverage and much more expensive, so pursue the permission first.
@@ -185,6 +189,58 @@ Nothing breaks without one: chat falls back to the display name.
 | `supabase-chat-dataset-and-notif-dismissals.sql` | ✅ applied | chat dataset stamping, notification dismissal |
 | `supabase-chat-posted-at.sql` | ✅ applied | scheduled chat announcements |
 | `supabase-usernames-and-chat-links.sql` | ✅ applied | usernames, clickable chat announcements |
+| `supabase-client-errors.sql` | ⚠️ **NOT applied** | client error reporting (§5a) |
+
+---
+
+## 5a. Client error reporting
+
+**Why it exists.** `.vue` files get **no type checking** in this project (see §7). A
+`ReferenceError` in a `<script setup>` block shipped to production and broke chat
+completely — every render threw, the panel never mounted, and the only reason
+anyone found out was Amy saying "we broke chat". This is the compensating control.
+
+**Where:** `src/util/error_reporting.ts`, installed from `src/main.ts` **before
+`app.mount()`** so failures during initial render are still caught.
+
+Three sources, written to the `client_errors` table:
+
+| source | catches | notes |
+|---|---|---|
+| `vue` | component render / lifecycle errors | **the important one.** Vue catches these internally, so `window.onerror` never sees them — exactly the class that broke chat |
+| `window` | uncaught errors outside Vue | resource-load failures (no error object) are ignored as noise |
+| `promise` | unhandled rejections | how most async failures escape |
+
+**Throttling is not optional.** The chat crash threw on *every* render. Without
+suppression that is thousands of identical rows per minute. So:
+- errors are fingerprinted as `message + first stack frame`
+- only the **first** occurrence of each fingerprint is sent
+- hard cap of **20 reports per page load**
+
+Verified in-browser against the real crash pattern: 80 identical
+`ReferenceError` throws → exactly **1** POST to `client_errors`.
+
+**Reporting never throws, never blocks, never retries.** Every path is wrapped in
+a bare `catch {}` — a failure to report an error must not itself become a visible
+error, and must not recurse back into the handlers. Consequence: until the
+migration is applied the inserts silently 404, which is harmless but means
+*absence of rows is not evidence of absence of errors* — check the table exists first.
+
+**RLS is deliberately not the project convention.** Every other table here uses a
+blanket permissive `USING (true)`. `client_errors` is **INSERT-only** for the anon
+key, because stack traces and user ids should not be readable by anyone holding
+the public key (it ships in the bundle). Read them from the Supabase dashboard,
+which uses the service role and bypasses RLS.
+
+**Context captured:** `user_id` (mirrored to `window.__ngeUserId` in `store.ts` so
+the reporter never has to import the store — it may not exist yet during a
+bootstrap failure), active `dataset`, `user_agent`, `component`, and `build`
+(short git sha, injected by `scripts/build-prod.js`). `url` is **pathname only** —
+the neuroglancer hash is multiple KB of viewer state.
+
+⚠️ The CI workflow has its own build command that does not define `NGE_BUILD`;
+`main.ts` guards with `typeof` so the identifier being absent is safe. Errors from
+CI-built deploys will simply have a null `build`.
 
 ---
 

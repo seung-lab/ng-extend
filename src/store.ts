@@ -2266,6 +2266,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       if (existing) {
         userId.value = existing.id;
         username.value = existing.username || '';
+        // Mirrored to a global so error reporting can attribute a crash without
+        // importing this store (it may not exist yet during a bootstrap failure).
+        (window as any).__ngeUserId = existing.id;
         console.info('[backend] syncUser: found existing user', existing.id);
         // Update display name if changed
         await supabase
@@ -2282,6 +2285,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .single();
         if (insertErr) throw insertErr;
         userId.value = newUser?.id ?? null;
+        (window as any).__ngeUserId = newUser?.id ?? null;
         console.info('[backend] syncUser: created user', userId.value);
       }
       // Check admin status + load special badges + favorite badge after user is synced

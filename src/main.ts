@@ -1,5 +1,6 @@
 import {createApp, nextTick} from 'vue';
 import {createPinia} from 'pinia';
+import {installErrorReporting} from './util/error_reporting';
 
 import 'neuroglancer/ui/default_viewer.css';
 import './widgets/lightbulb_menu.css';
@@ -33,6 +34,10 @@ import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_a
 import pyrIconUrl from './images/pyr-icon.png';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
+// Injected by scripts/build-prod.js as the short git sha. Guarded with typeof
+// at the use site because the CI workflow has its own build command that may
+// not define it.
+declare const NGE_BUILD: string|undefined;
 
 type CustomBinding = {
   layer: string, tool: unknown, provider?: string,
@@ -68,6 +73,13 @@ window.addEventListener('DOMContentLoaded', () => {
   injectNeuronFavicon();
   const pinia = createPinia();
   const app = createApp(App);
+  // Installed before mount so a failure during initial render is captured.
+  // Vue swallows component errors into console.error, so without its
+  // errorHandler nothing records them — that's how a ReferenceError in a
+  // <script setup> block took chat down unnoticed.
+  (window as any).__ngeBuild =
+      typeof NGE_BUILD !== 'undefined' ? NGE_BUILD : null;
+  installErrorReporting(app);
   app.use(pinia);
   const {initializeWithViewer} = useLayersStore();
   const {loadVolumes} = useVolumesStore();

@@ -20,6 +20,16 @@ for (const [name, file] of Object.entries(defines)) {
   args.push('--define', `${name}=${content}`);
 }
 
+// Build stamp — recorded on every client error report so a crash can be traced
+// back to the exact deploy that introduced it.
+try {
+  const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
+  args.push('--define', `NGE_BUILD=${JSON.stringify(sha)}`);
+} catch {
+  // Not a git checkout — build stamp is optional, the guarded typeof in
+  // main.ts handles the identifier being left undefined.
+}
+
 // ── Dataset selection ────────────────────────────────────────────────────────
 // DATASET env var selects which dataset to embed as the default state.
 //   node scripts/build-prod.js                         → minnie65
