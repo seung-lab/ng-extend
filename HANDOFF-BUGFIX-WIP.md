@@ -6,6 +6,20 @@
 
 ---
 
+## 0. State at handoff — read this first
+
+**Everything described here is committed, and everything except the final email-privacy commit is deployed and live.** The tree is clean; there is no half-finished work sitting uncommitted.
+
+**The single most important open item** is §3.1 (CAVE-sourced edit counts). It is blocked on **one permission grant**, not on code — see the exact ask there. Edit counts are currently still client-inferred, with a stopgap gate in place.
+
+Quick orientation:
+- Live: `https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com`
+- Deploy: `git push origin eyewire-ii-community` (~2.5 min, no manual step)
+- All four SQL migrations are **already applied** (§4). No pending DB work.
+- ⚠️ Before editing any `.vue` file, read the warning at the end of §7. Nothing type-checks SFCs, and that gap has already shipped one production crash.
+
+---
+
 ## 1. How to pick this up
 
 1. Read [HANDOFF.md](HANDOFF.md) §7–§9 for architecture, data layer and build/deploy.
@@ -57,6 +71,13 @@ Newest last. Every item lists the **root cause**, because several were not what 
 | Chat announcements said "go look" | The `📢 <title>` message told people to go find the notification. The id now rides through the broadcast payload and `chat_messages.notification_id` (`createNotification` selects the inserted id back), and the message renders as a clickable row that opens that exact notification. |
 | Chat crashed entirely | `isSelfMention()` referenced `backend` where ChatPanel binds `backendStore`. Called from the template, so it threw on **every render** and the whole panel failed to mount. See the `.vue` type-checking warning in §7 — nothing was checking it. |
 | Help request form looked like an error | It sat permanently open at the top of the Help tab in pink. Collapsed behind a "+ Submit a help request" button (choice remembered) and recoloured to the blue accent. |
+
+### Identity & privacy
+| Fix | Root cause |
+|---|---|
+| Usernames | See the chat table above. `users.username`, unique case-insensitively, 3-20 chars `[A-Za-z0-9_]`. Shown on the profile under the name, used as the chat display name, and matched exactly by `@mentions`. |
+| Username prompt | Asked once after **Tutorial 1** (`UsernamePrompt.vue`), pre-filled with a free suggestion derived from the display name. **Waits for the badge celebration to actually finish** rather than using a fixed delay, which raced it and landed on the badge art. Dismissal is permanent; Settings has a "Change username…" button that force-opens the same dialog (the only way to reach it once you have a handle). |
+| Emails were exposed | The profile rendered the email of *whichever* user's profile was open, so clicking a name in chat revealed that person's address. Removed the display **and** the field from `loadUserProfile`'s select — leaving it in still ships addresses to the client. The Cell Library's name resolver also fetched full addresses just to use the part before the `@`; it now falls back to the username. **Admin Hub still shows email on purpose** (group lists, user search for awarding badges), where an admin needs to identify a person. |
 
 ### Other
 - **Screenshot attach** — see §5, it's the most instructive one.
@@ -191,6 +212,25 @@ Error: Permission 'iam.serviceAccounts.signBlob' denied on resource
 | `sheet-cells-sync.yml` | 04:00 **and** 05:00 UTC | Google Sheet → Available cells. Fires at both hours because GitHub cron is UTC-only and midnight ET is 04:00 (EDT) / 05:00 (EST); the script no-ops unless it's really hour 0 in New York, giving exactly one run per night. ⚠️ **Dry-run first** — the first real run inserts every sheet cell not already in `proofreading_tasks` (Stroeh has ~2288). |
 | `chat-announcements.yml` | every 10 min | Posts scheduled notifications to chat at send time. Idempotent via `chat_posted_at`. Must be a server job: every client polls, so client-side posting would produce one duplicate per connected user. |
 | `weekly-recap.yml`, `weekly-winners-snapshot.yml` | weekly | Pre-existing |
+
+---
+
+## 6a. Where things live (fast map)
+
+| Thing | File |
+|---|---|
+| Username storage/validation/suggestion | `src/store.ts` → `useProofreadingBackendStore` (`username`, `chatHandle`, `validateUsername`, `isUsernameAvailable`, `saveUsername`, `suggestUsername`) |
+| Username dialog | `src/components/UsernamePrompt.vue` (event `nge:prompt-username`, `detail.force` to bypass guards) |
+| Chat identity, mentions, `#SegID` chips, announcements | `src/components/ChatPanel.vue` + chat store in `src/store.ts` |
+| Notification admin (compose/edit/queue/sections) | `src/components/AdminHub.vue` + `loadAdminNotifications` / `updateNotification` in the backend store |
+| Notification feed + scheduled-send polling | `src/components/NotificationFeedPanel.vue` |
+| Eastern-time conversion | `src/util/et_time.ts` (two-pass `Intl` offset; DST-verified) |
+| Platform-aware shortcut labels | `src/util/platform.ts` |
+| Responsive/top-bar rules | `src/responsive.css` |
+| Global scrollbar theme | `src/common.css` |
+| Command catalog (headless) | `src/components/CommandPalette.vue` — UI retired, still the provider |
+
+**Custom DOM events in play:** `nge:prompt-username`, `nge:open-notification`, `nge:show-notification-detail`, `nge:open-profile`, `nge:seg-status-changed`, `nge:cave-auth-expired`, `nge:assistant-action`, `nge:close-all-panels`.
 
 ---
 
