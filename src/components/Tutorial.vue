@@ -102,11 +102,12 @@ const next = () => {
         // community side of the app, so the ask makes sense. Login would be
         // too early (and is already a multi-step auth flow). The prompt
         // no-ops if they already have one or previously dismissed it.
-        // Delayed so it doesn't collide with the badge celebration.
+        //
+        // Fired immediately: UsernamePrompt waits for the badge celebration to
+        // actually finish before showing. A fixed delay here raced it and the
+        // modal landed on top of the badge art.
         if (tutorialNum === 1) {
-            setTimeout(() => {
-                document.dispatchEvent(new CustomEvent('nge:prompt-username'));
-            }, 4000);
+            document.dispatchEvent(new CustomEvent('nge:prompt-username'));
         }
     }
 };

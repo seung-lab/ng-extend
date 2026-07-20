@@ -13,6 +13,7 @@
  */
 import { ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
+import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 const backend = useProofreadingBackendStore();
 
@@ -25,7 +26,32 @@ const error = ref('');
 const ok = ref('');
 const checking = ref(false);
 const saving = ref(false);
+/** Set once locked in, so we can show a confirmation instead of just vanishing. */
+const claimed = ref('');
 let timer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Wait until the badge celebration has finished.
+ *
+ * Finishing Tutorial 1 fires the hero badge overlay, and a fixed delay raced
+ * it — the prompt landed on top of the badge art. Instead, watch for the
+ * celebration to actually clear before asking, with a ceiling so a stuck
+ * overlay can't suppress the prompt forever.
+ */
+async function waitForCelebration(maxMs = 45000) {
+  const start = Date.now();
+  const stillCelebrating = () =>
+    !!backend.pendingBadgeCelebration ||
+    !!document.querySelector('.nge-hero-overlay, .nge-cell-overlay, .nge-batch-overlay');
+  while (Date.now() - start < maxMs) {
+    if (!stillCelebrating()) {
+      // Let the exit transition play out rather than cutting straight in.
+      await new Promise(r => setTimeout(r, 900));
+      if (!stillCelebrating()) return;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+}
 
 /** Open the prompt, unless the user already has a handle or waved it away. */
 async function maybeOpen() {
@@ -33,6 +59,8 @@ async function maybeOpen() {
   if (backend.username) return;                              // already has one
   if (localStorage.getItem(DISMISS_KEY) === '1') return;     // asked and declined
   if (!backend.userId) return;                               // not signed in yet
+  await waitForCelebration();
+  if (backend.username) return;                              // set in the meantime
   visible.value = true;
   // Pre-fill something we've already confirmed is free, so the common path is
   // a single click.
@@ -63,15 +91,18 @@ function onInput() {
   }, 400);
 }
 
-async function reserve() {
+async function lockIn() {
   const v = value.value.trim();
   saving.value = true;
   error.value = '';
   try {
     await backend.saveUsername(v);
-    // Reserving counts as answering, so don't ask again either way.
+    // Locking in counts as answering, so don't ask again either way.
     localStorage.setItem(DISMISS_KEY, '1');
-    visible.value = false;
+    // Confirm rather than just disappearing — the modal vanishing gave no
+    // signal that anything had been saved.
+    claimed.value = v;
+    setTimeout(() => { visible.value = false; }, 2600);
   } catch (e: any) {
     error.value = e?.message || 'Could not save that username.';
   } finally {
@@ -86,10 +117,22 @@ document.addEventListener('nge:prompt-username', maybeOpen as EventListener);
 <template>
   <Teleport to="body">
     <Transition name="nge-un">
-      <div v-if="visible" class="nge-un-backdrop" @click.self="dismiss">
-        <div class="nge-un-modal">
+      <div v-if="visible" class="nge-un-backdrop" @click.self="claimed ? null : dismiss()">
+        <!-- Success state: confirm the handle rather than just vanishing. -->
+        <div v-if="claimed" class="nge-un-modal nge-un-modal--done">
+          <img :src="pyrIcon" class="nge-un-icon nge-un-icon--done" alt="" />
+          <div class="nge-un-title">You're locked in</div>
+          <p class="nge-un-sub">
+            Teammates can now tag you as <strong>@{{ claimed }}</strong> in chat.
+            You can change it any time in Settings.
+          </p>
+          <div class="nge-un-done-handle">@{{ claimed }}</div>
+        </div>
+
+        <div v-else class="nge-un-modal">
           <button class="nge-un-x" @click="dismiss" title="Not now">×</button>
-          <div class="nge-un-title">Reserve your username</div>
+          <img :src="pyrIcon" class="nge-un-icon" alt="" />
+          <div class="nge-un-title">Lock in your username</div>
           <p class="nge-un-sub">
             This is how you'll appear in chat, and how teammates tag you:
             <strong>@{{ value || 'yourname' }}</strong>
@@ -105,7 +148,7 @@ document.addEventListener('nge:prompt-username', maybeOpen as EventListener);
               autocomplete="off"
               placeholder="yourname"
               @input="onInput"
-              @keydown.enter="reserve"
+              @keydown.enter="lockIn"
               @keydown.stop
             />
           </div>
@@ -121,8 +164,8 @@ document.addEventListener('nge:prompt-username', maybeOpen as EventListener);
             <button
               class="nge-un-save"
               :disabled="saving || !!error || !value.trim()"
-              @click="reserve"
-            >{{ saving ? 'Reserving…' : 'Reserve it' }}</button>
+              @click="lockIn"
+            >{{ saving ? 'Locking in…' : 'Lock it in' }}</button>
             <button class="nge-un-later" @click="dismiss">Not now</button>
           </div>
         </div>
@@ -161,17 +204,51 @@ document.addEventListener('nge:prompt-username', maybeOpen as EventListener);
   font-size: 1.3em; cursor: pointer;
 }
 .nge-un-x:hover { color: #cfdcef; }
+.nge-un-icon {
+  display: block;
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  margin: 0 auto 12px;
+  filter: drop-shadow(0 0 14px rgba(74, 158, 255, 0.45));
+}
+.nge-un-icon--done {
+  width: 62px;
+  height: 62px;
+  animation: nge-un-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes nge-un-pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.nge-un-modal--done { text-align: center; }
+.nge-un-done-handle {
+  margin-top: 14px;
+  padding: 9px 0;
+  border-radius: 8px;
+  background: rgba(0, 255, 150, 0.08);
+  border: 1px solid rgba(0, 255, 150, 0.3);
+  color: #9ff0c8;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 1.05em;
+  font-weight: 600;
+}
+
 .nge-un-title {
   font-size: 1.15em;
   font-weight: 600;
   color: #e0ecff;
   margin-bottom: 6px;
+  text-align: center;
 }
 .nge-un-sub {
   font-size: 0.85em;
   line-height: 1.5;
   color: #8b9bb4;
   margin: 0 0 14px;
+  text-align: center;
 }
 .nge-un-sub strong { color: #9db8ff; font-weight: 600; }
 .nge-un-row {

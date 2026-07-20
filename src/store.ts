@@ -2806,7 +2806,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     try {
       const { data: user } = await supabase
         .from('users')
-        .select('id, display_name, middleauth_email, flag, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
+        .select('id, display_name, username, middleauth_email, flag, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
         .eq('id', targetUserId)
         .single();
       if (!user) return null;
