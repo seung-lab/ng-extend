@@ -88,7 +88,27 @@ Run it with a valid CAVE token:
 ```bash
 CAVE_SERVICE_TOKEN=<token> node scripts/probe-cave-edits.mjs --user-id <cave-user-id>
 ```
-Partial result so far (from an expired-token run): `user_operations`, `change_log`, and `change_log?user_id` **reached the server** and returned JSON 401s, so those routes exist and CORS is fine; `/operations` and `/user/{id}/operations` failed at the network layer, suggesting they aren't served. **`user_operations` is the likely answer, pending an authenticated run.**
+**RESOLVED — probe run 29769718266 (authenticated, via CI):**
+
+```
+✗ 403      user_operations (± time window)
+             {"error":"missing_permission",
+              "message":"Missing permission: admin_view",
+              "data":{"auth_dataset":"stroeh-mouse-retina",
+                      "required_permission":"admin_view"}}
+✗ timeout  change_log (table-wide, ± user filter)
+✗ 404      operations
+✗ 404      user/{id}/operations
+✓ 200      CONTROL oldest_timestamp  {"iso":"2025-02-20 22:59:56.406000+00:00"}
+```
+
+**`/segmentation/api/v1/table/{table}/user_operations?user_id=&start_time=&end_time=` is the correct endpoint.** It is not missing — it is **permission-gated**. The control returning 200 proves the token, server and table name are all valid, so the 403 is a real authorization answer rather than a broken probe. The two `/operations` variants genuinely don't exist (404), and the table-wide `change_log` doesn't respond within 20s (likely far too expensive to be a viable feed).
+
+**The remaining blocker is a CAVE permission, not code.** The account behind `CAVE_SERVICE_TOKEN` needs **`admin_view` on the `stroeh-mouse-retina` auth dataset**. Ask the CAVE admins (the sync workflow's own comment points at Forrest/Derrick, Slack `#shared_cave_seunglab`) for either that grant or a service token that already carries it.
+
+Once granted, `sync-cave-edits.mjs` can be written directly against `user_operations`, iterating the `cave_user_id`s we already hold — the probe confirmed those are populated (e.g. `Celia D=28`, `Amy R. Sterling=122`, `LArrow=10645`).
+
+If the grant is refused, the fallback is enumerating per-root `tabular_change_log` over known roots — partial coverage and much more expensive, so pursue the permission first.
 
 > ⚠️ `.github/workflows/cave-edits-probe.yml` exists but **cannot be dispatched**: GitHub only runs `workflow_dispatch` from the default branch, which is `main`, and this workflow lives on `eyewire-ii-community`. Do **not** push it to `main` to work around that — the deploy workflow is `branches-ignore: master` while the default branch is `main`, so any push to `main` triggers an App Engine deploy of a `main` version.
 
