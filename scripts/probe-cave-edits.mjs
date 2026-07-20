@@ -88,15 +88,35 @@ async function getCaveUserId() {
   return String(rows[0].cave_user_id);
 }
 
+/**
+ * Per-request timeout.
+ *
+ * Without this a single unresponsive endpoint hangs the whole probe — which is
+ * exactly what happened on the first CI run: an endpoint never answered and the
+ * job sat for minutes until it was cancelled. A probe must always terminate and
+ * report, since "no response" is itself a useful result.
+ */
+const REQUEST_TIMEOUT_MS = 20_000;
+
 /** GET a URL and summarise the outcome without dumping a huge body. */
 async function probe(label, url) {
   process.stdout.write(`\n[probe] ${label}\n        GET ${url}\n`);
   let res;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
   try {
-    res = await fetch(url, { headers: { Authorization: `Bearer ${CAVE_TOKEN}` } });
+    res = await fetch(url, {
+      headers: { Authorization: `Bearer ${CAVE_TOKEN}` },
+      signal: ac.signal,
+    });
   } catch (e) {
-    console.log(`        ✗ network error: ${e.message}`);
-    return { label, url, ok: false, status: 'network-error' };
+    const timedOut = e.name === 'AbortError';
+    console.log(timedOut
+      ? `        ✗ TIMEOUT after ${REQUEST_TIMEOUT_MS / 1000}s (endpoint did not respond)`
+      : `        ✗ network error: ${e.message}`);
+    return { label, url, ok: false, status: timedOut ? 'timeout' : 'network-error' };
+  } finally {
+    clearTimeout(timer);
   }
   const body = await res.text();
   if (!res.ok) {
