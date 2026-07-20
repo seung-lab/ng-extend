@@ -214,7 +214,7 @@ function send() {
  * display name and its first word, case-insensitively, ignoring trailing dots.
  */
 function isSelfMention(token: string): boolean {
-  const me = (backend.userName || '').trim();
+  const me = (backendStore.userName || '').trim();
   if (!me) return false;
   const norm = (s: string) => s.replace(/[.\s]+$/, '').trim().toLowerCase();
   const target = norm(token.slice(1));
