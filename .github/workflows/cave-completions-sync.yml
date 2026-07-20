@@ -63,6 +63,25 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
         run: |
+          # ── Piggybacked CAVE edits probe (read-only) ────────────────────
+          # Edit counts must come from real CAVE operations rather than being
+          # inferred client-side, and we need to know which per-user PCG
+          # endpoint this deployment exposes before building that sync.
+          #
+          # The dedicated probe workflow can't be dispatched: workflow_dispatch
+          # only registers from the DEFAULT branch (main), and it lives on
+          # eyewire-ii-community. This workflow IS registered there, and a
+          # dispatch runs the file from the chosen ref — so running the probe
+          # here reaches the valid CAVE_SERVICE_TOKEN without minting a new
+          # token or handling one by hand.
+          #
+          # Gated on dry_run so it can never run during a scheduled sync, and
+          # dry_run already means "read, don't write".
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::group::CAVE edits endpoint probe (read-only)"
+            node scripts/probe-cave-edits.mjs || echo "probe exited non-zero (diagnostic only)"
+            echo "::endgroup::"
+          fi
           ARGS=""
           if [ -n "${{ inputs.datastack }}" ]; then
             ARGS="$ARGS --datastack ${{ inputs.datastack }}"
