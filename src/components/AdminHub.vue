@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref, onMounted} from 'vue';
+import {ref, computed, onMounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
 import {etNaiveToUtcIso, formatEt} from '../util/et_time';
 
@@ -14,6 +14,13 @@ const notifBody = ref('');
 const notifTargetType = ref<'all' | 'group' | 'user'>('all');
 const notifTargetId = ref('');
 const notifPostToChat = ref(false);
+
+/** True when "Send at" is far enough ahead that this is a scheduled send. */
+const isScheduledForLater = computed(() => {
+  if (!notifSendAt.value) return false;
+  const ms = new Date(etNaiveToUtcIso(notifSendAt.value)).getTime();
+  return Number.isFinite(ms) && ms > Date.now() + 60_000;
+});
 const notifSendAt = ref('');
 const notifExpiresAt = ref('');
 const notifImageFile = ref<File | null>(null);
@@ -262,6 +269,9 @@ onMounted(() => {
         <p v-else class="nge-admin-hint">Leave "Send at" empty to send immediately</p>
         <div class="nge-admin-row">
           <label class="nge-admin-check"><input type="checkbox" v-model="notifPostToChat" /> Also post to chat</label>
+          <span v-if="notifPostToChat && isScheduledForLater" class="nge-admin-warn-inline">
+            Chat post is skipped for scheduled sends (it would announce a notification nobody can see yet).
+          </span>
           <label class="nge-admin-file-label">
             <input type="file" accept="image/*" @change="onNotifImageChange" class="nge-admin-file-input" />
             {{ notifImageFile ? notifImageFile.name : 'Attach image...' }}
@@ -521,6 +531,12 @@ onMounted(() => {
   font-style: normal;
   color: rgba(74, 158, 255, 0.75);
   font-size: 0.9em;
+}
+.nge-admin-warn-inline {
+  color: #f0c07a;
+  font-size: 0.75em;
+  line-height: 1.35;
+  max-width: 320px;
 }
 
 .nge-admin-check {

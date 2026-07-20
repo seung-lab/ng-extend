@@ -3177,8 +3177,22 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     };
     const { error: err } = await supabase.from('notifications').insert(row);
     if (err) console.warn('[admin] createNotification error:', err.message);
-    // Post to chat as a system message if requested
-    if (data.post_to_chat) {
+
+    // Post to chat as a system message if requested — but ONLY for
+    // notifications going out now.
+    //
+    // This used to fire on every create, so scheduling a notification for next
+    // Tuesday still announced it in chat the instant you hit Send, pointing
+    // everyone at something that `send_at` keeps hidden until Tuesday.
+    //
+    // The `post_to_chat` flag is persisted on the row, so a scheduled
+    // announcement can be posted at the right time by a server-side job later
+    // (see notifyScheduledChatPosts in the TODO below). Posting it from the
+    // clients themselves is not an option: every client that polls would post
+    // its own copy.
+    const sendAtMs = new Date(row.send_at).getTime();
+    const isScheduledForLater = Number.isFinite(sendAtMs) && sendAtMs > Date.now() + 60_000;
+    if (data.post_to_chat && !isScheduledForLater) {
       try {
         const chatStore = useChatStore();
         if (chatStore.connected) {
