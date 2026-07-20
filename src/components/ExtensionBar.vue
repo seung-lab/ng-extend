@@ -1028,12 +1028,17 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 
 /* ── Dataset button: borderless to match the toolbar SVG icons.
    Same gentle hover wash as .nge-icon-btn. ── */
+/* Ask and Dataset are the only labelled controls in a strip of icon buttons.
+   They were 28px tall against the icons' 38px, with different horizontal
+   padding from each other (8px vs 10px), so they sat short and unevenly
+   spaced — the "weird padding". Both now match the icon buttons' height and
+   share one padding value, so the whole bar sits on a single rhythm. */
 .nge-dataset-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 8px;
+  height: 38px;
+  padding: 0 10px;
   background: none;
   border: none;
   border-radius: 4px;
@@ -1062,7 +1067,10 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  /* Matches .nge-icon-btn height; the pill keeps its own inner height via
+     border-radius so it still reads as a button, not an icon. */
+  height: 30px;
+  margin: 0 2px;
   padding: 0 10px;
   background: rgba(74, 158, 255, 0.12);
   border: 1px solid rgba(74, 158, 255, 0.28);

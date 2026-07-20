@@ -534,7 +534,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'weekInScience' }"
           @click="openWeekInScience()"
-        >📊 Week in Science</button>
+        >📊 My Week in Science</button>
         <button
           v-if="!viewingOtherUser && backendStore.isAdmin"
           class="nge-profile-tab"

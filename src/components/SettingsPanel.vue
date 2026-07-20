@@ -769,11 +769,41 @@ const emit = defineEmits({hide: null});
   font-size: 0.92em;
   color: #cde;
 }
+/* Custom checkbox rather than the native control, which rendered as a stock
+   OS box and was the only un-themed element in the panel. Same treatment as
+   the render-tab checkboxes: square, blue accent, drawn tick. */
 .nge-settings-toggle input {
-  accent-color: #4ad07a;
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
   width: 16px;
   height: 16px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
   cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.nge-settings-toggle input:hover { border-color: rgba(74, 158, 255, 0.55); }
+.nge-settings-toggle input:checked {
+  background: rgba(74, 158, 255, 0.9);
+  border-color: #4a9eff;
+}
+.nge-settings-toggle input:checked::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #08121f;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.nge-settings-toggle input:focus-visible {
+  outline: 1px solid rgba(74, 158, 255, 0.7);
+  outline-offset: 2px;
 }
 .nge-settings-toggle-label {
   user-select: none;

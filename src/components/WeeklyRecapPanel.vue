@@ -136,7 +136,9 @@ function jumpToCell(segId: string) {
 
         <!-- Hero header -->
         <div class="nge-recap-hero">
-          <div class="nge-recap-hero-title">Your Week in Science</div>
+          <!-- "My" when shown inside your own profile, "Your" when it appears
+               as a standalone toast/panel addressed to the reader. -->
+          <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} Week in Science</div>
           <div class="nge-recap-hero-daterange">{{ weekRange }}</div>
         </div>
 
