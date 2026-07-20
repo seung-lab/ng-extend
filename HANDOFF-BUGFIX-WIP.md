@@ -189,7 +189,7 @@ Nothing breaks without one: chat falls back to the display name.
 | `supabase-chat-dataset-and-notif-dismissals.sql` | ✅ applied | chat dataset stamping, notification dismissal |
 | `supabase-chat-posted-at.sql` | ✅ applied | scheduled chat announcements |
 | `supabase-usernames-and-chat-links.sql` | ✅ applied | usernames, clickable chat announcements |
-| `supabase-client-errors.sql` | ⚠️ **NOT applied** | client error reporting (§5a) |
+| `supabase-client-errors.sql` | ✅ applied | client error reporting (§5a) |
 
 ---
 
