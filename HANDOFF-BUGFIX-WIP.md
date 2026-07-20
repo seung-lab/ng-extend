@@ -53,6 +53,10 @@ Newest last. Every item lists the **root cause**, because several were not what 
 | Chat collapsed upward, stranded mid-screen | Once dragged it's anchored by inline `top`, so collapsing kept that pinned. Now drops `top` when collapsed so it settles at the bottom. |
 | Shared `#SegID` didn't jump or copy | `loadSegment` only added the segment to `visibleSegments` — it never moved the camera, so it looked like nothing happened. Now calls `moveToSegment`. It was also a `<button>`, whose text can't be selected; split into a selectable id + copy button. |
 | Segment IDs were dataset-blind | Root IDs only mean anything within one segmentation. Now the sender's dataset is stamped on the message, shown on the chip, and a cross-dataset click warns instead of silently jumping to a different cell. |
+| `@mentions` couldn't identify anyone | Chat showed **display names**, which are neither unique (two people called Celia) nor single-token ("Amy S." can't be captured as one mention). Added **usernames**: `users.username`, case-insensitively unique, 3-20 chars `[A-Za-z0-9_]`. Chat sends/displays the username via a `chatHandle` getter (falling back to display name), and self-mention matching compares it exactly. |
+| Chat announcements said "go look" | The `📢 <title>` message told people to go find the notification. The id now rides through the broadcast payload and `chat_messages.notification_id` (`createNotification` selects the inserted id back), and the message renders as a clickable row that opens that exact notification. |
+| Chat crashed entirely | `isSelfMention()` referenced `backend` where ChatPanel binds `backendStore`. Called from the template, so it threw on **every render** and the whole panel failed to mount. See the `.vue` type-checking warning in §7 — nothing was checking it. |
+| Help request form looked like an error | It sat permanently open at the top of the Help tab in pink. Collapsed behind a "+ Submit a help request" button (choice remembered) and recoloured to the blue accent. |
 
 ### Other
 - **Screenshot attach** — see §5, it's the most instructive one.
@@ -129,11 +133,26 @@ That reaches the valid `CAVE_SERVICE_TOKEN` secret with no token handling by han
 ### 3.4 `'eyewire_ii'` hardcode
 `useProofreadingBackendStore` writes the literal string `'eyewire_ii'` as `dataset` on most Supabase rows **regardless of the active dataset**. Mislabels per-dataset data; matters for §3.1 and for the nightly sheet sync.
 
-### 3.5 Smaller open items
+### 3.5 Username rollout
+Usernames exist but **every current user has `NULL`**, so mentions only become
+reliable as people adopt them. Current flow:
+- **Prompted once, 4s after finishing Tutorial 1** (`nge:prompt-username` →
+  `UsernamePrompt.vue`), pre-filled with a free suggestion derived from the
+  display name, so the common path is one click.
+- **Dismissal is permanent** (`nge_username_prompt_dismissed_v1`); we never ask
+  again. Settings always has the field.
+- Not asked at login on purpose: that's already a multi-step middleauth flow,
+  and it would ask before the user knows what a username is for.
+
+If adoption needs a push later, the least intrusive lever is a small persistent
+"set a username" affordance in the chat header — visible but non-blocking.
+Nothing breaks without one: chat falls back to the display name.
+
+### 3.6 Smaller open items
 - Make the neuroglancer **layer-list toggle a removable toolbar icon** (so it participates in the Settings > Toolbar Icons prefs).
-- The feedback **`(!)` icon reads as an error indicator** in the top bar — needs a friendlier treatment. *(Awaiting Amy's clarification on exactly what should collapse.)*
 - Lightbulb menu still says **"Mark Complete"**; the legend now says **"Proofread"**. Decide whether the verb should follow.
 - Other tall panels (Profile, Cell Library, Batch) may repeat the "footer inside the scroll area" pattern that Settings had.
+- `Dataset` and `Ask` keep their text labels by decision; only their padding/height was normalised to the icon rhythm.
 
 ---
 
@@ -144,6 +163,7 @@ That reaches the valid `CAVE_SERVICE_TOKEN` secret with no token handling by han
 | `supabase-help-responses-schema.sql` | ✅ applied | §3.3 (code not yet wired) |
 | `supabase-chat-dataset-and-notif-dismissals.sql` | ✅ applied | chat dataset stamping, notification dismissal |
 | `supabase-chat-posted-at.sql` | ✅ applied | scheduled chat announcements |
+| `supabase-usernames-and-chat-links.sql` | ✅ applied | usernames, clickable chat announcements |
 
 ---
 

@@ -2193,6 +2193,29 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     return data[0].id === userId.value;   // our own row doesn't count as taken
   }
 
+  /**
+   * Suggest a free username derived from the user's display name.
+   *
+   * Existing users all have NULL, so asking them to invent a handle from
+   * nothing is friction for no reason. "Amy R. Sterling" -> "amy_r_sterling",
+   * with a numeric suffix if that's taken, so the prompt is usually one click.
+   */
+  async function suggestUsername(): Promise<string> {
+    const base = (userName.value || userEmail.value.split('@')[0] || 'user')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')   // spaces and punctuation become separators
+      .replace(/^_+|_+$/g, '')       // no leading/trailing separators
+      .slice(0, 20);
+    let candidate = base.length >= 3 ? base : `${base}_user`.slice(0, 20);
+    for (let i = 0; i < 20; i++) {
+      // Only offer something we've confirmed is actually free.
+      if (await isUsernameAvailable(candidate)) return candidate;
+      const suffix = String(i + 2);
+      candidate = `${base.slice(0, 20 - suffix.length)}${suffix}`;
+    }
+    return candidate;
+  }
+
   /** Persist the username. Throws with a friendly message on conflict. */
   async function saveUsername(name: string) {
     const n = (name || '').trim();
@@ -3788,7 +3811,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
-    username, chatHandle, validateUsername, isUsernameAvailable, saveUsername,
+    username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
     leaderboard,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,

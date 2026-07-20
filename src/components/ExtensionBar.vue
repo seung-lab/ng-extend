@@ -20,6 +20,7 @@ import FeedbackModal from "components/FeedbackModal.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
+import UsernamePrompt from "components/UsernamePrompt.vue";
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -532,6 +533,10 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <!-- The Ask dock is now the single command surface: it searches the same
        catalog CommandPalette builds (passed in headless) so navigation runs
        instantly, and only falls through to the model for real questions. -->
+  <!-- Self-contained: listens for nge:prompt-username (fired after Tutorial 1)
+       and no-ops if the user already has a handle or dismissed it before. -->
+  <username-prompt />
+
   <assistant-dock
     :show="showAssistant"
     :ui-state="assistantUiState"

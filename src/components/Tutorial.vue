@@ -98,6 +98,16 @@ const next = () => {
     store.setTutorialStep(store.getTutorialStep() + 1);
     if (isLastStep) {
         awardBadgeIfNew(tutorialNum);
+        // Ask for a username after Tutorial 1 — by now they've seen the
+        // community side of the app, so the ask makes sense. Login would be
+        // too early (and is already a multi-step auth flow). The prompt
+        // no-ops if they already have one or previously dismissed it.
+        // Delayed so it doesn't collide with the badge celebration.
+        if (tutorialNum === 1) {
+            setTimeout(() => {
+                document.dispatchEvent(new CustomEvent('nge:prompt-username'));
+            }, 4000);
+        }
     }
 };
 const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() - 1)); };
