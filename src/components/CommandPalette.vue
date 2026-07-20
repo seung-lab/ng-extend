@@ -705,14 +705,12 @@ function toggle() {
 
 // ── Global keyboard shortcut ──────────────────────────────────────────────────
 function globalKeyHandler(e: KeyboardEvent) {
-  // Ctrl+K or Cmd+K → command palette
-  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-    e.preventDefault();
-    e.stopPropagation();
-    toggle();
-    return;
-  }
-  // Shortcuts only when palette is closed
+  // NOTE: Ctrl/Cmd+K is no longer handled here. The command palette has been
+  // folded into the Ask dock (one surface instead of two, over the same
+  // catalog the Guide already consumed), so ExtensionBar binds that shortcut
+  // to the dock. This component stays mounted as the headless command
+  // PROVIDER — it still owns buildActions(), the neuroglancer keybinding
+  // ingestion and the emit wiring to ExtensionBar; only its own UI is retired.
   if (visible.value) return;
 
   if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.code === 'KeyC')) {
@@ -780,8 +778,67 @@ function commandCatalog() {
   }
 }
 
-// Expose open/close for parent
-defineExpose({ open, close, toggle, commandCatalog });
+/**
+ * Headless search for the Ask dock.
+ *
+ * Same catalog and same scoring the palette used, minus the palette UI. This
+ * is what keeps command execution INSTANT: a query that clearly matches a
+ * known command never has to make a round trip to the model.
+ *
+ * Returns plain data (no closures) so the caller can render it freely; run a
+ * result with runCommandById().
+ */
+function searchCommands(q: string, limit = 8) {
+  try {
+    const all = buildActions();
+    const query = (q || '').trim();
+    if (!query) return [];
+    return all
+      .map((item) => {
+        const aliasScores = (item.aliases || []).map((a) => fuzzyScore(a, query));
+        return {
+          item,
+          score: Math.max(
+            fuzzyScore(item.label, query),
+            fuzzyScore(item.description || '', query),
+            fuzzyScore(item.id, query),
+            ...aliasScores,
+          ),
+        };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((x) => ({
+        id: x.item.id,
+        label: x.item.label,
+        description: x.item.description,
+        category: x.item.category,
+        icon: x.item.icon,
+        shortcut: x.item.shortcut,
+        score: x.score,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/** Run a command by id. Returns false when the id is unknown. */
+function runCommandById(id: string): boolean {
+  try {
+    const item = buildActions().find((i) => i.id === id);
+    if (!item) return false;
+    item.action();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Expose the headless command API. `open`/`close`/`toggle` are retained so any
+// remaining caller still works, but the palette UI is no longer bound to a
+// shortcut — the Ask dock is the single entry point.
+defineExpose({ open, close, toggle, commandCatalog, searchCommands, runCommandById });
 </script>
 
 <template>

@@ -456,9 +456,11 @@ Now you have a basic understanding of the EyeWire II interface! For additional t
   //23
   {
     text: `
-Check out the command palette here! Press <strong>Ctrl+K</strong> to quickly search for tools, actions, and help resources.`,
+Check out <strong>Ask</strong> here! Press <strong>Ctrl+K</strong> (<strong>⌘K</strong> on Mac) to quickly search for tools, actions, and help resources, or just ask a question.`,
     position: {
-      element: ".nge-cmd-trigger",
+      // Was ".nge-cmd-trigger" — that chip was removed from the toolbar and the
+      // palette now lives inside the Ask dock, so anchor to the Ask button.
+      element: ".nge-ask-btn",
       side: "bottom",
       offset: { x: 0, y: 7 },
     },

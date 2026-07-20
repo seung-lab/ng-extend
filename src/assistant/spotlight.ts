@@ -14,7 +14,10 @@ export const SPOTLIGHT_TARGETS: Record<string, string> = {
   shareButton:    '[title="Share State"]',
   datasetButton:  ".nge-dataset-btn",
   askButton:      ".nge-ask-btn",
-  commandPalette: ".nge-cmd-trigger",
+  // The command palette folded into the Ask dock and its ⌘K chip was removed
+  // from the toolbar, so this target now resolves to the same button. Kept as
+  // a key because the model's knowledge still refers to a "command palette".
+  commandPalette: ".nge-ask-btn",
   profileButton:  "#profileBtn",
   // Toolbar icons (logged-in). Selected by the data-icon-id ExtensionBar sets.
   splitTool:      '[data-icon-id="split"]',

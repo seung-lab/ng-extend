@@ -112,7 +112,7 @@ Drop it into chat, email, or the forum and the recipient lands exactly where you
     title: "Keyboard Shortcuts (?)",
     text: `The **?** button opens neuroglancer's keybinding reference: every mouse and keyboard shortcut for navigation, tools, and layer controls.
 
-Different from **⌘K** — the **?** is a *read-only cheat sheet*, ⌘K is an *action launcher*.`,
+Different from **Ask** (Ctrl+K): the **?** is a *read-only cheat sheet*, Ask is an *action launcher*.`,
     position: { element: '.neuroglancer-viewer-top-row > .neuroglancer-icon[title*="elp"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
@@ -139,11 +139,15 @@ Your streak is shown next to your name on the leaderboard.`,
 
   // ── 7. Command palette ───────────────────────────────────────
   {
-    title: "⌘K Command Palette",
-    text: `Press **Ctrl+K** (or **⌘K** on Mac) to *do something fast*: fuzzy-search every action, panel, and recently-viewed cell, then run it from the keyboard.
+    title: "Ask, and the Command Bar",
+    text: `Press **Ctrl+K** (**⌘K** on Mac), or click **Ask**, to *do something fast*.
 
-Different from the **?** button, which is a static keybinding reference.`,
-    position: { element: ".nge-cmd-trigger", side: "bottom", offset: { x: 0, y: 14 } },
+Start typing and it fuzzy-searches every action, panel, and recently-viewed cell. Press **Enter** to run the highlighted one straight away, no waiting.
+
+Not a match? Ask a question in plain language instead and the Guide answers.`,
+    // Anchored to the Ask button: the old ⌘K chip was removed from the toolbar
+    // and the palette it opened now lives inside this dock.
+    position: { element: ".nge-ask-btn", side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 

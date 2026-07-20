@@ -11,15 +11,31 @@ import { buildUiReference } from "../assistant/knowledge";
 import { getMaterializationInfo } from "../assistant/materialization";
 import { dispatch } from "../assistant/dispatch";
 import { useProofreadingBackendStore, useSplitMergeOverlayStore } from "../store";
+import { shortcutLabel } from "../util/platform";
 import nurroAvatar from "../images/inspector-nurro-2.png";
 
 const backend = useProofreadingBackendStore();
 const splitMerge = useSplitMergeOverlayStore();
 
+/** A command surfaced by the (headless) CommandPalette catalog. */
+export interface CommandMatch {
+  id: string;
+  label: string;
+  description?: string;
+  category: string;
+  icon: string;
+  shortcut?: string;
+  score: number;
+}
+
 const props = defineProps<{
   show: boolean;
   // Panel/tool state owned by ExtensionBar, read fresh on each send.
   uiState?: UiState;
+  /** Headless command search + run, provided by CommandPalette via ExtensionBar.
+   *  Lets this dock answer navigation instantly instead of asking the model. */
+  searchCommands?: (q: string, limit?: number) => CommandMatch[];
+  runCommandById?: (id: string) => boolean;
 }>();
 const emit = defineEmits<{ (e: "hide"): void }>();
 
@@ -284,9 +300,61 @@ async function submitFeedback(msg: Msg, verdict: "up" | "down") {
   }
 }
 
+// ── Instant command matching ────────────────────────────────────────────────
+// The ⌘K palette is folded into this dock, so typing here searches the same
+// command catalog LOCALLY and runs a match immediately. Navigation shouldn't
+// pay for a model round trip: a query that clearly names a command is answered
+// in ~0ms and is always right, while anything else falls through to the Guide.
+const commandMatches = ref<CommandMatch[]>([]);
+const selectedCmd = ref(0);
+
+/** Score above which we consider the match unambiguous enough to offer. */
+const MATCH_THRESHOLD = 40;
+
+/** Placeholder advertises both roles of the box, with the right modifier key. */
+const inputPlaceholder = computed(
+  () => `Ask, or type a command… (${shortcutLabel("K")})`);
+
+function refreshCommandMatches() {
+  const q = input.value.trim();
+  if (!q || q.length < 2) { commandMatches.value = []; return; }
+  // A trailing "?" or a leading question word reads as a question, not a
+  // command — don't shove those at the palette.
+  if (/\?\s*$/.test(q) || /^(what|why|how|when|where|who|can|does|is|are)\b/i.test(q)) {
+    commandMatches.value = [];
+    return;
+  }
+  const found = props.searchCommands?.(q, 6) ?? [];
+  commandMatches.value = found.filter((m) => m.score >= MATCH_THRESHOLD);
+  selectedCmd.value = 0;
+}
+
+watch(input, refreshCommandMatches);
+
+function runCommand(m: CommandMatch) {
+  commandMatches.value = [];
+  input.value = "";
+  props.runCommandById?.(m.id);
+}
+
 function onKeydown(e: KeyboardEvent) {
+  const hasMatches = commandMatches.value.length > 0;
+  if (hasMatches && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    e.preventDefault();
+    const d = e.key === "ArrowDown" ? 1 : -1;
+    selectedCmd.value = Math.min(
+      Math.max(selectedCmd.value + d, 0), commandMatches.value.length - 1);
+    return;
+  }
+  if (e.key === "Escape" && hasMatches) {
+    e.preventDefault();
+    commandMatches.value = [];   // fall back to asking, don't close the dock
+    return;
+  }
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
+    // A highlighted command wins: run it locally instead of asking the model.
+    if (hasMatches) { runCommand(commandMatches.value[selectedCmd.value]); return; }
     send();
   }
 }
@@ -361,13 +429,31 @@ function onKeydown(e: KeyboardEvent) {
       </div>
     </div>
 
+    <!-- Instant command matches. Enter runs the highlighted one locally, with
+         no model round trip; Esc dismisses and lets you ask instead. -->
+    <div v-if="commandMatches.length" class="nge-guide-cmds">
+      <div class="nge-guide-cmds-hint">Commands · Enter to run · Esc to ask instead</div>
+      <button
+        v-for="(m, i) in commandMatches"
+        :key="m.id"
+        class="nge-guide-cmd"
+        :class="{ 'nge-guide-cmd--sel': i === selectedCmd }"
+        @click="runCommand(m)"
+        @mouseenter="selectedCmd = i"
+      >
+        <span class="nge-guide-cmd-icon">{{ m.icon }}</span>
+        <span class="nge-guide-cmd-label">{{ m.label }}</span>
+        <span v-if="m.shortcut" class="nge-guide-cmd-key">{{ m.shortcut }}</span>
+      </button>
+    </div>
+
     <div class="nge-guide-inputrow">
       <textarea
         ref="inputEl"
         v-model="input"
         class="nge-guide-input"
         rows="1"
-        placeholder="Ask the guide…"
+        :placeholder="inputPlaceholder"
         @keydown="onKeydown"
       ></textarea>
       <button class="nge-guide-send" :disabled="loading || !input.trim()" @click="send()">↑</button>
@@ -557,6 +643,49 @@ function onKeydown(e: KeyboardEvent) {
 .nge-guide-typing span:nth-child(2) { animation-delay: 0.2s; }
 .nge-guide-typing span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes nge-guide-blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+
+/* Instant command matches, shown above the input. Visually distinct from chat
+   so it reads as "this will run", not "this is a reply". */
+.nge-guide-cmds {
+  border-top: 1px solid rgba(74, 158, 255, 0.12);
+  padding: 6px 6px 2px;
+  max-height: 210px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.nge-guide-cmds-hint {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(160, 175, 200, 0.65);
+  padding: 2px 6px 4px;
+}
+.nge-guide-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #cfdcef;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.nge-guide-cmd--sel { background: rgba(74, 158, 255, 0.16); color: #e6f0ff; }
+.nge-guide-cmd-icon { flex: 0 0 auto; font-size: 13px; }
+.nge-guide-cmd-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nge-guide-cmd-key {
+  flex: 0 0 auto;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 10.5px;
+  color: rgba(160, 175, 200, 0.8);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
 
 .nge-guide-inputrow {
   display: flex; align-items: flex-end; gap: 6px;

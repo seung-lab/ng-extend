@@ -175,6 +175,36 @@ const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
 
+/**
+ * Bridge the headless command catalog into the Ask dock.
+ *
+ * CommandPalette stays mounted as the command PROVIDER (it owns buildActions(),
+ * the neuroglancer keybinding ingestion and the emit wiring back to this
+ * component); the dock is now the only UI. These wrappers are stable function
+ * identities so the dock's props don't churn on every render.
+ */
+function searchCommands(q: string, limit = 6) {
+  return (cmdPalette.value as any)?.searchCommands?.(q, limit) ?? [];
+}
+function runCommandById(id: string): boolean {
+  return (cmdPalette.value as any)?.runCommandById?.(id) ?? false;
+}
+
+/**
+ * Ctrl+K / Cmd+K opens the Ask dock (previously the command palette).
+ * Registered in capture phase so it wins against neuroglancer's own keybinder,
+ * matching how the Escape handler in main.ts is bound.
+ */
+function commandKeyHandler(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    e.stopPropagation();
+    showAssistant.value = true;
+  }
+}
+onMounted(() => document.addEventListener('keydown', commandKeyHandler, true));
+onUnmounted(() => document.removeEventListener('keydown', commandKeyHandler, true));
+
 // ── EyeWire II Guide (AI assistant) ──────────────────────────────────────
 const showAssistant = ref(false);
 // Best-effort record of the tool mode the assistant last entered, sent back to
@@ -486,7 +516,16 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
-  <assistant-dock :show="showAssistant" :ui-state="assistantUiState" @hide="showAssistant = false" />
+  <!-- The Ask dock is now the single command surface: it searches the same
+       catalog CommandPalette builds (passed in headless) so navigation runs
+       instantly, and only falls through to the model for real questions. -->
+  <assistant-dock
+    :show="showAssistant"
+    :ui-state="assistantUiState"
+    :search-commands="searchCommands"
+    :run-command-by-id="runCommandById"
+    @hide="showAssistant = false"
+  />
   <div id="extensionBar">
     <div class="ng-extend-logo">
       <!-- Click → hard refresh. Reloads the bundle from the server (skips
@@ -1170,32 +1209,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   100% { opacity: 1; transform: scale(1); }
 }
 
-.nge-cmd-trigger {
-  display: flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 6px;
-  background: none;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  opacity: 0.85;
-  transition: opacity 0.15s, background 0.15s;
-}
-.nge-cmd-trigger:hover { opacity: 1; background: rgba(255, 255, 255, 0.06); }
-/* Borderless kbd so the ⌘K trigger reads like the rest of the toolbar
-   icons. Color/weight do the work that the box used to. */
-.nge-cmd-trigger kbd {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 0;
-  background: none;
-  border: none;
-  color: #cfdcef;
-  font-family: inherit;
-  letter-spacing: 0.03em;
-}
-.nge-cmd-trigger:hover kbd { color: #e0ecff; }
+/* (The ⌘K trigger chip and its styles are gone: the button was removed from
+   the toolbar, and the command palette it opened is now folded into the Ask
+   dock. Ctrl/Cmd+K opens that dock instead — see commandKeyHandler.) */
 
 /* ── Hamburger menu ── */
 #hamburger li {

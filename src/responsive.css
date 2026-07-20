@@ -99,9 +99,8 @@
     gap: 2px;
     padding: 0 4px;
   }
-  #extensionBar .nge-cmd-trigger {
-    font-size: 15px;   /* the ⌘K chip, kept proportional */
-  }
+  /* (The ⌘K chip that used to be sized here was removed from the toolbar;
+     the command palette now lives in the Ask dock.) */
   /* Profile glyph + neuroglancer's own top-bar glyphs, bumped to match. */
   #extensionBar #profileBtn svg {
     width: 18px;
