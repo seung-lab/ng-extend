@@ -7,6 +7,40 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 const prefsStore = useUserPreferencesStore();
 
+const backendStore = useProofreadingBackendStore();
+
+// ── Username ────────────────────────────────────────────────────────────────
+// Chat shows this instead of the display name, and @mentions match it. It's
+// unique and space-free, so "@celia" resolves to exactly one person — display
+// names are neither.
+const draftUsername = ref('');
+const usernameError = ref('');
+const usernameOk = ref('');
+const checkingUsername = ref(false);
+let usernameTimer: ReturnType<typeof setTimeout> | null = null;
+
+function onUsernameInput() {
+  usernameError.value = '';
+  usernameOk.value = '';
+  if (usernameTimer) clearTimeout(usernameTimer);
+  const value = draftUsername.value.trim();
+  if (!value || value === backendStore.username) return;
+  const invalid = backendStore.validateUsername(value);
+  if (invalid) { usernameError.value = invalid; return; }
+  // Debounced so we aren't querying on every keystroke.
+  checkingUsername.value = true;
+  usernameTimer = setTimeout(async () => {
+    try {
+      const free = await backendStore.isUsernameAvailable(value);
+      if (draftUsername.value.trim() !== value) return;  // raced ahead
+      if (free) usernameOk.value = `“${value}” is available.`;
+      else usernameError.value = 'That username is taken.';
+    } finally {
+      checkingUsername.value = false;
+    }
+  }, 400);
+}
+
 const draftFlag = ref('');
 const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
@@ -14,6 +48,7 @@ const draftChatMuted = ref(false);
 const saved      = ref(false);
 
 onMounted(() => {
+  draftUsername.value = backendStore.username || '';
   draftFlag.value = prefsStore.prefs.flag;
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
@@ -34,6 +69,19 @@ async function handleSave() {
   // you on another machine), so push those two fields as well.
   const backend = useProofreadingBackendStore();
   await backend.saveProfileFields({ flag, bio });
+  // Username saves separately: it's unique, so it can legitimately fail (taken)
+  // in a way flag/bio can't, and that must surface rather than fail silently.
+  const wanted = draftUsername.value.trim();
+  if (wanted && wanted !== backendStore.username) {
+    try {
+      await backendStore.saveUsername(wanted);
+      usernameOk.value = `Username set to “${wanted}”.`;
+      usernameError.value = '';
+    } catch (e: any) {
+      usernameError.value = e?.message || 'Could not save username.';
+      usernameOk.value = '';
+    }
+  }
 }
 
 // ── Toolbar icon choices (shared with the actual top bar) ──────
@@ -147,6 +195,29 @@ const emit = defineEmits({hide: null});
 
       <!-- Settings content -->
       <div class="nge-settings-content">
+        <div class="nge-settings-section">
+          <label class="nge-settings-label">Username</label>
+          <p class="nge-settings-hint">
+            How you appear in chat, and how others tag you: <strong>@{{ draftUsername || 'yourname' }}</strong>.
+            3-20 characters, letters/numbers/underscore, no spaces.
+          </p>
+          <div class="nge-settings-username-row">
+            <span class="nge-settings-username-at">@</span>
+            <input
+              v-model="draftUsername"
+              class="nge-settings-username-input"
+              maxlength="20"
+              placeholder="yourname"
+              spellcheck="false"
+              autocomplete="off"
+              @input="onUsernameInput"
+            />
+          </div>
+          <div v-if="checkingUsername" class="nge-settings-username-note">Checking…</div>
+          <div v-else-if="usernameError" class="nge-settings-username-note nge-settings-username-note--err">{{ usernameError }}</div>
+          <div v-else-if="usernameOk" class="nge-settings-username-note nge-settings-username-note--ok">{{ usernameOk }}</div>
+        </div>
+
         <div class="nge-settings-section">
           <label class="nge-settings-label">Country / Flag</label>
           <p class="nge-settings-hint">Pick your country or the EyeWire logo.</p>
@@ -758,6 +829,41 @@ const emit = defineEmits({hide: null});
   transition: color 0.12s;
 }
 .nge-settings-toolbar-reset:hover { color: #889; }
+
+/* Username field */
+.nge-settings-username-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  max-width: 360px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.nge-settings-username-row:focus-within { border-color: rgba(74, 158, 255, 0.5); }
+.nge-settings-username-at {
+  padding: 0 2px 0 10px;
+  color: rgba(150, 175, 215, 0.8);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+.nge-settings-username-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #e0e0e0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.92em;
+  padding: 8px 10px 8px 2px;
+}
+.nge-settings-username-note {
+  margin-top: 5px;
+  font-size: 0.78em;
+  color: #8b93a7;
+}
+.nge-settings-username-note--err { color: #ff9b9b; }
+.nge-settings-username-note--ok { color: #7fe0a8; }
 
 /* Notification mute toggle (Mute chat unread badge) */
 .nge-settings-toggle {

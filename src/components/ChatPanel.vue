@@ -214,12 +214,23 @@ function send() {
  * display name and its first word, case-insensitively, ignoring trailing dots.
  */
 function isSelfMention(token: string): boolean {
-  const me = (backendStore.userName || '').trim();
-  if (!me) return false;
   const norm = (s: string) => s.replace(/[.\s]+$/, '').trim().toLowerCase();
   const target = norm(token.slice(1));
   if (!target) return false;
+  // Username is the reliable match: unique and space-free, so "@celia" resolves
+  // to exactly one person.
+  const handle = (backendStore.username || '').trim();
+  if (handle) return target === norm(handle);
+  // Fallback for users who haven't set one yet — necessarily fuzzy, which is
+  // precisely why usernames exist.
+  const me = (backendStore.userName || '').trim();
+  if (!me) return false;
   return target === norm(me) || target === norm(me.split(' ')[0]);
+}
+
+/** Open the notification an announcement message refers to. */
+function openAnnouncement(id: number) {
+  document.dispatchEvent(new CustomEvent('nge:open-notification', { detail: { id } }));
 }
 
 /** Active segmentation layer name, for comparing against a message's dataset. */
@@ -412,6 +423,21 @@ function toggleCollapse() {
                      :class="{ 'nge-chat-sys--warn': msg.type === 'disconnected' }">
                   {{ msg.type === 'join' ? '→' : msg.type === 'leave' ? '←' : '⚠' }}
                   {{ msg.parts[0]?.text || '' }}
+                </div>
+
+                <!-- Announcement: carries a notification id, so the whole
+                     message opens that notification instead of telling the
+                     reader to go and look for it. -->
+                <div v-else-if="msg.type === 'message' && msg.notificationId"
+                     class="nge-chat-msg nge-chat-announce"
+                     role="button"
+                     tabindex="0"
+                     @click="openAnnouncement(msg.notificationId)"
+                     @keydown.enter="openAnnouncement(msg.notificationId)"
+                     title="Open this notification">
+                  <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
+                  <span class="nge-chat-announce-text">{{ msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('') }}</span>
+                  <span class="nge-chat-announce-cta">Open →</span>
                 </div>
 
                 <div v-else-if="msg.type === 'message'" class="nge-chat-msg">
@@ -766,6 +792,29 @@ function toggleCollapse() {
   padding: 2px 5px 2px 2px;
 }
 .nge-chat-seg-copy:hover { color: #80ffc0; background: none; }
+/* Announcement message — visually distinct from conversation so it reads as
+   something actionable rather than someone talking. */
+.nge-chat-announce {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  background: rgba(74, 158, 255, 0.09);
+  border-left: 2px solid rgba(74, 158, 255, 0.55);
+  border-radius: 4px;
+  padding: 3px 6px;
+  margin: 2px 0;
+  transition: background 0.15s;
+}
+.nge-chat-announce:hover { background: rgba(74, 158, 255, 0.18); }
+.nge-chat-announce-text { flex: 1; color: #d6e6ff; }
+.nge-chat-announce-cta {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: rgba(150, 190, 245, 0.9);
+  white-space: nowrap;
+}
+
 /* @mention: click to open that person's profile. Highlighted more strongly
    when it's you being mentioned, so it's noticeable in a busy channel. */
 .nge-chat-mention {

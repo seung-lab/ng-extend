@@ -117,6 +117,19 @@ function shareActionFacebook() {
 
 onMounted(() => {
   // Keep Pyr icon in top-left (don't overwrite with CaveLogo)
+  // Clicking a chat announcement opens the notification feed and asks it to
+  // surface that specific notification.
+  document.addEventListener('nge:open-notification', ((e: CustomEvent) => {
+    showNotifications.value = true;
+    const id = e.detail?.id;
+    if (id != null) {
+      // Let the panel mount/refresh before asking it to open the detail view.
+      setTimeout(() => {
+        document.dispatchEvent(new CustomEvent('nge:show-notification-detail', { detail: { id } }));
+      }, 150);
+    }
+  }) as EventListener);
+
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
     showProfile.value = true;

@@ -34,10 +34,26 @@ function onDocClick(e: MouseEvent) {
 const SCHEDULED_POLL_MS = 60_000;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Open a specific notification's detail view, e.g. after clicking the chat
+ * announcement that links to it. Loads first in case it isn't in the list yet.
+ */
+async function onShowDetail(e: Event) {
+  const id = (e as CustomEvent).detail?.id;
+  if (id == null) return;
+  let notif = backend.notifications.find((n: any) => n.id === id);
+  if (!notif) {
+    await backend.loadNotifications();
+    notif = backend.notifications.find((n: any) => n.id === id);
+  }
+  if (notif) openDetail(notif);
+}
+
 onMounted(() => {
   backend.loadNotifications();
   backend.subscribeToNotifications();
   document.addEventListener('mousedown', onDocClick, true);
+  document.addEventListener('nge:show-notification-detail', onShowDetail as EventListener);
   pollTimer = setInterval(() => {
     // Skip while the tab is hidden — it'll refresh on the next visible tick.
     if (document.hidden) return;
@@ -48,6 +64,7 @@ onMounted(() => {
 onUnmounted(() => {
   backend.unsubscribeFromNotifications();
   document.removeEventListener('mousedown', onDocClick, true);
+  document.removeEventListener('nge:show-notification-detail', onShowDetail as EventListener);
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 });
 

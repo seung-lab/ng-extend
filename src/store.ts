@@ -2153,6 +2153,65 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const userId = ref<string | null>(null);
   const userEmail = ref<string>('');
   const userName = ref<string>('');
+  /**
+   * Unique handle used for chat display and @mentions.
+   *
+   * Display names ("Amy S.") are neither unique nor single-token, so mentions
+   * couldn't tell two people apart or capture a name containing a space. A
+   * username is unique and space-free, making a mention unambiguous by
+   * construction. Empty until the user picks one; chat falls back to the
+   * display name in that case.
+   */
+  const username = ref<string>('');
+
+  /** Name to show in chat and match mentions against. */
+  const chatHandle = computed(() => username.value || userName.value || 'Anonymous');
+
+  const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
+
+  /** Validate a candidate username. Returns '' when acceptable. */
+  function validateUsername(name: string): string {
+    const n = (name || '').trim();
+    if (!n) return 'Pick a username.';
+    if (!USERNAME_RE.test(n)) {
+      return 'Use 3-20 characters: letters, numbers or underscore, no spaces.';
+    }
+    return '';
+  }
+
+  /** True when the username is free (case-insensitively), ignoring our own row. */
+  async function isUsernameAvailable(name: string): Promise<boolean> {
+    const n = (name || '').trim();
+    if (!n) return false;
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .ilike('username', n)     // case-insensitive, matching the unique index
+      .limit(1);
+    if (error) { console.warn('[username] availability check failed:', error.message); return false; }
+    if (!data || data.length === 0) return true;
+    return data[0].id === userId.value;   // our own row doesn't count as taken
+  }
+
+  /** Persist the username. Throws with a friendly message on conflict. */
+  async function saveUsername(name: string) {
+    const n = (name || '').trim();
+    const invalid = validateUsername(n);
+    if (invalid) throw new Error(invalid);
+    if (!userId.value) throw new Error('Not signed in.');
+    const { error } = await supabase
+      .from('users')
+      .update({ username: n, updated_at: new Date().toISOString() })
+      .eq('id', userId.value);
+    if (error) {
+      // 23505 = unique violation, i.e. someone already has it.
+      if ((error as any).code === '23505' || /duplicate|unique/i.test(error.message)) {
+        throw new Error('That username is taken.');
+      }
+      throw new Error(error.message);
+    }
+    username.value = n;
+  }
   const tasks = ref<ProofreadingTask[]>([]);
   const activeTaskId = ref<number | null>(null);
   const activityFeed = ref<ActivityFeedItem[]>([]);
@@ -2172,7 +2231,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       // Try to find existing user by email
       const { data: existing, error: selectErr } = await supabase
         .from('users')
-        .select('id')
+        .select('id, username')
         .eq('middleauth_email', email)
         .single();
 
@@ -2183,6 +2242,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
       if (existing) {
         userId.value = existing.id;
+        username.value = existing.username || '';
         console.info('[backend] syncUser: found existing user', existing.id);
         // Update display name if changed
         await supabase
@@ -3239,8 +3299,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       post_to_chat: data.post_to_chat || false,
       created_by: userId.value,
     };
-    const { error: err } = await supabase.from('notifications').insert(row);
+    // Select the id back so the chat announcement can link to this exact
+    // notification rather than telling people to go and find it.
+    const { data: created, error: err } = await supabase
+      .from('notifications').insert(row).select('id').single();
     if (err) console.warn('[admin] createNotification error:', err.message);
+    const newNotifId: number | null = created?.id ?? null;
 
     // Post to chat as a system message if requested — but ONLY for
     // notifications going out now.
@@ -3260,7 +3324,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       try {
         const chatStore = useChatStore();
         if (chatStore.connected) {
-          chatStore.sendMessage(`📢 ${data.title} — check your notifications for details!`);
+          chatStore.sendMessage(`📢 ${data.title}`, newNotifId);
         }
       } catch (e) { console.warn('[admin] post_to_chat failed:', e); }
     }
@@ -3724,6 +3788,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
+    username, chatHandle, validateUsername, isUsernameAvailable, saveUsername,
     leaderboard,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
@@ -3829,6 +3894,8 @@ export interface ChatMessage {
   /** Segmentation layer the sender was viewing, for #SegID disambiguation.
    *  Null on messages sent before this was recorded. */
   dataset?: string | null;
+  /** Set on announcement messages so clicking opens that notification. */
+  notificationId?: number | null;
 }
 
 /**
@@ -3919,7 +3986,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const { data, error } = await supabase
         .from('chat_messages')
-        .select('name, rank, text, created_at, dataset')
+        .select('name, rank, text, created_at, dataset, notification_id')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error || !data) return;
@@ -3934,6 +4001,7 @@ export const useChatStore = defineStore('chat', () => {
           dateTime: date,
           parts: parseMessageParts(r.name, r.text),
           dataset: r.dataset ?? null,
+          notificationId: r.notification_id ?? null,
         });
       }
     } catch (e) {
@@ -3950,7 +4018,8 @@ export const useChatStore = defineStore('chat', () => {
       console.warn('[chat] connect: skipped — user not logged in');
       return;
     }
-    const displayName = backend.userName;
+    // Prefer the unique username; fall back to display name until one is set.
+    const displayName = backend.chatHandle;
     if (displayName === 'Anonymous') {
       console.warn('[chat] connect: displayName fell through to "Anonymous" — defensive only');
     }
@@ -3965,7 +4034,7 @@ export const useChatStore = defineStore('chat', () => {
 
     channel
       .on('broadcast', { event: 'message' }, (payload) => {
-        const { name, rank, text, timestamp, senderId, dataset } = payload.payload;
+        const { name, rank, text, timestamp, senderId, dataset, notificationId } = payload.payload;
         const date = new Date(timestamp);
         addTimeSeparatorIfNeeded(date);
         chatMessages.value.push({
@@ -3976,6 +4045,7 @@ export const useChatStore = defineStore('chat', () => {
           dateTime: date,
           parts: parseMessageParts(name, text),
           dataset: dataset ?? null,
+          notificationId: notificationId ?? null,
         });
         // The channel runs with `broadcast: { self: true }` so the sender also
         // receives their own message — that's how it lands in their own list.
@@ -4038,10 +4108,15 @@ export const useChatStore = defineStore('chat', () => {
     connecting = false; // channel is now assigned; the guard above holds
   }
 
-  function sendMessage(text: string) {
+  /**
+   * @param notificationId set on announcement messages, so the client can render
+   *   the message as a link that opens that exact notification instead of
+   *   telling people to go and find it.
+   */
+  function sendMessage(text: string, notificationId: number | null = null) {
     if (!channel || !connected.value) return;
     const backend = useProofreadingBackendStore();
-    const name = backend.userName || 'Anonymous';
+    const name = backend.chatHandle;
     const rank = backend.isAdmin ? 'admin' : 'player';
     channel.send({
       type: 'broadcast',
@@ -4050,6 +4125,7 @@ export const useChatStore = defineStore('chat', () => {
         name,
         rank,
         text,
+        notificationId,
         timestamp: new Date().toISOString(),
         // Lets the receiving handler recognise this message as our own and
         // skip the unread bump (the channel echoes it back via self: true).
@@ -4063,7 +4139,8 @@ export const useChatStore = defineStore('chat', () => {
     });
     // Persist for history so the last messages show on next open (best-effort;
     // no-ops if the chat_messages table isn't present).
-    supabase.from('chat_messages').insert({ name, rank, text, dataset: currentDatasetName() })
+    supabase.from('chat_messages')
+      .insert({ name, rank, text, dataset: currentDatasetName(), notification_id: notificationId })
       .then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); });
   }
 
@@ -4075,7 +4152,7 @@ export const useChatStore = defineStore('chat', () => {
   function disconnect() {
     if (channel) {
       const backend = useProofreadingBackendStore();
-      const name = backend.userName || 'Anonymous';
+      const name = backend.chatHandle;
       channel.send({
         type: 'broadcast',
         event: 'leave',
