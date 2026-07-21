@@ -20,6 +20,22 @@
   --color-ng-selected-less-faint: #88cc8852;
 
   --color-pyr-purple: #a46fe2ba;
+
+  /* ── Typography scale — SITE STYLE GUIDELINE ──────────────────────────────
+     Use these tokens for UI text. Two rules that keep text readable:
+       1. Never set body/UI text smaller than --nge-fs-xs (12px). Headings and
+          labels go UP from base; fine print goes no lower than xs.
+       2. Don't stack `em` reductions (0.9em inside 0.85em inside 0.8em …).
+          Each nesting compounds and text silently collapses to unreadable —
+          exactly how the panels drifted tiny. Size from a token (fixed px/var)
+          instead of another relative em.
+     xs = meta / fine print · sm = secondary · base = default body ·
+     lg = subheading · xl = title. */
+  --nge-fs-xs: 12px;
+  --nge-fs-sm: 13px;
+  --nge-fs-base: 14px;
+  --nge-fs-lg: 16px;
+  --nge-fs-xl: 20px;
 }
 
 /* ── Global scrollbar theme ──────────────────────────────────────────────────

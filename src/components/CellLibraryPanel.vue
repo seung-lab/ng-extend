@@ -1833,6 +1833,9 @@ const panelStyle = computed(() => ({
   border-radius: 14px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   font-family: 'SF Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  /* Readable base so the panel's em-scaled text doesn't inherit a tiny size and
+     compound down (see the typography guideline in common.css). */
+  font-size: var(--nge-fs-base);
   color: #ccd;
   overflow: hidden;
 }
@@ -2627,19 +2630,19 @@ select.nge-cl-response-input:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 6px 12px;
   border-radius: 6px;
-  border: 1px dashed rgba(255, 136, 170, 0.35);
-  background: rgba(255, 136, 170, 0.06);
-  color: #f8a;
-  font-size: 0.78em;
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  background: rgba(74, 158, 255, 0.06);
+  color: #8bf;
+  font-size: var(--nge-fs-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s;
 }
 .nge-cl-help-shot-btn:hover {
-  background: rgba(255, 136, 170, 0.14);
-  border-color: rgba(255, 136, 170, 0.6);
+  background: rgba(74, 158, 255, 0.14);
+  border-color: rgba(74, 158, 255, 0.6);
 }
 .nge-cl-help-shot-preview {
   position: relative;
