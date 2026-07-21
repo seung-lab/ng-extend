@@ -3444,11 +3444,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Tuesday still announced it in chat the instant you hit Send, pointing
     // everyone at something that `send_at` keeps hidden until Tuesday.
     //
-    // The `post_to_chat` flag is persisted on the row, and the scheduled
-    // announcement is posted at its send time by
-    // scripts/post-due-chat-announcements.mjs (cron, idempotent via
-    // notifications.chat_posted_at). Posting it from the clients themselves is
-    // not an option: every client that polls would post its own copy.
+    // The `post_to_chat` flag is persisted on the row; the scheduled
+    // announcement is posted at its send time by postDueChatAnnouncements()
+    // below, which the notification poller runs on every client. Exactly one
+    // client posts because the claim is an atomic conditional UPDATE on
+    // chat_posted_at (a naive "every client posts" would duplicate — that's why
+    // the claim matters). A cron (chat-announcements.yml) was the original plan
+    // but it lives on this branch, and GitHub only runs schedules from the
+    // default branch, so it never fired — hence the client-side poster.
     // "Scheduled" means the admin explicitly picked a future send time. Post to
     // chat instantly ONLY for send-now notifications — either no send_at, or one
     // whose time has already arrived. Key off `data.send_at` (undefined for a
@@ -3480,6 +3483,49 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       } catch (e) { console.warn('[admin] post_to_chat failed:', e); }
     }
     await loadNotifications();
+  }
+
+  /**
+   * Post to chat any notifications whose scheduled send time has arrived, that
+   * asked to post to chat, and that haven't been posted yet. Runs on every
+   * connected client via the notification poller, but posts each announcement
+   * exactly once: the claim is an atomic conditional UPDATE (`.is('chat_posted_at',
+   * null)`), so only the client whose UPDATE actually flips the column wins and
+   * posts. This is what makes scheduled "also post to chat" announcements
+   * actually appear (the intended cron never ran — see createNotification).
+   */
+  async function postDueChatAnnouncements() {
+    const chatStore = useChatStore();
+    // Need a live channel to broadcast to other users. If no one is connected
+    // yet, leave the rows unposted; the next connected poller picks them up.
+    if (!chatStore.connected) return;
+    const now = new Date().toISOString();
+    const { data: due, error: dueErr } = await supabase
+      .from('notifications')
+      .select('id,title')
+      .eq('post_to_chat', true)
+      .is('chat_posted_at', null)
+      .lte('send_at', now)
+      // Don't announce something that already expired — this also skips a stale
+      // backlog of expired test notifications when this poster first ships.
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .order('send_at', { ascending: true })
+      .limit(10);
+    if (dueErr || !due?.length) return;
+    for (const n of due) {
+      // Atomic claim: only the row still NULL gets updated, and only one client's
+      // UPDATE can win that race, so exactly one client proceeds to post.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('notifications')
+        .update({ chat_posted_at: new Date().toISOString() })
+        .eq('id', n.id)
+        .is('chat_posted_at', null)
+        .select('id');
+      if (claimErr) { console.warn('[admin] claim chat announcement failed:', claimErr.message); continue; }
+      if (claimed && claimed.length) {
+        chatStore.sendMessage(`📢 ${n.title}`, n.id);
+      }
+    }
   }
 
   /** Create a self-targeted notification (no admin required). */
@@ -3981,7 +4027,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,
-    createNotification, createSelfNotification, deleteNotification, dismissNotification,
+    createNotification, createSelfNotification, postDueChatAnnouncements, deleteNotification, dismissNotification,
     dismissAllNotifications,
     subscribeToNotifications, unsubscribeFromNotifications,
     pendingBadgeCelebration,

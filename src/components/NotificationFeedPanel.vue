@@ -58,6 +58,9 @@ onMounted(() => {
     // Skip while the tab is hidden — it'll refresh on the next visible tick.
     if (document.hidden) return;
     backend.loadNotifications();
+    // Post any scheduled "also post to chat" announcements that have come due.
+    // Atomic-claimed inside, so running it on every client posts each once.
+    backend.postDueChatAnnouncements();
   }, SCHEDULED_POLL_MS);
 });
 
@@ -504,24 +507,61 @@ function plainText(text: string): string {
   position: fixed;
   inset: 0;
   z-index: 9500;
-  background: rgba(0, 0, 0, 0.6);
+  background: radial-gradient(circle at 50% 38%, rgba(0, 14, 34, 0.82) 0%, rgba(0, 0, 0, 0.92) 100%);
+  backdrop-filter: blur(7px) saturate(1.25);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .nge-notif-detail {
+  position: relative;
   width: 740px;
   max-width: 90vw;
   max-height: 80vh;
-  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
-  border: 1px solid rgba(74, 158, 255, 0.2);
-  border-radius: 12px;
-  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.7), 0 0 40px rgba(74, 158, 255, 0.06);
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.98) 0%, rgba(8, 14, 28, 0.96) 50%, rgba(4, 8, 18, 0.98) 100%);
+  border: 1px solid rgba(0, 180, 255, 0.28);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.7),
+    0 0 46px rgba(0, 150, 255, 0.16),
+    inset 0 1px 0 rgba(120, 200, 255, 0.14),
+    inset 0 0 60px rgba(0, 120, 255, 0.05);
   display: flex;
   flex-direction: column;
-  backdrop-filter: blur(12px);
-  font-family: sans-serif;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  /* Same "materialize" entrance as SettingsPanel / LoginModal / the badge hero. */
+  animation: ngeNotifMaterialize 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Sweeping scan-line highlight along the top edge — the holographic tell. */
+.nge-notif-detail::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(120, 210, 255, 0.9), transparent);
+  background-size: 220px 100%;
+  background-repeat: no-repeat;
+  animation: ngeNotifScan 3.4s linear infinite;
+  pointer-events: none;
+}
+@keyframes ngeNotifMaterialize {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.955);
+    filter: blur(10px) brightness(2.4);
+    box-shadow: 0 0 90px rgba(0, 170, 255, 0.5), 0 0 170px rgba(0, 170, 255, 0.15);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0) brightness(1);
+  }
+}
+@keyframes ngeNotifScan {
+  0%   { background-position: -220px 0; }
+  100% { background-position: calc(100% + 220px) 0; }
 }
 
 .nge-notif-detail-topbar {
@@ -557,11 +597,13 @@ function plainText(text: string): string {
 }
 
 .nge-notif-detail-title {
-  font-size: 1.2em;
+  font-size: 1.24em;
   font-weight: 700;
-  color: #e8e8ee;
+  color: #eaf3ff;
   margin: 0 0 14px;
   line-height: 1.3;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 18px rgba(74, 158, 255, 0.35);
 }
 
 .nge-notif-detail-body {
@@ -641,14 +683,15 @@ function plainText(text: string): string {
 }
 
 /* ── Transition ── */
-.nge-notif-detail-enter-active { transition: opacity 0.2s ease; }
-.nge-notif-detail-enter-active .nge-notif-detail { transition: transform 0.2s ease, opacity 0.2s ease; }
-.nge-notif-detail-leave-active { transition: opacity 0.15s ease; }
-.nge-notif-detail-leave-active .nge-notif-detail { transition: transform 0.15s ease, opacity 0.15s ease; }
+/* The panel's own ngeNotifMaterialize animation drives the entrance, so the Vue
+   transition only fades the backdrop in and animates the leave (no enter
+   transform on the panel, or the two fight). */
+.nge-notif-detail-enter-active { transition: opacity 0.25s ease; }
+.nge-notif-detail-leave-active { transition: opacity 0.18s ease; }
+.nge-notif-detail-leave-active .nge-notif-detail { transition: transform 0.18s ease, opacity 0.18s ease, filter 0.18s ease; }
 .nge-notif-detail-enter-from { opacity: 0; }
-.nge-notif-detail-enter-from .nge-notif-detail { transform: scale(0.95) translateY(8px); opacity: 0; }
 .nge-notif-detail-leave-to { opacity: 0; }
-.nge-notif-detail-leave-to .nge-notif-detail { transform: scale(0.97); opacity: 0; }
+.nge-notif-detail-leave-to .nge-notif-detail { transform: scale(0.97); opacity: 0; filter: blur(6px) brightness(1.6); }
 
 /* ── Lightbox ── */
 .nge-notif-lightbox {

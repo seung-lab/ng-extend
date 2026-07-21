@@ -1058,15 +1058,17 @@ onMounted(() => {
 .nge-admin-notif-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 9px 10px;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 4px;
   margin-bottom: 4px;
 }
-.nge-admin-notif-info { display: flex; flex-direction: column; gap: 2px; }
-.nge-admin-notif-info strong { font-size: 0.88em; color: #cde; font-weight: 600; }
-.nge-admin-notif-meta { font-size: 0.74em; color: #778; }
+/* flex:1 makes the info fill the row so the edit + delete buttons group at the
+   right edge instead of being spread out by space-between. */
+.nge-admin-notif-info { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-width: 0; }
+.nge-admin-notif-info strong { font-size: 1em; color: #dbe6f5; font-weight: 600; }
+.nge-admin-notif-meta { font-size: 0.85em; color: #99a3ba; }
 
 .nge-admin-group-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-admin-group-chip {

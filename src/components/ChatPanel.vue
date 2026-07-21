@@ -8,7 +8,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useChatStore, useProofreadingBackendStore, ChatMessage } from '../store';
-import { canonicalDataset, datasetDisplayName } from '../datasets';
+import { canonicalDataset, datasetDisplayName, switchToDataset, segLayerName, DATASETS } from '../datasets';
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -22,8 +22,9 @@ const isScrolledUp = ref(false);
 const collapsed = ref(false);
 /** Segment id most recently copied, for the brief "copied" tick. */
 const copiedSegId = ref<string | null>(null);
-/** Pending cross-dataset jump awaiting confirmation. */
-const pendingSegJump = ref<{ segRef: string; from: string | null; to: string } | null>(null);
+/** Pending cross-dataset jump awaiting confirmation. `dataset` is the raw
+ *  dataset the segment belongs to, so we can switch to it before loading. */
+const pendingSegJump = ref<{ segRef: string; dataset: string | null | undefined; from: string | null; to: string } | null>(null);
 
 // ── Drag state ──
 const panelEl = ref<HTMLDivElement | null>(null);
@@ -270,16 +271,38 @@ function onSegClick(segRef: string, msgDataset: string | null | undefined) {
   }
   pendingSegJump.value = {
     segRef,
+    dataset: msgDataset,
     from: msgDataset ? datasetLabel(msgDataset) : null,
     to: active ? datasetLabel(active) : 'your current view',
   };
 }
 
-/** User confirmed jumping to a segment shared from another dataset. */
-function confirmSegJump() {
+/**
+ * User confirmed jumping to a segment shared from another dataset. Switch to
+ * that dataset FIRST, then load the segment — a root ID only means anything in
+ * its own segmentation, so adding it to the current dataset's layer lands on
+ * the wrong cell or nothing. (This is the regression: confirm used to call
+ * loadSegment directly without switching, so cross-dataset jumps silently
+ * failed to load.)
+ */
+async function confirmSegJump() {
   const p = pendingSegJump.value;
   pendingSegJump.value = null;
-  if (p) loadSegment(p.segRef);
+  if (!p) return;
+  const target = p.dataset
+    ? DATASETS.find(d => canonicalDataset(segLayerName(d)) === canonicalDataset(p.dataset))
+    : undefined;
+  const active = activeDatasetName();
+  const needSwitch = !!target && (!active || canonicalDataset(p.dataset) !== canonicalDataset(active));
+  if (needSwitch) {
+    const ok = await switchToDataset(target!);
+    if (ok) {
+      // Let the new layers mount before moving the camera to the segment.
+      setTimeout(() => loadSegment(p.segRef), 800);
+      return;
+    }
+  }
+  loadSegment(p.segRef);
 }
 
 // ── Load segment from #SegID click ──
