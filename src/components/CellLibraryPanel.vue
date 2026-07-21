@@ -81,7 +81,7 @@ async function loadCellsForActiveDataset() {
 onMounted(async () => {
   loading.value = true;
   // Load tasks from Supabase — these have claim/completion status
-  await backend.loadTasks('eyewire_ii');
+  await backend.loadTasks();
   // Load the cell list for the active dataset (each dataset has its own sheet)
   await loadCellsForActiveDataset();
   loading.value = false;
@@ -326,7 +326,7 @@ async function claimCell(cell: typeof cells.value[0]) {
   }
   // Write claim to Google Sheet (best-effort)
   writeClaimToSheet(cell.segId, backend.userName);
-  await backend.loadTasks('eyewire_ii');
+  await backend.loadTasks();
 }
 
 /** Get current viewer position as a ClaimPoint. */
@@ -369,7 +369,7 @@ async function completeCell(cell: typeof cells.value[0]) {
   }
   // Notify UI that status changed (claim is already cleared by completeTask)
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
-  await backend.loadTasks('eyewire_ii');
+  await backend.loadTasks();
   // Celebration!
   triggerCellCelebration();
 }
@@ -407,7 +407,7 @@ async function releaseCell(cell: typeof cells.value[0]) {
   }
   // Dispatch event so seg dot pips update
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
-  await backend.loadTasks('eyewire_ii');
+  await backend.loadTasks();
 }
 
 // ── Google Sheet write-back ──────────────────────────────────────────

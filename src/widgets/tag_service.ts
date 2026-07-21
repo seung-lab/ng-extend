@@ -5,6 +5,7 @@
  */
 
 import {supabase} from '../supabase';
+import {currentDatasetTag} from '../datasets';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -149,7 +150,7 @@ export async function clearTag(segmentId: string): Promise<boolean> {
  */
 export async function importFromSheet(
     sheetUrl: string,
-    dataset: string = 'eyewire_ii',
+    dataset: string = currentDatasetTag(),
 ): Promise<ImportResult> {
   // Convert to CSV export URL
   let csvUrl = sheetUrl;

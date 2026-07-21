@@ -127,6 +127,18 @@ export function currentSegLayerName(): string {
 }
 
 /**
+ * Canonical dataset tag to STAMP on and FILTER Supabase rows (tasks, edits,
+ * help, etc.) for whatever dataset is currently on screen. Replaces the old
+ * hardcoded 'eyewire_ii' string that mislabelled every row regardless of the
+ * active dataset. Falls back to the stroeh production dataset when the viewer
+ * isn't ready — which is also the canonical value 'eyewire_ii' migrates to, so
+ * existing rows still match.
+ */
+export function currentDatasetTag(): string {
+  return canonicalDataset(currentSegLayerName()) || 'stroeh_mouse_retina';
+}
+
+/**
  * Map any dataset-name variant the app has used historically to a stable
  * canonical key, so legacy help requests / saved links still group with
  * the current dataset.

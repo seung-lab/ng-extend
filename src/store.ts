@@ -8,6 +8,7 @@ import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/spec
 import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
+import {currentDatasetTag} from './datasets';
 import {supabase} from './supabase';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
@@ -1285,7 +1286,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       position: JSON.stringify(req.position),
       note: req.note || '',
       issue_type: req.issueType,
-      dataset: req.dataset || 'eyewire_ii',
+      dataset: req.dataset || currentDatasetTag(),
       cell_type: req.cellType || null,
       nickname: req.nickname || null,
       screenshot_url: req.screenshotUrl || null,
@@ -2482,7 +2483,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   // ── Task management ───────────────────────────────────────────────────
   /** Load tasks for a dataset, with optional status filter. */
-  async function loadTasks(dataset: string = 'eyewire_ii', statusFilter?: string) {
+  async function loadTasks(dataset: string = currentDatasetTag(), statusFilter?: string) {
     loading.value = true;
     error.value = '';
     try {
@@ -2668,7 +2669,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         segment_after: entry.segment_after ?? null,
         coordinates: entry.coordinates ?? null,
         metadata: entry.metadata ?? null,
-        dataset: entry.dataset ?? 'eyewire_ii',
+        dataset: entry.dataset ?? currentDatasetTag(),
         success: entry.success ?? true,
       }).then(
         ({ error }) => { if (error) console.warn('[backend] edit_log insert failed:', error.message); },
@@ -2797,7 +2798,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   // ── Import from Google Sheet (reuses parseCsv from queue store) ─────
   /** Batch-import tasks from a Google Sheet CSV into Supabase. */
-  async function importFromGoogleSheet(url: string, dataset: string = 'eyewire_ii') {
+  async function importFromGoogleSheet(url: string, dataset: string = currentDatasetTag()) {
     loading.value = true;
     error.value = '';
     try {
@@ -3160,7 +3161,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .from('proofreading_tasks')
           .insert({
             segment_id: currentSegId || '',
-            dataset: 'eyewire_ii',
+            dataset: currentDatasetTag(),
             status: 'pending',
             claim_point_x: point[0],
             claim_point_y: point[1],
@@ -3178,7 +3179,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       if (ok) {
         const local = tasks.value.find(t => t.id === task!.id);
         if (local) { local.status = 'assigned'; local.assigned_to = userId.value; }
-        await loadTasks('eyewire_ii');
+        await loadTasks();
         const label = currentSegId ? `...${currentSegId.slice(-4)}` : pointKey(point);
         await postActivity(`claimed cell ${label}`);
         return { ok: true };
@@ -3202,7 +3203,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     activeTaskId.value = task.id;
     await releaseTask();
     activeTaskId.value = prevActive;
-    await loadTasks('eyewire_ii');
+    await loadTasks();
     return true;
   }
 
@@ -3217,7 +3218,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     activeTaskId.value = task.id;
     await releaseTask();
     activeTaskId.value = prevActive;
-    await loadTasks('eyewire_ii');
+    await loadTasks();
     return true;
   }
 

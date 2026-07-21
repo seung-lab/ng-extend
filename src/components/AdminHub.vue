@@ -59,9 +59,57 @@ function notifStage(n: any): 'scheduled' | 'active' | 'expired' {
   if (n.send_at && new Date(n.send_at).getTime() > now + 2_000) return 'scheduled';
   return 'active';
 }
-const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled'));
-const activeNotifs    = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'active'));
-const expiredNotifs   = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'expired'));
+/**
+ * Categorize a notification so the list can be filtered. Most of the admin list
+ * is auto-generated noise (per-user badge awards, weekly recaps, help replies)
+ * that an admin rarely wants to manage; only broadcasts and weekly champions are
+ * on by default.
+ */
+function notifCategory(n: any): string {
+  const t = n.title || '';
+  if (t.includes('Weekly Champions')) return 'weeklyChampions';
+  if (t.includes('Week in Science')) return 'weeklyRecap';
+  if (t.includes('Response to your help request')) return 'helpResponse';
+  if (t === '✨ New Achievement!') return 'customBadge';         // admin-awarded special badge
+  if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
+  return 'announcement';
+}
+
+const NOTIF_CATEGORIES: { key: string; label: string }[] = [
+  { key: 'announcement',    label: 'Announcements' },
+  { key: 'weeklyChampions', label: 'Weekly champions' },
+  { key: 'customBadge',     label: 'Custom badges' },
+  { key: 'personalBadge',   label: 'Personal badges' },
+  { key: 'weeklyRecap',     label: 'Weekly recaps' },
+  { key: 'helpResponse',    label: 'Help replies' },
+];
+const NOTIF_FILTER_KEY = 'nge-admin-notif-filters-v1';
+// Default ON: the admin's own broadcasts + the global weekly champions post.
+const DEFAULT_VISIBLE = ['announcement', 'weeklyChampions'];
+const visibleCategories = ref<Set<string>>(new Set(loadNotifFilters()));
+function loadNotifFilters(): string[] {
+  try {
+    const raw = localStorage.getItem(NOTIF_FILTER_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* fall through */ }
+  return DEFAULT_VISIBLE;
+}
+function toggleNotifCategory(key: string) {
+  const s = new Set(visibleCategories.value);
+  if (s.has(key)) s.delete(key); else s.add(key);
+  visibleCategories.value = s;
+  try { localStorage.setItem(NOTIF_FILTER_KEY, JSON.stringify([...s])); } catch { /* non-critical */ }
+}
+function isCategoryVisible(n: any): boolean {
+  return visibleCategories.value.has(notifCategory(n));
+}
+function categoryCount(key: string): number {
+  return backend.adminNotifications.filter((n: any) => notifCategory(n) === key).length;
+}
+
+const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled' && isCategoryVisible(n)));
+const activeNotifs    = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'active'   && isCategoryVisible(n)));
+const expiredNotifs   = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'expired'  && isCategoryVisible(n)));
 
 /** Load an existing notification into the compose form for editing. */
 function startEdit(n: any) {
@@ -523,6 +571,23 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- Category filters. Auto-generated notifications (per-user badges,
+           weekly recaps, help replies) are off by default so the list shows the
+           admin's own broadcasts + weekly champions; toggle a chip to reveal a
+           category. Persisted per browser. -->
+      <div class="nge-admin-block nge-admin-notif-filters">
+        <label class="nge-admin-label">Show</label>
+        <div class="nge-admin-filter-chips">
+          <button
+            v-for="cat in NOTIF_CATEGORIES"
+            :key="cat.key"
+            class="nge-admin-filter-chip"
+            :class="{ 'nge-admin-filter-chip--on': visibleCategories.has(cat.key) }"
+            @click="toggleNotifCategory(cat.key)"
+          >{{ cat.label }} <span class="nge-admin-filter-count">{{ categoryCount(cat.key) }}</span></button>
+        </div>
+      </div>
+
       <!-- Notifications by lifecycle stage. All three come from ONE paginated
            admin query (send_at DESC), so future-dated rows sort to the top and
            the scheduled queue is always on the first page. Loading every
@@ -877,6 +942,33 @@ onMounted(() => {
   border-left: 2px solid rgba(255, 255, 255, 0.12);
   padding-left: 8px;
   opacity: 0.65;
+}
+
+.nge-admin-notif-filters { margin-bottom: 6px; }
+.nge-admin-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.nge-admin-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  color: #8b93a7;
+  font-size: 0.82em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.nge-admin-filter-chip:hover { border-color: rgba(74, 158, 255, 0.4); color: #cfd6e6; }
+.nge-admin-filter-chip--on {
+  background: rgba(74, 158, 255, 0.16);
+  border-color: rgba(74, 158, 255, 0.5);
+  color: #e0ecff;
+}
+.nge-admin-filter-count {
+  font-size: 0.9em;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
 }
 
 .nge-admin-edit-btn {
