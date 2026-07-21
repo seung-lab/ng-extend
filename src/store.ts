@@ -2294,6 +2294,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       // Check admin status + load special badges + favorite badge after user is synced
       await checkAdmin();
       await loadMySpecialBadges();
+      await loadMyBadgeAwards();
       await loadFavoriteBadge();
     } catch (e: any) {
       console.warn('[backend] User sync failed:', e.message);
@@ -3642,6 +3643,33 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }));
   }
 
+  // ── Building/Exploration badge awards ─────────────────────────────────────
+  // Persist the first time each edits/cells threshold is crossed, so a badge
+  // stays earned even if the underlying stat later drops. Keyed 'track:badgeId'.
+  const myBadgeAwards = ref<Set<string>>(new Set());
+  function badgeAwardKey(track: string, badgeId: number): string {
+    return `${track}:${badgeId}`;
+  }
+  async function loadMyBadgeAwards() {
+    if (!userId.value) return;
+    const { data } = await supabase
+      .from('badge_awards')
+      .select('track,badge_id')
+      .eq('user_id', userId.value);
+    myBadgeAwards.value = new Set((data || []).map((r: any) => badgeAwardKey(r.track, r.badge_id)));
+  }
+  async function recordBadgeAward(track: string, badgeId: number) {
+    if (!userId.value || badgeId == null) return;
+    const key = badgeAwardKey(track, badgeId);
+    if (myBadgeAwards.value.has(key)) return;   // already recorded this session
+    myBadgeAwards.value.add(key);
+    const { error: err } = await supabase
+      .from('badge_awards')
+      .upsert({ user_id: userId.value, track, badge_id: badgeId },
+              { onConflict: 'user_id,track,badge_id' });
+    if (err) console.warn('[badge] recordBadgeAward failed:', err.message);
+  }
+
   async function createSpecialBadge(data: {
     name: string; description: string; slug: string;
     image_url: string; thumbnail_url?: string;
@@ -3866,6 +3894,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
     // Special Badges
     specialBadges, mySpecialBadges,
+    myBadgeAwards, loadMyBadgeAwards, recordBadgeAward,
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload

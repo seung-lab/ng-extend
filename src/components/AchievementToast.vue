@@ -147,6 +147,8 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
     if (badge.threshold <= 0) continue;
     if (prevEdits < badge.threshold && newEdits >= badge.threshold) {
       if (!claimBadgeOnce(badge.id != null ? `b:${badge.id}` : `b:${badge.slug}`)) continue;
+      // Persist the earn so it survives a stat drop / new device (item 11).
+      if (badge.id != null) backend.recordBadgeAward('building', badge.id);
       const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
       addToast({
         type: 'badge',
@@ -188,6 +190,8 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
     if (badge.threshold <= 0) continue;
     if (prevCells < badge.threshold && newCells >= badge.threshold) {
       if (!claimBadgeOnce(badge.id != null ? `e:${badge.id}` : `e:${badge.slug}`)) continue;
+      // Persist the earn so it survives a stat drop / new device (item 11).
+      if (badge.id != null) backend.recordBadgeAward('exploration', badge.id);
       const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
       addToast({
         type: 'badge',

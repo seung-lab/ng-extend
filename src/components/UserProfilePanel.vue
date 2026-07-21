@@ -278,7 +278,12 @@ function statForTrack(track: BadgeTrack): number {
 
 function isBadgeEarned(badge: BadgeDefinition): boolean {
   if (badge.threshold === 0) return false;
-  return statForTrack(badge.track) >= badge.threshold;
+  if (statForTrack(badge.track) >= badge.threshold) return true;
+  // Persisted earn: once crossed, a badge stays earned even if the stat later
+  // drops. myBadgeAwards is the CURRENT user's, so only apply it to own profile.
+  if (!viewingOtherUser.value && badge.id != null &&
+      backendStore.myBadgeAwards.has(`${badge.track}:${badge.id}`)) return true;
+  return false;
 }
 
 function onBadgeClick(badge: BadgeDefinition) {
