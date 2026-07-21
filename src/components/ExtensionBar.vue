@@ -1079,9 +1079,10 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 .nge-dataset-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   height: 38px;
-  padding: 0 10px;
+  padding: 0 14px;
+  margin-right: 4px;
   background: none;
   border: none;
   border-radius: 4px;
@@ -1089,10 +1090,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
+  white-space: nowrap;
   cursor: pointer;
   opacity: 0.85;
   transition: background 0.15s, opacity 0.15s, color 0.15s;
 }
+.nge-dataset-label { padding-right: 2px; }
 .nge-dataset-btn:hover {
   opacity: 1;
   background: rgba(255, 255, 255, 0.06);
