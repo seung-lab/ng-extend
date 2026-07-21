@@ -859,6 +859,15 @@ const respondingTo = ref<string | null>(null);
 const responseNote = ref('');
 const responseUrl = ref('');
 const responseAnnotationLayer = ref('');
+const responseScreenshotUrl = ref('');
+const showResponseScreenshotDialog = ref(false);
+
+function onResponseScreenshotAttached(payload: { url: string }) {
+  responseScreenshotUrl.value = payload.url;
+}
+function clearResponseScreenshot() {
+  responseScreenshotUrl.value = '';
+}
 
 function toggleResponseForm(reqId: string) {
   if (respondingTo.value === reqId) {
@@ -868,6 +877,7 @@ function toggleResponseForm(reqId: string) {
     responseNote.value = '';
     responseUrl.value = '';
     responseAnnotationLayer.value = '';
+    responseScreenshotUrl.value = '';
   }
 }
 
@@ -883,19 +893,19 @@ function getAnnotationLayers(): string[] {
 }
 
 async function submitResponse(req: HelpRequest, andResolve = false) {
-  if (!responseNote.value.trim()) return;
-  const payload = {
-    note: responseNote.value.trim(),
+  // A reply needs at least a note or a screenshot.
+  if (!responseNote.value.trim() && !responseScreenshotUrl.value) return;
+  // Each reply is its own row in help_responses, so its url / annotation layer /
+  // screenshot accumulate instead of overwriting earlier replies.
+  await helpStore.addResponse(req.id, {
+    note: responseNote.value.trim() || undefined,
     url: responseUrl.value.trim() || undefined,
     annotationLayer: responseAnnotationLayer.value.trim() || undefined,
-    appendToExisting: !!req.responseNote,  // signal to append, not replace
-  };
-  if (andResolve) {
-    await helpStore.resolve(req.id, payload);
-  } else {
-    await helpStore.respond(req.id, payload);
-  }
+    screenshotUrl: responseScreenshotUrl.value || undefined,
+    resolve: andResolve,
+  });
   respondingTo.value = null;
+  responseScreenshotUrl.value = '';
   helpStore.refreshPending();
 }
 
@@ -1400,12 +1410,29 @@ const panelStyle = computed(() => ({
                   </div>
                 </div>
 
-            <!-- Show existing response thread -->
-            <div v-if="req.responseNote" class="nge-cl-response-display">
-              <div class="nge-cl-response-label">💬 {{ req.resolvedByName || 'Response' }}:</div>
-              <div class="nge-cl-response-text" v-html="formatResponseThread(req.responseNote)"></div>
-              <a v-if="req.responseUrl" class="nge-cl-response-link" @click.prevent="openResponseUrl(req.responseUrl)" href="#">↗ View linked state</a>
-              <span v-if="req.responseAnnotationLayer" class="nge-cl-response-layer">📐 Layer: {{ req.responseAnnotationLayer }}</span>
+            <!-- Reply thread: one entry per help_responses row (each keeps its
+                 own link / annotation layer / screenshot). Falls back to the
+                 legacy single response_note for data created before the child
+                 table existed. -->
+            <div v-if="(req.responses && req.responses.length) || req.responseNote" class="nge-cl-response-display">
+              <template v-if="req.responses && req.responses.length">
+                <div v-for="resp in req.responses" :key="resp.id" class="nge-cl-response-item">
+                  <div class="nge-cl-response-label">💬 {{ resp.userName || 'Response' }}<span v-if="resp.resolved"> · resolved</span>:</div>
+                  <div v-if="resp.note" class="nge-cl-response-text">{{ resp.note }}</div>
+                  <a v-if="resp.url" class="nge-cl-response-link" @click.prevent="openResponseUrl(resp.url)" href="#">↗ View linked state</a>
+                  <span v-if="resp.annotationLayer" class="nge-cl-response-layer">📐 Layer: {{ resp.annotationLayer }}</span>
+                  <a v-if="resp.screenshotUrl" :href="resp.screenshotUrl" target="_blank" rel="noopener"
+                     class="nge-cl-help-shot-thumb" title="Open full screenshot">
+                    <img :src="resp.screenshotUrl" alt="Reply screenshot" />
+                  </a>
+                </div>
+              </template>
+              <template v-else-if="req.responseNote">
+                <div class="nge-cl-response-label">💬 {{ req.resolvedByName || 'Response' }}:</div>
+                <div class="nge-cl-response-text" v-html="formatResponseThread(req.responseNote)"></div>
+                <a v-if="req.responseUrl" class="nge-cl-response-link" @click.prevent="openResponseUrl(req.responseUrl)" href="#">↗ View linked state</a>
+                <span v-if="req.responseAnnotationLayer" class="nge-cl-response-layer">📐 Layer: {{ req.responseAnnotationLayer }}</span>
+              </template>
               <button v-if="respondingTo !== req.id" class="nge-cl-btn nge-cl-btn--reply" @click="toggleResponseForm(req.id)">↩ Reply</button>
             </div>
 
@@ -1436,14 +1463,26 @@ const panelStyle = computed(() => ({
                 <option value="">Select annotation layer (optional)</option>
                 <option v-for="layer in getAnnotationLayers()" :key="layer" :value="layer">{{ layer }}</option>
               </select>
+              <!-- Attach an (optionally annotated) screenshot to the reply,
+                   same flow as the initial request. -->
+              <button
+                v-if="!responseScreenshotUrl"
+                class="nge-cl-btn nge-cl-help-shot-btn"
+                @click="showResponseScreenshotDialog = true"
+                title="Attach a screenshot of the current view"
+              >📷 Attach screenshot</button>
+              <div v-else class="nge-cl-help-shot-preview">
+                <img :src="responseScreenshotUrl" alt="Reply screenshot" />
+                <button class="nge-cl-help-shot-remove" @click="clearResponseScreenshot" title="Remove screenshot">×</button>
+              </div>
               <button
                 class="nge-cl-btn nge-cl-btn--submit-response"
-                :disabled="!responseNote.trim()"
+                :disabled="!responseNote.trim() && !responseScreenshotUrl"
                 @click="submitResponse(req)"
               >Submit Response</button>
               <button
                 class="nge-cl-btn nge-cl-btn--submit-response nge-cl-btn--resolve"
-                :disabled="!responseNote.trim()"
+                :disabled="!responseNote.trim() && !responseScreenshotUrl"
                 @click="submitResponse(req, true)"
               >Submit & Resolve</button>
             </div>
@@ -1481,12 +1520,26 @@ const panelStyle = computed(() => ({
                   <button class="nge-cl-btn nge-cl-btn--release" @click="removeReq(req)" title="Remove">×</button>
                 </div>
               </div>
-              <!-- Response display -->
-              <div v-if="req.responseNote" class="nge-cl-response-display">
-                <div class="nge-cl-response-label">Response from {{ req.resolvedByName || 'resolver' }}:</div>
-                <div class="nge-cl-response-text">{{ req.responseNote }}</div>
-                <a v-if="req.responseUrl" class="nge-cl-response-link" @click.prevent="openResponseUrl(req.responseUrl)" href="#">↗ View linked state</a>
-                <span v-if="req.responseAnnotationLayer" class="nge-cl-response-layer">📐 Layer: {{ req.responseAnnotationLayer }}</span>
+              <!-- Response display: child-table thread, legacy fallback -->
+              <div v-if="(req.responses && req.responses.length) || req.responseNote" class="nge-cl-response-display">
+                <template v-if="req.responses && req.responses.length">
+                  <div v-for="resp in req.responses" :key="resp.id" class="nge-cl-response-item">
+                    <div class="nge-cl-response-label">{{ resp.userName || 'Response' }}<span v-if="resp.resolved"> · resolved</span>:</div>
+                    <div v-if="resp.note" class="nge-cl-response-text">{{ resp.note }}</div>
+                    <a v-if="resp.url" class="nge-cl-response-link" @click.prevent="openResponseUrl(resp.url)" href="#">↗ View linked state</a>
+                    <span v-if="resp.annotationLayer" class="nge-cl-response-layer">📐 Layer: {{ resp.annotationLayer }}</span>
+                    <a v-if="resp.screenshotUrl" :href="resp.screenshotUrl" target="_blank" rel="noopener"
+                       class="nge-cl-help-shot-thumb" title="Open full screenshot">
+                      <img :src="resp.screenshotUrl" alt="Reply screenshot" />
+                    </a>
+                  </div>
+                </template>
+                <template v-else-if="req.responseNote">
+                  <div class="nge-cl-response-label">Response from {{ req.resolvedByName || 'resolver' }}:</div>
+                  <div class="nge-cl-response-text">{{ req.responseNote }}</div>
+                  <a v-if="req.responseUrl" class="nge-cl-response-link" @click.prevent="openResponseUrl(req.responseUrl)" href="#">↗ View linked state</a>
+                  <span v-if="req.responseAnnotationLayer" class="nge-cl-response-layer">📐 Layer: {{ req.responseAnnotationLayer }}</span>
+                </template>
               </div>
             </div>
           </template>
@@ -1758,6 +1811,12 @@ const panelStyle = computed(() => ({
     mode="attach"
     @close="showHelpScreenshotDialog = false"
     @attached="onHelpScreenshotAttached"
+  />
+  <ScreenshotDialog
+    :show="showResponseScreenshotDialog"
+    mode="attach"
+    @close="showResponseScreenshotDialog = false"
+    @attached="onResponseScreenshotAttached"
   />
 </template>
 

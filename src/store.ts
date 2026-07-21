@@ -1074,6 +1074,36 @@ export interface HelpRequest {
   responseAnnotationLayer?: string;
   /** Public URL of an attached screenshot (Firebase Storage). */
   screenshotUrl?: string;
+  /** Thread of replies from the help_responses child table. Each reply keeps its
+   *  OWN url / annotation layer / screenshot, so links accumulate instead of
+   *  overwriting (the legacy response_* columns overwrote on every reply). */
+  responses?: HelpResponse[];
+}
+
+export interface HelpResponse {
+  id: string;
+  userId?: string;
+  userName?: string;
+  note?: string;
+  url?: string;
+  annotationLayer?: string;
+  screenshotUrl?: string;
+  resolved?: boolean;
+  createdAt: string;
+}
+
+function rowToHelpResponse(row: any): HelpResponse {
+  return {
+    id: row.id,
+    userId: row.user_id ?? undefined,
+    userName: row.user_name ?? undefined,
+    note: row.note ?? undefined,
+    url: row.url ?? undefined,
+    annotationLayer: row.annotation_layer ?? undefined,
+    screenshotUrl: row.screenshot_url ?? undefined,
+    resolved: !!row.resolved,
+    createdAt: row.created_at,
+  };
 }
 
 /** Map Supabase row → HelpRequest interface */
@@ -1122,12 +1152,79 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
         loadFromLocalStorage(); // fallback
         return;
       }
-      requests.value = (data ?? []).map(rowToHelpRequest);
+      const reqs = (data ?? []).map(rowToHelpRequest);
+      // Attach each request's reply thread from the help_responses child table.
+      // Best-effort: if the table/query fails, requests still load (legacy
+      // response_* fields on the row remain as a fallback in the UI).
+      try {
+        const ids = reqs.map(r => r.id);
+        if (ids.length) {
+          const { data: resp } = await supabase
+            .from('help_responses')
+            .select('*')
+            .in('request_id', ids)
+            .order('created_at', { ascending: true });
+          const byReq = new Map<string, HelpResponse[]>();
+          for (const row of resp ?? []) {
+            const list = byReq.get(row.request_id) ?? [];
+            list.push(rowToHelpResponse(row));
+            byReq.set(row.request_id, list);
+          }
+          for (const r of reqs) r.responses = byReq.get(r.id) ?? [];
+        }
+      } catch (e) {
+        console.warn('[helpRequests] responses load failed:', e);
+      }
+      requests.value = reqs;
       refreshPending();
     } catch (e) {
       console.warn('[helpRequests] load failed, falling back to localStorage:', e);
       loadFromLocalStorage();
     }
+  }
+
+  /**
+   * Add a reply to a help request as its own row in help_responses (so links /
+   * screenshots accumulate). Optionally resolves the thread. Replaces the old
+   * respond()/resolve() single-column writes for new replies.
+   */
+  async function addResponse(id: string, payload: {
+    note?: string; url?: string; annotationLayer?: string;
+    screenshotUrl?: string; resolve?: boolean;
+  }) {
+    const backend = useProofreadingBackendStore();
+    const responderName = backend.chatHandle || backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
+    const row = {
+      request_id: id,
+      user_id: backend.userId || null,
+      user_name: responderName,
+      note: payload.note || null,
+      url: payload.url || null,
+      annotation_layer: payload.annotationLayer || null,
+      screenshot_url: payload.screenshotUrl || null,
+      resolved: !!payload.resolve,
+    };
+    const { data: inserted, error: insErr } = await supabase
+      .from('help_responses').insert(row).select('*').single();
+    if (insErr) { console.warn('[helpRequests] addResponse error:', insErr.message); return; }
+
+    if (payload.resolve) {
+      const { error: updErr } = await supabase.from('help_requests').update({
+        resolved: true,
+        resolved_at: new Date().toISOString(),
+        resolved_by: backend.userId || null,
+        resolved_by_name: responderName,
+      }).eq('id', id);
+      if (updErr) console.warn('[helpRequests] resolve-on-response error:', updErr.message);
+    }
+
+    // Optimistic local update
+    const r = requests.value.find(x => x.id === id);
+    if (r) {
+      r.responses = [...(r.responses ?? []), rowToHelpResponse(inserted)];
+      if (payload.resolve) { r.resolved = true; r.resolvedByName = responderName; }
+    }
+    refreshPending();
   }
 
   /** Fallback: load from localStorage (migration period). */
@@ -1341,7 +1438,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   load();
   subscribe();
 
-  return { requests, pending, add, resolve, respond, remove, refreshPending, load, subscribe, unsubscribe };
+  return { requests, pending, add, resolve, respond, addResponse, remove, refreshPending, load, subscribe, unsubscribe };
 });
 
 // ── Working Links ─────────────────────────────────────────────────────────
