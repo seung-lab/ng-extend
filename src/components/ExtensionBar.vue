@@ -24,7 +24,8 @@ import UsernamePrompt from "components/UsernamePrompt.vue";
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
-import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore} from '../store';
+import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore, useLayersStore} from '../store';
+import {currentSegLayerName, datasetDisplayName} from '../datasets';
 import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
@@ -153,6 +154,15 @@ onMounted(() => {
 
 const statsStore = useUserStatsStore();
 const { stats } = storeToRefs(statsStore);
+
+// Label the Dataset button with the current dataset instead of the static word
+// "Dataset". `activeLayers` (reactive) is touched so this recomputes when the
+// user switches datasets; currentSegLayerName reads the non-reactive viewer.
+const layersStoreForLabel = useLayersStore();
+const currentDatasetName = computed(() => {
+  void layersStoreForLabel.activeLayers.size;
+  return datasetDisplayName(currentSegLayerName()) || 'Dataset';
+});
 const { activeSegId } = storeToRefsAnnot(useSegmentAnnotationStore());
 const helpStore = useHelpRequestStore();
 const chatStore = useChatStore();
@@ -662,9 +672,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       <span class="nge-ask-label">Ask</span>
     </button>
     <button class="nge-dataset-btn" @click="showDatasetSelector = !showDatasetSelector"
-            title="Switch Dataset">
+            :title="'Current dataset: ' + currentDatasetName + ' — click to switch'">
       <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
-      <span class="nge-dataset-label">Dataset</span>
+      <span class="nge-dataset-label">{{ currentDatasetName }}</span>
     </button>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"

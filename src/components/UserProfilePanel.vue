@@ -2765,6 +2765,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 14px;
   overflow-y: auto;
+  /* Always reserve the scrollbar's space so revealing it on hover doesn't
+     reflow the grid and resize every badge. */
+  scrollbar-gutter: stable;
   padding-right: 4px;
   scrollbar-width: thin;
   scrollbar-color: rgba(74, 158, 255, 0.2) transparent;

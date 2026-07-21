@@ -16,7 +16,7 @@ import {
 import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
-import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, DATASETS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, DATASETS, type DatasetEntry } from '../datasets';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import ScreenshotDialog from './ScreenshotDialog.vue';
 
@@ -812,14 +812,9 @@ function getViewerPosition(): number[] {
 }
 
 function getCurrentDatasetName(): string {
-  try {
-    const viewer = (window as any)['viewer'];
-    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
-      const typeName = ml.layer?.constructor?.name ?? '';
-      if (typeName.includes('Segmentation')) return ml.name ?? '';
-    }
-  } catch {}
-  return '';
+  // Shared with the Dataset button so both report the same on-screen dataset
+  // (visible, non-archived seg layer — see currentSegLayerName).
+  return currentSegLayerName();
 }
 
 async function submitNewHelp() {

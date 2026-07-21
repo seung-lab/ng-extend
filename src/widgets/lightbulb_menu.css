@@ -20,10 +20,10 @@
 
 /* Status colours for the button icon */
 .nge-lb-btn.nge-lb-complete svg path {
-  fill: #CE93D8; /* purple — completed */
+  fill: #FFD54F; /* golden yellow — done (proofread AND typed) */
 }
 .nge-lb-btn.nge-lb-annotated svg path {
-  fill: #4caf50; /* green — annotated */
+  fill: #F06292; /* pink — typed */
 }
 
 .nge-lb-btn.nge-lb-incomplete svg path {
@@ -422,16 +422,16 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   filter: drop-shadow(0 0 6px rgba(180, 220, 255, 0.95));
 }
 .nge-lb-btn.nge-lb-annotated .nge-lb-pip {
-  color: #4CAF50;  /* green — typed but not completed */
-  filter: drop-shadow(0 0 4px #4CAF50aa);
+  color: #F06292;  /* pink — typed but not proofread */
+  filter: drop-shadow(0 0 4px #F06292aa);
 }
 .nge-lb-btn.nge-lb-done-unlabeled .nge-lb-pip {
-  color: #42A5F5;  /* blue — completed but not typed */
+  color: #42A5F5;  /* blue — proofread but not typed */
   filter: drop-shadow(0 0 4px #42A5F5aa);
 }
 .nge-lb-btn.nge-lb-complete .nge-lb-pip {
-  color: #CE93D8;  /* purple — completed AND typed */
-  filter: drop-shadow(0 0 5px #CE93D8aa);
+  color: #FFD54F;  /* golden yellow — done (proofread AND typed) */
+  filter: drop-shadow(0 0 5px #FFD54Faa);
 }
 /* Claimed indicator — golden delta with stronger glow */
 .nge-lb-btn.nge-lb-claimed .nge-lb-pip {
@@ -440,9 +440,9 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
 }
 
 /* Tint the dots text to match status */
-.nge-lb-btn.nge-lb-complete .nge-lb-dots { color: #CE93D8; }
+.nge-lb-btn.nge-lb-complete .nge-lb-dots { color: #FFD54F; }
 .nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #42A5F5; }
-.nge-lb-btn.nge-lb-annotated .nge-lb-dots { color: #4CAF50; }
+.nge-lb-btn.nge-lb-annotated .nge-lb-dots { color: #F06292; }
 .nge-lb-btn.nge-lb-incomplete .nge-lb-dots { color: rgba(180, 195, 220, 0.85); }
 .nge-lb-btn.nge-lb-claimed .nge-lb-dots { color: #FFD700; }
 
@@ -472,17 +472,17 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   filter: brightness(1.15);
 }
 
-.nge-label-badge--complete {
-  color: #E1BEE7;
-  background: linear-gradient(180deg, rgba(206, 147, 216, 0.22), rgba(206, 147, 216, 0.12));
-  border-color: rgba(206, 147, 216, 0.4);
+.nge-label-badge--complete {  /* "Done" — proofread & typed */
+  color: #FFE7A3;
+  background: linear-gradient(180deg, rgba(255, 213, 79, 0.22), rgba(255, 213, 79, 0.12));
+  border-color: rgba(255, 213, 79, 0.4);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.nge-label-badge--annotated {
-  color: #A5D6A7;
-  background: linear-gradient(180deg, rgba(76, 175, 80, 0.22), rgba(76, 175, 80, 0.12));
-  border-color: rgba(76, 175, 80, 0.4);
+.nge-label-badge--annotated {  /* "Typed" — typed, not proofread */
+  color: #F8BBD0;
+  background: linear-gradient(180deg, rgba(240, 98, 146, 0.22), rgba(240, 98, 146, 0.12));
+  border-color: rgba(240, 98, 146, 0.4);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
@@ -543,10 +543,13 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   content: '\25B2'; /* ▲ same glyph as row pip — sized via color/stroke */
   display: block;
 }
-.nge-legend-pip--complete     { color: #CE93D8; filter: drop-shadow(0 0 3px #CE93D8aa); }  /* purple — done & typed */
-.nge-legend-pip--done         { color: #42A5F5; filter: drop-shadow(0 0 3px #42A5F5aa); }  /* blue — done, no type */
-.nge-legend-pip--annotated    { color: #4CAF50; filter: drop-shadow(0 0 3px #4CAF50aa); }  /* green — typed, not done */
-.nge-legend-pip--unlabeled    { color: #CE93D8; filter: drop-shadow(0 0 2px #CE93D888); }
+/* Colours match the button pips by SEMANTIC state, not by class-name suffix.
+   The legend labels are Proofread / Typed / Done (see main.ts injectSegmentLegend):
+   Proofread (complete, no type) = blue, Typed = pink, Done (proofread+typed) = gold. */
+.nge-legend-pip--complete     { color: #42A5F5; filter: drop-shadow(0 0 3px #42A5F5aa); }  /* "Proofread" — proofread, no type */
+.nge-legend-pip--done         { color: #FFD54F; filter: drop-shadow(0 0 3px #FFD54Faa); }  /* "Done" — proofread & typed */
+.nge-legend-pip--annotated    { color: #F06292; filter: drop-shadow(0 0 3px #F06292aa); }  /* "Typed" — typed, not proofread */
+.nge-legend-pip--unlabeled    { color: #42A5F5; filter: drop-shadow(0 0 2px #42A5F588); }
 .nge-legend-pip--incomplete {
   color: transparent;
   -webkit-text-stroke: 1.2px rgba(190, 215, 250, 0.95);

@@ -99,6 +99,34 @@ export function findDatasetBySegName(name: string): DatasetEntry | undefined {
 }
 
 /**
+ * The segmentation-layer name currently on screen. Prefers a visible,
+ * non-archived layer: switching datasets leaves the previous segmentation layer
+ * archived in `managedLayers`, so taking the first one would report a stale
+ * dataset (e.g. the tutorial's pinky while the viewer is really on stroeh).
+ *
+ * Reads the live `window['viewer']`, which is NOT reactive — callers needing the
+ * value to update on a dataset switch should also touch a reactive layer signal
+ * (e.g. `useLayersStore().activeLayers`).
+ */
+export function currentSegLayerName(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    const layers = viewer?.layerManager?.managedLayers ?? [];
+    const isSeg = (ml: any) => {
+      const cn = ml?.layer?.constructor?.name ?? '';
+      return cn.includes('Segmentation') || ml?.layer?.type === 'segmentation';
+    };
+    let firstSeg: any = null;
+    for (const ml of layers) {
+      if (!isSeg(ml)) continue;
+      if (!firstSeg) firstSeg = ml;
+      if (ml.visible !== false && !ml.archived) return ml.name ?? '';
+    }
+    return firstSeg?.name ?? '';
+  } catch { return ''; }
+}
+
+/**
  * Map any dataset-name variant the app has used historically to a stable
  * canonical key, so legacy help requests / saved links still group with
  * the current dataset.

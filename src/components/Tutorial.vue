@@ -49,43 +49,56 @@ const BADGE_KEYS: Record<number, { key: string; title: string; image: string }> 
 async function awardBadgeIfNew(tutorialNum: number) {
     const badge = BADGE_KEYS[tutorialNum];
     if (!badge) return;
-    if (localStorage.getItem(badge.key)) return; // already awarded
-    localStorage.setItem(badge.key, new Date().toISOString());
-
-    // Trigger the fancy hero celebration in AchievementToast via the store
     const backend = useProofreadingBackendStore();
-    backend.pendingBadgeCelebration = {
-        title: `🏆 New Achievement: ${badge.title}`,
-        body: `You earned the "${badge.title}" badge! — Completed Tutorial ${tutorialNum}`,
-        imageUrl: badge.image,
-    };
 
-    // Also persist to Supabase: create notification + self-award special badge
+    // The localStorage flag gates the CELEBRATION only (once per browser). It must
+    // NOT gate persistence: the old code set it before the login check below, so a
+    // logged-out user who finished the tutorial burned the flag and never got a DB
+    // record — even after logging in. Persistence is idempotent (upsert), so it's
+    // safe to attempt on every completion and independently of the flag.
+    if (!localStorage.getItem(badge.key)) {
+        localStorage.setItem(badge.key, new Date().toISOString());
+        // Trigger the fancy hero celebration in AchievementToast via the store
+        backend.pendingBadgeCelebration = {
+            title: `🏆 New Achievement: ${badge.title}`,
+            body: `You earned the "${badge.title}" badge! — Completed Tutorial ${tutorialNum}`,
+            imageUrl: badge.image,
+        };
+    }
+
+    // Persist to Supabase: self-award the special badge, then announce it.
     try {
         if (!backend.userId) return;
 
-        // Create a notification so it shows in the bell feed
-        await backend.createSelfNotification({
-            title: `🏆 New Achievement: ${badge.title}`,
-            body: `You completed Tutorial ${tutorialNum} and earned the "${badge.title}" badge! Congratulations!`,
-            image_url: badge.image,
-            thumbnail_url: badge.image,
-        });
-
-        // Self-award as special badge so it shows on profile
-        // Find or skip if badge doesn't exist in special_badges table
+        // The badge must exist as a special_badges row (Citizen Scientist /
+        // Advanced Operator). If it doesn't, there's nothing to persist — the
+        // award silently no-ops until those rows are created.
         const matchingBadge = backend.specialBadges.find(
             (b: any) => b.name === badge.title || b.slug === badge.key
         );
-        if (matchingBadge) {
-            // Use direct insert (no admin check) for tutorial self-awards
-            await supabase.from('special_badge_awards').upsert({
-                badge_id: matchingBadge.id,
-                user_id: backend.userId,
-                awarded_by: null,
-                reason: `Completed Tutorial ${tutorialNum}`,
-            }, { onConflict: 'badge_id,user_id' });
-            await backend.loadMySpecialBadges();
+        if (!matchingBadge) return;
+
+        // Announce (notification) ONLY when this is a genuinely new award, so
+        // replaying the tutorial doesn't insert duplicate "New Achievement"
+        // rows. The upsert itself is idempotent.
+        const alreadyAwarded = backend.mySpecialBadges.some((a: any) => a.badge_id === matchingBadge.id);
+
+        // Direct insert (no admin check) for tutorial self-awards.
+        await supabase.from('special_badge_awards').upsert({
+            badge_id: matchingBadge.id,
+            user_id: backend.userId,
+            awarded_by: null,
+            reason: `Completed Tutorial ${tutorialNum}`,
+        }, { onConflict: 'badge_id,user_id' });
+        await backend.loadMySpecialBadges();
+
+        if (!alreadyAwarded) {
+            await backend.createSelfNotification({
+                title: `🏆 New Achievement: ${badge.title}`,
+                body: `You completed Tutorial ${tutorialNum} and earned the "${badge.title}" badge! Congratulations!`,
+                image_url: badge.image,
+                thumbnail_url: badge.image,
+            });
         }
     } catch (e) {
         console.warn('[tutorial] badge persistence error:', e);
