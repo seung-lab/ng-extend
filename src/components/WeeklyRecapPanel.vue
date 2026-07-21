@@ -287,9 +287,15 @@ function jumpToCell(segId: string) {
   flex-direction: column;
   max-height: 88vh;
 }
-/* Embedded in the profile tab: no modal height cap, let the profile body scroll. */
+/* Embedded in the profile tab: no modal height cap, let the profile body scroll.
+   Fill the profile shell's width instead of the standalone modal's fixed 580px,
+   which read as a small centred box inside the wider profile. */
 .nge-recap-shell--embedded { max-height: none; }
 .nge-recap-embedded { display: block; width: 100%; }
+.nge-recap-shell--embedded .nge-recap-content {
+  width: 100%;
+  padding: 8px 32px 32px;
+}
 
 /* ── Sci-fi materialize ── */
 .nge-recap-modal :deep(.nge-overlay) {

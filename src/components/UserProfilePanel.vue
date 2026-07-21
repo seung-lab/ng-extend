@@ -519,7 +519,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
     :class="{ 'nge-profile-closing': closing }"
     @hide="handleClose"
   >
-    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub' }">
+    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience' }">
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
@@ -1388,6 +1388,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   max-width: 1200px;
 }
 .nge-profile-shell--admin {
+  width: 720px;
+  max-width: 90vw;
+}
+/* Give Week in Science a real, consistent width instead of letting the shell
+   shrink to the recap's old fixed content width (which read as a tiny box). */
+.nge-profile-shell--week {
   width: 720px;
   max-width: 90vw;
 }
