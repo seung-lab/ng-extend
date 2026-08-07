@@ -90,11 +90,67 @@ const supabaseHeaders = {
   Prefer: 'resolution=merge-duplicates,return=minimal',
 };
 
+const RETRY_ATTEMPTS = 3;
+const RETRY_BASE_MS = 800;
+const RETRY_MAX_MS = 10_000;
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function backoffMs(attempt, retryAfter) {
+  // Honour Retry-After when the server sends a plain seconds value.
+  const seconds = Number(retryAfter);
+  if (retryAfter && Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(seconds * 1000, RETRY_MAX_MS);
+  }
+  const exponential = RETRY_BASE_MS * 2 ** (attempt - 1);
+  return Math.min(exponential + Math.floor(Math.random() * 250), RETRY_MAX_MS);
+}
+
+// CAVE's materializer and Supabase both hiccup occasionally: a 503 from
+// nginx, a 429, a dropped connection. Those clear well inside the 30-minute
+// sync cadence, so a failed run is a false alarm that still costs a red X
+// and an email. Retry them briefly instead.
+//
+// Client errors are deliberately NOT retried. A 401/403 means
+// CAVE_SERVICE_TOKEN expired (they last ~6 months) and a 400 means the query
+// is wrong; both need a person, and failing fast is the signal that gets one.
+async function fetchWithRetry(label, url, options = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    let res;
+    try {
+      res = await fetch(url, options);
+    } catch (e) {
+      // Network-level failure (DNS, TLS, connection reset). Always transient.
+      lastError = new Error(`${label} network error: ${e.message}`);
+      if (attempt === RETRY_ATTEMPTS) break;
+      const wait = backoffMs(attempt, null);
+      console.warn(`[sync] ${label} ${e.message}, retrying in ${wait}ms (attempt ${attempt}/${RETRY_ATTEMPTS})`);
+      await sleep(wait);
+      continue;
+    }
+    if (res.ok) {
+      if (attempt > 1) console.log(`[sync] ${label} recovered on attempt ${attempt}`);
+      return res;
+    }
+    // Read the body here so the caller never has to; a Response body can
+    // only be consumed once.
+    const body = (await res.text()).slice(0, 500);
+    lastError = new Error(`${label} ${res.status}: ${body}`);
+    const transient = res.status === 429 || res.status >= 500;
+    if (!transient || attempt === RETRY_ATTEMPTS) break;
+    const wait = backoffMs(attempt, res.headers.get('retry-after'));
+    console.warn(`[sync] ${label} ${res.status}, retrying in ${wait}ms (attempt ${attempt}/${RETRY_ATTEMPTS})`);
+    await sleep(wait);
+  }
+  throw lastError;
+}
+
 async function getLatestVersion(caveServer, datastack) {
-  const res = await fetch(
+  const res = await fetchWithRetry(
+    'versions',
     `${caveServer}/materialize/api/v3/datastack/${datastack}/versions`,
     { headers: { Authorization: `Bearer ${CAVE_TOKEN}` } });
-  if (!res.ok) throw new Error(`versions ${res.status}: ${await res.text()}`);
   const versions = await res.json();
   if (!Array.isArray(versions) || versions.length === 0) {
     throw new Error('versions endpoint returned empty array');
@@ -107,7 +163,7 @@ async function fetchPage(caveServer, datastack, version, table, offset) {
   // Live queries can change mid-pagination; frozen does not.
   const url = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/${version}/table/${table}/query?return_pyarrow=false`;
   const body = { limit: PAGE_SIZE, offset };
-  const res = await fetch(url, {
+  const res = await fetchWithRetry('query', url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${CAVE_TOKEN}`,
@@ -115,7 +171,6 @@ async function fetchPage(caveServer, datastack, version, table, offset) {
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`query ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
@@ -141,12 +196,11 @@ async function upsertBatch(rows) {
     return;
   }
   const url = `${SUPABASE_URL}/rest/v1/cave_completions_mirror?on_conflict=cave_user_id,dataset,segment_id`;
-  const res = await fetch(url, {
+  await fetchWithRetry('upsert', url, {
     method: 'POST',
     headers: supabaseHeaders,
     body: JSON.stringify(deduped),
   });
-  if (!res.ok) throw new Error(`upsert failed: ${res.status} ${await res.text()}`);
 }
 
 async function syncDatastack(cfg) {
