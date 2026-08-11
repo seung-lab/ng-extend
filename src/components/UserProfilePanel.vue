@@ -185,8 +185,15 @@ onMounted(() => {
     activeTab.value = 'datasets';
   } else if (props.initialTab === 'settings' && !viewingOtherUser.value) {
     activeTab.value = 'settings';
+  } else if (props.initialTab === 'triage' && !viewingOtherUser.value) {
+    // Deep-link from a 🗂 triage notification: straight to the review queue.
+    activeTab.value = 'adminHub';
+    adminInitialSubTab.value = 'triage';
   }
 });
+
+/** Sub-tab AdminHub should open on; set by the triage deep-link. */
+const adminInitialSubTab = ref<string | undefined>(undefined);
 
 // ── Datasets tab: per-dataset contributions + switcher ───────────────────────
 // One card per known dataset with this user's contribution counts, doubling as
@@ -1391,7 +1398,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
       <!-- ── Admin Hub tab ─────────────────────────────────────── -->
       <div v-if="activeTab === 'adminHub'" class="nge-profile-body nge-profile-body--admin">
-        <AdminHub />
+        <AdminHub :initial-sub-tab="adminInitialSubTab" />
       </div>
 
       <!-- ── Settings tab ──────────────────────────────────────── -->

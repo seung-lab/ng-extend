@@ -5,8 +5,13 @@ import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 
 const backend = useProofreadingBackendStore();
 
+const props = defineProps<{ initialSubTab?: string }>();
+
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage'>('notifications');
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage'>(
+  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges'
+    ? props.initialSubTab
+    : 'notifications');
 
 // ── Feedback triage ──────────────────────────────────────────────────────────
 // A scheduled agent reads incoming feedback (site_issues, client_errors) and
@@ -74,7 +79,9 @@ async function loadTriage() {
   }
 }
 
-watch(adminSubTab, t => { if (t === 'triage') loadTriage(); });
+// immediate: the triage deep-link mounts the hub already ON the triage tab,
+// so a change-only watch would never fire the initial load.
+watch(adminSubTab, t => { if (t === 'triage') loadTriage(); }, { immediate: true });
 watch(triageShowReviewed, () => loadTriage());
 
 async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done') {
@@ -93,9 +100,14 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
           const { data } = await supabase.from('site_issues').select('user_id').eq('id', row.source_id).single();
           targetUserId = data?.user_id ?? null;
         }
+        // The reply arrives "from Nurro": guide avatar icon + a random real
+        // neuron render as the card image (admin-uploads/nurro-neurons).
+        const storageBase = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads';
         await supabase.from('notifications').insert({
-          title: '💬 About your feedback',
+          title: '💬 Nurro replied to your feedback',
           body: text,
+          thumbnail_url: `${storageBase}/nurro/guide-avatar.png`,
+          image_url: `${storageBase}/nurro-neurons/neuron-${1 + Math.floor(Math.random() * 6)}.jpg`,
           target_type: targetUserId ? 'user' : 'all',
           target_id: targetUserId,
           send_at: new Date().toISOString(),

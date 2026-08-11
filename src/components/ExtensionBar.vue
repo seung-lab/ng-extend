@@ -134,6 +134,8 @@ onMounted(() => {
 
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
+    // Optional deep-link tab ('triage' opens Admin Hub > Triage, etc.)
+    if (e.detail?.tab) profileInitialTab.value = e.detail.tab;
     showProfile.value = true;
   }) as EventListener);
 

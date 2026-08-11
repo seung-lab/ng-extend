@@ -114,6 +114,12 @@ function isBadgeNotification(notif: any): boolean {
 
 function openDetail(notif: any) {
   backend.markNotificationRead(notif.id);
+  // Triage alerts jump straight to the review queue (Admin Hub > Triage).
+  if ((notif.title || '').startsWith('🗂')) {
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'triage' } }));
+    emit('hide');
+    return;
+  }
   // Badge notifications trigger the hero celebration overlay
   if (isBadgeNotification(notif)) {
     backend.pendingBadgeCelebration = {

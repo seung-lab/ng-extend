@@ -85,6 +85,15 @@ const slackGet = async (method, params) => {
   return json;
 };
 
+// Feedback replies arrive "from Nurro": the guide's avatar as the card icon,
+// plus a random real neuron render as the card image (uploaded to
+// admin-uploads/nurro-neurons; sourced from scifi-ui/media + the CA3 render).
+const NURRO_AVATAR_URL =
+  `${SUPABASE_URL}/storage/v1/object/public/admin-uploads/nurro/guide-avatar.png`;
+const NEURON_RENDER_COUNT = 6;
+const randomNeuronUrl = () =>
+  `${SUPABASE_URL}/storage/v1/object/public/admin-uploads/nurro-neurons/neuron-${1 + Math.floor(Math.random() * NEURON_RENDER_COUNT)}.jpg`;
+
 const REC_LABEL = {
   nothing: 'No action', message: 'Send a message',
   bug_fix_spec: 'Bug fix spec', new_feature: 'New feature',
@@ -120,9 +129,12 @@ async function postProposals() {
       channel: CHANNEL, text: lines.join('\n'),
       ...(threadTs ? { thread_ts: threadTs } : {}),
     });
+    // Store the THREAD ROOT ts, not the proposal's own ts: when the proposal
+    // is threaded under the original report, approver replies land in the
+    // report's thread, and conversations.replies on a child ts sees nothing.
     const upd = await sb(`feedback_triage?id=eq.${row.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ slack_channel: CHANNEL, slack_ts: posted.ts }),
+      body: JSON.stringify({ slack_channel: CHANNEL, slack_ts: threadTs || posted.ts }),
     });
     if (!upd.ok) throw new Error(`slack_ts write failed for ${row.id}: ${upd.status}`);
     console.log(`[bridge] posted proposal ${row.id}${threadTs ? ' (threaded)' : ''}`);
@@ -143,7 +155,9 @@ async function applyDecision(row, decision, approverId, extraText) {
       const ins = await sb('notifications', {
         method: 'POST',
         body: JSON.stringify({
-          title: '💬 About your feedback', body: text,
+          title: '💬 Nurro replied to your feedback', body: text,
+          thumbnail_url: NURRO_AVATAR_URL,
+          image_url: randomNeuronUrl(),
           target_type: targetUserId ? 'user' : 'all', target_id: targetUserId,
           send_at: new Date().toISOString(),
         }),
