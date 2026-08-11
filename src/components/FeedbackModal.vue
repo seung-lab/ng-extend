@@ -5,7 +5,7 @@
  * anywhere in the app. Posts to the `submitIssue` Cloud Function which relays
  * to Slack (#citsci_feedback) and keeps a Firestore record. No auth required.
  */
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import { useProofreadingBackendStore } from '../store';
 import { mintShortStateLink } from '../util/state_link';
@@ -188,8 +188,25 @@ onMounted(() => {
   let t = Math.random() * 100;
   const SCALE = 0.010; // field frequency in px⁻¹
 
+  // Lifecycle: the field greets you, then bows out after a few seconds so
+  // it never distracts from typing; it returns for the success state.
+  // fieldAlpha eases toward fieldTarget; at 0 the canvas is wiped (traces
+  // included) and the rAF loop parks itself until woken.
+  let fieldAlpha = 1;
+  let fieldTarget = 1;
+  let parked = false;
+  const ENTRANCE_MS = 4500;
+  let fadeTimer = setTimeout(() => { fieldTarget = 0; }, ENTRANCE_MS);
+
   const frame = () => {
     t += 0.0016;
+    fieldAlpha += (fieldTarget - fieldAlpha) * 0.035;
+    if (fieldTarget === 0 && fieldAlpha < 0.01) {
+      ctx.clearRect(0, 0, w, h); // traces vanish with the motes
+      parked = true;
+      return; // stop scheduling frames while invisible
+    }
+
     // Fast fade: only a whisper of a comet tail survives, no worm trails.
     ctx.globalCompositeOperation = 'destination-out';
     ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
@@ -210,7 +227,7 @@ onMounted(() => {
       // Gentle twinkle so the field breathes; fade in/out at life edges.
       const twinkle = 0.55 + 0.45 * Math.sin(t * 40 + p.phase);
       const edge = Math.min(1, p.life / 60);
-      ctx.globalAlpha = 0.5 * twinkle * edge;
+      ctx.globalAlpha = 0.5 * twinkle * edge * fieldAlpha;
       ctx.drawImage(p.sprite, p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
     }
     ctx.globalAlpha = 1;
@@ -218,6 +235,17 @@ onMounted(() => {
     fxRaf = requestAnimationFrame(frame);
   };
   fxRaf = requestAnimationFrame(frame);
+
+  // Encore on the success state: wake the field back up behind the ✓.
+  watch(done, isDone => {
+    if (!isDone) return;
+    clearTimeout(fadeTimer);
+    fieldTarget = 1;
+    if (parked) {
+      parked = false;
+      fxRaf = requestAnimationFrame(frame);
+    }
+  });
 });
 
 onBeforeUnmount(() => {
