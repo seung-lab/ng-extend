@@ -1,0 +1,48 @@
+name: Slack Triage Bridge
+
+# Posts new feedback_triage proposals to the feedback Slack channel and reads
+# thread replies from allowed approvers (approve / dismiss) back into the
+# pipeline. See scripts/slack-triage-bridge.mjs for the full contract.
+#
+# SETUP (one-time):
+#   1. Slack app with a bot token (xoxb-…), scopes: chat:write,
+#      channels:history, channels:read. Invite the bot to the channel.
+#   2. Repo secrets:    SLACK_BOT_TOKEN
+#      Repo variables:  SLACK_CHANNEL_ID  (C…), APPROVER_SLACK_IDS
+#                       (comma-separated member ids, e.g. U012AB,U034CD)
+#   3. Apply supabase-triage-slack-columns.sql.
+#   4. This file must ALSO exist on the default branch (main) for the cron
+#      to fire. ⚠ Push it to main in a commit whose message contains
+#      [skip ci] so the push does not trigger an App Engine deploy of a
+#      main version (the deploy workflow ignores only 'master').
+#
+# The checkout below pins the branch so the script always runs from
+# eyewire-ii-community regardless of which ref the workflow fired from.
+
+on:
+  schedule:
+    - cron: '15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Post proposals + read approvals
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # Defaults discovered 2026-08-11: #citsci_feedback, approvers Amy
+          # (U02FH1DRC) and Celia (U033NHWDE). Repo variables override.
+          SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID || 'C0BG5CN71C3' }}
+          APPROVER_SLACK_IDS: ${{ vars.APPROVER_SLACK_IDS || 'U02FH1DRC,U033NHWDE' }}
+        run: node scripts/slack-triage-bridge.mjs
