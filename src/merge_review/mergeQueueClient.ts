@@ -4,17 +4,22 @@
 //   window.SUPABASE_ANON_KEY = "eyJ...anon...";
 type W = { SUPABASE_URL?: string; SUPABASE_ANON_KEY?: string; MERGE_QUEUE_API?: string };
 const w = (typeof window !== "undefined" ? (window as unknown as W) : {}) as W;
-const SB_URL = (w.SUPABASE_URL || "").replace(/\/$/, "");
-const SB_KEY = w.SUPABASE_ANON_KEY || "";
+// Defaults baked in for the appspot; override at runtime via window.SUPABASE_URL / SUPABASE_ANON_KEY.
+const DEFAULT_URL = "https://gqhfqgmbkzufzlpnehmp.supabase.co";
+const DEFAULT_KEY = "sb_publishable_402oLnzhhqf0ow8z24qZdg_mWWQn28q";
+const SB_URL = (w.SUPABASE_URL || DEFAULT_URL).replace(/\/$/, "");
+const SB_KEY = w.SUPABASE_ANON_KEY || DEFAULT_KEY;
 const REST = `${SB_URL}/rest/v1`;
 
 function hdr(extra: Record<string, string> = {}): Record<string, string> {
-  return {
+  const h: Record<string, string> = {
     apikey: SB_KEY,
-    Authorization: `Bearer ${SB_KEY}`,
     "Content-Type": "application/json",
     ...extra,
   };
+  // Legacy anon keys are JWTs and also go in Authorization; new sb_publishable_ keys use apikey only.
+  if (SB_KEY.startsWith("eyJ")) h.Authorization = `Bearer ${SB_KEY}`;
+  return h;
 }
 function configured(): boolean {
   return !!(SB_URL && SB_KEY);
