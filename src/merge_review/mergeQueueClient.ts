@@ -58,6 +58,33 @@ export async function enqueueJob(
   }
 }
 
+// Cancel a still-queued job so the worker never cuts it. Scoped to status=queued
+// in the URL (and enforced by RLS), so a job already claimed/running/done can't
+// be cancelled — the PATCH simply matches 0 rows and we report that.
+export async function cancelJob(
+  id: number,
+): Promise<{ ok: true } | { error: string }> {
+  if (!configured()) return { error: "Supabase not configured" };
+  try {
+    const r = await fetch(
+      `${REST}/merge_cut_queue?id=eq.${id}&status=eq.queued`,
+      {
+        method: "PATCH",
+        headers: hdr({ Prefer: "return=representation" }),
+        body: JSON.stringify({ status: "cancelled" }),
+      },
+    );
+    if (!r.ok) return { error: `Supabase ${r.status}: ${(await r.text()).slice(0, 140)}` };
+    const rows = await r.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { error: "already running/done — too late to cancel" };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
 export interface StatusRow {
   id: number;
   window_id: string;

@@ -39,22 +39,94 @@ export function fetchSkeleton(
   const hit = cache.get(key);
   if (hit) return hit;
   const p = (async () => {
-    try {
-      const url = skeletonUrl(datastack, rootId);
-      // Same auth-aware http source neuroglancer uses (handles middleauth).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { kvStoreContext } = (viewer as any).dataSourceProvider
-        .sharedKvStoreContext;
-      const { fetchOkImpl, baseUrl } = getHttpSource(kvStoreContext, url);
-      const resp = await fetchOkImpl(baseUrl);
-      const buf = await resp.arrayBuffer();
-      return parseSkeleton(buf);
-    } catch {
-      return null;
-    }
+    const url = skeletonUrl(datastack, rootId);
+    const buf = await fetchSkeletonBuffer(viewer, url);
+    return buf ? parseSkeleton(buf) : null;
   })();
   cache.set(key, p);
   return p;
+}
+
+// A skeleton binary starts with a u32 vertex count; an HTML login/redirect page
+// starts with '<' (0x3c). Reject the latter so we don't parse garbage.
+function looksBinary(b: ArrayBuffer): boolean {
+  return b.byteLength >= 8 && new Uint8Array(b, 0, 1)[0] !== 0x3c;
+}
+
+// The middleauth access tokens the login flow stashed in localStorage
+// (auth_token_v2_<login_url> → { url, accessToken }); same source the login
+// store reads. We try each as a Bearer token.
+function middleauthTokens(): string[] {
+  const out: string[] = [];
+  try {
+    const ls = typeof window !== "undefined" ? window.localStorage : undefined;
+    if (!ls) return out;
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (!k || !k.startsWith("auth_token_v2_")) continue;
+      const raw = ls.getItem(k);
+      if (!raw) continue;
+      try {
+        const d = JSON.parse(raw);
+        if (d && typeof d.accessToken === "string") out.push(d.accessToken);
+      } catch {
+        /* skip malformed */
+      }
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return out;
+}
+
+async function fetchSkeletonBuffer(
+  viewer: Viewer,
+  url: string,
+): Promise<ArrayBuffer | null> {
+  const plain = url.replace(/^middleauth\+/, "");
+  // 1) Direct Bearer with the stored middleauth tokens — the exact pattern the
+  //    login store uses for /user/me, proven to work against this host.
+  const tokens = middleauthTokens();
+  for (const tok of tokens) {
+    try {
+      const r = await fetch(plain, {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (r.ok) {
+        const b = await r.arrayBuffer();
+        if (looksBinary(b)) {
+          console.log("[anchor-path] skeleton via Bearer token");
+          return b;
+        }
+        console.warn("[anchor-path] token 200 but non-binary body");
+      } else {
+        console.warn("[anchor-path] token fetch status", r.status);
+      }
+    } catch (e) {
+      console.warn("[anchor-path] token fetch error", e);
+    }
+  }
+  // 2) Fall back to neuroglancer's own auth-aware http source.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { kvStoreContext } = (viewer as any).dataSourceProvider
+      .sharedKvStoreContext;
+    const { fetchOkImpl, baseUrl } = getHttpSource(kvStoreContext, url);
+    const resp = await fetchOkImpl(baseUrl);
+    const b = await resp.arrayBuffer();
+    if (looksBinary(b)) {
+      console.log("[anchor-path] skeleton via getHttpSource");
+      return b;
+    }
+    console.warn("[anchor-path] getHttpSource returned non-binary body");
+  } catch (e) {
+    console.warn("[anchor-path] getHttpSource fetch failed", e);
+  }
+  console.warn(
+    `[anchor-path] skeleton fetch FAILED (${tokens.length} token(s) tried)`,
+    plain,
+  );
+  return null;
 }
 
 // neuroglancer precomputed skeleton: u32 nv, u32 ne, then nv*3 f32 vertices
