@@ -29,6 +29,10 @@ import {
   type TokenEdits,
 } from "#src/merge_review/state.js";
 import { seedMulticut, supervoxelAt } from "#src/merge_review/multicut.js";
+import {
+  fetchSkeleton,
+  shortestPathNm,
+} from "#src/merge_review/skeletonPath.js";
 import { StatusMessage } from "neuroglancer/unstable/status.js";
 import { enqueueJob, fetchKeepRoot } from "#src/merge_review/mergeQueueClient.js";
 import {
@@ -191,22 +195,67 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     );
   }
 
-  // Overlay the "entrance": a white line from the anchor (nucleus) to the
-  // current window's centre, plus a white marker on the anchor itself, so the
-  // reviewer can always see where the window sits relative to the fixed anchor.
-  // Straight line in the viewer's voxel space (same coords as the cluster
-  // ellipsoids); this needs no backend, so it works on the appspot. (A skeleton-
-  // following route via CAVE find_path is a later upgrade.)
+  // Overlay the "entrance": a white route from the anchor (nucleus) to the
+  // current window, plus a white marker on the anchor, so the reviewer can
+  // always see where the window sits relative to the fixed anchor.
+  //
+  // Preferred route FOLLOWS THE NEURON: the shortest path along the precomputed
+  // skeleton, from the skeleton vertex nearest the anchor (the "entrance gate")
+  // to the vertex nearest the window (see computeAnchorPath). While that async
+  // fetch/solve is in flight — or if the skeleton is unavailable — we fall back
+  // to a straight anchor→window-centre line so there's always immediate feedback.
   function withAnchorPath(
     state: Record<string, unknown>,
     w: ReviewWindow,
   ): Record<string, unknown> {
     if (anchorPos.value == null) return state;
-    const center = [
-      w.center_um[0] * UM_TO_VOXEL_X,
-      w.center_um[1] * UM_TO_VOXEL_X,
-      w.center_um[2] * UM_TO_VOXEL_Z,
+    const a = anchorPos.value;
+    const anns: Record<string, unknown>[] = [
+      {
+        type: "ellipsoid",
+        center: a,
+        radii: [80, 80, 8],
+        id: "anchor-mark",
+        description: "anchor (nucleus)",
+      },
     ];
+    const poly =
+      anchorPathForIdx.value === w.idx && anchorPathPoints.value
+        ? anchorPathPoints.value
+        : null;
+    if (poly && poly.length >= 2) {
+      // Connector from the true anchor to the entrance gate (nearest vertex),
+      // then the skeleton polyline hugging the neuron out to the window.
+      anns.push({
+        type: "line",
+        pointA: a,
+        pointB: poly[0],
+        id: "anchor-gate",
+        description: "anchor → entrance gate",
+      });
+      for (let i = 0; i < poly.length - 1; i++) {
+        anns.push({
+          type: "line",
+          pointA: poly[i],
+          pointB: poly[i + 1],
+          id: `anchor-path-${i}`,
+          description: i === 0 ? "entrance gate" : "",
+        });
+      }
+    } else {
+      const center = [
+        w.center_um[0] * UM_TO_VOXEL_X,
+        w.center_um[1] * UM_TO_VOXEL_X,
+        w.center_um[2] * UM_TO_VOXEL_Z,
+      ];
+      anns.push({
+        type: "line",
+        pointA: a,
+        pointB: center,
+        id: "anchor-path-straight",
+        description: "anchor → window",
+      });
+    }
     const layers = ((state.layers as Record<string, unknown>[]) ?? []).filter(
       (l) => l.name !== "anchor-path",
     );
@@ -215,25 +264,47 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       source: "local://annotations",
       tab: "annotations",
       annotationColor: "#ffffff",
-      annotations: [
-        {
-          type: "line",
-          pointA: anchorPos.value,
-          pointB: center,
-          id: "anchor-path",
-          description: "anchor → window",
-        },
-        {
-          type: "ellipsoid",
-          center: anchorPos.value,
-          radii: [80, 80, 8],
-          id: "anchor-mark",
-          description: "anchor (nucleus)",
-        },
-      ],
+      annotations: anns,
       name: "anchor-path",
     });
     return { ...state, layers };
+  }
+
+  // Fetch the neuron's skeleton and solve the shortest path anchor→window along
+  // it, then redraw. Guarded by a token + current-window check so fast window
+  // switching never draws a stale route. Silent no-op if the skeleton can't be
+  // fetched/solved (the straight-line fallback stays).
+  let anchorPathToken = 0;
+  async function computeAnchorPath(w: ReviewWindow) {
+    if (!viewer || anchorPos.value == null || root.value == null) return;
+    const myIdx = w.idx;
+    const myToken = ++anchorPathToken;
+    const datastack = bundle.value?.neuron.datastack || "minnie65_public";
+    const a = anchorPos.value;
+    // anchor: viewer voxel → nm (×[4,4,40]); window centre: µm → nm (×1000).
+    const anchorNm = [a[0] * 4, a[1] * 4, a[2] * 40];
+    const winNm = [
+      w.center_um[0] * 1000,
+      w.center_um[1] * 1000,
+      w.center_um[2] * 1000,
+    ];
+    const skel = await fetchSkeleton(viewer, datastack, String(root.value));
+    // Bail if the anchor was cleared, the window changed, or a newer request
+    // superseded this one while we were fetching.
+    if (
+      myToken !== anchorPathToken ||
+      currentIdx.value !== myIdx ||
+      anchorPos.value == null ||
+      !skel
+    ) {
+      return;
+    }
+    const pathNm = shortestPathNm(skel, anchorNm, winNm);
+    if (!pathNm || pathNm.length < 2) return;
+    // nm → viewer voxel (÷[4,4,40]).
+    anchorPathPoints.value = pathNm.map((p) => [p[0] / 4, p[1] / 4, p[2] / 40]);
+    anchorPathForIdx.value = myIdx;
+    rerenderCurrentWindow();
   }
 
   // ─────────────────────── decisions helpers ───────────────────
@@ -274,6 +345,9 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
         w,
       ),
     );
+    // Trace the skeleton route to this window (async; swaps in over the
+    // straight-line fallback when it resolves).
+    if (anchorPos.value != null) void computeAnchorPath(w);
   }
 
   // ─────────────────────── merge verdict ───────────────────────
@@ -641,6 +715,10 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   // The anchor's 3D position (viewer voxel coords) — drives the white
   // "entrance" line/marker overlay (withAnchorPath).
   const anchorPos = ref<number[] | null>(null);
+  // Skeleton route (viewer voxel coords) from the anchor to a window, and the
+  // window idx it was computed for (so it's only drawn for that window).
+  const anchorPathPoints = ref<number[][] | null>(null);
+  const anchorPathForIdx = ref<number | null>(null);
   const hasAnchor = computed(() => anchorSv.value != null);
   // Side-by-side "cleaned" layer: poll the worker's keep_root and show it as a
   // second segmentation layer (green), leaving the frozen review layer untouched.
@@ -685,9 +763,12 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       if (sv && sv !== 0n) {
         anchorSv.value = sv.toString();
         anchorPos.value = pos; // for the white "entrance" line/marker
+        anchorPathPoints.value = null; // recompute for the new anchor
+        anchorPathForIdx.value = null;
         StatusMessage.showTemporaryMessage(`Anchor set (supervoxel ${sv})`, 4000);
-        // Draw the entrance line to the current window right away.
+        // Draw the straight fallback now, then trace the skeleton route.
         rerenderCurrentWindow();
+        if (currentWindow.value) void computeAnchorPath(currentWindow.value);
         return anchorSv.value;
       }
     }
@@ -697,6 +778,8 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   function clearAnchor() {
     anchorSv.value = null;
     anchorPos.value = null;
+    anchorPathPoints.value = null;
+    anchorPathForIdx.value = null;
     rerenderCurrentWindow(); // drop the entrance overlay
   }
   // Queue the current window's binary split as a BACKGROUND cut (view unchanged).
