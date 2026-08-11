@@ -17,6 +17,7 @@ import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, DATASETS, type DatasetEntry } from '../datasets';
+import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import ScreenshotDialog from './ScreenshotDialog.vue';
 
@@ -909,14 +910,6 @@ async function submitResponse(req: HelpRequest, andResolve = false) {
   helpStore.refreshPending();
 }
 
-/** Format a threaded response note into HTML with line breaks */
-function formatResponseThread(note: string): string {
-  return note
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\n---\n/g, '<hr style="border:0;border-top:1px solid rgba(255,255,255,0.1);margin:6px 0">')
-    .replace(/\n/g, '<br>');
-}
-
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -1411,28 +1404,18 @@ const panelStyle = computed(() => ({
                 </div>
 
             <!-- Reply thread: one entry per help_responses row (each keeps its
-                 own link / annotation layer / screenshot). Falls back to the
-                 legacy single response_note for data created before the child
-                 table existed. -->
-            <div v-if="(req.responses && req.responses.length) || req.responseNote" class="nge-cl-response-display">
-              <template v-if="req.responses && req.responses.length">
-                <div v-for="resp in req.responses" :key="resp.id" class="nge-cl-response-item">
-                  <div class="nge-cl-response-label">💬 {{ resp.userName || 'Response' }}<span v-if="resp.resolved"> · resolved</span>:</div>
-                  <div v-if="resp.note" class="nge-cl-response-text">{{ resp.note }}</div>
-                  <a v-if="resp.url" class="nge-cl-response-link" @click.prevent="openResponseUrl(resp.url)" href="#">↗ View linked state</a>
-                  <span v-if="resp.annotationLayer" class="nge-cl-response-layer">📐 Layer: {{ resp.annotationLayer }}</span>
-                  <a v-if="resp.screenshotUrl" :href="resp.screenshotUrl" target="_blank" rel="noopener"
-                     class="nge-cl-help-shot-thumb" title="Open full screenshot">
-                    <img :src="resp.screenshotUrl" alt="Reply screenshot" />
-                  </a>
-                </div>
-              </template>
-              <template v-else-if="req.responseNote">
-                <div class="nge-cl-response-label">💬 {{ req.resolvedByName || 'Response' }}:</div>
-                <div class="nge-cl-response-text" v-html="formatResponseThread(req.responseNote)"></div>
-                <a v-if="req.responseUrl" class="nge-cl-response-link" @click.prevent="openResponseUrl(req.responseUrl)" href="#">↗ View linked state</a>
-                <span v-if="req.responseAnnotationLayer" class="nge-cl-response-layer">📐 Layer: {{ req.responseAnnotationLayer }}</span>
-              </template>
+                 own link / annotation layer / screenshot). -->
+            <div v-if="req.responses && req.responses.length" class="nge-cl-response-display">
+              <div v-for="resp in req.responses" :key="resp.id" class="nge-cl-response-item">
+                <div class="nge-cl-response-label">💬 {{ resp.userName || 'Response' }}<span v-if="resp.resolved"> · resolved</span>:</div>
+                <div v-if="resp.note" class="nge-cl-response-text">{{ resp.note }}</div>
+                <a v-if="resp.url" class="nge-cl-response-link" @click.prevent="openResponseUrl(resp.url)" href="#">↗ View linked state</a>
+                <span v-if="resp.annotationLayer" class="nge-cl-response-layer">📐 Layer: {{ resp.annotationLayer }}</span>
+                <a v-if="resp.screenshotUrl" :href="resp.screenshotUrl" target="_blank" rel="noopener"
+                   class="nge-cl-help-shot-thumb" title="Open full screenshot">
+                  <img :src="resp.screenshotUrl" alt="Reply screenshot" />
+                </a>
+              </div>
               <button v-if="respondingTo !== req.id" class="nge-cl-btn nge-cl-btn--reply" @click="toggleResponseForm(req.id)">↩ Reply</button>
             </div>
 
@@ -1520,29 +1503,40 @@ const panelStyle = computed(() => ({
                   <button class="nge-cl-btn nge-cl-btn--release" @click="removeReq(req)" title="Remove">×</button>
                 </div>
               </div>
-              <!-- Response display: child-table thread, legacy fallback -->
-              <div v-if="(req.responses && req.responses.length) || req.responseNote" class="nge-cl-response-display">
-                <template v-if="req.responses && req.responses.length">
-                  <div v-for="resp in req.responses" :key="resp.id" class="nge-cl-response-item">
-                    <div class="nge-cl-response-label">{{ resp.userName || 'Response' }}<span v-if="resp.resolved"> · resolved</span>:</div>
-                    <div v-if="resp.note" class="nge-cl-response-text">{{ resp.note }}</div>
-                    <a v-if="resp.url" class="nge-cl-response-link" @click.prevent="openResponseUrl(resp.url)" href="#">↗ View linked state</a>
-                    <span v-if="resp.annotationLayer" class="nge-cl-response-layer">📐 Layer: {{ resp.annotationLayer }}</span>
-                    <a v-if="resp.screenshotUrl" :href="resp.screenshotUrl" target="_blank" rel="noopener"
-                       class="nge-cl-help-shot-thumb" title="Open full screenshot">
-                      <img :src="resp.screenshotUrl" alt="Reply screenshot" />
-                    </a>
-                  </div>
-                </template>
-                <template v-else-if="req.responseNote">
-                  <div class="nge-cl-response-label">Response from {{ req.resolvedByName || 'resolver' }}:</div>
-                  <div class="nge-cl-response-text">{{ req.responseNote }}</div>
-                  <a v-if="req.responseUrl" class="nge-cl-response-link" @click.prevent="openResponseUrl(req.responseUrl)" href="#">↗ View linked state</a>
-                  <span v-if="req.responseAnnotationLayer" class="nge-cl-response-layer">📐 Layer: {{ req.responseAnnotationLayer }}</span>
-                </template>
+              <!-- Response display: one entry per help_responses row -->
+              <div v-if="req.responses && req.responses.length" class="nge-cl-response-display">
+                <div v-for="resp in req.responses" :key="resp.id" class="nge-cl-response-item">
+                  <div class="nge-cl-response-label">{{ resp.userName || 'Response' }}<span v-if="resp.resolved"> · resolved</span>:</div>
+                  <div v-if="resp.note" class="nge-cl-response-text">{{ resp.note }}</div>
+                  <a v-if="resp.url" class="nge-cl-response-link" @click.prevent="openResponseUrl(resp.url)" href="#">↗ View linked state</a>
+                  <span v-if="resp.annotationLayer" class="nge-cl-response-layer">📐 Layer: {{ resp.annotationLayer }}</span>
+                  <a v-if="resp.screenshotUrl" :href="resp.screenshotUrl" target="_blank" rel="noopener"
+                     class="nge-cl-help-shot-thumb" title="Open full screenshot">
+                    <img :src="resp.screenshotUrl" alt="Reply screenshot" />
+                  </a>
+                </div>
               </div>
             </div>
           </template>
+
+          <!-- connectome.quest resources -->
+          <div class="nge-cl-quest">
+            <div class="nge-cl-quest-title">Learn more at connectome.quest</div>
+            <div class="nge-cl-quest-grid">
+              <a
+                v-for="res in CONNECTOME_QUEST_RESOURCES"
+                :key="res.id"
+                class="nge-cl-quest-link"
+                :href="res.url"
+                target="_blank"
+                rel="noopener"
+                :title="res.description"
+              >
+                <span class="nge-cl-quest-icon">{{ res.icon }}</span>
+                <span class="nge-cl-quest-label">{{ res.label }}</span>
+              </a>
+            </div>
+          </div>
         </div>
 
         <!-- ═══ LINKS TAB ═══ -->
@@ -2542,6 +2536,45 @@ select.nge-cl-response-input:hover {
 .nge-cl-help-shot-preview--sm img { max-height: 48px; border-radius: 4px; }
 
 /* ── Help Request Create Form ── */
+/* ── connectome.quest resources (Help tab footer) ── */
+.nge-cl-quest {
+  margin-top: 14px;
+  padding: 12px 12px 10px;
+  border: 1px solid rgba(100, 200, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(100, 200, 255, 0.04);
+}
+.nge-cl-quest-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(100, 200, 255, 0.75);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.nge-cl-quest-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 10px;
+}
+.nge-cl-quest-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: none;
+  font-size: 12px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.nge-cl-quest-link:hover {
+  background: rgba(100, 200, 255, 0.1);
+  color: #fff;
+}
+.nge-cl-quest-icon { font-size: 13px; line-height: 1; }
+.nge-cl-quest-label { white-space: nowrap; }
+
 .nge-cl-help-create {
   background: rgba(255, 136, 170, 0.04);
   border: 1px solid rgba(255, 136, 170, 0.15);

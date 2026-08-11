@@ -166,8 +166,6 @@ export const useLayersStore = defineStore('layers', () => {
    * Heuristics:
    *   - segment count decreased → merge (fewer segments = segments were combined)
    *   - segment count increased → split or new selection
-   *
-   * Also increments cellsSubmitted every ~5 edits to animate the cell-dot canvas.
    */
   function watchSegmentEdits() {
     if (!viewer) return;
@@ -185,7 +183,6 @@ export const useLayersStore = defineStore('layers', () => {
     const visibleSegs = groupState.visibleSegments;
 
     let prevCount = visibleSegs.size;
-    let localEditAccum = 0;
     let pendingNetDiff = 0;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingRemoved = new Set<string>(); // specific segments removed during this operation
@@ -300,11 +297,11 @@ export const useLayersStore = defineStore('layers', () => {
 
         statsStore.logDailyEdit(operation);
         statsStore.signalEdit(operation);
-        localEditAccum += 1;
-        if (localEditAccum >= 5) {
-          statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
-          localEditAccum = 0;
-        }
+        // NOTE: cellsSubmitted is deliberately NOT touched here. It used to
+        // be incremented every 5 edits "to animate the cell-dot canvas", but
+        // it's a real stat (the Exploration badge track and the profile's
+        // Cells number). It now comes only from CAVE completions
+        // (users.cells_completed via cave_completions_mirror).
 
         // Log to Supabase with diff=1 (one operation per debounce)
         try {
@@ -1067,12 +1064,6 @@ export interface HelpRequest {
   userName?: string;
   /** Display name of the user who resolved this request */
   resolvedByName?: string;
-  /** Response note from the resolver */
-  responseNote?: string;
-  /** Optional link (e.g. neuroglancer state URL) from the resolver */
-  responseUrl?: string;
-  /** Optional annotation layer name referenced by the resolver */
-  responseAnnotationLayer?: string;
   /** Public URL of an attached screenshot (Firebase Storage). */
   screenshotUrl?: string;
   /** Thread of replies from the help_responses child table. Each reply keeps its
@@ -1123,9 +1114,6 @@ function rowToHelpRequest(row: any): HelpRequest {
     userId: row.user_id ?? undefined,
     userName: row.user_name ?? undefined,
     resolvedByName: row.resolved_by_name ?? undefined,
-    responseNote: row.response_note ?? undefined,
-    responseUrl: row.response_url ?? undefined,
-    responseAnnotationLayer: row.response_annotation_layer ?? undefined,
     screenshotUrl: row.screenshot_url ?? undefined,
     annotationLayer: row.annotation_layer ?? undefined,
   };
@@ -1155,8 +1143,8 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       }
       const reqs = (data ?? []).map(rowToHelpRequest);
       // Attach each request's reply thread from the help_responses child table.
-      // Best-effort: if the table/query fails, requests still load (legacy
-      // response_* fields on the row remain as a fallback in the UI).
+      // Best-effort: if the query fails, requests still load, just without
+      // their reply threads.
       try {
         const ids = reqs.map(r => r.id);
         if (ids.length) {
@@ -1226,6 +1214,20 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       if (payload.resolve) { r.resolved = true; r.resolvedByName = responderName; }
     }
     refreshPending();
+
+    // Notify the requester that someone replied (skip self-replies).
+    if (r?.userId && r.userId !== backend.userId) {
+      const note = payload.note || (payload.screenshotUrl ? 'attached a screenshot' : '');
+      const notePreview = note.slice(0, 120) + (note.length > 120 ? '...' : '');
+      await supabase.from('notifications').insert({
+        title: `💬 Response to your help request`,
+        body: `${responderName} responded on ${r.segId}: ${notePreview}`,
+        target_type: 'user',
+        target_id: r.userId,
+        send_at: new Date().toISOString(),
+        created_by: backend.userId,
+      }).then(({ error: e }) => { if (e) console.warn('[helpRequests] notification error:', e.message); });
+    }
   }
 
   /** Fallback: load from localStorage (migration period). */
@@ -1262,6 +1264,8 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
         const updated = rowToHelpRequest(payload.new);
         const idx = requests.value.findIndex(r => r.id === updated.id);
         if (idx >= 0) {
+          // The row payload has no reply thread — keep the one already loaded.
+          updated.responses = requests.value[idx].responses;
           requests.value[idx] = updated;
           refreshPending();
         }
@@ -1318,33 +1322,20 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
     refreshPending();
   }
 
-  /** Mark a help request as resolved in Supabase, optionally with a response. */
-  async function resolve(id: string, response?: { note?: string; url?: string; annotationLayer?: string; appendToExisting?: boolean }) {
+  /** Mark a help request as resolved in Supabase. Replies (with notes, links,
+   *  screenshots) go through addResponse(); this only flips the thread flag. */
+  async function resolve(id: string) {
     const backend = useProofreadingBackendStore();
     const resolverName = backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
-    const updateData: Record<string, any> = {
-      resolved: true,
-      resolved_at: new Date().toISOString(),
-      resolved_by: backend.userId || null,
-      resolved_by_name: resolverName,
-    };
-    if (response?.note) {
-      if (response.appendToExisting) {
-        const { data } = await supabase.from('help_requests').select('response_note').eq('id', id).single();
-        const existing = data?.response_note || '';
-        updateData.response_note = existing
-          ? `${existing}\n---\n${resolverName}: ${response.note}`
-          : response.note;
-      } else {
-        updateData.response_note = response.note;
-      }
-    }
-    if (response?.url) updateData.response_url = response.url;
-    if (response?.annotationLayer) updateData.response_annotation_layer = response.annotationLayer;
 
     const { error } = await supabase
       .from('help_requests')
-      .update(updateData)
+      .update({
+        resolved: true,
+        resolved_at: new Date().toISOString(),
+        resolved_by: backend.userId || null,
+        resolved_by_name: resolverName,
+      })
       .eq('id', id);
 
     if (error) {
@@ -1355,70 +1346,8 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
     if (r) {
       r.resolved = true;
       r.resolvedByName = resolverName;
-      if (response?.note) r.responseNote = response.note;
-      if (response?.url) r.responseUrl = response.url;
-      if (response?.annotationLayer) r.responseAnnotationLayer = response.annotationLayer;
     }
     refreshPending();
-  }
-
-  /** Add a response to a help request WITHOUT resolving it. */
-  async function respond(id: string, response: { note?: string; url?: string; annotationLayer?: string; appendToExisting?: boolean }) {
-    const backend = useProofreadingBackendStore();
-    const responderName = backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
-
-    // If appending to an existing thread, fetch current note from DB to avoid overwrites
-    let finalNote = response.note || '';
-    if (response.appendToExisting && response.note) {
-      const { data } = await supabase
-        .from('help_requests')
-        .select('response_note')
-        .eq('id', id)
-        .single();
-      const existing = data?.response_note || '';
-      if (existing) {
-        finalNote = `${existing}\n---\n${responderName}: ${response.note}`;
-      }
-    }
-
-    const updateData: Record<string, any> = {};
-    // Only set resolved_by_name if there's no existing response (don't overwrite original responder)
-    if (!response.appendToExisting) {
-      updateData.resolved_by_name = responderName;
-    }
-    if (finalNote) updateData.response_note = finalNote;
-    if (response.url) updateData.response_url = response.url;
-    if (response.annotationLayer) updateData.response_annotation_layer = response.annotationLayer;
-
-    const { error } = await supabase
-      .from('help_requests')
-      .update(updateData)
-      .eq('id', id);
-
-    if (error) {
-      console.warn('[helpRequests] respond error:', error.message);
-    }
-    // Optimistic update
-    const r = requests.value.find(x => x.id === id);
-    if (r) {
-      if (!response.appendToExisting) r.resolvedByName = responderName;
-      if (finalNote) r.responseNote = finalNote;
-      if (response.url) r.responseUrl = response.url;
-      if (response.annotationLayer) r.responseAnnotationLayer = response.annotationLayer;
-    }
-
-    // Send notification to the requester
-    if (r?.userId && r.userId !== backend.userId) {
-      const notePreview = (response.note || '').slice(0, 120) + ((response.note || '').length > 120 ? '...' : '');
-      await supabase.from('notifications').insert({
-        title: `💬 Response to your help request`,
-        body: `${responderName} responded on ${r.segId}: ${notePreview}`,
-        target_type: 'user',
-        target_id: r.userId,
-        send_at: new Date().toISOString(),
-        created_by: backend.userId,
-      }).then(({ error: e }) => { if (e) console.warn('[helpRequests] notification error:', e.message); });
-    }
   }
 
   /** Remove a help request (delete from Supabase). */
@@ -1439,7 +1368,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   load();
   subscribe();
 
-  return { requests, pending, add, resolve, respond, addResponse, remove, refreshPending, load, subscribe, unsubscribe };
+  return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe };
 });
 
 // ── Working Links ─────────────────────────────────────────────────────────
