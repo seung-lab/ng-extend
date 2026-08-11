@@ -38,11 +38,11 @@ export const CONNECTOME_QUEST_RESOURCES: QuestResource[] = [
   },
   {
     id: 'quest-videos',
-    label: 'Neuron Videos',
-    description: 'Real neuron animations and lab channels',
-    url: `${CONNECTOME_QUEST_URL}/videos.html`,
+    label: 'Video Tutorials',
+    description: 'Short how-to videos: merge, split, find cells, navigate faster',
+    url: `${CONNECTOME_QUEST_URL}/help.html#tutorials`,
     icon: '🎬',
-    aliases: ['videos', 'animations', 'neuron movies', 'youtube'],
+    aliases: ['videos', 'tutorials', 'how to', 'merge', 'split', 'playlist', 'youtube'],
   },
   {
     id: 'quest-help',
