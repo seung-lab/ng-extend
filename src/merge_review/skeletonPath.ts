@@ -175,18 +175,38 @@ function nearestVertex(s: Skeleton, p: number[]): number {
   return bi;
 }
 
-// Shortest path along the skeleton edges from the vertex nearest `aNm` (the
-// entrance gate) to the vertex nearest `bNm`. Returns the inclusive polyline
-// in nm, or null if the two ends are on disconnected components.
-export function shortestPathNm(
-  s: Skeleton,
-  aNm: number[],
-  bNm: number[],
-): number[][] | null {
-  const src = nearestVertex(s, aNm);
-  const dst = nearestVertex(s, bNm);
-  if (src === dst) return [vertexNm(s, src)];
+// Vertex nearest a whole SET of points (min distance over the set). Used to
+// find where the skeleton first reaches this window's clusters — the entrance.
+function nearestVertexToSet(s: Skeleton, pts: number[][]): number {
+  const v = s.vertices;
+  let bi = 0;
+  let bd = Infinity;
+  for (let i = 0; i < s.nv; i++) {
+    const x = v[3 * i];
+    const y = v[3 * i + 1];
+    const z = v[3 * i + 2];
+    for (let j = 0; j < pts.length; j++) {
+      const dx = x - pts[j][0];
+      const dy = y - pts[j][1];
+      const dz = z - pts[j][2];
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < bd) {
+        bd = d;
+        bi = i;
+      }
+    }
+  }
+  return bi;
+}
 
+// Shortest path along the skeleton edges between two vertex indices; inclusive
+// polyline in nm, or null if disconnected.
+function dijkstraPath(
+  s: Skeleton,
+  src: number,
+  dst: number,
+): number[][] | null {
+  if (src === dst) return [vertexNm(s, src)];
   const adj: number[][] = Array.from({ length: s.nv }, () => [] as number[]);
   const ne = s.edges.length / 2;
   for (let i = 0; i < ne; i++) {
@@ -195,7 +215,6 @@ export function shortestPathNm(
     adj[a].push(b);
     adj[b].push(a);
   }
-
   const dist = new Float64Array(s.nv).fill(Infinity);
   const prev = new Int32Array(s.nv).fill(-1);
   dist[src] = 0;
@@ -215,11 +234,35 @@ export function shortestPathNm(
     }
   }
   if (!isFinite(dist[dst])) return null;
-
   const idx: number[] = [];
   for (let u = dst; u !== -1; u = prev[u]) idx.push(u);
   idx.reverse();
   return idx.map((i) => vertexNm(s, i));
+}
+
+// Path from the vertex nearest `aNm` (anchor gate) to the vertex nearest `bNm`.
+export function shortestPathNm(
+  s: Skeleton,
+  aNm: number[],
+  bNm: number[],
+): number[][] | null {
+  return dijkstraPath(s, nearestVertex(s, aNm), nearestVertex(s, bNm));
+}
+
+// Path from the anchor gate to where the skeleton first REACHES this window's
+// cluster points — the entrance. It stops at that contact vertex, not the
+// floating window centre. The last polyline point is the entrance.
+export function shortestPathToClusterNm(
+  s: Skeleton,
+  aNm: number[],
+  clusterPtsNm: number[][],
+): number[][] | null {
+  if (clusterPtsNm.length === 0) return null;
+  return dijkstraPath(
+    s,
+    nearestVertex(s, aNm),
+    nearestVertexToSet(s, clusterPtsNm),
+  );
 }
 
 // Minimal binary min-heap of (priority, value) number pairs.

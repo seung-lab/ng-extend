@@ -32,6 +32,7 @@ import { seedMulticut, supervoxelAt } from "#src/merge_review/multicut.js";
 import {
   fetchSkeleton,
   shortestPathNm,
+  shortestPathToClusterNm,
 } from "#src/merge_review/skeletonPath.js";
 import { StatusMessage } from "neuroglancer/unstable/status.js";
 import { enqueueJob, fetchKeepRoot } from "#src/merge_review/mergeQueueClient.js";
@@ -223,7 +224,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       anchorPathForIdx.value === w.idx && anchorPathPoints.value
         ? anchorPathPoints.value
         : null;
-    if (poly && poly.length >= 2) {
+    if (poly && poly.length >= 1) {
       // Connector from the true anchor to the entrance gate (nearest vertex),
       // then the skeleton polyline hugging the neuron out to the window.
       anns.push({
@@ -281,20 +282,26 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     const myToken = ++anchorPathToken;
     const datastack = bundle.value?.neuron.datastack || "minnie65_public";
     const a = anchorPos.value;
-    // anchor: viewer voxel → nm (×[4,4,40]); window centre: µm → nm (×1000).
+    // anchor: viewer voxel → nm (×[4,4,40]).
     const anchorNm = [a[0] * 4, a[1] * 4, a[2] * 40];
-    const winNm = [
-      w.center_um[0] * 1000,
-      w.center_um[1] * 1000,
-      w.center_um[2] * 1000,
-    ];
+    // This window's cluster token points (edit-aware), in nm, with their labels
+    // — the path stops at the nearest of these (the entrance), not the centre.
+    const edits = tokenEdits.value[myIdx] ?? {};
+    const clustersVox = clusterPositions(w, edits); // Map<label, voxel[][]>
+    const clusterPtsNm: number[][] = [];
+    const clusterLabels: number[] = [];
+    for (const [lab, pts] of clustersVox) {
+      for (const v of pts) {
+        clusterPtsNm.push([v[0] * 4, v[1] * 4, v[2] * 40]);
+        clusterLabels.push(lab);
+      }
+    }
     console.log("[anchor-path] computing", {
       datastack,
       root: String(root.value),
       window: myIdx,
-      anchorVoxel: a,
       anchorNm,
-      winNm,
+      clusterPts: clusterPtsNm.length,
     });
     const skel = await fetchSkeleton(viewer, datastack, String(root.value));
     // Bail if the anchor was cleared, the window changed, or a newer request
@@ -314,18 +321,47 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       );
       return;
     }
-    const pathNm = shortestPathNm(skel, anchorNm, winNm);
+    // Stop at the cluster entrance; only fall back to the window centre if this
+    // window has no cluster points at all.
+    const pathNm =
+      clusterPtsNm.length > 0
+        ? shortestPathToClusterNm(skel, anchorNm, clusterPtsNm)
+        : shortestPathNm(skel, anchorNm, [
+            w.center_um[0] * 1000,
+            w.center_um[1] * 1000,
+            w.center_um[2] * 1000,
+          ]);
     console.log("[anchor-path] skeleton", {
       vertices: skel.nv,
       pathPoints: pathNm ? pathNm.length : 0,
-      gateNm: pathNm ? pathNm[0] : null,
+      entranceNm: pathNm ? pathNm[pathNm.length - 1] : null,
     });
-    if (!pathNm || pathNm.length < 2) {
+    if (!pathNm || pathNm.length < 1) {
       StatusMessage.showTemporaryMessage(
         "Entrance: no skeleton route found — showing straight line.",
         4000,
       );
       return;
+    }
+    // The entrance vertex = last path point. The cluster whose point is nearest
+    // it is the "main branch" (kept side); everything else is cut.
+    if (clusterPtsNm.length > 0) {
+      const e = pathNm[pathNm.length - 1];
+      let bi = 0;
+      let bd = Infinity;
+      for (let j = 0; j < clusterPtsNm.length; j++) {
+        const dx = clusterPtsNm[j][0] - e[0];
+        const dy = clusterPtsNm[j][1] - e[1];
+        const dz = clusterPtsNm[j][2] - e[2];
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d < bd) {
+          bd = d;
+          bi = j;
+        }
+      }
+      mainClusterLabel.value = clusterLabels[bi];
+      mainClusterForIdx.value = myIdx;
+      console.log("[anchor-path] main-branch cluster", mainClusterLabel.value);
     }
     // nm → viewer voxel (÷[4,4,40]).
     anchorPathPoints.value = pathNm.map((p) => [p[0] / 4, p[1] / 4, p[2] / 40]);
@@ -749,6 +785,11 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   // window idx it was computed for (so it's only drawn for that window).
   const anchorPathPoints = ref<number[][] | null>(null);
   const anchorPathForIdx = ref<number | null>(null);
+  // The "main branch" cluster label for a window: the cluster the skeleton
+  // entrance contacts (i.e. the one continuous with the anchor). It's the KEEP
+  // side; every other cluster is cut. Set by computeAnchorPath.
+  const mainClusterLabel = ref<number | null>(null);
+  const mainClusterForIdx = ref<number | null>(null);
   const hasAnchor = computed(() => anchorSv.value != null);
   // Side-by-side "cleaned" layer: poll the worker's keep_root and show it as a
   // second segmentation layer (green), leaving the frozen review layer untouched.
@@ -795,6 +836,8 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
         anchorPos.value = pos; // for the white "entrance" line/marker
         anchorPathPoints.value = null; // recompute for the new anchor
         anchorPathForIdx.value = null;
+        mainClusterLabel.value = null;
+        mainClusterForIdx.value = null;
         StatusMessage.showTemporaryMessage(`Anchor set (supervoxel ${sv})`, 4000);
         // Draw the straight fallback now, then trace the skeleton route.
         rerenderCurrentWindow();
@@ -810,6 +853,8 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     anchorPos.value = null;
     anchorPathPoints.value = null;
     anchorPathForIdx.value = null;
+    mainClusterLabel.value = null;
+    mainClusterForIdx.value = null;
     rerenderCurrentWindow(); // drop the entrance overlay
   }
   // Queue the current window's binary split as a BACKGROUND cut (view unchanged).
@@ -826,16 +871,27 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     if (enqueuedWindows.has(idx)) return;
     // Effective clusters after node recolouring / deletions (voxel coords -> nm).
     const posByLabel = clusterPositions(w, currentEdits.value);
+    const labs = Array.from(posByLabel.keys()).sort((a, b) => a - b);
+    if (labs.length < 2) {
+      StatusMessage.showTemporaryMessage(`Window ${idx}: <2 clusters, nothing to cut.`, 4000);
+      return;
+    }
     const split = decisions.value[idx]?.split;
     let cutLabels: Set<number>;
     if (Array.isArray(split) && split.length > 0) {
-      cutLabels = new Set(split.map(Number)); // highlighted clusters = cut side
+      // Reviewer explicitly highlighted the clusters to cut.
+      cutLabels = new Set(split.map(Number));
+    } else if (
+      mainClusterForIdx.value === idx &&
+      mainClusterLabel.value != null &&
+      labs.includes(mainClusterLabel.value)
+    ) {
+      // Default: KEEP the main-branch cluster (the skeleton entrance), CUT every
+      // other cluster away from it.
+      const keep = mainClusterLabel.value;
+      cutLabels = new Set(labs.filter((l) => l !== keep));
     } else {
-      const labs = Array.from(posByLabel.keys()).sort((a, b) => a - b);
-      if (labs.length < 2) {
-        StatusMessage.showTemporaryMessage(`Window ${idx}: <2 clusters, nothing to cut.`, 4000);
-        return;
-      }
+      // Last resort (no skeleton main-branch yet): cut the first cluster.
       cutLabels = new Set([labs[0]]);
     }
     const A: number[][] = [];
