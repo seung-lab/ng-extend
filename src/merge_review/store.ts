@@ -857,6 +857,19 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     mainClusterForIdx.value = null;
     rerenderCurrentWindow(); // drop the entrance overlay
   }
+  // Resolve the base supervoxel under a token position (viewer voxel coords),
+  // reading whichever loaded segmentation layer covers it — same as the multicut
+  // tool. Sending these to CAVE lets the server skip its coordinate→supervoxel
+  // lookup, which fails ("Could not determine supervoxel ID") when a model point
+  // lands just off a watershed voxel even though it sits on the neuron.
+  function svAtVoxel(pos: number[]): bigint | null {
+    if (!viewer) return null;
+    for (const managed of viewer.layerManager.managedLayers) {
+      const sv = supervoxelAt(managed.layer, pos);
+      if (sv && sv !== 0n) return sv;
+    }
+    return null;
+  }
   // Queue the current window's binary split as a BACKGROUND cut (view unchanged).
   const enqueuedWindows = new Set<number>();
   function enqueueCurrentSplit() {
@@ -894,14 +907,40 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       // Last resort (no skeleton main-branch yet): cut the first cluster.
       cutLabels = new Set([labs[0]]);
     }
+    // Build both sides as parallel nm-point + supervoxel-id arrays, resolving the
+    // supervoxel under each token and deduping per side. Points that don't sit on
+    // a loaded supervoxel are dropped (a model point can land just off one).
     const A: number[][] = [];
     const B: number[][] = [];
+    const Asv: string[] = [];
+    const Bsv: string[] = [];
+    const seenA = new Set<string>();
+    const seenB = new Set<string>();
+    let dropped = 0;
     for (const [lab, pts] of posByLabel) {
-      const side = cutLabels.has(lab) ? A : B;
-      for (const v of pts) side.push([v[0] * 4, v[1] * 4, v[2] * 40]);
+      const cut = cutLabels.has(lab);
+      const nmSide = cut ? A : B;
+      const svSide = cut ? Asv : Bsv;
+      const seen = cut ? seenA : seenB;
+      for (const v of pts) {
+        const sv = svAtVoxel(v);
+        if (sv == null) {
+          dropped++;
+          continue;
+        }
+        const svStr = sv.toString();
+        if (seen.has(svStr)) continue; // one point per supervoxel
+        seen.add(svStr);
+        nmSide.push([v[0] * 4, v[1] * 4, v[2] * 40]);
+        svSide.push(svStr);
+      }
     }
     if (A.length === 0 || B.length === 0) {
-      StatusMessage.showTemporaryMessage("Both split sides must be non-empty.", 4000);
+      StatusMessage.showTemporaryMessage(
+        `Window ${idx}: couldn't resolve supervoxels for both sides (dropped ${dropped}). ` +
+          `Make sure the segmentation is loaded here, then retry.`,
+        7000,
+      );
       return;
     }
     enqueuedWindows.add(idx);
@@ -914,6 +953,8 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       anchor_sv: anchorSv.value,
       cluster_a_nm: A,
       cluster_b_nm: B,
+      cluster_a_sv: Asv,
+      cluster_b_sv: Bsv,
       approved: false,
     }).then((r) => {
       if ("error" in r) {
