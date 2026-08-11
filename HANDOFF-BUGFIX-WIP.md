@@ -91,6 +91,18 @@ Newest last. Every item lists the **root cause**, because several were not what 
 ## 3. Open items (the work queue)
 
 ### 3.1 CAVE-sourced stats — **the big one**
+
+> **PRE-BUILT 2026-08-11.** Everything below the permission line now exists and
+> waits only on the `admin_view` grant:
+> - `supabase-cave-edits-mirror.sql` — mirror table, **safe to apply now**
+> - `scripts/sync-cave-edits.mjs` — user_operations sync; exits code 2 with a
+>   clear message while the 403 persists, safe to run any time
+> - `.github/workflows/cave-edits-sync.yml` — cron + dispatch; the full
+>   light-up checklist is in its header comment (registration requires the
+>   file on `main`, same caveat as the probe workflow — read before pushing)
+> - `supabase-cave-edits-view-swap.sql` — **apply only after** the mirror has
+>   data and the client stops writing edit_log
+> §3.2 (`cellsSubmitted` inflation) is already removed from the client.
 **Decision already made by Amy: "all edits and all stats should be based on CAVE tables and real edits, not inferred from changes in segID on the page."**
 
 Today: completions ✅ come from CAVE (`cave_completions_mirror`); edits/merges/splits ❌ are **client-inferred** and written to `edit_log`, which the `user_edit_counts` view reads. The gate added this round is a stopgap, not the fix.
@@ -151,6 +163,8 @@ That reaches the valid `CAVE_SERVICE_TOKEN` secret with no token handling by han
 
 ### 3.2 `cellsSubmitted` inflation
 `watchSegmentEdits` still does `cellsSubmitted += 1` every 5 edits "to animate the cell-dot canvas". But `cellsSubmitted` is a **real stat** — the key for the whole Exploration badge track and the profile's Cells number. Amy's CAVE directive implies this should come from `cave_completions_mirror` instead. **Remove as part of §3.1.**
+
+> **DONE 2026-08-11** — the increment is removed; `cellsSubmitted` now comes only from `users.cells_completed` (CAVE completions).
 
 ### 3.3 `help_responses` wiring
 `supabase-help-responses-schema.sql` is **applied**, but the client still writes the legacy single `response_*` columns, so multiple share links still overwrite. Wire `useHelpRequestStore` + the Cell Library Help tab to the new child table. Amy has approved dropping the legacy columns afterwards ("no one is using this build except for testing").

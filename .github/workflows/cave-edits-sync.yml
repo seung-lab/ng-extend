@@ -1,0 +1,78 @@
+name: CAVE Edits Sync
+
+# Pulls real PyChunkedGraph operations per user from CAVE's user_operations
+# endpoint and upserts them into Supabase `cave_edits_mirror`. After
+# supabase-cave-edits-view-swap.sql is applied, the leaderboard's "Edits"
+# metric reads this mirror instead of the client-inferred edit_log.
+# See scripts/sync-cave-edits.mjs and HANDOFF-BUGFIX-WIP.md §3.1.
+#
+# ⚠️ LIGHT-UP CHECKLIST — this workflow is pre-built but the endpoint is
+# permission-gated (user_operations needs `admin_view` on the auth dataset;
+# nobody on the team holds it yet). Until the grant lands the script exits
+# with code 2 and a clear message. To go live:
+#   1. CAVE admins grant admin_view (stroeh-mouse-retina) to the account
+#      behind CAVE_SERVICE_TOKEN (ask Forrest/Derrick, #shared_cave_seunglab).
+#   2. Apply supabase-cave-edits-mirror.sql (safe to apply early).
+#   3. Dispatch this workflow with dry_run=true from the branch ref:
+#        gh workflow run cave-edits-sync.yml --ref eyewire-ii-community -f dry_run=true
+#      (works only once this file also exists on the default branch, which is
+#      what registers the workflow — same constraint as the completions sync).
+#   4. Run for real; first run backfills from 2025-01-01.
+#   5. Apply supabase-cave-edits-view-swap.sql.
+#   6. Deploy the client change that stops writing stats/edit_log from
+#      watchSegmentEdits (keep signalEdit for celebrations).
+#
+# NOTE ON REGISTRATION: schedule and workflow_dispatch triggers only register
+# from the DEFAULT branch (main). Adding this file to main requires care —
+# any push to main also triggers an App Engine deploy of a main version (the
+# deploy workflow is branches-ignore: master while the default branch is
+# main). Coordinate that push, or fold this job into cave-completions-sync.yml
+# which is already registered on main.
+
+on:
+  schedule:
+    # Every 30 minutes, same cadence as the completions sync. user_operations
+    # reads the PCG operation log directly (no materialization lag).
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: 'Optional: only sync this one dataset (e.g. stroeh_mouse_retina)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'If "true", read from CAVE but skip the Supabase write'
+        required: false
+        default: 'false'
+      full_backfill:
+        description: 'If "true", sync from 2025-01-01 instead of the 7-day lookback'
+        required: false
+        default: 'false'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sync CAVE edits → Supabase mirror
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.dataset }}" ]; then
+            ARGS="$ARGS --dataset ${{ inputs.dataset }}"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ "${{ inputs.full_backfill }}" = "true" ]; then
+            ARGS="$ARGS --full-backfill"
+          fi
+          node scripts/sync-cave-edits.mjs $ARGS
