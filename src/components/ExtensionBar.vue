@@ -815,8 +815,15 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 }
 
 
+/* The re-parented neuroglancer top row. It used to be stretched to 100%
+   so its flex:1 mouse readout had room; that readout is now a fixed corner
+   chip, and the stretch painted the row's own #222 background across the
+   whole elastic zone: the "random black bar" after the ? button. Let it
+   shrink to content and blend into the bar (the flex-fill absorbs slack). */
 #insertNGTopBar > div {
-  width: 100%;
+  width: auto;
+  background: transparent !important;
+  margin-bottom: 0 !important;
 }
 /* Add spacing between neuroglancer native icons next to Share */
 #insertNGTopBar .neuroglancer-icon,
