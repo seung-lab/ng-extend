@@ -35,14 +35,21 @@ onMounted(() => {
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
   // Seed via the same resolver the toolbar uses, so the grid reflects exactly
   // what's in the top bar — including icons auto-injected into older prefs.
-  draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons);
+  draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
 });
 
 async function handleSave() {
   const flag = draftFlag.value.trim();
   const bio = draftBio.value.trim().slice(0, 280);
-  // Local prefs (toolbar order, chat/help mute) stay in localStorage.
-  prefsStore.save({ flag, bio, toolbarIcons: draftToolbar.value, chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value });
+  // Local prefs (toolbar order, chat/help mute) stay in localStorage. Saving
+  // also stamps the injected marker: every auto-inject icon has now been
+  // offered in the grid, so absence from a future save means the user removed
+  // it, and resolveToolbarOrder must not re-add it (Celia's report).
+  prefsStore.save({
+    flag, bio, toolbarIcons: draftToolbar.value,
+    toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value,
+  });
   saved.value = true;
   setTimeout(() => { saved.value = false; }, 1800);
   // Flag and bio are also part of the PUBLIC profile: the profile panel and
@@ -59,7 +66,7 @@ async function handleSave() {
 }
 
 // ── Toolbar icon choices (shared with the actual top bar) ──────
-import { TOOLBAR_ICON_DEFS, RETIRED_TOOLBAR_ICON_IDS, DEFAULT_TOOLBAR_ORDER, resolveToolbarOrder } from '../data/toolbar-icons';
+import { TOOLBAR_ICON_DEFS, RETIRED_TOOLBAR_ICON_IDS, DEFAULT_TOOLBAR_ORDER, resolveToolbarOrder, markInjected } from '../data/toolbar-icons';
 
 // Only offer icons the top bar can actually show — exclude retired ones so this
 // grid matches the real toolbar rather than listing dead toggles.

@@ -758,6 +758,11 @@ export interface UserPreferences {
   bio: string;    // free-text, capped at 280 chars in the UI
   /** Which toolbar icons to show, in order. Empty = show all defaults. */
   toolbarIcons: string[];
+  /** Icon ids that have already been auto-injected into this user's saved
+   *  order (icons added after their prefs were first saved). Lets
+   *  resolveToolbarOrder tell "pref predates the icon" apart from "user
+   *  deliberately removed it", so removals stick. */
+  toolbarIconsInjected?: string[];
   /** Mute chat: skip the green unread pip on the toolbar. Defaults
    *  to false (notifications on) when the key isn't set yet. */
   chatMuted?: boolean;

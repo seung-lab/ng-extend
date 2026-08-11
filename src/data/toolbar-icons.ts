@@ -120,12 +120,21 @@ const AUTO_INJECT_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: 
  * call this, so what you toggle in Settings is exactly what the top bar shows.
  *
  * `findPath` is injected before `layers` in this list, because `layers` anchors
- * itself after `findPath`.
+ * itself after `layers`' own anchor `findPath`.
+ *
+ * `injected` is the per-user list of ids that have ALREADY been auto-injected
+ * once (prefs.toolbarIconsInjected). An id absent from `saved` but present in
+ * `injected` means the user removed it deliberately, so it stays removed.
+ * Array membership alone can't make that distinction, which was Celia's
+ * "icons don't get removed" bug (approved triage spec, 2026-08-11). Callers
+ * that persist prefs should also persist markInjected() to record the ids
+ * this call injected.
  */
-export function resolveToolbarOrder(saved: string[]): string[] {
+export function resolveToolbarOrder(saved: string[], injected: string[] = []): string[] {
   const order = saved.length > 0 ? [...saved] : [...DEFAULT_TOOLBAR_ORDER];
   for (const spec of AUTO_INJECT_TOOLBAR_ICONS) {
     if (order.includes(spec.id)) continue;
+    if (saved.length > 0 && injected.includes(spec.id)) continue; // user removed it
     let at = order.length;
     if (spec.after && order.indexOf(spec.after) >= 0) {
       at = order.indexOf(spec.after) + 1;
@@ -135,4 +144,10 @@ export function resolveToolbarOrder(saved: string[]): string[] {
     order.splice(at, 0, spec.id);
   }
   return order.filter(id => !RETIRED_TOOLBAR_ICON_IDS.includes(id));
+}
+
+/** Union of previously-injected ids with everything injectable, for callers
+ *  persisting prefs: once saved, every auto-inject id counts as offered. */
+export function markInjected(injected: string[] = []): string[] {
+  return [...new Set([...injected, ...AUTO_INJECT_TOOLBAR_ICONS.map(s => s.id)])];
 }

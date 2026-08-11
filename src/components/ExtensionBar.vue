@@ -360,7 +360,7 @@ interface ToolbarIcon {
 // ../data/toolbar-icons so SettingsPanel can render the exact same
 // set in its customization grid. Here we only attach the action
 // handlers and (where relevant) badge counters.
-import { TOOLBAR_ICON_DEFS, resolveToolbarOrder } from '../data/toolbar-icons';
+import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected } from '../data/toolbar-icons';
 
 // ── Layers: the neuroglancer layer-list panel, driven from our toolbar ──
 // The native top-row toggle is hidden in ng-override.css; this icon replaces it
@@ -451,7 +451,7 @@ const visibleToolbar = computed(() => {
   // resolveToolbarOrder handles default-fallback, injecting icons added since
   // the prefs were saved, and dropping retired ids — shared with SettingsPanel
   // so the grid and the real toolbar can't disagree.
-  const order = resolveToolbarOrder(prefs.toolbarIcons);
+  const order = resolveToolbarOrder(prefs.toolbarIcons, prefs.toolbarIconsInjected);
   return order.map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
 });
 
@@ -494,7 +494,10 @@ function onIconDrop(e: DragEvent, id: string) {
   const next = [...current];
   next.splice(fromIdx, 1);
   next.splice(toIdx, 0, src);
-  prefsStore.prefs.toolbarIcons = next;
+  // Persist via save() so the injected marker rides along: from this point
+  // every auto-inject icon has been offered, and future absence means the
+  // user removed it (Celia's "icons don't get removed" bug).
+  prefsStore.save({ toolbarIcons: next, toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected) });
 }
 
 function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
