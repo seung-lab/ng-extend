@@ -843,7 +843,7 @@ function shareOnX() {
 /* Content */
 .nge-quest-content {
   padding: 10px 14px 14px;
-  max-height: 480px;
+  max-height: min(480px, calc(100vh - 120px));
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(74, 158, 255, 0.2) transparent;

@@ -470,7 +470,10 @@ onUnmounted(() => {
 .chip {
     position: absolute;
     width: auto;
-    max-width: 80vw;
+    max-width: min(80vw, calc(100vw - 24px));
+    /* Tall steps scroll instead of cropping on short laptop screens. */
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
     color: #d0e8ff;
     padding: 30px;
     padding-bottom: 20px;

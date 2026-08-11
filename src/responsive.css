@@ -61,8 +61,8 @@
 /* ≤1366px — de-cram without shrinking the icons. */
 @media (max-width: 1366px) {
   .nge-dataset-btn {
-    gap: 4px;
-    padding: 0 6px;
+    gap: 5px;
+    padding: 0 10px;
   }
   /* The label used to be the full dataset name and had to hide here; it's
      now the short "Data: <abbrev>" form, which fits at laptop widths. */

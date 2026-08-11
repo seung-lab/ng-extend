@@ -692,7 +692,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     </button>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
-         class="nge-streak-chip" title="Your current editing streak">
+         class="nge-streak-chip" :title="`Editing streak: ${stats.currentStreak} day${stats.currentStreak === 1 ? '' : 's'} in a row with at least one edit`">
       🔥 {{ stats.currentStreak }}
     </div>
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
@@ -1100,17 +1100,18 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 .nge-dataset-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   height: 38px;
-  padding: 0 14px;
-  margin-right: 4px;
+  padding: 0 16px;
+  margin: 0 6px 0 2px;
   background: none;
   border: none;
   border-radius: 4px;
   color: #cfdcef;
-  font-size: 12px;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
   white-space: nowrap;
   cursor: pointer;
   opacity: 0.85;
@@ -1138,15 +1139,16 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   /* Matches .nge-icon-btn height; the pill keeps its own inner height via
      border-radius so it still reads as a button, not an icon. */
   height: 30px;
-  margin: 0 2px;
-  padding: 0 10px;
+  margin: 0 6px;
+  padding: 0 14px;
   background: rgba(74, 158, 255, 0.12);
   border: 1px solid rgba(74, 158, 255, 0.28);
   border-radius: 14px;
   color: #cfe0f5;
-  font-size: 12px;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }

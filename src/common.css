@@ -1,5 +1,14 @@
+/* Orbitron: the app's sci-fi display face (profile headers already use it).
+   Imported here, at global scope, so top-bar labels have it from first
+   paint instead of only after the profile has been opened once. */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&display=swap');
+
 :root {
-  --color-dark-bg: hsl(230 0% 14% / 1);
+  /* The top bar's background. Was hsl(230 0% 14%): hue 230 with ZERO
+     saturation, i.e. someone picked a blue and accidentally greyed it.
+     Now the same dark navy as .neuroglancer-side-panel so the bar and the
+     right panels read as one surface. */
+  --color-dark-bg: rgb(6 10 20 / 0.97);
   --color-medium-bg: #33353c;
   --color-light-bg: #4d505b;
   --color-small-text: #eee;

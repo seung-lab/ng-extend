@@ -292,7 +292,7 @@ function plainText(text: string): string {
   top: 42px;
   right: 8px;
   width: 340px;
-  max-height: 480px;
+  max-height: min(480px, calc(100vh - 60px));
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
   border: 1px solid rgba(74, 158, 255, 0.15);
   border-radius: 10px;

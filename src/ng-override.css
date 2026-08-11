@@ -853,6 +853,19 @@
   background: rgba(6, 10, 20, 0.97);
 }
 
+/* ── Never-cropped rule (Amy 2026-08-11) ──
+   Every ModalOverlay dialog is bounded by the viewport and scrolls
+   internally instead of rendering past the screen edge. !important because
+   ModalOverlay's own `overflow: visible` (specificity 0,3,0) historically
+   defeated per-panel clamps (the old Settings bug). Glow via box-shadow is
+   not clipped by overflow, so the holo treatment survives. */
+.nge-overlay.modal.overlay-content {
+  max-height: calc(100vh - 24px) !important;
+  max-width: calc(100vw - 24px) !important;
+  overflow: auto !important;
+  box-sizing: border-box;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    NG-EXTEND OVERLAY CONTENT
    ══════════════════════════════════════════════════════════════════════════ */

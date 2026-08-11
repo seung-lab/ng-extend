@@ -42,6 +42,16 @@ const TRIAGE_LABELS: Record<TriageRow['recommendation'], string> = {
   new_feature: 'New feature',
 };
 
+/** Split a structured spec ("Symptom: ...\nWhere: ...") into labeled rows.
+ *  Lines that don't match the Label: form render as plain rows, so older
+ *  free-text specs still display. */
+function parseSpec(spec: string): { label: string | null; text: string }[] {
+  return spec.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    const m = line.match(/^(Symptom|What|Where|Cause|Fix|Scope|Severity)\s*:\s*(.*)$/i);
+    return m ? { label: m[1], text: m[2] } : { label: null, text: line };
+  });
+}
+
 async function loadTriage() {
   triageLoading.value = true;
   triageError.value = '';
@@ -875,7 +885,12 @@ onMounted(() => {
             @keydown.stop @keyup.stop @keypress.stop
           ></textarea>
           <div v-else-if="row.proposed_message" class="nge-triage-rationale">💬 {{ row.proposed_message }}</div>
-          <pre v-if="row.spec" class="nge-triage-spec">{{ row.spec }}</pre>
+          <div v-if="row.spec" class="nge-triage-spec">
+            <div v-for="(line, i) in parseSpec(row.spec)" :key="i" class="nge-triage-spec-row">
+              <span v-if="line.label" class="nge-triage-spec-label">{{ line.label }}</span>
+              <span class="nge-triage-spec-text">{{ line.text }}</span>
+            </div>
+          </div>
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
             <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
               {{ row.recommendation === 'message' ? 'Approve + Send' : 'Approve' }}
@@ -1406,9 +1421,17 @@ onMounted(() => {
 }
 .nge-triage-spec {
   background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 6px; color: #ccd; font-size: 11.5px; padding: 8px 10px;
-  white-space: pre-wrap; max-height: 220px; overflow-y: auto; margin: 0;
+  border-radius: 6px; color: #ccd; font-size: 12px; padding: 9px 11px;
+  max-height: 240px; overflow-y: auto; margin: 0;
+  display: flex; flex-direction: column; gap: 5px;
 }
+.nge-triage-spec-row { display: flex; gap: 8px; align-items: baseline; line-height: 1.45; }
+.nge-triage-spec-label {
+  flex: none; min-width: 62px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.07em;
+  text-transform: uppercase; color: rgba(100, 200, 255, 0.75);
+}
+.nge-triage-spec-text { color: rgba(235, 238, 250, 0.88); }
 .nge-triage-actions { display: flex; gap: 8px; }
 
 .nge-admin-badge-grid {
