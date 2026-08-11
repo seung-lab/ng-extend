@@ -90,7 +90,7 @@ const slackGet = async (method, params) => {
 // admin-uploads/nurro-neurons; sourced from scifi-ui/media + the CA3 render).
 const NURRO_AVATAR_URL =
   `${SUPABASE_URL}/storage/v1/object/public/admin-uploads/nurro/guide-avatar.png`;
-const NEURON_RENDER_COUNT = 6;
+const NEURON_RENDER_COUNT = 24; // scifi-ui media + CA3 + microns + FlyWire galleries
 const randomNeuronUrl = () =>
   `${SUPABASE_URL}/storage/v1/object/public/admin-uploads/nurro-neurons/neuron-${1 + Math.floor(Math.random() * NEURON_RENDER_COUNT)}.jpg`;
 

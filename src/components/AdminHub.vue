@@ -107,7 +107,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
           title: '💬 Nurro replied to your feedback',
           body: text,
           thumbnail_url: `${storageBase}/nurro/guide-avatar.png`,
-          image_url: `${storageBase}/nurro-neurons/neuron-${1 + Math.floor(Math.random() * 6)}.jpg`,
+          image_url: `${storageBase}/nurro-neurons/neuron-${1 + Math.floor(Math.random() * 24)}.jpg`,
           target_type: targetUserId ? 'user' : 'all',
           target_id: targetUserId,
           send_at: new Date().toISOString(),
