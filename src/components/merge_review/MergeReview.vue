@@ -4,6 +4,7 @@ import { useMergeReviewStore } from "#src/merge_review/store.js";
 import WindowsPanel from "#src/components/merge_review/WindowsPanel.vue";
 import DecisionPanel from "#src/components/merge_review/DecisionPanel.vue";
 import WelcomeOverlay from "#src/components/merge_review/WelcomeOverlay.vue";
+import QueueWindow from "#src/components/merge_review/QueueWindow.vue";
 
 const store = useMergeReviewStore();
 
@@ -103,6 +104,7 @@ onBeforeUnmount(() => {
     <welcome-overlay v-if="store.showWelcome" />
     <windows-panel />
     <decision-panel />
+    <queue-window v-if="!store.showWelcome" />
   </div>
 </template>
 

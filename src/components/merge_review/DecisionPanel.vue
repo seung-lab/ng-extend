@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useMergeReviewStore } from "#src/merge_review/store.js";
-import QueueStatusTable from "./QueueStatusTable.vue";
 import { clusterColor } from "#src/merge_review/state.js";
 import { useDraggable } from "#src/merge_review/useDraggable.js";
 
@@ -190,7 +189,6 @@ function onNotesInput() {
         <span v-else class="dim">none — hover the nucleus, press A</span>
         <button v-if="store.hasAnchor" class="btn-reset-edits" @click="store.clearAnchor()">clear</button>
       </div>
-      <QueueStatusTable />
       <input
         id="cur-notes"
         v-model="notes"
