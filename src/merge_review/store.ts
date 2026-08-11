@@ -27,6 +27,7 @@ import {
   type TokenEdits,
 } from "#src/merge_review/state.js";
 import { seedMulticut, supervoxelAt } from "#src/merge_review/multicut.js";
+import { StatusMessage } from "neuroglancer/unstable/status.js";
 import { enqueueJob, fetchKeepRoot } from "#src/merge_review/mergeQueueClient.js";
 import {
   clearDecisionField,
@@ -221,6 +222,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   function applyMerge(verdict: string) {
     if (!bundle.value || currentIdx.value == null) return;
     setField(currentIdx.value, "merge", verdict);
+    if (verdict === "yes") enqueueCurrentSplit();
   }
 
   // ─────────────────────── split clusters ──────────────────────
@@ -622,6 +624,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       const sv = supervoxelAt(managed.layer, pos);
       if (sv && sv !== 0n) {
         anchorSv.value = sv.toString();
+        StatusMessage.showTemporaryMessage(`Anchor set (supervoxel ${sv})`, 4000);
         return anchorSv.value;
       }
     }
@@ -632,43 +635,64 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     anchorSv.value = null;
   }
   // Queue the current window's binary split as a BACKGROUND cut (view unchanged).
+  const enqueuedWindows = new Set<number>();
   function enqueueCurrentSplit() {
     if (!bundle.value || currentIdx.value == null) return;
+    const idx = currentIdx.value;
     const w = currentWindow.value;
     if (!w || !w.tokens || !w.tokens.labels) return;
     if (anchorSv.value == null) {
-      window.alert("Set an anchor first: hover the nucleus and press A.");
+      StatusMessage.showTemporaryMessage("Set an anchor first: hover the nucleus and press A.", 5000);
       return;
     }
-    const split = decisions.value[currentIdx.value]?.split;
-    if (!Array.isArray(split) || split.length === 0) {
-      window.alert("Highlight the merged-in cluster(s) first (digit keys), then queue the cut.");
+    if (enqueuedWindows.has(idx)) {
+      StatusMessage.showTemporaryMessage(`Window ${idx} is already queued.`, 3000);
       return;
     }
-    const selected = new Set(split.map(Number));
     const t = w.tokens;
+    // Cut side = the reviewer's highlighted clusters, or (default) the first suggested cluster.
+    const split = decisions.value[idx]?.split;
+    let cutLabels: Set<number>;
+    if (Array.isArray(split) && split.length > 0) {
+      cutLabels = new Set(split.map(Number));
+    } else {
+      const labs = Array.from(new Set(t.labels)).sort((a, b) => a - b);
+      if (labs.length < 2) {
+        StatusMessage.showTemporaryMessage("Window has <2 clusters — nothing to cut.", 4000);
+        return;
+      }
+      cutLabels = new Set([labs[0]]);
+    }
     const c = w.center_um;
     const A: number[][] = [];
     const B: number[][] = [];
     t.pos_rel_um.forEach((p, i) => {
       const nm = [(c[0] + p[0]) * 1000, (c[1] + p[1]) * 1000, (c[2] + p[2]) * 1000];
-      (selected.has(t.labels[i]) ? A : B).push(nm);
+      (cutLabels.has(t.labels[i]) ? A : B).push(nm);
     });
     if (A.length === 0 || B.length === 0) {
-      window.alert("Both sides must be non-empty.");
+      StatusMessage.showTemporaryMessage("Both split sides must be non-empty.", 4000);
       return;
     }
+    enqueuedWindows.add(idx);
+    StatusMessage.showTemporaryMessage(`Queuing cut for window ${idx}\u2026`, 3000);
     void enqueueJob({
       session_id: String(root.value ?? "session"),
       reviewer: "reviewer",
-      window_id: String(currentIdx.value),
+      window_id: String(idx),
       source_root_id: String(root.value),
       anchor_sv: anchorSv.value,
       cluster_a_nm: A,
       cluster_b_nm: B,
       approved: false,
     }).then((r) => {
-      if ("error" in r) window.alert("Queue failed: " + r.error);
+      if ("error" in r) {
+        enqueuedWindows.delete(idx);
+        StatusMessage.showTemporaryMessage("Queue failed: " + r.error, 6000);
+      } else {
+        StatusMessage.showTemporaryMessage(
+          `Cut queued (job ${(r as { id: number }).id}) for window ${idx}.`, 4000);
+      }
     });
     startCleanedPoll();
   }
