@@ -58,8 +58,9 @@ onUnmounted(() => { if (timer) clearInterval(timer); });
       <tbody>
         <tr v-for="r in rows" :key="r.id">
           <td>{{ r.id }}</td><td>{{ r.window_id }}</td>
-          <td class="statuscell">
+          <td class="statuscell" :title="r.error || r.status">
             <span class="dot" :style="{ background: COLOR[r.status] }"></span>{{ r.status }}
+            <span v-if="r.error" class="err-mark" :title="r.error">!</span>
             <button
               v-if="r.status === 'queued'"
               class="cancel-btn"
@@ -100,5 +101,6 @@ onUnmounted(() => { if (timer) clearInterval(timer); });
   padding: 0 4px; margin-left: 6px;
 }
 .cancel-btn:hover { background: #d0453b; color: #fff; }
+.err-mark { color: #d0453b; font-weight: 700; margin-left: 4px; cursor: help; }
 .mcq-note { color: #c9a227; font-size: 11px; padding: 3px 6px; }
 </style>
