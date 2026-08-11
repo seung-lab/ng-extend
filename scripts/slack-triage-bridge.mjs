@@ -61,11 +61,24 @@ const sb = (path, init = {}) => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
   },
 });
 
+// Write methods (chat.postMessage) take a JSON POST; read methods
+// (conversations.history / .replies) reject JSON bodies with
+// invalid_arguments and want GET query params. Two helpers accordingly.
 const slack = async (method, payload) => {
   const res = await fetch(`https://slack.com/api/${method}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${SLACK_TOKEN}`, 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify(payload),
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(`${method}: ${json.error}`);
+  return json;
+};
+
+const slackGet = async (method, params) => {
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`https://slack.com/api/${method}?${qs}`, {
+    headers: { Authorization: `Bearer ${SLACK_TOKEN}` },
   });
   const json = await res.json();
   if (!json.ok) throw new Error(`${method}: ${json.error}`);
@@ -82,7 +95,7 @@ async function findReportTs(excerpt) {
   if (!excerpt) return null;
   try {
     const needle = excerpt.slice(0, 60).toLowerCase();
-    const hist = await slack('conversations.history', { channel: CHANNEL, limit: 100 });
+    const hist = await slackGet('conversations.history', { channel: CHANNEL, limit: 100 });
     for (const m of hist.messages ?? []) {
       if ((m.text || '').toLowerCase().includes(needle)) return m.thread_ts || m.ts;
     }
@@ -156,7 +169,7 @@ async function readApprovals() {
   for (const row of rows) {
     let replies;
     try {
-      replies = await slack('conversations.replies', { channel: row.slack_channel || CHANNEL, ts: row.slack_ts });
+      replies = await slackGet('conversations.replies', { channel: row.slack_channel || CHANNEL, ts: row.slack_ts });
     } catch (e) { console.warn(`[bridge] replies fetch failed for ${row.id}: ${e.message}`); continue; }
     for (const msg of (replies.messages ?? []).slice(1)) { // [0] is the proposal itself
       const text = (msg.text || '').trim();
