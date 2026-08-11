@@ -212,6 +212,11 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     if (!bundle.value) return;
     const w = bundle.value.windows.find((x) => x.idx === idx);
     if (!w) return;
+    // Leaving a window we marked YES (a real merge) → queue its fixed cut before moving on.
+    if (currentIdx.value != null && currentIdx.value !== idx) {
+      const d = decisions.value[currentIdx.value];
+      if ((d?.merge ?? d?.verdict) === "yes") enqueueCurrentSplit();
+    }
     currentIdx.value = idx;
     applyStateToViewer(
       buildViewerState(bundle.value, w, tokenEdits.value[idx] ?? {}),
@@ -222,7 +227,6 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   function applyMerge(verdict: string) {
     if (!bundle.value || currentIdx.value == null) return;
     setField(currentIdx.value, "merge", verdict);
-    if (verdict === "yes") enqueueCurrentSplit();
   }
 
   // ─────────────────────── split clusters ──────────────────────
@@ -642,34 +646,30 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     const w = currentWindow.value;
     if (!w || !w.tokens || !w.tokens.labels) return;
     if (anchorSv.value == null) {
-      StatusMessage.showTemporaryMessage("Set an anchor first: hover the nucleus and press A.", 5000);
+      StatusMessage.showTemporaryMessage("This window is marked YES but no anchor is set \u2014 hover the nucleus and press A.", 6000);
       return;
     }
-    if (enqueuedWindows.has(idx)) {
-      StatusMessage.showTemporaryMessage(`Window ${idx} is already queued.`, 3000);
-      return;
-    }
-    const t = w.tokens;
-    // Cut side = the reviewer's highlighted clusters, or (default) the first suggested cluster.
+    if (enqueuedWindows.has(idx)) return;
+    // Effective clusters after node recolouring / deletions (voxel coords -> nm).
+    const posByLabel = clusterPositions(w, currentEdits.value);
     const split = decisions.value[idx]?.split;
     let cutLabels: Set<number>;
     if (Array.isArray(split) && split.length > 0) {
-      cutLabels = new Set(split.map(Number));
+      cutLabels = new Set(split.map(Number)); // highlighted clusters = cut side
     } else {
-      const labs = Array.from(new Set(t.labels)).sort((a, b) => a - b);
+      const labs = Array.from(posByLabel.keys()).sort((a, b) => a - b);
       if (labs.length < 2) {
-        StatusMessage.showTemporaryMessage("Window has <2 clusters — nothing to cut.", 4000);
+        StatusMessage.showTemporaryMessage(`Window ${idx}: <2 clusters, nothing to cut.`, 4000);
         return;
       }
       cutLabels = new Set([labs[0]]);
     }
-    const c = w.center_um;
     const A: number[][] = [];
     const B: number[][] = [];
-    t.pos_rel_um.forEach((p, i) => {
-      const nm = [(c[0] + p[0]) * 1000, (c[1] + p[1]) * 1000, (c[2] + p[2]) * 1000];
-      (cutLabels.has(t.labels[i]) ? A : B).push(nm);
-    });
+    for (const [lab, pts] of posByLabel) {
+      const side = cutLabels.has(lab) ? A : B;
+      for (const v of pts) side.push([v[0] * 4, v[1] * 4, v[2] * 40]);
+    }
     if (A.length === 0 || B.length === 0) {
       StatusMessage.showTemporaryMessage("Both split sides must be non-empty.", 4000);
       return;
