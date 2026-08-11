@@ -154,44 +154,67 @@ onMounted(() => {
   fxObserver = new ResizeObserver(fit);
   fxObserver.observe(canvas.parentElement!);
 
-  const COLORS = ['120, 140, 255', '100, 200, 255', '150, 170, 255'];
-  // Scale count to area: ~110 at modal size, capped for big monitors.
-  const COUNT = Math.min(340, Math.max(110, Math.round((w * h) / 4200)));
+  // Glowing motes, not trails: long-lived line trails read as worms (Amy).
+  // Each particle is a soft radial-gradient sprite drawn with additive
+  // blending, drifting slowly along the field; a fast per-frame fade keeps
+  // only the faintest comet tail.
+  const COLOR_TRIPLETS: [number, number, number][] =
+    [[120, 140, 255], [100, 200, 255], [150, 170, 255]];
+  const SPRITE = 48; // sprite canvas size; glow radius = SPRITE/2
+  const sprites = COLOR_TRIPLETS.map(([r, g, b]) => {
+    const s = document.createElement('canvas');
+    s.width = s.height = SPRITE;
+    const sc = s.getContext('2d')!;
+    const grad = sc.createRadialGradient(SPRITE / 2, SPRITE / 2, 0, SPRITE / 2, SPRITE / 2, SPRITE / 2);
+    grad.addColorStop(0, `rgba(255, 255, 255, 0.9)`);
+    grad.addColorStop(0.18, `rgba(${r}, ${g}, ${b}, 0.55)`);
+    grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.12)`);
+    grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+    sc.fillStyle = grad;
+    sc.fillRect(0, 0, SPRITE, SPRITE);
+    return s;
+  });
+
+  const COUNT = Math.min(160, Math.max(60, Math.round((w * h) / 9000)));
   const particles = Array.from({ length: COUNT }, () => ({
     x: Math.random() * w, y: Math.random() * h,
-    color: COLORS[Math.floor(Math.random() * COLORS.length)],
-    life: Math.random() * 240,
+    sprite: sprites[Math.floor(Math.random() * sprites.length)],
+    size: 5 + Math.random() * 13,          // drawn sprite diameter in px
+    speed: 0.12 + Math.random() * 0.18,    // slow drift
+    phase: Math.random() * Math.PI * 2,    // twinkle offset
+    life: Math.random() * 600,
   }));
 
   let t = Math.random() * 100;
-  const SCALE = 0.012; // field frequency in px⁻¹
+  const SCALE = 0.010; // field frequency in px⁻¹
 
   const frame = () => {
-    t += 0.0022;
-    // Fade existing trails toward transparent (keeps the backdrop see-through).
+    t += 0.0016;
+    // Fast fade: only a whisper of a comet tail survives, no worm trails.
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
     ctx.fillRect(0, 0, w, h);
-    ctx.globalCompositeOperation = 'source-over';
+    // Additive blending makes overlapping motes bloom instead of muddying.
+    ctx.globalCompositeOperation = 'lighter';
 
     for (const p of particles) {
       const angle = noise(p.x * SCALE, p.y * SCALE + t) * Math.PI * 4;
-      const nx = p.x + Math.cos(angle) * 0.6;
-      const ny = p.y + Math.sin(angle) * 0.6;
+      p.x += Math.cos(angle) * p.speed;
+      p.y += Math.sin(angle) * p.speed;
       p.life -= 1;
-      if (p.life <= 0 || nx < -5 || nx > w + 5 || ny < -5 || ny > h + 5) {
+      if (p.life <= 0 || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
         p.x = Math.random() * w; p.y = Math.random() * h;
-        p.life = 120 + Math.random() * 240;
+        p.life = 300 + Math.random() * 600;
         continue;
       }
-      ctx.strokeStyle = `rgba(${p.color}, 0.10)`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(nx, ny);
-      ctx.stroke();
-      p.x = nx; p.y = ny;
+      // Gentle twinkle so the field breathes; fade in/out at life edges.
+      const twinkle = 0.55 + 0.45 * Math.sin(t * 40 + p.phase);
+      const edge = Math.min(1, p.life / 60);
+      ctx.globalAlpha = 0.5 * twinkle * edge;
+      ctx.drawImage(p.sprite, p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
     }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
     fxRaf = requestAnimationFrame(frame);
   };
   fxRaf = requestAnimationFrame(frame);
