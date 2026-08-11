@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import { QUEUE_API } from "#src/merge_review/mergeQueueClient.js";
+import { fetchStatus } from "#src/merge_review/mergeQueueClient.js";
 
 interface Row {
   id: number; window_id: string; status: string; approved: number;
@@ -14,10 +14,7 @@ const COLOR: Record<string, string> = {
   done: "#2e9e6b", failed: "#d0453b", superseded: "#a05fd0", skipped: "#6b7280",
 };
 async function refresh() {
-  try {
-    const r = await fetch(`${QUEUE_API}/status`);
-    rows.value = (await r.json()).rows ?? [];
-  } catch { /* transient */ }
+  rows.value = (await fetchStatus()) as unknown as Row[];
 }
 onMounted(() => { refresh(); timer = window.setInterval(refresh, 4000); });
 onUnmounted(() => { if (timer) clearInterval(timer); });
