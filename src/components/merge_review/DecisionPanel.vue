@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useMergeReviewStore } from "#src/merge_review/store.js";
+import QueueStatusTable from "./QueueStatusTable.vue";
 import { clusterColor } from "#src/merge_review/state.js";
 import { useDraggable } from "#src/merge_review/useDraggable.js";
 
@@ -156,6 +157,15 @@ function onNotesInput() {
             >
               ✂ Create split
             </button>
+            <button
+              v-if="store.canCreateSplit"
+              class="btn-create-split"
+              title="Queue this split as a BACKGROUND cut — view stays put; the anchor decides the keep side; CAVE processes queued cuts one at a time"
+              :disabled="!store.hasAnchor"
+              @click="store.enqueueCurrentSplit()"
+            >
+              ⏱ Queue cut
+            </button>
           </template>
           <span v-else class="dim">(no token labels for this window)</span>
         </div>
@@ -174,6 +184,13 @@ function onNotesInput() {
         </div>
       </div>
 
+      <div class="anchor-row">
+        Anchor:
+        <span v-if="store.hasAnchor" style="color: #2e9e6b">set ✓</span>
+        <span v-else class="dim">none — hover the nucleus, press A</span>
+        <button v-if="store.hasAnchor" class="btn-reset-edits" @click="store.clearAnchor()">clear</button>
+      </div>
+      <QueueStatusTable />
       <input
         id="cur-notes"
         v-model="notes"

@@ -66,6 +66,7 @@ function onKeydown(e: KeyboardEvent) {
   else if (k === "n") store.applyMerge("no");
   else if (k === "s") store.applyMerge("skip");
   else if (k === "u") store.applyMerge("unsure");
+  else if (k === "a") store.setAnchorFromClick();
   // SPLIT WHICH? — digit keys toggle the per-window cluster buttons.
   // 1 → first cluster, 2 → second, etc.  0 toggles Skip.
   else if (/^[0-9]$/.test(k)) {

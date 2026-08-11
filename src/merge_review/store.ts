@@ -25,7 +25,8 @@ import {
   editedClusterLabels,
   type TokenEdits,
 } from "#src/merge_review/state.js";
-import { seedMulticut } from "#src/merge_review/multicut.js";
+import { seedMulticut, supervoxelAt } from "#src/merge_review/multicut.js";
+import { enqueueJob } from "#src/merge_review/mergeQueueClient.js";
 import {
   clearDecisionField,
   isDecided,
@@ -574,6 +575,72 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     URL.revokeObjectURL(url);
   }
 
+  // ─────────────────────── anchor + background cut queue ───────
+  // Anchor = a STABLE supervoxel (the nucleus / keep side). Hover the nucleus, press A.
+  const anchorSv = ref<string | null>(null);
+  const hasAnchor = computed(() => anchorSv.value != null);
+  function setAnchorFromClick(): string | null {
+    if (!viewer) return null;
+    const ms = (viewer as unknown as { mouseState?: { position?: Float32Array } }).mouseState;
+    const pos = ms && ms.position ? Array.from(ms.position) : null;
+    if (!pos) {
+      window.alert("Hover the cursor over the nucleus, then press A.");
+      return null;
+    }
+    for (const managed of viewer.layerManager.managedLayers) {
+      const sv = supervoxelAt(managed.layer, pos);
+      if (sv && sv !== 0n) {
+        anchorSv.value = sv.toString();
+        return anchorSv.value;
+      }
+    }
+    window.alert("No supervoxel here — make sure the segmentation is loaded, then retry.");
+    return null;
+  }
+  function clearAnchor() {
+    anchorSv.value = null;
+  }
+  // Queue the current window's binary split as a BACKGROUND cut (view unchanged).
+  function enqueueCurrentSplit() {
+    if (!bundle.value || currentIdx.value == null) return;
+    const w = currentWindow.value;
+    if (!w || !w.tokens || !w.tokens.labels) return;
+    if (anchorSv.value == null) {
+      window.alert("Set an anchor first: hover the nucleus and press A.");
+      return;
+    }
+    const split = decisions.value[currentIdx.value]?.split;
+    if (!Array.isArray(split) || split.length === 0) {
+      window.alert("Highlight the merged-in cluster(s) first (digit keys), then queue the cut.");
+      return;
+    }
+    const selected = new Set(split.map(Number));
+    const t = w.tokens;
+    const c = w.center_um;
+    const A: number[][] = [];
+    const B: number[][] = [];
+    t.pos_rel_um.forEach((p, i) => {
+      const nm = [(c[0] + p[0]) * 1000, (c[1] + p[1]) * 1000, (c[2] + p[2]) * 1000];
+      (selected.has(t.labels[i]) ? A : B).push(nm);
+    });
+    if (A.length === 0 || B.length === 0) {
+      window.alert("Both sides must be non-empty.");
+      return;
+    }
+    void enqueueJob({
+      session_id: String(root.value ?? "session"),
+      reviewer: "reviewer",
+      window_id: String(currentIdx.value),
+      source_root_id: String(root.value),
+      anchor_sv: anchorSv.value,
+      cluster_a_nm: A,
+      cluster_b_nm: B,
+      approved: false,
+    }).then((r) => {
+      if ("error" in r) window.alert("Queue failed: " + r.error);
+    });
+  }
+
   return {
     // state
     bundle,
@@ -611,5 +678,10 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     importBundleFromText,
     importDecisionsFromText,
     exportDecisions,
+    // background cut queue
+    hasAnchor,
+    setAnchorFromClick,
+    clearAnchor,
+    enqueueCurrentSplit,
   };
 });

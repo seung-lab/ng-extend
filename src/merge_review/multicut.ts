@@ -107,12 +107,12 @@ function makeGlobalToLayer(layer: AnyLayer): GlobalToLayer | null {
 // Read the base supervoxel id at a global (voxel-space) position from
 // whichever segmentation render layer has the covering chunk loaded.
 // Returns null when no loaded chunk covers the point.
-function supervoxelAt(
-  userLayer: UserLayerLike,
+export function supervoxelAt(
+  userLayer: unknown,
   globalPosition: number[],
 ): bigint | null {
   const gp = Float32Array.from(globalPosition);
-  for (const rl of userLayer.renderLayers) {
+  for (const rl of (userLayer as UserLayerLike).renderLayers) {
     if (typeof rl.getValueAt !== "function") continue;
     let value: unknown;
     try {
