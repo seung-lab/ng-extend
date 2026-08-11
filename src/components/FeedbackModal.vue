@@ -5,7 +5,7 @@
  * anywhere in the app. Posts to the `submitIssue` Cloud Function which relays
  * to Slack (#citsci_feedback) and keeps a Firestore record. No auth required.
  */
-import { ref } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import { useProofreadingBackendStore } from '../store';
 import { mintShortStateLink } from '../util/state_link';
@@ -95,11 +95,107 @@ async function submit() {
     sending.value = false;
   }
 }
+
+// ── Flow-field backdrop ──────────────────────────────────────────────────────
+// Particles drifting along a gradient-noise flow field behind the form
+// (feedback_triage proposal approved by Amy 2026-08-11; inspiration:
+// amyleesterling.github.io/experimental-UI). Purely decorative: skipped
+// entirely under prefers-reduced-motion, capped DPR, ~110 particles, and the
+// rAF loop lives only while the modal is mounted.
+const fxCanvas = ref<HTMLCanvasElement | null>(null);
+let fxRaf = 0;
+let fxObserver: ResizeObserver | null = null;
+
+/** Smooth 2D value noise: deterministic hash grid + smoothstep interpolation. */
+function makeNoise() {
+  const hash = (x: number, y: number) => {
+    const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+    return h - Math.floor(h);
+  };
+  const smooth = (t: number) => t * t * (3 - 2 * t);
+  return (x: number, y: number): number => {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const a = hash(xi, yi), b = hash(xi + 1, yi);
+    const c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    const u = smooth(xf), v = smooth(yf);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+}
+
+onMounted(() => {
+  const canvas = fxCanvas.value;
+  if (!canvas) return;
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const noise = makeNoise();
+  let w = 0, h = 0;
+
+  const fit = () => {
+    const el = canvas.parentElement!;
+    w = el.offsetWidth; h = el.offsetHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  fit();
+  fxObserver = new ResizeObserver(fit);
+  fxObserver.observe(canvas.parentElement!);
+
+  const COLORS = ['120, 140, 255', '100, 200, 255', '150, 170, 255'];
+  const particles = Array.from({ length: 110 }, () => ({
+    x: Math.random() * 500, y: Math.random() * 500,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    life: Math.random() * 240,
+  }));
+
+  let t = Math.random() * 100;
+  const SCALE = 0.012; // field frequency in px⁻¹
+
+  const frame = () => {
+    t += 0.0022;
+    // Fade existing trails toward transparent (keeps the backdrop see-through).
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+
+    for (const p of particles) {
+      const angle = noise(p.x * SCALE, p.y * SCALE + t) * Math.PI * 4;
+      const nx = p.x + Math.cos(angle) * 0.6;
+      const ny = p.y + Math.sin(angle) * 0.6;
+      p.life -= 1;
+      if (p.life <= 0 || nx < -5 || nx > w + 5 || ny < -5 || ny > h + 5) {
+        p.x = Math.random() * w; p.y = Math.random() * h;
+        p.life = 120 + Math.random() * 240;
+        continue;
+      }
+      ctx.strokeStyle = `rgba(${p.color}, 0.10)`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(nx, ny);
+      ctx.stroke();
+      p.x = nx; p.y = ny;
+    }
+    fxRaf = requestAnimationFrame(frame);
+  };
+  fxRaf = requestAnimationFrame(frame);
+});
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(fxRaf);
+  fxObserver?.disconnect();
+  fxObserver = null;
+});
 </script>
 
 <template>
   <modal-overlay id="nge-feedback-modal" class="nge-feedback-modal" @hide="emit('hide')">
     <div class="nge-fb-shell">
+      <canvas ref="fxCanvas" class="nge-fb-fx" aria-hidden="true"></canvas>
       <button class="nge-fb-exit" @click="emit('hide')">×</button>
 
       <div v-if="!done" class="nge-fb-body">
@@ -151,7 +247,16 @@ async function submit() {
   min-width: 340px;
   max-width: 460px;
   padding: 20px 22px;
+  overflow: hidden; /* clip the flow-field canvas to the rounded shell */
 }
+.nge-fb-fx {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.nge-fb-body, .nge-fb-done { position: relative; z-index: 1; }
+.nge-fb-exit { z-index: 2; }
 .nge-fb-exit {
   position: absolute;
   top: 8px;
