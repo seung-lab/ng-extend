@@ -41,6 +41,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID }}
-          APPROVER_SLACK_IDS: ${{ vars.APPROVER_SLACK_IDS }}
+          # Defaults discovered 2026-08-11: #citsci_feedback, approvers Amy
+          # (U02FH1DRC) and Celia (U033NHWDE). Repo variables override.
+          SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID || 'C0BG5CN71C3' }}
+          APPROVER_SLACK_IDS: ${{ vars.APPROVER_SLACK_IDS || 'U02FH1DRC,U033NHWDE' }}
         run: node scripts/slack-triage-bridge.mjs
