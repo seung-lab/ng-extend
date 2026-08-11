@@ -32,7 +32,7 @@ import { seedMulticut, supervoxelAt } from "#src/merge_review/multicut.js";
 import {
   fetchSkeleton,
   shortestPathNm,
-  shortestPathToClusterNm,
+  firstContactPathNm,
 } from "#src/merge_review/skeletonPath.js";
 import { StatusMessage } from "neuroglancer/unstable/status.js";
 import { enqueueJob, fetchKeepRoot } from "#src/merge_review/mergeQueueClient.js";
@@ -325,7 +325,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     // window has no cluster points at all.
     const pathNm =
       clusterPtsNm.length > 0
-        ? shortestPathToClusterNm(skel, anchorNm, clusterPtsNm)
+        ? firstContactPathNm(skel, anchorNm, clusterPtsNm)
         : shortestPathNm(skel, anchorNm, [
             w.center_um[0] * 1000,
             w.center_um[1] * 1000,

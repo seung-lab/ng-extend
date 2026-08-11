@@ -175,28 +175,23 @@ function nearestVertex(s: Skeleton, p: number[]): number {
   return bi;
 }
 
-// Vertex nearest a whole SET of points (min distance over the set). Used to
-// find where the skeleton first reaches this window's clusters — the entrance.
-function nearestVertexToSet(s: Skeleton, pts: number[][]): number {
-  const v = s.vertices;
-  let bi = 0;
-  let bd = Infinity;
-  for (let i = 0; i < s.nv; i++) {
-    const x = v[3 * i];
-    const y = v[3 * i + 1];
-    const z = v[3 * i + 2];
-    for (let j = 0; j < pts.length; j++) {
-      const dx = x - pts[j][0];
-      const dy = y - pts[j][1];
-      const dz = z - pts[j][2];
-      const d = dx * dx + dy * dy + dz * dz;
-      if (d < bd) {
-        bd = d;
-        bi = i;
-      }
-    }
+function buildAdj(s: Skeleton): number[][] {
+  const adj: number[][] = Array.from({ length: s.nv }, () => [] as number[]);
+  const ne = s.edges.length / 2;
+  for (let i = 0; i < ne; i++) {
+    const a = s.edges[2 * i];
+    const b = s.edges[2 * i + 1];
+    adj[a].push(b);
+    adj[b].push(a);
   }
-  return bi;
+  return adj;
+}
+
+function backtrack(s: Skeleton, prev: Int32Array, end: number): number[][] {
+  const idx: number[] = [];
+  for (let u = end; u !== -1; u = prev[u]) idx.push(u);
+  idx.reverse();
+  return idx.map((i) => vertexNm(s, i));
 }
 
 // Shortest path along the skeleton edges between two vertex indices; inclusive
@@ -207,14 +202,7 @@ function dijkstraPath(
   dst: number,
 ): number[][] | null {
   if (src === dst) return [vertexNm(s, src)];
-  const adj: number[][] = Array.from({ length: s.nv }, () => [] as number[]);
-  const ne = s.edges.length / 2;
-  for (let i = 0; i < ne; i++) {
-    const a = s.edges[2 * i];
-    const b = s.edges[2 * i + 1];
-    adj[a].push(b);
-    adj[b].push(a);
-  }
+  const adj = buildAdj(s);
   const dist = new Float64Array(s.nv).fill(Infinity);
   const prev = new Int32Array(s.nv).fill(-1);
   dist[src] = 0;
@@ -234,10 +222,7 @@ function dijkstraPath(
     }
   }
   if (!isFinite(dist[dst])) return null;
-  const idx: number[] = [];
-  for (let u = dst; u !== -1; u = prev[u]) idx.push(u);
-  idx.reverse();
-  return idx.map((i) => vertexNm(s, i));
+  return backtrack(s, prev, dst);
 }
 
 // Path from the vertex nearest `aNm` (anchor gate) to the vertex nearest `bNm`.
@@ -249,20 +234,68 @@ export function shortestPathNm(
   return dijkstraPath(s, nearestVertex(s, aNm), nearestVertex(s, bNm));
 }
 
-// Path from the anchor gate to where the skeleton first REACHES this window's
-// cluster points — the entrance. It stops at that contact vertex, not the
-// floating window centre. The last polyline point is the entrance.
-export function shortestPathToClusterNm(
+// Path from the anchor gate walking OUT along the skeleton, stopping at the
+// FIRST vertex that comes adjacent to this window's clusters — the entrance.
+//
+// "Adjacent" tolerates the centerline-vs-surface offset: the skeleton runs
+// through the middle of the neuron while the cluster tokens sit near the
+// surface, so the true contact is where the branch first gets within a margin
+// of the closest approach (dmin), not the globally-nearest centerline vertex
+// (which can sit slightly PAST the branch, making the line overshoot).
+export function firstContactPathNm(
   s: Skeleton,
   aNm: number[],
   clusterPtsNm: number[][],
+  marginNm = 1000,
 ): number[][] | null {
   if (clusterPtsNm.length === 0) return null;
-  return dijkstraPath(
-    s,
-    nearestVertex(s, aNm),
-    nearestVertexToSet(s, clusterPtsNm),
-  );
+  const v = s.vertices;
+  // dist² from each vertex to the nearest cluster point, and the global min.
+  const d2 = new Float64Array(s.nv);
+  let dmin2 = Infinity;
+  for (let i = 0; i < s.nv; i++) {
+    const x = v[3 * i];
+    const y = v[3 * i + 1];
+    const z = v[3 * i + 2];
+    let best = Infinity;
+    for (let j = 0; j < clusterPtsNm.length; j++) {
+      const dx = x - clusterPtsNm[j][0];
+      const dy = y - clusterPtsNm[j][1];
+      const dz = z - clusterPtsNm[j][2];
+      const dd = dx * dx + dy * dy + dz * dz;
+      if (dd < best) best = dd;
+    }
+    d2[i] = best;
+    if (best < dmin2) dmin2 = best;
+  }
+  const thresh = Math.sqrt(dmin2) + marginNm;
+  const thresh2 = thresh * thresh;
+  const src = nearestVertex(s, aNm);
+  const adj = buildAdj(s);
+  const dist = new Float64Array(s.nv).fill(Infinity);
+  const prev = new Int32Array(s.nv).fill(-1);
+  dist[src] = 0;
+  const heap = new MinHeap();
+  heap.push(0, src);
+  let hit = -1;
+  while (heap.size) {
+    const [d, u] = heap.pop();
+    if (d > dist[u]) continue;
+    if (d2[u] <= thresh2) {
+      hit = u; // first vertex (closest to anchor) adjacent to the cluster
+      break;
+    }
+    for (const w of adj[u]) {
+      const nd = d + edgeLen(s, u, w);
+      if (nd < dist[w]) {
+        dist[w] = nd;
+        prev[w] = u;
+        heap.push(nd, w);
+      }
+    }
+  }
+  if (hit < 0) return null;
+  return backtrack(s, prev, hit);
 }
 
 // Minimal binary min-heap of (priority, value) number pairs.
