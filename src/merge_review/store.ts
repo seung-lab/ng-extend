@@ -24,6 +24,8 @@ import {
   clusterPositions,
   editedClusterLabels,
   segmentationSources,
+  UM_TO_VOXEL_X,
+  UM_TO_VOXEL_Z,
   type TokenEdits,
 } from "#src/merge_review/state.js";
 import { seedMulticut, supervoxelAt } from "#src/merge_review/multicut.js";
@@ -182,8 +184,56 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   function rerenderCurrentWindow() {
     if (!viewer || !bundle.value || !currentWindow.value) return;
     applyStatePreservingCamera(
-      buildViewerState(bundle.value, currentWindow.value, currentEdits.value),
+      withAnchorPath(
+        buildViewerState(bundle.value, currentWindow.value, currentEdits.value),
+        currentWindow.value,
+      ),
     );
+  }
+
+  // Overlay the "entrance": a white line from the anchor (nucleus) to the
+  // current window's centre, plus a white marker on the anchor itself, so the
+  // reviewer can always see where the window sits relative to the fixed anchor.
+  // Straight line in the viewer's voxel space (same coords as the cluster
+  // ellipsoids); this needs no backend, so it works on the appspot. (A skeleton-
+  // following route via CAVE find_path is a later upgrade.)
+  function withAnchorPath(
+    state: Record<string, unknown>,
+    w: ReviewWindow,
+  ): Record<string, unknown> {
+    if (anchorPos.value == null) return state;
+    const center = [
+      w.center_um[0] * UM_TO_VOXEL_X,
+      w.center_um[1] * UM_TO_VOXEL_X,
+      w.center_um[2] * UM_TO_VOXEL_Z,
+    ];
+    const layers = ((state.layers as Record<string, unknown>[]) ?? []).filter(
+      (l) => l.name !== "anchor-path",
+    );
+    layers.push({
+      type: "annotation",
+      source: "local://annotations",
+      tab: "annotations",
+      annotationColor: "#ffffff",
+      annotations: [
+        {
+          type: "line",
+          pointA: anchorPos.value,
+          pointB: center,
+          id: "anchor-path",
+          description: "anchor → window",
+        },
+        {
+          type: "ellipsoid",
+          center: anchorPos.value,
+          radii: [80, 80, 8],
+          id: "anchor-mark",
+          description: "anchor (nucleus)",
+        },
+      ],
+      name: "anchor-path",
+    });
+    return { ...state, layers };
   }
 
   // ─────────────────────── decisions helpers ───────────────────
@@ -219,7 +269,10 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     }
     currentIdx.value = idx;
     applyStateToViewer(
-      buildViewerState(bundle.value, w, tokenEdits.value[idx] ?? {}),
+      withAnchorPath(
+        buildViewerState(bundle.value, w, tokenEdits.value[idx] ?? {}),
+        w,
+      ),
     );
   }
 
@@ -585,6 +638,9 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   // ─────────────────────── anchor + background cut queue ───────
   // Anchor = a STABLE supervoxel (the nucleus / keep side). Hover the nucleus, press A.
   const anchorSv = ref<string | null>(null);
+  // The anchor's 3D position (viewer voxel coords) — drives the white
+  // "entrance" line/marker overlay (withAnchorPath).
+  const anchorPos = ref<number[] | null>(null);
   const hasAnchor = computed(() => anchorSv.value != null);
   // Side-by-side "cleaned" layer: poll the worker's keep_root and show it as a
   // second segmentation layer (green), leaving the frozen review layer untouched.
@@ -628,7 +684,10 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       const sv = supervoxelAt(managed.layer, pos);
       if (sv && sv !== 0n) {
         anchorSv.value = sv.toString();
+        anchorPos.value = pos; // for the white "entrance" line/marker
         StatusMessage.showTemporaryMessage(`Anchor set (supervoxel ${sv})`, 4000);
+        // Draw the entrance line to the current window right away.
+        rerenderCurrentWindow();
         return anchorSv.value;
       }
     }
@@ -637,6 +696,8 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   }
   function clearAnchor() {
     anchorSv.value = null;
+    anchorPos.value = null;
+    rerenderCurrentWindow(); // drop the entrance overlay
   }
   // Queue the current window's binary split as a BACKGROUND cut (view unchanged).
   const enqueuedWindows = new Set<number>();
