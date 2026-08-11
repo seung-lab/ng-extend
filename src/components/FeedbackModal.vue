@@ -8,6 +8,7 @@
 import { ref } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import { useProofreadingBackendStore } from '../store';
+import { mintShortStateLink } from '../util/state_link';
 
 const emit = defineEmits({ hide: null });
 const backend = useProofreadingBackendStore();
@@ -42,18 +43,49 @@ async function submit() {
   sending.value = true;
   error.value = '';
   try {
+    // NEVER send window.location.href: the hash carries the full viewer
+    // state (multiple KB) and relays like Slack truncate it, leaving a link
+    // that dies with "Error parsing state: Unterminated string in JSON".
+    // Mint a short saved-state link instead; if that fails (no auth, state
+    // server down), send the bare page URL plus the position so the report
+    // still locates the spot without a broken link.
+    const shortLink = await mintShortStateLink();
+    let pageUrl = shortLink;
+    if (!pageUrl) {
+      const v: any = (window as any)['viewer'];
+      const pos = v?.navigationState?.position?.value;
+      const at = pos ? ` @ ${Math.round(pos[0])},${Math.round(pos[1])},${Math.round(pos[2])}` : '';
+      pageUrl = `${window.location.origin}${window.location.pathname}${at}`;
+    }
     const res = await fetch(ISSUE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: text,
         category: category.value,
-        url: window.location.href,
+        url: pageUrl,
         dataset: currentDataset(),
         user: backend.userName || '',
       }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    // Mirror into Supabase so the triage agent can read reports (the Cloud
+    // Function's Slack/Firestore relay stays the human-facing feed).
+    // Best-effort: a failure here must not surface as a failed submit.
+    try {
+      const { supabase } = await import('../supabase');
+      await supabase.from('site_issues').insert({
+        category: category.value,
+        message: text,
+        url: pageUrl,
+        dataset: currentDataset() || null,
+        user_id: backend.userId || null,
+        user_name: backend.userName || null,
+      });
+    } catch (e) {
+      console.warn('[feedback] Supabase mirror failed:', e);
+    }
     done.value = true;
     setTimeout(() => emit('hide'), 1600);
   } catch (e: any) {

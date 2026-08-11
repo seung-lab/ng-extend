@@ -5,8 +5,109 @@ import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 
 const backend = useProofreadingBackendStore();
 
-// Sub-tab: 'notifications' | 'groups' | 'badges'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges'>('notifications');
+// Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage'>('notifications');
+
+// ── Feedback triage ──────────────────────────────────────────────────────────
+// A scheduled agent reads incoming feedback (site_issues, client_errors) and
+// proposes an action per item into feedback_triage. This subtab is the human
+// gate: Amy or Celia approve, edit, or dismiss. Approving a 'message'
+// proposal sends it to the reporter as a notification; approving a spec just
+// marks it accepted for the work queue.
+interface TriageRow {
+  id: string;
+  source: string;
+  source_id: string;
+  source_excerpt: string | null;
+  recommendation: 'nothing' | 'message' | 'bug_fix_spec' | 'new_feature';
+  rationale: string | null;
+  proposed_message: string | null;
+  spec: string | null;
+  status: 'proposed' | 'approved' | 'dismissed' | 'done';
+  reviewed_by: string | null;
+  created_at: string;
+}
+const triageRows = ref<TriageRow[]>([]);
+const triageLoading = ref(false);
+const triageError = ref('');
+const triageShowReviewed = ref(false);
+const triageActing = ref<string | null>(null);
+/** Per-row edited message text, keyed by triage row id. */
+const triageEdits = ref<Record<string, string>>({});
+
+const TRIAGE_LABELS: Record<TriageRow['recommendation'], string> = {
+  nothing: 'No action',
+  message: 'Send a message',
+  bug_fix_spec: 'Bug fix spec',
+  new_feature: 'New feature',
+};
+
+async function loadTriage() {
+  triageLoading.value = true;
+  triageError.value = '';
+  try {
+    const { supabase } = await import('../supabase');
+    let q = supabase.from('feedback_triage').select('*').order('created_at', { ascending: false }).limit(100);
+    if (!triageShowReviewed.value) q = q.eq('status', 'proposed');
+    const { data, error } = await q;
+    if (error) throw error;
+    triageRows.value = (data ?? []) as TriageRow[];
+    for (const r of triageRows.value) {
+      if (triageEdits.value[r.id] === undefined) {
+        triageEdits.value[r.id] = r.proposed_message ?? '';
+      }
+    }
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageLoading.value = false;
+  }
+}
+
+watch(adminSubTab, t => { if (t === 'triage') loadTriage(); });
+watch(triageShowReviewed, () => loadTriage());
+
+async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done') {
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  try {
+    const { supabase } = await import('../supabase');
+
+    // Approving a message proposal sends the (possibly edited) message to the
+    // reporter as a notification, when we know who reported it.
+    if (status === 'approved' && row.recommendation === 'message') {
+      const text = (triageEdits.value[row.id] ?? row.proposed_message ?? '').trim();
+      if (text) {
+        let targetUserId: string | null = null;
+        if (row.source === 'site_issue') {
+          const { data } = await supabase.from('site_issues').select('user_id').eq('id', row.source_id).single();
+          targetUserId = data?.user_id ?? null;
+        }
+        await supabase.from('notifications').insert({
+          title: '💬 About your feedback',
+          body: text,
+          target_type: targetUserId ? 'user' : 'all',
+          target_id: targetUserId,
+          send_at: new Date().toISOString(),
+          created_by: backend.userId,
+        });
+      }
+    }
+
+    const { error } = await supabase.from('feedback_triage').update({
+      status,
+      proposed_message: (triageEdits.value[row.id] ?? row.proposed_message) || null,
+      reviewed_by: backend.userName || backend.userEmail || 'admin',
+      reviewed_at: new Date().toISOString(),
+    }).eq('id', row.id);
+    if (error) throw error;
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageActing.value = null;
+  }
+}
 
 // ── Notification form state ──
 const notifTitle = ref('');
@@ -496,6 +597,7 @@ onMounted(() => {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'notifications' }" @click="adminSubTab = 'notifications'">Notifications</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'groups' }" @click="adminSubTab = 'groups'">Groups</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'triage' }" @click="adminSubTab = 'triage'">Triage</button>
     </div>
 
     <!-- ── Notifications ── -->
@@ -730,6 +832,58 @@ onMounted(() => {
               <option v-for="g in backend.groups" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
             <button class="nge-admin-action-btn" :disabled="!awardGroupId" @click="awardToGroup">Award to Group</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TRIAGE (agent proposals awaiting human review) ═══ -->
+    <div v-if="adminSubTab === 'triage'" class="nge-admin-section">
+      <div class="nge-admin-block">
+        <div class="nge-triage-head">
+          <label class="nge-admin-label">Feedback Triage</label>
+          <label class="nge-triage-toggle">
+            <input type="checkbox" v-model="triageShowReviewed" />
+            <span>Show reviewed</span>
+          </label>
+          <button class="nge-admin-action-btn" @click="loadTriage" :disabled="triageLoading">↻ Refresh</button>
+        </div>
+        <div class="nge-admin-hint">
+          The triage agent reads every incoming report and proposes an action.
+          Nothing happens until you approve it here. Approving "Send a message"
+          delivers the text below to the reporter as a notification.
+        </div>
+        <div v-if="triageError" class="nge-admin-error">⚠ {{ triageError }}</div>
+        <div v-if="triageLoading && !triageRows.length" class="nge-admin-hint">Loading…</div>
+        <div v-else-if="!triageRows.length" class="nge-admin-hint">
+          No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
+        </div>
+
+        <div v-for="row in triageRows" :key="row.id" class="nge-triage-card">
+          <div class="nge-triage-meta">
+            <span class="nge-triage-rec" :class="`nge-triage-rec--${row.recommendation}`">{{ TRIAGE_LABELS[row.recommendation] }}</span>
+            <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
+            <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by }}</template></span>
+          </div>
+          <div v-if="row.source_excerpt" class="nge-triage-excerpt">"{{ row.source_excerpt }}"</div>
+          <div v-if="row.rationale" class="nge-triage-rationale">{{ row.rationale }}</div>
+          <textarea
+            v-if="row.recommendation === 'message' && row.status === 'proposed'"
+            v-model="triageEdits[row.id]"
+            class="nge-triage-message"
+            rows="3"
+            @keydown.stop @keyup.stop @keypress.stop
+          ></textarea>
+          <div v-else-if="row.proposed_message" class="nge-triage-rationale">💬 {{ row.proposed_message }}</div>
+          <pre v-if="row.spec" class="nge-triage-spec">{{ row.spec }}</pre>
+          <div v-if="row.status === 'proposed'" class="nge-triage-actions">
+            <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
+              {{ row.recommendation === 'message' ? 'Approve + Send' : 'Approve' }}
+            </button>
+            <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'dismissed')">Dismiss</button>
+          </div>
+          <div v-else-if="row.status === 'approved'" class="nge-triage-actions">
+            <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'done')">Mark done</button>
           </div>
         </div>
       </div>
@@ -1219,6 +1373,43 @@ onMounted(() => {
 }
 
 .nge-admin-award-section { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+
+/* ── Triage ── */
+.nge-triage-head { display: flex; align-items: center; gap: 12px; }
+.nge-triage-head .nge-admin-label { flex: 1; }
+.nge-triage-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; color: rgba(255, 255, 255, 0.55); cursor: pointer;
+}
+.nge-triage-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.nge-triage-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nge-triage-rec {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em;
+  padding: 1px 8px; border-radius: 9px; text-transform: uppercase;
+}
+.nge-triage-rec--nothing      { background: rgba(255,255,255,0.08); color: #aab; }
+.nge-triage-rec--message      { background: rgba(100,200,255,0.14); color: #64c8ff; }
+.nge-triage-rec--bug_fix_spec { background: rgba(255,120,120,0.14); color: #f88; }
+.nge-triage-rec--new_feature  { background: rgba(160,255,160,0.12); color: #8e8; }
+.nge-triage-src { font-size: 11px; color: rgba(255,255,255,0.4); }
+.nge-triage-status { font-size: 11px; color: rgba(255,255,255,0.5); font-style: italic; }
+.nge-triage-excerpt { font-size: 12px; color: rgba(255,255,255,0.75); }
+.nge-triage-rationale { font-size: 11.5px; color: rgba(255,255,255,0.5); line-height: 1.4; }
+.nge-triage-message {
+  background: rgba(0,0,0,0.3); border: 1px solid rgba(100,200,255,0.2);
+  border-radius: 6px; color: #dde; font-size: 12px; padding: 7px 9px; resize: vertical;
+}
+.nge-triage-spec {
+  background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px; color: #ccd; font-size: 11.5px; padding: 8px 10px;
+  white-space: pre-wrap; max-height: 220px; overflow-y: auto; margin: 0;
+}
+.nge-triage-actions { display: flex; gap: 8px; }
 
 .nge-admin-badge-grid {
   display: grid;
