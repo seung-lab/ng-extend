@@ -86,7 +86,7 @@ export function getToolbarIconDef(id: string): ToolbarIconDef | undefined {
  * (ExtensionBar) and the Settings customization grid stay in sync — the grid
  * must only offer icons that can really appear in the top bar.
  */
-export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed'];
+export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed', 'settings'];
 
 /**
  * Default toolbar icon order for a user with no saved preference. Shared by the
@@ -94,9 +94,11 @@ export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed'];
  * the two never drift — a mismatch here is exactly what left the Layers icon
  * in the top bar but absent from Settings.
  */
+// 'settings' retired 2026-08-11: Settings is a profile tab now (profile gear,
+// the ⌘K "Profile Settings" command, and Profile > Settings all reach it).
 export const DEFAULT_TOOLBAR_ORDER = [
   'split', 'merge', 'findPath', 'layers', 'recap', 'leaderboard',
-  'cells', 'batch', 'help', 'notif', 'chat', 'settings',
+  'cells', 'batch', 'help', 'notif', 'chat',
 ];
 
 /**

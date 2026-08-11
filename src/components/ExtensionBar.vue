@@ -548,7 +548,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     @open-profile="showProfile = true"
     @open-recap="openWeekRecap()"
     @open-leaderboard="showLeaderboard = true"
-    @open-settings="showSettings = true"
+    @open-settings="profileInitialTab = 'settings'; showProfile = true"
     @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true"
     @open-queue="showQueue = true"
     @open-cells="showCellLibrary = true"
@@ -562,7 +562,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <batch-processor-panel v-if="showBatchProcessor" @hide="showBatchProcessor = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
-  <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="showSettings = true" />
+  <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
