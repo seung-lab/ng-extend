@@ -204,7 +204,7 @@ function plainText(text: string): string {
         v-for="notif in backend.notifications"
         :key="notif.id"
         class="nge-notif-card"
-        :class="{ 'nge-notif-card--unread': !isRead(notif.id) }"
+        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂') }"
         @click="openDetail(notif)"
       >
         <div class="nge-notif-card-row">
@@ -385,6 +385,15 @@ function plainText(text: string): string {
 }
 
 /* ── Feed cards (compact list) ── */
+/* Triage alerts (title starts with 🗂) pop in red so admins spot them. */
+.nge-notif-card--triage {
+  border-left: 3px solid rgba(255, 90, 90, 0.85);
+  background: rgba(255, 80, 80, 0.06);
+}
+.nge-notif-card--triage .nge-notif-card-title {
+  color: #ff8d8d;
+}
+
 .nge-notif-card {
   padding: 10px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);

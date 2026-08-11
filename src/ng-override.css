@@ -51,21 +51,100 @@
   overflow: hidden;
 }
 
-/* ── Layer bar (bottom: "1img", "2pinky_training6", "+") ── */
+/* Moved out of the top bar entirely (Amy 2026-08-11): the readout now
+   floats as a chip in the bottom-left of the viewer, above the scale bar.
+   position:fixed frees it from the bar's layout, so the digit-count
+   flutter can no longer reflow anything. Hidden while not hovering
+   (neuroglancer clears its text, so :empty applies). */
+.neuroglancer-mouse-position-widget {
+  position: fixed;
+  left: 10px;
+  bottom: 38px;
+  z-index: 60;
+  flex: none;
+  max-width: 40vw;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: rgba(4, 8, 18, 0.75);
+  border: 1px solid rgba(255, 160, 60, 0.25);
+  font-size: 11px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+.neuroglancer-mouse-position-widget:empty {
+  display: none;
+}
+
+/* ── Layer bar (bottom: "1img", "2pinky_training6", "+") ──
+   Unified 2026-08-11 (Amy: "this bar is a mess"): one compact row, every
+   chip the same 24px height, number as a subtle badge, close/delete icons
+   only on hover, per-chip hover-value text hidden (the seg panel already
+   shows the segment under the cursor). */
 .neuroglancer-layer-panel {
   background: rgba(4, 8, 18, 0.9) !important;
   backdrop-filter: blur(8px);
   border-top: none !important;
-  padding: 2px 4px;
-  gap: 3px;
+  padding: 3px 6px;
+  gap: 4px;
+  align-items: center !important;
+  min-height: 30px;
 }
 
 .neuroglancer-layer-item {
-  border-radius: 4px !important;
+  border-radius: 5px !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   background: rgba(255, 255, 255, 0.04) !important;
-  font-size: 0.85em;
+  font-size: 12px;
+  height: 24px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px !important;
+  margin: 0 !important;
   transition: border-color 0.15s, background 0.15s;
+}
+
+.neuroglancer-layer-item-number {
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: rgba(120, 140, 255, 0.15);
+  color: rgba(190, 200, 255, 0.85);
+}
+
+.neuroglancer-layer-item-label {
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* Close/delete icons: present but quiet until the chip is hovered. */
+.neuroglancer-layer-item .neuroglancer-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.neuroglancer-layer-item:hover .neuroglancer-icon { opacity: 0.8; }
+.neuroglancer-layer-item .neuroglancer-icon:hover { opacity: 1; }
+
+/* The per-chip value readout (orange numbers while hovering the viewer)
+   duplicated the seg panel and gave every chip a different width. */
+.neuroglancer-layer-item-value { display: none !important; }
+
+/* The stray per-item position widget adds phantom height. */
+.neuroglancer-layer-item > .neuroglancer-position-widget { display: none; }
+
+.neuroglancer-layer-add-button {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+.neuroglancer-layer-add-button:hover {
+  background: rgba(120, 140, 255, 0.12);
 }
 
 .neuroglancer-layer-item:hover {

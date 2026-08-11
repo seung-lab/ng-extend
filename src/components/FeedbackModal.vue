@@ -97,11 +97,15 @@ async function submit() {
 }
 
 // ── Flow-field backdrop ──────────────────────────────────────────────────────
-// Particles drifting along a gradient-noise flow field behind the form
-// (feedback_triage proposal approved by Amy 2026-08-11; inspiration:
-// amyleesterling.github.io/experimental-UI). Purely decorative: skipped
-// entirely under prefers-reduced-motion, capped DPR, ~110 particles, and the
-// rAF loop lives only while the modal is mounted.
+// Particles drifting along a gradient-noise flow field across the whole
+// overlay backdrop, BEHIND the dialog (feedback_triage proposal approved by
+// Amy 2026-08-11; inspiration: amyleesterling.github.io/experimental-UI).
+// The canvas is declared inside this component but re-parented into
+// ModalOverlay's `.nge-overlay-blocker` on mount, where z-index 0 puts it
+// above the dim backdrop and below the `.overlay-content` box (z-index 100).
+// Purely decorative: skipped entirely under prefers-reduced-motion, capped
+// DPR, particle count scaled to viewport area, and the rAF loop lives only
+// while the modal is mounted.
 const fxCanvas = ref<HTMLCanvasElement | null>(null);
 let fxRaf = 0;
 let fxObserver: ResizeObserver | null = null;
@@ -130,6 +134,12 @@ onMounted(() => {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  // Re-parent the canvas into the overlay blocker so the field spans the
+  // whole backdrop and paints behind the dialog. The element keeps its
+  // data-v scope attribute, so the scoped .nge-fb-fx rule still applies.
+  const blocker = canvas.closest('.nge-overlay-blocker');
+  if (blocker) blocker.insertBefore(canvas, blocker.firstChild);
+
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   const noise = makeNoise();
   let w = 0, h = 0;
@@ -145,8 +155,10 @@ onMounted(() => {
   fxObserver.observe(canvas.parentElement!);
 
   const COLORS = ['120, 140, 255', '100, 200, 255', '150, 170, 255'];
-  const particles = Array.from({ length: 110 }, () => ({
-    x: Math.random() * 500, y: Math.random() * 500,
+  // Scale count to area: ~110 at modal size, capped for big monitors.
+  const COUNT = Math.min(340, Math.max(110, Math.round((w * h) / 4200)));
+  const particles = Array.from({ length: COUNT }, () => ({
+    x: Math.random() * w, y: Math.random() * h,
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
     life: Math.random() * 240,
   }));
@@ -230,7 +242,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-else class="nge-fb-done">
+      <div v-else class="nge-fb-done holoscan holo-on">
+        <span class="holoscan-line" aria-hidden="true"></span>
         <div class="nge-fb-done-icon">✓</div>
         <div class="nge-fb-done-text">Thanks — your report was sent.</div>
       </div>
@@ -247,16 +260,15 @@ onBeforeUnmount(() => {
   min-width: 340px;
   max-width: 460px;
   padding: 20px 22px;
-  overflow: hidden; /* clip the flow-field canvas to the rounded shell */
 }
+/* Lives in .nge-overlay-blocker after mount: above the dim backdrop
+   (z-index auto), below the .overlay-content dialog (z-index 100). */
 .nge-fb-fx {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
 }
-.nge-fb-body, .nge-fb-done { position: relative; z-index: 1; }
-.nge-fb-exit { z-index: 2; }
 .nge-fb-exit {
   position: absolute;
   top: 8px;
@@ -351,6 +363,36 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 30px 24px;
   min-width: 300px;
+  /* Host requirements for the scan pass (scifi-ui scan-pass.css). */
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+/* ── Scan pass on the success state ──
+   Ported verbatim from scifi-ui components/scan-pass.css (the "light bar"):
+   a band that passes ONCE when the panel appears, and never loops. The
+   .holo-on class is on the element at insert time, so the pass fires the
+   moment the success state mounts. Values carried across unmodified per the
+   kit's porting discipline; only the trigger differs (mount instead of
+   hover), which is the touch path the kit itself defines. */
+.holoscan > .holoscan-line {
+  position: absolute; left: 0; right: 0; top: 0; height: 9%; z-index: 2;
+  pointer-events: none; opacity: 0;
+  background: linear-gradient(180deg, transparent,
+    rgb(var(--holo-cyan, 126 224 255) / .13), transparent);
+}
+@keyframes holoscan-pass {
+  from { transform: translateY(-100%); opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  to   { transform: translateY(1100%); opacity: 0; }
+}
+.holoscan.holo-on > .holoscan-line {
+  animation: holoscan-pass 1600ms cubic-bezier(.22, .9, .28, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .holoscan.holo-on > .holoscan-line { animation: none; opacity: 0; }
 }
 .nge-fb-done-icon {
   width: 44px;
