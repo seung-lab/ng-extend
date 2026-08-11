@@ -36,7 +36,7 @@ const EM_SOURCE =
   "precomputed://https://bossdb-open-data.s3.amazonaws.com/" +
   "iarpa_microns/minnie/minnie65/em";
 
-function segmentationSources(datastack: string): string[] {
+export function segmentationSources(datastack: string): string[] {
   return [
     "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/" +
       datastack,

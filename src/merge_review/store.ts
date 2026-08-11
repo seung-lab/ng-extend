@@ -23,10 +23,11 @@ import {
   buildViewerState,
   clusterPositions,
   editedClusterLabels,
+  segmentationSources,
   type TokenEdits,
 } from "#src/merge_review/state.js";
 import { seedMulticut, supervoxelAt } from "#src/merge_review/multicut.js";
-import { enqueueJob } from "#src/merge_review/mergeQueueClient.js";
+import { enqueueJob, fetchKeepRoot } from "#src/merge_review/mergeQueueClient.js";
 import {
   clearDecisionField,
   isDecided,
@@ -579,6 +580,36 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   // Anchor = a STABLE supervoxel (the nucleus / keep side). Hover the nucleus, press A.
   const anchorSv = ref<string | null>(null);
   const hasAnchor = computed(() => anchorSv.value != null);
+  // Side-by-side "cleaned" layer: poll the worker's keep_root and show it as a
+  // second segmentation layer (green), leaving the frozen review layer untouched.
+  let lastCleanedRoot: string | null = null;
+  function showCleanedRoot(keepRoot: string) {
+    if (!viewer || keepRoot === lastCleanedRoot) return;
+    lastCleanedRoot = keepRoot;
+    const s = viewer.state.toJSON() as Record<string, unknown> & {
+      layers?: Array<Record<string, unknown>>;
+    };
+    const layers = (s.layers ?? []).filter((l) => l.name !== "cleaned");
+    layers.push({
+      type: "segmentation",
+      source: segmentationSources("minnie65_phase3_v1"),
+      tab: "source",
+      segments: [keepRoot],
+      segmentColors: { [keepRoot]: "#2e9e6b" },
+      name: "cleaned",
+    });
+    applyStatePreservingCamera({ ...s, layers });
+  }
+  let cleanedTimer: ReturnType<typeof setInterval> | null = null;
+  function startCleanedPoll() {
+    if (cleanedTimer || root.value == null) return;
+    const sess = String(root.value);
+    cleanedTimer = setInterval(() => {
+      void fetchKeepRoot(sess).then((kr) => {
+        if (kr) showCleanedRoot(kr);
+      });
+    }, 5000);
+  }
   function setAnchorFromClick(): string | null {
     if (!viewer) return null;
     const ms = (viewer as unknown as { mouseState?: { position?: Float32Array } }).mouseState;
@@ -639,6 +670,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     }).then((r) => {
       if ("error" in r) window.alert("Queue failed: " + r.error);
     });
+    startCleanedPoll();
   }
 
   return {

@@ -33,4 +33,14 @@ export async function enqueueJob(
   }
 }
 
+export async function fetchKeepRoot(sessionId: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${API}/keep_root?session_id=${encodeURIComponent(sessionId)}`);
+    const d = await r.json();
+    return d.keep_root_id != null ? String(d.keep_root_id) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const QUEUE_API = API;
