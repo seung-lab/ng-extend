@@ -13,15 +13,27 @@ export interface DatasetEntry {
   label: string;
   /** Compact name for inline UI (chat chips, badges) where `label` is too long. */
   shortLabel: string;
+  /** Shortest name, for the top bar's "Data:" button. */
+  abbrev: string;
+  /** Organism the volume comes from; drives the species icon. */
+  species: 'mouse' | 'fly';
   description: string;
   layers: any[];
 }
+
+/** Species icon shown next to dataset names (top bar, profile Datasets tab). */
+export const SPECIES_ICONS: Record<DatasetEntry['species'], string> = {
+  mouse: '🐭',
+  fly: '🪰',
+};
 
 export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
     label: 'EyeWire II: Retina',
     shortLabel: 'EyeWire II',
+    abbrev: 'Retina',
+    species: 'mouse',
     description: 'EyeWire II — mouse retinal connectome (16×16×40 nm)',
     layers: [
       {
@@ -44,6 +56,8 @@ export const DATASETS: DatasetEntry[] = [
     id: 'pinky_sandbox',
     label: 'Pinky Sandbox',
     shortLabel: 'Pinky',
+    abbrev: 'Pinky',
+    species: 'mouse',
     description: 'MICrONS pinky — small cortex volume for testing (4×4×40 nm)',
     layers: [
       {
@@ -66,6 +80,8 @@ export const DATASETS: DatasetEntry[] = [
     id: 'minnie65',
     label: 'MICrONS Minnie65',
     shortLabel: 'MICrONS',
+    abbrev: 'MICrONS',
+    species: 'mouse',
     description: 'MICrONS — 1mm³ mouse visual cortex (8×8×40 nm)',
     layers: [
       {
@@ -176,8 +192,31 @@ const EXTRA_SHORT_LABELS: Record<string, string> = {
 export function datasetDisplayName(name: string | undefined | null): string {
   if (!name) return '';
   const canon = canonicalDataset(name);
-  const entry = DATASETS.find(ds => canonicalDataset(segLayerName(ds)) === canon);
+  const entry = findDatasetByCanonical(canon);
   return entry?.shortLabel ?? EXTRA_SHORT_LABELS[canon] ?? name;
+}
+
+/** Dataset entry for any historical name variant (canonicalises first). */
+export function findDatasetByCanonical(canon: string): DatasetEntry | undefined {
+  return DATASETS.find(ds => canonicalDataset(segLayerName(ds)) === canon);
+}
+
+/** Top-bar abbreviation for any dataset-name variant ('' when unknown). */
+export function datasetAbbrev(name: string | undefined | null): string {
+  if (!name) return '';
+  const canon = canonicalDataset(name);
+  return findDatasetByCanonical(canon)?.abbrev ?? EXTRA_SHORT_LABELS[canon] ?? '';
+}
+
+/** Species icon for any dataset-name variant. FlyWire has no DATASETS entry
+ *  but can appear on older records, so it gets an explicit fallback. */
+export function datasetSpeciesIcon(name: string | undefined | null): string {
+  if (!name) return '';
+  const canon = canonicalDataset(name);
+  const entry = findDatasetByCanonical(canon);
+  if (entry) return SPECIES_ICONS[entry.species];
+  if (canon.includes('fly')) return SPECIES_ICONS.fly;
+  return '';
 }
 
 /**

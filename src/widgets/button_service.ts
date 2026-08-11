@@ -169,7 +169,7 @@ export class ButtonService {
       // No cell type — the pip color is sufficient, no text needed
       badge.className = 'nge-label-badge';
       badge.textContent = '';
-      badge.title = status.isComplete ? 'Complete' : '';
+      badge.title = status.isComplete ? 'Proofread' : '';
     }
   }
 
@@ -260,13 +260,13 @@ export class ButtonService {
     const statusLine = document.createElement('div');
     statusLine.classList.add('nge-lb-status-line');
     statusLine.textContent = cachedStatus ?
-        (cachedStatus.isComplete ? '✓ Complete' : '○ In Progress') :
+        (cachedStatus.isComplete ? '✓ Proofread' : '○ In Progress') :
         '… Loading';
     completionSection.appendChild(statusLine);
 
     const toggleBtn = document.createElement('button');
     toggleBtn.classList.add('nge-lb-section-button', 'nge-lb-toggle-btn');
-    toggleBtn.textContent = cachedStatus?.isComplete ? 'Unmark Complete' : 'Mark Complete';
+    toggleBtn.textContent = cachedStatus?.isComplete ? 'Unmark Proofread' : 'Mark as Proofread';
     toggleBtn.addEventListener('click', async () => {
       toggleBtn.disabled = true;
       toggleBtn.textContent = 'Saving…';
@@ -274,8 +274,8 @@ export class ButtonService {
       const ok = await setCellComplete(
           localServerURL, segmentIDString, willBeComplete, cachedStatus?.annotationId);
       if (ok) {
-        statusLine.textContent = willBeComplete ? '✓ Complete' : '○ In Progress';
-        toggleBtn.textContent = willBeComplete ? 'Unmark Complete' : 'Mark Complete';
+        statusLine.textContent = willBeComplete ? '✓ Proofread' : '○ In Progress';
+        toggleBtn.textContent = willBeComplete ? 'Unmark Proofread' : 'Mark as Proofread';
         if (cachedStatus) cachedStatus.isComplete = willBeComplete;
         this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
 

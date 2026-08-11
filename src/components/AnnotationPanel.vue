@@ -69,7 +69,7 @@ const statusLabel = computed(() => {
   if (!annotation.value) return '…';
   if (annotation.value.loading) return 'Loading…';
   if (annotation.value.error)   return 'Error';
-  return annotation.value.isComplete ? '✓ Complete' : '○ In Progress';
+  return annotation.value.isComplete ? '✓ Proofread' : '○ In Progress';
 });
 
 const cellTypeLabel = computed(() => {
@@ -273,7 +273,7 @@ function submitHelpRequest() {
         :disabled="savingComplete || annotation?.loading"
         @click="toggleComplete"
       >
-        {{ savingComplete ? 'Saving…' : annotation?.isComplete ? 'Unmark' : 'Mark Complete' }}
+        {{ savingComplete ? 'Saving…' : annotation?.isComplete ? 'Unmark' : 'Mark as Proofread' }}
       </button>
     </div>
 

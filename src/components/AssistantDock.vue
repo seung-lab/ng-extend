@@ -13,6 +13,7 @@ import { dispatch } from "../assistant/dispatch";
 import { useProofreadingBackendStore, useSplitMergeOverlayStore } from "../store";
 import { shortcutLabel } from "../util/platform";
 import nurroAvatar from "../images/inspector-nurro-2.png";
+import { CONNECTOME_QUEST_RESOURCES } from "../data/connectome-quest";
 
 const backend = useProofreadingBackendStore();
 const splitMerge = useSplitMergeOverlayStore();
@@ -139,6 +140,11 @@ const SUGGESTIONS = [
   "Open the command palette",
   "Why can't I see my edits?",
 ];
+
+// connectome.quest links shown under the greeting. The full catalog is in the
+// command palette; the dock shows the three most useful for a new proofreader.
+const QUEST_LINKS = CONNECTOME_QUEST_RESOURCES.filter(
+  r => ['quest-neuro101', 'quest-videos', 'quest-help'].includes(r.id));
 
 function renderMarkdown(text: string): string {
   try {
@@ -370,7 +376,7 @@ function onKeydown(e: KeyboardEvent) {
       <span class="nge-guide-avatar" :style="{ backgroundImage: `url(${nurroAvatar})` }">
         <span class="nge-guide-status"></span>
       </span>
-      <span class="nge-guide-title">EyeWire II Guide</span>
+      <span class="nge-guide-title">Nurro, your guide</span>
       <button class="nge-guide-close" title="Close" @click="emit('hide')">✕</button>
     </div>
 
@@ -383,6 +389,18 @@ function onKeydown(e: KeyboardEvent) {
           class="nge-guide-suggest"
           @click="send(s)"
         >{{ s }}</button>
+        <div class="nge-guide-quest">
+          <span class="nge-guide-quest-label">Learn more:</span>
+          <a
+            v-for="res in QUEST_LINKS"
+            :key="res.id"
+            class="nge-guide-quest-link"
+            :href="res.url"
+            target="_blank"
+            rel="noopener"
+            :title="res.description"
+          >{{ res.icon }} {{ res.label }}</a>
+        </div>
       </div>
 
       <div
@@ -570,6 +588,32 @@ function onKeydown(e: KeyboardEvent) {
 
 .nge-guide-empty { display: flex; flex-direction: column; gap: 6px; }
 .nge-guide-hi { font-size: 12.5px; color: #9fb2c8; line-height: 1.5; margin: 2px 0 6px; }
+.nge-guide-quest {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.nge-guide-quest-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+.nge-guide-quest-link {
+  font-size: 11.5px;
+  color: rgba(100, 200, 255, 0.85);
+  text-decoration: none;
+  padding: 2px 8px;
+  border: 1px solid rgba(100, 200, 255, 0.2);
+  border-radius: 10px;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.nge-guide-quest-link:hover {
+  background: rgba(100, 200, 255, 0.12);
+  color: #fff;
+}
+
 .nge-guide-suggest {
   text-align: left; background: rgba(74, 158, 255, 0.08);
   border: 1px solid rgba(74, 158, 255, 0.16); color: #bcd2ee;

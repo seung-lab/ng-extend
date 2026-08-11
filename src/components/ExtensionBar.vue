@@ -25,7 +25,7 @@ import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore, useLayersStore} from '../store';
-import {currentSegLayerName, datasetDisplayName} from '../datasets';
+import {currentSegLayerName, datasetDisplayName, datasetAbbrev, datasetSpeciesIcon} from '../datasets';
 import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
@@ -162,6 +162,16 @@ const layersStoreForLabel = useLayersStore();
 const currentDatasetName = computed(() => {
   void layersStoreForLabel.activeLayers.size;
   return datasetDisplayName(currentSegLayerName()) || 'Dataset';
+});
+// Compact "Data: <abbrev>" label + species icon for the top-bar button.
+const currentDatasetAbbrev = computed(() => {
+  void layersStoreForLabel.activeLayers.size;
+  const a = datasetAbbrev(currentSegLayerName());
+  return a ? `Data: ${a}` : 'Dataset';
+});
+const currentDatasetIcon = computed(() => {
+  void layersStoreForLabel.activeLayers.size;
+  return datasetSpeciesIcon(currentSegLayerName());
 });
 const { activeSegId } = storeToRefsAnnot(useSegmentAnnotationStore());
 const helpStore = useHelpRequestStore();
@@ -667,14 +677,15 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <screenshot-dialog :show="showScreenshotDialog" @close="showScreenshotDialog = false" />
     <button class="nge-ask-btn" :class="{ 'nge-ask-btn--active': showAssistant }"
             @click="showAssistant = !showAssistant"
-            title="Ask the EyeWire II Guide">
+            title="Nurro, your guide">
       <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">forum</span>
-      <span class="nge-ask-label">Ask</span>
+      <span class="nge-ask-label">AI</span>
     </button>
     <button class="nge-dataset-btn" @click="showDatasetSelector = !showDatasetSelector"
             :title="'Current dataset: ' + currentDatasetName + ' — click to switch'">
-      <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
-      <span class="nge-dataset-label">{{ currentDatasetName }}</span>
+      <span v-if="currentDatasetIcon" class="nge-dataset-species">{{ currentDatasetIcon }}</span>
+      <span v-else class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
+      <span class="nge-dataset-label">{{ currentDatasetAbbrev }}</span>
     </button>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
@@ -1096,6 +1107,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   transition: background 0.15s, opacity 0.15s, color 0.15s;
 }
 .nge-dataset-label { padding-right: 2px; }
+.nge-dataset-species { font-size: 14px; line-height: 1; }
 .nge-dataset-btn:hover {
   opacity: 1;
   background: rgba(255, 255, 255, 0.06);

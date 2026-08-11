@@ -9,6 +9,7 @@ import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistor
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
+import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset} from '../datasets';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -129,7 +130,7 @@ const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
 const SPECIAL_PREVIEW_LIMIT = 8;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
-const activeTab = ref<'overview' | 'trophyCase' | 'weekInScience' | 'adminHub'>('overview');
+const activeTab = ref<'overview' | 'trophyCase' | 'datasets' | 'weekInScience' | 'adminHub'>('overview');
 
 /** Monday-anchored key for the current week, e.g. "2026-07-13". */
 function isoWeekKey(): string {
@@ -179,8 +180,87 @@ function openWeekInScience() {
 onMounted(() => {
   if (props.initialTab === 'weekInScience' && !viewingOtherUser.value) {
     openWeekInScience();
+  } else if (props.initialTab === 'datasets' && !viewingOtherUser.value) {
+    activeTab.value = 'datasets';
   }
 });
+
+// ── Datasets tab: per-dataset contributions + switcher ───────────────────────
+// One card per known dataset with this user's contribution counts, doubling as
+// the dataset switcher (same switchToDataset the top-bar selector uses).
+interface DatasetContribution { edits: number; completions: number; helpRequests: number; }
+const datasetStats = ref<Record<string, DatasetContribution>>({});
+const datasetStatsLoading = ref(false);
+const activeDatasetCanon = ref('');
+const switchingDatasetId = ref<string | null>(null);
+
+function refreshActiveDatasetCanon() {
+  activeDatasetCanon.value = canonicalDataset(currentSegLayerName());
+}
+
+/** All dataset-tag variants that rows for this dataset may carry. edit_log and
+ *  help_requests are canonicalised, but cave_completions_mirror stamps the
+ *  sync config's own name (e.g. 'pinky_sandbox' where canonical is
+ *  'pinky_nf_v2'), so count with .in() across the variants. */
+function datasetTagVariants(ds: DatasetEntry): string[] {
+  return [...new Set([canonicalDataset(segLayerName(ds)), ds.id, segLayerName(ds)])];
+}
+
+async function loadDatasetStats() {
+  if (datasetStatsLoading.value) return;
+  datasetStatsLoading.value = true;
+  refreshActiveDatasetCanon();
+  try {
+    const uid = backendStore.userId;
+    if (!uid) return;
+    const { supabase } = await import('../supabase');
+    // Numeric CAVE id keys the completions mirror (users.cave_user_id).
+    let caveId: number | null = null;
+    try {
+      const { data } = await supabase.from('users').select('cave_user_id').eq('id', uid).single();
+      caveId = data?.cave_user_id ?? null;
+    } catch {}
+    const out: Record<string, DatasetContribution> = {};
+    await Promise.all(DATASETS.map(async ds => {
+      const tags = datasetTagVariants(ds);
+      const [edits, completions, helpRequests] = await Promise.all([
+        supabase.from('edit_log').select('id', { count: 'exact', head: true })
+          .eq('user_id', uid).in('dataset', tags).then((r: any) => r.count ?? 0),
+        caveId == null ? Promise.resolve(0) :
+          supabase.from('cave_completions_mirror').select('segment_id', { count: 'exact', head: true })
+            .eq('cave_user_id', caveId).in('dataset', tags).then((r: any) => r.count ?? 0),
+        supabase.from('help_requests').select('id', { count: 'exact', head: true })
+          .eq('user_id', uid).in('dataset', tags).then((r: any) => r.count ?? 0),
+      ]);
+      out[canonicalDataset(segLayerName(ds))] = { edits, completions, helpRequests };
+    }));
+    datasetStats.value = out;
+  } catch (e) {
+    console.warn('[profile] loadDatasetStats failed:', e);
+  } finally {
+    datasetStatsLoading.value = false;
+  }
+}
+
+watch(activeTab, tab => { if (tab === 'datasets') loadDatasetStats(); });
+
+async function switchProfileDataset(ds: DatasetEntry) {
+  const canon = canonicalDataset(segLayerName(ds));
+  if (canon === activeDatasetCanon.value || switchingDatasetId.value) return;
+  switchingDatasetId.value = ds.id;
+  const ok = await switchToDataset(ds);
+  if (ok) refreshActiveDatasetCanon();
+  switchingDatasetId.value = null;
+}
+
+function datasetContribution(ds: DatasetEntry): DatasetContribution | undefined {
+  return datasetStats.value[canonicalDataset(segLayerName(ds))];
+}
+
+function hasContributed(ds: DatasetEntry): boolean {
+  const c = datasetContribution(ds);
+  return !!c && (c.edits > 0 || c.completions > 0 || c.helpRequests > 0);
+}
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
 // All country flags A-Z (ISO 3166-1 alpha-2, sorted alphabetically)
@@ -519,7 +599,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
     :class="{ 'nge-profile-closing': closing }"
     @hide="handleClose"
   >
-    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience' }">
+    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets' }">
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
@@ -539,6 +619,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           :class="{ 'nge-profile-tab--active': activeTab === 'trophyCase' }"
           @click="activeTab = 'trophyCase'"
         >🏆 Trophy Case</button>
+        <button
+          v-if="!viewingOtherUser"
+          class="nge-profile-tab"
+          :class="{ 'nge-profile-tab--active': activeTab === 'datasets' }"
+          @click="activeTab = 'datasets'"
+        >🧬 Datasets</button>
         <button
           v-if="!viewingOtherUser"
           class="nge-profile-tab"
@@ -1247,6 +1333,45 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         </div>
       </div><!-- end Trophy Case -->
 
+      <!-- ── Datasets tab: contributions per dataset + switcher ── -->
+      <div v-if="activeTab === 'datasets'" class="nge-profile-body nge-profile-body--datasets">
+        <div class="nge-ds-tab-intro">
+          Your contributions across datasets. Click one to switch the viewer to it.
+        </div>
+        <div v-if="datasetStatsLoading && !Object.keys(datasetStats).length" class="nge-ds-tab-loading">
+          Counting your edits…
+        </div>
+        <div class="nge-ds-tab-grid">
+          <div
+            v-for="ds in DATASETS"
+            :key="ds.id"
+            class="nge-ds-tab-card"
+            :class="{
+              'nge-ds-tab-card--active': canonicalDataset(segLayerName(ds)) === activeDatasetCanon,
+              'nge-ds-tab-card--switching': switchingDatasetId === ds.id,
+            }"
+            @click="switchProfileDataset(ds)"
+          >
+            <div class="nge-ds-tab-card-head">
+              <span class="nge-ds-tab-species">{{ SPECIES_ICONS[ds.species] }}</span>
+              <span class="nge-ds-tab-label">{{ ds.label }}</span>
+              <span v-if="canonicalDataset(segLayerName(ds)) === activeDatasetCanon" class="nge-ds-tab-badge">Active</span>
+              <span v-else class="nge-ds-tab-switch">Switch ▸</span>
+            </div>
+            <div class="nge-ds-tab-desc">{{ ds.description }}</div>
+            <div class="nge-ds-tab-stats">
+              <template v-if="datasetContribution(ds)">
+                <span class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.edits ?? 0).toLocaleString() }}</b> edits</span>
+                <span class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.completions ?? 0).toLocaleString() }}</b> cells proofread</span>
+                <span class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.helpRequests ?? 0).toLocaleString() }}</b> help requests</span>
+                <span v-if="!hasContributed(ds)" class="nge-ds-tab-stat nge-ds-tab-stat--none">no contributions yet</span>
+              </template>
+              <span v-else class="nge-ds-tab-stat nge-ds-tab-stat--none">…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Week in Science tab ───────────────────────────────── -->
       <div v-if="activeTab === 'weekInScience'" class="nge-profile-body nge-profile-body--week">
         <WeeklyRecapPanel embedded />
@@ -1396,6 +1521,102 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-shell--week {
   width: 720px;
   max-width: 90vw;
+}
+.nge-profile-shell--datasets {
+  width: 640px;
+  max-width: 90vw;
+}
+
+/* ── Datasets tab ── */
+.nge-profile-body--datasets {
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 18px 22px 26px;
+  gap: 12px;
+}
+.nge-ds-tab-intro {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.nge-ds-tab-loading {
+  font-size: 12px;
+  color: rgba(100, 200, 255, 0.7);
+}
+.nge-ds-tab-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nge-ds-tab-card {
+  position: relative;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.nge-ds-tab-card:hover:not(.nge-ds-tab-card--active) {
+  background: rgba(100, 200, 255, 0.06);
+  border-color: rgba(100, 200, 255, 0.2);
+}
+.nge-ds-tab-card--active {
+  background: rgba(100, 200, 255, 0.1);
+  border-color: rgba(100, 200, 255, 0.4);
+  cursor: default;
+}
+.nge-ds-tab-card--switching {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.nge-ds-tab-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nge-ds-tab-species { font-size: 16px; line-height: 1; }
+.nge-ds-tab-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  flex: 1;
+}
+.nge-ds-tab-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64c8ff;
+  background: rgba(100, 200, 255, 0.12);
+  padding: 1px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.03em;
+}
+.nge-ds-tab-switch {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+.nge-ds-tab-card:hover .nge-ds-tab-switch { color: #64c8ff; }
+.nge-ds-tab-desc {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 4px 0 8px 24px;
+  line-height: 1.35;
+}
+.nge-ds-tab-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-left: 24px;
+}
+.nge-ds-tab-stat {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.nge-ds-tab-stat b {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 600;
+}
+.nge-ds-tab-stat--none {
+  color: rgba(255, 255, 255, 0.3);
+  font-style: italic;
 }
 
 /* ── Topbar ── */

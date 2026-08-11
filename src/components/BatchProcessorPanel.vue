@@ -797,7 +797,7 @@ const panelStyle = computed(() => ({
                   🎨 Recolor
                 </button>
                 <button class="nge-bp-act nge-bp-act--complete" @click.stop="startCompleteWizard(group)" :disabled="group.segmentIds.length === 0">
-                  ✓ Complete
+                  ✓ Proofread
                 </button>
                 <button class="nge-bp-act nge-bp-act--annotate" @click.stop="annotateGroupId = annotateGroupId === group.id ? null : group.id; selectedCellType = ''" :disabled="group.segmentIds.length === 0">
                   🏷 Annotate
@@ -848,7 +848,7 @@ const panelStyle = computed(() => ({
                 <div v-if="guide.stage === 'intro'" class="nge-bp-guide-intro">
                   <div class="nge-bp-guide-title">Place crosshairs in each cell</div>
                   <p class="nge-bp-guide-text">
-                    To batch-complete {{ group.segmentIds.length }} cells, you'll
+                    To mark {{ group.segmentIds.length }} cells as proofread, you'll
                     place crosshairs inside each one so CAVE can map points to
                     the right segment. Each cell needs its own point.
                   </p>

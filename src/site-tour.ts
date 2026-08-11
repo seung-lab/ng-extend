@@ -139,12 +139,12 @@ Your streak is shown next to your name on the leaderboard.`,
 
   // ── 7. Command palette ───────────────────────────────────────
   {
-    title: "Ask, and the Command Bar",
-    text: `Press **Ctrl+K** (**⌘K** on Mac), or click **Ask**, to *do something fast*.
+    title: "Nurro, and the Command Bar",
+    text: `Press **Ctrl+K** (**⌘K** on Mac), or click **AI**, to *do something fast*.
 
 Start typing and it fuzzy-searches every action, panel, and recently-viewed cell. Press **Enter** to run the highlighted one straight away, no waiting.
 
-Not a match? Ask a question in plain language instead and the Guide answers.`,
+Not a match? Ask a question in plain language instead and Nurro, your guide, answers.`,
     // Anchored to the Ask button: the old ⌘K chip was removed from the toolbar
     // and the palette it opened now lives inside this dock.
     position: { element: ".nge-ask-btn", side: "bottom", offset: { x: 0, y: 14 } },
