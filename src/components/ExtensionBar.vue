@@ -408,7 +408,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   feed:        { action: () => { showFeed.value = true; } },
   notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
-  settings:    { action: () => { showSettings.value = true; } },
+  settings:    { action: () => { profileInitialTab.value = 'settings'; showProfile.value = true; } },
 };
 
 const toolbarDefs = computed<ToolbarIcon[]>(() => {
@@ -440,7 +440,7 @@ const iconActiveState: Record<string, () => boolean> = {
   feed: () => showFeed.value,
   notif: () => showNotifications.value,
   chat: () => showChat.value,
-  settings: () => showSettings.value,
+  settings: () => showProfile.value && profileInitialTab.value === 'settings',
 };
 function isIconActive(id: string): boolean {
   return iconActiveState[id]?.() ?? false;
@@ -1194,12 +1194,21 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   border-radius: 4px;
   cursor: pointer;
   opacity: 0.78;
-  transition: opacity 0.15s, background 0.15s;
+  transition: opacity 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
   line-height: 1;
 }
+/* Hover: a holo glow ring + slight lift, so the custom icons answer the
+   cursor the way the neuroglancer natives do, but in the app's own accent. */
 .nge-icon-btn:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(100, 200, 255, 0.1);
+  box-shadow:
+    0 0 0 1px rgba(100, 200, 255, 0.3),
+    0 2px 12px rgba(100, 200, 255, 0.18);
+  transform: translateY(-1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nge-icon-btn:hover { transform: none; }
 }
 .nge-icon-btn--active {
   opacity: 1;

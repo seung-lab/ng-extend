@@ -4,6 +4,7 @@ import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
+import SettingsPanel from 'components/SettingsPanel.vue';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
@@ -130,7 +131,7 @@ const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
 const SPECIAL_PREVIEW_LIMIT = 8;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
-const activeTab = ref<'overview' | 'trophyCase' | 'datasets' | 'weekInScience' | 'adminHub'>('overview');
+const activeTab = ref<'overview' | 'trophyCase' | 'datasets' | 'weekInScience' | 'adminHub' | 'settings'>('overview');
 
 /** Monday-anchored key for the current week, e.g. "2026-07-13". */
 function isoWeekKey(): string {
@@ -182,6 +183,8 @@ onMounted(() => {
     openWeekInScience();
   } else if (props.initialTab === 'datasets' && !viewingOtherUser.value) {
     activeTab.value = 'datasets';
+  } else if (props.initialTab === 'settings' && !viewingOtherUser.value) {
+    activeTab.value = 'settings';
   }
 });
 
@@ -599,7 +602,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
     :class="{ 'nge-profile-closing': closing }"
     @hide="handleClose"
   >
-    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets' }">
+    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets', 'nge-profile-shell--settings': activeTab === 'settings' }">
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
@@ -625,12 +628,21 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           :class="{ 'nge-profile-tab--active': activeTab === 'datasets' }"
           @click="activeTab = 'datasets'"
         >🧬 Datasets</button>
+        <!-- Hidden by default (Amy 2026-08-11): the tab button only appears
+             while you're ON it, i.e. arrived via the toolbar Week icon or a
+             recap notification deep-link. -->
+        <button
+          v-if="!viewingOtherUser && activeTab === 'weekInScience'"
+          class="nge-profile-tab"
+          :class="{ 'nge-profile-tab--active': true }"
+          @click="openWeekInScience()"
+        >📊 My Week in Science</button>
         <button
           v-if="!viewingOtherUser"
           class="nge-profile-tab"
-          :class="{ 'nge-profile-tab--active': activeTab === 'weekInScience' }"
-          @click="openWeekInScience()"
-        >📊 My Week in Science</button>
+          :class="{ 'nge-profile-tab--active': activeTab === 'settings' }"
+          @click="activeTab = 'settings'"
+        >⚙️ Settings</button>
         <button
           v-if="!viewingOtherUser && backendStore.isAdmin"
           class="nge-profile-tab"
@@ -680,7 +692,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-profile-name">{{ profileName }}</div>
 
               <button v-if="!viewingOtherUser" class="nge-profile-edit-btn"
-                      @click="emit('open-settings')"
+                      @click="activeTab = 'settings'"
                       title="Edit Profile — set bio, flag, and more">⚙</button>
             </div>
 
@@ -696,7 +708,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
             <template v-if="!viewingOtherUser">
               <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
-              <button v-else class="nge-profile-bio-add" @click="emit('open-settings')">
+              <button v-else class="nge-profile-bio-add" @click="activeTab = 'settings'">
                 + Add a bio
               </button>
             </template>
@@ -1382,6 +1394,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         <AdminHub />
       </div>
 
+      <!-- ── Settings tab ──────────────────────────────────────── -->
+      <div v-if="activeTab === 'settings'" class="nge-profile-body nge-profile-body--settings">
+        <SettingsPanel embedded />
+      </div>
+
       <!-- ── All Special Awards modal ── -->
       <div v-if="showAllSpecialModal" class="nge-special-modal-backdrop" @click.self="showAllSpecialModal = false">
         <div class="nge-special-modal">
@@ -1505,7 +1522,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-shell {
   display: flex;
   flex-direction: column;
-  max-height: 90vh;
+  /* Never taller than the viewport, whatever a tab's content does. The
+     plain 90vh clamp still let content escape on short windows because
+     ModalOverlay's overlay-content is overflow: visible; the hard cap plus
+     overflow hidden means nothing can render past the shell edge, and each
+     tab body scrolls internally. */
+  max-height: min(90vh, calc(100vh - 32px));
+  overflow: hidden;
   transition: width 0.25s ease;
 }
 .nge-profile-shell--trophy {
@@ -1525,6 +1548,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-shell--datasets {
   width: 640px;
   max-width: 90vw;
+}
+.nge-profile-shell--settings {
+  width: 520px;
+  max-width: 90vw;
+}
+.nge-profile-body--settings {
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* ── Datasets tab ── */

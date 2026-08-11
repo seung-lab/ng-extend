@@ -163,13 +163,22 @@ function logoutSession(session: loginSession) {
 }
 
 const emit = defineEmits({hide: null});
+// When embedded (inside the profile's Settings tab) we drop the modal
+// wrapper plus the ×/Cancel affordances — the profile owns closing.
+// Same pattern as WeeklyRecapPanel.
+const props = defineProps<{ embedded?: boolean }>();
 </script>
 
 <template>
-  <modal-overlay id="nge-settings-modal" class="nge-settings-modal" @hide="emit('hide')">
-    <div class="nge-settings-shell">
+  <component
+    :is="props.embedded ? 'div' : ModalOverlay"
+    :id="props.embedded ? undefined : 'nge-settings-modal'"
+    :class="props.embedded ? 'nge-settings-embedded' : 'nge-settings-modal'"
+    @hide="emit('hide')"
+  >
+    <div class="nge-settings-shell" :class="{ 'nge-settings-shell--embedded': props.embedded }">
       <!-- Top bar -->
-      <div class="nge-settings-topbar">
+      <div v-if="!props.embedded" class="nge-settings-topbar">
         <span class="nge-settings-title">⚙️ Settings</span>
         <button class="nge-settings-exit" @click="emit('hide')">×</button>
       </div>
@@ -307,11 +316,11 @@ const emit = defineEmits({hide: null});
           <span v-if="saved">✓ Saved!</span>
           <span v-else>Save</span>
         </button>
-        <button class="nge-settings-cancel" @click="emit('hide')">Cancel</button>
+        <button v-if="!props.embedded" class="nge-settings-cancel" @click="emit('hide')">Cancel</button>
       </div>
 
     </div>
-  </modal-overlay>
+  </component>
 </template>
 
 <style scoped>
@@ -360,6 +369,22 @@ const emit = defineEmits({hide: null});
      Save button with it. */
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 32px);
+}
+
+/* Embedded in the profile's Settings tab: the profile shell owns size and
+   scrolling, so the panel just fills the tab body. */
+.nge-settings-embedded {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.nge-settings-shell--embedded {
+  width: auto;
+  max-width: none;
+  max-height: none;
+  flex: 1;
+  min-height: 0;
 }
 
 .nge-settings-topbar {
