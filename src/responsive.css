@@ -60,6 +60,20 @@
 
 /* ≤1366px — de-cram without shrinking the icons. */
 @media (max-width: 1366px) {
+  /* Slimmer bar on laptops (Amy: 40px "feels too tall"). Children center
+     within it; icon glyph size is untouched, only the hit-area shortens. */
+  #extensionBar {
+    height: 34px;
+  }
+  #extensionBar .nge-icon-btn {
+    height: 30px;
+  }
+  .nge-ask-btn {
+    height: 24px;
+  }
+  .nge-dataset-btn {
+    height: 30px;
+  }
   .nge-dataset-btn {
     gap: 5px;
     padding: 0 10px;
