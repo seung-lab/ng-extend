@@ -2,7 +2,9 @@
 import { ref } from "vue";
 import { useDraggable } from "#src/merge_review/useDraggable.js";
 import QueueStatusTable from "#src/components/merge_review/QueueStatusTable.vue";
+import { useMergeReviewStore } from "#src/merge_review/store.js";
 
+const store = useMergeReviewStore();
 const panel = ref<HTMLElement | null>(null);
 const header = ref<HTMLElement | null>(null);
 useDraggable(panel, header);
@@ -12,7 +14,7 @@ const collapsed = ref(false);
 <template>
   <div ref="panel" class="queue-window">
     <div ref="header" class="queue-window-header">
-      <span>\u23F1 Cut queue</span>
+      <span>\u23F1 Cut queue<span v-if="store.root" class="qw-root"> \u00B7 {{ store.root }}</span></span>
       <button class="qw-collapse" :title="collapsed ? 'expand' : 'collapse'" @click="collapsed = !collapsed">
         {{ collapsed ? "\u25B8" : "\u25BE" }}
       </button>
@@ -52,6 +54,11 @@ const collapsed = ref(false);
   font-weight: 600;
   font-size: 12px;
   user-select: none;
+}
+.qw-root {
+  color: #9aa0b4;
+  font-weight: 400;
+  font-size: 11px;
 }
 .qw-collapse {
   background: none;

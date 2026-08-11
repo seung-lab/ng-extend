@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
 import { fetchStatus } from "#src/merge_review/mergeQueueClient.js";
+import { useMergeReviewStore } from "#src/merge_review/store.js";
 
 interface Row {
   id: number; window_id: string; status: string; approved: number;
   keep_side: string | null; keep_root_id: number | null;
   operation_id: number | null; attempts: number; error: string | null;
 }
+const store = useMergeReviewStore();
 const rows = ref<Row[]>([]);
 let timer: number | undefined;
 const COLOR: Record<string, string> = {
@@ -14,7 +16,9 @@ const COLOR: Record<string, string> = {
   done: "#2e9e6b", failed: "#d0453b", superseded: "#a05fd0", skipped: "#6b7280",
 };
 async function refresh() {
-  rows.value = (await fetchStatus()) as unknown as Row[];
+  // One queue per neuron: only this root's jobs.
+  const rootId = store.root != null ? String(store.root) : undefined;
+  rows.value = (await fetchStatus(rootId)) as unknown as Row[];
 }
 onMounted(() => { refresh(); timer = window.setInterval(refresh, 4000); });
 onUnmounted(() => { if (timer) clearInterval(timer); });

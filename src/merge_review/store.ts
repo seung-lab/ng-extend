@@ -288,22 +288,52 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       w.center_um[1] * 1000,
       w.center_um[2] * 1000,
     ];
+    console.log("[anchor-path] computing", {
+      datastack,
+      root: String(root.value),
+      window: myIdx,
+      anchorVoxel: a,
+      anchorNm,
+      winNm,
+    });
     const skel = await fetchSkeleton(viewer, datastack, String(root.value));
     // Bail if the anchor was cleared, the window changed, or a newer request
     // superseded this one while we were fetching.
     if (
       myToken !== anchorPathToken ||
       currentIdx.value !== myIdx ||
-      anchorPos.value == null ||
-      !skel
+      anchorPos.value == null
     ) {
       return;
     }
+    if (!skel) {
+      console.warn("[anchor-path] skeleton fetch failed — keeping straight line");
+      StatusMessage.showTemporaryMessage(
+        "Entrance: skeleton unavailable — showing straight line.",
+        4000,
+      );
+      return;
+    }
     const pathNm = shortestPathNm(skel, anchorNm, winNm);
-    if (!pathNm || pathNm.length < 2) return;
+    console.log("[anchor-path] skeleton", {
+      vertices: skel.nv,
+      pathPoints: pathNm ? pathNm.length : 0,
+      gateNm: pathNm ? pathNm[0] : null,
+    });
+    if (!pathNm || pathNm.length < 2) {
+      StatusMessage.showTemporaryMessage(
+        "Entrance: no skeleton route found — showing straight line.",
+        4000,
+      );
+      return;
+    }
     // nm → viewer voxel (÷[4,4,40]).
     anchorPathPoints.value = pathNm.map((p) => [p[0] / 4, p[1] / 4, p[2] / 40]);
     anchorPathForIdx.value = myIdx;
+    StatusMessage.showTemporaryMessage(
+      `Entrance: skeleton route (${pathNm.length} pts).`,
+      3000,
+    );
     rerenderCurrentWindow();
   }
 

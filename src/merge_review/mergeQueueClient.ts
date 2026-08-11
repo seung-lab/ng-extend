@@ -70,28 +70,30 @@ export interface StatusRow {
   error: string | null;
 }
 
-export async function fetchStatus(): Promise<StatusRow[]> {
+// One queue per neuron: pass the current root id to show only that neuron's
+// jobs (omit it to show every root's — e.g. an admin view).
+export async function fetchStatus(rootId?: string): Promise<StatusRow[]> {
   if (!configured()) return [];
   try {
     const cols =
       "id,window_id,status,approved,keep_side,keep_root_id,operation_id,attempts,error";
-    const r = await fetch(
-      `${REST}/merge_cut_queue?select=${cols}&order=created_at.desc`,
-      { headers: hdr() },
-    );
+    let q = `${REST}/merge_cut_queue?select=${cols}&order=created_at.desc`;
+    if (rootId) q += `&source_root_id=eq.${encodeURIComponent(rootId)}`;
+    const r = await fetch(q, { headers: hdr() });
     return r.ok ? await r.json() : [];
   } catch {
     return [];
   }
 }
 
-export async function fetchKeepRoot(_sessionId: string): Promise<string | null> {
+// Latest cleaned (keep) root for THIS neuron — scoped by root so the cleaned
+// layer never picks up another neuron's result.
+export async function fetchKeepRoot(rootId: string): Promise<string | null> {
   if (!configured()) return null;
   try {
-    const r = await fetch(
-      `${REST}/merge_cut_queue?select=keep_root_id&keep_root_id=not.is.null&order=created_at.desc&limit=1`,
-      { headers: hdr() },
-    );
+    let q = `${REST}/merge_cut_queue?select=keep_root_id&keep_root_id=not.is.null&order=created_at.desc&limit=1`;
+    if (rootId) q += `&source_root_id=eq.${encodeURIComponent(rootId)}`;
+    const r = await fetch(q, { headers: hdr() });
     const d = await r.json();
     return Array.isArray(d) && d[0] && d[0].keep_root_id != null
       ? String(d[0].keep_root_id)
