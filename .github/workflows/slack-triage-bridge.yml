@@ -21,7 +21,9 @@ name: Slack Triage Bridge
 
 on:
   schedule:
-    - cron: '15 * * * *'
+    # :45, right behind the triage routine's :42, so proposals reach Slack
+    # minutes after they're written instead of half an hour later.
+    - cron: '45 * * * *'
   workflow_dispatch: {}
 
 jobs:
