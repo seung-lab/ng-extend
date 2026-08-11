@@ -321,6 +321,26 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       );
       return;
     }
+    // Sanity-check the anchor is actually ON this neuron: distance from the anchor
+    // to the nearest skeleton vertex. If it's far, the anchor is on the wrong
+    // object and every cut will filter to nothing — warn the reviewer to re-set.
+    let anchorDist2 = Infinity;
+    for (let i = 0; i < skel.nv; i++) {
+      const dx = skel.vertices[3 * i] - anchorNm[0];
+      const dy = skel.vertices[3 * i + 1] - anchorNm[1];
+      const dz = skel.vertices[3 * i + 2] - anchorNm[2];
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < anchorDist2) anchorDist2 = d;
+    }
+    const anchorDistUm = Math.sqrt(anchorDist2) / 1000;
+    if (anchorDistUm > 8) {
+      StatusMessage.showTemporaryMessage(
+        `⚠ Anchor is ${anchorDistUm.toFixed(0)}µm from this neuron — it's on the wrong object. ` +
+          `Hover THIS neuron's nucleus and press A again.`,
+        9000,
+      );
+      console.warn(`[anchor-path] anchor ${anchorDistUm.toFixed(1)}µm from skeleton — wrong object?`);
+    }
     // Stop at the cluster entrance; only fall back to the window centre if this
     // window has no cluster points at all.
     const pathNm =
@@ -613,6 +633,10 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       }
       bundle.value = obj;
       currentIdx.value = null;
+      // A new neuron: drop any anchor from the previous bundle. Its supervoxel is
+      // on a different object, so leaving it set makes every cut filter to nothing
+      // ("no_points_on_anchor_object"). The reviewer must set a fresh anchor.
+      clearAnchor();
       // Restore any point edits previously saved for this root (survives
       // reloads).  Fresh neuron with no saved edits → empty map.
       tokenEdits.value = root.value != null ? loadTokenEdits(root.value) : {};
@@ -934,6 +958,15 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
         nmSide.push([v[0] * 4, v[1] * 4, v[2] * 40]);
         svSide.push(svStr);
       }
+    }
+    // Anchor the KEEP side with the nucleus supervoxel: it's guaranteed on the
+    // neuron, so after the worker filters to the anchor's object the keep side is
+    // never empty even when every keep-cluster token resolved to a neighbour.
+    if (anchorPos.value && anchorSv.value && !seenB.has(anchorSv.value)) {
+      const ap = anchorPos.value;
+      B.push([ap[0] * 4, ap[1] * 4, ap[2] * 40]);
+      Bsv.push(anchorSv.value);
+      seenB.add(anchorSv.value);
     }
     if (A.length === 0 || B.length === 0) {
       StatusMessage.showTemporaryMessage(
