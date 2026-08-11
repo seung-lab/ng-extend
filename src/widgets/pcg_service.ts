@@ -92,9 +92,43 @@ export function getPcgInfo(): PcgInfo | null {
 
 // ─── Change log endpoint ─────────────────────────────────────────────────────
 
+// A root ID names one immutable version of the graph — any further edit
+// creates a NEW root ID — so a root's change log can never change. Computing
+// it is expensive for the PCG server (it walks the full lineage history,
+// which on minnie65 spans years of edits), and the annotation panel asks for
+// it on every segment selection. So: cache per (table, root), in memory for
+// the session and in localStorage across sessions, and dedupe concurrent
+// requests for the same root. Only successful responses are cached.
+
+const CHANGELOG_CACHE_KEY = 'nge_pcg_changelog_cache_v1';
+const CHANGELOG_CACHE_MAX = 400; // roots kept in localStorage (LRU by last use)
+
+const changeLogMem = new Map<string, ChangeLogSummary>();
+const changeLogInflight = new Map<string, Promise<ChangeLogSummary | null>>();
+
+type PersistedChangeLog = Record<string, { v: ChangeLogSummary; t: number }>;
+
+function readPersistedChangeLogs(): PersistedChangeLog {
+  try { return JSON.parse(localStorage.getItem(CHANGELOG_CACHE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function writePersistedChangeLog(key: string, value: ChangeLogSummary) {
+  try {
+    const store = readPersistedChangeLogs();
+    store[key] = { v: value, t: Date.now() };
+    const keys = Object.keys(store);
+    if (keys.length > CHANGELOG_CACHE_MAX) {
+      keys.sort((a, b) => store[a].t - store[b].t);
+      for (const k of keys.slice(0, keys.length - CHANGELOG_CACHE_MAX)) delete store[k];
+    }
+    localStorage.setItem(CHANGELOG_CACHE_KEY, JSON.stringify(store));
+  } catch { /* quota exceeded or private mode — memory cache still works */ }
+}
+
 /**
  * Fetch the change log summary for a root ID from the PCG server.
- * Returns merge/split counts and per-user breakdown.
+ * Returns merge/split counts and per-user breakdown. Cached — see above.
  *
  * Endpoint: GET /segmentation/api/v1/table/{table}/root/{rootId}/change_log
  */
@@ -105,26 +139,50 @@ export async function getChangeLog(rootId: string): Promise<ChangeLogSummary | n
     return null;
   }
 
+  const key = `${pcg.server}|${pcg.table}|${rootId}`;
+
+  const mem = changeLogMem.get(key);
+  if (mem) return mem;
+
+  const persisted = readPersistedChangeLogs()[key];
+  if (persisted) {
+    changeLogMem.set(key, persisted.v);
+    writePersistedChangeLog(key, persisted.v); // refresh LRU timestamp
+    return persisted.v;
+  }
+
+  const inflight = changeLogInflight.get(key);
+  if (inflight) return inflight;
+
   const url = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${rootId}/change_log`;
   console.info(`[pcg] GET change_log → ${url}`);
 
-  try {
-    const res = await fetch(url, { headers: authHeaders(pcg.server) });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.warn(`[pcg] change_log ${res.status}:`, errText);
+  const req = (async (): Promise<ChangeLogSummary | null> => {
+    try {
+      const res = await fetch(url, { headers: authHeaders(pcg.server) });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.warn(`[pcg] change_log ${res.status}:`, errText);
+        return null;
+      }
+      const data = await res.json();
+      const summary: ChangeLogSummary = {
+        nMerges: data.n_mergers ?? 0,
+        nSplits: data.n_splits ?? 0,
+        userInfo: data.user_info ?? {},
+      };
+      changeLogMem.set(key, summary);
+      writePersistedChangeLog(key, summary);
+      return summary;
+    } catch (e) {
+      console.warn('[pcg] change_log network error:', e);
       return null;
+    } finally {
+      changeLogInflight.delete(key);
     }
-    const data = await res.json();
-    return {
-      nMerges: data.n_mergers ?? 0,
-      nSplits: data.n_splits ?? 0,
-      userInfo: data.user_info ?? {},
-    };
-  } catch (e) {
-    console.warn('[pcg] change_log network error:', e);
-    return null;
-  }
+  })();
+  changeLogInflight.set(key, req);
+  return req;
 }
 
 /**
@@ -141,9 +199,17 @@ export interface EditLogEntry {
   userName?: string;
 }
 
+// Same immutability argument as getChangeLog, but the per-operation list can
+// be large, so it's cached in memory only (not localStorage).
+const tabularMem = new Map<string, EditLogEntry[]>();
+
 export async function getTabularChangeLog(rootId: string): Promise<EditLogEntry[] | null> {
   const pcg = getPcgInfo();
   if (!pcg) return null;
+
+  const key = `${pcg.server}|${pcg.table}|${rootId}`;
+  const mem = tabularMem.get(key);
+  if (mem) return mem;
 
   const url = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${rootId}/tabular_change_log`;
   console.info(`[pcg] GET tabular_change_log → ${url}`);
@@ -173,6 +239,7 @@ export async function getTabularChangeLog(rootId: string): Promise<EditLogEntry[
         userName: userNames[i] ?? undefined,
       });
     }
+    tabularMem.set(key, entries);
     return entries;
   } catch (e) {
     console.warn('[pcg] tabular_change_log network error:', e);
