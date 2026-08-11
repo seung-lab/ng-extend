@@ -92,6 +92,14 @@ export function getPcgInfo(): PcgInfo | null {
 
 // ─── Change log endpoint ─────────────────────────────────────────────────────
 
+// NOTE: the only caller (AnnotationPanel) is currently commented out of
+// ExtensionBar's template, so these functions are tree-shaken out of the
+// shipped bundle — verified 2026-08-11: the live main.bundle.js contains no
+// change_log strings at all. Regular whole-history changelog load on the PCG
+// servers therefore cannot be coming from this app; check the pyr backend's
+// tabular_change_log_recent caller instead. The cache below matters the day
+// the panel is re-enabled.
+
 // A root ID names one immutable version of the graph — any further edit
 // creates a NEW root ID — so a root's change log can never change. Computing
 // it is expensive for the PCG server (it walks the full lineage history,
