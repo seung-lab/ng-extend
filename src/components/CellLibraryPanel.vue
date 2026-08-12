@@ -21,6 +21,9 @@ import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, datasetDisplayName, DATASETS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
+import { scoutPinSvg } from '../data/toolbar-icons';
+
+const tagPinSvg = scoutPinSvg();
 import { runPanelTrace, flyPlusOne } from '../util/holo_trace';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
@@ -1667,9 +1670,9 @@ const panelStyle = computed(() => ({
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
         <div v-else-if="filter === 'tags'" class="nge-cl-list">
           <div class="nge-cl-quest" style="margin-top: 0;">
-            <div class="nge-cl-quest-title">Scout tags</div>
+            <div class="nge-cl-quest-title"><span class="nge-cl-tag-pin" v-html="tagPinSvg"></span> Scout tags</div>
             <div class="nge-cl-tags-hint">
-              Drop tags with the ⚑ Tag Mode toolbar button: center the crosshair
+              Drop tags with the <span class="nge-cl-tag-pin" v-html="tagPinSvg"></span> Tag Mode toolbar button: center the crosshair
               on a merger or a suspected missing branch and pick the type. Scythes
               jump to each open tag from here, fix it, and mark it resolved.
             </div>
@@ -2069,6 +2072,8 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-dragging { cursor: grabbing; }
 .nge-cl-lane-icon { width: 16px; height: 16px; vertical-align: -3px; margin-right: 2px; }
+.nge-cl-tag-pin { display: inline-flex; vertical-align: -2px; }
+.nge-cl-tag-pin svg { filter: drop-shadow(0 0 4px rgba(53, 181, 255, 0.5)); }
 
 /* Materialize on open, ported from scifi-ui hologram.css (holodialog):
    arrives blurred, overbright, slightly too large, settles through a soft

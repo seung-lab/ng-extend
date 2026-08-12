@@ -18,6 +18,10 @@ import { useIssueTagStore, useSegmentAnnotationStore, IssueTagType } from '../st
 import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
+import { scoutPinSvg } from '../data/toolbar-icons';
+
+const pinSvg = scoutPinSvg();
+const pinSvgBig = scoutPinSvg('#35b5ff', 'width:34px;height:34px;');
 
 const emit = defineEmits({ hide: null });
 const tagStore = useIssueTagStore();
@@ -220,7 +224,7 @@ onBeforeUnmount(() => {
         :class="{ 'nge-holo-out': phase === 'form-out' }"
       >
         <div class="nge-tagmode-head" @pointerdown.prevent="dragStart">
-          <span class="nge-tagmode-title">⚑ SCOUT TAG MODE</span>
+          <span class="nge-tagmode-title"><span class="nge-tagmode-pin" v-html="pinSvg"></span> SCOUT TAG MODE</span>
           <button class="nge-tagmode-close" title="Exit tag mode (Esc)" @pointerdown.stop @click="emit('hide')">×</button>
         </div>
         <div class="nge-tagmode-hint">
@@ -237,7 +241,7 @@ onBeforeUnmount(() => {
             }"
             :title="c.hint"
             @click="choose(c.key)"
-          ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" /><template v-else>{{ c.key === 'extend' ? '🌿 ' : '⚑ ' }}</template>{{ c.key === 'cut' ? ' Cut' : c.label.replace(/^\S+\s/, '') }}</button>
+          ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" /><template v-else-if="c.key === 'extend'">🌿 </template><span v-else class="nge-tagmode-pin" v-html="pinSvg"></span>{{ c.key === 'cut' ? ' Cut' : c.label.replace(/^\S+\s/, '') }}</button>
         </div>
         <input
           v-model="note"
@@ -262,7 +266,8 @@ onBeforeUnmount(() => {
               :class="{ 'nge-tagmode-arm--on': armedOnce }"
               @click="armOnce"
             >
-              {{ armedOnce ? 'Click to place…' : '⚑ Place by click' }}
+              <template v-if="armedOnce">Click to place…</template>
+              <template v-else><span class="nge-tagmode-pin" v-html="pinSvg"></span> Place by click</template>
             </button>
             <button class="nge-tagmode-btn" :disabled="saving" @click="drop(crosshairPosition())">
               Submit
@@ -280,7 +285,7 @@ onBeforeUnmount(() => {
         @click="dismissSuccess"
         title="Click to keep scouting"
       >
-        <div class="nge-tagmode-success-glyph">⚑</div>
+        <div class="nge-tagmode-success-glyph" v-html="pinSvgBig"></div>
         <div class="nge-tagmode-success-title">{{ lastTag?.label }} candidate tagged</div>
         <div class="nge-tagmode-success-pos">{{ lastTag?.pos.join(', ') }}</div>
         <div class="nge-tagmode-success-hint">logged for the Scythes · click to keep scouting</div>
@@ -347,6 +352,8 @@ onBeforeUnmount(() => {
 
 .nge-tagmode-head { display: flex; align-items: center; cursor: grab; }
 .nge-tagmode-head:active { cursor: grabbing; }
+.nge-tagmode-pin { display: inline-flex; vertical-align: -2px; }
+.nge-tagmode-pin svg { filter: drop-shadow(0 0 4px rgba(53, 181, 255, 0.55)); }
 .nge-tagmode-title {
   flex: 1;
   font-family: 'Orbitron', 'Inter', sans-serif;
@@ -460,7 +467,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   border-color: rgba(96, 192, 96, 0.4);
 }
-.nge-tagmode-success-glyph { font-size: 30px; color: #f5d142; }
+.nge-tagmode-success-glyph { line-height: 1; filter: drop-shadow(0 0 8px rgba(53, 181, 255, 0.6)); }
 .nge-tagmode-success-title {
   font-family: 'Orbitron', 'Inter', sans-serif;
   font-size: 13px;
