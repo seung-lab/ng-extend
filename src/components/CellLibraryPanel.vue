@@ -20,6 +20,8 @@ import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, datasetDisplayName, DATASETS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
+import scytheIcon from '../../static/tags/scythe-icon.png';
+import tracerIcon from '../../static/tags/tracer-icon.png';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import ScreenshotDialog from './ScreenshotDialog.vue';
 
@@ -962,8 +964,9 @@ function jumpToTag(tag: IssueTag) {
 }
 
 const TAG_TYPE_META: Record<string, { label: string; pip: string }> = {
-  merger: { label: 'Merger', pip: '#e06060' },
-  missing_branch: { label: 'Extension', pip: '#60c060' },
+  merger: { label: 'Cut', pip: '#e06060' },
+  missing_branch: { label: 'Extend', pip: '#60c060' },
+  other: { label: 'Other', pip: '#f5d142' },
 };
 const TAG_SUBTYPE_LABELS: Record<string, string> = {
   snip: '✂️ Snip', hairball: '🧶 Hairball', twins: '👯 Twins', debris: '🗑 Debris',
@@ -1135,7 +1138,21 @@ function relativeTimeShort(iso: string): string {
 // ── Drag ─────────────────────────────────────────────────────────────
 const isDragging = ref(false);
 const dragOffset = ref({ x: 0, y: 0 });
-const panelPos = ref({ x: window.innerWidth / 2 - 220, y: 80 });
+// Position is persisted alongside size (Amy: "saving my resizing but not
+// placement"). The old off-screen worry is handled by clamping into the
+// CURRENT viewport on load instead of by refusing to save.
+const CL_POS_KEY = 'nge_cell_library_pos_v1';
+const panelPos = ref((() => {
+  const fallback = { x: window.innerWidth / 2 - 220, y: 80 };
+  try {
+    const saved = JSON.parse(localStorage.getItem(CL_POS_KEY) || 'null');
+    if (!saved || !Number.isFinite(saved.x) || !Number.isFinite(saved.y)) return fallback;
+    return {
+      x: Math.max(-200, Math.min(saved.x, window.innerWidth - 120)),
+      y: Math.max(40, Math.min(saved.y, window.innerHeight - 80)),
+    };
+  } catch { return fallback; }
+})());
 
 function startDrag(e: MouseEvent) {
   isDragging.value = true;
@@ -1143,9 +1160,47 @@ function startDrag(e: MouseEvent) {
   const move = (ev: MouseEvent) => {
     panelPos.value = { x: ev.clientX - dragOffset.value.x, y: ev.clientY - dragOffset.value.y };
   };
-  const up = () => { isDragging.value = false; window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  const up = () => {
+    isDragging.value = false;
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    try { localStorage.setItem(CL_POS_KEY, JSON.stringify(panelPos.value)); } catch { /* ignore */ }
+  };
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
+}
+
+// ── Tab visibility (the hub was getting crowded) ─────────────────────
+// Users hide the tabs they never use from the panel's own little settings
+// popover. The active tab and deep-link targets always render.
+const CL_TABS_KEY = 'nge_cell_library_tabs_v1';
+const ALL_CL_TABS: { key: string; label: string }[] = [
+  { key: 'mine',      label: 'My Cells' },
+  { key: 'available', label: 'Available' },
+  { key: 'claimed',   label: 'Claimed' },
+  { key: 'all',       label: 'All' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'help',      label: 'Help' },
+  { key: 'tags',      label: 'Tags' },
+  { key: 'links',     label: 'My Saved Links' },
+];
+const visibleTabs = ref<string[]>((() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CL_TABS_KEY) || 'null');
+    if (Array.isArray(saved) && saved.length) return saved;
+  } catch {}
+  return ALL_CL_TABS.map(t => t.key);
+})());
+const showTabSettings = ref(false);
+function toggleTab(key: string) {
+  const set = new Set(visibleTabs.value);
+  if (set.has(key)) { if (set.size > 1) set.delete(key); } // never hide the last one
+  else set.add(key);
+  visibleTabs.value = ALL_CL_TABS.map(t => t.key).filter(k => set.has(k));
+  try { localStorage.setItem(CL_TABS_KEY, JSON.stringify(visibleTabs.value)); } catch {}
+}
+function tabShown(key: string): boolean {
+  return visibleTabs.value.includes(key) || filter.value === (key as any);
 }
 
 // ── Resize ───────────────────────────────────────────────────────────
@@ -1233,35 +1288,45 @@ const panelStyle = computed(() => ({
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
           <div class="nge-cl-title">
-            <img :src="neuronIcon" class="nge-cl-icon" /> Cell Library
+            <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY
           </div>
-          <button class="nge-cl-close" @click="emit('hide')">×</button>
+          <button class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
+          <button class="nge-cl-close" @mousedown.stop @click="emit('hide')">×</button>
+        </div>
+
+        <!-- Per-user tab picker -->
+        <div v-if="showTabSettings" class="nge-cl-tabsettings" @mousedown.stop>
+          <div class="nge-cl-tabsettings-title">Tabs on this panel</div>
+          <label v-for="t in ALL_CL_TABS" :key="t.key" class="nge-cl-tabsettings-row">
+            <input type="checkbox" :checked="visibleTabs.includes(t.key)" @change="toggleTab(t.key)" />
+            <span>{{ t.label }}</span>
+          </label>
         </div>
 
         <!-- Filter tabs -->
         <div class="nge-cl-filters">
-          <button :class="{ active: filter === 'mine' }" @click="filter = 'mine'">
+          <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'">
             My Cells ({{ myClaimCount }})
           </button>
-          <button :class="{ active: filter === 'available' }" @click="filter = 'available'">
+          <button v-if="tabShown('available')" :class="{ active: filter === 'available' }" @click="filter = 'available'">
             Available ({{ availableCount }})
           </button>
-          <button :class="{ active: filter === 'claimed', 'nge-cl-claimed-tab': true }" @click="filter = 'claimed'">
+          <button v-if="tabShown('claimed')" :class="{ active: filter === 'claimed', 'nge-cl-claimed-tab': true }" @click="filter = 'claimed'">
             Claimed ({{ claimedCount }})
           </button>
-          <button :class="{ active: filter === 'all' }" @click="filter = 'all'">
+          <button v-if="tabShown('all')" :class="{ active: filter === 'all' }" @click="filter = 'all'">
             All ({{ datasetScopedCells.length }})
           </button>
-          <button :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
+          <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
             Completed ({{ completedCount }})
           </button>
-          <button :class="{ active: filter === 'help', 'nge-cl-help-tab': true }" @click="filter = 'help'">
+          <button v-if="tabShown('help')" :class="{ active: filter === 'help', 'nge-cl-help-tab': true }" @click="filter = 'help'">
             Help ({{ pendingHelp.length }})
           </button>
-          <button :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'">
+          <button v-if="tabShown('tags')" :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'">
             Tags ({{ tagStore.openTags.length }})
           </button>
-          <button :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'">
+          <button v-if="tabShown('links')" :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'">
             My Saved Links ({{ linksStore.links.length }})
           </button>
         </div>
@@ -1599,8 +1664,8 @@ const panelStyle = computed(() => ({
 
           <div class="nge-cl-tags-lanes">
             <button :class="{ 'nge-cl-lane--active': tagLane === 'all' }" @click="tagLane = 'all'">All ({{ tagStore.openTags.length }})</button>
-            <button :class="{ 'nge-cl-lane--active': tagLane === 'merger' }" @click="tagLane = 'merger'">⛓ For Scythes</button>
-            <button :class="{ 'nge-cl-lane--active': tagLane === 'missing_branch' }" @click="tagLane = 'missing_branch'">🌿 For Tracers</button>
+            <button :class="{ 'nge-cl-lane--active': tagLane === 'merger' }" @click="tagLane = 'merger'"><img :src="scytheIcon" class="nge-cl-lane-icon" alt="" /> For Scythes</button>
+            <button :class="{ 'nge-cl-lane--active': tagLane === 'missing_branch' }" @click="tagLane = 'missing_branch'"><img :src="tracerIcon" class="nge-cl-lane-icon" alt="" /> For Tracers</button>
           </div>
 
           <div v-if="!laneFilteredTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
@@ -1634,7 +1699,7 @@ const panelStyle = computed(() => ({
                         :disabled="isCrossDatasetTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location'">↗</button>
                 <button class="nge-cl-btn nge-cl-btn--complete" @click="tagStore.resolve(tag.id)" title="Mark fixed">✓</button>
-                <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete tag">×</button>
+                <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this tag for everyone (use ✓ if it was fixed)">🗑</button>
               </div>
             </div>
           </div>
@@ -1656,7 +1721,7 @@ const panelStyle = computed(() => ({
                   </div>
                 </div>
                 <div class="nge-cl-row-actions">
-                  <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete">×</button>
+                  <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this tag for everyone">🗑</button>
                 </div>
               </div>
             </div>
@@ -1990,10 +2055,62 @@ const panelStyle = computed(() => ({
   border-bottom: 1px solid rgba(120, 140, 255, 0.08);
 }
 .nge-cl-dragging { cursor: grabbing; }
+.nge-cl-lane-icon { width: 16px; height: 16px; vertical-align: -3px; margin-right: 2px; }
+
+/* Materialize on open, ported from scifi-ui hologram.css (holodialog):
+   arrives blurred, overbright, slightly too large, settles through a soft
+   overshoot at 60 per cent. Replaces the old fade transition. */
+.nge-cl-panel {
+  animation: nge-cl-materialize 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes nge-cl-materialize {
+  0%   { opacity: 0; transform: scale(1.04) translateY(-10px);
+         filter: blur(20px) brightness(3); }
+  30%  { opacity: 0.6; filter: blur(3px) brightness(1.5); }
+  60%  { opacity: 1; transform: scale(0.99); filter: blur(0) brightness(1.1); }
+  100% { opacity: 1; transform: scale(1) translateY(0);
+         filter: blur(0) brightness(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nge-cl-panel { animation: none; }
+}
+
+.nge-cl-gear {
+  background: none; border: none; color: #7a8db0; font-size: 15px;
+  cursor: pointer; padding: 0 6px; line-height: 1;
+  transition: color 0.12s, transform 0.3s;
+}
+.nge-cl-gear:hover { color: #cfe0f5; transform: rotate(40deg); }
+
+.nge-cl-tabsettings {
+  position: absolute;
+  top: 42px; right: 10px;
+  z-index: 5;
+  width: 180px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(6, 10, 20, 0.97);
+  border: 1px solid rgba(100, 200, 255, 0.25);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.nge-cl-tabsettings-title {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(100, 200, 255, 0.75);
+  margin-bottom: 2px;
+}
+.nge-cl-tabsettings-row {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: #cde; cursor: pointer;
+}
+.nge-cl-tabsettings-row input { accent-color: #64c8ff; }
+
 .nge-cl-title {
-  font-size: 0.9em;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.12em;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.03em;
   color: #eef;
 }
 .nge-cl-icon { width: 18px; height: 18px; object-fit: contain; vertical-align: middle; }

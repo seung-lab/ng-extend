@@ -1381,7 +1381,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
 // joined) or 'missing_branch' (branch looks truncated). Scythes work the open
 // queue from the Cell Library Tags tab. Backed by `issue_tags`.
 
-export type IssueTagType = 'merger' | 'missing_branch';
+export type IssueTagType = 'merger' | 'missing_branch' | 'other';
 
 /** Merger subtypes, Amy's taxonomy. 'hairball' is real EyeWire slang. */
 export type IssueTagSubtype = 'snip' | 'hairball' | 'twins' | 'debris';
