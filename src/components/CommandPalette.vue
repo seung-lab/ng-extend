@@ -170,6 +170,16 @@ function buildActions(): PaletteItem[] {
     action: () => emit('open-settings'),
   });
   items.push({
+    id: 'tag-mode',
+    label: 'Scout Tag Mode',
+    description: 'Flag mergers and missing branches (Shift+T)',
+    category: 'tool',
+    icon: '⚑',
+    shortcut: 'Shift+T',
+    aliases: ['tag', 'scout', 'flag', 'merger', 'hairball', 'snip', 'extension'],
+    action: () => document.dispatchEvent(new CustomEvent('nge:toggle-tag-mode')),
+  });
+  items.push({
     id: 'open-dataset-selector',
     label: 'Switch Dataset',
     description: 'Switch between stroeh retina, pinky, minnie65',

@@ -115,6 +115,7 @@ const AUTO_INJECT_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: 
   { id: 'chat',     beforeFallback: 'settings' },
   { id: 'findPath', after: 'merge' },
   { id: 'layers',   after: 'findPath', beforeFallback: 'settings' },
+  { id: 'tags',     after: 'help',     beforeFallback: 'notif' },
 ];
 
 /**

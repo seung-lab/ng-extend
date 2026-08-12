@@ -133,6 +133,19 @@ onMounted(() => {
     }
   }) as EventListener);
 
+  // Tag mode: global hotkey (Shift+T) and the palette command's event.
+  document.addEventListener('nge:toggle-tag-mode', (() => {
+    showTagMode.value = !showTagMode.value;
+  }) as EventListener);
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement | null;
+    const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    if (!typing && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      showTagMode.value = !showTagMode.value;
+    }
+  });
+
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
     // Optional deep-link tab ('triage' opens Admin Hub > Triage, etc.)
