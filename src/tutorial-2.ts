@@ -1,5 +1,6 @@
 import { Step } from "./store-pyr";
-import scytheHero from './images/scythe_hero.png';
+// 132KB web-sized JPEG; the 18MB source PNG stays out of the bundle.
+import scytheHero from './images/scythe_hero_web.jpg';
 import imgWheresNurro from './images/wheres-nurro.png';
 import imgNurroAtHome from './images/nurro-at-home600.png';
 import imgTutorialFinal from './images/ng-tutorial-final-image.png';

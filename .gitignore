@@ -3,3 +3,4 @@ dist
 tsconfig.tsbuildinfo
 .venv
 .idea
+src/images/scythe_hero.png

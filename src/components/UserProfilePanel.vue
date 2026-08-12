@@ -5,12 +5,15 @@ import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
+import RollUp from 'components/RollUp.vue';
+import { runPanelTrace } from '../util/holo_trace';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset} from '../datasets';
+import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -175,6 +178,23 @@ function openWeekInScience() {
   activeTab.value = 'weekInScience';
   maybeSendWeeklyRecapNotification();
 }
+
+// ── Scout Report: your tag activity, all lanes ───────────────────────────────
+const issueTagStore = useIssueTagStore();
+const myTagsPlaced = computed(() =>
+  issueTagStore.tags.filter((t: IssueTag) => t.userId && t.userId === backendStore.userId));
+const myTagsFixed = computed(() =>
+  myTagsPlaced.value.filter((t: IssueTag) => t.status === 'resolved'));
+const tagsIFixed = computed(() =>
+  issueTagStore.tags.filter((t: IssueTag) =>
+    t.status === 'resolved' && t.resolvedById && t.resolvedById === backendStore.userId));
+
+// The particle trace: an arc of light runs the shell boundary once when the
+// profile arrives (scifi-ui hologram.js section 1, via util/holo_trace).
+const shellEl = ref<HTMLElement | null>(null);
+onMounted(() => {
+  setTimeout(() => { if (shellEl.value) runPanelTrace(shellEl.value); }, 60);
+});
 
 // Deep-link: open directly on a given tab (e.g. from the toolbar/command palette
 // "Your Week in Science" action).
@@ -609,7 +629,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
     :class="{ 'nge-profile-closing': closing }"
     @hide="handleClose"
   >
-    <div class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets', 'nge-profile-shell--settings': activeTab === 'settings' }">
+    <div ref="shellEl" class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets', 'nge-profile-shell--settings': activeTab === 'settings' }">
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
@@ -731,7 +751,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 {label:'All Time', val:profileStats.editsAllTime,  merges:profileStats.mergesAllTime,  splits:profileStats.splitsAllTime},
               ]" :key="i">
                 <div class="nge-profile-stat-label">{{ col.label }}</div>
-                <div class="nge-profile-stat-val">{{ col.val.toLocaleString() }}</div>
+                <div class="nge-profile-stat-val"><RollUp :value="col.val" /></div>
                 <div class="nge-profile-stat-breakdown">
                   <span class="nge-profile-stat-bp" title="Merges">
                     <svg class="nge-profile-stat-icon nge-profile-stat-icon--merge" viewBox="0 0 16 16" fill="none">
@@ -766,24 +786,44 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-profile-stat-col">
                 <div class="nge-profile-stat-label">Completed</div>
                 <div class="nge-profile-stat-val nge-profile-stat-val--hero">
-                  {{ completedCells.length.toLocaleString() }}
+                  <RollUp :value="completedCells.length" />
                 </div>
                 <div class="nge-profile-stat-sub">proofread</div>
               </div>
               <div class="nge-profile-stat-col">
                 <div class="nge-profile-stat-label">Identified</div>
-                <div class="nge-profile-stat-val">{{ identifiedCells.length.toLocaleString() }}</div>
+                <div class="nge-profile-stat-val"><RollUp :value="identifiedCells.length" /></div>
                 <div class="nge-profile-stat-sub">typed only</div>
               </div>
               <div class="nge-profile-stat-col">
                 <div class="nge-profile-stat-label">Total</div>
-                <div class="nge-profile-stat-val">{{ filteredCellHistory.length.toLocaleString() }}</div>
+                <div class="nge-profile-stat-val"><RollUp :value="filteredCellHistory.length" /></div>
                 <div class="nge-profile-stat-sub">touched</div>
               </div>
               <div class="nge-profile-stat-col" v-if="playerAssists > 0">
                 <div class="nge-profile-stat-label">Assists</div>
                 <div class="nge-profile-stat-val" style="color: #7f8;">{{ playerAssists }}</div>
                 <div class="nge-profile-stat-sub">helped</div>
+              </div>
+            </div>
+
+            <!-- Scout Report: tags placed and fixed -->
+            <div class="nge-profile-section-label" style="margin-top: 14px;">▌ Scout Report</div>
+            <div class="nge-profile-stat-row">
+              <div class="nge-profile-stat-col">
+                <div class="nge-profile-stat-label">Tags Placed</div>
+                <div class="nge-profile-stat-val" style="color: #f5d142;"><RollUp :value="myTagsPlaced.length" /></div>
+                <div class="nge-profile-stat-sub">scouted</div>
+              </div>
+              <div class="nge-profile-stat-col">
+                <div class="nge-profile-stat-label">Confirmed</div>
+                <div class="nge-profile-stat-val"><RollUp :value="myTagsFixed.length" /></div>
+                <div class="nge-profile-stat-sub">of yours, fixed</div>
+              </div>
+              <div class="nge-profile-stat-col">
+                <div class="nge-profile-stat-label">You Fixed</div>
+                <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
+                <div class="nge-profile-stat-sub">scythe work</div>
               </div>
             </div>
 
@@ -1693,6 +1733,10 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* ── Shared column base ── */
 .nge-profile-col {
   overflow-y: auto;
+  /* macOS hides overlay scrollbars until you scroll, which made a clipped
+     column and a scrollable one look identical. A slim always-there thumb
+     says "there's more". */
+  scrollbar-gutter: stable;
   padding: 20px 24px 32px;
   box-sizing: border-box;
   scrollbar-width: thin;
@@ -1728,7 +1772,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   align-items: center;
   justify-content: flex-start;
   background: rgba(74, 158, 255, 0.015);
-  overflow: hidden;
+  /* Was overflow: hidden, which silently clipped Favorite Badge / Top of the
+     Week on short windows while the sibling columns scrolled (the recurring
+     "a rule was written but never applied" trap, in reverse: a rule applied
+     that never should have been). */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

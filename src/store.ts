@@ -8,7 +8,7 @@ import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/spec
 import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
-import {currentDatasetTag} from './datasets';
+import {currentDatasetTag, canonicalDataset} from './datasets';
 import {supabase} from './supabase';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
@@ -391,6 +391,15 @@ export const useLayersStore = defineStore('layers', () => {
       const hashPart = hashIdx >= 0 ? dsCfgEarly.defaultStateUrl.slice(hashIdx) : '';
       console.info(`[layers] Loading curated view for ${targetSegName} → ${dsCfgEarly.defaultStateUrl}`);
       if (hashPart) {
+        // Reload-loop guard: if the hash ALREADY points at the curated state,
+        // reloading again cannot help. Without this, a curated state that
+        // fails to load (e.g. middleauth not granted in this browser) left
+        // activeLayers empty, the boot auto-select called selectLayers again,
+        // and the page reloaded forever.
+        if (window.location.hash === hashPart) {
+          console.warn('[layers] curated state already in hash but layers empty — not reloading again');
+          return;
+        }
         window.location.hash = hashPart;
         // Force a reload so all layers/state are re-initialized cleanly from the saved URL.
         window.location.reload();
@@ -1399,6 +1408,7 @@ export interface IssueTag {
   userId?: string;
   userName?: string;
   status: 'open' | 'resolved';
+  resolvedById?: string;
   resolvedByName?: string;
   createdAt: string;
 }
@@ -1417,6 +1427,7 @@ function rowToIssueTag(row: any): IssueTag {
     userId: row.user_id ?? undefined,
     userName: row.user_name ?? undefined,
     status: row.status ?? 'open',
+    resolvedById: row.resolved_by ?? undefined,
     resolvedByName: row.resolved_by_name ?? undefined,
     createdAt: row.created_at,
   };
@@ -1427,6 +1438,52 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   let realtimeChannel: any = null;
 
   const openTags = computed(() => tags.value.filter(t => t.status === 'open'));
+
+  /** Name of the in-viewer annotation layer that mirrors open tags. */
+  const TAG_LAYER_NAME = '⚑ Scout tags';
+
+  /**
+   * Mirror the current dataset's OPEN tags into a local annotation layer so
+   * they're visible in 2D and 3D. Runs through viewer.state JSON (the same
+   * route curated states use); neuroglancer reconciles unchanged layers by
+   * name, so the graphene layer doesn't reload. Best-effort: if the viewer
+   * isn't ready, do nothing. If the user deletes the layer it stays gone
+   * until the next tag mutation or explicit sync.
+   */
+  function syncTagLayer() {
+    try {
+      const viewer: any = (window as any)['viewer'];
+      if (!viewer?.state) return;
+      const canon = currentDatasetTag();
+      const points = openTags.value
+        .filter(t => !t.dataset || canonicalDataset(t.dataset) === canon)
+        .filter(t => t.position?.length === 3)
+        .map(t => ({
+          type: 'point',
+          id: t.id,
+          point: t.position,
+          description: `${t.tagType === 'merger' ? 'Cut' : t.tagType === 'missing_branch' ? 'Extend' : 'Other'}${t.note ? ': ' + t.note : ''} (${t.userName || 'anon'})`,
+        }));
+      const state = viewer.state.toJSON();
+      const layers: any[] = state.layers ?? [];
+      const idx = layers.findIndex((l: any) => l?.name === TAG_LAYER_NAME);
+      if (!points.length) {
+        if (idx >= 0) { layers.splice(idx, 1); viewer.state.restoreState(state); }
+        return;
+      }
+      const layer = {
+        type: 'annotation',
+        name: TAG_LAYER_NAME,
+        annotations: points,
+        annotationColor: '#f5d142',
+      };
+      if (idx >= 0) layers[idx] = layer; else layers.push(layer);
+      state.layers = layers;
+      viewer.state.restoreState(state);
+    } catch (e) {
+      console.warn('[issueTags] tag layer sync failed:', e);
+    }
+  }
 
   async function load() {
     try {
@@ -1460,6 +1517,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     if (error) { console.warn('[issueTags] insert error:', error.message); return null; }
     const t = rowToIssueTag(data);
     if (!tags.value.find(x => x.id === t.id)) tags.value.unshift(t);
+    syncTagLayer();
     return t;
   }
 
@@ -1476,12 +1534,14 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     if (error) { console.warn('[issueTags] resolve error:', error.message); return; }
     const t = tags.value.find(x => x.id === id);
     if (t) { t.status = 'resolved'; t.resolvedByName = name; }
+    syncTagLayer();
   }
 
   async function remove(id: string) {
     const { error } = await supabase.from('issue_tags').delete().eq('id', id);
     if (error) { console.warn('[issueTags] delete error:', error.message); }
     tags.value = tags.value.filter(x => x.id !== id);
+    syncTagLayer();
   }
 
   function subscribe() {
@@ -1503,7 +1563,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   load();
   subscribe();
 
-  return { tags, openTags, load, add, resolve, remove };
+  return { tags, openTags, load, add, resolve, remove, syncTagLayer };
 });
 
 // ── Working Links ─────────────────────────────────────────────────────────

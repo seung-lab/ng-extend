@@ -17,13 +17,14 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useIssueTagStore, useSegmentAnnotationStore, IssueTagType } from '../store';
 import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
+import scytheIcon from '../../static/tags/scythe-icon.png';
 
 const emit = defineEmits({ hide: null });
 const tagStore = useIssueTagStore();
 const { activeSegId } = storeToRefs(useSegmentAnnotationStore());
 
 const TAG_CHOICES: { key: string; tagType: IssueTagType; label: string; hint: string }[] = [
-  { key: 'cut',    tagType: 'merger',         label: '✂️ Cut',    hint: 'Wrongly joined here, needs cutting apart' },
+  { key: 'cut',    tagType: 'merger',         label: 'Cut',    hint: 'Wrongly joined here, Grim reaps it apart' },
   { key: 'extend', tagType: 'missing_branch', label: '🌿 Extend', hint: 'A branch looks truncated, keep growing it' },
   { key: 'other',  tagType: 'other',          label: '⚑ Other',   hint: 'Something else, describe it in the note' },
 ];
@@ -100,7 +101,7 @@ async function drop(position: number[]) {
   if (!t) { showFlash('Tag failed, try again'); return; }
   note.value = '';
   screenshotUrl.value = '';
-  lastTag.value = { label: c.label, pos: position };
+  lastTag.value = { label: c.label.replace(/^\S+\s/, ''), pos: position };
   // Form de-materializes, success materializes.
   phase.value = 'form-out';
   setTimeout(() => { phase.value = 'success'; }, SWAP_MS);
@@ -151,97 +152,66 @@ function dragEnd() {
   try { localStorage.setItem(POS_KEY, JSON.stringify(panelPos.value)); } catch {}
 }
 
-// ── T + left click ───────────────────────────────────────────────────────────
+// ── T + left click, or the arm-once button ──────────────────────────────────
 const tHeld = ref(false);
+/** Set by the "Place by click" button: the NEXT viewer click drops the tag. */
+const armedOnce = ref(false);
+function armOnce() {
+  armedOnce.value = !armedOnce.value;
+  document.body.classList.toggle('nge-tag-armed', armedOnce.value);
+}
 function isTypingTarget(e: Event): boolean {
   const t = e.target as HTMLElement | null;
   return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 }
 function onKeyDown(e: KeyboardEvent) {
   if (isTypingTarget(e)) return;
-  if (e.key === 't' || e.key === 'T') tHeld.value = true;
+  if (e.key === 't' || e.key === 'T') {
+    tHeld.value = true;
+    document.body.classList.add('nge-tag-armed');
+  }
   if (e.key === 'Escape') emit('hide');
 }
 function onKeyUp(e: KeyboardEvent) {
-  if (e.key === 't' || e.key === 'T') tHeld.value = false;
+  if (e.key === 't' || e.key === 'T') {
+    tHeld.value = false;
+    document.body.classList.remove('nge-tag-armed');
+  }
 }
-function onClickCapture(e: MouseEvent) {
-  if (!tHeld.value || e.button !== 0) return;
+// pointerdown in the CAPTURE phase: neuroglancer handles mousedown itself
+// and a synthetic 'click' may never fire on the canvas, which made T+click
+// look dead with no explanation. Capture runs first, and a failed position
+// read now says so instead of silently letting the click through.
+function onPointerCapture(e: PointerEvent) {
+  if ((!tHeld.value && !armedOnce.value) || e.button !== 0) return;
+  if ((e.target as HTMLElement)?.closest?.('.nge-tagmode-wrap')) return;
   const pos = mousePosition();
-  if (pos.length !== 3) return;
   e.preventDefault();
   e.stopPropagation();
+  if (armedOnce.value) { armedOnce.value = false; document.body.classList.remove('nge-tag-armed'); }
+  if (pos.length !== 3) { showFlash('No data under cursor, hover the 2D or 3D view'); return; }
   drop(pos);
 }
 
-// ── HUD motes that flee the cursor (scifi-ui hologram.js section 10) ────────
-// Bound to the whole panel wrapper so the marks decorate the OUTSIDE of the
-// box. Real physics values: 150px radius of influence, 62px max push,
-// squared falloff, CSS eases both push and return.
-const swarmEl = ref<HTMLElement | null>(null);
-const wrapEl = ref<HTMLElement | null>(null);
-const MOTE_MARKS: [string, number, number, string][] = [
-  ['dot', -4, 8, ''],   ['brk', -6, 40, ''],  ['dot', -3, 78, ''],
-  ['num', 8, -9, 'SCT'], ['dot', 40, -7, ''],  ['rail', 68, -8, ''],
-  ['dot', 103, 14, ''], ['brk', 104, 55, ''], ['dot', 102, 88, ''],
-  ['num', 84, 106, '0.42'], ['dot', 52, 105, ''], ['rail', 12, 106, ''],
-];
-function buildSwarm() {
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-  const swarm = swarmEl.value, host = wrapEl.value;
-  if (!swarm || !host) return;
-  const RADIUS = 150, PUSH = 62;
-  const els: HTMLElement[] = [];
-  for (const [kind, x, y, text] of MOTE_MARKS) {
-    const el = document.createElement('i');
-    el.className = kind;
-    el.style.left = `${x}%`;
-    el.style.top = `${y}%`;
-    if (text) el.textContent = text;
-    el.setAttribute('aria-hidden', 'true');
-    swarm.appendChild(el);
-    els.push(el);
-  }
-  if (window.matchMedia?.('(hover: none)').matches) return;
-  const move = (ev: PointerEvent) => {
-    const r = host.getBoundingClientRect();
-    const mx = ev.clientX - r.left, my = ev.clientY - r.top;
-    for (const el of els) {
-      const ex = el.offsetLeft + el.offsetWidth / 2;
-      const ey = el.offsetTop + el.offsetHeight / 2;
-      const dx = ex - mx, dy = ey - my;
-      const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
-      if (d > RADIUS) { el.style.transform = ''; el.style.opacity = ''; continue; }
-      let f = 1 - d / RADIUS;
-      f = f * f;
-      const k = (PUSH * f) / d;
-      el.style.transform = `translate(${(dx * k).toFixed(1)}px,${(dy * k).toFixed(1)}px)`;
-      el.style.opacity = '0.9';
-    }
-  };
-  const leave = () => els.forEach(el => { el.style.transform = ''; el.style.opacity = ''; });
-  host.addEventListener('pointermove', move);
-  host.addEventListener('pointerleave', leave);
-}
-
 onMounted(() => {
+  // Show existing open tags in the volume the moment tag mode opens.
+  tagStore.syncTagLayer();
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
-  window.addEventListener('click', onClickCapture, true);
-  buildSwarm();
+  window.addEventListener('pointerdown', onPointerCapture, true);
 });
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
-  window.removeEventListener('click', onClickCapture, true);
+  window.removeEventListener('pointerdown', onPointerCapture, true);
   window.removeEventListener('pointermove', dragMove);
+  document.body.classList.remove('nge-tag-armed');
 });
 </script>
 
 <template>
   <Teleport to="body">
-    <div ref="wrapEl" class="nge-tagmode-wrap" :style="{ left: panelPos.left + 'px', top: panelPos.top + 'px' }">
-      <div ref="swarmEl" class="nge-holoswarm" aria-hidden="true"></div>
+    <div ref="wrapEl" class="nge-tagmode-wrap" :class="{ 'nge-tagmode-wrap--armed': tHeld || armedOnce }" :style="{ left: panelPos.left + 'px', top: panelPos.top + 'px' }">
 
       <!-- Form box -->
       <div
@@ -254,7 +224,7 @@ onBeforeUnmount(() => {
           <button class="nge-tagmode-close" title="Exit tag mode (Esc)" @pointerdown.stop @click="emit('hide')">×</button>
         </div>
         <div class="nge-tagmode-hint">
-          Pick a type, then <b>hold T and click</b> the spot in 2D or 3D.
+          Pick a type, then <b>hold T and click</b> the spot, or use <b>Place by click</b>. <b>Submit</b> tags the crosshair.
         </div>
         <div class="nge-tagmode-chips">
           <button
@@ -267,7 +237,7 @@ onBeforeUnmount(() => {
             }"
             :title="c.hint"
             @click="choose(c.key)"
-          >{{ c.label }}</button>
+          ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" /><template v-else>{{ c.key === 'extend' ? '🌿 ' : '⚑ ' }}</template>{{ c.key === 'cut' ? ' Cut' : c.label.replace(/^\S+\s/, '') }}</button>
         </div>
         <input
           v-model="note"
@@ -302,7 +272,7 @@ onBeforeUnmount(() => {
         title="Click to keep scouting"
       >
         <div class="nge-tagmode-success-glyph">⚑</div>
-        <div class="nge-tagmode-success-title">{{ lastTag?.label }} tagged</div>
+        <div class="nge-tagmode-success-title">{{ lastTag?.label }} candidate tagged</div>
         <div class="nge-tagmode-success-pos">{{ lastTag?.pos.join(', ') }}</div>
         <div class="nge-tagmode-success-hint">logged for the Scythes · click to keep scouting</div>
       </div>
@@ -317,6 +287,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* Armed (T held): the panel glows and the page cursor becomes a crosshair,
+   so there is no doubt the next click drops a tag. */
+:global(body.nge-tag-armed) { cursor: crosshair; }
+.nge-tagmode-wrap--armed .nge-tagmode {
+  border-color: rgba(245, 209, 66, 0.85);
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55), 0 0 18px rgba(245, 209, 66, 0.35);
+}
 .nge-tagmode-wrap {
   position: fixed;
   z-index: 10005;
@@ -347,13 +324,13 @@ onBeforeUnmount(() => {
 .nge-holo-out {
   animation: nge-holo-materialize 0.5s cubic-bezier(0.16, 1, 0.3, 1) reverse both;
 }
+/* Softened from the scifi-ui original: the brightness(3) overbright flash
+   read as an error strobe on a large panel (Amy). Keep the blur settle and
+   the soft overshoot; drop the flash. Oddly satisfying, not alarming. */
 @keyframes nge-holo-materialize {
-  0%   { opacity: 0; transform: scale(1.04) translateY(-10px);
-         filter: blur(20px) brightness(3); }
-  30%  { opacity: 0.6; filter: blur(3px) brightness(1.5); }
-  60%  { opacity: 1; transform: scale(0.99); filter: blur(0) brightness(1.1); }
-  100% { opacity: 1; transform: scale(1) translateY(0);
-         filter: blur(0) brightness(1); }
+  0%   { opacity: 0; transform: scale(1.025) translateY(-8px); filter: blur(14px); }
+  60%  { opacity: 1; transform: scale(0.995); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .nge-tagmode, .nge-holo-out { animation: none; }
@@ -390,6 +367,7 @@ onBeforeUnmount(() => {
 }
 .nge-tagmode-chip--cut { background: rgba(224, 96, 96, 0.08); border-color: rgba(224, 96, 96, 0.3); color: #eaa; }
 .nge-tagmode-chip--ext { background: rgba(96, 192, 96, 0.08); border-color: rgba(96, 192, 96, 0.3); color: #9d9; }
+.nge-tagmode-chip-img { width: 15px; height: 15px; vertical-align: -3px; margin-right: 3px; }
 .nge-tagmode-chip--active {
   background: rgba(245, 209, 66, 0.18);
   border-color: rgba(245, 209, 66, 0.65);
@@ -428,6 +406,27 @@ onBeforeUnmount(() => {
 }
 .nge-tagmode-shot:hover { background: rgba(120, 140, 255, 0.2); }
 .nge-tagmode-foot { display: flex; align-items: center; gap: 8px; }
+.nge-tagmode-actions-row { display: flex; gap: 8px; }
+.nge-tagmode-arm {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+  background: rgba(120, 140, 255, 0.1);
+  border: 1px solid rgba(120, 140, 255, 0.35);
+  color: #cdf;
+}
+.nge-tagmode-arm--on {
+  background: rgba(245, 209, 66, 0.18);
+  border-color: rgba(245, 209, 66, 0.65);
+  color: #ffe9a0;
+  animation: nge-arm-pulse 1.2s ease-in-out infinite;
+}
+@keyframes nge-arm-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 209, 66, 0.25); }
+  50%      { box-shadow: 0 0 0 5px rgba(245, 209, 66, 0.06); }
+}
 .nge-tagmode-pos { flex: 1; font-size: 11px; color: rgba(255, 255, 255, 0.65); }
 .nge-tagmode-pos b { color: #ffb454; font-weight: 600; }
 .nge-tagmode-btn {
@@ -462,39 +461,4 @@ onBeforeUnmount(() => {
 .nge-tagmode-success-pos { font-size: 11.5px; color: #ffb454; }
 .nge-tagmode-success-hint { font-size: 10.5px; color: rgba(255, 255, 255, 0.45); margin-top: 4px; }
 
-/* ── HUD motes on the OUTSIDE of the box (scifi-ui swarm marks: real dot /
-      brk / rail values; num is the tiny readout). Positions may sit outside
-      0..100%, that's the point. ── */
-.nge-holoswarm {
-  position: absolute;
-  inset: -30px;
-  pointer-events: none;
-  z-index: -1;
-}
-.nge-holoswarm :deep(i), .nge-holoswarm i {
-  position: absolute;
-  display: block;
-  pointer-events: none;
-  transition: transform 620ms cubic-bezier(0.18, 0.9, 0.24, 1), opacity 400ms ease;
-  will-change: transform;
-  color: rgb(196 228 255);
-}
-.nge-holoswarm i.dot {
-  width: 4px; height: 4px; border-radius: 50%;
-  background: currentColor; opacity: 0.5;
-  box-shadow: 0 0 7px rgba(74, 150, 224, 0.85);
-}
-.nge-holoswarm i.brk {
-  width: 13px; height: 13px; opacity: 0.42;
-  border-left: 1px solid currentColor; border-top: 1px solid currentColor;
-}
-.nge-holoswarm i.rail {
-  width: 46px; height: 5px; opacity: 0.38;
-  background-image: repeating-linear-gradient(90deg, currentColor 0 1px, transparent 1px 7px);
-}
-.nge-holoswarm i.num {
-  font: 600 8px 'Orbitron', monospace;
-  letter-spacing: 0.12em;
-  opacity: 0.45;
-}
 </style>

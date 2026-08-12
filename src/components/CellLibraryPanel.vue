@@ -21,6 +21,7 @@ import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, datasetDisplayName, DATASETS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
+import { runPanelTrace, flyPlusOne } from '../util/holo_trace';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import ScreenshotDialog from './ScreenshotDialog.vue';
@@ -34,6 +35,18 @@ const history = useCellHistoryStore();
 const helpStore = useHelpRequestStore();
 const linksStore = useWorkingLinksStore();
 const tagStore = useIssueTagStore();
+
+// Particle trace on arrival (scifi-ui): the beam runs the panel boundary once.
+const panelEl = ref<HTMLElement | null>(null);
+onMounted(() => {
+  setTimeout(() => { if (panelEl.value) runPanelTrace(panelEl.value); }, 60);
+});
+
+/** Resolve a tag with the +1 celebration flying to the profile button. */
+function resolveTagFun(tag: IssueTag, e: MouseEvent) {
+  tagStore.resolve(tag.id);
+  flyPlusOne(e.clientX, e.clientY);
+}
 
 const loading = ref(false);
 const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags'>(
@@ -1283,7 +1296,7 @@ const panelStyle = computed(() => ({
 <template>
   <Teleport to="body">
     <Transition name="nge-cl" appear>
-      <div class="nge-cl-panel" :style="panelStyle">
+      <div ref="panelEl" class="nge-cl-panel" :style="panelStyle">
 
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
@@ -1698,7 +1711,7 @@ const panelStyle = computed(() => ({
                 <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
                         :disabled="isCrossDatasetTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location'">↗</button>
-                <button class="nge-cl-btn nge-cl-btn--complete" @click="tagStore.resolve(tag.id)" title="Mark fixed">✓</button>
+                <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
                 <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this tag for everyone (use ✓ if it was fixed)">🗑</button>
               </div>
             </div>
@@ -2777,6 +2790,12 @@ select.nge-cl-response-input:hover {
 .nge-cl-help-shot-preview--sm img { max-height: 48px; border-radius: 4px; }
 
 /* ── Help Request Create Form ── */
+.nge-cl-btn--tagdone {
+  font-size: 16px;
+  padding: 4px 12px;
+  border-color: rgba(96, 192, 96, 0.5) !important;
+}
+
 .nge-cl-tags-lanes { display: flex; gap: 6px; }
 .nge-cl-tags-lanes button {
   padding: 4px 10px; border-radius: 12px; font-size: 11.5px; cursor: pointer;
