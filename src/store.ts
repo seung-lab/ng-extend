@@ -1383,12 +1383,18 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
 
 export type IssueTagType = 'merger' | 'missing_branch';
 
+/** Merger subtypes, Amy's taxonomy. 'hairball' is real EyeWire slang. */
+export type IssueTagSubtype = 'snip' | 'hairball' | 'twins' | 'debris';
+
 export interface IssueTag {
   id: string;
   dataset?: string;
   segId?: string;
   position: number[];
   tagType: IssueTagType;
+  subtype?: IssueTagSubtype;
+  annotationLayer?: string;
+  screenshotUrl?: string;
   note?: string;
   userId?: string;
   userName?: string;
@@ -1404,6 +1410,9 @@ function rowToIssueTag(row: any): IssueTag {
     segId: row.segment_id ?? undefined,
     position: (() => { try { return JSON.parse(row.position); } catch { return [0, 0, 0]; } })(),
     tagType: row.tag_type,
+    subtype: row.subtype ?? undefined,
+    annotationLayer: row.annotation_layer ?? undefined,
+    screenshotUrl: row.screenshot_url ?? undefined,
     note: row.note ?? undefined,
     userId: row.user_id ?? undefined,
     userName: row.user_name ?? undefined,
@@ -1432,13 +1441,17 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   }
 
   /** Drop a tag at the given position (voxel coords for the active dataset). */
-  async function add(tag: { tagType: IssueTagType; position: number[]; segId?: string; note?: string }) {
+  async function add(tag: { tagType: IssueTagType; position: number[]; segId?: string; note?: string;
+                            subtype?: IssueTagSubtype; annotationLayer?: string; screenshotUrl?: string }) {
     const backend = useProofreadingBackendStore();
     const row = {
       dataset: currentDatasetTag(),
       segment_id: tag.segId || null,
       position: JSON.stringify(tag.position),
       tag_type: tag.tagType,
+      subtype: tag.subtype || null,
+      annotation_layer: tag.annotationLayer || null,
+      screenshot_url: tag.screenshotUrl || null,
       note: tag.note || null,
       user_id: backend.userId || null,
       user_name: backend.chatHandle || backend.userName || 'Anonymous',

@@ -963,8 +963,19 @@ function jumpToTag(tag: IssueTag) {
 
 const TAG_TYPE_META: Record<string, { label: string; pip: string }> = {
   merger: { label: 'Merger', pip: '#e06060' },
-  missing_branch: { label: 'Missing branch', pip: '#60c060' },
+  missing_branch: { label: 'Extension', pip: '#60c060' },
 };
+const TAG_SUBTYPE_LABELS: Record<string, string> = {
+  snip: '✂️ Snip', hairball: '🧶 Hairball', twins: '👯 Twins', debris: '🗑 Debris',
+};
+function tagLabel(tag: IssueTag): string {
+  if (tag.subtype && TAG_SUBTYPE_LABELS[tag.subtype]) return TAG_SUBTYPE_LABELS[tag.subtype];
+  return TAG_TYPE_META[tag.tagType]?.label ?? tag.tagType;
+}
+/** Lane filter: Scythes work mergers, Tracers work extensions. */
+const tagLane = ref<'all' | 'merger' | 'missing_branch'>('all');
+const laneFilteredTags = computed(() =>
+  tagLane.value === 'all' ? tagStore.openTags : tagStore.openTags.filter((t: IssueTag) => t.tagType === tagLane.value));
 
 function resolveReq(req: HelpRequest) {
   helpStore.resolve(req.id);
@@ -1586,17 +1597,23 @@ const panelStyle = computed(() => ({
             </div>
           </div>
 
-          <div v-if="!openTagsSorted.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
-            No open tags. The volume is momentarily unsuspicious.
+          <div class="nge-cl-tags-lanes">
+            <button :class="{ 'nge-cl-lane--active': tagLane === 'all' }" @click="tagLane = 'all'">All ({{ tagStore.openTags.length }})</button>
+            <button :class="{ 'nge-cl-lane--active': tagLane === 'merger' }" @click="tagLane = 'merger'">⛓ For Scythes</button>
+            <button :class="{ 'nge-cl-lane--active': tagLane === 'missing_branch' }" @click="tagLane = 'missing_branch'">🌿 For Tracers</button>
           </div>
 
-          <div v-for="tag in openTagsSorted" :key="tag.id" class="nge-cl-help-item">
+          <div v-if="!laneFilteredTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
+            No open tags in this lane. The volume is momentarily unsuspicious.
+          </div>
+
+          <div v-for="tag in laneFilteredTags" :key="tag.id" class="nge-cl-help-item">
             <div class="nge-cl-row">
               <div class="nge-cl-row-left">
                 <span class="nge-cl-pip" :style="{ background: TAG_TYPE_META[tag.tagType]?.pip ?? '#889' }"></span>
                 <div class="nge-cl-row-info">
                   <div class="nge-cl-row-name">
-                    {{ TAG_TYPE_META[tag.tagType]?.label ?? tag.tagType }}
+                    {{ tagLabel(tag) }}
                     <span v-if="tag.segId" class="nge-cl-notes"> · seg …{{ tag.segId.slice(-6) }}</span>
                   </div>
                   <div class="nge-cl-row-meta">
@@ -1605,6 +1622,11 @@ const panelStyle = computed(() => ({
                     <span class="nge-cl-notes">{{ tag.userName || 'Anonymous' }} · {{ relativeTime(tag.createdAt) }}</span>
                   </div>
                   <div v-if="tag.note" class="nge-cl-notes" style="margin-top: 2px;">{{ tag.note }}</div>
+                  <div v-if="tag.annotationLayer" class="nge-cl-notes" style="margin-top: 2px;">📐 {{ tag.annotationLayer }}</div>
+                  <a v-if="tag.screenshotUrl" :href="tag.screenshotUrl" target="_blank" rel="noopener"
+                     class="nge-cl-help-shot-thumb" title="Open full screenshot">
+                    <img :src="tag.screenshotUrl" alt="Tag screenshot" />
+                  </a>
                 </div>
               </div>
               <div class="nge-cl-row-actions">
@@ -1626,7 +1648,7 @@ const panelStyle = computed(() => ({
                 <div class="nge-cl-row-left">
                   <span class="nge-cl-pip" style="background: #556;"></span>
                   <div class="nge-cl-row-info">
-                    <div class="nge-cl-row-name">{{ TAG_TYPE_META[tag.tagType]?.label ?? tag.tagType }}</div>
+                    <div class="nge-cl-row-name">{{ tagLabel(tag) }}</div>
                     <div class="nge-cl-row-meta">
                       <span v-if="tag.resolvedByName" class="nge-cl-notes" style="color: #7f8;">✓ {{ tag.resolvedByName }}</span>
                       <span class="nge-cl-notes">{{ relativeTime(tag.createdAt) }}</span>
@@ -2638,6 +2660,15 @@ select.nge-cl-response-input:hover {
 .nge-cl-help-shot-preview--sm img { max-height: 48px; border-radius: 4px; }
 
 /* ── Help Request Create Form ── */
+.nge-cl-tags-lanes { display: flex; gap: 6px; }
+.nge-cl-tags-lanes button {
+  padding: 4px 10px; border-radius: 12px; font-size: 11.5px; cursor: pointer;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #abc;
+}
+.nge-cl-tags-lanes button.nge-cl-lane--active {
+  background: rgba(245,209,66,0.14); border-color: rgba(245,209,66,0.5); color: #ffe9a0;
+}
+
 .nge-cl-tags-hint {
   font-size: 11.5px;
   color: rgba(255, 255, 255, 0.5);

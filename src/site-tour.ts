@@ -274,8 +274,20 @@ Drag the panel anywhere on screen.`,
   {
     title: "Profile Settings",
     titleIcon: ICON_SETTINGS,
-    text: `Set your **flag emoji**, **bio**, **toolbar icons**, and (under **Advanced**) toggle viewer settings, edit raw JSON state, manage logged-in sessions, and more.`,
-    position: { element: '[title^="Profile Settings"]', side: "bottom", offset: { x: 0, y: 14 } },
+    text: `Settings live inside your **profile** now: set your **flag emoji**, **bio**, **toolbar icons**, and (under **Advanced**) toggle viewer settings, edit raw JSON state, manage logged-in sessions, and more.`,
+    position: { element: "#profileBtn", side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── 16b. Scout Tag Mode ──────────────────────────────────────
+  {
+    title: "Scout Tag Mode",
+    text: `See something wrong that isn't your job right now? **Tag it.**
+
+Open **⚑ Tag Mode**, pick a type (✂️ Snip, 🧶 Hairball, 👯 Twins, 🗑 Debris, or 🌿 Extension), then **hold T and click** the spot in 2D or 3D. Scythes and Tracers jump to every open tag from **Cell Library, Tags** and fix them.
+
+You never have to fix what you find. Finding it is the contribution.`,
+    position: { element: '[data-icon-id="tags"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
