@@ -16,6 +16,7 @@ import ChatPanel from "components/ChatPanel.vue";
 import AssistantDock from "components/AssistantDock.vue";
 import { runSpotlight } from "../assistant/spotlight";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
+import TagModePanel from "components/TagModePanel.vue";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
@@ -207,6 +208,7 @@ watch(showChat, (v) => {
 const showCellLibrary = ref(false);
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
+const showTagMode = ref(false);
 const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
@@ -407,6 +409,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   batch:       { action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
+  tags:        { action: () => { showTagMode.value = !showTagMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
@@ -442,6 +445,7 @@ const iconActiveState: Record<string, () => boolean> = {
   feed: () => showFeed.value,
   notif: () => showNotifications.value,
   chat: () => showChat.value,
+  tags: () => showTagMode.value,
   settings: () => showProfile.value && profileInitialTab.value === 'settings',
 };
 function isIconActive(id: string): boolean {
@@ -562,6 +566,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
   <batch-processor-panel v-if="showBatchProcessor" @hide="showBatchProcessor = false" />
+  <tag-mode-panel v-if="showTagMode" @hide="showTagMode = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />

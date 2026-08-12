@@ -21,6 +21,8 @@ const CATEGORIES = ['Bug', 'Idea', 'Data problem', 'Other'] as const;
 const category = ref<typeof CATEGORIES[number]>('Bug');
 const message = ref('');
 const sending = ref(false);
+/** Attach a share link of the current view (on by default; Celia's ask). */
+const attachView = ref(true);
 const done = ref(false);
 const error = ref('');
 
@@ -49,7 +51,7 @@ async function submit() {
     // Mint a short saved-state link instead; if that fails (no auth, state
     // server down), send the bare page URL plus the position so the report
     // still locates the spot without a broken link.
-    const shortLink = await mintShortStateLink();
+    const shortLink = attachView.value ? await mintShortStateLink() : null;
     let pageUrl = shortLink;
     if (!pageUrl) {
       const v: any = (window as any)['viewer'];
@@ -283,6 +285,11 @@ onBeforeUnmount(() => {
           @input="error = ''"
         ></textarea>
 
+        <label class="nge-fb-attach">
+          <input type="checkbox" v-model="attachView" />
+          <span>Attach my current view, a share link so the team sees exactly what I see</span>
+        </label>
+
         <div v-if="error" class="nge-fb-err">{{ error }}</div>
 
         <div class="nge-fb-actions">
@@ -380,6 +387,16 @@ onBeforeUnmount(() => {
 .nge-fb-note:focus { outline: none; border-color: rgba(120, 140, 255, 0.5); }
 .nge-fb-note::placeholder { color: #667; }
 .nge-fb-err { color: #ff9d9d; font-size: 0.78em; margin-top: 6px; }
+.nge-fb-attach {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 0.78em;
+  color: #9ab;
+  cursor: pointer;
+}
+.nge-fb-attach input { accent-color: #7890ff; }
 .nge-fb-actions {
   display: flex;
   gap: 8px;

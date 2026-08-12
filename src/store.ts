@@ -1376,6 +1376,123 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe };
 });
 
+// ── Issue Tags (Scout tags) ────────────────────────────────────────────────
+// One-click typed flags dropped at the crosshair: 'merger' (two cells wrongly
+// joined) or 'missing_branch' (branch looks truncated). Scythes work the open
+// queue from the Cell Library Tags tab. Backed by `issue_tags`.
+
+export type IssueTagType = 'merger' | 'missing_branch';
+
+export interface IssueTag {
+  id: string;
+  dataset?: string;
+  segId?: string;
+  position: number[];
+  tagType: IssueTagType;
+  note?: string;
+  userId?: string;
+  userName?: string;
+  status: 'open' | 'resolved';
+  resolvedByName?: string;
+  createdAt: string;
+}
+
+function rowToIssueTag(row: any): IssueTag {
+  return {
+    id: row.id,
+    dataset: row.dataset ?? undefined,
+    segId: row.segment_id ?? undefined,
+    position: (() => { try { return JSON.parse(row.position); } catch { return [0, 0, 0]; } })(),
+    tagType: row.tag_type,
+    note: row.note ?? undefined,
+    userId: row.user_id ?? undefined,
+    userName: row.user_name ?? undefined,
+    status: row.status ?? 'open',
+    resolvedByName: row.resolved_by_name ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+export const useIssueTagStore = defineStore('issueTags', () => {
+  const tags = ref<IssueTag[]>([]);
+  let realtimeChannel: any = null;
+
+  const openTags = computed(() => tags.value.filter(t => t.status === 'open'));
+
+  async function load() {
+    try {
+      const { data, error } = await supabase
+        .from('issue_tags')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(300);
+      if (error) { console.warn('[issueTags] load error:', error.message); return; }
+      tags.value = (data ?? []).map(rowToIssueTag);
+    } catch (e) { console.warn('[issueTags] load failed:', e); }
+  }
+
+  /** Drop a tag at the given position (voxel coords for the active dataset). */
+  async function add(tag: { tagType: IssueTagType; position: number[]; segId?: string; note?: string }) {
+    const backend = useProofreadingBackendStore();
+    const row = {
+      dataset: currentDatasetTag(),
+      segment_id: tag.segId || null,
+      position: JSON.stringify(tag.position),
+      tag_type: tag.tagType,
+      note: tag.note || null,
+      user_id: backend.userId || null,
+      user_name: backend.chatHandle || backend.userName || 'Anonymous',
+    };
+    const { data, error } = await supabase.from('issue_tags').insert(row).select().single();
+    if (error) { console.warn('[issueTags] insert error:', error.message); return null; }
+    const t = rowToIssueTag(data);
+    if (!tags.value.find(x => x.id === t.id)) tags.value.unshift(t);
+    return t;
+  }
+
+  /** Mark a tag fixed. The resolver's name is shown on the resolved row. */
+  async function resolve(id: string) {
+    const backend = useProofreadingBackendStore();
+    const name = backend.chatHandle || backend.userName || 'Anonymous';
+    const { error } = await supabase.from('issue_tags').update({
+      status: 'resolved',
+      resolved_by: backend.userId || null,
+      resolved_by_name: name,
+      resolved_at: new Date().toISOString(),
+    }).eq('id', id);
+    if (error) { console.warn('[issueTags] resolve error:', error.message); return; }
+    const t = tags.value.find(x => x.id === id);
+    if (t) { t.status = 'resolved'; t.resolvedByName = name; }
+  }
+
+  async function remove(id: string) {
+    const { error } = await supabase.from('issue_tags').delete().eq('id', id);
+    if (error) { console.warn('[issueTags] delete error:', error.message); }
+    tags.value = tags.value.filter(x => x.id !== id);
+  }
+
+  function subscribe() {
+    if (realtimeChannel) return;
+    realtimeChannel = supabase
+      .channel('issue_tags_realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'issue_tags' }, (payload: any) => {
+        const t = rowToIssueTag(payload.new);
+        if (!tags.value.find(x => x.id === t.id)) tags.value.unshift(t);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'issue_tags' }, (payload: any) => {
+        const t = rowToIssueTag(payload.new);
+        const idx = tags.value.findIndex(x => x.id === t.id);
+        if (idx >= 0) tags.value[idx] = t;
+      })
+      .subscribe();
+  }
+
+  load();
+  subscribe();
+
+  return { tags, openTags, load, add, resolve, remove };
+});
+
 // ── Working Links ─────────────────────────────────────────────────────────
 // Saved viewer-state URLs (snapshots). Backed by Supabase `working_links`.
 

@@ -8,6 +8,8 @@ import {
   useHelpRequestStore,
   useUserStatsStore,
   useWorkingLinksStore,
+  useIssueTagStore,
+  type IssueTag,
   type ProofreadingTask,
   type HelpRequest,
   type WorkingLink,
@@ -16,7 +18,7 @@ import {
 import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
-import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, DATASETS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, datasetDisplayName, DATASETS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import ScreenshotDialog from './ScreenshotDialog.vue';
@@ -29,9 +31,10 @@ const login = useLoginStore();
 const history = useCellHistoryStore();
 const helpStore = useHelpRequestStore();
 const linksStore = useWorkingLinksStore();
+const tagStore = useIssueTagStore();
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags'>(
   (props.initialTab as any) || 'mine',
 );
 const search = ref('');
@@ -933,6 +936,36 @@ function jumpToReq(req: HelpRequest) {
   history.jumpToCell(req.segId, req.position);
 }
 
+// ── Scout tags (Tags tab) ────────────────────────────────────────────
+const showResolvedTags = ref(false);
+const openTagsSorted = computed(() => tagStore.openTags);
+const resolvedTags = computed(() => tagStore.tags.filter((t: IssueTag) => t.status === 'resolved'));
+
+function isCrossDatasetTag(tag: IssueTag): boolean {
+  if (!tag.dataset || !activeDataset.value) return false;
+  return canonicalDataset(tag.dataset) !== canonicalDataset(activeDataset.value);
+}
+
+function jumpToTag(tag: IssueTag) {
+  if (isCrossDatasetTag(tag)) return; // button is disabled; belt and braces
+  if (tag.segId) {
+    history.jumpToCell(tag.segId, tag.position as [number, number, number]);
+    return;
+  }
+  // Position-only tag: move the crosshair directly.
+  try {
+    const v: any = (window as any)['viewer'];
+    if (v?.navigationState?.position && tag.position?.length === 3) {
+      v.navigationState.position.value = Float32Array.from(tag.position);
+    }
+  } catch {}
+}
+
+const TAG_TYPE_META: Record<string, { label: string; pip: string }> = {
+  merger: { label: 'Merger', pip: '#e06060' },
+  missing_branch: { label: 'Missing branch', pip: '#60c060' },
+};
+
 function resolveReq(req: HelpRequest) {
   helpStore.resolve(req.id);
   helpStore.refreshPending();
@@ -1214,13 +1247,16 @@ const panelStyle = computed(() => ({
           <button :class="{ active: filter === 'help', 'nge-cl-help-tab': true }" @click="filter = 'help'">
             Help ({{ pendingHelp.length }})
           </button>
+          <button :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'">
+            Tags ({{ tagStore.openTags.length }})
+          </button>
           <button :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'">
             My Saved Links ({{ linksStore.links.length }})
           </button>
         </div>
 
         <!-- Search (not shown on Help / Links tabs) -->
-        <div v-if="filter !== 'help' && filter !== 'links'" class="nge-cl-search">
+        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags'" class="nge-cl-search">
           <input
             v-model="search"
             placeholder="Search by ID, name, or notes..."
@@ -1537,6 +1573,72 @@ const panelStyle = computed(() => ({
               </a>
             </div>
           </div>
+        </div>
+
+        <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
+        <div v-else-if="filter === 'tags'" class="nge-cl-list">
+          <div class="nge-cl-quest" style="margin-top: 0;">
+            <div class="nge-cl-quest-title">Scout tags</div>
+            <div class="nge-cl-tags-hint">
+              Drop tags with the ⚑ Tag Mode toolbar button: center the crosshair
+              on a merger or a suspected missing branch and pick the type. Scythes
+              jump to each open tag from here, fix it, and mark it resolved.
+            </div>
+          </div>
+
+          <div v-if="!openTagsSorted.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
+            No open tags. The volume is momentarily unsuspicious.
+          </div>
+
+          <div v-for="tag in openTagsSorted" :key="tag.id" class="nge-cl-help-item">
+            <div class="nge-cl-row">
+              <div class="nge-cl-row-left">
+                <span class="nge-cl-pip" :style="{ background: TAG_TYPE_META[tag.tagType]?.pip ?? '#889' }"></span>
+                <div class="nge-cl-row-info">
+                  <div class="nge-cl-row-name">
+                    {{ TAG_TYPE_META[tag.tagType]?.label ?? tag.tagType }}
+                    <span v-if="tag.segId" class="nge-cl-notes"> · seg …{{ tag.segId.slice(-6) }}</span>
+                  </div>
+                  <div class="nge-cl-row-meta">
+                    <span class="nge-cl-notes">{{ tag.position.join(', ') }}</span>
+                    <span v-if="isCrossDatasetTag(tag)" class="nge-cl-badge" style="background: rgba(245,209,66,0.12); color: #f5d142;">{{ datasetDisplayName(tag.dataset) }}</span>
+                    <span class="nge-cl-notes">{{ tag.userName || 'Anonymous' }} · {{ relativeTime(tag.createdAt) }}</span>
+                  </div>
+                  <div v-if="tag.note" class="nge-cl-notes" style="margin-top: 2px;">{{ tag.note }}</div>
+                </div>
+              </div>
+              <div class="nge-cl-row-actions">
+                <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
+                        :disabled="isCrossDatasetTag(tag)"
+                        :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location'">↗</button>
+                <button class="nge-cl-btn nge-cl-btn--complete" @click="tagStore.resolve(tag.id)" title="Mark fixed">✓</button>
+                <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete tag">×</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="nge-cl-help-resolved-toggle" @click="showResolvedTags = !showResolvedTags">
+            {{ showResolvedTags ? '▾' : '▸' }} Resolved ({{ resolvedTags.length }})
+          </div>
+          <template v-if="showResolvedTags">
+            <div v-for="tag in resolvedTags" :key="tag.id" class="nge-cl-help-item">
+              <div class="nge-cl-row nge-cl-row--done">
+                <div class="nge-cl-row-left">
+                  <span class="nge-cl-pip" style="background: #556;"></span>
+                  <div class="nge-cl-row-info">
+                    <div class="nge-cl-row-name">{{ TAG_TYPE_META[tag.tagType]?.label ?? tag.tagType }}</div>
+                    <div class="nge-cl-row-meta">
+                      <span v-if="tag.resolvedByName" class="nge-cl-notes" style="color: #7f8;">✓ {{ tag.resolvedByName }}</span>
+                      <span class="nge-cl-notes">{{ relativeTime(tag.createdAt) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="nge-cl-row-actions">
+                  <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete">×</button>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
 
         <!-- ═══ LINKS TAB ═══ -->
@@ -2536,6 +2638,12 @@ select.nge-cl-response-input:hover {
 .nge-cl-help-shot-preview--sm img { max-height: 48px; border-radius: 4px; }
 
 /* ── Help Request Create Form ── */
+.nge-cl-tags-hint {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.45;
+}
+
 /* ── connectome.quest resources (Help tab footer) ── */
 .nge-cl-quest {
   margin-top: 14px;
