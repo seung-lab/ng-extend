@@ -435,17 +435,7 @@ export class ButtonService {
     });
     colorSection.appendChild(resetColorBtn);
 
-    // ── Section 4: Links ──────────────────────────────────────────────────
-    // CAVE lineage_graph endpoint replaces the old /progress/api/v1/query
-    // which 503s on minnie. Returns JSON of merge/split history for the seg.
-    const lineageUrl = dataset
-      ? `${localServerURL}/segmentation/api/v1/table/${dataset}/root/${segmentIDString}/lineage_graph`
-      : '';
-    const linksSection = this.generateSection(
-        'Links', [],
-        lineageUrl ? [['Change Log', lineageUrl, undefined]] : []);
-
-    // ── Section 5: Claim Cell ────────────────────────────────────────────
+    // ── Section 4: Claim Cell ────────────────────────────────────────────
     const claimSection = document.createElement('div');
     claimSection.classList.add('nge-lb-section');
 
@@ -525,7 +515,7 @@ export class ButtonService {
       }
     }
 
-    // ── Section 6: Ask for Help ───────────────────────────────────────────
+    // ── Section 5: Ask for Help ───────────────────────────────────────────
     const helpSection = document.createElement('div');
     helpSection.classList.add('nge-lb-section');
 
@@ -595,7 +585,7 @@ export class ButtonService {
     });
     helpSection.appendChild(helpBtn);
 
-    menu.append(br(), completionSection, br(), cellTypeSection, br(), colorSection, br(), claimSection, br(), helpSection, br(), linksSection, br());
+    menu.append(br(), completionSection, br(), cellTypeSection, br(), colorSection, br(), claimSection, br(), helpSection, br());
     return contextMenu;
   }
 
