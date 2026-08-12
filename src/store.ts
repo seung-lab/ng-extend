@@ -1444,42 +1444,56 @@ export const useIssueTagStore = defineStore('issueTags', () => {
 
   /**
    * Mirror the current dataset's OPEN tags into a local annotation layer so
-   * they're visible in 2D and 3D. Runs through viewer.state JSON (the same
-   * route curated states use); neuroglancer reconciles unchanged layers by
-   * name, so the graphene layer doesn't reload. Best-effort: if the viewer
-   * isn't ready, do nothing. If the user deletes the layer it stays gone
-   * until the next tag mutation or explicit sync.
+   * they're visible in 2D and 3D.
+   *
+   * The layer is CREATED once via the state-JSON route (one-time, when tag
+   * mode first opens); every later change mutates the layer's
+   * localAnnotations IN PLACE. The first version restored the whole viewer
+   * state on every tag drop, which re-specced the graphene layer and made
+   * the 3D segments blink out (Amy: "T+click makes the 3D seg go away").
    */
+  function tagPointAnnotations() {
+    const canon = currentDatasetTag();
+    return openTags.value
+      .filter(t => !t.dataset || canonicalDataset(t.dataset) === canon)
+      .filter(t => t.position?.length === 3)
+      .map(t => ({
+        id: t.id,
+        point: t.position,
+        description: `${t.tagType === 'merger' ? 'Cut' : t.tagType === 'missing_branch' ? 'Extend' : 'Other'}${t.note ? ': ' + t.note : ''} (${t.userName || 'anon'})`,
+      }));
+  }
+
   function syncTagLayer() {
     try {
       const viewer: any = (window as any)['viewer'];
       if (!viewer?.state) return;
-      const canon = currentDatasetTag();
-      const points = openTags.value
-        .filter(t => !t.dataset || canonicalDataset(t.dataset) === canon)
-        .filter(t => t.position?.length === 3)
-        .map(t => ({
-          type: 'point',
-          id: t.id,
-          point: t.position,
-          description: `${t.tagType === 'merger' ? 'Cut' : t.tagType === 'missing_branch' ? 'Extend' : 'Other'}${t.note ? ': ' + t.note : ''} (${t.userName || 'anon'})`,
-        }));
-      const state = viewer.state.toJSON();
-      const layers: any[] = state.layers ?? [];
-      const idx = layers.findIndex((l: any) => l?.name === TAG_LAYER_NAME);
-      if (!points.length) {
-        if (idx >= 0) { layers.splice(idx, 1); viewer.state.restoreState(state); }
+      const points = tagPointAnnotations();
+      const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === TAG_LAYER_NAME);
+
+      if (!managed) {
+        if (!points.length) return;
+        // One-time creation through the state route. Later updates never
+        // touch the full state again.
+        const state = viewer.state.toJSON();
+        state.layers = [...(state.layers ?? []), {
+          type: 'annotation',
+          name: TAG_LAYER_NAME,
+          annotations: points.map(p => ({ ...p, type: 'point' })),
+          annotationColor: '#35b5ff',
+        }];
+        viewer.state.restoreState(state);
         return;
       }
-      const layer = {
-        type: 'annotation',
-        name: TAG_LAYER_NAME,
-        annotations: points,
-        annotationColor: '#f5d142',
-      };
-      if (idx >= 0) layers[idx] = layer; else layers.push(layer);
-      state.layers = layers;
-      viewer.state.restoreState(state);
+
+      // In-place update: clear + re-add on the layer's local source.
+      const userLayer: any = managed.layer;
+      const src = userLayer?.localAnnotations;
+      if (!src) return;
+      src.clear();
+      for (const p of points) {
+        src.add({ id: p.id, type: 0 /* AnnotationType.POINT */, point: Float32Array.from(p.point), properties: [], description: p.description }, true);
+      }
     } catch (e) {
       console.warn('[issueTags] tag layer sync failed:', e);
     }

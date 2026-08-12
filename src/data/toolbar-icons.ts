@@ -53,7 +53,13 @@ const LEADERBOARD_SVG = `<svg viewBox="1.1 0.6 13.8 13.8" fill="none" style="${S
 const BATCH_SVG       = `<svg viewBox="0.6 0.4 14.8 14.8" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M8 1.8L13.5 4.6V11L8 13.8L2.5 11V4.6L8 1.8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2.5 4.6L8 7.4L13.5 4.6M8 7.4V13.8" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
 const HELP_SVG        = `<svg viewBox="1.4 1.4 13.4 13.4" fill="none" style="${S}color:${NEUTRAL_COLOR}"><circle cx="6.6" cy="6.6" r="3.8" stroke="currentColor" stroke-width="1.6"/><path d="M9.6 9.6l3.8 3.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 // Map-pin over a crosshair tick: drop a flag exactly here.
-const TAG_SVG         = `<svg viewBox="0.6 0.2 14.8 15.4" fill="none" style="${S}color:${ACCENT_AMBER}"><path d="M8 1.6a4.3 4.3 0 0 1 4.3 4.3c0 3-4.3 7.5-4.3 7.5S3.7 8.9 3.7 5.9A4.3 4.3 0 0 1 8 1.6z" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="5.9" r="1.5" fill="currentColor"/><path d="M8 14.4v1M5.4 15h5.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+const ACCENT_SKY    = '#35b5ff';
+const TAG_SVG         = `<svg viewBox="0.6 0.2 14.8 15.4" fill="none" style="${S}color:${ACCENT_SKY}"><path d="M8 1.6a4.3 4.3 0 0 1 4.3 4.3c0 3-4.3 7.5-4.3 7.5S3.7 8.9 3.7 5.9A4.3 4.3 0 0 1 8 1.6z" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="5.9" r="1.5" fill="currentColor"/><path d="M8 14.4v1M5.4 15h5.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+
+/** The scout-tag map pin, reused everywhere tag mode shows its face. */
+export function scoutPinSvg(color = ACCENT_SKY, extraStyle = ''): string {
+  return `<svg viewBox="0.6 0.2 14.8 15.4" fill="none" style="${S}color:${color};${extraStyle}"><path d="M8 1.6a4.3 4.3 0 0 1 4.3 4.3c0 3-4.3 7.5-4.3 7.5S3.7 8.9 3.7 5.9A4.3 4.3 0 0 1 8 1.6z" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="5.9" r="1.5" fill="currentColor"/><path d="M8 14.4v1M5.4 15h5.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+}
 const NOTIF_SVG       = `<svg viewBox="0.85 1.6 14.3 14.3" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M3.7 11.5h8.6c.5 0 .8-.5.5-.95L11.5 8.8V6.5a3.5 3.5 0 0 0-7 0v2.3L3.2 10.55c-.3.45 0 .95.5.95z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 13a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 const CHAT_SVG        = `<svg viewBox="1.1 1.6 13.8 13.8" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M2.5 5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2H7L4.5 14v-2.5a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
 // Heroicons cog-6-tooth — proper teeth, not radial lines.

@@ -256,9 +256,18 @@ onBeforeUnmount(() => {
         </div>
         <div class="nge-tagmode-foot">
           <span class="nge-tagmode-pos">crosshair: <b>{{ posLabel }}</b></span>
-          <button class="nge-tagmode-btn" :disabled="saving" @click="drop(crosshairPosition())">
-            ⚑ Tag crosshair
-          </button>
+          <div class="nge-tagmode-actions-row">
+            <button
+              class="nge-tagmode-arm"
+              :class="{ 'nge-tagmode-arm--on': armedOnce }"
+              @click="armOnce"
+            >
+              {{ armedOnce ? 'Click to place…' : '⚑ Place by click' }}
+            </button>
+            <button class="nge-tagmode-btn" :disabled="saving" @click="drop(crosshairPosition())">
+              Submit
+            </button>
+          </div>
         </div>
         <div v-if="flash" class="nge-tagmode-flash">{{ flash }}</div>
       </div>
