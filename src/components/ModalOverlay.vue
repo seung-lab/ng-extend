@@ -21,7 +21,10 @@ import Overlay from "components/Overlay.vue";
   height: 100%;
   width: 100%;
   position: fixed;
-  z-index: 99;
+  /* Above neuroglancer's #statusContainer (z-index 100), which otherwise
+     paints over the bottom of every modal — Amy's "profile is cropped" was
+     the Add cube status bar covering the profile's bottom edge. */
+  z-index: 150;
   top: 0;
   left: 0;
   background: radial-gradient(ellipse at center, rgba(0, 12, 30, 0.82) 0%, rgba(0, 0, 0, 0.92) 100%);

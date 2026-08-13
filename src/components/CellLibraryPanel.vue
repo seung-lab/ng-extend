@@ -991,10 +991,15 @@ function tagLabel(tag: IssueTag): string {
   if (tag.subtype && TAG_SUBTYPE_LABELS[tag.subtype]) return TAG_SUBTYPE_LABELS[tag.subtype];
   return TAG_TYPE_META[tag.tagType]?.label ?? tag.tagType;
 }
+/** Tags scope to the current dataset like every other Cell Library list;
+ *  the globe chip widens to all datasets. */
+const showAllDatasetTags = ref(false);
+const datasetTags = computed(() =>
+  showAllDatasetTags.value ? tagStore.openTags : tagStore.openTags.filter((t: IssueTag) => !isCrossDatasetTag(t)));
 /** Lane filter: Scythes work mergers, Tracers work extensions. */
 const tagLane = ref<'all' | 'merger' | 'missing_branch'>('all');
 const laneFilteredTags = computed(() =>
-  tagLane.value === 'all' ? tagStore.openTags : tagStore.openTags.filter((t: IssueTag) => t.tagType === tagLane.value));
+  tagLane.value === 'all' ? datasetTags.value : datasetTags.value.filter((t: IssueTag) => t.tagType === tagLane.value));
 
 function resolveReq(req: HelpRequest) {
   helpStore.resolve(req.id);
@@ -1340,7 +1345,7 @@ const panelStyle = computed(() => ({
             Help ({{ pendingHelp.length }})
           </button>
           <button v-if="tabShown('tags')" :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'">
-            Tags ({{ tagStore.openTags.length }})
+            Tags ({{ datasetTags.length }})
           </button>
           <button v-if="tabShown('links')" :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'">
             My Saved Links ({{ linksStore.links.length }})
@@ -1679,9 +1684,14 @@ const panelStyle = computed(() => ({
           </div>
 
           <div class="nge-cl-tags-lanes">
-            <button :class="{ 'nge-cl-lane--active': tagLane === 'all' }" @click="tagLane = 'all'">All ({{ tagStore.openTags.length }})</button>
+            <button :class="{ 'nge-cl-lane--active': tagLane === 'all' }" @click="tagLane = 'all'">All ({{ datasetTags.length }})</button>
             <button :class="{ 'nge-cl-lane--active': tagLane === 'merger' }" @click="tagLane = 'merger'"><img :src="scytheIcon" class="nge-cl-lane-icon" alt="" /> For Scythes</button>
             <button :class="{ 'nge-cl-lane--active': tagLane === 'missing_branch' }" @click="tagLane = 'missing_branch'"><img :src="tracerIcon" class="nge-cl-lane-icon" alt="" /> For Tracers</button>
+            <button
+              :class="{ 'nge-cl-lane--active': showAllDatasetTags }"
+              :title="showAllDatasetTags ? 'Showing every dataset' : 'Showing only ' + (datasetDisplayName(activeDataset) || 'this dataset')"
+              @click="showAllDatasetTags = !showAllDatasetTags"
+            >🌐 All datasets ({{ tagStore.openTags.length }})</button>
           </div>
 
           <div v-if="!laneFilteredTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">

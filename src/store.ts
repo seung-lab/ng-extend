@@ -1464,11 +1464,22 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       }));
   }
 
+  /** A placed-but-not-submitted point, shown in the layer so "Place by
+   *  click" gives visible feedback without saving anything yet. */
+  let previewPoint: number[] | null = null;
+  function setTagPreview(pos: number[] | null) {
+    previewPoint = pos && pos.length === 3 ? [...pos] : null;
+    syncTagLayer();
+  }
+
   function syncTagLayer() {
     try {
       const viewer: any = (window as any)['viewer'];
       if (!viewer?.state) return;
       const points = tagPointAnnotations();
+      if (previewPoint) {
+        points.push({ id: 'nge-tag-preview', point: previewPoint, description: 'Pending tag, hit Submit' });
+      }
       const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === TAG_LAYER_NAME);
 
       if (!managed) {
@@ -1577,7 +1588,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   load();
   subscribe();
 
-  return { tags, openTags, load, add, resolve, remove, syncTagLayer };
+  return { tags, openTags, load, add, resolve, remove, syncTagLayer, setTagPreview };
 });
 
 // ── Working Links ─────────────────────────────────────────────────────────

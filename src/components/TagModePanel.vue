@@ -87,6 +87,25 @@ const posLabel = computed(() => {
   return p.length === 3 ? `${p[0]}, ${p[1]}, ${p[2]}` : 'no position';
 });
 
+/** A point placed by T+click or Place-by-click, awaiting Submit. Shown in
+ *  the tag layer as a preview so placing gives visible feedback without
+ *  saving anything yet (Amy: "place by click should not automatically
+ *  submit - it should just place the point"). */
+const pendingPos = ref<number[] | null>(null);
+function placePoint(pos: number[]) {
+  if (pos.length !== 3) { showFlash('No data under cursor, hover the 2D or 3D view'); return; }
+  pendingPos.value = pos;
+  tagStore.setTagPreview(pos);
+  showFlash('Point placed, hit Submit');
+}
+function clearPending() {
+  pendingPos.value = null;
+  tagStore.setTagPreview(null);
+}
+function submit() {
+  drop(pendingPos.value ?? crosshairPosition());
+}
+
 async function drop(position: number[]) {
   if (saving.value || phase.value !== 'form') return;
   if (position.length !== 3) { showFlash('No position under cursor'); return; }
@@ -105,7 +124,14 @@ async function drop(position: number[]) {
   if (!t) { showFlash('Tag failed, try again'); return; }
   note.value = '';
   screenshotUrl.value = '';
-  lastTag.value = { label: c.label.replace(/^\S+\s/, ''), pos: position };
+  clearPending();
+  const label = c.label.replace(/^\S+\s/, '');
+  lastTag.value = { label, pos: position };
+  if (collapsed.value) {
+    // The mini strip has no room for the success box; a flash does the job.
+    showFlash(`✓ ${label} candidate tagged`);
+    return;
+  }
   // Form de-materializes, success materializes.
   phase.value = 'form-out';
   setTimeout(() => { phase.value = 'success'; }, SWAP_MS);
@@ -122,6 +148,19 @@ function showFlash(msg: string) {
   flash.value = msg;
   if (flashTimer) clearTimeout(flashTimer);
   flashTimer = setTimeout(() => { flash.value = ''; }, 1800);
+}
+
+// ── Collapsed corner strip ───────────────────────────────────────────────────
+const COLLAPSED_KEY = 'nge_tagmode_collapsed_v1';
+const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1');
+function setCollapsed(v: boolean) {
+  collapsed.value = v;
+  try { localStorage.setItem(COLLAPSED_KEY, v ? '1' : '0'); } catch {}
+}
+function miniChoose(key: string) {
+  choose(key);
+  // Other requires a note, and the strip has no note field.
+  if (key === 'other') setCollapsed(false);
 }
 
 // ── Draggable, position remembered ───────────────────────────────────────────
@@ -171,6 +210,11 @@ function isTypingTarget(e: Event): boolean {
 function onKeyDown(e: KeyboardEvent) {
   if (isTypingTarget(e)) return;
   if (e.key === 't' || e.key === 'T') {
+    // Swallow the key in the capture phase: neuroglancer's tool binder also
+    // listens for T (Add cube) and was stealing the press, so T+click opened
+    // the cube tool's status bar instead of arming the tag click.
+    e.preventDefault();
+    e.stopImmediatePropagation();
     tHeld.value = true;
     document.body.classList.add('nge-tag-armed');
   }
@@ -178,6 +222,7 @@ function onKeyDown(e: KeyboardEvent) {
 }
 function onKeyUp(e: KeyboardEvent) {
   if (e.key === 't' || e.key === 'T') {
+    if (!isTypingTarget(e)) e.stopImmediatePropagation();
     tHeld.value = false;
     document.body.classList.remove('nge-tag-armed');
   }
@@ -193,20 +238,21 @@ function onPointerCapture(e: PointerEvent) {
   e.preventDefault();
   e.stopPropagation();
   if (armedOnce.value) { armedOnce.value = false; document.body.classList.remove('nge-tag-armed'); }
-  if (pos.length !== 3) { showFlash('No data under cursor, hover the 2D or 3D view'); return; }
-  drop(pos);
+  placePoint(pos);
 }
 
 onMounted(() => {
   // Show existing open tags in the volume the moment tag mode opens.
   tagStore.syncTagLayer();
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
+  // Capture phase so the T press never reaches neuroglancer's key bindings.
+  window.addEventListener('keydown', onKeyDown, true);
+  window.addEventListener('keyup', onKeyUp, true);
   window.addEventListener('pointerdown', onPointerCapture, true);
 });
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeyDown);
-  window.removeEventListener('keyup', onKeyUp);
+  clearPending();
+  window.removeEventListener('keydown', onKeyDown, true);
+  window.removeEventListener('keyup', onKeyUp, true);
   window.removeEventListener('pointerdown', onPointerCapture, true);
   window.removeEventListener('pointermove', dragMove);
   document.body.classList.remove('nge-tag-armed');
@@ -217,18 +263,40 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div ref="wrapEl" class="nge-tagmode-wrap" :class="{ 'nge-tagmode-wrap--armed': tHeld || armedOnce }" :style="{ left: panelPos.left + 'px', top: panelPos.top + 'px' }">
 
+      <!-- Collapsed corner strip: chips + place + submit, nothing else -->
+      <div v-if="collapsed" class="nge-tagmode-mini">
+        <span class="nge-tagmode-mini-grip" title="Drag" @pointerdown.prevent="dragStart" v-html="pinSvg"></span>
+        <button
+          v-for="c in TAG_CHOICES" :key="c.key"
+          class="nge-tagmode-mini-chip"
+          :class="{ 'nge-tagmode-mini-chip--active': selected === c.key }"
+          :title="c.hint"
+          @click="miniChoose(c.key)"
+        ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" />{{ c.key === 'cut' ? 'Cut' : c.key === 'extend' ? 'Extend' : 'Other' }}</button>
+        <button
+          class="nge-tagmode-mini-act"
+          :class="{ 'nge-tagmode-mini-act--on': armedOnce || tHeld }"
+          :title="armedOnce ? 'Click the data to place the point' : 'Place point with next click'"
+          @click="armOnce"
+        ><span class="nge-tagmode-pin" v-html="pinSvg"></span></button>
+        <button class="nge-tagmode-mini-act nge-tagmode-mini-submit" :disabled="saving" title="Submit tag" @click="submit">✓</button>
+        <button class="nge-tagmode-mini-act" title="Expand panel" @click="setCollapsed(false)">⤢</button>
+        <div v-if="flash" class="nge-tagmode-flash nge-tagmode-flash--mini">{{ flash }}</div>
+      </div>
+
       <!-- Form box -->
       <div
-        v-if="phase === 'form' || phase === 'form-out'"
+        v-else-if="phase === 'form' || phase === 'form-out'"
         class="nge-tagmode"
         :class="{ 'nge-holo-out': phase === 'form-out' }"
       >
         <div class="nge-tagmode-head" @pointerdown.prevent="dragStart">
           <span class="nge-tagmode-title"><span class="nge-tagmode-pin" v-html="pinSvg"></span> SCOUT TAG MODE</span>
+          <button class="nge-tagmode-close" title="Collapse to corner strip" @pointerdown.stop @click="setCollapsed(true)">–</button>
           <button class="nge-tagmode-close" title="Exit tag mode (Esc)" @pointerdown.stop @click="emit('hide')">×</button>
         </div>
         <div class="nge-tagmode-hint">
-          Pick a type, then <b>hold T and click</b> the spot, or use <b>Place by click</b>. <b>Submit</b> tags the crosshair.
+          Pick a type, then <b>hold T and click</b> the spot (or arm <b>Place by click</b>) to set the point. <b>Submit</b> saves it.
         </div>
         <div class="nge-tagmode-chips">
           <button
@@ -259,7 +327,8 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div class="nge-tagmode-foot">
-          <span class="nge-tagmode-pos">crosshair: <b>{{ posLabel }}</b></span>
+          <span v-if="pendingPos" class="nge-tagmode-pos nge-tagmode-pos--pending" title="Placed point, Submit saves it (click again to move)">point: <b>{{ pendingPos.join(', ') }}</b></span>
+          <span v-else class="nge-tagmode-pos">crosshair: <b>{{ posLabel }}</b></span>
           <div class="nge-tagmode-actions-row">
             <button
               class="nge-tagmode-arm"
@@ -269,7 +338,7 @@ onBeforeUnmount(() => {
               <template v-if="armedOnce">Click to place…</template>
               <template v-else><span class="nge-tagmode-pin" v-html="pinSvg"></span> Place by click</template>
             </button>
-            <button class="nge-tagmode-btn" :disabled="saving" @click="drop(crosshairPosition())">
+            <button class="nge-tagmode-btn" :disabled="saving" :title="pendingPos ? 'Save the placed point' : 'Tag the crosshair position'" @click="submit">
               Submit
             </button>
           </div>
@@ -354,6 +423,73 @@ onBeforeUnmount(() => {
 .nge-tagmode-head:active { cursor: grabbing; }
 .nge-tagmode-pin { display: inline-flex; vertical-align: -2px; }
 .nge-tagmode-pin svg { filter: drop-shadow(0 0 4px rgba(53, 181, 255, 0.55)); }
+
+/* ── Collapsed corner strip ── */
+.nge-tagmode-mini {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.94) 0%, rgba(8, 12, 24, 0.92) 100%);
+  border: 1px solid rgba(53, 181, 255, 0.35);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5), 0 0 12px rgba(53, 181, 255, 0.12);
+  backdrop-filter: blur(8px);
+}
+.nge-tagmode-mini-grip {
+  display: inline-flex;
+  cursor: grab;
+  padding: 2px 3px;
+  font-size: 14px;
+  user-select: none;
+}
+.nge-tagmode-mini-grip:active { cursor: grabbing; }
+.nge-tagmode-mini-chip {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cfe3ff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.nge-tagmode-mini-chip--active {
+  border-color: rgba(53, 181, 255, 0.8);
+  background: rgba(53, 181, 255, 0.14);
+  color: #fff;
+  box-shadow: 0 0 8px rgba(53, 181, 255, 0.25);
+}
+.nge-tagmode-mini-act {
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cfe3ff;
+  cursor: pointer;
+}
+.nge-tagmode-mini-act--on {
+  border-color: rgba(53, 181, 255, 0.9);
+  background: rgba(53, 181, 255, 0.2);
+  animation: nge-arm-pulse 1.1s ease-in-out infinite;
+}
+.nge-tagmode-mini-submit { color: #7dffb0; border-color: rgba(125, 255, 176, 0.35); }
+.nge-tagmode-mini-submit:hover { background: rgba(125, 255, 176, 0.12); }
+.nge-tagmode-mini-act:disabled { opacity: 0.5; cursor: default; }
+.nge-tagmode-flash--mini {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  white-space: nowrap;
+}
+.nge-tagmode-pos--pending b { color: #35b5ff; }
 .nge-tagmode-title {
   flex: 1;
   font-family: 'Orbitron', 'Inter', sans-serif;
