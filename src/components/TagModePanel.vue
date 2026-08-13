@@ -280,7 +280,7 @@ onBeforeUnmount(() => {
           @click="armOnce"
         ><span class="nge-tagmode-pin" v-html="pinSvg"></span></button>
         <button class="nge-tagmode-mini-act nge-tagmode-mini-submit" :disabled="saving" title="Submit tag" @click="submit">✓</button>
-        <button class="nge-tagmode-mini-act" title="Expand panel" @click="setCollapsed(false)">⤢</button>
+        <button class="nge-tagmode-mini-act" title="Expand panel" @click="setCollapsed(false)">▴</button>
         <div v-if="flash" class="nge-tagmode-flash nge-tagmode-flash--mini">{{ flash }}</div>
       </div>
 
@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
       >
         <div class="nge-tagmode-head" @pointerdown.prevent="dragStart">
           <span class="nge-tagmode-title"><span class="nge-tagmode-pin" v-html="pinSvg"></span> SCOUT TAG MODE</span>
-          <button class="nge-tagmode-close" title="Collapse to corner strip" @pointerdown.stop @click="setCollapsed(true)">–</button>
+          <button class="nge-tagmode-close" title="Collapse to corner strip" @pointerdown.stop @click="setCollapsed(true)">▾</button>
           <button class="nge-tagmode-close" title="Exit tag mode (Esc)" @pointerdown.stop @click="emit('hide')">×</button>
         </div>
         <div class="nge-tagmode-hint">
