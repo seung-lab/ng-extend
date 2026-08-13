@@ -377,7 +377,7 @@ interface ToolbarIcon {
 // ../data/toolbar-icons so SettingsPanel can render the exact same
 // set in its customization grid. Here we only attach the action
 // handlers and (where relevant) badge counters.
-import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected } from '../data/toolbar-icons';
+import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected, RESOURCES_MENU_SVG } from '../data/toolbar-icons';
 
 // ── Layers: the neuroglancer layer-list panel, driven from our toolbar ──
 // The native top-row toggle is hidden in ng-override.css; this icon replaces it
@@ -748,8 +748,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     </div>
 
     <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
-    <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost">
-      <template #buttonTitle>☰</template>
+    <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost" title="Resources and tutorials">
+      <template #buttonTitle><span v-html="RESOURCES_MENU_SVG"></span></template>
       <template #listItems>
         <li>
           <div class="logoutButton button nge-tour-btn" @click="tutorialStore.activeTutorial = 4; tutorialStore.setTutorialStep(0); closeHamburger()">

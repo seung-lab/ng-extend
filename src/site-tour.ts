@@ -305,7 +305,7 @@ Click any user's name in chat or the leaderboard to open *their* profile.`,
 
   // ── 18. Hamburger menu ───────────────────────────────────────
   {
-    title: "☰ Tutorials & Help",
+    title: "📖 Tutorials & Help",
     text: `Three numbered tutorials — **Basics** (navigation), **Advanced Interface** (every panel), and **Cut & Merge** (proofreading operations) — plus links to the **Forum** and YouTube videos for each tool.`,
     position: { element: "#hamburger", side: "left", offset: { x: -10, y: 0 } },
     highlight: true,

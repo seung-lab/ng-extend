@@ -40,11 +40,11 @@ const S = 'width:1em;height:1em;vertical-align:middle;';
 const SPLIT_SVG     = `<svg viewBox="-0.05 -0.3 16.1 16.1" fill="none" style="${S}color:${ACCENT_RED}"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.4" fill="currentColor"/><circle cx="4" cy="13" r="1.4" fill="currentColor"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 const MERGE_SVG     = `<svg viewBox="-0.05 -0.3 16.1 16.1" fill="none" style="${S}color:${ACCENT_GREEN}"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.4" fill="currentColor"/><circle cx="12" cy="2.5" r="1.4" fill="currentColor"/><circle cx="8" cy="13" r="1.4" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 const FINDPATH_SVG  = `<svg viewBox="0.0 0.0 16.0 16.0" fill="none" style="${S}color:${ACCENT_PURPLE}"><circle cx="3" cy="13" r="1.6" fill="currentColor"/><circle cx="13" cy="3" r="1.6" fill="currentColor"/><path d="M5 12 Q7 9 8 8 Q9 7 11 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="1.4 1.8"/></svg>`;
-// Stacked sheets — the neuroglancer layer-list toggle, brought into our toolbar
-// so it's reorderable and toggleable like every other icon (the native button
-// is hidden in ng-override.css). A flat top diamond over two offset sheets, kept
-// distinct from the batch cube.
-const LAYERS_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M8 1.7 14.4 5 8 8.3 1.6 5 8 1.7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2.2 8 8 11 13.8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.2 11 8 14 13.8 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+// Side panel — the neuroglancer layer side panel toggle, brought into our
+// toolbar so it's reorderable and toggleable like every other icon (the native
+// button is hidden in ng-override.css). A window frame with the right column
+// filled in, i.e. literally what the button does.
+const LAYERS_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${NEUTRAL_COLOR}"><rect x="1.7" y="2.7" width="12.6" height="10.6" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.9 2.7v10.6" stroke="currentColor" stroke-width="1.4"/><path d="M11.4 5.4h1.7M11.4 7.6h1.7M11.4 9.8h1.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
 // A week (calendar frame with day ticks) containing a rising trend line, so the
 // icon says "your week" + "progress" rather than the generic bar chart it was,
 // which was indistinguishable from any other stats/analytics glyph.
@@ -55,6 +55,10 @@ const HELP_SVG        = `<svg viewBox="1.4 1.4 13.4 13.4" fill="none" style="${S
 // Map-pin over a crosshair tick: drop a flag exactly here.
 const ACCENT_SKY    = '#35b5ff';
 const TAG_SVG         = `<svg viewBox="0.6 0.2 14.8 15.4" fill="none" style="${S}color:${ACCENT_SKY}"><path d="M8 1.6a4.3 4.3 0 0 1 4.3 4.3c0 3-4.3 7.5-4.3 7.5S3.7 8.9 3.7 5.9A4.3 4.3 0 0 1 8 1.6z" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="5.9" r="1.5" fill="currentColor"/><path d="M8 14.4v1M5.4 15h5.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+
+/** Open book — the right-edge resources menu (tutorials, site tour, links),
+ *  which used to be a hamburger that said nothing about what was inside. */
+export const RESOURCES_MENU_SVG = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M8 3.4C6.9 2.4 5.2 2 3.4 2.1c-.5 0-.9.4-.9.9v8.6c0 .5.4.9.9.9 1.8-.1 3.5.3 4.6 1.3 1.1-1 2.8-1.4 4.6-1.3.5 0 .9-.4.9-.9V3c0-.5-.4-.9-.9-.9C10.8 2 9.1 2.4 8 3.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 3.4v10.4" stroke="currentColor" stroke-width="1.4"/><path d="M4.6 5.6c.9 0 1.7.2 2.3.5M4.6 8c.9 0 1.7.2 2.3.5M9.1 6.1c.6-.3 1.4-.5 2.3-.5M9.1 8.5c.6-.3 1.4-.5 2.3-.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>`;
 
 /** The scout-tag map pin, reused everywhere tag mode shows its face. */
 export function scoutPinSvg(color = ACCENT_SKY, extraStyle = ''): string {
@@ -71,7 +75,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)' },
   { id: 'merge',       emoji: '🔗', svg: MERGE_SVG,       label: 'Merge Mode (M)' },
   { id: 'findPath',    emoji: '🛤️', svg: FINDPATH_SVG,    label: 'Find Path (F)' },
-  { id: 'layers',      emoji: '🗂️', svg: LAYERS_SVG,      label: 'Layers' },
+  { id: 'layers',      emoji: '🗂️', svg: LAYERS_SVG,      label: 'Layer side panel' },
   { id: 'recap',       emoji: '📊', svg: RECAP_SVG,       label: 'Your Week in Science' },
   { id: 'leaderboard', emoji: '🏆', svg: LEADERBOARD_SVG, label: 'Leaderboard' },
   { id: 'quest',       emoji: '🧠', svg: QUEST_SVG,       label: 'Brain Quest' },
@@ -105,9 +109,11 @@ export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed', 'settings'];
  */
 // 'settings' retired 2026-08-11: Settings is a profile tab now (profile gear,
 // the ⌘K "Profile Settings" command, and Profile > Settings all reach it).
+// 'layers' moved to the right side 2026-08-12 (Amy: "layer side panel should
+// be farther right") — see REPOSITION_TOOLBAR_ICONS for saved prefs.
 export const DEFAULT_TOOLBAR_ORDER = [
-  'split', 'merge', 'findPath', 'layers', 'recap', 'leaderboard',
-  'cells', 'batch', 'help', 'tags', 'notif', 'chat',
+  'split', 'merge', 'findPath', 'recap', 'leaderboard',
+  'cells', 'batch', 'help', 'tags', 'layers', 'notif', 'chat',
 ];
 
 /**
@@ -120,8 +126,19 @@ const AUTO_INJECT_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: 
   { id: 'notif',    beforeFallback: 'settings' },
   { id: 'chat',     beforeFallback: 'settings' },
   { id: 'findPath', after: 'merge' },
-  { id: 'layers',   after: 'findPath', beforeFallback: 'settings' },
-  { id: 'tags',     after: 'help',     beforeFallback: 'notif' },
+  { id: 'layers',   after: 'tags', beforeFallback: 'notif' },
+  { id: 'tags',     after: 'help', beforeFallback: 'notif' },
+];
+
+/**
+ * One-time repositions of icons that already exist in saved prefs, so a
+ * site-wide placement change reaches existing users too (auto-inject only
+ * covers ids missing from the saved order). The marker string is persisted in
+ * `toolbarIconsInjected` alongside the injected ids; once the user reorders
+ * and saves after the move, the marker keeps us from ever moving it again.
+ */
+const REPOSITION_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: string; marker: string }[] = [
+  { id: 'layers', after: 'tags', beforeFallback: 'notif', marker: 'moved:layers:right:v1' },
 ];
 
 /**
@@ -155,11 +172,30 @@ export function resolveToolbarOrder(saved: string[], injected: string[] = []): s
     }
     order.splice(at, 0, spec.id);
   }
+  for (const spec of REPOSITION_TOOLBAR_ICONS) {
+    if (saved.length === 0) continue;                 // defaults already have the new spot
+    if (injected.includes(spec.marker)) continue;     // move already applied and saved
+    const from = order.indexOf(spec.id);
+    if (from < 0) continue;
+    order.splice(from, 1);
+    let at = order.length;
+    if (spec.after && order.indexOf(spec.after) >= 0) {
+      at = order.indexOf(spec.after) + 1;
+    } else if (spec.beforeFallback && order.indexOf(spec.beforeFallback) >= 0) {
+      at = order.indexOf(spec.beforeFallback);
+    }
+    order.splice(at, 0, spec.id);
+  }
   return order.filter(id => !RETIRED_TOOLBAR_ICON_IDS.includes(id));
 }
 
-/** Union of previously-injected ids with everything injectable, for callers
- *  persisting prefs: once saved, every auto-inject id counts as offered. */
+/** Union of previously-injected ids with everything injectable (and every
+ *  reposition marker), for callers persisting prefs: once saved, every
+ *  auto-inject id counts as offered and every move as applied. */
 export function markInjected(injected: string[] = []): string[] {
-  return [...new Set([...injected, ...AUTO_INJECT_TOOLBAR_ICONS.map(s => s.id)])];
+  return [...new Set([
+    ...injected,
+    ...AUTO_INJECT_TOOLBAR_ICONS.map(s => s.id),
+    ...REPOSITION_TOOLBAR_ICONS.map(s => s.marker),
+  ])];
 }

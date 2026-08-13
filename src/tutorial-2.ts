@@ -447,7 +447,7 @@ You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0
   //22
   {
     text: `
-Now you have a basic understanding of the EyeWire II interface! For additional training you can find more resources under the hamburger menu.`,
+Now you have a basic understanding of the EyeWire II interface! For additional training you can find more resources under the 📖 resources menu at the top right.`,
     position: {
       element: "#hamburger > button",
       side: "left",
