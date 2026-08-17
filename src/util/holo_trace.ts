@@ -261,6 +261,93 @@ export function runPanelZip(host: HTMLElement, direction: 'up' | 'down' = 'up'):
 }
 
 /**
+ * The draw: like the zip, but the beams leave the outline LIT behind them,
+ * so the light literally draws the box into existence. Two heads split from
+ * an edge midpoint, trace both halves of the boundary, and the finished
+ * frame holds for a beat then fades (handing off to the panel's real
+ * border). Returns the total ms until the canvas is gone, so callers can
+ * choreograph content fade-in against it.
+ */
+export function runPanelDraw(host: HTMLElement, direction: 'up' | 'down' = 'down'): number {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
+  const rect = host.getBoundingClientRect();
+  if (!rect.width || !rect.height) return 0;
+  const DUR = 620, HOLD = 120, FADE = 260, R = 10;
+
+  const cv = document.createElement('canvas');
+  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;' +
+    `transition:opacity ${FADE}ms ease;`;
+  cv.setAttribute('aria-hidden', 'true');
+  host.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  if (!ctx) { cv.remove(); return 0; }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = rect.width, h = rect.height;
+  cv.width = w * dpr; cv.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const rw = w - 2, rh = h - 2;
+  const tBottom = ringBottomCenterT(rw, rh, R);
+  const tTop = ringTopCenterT(rw, rh, R);
+  const start = direction === 'down' ? tTop : tBottom;
+  const end = direction === 'down' ? tBottom : tTop;
+  const distA = ((end - start) % 1 + 1) % 1;
+  const distB = 1 - distA;
+
+  function pt(tt: number): [number, number] {
+    const p = ringPoint(tt, rw, rh, R);
+    return [p[0] + 1, p[1] + 1];
+  }
+
+  let raf = 0;
+  const t0 = performance.now();
+  function draw(now: number) {
+    const k = Math.min(1, (now - t0) / DUR);
+    ctx!.clearRect(0, 0, w, h);
+    ctx!.lineCap = 'round';
+    ctx!.lineJoin = 'round';
+    const eased = k * k * (3 - 2 * k);
+
+    for (const [dir, dist] of [[1, distA], [-1, distB]] as [number, number][]) {
+      const SEG = Math.max(8, Math.ceil(60 * dist));
+      // The lit trail, start to head, two passes: soft glow then core.
+      for (let pass = 0; pass < 2; pass++) {
+        ctx!.lineWidth = pass ? 1.1 : 3.4;
+        ctx!.globalCompositeOperation = pass ? 'source-over' : 'lighter';
+        ctx!.strokeStyle = pass ? 'rgba(178,216,248,0.6)' : 'rgba(53,181,255,0.09)';
+        ctx!.beginPath();
+        const steps = Math.ceil(SEG * eased);
+        for (let j = 0; j <= steps; j++) {
+          const p = pt(start + dir * Math.min(eased, j / SEG) * dist);
+          if (j === 0) ctx!.moveTo(p[0], p[1]); else ctx!.lineTo(p[0], p[1]);
+        }
+        ctx!.stroke();
+      }
+      // Bright head while still drawing.
+      if (k < 1) {
+        const hp = pt(start + dir * eased * dist);
+        const g = ctx!.createRadialGradient(hp[0], hp[1], 0, hp[0], hp[1], 7);
+        g.addColorStop(0, 'rgba(230,245,255,0.9)');
+        g.addColorStop(1, 'rgba(53,181,255,0)');
+        ctx!.globalCompositeOperation = 'lighter';
+        ctx!.fillStyle = g;
+        ctx!.fillRect(hp[0] - 8, hp[1] - 8, 16, 16);
+      }
+    }
+
+    if (k < 1) { raf = requestAnimationFrame(draw); return; }
+    // Outline complete: hold, then fade the canvas away.
+    setTimeout(() => {
+      cv.style.opacity = '0';
+      setTimeout(() => cv.remove(), FADE + 40);
+    }, HOLD);
+  }
+  raf = requestAnimationFrame(draw);
+  void raf;
+  return DUR + HOLD + FADE;
+}
+
+/**
  * A one-shot radial particle burst with light streaks, same additive-glow
  * family as the panel trace. Fired at a screen point (e.g. the tag panel on
  * submit). Sky blue by default; pass "r,g,b" to recolor.

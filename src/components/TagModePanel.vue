@@ -19,7 +19,7 @@ import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
-import { runPanelTrace, runParticleBurst, runPanelZip } from '../util/holo_trace';
+import { runPanelTrace, runParticleBurst, runPanelZip, runPanelDraw } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 const pinSvgBig = scoutPinSvg('#35b5ff', 'width:34px;height:34px;');
@@ -160,14 +160,24 @@ function showFlash(msg: string) {
 // ── Collapsed corner strip ───────────────────────────────────────────────────
 const COLLAPSED_KEY = 'nge_tagmode_collapsed_v1';
 const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1');
+/** True while the expand beam is drawing the box; suppresses the pop-in
+ *  materialize (its blur flash read as a glitch between the two boxes) and
+ *  holds the panel invisible until the light has drawn its frame. */
+const drawingIn = ref(false);
 function setCollapsed(v: boolean) {
   collapsed.value = v;
   try { localStorage.setItem(COLLAPSED_KEY, v ? '1' : '0'); } catch {}
-  // The zip: collapsing, light splits at the strip's bottom-center and races
-  // up both sides to meet at the top; expanding plays the reverse on the
-  // full panel.
+  if (v) {
+    // Collapse: the zip races up the slim strip.
+    requestAnimationFrame(() => { if (wrapEl.value) runPanelZip(wrapEl.value, 'up'); });
+    return;
+  }
+  // Expand: no pop, the beam draws the box, then the content fades in.
+  drawingIn.value = true;
   requestAnimationFrame(() => {
-    if (wrapEl.value) runPanelZip(wrapEl.value, v ? 'up' : 'down');
+    const total = wrapEl.value ? runPanelDraw(wrapEl.value, 'down') : 0;
+    // Let the frame mostly complete before the body materializes inside it.
+    setTimeout(() => { drawingIn.value = false; }, total ? Math.round(total * 0.55) : 0);
   });
 }
 function miniChoose(key: string) {
@@ -305,7 +315,7 @@ onBeforeUnmount(() => {
       <div
         v-else-if="phase === 'form' || phase === 'form-out'"
         class="nge-tagmode"
-        :class="{ 'nge-holo-out': phase === 'form-out' }"
+        :class="{ 'nge-holo-out': phase === 'form-out', 'nge-tagmode--drawing': drawingIn }"
       >
         <div class="nge-tagmode-head" @pointerdown.prevent="dragStart">
           <span class="nge-tagmode-title"><span class="nge-tagmode-pin" v-html="pinSvg"></span> SCOUT TAG MODE</span>
@@ -424,6 +434,18 @@ onBeforeUnmount(() => {
 .nge-holo-out {
   animation: nge-holo-materialize 0.5s cubic-bezier(0.16, 1, 0.3, 1) reverse both;
 }
+/* Expanding from the slim strip: the beam draws the frame, so the pop-in
+   materialize is suppressed and the body waits invisibly inside the light
+   outline, then eases in as the beam completes. */
+.nge-tagmode--drawing {
+  animation: none;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  background: rgba(4, 7, 15, 0.55);
+}
+.nge-tagmode--drawing > * { opacity: 0; }
+.nge-tagmode > * { transition: opacity 0.28s ease; }
+.nge-tagmode { transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease; }
 /* Softened from the scifi-ui original: the brightness(3) overbright flash
    read as an error strobe on a large panel (Amy). Keep the blur settle and
    the soft overshoot; drop the flash. Oddly satisfying, not alarming. */
