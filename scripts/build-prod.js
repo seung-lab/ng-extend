@@ -170,3 +170,19 @@ for (const file of fs.readdirSync(STATIC_DIR)) {
     console.log(`Copied ${file} to ${DIST_MIN}`);
   }
 }
+
+// ── Stamp bundle URLs with a build version ──────────────────────────────────
+// The App Engine edge caches every path for 10 minutes. A cache-busted page
+// URL (the Pyr logo's hard refresh) used to fetch a FRESH index.html that
+// still referenced plain main.bundle.js, so the edge could hand back a stale
+// bundle for up to 10 more minutes. Versioned query strings make a fresh
+// index pull fresh bundles immediately.
+const INDEX_HTML = path.join(DIST_MIN, 'index.html');
+if (fs.existsSync(INDEX_HTML)) {
+  const stamp = Date.now().toString(36);
+  const html = fs.readFileSync(INDEX_HTML, 'utf8')
+    .replace(/src="(main\.bundle\.js)"/g, `src="$1?v=${stamp}"`)
+    .replace(/href="(main\.bundle\.css)"/g, `href="$1?v=${stamp}"`);
+  fs.writeFileSync(INDEX_HTML, html);
+  console.log(`Stamped bundle URLs with v=${stamp}`);
+}
