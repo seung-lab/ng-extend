@@ -152,6 +152,20 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeSchema:   'bound_tag',
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5757172763852800',
   },
+  // The LIVE minnie65 chunked graph (internal access required). The
+  // Dorkenwald/Fuming exports carry root ids minted here, which the frozen
+  // public v117 table cannot resolve (their meshes silently never load), so
+  // AI candidate review happens on this entry. No defaultStateUrl: the v117
+  // saved state would re-spec the frozen table.
+  minnie65_phase3_v1: {
+    caveServer:       'https://minnie.microns-daf.com',
+    datastack:        'minnie65_phase3_v1',
+    alignedVolume:    'minnie65_phase3',
+    cellStatusTable:  'eyewire_ii_cell_status_v2',
+    cellStatusSchema: 'bound_tag_user',
+    cellTypeTable:    'cell_type_dev',
+    cellTypeSchema:   'bound_tag',
+  },
 
   // ── FlyWire (Drosophila FAFB) ───────────────────────────────────────────
   fly_v26: {

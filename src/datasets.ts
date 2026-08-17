@@ -100,6 +100,30 @@ export const DATASETS: DatasetEntry[] = [
       },
     ],
   },
+  {
+    id: 'minnie65_live',
+    label: 'MICrONS Live',
+    shortLabel: 'MICrONS Live',
+    abbrev: 'Live',
+    species: 'mouse',
+    description: 'MICrONS minnie65 on the LIVE graph (internal access) — where the AI merge-candidate roots resolve',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/minnie65/em',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/minnie65_phase3_v1',
+          subsources: { default: true, mesh: true, graph: true },
+          enableDefaultSubsources: true,
+        },
+        name: 'minnie65_phase3_v1',
+      },
+    ],
+  },
 ];
 
 /** Segmentation-layer name for an entry (what `getCurrentDatasetName()` returns). */
