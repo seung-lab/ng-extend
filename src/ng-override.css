@@ -29,11 +29,17 @@
   border-color: rgba(20, 30, 50, 0.4) !important;
 }
 
-/* ── Coordinate display (top-left x, y, z) ──
+/* ── Coordinate display ──
    Condensed chip (Amy 2026-08-12): no "(4nm)" scale labels, just
-   "x 70341  y 64982  z 885" in a slim holo box, sky blue not orange. */
+   "x 70341  y 64982  z 885" in a slim holo box, sky blue not orange.
+   Lives bottom-left in the band under the chat panel (chat floats at
+   bottom: 36px), out of the top bar entirely (Amy 2026-08-17). */
 .neuroglancer-position-widget {
-  background: rgba(6, 12, 24, 0.72) !important;
+  position: fixed;
+  left: 8px;
+  bottom: 6px;
+  z-index: 60;
+  background: rgba(6, 12, 24, 0.82) !important;
   border: 1px solid rgba(53, 181, 255, 0.28);
   border-radius: 7px;
   box-shadow: inset 0 0 10px rgba(53, 181, 255, 0.06);
