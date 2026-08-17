@@ -19,7 +19,7 @@ import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
-import { runPanelTrace, runParticleBurst, runPanelZip, runPanelDraw } from '../util/holo_trace';
+import { runPanelTrace, runParticleBurst, runPanelZip, runPanelDraw, runBurstCoalesce } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 const pinSvgBig = scoutPinSvg('#35b5ff', 'width:34px;height:34px;');
@@ -131,18 +131,28 @@ async function drop(position: number[]) {
   clearPending();
   const label = c.label.replace(/^\S+\s/, '');
   lastTag.value = { label, pos: position };
-  // Particle burst streak from the panel on every successful submit.
+  // Big burst whose particles arc back and coalesce into the border of
+  // whatever box is standing when they land (success box, or the strip).
   const br = wrapEl.value?.getBoundingClientRect();
-  if (br) runParticleBurst(br.left + br.width / 2, br.top + br.height / 2);
+  let total = 0;
+  if (br) {
+    total = runBurstCoalesce(br.left + br.width / 2, br.top + br.height / 2,
+      () => wrapEl.value?.getBoundingClientRect() ?? null);
+  }
   if (collapsed.value) {
-    // The mini strip has no room for the success box; a flash does the job.
+    // The mini strip has no room for the success box; the flash plus the
+    // light landing on the strip's border does the job.
     showFlash(`✓ ${label} candidate tagged`);
     return;
   }
+  // The success box keeps its own border hidden until the light hands off.
+  successFrameless.value = true;
+  setTimeout(() => { successFrameless.value = false; }, total ? Math.round(total * 0.86) : 0);
   // Form de-materializes, success materializes.
   phase.value = 'form-out';
   setTimeout(() => { phase.value = 'success'; }, SWAP_MS);
 }
+const successFrameless = ref(false);
 
 /** Clicking the success box plays the same cycle back to the form. */
 function dismissSuccess() {
@@ -265,8 +275,9 @@ function onPointerCapture(e: PointerEvent) {
 }
 
 onMounted(() => {
-  // Show existing open tags in the volume the moment tag mode opens.
-  tagStore.syncTagLayer();
+  // Show existing open tags in the volume the moment tag mode opens
+  // (overrides the ambient showScoutTags preference while open).
+  tagStore.setTagModeActive(true);
   // Cell Library's opening beam, running the panel boundary once.
   requestAnimationFrame(() => { if (wrapEl.value) runPanelTrace(wrapEl.value); });
   // Capture phase so the T press never reaches neuroglancer's key bindings.
@@ -276,6 +287,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   clearPending();
+  tagStore.setTagModeActive(false);
   window.removeEventListener('keydown', onKeyDown, true);
   window.removeEventListener('keyup', onKeyUp, true);
   window.removeEventListener('pointerdown', onPointerCapture, true);
@@ -377,7 +389,7 @@ onBeforeUnmount(() => {
       <div
         v-else
         class="nge-tagmode nge-tagmode--success"
-        :class="{ 'nge-holo-out': phase === 'success-out' }"
+        :class="{ 'nge-holo-out': phase === 'success-out', 'nge-tagmode--frameless': successFrameless }"
         @click="dismissSuccess"
         title="Click to keep scouting"
       >
@@ -444,6 +456,11 @@ onBeforeUnmount(() => {
   background: rgba(4, 7, 15, 0.55);
 }
 .nge-tagmode--drawing > * { opacity: 0; }
+/* Success box while the burst particles are still carrying its border. */
+.nge-tagmode--frameless {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
 .nge-tagmode > * { transition: opacity 0.28s ease; }
 .nge-tagmode { transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease; }
 /* Softened from the scifi-ui original: the brightness(3) overbright flash

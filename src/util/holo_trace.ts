@@ -426,6 +426,107 @@ export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): vo
   raf = requestAnimationFrame(draw);
 }
 
+/**
+ * Burst-then-coalesce: a big particle burst that arcs back and lands along
+ * the border ring of a panel, lighting the frame as it assembles. The rect
+ * is re-read every frame via getRect so the particles chase the box that
+ * appears mid-flight (form box out, success box in). Returns total ms so
+ * the caller can unveil the real border at the handoff.
+ */
+export function runBurstCoalesce(cx: number, cy: number, getRect: () => DOMRect | null, rgb = '53,181,255'): number {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
+  const DUR = 1450, R = 15, N = 64;
+  const BURST_END = 0.30, LAND_END = 0.86;
+
+  const cv = document.createElement('canvas');
+  cv.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:100000;';
+  cv.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  if (!ctx) { cv.remove(); return 0; }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const vw = window.innerWidth, vh = window.innerHeight;
+  cv.width = vw * dpr; cv.height = vh * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const parts = Array.from({ length: N }, (_, i) => {
+    const a = Math.random() * 6.283;
+    return {
+      a,
+      reach: 70 + Math.random() * 130,       // how far the burst throws it
+      r: 0.9 + Math.random() * 1.7,
+      ringT: (i + Math.random() * 0.6) / N,  // its seat on the border ring
+      wob: (Math.random() - 0.5) * 46,       // sideways arc on the way home
+      drag: 1.4 + Math.random(),
+    };
+  });
+
+  let raf = 0;
+  const t0 = performance.now();
+  function draw(now: number) {
+    const k = (now - t0) / DUR;
+    if (k >= 1) { cancelAnimationFrame(raf); cv.remove(); return; }
+    ctx!.clearRect(0, 0, vw, vh);
+    ctx!.globalCompositeOperation = 'lighter';
+
+    const rect = getRect();
+    const rw = rect ? rect.width - 2 : 0, rh = rect ? rect.height - 2 : 0;
+
+    for (const p of parts) {
+      // Where the burst threw it (eases out early, then holds).
+      const bq = Math.min(1, k / BURST_END);
+      const bEase = 1 - Math.pow(1 - bq, p.drag);
+      const bx = cx + Math.cos(p.a) * p.reach * bEase;
+      const by = cy + Math.sin(p.a) * p.reach * bEase;
+
+      let x = bx, y = by, al = 0.8 * (1 - k * 0.25);
+      if (k > BURST_END && rect) {
+        // Coalesce: arc from the burst apex to its seat on the ring.
+        const cq = Math.min(1, (k - BURST_END) / (LAND_END - BURST_END));
+        const cEase = cq * cq * (3 - 2 * cq);
+        const seat = ringPoint(p.ringT, rw, rh, R);
+        const sx = rect.left + seat[0] + 1, sy = rect.top + seat[1] + 1;
+        const arc = Math.sin(cEase * Math.PI) * p.wob;
+        const dx = sy - by, dy = -(sx - bx);
+        const dl = Math.hypot(dx, dy) || 1;
+        x = bx + (sx - bx) * cEase + (dx / dl) * arc;
+        y = by + (sy - by) * cEase + (dy / dl) * arc;
+        // Landed particles dim as the frame takes over their light.
+        if (k > LAND_END) al *= 1 - (k - LAND_END) / (1 - LAND_END);
+      }
+      ctx!.beginPath();
+      ctx!.arc(x, y, p.r, 0, 6.283);
+      ctx!.fillStyle = `rgba(${rgb},${Math.max(0, al).toFixed(3)})`;
+      ctx!.fill();
+    }
+
+    // The frame brightens as particles land, then hands to the real border.
+    if (rect && k > (BURST_END + LAND_END) / 2) {
+      const fq = Math.min(1, (k - (BURST_END + LAND_END) / 2) / (LAND_END - (BURST_END + LAND_END) / 2));
+      const fade = k > LAND_END ? 1 - (k - LAND_END) / (1 - LAND_END) : 1;
+      ctx!.lineCap = 'round';
+      for (let pass = 0; pass < 2; pass++) {
+        ctx!.lineWidth = pass ? 1.1 : 3.6;
+        ctx!.globalCompositeOperation = pass ? 'source-over' : 'lighter';
+        ctx!.strokeStyle = pass
+          ? `rgba(198,228,252,${(0.55 * fq * fade).toFixed(3)})`
+          : `rgba(${rgb},${(0.08 * fq * fade).toFixed(3)})`;
+        ctx!.beginPath();
+        const SEG = 72;
+        for (let j = 0; j <= Math.ceil(SEG * fq); j++) {
+          const p = ringPoint(j / SEG, rw, rh, R);
+          const px = rect.left + p[0] + 1, py = rect.top + p[1] + 1;
+          if (j === 0) ctx!.moveTo(px, py); else ctx!.lineTo(px, py);
+        }
+        ctx!.stroke();
+      }
+    }
+    raf = requestAnimationFrame(draw);
+  }
+  raf = requestAnimationFrame(draw);
+  return DUR;
+}
+
 /** A "+1" that floats up from a click and flies to the profile button. */
 export function flyPlusOne(fromX: number, fromY: number, text = '+1'): void {
   const el = document.createElement('div');

@@ -778,6 +778,9 @@ export interface UserPreferences {
   /** Mute help requests: hide the pending count on the Second Opinion toolbar
    *  icon. Defaults to false (badge shown) when the key isn't set yet. */
   helpMuted?: boolean;
+  /** Auto-show open scout tags on cells even when tag mode is closed.
+   *  Defaults to true (ambient dots on); tag mode always shows them. */
+  showScoutTags?: boolean;
 }
 
 export const useUserPreferencesStore = defineStore('userPrefs', () => {
@@ -1472,10 +1475,25 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     syncTagLayer();
   }
 
+  /** True while the tag mode panel is open; the panel always shows the
+   *  layer, whatever the ambient showScoutTags preference says. */
+  const tagModeActive = ref(false);
+  function setTagModeActive(v: boolean) {
+    tagModeActive.value = v;
+    syncTagLayer();
+  }
+
   function syncTagLayer() {
     try {
       const viewer: any = (window as any)['viewer'];
       if (!viewer?.state) return;
+      // Ambient display is a preference (default on); tag mode overrides.
+      const ambientOn = useUserPreferencesStore().prefs.showScoutTags !== false;
+      if (!tagModeActive.value && !ambientOn) {
+        const stale = viewer.layerManager?.managedLayers?.find((l: any) => l.name === TAG_LAYER_NAME);
+        if (stale) viewer.layerManager.removeManagedLayer(stale);
+        return;
+      }
       const points = tagPointAnnotations();
       if (previewPoint) {
         points.push({ id: 'nge-tag-preview', point: previewPoint, description: 'Pending tag, hit Submit' });
@@ -1604,7 +1622,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   load();
   subscribe();
 
-  return { tags, openTags, load, add, resolve, remove, syncTagLayer, setTagPreview };
+  return { tags, openTags, load, add, resolve, remove, syncTagLayer, setTagPreview, tagModeActive, setTagModeActive };
 });
 
 // ── Working Links ─────────────────────────────────────────────────────────

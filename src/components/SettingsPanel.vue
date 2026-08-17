@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ref, onMounted, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
-import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, loginSession} from '../store';
+import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession} from '../store';
 import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -26,6 +26,7 @@ const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
 const draftChatMuted = ref(false);
 const draftHelpMuted = ref(false);
+const draftShowScoutTags = ref(true);
 const saved      = ref(false);
 
 onMounted(() => {
@@ -33,6 +34,7 @@ onMounted(() => {
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
+  draftShowScoutTags.value = prefsStore.prefs.showScoutTags !== false;
   // Seed via the same resolver the toolbar uses, so the grid reflects exactly
   // what's in the top bar — including icons auto-injected into older prefs.
   draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
@@ -49,7 +51,10 @@ async function handleSave() {
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
     chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value,
+    showScoutTags: draftShowScoutTags.value,
   });
+  // Apply the ambient tag layer change immediately.
+  useIssueTagStore().syncTagLayer();
   saved.value = true;
   setTimeout(() => { saved.value = false; }, 1800);
   // Flag and bio are also part of the PUBLIC profile: the profile panel and
@@ -259,6 +264,10 @@ const props = defineProps<{ embedded?: boolean }>();
           <label class="nge-settings-toggle">
             <input type="checkbox" v-model="draftHelpMuted" />
             <span class="nge-settings-toggle-label">Mute help requests</span>
+          </label>
+          <label class="nge-settings-toggle">
+            <input type="checkbox" v-model="draftShowScoutTags" />
+            <span class="nge-settings-toggle-label">Always show scout tags on cells</span>
           </label>
         </div>
 
