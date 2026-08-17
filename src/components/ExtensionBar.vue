@@ -1131,7 +1131,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
    padding from each other (8px vs 10px), so they sat short and unevenly
    spaced — the "weird padding". Both now match the icon buttons' height and
    share one padding value, so the whole bar sits on a single rhythm. */
-.nge-dataset-btn {
+#extensionBar .nge-dataset-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1140,9 +1140,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
      mashed-together labels — Amy's top-left spacing report). */
   height: 30px;
   padding: 0 14px;
-  margin: 0 8px 0 4px;
-  background: rgba(74, 158, 255, 0.08);
-  border: 1px solid rgba(74, 158, 255, 0.2);
+  margin: 0 10px 0 5px;
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.42);
   border-radius: 14px;
   color: #cfdcef;
   font-family: 'Orbitron', 'Inter', sans-serif;
@@ -1156,7 +1156,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 }
 .nge-dataset-label { padding-right: 2px; }
 .nge-dataset-species { font-size: 14px; line-height: 1; }
-.nge-dataset-btn:hover {
+#extensionBar .nge-dataset-btn:hover {
   opacity: 1;
   background: rgba(255, 255, 255, 0.06);
   color: #e0ecff;
@@ -1169,17 +1169,20 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 }
 
 /* ── Ask (EyeWire II Guide) button ── */
-.nge-ask-btn {
+#extensionBar .nge-ask-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   /* Matches .nge-icon-btn height; the pill keeps its own inner height via
      border-radius so it still reads as a button, not an icon. */
   height: 30px;
-  margin: 0 4px 0 10px;
+  margin: 0 5px 0 14px;
   padding: 0 14px;
-  background: rgba(74, 158, 255, 0.12);
-  border: 1px solid rgba(74, 158, 255, 0.28);
+  /* Visible pill: the earlier 0.12/0.28 tints disappeared on the dark bar
+     and the cluster still read as run-on text (Amy: "how the hell is this
+     spacing fixed"). Match the Share button's presence. */
+  background: rgba(74, 158, 255, 0.16);
+  border: 1px solid rgba(74, 158, 255, 0.5);
   border-radius: 14px;
   color: #cfe0f5;
   font-family: 'Orbitron', 'Inter', sans-serif;
@@ -1189,12 +1192,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.nge-ask-btn:hover {
+#extensionBar .nge-ask-btn:hover {
   background: rgba(74, 158, 255, 0.22);
   border-color: rgba(74, 158, 255, 0.5);
   color: #eaf2ff;
 }
-.nge-ask-btn--active {
+#extensionBar .nge-ask-btn--active {
   background: rgba(74, 158, 255, 0.28);
   border-color: rgba(74, 158, 255, 0.6);
 }
