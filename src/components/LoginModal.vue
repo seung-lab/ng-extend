@@ -29,6 +29,11 @@ interface LoginPrompt {
 
 const visible   = ref(false);
 const prompts   = ref<LoginPrompt[]>([]);
+/** True once any server was linked this session; drives the "signing in
+ *  twice?" explainer when a second auth realm asks again. */
+const hasLinkedBefore = ref((() => {
+  try { return sessionStorage.getItem('nge_auth_linked_once') === '1'; } catch { return false; }
+})());
 
 /**
  * DOM elements we've already handled (either by surfacing the modal or
@@ -171,6 +176,11 @@ function handleLoginSuccess() {
       p.done = true;
       p.waiting = false;
       handledStatusEls.add(p.statusEl);
+      // Remember that at least one server was linked this session: if the
+      // modal resurfaces for another server, the "signing in twice?"
+      // explainer shows even though the done row is gone.
+      hasLinkedBefore.value = true;
+      try { sessionStorage.setItem('nge_auth_linked_once', '1'); } catch {}
     }
   }
 
@@ -604,6 +614,15 @@ function shortUrl(url: string): string {
             </div>
           </div>
 
+          <!-- The "why do I have to sign in twice" explainer (Amy): each CAVE
+               data server runs its own auth realm, so a second dataset means a
+               second (instant) allow with the same account. -->
+          <div v-if="prompts.length > 1 || hasLinkedBefore" class="nge-login-why">
+            <span class="nge-login-why-q">Signing in twice?</span>
+            Each data server guards its own door. Same account both times, the
+            second pass is just a quick allow.
+          </div>
+
           <button
             class="nge-login-btn"
             :disabled="prompts.every(p => p.done || p.waiting)"
@@ -628,6 +647,28 @@ function shortUrl(url: string): string {
 /* ══════════════════════════════════════════════════════════════════════════
    HOLOGRAPHIC SCI-FI LOGIN MODAL
    ══════════════════════════════════════════════════════════════════════════ */
+
+.nge-login-why {
+  margin: 10px auto 0;
+  max-width: 340px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: rgba(170, 195, 230, 0.75);
+  background: rgba(53, 181, 255, 0.06);
+  border: 1px solid rgba(53, 181, 255, 0.18);
+  border-radius: 8px;
+  padding: 8px 12px;
+  text-align: left;
+}
+.nge-login-why-q {
+  display: block;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(53, 181, 255, 0.85);
+  margin-bottom: 3px;
+}
 
 .nge-login-blocker {
   position: fixed;
