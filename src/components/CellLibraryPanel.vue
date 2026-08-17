@@ -28,6 +28,7 @@ const tagPinSvg = scoutPinSvg();
 import { runPanelTrace, flyPlusOne, runScytheSwing } from '../util/holo_trace';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
+import { Uint64 } from 'neuroglancer/util/uint64';
 import ScreenshotDialog from './ScreenshotDialog.vue';
 
 const props = defineProps<{ initialTab?: string }>();
@@ -1046,10 +1047,46 @@ function aiCategoryIcon(tag: IssueTag): string {
   return (cat && icons[cat]) || '🤖';
 }
 
+/** Make the candidate's root visible in the first segmentation layer.
+ *  Retried on a schedule: the first attempt can be eaten by the middleauth
+ *  login popup the graphene layer triggers on a cold jump. */
+function ensureSegVisible(segId: string) {
+  const attempt = () => {
+    try {
+      const viewer: any = (window as any)['viewer'];
+      const segLayer = viewer?.layerManager?.managedLayers?.find((x: any) => {
+        const layer = x.layer;
+        if (!layer) return false;
+        const className = layer.constructor?.name || '';
+        return className.includes('Segmentation') ||
+          layer.type === 'segmentation' ||
+          x.initialSpecification?.type === 'segmentation';
+      });
+      const groupState = segLayer?.layer?.displayState?.segmentationGroupState?.value;
+      if (groupState?.visibleSegments) {
+        const seg = Uint64.parseString(segId);
+        if (!groupState.visibleSegments.has(seg)) groupState.visibleSegments.add(seg);
+      }
+    } catch {}
+  };
+  attempt();
+  for (const ms of [1500, 4000, 9000]) setTimeout(attempt, ms);
+}
+
 /** Jump to the candidate and bring up its proposed-split constellation. */
 function jumpToAiTag(tag: IssueTag) {
   if (isCrossDatasetTag(tag)) return;
   jumpToTag(tag);
+  if (tag.segId) ensureSegVisible(tag.segId);
+  // Land at a working zoom. A jump from far out leaves gray EM and a
+  // graphene layer that refuses to load ("please zoom in"), which reads
+  // as a blank screen.
+  try {
+    const v: any = (window as any)['viewer'];
+    if (v?.crossSectionScale && v.crossSectionScale.value > 20) v.crossSectionScale.value = 5;
+    const proj = v?.perspectiveNavigationState?.zoomFactor;
+    if (proj && proj.value > 200000) proj.value = 30000;
+  } catch {}
   if (tag.modelData?.posRelUm?.length && tagStore.activeSplitTagId !== tag.id) {
     tagStore.toggleSplitOverlay(tag);
   }
@@ -1820,7 +1857,7 @@ const panelStyle = computed(() => ({
           <div class="nge-cl-quest" style="margin-top: 0;">
             <div class="nge-cl-quest-title">🤖 AI candidates</div>
             <div class="nge-cl-tags-hint">
-              Merge errors suspected by the Seung Lab detection model, hottest
+              Merge errors suspected by the Dorkenwald and Fuming model, hottest
               first. Confidence is the model's verify probability: viewer
               markers heat from cool blue to orange as it rises. Jump to a
               candidate to see the proposed split as a red and blue point
