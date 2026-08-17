@@ -961,12 +961,18 @@ function jumpToReq(req: HelpRequest) {
 // ── Scout tags (Tags tab) ────────────────────────────────────────────
 const showResolvedTags = ref(false);
 const openTagsSorted = computed(() => tagStore.openTags);
-const resolvedTags = computed(() => tagStore.tags.filter((t: IssueTag) => t.status === 'resolved' && !isModelTag(t)));
+const resolvedTags = computed(() => tagStore.tags.filter((t: IssueTag) =>
+  t.status === 'resolved' && !isModelTag(t) && (showAllDatasetTags.value || !isCrossDatasetTag(t))));
 
 function isCrossDatasetTag(tag: IssueTag): boolean {
-  if (!tag.dataset || !activeDataset.value) return false;
+  if (!activeDataset.value) return false;
+  // Strict: a tag with no dataset stamp (legacy rows) is NOT assumed to be
+  // everywhere; it only appears under the All datasets toggle. Unstamped
+  // tags were leaking into every dataset's list (Amy, 2026-08-17).
+  if (!tag.dataset) return true;
   return canonicalDataset(tag.dataset) !== canonicalDataset(activeDataset.value);
 }
+
 
 function jumpToTag(tag: IssueTag) {
   if (isCrossDatasetTag(tag)) return; // button is disabled; belt and braces

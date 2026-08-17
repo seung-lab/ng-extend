@@ -155,25 +155,21 @@ async function drop(position: number[]) {
   // as one panel changing faces, not two different boxes.
   const fb = boxEl.value?.getBoundingClientRect();
   if (fb) successSize.value = { width: fb.width + 'px', minHeight: fb.height + 'px' };
-  // Two waves (Amy's spec): Submit fires particles from the panel, then a
-  // second wave fires from the placed point, and both sets coalesce along
-  // the border together. Colored by tag type.
+  // Both confetti waves launch from THE SUBMIT BUTTON (Amy: the old second
+  // wave used the placed point's screen position, which goes stale the
+  // moment the view pans and read as a random spot in the 3D). Colored by
+  // tag type, both coalesce along the success border.
   const br = wrapEl.value?.getBoundingClientRect();
   const rgb = TAG_RGB[c.tagType];
-  const secondOrigin = placeScreen;
   placeScreen = null;
   let total = 0;
   if (br) {
     const getRect = () => wrapEl.value?.getBoundingClientRect() ?? null;
-    // Wave 1 fires from the Submit button itself (Amy 2026-08-17); wave 2
-    // from the placed point, unchanged.
     const sb = submitBtnEl.value?.getBoundingClientRect();
     const w1x = sb ? sb.left + sb.width / 2 : br.left + br.width / 2;
     const w1y = sb ? sb.top + sb.height / 2 : br.top + br.height / 2;
     total = runBurstCoalesce(w1x, w1y, getRect, rgb);
-    if (secondOrigin) {
-      setTimeout(() => runBurstCoalesce(secondOrigin.x, secondOrigin.y, getRect, rgb), 180);
-    }
+    setTimeout(() => runBurstCoalesce(w1x, w1y, getRect, rgb), 200);
   }
   if (collapsed.value) {
     // The mini strip has no room for the success box; the flash plus the
@@ -193,19 +189,20 @@ async function drop(position: number[]) {
 const successFrameless = ref(false);
 const successSize = ref<{ width: string; minHeight: string } | null>(null);
 
-/** Clicking the success box celebrates, sends a +1 to the profile, and
- *  plays the cycle back to the form. */
+/** Clicking the success box celebrates, then the beam draws the form back
+ *  into place (same reveal as expanding from the strip), no plain pop. */
 function dismissSuccess() {
   if (phase.value !== 'success') return;
   const r = wrapEl.value?.getBoundingClientRect();
   if (r) {
     runParticleBurst(r.left + r.width / 2, r.top + r.height / 2,
       TAG_RGB[lastTag.value?.tagType ?? 'merger']);
-    // The +1 comet to the profile is shelved for now (Amy 2026-08-17), it
-    // read as an unidentified object shooting off the box.
   }
   phase.value = 'success-out';
-  setTimeout(() => { phase.value = 'form'; }, SWAP_MS);
+  setTimeout(() => {
+    phase.value = 'form';
+    revealFormWithBeam();
+  }, SWAP_MS);
 }
 
 function showFlash(msg: string) {
@@ -231,21 +228,36 @@ function setCollapsed(v: boolean) {
   }
   // Expand: no pop. The beam draws the frame AND acts as a mask, the box
   // content is revealed exactly as far down as the beam has travelled.
+  revealFormWithBeam();
+}
+
+/** The beam-draw reveal of the form box, shared by expand-from-strip and
+ *  the return from the success box. */
+function revealFormWithBeam() {
   drawingIn.value = true;
   requestAnimationFrame(() => {
     const box = boxEl.value;
     if (box) box.style.clipPath = 'inset(0 0 100% 0)';
+    const done = () => {
+      const b = boxEl.value;
+      if (b) {
+        b.style.clipPath = '';
+        // Pin animation:none INLINE before the --drawing class drops.
+        // Removing the class used to restart the materialize keyframes
+        // from opacity 0, which read as a flash to black after the beam
+        // finished (Amy). Inline style survives the class change; a fresh
+        // mount is a new element without it, so first-open still animates.
+        b.style.animation = 'none';
+      }
+      drawingIn.value = false;
+    };
     const total = wrapEl.value ? runPanelDraw(wrapEl.value, 'down', frac => {
       const b = boxEl.value;
       if (!b) return;
-      if (frac >= 1) {
-        b.style.clipPath = '';
-        drawingIn.value = false;
-      } else {
-        b.style.clipPath = `inset(0 0 ${((1 - frac) * 100).toFixed(2)}% 0)`;
-      }
+      if (frac >= 1) done();
+      else b.style.clipPath = `inset(0 0 ${((1 - frac) * 100).toFixed(2)}% 0)`;
     }) : 0;
-    if (!total) { if (box) box.style.clipPath = ''; drawingIn.value = false; }
+    if (!total) done();
   });
 }
 function miniChoose(key: string) {

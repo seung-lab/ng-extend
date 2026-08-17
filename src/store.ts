@@ -1685,7 +1685,8 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     const canon = currentDatasetTag();
     return openTags.value
       .filter(t => !isModelTag(t))
-      .filter(t => !t.dataset || canonicalDataset(t.dataset) === canon)
+      // Strict: unstamped legacy tags do NOT render in every dataset.
+      .filter(t => !!t.dataset && canonicalDataset(t.dataset) === canon)
       .filter(t => t.position?.length === 3)
       .map(t => ({
         id: t.id,
@@ -1741,7 +1742,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       // (Amy: "I couldn't see the point in 3D").
       const TAG_SHADER = 'void main() {\n' +
         '  setColor(vec4(0.21, 0.71, 1.0, 0.95));\n' +
-        '  setPointMarkerSize(16.0);\n' +
+        '  setPointMarkerSize(22.0);\n' +
         '  setPointMarkerBorderWidth(2.0);\n' +
         '  setPointMarkerBorderColor(vec4(0.85, 0.97, 1.0, 0.9));\n' +
         '}\n';
