@@ -1787,14 +1787,16 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   // spots; each marker is still an individual candidate.
 
   const AI_LAYER_NAME = '🤖 AI candidates';
+  // Amy's palette: cool blue (#4a9eff, the app accent) rising to golden
+  // yellow (#FFD700) at full confidence. Orange is banned.
   const AI_SHADER = 'void main() {\n' +
     '  float c = clamp((prop_conf() - 0.2) / 0.8, 0.0, 1.0);\n' +
-    '  vec3 cold = vec3(0.25, 0.55, 1.0);\n' +
-    '  vec3 hot = vec3(1.0, 0.45, 0.1);\n' +
+    '  vec3 cold = vec3(0.29, 0.62, 1.0);\n' +
+    '  vec3 hot = vec3(1.0, 0.84, 0.0);\n' +
     '  setColor(vec4(mix(cold, hot, c), 0.95));\n' +
     '  setPointMarkerSize(9.0 + 8.0 * c);\n' +
     '  setPointMarkerBorderWidth(1.5);\n' +
-    '  setPointMarkerBorderColor(vec4(1.0, 0.95, 0.85, 0.9));\n' +
+    '  setPointMarkerBorderColor(vec4(1.0, 0.97, 0.85, 0.9));\n' +
     '}\n';
 
   /** AI tab's layer toggle; ambient showScoutTags still gates everything. */
@@ -1838,8 +1840,11 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       const points = aiPointAnnotations();
       if (!aiLayerOn.value || !ambientOn || !points.length) {
         removeLayerByName(viewer, AI_LAYER_NAME);
+        removeLayerByName(viewer, AI_CRYSTAL_LAYER_NAME);
+        lastCrystalKey = '';
         return;
       }
+      syncAiCrystals(viewer, points);
       const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === AI_LAYER_NAME);
       if (!managed) {
         addAnnotationLayer(viewer, AI_LAYER_NAME, {
@@ -1864,6 +1869,65 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     }
   }
 
+  // ── Golden shards: the candidates' 3D presence ───────────────────────────
+  // Circles carry the 2D cross-sections (where the color ramp reads); in the
+  // 3D projection each candidate is a faceted golden shard, an elongated
+  // octahedron sized by confidence, all instances baked into ONE combined
+  // OBJ served as a data: URL, the same trick as the scout pins.
+  const AI_CRYSTAL_LAYER_NAME = '🔶 AI shards';
+  let lastCrystalKey = '';
+  function syncAiCrystals(viewer: any, points: { id: string; point: number[]; conf: number }[]) {
+    try {
+      if (!points.length) {
+        removeLayerByName(viewer, AI_CRYSTAL_LAYER_NAME);
+        lastCrystalKey = '';
+        return;
+      }
+      const cs = viewer.coordinateSpace?.value;
+      if (!cs?.scales?.length) return;
+      const scaleNm = [0, 1, 2].map(i => cs.scales[i] * 1e9);
+      const inst = points.map(p => ({
+        pos: [p.point[0] * scaleNm[0], p.point[1] * scaleNm[1], p.point[2] * scaleNm[2]],
+        r: 500 + 900 * Math.max(0, Math.min(1, p.conf)),
+      }));
+      const key = JSON.stringify(inst.map(i =>
+        [Math.round(i.pos[0]), Math.round(i.pos[1]), Math.round(i.pos[2]), Math.round(i.r)]));
+      const existing = viewer.layerManager?.managedLayers?.find((l: any) => l.name === AI_CRYSTAL_LAYER_NAME);
+      if (key === lastCrystalKey && existing) return;
+
+      const lines: string[] = [];
+      for (const it of inst) {
+        const [x, y, z] = it.pos, r = it.r;
+        lines.push(
+          `v ${(x + r).toFixed(0)} ${y.toFixed(0)} ${z.toFixed(0)}`,
+          `v ${(x - r).toFixed(0)} ${y.toFixed(0)} ${z.toFixed(0)}`,
+          `v ${x.toFixed(0)} ${(y + 1.7 * r).toFixed(0)} ${z.toFixed(0)}`,
+          `v ${x.toFixed(0)} ${(y - 1.7 * r).toFixed(0)} ${z.toFixed(0)}`,
+          `v ${x.toFixed(0)} ${y.toFixed(0)} ${(z + r).toFixed(0)}`,
+          `v ${x.toFixed(0)} ${y.toFixed(0)} ${(z - r).toFixed(0)}`);
+      }
+      inst.forEach((_, k) => {
+        const o = k * 6;
+        for (const f of [[1, 3, 5], [3, 2, 5], [2, 4, 5], [4, 1, 5], [3, 1, 6], [2, 3, 6], [4, 2, 6], [1, 4, 6]]) {
+          lines.push(`f ${f[0] + o} ${f[1] + o} ${f[2] + o}`);
+        }
+      });
+      const dataUrl = 'data:application/octet-stream;base64,' + btoa(lines.join('\n'));
+      // Replace non-disruptively, like the pins: only this layer is touched.
+      if (existing) viewer.layerManager.removeManagedLayer(existing);
+      const managed = makeLayer(viewer.layerSpecification, AI_CRYSTAL_LAYER_NAME, {
+        type: 'mesh',
+        source: 'obj://' + dataUrl,
+        name: AI_CRYSTAL_LAYER_NAME,
+        shader: 'void main() { emitRGB(vec3(1.0, 0.84, 0.25)); }',
+      });
+      viewer.layerSpecification.add(managed);
+      lastCrystalKey = key;
+    } catch (e) {
+      console.warn('[issueTags] AI shard layer sync failed:', e);
+    }
+  }
+
   // ── Dense heat layer (all model windows for one neuron) ──────────────────
   // Every window the model scored, suspect or not, as a continuous heat skin
   // along the neuron. Toggled per neuron from the AI tab; data comes from the
@@ -1871,8 +1935,8 @@ export const useIssueTagStore = defineStore('issueTags', () => {
 
   const HEAT_SHADER = 'void main() {\n' +
     '  float c = clamp(prop_conf(), 0.0, 1.0);\n' +
-    '  vec3 cold = vec3(0.15, 0.35, 0.9);\n' +
-    '  vec3 hot = vec3(1.0, 0.3, 0.05);\n' +
+    '  vec3 cold = vec3(0.2, 0.45, 1.0);\n' +
+    '  vec3 hot = vec3(1.0, 0.84, 0.0);\n' +
     '  setColor(vec4(mix(cold, hot, c), 0.25 + 0.7 * c));\n' +
     '  setPointMarkerSize(4.0 + 9.0 * c);\n' +
     '}\n';

@@ -1031,11 +1031,12 @@ const aiSortedTags = computed(() => {
   return [...base].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
 });
 
-/** Badge color matching the marker shader's cold-to-hot confidence ramp. */
+/** Badge color matching the marker shader's ramp: cool blue rising to
+ *  golden yellow (Amy's palette; orange is banned). */
 function confColor(conf?: number): string {
   const c = Math.max(0, Math.min(1, ((conf ?? 1) - 0.2) / 0.8));
   const ch = (a: number, b: number) => Math.round((a + (b - a) * c) * 255);
-  return `rgb(${ch(0.35, 1.0)}, ${ch(0.62, 0.55)}, ${ch(1.0, 0.25)})`;
+  return `rgb(${ch(0.35, 1.0)}, ${ch(0.65, 0.84)}, ${ch(1.0, 0.15)})`;
 }
 
 /** Category icon slot. The model does not emit categories yet; when it
@@ -1884,7 +1885,8 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-tags-hint">
               Merge errors suspected by the Dorkenwald and Fuming model, hottest
               first. Confidence is the model's verify probability: viewer
-              markers heat from cool blue to orange as it rises. Jump to a
+              markers heat from cool blue to golden yellow as it rises, and
+              each candidate stands as a golden shard in 3D. Jump to a
               candidate to see the proposed split as a red and blue point
               constellation, fix it, and mark it resolved.
             </div>
