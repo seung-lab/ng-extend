@@ -13,7 +13,8 @@ import {supabase} from './supabase';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
-import pinObjUrl from '../static/tags/pin.obj';
+import pinVtkUrl from '../static/tags/pin.vtk';
+import pinOtherVtkUrl from '../static/tags/pin-other.vtk';
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 import {Uint64} from "neuroglancer/util/uint64";
 
@@ -1479,23 +1480,49 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   // Instances are baked into ONE combined OBJ served as a data: URL (our
   // neuroglancer fork's parseUrl accepts data:), so the layer bar carries a
   // single "Scout pins" chip however many pins are planted.
-  let pinMeshCache: Promise<{verts: Float32Array; faces: number[][]} | null> | null = null;
-  function loadPinMesh() {
+  interface PinMesh { verts: Float32Array; faces: number[][]; colors: string[] }
+  /** Parse one of our colored legacy-VTK pin assets (POINTS / POLYGONS /
+   *  POINT_DATA SCALARS color float 3). Colors stay as raw text lines,
+   *  they're pasted straight back out per instance. */
+  function parsePinVtk(text: string): PinMesh | null {
+    const lines = text.split('\n');
+    const verts: number[] = [];
+    const faces: number[][] = [];
+    const colors: string[] = [];
+    let i = 0;
+    const n = lines.length;
+    while (i < n && !lines[i].startsWith('POINTS')) i++;
+    if (i >= n) return null;
+    const nv = parseInt(lines[i].split(/\s+/)[1], 10);
+    i++;
+    for (let k = 0; k < nv && i < n; k++, i++) {
+      const p = lines[i].trim().split(/\s+/);
+      verts.push(+p[0], +p[1], +p[2]);
+    }
+    while (i < n && !lines[i].startsWith('POLYGONS')) i++;
+    if (i >= n) return null;
+    const nf = parseInt(lines[i].split(/\s+/)[1], 10);
+    i++;
+    for (let k = 0; k < nf && i < n; k++, i++) {
+      const p = lines[i].trim().split(/\s+/);
+      faces.push([+p[1], +p[2], +p[3]]);
+    }
+    while (i < n && !lines[i].startsWith('LOOKUP_TABLE')) i++;
+    i++;
+    for (let k = 0; k < nv && i < n; k++, i++) colors.push(lines[i].trim());
+    if (!verts.length || !faces.length || colors.length !== nv) return null;
+    return {verts: Float32Array.from(verts), faces, colors};
+  }
+
+  let pinMeshCache: Promise<{main: PinMesh; other: PinMesh | null} | null> | null = null;
+  function loadPinMeshes() {
     if (!pinMeshCache) {
-      pinMeshCache = fetch(pinObjUrl).then(async r => {
-        if (!r.ok) return null;
-        const verts: number[] = [];
-        const faces: number[][] = [];
-        for (const line of (await r.text()).split('\n')) {
-          if (line.startsWith('v ')) {
-            const p = line.split(/\s+/);
-            verts.push(+p[1], +p[2], +p[3]);
-          } else if (line.startsWith('f ')) {
-            const p = line.split(/\s+/);
-            faces.push([+p[1], +p[2], +p[3]]);
-          }
-        }
-        return verts.length && faces.length ? {verts: Float32Array.from(verts), faces} : null;
+      pinMeshCache = Promise.all([fetch(pinVtkUrl), fetch(pinOtherVtkUrl)]).then(async ([r1, r2]) => {
+        if (!r1.ok) return null;
+        const main = parsePinVtk(await r1.text());
+        if (!main) return null;
+        const other = r2.ok ? parsePinVtk(await r2.text()) : null;
+        return {main, other};
       }).catch(() => null);
     }
     return pinMeshCache;
@@ -1509,23 +1536,34 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     return ((h % 628) / 628) * 2 * Math.PI;
   }
 
-  function buildPinObj(
-      mesh: {verts: Float32Array; faces: number[][]},
-      instances: {pos: number[]; yaw: number; lift: number}[]): string {
-    const nv = mesh.verts.length / 3;
-    const lines: string[] = [];
+  /** Bake all pin instances (possibly different meshes per tag type) into
+   *  one colored legacy-VTK, so the layer bar carries a single chip and the
+   *  paint Meshy baked survives as per-vertex color. */
+  function buildPinVtk(instances: {mesh: PinMesh; pos: number[]; yaw: number; lift: number}[]): string {
+    let totalV = 0, totalF = 0;
+    for (const inst of instances) { totalV += inst.mesh.verts.length / 3; totalF += inst.mesh.faces.length; }
+    const lines: string[] = [
+      '# vtk DataFile Version 3.0', 'nge scout pins', 'ASCII', 'DATASET POLYDATA',
+      `POINTS ${totalV} float`,
+    ];
     for (const inst of instances) {
+      const {verts} = inst.mesh;
+      const nv = verts.length / 3;
       const c = Math.cos(inst.yaw), s = Math.sin(inst.yaw);
       for (let i = 0; i < nv; i++) {
-        const x = mesh.verts[i * 3], y = mesh.verts[i * 3 + 1], z = mesh.verts[i * 3 + 2];
+        const x = verts[i * 3], y = verts[i * 3 + 1], z = verts[i * 3 + 2];
         const rx = x * c + z * s, rz = -x * s + z * c;
-        lines.push(`v ${(rx + inst.pos[0]).toFixed(0)} ${(y + inst.pos[1] - inst.lift).toFixed(0)} ${(rz + inst.pos[2]).toFixed(0)}`);
+        lines.push(`${(rx + inst.pos[0]).toFixed(0)} ${(y + inst.pos[1] - inst.lift).toFixed(0)} ${(rz + inst.pos[2]).toFixed(0)}`);
       }
     }
-    instances.forEach((_, k) => {
-      const off = k * nv;
-      for (const f of mesh.faces) lines.push(`f ${f[0] + off} ${f[1] + off} ${f[2] + off}`);
-    });
+    lines.push(`POLYGONS ${totalF} ${totalF * 4}`);
+    let off = 0;
+    for (const inst of instances) {
+      for (const f of inst.mesh.faces) lines.push(`3 ${f[0] + off} ${f[1] + off} ${f[2] + off}`);
+      off += inst.mesh.verts.length / 3;
+    }
+    lines.push(`POINT_DATA ${totalV}`, 'SCALARS color float 3', 'LOOKUP_TABLE default');
+    for (const inst of instances) for (const c of inst.mesh.colors) lines.push(c);
     return lines.join('\n');
   }
 
@@ -1533,7 +1571,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   let lastPinKey = '';
   async function syncPinLayer(
       viewer: any,
-      tagPoints: {id: string; point: number[]}[], preview: number[] | null) {
+      tagPoints: {id: string; point: number[]; tagType?: string}[], preview: number[] | null) {
     try {
       const removePins = () => {
         const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === PIN_LAYER_NAME);
@@ -1552,24 +1590,30 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       if (tagPoints.length > MAX_PINS) {
         console.info(`[issueTags] pin layer capped at ${MAX_PINS} of ${tagPoints.length} tags`);
       }
-      const instances = shown.map(t => ({pos: toNm(t.point), yaw: pinYaw(t.id), lift: 0}));
-      // The pending pin hovers half a micron above its point until Submit
-      // plants it, a placed-but-not-saved tag literally hasn't landed yet.
-      if (preview) instances.push({pos: toNm(preview), yaw: 0, lift: 500});
-
-      const key = JSON.stringify(instances.map(i => i.pos.map(Math.round).concat(Math.round(i.yaw * 100), i.lift)));
+      const key = JSON.stringify(shown.map(t => [t.id, t.tagType ?? '', t.point.map(Math.round)])
+        .concat(preview ? [['preview', '', preview.map(Math.round)]] : []));
       const existing = viewer.layerManager?.managedLayers?.find((l: any) => l.name === PIN_LAYER_NAME);
       if (key === lastPinKey && existing) return;
 
-      const mesh = await loadPinMesh();
-      if (!mesh) return;
-      const objText = buildPinObj(mesh, instances);
-      const dataUrl = 'data:application/octet-stream;base64,' + btoa(objText);
+      const meshes = await loadPinMeshes();
+      if (!meshes) return;
+      // Amy's Meshy icons: the castle pin for Cut and Extend, the simple
+      // location icon for Other (2026-08-17).
+      const meshFor = (tagType?: string) =>
+        (tagType === 'other' && meshes.other) ? meshes.other : meshes.main;
+      const instances = shown.map(t => ({mesh: meshFor(t.tagType), pos: toNm(t.point), yaw: pinYaw(t.id), lift: 0}));
+      // The pending pin hovers half a micron above its point until Submit
+      // plants it, a placed-but-not-saved tag literally hasn't landed yet.
+      if (preview) instances.push({mesh: meshes.main, pos: toNm(preview), yaw: 0, lift: 500});
+
+      const vtkText = buildPinVtk(instances);
+      const dataUrl = 'data:application/octet-stream;base64,' + btoa(vtkText);
       const spec = {
         type: 'mesh',
-        source: 'obj://' + dataUrl,
+        source: 'vtk://' + dataUrl,
         name: PIN_LAYER_NAME,
-        shader: 'void main() { emitRGB(vec3(0.21, 0.71, 1.0)); }',
+        // Per-vertex baked colors from the Meshy texture.
+        shader: 'void main() { emitRGB(color); }',
       };
       // Replace non-disruptively: only this layer is touched, never the
       // full viewer state (the restoreState route made segments vanish).
@@ -1601,6 +1645,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       .map(t => ({
         id: t.id,
         point: t.position,
+        tagType: t.tagType,
         description: `${t.tagType === 'merger' ? 'Cut' : t.tagType === 'missing_branch' ? 'Extend' : 'Other'}${t.note ? ': ' + t.note : ''} (${t.userName || 'anon'})`,
       }));
   }
@@ -1638,7 +1683,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       }
       const tagPoints = tagPointAnnotations();
       void syncPinLayer(viewer, tagPoints, previewPoint);
-      const points = [...tagPoints];
+      const points: { id: string; point: number[]; description: string }[] = [...tagPoints];
       if (previewPoint) {
         points.push({ id: 'nge-tag-preview', point: previewPoint, description: 'Pending tag, hit Submit' });
       }

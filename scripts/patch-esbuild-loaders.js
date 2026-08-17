@@ -25,7 +25,7 @@ if (!fs.existsSync(configPath)) {
 }
 
 const before = fs.readFileSync(configPath, 'utf8');
-if (before.includes("'.jpg': 'file'") && before.includes("'.obj': 'file'")) {
+if (before.includes("'.jpg': 'file'") && before.includes("'.obj': 'file'") && before.includes("'.vtk': 'file'")) {
   console.log('[patch-esbuild-loaders] already patched');
   process.exit(0);
 }
@@ -44,6 +44,9 @@ if (!after.includes("'.jpg': 'file'")) {
 }
 if (!after.includes("'.obj': 'file'")) {
   after = after.replace("'.jpeg': 'file'", "'.jpeg': 'file', '.obj': 'file'");
+}
+if (!after.includes("'.vtk': 'file'")) {
+  after = after.replace("'.obj': 'file'", "'.obj': 'file', '.vtk': 'file'");
 }
 
 fs.writeFileSync(configPath, after, 'utf8');
