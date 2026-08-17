@@ -28,6 +28,7 @@ const HAND_SVG = '<svg viewBox="0 0 16 16" fill="none" style="width:1em;height:1
 
 const emit = defineEmits({ hide: null });
 const wrapEl = ref<HTMLElement | null>(null);
+const boxEl = ref<HTMLElement | null>(null);
 const tagStore = useIssueTagStore();
 const { activeSegId } = storeToRefs(useSegmentAnnotationStore());
 
@@ -182,12 +183,23 @@ function setCollapsed(v: boolean) {
     requestAnimationFrame(() => { if (wrapEl.value) runPanelZip(wrapEl.value, 'up'); });
     return;
   }
-  // Expand: no pop, the beam draws the box, then the content fades in.
+  // Expand: no pop. The beam draws the frame AND acts as a mask, the box
+  // content is revealed exactly as far down as the beam has travelled.
   drawingIn.value = true;
   requestAnimationFrame(() => {
-    const total = wrapEl.value ? runPanelDraw(wrapEl.value, 'down') : 0;
-    // Let the frame mostly complete before the body materializes inside it.
-    setTimeout(() => { drawingIn.value = false; }, total ? Math.round(total * 0.55) : 0);
+    const box = boxEl.value;
+    if (box) box.style.clipPath = 'inset(0 0 100% 0)';
+    const total = wrapEl.value ? runPanelDraw(wrapEl.value, 'down', frac => {
+      const b = boxEl.value;
+      if (!b) return;
+      if (frac >= 1) {
+        b.style.clipPath = '';
+        drawingIn.value = false;
+      } else {
+        b.style.clipPath = `inset(0 0 ${((1 - frac) * 100).toFixed(2)}% 0)`;
+      }
+    }) : 0;
+    if (!total) { if (box) box.style.clipPath = ''; drawingIn.value = false; }
   });
 }
 function miniChoose(key: string) {
@@ -326,6 +338,7 @@ onBeforeUnmount(() => {
       <!-- Form box -->
       <div
         v-else-if="phase === 'form' || phase === 'form-out'"
+        ref="boxEl"
         class="nge-tagmode"
         :class="{ 'nge-holo-out': phase === 'form-out', 'nge-tagmode--drawing': drawingIn }"
       >
@@ -446,16 +459,12 @@ onBeforeUnmount(() => {
 .nge-holo-out {
   animation: nge-holo-materialize 0.5s cubic-bezier(0.16, 1, 0.3, 1) reverse both;
 }
-/* Expanding from the slim strip: the beam draws the frame, so the pop-in
-   materialize is suppressed and the body waits invisibly inside the light
-   outline, then eases in as the beam completes. */
+/* Expanding from the slim strip: the pop-in materialize is suppressed and
+   the beam acts as a mask, a clip-path driven from the draw's progress
+   unrolls the finished box downward in step with the light. */
 .nge-tagmode--drawing {
   animation: none;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  background: rgba(4, 7, 15, 0.55);
 }
-.nge-tagmode--drawing > * { opacity: 0; }
 /* Success box while the burst particles are still carrying its border. */
 .nge-tagmode--frameless {
   border-color: transparent !important;

@@ -268,7 +268,9 @@ export function runPanelZip(host: HTMLElement, direction: 'up' | 'down' = 'up'):
  * border). Returns the total ms until the canvas is gone, so callers can
  * choreograph content fade-in against it.
  */
-export function runPanelDraw(host: HTMLElement, direction: 'up' | 'down' = 'down'): number {
+export function runPanelDraw(
+    host: HTMLElement, direction: 'up' | 'down' = 'down',
+    onProgress?: (frac: number) => void): number {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
   const rect = host.getBoundingClientRect();
   if (!rect.width || !rect.height) return 0;
@@ -307,6 +309,14 @@ export function runPanelDraw(host: HTMLElement, direction: 'up' | 'down' = 'down
     ctx!.lineCap = 'round';
     ctx!.lineJoin = 'round';
     const eased = k * k * (3 - 2 * k);
+
+    // Report how far down (or up) the heads have travelled, so the caller
+    // can use the beam as a reveal mask over the panel content.
+    if (onProgress) {
+      const hp0 = pt(start + eased * distA);
+      const frac = direction === 'down' ? hp0[1] / h : 1 - hp0[1] / h;
+      onProgress(k >= 1 ? 1 : Math.max(0, Math.min(1, frac)));
+    }
 
     for (const [dir, dist] of [[1, distA], [-1, distB]] as [number, number][]) {
       const SEG = Math.max(8, Math.ceil(60 * dist));
