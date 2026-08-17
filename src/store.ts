@@ -12,6 +12,7 @@ import {currentDatasetTag, canonicalDataset} from './datasets';
 import {supabase} from './supabase';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
+import {makeLayer} from "neuroglancer/layer";
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 import {Uint64} from "neuroglancer/util/uint64";
 
@@ -1414,6 +1415,29 @@ export interface IssueTag {
   resolvedById?: string;
   resolvedByName?: string;
   createdAt: string;
+  /** 'human' (default) or 'model' for AI-seeded candidates. */
+  source?: string;
+  /** Model verify probability (0..1), set on source 'model' tags. */
+  confidence?: number;
+  /** Model payload for the proposed-split overlay (import-model-tags.mjs). */
+  modelData?: {
+    windowIdx?: number;
+    batch?: string;
+    /** Window center in microns (the model's native space). */
+    centerUm?: number[];
+    /** 25 sample points in microns relative to centerUm. */
+    posRelUm?: number[][];
+    /** 0/1 per sample point: which side of the proposed cut it falls on. */
+    labels?: number[];
+    spectralScore?: number;
+    /** Future model taxonomy hook; drives the category icon in the AI tab. */
+    category?: string;
+  };
+}
+
+/** AI-seeded candidate (imported from the merge-error detection model). */
+export function isModelTag(t: IssueTag): boolean {
+  return t.source === 'model';
 }
 
 function rowToIssueTag(row: any): IssueTag {
@@ -1444,6 +1468,115 @@ export const useIssueTagStore = defineStore('issueTags', () => {
 
   /** Name of the in-viewer annotation layer that mirrors open tags. */
   const TAG_LAYER_NAME = '⚑ Scout tags';
+  const PIN_LAYER_NAME = '⚑ Scout pins';
+
+  // ── Amy's Meshy 3D pin, planted at every open tag ────────────────────────
+  // static/tags/pin.obj: tip at origin, 3um tall, nm units, body toward -y.
+  // Instances are baked into ONE combined OBJ served as a data: URL (our
+  // neuroglancer fork's parseUrl accepts data:), so the layer bar carries a
+  // single "Scout pins" chip however many pins are planted.
+  let pinMeshCache: Promise<{verts: Float32Array; faces: number[][]} | null> | null = null;
+  function loadPinMesh() {
+    if (!pinMeshCache) {
+      pinMeshCache = fetch('static/tags/pin.obj').then(async r => {
+        if (!r.ok) return null;
+        const verts: number[] = [];
+        const faces: number[][] = [];
+        for (const line of (await r.text()).split('\n')) {
+          if (line.startsWith('v ')) {
+            const p = line.split(/\s+/);
+            verts.push(+p[1], +p[2], +p[3]);
+          } else if (line.startsWith('f ')) {
+            const p = line.split(/\s+/);
+            faces.push([+p[1], +p[2], +p[3]]);
+          }
+        }
+        return verts.length && faces.length ? {verts: Float32Array.from(verts), faces} : null;
+      }).catch(() => null);
+    }
+    return pinMeshCache;
+  }
+
+  /** Deterministic small yaw per tag id, so a cluster of pins reads like
+   *  flags planted by different hands rather than clones. */
+  function pinYaw(id: string): number {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+    return ((h % 628) / 628) * 2 * Math.PI;
+  }
+
+  function buildPinObj(
+      mesh: {verts: Float32Array; faces: number[][]},
+      instances: {pos: number[]; yaw: number; lift: number}[]): string {
+    const nv = mesh.verts.length / 3;
+    const lines: string[] = [];
+    for (const inst of instances) {
+      const c = Math.cos(inst.yaw), s = Math.sin(inst.yaw);
+      for (let i = 0; i < nv; i++) {
+        const x = mesh.verts[i * 3], y = mesh.verts[i * 3 + 1], z = mesh.verts[i * 3 + 2];
+        const rx = x * c + z * s, rz = -x * s + z * c;
+        lines.push(`v ${(rx + inst.pos[0]).toFixed(0)} ${(y + inst.pos[1] - inst.lift).toFixed(0)} ${(rz + inst.pos[2]).toFixed(0)}`);
+      }
+    }
+    instances.forEach((_, k) => {
+      const off = k * nv;
+      for (const f of mesh.faces) lines.push(`f ${f[0] + off} ${f[1] + off} ${f[2] + off}`);
+    });
+    return lines.join('\n');
+  }
+
+  const MAX_PINS = 30;
+  let lastPinKey = '';
+  async function syncPinLayer(
+      viewer: any,
+      tagPoints: {id: string; point: number[]}[], preview: number[] | null) {
+    try {
+      const removePins = () => {
+        const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === PIN_LAYER_NAME);
+        if (managed) viewer.layerManager.removeManagedLayer(managed);
+        lastPinKey = '';
+      };
+      if (!tagPoints.length && !preview) { removePins(); return; }
+
+      // Voxel -> nm using the viewer's global coordinate space.
+      const cs = viewer.coordinateSpace?.value;
+      if (!cs?.scales?.length) return;
+      const scaleNm = [0, 1, 2].map(i => cs.scales[i] * 1e9);
+      const toNm = (p: number[]) => [p[0] * scaleNm[0], p[1] * scaleNm[1], p[2] * scaleNm[2]];
+
+      const shown = tagPoints.slice(0, MAX_PINS);
+      if (tagPoints.length > MAX_PINS) {
+        console.info(`[issueTags] pin layer capped at ${MAX_PINS} of ${tagPoints.length} tags`);
+      }
+      const instances = shown.map(t => ({pos: toNm(t.point), yaw: pinYaw(t.id), lift: 0}));
+      // The pending pin hovers half a micron above its point until Submit
+      // plants it, a placed-but-not-saved tag literally hasn't landed yet.
+      if (preview) instances.push({pos: toNm(preview), yaw: 0, lift: 500});
+
+      const key = JSON.stringify(instances.map(i => i.pos.map(Math.round).concat(Math.round(i.yaw * 100), i.lift)));
+      const existing = viewer.layerManager?.managedLayers?.find((l: any) => l.name === PIN_LAYER_NAME);
+      if (key === lastPinKey && existing) return;
+
+      const mesh = await loadPinMesh();
+      if (!mesh) return;
+      const objText = buildPinObj(mesh, instances);
+      const dataUrl = 'data:application/octet-stream;base64,' + btoa(objText);
+      const spec = {
+        type: 'mesh',
+        source: 'obj://' + dataUrl,
+        name: PIN_LAYER_NAME,
+        shader: 'void main() { emitRGB(vec3(0.21, 0.71, 1.0)); }',
+      };
+      // Replace non-disruptively: only this layer is touched, never the
+      // full viewer state (the restoreState route made segments vanish).
+      if (existing) viewer.layerManager.removeManagedLayer(existing);
+      const managed = makeLayer(viewer.layerSpecification, PIN_LAYER_NAME, spec);
+      viewer.layerSpecification.add(managed);
+      lastPinKey = key;
+    } catch (e) {
+      console.warn('[issueTags] pin layer sync failed:', e);
+    }
+  }
 
   /**
    * Mirror the current dataset's OPEN tags into a local annotation layer so
@@ -1490,11 +1623,16 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       // Ambient display is a preference (default on); tag mode overrides.
       const ambientOn = useUserPreferencesStore().prefs.showScoutTags !== false;
       if (!tagModeActive.value && !ambientOn) {
-        const stale = viewer.layerManager?.managedLayers?.find((l: any) => l.name === TAG_LAYER_NAME);
-        if (stale) viewer.layerManager.removeManagedLayer(stale);
+        for (const name of [TAG_LAYER_NAME, PIN_LAYER_NAME]) {
+          const stale = viewer.layerManager?.managedLayers?.find((l: any) => l.name === name);
+          if (stale) viewer.layerManager.removeManagedLayer(stale);
+        }
+        lastPinKey = '';
         return;
       }
-      const points = tagPointAnnotations();
+      const tagPoints = tagPointAnnotations();
+      void syncPinLayer(viewer, tagPoints, previewPoint);
+      const points = [...tagPoints];
       if (previewPoint) {
         points.push({ id: 'nge-tag-preview', point: previewPoint, description: 'Pending tag, hit Submit' });
       }
