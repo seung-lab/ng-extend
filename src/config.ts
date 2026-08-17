@@ -165,6 +165,16 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellStatusSchema: 'bound_tag_user',
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
+    // The two demo neurons from the Dorkenwald/Fuming export, preloaded so
+    // arriving on Live immediately shows whether the live graph resolves
+    // (meshes appear) or the account lacks phase3_v1 access (they stay
+    // dark). Position: a max-confidence candidate window on …774191.
+    defaultSegments:  ['864691135258774191', '864691135375361480'],
+    segmentColors:    {
+      '864691135258774191': '#FFD700',
+      '864691135375361480': '#4a9eff',
+    },
+    defaultPosition:  [101385, 114771, 22738],
   },
 
   // ── FlyWire (Drosophila FAFB) ───────────────────────────────────────────
