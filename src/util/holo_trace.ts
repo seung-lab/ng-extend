@@ -468,8 +468,18 @@ export function runBurstCoalesce(cx: number, cy: number, getRect: () => DOMRect 
       ringT: (i + Math.random() * 0.6) / N,  // its seat on the border ring
       wob: (Math.random() - 0.5) * 46,       // sideways arc on the way home
       drag: 1.4 + Math.random(),
+      // Personal landing time (as k), so the swarm seats in a stagger
+      // rather than as one synchronized thud.
+      landK: BURST_END + (LAND_END - BURST_END) * (0.5 + 0.5 * Math.random()),
     };
   });
+
+  // Amy's spec: the frame must NOT brighten as individual particles land.
+  // Arrivals accumulate silently; once LIT_FRACTION of the swarm has seated,
+  // the charge releases as one light impulse sweeping the ring, and the real
+  // border takes over as it fades.
+  const LIT_FRACTION = 0.6;
+  let pulseAtK: number | null = null;
 
   let raf = 0;
   const t0 = performance.now();
@@ -491,8 +501,9 @@ export function runBurstCoalesce(cx: number, cy: number, getRect: () => DOMRect 
 
       let x = bx, y = by, al = 0.8 * (1 - k * 0.25);
       if (k > BURST_END && rect) {
-        // Coalesce: arc from the burst apex to its seat on the ring.
-        const cq = Math.min(1, (k - BURST_END) / (LAND_END - BURST_END));
+        // Coalesce: arc from the burst apex to its seat on the ring, each
+        // particle on its own personal schedule.
+        const cq = Math.min(1, (k - BURST_END) / (p.landK - BURST_END));
         const cEase = cq * cq * (3 - 2 * cq);
         const seat = ringPoint(p.ringT, rw, rh, R);
         const sx = rect.left + seat[0] + 1, sy = rect.top + seat[1] + 1;
@@ -501,8 +512,12 @@ export function runBurstCoalesce(cx: number, cy: number, getRect: () => DOMRect 
         const dl = Math.hypot(dx, dy) || 1;
         x = bx + (sx - bx) * cEase + (dx / dl) * arc;
         y = by + (sy - by) * cEase + (dy / dl) * arc;
-        // Landed particles dim as the frame takes over their light.
-        if (k > LAND_END) al *= 1 - (k - LAND_END) / (1 - LAND_END);
+        // Seated particles hold their glow (charging the frame); they only
+        // dim once the impulse has released and the real border takes over.
+        if (pulseAtK !== null) {
+          const pEnd = Math.min(pulseAtK + 0.24, 0.97);
+          if (k > pEnd) al *= Math.max(0, 1 - (k - pEnd) / (1 - pEnd));
+        }
       }
       ctx!.beginPath();
       ctx!.arc(x, y, p.r, 0, 6.283);
@@ -510,25 +525,62 @@ export function runBurstCoalesce(cx: number, cy: number, getRect: () => DOMRect 
       ctx!.fill();
     }
 
-    // The frame brightens as particles land, then hands to the real border.
-    if (rect && k > (BURST_END + LAND_END) / 2) {
-      const fq = Math.min(1, (k - (BURST_END + LAND_END) / 2) / (LAND_END - (BURST_END + LAND_END) / 2));
-      const fade = k > LAND_END ? 1 - (k - LAND_END) / (1 - LAND_END) : 1;
+    // Landing census. The frame stays dark while the swarm seats; enough
+    // arrivals trip the impulse (LAND_END is the everyone-is-home backstop).
+    if (rect && pulseAtK === null) {
+      let landed = 0;
+      for (const p of parts) if (k >= p.landK) landed++;
+      if (landed / N >= LIT_FRACTION || k >= LAND_END) pulseAtK = k;
+    }
+
+    // The impulse: two light heads leave top-center, sweep opposite sides of
+    // the ring, and meet at bottom-center, over a ring-wide glow that spikes
+    // on release and decays as the real border takes over.
+    if (rect && pulseAtK !== null) {
+      const pEnd = Math.min(pulseAtK + 0.24, 0.97);
+      const q = Math.min(1, (k - pulseAtK) / (pEnd - pulseAtK));
+      const qEase = q * q * (3 - 2 * q);
+      const topT = ringTopCenterT(rw, rh, R);
+      const flash = Math.pow(1 - q, 1.6);
       ctx!.lineCap = 'round';
+
+      // Ring-wide release glow.
       for (let pass = 0; pass < 2; pass++) {
-        ctx!.lineWidth = pass ? 1.1 : 3.6;
+        ctx!.lineWidth = pass ? 1.1 : 5.2;
         ctx!.globalCompositeOperation = pass ? 'source-over' : 'lighter';
         ctx!.strokeStyle = pass
-          ? `rgba(198,228,252,${(0.55 * fq * fade).toFixed(3)})`
-          : `rgba(${rgb},${(0.08 * fq * fade).toFixed(3)})`;
+          ? `rgba(198,228,252,${(0.5 * flash).toFixed(3)})`
+          : `rgba(${rgb},${(0.16 * flash).toFixed(3)})`;
         ctx!.beginPath();
         const SEG = 72;
-        for (let j = 0; j <= Math.ceil(SEG * fq); j++) {
+        for (let j = 0; j <= SEG; j++) {
           const p = ringPoint(j / SEG, rw, rh, R);
           const px = rect.left + p[0] + 1, py = rect.top + p[1] + 1;
           if (j === 0) ctx!.moveTo(px, py); else ctx!.lineTo(px, py);
         }
         ctx!.stroke();
+      }
+
+      // The two traveling heads with comet tails.
+      const TAIL = 0.14, TAIL_SEG = 16;
+      ctx!.globalCompositeOperation = 'lighter';
+      for (const dir of [1, -1]) {
+        const headT = topT + dir * 0.5 * qEase;
+        for (let s = 0; s < TAIL_SEG; s++) {
+          const t0 = headT - dir * (s / TAIL_SEG) * TAIL * qEase;
+          const t1 = headT - dir * ((s + 1) / TAIL_SEG) * TAIL * qEase;
+          const a0 = ringPoint(t0, rw, rh, R);
+          const a1 = ringPoint(t1, rw, rh, R);
+          const segAl = 0.85 * (1 - s / TAIL_SEG) * (1 - q * 0.55);
+          ctx!.lineWidth = 3.2 * (1 - s / TAIL_SEG) + 0.8;
+          ctx!.strokeStyle = s < 2
+            ? `rgba(228,244,255,${segAl.toFixed(3)})`
+            : `rgba(${rgb},${(segAl * 0.8).toFixed(3)})`;
+          ctx!.beginPath();
+          ctx!.moveTo(rect.left + a0[0] + 1, rect.top + a0[1] + 1);
+          ctx!.lineTo(rect.left + a1[0] + 1, rect.top + a1[1] + 1);
+          ctx!.stroke();
+        }
       }
     }
     raf = requestAnimationFrame(draw);

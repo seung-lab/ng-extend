@@ -22,7 +22,7 @@ import { scoutPinSvg } from '../data/toolbar-icons';
 import { runPanelTrace, runParticleBurst, runPanelZip, runPanelDraw, runBurstCoalesce } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
-const pinSvgBig = scoutPinSvg('#35b5ff', 'width:34px;height:34px;');
+import superScytheUrl from '../../static/tags/super-scythe.png';
 // Open hand for the mini strip's right-edge drag grip.
 const HAND_SVG = '<svg viewBox="0 0 16 16" fill="none" style="width:1em;height:1em;vertical-align:middle;"><path d="M5.1 7.3V4a1 1 0 0 1 2 0v3M7.1 7V3a1 1 0 0 1 2 0v4M9.1 7V3.7a1 1 0 0 1 2 0V8M11.1 8V5.6a.95.95 0 0 1 1.9 0v3.6c0 2.6-1.8 4.5-4.3 4.5h-.6c-1.5 0-2.6-.6-3.4-1.8L3.2 9.9c-.5-.8-.3-1.5.4-1.9.6-.3 1.3-.1 1.7.5l.8 1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -182,8 +182,10 @@ async function drop(position: number[]) {
     return;
   }
   // The success box keeps its own border hidden until the light hands off.
+  // The frame stays dark through the landings now; the reveal waits for the
+  // impulse sweep to finish (it ends by 0.97 of the run).
   successFrameless.value = true;
-  setTimeout(() => { successFrameless.value = false; }, total ? Math.round(total * 0.86) : 0);
+  setTimeout(() => { successFrameless.value = false; }, total ? Math.round(total * 0.93) : 0);
   // Form de-materializes, success materializes.
   phase.value = 'form-out';
   setTimeout(() => { phase.value = 'success'; }, SWAP_MS);
@@ -458,7 +460,7 @@ onBeforeUnmount(() => {
         @click="dismissSuccess"
         title="Click to keep scouting"
       >
-        <div class="nge-tagmode-success-glyph" v-html="pinSvgBig"></div>
+        <img class="nge-tagmode-success-scythes" :src="superScytheUrl" alt="" />
         <div class="nge-tagmode-success-title">{{ lastTag?.label }} candidate tagged</div>
         <div class="nge-tagmode-success-pos">({{ lastTag?.pos.join(', ') }})</div>
         <div class="nge-tagmode-success-hint">logged for the Scythes · click to keep scouting</div>
@@ -793,7 +795,13 @@ onBeforeUnmount(() => {
   cursor: pointer;
   border-color: rgba(96, 192, 96, 0.4);
 }
-.nge-tagmode-success-glyph { line-height: 1; filter: drop-shadow(0 0 8px rgba(53, 181, 255, 0.6)); }
+/* Crossed scythes (Amy's render), the Scythes' crest on a logged tag. */
+.nge-tagmode-success-scythes {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(176, 136, 255, 0.55));
+}
 .nge-tagmode-success-title {
   font-family: 'Orbitron', 'Inter', sans-serif;
   font-size: 13px;
