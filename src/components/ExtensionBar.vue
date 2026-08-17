@@ -1134,13 +1134,16 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 .nge-dataset-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 38px;
-  padding: 0 16px;
-  margin: 0 6px 0 2px;
-  background: none;
-  border: none;
-  border-radius: 4px;
+  gap: 7px;
+  /* Same pill as the AI button so the left cluster reads as one family
+     (it was a bare 38px text row beside a 30px pill, which read as
+     mashed-together labels — Amy's top-left spacing report). */
+  height: 30px;
+  padding: 0 14px;
+  margin: 0 8px 0 4px;
+  background: rgba(74, 158, 255, 0.08);
+  border: 1px solid rgba(74, 158, 255, 0.2);
+  border-radius: 14px;
   color: #cfdcef;
   font-family: 'Orbitron', 'Inter', sans-serif;
   font-size: 11px;
@@ -1173,7 +1176,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   /* Matches .nge-icon-btn height; the pill keeps its own inner height via
      border-radius so it still reads as a button, not an icon. */
   height: 30px;
-  margin: 0 6px;
+  margin: 0 4px 0 10px;
   padding: 0 14px;
   background: rgba(74, 158, 255, 0.12);
   border: 1px solid rgba(74, 158, 255, 0.28);
