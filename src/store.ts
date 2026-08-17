@@ -1482,6 +1482,16 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       }
       const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === TAG_LAYER_NAME);
 
+      // Fat glowing markers so tags read clearly in the 3D projection too —
+      // neuroglancer's default 5px point dots are nearly invisible there
+      // (Amy: "I couldn't see the point in 3D").
+      const TAG_SHADER = 'void main() {\n' +
+        '  setColor(vec4(0.21, 0.71, 1.0, 0.95));\n' +
+        '  setPointMarkerSize(16.0);\n' +
+        '  setPointMarkerBorderWidth(2.0);\n' +
+        '  setPointMarkerBorderColor(vec4(0.85, 0.97, 1.0, 0.9));\n' +
+        '}\n';
+
       if (!managed) {
         if (!points.length) return;
         // One-time creation through the state route. Later updates never
@@ -1492,6 +1502,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
           name: TAG_LAYER_NAME,
           annotations: points.map(p => ({ ...p, type: 'point' })),
           annotationColor: '#35b5ff',
+          shader: TAG_SHADER,
         }];
         viewer.state.restoreState(state);
         return;
@@ -1499,6 +1510,11 @@ export const useIssueTagStore = defineStore('issueTags', () => {
 
       // In-place update: clear + re-add on the layer's local source.
       const userLayer: any = managed.layer;
+      // Layers created before the shader existed get it retrofitted here.
+      try {
+        const shaderState = userLayer?.annotationDisplayState?.shader;
+        if (shaderState && shaderState.value !== TAG_SHADER) shaderState.restoreState(TAG_SHADER);
+      } catch {}
       const src = userLayer?.localAnnotations;
       if (!src) return;
       src.clear();

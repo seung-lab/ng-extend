@@ -21,21 +21,36 @@
   border-color: rgba(20, 30, 50, 0.4) !important;
 }
 
-/* ── Coordinate display (top-left x, y, z) ── */
+/* ── Coordinate display (top-left x, y, z) ──
+   Condensed chip (Amy 2026-08-12): no "(4nm)" scale labels, just
+   "x 70341  y 64982  z 885" in a slim holo box, sky blue not orange. */
 .neuroglancer-position-widget {
-  background: transparent !important;
-  border-radius: 6px;
-  padding: 4px 8px;
+  background: rgba(6, 12, 24, 0.72) !important;
+  border: 1px solid rgba(53, 181, 255, 0.28);
+  border-radius: 7px;
+  box-shadow: inset 0 0 10px rgba(53, 181, 255, 0.06);
+  padding: 2px 9px;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.82em;
+  display: inline-flex;
+  align-items: center;
 }
 
+/* The "(4nm)" / "(40nm)" scale annotations: gone. The dimension scales are
+   still visible and editable in the layer side panel's source tab. */
+.neuroglancer-position-dimension-scale-container { display: none !important; }
+
+.neuroglancer-position-dimension { margin-right: 10px; }
+.neuroglancer-position-dimension:last-of-type { margin-right: 4px; }
+
 .neuroglancer-position-dimension-name {
-  color: rgba(74, 158, 255, 0.7) !important;
+  color: rgba(53, 181, 255, 0.95) !important;
+  margin-right: 4px;
 }
 
 .neuroglancer-position-dimension-coordinate {
-  color: rgba(200, 210, 230, 0.9) !important;
+  color: #dfe9ff !important;
+  font-weight: 600;
 }
 
 /* ── Mouse-hover coordinate readout (orange "x y z" that appears while
@@ -117,6 +132,17 @@
 .neuroglancer-layer-item-label {
   font-size: 12px;
   line-height: 1;
+  /* Kill the vendored gray label box, it read as a box-in-a-box. */
+  background: transparent !important;
+  padding-right: 0 !important;
+}
+
+/* Pick-enabled layers used stock neuroglancer magenta (#939), the one loud
+   off-palette square in the layer bar. Same state, site blue. */
+.neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label {
+  background: rgba(53, 181, 255, 0.18) !important;
+  border-radius: 3px;
+  padding: 1px 4px !important;
 }
 
 /* Close/delete icons: present but quiet until the chip is hovered. */

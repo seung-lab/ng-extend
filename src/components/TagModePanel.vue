@@ -19,11 +19,13 @@ import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
+import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 const pinSvgBig = scoutPinSvg('#35b5ff', 'width:34px;height:34px;');
 
 const emit = defineEmits({ hide: null });
+const wrapEl = ref<HTMLElement | null>(null);
 const tagStore = useIssueTagStore();
 const { activeSegId } = storeToRefs(useSegmentAnnotationStore());
 
@@ -127,6 +129,9 @@ async function drop(position: number[]) {
   clearPending();
   const label = c.label.replace(/^\S+\s/, '');
   lastTag.value = { label, pos: position };
+  // Particle burst streak from the panel on every successful submit.
+  const br = wrapEl.value?.getBoundingClientRect();
+  if (br) runParticleBurst(br.left + br.width / 2, br.top + br.height / 2);
   if (collapsed.value) {
     // The mini strip has no room for the success box; a flash does the job.
     showFlash(`✓ ${label} candidate tagged`);
@@ -156,6 +161,8 @@ const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1');
 function setCollapsed(v: boolean) {
   collapsed.value = v;
   try { localStorage.setItem(COLLAPSED_KEY, v ? '1' : '0'); } catch {}
+  // Expanding replays the opening beam; the collapse is quiet.
+  if (!v) requestAnimationFrame(() => { if (wrapEl.value) runPanelTrace(wrapEl.value); });
 }
 function miniChoose(key: string) {
   choose(key);
@@ -244,6 +251,8 @@ function onPointerCapture(e: PointerEvent) {
 onMounted(() => {
   // Show existing open tags in the volume the moment tag mode opens.
   tagStore.syncTagLayer();
+  // Cell Library's opening beam, running the panel boundary once.
+  requestAnimationFrame(() => { if (wrapEl.value) runPanelTrace(wrapEl.value); });
   // Capture phase so the T press never reaches neuroglancer's key bindings.
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);

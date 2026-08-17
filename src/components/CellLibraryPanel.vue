@@ -2107,6 +2107,8 @@ const panelStyle = computed(() => ({
   background: none; border: none; color: #7a8db0; font-size: 15px;
   cursor: pointer; padding: 0 6px; line-height: 1;
   transition: color 0.12s, transform 0.3s;
+  /* Sit with the × on the right edge, not floating mid-bar. */
+  margin-left: auto;
 }
 .nge-cl-gear:hover { color: #cfe0f5; transform: rotate(40deg); }
 
@@ -2121,6 +2123,11 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(100, 200, 255, 0.25);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
   display: flex; flex-direction: column; gap: 6px;
+  /* The panel clips its children (overflow hidden for rounded corners), so
+     the popover scrolls inside the panel's height instead of getting cut. */
+  max-height: calc(100% - 52px);
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .nge-cl-tabsettings-title {
   font-family: 'Orbitron', 'Inter', sans-serif;

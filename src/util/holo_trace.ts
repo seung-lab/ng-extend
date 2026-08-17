@@ -156,6 +156,85 @@ export function runPanelTrace(host: HTMLElement, PAD = 0): void {
   raf = requestAnimationFrame(draw);
 }
 
+/**
+ * A one-shot radial particle burst with light streaks, same additive-glow
+ * family as the panel trace. Fired at a screen point (e.g. the tag panel on
+ * submit). Sky blue by default; pass "r,g,b" to recolor.
+ */
+export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): void {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const SIZE = 280, HALF = SIZE / 2, DUR = 750;
+
+  const cv = document.createElement('canvas');
+  cv.style.cssText = `position:fixed;left:${cx - HALF}px;top:${cy - HALF}px;` +
+    `width:${SIZE}px;height:${SIZE}px;pointer-events:none;z-index:100000;`;
+  cv.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  if (!ctx) { cv.remove(); return; }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = SIZE * dpr; cv.height = SIZE * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const parts = Array.from({ length: 30 }, () => {
+    const a = Math.random() * 6.283;
+    return {
+      a,
+      sp: 46 + Math.random() * 92,          // px travelled over the burst
+      r: 0.8 + Math.random() * 1.6,
+      drag: 0.5 + Math.random() * 0.5,      // eases the tail of the flight
+    };
+  });
+  const streaks = Array.from({ length: 9 }, () => ({
+    a: Math.random() * 6.283,
+    len: 60 + Math.random() * 70,
+  }));
+
+  let raf = 0;
+  const t0 = performance.now();
+  function draw(now: number) {
+    const k = (now - t0) / DUR;
+    if (k >= 1) { cancelAnimationFrame(raf); cv.remove(); return; }
+    ctx!.clearRect(0, 0, SIZE, SIZE);
+    ctx!.globalCompositeOperation = 'lighter';
+
+    // Streaks: fast radial lines that live in the first third.
+    if (k < 0.34) {
+      const q = k / 0.34, head = q * q * (3 - 2 * q);
+      ctx!.lineCap = 'round';
+      for (const s of streaks) {
+        const r1 = 6 + head * s.len, r2 = 6 + head * s.len * 0.55;
+        ctx!.beginPath();
+        ctx!.moveTo(HALF + Math.cos(s.a) * r2, HALF + Math.sin(s.a) * r2);
+        ctx!.lineTo(HALF + Math.cos(s.a) * r1, HALF + Math.sin(s.a) * r1);
+        ctx!.lineWidth = 1.4;
+        ctx!.strokeStyle = `rgba(${rgb},${((1 - q) * 0.55).toFixed(3)})`;
+        ctx!.stroke();
+      }
+      // hot core flash
+      const core = ctx!.createRadialGradient(HALF, HALF, 0, HALF, HALF, 26 * (1 - q) + 4);
+      core.addColorStop(0, `rgba(220,240,255,${(0.5 * (1 - q)).toFixed(3)})`);
+      core.addColorStop(1, `rgba(${rgb},0)`);
+      ctx!.fillStyle = core;
+      ctx!.fillRect(0, 0, SIZE, SIZE);
+    }
+
+    // Particles: fly out with ease-out, fade with (1-k)^2.
+    for (const p of parts) {
+      const eo = 1 - Math.pow(1 - k, 1.6 + p.drag);
+      const x = HALF + Math.cos(p.a) * p.sp * eo;
+      const y = HALF + Math.sin(p.a) * p.sp * eo;
+      const al = (1 - k) * (1 - k) * 0.8;
+      ctx!.beginPath();
+      ctx!.arc(x, y, p.r * (1 - k * 0.5), 0, 6.283);
+      ctx!.fillStyle = `rgba(${rgb},${al.toFixed(3)})`;
+      ctx!.fill();
+    }
+    raf = requestAnimationFrame(draw);
+  }
+  raf = requestAnimationFrame(draw);
+}
+
 /** A "+1" that floats up from a click and flies to the profile button. */
 export function flyPlusOne(fromX: number, fromY: number, text = '+1'): void {
   const el = document.createElement('div');
