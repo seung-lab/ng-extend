@@ -611,22 +611,10 @@ export function flyPlusOne(fromX: number, fromY: number, text = '+1'): void {
  * Grim's signature: a scythe sweeps through at (x, y) with a crescent
  * slash of light. Played when a Cut tag is resolved.
  */
-export function runScytheSwing(x: number, y: number, imgUrl: string): void {
+export function runScytheSwing(x: number, y: number, _imgUrl?: string): void {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-  const img = document.createElement('img');
-  img.src = imgUrl;
-  img.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:46px;height:46px;` +
-    `z-index:100000;pointer-events:none;transform-origin:50% 92%;` +
-    `filter:drop-shadow(0 0 7px rgba(53,181,255,0.65));`;
-  document.body.appendChild(img);
-  img.animate([
-    { transform: 'translate(-50%,-88%) rotate(-75deg) scale(0.7)', opacity: 0, offset: 0 },
-    { transform: 'translate(-50%,-88%) rotate(-55deg) scale(1)', opacity: 1, offset: 0.22 },
-    { transform: 'translate(-50%,-88%) rotate(55deg) scale(1)', opacity: 1, offset: 0.72 },
-    { transform: 'translate(-50%,-88%) rotate(75deg) scale(0.85)', opacity: 0, offset: 1 },
-  ], { duration: 540, easing: 'cubic-bezier(0.5, 0, 0.3, 1)' }).onfinish = () => img.remove();
-
-  // The crescent slash the blade leaves behind.
+  // Amy 2026-08-17: the swinging scythe image is retired, the crescent
+  // slash streak alone is the effect.
   const S = 150, HALF = S / 2;
   const cv = document.createElement('canvas');
   cv.style.cssText = `position:fixed;left:${x - HALF}px;top:${y - HALF}px;width:${S}px;height:${S}px;` +

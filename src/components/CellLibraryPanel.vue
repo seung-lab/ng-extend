@@ -1260,12 +1260,15 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'ai',        label: 'AI' },
   { key: 'links',     label: 'My Saved Links' },
 ];
+/** Hidden by default (still in the gear picker): the tab bar was cropping
+ *  at 9 tabs, and Completed is the least-visited (Amy 2026-08-17). */
+const DEFAULT_HIDDEN_CL_TABS = ['completed'];
 const visibleTabs = ref<string[]>((() => {
   try {
     const saved = JSON.parse(localStorage.getItem(CL_TABS_KEY) || 'null');
     if (Array.isArray(saved) && saved.length) return saved;
   } catch {}
-  return ALL_CL_TABS.map(t => t.key);
+  return ALL_CL_TABS.map(t => t.key).filter(k => !DEFAULT_HIDDEN_CL_TABS.includes(k));
 })());
 const showTabSettings = ref(false);
 function toggleTab(key: string) {
