@@ -15,6 +15,7 @@ import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
 import pinVtkUrl from '../static/tags/pin.vtk';
 import pinOtherVtkUrl from '../static/tags/pin-other.vtk';
+import scytheVtkUrl from '../static/tags/scythe.vtk';
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 import {Uint64} from "neuroglancer/util/uint64";
 
@@ -1514,15 +1515,16 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     return {verts: Float32Array.from(verts), faces, colors};
   }
 
-  let pinMeshCache: Promise<{main: PinMesh; other: PinMesh | null} | null> | null = null;
+  let pinMeshCache: Promise<{main: PinMesh; other: PinMesh | null; scythe: PinMesh | null} | null> | null = null;
   function loadPinMeshes() {
     if (!pinMeshCache) {
-      pinMeshCache = Promise.all([fetch(pinVtkUrl), fetch(pinOtherVtkUrl)]).then(async ([r1, r2]) => {
+      pinMeshCache = Promise.all([fetch(pinVtkUrl), fetch(pinOtherVtkUrl), fetch(scytheVtkUrl)]).then(async ([r1, r2, r3]) => {
         if (!r1.ok) return null;
         const main = parsePinVtk(await r1.text());
         if (!main) return null;
         const other = r2.ok ? parsePinVtk(await r2.text()) : null;
-        return {main, other};
+        const scythe = r3.ok ? parsePinVtk(await r3.text()) : null;
+        return {main, other, scythe};
       }).catch(() => null);
     }
     return pinMeshCache;
@@ -1624,17 +1626,24 @@ export const useIssueTagStore = defineStore('issueTags', () => {
 
       const meshes = await loadPinMeshes();
       if (!meshes) return;
-      // Amy 2026-08-17: the simple location icon is THE pin for every type,
-      // colorized per tag type (blue Cut, green Extend, purple Other). The
+      // Amy 2026-08-17: Cut tags plant Grim's crossed scythes in their
+      // natural metal colors (the shape carries the meaning); Extend and
+      // Other plant the simple location icon tinted green / purple. The
       // castle pin stays shipped for future use.
       const pinMesh = meshes.other ?? meshes.main;
+      const meshFor = (tagType?: string) =>
+        (tagType === 'merger' && meshes.scythe) ? meshes.scythe : pinMesh;
+      const tintFor = (tagType?: string) =>
+        (tagType === 'merger' && meshes.scythe) ? null : pinTint(tagType);
       const instances = shown.map(t => ({
-        mesh: pinMesh, pos: toNm(t.point), yaw: pinYaw(t.id), lift: 0,
-        tint: pinTint(t.tagType),
+        mesh: meshFor(t.tagType), pos: toNm(t.point), yaw: pinYaw(t.id), lift: 0,
+        tint: tintFor(t.tagType),
       }));
       // The pending pin hovers half a micron above its point until Submit
       // plants it, a placed-but-not-saved tag literally hasn't landed yet.
-      if (preview) instances.push({mesh: pinMesh, pos: toNm(preview), yaw: 0, lift: 500, tint: pinTint(previewType)});
+      if (preview) instances.push({
+        mesh: meshFor(previewType), pos: toNm(preview), yaw: 0, lift: 500, tint: tintFor(previewType),
+      });
 
       const vtkText = buildPinVtk(instances);
       const dataUrl = 'data:application/octet-stream;base64,' + btoa(vtkText);
