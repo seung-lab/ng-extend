@@ -5,7 +5,7 @@
  * Switching loads new neuroglancer layers + updates CAVE config automatically.
  */
 import { ref, onMounted } from 'vue';
-import { DATASETS, switchToDataset, type DatasetEntry } from '../datasets';
+import { DATASETS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry } from '../datasets';
 
 const emit = defineEmits({ hide: null });
 
@@ -15,19 +15,16 @@ const currentDatasetId = ref('');
 
 function detectCurrentDataset() {
   try {
-    const viewer = (window as any)['viewer'];
-    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
-      const name = ml.name ?? '';
-      const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
-      // Match by layer name or URL
-      for (const ds of DATASETS) {
-        const segLayer = ds.layers.find((l: any) => l.type === 'segmentation');
-        if (segLayer && (segLayer.name === name || (typeof segLayer.source === 'object' && url.includes(ds.id)))) {
-          currentDatasetId.value = ds.id;
-          return;
-        }
-      }
-    }
+    // Exact match on the ACTIVE (visible, non-archived) seg layer name.
+    // The old scan walked every managed layer with a fuzzy URL match, so an
+    // archived layer from a previous dataset (or a URL merely containing
+    // the id, like minnie65_phase3_v1 containing "minnie65") stamped the
+    // Active badge on the wrong card.
+    const name = currentSegLayerName();
+    const exact = findDatasetBySegName(name);
+    if (exact) { currentDatasetId.value = exact.id; return; }
+    const canonEntry = findDatasetByCanonical(canonicalDataset(name));
+    if (canonEntry) { currentDatasetId.value = canonEntry.id; return; }
   } catch {}
   currentDatasetId.value = '';
 }

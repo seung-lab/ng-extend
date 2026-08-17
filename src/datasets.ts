@@ -148,7 +148,13 @@ export function findDatasetBySegName(name: string): DatasetEntry | undefined {
  * value to update on a dataset switch should also touch a reactive layer signal
  * (e.g. `useLayersStore().activeLayers`).
  */
-export function currentSegLayerName(): string {
+/** The managed segmentation layer currently on screen (visible and not
+ *  archived), falling back to the first segmentation layer. Dataset
+ *  switches leave the previous segmentation layer archived in
+ *  managedLayers, so "first seg layer" heuristics silently target the OLD
+ *  dataset: segments jumped to on MICrONS Live were being added to the
+ *  archived public minnie layer. */
+export function currentSegLayer(): any {
   try {
     const viewer = (window as any)['viewer'];
     const layers = viewer?.layerManager?.managedLayers ?? [];
@@ -160,10 +166,14 @@ export function currentSegLayerName(): string {
     for (const ml of layers) {
       if (!isSeg(ml)) continue;
       if (!firstSeg) firstSeg = ml;
-      if (ml.visible !== false && !ml.archived) return ml.name ?? '';
+      if (ml.visible !== false && !ml.archived) return ml;
     }
-    return firstSeg?.name ?? '';
-  } catch { return ''; }
+    return firstSeg;
+  } catch { return null; }
+}
+
+export function currentSegLayerName(): string {
+  return currentSegLayer()?.name ?? '';
 }
 
 /**
@@ -215,6 +225,11 @@ const EXTRA_SHORT_LABELS: Record<string, string> = {
 
 export function datasetDisplayName(name: string | undefined | null): string {
   if (!name) return '';
+  // Exact layer-name match first: two entries can share a canonical tag
+  // (public MICrONS and MICrONS Live), and canonicalising first would
+  // always label both as the first entry.
+  const exact = findDatasetBySegName(name);
+  if (exact) return exact.shortLabel;
   const canon = canonicalDataset(name);
   const entry = findDatasetByCanonical(canon);
   return entry?.shortLabel ?? EXTRA_SHORT_LABELS[canon] ?? name;
@@ -228,6 +243,8 @@ export function findDatasetByCanonical(canon: string): DatasetEntry | undefined 
 /** Top-bar abbreviation for any dataset-name variant ('' when unknown). */
 export function datasetAbbrev(name: string | undefined | null): string {
   if (!name) return '';
+  const exact = findDatasetBySegName(name);
+  if (exact) return exact.abbrev;
   const canon = canonicalDataset(name);
   return findDatasetByCanonical(canon)?.abbrev ?? EXTRA_SHORT_LABELS[canon] ?? '';
 }

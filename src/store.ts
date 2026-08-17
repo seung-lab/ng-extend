@@ -8,7 +8,7 @@ import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/spec
 import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
-import {currentDatasetTag, canonicalDataset} from './datasets';
+import {currentDatasetTag, canonicalDataset, currentSegLayer} from './datasets';
 import {supabase} from './supabase';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
@@ -981,18 +981,11 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
       }
     }
 
-    // Select the segment in the first segmentation layer
+    // Select the segment in the ACTIVE segmentation layer. Dataset switches
+    // leave the old layer archived in managedLayers, and "first seg layer"
+    // used to add the root to that archived layer instead.
     try {
-      const segLayer = viewer.layerManager.managedLayers.find(
-        (x: any) => {
-          const layer = x.layer;
-          if (!layer) return false;
-          const className = layer.constructor?.name || '';
-          return className.includes('Segmentation') ||
-            layer.type === 'segmentation' ||
-            x.initialSpecification?.type === 'segmentation';
-        },
-      );
+      const segLayer = currentSegLayer();
       if (!segLayer?.layer) {
         console.warn('[cellHistory] No segmentation layer found');
       } else {

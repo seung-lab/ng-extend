@@ -19,7 +19,7 @@ import {
 import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
-import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -1085,15 +1085,9 @@ async function switchToAiDataset(ds: DatasetEntry) {
 function ensureSegVisible(segId: string) {
   const attempt = () => {
     try {
-      const viewer: any = (window as any)['viewer'];
-      const segLayer = viewer?.layerManager?.managedLayers?.find((x: any) => {
-        const layer = x.layer;
-        if (!layer) return false;
-        const className = layer.constructor?.name || '';
-        return className.includes('Segmentation') ||
-          layer.type === 'segmentation' ||
-          x.initialSpecification?.type === 'segmentation';
-      });
+      // The ACTIVE seg layer: the first-seg-layer heuristic used to add the
+      // root to the archived layer left behind by a dataset switch.
+      const segLayer = currentSegLayer();
       const groupState = segLayer?.layer?.displayState?.segmentationGroupState?.value;
       if (groupState?.visibleSegments) {
         const seg = Uint64.parseString(segId);
