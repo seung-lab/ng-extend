@@ -1936,14 +1936,20 @@ const panelStyle = computed(() => ({
         <!-- ═══ AI TAB (model-detected merge-error candidates) ═══ -->
         <div v-else-if="filter === 'ai'" class="nge-cl-list">
           <div class="nge-cl-quest" style="margin-top: 0;">
-            <div class="nge-cl-quest-title">🤖 AI candidates</div>
-            <div class="nge-cl-tags-hint">
-              Merge errors suspected by the Dorkenwald and Fuming model, hottest
-              first. Confidence is the model's verify probability: viewer
-              markers heat from cool blue to golden yellow as it rises, and
-              each candidate stands as a golden shard in 3D. Jump to a
-              candidate to see the proposed split as a red and blue point
-              constellation, fix it, and mark it resolved.
+            <div class="nge-cl-quest-title">🤖 AI-predicted reconstruction errors</div>
+            <div class="nge-cl-ai-credit">from the Dorkenwald and Fuming model</div>
+            <div class="nge-cl-ai-scale">
+              <span class="nge-cl-ai-dot nge-cl-ai-dot--cool"></span>
+              <div class="nge-cl-ai-scale-bar"></div>
+              <span class="nge-cl-ai-dot nge-cl-ai-dot--hot"></span>
+            </div>
+            <div class="nge-cl-ai-scale-labels">
+              <span>less confident</span>
+              <span>more confident</span>
+            </div>
+            <div class="nge-cl-tags-hint" style="margin-top: 8px;">
+              Jump ↗ to a candidate to see the proposed split as a red and blue
+              point constellation, fix it, and mark it resolved.
             </div>
           </div>
 
@@ -3175,6 +3181,32 @@ select.nge-cl-response-input:hover {
 .nge-cl-btn--split-active {
   background: rgba(255, 140, 60, 0.2) !important;
   border-color: rgba(255, 160, 80, 0.8) !important;
+}
+.nge-cl-ai-credit {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.45);
+  margin: -4px 0 9px;
+}
+.nge-cl-ai-scale { display: flex; align-items: center; gap: 7px; }
+.nge-cl-ai-scale-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #4a9eff, #ffd700);
+}
+.nge-cl-ai-dot { border-radius: 50%; flex-shrink: 0; }
+.nge-cl-ai-dot--cool { width: 8px; height: 8px; background: #4a9eff; }
+.nge-cl-ai-dot--hot {
+  width: 14px; height: 14px;
+  background: #ffd700;
+  box-shadow: 0 0 7px rgba(255, 215, 0, 0.6);
+}
+.nge-cl-ai-scale-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 3px;
 }
 .nge-cl-ai-group {
   display: flex;
