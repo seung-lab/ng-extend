@@ -82,7 +82,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'cells',       emoji: '🧬', img: neuronIcon,      label: 'Cell Library' },
   { id: 'batch',       emoji: '📦', svg: BATCH_SVG,       label: 'Batch Processor' },
   { id: 'help',        emoji: '🔍', svg: HELP_SVG,        label: 'Second Opinion Requests' },
-  { id: 'tags',        emoji: '📍', svg: TAG_SVG,         label: 'Tag Mode (flag mergers and missing branches)' },
+  { id: 'tags',        emoji: '📍', svg: TAG_SVG,         label: 'Tag Mode (Shift+T)' },
   { id: 'feed',        emoji: '📡', svg: FEED_SVG,        label: 'Activity Feed' },
   { id: 'notif',       emoji: '🔔', svg: NOTIF_SVG,       label: 'Notifications' },
   { id: 'chat',        emoji: '💬', svg: CHAT_SVG,        label: 'Chat' },
