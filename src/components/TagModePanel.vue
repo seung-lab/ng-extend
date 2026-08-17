@@ -337,6 +337,9 @@ function isTypingTarget(e: Event): boolean {
   const t = e.target as HTMLElement | null;
   return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 }
+/** For tap-T-to-arm: when the T press began and whether it placed a point. */
+let tDownAt = 0;
+let tUsedForClick = false;
 function onKeyDown(e: KeyboardEvent) {
   if (isTypingTarget(e)) return;
   // Shift+T belongs to the panel toggle in ExtensionBar; never swallow it.
@@ -347,6 +350,7 @@ function onKeyDown(e: KeyboardEvent) {
     // the cube tool's status bar instead of arming the tag click.
     e.preventDefault();
     e.stopImmediatePropagation();
+    if (!e.repeat) { tDownAt = performance.now(); tUsedForClick = false; }
     tHeld.value = true;
     document.body.classList.add('nge-tag-armed');
   }
@@ -357,6 +361,9 @@ function onKeyUp(e: KeyboardEvent) {
     if (!isTypingTarget(e) && !e.shiftKey) e.stopImmediatePropagation();
     tHeld.value = false;
     document.body.classList.remove('nge-tag-armed');
+    // A quick TAP of T (no click while held) toggles Click-to-tag, the
+    // keyboard shortcut for the arm button.
+    if (!tUsedForClick && performance.now() - tDownAt < 250) armOnce();
   }
 }
 // pointerdown in the CAPTURE phase: neuroglancer handles mousedown itself
@@ -370,6 +377,7 @@ function onPointerCapture(e: PointerEvent) {
   e.preventDefault();
   e.stopPropagation();
   if (armedOnce.value) { armedOnce.value = false; document.body.classList.remove('nge-tag-armed'); }
+  tUsedForClick = true;
   placePoint(pos, e.clientX, e.clientY);
 }
 
@@ -412,7 +420,7 @@ onBeforeUnmount(() => {
         <button
           class="nge-tagmode-mini-act"
           :class="{ 'nge-tagmode-mini-act--on': armedOnce || tHeld }"
-          :title="armedOnce ? 'Click the data to place the point' : 'Place point with next click'"
+          :title="armedOnce ? 'Click the data to place the point (tap T to disarm)' : 'Place point with next click (tap T)'"
           @click="armOnce"
         ><span class="nge-tagmode-pin" v-html="pinSvg"></span></button>
         <button class="nge-tagmode-mini-act nge-tagmode-mini-submit" :disabled="saving" title="Submit tag" @click="submit">✓</button>
@@ -435,7 +443,7 @@ onBeforeUnmount(() => {
           <button class="nge-tagmode-close" title="Exit tag mode (Esc)" @pointerdown.stop @click="emit('hide')">×</button>
         </div>
         <div class="nge-tagmode-hint">
-          Pick a type, then <b>hold T and click</b> the spot (or arm <b>Place by click</b>) to set the point. <b>Submit</b> saves it.
+          Pick a type, then <b>hold T and click</b> the spot, or <b>tap T</b> to arm Click to tag. <b>Submit</b> saves it.
         </div>
         <div class="nge-tagmode-chips">
           <button
@@ -569,14 +577,18 @@ onBeforeUnmount(() => {
   transform: scale(0.985);
 }
 .nge-tagmode--success { transition: opacity 0.45s ease, transform 0.45s ease; }
-/* The roundabout send-off: a quick spin-and-shrink while the lap runs. */
+/* The send-off: scifi-ui's holodialog-materialize played in reverse, the
+   box blooms bright, blurs, and lifts away (exact keyframe values from
+   hologram.css, order mirrored). The beam then draws the form back in. */
 .nge-tagmode--spinout {
-  animation: nge-spinout 0.47s cubic-bezier(0.5, 0, 0.75, 0.4) both !important;
+  animation: nge-dematerialize 0.42s cubic-bezier(0.7, 0, 0.84, 0.16) both !important;
   pointer-events: none;
 }
-@keyframes nge-spinout {
-  0%   { opacity: 1; transform: rotate(0deg) scale(1); filter: blur(0); }
-  100% { opacity: 0; transform: rotate(-7deg) scale(0.88); filter: blur(3px); }
+@keyframes nge-dematerialize {
+  0%   { opacity: 1; transform: scale(1) translateY(0); filter: blur(0) brightness(1); }
+  40%  { opacity: 1; transform: scale(0.99); filter: blur(0) brightness(1.1); }
+  70%  { opacity: 0.6; filter: blur(3px) brightness(1.5); }
+  100% { opacity: 0; transform: scale(1.04) translateY(-10px); filter: blur(20px) brightness(3); }
 }
 .nge-tagmode--frameless {
   border-color: transparent !important;

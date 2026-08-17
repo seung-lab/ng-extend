@@ -1730,14 +1730,14 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       }
       const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === TAG_LAYER_NAME);
 
-      // Fat glowing markers so tags read clearly in the 3D projection too —
-      // neuroglancer's default 5px point dots are nearly invisible there
-      // (Amy: "I couldn't see the point in 3D").
+      // Subtle guide dots: the 3D pins are the tag's face (Amy: the big
+      // blue dots were covering the cool 3D icons). Small and translucent,
+      // they mark the spot in the 2D panes and whisper in the projection.
       const TAG_SHADER = 'void main() {\n' +
-        '  setColor(vec4(0.21, 0.71, 1.0, 0.95));\n' +
-        '  setPointMarkerSize(22.0);\n' +
-        '  setPointMarkerBorderWidth(2.0);\n' +
-        '  setPointMarkerBorderColor(vec4(0.85, 0.97, 1.0, 0.9));\n' +
+        '  setColor(vec4(0.21, 0.71, 1.0, 0.55));\n' +
+        '  setPointMarkerSize(7.0);\n' +
+        '  setPointMarkerBorderWidth(1.0);\n' +
+        '  setPointMarkerBorderColor(vec4(0.85, 0.97, 1.0, 0.5));\n' +
         '}\n';
 
       if (!managed) {

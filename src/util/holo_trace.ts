@@ -527,7 +527,10 @@ export function runBurstBuild(
     onPhase?.('beams'); onPhase?.('done');
     return 0;
   }
-  const STREAM = 750, GATHER = 180, BEAMS = 700, FADE = 220;
+  // Explosion, a breath of calm, then the smooth flow home (Amy: "some
+  // explosion and a moment of calm before they smoothly flow").
+  const EXPLODE = 280, CALM = 260, FLOW = 720, GATHER = 150, BEAMS = 700, FADE = 220;
+  const STREAM = EXPLODE + CALM + FLOW;
   const TOTAL = STREAM + GATHER + BEAMS + FADE;
   const R = 15;
 
@@ -543,12 +546,18 @@ export function runBurstBuild(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const N = 56;
-  const parts = Array.from({ length: N }, (_, i) => ({
-    toTop: i % 2 === 0,
-    delay: (i / N) * 0.5,          // staggered departure = a stream, not a bang
-    side: ((i >> 1) % 2 ? 1 : -1) * (4 + ((i * 7) % 12)),  // parallel lane offset
-    r: 1.2 + ((i * 13) % 10) / 7,
-  }));
+  const parts = Array.from({ length: N }, (_, i) => {
+    const a = (i / N) * 6.283 + (i % 3) * 0.7;
+    return {
+      toTop: i % 2 === 0,
+      a,
+      reach: 42 + ((i * 29) % 70),          // how far the explosion throws it
+      delay: ((i * 17) % N) / N * 0.3,      // flow departure stagger
+      wob: ((i % 5) - 2) * 7,               // lateral bow on the flow home
+      drift: ((i * 11) % 7) - 3,            // idle drift during the calm
+      r: 1.2 + ((i * 13) % 10) / 7,
+    };
+  });
 
   let beamsFired = false, doneFired = false;
   let raf = 0;
@@ -571,31 +580,54 @@ export function runBurstBuild(
     if (!rect) { raf = requestAnimationFrame(draw); return; }
     const [top, bot] = targets(rect);
 
-    // ── Streams: each particle flies origin → its midpoint along a bezier,
-    // in staggered lanes, easing in and out. Arrivals feed the charge.
+    // ── Act 1, explosion: thrown out radially with ease-out.
+    // ── Act 2, calm: hang and drift, breathing.
+    // ── Act 3, flow: each glides home to its midpoint on a soft bezier.
     let charge = 0;
     const streamEnd = STREAM + GATHER;
     for (const p of parts) {
-      const dur = STREAM * 0.55;
-      const start = p.delay * (STREAM - dur);
-      const lt = (t - start) / dur;
-      if (lt <= 0) continue;
       const dst = p.toTop ? top : bot;
+      // scatter position from the explosion
+      const eq = Math.min(1, t / EXPLODE);
+      const eo = 1 - Math.pow(1 - eq, 2.2);
+      let sx = ox + Math.cos(p.a) * p.reach * eo;
+      let sy = oy + Math.sin(p.a) * p.reach * eo;
+      if (t < EXPLODE + CALM) {
+        // during calm, a slow breathing drift around the scatter point
+        const calmT = Math.max(0, t - EXPLODE);
+        sx += Math.sin(now / 260 + p.a * 3) * 2.5 + p.drift * (calmT / CALM) * 0.6;
+        sy += Math.cos(now / 300 + p.a * 2) * 2.2;
+        ctx!.beginPath();
+        ctx!.arc(sx, sy, p.r, 0, 6.283);
+        ctx!.fillStyle = `rgba(${rgb},${(0.8 * Math.min(1, eq * 2)).toFixed(3)})`;
+        ctx!.fill();
+        continue;
+      }
+      // flow home
+      const fStart = EXPLODE + CALM + p.delay * FLOW;
+      const fDur = FLOW * 0.7;
+      const lt = (t - fStart) / fDur;
+      if (lt <= 0) {
+        ctx!.beginPath();
+        ctx!.arc(sx, sy, p.r, 0, 6.283);
+        ctx!.fillStyle = `rgba(${rgb},0.8)`;
+        ctx!.fill();
+        continue;
+      }
       if (lt >= 1) { charge += 1; continue; }
       const e = lt < 0.5 ? 2 * lt * lt : 1 - Math.pow(-2 * lt + 2, 2) / 2;
-      // control point: sideways bow for a ribbon-like path
-      const mx = (ox + dst[0]) / 2 + p.side * 3, my = (oy + dst[1]) / 2 + p.side;
-      const x = (1 - e) * (1 - e) * ox + 2 * (1 - e) * e * mx + e * e * dst[0] + p.side * Math.sin(e * Math.PI);
-      const y = (1 - e) * (1 - e) * oy + 2 * (1 - e) * e * my + e * e * dst[1];
+      const mx = (sx + dst[0]) / 2 + p.wob, my = (sy + dst[1]) / 2 + p.wob * 0.4;
+      const x = (1 - e) * (1 - e) * sx + 2 * (1 - e) * e * mx + e * e * dst[0];
+      const y = (1 - e) * (1 - e) * sy + 2 * (1 - e) * e * my + e * e * dst[1];
       ctx!.beginPath();
       ctx!.arc(x, y, p.r, 0, 6.283);
-      ctx!.fillStyle = `rgba(${rgb},${(0.75 * Math.min(1, lt * 3)).toFixed(3)})`;
+      ctx!.fillStyle = `rgba(${rgb},0.82)`;
       ctx!.fill();
       // short comet tail along the path
-      const eb = Math.max(0, e - 0.06);
-      const bx = (1 - eb) * (1 - eb) * ox + 2 * (1 - eb) * eb * mx + eb * eb * dst[0] + p.side * Math.sin(eb * Math.PI);
-      const by = (1 - eb) * (1 - eb) * oy + 2 * (1 - eb) * eb * my + eb * eb * dst[1];
-      ctx!.strokeStyle = `rgba(${rgb},0.22)`;
+      const eb = Math.max(0, e - 0.07);
+      const bx = (1 - eb) * (1 - eb) * sx + 2 * (1 - eb) * eb * mx + eb * eb * dst[0];
+      const by = (1 - eb) * (1 - eb) * sy + 2 * (1 - eb) * eb * my + eb * eb * dst[1];
+      ctx!.strokeStyle = `rgba(${rgb},0.24)`;
       ctx!.lineWidth = p.r * 0.9;
       ctx!.beginPath(); ctx!.moveTo(bx, by); ctx!.lineTo(x, y); ctx!.stroke();
     }
