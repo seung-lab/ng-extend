@@ -339,6 +339,8 @@ function isTypingTarget(e: Event): boolean {
 }
 function onKeyDown(e: KeyboardEvent) {
   if (isTypingTarget(e)) return;
+  // Shift+T belongs to the panel toggle in ExtensionBar; never swallow it.
+  if (e.shiftKey) return;
   if (e.key === 't' || e.key === 'T') {
     // Swallow the key in the capture phase: neuroglancer's tool binder also
     // listens for T (Add cube) and was stealing the press, so T+click opened
@@ -352,7 +354,7 @@ function onKeyDown(e: KeyboardEvent) {
 }
 function onKeyUp(e: KeyboardEvent) {
   if (e.key === 't' || e.key === 'T') {
-    if (!isTypingTarget(e)) e.stopImmediatePropagation();
+    if (!isTypingTarget(e) && !e.shiftKey) e.stopImmediatePropagation();
     tHeld.value = false;
     document.body.classList.remove('nge-tag-armed');
   }

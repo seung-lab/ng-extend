@@ -53,6 +53,26 @@ function resolveTagFun(tag: IssueTag, e: MouseEvent) {
   // Grim salutes: resolving a Cut tag gets the scythe swing.
   if (tag.tagType === 'merger') runScytheSwing(e.clientX, e.clientY, scytheIcon);
   flyPlusOne(e.clientX, e.clientY);
+  // The moment of glory (Amy).
+  tagSuccessToast.value = true;
+  if (tagToastTimer) clearTimeout(tagToastTimer);
+  tagToastTimer = setTimeout(() => { tagSuccessToast.value = false; }, 2100);
+}
+const tagSuccessToast = ref(false);
+let tagToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Deleting a tag is destructive for everyone, so the trashcan asks first:
+ *  first click arms the row's confirm, which auto-disarms after 4s. */
+const confirmDeleteTagId = ref<string | null>(null);
+let confirmDeleteTimer: ReturnType<typeof setTimeout> | null = null;
+function askDeleteTag(tag: IssueTag) {
+  confirmDeleteTagId.value = tag.id;
+  if (confirmDeleteTimer) clearTimeout(confirmDeleteTimer);
+  confirmDeleteTimer = setTimeout(() => { confirmDeleteTagId.value = null; }, 4000);
+}
+function confirmDeleteTag(tag: IssueTag) {
+  tagStore.remove(tag.id);
+  confirmDeleteTagId.value = null;
 }
 
 const loading = ref(false);
@@ -1454,6 +1474,15 @@ const panelStyle = computed(() => ({
           <button class="nge-cl-close" @mousedown.stop @click="emit('hide')">×</button>
         </div>
 
+        <!-- Resolve celebration -->
+        <Transition name="nge-cl-tagwin">
+          <div v-if="tagSuccessToast" class="nge-cl-tagwin" @click="tagSuccessToast = false">
+            <div class="nge-cl-tagwin-glyph" v-html="tagPinSvg"></div>
+            <div class="nge-cl-tagwin-title">Success!</div>
+            <div class="nge-cl-tagwin-sub">You solved the tagged tangle!</div>
+          </div>
+        </Transition>
+
         <!-- Per-user tab picker -->
         <div v-if="showTabSettings" class="nge-cl-tabsettings" @mousedown.stop>
           <div class="nge-cl-tabsettings-title">Tabs on this panel</div>
@@ -1867,7 +1896,11 @@ const panelStyle = computed(() => ({
                         :disabled="isCrossDatasetTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location'">↗</button>
                 <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
-                <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this tag for everyone (use ✓ if it was fixed)">🗑</button>
+                <template v-if="confirmDeleteTagId === tag.id">
+                  <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this tag for everyone">Delete?</button>
+                  <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the tag">✕</button>
+                </template>
+                <button v-else class="nge-cl-btn nge-cl-btn--release" @click="askDeleteTag(tag)" title="Delete this tag for everyone (use ✓ if it was fixed)">🗑</button>
               </div>
             </div>
           </div>
@@ -1889,7 +1922,11 @@ const panelStyle = computed(() => ({
                   </div>
                 </div>
                 <div class="nge-cl-row-actions">
-                  <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this tag for everyone">🗑</button>
+                  <template v-if="confirmDeleteTagId === tag.id">
+                    <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this tag for everyone">Delete?</button>
+                    <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the tag">✕</button>
+                  </template>
+                  <button v-else class="nge-cl-btn nge-cl-btn--release" @click="askDeleteTag(tag)" title="Delete this tag for everyone">🗑</button>
                 </div>
               </div>
             </div>
@@ -1970,7 +2007,11 @@ const panelStyle = computed(() => ({
                         title="Toggle the model's proposed split overlay"
                         @click="tagStore.toggleSplitOverlay(tag)">✂</button>
                 <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
-                <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this candidate for everyone (use ✓ if it was fixed)">🗑</button>
+                <template v-if="confirmDeleteTagId === tag.id">
+                  <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this candidate for everyone">Delete?</button>
+                  <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the candidate">✕</button>
+                </template>
+                <button v-else class="nge-cl-btn nge-cl-btn--release" @click="askDeleteTag(tag)" title="Delete this candidate for everyone (use ✓ if it was fixed)">🗑</button>
               </div>
             </div>
           </div>
@@ -1994,7 +2035,11 @@ const panelStyle = computed(() => ({
                   </div>
                 </div>
                 <div class="nge-cl-row-actions">
-                  <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this candidate for everyone">🗑</button>
+                  <template v-if="confirmDeleteTagId === tag.id">
+                    <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this candidate for everyone">Delete?</button>
+                    <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the candidate">✕</button>
+                  </template>
+                  <button v-else class="nge-cl-btn nge-cl-btn--release" @click="askDeleteTag(tag)" title="Delete this candidate for everyone">🗑</button>
                 </div>
               </div>
             </div>
@@ -2329,6 +2374,42 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-dragging { cursor: grabbing; }
 .nge-cl-lane-icon { width: 16px; height: 16px; vertical-align: -3px; margin-right: 2px; }
+/* ── "Success! You solved the tagged tangle!" celebration ── */
+.nge-cl-tagwin {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  text-align: center;
+  padding: 20px 30px;
+  border-radius: 14px;
+  background: rgba(5, 10, 22, 0.96);
+  border: 1px solid rgba(96, 224, 128, 0.5);
+  box-shadow: 0 0 30px rgba(96, 224, 128, 0.18), 0 12px 40px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+.nge-cl-tagwin-glyph { font-size: 26px; margin-bottom: 6px; }
+.nge-cl-tagwin-glyph svg { width: 30px; height: 30px; filter: drop-shadow(0 0 8px rgba(96, 224, 128, 0.6)); }
+.nge-cl-tagwin-title {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 16px; font-weight: 700; letter-spacing: 0.12em;
+  color: #a8f5c0;
+}
+.nge-cl-tagwin-sub { font-size: 12px; color: #cde; margin-top: 3px; }
+.nge-cl-tagwin-enter-active { transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+.nge-cl-tagwin-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
+.nge-cl-tagwin-enter-from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+.nge-cl-tagwin-leave-to { opacity: 0; transform: translate(-50%, -56%) scale(0.97); }
+
+/* Armed delete confirm */
+.nge-cl-btn--confirmdel {
+  color: #ffb4b4 !important;
+  border-color: rgba(224, 96, 96, 0.65) !important;
+  background: rgba(224, 96, 96, 0.14) !important;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .nge-cl-tag-pin { display: inline-flex; vertical-align: -2px; }
 .nge-cl-tag-pin svg { filter: drop-shadow(0 0 4px rgba(53, 181, 255, 0.5)); }
 

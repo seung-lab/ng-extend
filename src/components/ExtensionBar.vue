@@ -137,14 +137,17 @@ onMounted(() => {
   document.addEventListener('nge:toggle-tag-mode', (() => {
     showTagMode.value = !showTagMode.value;
   }) as EventListener);
+  // Capture phase: neuroglancer's key bindings (and tag mode's own T
+  // swallow) must never eat the Shift+T toggle before it acts.
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
     const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     if (!typing && e.shiftKey && (e.key === 'T' || e.key === 't')) {
       e.preventDefault();
+      e.stopImmediatePropagation();
       showTagMode.value = !showTagMode.value;
     }
-  });
+  }, true);
 
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
