@@ -19,7 +19,7 @@ import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
-import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
+import { runPanelTrace, runParticleBurst, runPanelZip } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 const pinSvgBig = scoutPinSvg('#35b5ff', 'width:34px;height:34px;');
@@ -161,8 +161,12 @@ const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1');
 function setCollapsed(v: boolean) {
   collapsed.value = v;
   try { localStorage.setItem(COLLAPSED_KEY, v ? '1' : '0'); } catch {}
-  // Expanding replays the opening beam; the collapse is quiet.
-  if (!v) requestAnimationFrame(() => { if (wrapEl.value) runPanelTrace(wrapEl.value); });
+  // The zip: collapsing, light splits at the strip's bottom-center and races
+  // up both sides to meet at the top; expanding plays the reverse on the
+  // full panel.
+  requestAnimationFrame(() => {
+    if (wrapEl.value) runPanelZip(wrapEl.value, v ? 'up' : 'down');
+  });
 }
 function miniChoose(key: string) {
   choose(key);

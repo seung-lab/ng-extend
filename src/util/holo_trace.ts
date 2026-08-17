@@ -11,6 +11,44 @@
  * position: relative (or any positioned ancestor role) and visible size.
  */
 
+// a point at fraction t around a rounded rectangle (shared by the trace
+// and the zip; t=0 starts on the top edge just past the top-left corner,
+// increasing t runs clockwise: top → right → bottom (right-to-left) → left)
+function ringPoint(t: number, rw: number, rh: number, r: number): [number, number] {
+  const sw = rw - 2 * r, sh = rh - 2 * r;
+  const arc = Math.PI * r / 2, per = 2 * sw + 2 * sh + 4 * arc;
+  let d = (((t % 1) + 1) % 1) * per;
+  if (d < sw) return [r + d, 0];
+  d -= sw;
+  if (d < arc) { const a = d / arc * 1.5708; return [rw - r + r * Math.sin(a), r - r * Math.cos(a)]; }
+  d -= arc;
+  if (d < sh) return [rw, r + d];
+  d -= sh;
+  if (d < arc) { const b = d / arc * 1.5708; return [rw - r + r * Math.cos(b), rh - r + r * Math.sin(b)]; }
+  d -= arc;
+  if (d < sw) return [rw - r - d, rh];
+  d -= sw;
+  if (d < arc) { const c = d / arc * 1.5708; return [r - r * Math.sin(c), rh - r + r * Math.cos(c)]; }
+  d -= arc;
+  if (d < sh) return [0, rh - r - d];
+  d -= sh;
+  const e = d / arc * 1.5708;
+  return [r - r * Math.cos(e), r - r * Math.sin(e)];
+}
+
+/** Fraction of the ring perimeter at which the bottom-center sits. */
+function ringBottomCenterT(rw: number, rh: number, r: number): number {
+  const sw = rw - 2 * r, sh = rh - 2 * r;
+  const arc = Math.PI * r / 2, per = 2 * sw + 2 * sh + 4 * arc;
+  return (sw + 2 * arc + sh + sw / 2) / per;
+}
+/** Fraction of the ring perimeter at which the top-center sits. */
+function ringTopCenterT(rw: number, rh: number, r: number): number {
+  const sw = rw - 2 * r, sh = rh - 2 * r;
+  const arc = Math.PI * r / 2, per = 2 * sw + 2 * sh + 4 * arc;
+  return (sw / 2) / per;
+}
+
 export function runPanelTrace(host: HTMLElement, PAD = 0): void {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   const rect = host.getBoundingClientRect();
@@ -32,28 +70,7 @@ export function runPanelTrace(host: HTMLElement, PAD = 0): void {
   cv.width = w * dpr; cv.height = h * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  // a point at fraction t around a rounded rectangle
-  function ring(t: number, rw: number, rh: number, r: number): [number, number] {
-    const sw = rw - 2 * r, sh = rh - 2 * r;
-    const arc = Math.PI * r / 2, per = 2 * sw + 2 * sh + 4 * arc;
-    let d = (((t % 1) + 1) % 1) * per;
-    if (d < sw) return [r + d, 0];
-    d -= sw;
-    if (d < arc) { const a = d / arc * 1.5708; return [rw - r + r * Math.sin(a), r - r * Math.cos(a)]; }
-    d -= arc;
-    if (d < sh) return [rw, r + d];
-    d -= sh;
-    if (d < arc) { const b = d / arc * 1.5708; return [rw - r + r * Math.cos(b), rh - r + r * Math.sin(b)]; }
-    d -= arc;
-    if (d < sw) return [rw - r - d, rh];
-    d -= sw;
-    if (d < arc) { const c = d / arc * 1.5708; return [r - r * Math.sin(c), rh - r + r * Math.cos(c)]; }
-    d -= arc;
-    if (d < sh) return [0, rh - r - d];
-    d -= sh;
-    const e = d / arc * 1.5708;
-    return [r - r * Math.cos(e), r - r * Math.sin(e)];
-  }
+  const ring = ringPoint;
 
   // a small branching tree, for the decay to run along
   type Seg = [number, number, number, number, number];
@@ -150,6 +167,93 @@ export function runPanelTrace(host: HTMLElement, PAD = 0): void {
         ctx!.fillStyle = `rgba(140,198,244,${Math.max(0, al).toFixed(3)})`;
         ctx!.fill();
       }
+    }
+    raf = requestAnimationFrame(draw);
+  }
+  raf = requestAnimationFrame(draw);
+}
+
+/**
+ * The zip: two beams that split from one edge midpoint and race along both
+ * sides to meet at the opposite midpoint, closing with a small spark.
+ * direction 'up' starts at bottom-center and meets at top-center (the tag
+ * panel collapsing to its slim strip); 'down' is the reverse, for expand.
+ */
+export function runPanelZip(host: HTMLElement, direction: 'up' | 'down' = 'up'): void {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const rect = host.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const DUR = 700, R = 10;
+
+  const cv = document.createElement('canvas');
+  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;';
+  cv.setAttribute('aria-hidden', 'true');
+  host.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  if (!ctx) { cv.remove(); return; }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = rect.width, h = rect.height;
+  cv.width = w * dpr; cv.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const rw = w - 2, rh = h - 2;
+  const tBottom = ringBottomCenterT(rw, rh, R);
+  const tTop = ringTopCenterT(rw, rh, R);
+  const start = direction === 'up' ? tBottom : tTop;
+  const end = direction === 'up' ? tTop : tBottom;
+  // Beam A runs forward (increasing t, wraps), beam B runs backward; both
+  // cover their half of the perimeter and land on `end` together.
+  const distA = ((end - start) % 1 + 1) % 1;
+  const distB = 1 - distA;
+  const [mx, my] = ringPoint(end, rw, rh, R);
+
+  let raf = 0;
+  const t0 = performance.now();
+  function head(tt: number): [number, number] {
+    const p = ringPoint(tt, rw, rh, R);
+    return [p[0] + 1, p[1] + 1];
+  }
+  function draw(now: number) {
+    const k = (now - t0) / DUR;
+    if (k >= 1) { cancelAnimationFrame(raf); cv.remove(); return; }
+    ctx!.clearRect(0, 0, w, h);
+    ctx!.lineCap = 'round';
+
+    const RUN = 0.82;                       // beams run, then the spark
+    if (k < RUN) {
+      const q = k / RUN, eased = q * q * (3 - 2 * q);
+      const TAIL = 0.16, SEG = 26;
+      for (const [dir, dist] of [[1, distA], [-1, distB]] as [number, number][]) {
+        for (let pass = 0; pass < 2; pass++) {
+          ctx!.lineWidth = pass ? 1.1 : 4.0;
+          for (let j = 0; j < SEG; j++) {
+            const f1 = j / SEG, f2 = (j + 1) / SEG;
+            const p1 = eased - f1 * TAIL, p2 = eased - f2 * TAIL;
+            if (p2 < 0) break;
+            const a1 = head(start + dir * p1 * dist);
+            const a2 = head(start + dir * p2 * dist);
+            const fade = (1 - f1) * (1 - f1);
+            ctx!.beginPath();
+            ctx!.moveTo(a1[0], a1[1]);
+            ctx!.lineTo(a2[0], a2[1]);
+            ctx!.globalCompositeOperation = pass ? 'source-over' : 'lighter';
+            ctx!.strokeStyle = pass
+              ? `rgba(178,216,248,${(fade * 0.5).toFixed(3)})`
+              : `rgba(53,181,255,${(fade * 0.09).toFixed(3)})`;
+            ctx!.stroke();
+          }
+        }
+      }
+    } else {
+      // The meeting spark: a brief flash where the beams kissed.
+      const s = (k - RUN) / (1 - RUN);
+      const al = (1 - s) * (1 - s);
+      ctx!.globalCompositeOperation = 'lighter';
+      const g = ctx!.createRadialGradient(mx + 1, my + 1, 0, mx + 1, my + 1, 16 * (0.4 + s));
+      g.addColorStop(0, `rgba(220,240,255,${(al * 0.7).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(53,181,255,0)');
+      ctx!.fillStyle = g;
+      ctx!.fillRect(0, 0, w, h);
     }
     raf = requestAnimationFrame(draw);
   }
