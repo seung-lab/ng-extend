@@ -1846,6 +1846,12 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       }
       syncAiCrystals(viewer, points);
       const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === AI_LAYER_NAME);
+      // A layer resurrected from the URL state carries whatever shader it was
+      // saved with; retrofit the current one (same trick as the tag layer).
+      try {
+        const shaderState = (managed?.layer as any)?.annotationDisplayState?.shader;
+        if (shaderState && shaderState.value !== AI_SHADER) shaderState.restoreState(AI_SHADER);
+      } catch {}
       if (!managed) {
         addAnnotationLayer(viewer, AI_LAYER_NAME, {
           type: 'annotation',
@@ -2066,6 +2072,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
         .limit(1000);
       if (error) { console.warn('[issueTags] load error:', error.message); return; }
       tags.value = (data ?? []).map(rowToIssueTag);
+      syncTagLayer();
     } catch (e) { console.warn('[issueTags] load failed:', e); }
   }
 
@@ -2123,17 +2130,23 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'issue_tags' }, (payload: any) => {
         const t = rowToIssueTag(payload.new);
         if (!tags.value.find(x => x.id === t.id)) tags.value.unshift(t);
+        syncTagLayer();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'issue_tags' }, (payload: any) => {
         const t = rowToIssueTag(payload.new);
         const idx = tags.value.findIndex(x => x.id === t.id);
         if (idx >= 0) tags.value[idx] = t;
+        syncTagLayer();
       })
       .subscribe();
   }
 
   load();
   subscribe();
+  // The viewer boots asynchronously after the stores; without these retries
+  // nothing syncs the layers on a fresh page load, so they only ever came
+  // back via the URL state (stale shaders, no shards).
+  for (const ms of [2000, 5000, 10000]) setTimeout(syncTagLayer, ms);
 
   return { tags, openTags, load, add, resolve, remove, syncTagLayer, setTagPreview, tagModeActive, setTagModeActive,
            aiLayerOn, setAiLayerOn, syncAiLayer,
