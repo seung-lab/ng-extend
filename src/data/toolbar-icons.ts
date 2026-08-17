@@ -44,7 +44,7 @@ const FINDPATH_SVG  = `<svg viewBox="0.0 0.0 16.0 16.0" fill="none" style="${S}c
 // toolbar so it's reorderable and toggleable like every other icon (the native
 // button is hidden in ng-override.css). A window frame with the right column
 // filled in, i.e. literally what the button does.
-const LAYERS_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${NEUTRAL_COLOR}"><rect x="1.7" y="2.7" width="12.6" height="10.6" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.9 2.7v10.6" stroke="currentColor" stroke-width="1.4"/><path d="M11.4 5.4h1.7M11.4 7.6h1.7M11.4 9.8h1.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+const LAYERS_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${NEUTRAL_COLOR}"><rect x="1.7" y="2.7" width="12.6" height="10.6" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 2.7v10.6" stroke="currentColor" stroke-width="1.4"/><path d="M2.9 5.4h1.7M2.9 7.6h1.7M2.9 9.8h1.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
 // A week (calendar frame with day ticks) containing a rising trend line, so the
 // icon says "your week" + "progress" rather than the generic bar chart it was,
 // which was indistinguishable from any other stats/analytics glyph.
