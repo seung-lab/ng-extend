@@ -612,6 +612,19 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <img :src="pyrIcon" class="nge-pyr-logo" />
       </a>
     </div>
+    <!-- AI guide + Dataset live on the left edge (Amy 2026-08-17). -->
+    <button class="nge-ask-btn" :class="{ 'nge-ask-btn--active': showAssistant }"
+            @click="showAssistant = !showAssistant"
+            title="Nurro, your guide">
+      <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">forum</span>
+      <span class="nge-ask-label">AI</span>
+    </button>
+    <button class="nge-dataset-btn" @click="showDatasetSelector = !showDatasetSelector"
+            :title="'Current dataset: ' + currentDatasetName + ' — click to switch'">
+      <span v-if="currentDatasetIcon" class="nge-dataset-species">{{ currentDatasetIcon }}</span>
+      <span v-else class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
+      <span class="nge-dataset-label">{{ currentDatasetAbbrev }}</span>
+    </button>
     <div id="insertNGTopBar" class="flex-fill"></div>
     <transition name="nge-share-toast">
       <div v-if="shareCopied" class="nge-share-toast">
@@ -698,18 +711,6 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       </div>
     </transition>
     <screenshot-dialog :show="showScreenshotDialog" @close="showScreenshotDialog = false" />
-    <button class="nge-ask-btn" :class="{ 'nge-ask-btn--active': showAssistant }"
-            @click="showAssistant = !showAssistant"
-            title="Nurro, your guide">
-      <span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">forum</span>
-      <span class="nge-ask-label">AI</span>
-    </button>
-    <button class="nge-dataset-btn" @click="showDatasetSelector = !showDatasetSelector"
-            :title="'Current dataset: ' + currentDatasetName + ' — click to switch'">
-      <span v-if="currentDatasetIcon" class="nge-dataset-species">{{ currentDatasetIcon }}</span>
-      <span v-else class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">database</span>
-      <span class="nge-dataset-label">{{ currentDatasetAbbrev }}</span>
-    </button>
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
          class="nge-streak-chip" :title="`Editing streak: ${stats.currentStreak} day${stats.currentStreak === 1 ? '' : 's'} in a row with at least one edit`">
@@ -821,6 +822,10 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         </li>
       </template>
     </dropdown-list>
+    <!-- Far-right slot: mergeTopBars() relocates NG's ? (help) and the
+         layer side panel toggle here, toggle last so it hugs the panel it
+         opens (Amy 2026-08-17). -->
+    <div id="ngFarRight"></div>
   </div>
 </template>
 
@@ -847,8 +852,17 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 }
 /* Add spacing between neuroglancer native icons next to Share */
 #insertNGTopBar .neuroglancer-icon,
-#insertNGTopBar button {
+#insertNGTopBar button,
+#ngFarRight .neuroglancer-icon,
+#ngFarRight button {
   margin: 0 2px;
+}
+/* Far-right home for NG's relocated ? and layer-side-panel toggles. */
+#ngFarRight {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: 6px;
 }
 /* Hide selection details toggle from top bar (moved to Settings > Advanced) */
 #insertNGTopBar .neuroglancer-icon[title*="election"],

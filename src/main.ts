@@ -56,6 +56,16 @@ function mergeTopBars() {
   const ngTopBar = document.querySelector('.neuroglancer-viewer')!.children[0];
   const topBarVueParent = document.getElementById('insertNGTopBar')!;
   topBarVueParent.appendChild(ngTopBar);
+  // Two NG-native buttons live at the far right instead (Amy 2026-08-17):
+  // the ? help toggle, then the layer side panel toggle LAST so it hugs the
+  // panel it opens. Titles flip between Show/Hide, so match the suffix.
+  const farRight = document.getElementById('ngFarRight');
+  if (farRight) {
+    for (const suffix of ['help panel', 'layer side panel']) {
+      const btn = topBarVueParent.querySelector(`[title$="${suffix}"]`);
+      if (btn) farRight.appendChild(btn);
+    }
+  }
 }
 
 /* ── Pyr Favicon ── */
