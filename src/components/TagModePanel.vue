@@ -23,6 +23,8 @@ import { runPanelTrace, runParticleBurst, runPanelZip } from '../util/holo_trace
 
 const pinSvg = scoutPinSvg();
 const pinSvgBig = scoutPinSvg('#35b5ff', 'width:34px;height:34px;');
+// Open hand for the mini strip's right-edge drag grip.
+const HAND_SVG = '<svg viewBox="0 0 16 16" fill="none" style="width:1em;height:1em;vertical-align:middle;"><path d="M5.1 7.3V4a1 1 0 0 1 2 0v3M7.1 7V3a1 1 0 0 1 2 0v4M9.1 7V3.7a1 1 0 0 1 2 0V8M11.1 8V5.6a.95.95 0 0 1 1.9 0v3.6c0 2.6-1.8 4.5-4.3 4.5h-.6c-1.5 0-2.6-.6-3.4-1.8L3.2 9.9c-.5-.8-.3-1.5.4-1.9.6-.3 1.3-.1 1.7.5l.8 1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 const emit = defineEmits({ hide: null });
 const wrapEl = ref<HTMLElement | null>(null);
@@ -294,6 +296,8 @@ onBeforeUnmount(() => {
         ><span class="nge-tagmode-pin" v-html="pinSvg"></span></button>
         <button class="nge-tagmode-mini-act nge-tagmode-mini-submit" :disabled="saving" title="Submit tag" @click="submit">✓</button>
         <button class="nge-tagmode-mini-act" title="Expand panel" @click="setCollapsed(false)">▴</button>
+        <button class="nge-tagmode-mini-act nge-tagmode-mini-close" title="Exit tag mode (Esc)" @click="emit('hide')">×</button>
+        <span class="nge-tagmode-mini-hand" title="Drag to move" @pointerdown.prevent="dragStart" v-html="HAND_SVG"></span>
         <div v-if="flash" class="nge-tagmode-flash nge-tagmode-flash--mini">{{ flash }}</div>
       </div>
 
@@ -443,7 +447,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 7px;
+  /* Extra room on the right so the cursor has somewhere calm to land. */
+  padding: 5px 14px 5px 7px;
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.94) 0%, rgba(8, 12, 24, 0.92) 100%);
   border: 1px solid rgba(53, 181, 255, 0.35);
@@ -493,6 +498,18 @@ onBeforeUnmount(() => {
   background: rgba(53, 181, 255, 0.2);
   animation: nge-arm-pulse 1.1s ease-in-out infinite;
 }
+.nge-tagmode-mini-close { color: #a8b6cf; }
+.nge-tagmode-mini-close:hover { color: #fff; border-color: rgba(224, 96, 96, 0.5); background: rgba(224, 96, 96, 0.12); }
+.nge-tagmode-mini-hand {
+  display: inline-flex;
+  margin-left: 2px;
+  padding: 3px 4px;
+  color: #8ea3c4;
+  cursor: grab;
+  user-select: none;
+}
+.nge-tagmode-mini-hand:hover { color: #cfe3ff; }
+.nge-tagmode-mini-hand:active { cursor: grabbing; }
 .nge-tagmode-mini-submit { color: #7dffb0; border-color: rgba(125, 255, 176, 0.35); }
 .nge-tagmode-mini-submit:hover { background: rgba(125, 255, 176, 0.12); }
 .nge-tagmode-mini-act:disabled { opacity: 0.5; cursor: default; }
