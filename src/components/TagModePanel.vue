@@ -37,6 +37,12 @@ const TAG_CHOICES: { key: string; tagType: IssueTagType; label: string; hint: st
   { key: 'extend', tagType: 'missing_branch', label: '🌿 Extend', hint: 'A branch looks truncated, keep growing it' },
   { key: 'other',  tagType: 'other',          label: '⚑ Other',   hint: 'Something else, describe it in the note' },
 ];
+/** The light carries meaning: blue Cut, green Extend, purple Other. */
+const TAG_RGB: Record<string, string> = {
+  merger: '53,181,255',
+  missing_branch: '96,224,128',
+  other: '200,150,255',
+};
 const LAST_CHOICE_KEY = 'nge_tag_last_choice_v2';
 const selected = ref(localStorage.getItem(LAST_CHOICE_KEY) || 'cut');
 const selectedChoice = computed(() => TAG_CHOICES.find(c => c.key === selected.value) ?? TAG_CHOICES[0]);
@@ -56,7 +62,7 @@ let flashTimer: ReturnType<typeof setTimeout> | null = null;
 /** 'form' shows the chooser; 'success' the confirmation. '-out' phases play
  *  the materialize animation in reverse before the swap. */
 const phase = ref<'form' | 'form-out' | 'success' | 'success-out'>('form');
-const lastTag = ref<{ label: string; pos: number[] } | null>(null);
+const lastTag = ref<{ label: string; pos: number[]; tagType: string } | null>(null);
 const SWAP_MS = 500; // reverse-materialize duration before swapping boxes
 
 function annotationLayers(): string[] {
@@ -97,13 +103,17 @@ const posLabel = computed(() => {
  *  saving anything yet (Amy: "place by click should not automatically
  *  submit - it should just place the point"). */
 const pendingPos = ref<number[] | null>(null);
+/** Screen position of the last placed click, so the submit stream can
+ *  launch from the deed itself. */
+let placeScreen: { x: number; y: number } | null = null;
 function placePoint(pos: number[], screenX?: number, screenY?: number) {
   if (pos.length !== 3) { showFlash('No data under cursor, hover the 2D or 3D view'); return; }
   pendingPos.value = pos;
   tagStore.setTagPreview(pos);
+  placeScreen = screenX != null && screenY != null ? { x: screenX, y: screenY } : null;
   // A spark right where the click landed in the 2D/3D view, so placing a
-  // point answers back at the point itself.
-  if (screenX != null && screenY != null) runParticleBurst(screenX, screenY);
+  // point answers back at the point itself, in the tag type's color.
+  if (placeScreen) runParticleBurst(placeScreen.x, placeScreen.y, TAG_RGB[selectedChoice.value.tagType]);
   showFlash('Point placed, hit Submit');
 }
 function clearPending() {
@@ -134,18 +144,23 @@ async function drop(position: number[]) {
   screenshotUrl.value = '';
   clearPending();
   const label = c.label.replace(/^\S+\s/, '');
-  lastTag.value = { label, pos: position };
+  lastTag.value = { label, pos: position, tagType: c.tagType };
   // The success box takes the form box's exact footprint so the swap reads
   // as one panel changing faces, not two different boxes.
   const fb = boxEl.value?.getBoundingClientRect();
   if (fb) successSize.value = { width: fb.width + 'px', minHeight: fb.height + 'px' };
   // Big burst whose particles arc back and coalesce into the border of
   // whatever box is standing when they land (success box, or the strip).
+  // When the tag was placed by click, the stream launches from the placed
+  // point itself, connecting the deed to the reward. Colored by tag type.
   const br = wrapEl.value?.getBoundingClientRect();
+  const rgb = TAG_RGB[c.tagType];
+  const origin = placeScreen ?? (br ? { x: br.left + br.width / 2, y: br.top + br.height / 2 } : null);
+  placeScreen = null;
   let total = 0;
-  if (br) {
-    total = runBurstCoalesce(br.left + br.width / 2, br.top + br.height / 2,
-      () => wrapEl.value?.getBoundingClientRect() ?? null);
+  if (origin) {
+    total = runBurstCoalesce(origin.x, origin.y,
+      () => wrapEl.value?.getBoundingClientRect() ?? null, rgb);
   }
   if (collapsed.value) {
     // The mini strip has no room for the success box; the flash plus the
@@ -169,7 +184,8 @@ function dismissSuccess() {
   if (phase.value !== 'success') return;
   const r = wrapEl.value?.getBoundingClientRect();
   if (r) {
-    runParticleBurst(r.left + r.width / 2, r.top + r.height / 2);
+    runParticleBurst(r.left + r.width / 2, r.top + r.height / 2,
+      TAG_RGB[lastTag.value?.tagType ?? 'merger']);
     flyPlusOne(r.left + r.width / 2, r.top + 24, '+1');
   }
   phase.value = 'success-out';

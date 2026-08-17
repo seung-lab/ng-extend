@@ -9,6 +9,7 @@ import {
   useUserStatsStore,
   useWorkingLinksStore,
   useIssueTagStore,
+  isModelTag,
   type IssueTag,
   type ProofreadingTask,
   type HelpRequest,
@@ -24,7 +25,7 @@ import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
 
 const tagPinSvg = scoutPinSvg();
-import { runPanelTrace, flyPlusOne } from '../util/holo_trace';
+import { runPanelTrace, flyPlusOne, runScytheSwing } from '../util/holo_trace';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import ScreenshotDialog from './ScreenshotDialog.vue';
@@ -48,11 +49,13 @@ onMounted(() => {
 /** Resolve a tag with the +1 celebration flying to the profile button. */
 function resolveTagFun(tag: IssueTag, e: MouseEvent) {
   tagStore.resolve(tag.id);
+  // Grim salutes: resolving a Cut tag gets the scythe swing.
+  if (tag.tagType === 'merger') runScytheSwing(e.clientX, e.clientY, scytheIcon);
   flyPlusOne(e.clientX, e.clientY);
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai'>(
   (props.initialTab as any) || 'mine',
 );
 const search = ref('');
@@ -957,7 +960,7 @@ function jumpToReq(req: HelpRequest) {
 // ── Scout tags (Tags tab) ────────────────────────────────────────────
 const showResolvedTags = ref(false);
 const openTagsSorted = computed(() => tagStore.openTags);
-const resolvedTags = computed(() => tagStore.tags.filter((t: IssueTag) => t.status === 'resolved'));
+const resolvedTags = computed(() => tagStore.tags.filter((t: IssueTag) => t.status === 'resolved' && !isModelTag(t)));
 
 function isCrossDatasetTag(tag: IssueTag): boolean {
   if (!tag.dataset || !activeDataset.value) return false;
@@ -994,12 +997,63 @@ function tagLabel(tag: IssueTag): string {
 /** Tags scope to the current dataset like every other Cell Library list;
  *  the globe chip widens to all datasets. */
 const showAllDatasetTags = ref(false);
+/** Human tags only; model candidates live in the AI tab. */
+const humanOpenTags = computed(() => tagStore.openTags.filter((t: IssueTag) => !isModelTag(t)));
 const datasetTags = computed(() =>
-  showAllDatasetTags.value ? tagStore.openTags : tagStore.openTags.filter((t: IssueTag) => !isCrossDatasetTag(t)));
+  showAllDatasetTags.value ? humanOpenTags.value : humanOpenTags.value.filter((t: IssueTag) => !isCrossDatasetTag(t)));
 /** Lane filter: Scythes work mergers, Tracers work extensions. */
 const tagLane = ref<'all' | 'merger' | 'missing_branch'>('all');
 const laneFilteredTags = computed(() =>
   tagLane.value === 'all' ? datasetTags.value : datasetTags.value.filter((t: IssueTag) => t.tagType === tagLane.value));
+
+// ── AI candidates (AI tab) ───────────────────────────────────────────
+// Model-seeded merger candidates, sorted hottest first. Rows reuse the
+// scout-tag row chrome; resolve/delete go through the same store.
+const aiOpenTags = computed(() => tagStore.openTags.filter((t: IssueTag) => isModelTag(t)));
+const aiDatasetTags = computed(() => aiOpenTags.value.filter((t: IssueTag) => !isCrossDatasetTag(t)));
+const aiResolvedTags = computed(() => tagStore.tags.filter((t: IssueTag) => t.status === 'resolved' && isModelTag(t)));
+const showResolvedAiTags = ref(false);
+
+/** Chip filter by neuron root (the import is per-neuron batches). */
+const aiRootFilter = ref<string>('all');
+const aiRoots = computed(() => {
+  const counts = new Map<string, number>();
+  for (const t of aiDatasetTags.value) {
+    if (t.segId) counts.set(t.segId, (counts.get(t.segId) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([root, count]) => ({ root, count }));
+});
+const aiSortedTags = computed(() => {
+  const base = aiRootFilter.value === 'all'
+    ? aiDatasetTags.value
+    : aiDatasetTags.value.filter((t: IssueTag) => t.segId === aiRootFilter.value);
+  return [...base].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+});
+
+/** Badge color matching the marker shader's cold-to-hot confidence ramp. */
+function confColor(conf?: number): string {
+  const c = Math.max(0, Math.min(1, ((conf ?? 1) - 0.2) / 0.8));
+  const ch = (a: number, b: number) => Math.round((a + (b - a) * c) * 255);
+  return `rgb(${ch(0.35, 1.0)}, ${ch(0.62, 0.55)}, ${ch(1.0, 0.25)})`;
+}
+
+/** Category icon slot. The model does not emit categories yet; when it
+ *  does (modelData.category), or when a human re-types the candidate
+ *  (subtype), the icon follows. */
+function aiCategoryIcon(tag: IssueTag): string {
+  const cat = tag.modelData?.category ?? tag.subtype;
+  const icons: Record<string, string> = { snip: '✂️', hairball: '🧶', twins: '👯', debris: '🗑' };
+  return (cat && icons[cat]) || '🤖';
+}
+
+/** Jump to the candidate and bring up its proposed-split constellation. */
+function jumpToAiTag(tag: IssueTag) {
+  if (isCrossDatasetTag(tag)) return;
+  jumpToTag(tag);
+  if (tag.modelData?.posRelUm?.length && tagStore.activeSplitTagId !== tag.id) {
+    tagStore.toggleSplitOverlay(tag);
+  }
+}
 
 function resolveReq(req: HelpRequest) {
   helpStore.resolve(req.id);
@@ -1203,6 +1257,7 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'completed', label: 'Completed' },
   { key: 'help',      label: 'Help' },
   { key: 'tags',      label: 'Tags' },
+  { key: 'ai',        label: 'AI' },
   { key: 'links',     label: 'My Saved Links' },
 ];
 const visibleTabs = ref<string[]>((() => {
@@ -1347,13 +1402,16 @@ const panelStyle = computed(() => ({
           <button v-if="tabShown('tags')" :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'">
             Tags ({{ datasetTags.length }})
           </button>
+          <button v-if="tabShown('ai')" :class="{ active: filter === 'ai', 'nge-cl-ai-tab': true }" @click="filter = 'ai'">
+            AI ({{ aiDatasetTags.length }})
+          </button>
           <button v-if="tabShown('links')" :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'">
             My Saved Links ({{ linksStore.links.length }})
           </button>
         </div>
 
         <!-- Search (not shown on Help / Links tabs) -->
-        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags'" class="nge-cl-search">
+        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai'" class="nge-cl-search">
           <input
             v-model="search"
             placeholder="Search by ID, name, or notes..."
@@ -1691,7 +1749,7 @@ const panelStyle = computed(() => ({
               :class="{ 'nge-cl-lane--active': showAllDatasetTags }"
               :title="showAllDatasetTags ? 'Showing every dataset' : 'Showing only ' + (datasetDisplayName(activeDataset) || 'this dataset')"
               @click="showAllDatasetTags = !showAllDatasetTags"
-            >🌐 All datasets ({{ tagStore.openTags.length }})</button>
+            >🌐 All datasets ({{ humanOpenTags.length }})</button>
           </div>
 
           <div v-if="!laneFilteredTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
@@ -1748,6 +1806,101 @@ const panelStyle = computed(() => ({
                 </div>
                 <div class="nge-cl-row-actions">
                   <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this tag for everyone">🗑</button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- ═══ AI TAB (model-detected merge-error candidates) ═══ -->
+        <div v-else-if="filter === 'ai'" class="nge-cl-list">
+          <div class="nge-cl-quest" style="margin-top: 0;">
+            <div class="nge-cl-quest-title">🤖 AI candidates</div>
+            <div class="nge-cl-tags-hint">
+              Merge errors suspected by the Seung Lab detection model, hottest
+              first. Confidence is the model's verify probability: viewer
+              markers heat from cool blue to orange as it rises. Jump to a
+              candidate to see the proposed split as a red and blue point
+              constellation, fix it, and mark it resolved.
+            </div>
+          </div>
+
+          <div class="nge-cl-tags-lanes">
+            <button :class="{ 'nge-cl-lane--active': aiRootFilter === 'all' }" @click="aiRootFilter = 'all'">All ({{ aiDatasetTags.length }})</button>
+            <button v-for="r in aiRoots" :key="r.root"
+                    :class="{ 'nge-cl-lane--active': aiRootFilter === r.root }"
+                    :title="'Only candidates on neuron ' + r.root"
+                    @click="aiRootFilter = aiRootFilter === r.root ? 'all' : r.root">
+              🧠 …{{ r.root.slice(-6) }} ({{ r.count }})
+            </button>
+            <button :class="{ 'nge-cl-lane--active': tagStore.aiLayerOn }"
+                    :title="tagStore.aiLayerOn ? 'Hide AI candidate markers in the viewer' : 'Show AI candidate markers in the viewer'"
+                    @click="tagStore.setAiLayerOn(!tagStore.aiLayerOn)">📍 Markers</button>
+          </div>
+
+          <div v-if="aiRoots.length" class="nge-cl-tags-lanes">
+            <button v-for="r in aiRoots" :key="'heat-' + r.root"
+                    :class="{ 'nge-cl-lane--active': tagStore.activeHeatRoots.includes(r.root) }"
+                    :disabled="tagStore.heatLoadingRoot === r.root"
+                    title="Heat layer: every window the model scored on this neuron, cool to hot"
+                    @click="tagStore.toggleHeatLayer(r.root)">
+              {{ tagStore.heatLoadingRoot === r.root ? '⏳' : '🔥' }} Heat …{{ r.root.slice(-6) }}
+            </button>
+          </div>
+
+          <div v-if="!aiSortedTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
+            No open AI candidates for this dataset. The model finds no fault here.
+          </div>
+
+          <div v-for="tag in aiSortedTags" :key="tag.id" class="nge-cl-help-item">
+            <div class="nge-cl-row">
+              <div class="nge-cl-row-left">
+                <span class="nge-cl-pip" :style="{ background: confColor(tag.confidence) }"></span>
+                <div class="nge-cl-row-info">
+                  <div class="nge-cl-row-name">
+                    {{ aiCategoryIcon(tag) }} Cut
+                    <span class="nge-cl-ai-conf" :style="{ color: confColor(tag.confidence) }">{{ Math.round((tag.confidence ?? 0) * 100) }}%</span>
+                    <span v-if="tag.segId" class="nge-cl-notes"> · seg …{{ tag.segId.slice(-6) }}</span>
+                  </div>
+                  <div class="nge-cl-row-meta">
+                    <span class="nge-cl-notes">{{ tag.position.join(', ') }}</span>
+                    <span v-if="isCrossDatasetTag(tag)" class="nge-cl-badge" style="background: rgba(245,209,66,0.12); color: #f5d142;">{{ datasetDisplayName(tag.dataset) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="nge-cl-row-actions">
+                <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToAiTag(tag)"
+                        :disabled="isCrossDatasetTag(tag)"
+                        :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location and preview the proposed split'">↗</button>
+                <button class="nge-cl-btn nge-cl-btn--split"
+                        :class="{ 'nge-cl-btn--split-active': tagStore.activeSplitTagId === tag.id }"
+                        :disabled="!tag.modelData?.posRelUm?.length"
+                        title="Toggle the model's proposed split overlay"
+                        @click="tagStore.toggleSplitOverlay(tag)">✂</button>
+                <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
+                <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this candidate for everyone (use ✓ if it was fixed)">🗑</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="nge-cl-help-resolved-toggle" @click="showResolvedAiTags = !showResolvedAiTags">
+            {{ showResolvedAiTags ? '▾' : '▸' }} Resolved ({{ aiResolvedTags.length }})
+          </div>
+          <template v-if="showResolvedAiTags">
+            <div v-for="tag in aiResolvedTags" :key="tag.id" class="nge-cl-help-item">
+              <div class="nge-cl-row nge-cl-row--done">
+                <div class="nge-cl-row-left">
+                  <span class="nge-cl-pip" style="background: #556;"></span>
+                  <div class="nge-cl-row-info">
+                    <div class="nge-cl-row-name">{{ aiCategoryIcon(tag) }} Cut · {{ Math.round((tag.confidence ?? 0) * 100) }}%</div>
+                    <div class="nge-cl-row-meta">
+                      <span v-if="tag.resolvedByName" class="nge-cl-notes" style="color: #7f8;">✓ {{ tag.resolvedByName }}</span>
+                      <span class="nge-cl-notes">{{ relativeTime(tag.createdAt) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="nge-cl-row-actions">
+                  <button class="nge-cl-btn nge-cl-btn--release" @click="tagStore.remove(tag.id)" title="Delete this candidate for everyone">🗑</button>
                 </div>
               </div>
             </div>
@@ -2818,7 +2971,7 @@ select.nge-cl-response-input:hover {
   border-color: rgba(96, 192, 96, 0.5) !important;
 }
 
-.nge-cl-tags-lanes { display: flex; gap: 6px; }
+.nge-cl-tags-lanes { display: flex; gap: 6px; flex-wrap: wrap; }
 .nge-cl-tags-lanes button {
   padding: 4px 10px; border-radius: 12px; font-size: 11.5px; cursor: pointer;
   background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #abc;
@@ -2831,6 +2984,22 @@ select.nge-cl-response-input:hover {
   font-size: 11.5px;
   color: rgba(255, 255, 255, 0.5);
   line-height: 1.45;
+}
+
+/* ── AI tab (model-detected candidates) ── */
+.nge-cl-ai-conf {
+  font-weight: 700;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11.5px;
+  margin-left: 2px;
+}
+.nge-cl-btn--split {
+  font-size: 14px;
+  border-color: rgba(255, 140, 60, 0.4) !important;
+}
+.nge-cl-btn--split-active {
+  background: rgba(255, 140, 60, 0.2) !important;
+  border-color: rgba(255, 160, 80, 0.8) !important;
 }
 
 /* ── connectome.quest resources (Help tab footer) ── */

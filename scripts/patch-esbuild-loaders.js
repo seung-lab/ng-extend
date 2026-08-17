@@ -25,7 +25,7 @@ if (!fs.existsSync(configPath)) {
 }
 
 const before = fs.readFileSync(configPath, 'utf8');
-if (before.includes("'.jpg': 'file'")) {
+if (before.includes("'.jpg': 'file'") && before.includes("'.obj': 'file'")) {
   console.log('[patch-esbuild-loaders] already patched');
   process.exit(0);
 }
@@ -36,7 +36,15 @@ if (!before.includes(target)) {
   console.error('[patch-esbuild-loaders] could not find the loader map to patch');
   process.exit(1);
 }
-const after = before.replace(target, "'.png': 'file', '.jpg': 'file', '.jpeg': 'file'");
+// .obj: the scout pin mesh (static/tags/pin.obj) is imported for its URL so
+// the bundler copies it into dist; runtime code fetches and parses it.
+let after = before;
+if (!after.includes("'.jpg': 'file'")) {
+  after = after.replace(target, "'.png': 'file', '.jpg': 'file', '.jpeg': 'file'");
+}
+if (!after.includes("'.obj': 'file'")) {
+  after = after.replace("'.jpeg': 'file'", "'.jpeg': 'file', '.obj': 'file'");
+}
 
 fs.writeFileSync(configPath, after, 'utf8');
-console.log('[patch-esbuild-loaders] registered .jpg/.jpeg file loaders');
+console.log('[patch-esbuild-loaders] registered .jpg/.jpeg/.obj file loaders');

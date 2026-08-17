@@ -15,3 +15,9 @@ declare module '*.jpg' {
   const value: string;
   export default value;
 }
+
+/** Wavefront OBJ meshes (the scout pin) resolve to their emitted file URL. */
+declare module '*.obj' {
+  const value: string;
+  export default value;
+}

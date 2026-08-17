@@ -537,21 +537,126 @@ export function runBurstCoalesce(cx: number, cy: number, getRect: () => DOMRect 
   return DUR;
 }
 
-/** A "+1" that floats up from a click and flies to the profile button. */
+/** Once-injected keyframes for effects that outlive a WAAPI handle. */
+function ensureHoloCss() {
+  if (document.getElementById('nge-holo-anim-css')) return;
+  const st = document.createElement('style');
+  st.id = 'nge-holo-anim-css';
+  st.textContent = `
+@keyframes ngeProfileAbsorb {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 209, 66, 0.65); }
+  100% { box-shadow: 0 0 0 16px rgba(245, 209, 66, 0); }
+}
+.nge-profile-absorb { animation: ngeProfileAbsorb 0.55s ease-out; border-radius: 50%; }`;
+  document.head.appendChild(st);
+}
+
+/**
+ * A "+1" that arcs to the profile button as a comet: the head flies along a
+ * curved path shedding a fading dot trail, and the profile button absorbs
+ * the landing with a pulse.
+ */
 export function flyPlusOne(fromX: number, fromY: number, text = '+1'): void {
+  ensureHoloCss();
   const el = document.createElement('div');
   el.textContent = text;
-  el.style.cssText = `position:fixed;left:${fromX}px;top:${fromY}px;z-index:100000;` +
+  el.style.cssText = `position:fixed;left:0;top:0;z-index:100000;` +
     `pointer-events:none;font:700 15px 'Orbitron','Inter',sans-serif;color:#f5d142;` +
-    `text-shadow:0 0 8px rgba(245,209,66,0.8);transform:translate(-50%,-50%);`;
+    `text-shadow:0 0 8px rgba(245,209,66,0.8);will-change:transform;`;
   document.body.appendChild(el);
-  const target = document.getElementById('profileBtn')?.getBoundingClientRect();
-  const tx = target ? target.left + target.width / 2 - fromX : 0;
-  const ty = target ? target.top + target.height / 2 - fromY : -140;
-  const anim = el.animate([
-    { transform: 'translate(-50%,-50%) scale(1)', opacity: 1, offset: 0 },
-    { transform: 'translate(-50%, calc(-50% - 46px)) scale(1.25)', opacity: 1, offset: 0.3 },
-    { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) scale(0.4)`, opacity: 0, offset: 1 },
-  ], { duration: 950, easing: 'cubic-bezier(0.3, 0, 0.4, 1)' });
-  anim.onfinish = () => el.remove();
+  const targetEl = document.getElementById('profileBtn');
+  const target = targetEl?.getBoundingClientRect();
+  const tx = target ? target.left + target.width / 2 : fromX;
+  const ty = target ? target.top + target.height / 2 : fromY - 140;
+  // Control point above the straight line for a comet-like arc.
+  const mx = (fromX + tx) / 2, my = Math.min(fromY, ty) - 90;
+  const DUR = 950;
+  const t0 = performance.now();
+  let lastTrail = 0;
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  function step(now: number) {
+    const k = Math.min(1, (now - t0) / DUR);
+    const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; // easeInOutQuad
+    const x = (1 - e) * (1 - e) * fromX + 2 * (1 - e) * e * mx + e * e * tx;
+    const y = (1 - e) * (1 - e) * fromY + 2 * (1 - e) * e * my + e * e * ty;
+    const sc = 1 + 0.25 * Math.sin(Math.PI * Math.min(k * 2, 1)) - 0.6 * Math.max(0, k - 0.6) / 0.4;
+    el.style.transform = `translate(${x}px, ${y}px) translate(-50%,-50%) scale(${Math.max(0.3, sc)})`;
+    el.style.opacity = k > 0.85 ? String(1 - (k - 0.85) / 0.15) : '1';
+    // Shed a trail dot every ~28ms.
+    if (!reduced && now - lastTrail > 28 && k < 0.92) {
+      lastTrail = now;
+      const d = document.createElement('div');
+      const r = 2 + Math.random() * 2.5;
+      d.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${r}px;height:${r}px;` +
+        `border-radius:50%;background:rgba(245,209,66,0.8);box-shadow:0 0 6px rgba(245,209,66,0.6);` +
+        `pointer-events:none;z-index:99999;transform:translate(-50%,-50%);`;
+      document.body.appendChild(d);
+      d.animate([{opacity: 0.9}, {opacity: 0}], {duration: 420, easing: 'ease-out'}).onfinish = () => d.remove();
+    }
+    if (k < 1) { requestAnimationFrame(step); return; }
+    el.remove();
+    // The profile button drinks the light.
+    if (targetEl) {
+      targetEl.classList.remove('nge-profile-absorb');
+      void targetEl.offsetWidth; // restart the animation
+      targetEl.classList.add('nge-profile-absorb');
+      setTimeout(() => targetEl.classList.remove('nge-profile-absorb'), 650);
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+/**
+ * Grim's signature: a scythe sweeps through at (x, y) with a crescent
+ * slash of light. Played when a Cut tag is resolved.
+ */
+export function runScytheSwing(x: number, y: number, imgUrl: string): void {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const img = document.createElement('img');
+  img.src = imgUrl;
+  img.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:46px;height:46px;` +
+    `z-index:100000;pointer-events:none;transform-origin:50% 92%;` +
+    `filter:drop-shadow(0 0 7px rgba(53,181,255,0.65));`;
+  document.body.appendChild(img);
+  img.animate([
+    { transform: 'translate(-50%,-88%) rotate(-75deg) scale(0.7)', opacity: 0, offset: 0 },
+    { transform: 'translate(-50%,-88%) rotate(-55deg) scale(1)', opacity: 1, offset: 0.22 },
+    { transform: 'translate(-50%,-88%) rotate(55deg) scale(1)', opacity: 1, offset: 0.72 },
+    { transform: 'translate(-50%,-88%) rotate(75deg) scale(0.85)', opacity: 0, offset: 1 },
+  ], { duration: 540, easing: 'cubic-bezier(0.5, 0, 0.3, 1)' }).onfinish = () => img.remove();
+
+  // The crescent slash the blade leaves behind.
+  const S = 150, HALF = S / 2;
+  const cv = document.createElement('canvas');
+  cv.style.cssText = `position:fixed;left:${x - HALF}px;top:${y - HALF}px;width:${S}px;height:${S}px;` +
+    `pointer-events:none;z-index:99999;`;
+  document.body.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  if (!ctx) { cv.remove(); return; }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = S * dpr; cv.height = S * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const t0 = performance.now(), DUR = 540;
+  const A0 = -Math.PI * 0.78, A1 = Math.PI * 0.28; // matches the swing arc
+  function draw(now: number) {
+    const k = (now - t0) / DUR;
+    if (k >= 1) { cv.remove(); return; }
+    ctx!.clearRect(0, 0, S, S);
+    const q = Math.min(1, k / 0.72), head = q * q * (3 - 2 * q);
+    const fade = k > 0.6 ? 1 - (k - 0.6) / 0.4 : 1;
+    ctx!.lineCap = 'round';
+    ctx!.globalCompositeOperation = 'lighter';
+    for (let pass = 0; pass < 2; pass++) {
+      ctx!.beginPath();
+      ctx!.arc(HALF, HALF, 46, A0, A0 + (A1 - A0) * head);
+      ctx!.lineWidth = pass ? 1.4 : 5;
+      ctx!.strokeStyle = pass
+        ? `rgba(220,240,255,${(0.7 * fade).toFixed(3)})`
+        : `rgba(53,181,255,${(0.14 * fade).toFixed(3)})`;
+      ctx!.stroke();
+    }
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
 }

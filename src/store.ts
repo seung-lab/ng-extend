@@ -13,6 +13,7 @@ import {supabase} from './supabase';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
+import pinObjUrl from '../static/tags/pin.obj';
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 import {Uint64} from "neuroglancer/util/uint64";
 
@@ -1457,6 +1458,9 @@ function rowToIssueTag(row: any): IssueTag {
     resolvedById: row.resolved_by ?? undefined,
     resolvedByName: row.resolved_by_name ?? undefined,
     createdAt: row.created_at,
+    source: row.source ?? 'human',
+    confidence: row.confidence ?? undefined,
+    modelData: row.model_data ?? undefined,
   };
 }
 
@@ -1478,7 +1482,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   let pinMeshCache: Promise<{verts: Float32Array; faces: number[][]} | null> | null = null;
   function loadPinMesh() {
     if (!pinMeshCache) {
-      pinMeshCache = fetch('static/tags/pin.obj').then(async r => {
+      pinMeshCache = fetch(pinObjUrl).then(async r => {
         if (!r.ok) return null;
         const verts: number[] = [];
         const faces: number[][] = [];
@@ -1591,6 +1595,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   function tagPointAnnotations() {
     const canon = currentDatasetTag();
     return openTags.value
+      .filter(t => !isModelTag(t))
       .filter(t => !t.dataset || canonicalDataset(t.dataset) === canon)
       .filter(t => t.position?.length === 3)
       .map(t => ({
@@ -1617,6 +1622,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   }
 
   function syncTagLayer() {
+    syncAiLayer();
     try {
       const viewer: any = (window as any)['viewer'];
       if (!viewer?.state) return;
@@ -1682,13 +1688,226 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     }
   }
 
+  // ── AI candidates (model-seeded tags) ────────────────────────────────────
+  // Suspect windows from the merge-error detection model render on their own
+  // layer, tinted by confidence: cool blue near the model's 0.2 threshold up
+  // to hot orange at 1.0. Zoomed out the layer reads as a heat map of trouble
+  // spots; each marker is still an individual candidate.
+
+  const AI_LAYER_NAME = '🤖 AI candidates';
+  const AI_SHADER = 'void main() {\n' +
+    '  float c = clamp((prop_conf() - 0.2) / 0.8, 0.0, 1.0);\n' +
+    '  vec3 cold = vec3(0.25, 0.55, 1.0);\n' +
+    '  vec3 hot = vec3(1.0, 0.45, 0.1);\n' +
+    '  setColor(vec4(mix(cold, hot, c), 0.95));\n' +
+    '  setPointMarkerSize(9.0 + 8.0 * c);\n' +
+    '  setPointMarkerBorderWidth(1.5);\n' +
+    '  setPointMarkerBorderColor(vec4(1.0, 0.95, 0.85, 0.9));\n' +
+    '}\n';
+
+  /** AI tab's layer toggle; ambient showScoutTags still gates everything. */
+  const aiLayerOn = ref(true);
+  function setAiLayerOn(v: boolean) {
+    aiLayerOn.value = v;
+    syncAiLayer();
+  }
+
+  function aiPointAnnotations() {
+    const canon = currentDatasetTag();
+    return openTags.value
+      .filter(isModelTag)
+      .filter(t => !t.dataset || canonicalDataset(t.dataset) === canon)
+      .filter(t => t.position?.length === 3)
+      .map(t => ({
+        id: t.id,
+        point: t.position,
+        conf: t.confidence ?? 1,
+        description: `AI candidate ${Math.round((t.confidence ?? 1) * 100)}%${t.segId ? ' on …' + t.segId.slice(-6) : ''}`,
+      }));
+  }
+
+  function removeLayerByName(viewer: any, name: string) {
+    const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === name);
+    if (managed) viewer.layerManager.removeManagedLayer(managed);
+  }
+
+  /** Non-disruptive annotation layer creation (same route as the pin layer:
+   *  only this layer is touched, never the full viewer state). */
+  function addAnnotationLayer(viewer: any, name: string, spec: any) {
+    const managed = makeLayer(viewer.layerSpecification, name, spec);
+    viewer.layerSpecification.add(managed);
+  }
+
+  function syncAiLayer() {
+    try {
+      const viewer: any = (window as any)['viewer'];
+      if (!viewer?.state) return;
+      const ambientOn = useUserPreferencesStore().prefs.showScoutTags !== false;
+      const points = aiPointAnnotations();
+      if (!aiLayerOn.value || !ambientOn || !points.length) {
+        removeLayerByName(viewer, AI_LAYER_NAME);
+        return;
+      }
+      const managed = viewer.layerManager?.managedLayers?.find((l: any) => l.name === AI_LAYER_NAME);
+      if (!managed) {
+        addAnnotationLayer(viewer, AI_LAYER_NAME, {
+          type: 'annotation',
+          name: AI_LAYER_NAME,
+          annotationProperties: [{ id: 'conf', type: 'float32', default: 1 }],
+          annotations: points.map(p => ({
+            id: p.id, point: p.point, type: 'point', description: p.description, props: [p.conf],
+          })),
+          shader: AI_SHADER,
+        });
+        return;
+      }
+      const src = (managed.layer as any)?.localAnnotations;
+      if (!src) return;
+      src.clear();
+      for (const p of points) {
+        src.add({ id: p.id, type: 0 /* AnnotationType.POINT */, point: Float32Array.from(p.point), properties: [p.conf], description: p.description }, true);
+      }
+    } catch (e) {
+      console.warn('[issueTags] AI layer sync failed:', e);
+    }
+  }
+
+  // ── Dense heat layer (all model windows for one neuron) ──────────────────
+  // Every window the model scored, suspect or not, as a continuous heat skin
+  // along the neuron. Toggled per neuron from the AI tab; data comes from the
+  // model_windows table.
+
+  const HEAT_SHADER = 'void main() {\n' +
+    '  float c = clamp(prop_conf(), 0.0, 1.0);\n' +
+    '  vec3 cold = vec3(0.15, 0.35, 0.9);\n' +
+    '  vec3 hot = vec3(1.0, 0.3, 0.05);\n' +
+    '  setColor(vec4(mix(cold, hot, c), 0.25 + 0.7 * c));\n' +
+    '  setPointMarkerSize(4.0 + 9.0 * c);\n' +
+    '}\n';
+
+  function heatLayerName(rootId: string) {
+    return `🔥 AI heat …${rootId.slice(-6)}`;
+  }
+
+  /** Roots whose heat layer is currently shown (drives the AI tab chips). */
+  const activeHeatRoots = ref<string[]>([]);
+  const heatLoadingRoot = ref<string | null>(null);
+
+  async function toggleHeatLayer(rootId: string) {
+    const viewer: any = (window as any)['viewer'];
+    if (!viewer?.state) return;
+    const name = heatLayerName(rootId);
+    if (activeHeatRoots.value.includes(rootId)) {
+      removeLayerByName(viewer, name);
+      activeHeatRoots.value = activeHeatRoots.value.filter(r => r !== rootId);
+      return;
+    }
+    heatLoadingRoot.value = rootId;
+    try {
+      const canon = currentDatasetTag();
+      // Supabase caps a query at 1000 rows; a neuron can have several
+      // thousand windows, so page through.
+      const rows: any[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from('model_windows')
+          .select('position, verify_prob, is_suspect, window_idx')
+          .eq('dataset', canon)
+          .eq('root_id', rootId)
+          .order('window_idx', { ascending: true })
+          .range(from, from + 999);
+        if (error) { console.warn('[issueTags] model_windows load error:', error.message); break; }
+        rows.push(...(data ?? []));
+        if (!data || data.length < 1000) break;
+      }
+      if (!rows.length) return;
+      const annotations = rows.map(r => {
+        let point: number[];
+        try { point = JSON.parse(r.position); } catch { return null; }
+        return {
+          id: `heat-${rootId}-${r.window_idx}`,
+          point,
+          type: 'point',
+          description: `window ${r.window_idx}: ${(r.verify_prob * 100).toFixed(1)}%${r.is_suspect ? ' SUSPECT' : ''}`,
+          props: [r.verify_prob],
+        };
+      }).filter(Boolean);
+      removeLayerByName(viewer, name);
+      addAnnotationLayer(viewer, name, {
+        type: 'annotation',
+        name,
+        annotationProperties: [{ id: 'conf', type: 'float32', default: 0 }],
+        annotations,
+        shader: HEAT_SHADER,
+      });
+      activeHeatRoots.value = [...activeHeatRoots.value, rootId];
+    } finally {
+      heatLoadingRoot.value = null;
+    }
+  }
+
+  // ── Proposed-split overlay ───────────────────────────────────────────────
+  // A suspect window carries 25 sample points labeled 0/1: the model's
+  // proposed partition of the neuron at that spot. Shown as a two-color
+  // constellation so a Scythe sees the suggested cut before making it.
+
+  const SPLIT_LAYER_NAME = '✂ Proposed split';
+  const SPLIT_SHADER = 'void main() {\n' +
+    '  vec3 a = vec3(1.0, 0.35, 0.35);\n' +
+    '  vec3 b = vec3(0.3, 0.65, 1.0);\n' +
+    '  setColor(vec4(mix(a, b, clamp(prop_side(), 0.0, 1.0)), 0.95));\n' +
+    '  setPointMarkerSize(9.0);\n' +
+    '  setPointMarkerBorderWidth(1.0);\n' +
+    '  setPointMarkerBorderColor(vec4(1.0, 1.0, 1.0, 0.8));\n' +
+    '}\n';
+
+  /** Tag whose proposed split is currently overlaid (AI tab scissors chip). */
+  const activeSplitTagId = ref<string | null>(null);
+
+  function hideSplitOverlay() {
+    const viewer: any = (window as any)['viewer'];
+    if (viewer) removeLayerByName(viewer, SPLIT_LAYER_NAME);
+    activeSplitTagId.value = null;
+  }
+
+  function toggleSplitOverlay(tag: IssueTag) {
+    if (activeSplitTagId.value === tag.id) { hideSplitOverlay(); return; }
+    const viewer: any = (window as any)['viewer'];
+    const md = tag.modelData;
+    if (!viewer?.state || !md?.posRelUm?.length || !md.labels?.length || !md.centerUm) return;
+    try {
+      // Micron -> voxel via the viewer's own coordinate space, like the pins.
+      const cs = viewer.coordinateSpace?.value;
+      if (!cs?.scales?.length) return;
+      const scaleNm = [0, 1, 2].map(i => cs.scales[i] * 1e9);
+      const annotations = md.posRelUm.map((rel: number[], i: number) => ({
+        id: `split-${tag.id}-${i}`,
+        point: [0, 1, 2].map(d => (md.centerUm![d] + rel[d]) * 1000 / scaleNm[d]),
+        type: 'point',
+        description: `proposed side ${md.labels![i]}`,
+        props: [md.labels![i]],
+      }));
+      removeLayerByName(viewer, SPLIT_LAYER_NAME);
+      addAnnotationLayer(viewer, SPLIT_LAYER_NAME, {
+        type: 'annotation',
+        name: SPLIT_LAYER_NAME,
+        annotationProperties: [{ id: 'side', type: 'float32', default: 0 }],
+        annotations,
+        shader: SPLIT_SHADER,
+      });
+      activeSplitTagId.value = tag.id;
+    } catch (e) {
+      console.warn('[issueTags] split overlay failed:', e);
+    }
+  }
+
   async function load() {
     try {
       const { data, error } = await supabase
         .from('issue_tags')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(300);
+        .limit(1000);
       if (error) { console.warn('[issueTags] load error:', error.message); return; }
       tags.value = (data ?? []).map(rowToIssueTag);
     } catch (e) { console.warn('[issueTags] load failed:', e); }
@@ -1760,7 +1979,10 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   load();
   subscribe();
 
-  return { tags, openTags, load, add, resolve, remove, syncTagLayer, setTagPreview, tagModeActive, setTagModeActive };
+  return { tags, openTags, load, add, resolve, remove, syncTagLayer, setTagPreview, tagModeActive, setTagModeActive,
+           aiLayerOn, setAiLayerOn, syncAiLayer,
+           activeHeatRoots, heatLoadingRoot, toggleHeatLayer,
+           activeSplitTagId, toggleSplitOverlay, hideSplitOverlay };
 });
 
 // ── Working Links ─────────────────────────────────────────────────────────
