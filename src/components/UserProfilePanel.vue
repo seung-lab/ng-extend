@@ -2296,10 +2296,22 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   margin-bottom: 10px;
 }
 
+/* Badges sit smaller, five to a row, on faint shelf lines (Amy: "laid out
+   as though they were set in 2 rows on a shelf"). The shelf is a repeating
+   gradient tuned to the fixed row height plus the row gap. */
 .nge-profile-badges-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px 8px;
+  grid-auto-rows: 78px;
+  padding: 0 2px;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px 74px,
+    rgba(130, 190, 255, 0.30) 74px 75px,
+    rgba(130, 190, 255, 0.08) 75px 77px,
+    transparent 77px 90px
+  );
 }
 
 .nge-profile-badge {
@@ -2361,8 +2373,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   transform: scale(1.08);
 }
 .nge-profile-badge-viewall-icon {
-  width: 68px;
-  height: 68px;
+  width: 46px;
+  height: 46px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2405,11 +2417,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
 .nge-profile-badge-img {
   display: flex; align-items: center; justify-content: center;
-  width: 68px; height: 68px;
+  width: 46px; height: 46px;
   transition: filter 0.15s;
 }
 
-.nge-profile-badge-icon { width: 62px; height: 62px; object-fit: contain; }
+.nge-profile-badge-icon { width: 42px; height: 42px; object-fit: contain; }
 
 .nge-profile-badge-mystery {
   width: 50px; height: 50px;
@@ -2452,8 +2464,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* Badge detail in viz column */
 .nge-profile-viz-badge { justify-content: flex-start; text-align: center; gap: 12px; padding-top: 16px; }
 
-.nge-profile-viz-badge-icon { width: 220px; height: 220px; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
-.nge-profile-viz-badge-icon--large { width: 240px; height: 240px; }
+/* max-width guards: the right column is 360px, and anything wider walked
+   off its right edge (Amy's clipped Favorite Badge report, 2026-08-17). */
+.nge-profile-viz-badge-icon { width: 220px; height: 220px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
+.nge-profile-viz-badge-icon--large { width: 240px; height: 240px; max-width: 100%; }
+.nge-profile-viz-panel { max-width: 100%; box-sizing: border-box; }
+.nge-profile-viz-badge-name,
+.nge-profile-viz-badge-desc { max-width: 100%; overflow-wrap: break-word; padding: 0 10px; box-sizing: border-box; }
 
 .nge-profile-viz-badge-name {
   font-family: 'Orbitron', 'Rajdhani', 'Audiowide', 'Share Tech Mono', ui-monospace, monospace;

@@ -19,7 +19,7 @@ import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
-import { runPanelTrace, runParticleBurst, runPanelZip, runPanelDraw, runBurstCoalesce, flyPlusOne } from '../util/holo_trace';
+import { runPanelTrace, runParticleBurst, runPanelZip, runPanelDraw, runBurstCoalesce } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 const pinSvgBig = scoutPinSvg('#35b5ff', 'width:34px;height:34px;');
@@ -93,10 +93,6 @@ function mousePosition(): number[] {
   return [];
 }
 
-const posLabel = computed(() => {
-  const p = crosshairPosition();
-  return p.length === 3 ? `(${p[0]}, ${p[1]}, ${p[2]})` : 'no position';
-});
 
 /** A point placed by T+click or Place-by-click, awaiting Submit. Shown in
  *  the tag layer as a preview so placing gives visible feedback without
@@ -124,6 +120,15 @@ function submit() {
   drop(pendingPos.value ?? crosshairPosition());
 }
 
+function copyCoords() {
+  const p = pendingPos.value ?? crosshairPosition();
+  if (p.length !== 3) return;
+  try {
+    navigator.clipboard.writeText(p.join(', '));
+    showFlash('Coordinates copied');
+  } catch { showFlash('Copy failed'); }
+}
+
 async function drop(position: number[]) {
   if (saving.value || phase.value !== 'form') return;
   if (position.length !== 3) { showFlash('No position under cursor'); return; }
@@ -149,18 +154,20 @@ async function drop(position: number[]) {
   // as one panel changing faces, not two different boxes.
   const fb = boxEl.value?.getBoundingClientRect();
   if (fb) successSize.value = { width: fb.width + 'px', minHeight: fb.height + 'px' };
-  // Big burst whose particles arc back and coalesce into the border of
-  // whatever box is standing when they land (success box, or the strip).
-  // When the tag was placed by click, the stream launches from the placed
-  // point itself, connecting the deed to the reward. Colored by tag type.
+  // Two waves (Amy's spec): Submit fires particles from the panel, then a
+  // second wave fires from the placed point, and both sets coalesce along
+  // the border together. Colored by tag type.
   const br = wrapEl.value?.getBoundingClientRect();
   const rgb = TAG_RGB[c.tagType];
-  const origin = placeScreen ?? (br ? { x: br.left + br.width / 2, y: br.top + br.height / 2 } : null);
+  const secondOrigin = placeScreen;
   placeScreen = null;
   let total = 0;
-  if (origin) {
-    total = runBurstCoalesce(origin.x, origin.y,
-      () => wrapEl.value?.getBoundingClientRect() ?? null, rgb);
+  if (br) {
+    const getRect = () => wrapEl.value?.getBoundingClientRect() ?? null;
+    total = runBurstCoalesce(br.left + br.width / 2, br.top + br.height / 2, getRect, rgb);
+    if (secondOrigin) {
+      setTimeout(() => runBurstCoalesce(secondOrigin.x, secondOrigin.y, getRect, rgb), 180);
+    }
   }
   if (collapsed.value) {
     // The mini strip has no room for the success box; the flash plus the
@@ -186,7 +193,8 @@ function dismissSuccess() {
   if (r) {
     runParticleBurst(r.left + r.width / 2, r.top + r.height / 2,
       TAG_RGB[lastTag.value?.tagType ?? 'merger']);
-    flyPlusOne(r.left + r.width / 2, r.top + 24, '+1');
+    // The +1 comet to the profile is shelved for now (Amy 2026-08-17), it
+    // read as an unidentified object shooting off the box.
   }
   phase.value = 'success-out';
   setTimeout(() => { phase.value = 'form'; }, SWAP_MS);
@@ -388,6 +396,7 @@ onBeforeUnmount(() => {
               'nge-tagmode-chip--active': selected === c.key,
               'nge-tagmode-chip--cut': c.key === 'cut',
               'nge-tagmode-chip--ext': c.key === 'extend',
+              'nge-tagmode-chip--other': c.key === 'other',
             }"
             :title="c.hint"
             @click="choose(c.key)"
@@ -409,8 +418,14 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div class="nge-tagmode-foot">
-          <span v-if="pendingPos" class="nge-tagmode-pos nge-tagmode-pos--pending" title="Placed point, Submit saves it (click again to move)">point: <b>({{ pendingPos.join(', ') }})</b></span>
-          <span v-else class="nge-tagmode-pos">crosshair: <b>{{ posLabel }}</b></span>
+          <div class="nge-tagmode-coords" :class="{ 'nge-tagmode-pos--pending': pendingPos }">
+            <span class="nge-tagmode-coords-label">{{ pendingPos ? 'point' : 'coordinates' }}:</span>
+            <span class="nge-tagmode-coords-vals"
+              :title="pendingPos ? 'Placed point, Submit saves it (click again to move)' : 'Crosshair position'"
+            ><b>({{ (pendingPos ?? crosshairPosition()).join(', ') }})</b>
+              <button class="nge-tagmode-copy" title="Copy coordinates" @click="copyCoords">⧉</button>
+            </span>
+          </div>
           <div class="nge-tagmode-actions-row">
             <button
               class="nge-tagmode-arm"
@@ -599,6 +614,38 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .nge-tagmode-pos--pending b { color: #35b5ff; }
+
+/* "coordinates:" label with the values small on one line beneath. */
+.nge-tagmode-coords { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.nge-tagmode-coords-label {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(160, 185, 220, 0.75);
+}
+.nge-tagmode-coords-vals {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  color: #cfe0f5;
+}
+.nge-tagmode-coords-vals b { font-weight: 600; color: #e9c46a; }
+.nge-tagmode-pos--pending .nge-tagmode-coords-vals b { color: #35b5ff; }
+.nge-tagmode-copy {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  color: #8ea3c4;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 5px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.nge-tagmode-copy:hover { color: #d8ecff; border-color: rgba(53, 181, 255, 0.5); }
 .nge-tagmode-title {
   flex: 1;
   font-family: 'Orbitron', 'Inter', sans-serif;
@@ -626,8 +673,13 @@ onBeforeUnmount(() => {
   color: #dcb;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.nge-tagmode-chip--cut { background: rgba(224, 96, 96, 0.08); border-color: rgba(224, 96, 96, 0.3); color: #eaa; }
-.nge-tagmode-chip--ext { background: rgba(96, 192, 96, 0.08); border-color: rgba(96, 192, 96, 0.3); color: #9d9; }
+/* Type colors match the light: blue Cut, green Extend, purple Other. */
+.nge-tagmode-chip--cut { background: rgba(53, 181, 255, 0.08); border-color: rgba(53, 181, 255, 0.35); color: #9fd6ff; }
+.nge-tagmode-chip--cut.nge-tagmode-chip--active { background: rgba(53, 181, 255, 0.2); border-color: rgba(53, 181, 255, 0.75); color: #d8efff; }
+.nge-tagmode-chip--ext { background: rgba(96, 224, 128, 0.08); border-color: rgba(96, 224, 128, 0.32); color: #9fe8b0; }
+.nge-tagmode-chip--ext.nge-tagmode-chip--active { background: rgba(96, 224, 128, 0.2); border-color: rgba(96, 224, 128, 0.7); color: #d9ffe3; }
+.nge-tagmode-chip--other { background: rgba(200, 150, 255, 0.08); border-color: rgba(200, 150, 255, 0.32); color: #d9bdfa; }
+.nge-tagmode-chip--other.nge-tagmode-chip--active { background: rgba(200, 150, 255, 0.2); border-color: rgba(200, 150, 255, 0.7); color: #f0e2ff; }
 .nge-tagmode-chip-img { width: 15px; height: 15px; vertical-align: -3px; margin-right: 3px; }
 .nge-tagmode-chip--active {
   background: rgba(245, 209, 66, 0.18);
@@ -702,12 +754,34 @@ onBeforeUnmount(() => {
 }
 .nge-tagmode-btn:hover { background: rgba(245, 209, 66, 0.24); }
 .nge-tagmode-btn:disabled { opacity: 0.5; cursor: default; }
-.nge-tagmode-flash { font-size: 12px; color: #f5d142; text-align: center; }
+/* The flash is a holo pill now, not a bare yellow string. */
+.nge-tagmode-flash {
+  align-self: center;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #cfe9ff;
+  background: rgba(6, 12, 24, 0.9);
+  border: 1px solid rgba(53, 181, 255, 0.45);
+  border-radius: 999px;
+  padding: 5px 14px;
+  box-shadow: 0 0 14px rgba(53, 181, 255, 0.2), inset 0 0 10px rgba(53, 181, 255, 0.07);
+  animation: nge-flash-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes nge-flash-in {
+  0%   { opacity: 0; transform: translateY(4px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 /* ── Success box ── */
 .nge-tagmode--success {
   align-items: center;
-  gap: 4px;
+  /* Matches the form box's measured footprint (successSize), so include
+     border and padding in that width or the right edge walks off. */
+  box-sizing: border-box;
+  justify-content: center;
+  gap: 10px;
   padding: 20px 16px;
   cursor: pointer;
   border-color: rgba(96, 192, 96, 0.4);
