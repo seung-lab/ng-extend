@@ -1021,21 +1021,39 @@ const aiDatasetTags = computed(() => aiOpenTags.value.filter((t: IssueTag) => !i
 const aiResolvedTags = computed(() => tagStore.tags.filter((t: IssueTag) => t.status === 'resolved' && isModelTag(t)));
 const showResolvedAiTags = ref(false);
 
-/** Chip filter by neuron root (the import is per-neuron batches). */
-const aiRootFilter = ref<string>('all');
-const aiRoots = computed(() => {
-  const counts = new Map<string, number>();
+/** Candidates clustered by cell (Amy: errors should group per neuron).
+ *  Groups sort biggest first; rows inside sort hottest first. */
+const aiGroups = computed(() => {
+  const by = new Map<string, IssueTag[]>();
   for (const t of aiDatasetTags.value) {
-    if (t.segId) counts.set(t.segId, (counts.get(t.segId) ?? 0) + 1);
+    const k = t.segId ?? 'unknown';
+    if (!by.has(k)) by.set(k, []);
+    by.get(k)!.push(t);
   }
-  return [...counts.entries()].map(([root, count]) => ({ root, count }));
+  const groups = [...by.entries()].map(([root, tags]) => ({
+    root,
+    tags: [...tags].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0)),
+  }));
+  groups.sort((a, b) => b.tags.length - a.tags.length);
+  return groups;
 });
-const aiSortedTags = computed(() => {
-  const base = aiRootFilter.value === 'all'
-    ? aiDatasetTags.value
-    : aiDatasetTags.value.filter((t: IssueTag) => t.segId === aiRootFilter.value);
-  return [...base].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
-});
+/** Expanded cells; every group starts open on the first load. */
+const aiExpandedRoots = ref<Set<string>>(new Set());
+let aiExpandSeeded = false;
+watch(aiGroups, gs => {
+  if (!aiExpandSeeded && gs.length) {
+    aiExpandedRoots.value = new Set(gs.map(g => g.root));
+    aiExpandSeeded = true;
+  }
+}, { immediate: true });
+function aiGroupExpanded(root: string): boolean {
+  return aiExpandedRoots.value.has(root);
+}
+function toggleAiGroup(root: string) {
+  const next = new Set(aiExpandedRoots.value);
+  if (next.has(root)) next.delete(root); else next.add(root);
+  aiExpandedRoots.value = next;
+}
 
 /** Badge color matching the marker shader's ramp: cool blue rising to
  *  golden yellow (Amy's palette; orange is banned). */
@@ -1893,33 +1911,17 @@ const panelStyle = computed(() => ({
           </div>
 
           <div class="nge-cl-tags-lanes">
-            <button :class="{ 'nge-cl-lane--active': aiRootFilter === 'all' }" @click="aiRootFilter = 'all'">All ({{ aiDatasetTags.length }})</button>
-            <button v-for="r in aiRoots" :key="r.root"
-                    :class="{ 'nge-cl-lane--active': aiRootFilter === r.root }"
-                    :title="'Only candidates on neuron ' + r.root"
-                    @click="aiRootFilter = aiRootFilter === r.root ? 'all' : r.root">
-              🧠 …{{ r.root.slice(-6) }} ({{ r.count }})
-            </button>
+            <span class="nge-cl-notes" style="align-self: center;">{{ aiDatasetTags.length }} candidates on {{ aiGroups.length }} {{ aiGroups.length === 1 ? 'cell' : 'cells' }}</span>
             <button :class="{ 'nge-cl-lane--active': tagStore.aiLayerOn }"
                     :title="tagStore.aiLayerOn ? 'Hide AI candidate markers in the viewer' : 'Show AI candidate markers in the viewer'"
                     @click="tagStore.setAiLayerOn(!tagStore.aiLayerOn)">📍 Markers</button>
           </div>
 
-          <div v-if="aiRoots.length" class="nge-cl-tags-lanes">
-            <button v-for="r in aiRoots" :key="'heat-' + r.root"
-                    :class="{ 'nge-cl-lane--active': tagStore.activeHeatRoots.includes(r.root) }"
-                    :disabled="tagStore.heatLoadingRoot === r.root"
-                    title="Heat layer: every window the model scored on this neuron, cool to hot"
-                    @click="tagStore.toggleHeatLayer(r.root)">
-              {{ tagStore.heatLoadingRoot === r.root ? '⏳' : '🔥' }} Heat …{{ r.root.slice(-6) }}
-            </button>
-          </div>
-
-          <div v-if="!aiSortedTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
+          <div v-if="!aiDatasetTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
             No open AI candidates for this dataset.
             <template v-if="!aiElsewhere.length"> The model finds no fault here.</template>
           </div>
-          <div v-if="!aiSortedTags.length && aiElsewhere.length" class="nge-cl-tags-lanes">
+          <div v-if="!aiDatasetTags.length && aiElsewhere.length" class="nge-cl-tags-lanes">
             <button v-for="e in aiElsewhere" :key="e.ds.id"
                     class="nge-cl-lane--active"
                     :title="'Switch the viewer to ' + e.ds.label"
@@ -1928,7 +1930,21 @@ const panelStyle = computed(() => ({
             </button>
           </div>
 
-          <div v-for="tag in aiSortedTags" :key="tag.id" class="nge-cl-help-item">
+          <template v-for="g in aiGroups" :key="g.root">
+            <div class="nge-cl-ai-group" @click="toggleAiGroup(g.root)"
+                 :title="aiGroupExpanded(g.root) ? 'Collapse this cell' : 'Expand this cell'">
+              <span class="nge-cl-ai-group-caret">{{ aiGroupExpanded(g.root) ? '▾' : '▸' }}</span>
+              <span class="nge-cl-ai-group-name">🧠 Cell …{{ g.root.slice(-6) }}</span>
+              <span class="nge-cl-notes">{{ g.tags.length }} {{ g.tags.length === 1 ? 'candidate' : 'candidates' }}</span>
+              <button class="nge-cl-ai-group-heat"
+                      :class="{ 'nge-cl-lane--active': tagStore.activeHeatRoots.includes(g.root) }"
+                      :disabled="tagStore.heatLoadingRoot === g.root"
+                      title="Heat layer: every window the model scored on this cell, cool to hot"
+                      @click.stop="tagStore.toggleHeatLayer(g.root)">
+                {{ tagStore.heatLoadingRoot === g.root ? '⏳' : '🔥' }} Heat
+              </button>
+            </div>
+          <div v-for="tag in g.tags" v-show="aiGroupExpanded(g.root)" :key="tag.id" class="nge-cl-help-item">
             <div class="nge-cl-row">
               <div class="nge-cl-row-left">
                 <span class="nge-cl-pip" :style="{ background: confColor(tag.confidence) }"></span>
@@ -1958,6 +1974,8 @@ const panelStyle = computed(() => ({
               </div>
             </div>
           </div>
+
+          </template>
 
           <div class="nge-cl-help-resolved-toggle" @click="showResolvedAiTags = !showResolvedAiTags">
             {{ showResolvedAiTags ? '▾' : '▸' }} Resolved ({{ aiResolvedTags.length }})
@@ -3076,6 +3094,39 @@ select.nge-cl-response-input:hover {
 .nge-cl-btn--split-active {
   background: rgba(255, 140, 60, 0.2) !important;
   border-color: rgba(255, 160, 80, 0.8) !important;
+}
+.nge-cl-ai-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 6px;
+  margin-top: 8px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(100, 200, 255, 0.14);
+  user-select: none;
+}
+.nge-cl-ai-group-caret { color: rgba(100, 200, 255, 0.7); width: 12px; }
+.nge-cl-ai-group-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: rgba(160, 215, 255, 0.9);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+.nge-cl-ai-group-heat {
+  margin-left: auto;
+  padding: 3px 9px;
+  border-radius: 11px;
+  font-size: 11px;
+  cursor: pointer;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #abc;
+}
+.nge-cl-ai-group-heat.nge-cl-lane--active {
+  background: rgba(245,209,66,0.14);
+  border-color: rgba(245,209,66,0.5);
+  color: #ffe9a0;
 }
 
 /* ── connectome.quest resources (Help tab footer) ── */
