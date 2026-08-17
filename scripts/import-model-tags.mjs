@@ -35,9 +35,12 @@ const DEFAULT_FILES = [
 // datastack (from the export file) -> canonical dataset tag (src/datasets.ts)
 // and voxel size in nm. Positions are stored in voxels like every other
 // issue_tags row: vox = um * 1000 / nm_per_voxel.
+// Voxel sizes verified against each volume's precomputed info: minnie65 em
+// mip0 is 8x8x40 nm (bossdb), NOT the 4x4x40 sometimes quoted; importing at
+// 4 nm put every marker 2x out along x/y, off the edge of the dataset.
 const DATASTACK_MAP = {
-  minnie65_public: { dataset: 'minnie65_public', voxelNm: [4, 4, 40] },
-  minnie65_public_v117: { dataset: 'minnie65_public', voxelNm: [4, 4, 40] },
+  minnie65_public: { dataset: 'minnie65_public', voxelNm: [8, 8, 40] },
+  minnie65_public_v117: { dataset: 'minnie65_public', voxelNm: [8, 8, 40] },
   pinky_sandbox: { dataset: 'pinky_nf_v2', voxelNm: [4, 4, 40] },
   stroeh_mouse_retina: { dataset: 'stroeh_mouse_retina', voxelNm: [16, 16, 40] },
 };
