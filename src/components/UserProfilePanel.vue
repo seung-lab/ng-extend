@@ -684,7 +684,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
-        <span class="nge-profile-topbar-label">◈ RESEARCHER PROFILE</span>
+        <span class="nge-profile-topbar-label">◈ <span class="nge-profile-topbar-name">{{ profileUsername || profileName }}</span> · RESEARCHER PROFILE</span>
         <button class="nge-profile-exit" @click="handleClose">×</button>
       </div>
 
@@ -1766,6 +1766,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   color: rgba(74, 158, 255, 0.55);
   text-transform: uppercase;
   font-weight: 600;
+}
+/* Whose profile this is, visible on every tab. */
+.nge-profile-topbar-name {
+  color: #f5d142;
+  text-transform: none;
+  letter-spacing: 0.1em;
 }
 
 .nge-profile-exit {
