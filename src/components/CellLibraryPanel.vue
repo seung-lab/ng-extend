@@ -19,7 +19,7 @@ import {
 import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
-import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, datasetDisplayName, DATASETS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -1047,6 +1047,31 @@ function aiCategoryIcon(tag: IssueTag): string {
   return (cat && icons[cat]) || '🤖';
 }
 
+/** Other datasets holding open AI candidates, for the empty state's
+ *  one-click switch (the demo batches are minnie65 only, so a user on the
+ *  retina would otherwise find a bare tab and no pointer onward). */
+const aiElsewhere = computed(() => {
+  const byCanon = new Map<string, number>();
+  for (const t of aiOpenTags.value) {
+    if (!t.dataset || !isCrossDatasetTag(t)) continue;
+    const c = canonicalDataset(t.dataset);
+    byCanon.set(c, (byCanon.get(c) ?? 0) + 1);
+  }
+  const out: { ds: DatasetEntry; count: number }[] = [];
+  for (const [canon, count] of byCanon) {
+    const ds = findDatasetBySegName(canon);
+    if (ds) out.push({ ds, count });
+  }
+  return out;
+});
+
+async function switchToAiDataset(ds: DatasetEntry) {
+  const ok = await switchToDataset(ds);
+  if (ok) {
+    activeDataset.value = ds.layers.find((l: any) => l.type === 'segmentation')?.name ?? '';
+  }
+}
+
 /** Make the candidate's root visible in the first segmentation layer.
  *  Retried on a schedule: the first attempt can be eaten by the middleauth
  *  login popup the graphene layer triggers on a cold jump. */
@@ -1889,7 +1914,16 @@ const panelStyle = computed(() => ({
           </div>
 
           <div v-if="!aiSortedTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
-            No open AI candidates for this dataset. The model finds no fault here.
+            No open AI candidates for this dataset.
+            <template v-if="!aiElsewhere.length"> The model finds no fault here.</template>
+          </div>
+          <div v-if="!aiSortedTags.length && aiElsewhere.length" class="nge-cl-tags-lanes">
+            <button v-for="e in aiElsewhere" :key="e.ds.id"
+                    class="nge-cl-lane--active"
+                    :title="'Switch the viewer to ' + e.ds.label"
+                    @click="switchToAiDataset(e.ds)">
+              {{ SPECIES_ICONS[e.ds.species] }} Switch to {{ e.ds.shortLabel }} ({{ e.count }} candidates)
+            </button>
           </div>
 
           <div v-for="tag in aiSortedTags" :key="tag.id" class="nge-cl-help-item">
