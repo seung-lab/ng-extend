@@ -106,7 +106,7 @@ let placeScreen: { x: number; y: number } | null = null;
 function placePoint(pos: number[], screenX?: number, screenY?: number) {
   if (pos.length !== 3) { showFlash('No data under cursor, hover the 2D or 3D view'); return; }
   pendingPos.value = pos;
-  tagStore.setTagPreview(pos);
+  tagStore.setTagPreview(pos, selectedChoice.value.tagType);
   placeScreen = screenX != null && screenY != null ? { x: screenX, y: screenY } : null;
   // A spark right where the click landed in the 2D/3D view, so placing a
   // point answers back at the point itself, in the tag type's color.

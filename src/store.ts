@@ -1536,10 +1536,37 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     return ((h % 628) / 628) * 2 * Math.PI;
   }
 
+  /** Type tints: blue Cut, green Extend, purple Other (Amy's palette). */
+  function pinTint(tagType?: string): [number, number, number] | null {
+    if (tagType === 'merger') return [0.21, 0.71, 1.0];
+    if (tagType === 'missing_branch') return [0.38, 0.88, 0.50];
+    if (tagType === 'other') return [0.78, 0.59, 1.0];
+    return null;
+  }
+
+  /** Colorize a mesh's baked vertex colors with a type tint: the bake's
+   *  luminance keeps the sculpt's shading, the tint carries the meaning.
+   *  Cached per mesh + tint. */
+  const tintedColorCache = new Map<string, string[]>();
+  function tintedColors(mesh: PinMesh, tint: [number, number, number] | null): string[] {
+    if (!tint) return mesh.colors;
+    const cacheKey = mesh.colors.length + ':' + tint.join(',');
+    const hit = tintedColorCache.get(cacheKey);
+    if (hit) return hit;
+    const out = mesh.colors.map(line => {
+      const p = line.split(/\s+/);
+      const lum = 0.3 * (+p[0]) + 0.59 * (+p[1]) + 0.11 * (+p[2]);
+      const k = 0.35 + 0.75 * lum;
+      return `${Math.min(1, tint[0] * k).toFixed(3)} ${Math.min(1, tint[1] * k).toFixed(3)} ${Math.min(1, tint[2] * k).toFixed(3)}`;
+    });
+    tintedColorCache.set(cacheKey, out);
+    return out;
+  }
+
   /** Bake all pin instances (possibly different meshes per tag type) into
    *  one colored legacy-VTK, so the layer bar carries a single chip and the
    *  paint Meshy baked survives as per-vertex color. */
-  function buildPinVtk(instances: {mesh: PinMesh; pos: number[]; yaw: number; lift: number}[]): string {
+  function buildPinVtk(instances: {mesh: PinMesh; pos: number[]; yaw: number; lift: number; tint?: [number, number, number] | null}[]): string {
     let totalV = 0, totalF = 0;
     for (const inst of instances) { totalV += inst.mesh.verts.length / 3; totalF += inst.mesh.faces.length; }
     const lines: string[] = [
@@ -1563,7 +1590,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       off += inst.mesh.verts.length / 3;
     }
     lines.push(`POINT_DATA ${totalV}`, 'SCALARS color float 3', 'LOOKUP_TABLE default');
-    for (const inst of instances) for (const c of inst.mesh.colors) lines.push(c);
+    for (const inst of instances) for (const c of tintedColors(inst.mesh, inst.tint ?? null)) lines.push(c);
     return lines.join('\n');
   }
 
@@ -1597,14 +1624,17 @@ export const useIssueTagStore = defineStore('issueTags', () => {
 
       const meshes = await loadPinMeshes();
       if (!meshes) return;
-      // Amy's Meshy icons: the castle pin for Cut and Extend, the simple
-      // location icon for Other (2026-08-17).
-      const meshFor = (tagType?: string) =>
-        (tagType === 'other' && meshes.other) ? meshes.other : meshes.main;
-      const instances = shown.map(t => ({mesh: meshFor(t.tagType), pos: toNm(t.point), yaw: pinYaw(t.id), lift: 0}));
+      // Amy 2026-08-17: the simple location icon is THE pin for every type,
+      // colorized per tag type (blue Cut, green Extend, purple Other). The
+      // castle pin stays shipped for future use.
+      const pinMesh = meshes.other ?? meshes.main;
+      const instances = shown.map(t => ({
+        mesh: pinMesh, pos: toNm(t.point), yaw: pinYaw(t.id), lift: 0,
+        tint: pinTint(t.tagType),
+      }));
       // The pending pin hovers half a micron above its point until Submit
       // plants it, a placed-but-not-saved tag literally hasn't landed yet.
-      if (preview) instances.push({mesh: meshes.main, pos: toNm(preview), yaw: 0, lift: 500});
+      if (preview) instances.push({mesh: pinMesh, pos: toNm(preview), yaw: 0, lift: 500, tint: pinTint(previewType)});
 
       const vtkText = buildPinVtk(instances);
       const dataUrl = 'data:application/octet-stream;base64,' + btoa(vtkText);
@@ -1659,8 +1689,10 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   /** A placed-but-not-submitted point, shown in the layer so "Place by
    *  click" gives visible feedback without saving anything yet. */
   let previewPoint: number[] | null = null;
-  function setTagPreview(pos: number[] | null) {
+  let previewType: string | undefined;
+  function setTagPreview(pos: number[] | null, tagType?: string) {
     previewPoint = pos && pos.length === 3 ? [...pos] : null;
+    previewType = tagType;
     syncTagLayer();
   }
 
