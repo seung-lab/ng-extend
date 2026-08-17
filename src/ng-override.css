@@ -13,6 +13,14 @@
   transition: opacity 0.2s;
 }
 
+/* The selected-layer side panel toggle (sliders icon) sits at the far right
+   of the top bar (Amy 2026-08-17). The row is flex; order beats DOM order. */
+.neuroglancer-viewer-top-row > [title="Show layer side panel"],
+.neuroglancer-viewer-top-row > [title="Hide layer side panel"] {
+  order: 999;
+  margin-right: 4px;
+}
+
 /* ── Panel hover border: subtle dark blue instead of white ── */
 .neuroglancer-panel:focus-within {
   border-color: rgba(40, 70, 120, 0.6) !important;

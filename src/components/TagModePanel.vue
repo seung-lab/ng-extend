@@ -19,7 +19,7 @@ import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
-import { runPanelTrace, runParticleBurst, runPanelZip, runPanelDraw, runBurstCoalesce } from '../util/holo_trace';
+import { runPanelTrace, runParticleBurst, runPanelZip, runPanelDraw, runBurstCoalesce, flyPlusOne } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 const pinSvgBig = scoutPinSvg('#35b5ff', 'width:34px;height:34px;');
@@ -89,7 +89,7 @@ function mousePosition(): number[] {
 
 const posLabel = computed(() => {
   const p = crosshairPosition();
-  return p.length === 3 ? `${p[0]}, ${p[1]}, ${p[2]}` : 'no position';
+  return p.length === 3 ? `(${p[0]}, ${p[1]}, ${p[2]})` : 'no position';
 });
 
 /** A point placed by T+click or Place-by-click, awaiting Submit. Shown in
@@ -97,10 +97,13 @@ const posLabel = computed(() => {
  *  saving anything yet (Amy: "place by click should not automatically
  *  submit - it should just place the point"). */
 const pendingPos = ref<number[] | null>(null);
-function placePoint(pos: number[]) {
+function placePoint(pos: number[], screenX?: number, screenY?: number) {
   if (pos.length !== 3) { showFlash('No data under cursor, hover the 2D or 3D view'); return; }
   pendingPos.value = pos;
   tagStore.setTagPreview(pos);
+  // A spark right where the click landed in the 2D/3D view, so placing a
+  // point answers back at the point itself.
+  if (screenX != null && screenY != null) runParticleBurst(screenX, screenY);
   showFlash('Point placed, hit Submit');
 }
 function clearPending() {
@@ -132,6 +135,10 @@ async function drop(position: number[]) {
   clearPending();
   const label = c.label.replace(/^\S+\s/, '');
   lastTag.value = { label, pos: position };
+  // The success box takes the form box's exact footprint so the swap reads
+  // as one panel changing faces, not two different boxes.
+  const fb = boxEl.value?.getBoundingClientRect();
+  if (fb) successSize.value = { width: fb.width + 'px', minHeight: fb.height + 'px' };
   // Big burst whose particles arc back and coalesce into the border of
   // whatever box is standing when they land (success box, or the strip).
   const br = wrapEl.value?.getBoundingClientRect();
@@ -154,10 +161,17 @@ async function drop(position: number[]) {
   setTimeout(() => { phase.value = 'success'; }, SWAP_MS);
 }
 const successFrameless = ref(false);
+const successSize = ref<{ width: string; minHeight: string } | null>(null);
 
-/** Clicking the success box plays the same cycle back to the form. */
+/** Clicking the success box celebrates, sends a +1 to the profile, and
+ *  plays the cycle back to the form. */
 function dismissSuccess() {
   if (phase.value !== 'success') return;
+  const r = wrapEl.value?.getBoundingClientRect();
+  if (r) {
+    runParticleBurst(r.left + r.width / 2, r.top + r.height / 2);
+    flyPlusOne(r.left + r.width / 2, r.top + 24, '+1');
+  }
   phase.value = 'success-out';
   setTimeout(() => { phase.value = 'form'; }, SWAP_MS);
 }
@@ -283,7 +297,7 @@ function onPointerCapture(e: PointerEvent) {
   e.preventDefault();
   e.stopPropagation();
   if (armedOnce.value) { armedOnce.value = false; document.body.classList.remove('nge-tag-armed'); }
-  placePoint(pos);
+  placePoint(pos, e.clientX, e.clientY);
 }
 
 onMounted(() => {
@@ -361,7 +375,7 @@ onBeforeUnmount(() => {
             }"
             :title="c.hint"
             @click="choose(c.key)"
-          ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" /><template v-else-if="c.key === 'extend'">🌿 </template><span v-else class="nge-tagmode-pin" v-html="pinSvg"></span>{{ c.key === 'cut' ? ' Cut' : c.label.replace(/^\S+\s/, '') }}</button>
+          ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" /><template v-else-if="c.key === 'extend'">🌿 </template>{{ c.key === 'cut' ? ' Cut' : c.label.replace(/^\S+\s/, '') }}</button>
         </div>
         <input
           v-model="note"
@@ -379,7 +393,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div class="nge-tagmode-foot">
-          <span v-if="pendingPos" class="nge-tagmode-pos nge-tagmode-pos--pending" title="Placed point, Submit saves it (click again to move)">point: <b>{{ pendingPos.join(', ') }}</b></span>
+          <span v-if="pendingPos" class="nge-tagmode-pos nge-tagmode-pos--pending" title="Placed point, Submit saves it (click again to move)">point: <b>({{ pendingPos.join(', ') }})</b></span>
           <span v-else class="nge-tagmode-pos">crosshair: <b>{{ posLabel }}</b></span>
           <div class="nge-tagmode-actions-row">
             <button
@@ -403,12 +417,13 @@ onBeforeUnmount(() => {
         v-else
         class="nge-tagmode nge-tagmode--success"
         :class="{ 'nge-holo-out': phase === 'success-out', 'nge-tagmode--frameless': successFrameless }"
+        :style="successSize"
         @click="dismissSuccess"
         title="Click to keep scouting"
       >
         <div class="nge-tagmode-success-glyph" v-html="pinSvgBig"></div>
         <div class="nge-tagmode-success-title">{{ lastTag?.label }} candidate tagged</div>
-        <div class="nge-tagmode-success-pos">{{ lastTag?.pos.join(', ') }}</div>
+        <div class="nge-tagmode-success-pos">({{ lastTag?.pos.join(', ') }})</div>
         <div class="nge-tagmode-success-hint">logged for the Scythes · click to keep scouting</div>
       </div>
     </div>

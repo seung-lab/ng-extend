@@ -192,6 +192,57 @@ const tagsIFixed = computed(() =>
 // The particle trace: an arc of light runs the shell boundary once when the
 // profile arrives (scifi-ui hologram.js section 1, via util/holo_trace).
 const shellEl = ref<HTMLElement | null>(null);
+
+/**
+ * NEVER-CLIPPED WATCHDOG (Amy: "why do I have to ask every day").
+ * CSS clamps have failed in the wild more than once (overlay stacking,
+ * status bar, specificity fights), so this measures the ACTUAL rendered
+ * rects and force-fixes them inline, which no stylesheet can override.
+ * If it ever has to intervene it logs the measurements, so the next
+ * report comes with data instead of another round of guessing.
+ */
+function clampProfile() {
+  const shell = shellEl.value;
+  if (!shell) return;
+  const overlay = shell.closest('.overlay-content') as HTMLElement | null;
+  const vh = window.innerHeight, vw = window.innerWidth;
+  const target = overlay ?? shell;
+  const r = target.getBoundingClientRect();
+  const clipped = r.bottom > vh - 4 || r.top < 4 || r.right > vw - 4 || r.left < 4;
+  if (!clipped) return;
+  console.warn('[profile] clip watchdog engaged:', {
+    overlay: overlay?.getBoundingClientRect(), shell: shell.getBoundingClientRect(),
+    vh, vw, shellMaxH: getComputedStyle(shell).maxHeight,
+    overlayTransform: overlay ? getComputedStyle(overlay).transform : null,
+  });
+  shell.style.maxHeight = (vh - 56) + 'px';
+  shell.style.maxWidth = (vw - 48) + 'px';
+  if (overlay) {
+    overlay.style.maxHeight = (vh - 24) + 'px';
+    overlay.style.maxWidth = (vw - 24) + 'px';
+    overlay.style.top = '50%';
+    overlay.style.left = '50%';
+    overlay.style.transform = 'translate(-50%, -50%)';
+    overlay.style.overflow = 'auto';
+  }
+}
+let clampTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  // Re-check as the open animation settles, on every resize, and briefly on
+  // an interval to catch late layout (fonts, images, tab content).
+  requestAnimationFrame(clampProfile);
+  setTimeout(clampProfile, 350);
+  window.addEventListener('resize', clampProfile);
+  clampTimer = setInterval(clampProfile, 700);
+  setTimeout(() => { if (clampTimer) { clearInterval(clampTimer); clampTimer = null; } }, 4000);
+});
+onUnmounted(() => {
+  window.removeEventListener('resize', clampProfile);
+  if (clampTimer) clearInterval(clampTimer);
+});
+watch(() => shellEl.value, () => requestAnimationFrame(clampProfile));
+watch(() => activeTab.value, () => { requestAnimationFrame(clampProfile); setTimeout(clampProfile, 320); });
+
 onMounted(() => {
   setTimeout(() => { if (shellEl.value) runPanelTrace(shellEl.value); }, 60);
 });

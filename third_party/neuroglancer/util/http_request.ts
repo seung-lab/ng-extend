@@ -157,6 +157,11 @@ export function getByteRangeHeader(startOffset: Uint64|number, endOffset: Uint64
 }
 
 export function parseUrl(url: string): {protocol: string, host: string, path: string} {
+  // ng-extend: allow data: URLs (used for client-generated meshes, e.g. the
+  // scout tag pin OBJ). They fall through parseSpecialUrl/fetch unchanged.
+  if (url.startsWith('data:')) {
+    return {protocol: 'data', host: '', path: url};
+  }
   const urlProtocolPattern = /^([^:\/]+):\/\/([^\/]+)((?:\/.*)?)$/;
   let match = url.match(urlProtocolPattern);
   if (match === null) {
