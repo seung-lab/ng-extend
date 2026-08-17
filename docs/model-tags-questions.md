@@ -12,11 +12,16 @@ split overlay. Draft questions before we scale past the two demo neurons:
    merger", or is the scale only ordinal? This drives our color ramp and any
    future auto-prioritization.
 
-2. Are the window coordinates (center_um) valid against latest_root_id at
-   export time, or against one of the old_root_ids? If a Scythe fixes one
-   merger, the root id changes: do the remaining windows for that neuron stay
-   spatially valid, and is there a recommended way to re-anchor them (we can
-   resolve supervoxels to current roots through PCG on our side)?
+2. CONFIRMED issue with root id vintage: your latest_root_id values are
+   minted on the live minnie65_phase3_v1 graph (your demo fork points
+   there), but the public app uses the frozen minnie65_public_v117 table,
+   which cannot resolve them, so their meshes silently never load. We
+   added a MICrONS Live dataset entry as a workaround for internal users.
+   For the public site: can you export with v117-valid root ids (or
+   include them alongside)? Related: if a Scythe fixes one merger the root
+   id changes; do the remaining windows stay spatially valid, and is there
+   a recommended re-anchoring path (we can resolve supervoxels to current
+   roots through PCG on our side)?
 
 3. Can you export per-dataset batches on a schedule (daily or weekly) so we
    can cron the ingestion? A stable naming scheme (datastack, root id, export
