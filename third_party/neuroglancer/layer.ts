@@ -999,6 +999,10 @@ export class LayerSelectedValues extends RefCounted {
         const userLayer = layer.layer;
         if (layer.visible && userLayer !== null) {
           const {selectionState} = userLayer;
+          // ng-extend: a layer whose initialization was interrupted (e.g. a
+          // failed state restore) can reach here with no selectionState;
+          // skip it instead of crashing the whole selection update.
+          if (selectionState === undefined) continue;
           userLayer.resetSelectionState(selectionState);
           selectionState.generation = generation;
           userLayer.captureSelectionState(selectionState, mouseState);

@@ -1619,6 +1619,12 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       // full viewer state (the restoreState route made segments vanish).
       if (existing) viewer.layerManager.removeManagedLayer(existing);
       const managed = makeLayer(viewer.layerSpecification, PIN_LAYER_NAME, spec);
+      // NEVER serialize this layer: its source is a multi-hundred-KB data:
+      // URL, and letting it into the state JSON bloated the URL hash on
+      // every state change and broke state restoration (Amy's
+      // localPositionValid crash). It is derived data, rebuilt from
+      // Supabase on every load. A null spec means "do not serialize".
+      (managed as any).toJSON = () => null;
       viewer.layerSpecification.add(managed);
       lastPinKey = key;
     } catch (e) {

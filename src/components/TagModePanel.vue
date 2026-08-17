@@ -29,6 +29,7 @@ const HAND_SVG = '<svg viewBox="0 0 16 16" fill="none" style="width:1em;height:1
 const emit = defineEmits({ hide: null });
 const wrapEl = ref<HTMLElement | null>(null);
 const boxEl = ref<HTMLElement | null>(null);
+const submitBtnEl = ref<HTMLElement | null>(null);
 const tagStore = useIssueTagStore();
 const { activeSegId } = storeToRefs(useSegmentAnnotationStore());
 
@@ -164,7 +165,12 @@ async function drop(position: number[]) {
   let total = 0;
   if (br) {
     const getRect = () => wrapEl.value?.getBoundingClientRect() ?? null;
-    total = runBurstCoalesce(br.left + br.width / 2, br.top + br.height / 2, getRect, rgb);
+    // Wave 1 fires from the Submit button itself (Amy 2026-08-17); wave 2
+    // from the placed point, unchanged.
+    const sb = submitBtnEl.value?.getBoundingClientRect();
+    const w1x = sb ? sb.left + sb.width / 2 : br.left + br.width / 2;
+    const w1y = sb ? sb.top + sb.height / 2 : br.top + br.height / 2;
+    total = runBurstCoalesce(w1x, w1y, getRect, rgb);
     if (secondOrigin) {
       setTimeout(() => runBurstCoalesce(secondOrigin.x, secondOrigin.y, getRect, rgb), 180);
     }
@@ -432,10 +438,10 @@ onBeforeUnmount(() => {
               :class="{ 'nge-tagmode-arm--on': armedOnce }"
               @click="armOnce"
             >
-              <template v-if="armedOnce">Click to place…</template>
-              <template v-else><span class="nge-tagmode-pin" v-html="pinSvg"></span> Place by click</template>
+              <template v-if="armedOnce">Click the spot…</template>
+              <template v-else><span class="nge-tagmode-pin" v-html="pinSvg"></span> Click to tag</template>
             </button>
-            <button class="nge-tagmode-btn" :disabled="saving" :title="pendingPos ? 'Save the placed point' : 'Tag the crosshair position'" @click="submit">
+            <button ref="submitBtnEl" class="nge-tagmode-btn" :disabled="saving" :title="pendingPos ? 'Save the placed point' : 'Tag the crosshair position'" @click="submit">
               Submit
             </button>
           </div>
@@ -729,6 +735,7 @@ onBeforeUnmount(() => {
   background: rgba(120, 140, 255, 0.1);
   border: 1px solid rgba(120, 140, 255, 0.35);
   color: #cdf;
+  white-space: nowrap;
 }
 .nge-tagmode-arm--on {
   background: rgba(245, 209, 66, 0.18);
