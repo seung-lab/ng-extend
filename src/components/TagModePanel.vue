@@ -19,7 +19,7 @@ import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
-import { runPanelTrace, runParticleBurst, runPanelZip, runPanelDraw, runBurstCoalesce } from '../util/holo_trace';
+import { runPanelTrace, runParticleBurst, runPanelDraw, runBurstBuild, runPanelLap } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 import superScytheUrl from '../../static/tags/super-scythe.png';
@@ -155,10 +155,9 @@ async function drop(position: number[]) {
   // as one panel changing faces, not two different boxes.
   const fb = boxEl.value?.getBoundingClientRect();
   if (fb) successSize.value = { width: fb.width + 'px', minHeight: fb.height + 'px' };
-  // Both confetti waves launch from THE SUBMIT BUTTON (Amy: the old second
-  // wave used the placed point's screen position, which goes stale the
-  // moment the view pans and read as a random spot in the 3D). Colored by
-  // tag type, both coalesce along the success border.
+  // The build (Amy's spec): smooth particle streams flow from the Submit
+  // button to the box's top and bottom midpoints, charge up there, then
+  // the border lights from both points while the success box fades in.
   const br = wrapEl.value?.getBoundingClientRect();
   const rgb = TAG_RGB[c.tagType];
   placeScreen = null;
@@ -168,8 +167,14 @@ async function drop(position: number[]) {
     const sb = submitBtnEl.value?.getBoundingClientRect();
     const w1x = sb ? sb.left + sb.width / 2 : br.left + br.width / 2;
     const w1y = sb ? sb.top + sb.height / 2 : br.top + br.height / 2;
-    total = runBurstCoalesce(w1x, w1y, getRect, rgb);
-    setTimeout(() => runBurstCoalesce(w1x, w1y, getRect, rgb), 200);
+    // Step 1: a spark right on the Submit button.
+    runParticleBurst(w1x, w1y, rgb);
+    // Steps 2 and 3: streams flow while the form box closes, charge the
+    // top and bottom midpoints, then the border lights as the box arrives.
+    total = runBurstBuild(w1x, w1y, getRect, rgb, ph => {
+      if (ph === 'beams') successBuilding.value = false;
+      if (ph === 'done') successFrameless.value = false;
+    });
   }
   if (collapsed.value) {
     // The mini strip has no room for the success box; the flash plus the
@@ -177,32 +182,37 @@ async function drop(position: number[]) {
     showFlash(`✓ ${label} candidate tagged`);
     return;
   }
-  // The success box keeps its own border hidden until the light hands off.
-  // The frame stays dark through the landings now; the reveal waits for the
-  // impulse sweep to finish (it ends by 0.97 of the run).
+  // Border and body arrive with the light: runBurstBuild's phase callbacks
+  // flip these (beams -> body eases in, done -> border lands). If the build
+  // was skipped (reduced motion), the callbacks already ran synchronously.
   successFrameless.value = true;
-  setTimeout(() => { successFrameless.value = false; }, total ? Math.round(total * 0.93) : 0);
+  successBuilding.value = true;
+  if (!total) { successFrameless.value = false; successBuilding.value = false; }
   // Form de-materializes, success materializes.
   phase.value = 'form-out';
   setTimeout(() => { phase.value = 'success'; }, SWAP_MS);
 }
 const successFrameless = ref(false);
+/** True while the streams are still charging: the success box body waits
+ *  dim until the beams start, then eases in with the light. */
+const successBuilding = ref(false);
+/** The roundabout send-off when the success box hands back to the form. */
+const successSpin = ref(false);
 const successSize = ref<{ width: string; minHeight: string } | null>(null);
 
 /** Clicking the success box celebrates, then the beam draws the form back
  *  into place (same reveal as expanding from the strip), no plain pop. */
 function dismissSuccess() {
-  if (phase.value !== 'success') return;
-  const r = wrapEl.value?.getBoundingClientRect();
-  if (r) {
-    runParticleBurst(r.left + r.width / 2, r.top + r.height / 2,
-      TAG_RGB[lastTag.value?.tagType ?? 'merger']);
-  }
-  phase.value = 'success-out';
+  if (phase.value !== 'success' || successSpin.value) return;
+  // The roundabout (Amy): one bright head takes a fast full lap of the
+  // border while the box spins away, then the beam draws the form back.
+  if (wrapEl.value) runPanelLap(wrapEl.value);
+  successSpin.value = true;
   setTimeout(() => {
+    successSpin.value = false;
     phase.value = 'form';
     revealFormWithBeam();
-  }, SWAP_MS);
+  }, 470);
 }
 
 function showFlash(msg: string) {
@@ -219,13 +229,30 @@ const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1');
  *  holds the panel invisible until the light has drawn its frame. */
 const drawingIn = ref(false);
 function setCollapsed(v: boolean) {
-  collapsed.value = v;
-  try { localStorage.setItem(COLLAPSED_KEY, v ? '1' : '0'); } catch {}
   if (v) {
-    // Collapse: the zip races up the slim strip.
-    requestAnimationFrame(() => { if (wrapEl.value) runPanelZip(wrapEl.value, 'up'); });
+    // Collapse (Amy): the zip triggers at the BOTTOM of the full box and
+    // races upward, masking the box away beneath it; the slim strip stands
+    // where the light finishes.
+    if (collapsed.value) return;
+    const finish = () => {
+      const b = boxEl.value;
+      if (b) b.style.clipPath = '';
+      collapsed.value = true;
+      try { localStorage.setItem(COLLAPSED_KEY, '1'); } catch {}
+    };
+    const box = boxEl.value;
+    if (!box || !wrapEl.value) { finish(); return; }
+    const total = runPanelDraw(wrapEl.value, 'up', frac => {
+      const b = boxEl.value;
+      if (!b) return;
+      if (frac >= 1) finish();
+      else b.style.clipPath = `inset(0 0 ${(frac * 100).toFixed(2)}% 0)`;
+    });
+    if (!total) finish();
     return;
   }
+  collapsed.value = false;
+  try { localStorage.setItem(COLLAPSED_KEY, '0'); } catch {}
   // Expand: no pop. The beam draws the frame AND acts as a mask, the box
   // content is revealed exactly as far down as the beam has travelled.
   revealFormWithBeam();
@@ -467,7 +494,7 @@ onBeforeUnmount(() => {
       <div
         v-else
         class="nge-tagmode nge-tagmode--success"
-        :class="{ 'nge-holo-out': phase === 'success-out', 'nge-tagmode--frameless': successFrameless }"
+        :class="{ 'nge-holo-out': phase === 'success-out', 'nge-tagmode--frameless': successFrameless, 'nge-tagmode--building': successBuilding, 'nge-tagmode--spinout': successSpin }"
         :style="successSize"
         @click="dismissSuccess"
         title="Click to keep scouting"
@@ -532,6 +559,23 @@ onBeforeUnmount(() => {
   animation: none;
 }
 /* Success box while the burst particles are still carrying its border. */
+/* While the streams are still charging: dim body, no pop-in animation.
+   The beams phase clears this and the body eases in with the light. */
+.nge-tagmode--building {
+  animation: none;
+  opacity: 0.14;
+  transform: scale(0.985);
+}
+.nge-tagmode--success { transition: opacity 0.45s ease, transform 0.45s ease; }
+/* The roundabout send-off: a quick spin-and-shrink while the lap runs. */
+.nge-tagmode--spinout {
+  animation: nge-spinout 0.47s cubic-bezier(0.5, 0, 0.75, 0.4) both !important;
+  pointer-events: none;
+}
+@keyframes nge-spinout {
+  0%   { opacity: 1; transform: rotate(0deg) scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: rotate(-7deg) scale(0.88); filter: blur(3px); }
+}
 .nge-tagmode--frameless {
   border-color: transparent !important;
   box-shadow: none !important;

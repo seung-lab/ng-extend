@@ -122,6 +122,19 @@ export function runPanelTrace(host: HTMLElement, PAD = 0): void {
       const head = q * q * (3 - 2 * q), TAIL = 0.11, SEG = 44;
       ctx!.lineCap = 'round';
       ctx!.lineJoin = 'round';
+      // Persistent trail: the boundary stays faintly lit behind the head so
+      // the sweep completes a visible FULL circle (Amy), instead of a comet
+      // that fizzles at 60 percent of the lap.
+      ctx!.globalCompositeOperation = 'source-over';
+      ctx!.lineWidth = 1.0;
+      ctx!.strokeStyle = 'rgba(150,200,240,0.28)';
+      ctx!.beginPath();
+      const TSEG = Math.max(8, Math.ceil(60 * head));
+      for (let j = 0; j <= TSEG; j++) {
+        const p = ring(startT + (j / TSEG) * head, w - 2, h - 2, R);
+        if (j === 0) ctx!.moveTo(p[0] + 1, p[1] + 1); else ctx!.lineTo(p[0] + 1, p[1] + 1);
+      }
+      ctx!.stroke();
       for (let pass = 0; pass < 2; pass++) {
         ctx!.lineWidth = pass ? 1.0 : 4.0;
         for (let j = 0; j < SEG; j++) {
@@ -434,6 +447,208 @@ export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): vo
     raf = requestAnimationFrame(draw);
   }
   raf = requestAnimationFrame(draw);
+}
+
+/**
+ * The roundabout: one bright head takes a fast full lap of the panel
+ * boundary, leaving the ring lit, then the light fades. Used as the
+ * send-off when the success box hands back to the form.
+ */
+export function runPanelLap(host: HTMLElement, DUR = 520): number {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
+  const rect = host.getBoundingClientRect();
+  if (!rect.width || !rect.height) return 0;
+  const R = 12, FADE = 200;
+  const cv = document.createElement('canvas');
+  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;';
+  cv.setAttribute('aria-hidden', 'true');
+  host.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  if (!ctx) { cv.remove(); return 0; }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = rect.width, h = rect.height;
+  cv.width = w * dpr; cv.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const rw = w - 2, rh = h - 2;
+  const start = ringTopCenterT(rw, rh, R);
+  let raf = 0;
+  const t0 = performance.now();
+  function draw(now: number) {
+    const t = now - t0;
+    if (t >= DUR + FADE) { cancelAnimationFrame(raf); cv.remove(); return; }
+    ctx!.clearRect(0, 0, w, h);
+    const q = Math.min(1, t / DUR), eased = q * q * (3 - 2 * q);
+    const fade = t > DUR ? 1 - (t - DUR) / FADE : 1;
+    ctx!.lineCap = 'round'; ctx!.lineJoin = 'round';
+    for (let pass = 0; pass < 2; pass++) {
+      ctx!.lineWidth = pass ? 1.2 : 4.2;
+      ctx!.globalCompositeOperation = pass ? 'source-over' : 'lighter';
+      ctx!.strokeStyle = pass
+        ? `rgba(220,240,255,${(0.65 * fade).toFixed(3)})`
+        : `rgba(53,181,255,${(0.1 * fade).toFixed(3)})`;
+      ctx!.beginPath();
+      const SEG = Math.max(12, Math.ceil(64 * eased));
+      for (let j = 0; j <= SEG; j++) {
+        const p = ringPoint(start + (j / SEG) * eased, rw, rh, R);
+        if (j === 0) ctx!.moveTo(p[0] + 1, p[1] + 1); else ctx!.lineTo(p[0] + 1, p[1] + 1);
+      }
+      ctx!.stroke();
+    }
+    // the racing head
+    if (q < 1) {
+      const hp = ringPoint(start + eased, rw, rh, R);
+      const g = ctx!.createRadialGradient(hp[0] + 1, hp[1] + 1, 0, hp[0] + 1, hp[1] + 1, 8);
+      g.addColorStop(0, 'rgba(235,247,255,0.95)');
+      g.addColorStop(1, 'rgba(53,181,255,0)');
+      ctx!.globalCompositeOperation = 'lighter';
+      ctx!.fillStyle = g;
+      ctx!.fillRect(hp[0] - 8, hp[1] - 8, 18, 18);
+    }
+    raf = requestAnimationFrame(draw);
+  }
+  raf = requestAnimationFrame(draw);
+  return DUR + FADE;
+}
+
+/**
+ * The build: two smooth particle streams flow from an origin to the top and
+ * bottom midpoints of the panel, gather there as glowing charge, then the
+ * border lights from both points at once (heads racing along both sides)
+ * while the caller fades the real box in. Ordered and fluid where the old
+ * coalesce was sporadic (Amy: particles "should flow more smoothly and
+ * build the box, coalesce at two points, then trigger the light sequence").
+ * onPhase fires 'beams' when the border starts drawing and 'done' at the
+ * end. Returns total ms.
+ */
+export function runBurstBuild(
+    ox: number, oy: number, getRect: () => DOMRect | null, rgb = '53,181,255',
+    onPhase?: (phase: 'beams' | 'done') => void): number {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    onPhase?.('beams'); onPhase?.('done');
+    return 0;
+  }
+  const STREAM = 750, GATHER = 180, BEAMS = 700, FADE = 220;
+  const TOTAL = STREAM + GATHER + BEAMS + FADE;
+  const R = 15;
+
+  const cv = document.createElement('canvas');
+  cv.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:100000;';
+  cv.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  if (!ctx) { cv.remove(); onPhase?.('beams'); onPhase?.('done'); return 0; }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const vw = window.innerWidth, vh = window.innerHeight;
+  cv.width = vw * dpr; cv.height = vh * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const N = 56;
+  const parts = Array.from({ length: N }, (_, i) => ({
+    toTop: i % 2 === 0,
+    delay: (i / N) * 0.5,          // staggered departure = a stream, not a bang
+    side: ((i >> 1) % 2 ? 1 : -1) * (4 + ((i * 7) % 12)),  // parallel lane offset
+    r: 1.2 + ((i * 13) % 10) / 7,
+  }));
+
+  let beamsFired = false, doneFired = false;
+  let raf = 0;
+  const t0 = performance.now();
+
+  function targets(rect: DOMRect): [[number, number], [number, number]] {
+    return [[rect.left + rect.width / 2, rect.top + 1],
+            [rect.left + rect.width / 2, rect.top + rect.height - 1]];
+  }
+
+  function draw(now: number) {
+    const t = now - t0;
+    if (t >= TOTAL) {
+      if (!doneFired) { doneFired = true; onPhase?.('done'); }
+      cancelAnimationFrame(raf); cv.remove(); return;
+    }
+    ctx!.clearRect(0, 0, vw, vh);
+    ctx!.globalCompositeOperation = 'lighter';
+    const rect = getRect();
+    if (!rect) { raf = requestAnimationFrame(draw); return; }
+    const [top, bot] = targets(rect);
+
+    // ── Streams: each particle flies origin → its midpoint along a bezier,
+    // in staggered lanes, easing in and out. Arrivals feed the charge.
+    let charge = 0;
+    const streamEnd = STREAM + GATHER;
+    for (const p of parts) {
+      const dur = STREAM * 0.55;
+      const start = p.delay * (STREAM - dur);
+      const lt = (t - start) / dur;
+      if (lt <= 0) continue;
+      const dst = p.toTop ? top : bot;
+      if (lt >= 1) { charge += 1; continue; }
+      const e = lt < 0.5 ? 2 * lt * lt : 1 - Math.pow(-2 * lt + 2, 2) / 2;
+      // control point: sideways bow for a ribbon-like path
+      const mx = (ox + dst[0]) / 2 + p.side * 3, my = (oy + dst[1]) / 2 + p.side;
+      const x = (1 - e) * (1 - e) * ox + 2 * (1 - e) * e * mx + e * e * dst[0] + p.side * Math.sin(e * Math.PI);
+      const y = (1 - e) * (1 - e) * oy + 2 * (1 - e) * e * my + e * e * dst[1];
+      ctx!.beginPath();
+      ctx!.arc(x, y, p.r, 0, 6.283);
+      ctx!.fillStyle = `rgba(${rgb},${(0.75 * Math.min(1, lt * 3)).toFixed(3)})`;
+      ctx!.fill();
+      // short comet tail along the path
+      const eb = Math.max(0, e - 0.06);
+      const bx = (1 - eb) * (1 - eb) * ox + 2 * (1 - eb) * eb * mx + eb * eb * dst[0] + p.side * Math.sin(eb * Math.PI);
+      const by = (1 - eb) * (1 - eb) * oy + 2 * (1 - eb) * eb * my + eb * eb * dst[1];
+      ctx!.strokeStyle = `rgba(${rgb},0.22)`;
+      ctx!.lineWidth = p.r * 0.9;
+      ctx!.beginPath(); ctx!.moveTo(bx, by); ctx!.lineTo(x, y); ctx!.stroke();
+    }
+
+    // ── The two charge points glow with arrivals, then drain into the beams.
+    const beamT = (t - streamEnd) / BEAMS;
+    const drain = beamT > 0 ? Math.max(0, 1 - beamT * 1.6) : 1;
+    const glow = Math.min(1, charge / (N * 0.45)) * drain;
+    for (const pt of [top, bot]) {
+      const g = ctx!.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], 14 + glow * 10);
+      g.addColorStop(0, `rgba(235,246,255,${(0.85 * glow).toFixed(3)})`);
+      g.addColorStop(0.4, `rgba(${rgb},${(0.5 * glow).toFixed(3)})`);
+      g.addColorStop(1, `rgba(${rgb},0)`);
+      ctx!.fillStyle = g;
+      ctx!.fillRect(pt[0] - 30, pt[1] - 30, 60, 60);
+    }
+
+    // ── Beams: from both charge points, heads race along both sides at
+    // once, leaving the frame lit behind them, the light builds the box.
+    if (beamT > 0) {
+      if (!beamsFired) { beamsFired = true; onPhase?.('beams'); }
+      const rw = rect.width - 2, rh = rect.height - 2;
+      const tTop = ringTopCenterT(rw, rh, R), tBot = ringBottomCenterT(rw, rh, R);
+      const q = Math.min(1, beamT), eased = q * q * (3 - 2 * q);
+      const fade = t > streamEnd + BEAMS ? 1 - (t - streamEnd - BEAMS) / FADE : 1;
+      ctx!.lineCap = 'round'; ctx!.lineJoin = 'round';
+      const runs: [number, number, number][] = [
+        [tTop, 1, ((tBot - tTop) % 1 + 1) % 1],
+        [tTop, -1, 1 - (((tBot - tTop) % 1 + 1) % 1)],
+      ];
+      for (const [startT, dir, dist] of runs) {
+        for (let pass = 0; pass < 2; pass++) {
+          ctx!.lineWidth = pass ? 1.2 : 4;
+          ctx!.globalCompositeOperation = pass ? 'source-over' : 'lighter';
+          ctx!.strokeStyle = pass
+            ? `rgba(216,238,255,${(0.62 * fade).toFixed(3)})`
+            : `rgba(${rgb},${(0.1 * fade).toFixed(3)})`;
+          ctx!.beginPath();
+          const SEG = Math.max(10, Math.ceil(56 * dist));
+          const steps = Math.ceil(SEG * eased);
+          for (let j = 0; j <= steps; j++) {
+            const p = ringPoint(startT + dir * Math.min(eased, j / SEG) * dist, rw, rh, R);
+            const px = rect.left + p[0] + 1, py = rect.top + p[1] + 1;
+            if (j === 0) ctx!.moveTo(px, py); else ctx!.lineTo(px, py);
+          }
+          ctx!.stroke();
+        }
+      }
+    }
+    raf = requestAnimationFrame(draw);
+  }
+  raf = requestAnimationFrame(draw);
+  return TOTAL;
 }
 
 /**
