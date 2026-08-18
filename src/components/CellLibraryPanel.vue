@@ -92,8 +92,8 @@ function resolveTagFun(tag: IssueTag, e: MouseEvent) {
   };
   requestAnimationFrame(step);
 }
-/** One rotating mote at a time, relaying down the rows in sequence (Amy:
- *  "have them one at a time in a sequence down the jump row of icons").
+/** One rotating mote at a time around the JUMP buttons: one full loop,
+ *  then on to the next row, relaying through every row in view (Amy).
  *  Each appearance is a fresh mount, so the orbit starts clean, does its
  *  lap, and hands off to the next row. */
 const orbitSeq = ref(0);
@@ -1984,10 +1984,10 @@ const panelStyle = computed(() => ({
                 </div>
               </div>
               <div class="nge-cl-row-actions">
-                <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
+                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, laneFilteredTags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
                         :disabled="isCrossDatasetTag(tag)"
-                        :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location'">↗</button>
-                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, laneFilteredTags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button></span>
+                        :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location'">↗</button></span>
+                <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
                 <template v-if="confirmDeleteTagId === tag.id">
                   <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this tag for everyone">Delete?</button>
                   <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the tag">✕</button>
@@ -2096,15 +2096,15 @@ const panelStyle = computed(() => ({
                 </div>
               </div>
               <div class="nge-cl-row-actions">
-                <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToAiTag(tag)"
+                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, g.tags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToAiTag(tag)"
                         :disabled="isCrossDatasetTag(tag)"
-                        :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location and preview the proposed split'">↗</button>
+                        :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location and preview the proposed split'">↗</button></span>
                 <button class="nge-cl-btn nge-cl-btn--split"
                         :class="{ 'nge-cl-btn--split-active': tagStore.activeSplitTagId === tag.id }"
                         :disabled="!tag.modelData?.posRelUm?.length"
                         title="Toggle the model's proposed split overlay"
                         @click="tagStore.toggleSplitOverlay(tag)">✂</button>
-                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, g.tags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button></span>
+                <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
                 <template v-if="confirmDeleteTagId === tag.id">
                   <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this candidate for everyone">Delete?</button>
                   <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the candidate">✕</button>
