@@ -20,7 +20,7 @@ import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
-import { runPanelTrace, runParticleBurst, runPanelDraw, runBurstBuild, runPanelLap } from '../util/holo_trace';
+import { runPanelTrace, runParticleBurst, runPanelDraw, runPanelZip, runBurstBuild, runPanelLap } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 import superScytheUrl from '../../static/tags/super-scythe.png';
@@ -117,6 +117,28 @@ function clearPending() {
 }
 function submit() {
   drop(pendingPos.value ?? crosshairPosition());
+}
+
+/** Closing zips the box up with light instead of vanishing it (Amy). */
+let closing = false;
+function closeWithZip() {
+  if (closing) { emit('hide'); return; }
+  closing = true;
+  const b = boxEl.value;
+  if (b && wrapEl.value && !collapsed.value && (phase.value === 'form' || phase.value === 'form-out')) {
+    const total = runPanelDraw(wrapEl.value, 'up', frac => {
+      const bb = boxEl.value;
+      if (frac >= 1) { closing = false; emit('hide'); return; }
+      if (bb) bb.style.clipPath = `inset(0 0 ${(frac * 100).toFixed(2)}% 0)`;
+    });
+    if (!total) { closing = false; emit('hide'); }
+  } else if (wrapEl.value) {
+    runPanelZip(wrapEl.value, 'up');
+    setTimeout(() => { closing = false; emit('hide'); }, 330);
+  } else {
+    closing = false;
+    emit('hide');
+  }
 }
 
 function copyCoords() {
@@ -360,7 +382,7 @@ function onKeyDown(e: KeyboardEvent) {
     tHeld.value = true;
     document.body.classList.add('nge-tag-armed');
   }
-  if (e.key === 'Escape') emit('hide');
+  if (e.key === 'Escape') closeWithZip();
 }
 function onKeyUp(e: KeyboardEvent) {
   if (e.key === 't' || e.key === 'T') {
@@ -431,7 +453,7 @@ onBeforeUnmount(() => {
         ><span class="nge-tagmode-pin" v-html="pinSvg"></span></button>
         <button class="nge-tagmode-mini-act nge-tagmode-mini-submit" :disabled="saving" title="Submit tag" @click="submit">✓</button>
         <button class="nge-tagmode-mini-act" title="Expand panel" @click="setCollapsed(false)">▴</button>
-        <button class="nge-tagmode-mini-act nge-tagmode-mini-close" title="Exit tag mode (Esc)" @click="emit('hide')">×</button>
+        <button class="nge-tagmode-mini-act nge-tagmode-mini-close" title="Exit tag mode (Esc)" @click="closeWithZip">×</button>
         <span class="nge-tagmode-mini-hand" title="Drag to move" @pointerdown.prevent="dragStart" v-html="HAND_SVG"></span>
         <div v-if="flash" class="nge-tagmode-flash nge-tagmode-flash--mini">{{ flash }}</div>
       </div>
@@ -446,7 +468,7 @@ onBeforeUnmount(() => {
         <div class="nge-tagmode-head" @pointerdown.prevent="dragStart">
           <span class="nge-tagmode-title"><span class="nge-tagmode-pin" v-html="pinSvg"></span> SCOUT TAG MODE</span>
           <button class="nge-tagmode-close" title="Collapse to corner strip" @pointerdown.stop @click="setCollapsed(true)">▾</button>
-          <button class="nge-tagmode-close" title="Exit tag mode (Esc)" @pointerdown.stop @click="emit('hide')">×</button>
+          <button class="nge-tagmode-close" title="Exit tag mode (Esc)" @pointerdown.stop @click="closeWithZip">×</button>
         </div>
         <div class="nge-tagmode-hint">
           Pick a type, then <b>hold T and click</b> the spot, or <b>tap T</b> to arm Click to tag. <b>Submit</b> saves it.

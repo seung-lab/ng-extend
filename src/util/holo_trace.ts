@@ -71,7 +71,7 @@ export function runPanelTrace(host: HTMLElement, PAD = 0): void {
 
   // scifi-ui uses PAD 26 for overhang; panels with overflow hidden pass 0
   // so the beam runs the inner boundary instead of being clipped.
-  const N = 64, DUR = 1500, R = hostRadius(host, 15);
+  const N = 64, DUR = 1500, R = Math.max(2, hostRadius(host, 15) - 1);
 
   const cv = document.createElement('canvas');
   cv.style.cssText = `position:absolute;inset:${-PAD}px;width:calc(100% + ${PAD * 2}px);height:calc(100% + ${PAD * 2}px);pointer-events:none;z-index:50;`;
@@ -144,7 +144,7 @@ export function runPanelTrace(host: HTMLElement, PAD = 0): void {
       ctx!.lineWidth = 1.0;
       ctx!.strokeStyle = 'rgba(150,200,240,0.28)';
       ctx!.beginPath();
-      const TSEG = Math.max(8, Math.ceil(60 * head));
+      const TSEG = Math.max(24, Math.ceil(180 * head));
       for (let j = 0; j <= TSEG; j++) {
         const p = ring(startT + (j / TSEG) * head, w - 2, h - 2, R);
         if (j === 0) ctx!.moveTo(p[0] + 1, p[1] + 1); else ctx!.lineTo(p[0] + 1, p[1] + 1);
@@ -211,7 +211,7 @@ export function runPanelZip(host: HTMLElement, direction: 'up' | 'down' = 'up'):
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   const rect = host.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
-  const DUR = 700, R = hostRadius(host, 10);
+  const DUR = 700, R = Math.max(2, hostRadius(host, 10) - 1);
 
   const cv = document.createElement('canvas');
   cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;';
@@ -250,7 +250,7 @@ export function runPanelZip(host: HTMLElement, direction: 'up' | 'down' = 'up'):
     const RUN = 0.82;                       // beams run, then the spark
     if (k < RUN) {
       const q = k / RUN, eased = q * q * (3 - 2 * q);
-      const TAIL = 0.16, SEG = 26;
+      const TAIL = 0.16, SEG = 48;
       for (const [dir, dist] of [[1, distA], [-1, distB]] as [number, number][]) {
         for (let pass = 0; pass < 2; pass++) {
           ctx!.lineWidth = pass ? 1.1 : 4.0;
@@ -302,7 +302,7 @@ export function runPanelDraw(
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
   const rect = host.getBoundingClientRect();
   if (!rect.width || !rect.height) return 0;
-  const DUR = 620, HOLD = 120, FADE = 260, R = hostRadius(host, 10);
+  const DUR = 620, HOLD = 120, FADE = 260, R = Math.max(2, hostRadius(host, 10) - 1);
 
   const cv = document.createElement('canvas');
   cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;' +
@@ -340,14 +340,25 @@ export function runPanelDraw(
 
     // Report how far down (or up) the heads have travelled, so the caller
     // can use the beam as a reveal mask over the panel content.
+    const hp0 = pt(start + eased * distA);
     if (onProgress) {
-      const hp0 = pt(start + eased * distA);
       const frac = direction === 'down' ? hp0[1] / h : 1 - hp0[1] / h;
       onProgress(k >= 1 ? 1 : Math.max(0, Math.min(1, frac)));
     }
 
+    // Rising collapse: the light exists only where the box still does. Clip
+    // everything below the head line so the lit trail vanishes with the box
+    // (Amy: the bottom of the frame must not stay lit as it zips away).
+    const clipped = direction === 'up';
+    if (clipped) {
+      ctx!.save();
+      ctx!.beginPath();
+      ctx!.rect(0, 0, w, hp0[1] + 6);
+      ctx!.clip();
+    }
+
     for (const [dir, dist] of [[1, distA], [-1, distB]] as [number, number][]) {
-      const SEG = Math.max(8, Math.ceil(60 * dist));
+      const SEG = Math.max(24, Math.ceil(170 * dist));
       // The lit trail, start to head, two passes: soft glow then core.
       for (let pass = 0; pass < 2; pass++) {
         ctx!.lineWidth = pass ? 1.1 : 3.4;
@@ -373,12 +384,15 @@ export function runPanelDraw(
       }
     }
 
+    if (clipped) ctx!.restore();
+
     if (k < 1) { raf = requestAnimationFrame(draw); return; }
-    // Outline complete: hold, then fade the canvas away.
+    // Outline complete: hold, then fade the canvas away. Collapses skip the
+    // hold, there is no box left to outline.
     setTimeout(() => {
       cv.style.opacity = '0';
       setTimeout(() => cv.remove(), FADE + 40);
-    }, HOLD);
+    }, clipped ? 0 : HOLD);
   }
   raf = requestAnimationFrame(draw);
   void raf;
@@ -473,7 +487,7 @@ export function runPanelLap(host: HTMLElement, DUR = 520): number {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
   const rect = host.getBoundingClientRect();
   if (!rect.width || !rect.height) return 0;
-  const R = hostRadius(host, 12), FADE = 200;
+  const R = Math.max(2, hostRadius(host, 12) - 1), FADE = 200;
   const cv = document.createElement('canvas');
   cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;';
   cv.setAttribute('aria-hidden', 'true');
@@ -502,7 +516,7 @@ export function runPanelLap(host: HTMLElement, DUR = 520): number {
         ? `rgba(220,240,255,${(0.65 * fade).toFixed(3)})`
         : `rgba(53,181,255,${(0.1 * fade).toFixed(3)})`;
       ctx!.beginPath();
-      const SEG = Math.max(12, Math.ceil(64 * eased));
+      const SEG = Math.max(24, Math.ceil(170 * eased));
       for (let j = 0; j <= SEG; j++) {
         const p = ringPoint(start + (j / SEG) * eased, rw, rh, R);
         if (j === 0) ctx!.moveTo(p[0] + 1, p[1] + 1); else ctx!.lineTo(p[0] + 1, p[1] + 1);
@@ -681,7 +695,7 @@ export function runBurstBuild(
             ? `rgba(216,238,255,${(0.62 * fade).toFixed(3)})`
             : `rgba(${rgb},${(0.1 * fade).toFixed(3)})`;
           ctx!.beginPath();
-          const SEG = Math.max(10, Math.ceil(56 * dist));
+          const SEG = Math.max(24, Math.ceil(170 * dist));
           const steps = Math.ceil(SEG * eased);
           for (let j = 0; j <= steps; j++) {
             const p = ringPoint(startT + dir * Math.min(eased, j / SEG) * dist, rw, rh, R);
