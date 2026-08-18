@@ -187,7 +187,10 @@ async function readApprovals() {
     } catch (e) { console.warn(`[bridge] replies fetch failed for ${row.id}: ${e.message}`); continue; }
     for (const msg of (replies.messages ?? []).slice(1)) { // [0] is the proposal itself
       const text = (msg.text || '').trim();
-      const m = text.match(/^(approve|dismiss)\b\s*(.*)$/is);
+      // "approve"/"approved"/"dismiss"/"dismissed" all count: Amy's first
+      // real-world decision was the word "approved" and the strict form
+      // silently ignored it.
+      const m = text.match(/^(approved?|dismissed?)\b\s*(.*)$/is);
       if (!m) continue;
       if (!APPROVERS.includes(msg.user)) {
         // Note it once per run so non-approver replies aren't silently ignored.
@@ -197,7 +200,7 @@ async function readApprovals() {
         }).catch(() => {});
         continue;
       }
-      const decision = m[1].toLowerCase() === 'approve' ? 'approved' : 'dismissed';
+      const decision = m[1].toLowerCase().startsWith('approve') ? 'approved' : 'dismissed';
       const extraText = m[2]?.trim() || '';
       await applyDecision(row, decision, msg.user, extraText);
       await slack('chat.postMessage', {
