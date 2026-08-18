@@ -11,6 +11,7 @@
 import {ref, computed, watch, onMounted, onUnmounted} from 'vue';
 import {BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
+import {getMuseumWireframe, MuseumWireframe} from '../util/museum_mesh';
 
 // Special badge awards arrive from Supabase joins; keep the shape loose.
 interface SpecialAwardLike {
@@ -186,6 +187,55 @@ const viewportEl = ref<HTMLElement | null>(null);
 
 // Touch devices get an on-screen joystick and resize buttons.
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
+
+// ── Real specimen in the sky ─────────────────────────────────────────────────
+// Amy's wide field amacrine cell from the stroeh retina. Downloaded through
+// the viewer's own authenticated mesh pipeline, decimated, cached locally.
+// While it loads (or if it can't), the hand drawn SVG neuron stands in.
+const SPECIMEN_SEG_ID = '720575940569107563';
+const SPECIMEN_LABEL = 'WIDE FIELD AMACRINE · STROEH RETINA';
+const wireframe = ref<MuseumWireframe | null>(null);
+const specimenState = ref<'loading' | 'live' | 'fallback'>('loading');
+const neuronCanvasEl = ref<HTMLCanvasElement | null>(null);
+
+function drawSpecimen(now: number) {
+  const canvas = neuronCanvasEl.value;
+  const wf = wireframe.value;
+  if (!canvas || !wf) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const W = canvas.width, H = canvas.height;
+  const spin = now * 0.00009;
+  const ca = Math.cos(spin), sa = Math.sin(spin);
+  const tilt = 0.42;
+  const ct = Math.cos(tilt), st = Math.sin(tilt);
+  const v = wf.verts;
+  const n = Math.floor(v.length / 3);
+  const px = new Float32Array(n), py = new Float32Array(n);
+  const sc = Math.min(W, H) / 2400;
+  for (let i = 0; i < n; i++) {
+    const x = v[i * 3], y = v[i * 3 + 1], z = v[i * 3 + 2];
+    const rx = x * ca + z * sa;
+    const rz = -x * sa + z * ca;
+    const ry = y * ct - rz * st;
+    px[i] = W / 2 + rx * sc;
+    py[i] = H / 2 + ry * sc;
+  }
+  ctx.clearRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  const e = wf.edges;
+  for (const pass of [{w: 7, c: 'rgba(53, 181, 255, 0.09)'}, {w: 1.5, c: 'rgba(160, 230, 255, 0.75)'}]) {
+    ctx.lineWidth = pass.w;
+    ctx.strokeStyle = pass.c;
+    ctx.beginPath();
+    for (let i = 0; i + 1 < e.length; i += 2) {
+      ctx.moveTo(px[e[i]], py[e[i]]);
+      ctx.lineTo(px[e[i + 1]], py[e[i + 1]]);
+    }
+    ctx.stroke();
+  }
+}
 const joyEl = ref<HTMLElement | null>(null);
 const joyKnobEl = ref<HTMLElement | null>(null);
 const joy = {active: false, id: -1, x: 0, y: 0};
@@ -261,6 +311,7 @@ function tick(now: number) {
     w.style.setProperty('--mus-yaw', `${-cam.yaw}deg`);
   }
   if (++lodCounter % 20 === 0) updateLod();
+  if (wireframe.value && (lodCounter & 1) === 0) drawSpecimen(now);
   raf = requestAnimationFrame(tick);
 }
 
@@ -473,6 +524,12 @@ onMounted(() => {
   window.addEventListener('blur', onBlur);
   last = performance.now();
   raf = requestAnimationFrame(tick);
+  getMuseumWireframe(SPECIMEN_SEG_ID).then(wf => {
+    wireframe.value = wf;
+    specimenState.value = wf ? 'live' : 'fallback';
+  }).catch(() => {
+    specimenState.value = 'fallback';
+  });
 });
 
 onUnmounted(() => {
@@ -510,9 +567,11 @@ onUnmounted(() => {
           <div class="mus-inscription-sub">EYEWIRE II · CURATOR: {{ userName.toUpperCase() }}</div>
         </div>
 
-        <!-- Giant hologram neuron in the open sky above the hall -->
+        <!-- Giant hologram neuron in the open sky above the hall: the real
+             specimen mesh when it loads, the hand drawn one until then -->
         <div class="mus-neuron" :style="{transform: `translate3d(0px, ${CEIL_Y - 700}px, ${-ROOM_D / 2}px) rotateY(var(--mus-yaw))`}">
-          <svg class="mus-neuron-svg" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <canvas v-if="wireframe" ref="neuronCanvasEl" class="mus-neuron-canvas" width="1400" height="900"></canvas>
+          <svg v-else class="mus-neuron-svg" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
             <g class="mus-neuron-layer mus-neuron-layer--glow">
               <use href="#musNeuronPaths" />
             </g>
@@ -598,6 +657,8 @@ onUnmounted(() => {
       <div class="mus-hud-top">
         <div class="mus-hud-title">◈ ACHIEVEMENT MUSEUM</div>
         <div class="mus-hud-count">{{ artifacts.length }} ARTIFACTS ON DISPLAY</div>
+        <div v-if="specimenState === 'loading'" class="mus-hud-specimen">◌ SUMMONING SPECIMEN...</div>
+        <div v-else-if="specimenState === 'live'" class="mus-hud-specimen">◉ SPECIMEN: {{ SPECIMEN_LABEL }}</div>
         <div class="mus-hud-actions">
           <button v-if="editable" class="mus-btn" :class="{'mus-btn--active': editMode}" @click="toggleEdit">
             {{ editMode ? '✓ Done curating' : '⬡ Curate' }}
@@ -1104,6 +1165,20 @@ onUnmounted(() => {
   fill: rgba(160, 230, 255, 0.95);
   stroke: rgba(53, 181, 255, 0.5);
   stroke-width: 6;
+}
+.mus-neuron-canvas {
+  position: absolute;
+  left: -1400px;
+  top: -930px;
+  width: 2800px;
+  height: 1800px;
+}
+.mus-hud-specimen {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: rgba(140, 220, 255, 0.8);
+  text-shadow: 0 0 10px rgba(53, 181, 255, 0.5);
 }
 
 /* ── Exit door on the entrance wall ── */
