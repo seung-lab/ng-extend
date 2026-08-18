@@ -172,12 +172,19 @@ body.nge-mobile .perspective-panel-show-slice-views {
   display: none !important;
 }
 
-/* ── Holo particle drift: snappier on phones ──────────────────────────────
-   The 20s desktop loop reads as nearly frozen on a small screen (Amy:
-   "the dots take too long"). Less than half the duration keeps the same
-   travel at phone tempo. */
+/* ── Holo particle dots: a wee brilliant beautiful burst ──────────────────
+   On phones the dots are not an ambient loop (Amy: they take too long).
+   They greet you: one 2 second burst, brightening as they bloom outward,
+   then they are gone. Plays on each mount of the layer. */
 body.nge-mobile .nge-holo-particles {
-  animation-duration: 8s;
+  animation: nge-sparkle-burst 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes nge-sparkle-burst {
+  0%   { opacity: 0;    transform: scale(0.72); filter: brightness(1.4); }
+  18%  { opacity: 0.95; }
+  55%  { opacity: 0.6;  transform: scale(1.04); filter: brightness(2.4); }
+  100% { opacity: 0;    transform: scale(1.2);  filter: brightness(1); }
 }
 
 /* ── Text inputs: iOS zoom trap ───────────────────────────────────────────

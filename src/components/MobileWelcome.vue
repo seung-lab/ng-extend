@@ -67,6 +67,9 @@ function shareEmail() {
   <transition name="nge-mw">
     <div v-if="show" class="nge-mw-blocker" @click.self="dismiss">
       <div class="nge-mw-sheet" role="dialog" aria-label="EyeWire II on mobile">
+        <!-- A wee brilliant beautiful burst: 2 seconds of sparkle on open,
+             then gone. Pure CSS, plays on each mount. -->
+        <div class="nge-mw-sparkles" aria-hidden="true"></div>
         <div class="nge-mw-handle"></div>
         <button class="nge-mw-close" @click="dismiss" title="Close">×</button>
 
@@ -188,7 +191,7 @@ function shareEmail() {
   max-height: 88dvh;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 10px 20px calc(20px + env(safe-area-inset-bottom));
+  padding: 8px 18px calc(10px + env(safe-area-inset-bottom));
   border-radius: 18px 18px 0 0;
   background:
     radial-gradient(ellipse at 50% 0%, rgba(53, 181, 255, 0.10), transparent 60%),
@@ -202,11 +205,40 @@ function shareEmail() {
   font-family: 'Roboto', sans-serif;
 }
 
+/* Sparkle burst overlay */
+.nge-mw-sparkles {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image:
+    radial-gradient(2px 2px at 12% 18%, rgba(191, 233, 255, 0.95) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 78% 12%, rgba(53, 181, 255, 0.9) 0%, transparent 100%),
+    radial-gradient(1px 1px at 32% 38%, rgba(255, 255, 255, 0.85) 0%, transparent 100%),
+    radial-gradient(2px 2px at 88% 42%, rgba(140, 210, 255, 0.85) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 52% 8%, rgba(206, 147, 216, 0.75) 0%, transparent 100%),
+    radial-gradient(1px 1px at 8% 62%, rgba(53, 181, 255, 0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 64% 70%, rgba(191, 233, 255, 0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 92% 82%, rgba(255, 255, 255, 0.7) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 24% 86%, rgba(140, 210, 255, 0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 44% 56%, rgba(206, 147, 216, 0.65) 0%, transparent 100%),
+    radial-gradient(2px 2px at 70% 28%, rgba(53, 181, 255, 0.85) 0%, transparent 100%),
+    radial-gradient(1px 1px at 16% 44%, rgba(255, 255, 255, 0.6) 0%, transparent 100%);
+  animation: nge-mw-sparkle-burst 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes nge-mw-sparkle-burst {
+  0%   { opacity: 0;    transform: scale(0.72); filter: brightness(1.4); }
+  18%  { opacity: 1; }
+  55%  { opacity: 0.65; transform: scale(1.05); filter: brightness(2.4); }
+  100% { opacity: 0;    transform: scale(1.22); filter: brightness(1); }
+}
+
 .nge-mw-handle {
   width: 42px;
   height: 4px;
   border-radius: 2px;
-  margin: 2px auto 10px;
+  margin: 2px auto 8px;
   background: rgba(53, 181, 255, 0.4);
   box-shadow: 0 0 8px rgba(53, 181, 255, 0.35);
 }
@@ -232,23 +264,23 @@ function shareEmail() {
   letter-spacing: 2.2px;
   color: rgba(53, 181, 255, 0.85);
   text-shadow: 0 0 8px rgba(53, 181, 255, 0.45);
-  margin: 4px 0 6px;
+  margin: 2px 0 4px;
 }
 
 .nge-mw-title {
   font-family: 'Orbitron', sans-serif;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.5px;
   color: #f0f6ff;
-  margin: 0 0 8px;
+  margin: 0 0 6px;
 }
 
 .nge-mw-copy {
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 13.5px;
+  line-height: 1.45;
   color: #aebfdd;
-  margin: 0 0 16px;
+  margin: 0 0 12px;
 }
 
 /* Systems list: pure typography, no chrome. These are not buttons, they
@@ -256,8 +288,8 @@ function shareEmail() {
 .nge-mw-sys-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px 12px;
-  margin-bottom: 6px;
+  gap: 10px 12px;
+  margin-bottom: 2px;
   padding: 2px 2px 0;
 }
 
@@ -304,7 +336,7 @@ function shareEmail() {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 16px 0 10px;
+  margin: 11px 0 8px;
 }
 .nge-mw-divider::before,
 .nge-mw-divider::after {
@@ -329,8 +361,8 @@ function shareEmail() {
   gap: 12px;
   width: 100%;
   box-sizing: border-box;
-  padding: 11px 12px;
-  margin-bottom: 8px;
+  padding: 9px 12px;
+  margin-bottom: 7px;
   border-radius: 10px;
   background: rgba(9, 17, 32, 0.8);
   border: 1px solid rgba(53, 181, 255, 0.22);
@@ -372,7 +404,7 @@ function shareEmail() {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  height: 44px;
+  height: 40px;
   border-radius: 9px;
   background: rgba(9, 17, 32, 0.8);
   border: 1px solid rgba(53, 181, 255, 0.28);
@@ -392,15 +424,16 @@ function shareEmail() {
 .nge-mw-bypass {
   display: block;
   width: 100%;
-  margin-top: 16px;
-  padding: 10px;
+  margin-top: 8px;
+  padding: 8px 4px 2px;
   background: none;
   border: none;
   color: rgba(143, 166, 204, 0.75);
   font-family: 'Orbitron', sans-serif;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
-  letter-spacing: 1.6px;
+  letter-spacing: 1.1px;
+  white-space: nowrap;
   cursor: pointer;
 }
 .nge-mw-bypass:active { color: rgb(53, 181, 255); }
@@ -410,8 +443,8 @@ function shareEmail() {
 .nge-mw-cta {
   display: block;
   width: 100%;
-  margin-top: 14px;
-  padding: 13px;
+  margin-top: 11px;
+  padding: 11px;
   border-radius: 9px;
   background: linear-gradient(180deg, rgba(53, 181, 255, 0.22), rgba(53, 181, 255, 0.08));
   border: 1px solid rgba(53, 181, 255, 0.55);
