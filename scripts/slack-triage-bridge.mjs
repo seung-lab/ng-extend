@@ -23,6 +23,12 @@
  * Replies from anyone not in APPROVER_SLACK_IDS are ignored (and noted
  * in-thread once so it isn't silent).
  *
+ * DONE SWEEP: rows moved to status='done' (Admin Hub's "Mark done", or by
+ * whoever ships the change) get a change update posted into the original
+ * Slack thread, tagging every listed approver, with the row's result_note
+ * when one was written. done_slack_ts records the announcement so it never
+ * double-posts. Requires supabase-triage-done-columns.sql.
+ *
  * Approval identity is the Slack member id (U…), not display name, so it
  * cannot be spoofed by renaming. Set APPROVER_SLACK_IDS to Amy's and
  * Celia's ids (Profile > three dots > Copy member ID).
@@ -219,8 +225,36 @@ async function readApprovals() {
   return acted;
 }
 
+/** Post a change update into the thread when an approved row ships. */
+async function announceDone() {
+  const res = await sb('feedback_triage?status=eq.done&slack_ts=not.is.null&done_slack_ts=is.null&select=*');
+  if (!res.ok) {
+    // Most likely the done columns have not been applied yet.
+    console.warn(`[bridge] done sweep skipped (${res.status}) - run supabase-triage-done-columns.sql`);
+    return 0;
+  }
+  const rows = await res.json();
+  let announced = 0;
+  for (const row of rows) {
+    const tags = APPROVERS.map(id => `<@${id}>`).join(' ');
+    const note = (row.result_note || '').trim();
+    const posted = await slack('chat.postMessage', {
+      channel: row.slack_channel || CHANNEL, thread_ts: row.slack_ts,
+      text: `🔧 Change shipped for this one${note ? `: ${note}` : ''}. ${tags} ✓`,
+    });
+    const upd = await sb(`feedback_triage?id=eq.${row.id}`, {
+      method: 'PATCH', body: JSON.stringify({ done_slack_ts: posted.ts }),
+    });
+    if (!upd.ok) throw new Error(`done_slack_ts write failed for ${row.id}: ${upd.status}`);
+    console.log(`[bridge] announced done ${row.id}`);
+    announced++;
+  }
+  return announced;
+}
+
 (async () => {
   const posted = await postProposals();
   const acted = await readApprovals();
-  console.log(`[bridge] done: ${posted} posted, ${acted} decided`);
+  const announced = await announceDone();
+  console.log(`[bridge] done: ${posted} posted, ${acted} decided, ${announced} announced`);
 })().catch(e => { console.error('[bridge] fatal:', e.message); process.exit(1); });
