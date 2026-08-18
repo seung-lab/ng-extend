@@ -994,10 +994,24 @@ function isCrossDatasetTag(tag: IssueTag): boolean {
 }
 
 
+/** Pull the view to inspection zoom after a tag jump (Amy: "tag should
+ *  zoom me in closer, default is far away"). Only ever zooms IN: someone
+ *  already working close stays where they are. Targets sit near the
+ *  dataset landing defaults (stroeh 3/15000, minnie 5/30000). */
+function zoomToTagLevel() {
+  try {
+    const v: any = (window as any)['viewer'];
+    if (v?.crossSectionScale && v.crossSectionScale.value > 5) v.crossSectionScale.value = 4;
+    const proj = v?.perspectiveNavigationState?.zoomFactor;
+    if (proj && proj.value > 25000) proj.value = 18000;
+  } catch {}
+}
+
 function jumpToTag(tag: IssueTag) {
   if (isCrossDatasetTag(tag)) return; // button is disabled; belt and braces
   if (tag.segId) {
     history.jumpToCell(tag.segId, tag.position as [number, number, number]);
+    zoomToTagLevel();
     return;
   }
   // Position-only tag: move the crosshair directly.
@@ -1007,6 +1021,7 @@ function jumpToTag(tag: IssueTag) {
       v.navigationState.position.value = Float32Array.from(tag.position);
     }
   } catch {}
+  zoomToTagLevel();
 }
 
 const TAG_TYPE_META: Record<string, { label: string; pip: string }> = {
@@ -1142,15 +1157,6 @@ function jumpToAiTag(tag: IssueTag) {
   if (isCrossDatasetTag(tag)) return;
   jumpToTag(tag);
   if (tag.segId) ensureSegVisible(tag.segId);
-  // Land at a working zoom. A jump from far out leaves gray EM and a
-  // graphene layer that refuses to load ("please zoom in"), which reads
-  // as a blank screen.
-  try {
-    const v: any = (window as any)['viewer'];
-    if (v?.crossSectionScale && v.crossSectionScale.value > 20) v.crossSectionScale.value = 5;
-    const proj = v?.perspectiveNavigationState?.zoomFactor;
-    if (proj && proj.value > 200000) proj.value = 30000;
-  } catch {}
   if (tag.modelData?.posRelUm?.length && tagStore.activeSplitTagId !== tag.id) {
     tagStore.toggleSplitOverlay(tag);
   }
