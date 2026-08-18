@@ -17,6 +17,7 @@ import AssistantDock from "components/AssistantDock.vue";
 import { runSpotlight } from "../assistant/spotlight";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import TagModePanel from "components/TagModePanel.vue";
+import FlightMode from "components/FlightMode.vue";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
@@ -147,6 +148,22 @@ onMounted(() => {
       e.stopImmediatePropagation();
       showTagMode.value = !showTagMode.value;
     }
+    if (!typing && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      showFlightMode.value = !showFlightMode.value;
+    }
+    // The other way in is the old legend: up up down down left right left
+    // right B A. Flight mode is an easter egg, it is FOUND, not labeled.
+    if (!typing && !showFlightMode.value) {
+      const K = ['arrowup','arrowup','arrowdown','arrowdown','arrowleft','arrowright','arrowleft','arrowright','b','a'];
+      konamiBuf.push(e.key.toLowerCase());
+      if (konamiBuf.length > K.length) konamiBuf.shift();
+      if (konamiBuf.length === K.length && konamiBuf.every((k, i) => k === K[i])) {
+        konamiBuf.length = 0;
+        showFlightMode.value = true;
+      }
+    }
   }, true);
 
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
@@ -225,6 +242,8 @@ const showCellLibrary = ref(false);
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const showTagMode = ref(false);
+const showFlightMode = ref(false);
+const konamiBuf: string[] = [];
 const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
@@ -426,6 +445,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
   tags:        { action: () => { showTagMode.value = !showTagMode.value; } },
+  flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
@@ -462,6 +482,7 @@ const iconActiveState: Record<string, () => boolean> = {
   notif: () => showNotifications.value,
   chat: () => showChat.value,
   tags: () => showTagMode.value,
+  flight: () => showFlightMode.value,
   settings: () => showProfile.value && profileInitialTab.value === 'settings',
 };
 function isIconActive(id: string): boolean {
@@ -583,6 +604,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
   <batch-processor-panel v-if="showBatchProcessor" @hide="showBatchProcessor = false" />
   <tag-mode-panel v-if="showTagMode" @hide="showTagMode = false" />
+  <flight-mode v-if="showFlightMode" @hide="showFlightMode = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />

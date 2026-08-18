@@ -4,8 +4,23 @@
     {
       "name": "ng-extend-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev-server-win"],
+      "runtimeArgs": [
+        "run",
+        "dev-server-win"
+      ],
       "port": 8080
+    },
+    {
+      "name": "dist-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8931",
+        "--directory",
+        "dist/min"
+      ],
+      "port": 8931
     }
   ]
 }

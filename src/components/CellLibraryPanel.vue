@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
   useProofreadingBackendStore,
   useProofreadingQueueStore,
@@ -91,6 +91,16 @@ function resolveTagFun(tag: IssueTag, e: MouseEvent) {
     }, 400);
   };
   requestAnimationFrame(step);
+}
+/** One rotating mote at a time, relaying down the rows in sequence (Amy:
+ *  "have them one at a time in a sequence down the jump row of icons").
+ *  Each appearance is a fresh mount, so the orbit starts clean, does its
+ *  lap, and hands off to the next row. */
+const orbitSeq = ref(0);
+const orbitTimer = setInterval(() => { orbitSeq.value += 1; }, 2800);
+onBeforeUnmount(() => clearInterval(orbitTimer));
+function orbitOn(idx: number, len: number): boolean {
+  return len > 0 && orbitSeq.value % len === idx;
 }
 const tagSuccessToast = ref(false);
 let tagToastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1951,7 +1961,7 @@ const panelStyle = computed(() => ({
             No open tags in this lane. The volume is momentarily unsuspicious.
           </div>
 
-          <div v-for="tag in laneFilteredTags" :key="tag.id" class="nge-cl-help-item">
+          <div v-for="(tag, tagIdx) in laneFilteredTags" :key="tag.id" class="nge-cl-help-item">
             <div class="nge-cl-row">
               <div class="nge-cl-row-left">
                 <span class="nge-cl-pip" :style="{ background: TAG_TYPE_META[tag.tagType]?.pip ?? '#889' }"></span>
@@ -1977,7 +1987,7 @@ const panelStyle = computed(() => ({
                 <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
                         :disabled="isCrossDatasetTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location'">↗</button>
-                <span class="nge-orbit-wrap"><span class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button></span>
+                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, laneFilteredTags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button></span>
                 <template v-if="confirmDeleteTagId === tag.id">
                   <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this tag for everyone">Delete?</button>
                   <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the tag">✕</button>
@@ -2069,7 +2079,7 @@ const panelStyle = computed(() => ({
                 {{ tagStore.heatLoadingRoot === g.root ? '⏳' : '🔥' }} Heat
               </button>
             </div>
-          <div v-for="tag in g.tags" v-show="aiGroupExpanded(g.root)" :key="tag.id" class="nge-cl-help-item">
+          <div v-for="(tag, tagIdx) in g.tags" v-show="aiGroupExpanded(g.root)" :key="tag.id" class="nge-cl-help-item">
             <div class="nge-cl-row">
               <div class="nge-cl-row-left">
                 <span class="nge-cl-pip" :style="{ background: confColor(tag.confidence) }"></span>
@@ -2094,7 +2104,7 @@ const panelStyle = computed(() => ({
                         :disabled="!tag.modelData?.posRelUm?.length"
                         title="Toggle the model's proposed split overlay"
                         @click="tagStore.toggleSplitOverlay(tag)">✂</button>
-                <span class="nge-orbit-wrap"><span class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button></span>
+                <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, g.tags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button></span>
                 <template v-if="confirmDeleteTagId === tag.id">
                   <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this candidate for everyone">Delete?</button>
                   <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the candidate">✕</button>
