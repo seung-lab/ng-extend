@@ -32,6 +32,15 @@ interface ArtifactPose {
   s: number;
 }
 
+interface BigPictureStats {
+  editsAllTime?: number;
+  mergesAllTime?: number;
+  splitsAllTime?: number;
+  cellsSubmitted?: number;
+  currentStreak?: number;
+  longestStreak?: number;
+}
+
 interface MuseumArtifact {
   key: string;
   name: string;
@@ -49,6 +58,7 @@ const props = defineProps<{
   userId: string;
   userName: string;
   editable: boolean;
+  stats?: BigPictureStats | null;
 }>();
 
 const emit = defineEmits<{(e: 'close'): void}>();
@@ -170,6 +180,12 @@ const selectedKey = ref<string | null>(null);
 const worldEl = ref<HTMLElement | null>(null);
 const viewportEl = ref<HTMLElement | null>(null);
 
+// Touch devices get an on-screen joystick and resize buttons.
+const isTouch = window.matchMedia('(pointer: coarse)').matches;
+const joyEl = ref<HTMLElement | null>(null);
+const joyKnobEl = ref<HTMLElement | null>(null);
+const joy = {active: false, id: -1, x: 0, y: 0};
+
 let intro = true;
 let raf = 0;
 let last = 0;
@@ -226,6 +242,11 @@ function tick(now: number) {
   if (keys.has('KeyA')) { cam.x -= right.x * speed; cam.z -= right.z * speed; }
   if (keys.has('KeyD')) { cam.x += right.x * speed; cam.z += right.z * speed; }
 
+  if (joy.active) {
+    cam.x += (fwd.x * -joy.y + right.x * joy.x) * speed;
+    cam.z += (fwd.z * -joy.y + right.z * joy.x) * speed;
+  }
+
   clampCam();
 
   const w = worldEl.value;
@@ -241,14 +262,17 @@ function tick(now: number) {
 // ── Pointer: drag to look, or drag artifacts in curate mode ──────────────────
 let dragMode: 'none' | 'look' | 'artifact' = 'none';
 let dragKey = '';
-let dragStart = {px: 0, py: 0, x: 0, z: 0, yaw: 0, pitch: 0, k: 1};
+let dragStart = {px: 0, py: 0, x: 0, z: 0, yaw: 0, pitch: 0, k: 1, id: -1};
 let dragDist = 0;
 
 function onPointerDown(e: PointerEvent) {
   const target = e.target as HTMLElement;
   // HUD buttons keep their normal click behavior: capturing the pointer here
-  // would swallow the click event they are about to receive.
-  if (target.closest('.mus-hud-top, .mus-hud-selected, .mus-hud-help')) return;
+  // would swallow the click event they are about to receive. The joystick
+  // manages its own pointer. A second finger never steals an active drag.
+  if (target.closest('.mus-hud-top, .mus-hud-selected, .mus-hud-help, .mus-joystick, .mus-door')) return;
+  if (dragMode !== 'none') return;
+  dragStart.id = e.pointerId;
   const hit = target.closest('[data-akey]') as HTMLElement | null;
   dragDist = 0;
   dragStart.px = e.clientX;
@@ -270,7 +294,7 @@ function onPointerDown(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
-  if (dragMode === 'none') return;
+  if (dragMode === 'none' || e.pointerId !== dragStart.id) return;
   const dx = e.clientX - dragStart.px;
   const dy = e.clientY - dragStart.py;
   dragDist = Math.max(dragDist, Math.hypot(dx, dy));
@@ -291,11 +315,51 @@ function onPointerMove(e: PointerEvent) {
 }
 
 function onPointerUp(e: PointerEvent) {
+  if (e.pointerId !== dragStart.id) return;
   if (dragMode === 'artifact' && dragDist < 6) {
     selectedKey.value = selectedKey.value === dragKey ? null : dragKey;
   }
   dragMode = 'none';
+  dragStart.id = -1;
   viewportEl.value?.releasePointerCapture(e.pointerId);
+}
+
+// ── On-screen joystick (touch) ───────────────────────────────────────────────
+function joyDown(e: PointerEvent) {
+  e.stopPropagation();
+  e.preventDefault();
+  joy.active = true;
+  joy.id = e.pointerId;
+  joyEl.value?.setPointerCapture(e.pointerId);
+  joyMove(e);
+}
+
+function joyMove(e: PointerEvent) {
+  if (!joy.active || e.pointerId !== joy.id) return;
+  const el = joyEl.value;
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  joy.x = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2)));
+  joy.y = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height / 2)));
+  const k = joyKnobEl.value;
+  if (k) k.style.transform = `translate(${joy.x * 30}px, ${joy.y * 30}px)`;
+}
+
+function joyUp(e: PointerEvent) {
+  if (e.pointerId !== joy.id) return;
+  joy.active = false;
+  joy.id = -1;
+  joy.x = 0;
+  joy.y = 0;
+  const k = joyKnobEl.value;
+  if (k) k.style.transform = '';
+}
+
+/** Resize the selected artifact from the HUD buttons (touch friendly). */
+function scaleSelected(factor: number) {
+  if (!selectedKey.value) return;
+  const p = editablePose(selectedKey.value);
+  p.s = Math.max(0.45, Math.min(2.6, p.s * factor));
 }
 
 function onWheel(e: WheelEvent) {
@@ -362,6 +426,20 @@ function resetLayout() {
 const selectedArtifact = computed(() =>
   artifacts.value.find(a => a.key === selectedKey.value) ?? null);
 
+// ── Big picture stats for the side wall ──────────────────────────────────────
+const statsRows = computed(() => {
+  const s = props.stats || {};
+  const n = (v: number | undefined) => (v ?? 0).toLocaleString();
+  const streak = s.longestStreak ?? 0;
+  return [
+    {label: 'EDITS ALL TIME', value: n(s.editsAllTime)},
+    {label: 'CELLS COMPLETED', value: n(s.cellsSubmitted)},
+    {label: 'MERGES', value: n(s.mergesAllTime)},
+    {label: 'SPLITS', value: n(s.splitsAllTime)},
+    {label: streak === 1 ? 'DAY LONGEST STREAK' : 'DAYS LONGEST STREAK', value: n(streak)},
+  ];
+});
+
 onMounted(() => {
   loadLayout();
   window.addEventListener('keydown', onKeyDown, true);
@@ -395,16 +473,69 @@ onUnmounted(() => {
       <div ref="worldEl" class="mus-world">
         <!-- Room shell -->
         <div class="mus-floor" :style="{width: ROOM_W + 'px', height: ROOM_D + 'px', transform: `translate3d(${-ROOM_W/2}px, ${FLOOR_Y}px, ${-ROOM_D}px) rotateX(90deg)`}"></div>
-        <div class="mus-ceiling" :style="{width: ROOM_W + 'px', height: ROOM_D + 'px', transform: `translate3d(${-ROOM_W/2}px, ${CEIL_Y}px, ${-ROOM_D}px) rotateX(90deg)`}"></div>
         <div class="mus-wall mus-wall--left" :style="{width: ROOM_D + 'px', height: WALL_H + 'px', transform: `translate3d(${-ROOM_W/2}px, ${CEIL_Y}px, 0px) rotateY(90deg)`}"></div>
         <div class="mus-wall mus-wall--right" :style="{width: ROOM_D + 'px', height: WALL_H + 'px', transform: `translate3d(${ROOM_W/2}px, ${CEIL_Y}px, ${-ROOM_D}px) rotateY(-90deg)`}"></div>
         <div class="mus-wall mus-wall--back" :style="{width: ROOM_W + 'px', height: WALL_H + 'px', transform: `translate3d(${-ROOM_W/2}px, ${CEIL_Y}px, ${-ROOM_D}px)`}"></div>
-        <div class="mus-wall mus-wall--front" :style="{width: ROOM_W + 'px', height: WALL_H + 'px', transform: `translate3d(${-ROOM_W/2}px, ${CEIL_Y}px, 0px) rotateY(180deg)`}"></div>
+        <div class="mus-wall mus-wall--front" :style="{width: ROOM_W + 'px', height: WALL_H + 'px', transform: `translate3d(${ROOM_W/2}px, ${CEIL_Y}px, 0px) rotateY(180deg)`}"></div>
 
         <!-- Back wall inscription -->
         <div class="mus-inscription" :style="{transform: `translate3d(-600px, -270px, ${-ROOM_D + 6}px)`}">
           <div class="mus-inscription-title">HALL OF ACHIEVEMENTS</div>
           <div class="mus-inscription-sub">EYEWIRE II · CURATOR: {{ userName.toUpperCase() }}</div>
+        </div>
+
+        <!-- Giant hologram neuron in the open sky above the hall -->
+        <div class="mus-neuron" :style="{transform: `translate3d(0px, ${CEIL_Y - 700}px, ${-ROOM_D / 2}px) rotateY(var(--mus-yaw))`}">
+          <svg class="mus-neuron-svg" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <g class="mus-neuron-layer mus-neuron-layer--glow">
+              <use href="#musNeuronPaths" />
+            </g>
+            <g class="mus-neuron-layer mus-neuron-layer--line">
+              <g id="musNeuronPaths">
+                <!-- soma wireframe -->
+                <ellipse cx="600" cy="400" rx="72" ry="64" />
+                <ellipse cx="600" cy="400" rx="72" ry="26" />
+                <ellipse cx="600" cy="400" rx="30" ry="64" />
+                <circle cx="600" cy="400" r="18" />
+                <!-- dendrites -->
+                <path d="M585 340 C560 285 525 245 475 205 M475 205 C445 175 420 155 400 130 M475 205 C495 170 505 145 512 118 M400 130 C382 110 366 96 352 84 M512 118 C520 98 530 82 545 66" />
+                <path d="M640 348 C680 295 715 250 758 214 M758 214 C790 186 815 168 838 148 M758 214 C740 178 736 152 738 122 M838 148 C860 132 878 120 900 108" />
+                <path d="M532 388 C465 375 405 355 342 330 M342 330 C300 314 268 302 234 296 M342 330 C320 356 302 372 282 392 M234 296 C210 292 190 288 168 290" />
+                <path d="M560 456 C520 515 478 560 428 606 M428 606 C395 636 368 658 344 686 M428 606 C450 640 460 664 466 692 M344 686 C328 704 314 718 296 728" />
+                <path d="M618 468 C630 535 622 595 600 652 M600 652 C588 685 574 708 556 728 M600 652 C622 680 636 700 648 724" />
+                <!-- axon with terminal arbor -->
+                <path d="M668 416 C760 442 850 448 950 440 C1020 434 1070 428 1108 422 M1108 422 C1130 408 1146 394 1162 376 M1108 422 C1132 430 1150 442 1166 458 M1162 376 C1172 364 1180 354 1190 346 M1166 458 C1176 468 1184 478 1192 488" />
+              </g>
+            </g>
+            <g class="mus-neuron-nodes">
+              <circle cx="352" cy="84" r="5" /><circle cx="545" cy="66" r="5" />
+              <circle cx="900" cy="108" r="5" /><circle cx="738" cy="122" r="4" />
+              <circle cx="168" cy="290" r="5" /><circle cx="282" cy="392" r="4" />
+              <circle cx="296" cy="728" r="5" /><circle cx="466" cy="692" r="4" />
+              <circle cx="556" cy="728" r="4" /><circle cx="648" cy="724" r="4" />
+              <circle cx="1190" cy="346" r="5" /><circle cx="1192" cy="488" r="5" />
+            </g>
+          </svg>
+        </div>
+
+        <!-- Exit door on the entrance wall -->
+        <div class="mus-door" :style="{transform: `translate3d(190px, ${FLOOR_Y - 470}px, -2px) rotateY(180deg)`}" @click="emit('close')">
+          <div class="mus-door-arch"></div>
+          <div class="mus-door-glow"></div>
+          <div class="mus-door-label">EXIT</div>
+          <div class="mus-door-sub">BACK TO EYEWIRE 2</div>
+          <div class="mus-door-chevrons">⌃</div>
+        </div>
+
+        <!-- Big picture stats on the left wall -->
+        <div class="mus-wallstats" :style="{transform: `translate3d(${-ROOM_W / 2 + 4}px, -300px, -700px) rotateY(90deg)`}">
+          <div class="mus-wallstats-title">CAREER TELEMETRY</div>
+          <div class="mus-wallstats-row">
+            <div v-for="row in statsRows" :key="row.label" class="mus-wallstats-item">
+              <div class="mus-wallstats-value">{{ row.value }}</div>
+              <div class="mus-wallstats-label">{{ row.label }}</div>
+            </div>
+          </div>
         </div>
 
         <!-- Artifacts -->
@@ -452,16 +583,37 @@ onUnmounted(() => {
 
       <div v-if="editMode && selectedArtifact" class="mus-hud-selected">
         <span class="mus-hud-selected-name">{{ selectedArtifact.name }}</span>
-        <span>drag to move · scroll to resize · R to reset · Esc to deselect</span>
+        <button class="mus-btn mus-btn--size" @click="scaleSelected(1 / 1.18)">−</button>
+        <button class="mus-btn mus-btn--size" @click="scaleSelected(1.18)">+</button>
+        <span v-if="!isTouch">drag to move · scroll to resize · R to reset · Esc to deselect</span>
+        <span v-else>drag to move · tap again to deselect</span>
       </div>
 
       <div class="mus-hud-help">
-        <template v-if="editMode">
+        <template v-if="editMode && isTouch">
+          CURATE MODE: tap an artifact to select · drag it across the floor · resize with − +
+        </template>
+        <template v-else-if="editMode">
           CURATE MODE: click an artifact to select · drag it across the floor · scroll resizes · arrows nudge
+        </template>
+        <template v-else-if="isTouch">
+          JOYSTICK: walk · DRAG: look around
         </template>
         <template v-else>
           ARROWS or WASD: walk · SHIFT: run · DRAG: look around · SCROLL: glide · ESC: exit
         </template>
+      </div>
+
+      <div
+        v-if="isTouch"
+        ref="joyEl"
+        class="mus-joystick"
+        @pointerdown="joyDown"
+        @pointermove="joyMove"
+        @pointerup="joyUp"
+        @pointercancel="joyUp"
+      >
+        <div ref="joyKnobEl" class="mus-joystick-knob"></div>
       </div>
     </div>
   </Teleport>
@@ -502,8 +654,8 @@ onUnmounted(() => {
   will-change: transform;
 }
 
-/* ── Room shell ── */
-.mus-floor, .mus-ceiling, .mus-wall {
+/* ── Room shell (open sky: no ceiling, the neuron hovers above) ── */
+.mus-floor, .mus-wall {
   position: absolute;
   left: 0;
   top: 0;
@@ -511,27 +663,23 @@ onUnmounted(() => {
   backface-visibility: hidden;
 }
 
+/* Grid lines get soft edges: hard 1px stops shimmer and flash while the
+   camera moves, soft falloffs stay calm. */
 .mus-floor {
   background:
     linear-gradient(90deg, transparent 46.5%, rgba(53, 181, 255, 0.10) 48.5%, rgba(120, 220, 255, 0.16) 50%, rgba(53, 181, 255, 0.10) 51.5%, transparent 53.5%),
-    linear-gradient(rgba(53, 181, 255, 0.075) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(53, 181, 255, 0.075) 1px, transparent 1px),
+    linear-gradient(rgba(53, 181, 255, 0.08) 0, rgba(53, 181, 255, 0.08) 1px, rgba(53, 181, 255, 0.02) 2px, transparent 3.5px),
+    linear-gradient(90deg, rgba(53, 181, 255, 0.08) 0, rgba(53, 181, 255, 0.08) 1px, rgba(53, 181, 255, 0.02) 2px, transparent 3.5px),
     linear-gradient(180deg, rgba(6, 14, 30, 0.99), rgba(3, 8, 18, 0.99));
   background-size: 100% 100%, 146px 146px, 146px 146px, 100% 100%;
 }
 
-.mus-ceiling {
-  background:
-    repeating-linear-gradient(to bottom, transparent 0 190px, rgba(120, 210, 255, 0.10) 190px 210px, transparent 210px 420px),
-    linear-gradient(180deg, rgba(3, 7, 16, 0.99), rgba(2, 5, 12, 0.99));
-}
-
 .mus-wall {
   background:
-    linear-gradient(to bottom, transparent calc(100% - 3px), rgba(53, 181, 255, 0.35) calc(100% - 1px)),
-    linear-gradient(to bottom, rgba(53, 181, 255, 0.22) 1px, transparent 3px),
-    linear-gradient(rgba(53, 181, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(53, 181, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, transparent calc(100% - 4px), rgba(53, 181, 255, 0.30) calc(100% - 1px)),
+    linear-gradient(to bottom, rgba(53, 181, 255, 0.20) 0, rgba(53, 181, 255, 0.06) 3px, transparent 6px),
+    linear-gradient(rgba(53, 181, 255, 0.045) 0, rgba(53, 181, 255, 0.045) 1px, transparent 3px),
+    linear-gradient(90deg, rgba(53, 181, 255, 0.045) 0, rgba(53, 181, 255, 0.045) 1px, transparent 3px),
     linear-gradient(180deg, rgba(7, 14, 30, 0.97) 0%, rgba(4, 9, 20, 0.98) 100%);
   background-size: 100% 100%, 100% 100%, 140px 140px, 140px 140px, 100% 100%;
 }
@@ -586,15 +734,16 @@ onUnmounted(() => {
 .mus-beam {
   position: absolute;
   left: -105px;
-  top: -560px;
+  top: -540px;
   width: 210px;
-  height: 560px;
+  height: 540px;
   clip-path: polygon(47% 0, 53% 0, 100% 100%, 0 100%);
   background: linear-gradient(to bottom,
-    rgba(150, 225, 255, 0.20) 0%,
-    rgba(53, 181, 255, 0.07) 60%,
+    rgba(150, 225, 255, 0.15) 0%,
+    rgba(53, 181, 255, 0.055) 60%,
     rgba(53, 181, 255, 0.01) 100%);
   pointer-events: none;
+  backface-visibility: hidden;
 }
 
 /* Projector rings on the floor */
@@ -619,8 +768,9 @@ onUnmounted(() => {
   top: -330px;
   width: 160px;
   height: 160px;
-  animation: musBob 6s ease-in-out infinite;
+  animation: musBob 7.5s ease-in-out infinite;
   pointer-events: none;
+  backface-visibility: hidden;
 }
 .mus-badge-img {
   width: 100%;
@@ -641,7 +791,7 @@ onUnmounted(() => {
 
 @keyframes musBob {
   0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-16px); }
+  50%      { transform: translateY(-6px); }
 }
 
 /* Name plaque */
@@ -863,7 +1013,11 @@ onUnmounted(() => {
   background: rgba(6, 14, 30, 0.85);
   border: 1px solid rgba(53, 181, 255, 0.45);
   border-radius: 5px;
-  pointer-events: none;
+}
+.mus-btn--size {
+  padding: 4px 12px;
+  font-size: 14px;
+  line-height: 1;
 }
 .mus-hud-selected-name {
   font-family: 'Orbitron', sans-serif;
@@ -886,6 +1040,192 @@ onUnmounted(() => {
   color: rgba(120, 190, 235, 0.7);
   background: linear-gradient(to top, rgba(2, 6, 14, 0.85), transparent);
   pointer-events: none;
+}
+
+/* ── Giant sky neuron ── */
+.mus-neuron {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.mus-neuron-svg {
+  position: absolute;
+  left: -1700px;
+  top: -1075px;
+  width: 3400px;
+  height: 2150px;
+  overflow: visible;
+  animation: musNeuronPulse 9s ease-in-out infinite;
+}
+.mus-neuron-layer { stroke: rgb(120, 220, 255); fill: none; stroke-linecap: round; }
+.mus-neuron-layer--glow { stroke: rgba(53, 181, 255, 0.30); stroke-width: 15; }
+.mus-neuron-layer--line { stroke-width: 3.5; opacity: 0.92; }
+.mus-neuron-nodes circle {
+  fill: rgba(160, 230, 255, 0.95);
+  stroke: rgba(53, 181, 255, 0.5);
+  stroke-width: 6;
+}
+@keyframes musNeuronPulse {
+  0%, 100% { opacity: 0.65; }
+  50%      { opacity: 0.95; }
+}
+
+/* ── Exit door on the entrance wall ── */
+.mus-door {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 380px;
+  height: 470px;
+  transform-origin: 0 0;
+  cursor: pointer;
+  background: linear-gradient(to top, rgba(53, 181, 255, 0.16) 0%, rgba(53, 181, 255, 0.05) 55%, transparent 100%);
+  border: 2px solid rgba(120, 220, 255, 0.55);
+  border-bottom: none;
+  border-radius: 190px 190px 0 0;
+  box-shadow:
+    0 0 34px rgba(53, 181, 255, 0.35),
+    inset 0 0 44px rgba(53, 181, 255, 0.14);
+  text-align: center;
+  backface-visibility: hidden;
+}
+.mus-door:hover {
+  background: linear-gradient(to top, rgba(53, 181, 255, 0.26) 0%, rgba(53, 181, 255, 0.09) 55%, transparent 100%);
+  box-shadow:
+    0 0 54px rgba(53, 181, 255, 0.55),
+    inset 0 0 54px rgba(53, 181, 255, 0.22);
+}
+.mus-door-arch {
+  position: absolute;
+  inset: 22px 22px 0;
+  border: 1px solid rgba(53, 181, 255, 0.35);
+  border-bottom: none;
+  border-radius: 170px 170px 0 0;
+  pointer-events: none;
+}
+.mus-door-glow {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 240px;
+  height: 16px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(120, 220, 255, 0.55) 0%, transparent 70%);
+  pointer-events: none;
+}
+.mus-door-label {
+  margin-top: 150px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 56px;
+  font-weight: 700;
+  letter-spacing: 12px;
+  color: rgba(190, 235, 255, 0.95);
+  text-shadow: 0 0 22px rgba(53, 181, 255, 0.9);
+  pointer-events: none;
+}
+.mus-door-sub {
+  margin-top: 12px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 4px;
+  color: rgba(130, 200, 240, 0.85);
+  text-shadow: 0 0 12px rgba(53, 181, 255, 0.5);
+  pointer-events: none;
+}
+.mus-door-chevrons {
+  margin-top: 26px;
+  font-size: 30px;
+  color: rgba(120, 220, 255, 0.7);
+  animation: musDoorChevron 2.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes musDoorChevron {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50%      { transform: translateY(-8px); opacity: 1; }
+}
+
+/* ── Big picture stats on the side wall ── */
+.mus-wallstats {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2000px;
+  transform-origin: 0 0;
+  text-align: center;
+  pointer-events: none;
+  backface-visibility: hidden;
+}
+.mus-wallstats-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 18px;
+  color: rgba(130, 205, 245, 0.75);
+  text-shadow: 0 0 16px rgba(53, 181, 255, 0.5);
+}
+.mus-wallstats-row {
+  margin-top: 34px;
+  display: flex;
+  justify-content: center;
+  gap: 70px;
+}
+.mus-wallstats-item { min-width: 240px; }
+.mus-wallstats-value {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 84px;
+  font-weight: 700;
+  color: rgba(190, 235, 255, 0.95);
+  text-shadow:
+    0 0 24px rgba(53, 181, 255, 0.85),
+    0 0 70px rgba(53, 181, 255, 0.4);
+}
+.mus-wallstats-label {
+  margin-top: 8px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 5px;
+  color: rgba(120, 190, 235, 0.7);
+}
+
+/* ── Touch joystick ── */
+.mus-joystick {
+  position: absolute;
+  left: 22px;
+  bottom: 54px;
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  border: 1px solid rgba(53, 181, 255, 0.5);
+  background:
+    radial-gradient(circle, rgba(53, 181, 255, 0.10) 0%, rgba(10, 24, 48, 0.55) 70%);
+  box-shadow: 0 0 18px rgba(53, 181, 255, 0.25), inset 0 0 24px rgba(53, 181, 255, 0.08);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.mus-joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  border: 1px solid rgba(140, 230, 255, 0.85);
+  background: radial-gradient(circle, rgba(120, 220, 255, 0.5) 0%, rgba(53, 181, 255, 0.22) 70%);
+  box-shadow: 0 0 14px rgba(53, 181, 255, 0.6);
+  transition: transform 0.08s linear;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .mus-hud-title { font-size: 12px; letter-spacing: 2px; }
+  .mus-hud-count { display: none; }
+  .mus-inscription-title { font-size: 56px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

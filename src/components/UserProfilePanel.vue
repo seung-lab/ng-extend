@@ -1537,6 +1537,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         :user-id="museumUserId"
         :user-name="profileUsername || profileName"
         :editable="!viewingOtherUser"
+        :stats="profileStats"
         @close="showMuseum = false"
       />
 
