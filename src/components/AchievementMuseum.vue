@@ -517,7 +517,19 @@ const statsRows = computed(() => {
   ];
 });
 
+// The viewport meta lives only while the museum is open: adding it globally
+// to index.html changes page scaling for the whole app, and the app's 3D
+// viewport is not ours to resize. Scoped here, phones still get proper
+// scaling for the museum walkthrough.
+let injectedViewportMeta: HTMLMetaElement | null = null;
+
 onMounted(() => {
+  if (!document.querySelector('meta[name="viewport"]')) {
+    injectedViewportMeta = document.createElement('meta');
+    injectedViewportMeta.name = 'viewport';
+    injectedViewportMeta.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
+    document.head.appendChild(injectedViewportMeta);
+  }
   loadLayout();
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);
@@ -533,6 +545,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  injectedViewportMeta?.remove();
+  injectedViewportMeta = null;
   cancelAnimationFrame(raf);
   window.clearTimeout(saveTimer);
   window.removeEventListener('keydown', onKeyDown, true);
