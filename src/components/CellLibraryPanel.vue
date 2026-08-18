@@ -1653,9 +1653,12 @@ const panelStyle = computed(() => ({
             class="nge-cl-help-ds-group"
             :class="{ 'nge-cl-help-ds-group--cross': !group.isCurrent }"
           >
-            <!-- Dataset section header (only when there's more than one group) -->
+            <!-- Dataset section header: shown with multiple groups, and ALSO
+                 for a lone non-current group. Without it, requests that all
+                 live in one other dataset auto-collapsed with no header to
+                 expand them: count said 2, list showed nothing (Amy). -->
             <div
-              v-if="hasMultipleHelpDatasets"
+              v-if="hasMultipleHelpDatasets || !group.isCurrent"
               class="nge-cl-help-ds-header"
               @click="toggleDatasetGroup(group.dataset)"
             >
