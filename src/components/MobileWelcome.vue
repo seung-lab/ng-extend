@@ -180,25 +180,28 @@ function shareEmail() {
   background: rgba(2, 5, 12, 0.55);
   backdrop-filter: blur(3px);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
+  padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
 }
 
 .nge-mw-sheet {
   position: relative;
   width: 100%;
   max-width: 520px;
-  max-height: 88dvh;
+  max-height: 96dvh;
   overflow-y: auto;
   box-sizing: border-box;
   padding: 8px 18px calc(10px + env(safe-area-inset-bottom));
-  border-radius: 18px 18px 0 0;
+  border-radius: 18px;
   background:
     radial-gradient(ellipse at 50% 0%, rgba(53, 181, 255, 0.10), transparent 60%),
     linear-gradient(180deg, #0b1424 0%, #070d1a 100%);
-  border-top: 1px solid rgba(53, 181, 255, 0.45);
+  border: 1px solid rgba(53, 181, 255, 0.35);
+  border-top-color: rgba(53, 181, 255, 0.5);
   box-shadow:
-    0 -10px 40px rgba(0, 0, 0, 0.7),
+    0 10px 40px rgba(0, 0, 0, 0.7),
     0 0 30px rgba(53, 181, 255, 0.12),
     inset 0 1px 0 rgba(53, 181, 255, 0.25);
   color: #dfe9ff;
@@ -306,10 +309,13 @@ function shareEmail() {
   filter: drop-shadow(0 0 6px rgba(53, 181, 255, 0.35));
 }
 .nge-mw-neuron-icon {
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
   vertical-align: middle;
-  filter: drop-shadow(0 0 6px rgba(53, 181, 255, 0.5));
+  filter:
+    drop-shadow(0 0 5px rgba(53, 181, 255, 0.9))
+    drop-shadow(0 0 12px rgba(53, 181, 255, 0.5))
+    brightness(1.15);
 }
 .nge-mw-sys-text {
   display: flex;

@@ -58,6 +58,15 @@ body.nge-mobile #extensionBar .nge-streak-chip {
   display: none;
 }
 
+/* The merged neuroglancer bar is the elastic zone: clip its overflow so
+   the Share button can never spill under the profile button (Amy: "Share
+   is overlapping my profile"). */
+body.nge-mobile #extensionBar #insertNGTopBar {
+  min-width: 0;
+  overflow: hidden;
+  margin-right: 6px;
+}
+
 /* Profile button: drop the desktop margins that shoved it over the Share
    button, give it a real tap target. */
 body.nge-mobile #extensionBar #profileBtn {
