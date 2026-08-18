@@ -71,3 +71,27 @@ jobs:
             ARGS="$ARGS --dry-run"
           fi
           node scripts/sync-cave-completions.mjs $ARGS
+
+  # ── CAVE edits sync, folded in from cave-edits-sync.yml ────────────────────
+  # That workflow lives on eyewire-ii-community, and GitHub only registers
+  # schedule/workflow_dispatch triggers from the default branch, so its cron
+  # never ran. This job gives it the registered home the file's own NOTE asks
+  # for. The checkout pins eyewire-ii-community so the script always runs
+  # from the active branch, same pattern as slack-triage-bridge.yml.
+  sync-edits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sync CAVE edits into Supabase mirror
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+        run: node scripts/sync-cave-edits.mjs
