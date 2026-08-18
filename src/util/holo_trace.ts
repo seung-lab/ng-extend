@@ -406,7 +406,9 @@ export function runPanelDraw(
  */
 export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): void {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-  const SIZE = 280, HALF = SIZE / 2, DUR = 750;
+  // Bigger and slower (Amy: the click burst was too small and faded too
+  // fast): wider throw, longer life, gentler fade.
+  const SIZE = 420, HALF = SIZE / 2, DUR = 1150;
 
   const cv = document.createElement('canvas');
   cv.style.cssText = `position:fixed;left:${cx - HALF}px;top:${cy - HALF}px;` +
@@ -423,14 +425,14 @@ export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): vo
     const a = Math.random() * 6.283;
     return {
       a,
-      sp: 46 + Math.random() * 92,          // px travelled over the burst
-      r: 0.8 + Math.random() * 1.6,
+      sp: 70 + Math.random() * 135,         // px travelled over the burst
+      r: 1.1 + Math.random() * 2.0,
       drag: 0.5 + Math.random() * 0.5,      // eases the tail of the flight
     };
   });
   const streaks = Array.from({ length: 9 }, () => ({
     a: Math.random() * 6.283,
-    len: 60 + Math.random() * 70,
+    len: 90 + Math.random() * 100,
   }));
 
   let raf = 0;
@@ -467,9 +469,9 @@ export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): vo
       const eo = 1 - Math.pow(1 - k, 1.6 + p.drag);
       const x = HALF + Math.cos(p.a) * p.sp * eo;
       const y = HALF + Math.sin(p.a) * p.sp * eo;
-      const al = (1 - k) * (1 - k) * 0.8;
+      const al = Math.pow(1 - k, 1.3) * 0.85;
       ctx!.beginPath();
-      ctx!.arc(x, y, p.r * (1 - k * 0.5), 0, 6.283);
+      ctx!.arc(x, y, p.r * (1 - k * 0.35), 0, 6.283);
       ctx!.fillStyle = `rgba(${rgb},${al.toFixed(3)})`;
       ctx!.fill();
     }
