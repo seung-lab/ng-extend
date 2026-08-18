@@ -833,28 +833,26 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- Cells stats -->
           <div v-if="!viewingOtherUser" class="nge-profile-section nge-profile-section--cells">
             <div class="nge-profile-section-label">▌ Cells</div>
-            <div class="nge-profile-stat-row">
-              <div class="nge-profile-stat-col">
+            <!-- Sub-label row removed (Amy): tooltips carry the definitions,
+                 and each stat sits in its own highlighted tile. -->
+            <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
+              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Cells you proofread all the way to completion">
                 <div class="nge-profile-stat-label">Completed</div>
                 <div class="nge-profile-stat-val nge-profile-stat-val--hero">
                   <RollUp :value="completedCells.length" />
                 </div>
-                <div class="nge-profile-stat-sub">proofread</div>
               </div>
-              <div class="nge-profile-stat-col">
+              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Cells you identified (typed) without proofreading edits">
                 <div class="nge-profile-stat-label">Identified</div>
                 <div class="nge-profile-stat-val"><RollUp :value="identifiedCells.length" /></div>
-                <div class="nge-profile-stat-sub">typed only</div>
               </div>
-              <div class="nge-profile-stat-col">
+              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Every cell you have worked on in any way">
                 <div class="nge-profile-stat-label">Total</div>
                 <div class="nge-profile-stat-val"><RollUp :value="filteredCellHistory.length" /></div>
-                <div class="nge-profile-stat-sub">touched</div>
               </div>
-              <div class="nge-profile-stat-col" v-if="playerAssists > 0">
+              <div class="nge-profile-stat-col nge-profile-stat-tile" v-if="playerAssists > 0" title="Cells where you helped answer another player's request">
                 <div class="nge-profile-stat-label">Assists</div>
                 <div class="nge-profile-stat-val" style="color: #7f8;">{{ playerAssists }}</div>
-                <div class="nge-profile-stat-sub">helped</div>
               </div>
             </div>
 
@@ -2407,6 +2405,29 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-badges-toggle:hover {
   color: rgba(255, 208, 138, 0.9);
   border-color: rgba(245, 166, 35, 0.45);
+}
+
+/* Cells as highlighted tiles: each stat in its own softly lit card, even
+   spacing, definitions on hover (the old sub-label row is gone). */
+.nge-profile-stat-row--tiles {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.nge-profile-stat-tile {
+  flex: 1 1 0;
+  min-width: 86px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(74, 158, 255, 0.055);
+  border: 1px solid rgba(74, 158, 255, 0.16);
+  cursor: help;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.nge-profile-stat-tile:hover {
+  background: rgba(74, 158, 255, 0.1);
+  border-color: rgba(74, 158, 255, 0.35);
+  transform: translateY(-1px);
 }
 
 .nge-profile-right-divider {
