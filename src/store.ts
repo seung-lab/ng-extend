@@ -346,17 +346,21 @@ export const useLayersStore = defineStore('layers', () => {
     // reachable only from a share link that carries its own layout or the
     // corner view toggle. A layout named in the URL hash wins on any device.
     if (isMobileRef.value) {
-      if (!window.location.hash.includes('layout')) {
+      // Captured ONCE at boot, before neuroglancer starts mirroring the
+      // full state (which always contains "layout") back into the hash.
+      // Only an inline share link, whose hash carries a literal layout key
+      // at page load, keeps its own view; everything else on a phone is
+      // fullscreen 3D, including curated dataset states that arrive later
+      // as #!url pointers (their remote fetch resolves after the hash has
+      // been rewritten, so the hash cannot be consulted at restore time).
+      const bootHadExplicitLayout = window.location.hash.includes('layout');
+      if (!bootHadExplicitLayout) {
         viewer.layout.restoreState('3d');
       }
-      // Curated dataset views arrive later as remote state (the hash is a
-      // #!url pointer, not inline JSON). Those default to fullscreen 3D on
-      // phones too. Inline share links carry a literal `layout` key in the
-      // hash and keep whatever view they were shared with.
       const origRestore = viewer.state.restoreState.bind(viewer.state);
       (viewer.state as any).restoreState = (obj: any) => {
         if (obj && typeof obj === 'object' && !Array.isArray(obj) &&
-            !window.location.hash.includes('layout')) {
+            !bootHadExplicitLayout) {
           if ((obj as any).layout !== undefined) obj = {...obj, layout: '3d'};
           // The seg side panel also stays closed on phones.
           if ((obj as any).selectedLayer !== undefined) {
