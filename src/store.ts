@@ -1571,10 +1571,46 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     return out;
   }
 
+  /** The pins' up axis, chosen per rebuild: the signed world axis nearest
+   *  the camera's current up vector. The pin meshes are modeled with -y as
+   *  up, which is right for the cortex datasets but lay the monuments
+   *  sideways in retina, whose world is rotated (Amy: "the scout tag icons
+   *  are still sideways"). Snapping to an axis keeps placement deterministic
+   *  and stable under small camera moves. Returns rows of a 3x3 matrix
+   *  mapping pin-local coordinates to world. */
+  function pinUpBasis(viewer: any): number[][] {
+    const I = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]; // native: up = -y
+    try {
+      const q = viewer?.perspectiveNavigationState?.pose?.orientation?.orientation;
+      if (!q) return I;
+      // world up = orientation * (0,-1,0)  (screen up under the y-down flip)
+      const qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+      const vy = -1;
+      let uvx = qy * 0 - qz * vy, uvy = qz * 0 - qx * 0, uvz = qx * vy - qy * 0;
+      const uuvx = qy * uvz - qz * uvy, uuvy = qz * uvx - qx * uvz, uuvz = qx * uvy - qy * uvx;
+      const ux = 0 + uvx * 2 * qw + uuvx * 2;
+      const uy = vy + uvy * 2 * qw + uuvy * 2;
+      const uz = 0 + uvz * 2 * qw + uuvz * 2;
+      const ax = Math.abs(ux), ay = Math.abs(uy), az = Math.abs(uz);
+      if (ay >= ax && ay >= az) {
+        return uy <= 0 ? I : [[1, 0, 0], [0, -1, 0], [0, 0, -1]]; // 180 about x
+      }
+      if (ax >= az) {
+        // rotate about z so local -y lands on +/-x
+        return ux >= 0 ? [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
+                       : [[0, 1, 0], [-1, 0, 0], [0, 0, 1]];
+      }
+      // rotate about x so local -y lands on +/-z
+      return uz >= 0 ? [[1, 0, 0], [0, 0, 1], [0, -1, 0]]
+                     : [[1, 0, 0], [0, 0, -1], [0, 1, 0]];
+    } catch { return I; }
+  }
+
   /** Bake all pin instances (possibly different meshes per tag type) into
    *  one colored legacy-VTK, so the layer bar carries a single chip and the
    *  paint Meshy baked survives as per-vertex color. */
-  function buildPinVtk(instances: {mesh: PinMesh; pos: number[]; yaw: number; lift: number; tint?: [number, number, number] | null}[]): string {
+  function buildPinVtk(instances: {mesh: PinMesh; pos: number[]; yaw: number; lift: number; tint?: [number, number, number] | null}[], basis?: number[][]): string {
+    const M = basis ?? [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
     let totalV = 0, totalF = 0;
     for (const inst of instances) { totalV += inst.mesh.verts.length / 3; totalF += inst.mesh.faces.length; }
     const lines: string[] = [
@@ -1588,7 +1624,11 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       for (let i = 0; i < nv; i++) {
         const x = verts[i * 3], y = verts[i * 3 + 1], z = verts[i * 3 + 2];
         const rx = x * c + z * s, rz = -x * s + z * c;
-        lines.push(`${(rx + inst.pos[0]).toFixed(0)} ${(y + inst.pos[1] - inst.lift).toFixed(0)} ${(rz + inst.pos[2]).toFixed(0)}`);
+        const ly = y - inst.lift; // lift raises along the pin's own up
+        const wx = M[0][0] * rx + M[0][1] * ly + M[0][2] * rz;
+        const wy = M[1][0] * rx + M[1][1] * ly + M[1][2] * rz;
+        const wz = M[2][0] * rx + M[2][1] * ly + M[2][2] * rz;
+        lines.push(`${(wx + inst.pos[0]).toFixed(0)} ${(wy + inst.pos[1]).toFixed(0)} ${(wz + inst.pos[2]).toFixed(0)}`);
       }
     }
     lines.push(`POLYGONS ${totalF} ${totalF * 4}`);
@@ -1625,8 +1665,9 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       if (tagPoints.length > MAX_PINS) {
         console.info(`[issueTags] pin layer capped at ${MAX_PINS} of ${tagPoints.length} tags`);
       }
+      const basis = pinUpBasis(viewer);
       const key = JSON.stringify(shown.map(t => [t.id, t.tagType ?? '', t.point.map(Math.round)])
-        .concat(preview ? [['preview', '', preview.map(Math.round)]] : []));
+        .concat(preview ? [['preview', '', preview.map(Math.round)]] : [])) + '|' + JSON.stringify(basis);
       const existing = viewer.layerManager?.managedLayers?.find((l: any) => l.name === PIN_LAYER_NAME);
       if (key === lastPinKey && existing) return;
 
@@ -1651,7 +1692,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
         mesh: meshFor(previewType), pos: toNm(preview), yaw: 0, lift: 500, tint: tintFor(previewType),
       });
 
-      const vtkText = buildPinVtk(instances);
+      const vtkText = buildPinVtk(instances, basis);
       const dataUrl = 'data:application/octet-stream;base64,' + btoa(vtkText);
       const spec = {
         type: 'mesh',
