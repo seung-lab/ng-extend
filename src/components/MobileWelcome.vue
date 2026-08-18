@@ -17,13 +17,31 @@
 // not genomics: never the DNA emoji (Amy 2026-08-18).
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
-defineProps<{ show: boolean }>();
+/** loggedIn: after login the systems list becomes interactive links
+ *  (tap Profile on the Guide to open the profile panel, etc.). */
+defineProps<{ show: boolean, loggedIn: boolean }>();
 
 const emit = defineEmits<{
   (e: 'hide'): void;
   /** Close the sheet and let identity verification take the stage. */
   (e: 'login'): void;
+  (e: 'open', panel: 'cells' | 'chat' | 'profile' | 'leaderboard'): void;
 }>();
+
+type PanelId = 'cells' | 'chat' | 'profile' | 'leaderboard';
+
+function openPanel(panel: PanelId) {
+  emit('open', panel);
+  emit('hide');
+}
+
+/** Rendered by the systems list; rows become live links after login. */
+const SYSTEMS: { id: PanelId; icon: string; label: string; sub: string }[] = [
+  { id: 'cells', icon: '', label: 'Cell Library', sub: 'Browse real neurons in 3D' },
+  { id: 'chat', icon: '💬', label: 'Chat', sub: 'Talk with the community' },
+  { id: 'profile', icon: '👤', label: 'Profile', sub: 'Your stats and badges' },
+  { id: 'leaderboard', icon: '🏆', label: 'Leaderboard', sub: 'Top proofreaders this week' },
+];
 
 function dismiss() {
   emit('hide');
@@ -101,40 +119,27 @@ function shareEmail() {
 
           <div class="nge-mw-divider"><span>SYSTEMS AVAILABLE ON YOUR PHONE</span></div>
 
-          <!-- Not buttons: these systems unlock after login, this is the
-               menu of what a phone can do, set in type not chrome. -->
+          <!-- Typography before login (systems unlock after auth); once
+               logged in each row is a live link into its panel. -->
           <div class="nge-mw-sys-list">
-            <div class="nge-mw-sys">
-              <span class="nge-mw-sys-icon"><img :src="neuronIcon" class="nge-mw-neuron-icon" alt="" /></span>
-              <span class="nge-mw-sys-text">
-                <span class="nge-mw-sys-label">Cell Library</span>
-                <span class="nge-mw-sys-sub">Browse real neurons in 3D</span>
+            <component :is="loggedIn ? 'button' : 'div'"
+                v-for="sys in SYSTEMS"
+                :key="sys.id"
+                class="nge-mw-sys"
+                :class="{ 'nge-mw-sys--link': loggedIn }"
+                @click="loggedIn && openPanel(sys.id)">
+              <span class="nge-mw-sys-icon">
+                <img v-if="sys.id === 'cells'" :src="neuronIcon" class="nge-mw-neuron-icon" alt="" />
+                <template v-else>{{ sys.icon }}</template>
               </span>
-            </div>
-            <div class="nge-mw-sys">
-              <span class="nge-mw-sys-icon">💬</span>
               <span class="nge-mw-sys-text">
-                <span class="nge-mw-sys-label">Chat</span>
-                <span class="nge-mw-sys-sub">Talk with the community</span>
+                <span class="nge-mw-sys-label">{{ sys.label }}<span v-if="loggedIn" class="nge-mw-sys-go"> ›</span></span>
+                <span class="nge-mw-sys-sub">{{ sys.sub }}</span>
               </span>
-            </div>
-            <div class="nge-mw-sys">
-              <span class="nge-mw-sys-icon">👤</span>
-              <span class="nge-mw-sys-text">
-                <span class="nge-mw-sys-label">Profile</span>
-                <span class="nge-mw-sys-sub">Your stats and badges</span>
-              </span>
-            </div>
-            <div class="nge-mw-sys">
-              <span class="nge-mw-sys-icon">🏆</span>
-              <span class="nge-mw-sys-text">
-                <span class="nge-mw-sys-label">Leaderboard</span>
-                <span class="nge-mw-sys-sub">Top proofreaders this week</span>
-              </span>
-            </div>
+            </component>
           </div>
 
-          <button class="nge-mw-cta" @click="emit('login')">
+          <button v-if="!loggedIn" class="nge-mw-cta" @click="emit('login')">
             🔐 LOG IN · FULL ACCESS
           </button>
 
@@ -335,6 +340,28 @@ function shareEmail() {
   font-size: 11px;
   color: #8fa6cc;
   line-height: 1.35;
+}
+
+/* Logged in: the rows are live links into their panels. */
+.nge-mw-sys--link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.nge-mw-sys--link .nge-mw-sys-label {
+  color: rgb(53, 181, 255);
+  text-shadow: 0 0 10px rgba(53, 181, 255, 0.5);
+}
+.nge-mw-sys--link:active .nge-mw-sys-label {
+  text-shadow: 0 0 16px rgba(53, 181, 255, 0.9);
+}
+.nge-mw-sys-go {
+  font-family: inherit;
+  opacity: 0.8;
 }
 
 /* Divider */

@@ -929,8 +929,10 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <mobile-welcome
     v-if="isMobileRef"
     :show="showMobileWelcome"
+    :logged-in="login.sessions.length > 0"
     @hide="exploreWithoutLogin"
     @login="mobileWelcomeLogin"
+    @open="mobileOpenPanel"
   />
   <teleport to="body">
   <nav v-if="isMobileRef" class="nge-mobile-nav">

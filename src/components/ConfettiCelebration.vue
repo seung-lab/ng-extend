@@ -10,6 +10,7 @@
  * Exposed via defineExpose so parent can call confettiRef.trigger() or .sparkle().
  */
 import { ref, onMounted, onUnmounted } from 'vue';
+import { isMobileRef } from '../util/mobile';
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let ctx: CanvasRenderingContext2D | null = null;
@@ -114,9 +115,13 @@ const SPARKLE_COLORS = [
 function createSparkles(count: number) {
   const canvas = canvasRef.value;
   if (!canvas) return;
+  // Mobile: the whole shimmer completes inside 2 seconds (Amy 2026-08-18),
+  // tighter spawn stagger and a faster lifecycle. Desktop keeps the longer
+  // ambient wash (up to ~6s).
+  const mobile = isMobileRef.value;
   for (let i = 0; i < count; i++) {
     // Stagger spawn times so sparkles appear in waves, not all at once
-    const spawnDelay = Math.random() * 0.8; // 0–0.8 of lifecycle before starting
+    const spawnDelay = Math.random() * (mobile ? 0.3 : 0.8);
     sparkles.push({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
@@ -124,7 +129,8 @@ function createSparkles(count: number) {
       phase: Math.random() * Math.PI * 2,
       speed: 0.03 + Math.random() * 0.05,   // faster twinkle
       life: -spawnDelay,                     // negative = waiting to appear
-      lifeSpeed: 0.008 + Math.random() * 0.01, // faster lifecycle
+      lifeSpeed: mobile ? 0.026 + Math.random() * 0.012
+                        : 0.008 + Math.random() * 0.01,
       color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
       maxOpacity: 0.7 + Math.random() * 0.3,  // brighter: 0.7–1.0
     });
