@@ -49,6 +49,21 @@ function ringTopCenterT(rw: number, rh: number, r: number): number {
   return (sw / 2) / per;
 }
 
+
+/** The corner radius the light should follow: read from the host (or its
+ *  first child, the visual box inside a positioning wrap), so sweeps hug
+ *  the actual border instead of a guessed radius (Amy: "the loading light
+ *  sweep is off at the corners"). */
+function hostRadius(host: HTMLElement, fallback: number): number {
+  let el: Element | null = host;
+  for (let i = 0; i < 2 && el; i++) {
+    const r = parseFloat(getComputedStyle(el as HTMLElement).borderTopLeftRadius || '');
+    if (r > 0) return r;
+    el = (el as HTMLElement).firstElementChild;
+  }
+  return fallback;
+}
+
 export function runPanelTrace(host: HTMLElement, PAD = 0): void {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   const rect = host.getBoundingClientRect();
@@ -56,7 +71,7 @@ export function runPanelTrace(host: HTMLElement, PAD = 0): void {
 
   // scifi-ui uses PAD 26 for overhang; panels with overflow hidden pass 0
   // so the beam runs the inner boundary instead of being clipped.
-  const N = 64, DUR = 1500, R = 15;
+  const N = 64, DUR = 1500, R = hostRadius(host, 15);
 
   const cv = document.createElement('canvas');
   cv.style.cssText = `position:absolute;inset:${-PAD}px;width:calc(100% + ${PAD * 2}px);height:calc(100% + ${PAD * 2}px);pointer-events:none;z-index:50;`;
@@ -196,7 +211,7 @@ export function runPanelZip(host: HTMLElement, direction: 'up' | 'down' = 'up'):
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   const rect = host.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
-  const DUR = 700, R = 10;
+  const DUR = 700, R = hostRadius(host, 10);
 
   const cv = document.createElement('canvas');
   cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;';
@@ -287,7 +302,7 @@ export function runPanelDraw(
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
   const rect = host.getBoundingClientRect();
   if (!rect.width || !rect.height) return 0;
-  const DUR = 620, HOLD = 120, FADE = 260, R = 10;
+  const DUR = 620, HOLD = 120, FADE = 260, R = hostRadius(host, 10);
 
   const cv = document.createElement('canvas');
   cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;' +
@@ -458,7 +473,7 @@ export function runPanelLap(host: HTMLElement, DUR = 520): number {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
   const rect = host.getBoundingClientRect();
   if (!rect.width || !rect.height) return 0;
-  const R = 12, FADE = 200;
+  const R = hostRadius(host, 12), FADE = 200;
   const cv = document.createElement('canvas');
   cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;';
   cv.setAttribute('aria-hidden', 'true');

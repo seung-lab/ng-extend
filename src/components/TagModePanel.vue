@@ -38,12 +38,9 @@ const TAG_CHOICES: { key: string; tagType: IssueTagType; label: string; hint: st
   { key: 'extend', tagType: 'missing_branch', label: '🌿 Extend', hint: 'A branch looks truncated, keep growing it' },
   { key: 'other',  tagType: 'other',          label: '⚑ Other',   hint: 'Something else, describe it in the note' },
 ];
-/** The light carries meaning: blue Cut, green Extend, purple Other. */
-const TAG_RGB: Record<string, string> = {
-  merger: '53,181,255',
-  missing_branch: '96,224,128',
-  other: '200,150,255',
-};
+/** One light to rule them all: every animation uses the UI's beam blue
+ *  (Amy: no different color dots for different actions). */
+const LIGHT_RGB = '53,181,255';
 const LAST_CHOICE_KEY = 'nge_tag_last_choice_v2';
 const selected = ref(localStorage.getItem(LAST_CHOICE_KEY) || 'cut');
 const selectedChoice = computed(() => TAG_CHOICES.find(c => c.key === selected.value) ?? TAG_CHOICES[0]);
@@ -110,7 +107,7 @@ function placePoint(pos: number[], screenX?: number, screenY?: number) {
   placeScreen = screenX != null && screenY != null ? { x: screenX, y: screenY } : null;
   // A spark right where the click landed in the 2D/3D view, so placing a
   // point answers back at the point itself, in the tag type's color.
-  if (placeScreen) runParticleBurst(placeScreen.x, placeScreen.y, TAG_RGB[selectedChoice.value.tagType]);
+  if (placeScreen) runParticleBurst(placeScreen.x, placeScreen.y, LIGHT_RGB);
   showFlash('Point placed, hit Submit');
 }
 function clearPending() {
@@ -159,7 +156,7 @@ async function drop(position: number[]) {
   // button to the box's top and bottom midpoints, charge up there, then
   // the border lights from both points while the success box fades in.
   const br = wrapEl.value?.getBoundingClientRect();
-  const rgb = TAG_RGB[c.tagType];
+  const rgb = LIGHT_RGB;
   placeScreen = null;
   let total = 0;
   if (br) {
@@ -341,6 +338,14 @@ function isTypingTarget(e: Event): boolean {
 let tDownAt = 0;
 let tUsedForClick = false;
 function onKeyDown(e: KeyboardEvent) {
+  // Enter submits once a point is placed (Amy), including from the note
+  // field, so the flow is: click the spot, type a note, Enter, done.
+  if (e.key === 'Enter' && phase.value === 'form' && pendingPos.value && !saving.value) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    submit();
+    return;
+  }
   if (isTypingTarget(e)) return;
   // Shift+T belongs to the panel toggle in ExtensionBar; never swallow it.
   if (e.shiftKey) return;
@@ -487,6 +492,7 @@ onBeforeUnmount(() => {
             <button
               class="nge-tagmode-arm"
               :class="{ 'nge-tagmode-arm--on': armedOnce }"
+              :title="armedOnce ? 'Armed: click the data to place the point (tap T to disarm)' : 'Arm it: your next click places the point (tap T)'"
               @click="armOnce"
             >
               <template v-if="armedOnce">Click the spot…</template>
