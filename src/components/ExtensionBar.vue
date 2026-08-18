@@ -23,6 +23,8 @@ import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import UsernamePrompt from "components/UsernamePrompt.vue";
+import MobileWelcome from "components/MobileWelcome.vue";
+import {isMobileRef, mobileWelcomeOpenRef} from '../util/mobile';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -234,7 +236,11 @@ const showFeed = ref(false);
 /** Chat visibility persists across reloads so closing it stays closed.
  *  Default = open on first visit (key absent in localStorage). */
 const CHAT_VISIBLE_KEY = 'nge_chat_visible_v1';
-const showChat = ref(localStorage.getItem(CHAT_VISIBLE_KEY) !== '0');
+// Mobile: chat defaults CLOSED (it would cover half the viewer); it opens
+// from the bottom nav or the welcome sheet. Desktop keeps default open.
+const showChat = ref(isMobileRef.value
+    ? localStorage.getItem(CHAT_VISIBLE_KEY) === '1'
+    : localStorage.getItem(CHAT_VISIBLE_KEY) !== '0');
 watch(showChat, (v) => {
   try { localStorage.setItem(CHAT_VISIBLE_KEY, v ? '1' : '0'); } catch {}
 });
@@ -246,6 +252,69 @@ const showFlightMode = ref(false);
 const konamiBuf: string[] = [];
 const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
+
+// ── Mobile mode: welcome sheet + bottom nav ─────────────────────────────
+// The sheet greets every mobile visit once per browser session; the Guide
+// button in the bottom nav reopens it any time.
+const MOBILE_WELCOME_SEEN_KEY = 'nge_mobile_welcome_seen_v1';
+const showMobileWelcome = ref(
+    isMobileRef.value && sessionStorage.getItem(MOBILE_WELCOME_SEEN_KEY) !== '1');
+// LoginModal reads this shared ref: while the sheet is up, identity
+// verification stays out of the way (the sheet IS the mobile landing page).
+watch(showMobileWelcome, v => { mobileWelcomeOpenRef.value = v; }, {immediate: true});
+function hideMobileWelcome() {
+  showMobileWelcome.value = false;
+  try { sessionStorage.setItem(MOBILE_WELCOME_SEEN_KEY, '1'); } catch {}
+}
+/** Sheet dismissed in "just exploring" mode: also skip identity verification,
+ *  same as tapping BYPASS on the login box. */
+function exploreWithoutLogin() {
+  hideMobileWelcome();
+  document.dispatchEvent(new CustomEvent('nge:dismiss-login'));
+}
+/** "Log in" on the sheet: close it and let the login box take the stage. */
+function mobileWelcomeLogin() {
+  hideMobileWelcome();
+}
+function mobileOpenPanel(panel: 'cells' | 'chat' | 'profile' | 'leaderboard') {
+  switch (panel) {
+    case 'cells':
+      cellLibraryInitialTab.value = undefined;
+      showCellLibrary.value = true;
+      break;
+    case 'chat':
+      showChat.value = true;
+      chatStore.markRead();
+      break;
+    case 'profile':
+      profileUserId.value = null;
+      profileInitialTab.value = undefined;
+      showProfile.value = true;
+      break;
+    case 'leaderboard':
+      showLeaderboard.value = true;
+      break;
+  }
+}
+/** Bottom nav taps toggle their panel so a second tap closes it. */
+function mobileNavTap(panel: 'cells' | 'chat' | 'profile' | 'leaderboard') {
+  const isOpen: Record<typeof panel, boolean> = {
+    cells: showCellLibrary.value,
+    chat: showChat.value,
+    profile: showProfile.value,
+    leaderboard: showLeaderboard.value,
+  };
+  if (isOpen[panel]) {
+    switch (panel) {
+      case 'cells': showCellLibrary.value = false; break;
+      case 'chat': showChat.value = false; break;
+      case 'profile': showProfile.value = false; break;
+      case 'leaderboard': showLeaderboard.value = false; break;
+    }
+  } else {
+    mobileOpenPanel(panel);
+  }
+}
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
 
 /**
@@ -852,6 +921,41 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
          opens (Amy 2026-08-17). -->
     <div id="ngFarRight"></div>
   </div>
+
+  <!-- ── Mobile only: welcome sheet + bottom nav (util/mobile.ts) ───────── -->
+  <mobile-welcome
+    v-if="isMobileRef"
+    :show="showMobileWelcome"
+    @hide="exploreWithoutLogin"
+    @login="mobileWelcomeLogin"
+    @open="mobileOpenPanel"
+  />
+  <teleport to="body">
+  <nav v-if="isMobileRef" class="nge-mobile-nav">
+    <button :class="{ 'nge-mnav--active': showCellLibrary }" @click="mobileNavTap('cells')">
+      <span class="nge-mnav-icon">🧬</span>
+      <span class="nge-mnav-label">Cells</span>
+    </button>
+    <button :class="{ 'nge-mnav--active': showChat }" @click="mobileNavTap('chat')">
+      <span class="nge-mnav-icon">💬</span>
+      <span class="nge-mnav-label">Chat</span>
+      <span v-if="chatStore.unreadCount > 0" class="nge-mnav-badge">{{ chatStore.unreadCount }}</span>
+    </button>
+    <button :class="{ 'nge-mnav--active': showTagMode }" @click="showTagMode = !showTagMode">
+      <span class="nge-mnav-icon">📍</span>
+      <span class="nge-mnav-label">Tags</span>
+    </button>
+    <button :class="{ 'nge-mnav--active': showNotifications }" @click="showNotifications = !showNotifications">
+      <span class="nge-mnav-icon">🔔</span>
+      <span class="nge-mnav-label">Alerts</span>
+      <span v-if="backendStore.unreadNotificationCount > 0" class="nge-mnav-badge">{{ backendStore.unreadNotificationCount }}</span>
+    </button>
+    <button :class="{ 'nge-mnav--active': showMobileWelcome }" @click="showMobileWelcome = true">
+      <span class="nge-mnav-icon">✨</span>
+      <span class="nge-mnav-label">Guide</span>
+    </button>
+  </nav>
+  </teleport>
 </template>
 
 <style>

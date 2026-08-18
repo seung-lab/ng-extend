@@ -13,6 +13,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { openSegPanel } from '../widgets/widget_utils';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
+import { isMobileRef, mobileWelcomeOpenRef } from '../util/mobile';
 
 /** sticky_auth realm for the CAVE backend (minnie + global.daf-apis CAVE
  *  endpoints). All datasets currently route through this realm. */
@@ -261,6 +262,10 @@ onMounted(() => {
   // Listen for the middleauthlogin event (fired on successful auth)
   window.addEventListener('middleauthlogin', handleLoginSuccess);
 
+  // Mobile welcome sheet: dismissing it in "just exploring" mode also
+  // dismisses identity verification (same as tapping BYPASS).
+  document.addEventListener('nge:dismiss-login', dismiss);
+
   // Try to find statusContainer immediately
   if (!watchForStatusContainer()) {
     // Not created yet — observe the neuroglancer container for its creation
@@ -295,6 +300,7 @@ onUnmounted(() => {
   rootObserver?.disconnect();
   if (pollTimer) clearInterval(pollTimer);
   window.removeEventListener('middleauthlogin', handleLoginSuccess);
+  document.removeEventListener('nge:dismiss-login', dismiss);
 });
 
 function shortUrl(url: string): string {
@@ -309,7 +315,7 @@ function shortUrl(url: string): string {
 <template>
   <Teleport to="body">
     <Transition name="nge-login-modal">
-      <div v-if="visible" class="nge-login-blocker" @click.self="dismiss">
+      <div v-if="visible && !(isMobileRef && mobileWelcomeOpenRef)" class="nge-login-blocker" @click.self="dismiss">
 
         <!-- Animated background particles -->
         <div class="nge-holo-particles"></div>

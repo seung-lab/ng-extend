@@ -20,6 +20,11 @@ export const getLayerScales = (coordinateSpace: any) => {
  */
 export function openSegPanel(retryAttempts = 3): void {
   try {
+    // Mobile keeps the seg side panel closed (Amy 2026-08-18): it would
+    // cover most of a phone screen. The Layers toolbar action still opens
+    // it deliberately; this only skips the automatic opens (post login,
+    // dataset switch).
+    if (document.body.classList.contains('nge-mobile')) return;
     const viewer: any = (window as any)['viewer'];
     if (!viewer) return;
     const segLayer = viewer.layerManager.managedLayers.find(

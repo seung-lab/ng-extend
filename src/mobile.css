@@ -1,0 +1,304 @@
+/* ============================================================================
+   Mobile layout — phones and small tablets
+   ----------------------------------------------------------------------------
+   Every rule here is scoped under `body.nge-mobile`, which util/mobile.ts
+   toggles from a live media query (coarse pointer ≤900px, or any ≤640px
+   window). Desktop selectors are never restructured: this file is purely
+   additive so merges from eyewire-ii-community stay painless.
+
+   The strategy:
+     1. The viewer keeps working: in portrait the 2D slice and the 3D view
+        stack vertically instead of becoming two unusable 180px columns.
+     2. The top bar sheds everything that cannot fit (toolbar icon row,
+        hamburger); those actions move to the bottom nav and the mobile
+        welcome sheet rendered by ExtensionBar.
+     3. Floating panels become full width bottom sheets with internal
+        scroll; modal overlays go fullscreen.
+     4. Everything respects notch and home-bar safe areas.
+   ============================================================================ */
+
+/* ── Base feel ────────────────────────────────────────────────────────────── */
+
+body.nge-mobile {
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+/* Double-tap zoom fights the viewer's tap interactions; pinch zoom is the
+   viewer's own gesture. The viewport meta disables page zoom, touch-action
+   keeps the browser from consuming gestures before neuroglancer sees them. */
+body.nge-mobile #neuroglancer-container {
+  touch-action: none;
+}
+
+/* ── Viewer: stack the panels in portrait ─────────────────────────────────
+   The 2D slice and 3D view live in an unclassed flex row inside the layer
+   group viewer. On a portrait phone side by side means two ~185px slivers;
+   stacked they are each full width and generous. Neuroglancer's resize
+   observers redraw the WebGL panels at their new sizes automatically. */
+@media (orientation: portrait) {
+  body.nge-mobile .neuroglancer-layer-group-viewer > div:last-child {
+    flex-direction: column !important;
+  }
+}
+
+/* ── Top bar: keep only what fits ─────────────────────────────────────────── */
+
+body.nge-mobile #extensionBar {
+  height: calc(44px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+  gap: 4px;
+}
+
+/* The 13 icon toolbar collapses to nothing at phone width anyway; its
+   actions live in the bottom nav and the welcome sheet instead. */
+body.nge-mobile #extensionBar .nge-toolbar-icons,
+body.nge-mobile #extensionBar #hamburger,
+body.nge-mobile #extensionBar .nge-streak-chip {
+  display: none;
+}
+
+/* Profile button: drop the desktop margins that shoved it over the Share
+   button, give it a real tap target. */
+body.nge-mobile #extensionBar #profileBtn {
+  margin-left: 2px !important;
+  margin-right: 6px !important;
+  min-width: 40px;
+  min-height: 40px;
+}
+
+body.nge-mobile #extensionBar .nge-ask-btn,
+body.nge-mobile #extensionBar .nge-dataset-btn {
+  min-height: 36px;
+}
+
+/* Inside the merged neuroglancer top bar only the Share button and the help
+   toggle earn their space on a phone. The position readout already has a
+   fixed bottom-left chip; the top bar copy is redundant. */
+body.nge-mobile #insertNGTopBar .neuroglancer-position-widget {
+  display: none !important;
+}
+
+/* ── Floating panels become bottom sheets ─────────────────────────────────
+   Full width, pinned to the bottom, internal scroll, room left above for
+   the top bar so there is always visible viewer behind to tap back into.
+   !important beats the inline left/top that desktop dragging writes. */
+body.nge-mobile .nge-cl-panel,
+body.nge-mobile .nge-bp-panel,
+body.nge-mobile .nge-notif-panel,
+body.nge-mobile .nge-quest-board,
+body.nge-mobile .nge-dataset-panel,
+body.nge-mobile .nge-tag-panel,
+body.nge-mobile .nge-ann-panel,
+body.nge-mobile .nge-chat-float {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  top: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: min(74dvh, 620px) !important;
+  max-height: 74dvh !important;
+  margin: 0 !important;
+  border-radius: 16px 16px 0 0 !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+  box-sizing: border-box;
+  padding-bottom: env(safe-area-inset-bottom);
+  overflow-y: auto;
+  z-index: 950 !important;
+}
+
+/* Modal overlays (Profile, Leaderboard, Settings, Recap, Feedback): go
+   fullscreen, scroll inside. */
+body.nge-mobile .nge-overlay-blocker .nge-overlay-content,
+body.nge-mobile .nge-overlay-blocker .nge-overlay.modal.overlay-content {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  border-radius: 0 !important;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  overflow-y: auto;
+}
+
+/* ── Neuroglancer chrome: phone sized tap targets ─────────────────────────── */
+
+/* The per panel layout toggle squares (switch to xy, 4panel, 3d). */
+body.nge-mobile .neuroglancer-data-panel-layout-controls {
+  gap: 6px;
+}
+body.nge-mobile .neuroglancer-data-panel-layout-controls button {
+  width: 34px;
+  height: 34px;
+}
+
+/* Layer chips row: slightly taller chips, no accidental micro taps. */
+body.nge-mobile .neuroglancer-layer-panel {
+  min-height: 32px;
+}
+
+/* Side panels neuroglancer opens (layer source editor and friends) become
+   full width sheets too instead of a 379px column squeezing the viewer. */
+body.nge-mobile .neuroglancer-side-panel-column {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  top: auto !important;
+  width: 100% !important;
+  height: 70dvh !important;
+  z-index: 940;
+  background: #0a0e1a;
+}
+
+/* ── Bottom clearance ─────────────────────────────────────────────────────
+   The mobile nav occupies the bottom edge: float the fixed chips that used
+   to live there above it. */
+body.nge-mobile .neuroglancer-position-widget {
+  bottom: calc(64px + env(safe-area-inset-bottom)) !important;
+}
+body.nge-mobile .neuroglancer-mouse-position-widget {
+  bottom: calc(96px + env(safe-area-inset-bottom)) !important;
+}
+
+/* Scale bar and the Sections checkbox sit inside the render panels; the
+   Sections toggle is a desktop nicety, hide it on phones. */
+body.nge-mobile .perspective-panel-show-slice-views {
+  display: none !important;
+}
+
+/* ── Text inputs: iOS zoom trap ───────────────────────────────────────────
+   Safari auto zooms the page when a focused input's font is under 16px and
+   never zooms back out (Amy: "chat zooms you in and there is no way back").
+   16px inputs stop the zoom before it happens. */
+body.nge-mobile input[type="text"],
+body.nge-mobile input[type="search"],
+body.nge-mobile input[type="email"],
+body.nge-mobile input[type="number"],
+body.nge-mobile input:not([type]),
+body.nge-mobile textarea,
+body.nge-mobile select {
+  font-size: 16px !important;
+}
+
+/* ── Profile: one column, use the vertical space ──────────────────────────
+   Desktop Overview is three fixed width columns side by side; on a phone
+   they stack and the whole body scrolls as one page. */
+body.nge-mobile .nge-profile-body {
+  flex-direction: column;
+  overflow-y: auto;
+}
+body.nge-mobile .nge-profile-col {
+  width: 100% !important;
+  flex: none;
+  overflow-y: visible;
+  border-left: none !important;
+  border-right: none !important;
+  padding: 16px 16px 20px;
+}
+
+/* ── Dataset selector: condensed cards ────────────────────────────────────── */
+body.nge-mobile .nge-dataset-panel .nge-ds-card {
+  padding: 10px 12px;
+}
+body.nge-mobile .nge-dataset-panel .nge-ds-card-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Legibility: floor the smallest text in panels ────────────────────────
+   Comment threads and metadata rows were authored at 10px and under for
+   desktop density; on a phone they need a readable floor. */
+body.nge-mobile .nge-cl-panel {
+  font-size: 14px;
+}
+
+/* ── Mobile bottom nav (markup in ExtensionBar.vue) ───────────────────────── */
+
+.nge-mobile-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 960;
+  display: flex;
+  align-items: stretch;
+  height: calc(56px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: linear-gradient(180deg, rgba(8, 14, 28, 0.92), rgba(5, 9, 18, 0.97));
+  backdrop-filter: blur(14px) saturate(160%);
+  border-top: 1px solid rgba(53, 181, 255, 0.30);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(53, 181, 255, 0.12);
+}
+
+.nge-mobile-nav button {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  color: #9fb4d8;
+  cursor: pointer;
+  padding: 6px 0 4px;
+  position: relative;
+  min-width: 0;
+}
+
+.nge-mobile-nav button .nge-mnav-icon {
+  font-size: 21px;
+  line-height: 1;
+}
+
+.nge-mobile-nav button .nge-mnav-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.nge-mobile-nav button.nge-mnav--active {
+  color: rgb(53, 181, 255);
+  text-shadow: 0 0 8px rgba(53, 181, 255, 0.6);
+}
+
+.nge-mobile-nav button.nge-mnav--active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: rgb(53, 181, 255);
+  box-shadow: 0 0 10px rgba(53, 181, 255, 0.8);
+}
+
+.nge-mobile-nav .nge-mnav-badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #ff5470;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}

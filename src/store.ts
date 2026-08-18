@@ -8,6 +8,7 @@ import {cancellableFetchSpecialOk, parseSpecialUrl} from 'neuroglancer/util/spec
 import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
+import {isMobileRef} from './util/mobile';
 import {currentDatasetTag, canonicalDataset, currentSegLayer} from './datasets';
 import {supabase} from './supabase';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
@@ -341,7 +342,32 @@ export const useLayersStore = defineStore('layers', () => {
     // set default values in settings
     viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit.value = 2e9;
     viewer.chunkQueueManager.capacities.systemMemory.sizeLimit.value = 3e9;
-    viewer.layout.restoreState('xy-3d');
+    // Mobile defaults to fullscreen 3D (Amy 2026-08-18): split screen is
+    // reachable only from a share link that carries its own layout or the
+    // corner view toggle. A layout named in the URL hash wins on any device.
+    if (isMobileRef.value) {
+      if (!window.location.hash.includes('layout')) {
+        viewer.layout.restoreState('3d');
+      }
+      // Curated dataset views arrive later as remote state (the hash is a
+      // #!url pointer, not inline JSON). Those default to fullscreen 3D on
+      // phones too. Inline share links carry a literal `layout` key in the
+      // hash and keep whatever view they were shared with.
+      const origRestore = viewer.state.restoreState.bind(viewer.state);
+      (viewer.state as any).restoreState = (obj: any) => {
+        if (obj && typeof obj === 'object' && !Array.isArray(obj) &&
+            !window.location.hash.includes('layout')) {
+          if ((obj as any).layout !== undefined) obj = {...obj, layout: '3d'};
+          // The seg side panel also stays closed on phones.
+          if ((obj as any).selectedLayer !== undefined) {
+            obj = {...obj, selectedLayer: {...(obj as any).selectedLayer, visible: false}};
+          }
+        }
+        origRestore(obj);
+      };
+    } else {
+      viewer.layout.restoreState('xy-3d');
+    }
 
     viewer.layerManager.layersChanged.add(refreshLayers);
     refreshLayers();
@@ -525,6 +551,8 @@ export const useLayersStore = defineStore('layers', () => {
       const {url: fetchUrl, credentialsProvider} = parseSpecialUrl(url, defaultCredentialsManager);
       const response = await cancellableFetchSpecialOk(credentialsProvider, fetchUrl, {}, responseJson);
       // Set layout first to avoid localPositionValid crashes during layout transitions
+      // Mobile: curated views open fullscreen 3D like everything else.
+      if (isMobileRef.value) response.layout = '3d';
       if (response.layout) {
         const layoutName = typeof response.layout === 'string'
           ? response.layout
