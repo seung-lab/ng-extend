@@ -23,13 +23,7 @@ const emit = defineEmits<{
   (e: 'hide'): void;
   /** Close the sheet and let identity verification take the stage. */
   (e: 'login'): void;
-  (e: 'open', panel: 'cells' | 'chat' | 'profile' | 'leaderboard'): void;
 }>();
-
-function openPanel(panel: 'cells' | 'chat' | 'profile' | 'leaderboard') {
-  emit('open', panel);
-  emit('hide');
-}
 
 function dismiss() {
   emit('hide');
@@ -78,10 +72,8 @@ function shareEmail() {
           <div class="nge-mw-kicker">MOBILE UPLINK · LIMITED BANDWIDTH</div>
           <h2 class="nge-mw-title">Welcome, scientist</h2>
           <p class="nge-mw-copy">
-            The full EyeWire II brain mapping interface, where players
-            chart new brain circuits with Princeton University scientists,
-            needs a bigger screen. But your phone still has clearance.
-            Start here:
+            The full EyeWire II brain mapping interface needs a bigger
+            screen. But your phone still has clearance. Start here:
           </p>
 
           <button class="nge-mw-learn" @click="openLearn">
@@ -103,27 +95,37 @@ function shareEmail() {
 
           <div class="nge-mw-divider"><span>SYSTEMS AVAILABLE ON YOUR PHONE</span></div>
 
-          <div class="nge-mw-grid">
-            <button class="nge-mw-action" @click="openPanel('cells')">
-              <span class="nge-mw-action-icon"><img :src="neuronIcon" class="nge-mw-neuron-icon" alt="" /></span>
-              <span class="nge-mw-action-label">Cell Library</span>
-              <span class="nge-mw-action-sub">Browse real neurons in 3D</span>
-            </button>
-            <button class="nge-mw-action" @click="openPanel('chat')">
-              <span class="nge-mw-action-icon">💬</span>
-              <span class="nge-mw-action-label">Chat</span>
-              <span class="nge-mw-action-sub">Talk with the community</span>
-            </button>
-            <button class="nge-mw-action" @click="openPanel('profile')">
-              <span class="nge-mw-action-icon">👤</span>
-              <span class="nge-mw-action-label">Profile</span>
-              <span class="nge-mw-action-sub">Your stats and badges</span>
-            </button>
-            <button class="nge-mw-action" @click="openPanel('leaderboard')">
-              <span class="nge-mw-action-icon">🏆</span>
-              <span class="nge-mw-action-label">Leaderboard</span>
-              <span class="nge-mw-action-sub">Top proofreaders this week</span>
-            </button>
+          <!-- Not buttons: these systems unlock after login, this is the
+               menu of what a phone can do, set in type not chrome. -->
+          <div class="nge-mw-sys-list">
+            <div class="nge-mw-sys">
+              <span class="nge-mw-sys-icon"><img :src="neuronIcon" class="nge-mw-neuron-icon" alt="" /></span>
+              <span class="nge-mw-sys-text">
+                <span class="nge-mw-sys-label">Cell Library</span>
+                <span class="nge-mw-sys-sub">Browse real neurons in 3D</span>
+              </span>
+            </div>
+            <div class="nge-mw-sys">
+              <span class="nge-mw-sys-icon">💬</span>
+              <span class="nge-mw-sys-text">
+                <span class="nge-mw-sys-label">Chat</span>
+                <span class="nge-mw-sys-sub">Talk with the community</span>
+              </span>
+            </div>
+            <div class="nge-mw-sys">
+              <span class="nge-mw-sys-icon">👤</span>
+              <span class="nge-mw-sys-text">
+                <span class="nge-mw-sys-label">Profile</span>
+                <span class="nge-mw-sys-sub">Your stats and badges</span>
+              </span>
+            </div>
+            <div class="nge-mw-sys">
+              <span class="nge-mw-sys-icon">🏆</span>
+              <span class="nge-mw-sys-text">
+                <span class="nge-mw-sys-label">Leaderboard</span>
+                <span class="nge-mw-sys-sub">Top proofreaders this week</span>
+              </span>
+            </div>
           </div>
 
           <button class="nge-mw-cta" @click="emit('login')">
@@ -246,51 +248,52 @@ function shareEmail() {
   margin: 0 0 16px;
 }
 
-/* Action grid */
-.nge-mw-grid {
+/* Systems list: pure typography, no chrome. These are not buttons, they
+   describe what unlocks after login. */
+.nge-mw-sys-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 4px;
+  gap: 14px 12px;
+  margin-bottom: 6px;
+  padding: 2px 2px 0;
 }
 
-.nge-mw-action {
+.nge-mw-sys {
   display: flex;
-  flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  padding: 12px 12px 10px;
-  min-height: 84px;
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(53, 181, 255, 0.09), rgba(53, 181, 255, 0.03));
-  border: 1px solid rgba(53, 181, 255, 0.30);
-  box-shadow: inset 0 0 14px rgba(53, 181, 255, 0.05);
-  color: #eaf3ff;
-  cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  gap: 10px;
+  min-width: 0;
 }
-.nge-mw-action:active {
-  border-color: rgba(53, 181, 255, 0.7);
-  box-shadow: inset 0 0 18px rgba(53, 181, 255, 0.15), 0 0 14px rgba(53, 181, 255, 0.25);
+.nge-mw-sys-icon {
+  font-size: 20px;
+  line-height: 1.2;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0 6px rgba(53, 181, 255, 0.35));
 }
-.nge-mw-action-icon { font-size: 22px; }
 .nge-mw-neuron-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   vertical-align: middle;
   filter: drop-shadow(0 0 6px rgba(53, 181, 255, 0.5));
 }
-.nge-mw-action-label {
-  font-family: 'Orbitron', sans-serif;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
+.nge-mw-sys-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
-.nge-mw-action-sub {
+.nge-mw-sys-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: #dfeeff;
+  text-shadow: 0 0 10px rgba(53, 181, 255, 0.35);
+}
+.nge-mw-sys-sub {
   font-size: 11px;
   color: #8fa6cc;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 /* Divider */

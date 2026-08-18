@@ -172,6 +172,14 @@ body.nge-mobile .perspective-panel-show-slice-views {
   display: none !important;
 }
 
+/* ── Holo particle drift: snappier on phones ──────────────────────────────
+   The 20s desktop loop reads as nearly frozen on a small screen (Amy:
+   "the dots take too long"). Less than half the duration keeps the same
+   travel at phone tempo. */
+body.nge-mobile .nge-holo-particles {
+  animation-duration: 8s;
+}
+
 /* ── Text inputs: iOS zoom trap ───────────────────────────────────────────
    Safari auto zooms the page when a focused input's font is under 16px and
    never zooms back out (Amy: "chat zooms you in and there is no way back").
