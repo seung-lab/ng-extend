@@ -78,11 +78,10 @@ function shareEmail() {
           <div class="nge-mw-kicker">MOBILE UPLINK · LIMITED BANDWIDTH</div>
           <h2 class="nge-mw-title">Welcome, scientist</h2>
           <p class="nge-mw-copy">
-            The full EyeWire II brain mapping interface needs a bigger
-            screen. There, players map neurons with Princeton University
-            scientists to chart brand new brain circuits. People like you
-            have already helped discover hundreds of new types of neurons!
-            Your phone still has clearance. Start here:
+            The full EyeWire II brain mapping interface, where players
+            chart new brain circuits with Princeton University scientists,
+            needs a bigger screen. But your phone still has clearance.
+            Start here:
           </p>
 
           <button class="nge-mw-learn" @click="openLearn">
