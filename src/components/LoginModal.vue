@@ -616,8 +616,9 @@ function shortUrl(url: string): string {
 
           <!-- The "why do I have to sign in twice" explainer (Amy): each CAVE
                data server runs its own auth realm, so a second dataset means a
-               second (instant) allow with the same account. -->
-          <div v-if="prompts.length > 1 || hasLinkedBefore" class="nge-login-why">
+               second (instant) allow with the same account. Only shown once
+               the first sign-in is done, before that it is just noise. -->
+          <div v-if="hasLinkedBefore" class="nge-login-why">
             <span class="nge-login-why-q">Signing in twice?</span>
             Each data server guards its own door. Same account both times, the
             second pass is just a quick allow.
@@ -649,25 +650,44 @@ function shortUrl(url: string): string {
    ══════════════════════════════════════════════════════════════════════════ */
 
 .nge-login-why {
-  margin: 10px auto 0;
+  position: relative;
+  margin: 14px auto 0;
   max-width: 340px;
   font-size: 11.5px;
-  line-height: 1.5;
-  color: rgba(170, 195, 230, 0.75);
-  background: rgba(53, 181, 255, 0.06);
-  border: 1px solid rgba(53, 181, 255, 0.18);
-  border-radius: 8px;
-  padding: 8px 12px;
+  line-height: 1.55;
+  color: rgba(190, 212, 240, 0.82);
+  background: linear-gradient(135deg, rgba(53, 181, 255, 0.10) 0%, rgba(12, 20, 40, 0.55) 60%);
+  border: 1px solid rgba(53, 181, 255, 0.28);
+  border-left: 2px solid rgba(53, 181, 255, 0.75);
+  border-radius: 10px;
+  padding: 10px 14px 11px;
   text-align: left;
+  box-shadow: inset 0 0 18px rgba(53, 181, 255, 0.07), 0 2px 12px rgba(0, 0, 0, 0.25);
+  animation: nge-login-why-in 0.4s ease;
+}
+@keyframes nge-login-why-in {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 .nge-login-why-q {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: 'Orbitron', 'Inter', sans-serif;
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(53, 181, 255, 0.85);
-  margin-bottom: 3px;
+  color: #6fc7ff;
+  text-shadow: 0 0 8px rgba(53, 181, 255, 0.5);
+  margin-bottom: 4px;
+}
+.nge-login-why-q::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #35b5ff;
+  box-shadow: 0 0 6px rgba(53, 181, 255, 0.9);
 }
 
 .nge-login-blocker {
