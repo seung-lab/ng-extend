@@ -202,6 +202,7 @@ const SPECIMEN_SEG_ID = '720575940569107563';
 const SPECIMEN_LABEL = 'WIDE FIELD AMACRINE · STROEH RETINA';
 const wireframe = ref<MuseumWireframe | null>(null);
 const specimenState = ref<'loading' | 'live' | 'fallback'>('loading');
+const specimenProgress = ref<{loaded: number; total: number} | null>(null);
 const neuronCanvasEl = ref<HTMLCanvasElement | null>(null);
 
 function drawSpecimen(now: number) {
@@ -220,7 +221,10 @@ function drawSpecimen(now: number) {
   const px = new Float32Array(n), py = new Float32Array(n);
   const sc = Math.min(W, H) / 2400;
   for (let i = 0; i < n; i++) {
-    const x = v[i * 3], y = v[i * 3 + 1], z = v[i * 3 + 2];
+    // Swap the data y and z axes: the wide field arbor is a flat pancake in
+    // dataset x/y, and this lays it horizontal so the branches stretch wide
+    // across the sky instead of standing on edge.
+    const x = v[i * 3], y = v[i * 3 + 2], z = v[i * 3 + 1];
     const rx = x * ca + z * sa;
     const rz = -x * sa + z * ca;
     const ry = y * ct - rz * st;
@@ -506,28 +510,43 @@ const selectedArtifact = computed(() =>
 const artifactByKey = computed(() => new Map(artifacts.value.map(a => [a.key, a])));
 let lodCounter = 0;
 
-/** Artifacts close enough to deserve full resolution art. */
+/** Artifacts whose full resolution art is decoded and safe to display.
+ *  One way only: once an artifact has earned hi res it keeps it, because
+ *  swapping back down (or swapping before the image is decoded) flashes. */
 const hiResKeys = ref<Set<string>>(new Set());
 const HI_RES_DIST = 1150;
+const hiResPreloading = new Set<string>();
+
+function preloadHiRes(key: string, url: string) {
+  if (!url || hiResPreloading.has(key)) return;
+  hiResPreloading.add(key);
+  const im = new Image();
+  im.decoding = 'async';
+  im.src = url;
+  im.decode().then(() => {
+    const next = new Set(hiResKeys.value);
+    next.add(key);
+    hiResKeys.value = next;
+  }).catch(() => {
+    hiResPreloading.delete(key);
+  });
+}
 
 function updateLod() {
   const els = worldEl.value?.querySelectorAll('[data-akey]') as NodeListOf<HTMLElement> | undefined;
   if (!els) return;
   const scored: {el: HTMLElement; d: number}[] = [];
-  const hi = new Set<string>();
   els.forEach(el => {
     const key = el.dataset.akey || '';
     const a = artifactByKey.value.get(key);
     const p = a ? poseOf(a) : null;
     const d = p ? Math.hypot(p.x - cam.x, p.z - cam.z) : Infinity;
     el.classList.toggle('mus-artifact--far', d > 4800);
-    if (d < HI_RES_DIST) hi.add(key);
+    if (a && d < HI_RES_DIST && !hiResKeys.value.has(key)) preloadHiRes(key, a.imgHi);
     scored.push({el, d});
   });
   scored.sort((a, b) => a.d - b.d);
   scored.forEach((s, i) => s.el.classList.toggle('mus-artifact--near', i < 6 && s.d < 1800));
-  const cur = hiResKeys.value;
-  if (hi.size !== cur.size || ![...hi].every(k => cur.has(k))) hiResKeys.value = hi;
 }
 
 // ── Big picture stats for the side wall ──────────────────────────────────────
@@ -563,7 +582,11 @@ onMounted(() => {
   window.addEventListener('blur', onBlur);
   last = performance.now();
   raf = requestAnimationFrame(tick);
-  getMuseumWireframe(SPECIMEN_SEG_ID).then(wf => {
+  getMuseumWireframe(SPECIMEN_SEG_ID, {
+    onProgress: (loaded, total) => {
+      specimenProgress.value = {loaded, total};
+    },
+  }).then(wf => {
     wireframe.value = wf;
     specimenState.value = wf ? 'live' : 'fallback';
   }).catch(() => {
@@ -655,7 +678,7 @@ onUnmounted(() => {
 
         <!-- Big picture stats: a monument on the back wall, below the
              inscription, where no artifacts stand in front of the numbers -->
-        <div class="mus-wallstats" :style="{transform: `translate3d(-1000px, -120px, ${-ROOM_D + 8}px)`}">
+        <div class="mus-wallstats" :style="{transform: `translate3d(-700px, -150px, ${-ROOM_D + 8}px)`}">
           <div class="mus-wallstats-title">CAREER TELEMETRY</div>
           <div class="mus-wallstats-row">
             <div v-for="row in statsRows" :key="row.label" class="mus-wallstats-item">
@@ -699,7 +722,7 @@ onUnmounted(() => {
       <div class="mus-hud-top">
         <div class="mus-hud-title">◈ ACHIEVEMENT MUSEUM</div>
         <div class="mus-hud-count">{{ artifacts.length }} ARTIFACTS ON DISPLAY</div>
-        <div v-if="specimenState === 'loading'" class="mus-hud-specimen">◌ SUMMONING SPECIMEN...</div>
+        <div v-if="specimenState === 'loading'" class="mus-hud-specimen">◌ SUMMONING SPECIMEN{{ specimenProgress && specimenProgress.total ? ` · ${specimenProgress.loaded}/${specimenProgress.total} FRAGMENTS` : '...' }}</div>
         <div v-else-if="specimenState === 'live'" class="mus-hud-specimen">◉ SPECIMEN: {{ SPECIMEN_LABEL }}</div>
         <div v-else class="mus-hud-specimen mus-hud-specimen--dim">◌ SPECIMEN OFFLINE · OPEN THE STROEH RETINA DATASET, THEN REVISIT</div>
         <div class="mus-hud-actions">
@@ -799,23 +822,24 @@ onUnmounted(() => {
 
 /* Grid lines get soft edges: hard 1px stops shimmer and flash while the
    camera moves, soft falloffs stay calm. */
+/* Dot grid instead of line grid: thin lines under perspective motion alias
+   into shimmering, dots stay calm. */
 .mus-floor {
   background:
-    linear-gradient(90deg, transparent 46.5%, rgba(53, 181, 255, 0.10) 48.5%, rgba(120, 220, 255, 0.16) 50%, rgba(53, 181, 255, 0.10) 51.5%, transparent 53.5%),
-    linear-gradient(rgba(53, 181, 255, 0.08) 0, rgba(53, 181, 255, 0.08) 1px, rgba(53, 181, 255, 0.02) 2px, transparent 3.5px),
-    linear-gradient(90deg, rgba(53, 181, 255, 0.08) 0, rgba(53, 181, 255, 0.08) 1px, rgba(53, 181, 255, 0.02) 2px, transparent 3.5px),
+    linear-gradient(90deg, transparent 45%, rgba(53, 181, 255, 0.07) 48%, rgba(120, 220, 255, 0.11) 50%, rgba(53, 181, 255, 0.07) 52%, transparent 55%),
+    radial-gradient(circle, rgba(90, 200, 255, 0.16) 0 3px, rgba(90, 200, 255, 0.05) 5px, transparent 8px),
     linear-gradient(180deg, rgba(6, 14, 30, 0.99), rgba(3, 8, 18, 0.99));
-  background-size: 100% 100%, 146px 146px, 146px 146px, 100% 100%;
+  background-size: 100% 100%, 146px 146px, 100% 100%;
 }
 
+/* No grid lines on walls: they shimmer during motion. Gradient plus the
+   parapet glow line carries the look. */
 .mus-wall {
   background:
-    linear-gradient(to bottom, transparent calc(100% - 4px), rgba(53, 181, 255, 0.30) calc(100% - 1px)),
-    linear-gradient(to bottom, rgba(53, 181, 255, 0.20) 0, rgba(53, 181, 255, 0.06) 3px, transparent 6px),
-    linear-gradient(rgba(53, 181, 255, 0.045) 0, rgba(53, 181, 255, 0.045) 1px, transparent 3px),
-    linear-gradient(90deg, rgba(53, 181, 255, 0.045) 0, rgba(53, 181, 255, 0.045) 1px, transparent 3px),
+    linear-gradient(to bottom, transparent calc(100% - 6px), rgba(53, 181, 255, 0.26) calc(100% - 1px)),
+    linear-gradient(to bottom, rgba(53, 181, 255, 0.14) 0, rgba(53, 181, 255, 0.04) 5px, transparent 10px),
     linear-gradient(180deg, rgba(7, 14, 30, 0.97) 0%, rgba(4, 9, 20, 0.98) 100%);
-  background-size: 100% 100%, 100% 100%, 140px 140px, 140px 140px, 100% 100%;
+  background-size: 100% 100%, 100% 100%, 100% 100%;
 }
 
 .mus-wall--back {
@@ -1305,52 +1329,49 @@ onUnmounted(() => {
 }
 
 /* ── Big picture stats on the side wall ── */
+/* Plateless: pure glowing wall text like the inscription above it. A card
+   plate reads as an object and fights the artifacts; glow text never blocks. */
 .mus-wallstats {
   position: absolute;
   left: 0;
   top: 0;
-  width: 2000px;
-  padding: 26px 0 30px;
+  width: 1400px;
   transform-origin: 0 0;
   text-align: center;
   pointer-events: none;
   backface-visibility: hidden;
-  background: linear-gradient(180deg, rgba(10, 24, 50, 0.55), rgba(6, 14, 30, 0.35));
-  border: 2px solid rgba(53, 181, 255, 0.4);
-  border-radius: 10px;
-  box-shadow: 0 0 44px rgba(53, 181, 255, 0.22), inset 0 0 60px rgba(53, 181, 255, 0.08);
 }
 .mus-wallstats-title {
   font-family: 'Orbitron', sans-serif;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: 16px;
-  color: rgba(140, 215, 250, 0.85);
-  text-shadow: 0 0 18px rgba(53, 181, 255, 0.6);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 12px;
+  color: rgba(140, 215, 250, 0.7);
+  text-shadow: 0 0 14px rgba(53, 181, 255, 0.5);
 }
 .mus-wallstats-row {
-  margin-top: 26px;
+  margin-top: 20px;
   display: flex;
   justify-content: center;
-  gap: 46px;
+  gap: 40px;
 }
-.mus-wallstats-item { min-width: 240px; }
+.mus-wallstats-item { min-width: 180px; }
 .mus-wallstats-value {
   font-family: 'Orbitron', sans-serif;
-  font-size: 88px;
+  font-size: 56px;
   font-weight: 700;
-  color: rgba(200, 240, 255, 1);
+  color: rgba(190, 232, 255, 0.95);
   text-shadow:
-    0 0 26px rgba(53, 181, 255, 0.9),
-    0 0 80px rgba(53, 181, 255, 0.45);
+    0 0 20px rgba(53, 181, 255, 0.8),
+    0 0 60px rgba(53, 181, 255, 0.35);
 }
 .mus-wallstats-label {
-  margin-top: 8px;
+  margin-top: 6px;
   font-family: 'Orbitron', sans-serif;
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 5px;
-  color: rgba(130, 200, 240, 0.8);
+  letter-spacing: 4px;
+  color: rgba(130, 200, 240, 0.7);
 }
 
 /* ── Touch joystick ── */

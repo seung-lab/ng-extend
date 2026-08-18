@@ -23,8 +23,15 @@ const CACHE_PREFIX = 'nge_museum_wire_v1_';
 const EDGE_CAP = 6500;
 const POLL_MS = 600;
 
+export interface WireframeOptions {
+  timeoutMs?: number;
+  /** Called as fragments stream in, for HUD progress. */
+  onProgress?: (loaded: number, total: number) => void;
+}
+
 export async function getMuseumWireframe(
-    segId: string, timeoutMs = 45000): Promise<MuseumWireframe | null> {
+    segId: string, opts: WireframeOptions = {}): Promise<MuseumWireframe | null> {
+  const timeoutMs = opts.timeoutMs ?? 40000;
   // Baked specimen shipped with the app: works for every user with no auth,
   // no dataset requirement, and no download wait.
   try {
@@ -41,7 +48,7 @@ export async function getMuseumWireframe(
       if (parsed?.verts?.length && parsed?.edges?.length) return parsed;
     }
   } catch {}
-  const wire = await fetchAndDecimate(segId, timeoutMs);
+  const wire = await fetchAndDecimate(segId, timeoutMs, opts.onProgress);
   if (wire) {
     try {
       localStorage.setItem(CACHE_PREFIX + segId, JSON.stringify(wire));
@@ -51,7 +58,8 @@ export async function getMuseumWireframe(
 }
 
 async function fetchAndDecimate(
-    segId: string, timeoutMs: number): Promise<MuseumWireframe | null> {
+    segId: string, timeoutMs: number,
+    onProgress?: (loaded: number, total: number) => void): Promise<MuseumWireframe | null> {
   const viewer = (window as any)['viewer'];
   const managedLayers = viewer?.layerManager?.managedLayers ?? [];
   let id: Uint64;
@@ -61,7 +69,13 @@ async function fetchAndDecimate(
     return null;
   }
 
+  // One deadline across ALL candidate layers: per layer waits stack up into
+  // minutes when a session has several segmentation layers.
+  const deadline = Date.now() + timeoutMs;
+
   for (const managed of managedLayers) {
+    // A hidden layer never streams chunks, so waiting on it is pure timeout.
+    if (managed.visible === false) continue;
     const userLayer = managed.layer;
     if (!userLayer) continue;
     const meshLayer = (userLayer.renderLayers ?? [])
@@ -79,7 +93,9 @@ async function fetchAndDecimate(
       }
     }
     try {
-      const buffers = await waitForFragments(meshLayer, id, timeoutMs);
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return null;
+      const buffers = await waitForFragments(meshLayer, id, remaining, onProgress);
       if (buffers) return decimate(buffers.verts, buffers.indices);
     } finally {
       // Leave the user's own selection alone; only remove what we added.
@@ -99,49 +115,57 @@ interface RawBuffers {
 }
 
 function waitForFragments(
-    meshLayer: MeshLayer, id: Uint64, timeoutMs: number): Promise<RawBuffers | null> {
+    meshLayer: MeshLayer, id: Uint64, timeoutMs: number,
+    onProgress?: (loaded: number, total: number) => void): Promise<RawBuffers | null> {
   const started = Date.now();
   return new Promise(resolve => {
     const poll = () => {
-      const elapsed = Date.now() - started;
-      const objectKey = getObjectKey(id);
-      const manifest = (meshLayer.source as any).chunks.get(objectKey);
-      const fragmentIds = manifest?.fragmentIds;
-      const out: RawBuffers = {verts: [], indices: []};
-      let loaded = 0;
-      if (fragmentIds?.length) {
-        const fragmentChunks = (meshLayer.source as any).fragmentSource.chunks;
-        for (const fragmentId of fragmentIds) {
-          const {key} = (meshLayer.source as any).getFragmentKey(objectKey, fragmentId);
-          const fragment = fragmentChunks.get(key);
-          const verts = fragment?.meshData?.vertexPositions;
-          const indices = fragment?.meshData?.indices;
-          // Small fragments decode with 16 bit indices, only large ones use
-          // 32 bit. Accept both or most cells never finish loading.
-          if (verts instanceof Float32Array && verts.length >= 9 &&
-              (indices instanceof Uint32Array || indices instanceof Uint16Array) &&
-              indices.length >= 3) {
-            out.verts.push(verts);
-            out.indices.push(indices);
-            loaded++;
+      // Any exception must resolve the promise: an unresolved promise leaves
+      // the museum saying SUMMONING forever.
+      try {
+        const elapsed = Date.now() - started;
+        const objectKey = getObjectKey(id);
+        const manifest = (meshLayer.source as any).chunks.get(objectKey);
+        const fragmentIds = manifest?.fragmentIds;
+        const out: RawBuffers = {verts: [], indices: []};
+        let loaded = 0;
+        if (fragmentIds?.length) {
+          const fragmentChunks = (meshLayer.source as any).fragmentSource.chunks;
+          for (const fragmentId of fragmentIds) {
+            const {key} = (meshLayer.source as any).getFragmentKey(objectKey, fragmentId);
+            const fragment = fragmentChunks.get(key);
+            const verts = fragment?.meshData?.vertexPositions;
+            const indices = fragment?.meshData?.indices;
+            // Small fragments decode with 16 bit indices, only large ones use
+            // 32 bit. Accept both or most cells never finish loading.
+            if (verts instanceof Float32Array && verts.length >= 9 &&
+                (indices instanceof Uint32Array || indices instanceof Uint16Array) &&
+                indices.length >= 3) {
+              out.verts.push(verts);
+              out.indices.push(indices);
+              loaded++;
+            }
+          }
+          onProgress?.(loaded, fragmentIds.length);
+          if (loaded === fragmentIds.length && loaded > 0) {
+            resolve(out);
+            return;
+          }
+          // Big cells stream many fragments; after a generous wait, take what
+          // arrived rather than nothing.
+          if (elapsed > timeoutMs && loaded > 0) {
+            resolve(out);
+            return;
           }
         }
-        if (loaded === fragmentIds.length && loaded > 0) {
-          resolve(out);
+        if (elapsed > timeoutMs) {
+          resolve(null);
           return;
         }
-        // Big cells stream many fragments; after a generous wait, take what
-        // arrived rather than nothing.
-        if (elapsed > timeoutMs && loaded > 0) {
-          resolve(out);
-          return;
-        }
-      }
-      if (elapsed > timeoutMs) {
+        setTimeout(poll, POLL_MS);
+      } catch {
         resolve(null);
-        return;
       }
-      setTimeout(poll, POLL_MS);
     };
     poll();
   });
