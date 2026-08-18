@@ -109,12 +109,16 @@ function wallSlot(i: number, side: 1 | -1): {x: number; z: number} {
 
 const artifacts = computed<MuseumArtifact[]>(() => {
   const out: MuseumArtifact[] = [];
+  // The museum uses the 320px downsampled art set: full res center-art PNGs
+  // are 1024px and ~1.6MB each, far more than a 160px pedestal needs.
+  const smallArt = (key: string) =>
+    (BADGE_IMAGE_MAP[key] ?? '').replace('center-art/', 'center-art-320/');
   props.building.forEach((b, i) => out.push({
     key: `b:${b.slug}`,
     name: b.name,
     subtitle: `BUILDING · ${b.threshold.toLocaleString()} ${b.threshold === 1 ? 'EDIT' : 'EDITS'}`,
     desc: b.description,
-    img: BADGE_IMAGE_MAP[b.imageKey] ?? '',
+    img: smallArt(b.imageKey),
     kind: 'building',
     home: wallSlot(i, -1),
   }));
@@ -123,7 +127,7 @@ const artifacts = computed<MuseumArtifact[]>(() => {
     name: b.name,
     subtitle: `EXPLORATION · ${b.threshold.toLocaleString()} ${b.threshold === 1 ? 'CELL' : 'CELLS'}`,
     desc: b.description,
-    img: BADGE_IMAGE_MAP[b.imageKey] ?? '',
+    img: smallArt(b.imageKey),
     kind: 'exploration',
     home: wallSlot(i, 1),
   }));
@@ -256,6 +260,7 @@ function tick(now: number) {
       `translate3d(${-cam.x}px, 0px, ${-cam.z}px)`;
     w.style.setProperty('--mus-yaw', `${-cam.yaw}deg`);
   }
+  if (++lodCounter % 20 === 0) updateLod();
   raf = requestAnimationFrame(tick);
 }
 
@@ -426,6 +431,27 @@ function resetLayout() {
 const selectedArtifact = computed(() =>
   artifacts.value.find(a => a.key === selectedKey.value) ?? null);
 
+// ── Distance based level of detail ───────────────────────────────────────────
+// Only the nearest handful of artifacts run the bobbing animation, and
+// artifacts far beyond the fog line stop painting entirely.
+const artifactByKey = computed(() => new Map(artifacts.value.map(a => [a.key, a])));
+let lodCounter = 0;
+
+function updateLod() {
+  const els = worldEl.value?.querySelectorAll('[data-akey]') as NodeListOf<HTMLElement> | undefined;
+  if (!els) return;
+  const scored: {el: HTMLElement; d: number}[] = [];
+  els.forEach(el => {
+    const a = artifactByKey.value.get(el.dataset.akey || '');
+    const p = a ? poseOf(a) : null;
+    const d = p ? Math.hypot(p.x - cam.x, p.z - cam.z) : Infinity;
+    el.classList.toggle('mus-artifact--far', d > 4800);
+    scored.push({el, d});
+  });
+  scored.sort((a, b) => a.d - b.d);
+  scored.forEach((s, i) => s.el.classList.toggle('mus-artifact--near', i < 6 && s.d < 1800));
+}
+
 // ── Big picture stats for the side wall ──────────────────────────────────────
 const statsRows = computed(() => {
   const s = props.stats || {};
@@ -527,8 +553,8 @@ onUnmounted(() => {
           <div class="mus-door-chevrons">⌃</div>
         </div>
 
-        <!-- Big picture stats on the left wall -->
-        <div class="mus-wallstats" :style="{transform: `translate3d(${-ROOM_W / 2 + 4}px, -300px, -700px) rotateY(90deg)`}">
+        <!-- Big picture stats on the left wall, right where you walk in -->
+        <div class="mus-wallstats" :style="{transform: `translate3d(${-ROOM_W / 2 + 8}px, -330px, -500px) rotateY(90deg)`}">
           <div class="mus-wallstats-title">CAREER TELEMETRY</div>
           <div class="mus-wallstats-row">
             <div v-for="row in statsRows" :key="row.label" class="mus-wallstats-item">
@@ -637,6 +663,9 @@ onUnmounted(() => {
   user-select: none;
   touch-action: none;
   animation: musFadeIn 0.5s ease-out;
+  /* Teleported to body, so set the type stack explicitly or descriptions
+     fall back to the browser's serif default. */
+  font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
 }
 .nge-museum:active { cursor: grabbing; }
 .nge-museum--edit { cursor: default; }
@@ -768,15 +797,21 @@ onUnmounted(() => {
   top: -330px;
   width: 160px;
   height: 160px;
-  animation: musBob 7.5s ease-in-out infinite;
   pointer-events: none;
   backface-visibility: hidden;
+}
+/* Only the nearest artifacts animate; a hall of 60 bobbing layers janks. */
+.mus-artifact--near .mus-float {
+  animation: musBob 7.5s ease-in-out infinite;
+}
+.mus-artifact--far {
+  visibility: hidden;
 }
 .mus-badge-img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: drop-shadow(0 0 16px rgba(53, 181, 255, 0.55)) drop-shadow(0 14px 26px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 0 14px rgba(53, 181, 255, 0.5));
 }
 .mus-badge-fallback {
   width: 100%;
@@ -902,7 +937,7 @@ onUnmounted(() => {
   color: rgba(140, 230, 255, 0.95);
 }
 .mus-artifact--selected .mus-badge-img {
-  filter: drop-shadow(0 0 26px rgba(120, 220, 255, 0.95)) drop-shadow(0 14px 26px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 0 24px rgba(120, 220, 255, 0.9));
 }
 .mus-artifact--selected .mus-disc {
   animation: musDiscPulse 1.6s ease-in-out infinite;
@@ -1051,14 +1086,16 @@ onUnmounted(() => {
   height: 0;
   pointer-events: none;
 }
+/* Kept below 2500px and unanimated: a huge always-pulsing layer is a
+   constant compositor tax and a glitch source. */
 .mus-neuron-svg {
   position: absolute;
-  left: -1700px;
-  top: -1075px;
-  width: 3400px;
-  height: 2150px;
+  left: -1200px;
+  top: -758px;
+  width: 2400px;
+  height: 1516px;
   overflow: visible;
-  animation: musNeuronPulse 9s ease-in-out infinite;
+  opacity: 0.85;
 }
 .mus-neuron-layer { stroke: rgb(120, 220, 255); fill: none; stroke-linecap: round; }
 .mus-neuron-layer--glow { stroke: rgba(53, 181, 255, 0.30); stroke-width: 15; }
@@ -1067,10 +1104,6 @@ onUnmounted(() => {
   fill: rgba(160, 230, 255, 0.95);
   stroke: rgba(53, 181, 255, 0.5);
   stroke-width: 6;
-}
-@keyframes musNeuronPulse {
-  0%, 100% { opacity: 0.65; }
-  50%      { opacity: 0.95; }
 }
 
 /* ── Exit door on the entrance wall ── */
@@ -1153,43 +1186,48 @@ onUnmounted(() => {
   position: absolute;
   left: 0;
   top: 0;
-  width: 2000px;
+  width: 2400px;
+  padding: 40px 0 46px;
   transform-origin: 0 0;
   text-align: center;
   pointer-events: none;
   backface-visibility: hidden;
+  background: linear-gradient(180deg, rgba(10, 24, 50, 0.55), rgba(6, 14, 30, 0.35));
+  border: 2px solid rgba(53, 181, 255, 0.4);
+  border-radius: 10px;
+  box-shadow: 0 0 44px rgba(53, 181, 255, 0.22), inset 0 0 60px rgba(53, 181, 255, 0.08);
 }
 .mus-wallstats-title {
   font-family: 'Orbitron', sans-serif;
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 700;
-  letter-spacing: 18px;
-  color: rgba(130, 205, 245, 0.75);
-  text-shadow: 0 0 16px rgba(53, 181, 255, 0.5);
+  letter-spacing: 20px;
+  color: rgba(140, 215, 250, 0.85);
+  text-shadow: 0 0 18px rgba(53, 181, 255, 0.6);
 }
 .mus-wallstats-row {
-  margin-top: 34px;
+  margin-top: 38px;
   display: flex;
   justify-content: center;
-  gap: 70px;
+  gap: 76px;
 }
-.mus-wallstats-item { min-width: 240px; }
+.mus-wallstats-item { min-width: 280px; }
 .mus-wallstats-value {
   font-family: 'Orbitron', sans-serif;
-  font-size: 84px;
+  font-size: 104px;
   font-weight: 700;
-  color: rgba(190, 235, 255, 0.95);
+  color: rgba(200, 240, 255, 1);
   text-shadow:
-    0 0 24px rgba(53, 181, 255, 0.85),
-    0 0 70px rgba(53, 181, 255, 0.4);
+    0 0 26px rgba(53, 181, 255, 0.9),
+    0 0 80px rgba(53, 181, 255, 0.45);
 }
 .mus-wallstats-label {
-  margin-top: 8px;
+  margin-top: 10px;
   font-family: 'Orbitron', sans-serif;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
-  letter-spacing: 5px;
-  color: rgba(120, 190, 235, 0.7);
+  letter-spacing: 6px;
+  color: rgba(130, 200, 240, 0.8);
 }
 
 /* ── Touch joystick ── */
