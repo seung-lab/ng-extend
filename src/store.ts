@@ -1783,14 +1783,16 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   const AI_LAYER_NAME = '🤖 AI candidates';
   // Amy's palette: cool blue (#4a9eff, the app accent) rising to golden
   // yellow (#FFD700) at full confidence. Orange is banned.
+  // Hollow rings, not discs: a filled marker sits exactly on top of the
+  // error it points at (Amy: "the markers are covering up the spot").
   const AI_SHADER = 'void main() {\n' +
     '  float c = clamp((prop_conf() - 0.2) / 0.8, 0.0, 1.0);\n' +
     '  vec3 cold = vec3(0.29, 0.62, 1.0);\n' +
     '  vec3 hot = vec3(1.0, 0.84, 0.0);\n' +
-    '  setColor(vec4(mix(cold, hot, c), 0.95));\n' +
-    '  setPointMarkerSize(9.0 + 8.0 * c);\n' +
-    '  setPointMarkerBorderWidth(1.5);\n' +
-    '  setPointMarkerBorderColor(vec4(1.0, 0.97, 0.85, 0.9));\n' +
+    '  setColor(vec4(mix(cold, hot, c), 0.08));\n' +
+    '  setPointMarkerSize(11.0 + 8.0 * c);\n' +
+    '  setPointMarkerBorderWidth(2.5);\n' +
+    '  setPointMarkerBorderColor(vec4(mix(cold, hot, c), 0.95));\n' +
     '}\n';
 
   /** AI tab's layer toggle; ambient showScoutTags still gates everything. */
@@ -1897,7 +1899,10 @@ export const useIssueTagStore = defineStore('issueTags', () => {
 
       const lines: string[] = [];
       for (const it of inst) {
-        const [x, y, z] = it.pos, r = it.r;
+        // Hover the shard ABOVE its point like the scout pins do: centered
+        // on the spot it hides exactly what it marks.
+        const [x, yRaw, z] = it.pos, r = it.r;
+        const y = yRaw - 2.6 * r;
         lines.push(
           `v ${(x + r).toFixed(0)} ${y.toFixed(0)} ${z.toFixed(0)}`,
           `v ${(x - r).toFixed(0)} ${y.toFixed(0)} ${z.toFixed(0)}`,

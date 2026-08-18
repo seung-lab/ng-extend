@@ -18,6 +18,7 @@ import { useIssueTagStore, useSegmentAnnotationStore, IssueTagType } from '../st
 import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
+import tracerIcon from '../../static/tags/tracer-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
 import { runPanelTrace, runParticleBurst, runPanelDraw, runBurstBuild, runPanelLap } from '../util/holo_trace';
 
@@ -421,7 +422,7 @@ onBeforeUnmount(() => {
           :class="{ 'nge-tagmode-mini-chip--active': selected === c.key }"
           :title="c.hint"
           @click="miniChoose(c.key)"
-        ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" />{{ c.key === 'cut' ? 'Cut' : c.key === 'extend' ? 'Extend' : 'Other' }}</button>
+        ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" /><img v-else-if="c.key === 'extend'" :src="tracerIcon" class="nge-tagmode-chip-img" alt="" />{{ c.key === 'cut' ? 'Cut' : c.key === 'extend' ? 'Extend' : 'Other' }}</button>
         <button
           class="nge-tagmode-mini-act"
           :class="{ 'nge-tagmode-mini-act--on': armedOnce || tHeld }"
@@ -462,7 +463,7 @@ onBeforeUnmount(() => {
             }"
             :title="c.hint"
             @click="choose(c.key)"
-          ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" /><template v-else-if="c.key === 'extend'">🌿 </template>{{ c.key === 'cut' ? ' Cut' : c.label.replace(/^\S+\s/, '') }}</button>
+          ><img v-if="c.key === 'cut'" :src="scytheIcon" class="nge-tagmode-chip-img" alt="" /><img v-else-if="c.key === 'extend'" :src="tracerIcon" class="nge-tagmode-chip-img" alt="" />{{ c.key === 'cut' ? ' Cut' : c.label.replace(/^\S+\s/, '') }}</button>
         </div>
         <input
           v-model="note"
