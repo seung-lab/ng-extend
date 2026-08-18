@@ -86,7 +86,7 @@ async function fetchAndDecimate(
 
 interface RawBuffers {
   verts: Float32Array[];
-  indices: Uint32Array[];
+  indices: (Uint16Array | Uint32Array)[];
 }
 
 function waitForFragments(
@@ -107,8 +107,11 @@ function waitForFragments(
           const fragment = fragmentChunks.get(key);
           const verts = fragment?.meshData?.vertexPositions;
           const indices = fragment?.meshData?.indices;
+          // Small fragments decode with 16 bit indices, only large ones use
+          // 32 bit. Accept both or most cells never finish loading.
           if (verts instanceof Float32Array && verts.length >= 9 &&
-              indices instanceof Uint32Array && indices.length >= 3) {
+              (indices instanceof Uint32Array || indices instanceof Uint16Array) &&
+              indices.length >= 3) {
             out.verts.push(verts);
             out.indices.push(indices);
             loaded++;
@@ -141,7 +144,9 @@ function waitForFragments(
  * neighboring cells. Tries progressively coarser grids until the edge count
  * fits the cap.
  */
-function decimate(vertArrays: Float32Array[], indexArrays: Uint32Array[]): MuseumWireframe | null {
+function decimate(
+    vertArrays: Float32Array[],
+    indexArrays: (Uint16Array | Uint32Array)[]): MuseumWireframe | null {
   if (vertArrays.length === 0) return null;
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;

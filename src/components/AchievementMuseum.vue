@@ -673,6 +673,7 @@ onUnmounted(() => {
         <div class="mus-hud-count">{{ artifacts.length }} ARTIFACTS ON DISPLAY</div>
         <div v-if="specimenState === 'loading'" class="mus-hud-specimen">◌ SUMMONING SPECIMEN...</div>
         <div v-else-if="specimenState === 'live'" class="mus-hud-specimen">◉ SPECIMEN: {{ SPECIMEN_LABEL }}</div>
+        <div v-else class="mus-hud-specimen mus-hud-specimen--dim">◌ SPECIMEN OFFLINE · OPEN THE STROEH RETINA DATASET, THEN REVISIT</div>
         <div class="mus-hud-actions">
           <button v-if="editable" class="mus-btn" :class="{'mus-btn--active': editMode}" @click="toggleEdit">
             {{ editMode ? '✓ Done curating' : '⬡ Curate' }}
@@ -1193,6 +1194,10 @@ onUnmounted(() => {
   letter-spacing: 3px;
   color: rgba(140, 220, 255, 0.8);
   text-shadow: 0 0 10px rgba(53, 181, 255, 0.5);
+}
+.mus-hud-specimen--dim {
+  color: rgba(120, 160, 195, 0.55);
+  text-shadow: none;
 }
 
 /* ── Exit door on the entrance wall ── */
