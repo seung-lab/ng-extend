@@ -219,7 +219,7 @@ function drawSpecimen(now: number) {
   const v = wf.verts;
   const n = Math.floor(v.length / 3);
   const px = new Float32Array(n), py = new Float32Array(n);
-  const sc = Math.min(W, H) / 2400;
+  const sc = Math.min(W, H) / 2000;
   for (let i = 0; i < n; i++) {
     // Swap the data y and z axes: the wide field arbor is a flat pancake in
     // dataset x/y, and this lays it horizontal so the branches stretch wide
@@ -639,7 +639,7 @@ onUnmounted(() => {
 
         <!-- Giant hologram neuron in the open sky above the hall: the real
              specimen mesh when it loads, the hand drawn one until then -->
-        <div class="mus-neuron" :style="{transform: `translate3d(0px, ${CEIL_Y - 720}px, -2300px) rotateY(var(--mus-yaw))`}">
+        <div class="mus-neuron" :style="{transform: `translate3d(0px, ${CEIL_Y - 560}px, -1700px) rotateY(var(--mus-yaw))`}">
           <canvas v-if="wireframe" ref="neuronCanvasEl" class="mus-neuron-canvas" width="1600" height="1000"></canvas>
           <svg v-else class="mus-neuron-svg" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
             <g class="mus-neuron-layer mus-neuron-layer--glow">
