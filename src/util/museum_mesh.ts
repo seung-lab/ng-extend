@@ -25,6 +25,15 @@ const POLL_MS = 600;
 
 export async function getMuseumWireframe(
     segId: string, timeoutMs = 45000): Promise<MuseumWireframe | null> {
+  // Baked specimen shipped with the app: works for every user with no auth,
+  // no dataset requirement, and no download wait.
+  try {
+    const baked = await fetch(`museum/specimen-${segId}.json`);
+    if (baked.ok) {
+      const wire = await baked.json();
+      if (wire?.verts?.length && wire?.edges?.length) return wire;
+    }
+  } catch {}
   try {
     const cached = localStorage.getItem(CACHE_PREFIX + segId);
     if (cached) {

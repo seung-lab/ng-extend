@@ -165,6 +165,19 @@ for (const track of ['building', 'exploration']) {
 }
 }
 
+// ── Copy museum specimen wireframes ─────────────────────────────────────────
+const MUSEUM_STATIC = path.join(__dirname, '..', 'static', 'museum');
+if (fs.existsSync(MUSEUM_STATIC)) {
+  const dest = path.join(__dirname, '..', 'dist', 'min', 'museum');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(MUSEUM_STATIC)) {
+    if (file.endsWith('.json')) {
+      fs.copyFileSync(path.join(MUSEUM_STATIC, file), path.join(dest, file));
+      console.log(`Copied museum specimen ${file}`);
+    }
+  }
+}
+
 // ── Copy standalone HTML pages (CAVE table viewer, etc.) ────────────────────
 const STATIC_DIR = path.join(__dirname, '..', 'static');
 const DIST_MIN = path.join(__dirname, '..', 'dist', 'min');

@@ -47,7 +47,10 @@ interface MuseumArtifact {
   name: string;
   subtitle: string;
   desc: string;
+  /** Light image for distant viewing (320px set, or special thumbnail). */
   img: string;
+  /** Full resolution image swapped in when the visitor walks close. */
+  imgHi: string;
   kind: 'building' | 'exploration' | 'special';
   home: {x: number; z: number};
 }
@@ -120,6 +123,7 @@ const artifacts = computed<MuseumArtifact[]>(() => {
     subtitle: `BUILDING · ${b.threshold.toLocaleString()} ${b.threshold === 1 ? 'EDIT' : 'EDITS'}`,
     desc: b.description,
     img: smallArt(b.imageKey),
+    imgHi: BADGE_IMAGE_MAP[b.imageKey] ?? '',
     kind: 'building',
     home: wallSlot(i, -1),
   }));
@@ -129,6 +133,7 @@ const artifacts = computed<MuseumArtifact[]>(() => {
     subtitle: `EXPLORATION · ${b.threshold.toLocaleString()} ${b.threshold === 1 ? 'CELL' : 'CELLS'}`,
     desc: b.description,
     img: smallArt(b.imageKey),
+    imgHi: BADGE_IMAGE_MAP[b.imageKey] ?? '',
     kind: 'exploration',
     home: wallSlot(i, 1),
   }));
@@ -139,6 +144,7 @@ const artifacts = computed<MuseumArtifact[]>(() => {
     subtitle: `SPECIAL AWARD${a.awarded_at ? ' · ' + formatDate(a.awarded_at) : ''}`,
     desc: (a.reason && a.reason.trim()) || a.badge?.description || 'Awarded by the EyeWire II team',
     img: a.badge?.thumbnail_url || a.badge?.image_url || '',
+    imgHi: a.badge?.image_url || a.badge?.thumbnail_url || '',
     kind: 'special',
     home: manySpecials
       ? {x: i % 2 ? 270 : -270, z: -900 - Math.floor(i / 2) * 560}
@@ -471,6 +477,18 @@ function toggleEdit() {
   if (!editMode.value) selectedKey.value = null;
 }
 
+/** Download the decimated wireframe so it can be baked into the app. */
+function exportSpecimen() {
+  const wf = wireframe.value;
+  if (!wf) return;
+  const blob = new Blob([JSON.stringify(wf)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `specimen-${SPECIMEN_SEG_ID}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function resetLayout() {
   layout.value = {};
   selectedKey.value = null;
@@ -488,19 +506,28 @@ const selectedArtifact = computed(() =>
 const artifactByKey = computed(() => new Map(artifacts.value.map(a => [a.key, a])));
 let lodCounter = 0;
 
+/** Artifacts close enough to deserve full resolution art. */
+const hiResKeys = ref<Set<string>>(new Set());
+const HI_RES_DIST = 1150;
+
 function updateLod() {
   const els = worldEl.value?.querySelectorAll('[data-akey]') as NodeListOf<HTMLElement> | undefined;
   if (!els) return;
   const scored: {el: HTMLElement; d: number}[] = [];
+  const hi = new Set<string>();
   els.forEach(el => {
-    const a = artifactByKey.value.get(el.dataset.akey || '');
+    const key = el.dataset.akey || '';
+    const a = artifactByKey.value.get(key);
     const p = a ? poseOf(a) : null;
     const d = p ? Math.hypot(p.x - cam.x, p.z - cam.z) : Infinity;
     el.classList.toggle('mus-artifact--far', d > 4800);
+    if (d < HI_RES_DIST) hi.add(key);
     scored.push({el, d});
   });
   scored.sort((a, b) => a.d - b.d);
   scored.forEach((s, i) => s.el.classList.toggle('mus-artifact--near', i < 6 && s.d < 1800));
+  const cur = hiResKeys.value;
+  if (hi.size !== cur.size || ![...hi].every(k => cur.has(k))) hiResKeys.value = hi;
 }
 
 // ── Big picture stats for the side wall ──────────────────────────────────────
@@ -626,8 +653,9 @@ onUnmounted(() => {
           <div class="mus-door-chevrons">⌃</div>
         </div>
 
-        <!-- Big picture stats on the left wall, right where you walk in -->
-        <div class="mus-wallstats" :style="{transform: `translate3d(${-ROOM_W / 2 + 8}px, -330px, -500px) rotateY(90deg)`}">
+        <!-- Big picture stats: a monument on the back wall, below the
+             inscription, where no artifacts stand in front of the numbers -->
+        <div class="mus-wallstats" :style="{transform: `translate3d(-1000px, -120px, ${-ROOM_D + 8}px)`}">
           <div class="mus-wallstats-title">CAREER TELEMETRY</div>
           <div class="mus-wallstats-row">
             <div v-for="row in statsRows" :key="row.label" class="mus-wallstats-item">
@@ -649,7 +677,7 @@ onUnmounted(() => {
           <div class="mus-beam"></div>
           <div class="mus-disc"></div>
           <div class="mus-float" :style="{animationDelay: `${(i % 9) * -0.7}s`}">
-            <img v-if="a.img" class="mus-badge-img" :src="a.img" :alt="a.name" draggable="false" />
+            <img v-if="a.img" class="mus-badge-img" :src="hiResKeys.has(a.key) && a.imgHi ? a.imgHi : a.img" :alt="a.name" decoding="async" draggable="false" />
             <div v-else class="mus-badge-fallback">✦</div>
           </div>
           <div class="mus-plaque">
@@ -679,6 +707,7 @@ onUnmounted(() => {
             {{ editMode ? '✓ Done curating' : '⬡ Curate' }}
           </button>
           <button v-if="editMode" class="mus-btn" @click="resetLayout">Reset layout</button>
+          <button v-if="editMode && specimenState === 'live'" class="mus-btn" @click="exportSpecimen">⇓ Export specimen</button>
           <button class="mus-btn mus-btn--exit" @click="emit('close')">✕ Exit</button>
         </div>
       </div>
@@ -1280,8 +1309,8 @@ onUnmounted(() => {
   position: absolute;
   left: 0;
   top: 0;
-  width: 2400px;
-  padding: 40px 0 46px;
+  width: 2000px;
+  padding: 26px 0 30px;
   transform-origin: 0 0;
   text-align: center;
   pointer-events: none;
@@ -1293,22 +1322,22 @@ onUnmounted(() => {
 }
 .mus-wallstats-title {
   font-family: 'Orbitron', sans-serif;
-  font-size: 34px;
+  font-size: 26px;
   font-weight: 700;
-  letter-spacing: 20px;
+  letter-spacing: 16px;
   color: rgba(140, 215, 250, 0.85);
   text-shadow: 0 0 18px rgba(53, 181, 255, 0.6);
 }
 .mus-wallstats-row {
-  margin-top: 38px;
+  margin-top: 26px;
   display: flex;
   justify-content: center;
-  gap: 76px;
+  gap: 46px;
 }
-.mus-wallstats-item { min-width: 280px; }
+.mus-wallstats-item { min-width: 240px; }
 .mus-wallstats-value {
   font-family: 'Orbitron', sans-serif;
-  font-size: 104px;
+  font-size: 88px;
   font-weight: 700;
   color: rgba(200, 240, 255, 1);
   text-shadow:
@@ -1316,11 +1345,11 @@ onUnmounted(() => {
     0 0 80px rgba(53, 181, 255, 0.45);
 }
 .mus-wallstats-label {
-  margin-top: 10px;
+  margin-top: 8px;
   font-family: 'Orbitron', sans-serif;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 500;
-  letter-spacing: 6px;
+  letter-spacing: 5px;
   color: rgba(130, 200, 240, 0.8);
 }
 

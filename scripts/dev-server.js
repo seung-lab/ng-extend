@@ -189,6 +189,19 @@ for (const artSet of ['center-art', 'center-art-320']) {
   }
 }
 
+// ── Copy museum specimen wireframes into dev output ─────────────────────────
+const MUSEUM_STATIC = path.join(__dirname, '..', 'static', 'museum');
+if (fs.existsSync(MUSEUM_STATIC)) {
+  const museumDest = path.join(__dirname, '..', 'dist', 'dev', 'museum');
+  fs.mkdirSync(museumDest, { recursive: true });
+  for (const file of fs.readdirSync(MUSEUM_STATIC)) {
+    if (file.endsWith('.json')) {
+      fs.copyFileSync(path.join(MUSEUM_STATIC, file), path.join(museumDest, file));
+      console.log(`Copied museum specimen ${file}`);
+    }
+  }
+}
+
 console.log('Starting dev server...');
 const proc = spawn(process.execPath, args, { stdio: 'inherit', shell: false });
 proc.on('exit', code => process.exit(code ?? 0));
