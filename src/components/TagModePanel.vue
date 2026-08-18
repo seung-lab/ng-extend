@@ -30,6 +30,7 @@ const HAND_SVG = '<svg viewBox="0 0 16 16" fill="none" style="width:1em;height:1
 const emit = defineEmits({ hide: null });
 const wrapEl = ref<HTMLElement | null>(null);
 const boxEl = ref<HTMLElement | null>(null);
+const stripEl = ref<HTMLElement | null>(null);
 const submitBtnEl = ref<HTMLElement | null>(null);
 const tagStore = useIssueTagStore();
 const { activeSegId } = storeToRefs(useSegmentAnnotationStore());
@@ -132,8 +133,9 @@ function closeWithZip() {
       if (bb) bb.style.clipPath = `inset(0 0 ${(frac * 100).toFixed(2)}% 0)`;
     });
     if (!total) { closing = false; emit('hide'); }
-  } else if (wrapEl.value) {
-    runPanelZip(wrapEl.value, 'up');
+  } else if (stripEl.value || wrapEl.value) {
+    // Collapsed: run the light on the strip itself, the wrap is wider.
+    runPanelZip((stripEl.value ?? wrapEl.value)!, 'up');
     setTimeout(() => { closing = false; emit('hide'); }, 330);
   } else {
     closing = false;
@@ -369,6 +371,13 @@ function onKeyDown(e: KeyboardEvent) {
     submit();
     return;
   }
+  // Enter on the celebration box heads back out scouting, same as a click.
+  if (e.key === 'Enter' && phase.value === 'success') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    dismissSuccess();
+    return;
+  }
   if (isTypingTarget(e)) return;
   // Shift+T belongs to the panel toggle in ExtensionBar; never swallow it.
   if (e.shiftKey) return;
@@ -436,7 +445,7 @@ onBeforeUnmount(() => {
     <div ref="wrapEl" class="nge-tagmode-wrap" :class="{ 'nge-tagmode-wrap--armed': tHeld || armedOnce }" :style="{ left: panelPos.left + 'px', top: panelPos.top + 'px' }">
 
       <!-- Collapsed corner strip: chips + place + submit, nothing else -->
-      <div v-if="collapsed" class="nge-tagmode-mini">
+      <div v-if="collapsed" ref="stripEl" class="nge-tagmode-mini">
         <span class="nge-tagmode-mini-grip" title="Drag" @pointerdown.prevent="dragStart" v-html="pinSvg"></span>
         <button
           v-for="c in TAG_CHOICES" :key="c.key"
@@ -539,9 +548,9 @@ onBeforeUnmount(() => {
         title="Click to keep scouting"
       >
         <img class="nge-tagmode-success-scythes" :src="superScytheUrl" alt="" />
-        <div class="nge-tagmode-success-title">{{ lastTag?.label }} candidate tagged</div>
+        <div class="nge-tagmode-success-title">Tag complete!</div>
         <div class="nge-tagmode-success-pos">({{ lastTag?.pos.join(', ') }})</div>
-        <div class="nge-tagmode-success-hint">logged for the Scythes · click to keep scouting</div>
+        <div class="nge-tagmode-success-hint">tagged for the Scythes · click or Enter to keep scouting</div>
       </div>
     </div>
     <screenshot-dialog
@@ -648,6 +657,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 4px;
+  /* The wrap is 340px for the full panel; the strip sizes to its own
+     content so the border always encloses every button (Amy: the x and
+     the hand were poking out of the box). */
+  width: max-content;
+  max-width: calc(100vw - 24px);
   /* Extra room on the right so the cursor has somewhere calm to land. */
   padding: 5px 14px 5px 7px;
   border-radius: 10px;
@@ -892,12 +906,14 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 20px 16px;
   cursor: pointer;
-  border-color: rgba(96, 192, 96, 0.4);
+  /* No border on the celebration box (Amy). Transparent, not none, so the
+     measured footprint from successSize still lines up. */
+  border-color: transparent;
 }
 /* Crossed scythes (Amy's render), the Scythes' crest on a logged tag. */
 .nge-tagmode-success-scythes {
-  width: 96px;
-  height: 96px;
+  width: 150px;
+  height: 150px;
   object-fit: contain;
   filter: drop-shadow(0 0 10px rgba(176, 136, 255, 0.55));
 }
@@ -905,9 +921,10 @@ onBeforeUnmount(() => {
   font-family: 'Orbitron', 'Inter', sans-serif;
   font-size: 13px;
   letter-spacing: 0.1em;
-  color: #d9f5d9;
+  color: #dff1ff;
+  text-shadow: 0 0 12px rgba(53, 181, 255, 0.45);
 }
-.nge-tagmode-success-pos { font-size: 11.5px; color: #ffb454; }
+.nge-tagmode-success-pos { font-size: 11.5px; color: rgba(158, 205, 255, 0.75); }
 .nge-tagmode-success-hint { font-size: 10.5px; color: rgba(255, 255, 255, 0.45); margin-top: 4px; }
 
 </style>

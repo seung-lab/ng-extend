@@ -558,11 +558,15 @@ export function runBurstBuild(
     onPhase?.('beams'); onPhase?.('done');
     return 0;
   }
-  // Explosion, a breath of calm, then the smooth flow home (Amy: "some
-  // explosion and a moment of calm before they smoothly flow").
-  const EXPLODE = 280, CALM = 260, FLOW = 720, GATHER = 150, BEAMS = 700, FADE = 220;
-  const STREAM = EXPLODE + CALM + FLOW;
-  const TOTAL = STREAM + GATHER + BEAMS + FADE;
+  // Explosion, a short breath, then a flow whose departures begin DURING the
+  // breath so there is no dead gap (Amy: "a perceived weird delay between
+  // the explosion and the flow"). The beams do not wait on a clock: they
+  // launch once half the particles have landed, starting at the two arrival
+  // points and progressing to the right around the frame, and whoever is
+  // still flying chases the moving light instead of the drained charge
+  // points.
+  const EXPLODE = 260, CALM = 180, DEPART = 500, FLIGHT = 520, BEAMS = 680, FADE = 200;
+  const TOTAL_EST = EXPLODE + CALM + DEPART + FLIGHT + BEAMS + FADE;
   const R = 15;
 
   const cv = document.createElement('canvas');
@@ -582,15 +586,16 @@ export function runBurstBuild(
     return {
       toTop: i % 2 === 0,
       a,
-      reach: 42 + ((i * 29) % 70),          // how far the explosion throws it
-      delay: ((i * 17) % N) / N * 0.3,      // flow departure stagger
-      wob: ((i % 5) - 2) * 7,               // lateral bow on the flow home
-      drift: ((i * 11) % 7) - 3,            // idle drift during the calm
-      r: 1.2 + ((i * 13) % 10) / 7,
+      reach: 48 + ((i * 29) % 78),                       // explosion throw
+      depart: EXPLODE + 70 + ((i * 17) % N) / N * DEPART, // leaves mid-calm
+      wob: ((i % 5) - 2) * 7,                            // lateral bow home
+      r: 1.9 + ((i * 13) % 10) / 5.5,                    // fat enough to see
+      arrived: false,
     };
   });
 
   let beamsFired = false, doneFired = false;
+  let beamStart = -1;
   let raf = 0;
   const t0 = performance.now();
 
@@ -599,9 +604,17 @@ export function runBurstBuild(
             [rect.left + rect.width / 2, rect.top + rect.height - 1]];
   }
 
+  /** Bright core over a wide soft halo, so the stream reads on busy EM. */
+  function dot(x: number, y: number, r: number, alpha: number) {
+    ctx!.beginPath(); ctx!.arc(x, y, r * 2.6, 0, 6.283);
+    ctx!.fillStyle = `rgba(${rgb},${(alpha * 0.22).toFixed(3)})`; ctx!.fill();
+    ctx!.beginPath(); ctx!.arc(x, y, r, 0, 6.283);
+    ctx!.fillStyle = `rgba(${rgb},${alpha.toFixed(3)})`; ctx!.fill();
+  }
+
   function draw(now: number) {
     const t = now - t0;
-    if (t >= TOTAL) {
+    if ((beamStart >= 0 && t >= beamStart + BEAMS + FADE) || t > TOTAL_EST * 2) {
       if (!doneFired) { doneFired = true; onPhase?.('done'); }
       cancelAnimationFrame(raf); cv.remove(); return;
     }
@@ -610,63 +623,61 @@ export function runBurstBuild(
     const rect = getRect();
     if (!rect) { raf = requestAnimationFrame(draw); return; }
     const [top, bot] = targets(rect);
+    const rw = rect.width - 2, rh = rect.height - 2;
+    const tTop = ringTopCenterT(rw, rh, R), tBot = ringBottomCenterT(rw, rh, R);
+    const dAB = (((tBot - tTop) % 1) + 1) % 1;
 
-    // ── Act 1, explosion: thrown out radially with ease-out.
-    // ── Act 2, calm: hang and drift, breathing.
-    // ── Act 3, flow: each glides home to its midpoint on a soft bezier.
-    let charge = 0;
-    const streamEnd = STREAM + GATHER;
+    // Beam heads double as the moving targets for late particles.
+    const beamT = beamStart >= 0 ? Math.min(1, (t - beamStart) / BEAMS) : 0;
+    const eased = beamT * beamT * (3 - 2 * beamT);
+    const headFor = (isTop: boolean): [number, number] => {
+      const p = ringPoint((isTop ? tTop : tBot) + eased * (isTop ? dAB : 1 - dAB), rw, rh, R);
+      return [rect.left + p[0] + 1, rect.top + p[1] + 1];
+    };
+
+    let arrivals = 0;
     for (const p of parts) {
-      const dst = p.toTop ? top : bot;
-      // scatter position from the explosion
       const eq = Math.min(1, t / EXPLODE);
       const eo = 1 - Math.pow(1 - eq, 2.2);
       let sx = ox + Math.cos(p.a) * p.reach * eo;
       let sy = oy + Math.sin(p.a) * p.reach * eo;
-      if (t < EXPLODE + CALM) {
-        // during calm, a slow breathing drift around the scatter point
-        const calmT = Math.max(0, t - EXPLODE);
-        sx += Math.sin(now / 260 + p.a * 3) * 2.5 + p.drift * (calmT / CALM) * 0.6;
-        sy += Math.cos(now / 300 + p.a * 2) * 2.2;
-        ctx!.beginPath();
-        ctx!.arc(sx, sy, p.r, 0, 6.283);
-        ctx!.fillStyle = `rgba(${rgb},${(0.8 * Math.min(1, eq * 2)).toFixed(3)})`;
-        ctx!.fill();
-        continue;
-      }
-      // flow home
-      const fStart = EXPLODE + CALM + p.delay * FLOW;
-      const fDur = FLOW * 0.7;
-      const lt = (t - fStart) / fDur;
+      const lt = (t - p.depart) / FLIGHT;
       if (lt <= 0) {
-        ctx!.beginPath();
-        ctx!.arc(sx, sy, p.r, 0, 6.283);
-        ctx!.fillStyle = `rgba(${rgb},0.8)`;
-        ctx!.fill();
+        // waiting in the calm: a slow breathing drift until departure
+        sx += Math.sin(now / 260 + p.a * 3) * 2.5;
+        sy += Math.cos(now / 300 + p.a * 2) * 2.2;
+        dot(sx, sy, p.r, 0.95 * Math.min(1, eq * 2));
         continue;
       }
-      if (lt >= 1) { charge += 1; continue; }
+      if (lt >= 1) p.arrived = true;
+      if (p.arrived) { arrivals += 1; continue; }
+      // In flight: aim at the charge point, or the moving light once it runs
+      // (Amy: "the remaining particles should flow to the light as it
+      // moves").
+      const dst = beamStart >= 0 ? headFor(p.toTop) : (p.toTop ? top : bot);
       const e = lt < 0.5 ? 2 * lt * lt : 1 - Math.pow(-2 * lt + 2, 2) / 2;
       const mx = (sx + dst[0]) / 2 + p.wob, my = (sy + dst[1]) / 2 + p.wob * 0.4;
       const x = (1 - e) * (1 - e) * sx + 2 * (1 - e) * e * mx + e * e * dst[0];
       const y = (1 - e) * (1 - e) * sy + 2 * (1 - e) * e * my + e * e * dst[1];
-      ctx!.beginPath();
-      ctx!.arc(x, y, p.r, 0, 6.283);
-      ctx!.fillStyle = `rgba(${rgb},0.82)`;
-      ctx!.fill();
+      dot(x, y, p.r, 0.95);
       // short comet tail along the path
-      const eb = Math.max(0, e - 0.07);
+      const eb = Math.max(0, e - 0.08);
       const bx = (1 - eb) * (1 - eb) * sx + 2 * (1 - eb) * eb * mx + eb * eb * dst[0];
       const by = (1 - eb) * (1 - eb) * sy + 2 * (1 - eb) * eb * my + eb * eb * dst[1];
-      ctx!.strokeStyle = `rgba(${rgb},0.24)`;
-      ctx!.lineWidth = p.r * 0.9;
+      ctx!.strokeStyle = `rgba(${rgb},0.3)`;
+      ctx!.lineWidth = p.r;
       ctx!.beginPath(); ctx!.moveTo(bx, by); ctx!.lineTo(x, y); ctx!.stroke();
     }
 
-    // ── The two charge points glow with arrivals, then drain into the beams.
-    const beamT = (t - streamEnd) / BEAMS;
-    const drain = beamT > 0 ? Math.max(0, 1 - beamT * 1.6) : 1;
-    const glow = Math.min(1, charge / (N * 0.45)) * drain;
+    // Half the flock has landed (or the failsafe clock ran out): light the
+    // frame from both arrival points, progressing to the right.
+    if (!beamsFired && (arrivals >= N / 2 || t > EXPLODE + CALM + DEPART + FLIGHT)) {
+      beamsFired = true; beamStart = t; onPhase?.('beams');
+    }
+
+    // The two charge points glow with arrivals, then drain into the beams.
+    const drain = beamStart >= 0 ? Math.max(0, 1 - (t - beamStart) / BEAMS * 1.6) : 1;
+    const glow = Math.min(1, arrivals / (N * 0.45)) * drain;
     for (const pt of [top, bot]) {
       const g = ctx!.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], 14 + glow * 10);
       g.addColorStop(0, `rgba(235,246,255,${(0.85 * glow).toFixed(3)})`);
@@ -676,20 +687,14 @@ export function runBurstBuild(
       ctx!.fillRect(pt[0] - 30, pt[1] - 30, 60, 60);
     }
 
-    // ── Beams: from both charge points, heads race along both sides at
-    // once, leaving the frame lit behind them, the light builds the box.
-    if (beamT > 0) {
-      if (!beamsFired) { beamsFired = true; onPhase?.('beams'); }
-      const rw = rect.width - 2, rh = rect.height - 2;
-      const tTop = ringTopCenterT(rw, rh, R), tBot = ringBottomCenterT(rw, rh, R);
-      const q = Math.min(1, beamT), eased = q * q * (3 - 2 * q);
-      const fade = t > streamEnd + BEAMS ? 1 - (t - streamEnd - BEAMS) / FADE : 1;
+    // Beams: one head leaves top-center, the other bottom-center, both
+    // sweeping clockwise (screen-right at the top) half the perimeter each,
+    // so the light visibly departs where the particles landed.
+    if (beamStart >= 0) {
+      const fade = t > beamStart + BEAMS ? 1 - (t - beamStart - BEAMS) / FADE : 1;
       ctx!.lineCap = 'round'; ctx!.lineJoin = 'round';
-      const runs: [number, number, number][] = [
-        [tTop, 1, ((tBot - tTop) % 1 + 1) % 1],
-        [tTop, -1, 1 - (((tBot - tTop) % 1 + 1) % 1)],
-      ];
-      for (const [startT, dir, dist] of runs) {
+      const runs: [number, number][] = [[tTop, dAB], [tBot, 1 - dAB]];
+      for (const [startT, dist] of runs) {
         for (let pass = 0; pass < 2; pass++) {
           ctx!.lineWidth = pass ? 1.2 : 4;
           ctx!.globalCompositeOperation = pass ? 'source-over' : 'lighter';
@@ -700,7 +705,7 @@ export function runBurstBuild(
           const SEG = Math.max(24, Math.ceil(170 * dist));
           const steps = Math.ceil(SEG * eased);
           for (let j = 0; j <= steps; j++) {
-            const p = ringPoint(startT + dir * Math.min(eased, j / SEG) * dist, rw, rh, R);
+            const p = ringPoint(startT + Math.min(eased, j / SEG) * dist, rw, rh, R);
             const px = rect.left + p[0] + 1, py = rect.top + p[1] + 1;
             if (j === 0) ctx!.moveTo(px, py); else ctx!.lineTo(px, py);
           }
@@ -711,7 +716,7 @@ export function runBurstBuild(
     raf = requestAnimationFrame(draw);
   }
   raf = requestAnimationFrame(draw);
-  return TOTAL;
+  return TOTAL_EST;
 }
 
 /**

@@ -47,17 +47,50 @@ onMounted(() => {
   setTimeout(() => { if (panelEl.value) runPanelTrace(panelEl.value); }, 60);
 });
 
-/** Resolve a tag with the +1 celebration flying to the profile button. */
+/** Resolve a tag: the orbital itself is the hero (Amy). It winds up around
+ *  the button, two accelerating laps with the same behind-the-button
+ *  occlusion as its idle orbit, then catapults to the profile with the
+ *  existing comet. The store resolve waits for the catapult, because the
+ *  row unmounts the moment the tag leaves the open list. */
+const spinningTags = new Set<string>();
 function resolveTagFun(tag: IssueTag, e: MouseEvent) {
-  tagStore.resolve(tag.id);
+  if (spinningTags.has(tag.id)) return;
   // Grim salutes: resolving a Cut tag gets the scythe swing.
   if (tag.tagType === 'merger') runScytheSwing(e.clientX, e.clientY, scytheIcon);
-  // The orbit mote flings to the profile, in the beam blue.
-  flyPlusOne(e.clientX, e.clientY, '●', '53,181,255');
   // The moment of glory (Amy).
   tagSuccessToast.value = true;
   if (tagToastTimer) clearTimeout(tagToastTimer);
   tagToastTimer = setTimeout(() => { tagSuccessToast.value = false; }, 2100);
+  const wrap = (e.currentTarget as HTMLElement | null)?.closest?.('.nge-orbit-wrap') as HTMLElement | null;
+  const dot = wrap?.querySelector('.nge-orbit-dot') as HTMLElement | null;
+  if (!dot || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    flyPlusOne(e.clientX, e.clientY, '●', '53,181,255');
+    tagStore.resolve(tag.id);
+    return;
+  }
+  spinningTags.add(tag.id);
+  dot.style.animation = 'none';
+  const t0 = performance.now();
+  const SPIN = 640;
+  const step = (now: number) => {
+    const k = Math.min(1, (now - t0) / SPIN);
+    const a = k * k * 720; // ease-in wind-up, two laps
+    const behind = (a % 360) >= 180;
+    dot.style.transform = `rotate(${a}deg) translateX(19px) scale(${behind ? 0.75 : 1})`;
+    dot.style.zIndex = behind ? '0' : '2';
+    dot.style.opacity = behind ? '0.55' : '1';
+    if (k < 1) { requestAnimationFrame(step); return; }
+    const r = dot.getBoundingClientRect();
+    dot.style.visibility = 'hidden';
+    flyPlusOne(r.left + r.width / 2, r.top + r.height / 2, '●', '53,181,255');
+    spinningTags.delete(tag.id);
+    tagStore.resolve(tag.id);
+    setTimeout(() => {
+      dot.style.visibility = ''; dot.style.animation = '';
+      dot.style.transform = ''; dot.style.zIndex = ''; dot.style.opacity = '';
+    }, 400);
+  };
+  requestAnimationFrame(step);
 }
 const tagSuccessToast = ref(false);
 let tagToastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -755,7 +788,7 @@ async function saveCurrentAsLink() {
   const pos = getViewerPosition();
   const ds = activeDataset.value || getCurrentDatasetName();
   await linksStore.add({
-    title: `${ds || 'View'} — ${new Date().toLocaleString()}`,
+    title: `${ds || 'View'} · ${new Date().toLocaleString()}`,
     note: 'Saved before switching dataset',
     url,
     dataset: ds,
@@ -1243,7 +1276,7 @@ async function submitNewLink() {
   const url = window.location.href;
   const pos = getViewerPosition();
   const id = await linksStore.add({
-    title: newLinkTitle.value.trim() || `${getCurrentDatasetName() || 'View'} — ${new Date().toLocaleString()}`,
+    title: newLinkTitle.value.trim() || `${getCurrentDatasetName() || 'View'} · ${new Date().toLocaleString()}`,
     note: newLinkNote.value.trim(),
     url,
     dataset: getCurrentDatasetName(),
@@ -1270,9 +1303,48 @@ async function commitRename(link: WorkingLink) {
   renamingLinkId.value = null;
 }
 
+/** Parse the state JSON out of a saved link's URL hash, if any. */
+function linkHashState(link: WorkingLink): any | null {
+  try {
+    const h = new URL(link.url, window.location.href).hash;
+    if (!h.startsWith('#!')) return null;
+    return JSON.parse(decodeURIComponent(h.slice(2)));
+  } catch { return null; }
+}
+
+/** Stale link rescue: rebuild the view from the structured fields saved
+ *  alongside the URL (dataset, position, segments) instead of trusting a
+ *  hash that no longer describes a working state. */
+async function openLinkStructured(link: WorkingLink, targetDs: any) {
+  if (targetDs && link.dataset && link.dataset !== activeDataset.value) {
+    const ok = await switchToDataset(targetDs);
+    if (ok) activeDataset.value = link.dataset;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  const seg = link.visibleSegments?.[0] ?? '';
+  const pos = link.position && link.position.length === 3 ? link.position : undefined;
+  if (seg || pos) history.jumpToCell(seg, pos as any);
+}
+
 function openLink(link: WorkingLink) {
-  // Same dataset → cross-dataset behavior matches help-request flow.
+  // Old links can carry a stale origin from an earlier deployment; keep the
+  // saved state but always stay on this app.
+  let linkUrl = link.url;
+  try {
+    const u = new URL(link.url, window.location.href);
+    linkUrl = window.location.origin + u.pathname + u.search + u.hash;
+  } catch {}
+  // A link whose hash is missing, unparseable, or has no segmentation layer
+  // is stale (Amy: an old saved link opened the wrong dataset). Fall back to
+  // the structured restore rather than loading a broken state.
+  const state = linkHashState(link);
+  const hasSeg = ((state?.layers ?? []) as any[]).some(
+    l => typeof l?.type === 'string' && l.type.startsWith('segmentation'));
   const targetDs = link.dataset && findDatasetBySegName(link.dataset);
+  if (link.dataset && (!state || !hasSeg)) {
+    void openLinkStructured(link, targetDs || null);
+    return;
+  }
   const current = activeDataset.value;
   if (link.dataset && current && link.dataset !== current && targetDs) {
     // Reuse the cross-dataset confirmation pattern (synthesize a HelpRequest-shaped object).
@@ -1289,11 +1361,11 @@ function openLink(link: WorkingLink) {
     jumpConfirmTargetDs.value = targetDs;
     jumpConfirmCopied.value = false;
     // Override: continue should navigate via the URL itself, not just the segment.
-    pendingLinkOpen.value = link;
+    pendingLinkOpen.value = { ...link, url: linkUrl };
     return;
   }
   // Same dataset: open URL directly (replaces current state)
-  window.location.href = link.url;
+  window.location.href = linkUrl;
 }
 
 const pendingLinkOpen = ref<WorkingLink | null>(null);

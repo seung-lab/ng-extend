@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 
-import { useUserStatsStore, useCellHistoryStore } from '../store';
+import { useUserStatsStore, useCellHistoryStore, useIssueTagStore, useHelpRequestStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badge_definitions';
 
 const { stats } = storeToRefs(useUserStatsStore());
@@ -27,6 +27,29 @@ const weekRange = computed<string>(() => {
 
   return `${fmt(monday)} – ${fmt(sunday)}, ${sunday.getFullYear()}`;
 });
+
+// ── Scout and help activity this week (Amy: the recap was missing tag
+// and help stats). Tags scope by their own timestamps; help requests have
+// no resolved_at column, so answered scopes by the request's week.
+const tagStoreW = useIssueTagStore();
+const helpStoreW = useHelpRequestStore();
+const backendW = useProofreadingBackendStore();
+const weekStartMs = computed(() => {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon).getTime();
+});
+const inWeek = (iso?: string) => !!iso && new Date(iso).getTime() >= weekStartMs.value;
+const tagsPlacedThisWeek = computed(() =>
+  tagStoreW.tags.filter(t => t.userId && t.userId === backendW.userId && inWeek(t.createdAt)).length);
+const tagsFixedThisWeek = computed(() =>
+  tagStoreW.tags.filter(t => t.status === 'resolved' && t.resolvedById && t.resolvedById === backendW.userId && inWeek(t.resolvedAt ?? t.createdAt)).length);
+const helpAskedThisWeek = computed(() =>
+  helpStoreW.requests.filter(r => r.userId && r.userId === backendW.userId && inWeek(r.createdAt)).length);
+const myRecapName = computed(() => backendW.userName || backendW.userEmail?.split('@')[0] || '');
+const helpAnsweredThisWeek = computed(() =>
+  helpStoreW.requests.filter(r => r.resolved && myRecapName.value && r.resolvedByName === myRecapName.value && inWeek(r.createdAt)).length);
 
 // ── Month label: "March 2026" ─────────────────────────────────────────────
 const monthLabel = computed<string>(() =>
@@ -223,6 +246,29 @@ function jumpToCell(segId: string) {
               }">{{ cell.isComplete ? '✓' : cell.cellType ? '🏷' : '○' }}</span>
               <span class="nge-recap-cell-name">{{ truncateId(cell.segId) }}</span>
               <span class="nge-recap-cell-type" v-if="cell.cellType">{{ cell.cellType }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scout and help activity this week -->
+        <div class="nge-recap-section">
+          <div class="nge-recap-section-label">Scout Report</div>
+          <div class="nge-recap-month-grid">
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num" style="color: #35b5ff;">{{ tagsPlacedThisWeek }}</div>
+              <div class="nge-recap-month-key">tags placed</div>
+            </div>
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num" style="color: #9d9;">{{ tagsFixedThisWeek }}</div>
+              <div class="nge-recap-month-key">tags you fixed</div>
+            </div>
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num">{{ helpAskedThisWeek }}</div>
+              <div class="nge-recap-month-key">help asked</div>
+            </div>
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num" style="color: #7f8;">{{ helpAnsweredThisWeek }}</div>
+              <div class="nge-recap-month-key">help answered</div>
             </div>
           </div>
         </div>

@@ -1411,6 +1411,8 @@ export interface IssueTag {
   resolvedById?: string;
   resolvedByName?: string;
   createdAt: string;
+  /** When the tag was resolved (issue_tags.resolved_at). */
+  resolvedAt?: string;
   /** 'human' (default) or 'model' for AI-seeded candidates. */
   source?: string;
   /** Model verify probability (0..1), set on source 'model' tags. */
@@ -1453,6 +1455,7 @@ function rowToIssueTag(row: any): IssueTag {
     resolvedById: row.resolved_by ?? undefined,
     resolvedByName: row.resolved_by_name ?? undefined,
     createdAt: row.created_at,
+    resolvedAt: row.resolved_at ?? undefined,
     source: row.source ?? 'human',
     confidence: row.confidence ?? undefined,
     modelData: row.model_data ?? undefined,
