@@ -6,7 +6,6 @@ import AdminHub from 'components/AdminHub.vue';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
-import AchievementMuseum from 'components/AchievementMuseum.vue';
 import { runPanelTrace } from '../util/holo_trace';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
@@ -136,11 +135,6 @@ const SPECIAL_PREVIEW_LIMIT = 8;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
 const activeTab = ref<'overview' | 'trophyCase' | 'datasets' | 'weekInScience' | 'adminHub' | 'settings'>('overview');
-
-// ── Achievement Museum (fullscreen 3D gallery overlay) ───────────────────────
-const showMuseum = ref(false);
-const museumUserId = computed(() =>
-  (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '');
 
 /** Monday-anchored key for the current week, e.g. "2026-07-13". */
 function isoWeekKey(): string {
@@ -706,10 +700,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           :class="{ 'nge-profile-tab--active': activeTab === 'trophyCase' }"
           @click="activeTab = 'trophyCase'"
         >🏆 Trophy Case</button>
-        <button
-          class="nge-profile-tab"
-          @click="showMuseum = true"
-        >🏛 Museum</button>
         <button
           v-if="!viewingOtherUser"
           class="nge-profile-tab"
@@ -1527,19 +1517,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           </div>
         </div>
       </div>
-
-      <!-- ── Achievement Museum (teleports to body, fullscreen) ── -->
-      <achievement-museum
-        v-if="showMuseum"
-        :building="earnedBuildingBadges.earned"
-        :exploration="earnedExplorationBadges.earned"
-        :specials="profileSpecialBadges"
-        :user-id="museumUserId"
-        :user-name="profileUsername || profileName"
-        :editable="!viewingOtherUser"
-        :stats="profileStats"
-        @close="showMuseum = false"
-      />
 
     </div>
   </modal-overlay>

@@ -142,13 +142,10 @@ console.log('Running esbuild...');
 execFileSync(process.execPath, args, { stdio: 'inherit' });
 
 // ── Copy badge center-art PNGs into build output ────────────────────────────
-// center-art is the full-res set for the profile shelf; center-art-320 is the
-// downsampled set the museum uses (full res was 329MB across 216 PNGs).
 const path = require('path');
-for (const artSet of ['center-art', 'center-art-320']) {
-const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', artSet);
+const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-art');
 // esbuild --config=min outputs to dist/min
-const OUT_DIR = path.join(__dirname, '..', 'dist', 'min', artSet);
+const OUT_DIR = path.join(__dirname, '..', 'dist', 'min', 'center-art');
 
 for (const track of ['building', 'exploration']) {
   const srcDir = path.join(BADGE_ART, track);
@@ -162,7 +159,6 @@ for (const track of ['building', 'exploration']) {
     }
     console.log(`Copied ${track} badge art to ${destDir}`);
   }
-}
 }
 
 // ── Copy standalone HTML pages (CAVE table viewer, etc.) ────────────────────
