@@ -7,6 +7,20 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- Share cards: Facebook ignores share-dialog text and reads these
+         Open Graph tags instead. Image hosted on connectome.quest so the
+         card survives any app origin. -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="EyeWire II">
+    <meta property="og:title" content="EyeWire II · Map the Brain">
+    <meta property="og:description" content="Explore real neurons and help chart new brain circuits with Princeton University scientists. A citizen science game of connectomics.">
+    <meta property="og:image" content="https://connectome.quest/assets/images/eyewire-ii-og.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="EyeWire II · Map the Brain">
+    <meta name="twitter:description" content="Explore real neurons and help chart new brain circuits with Princeton University scientists.">
+    <meta name="twitter:image" content="https://connectome.quest/assets/images/eyewire-ii-og.jpg">
     <title>neuroglancer</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@48,400,0,0" />
     <link

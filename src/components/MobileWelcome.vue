@@ -45,8 +45,11 @@ function shareX() {
     '_blank', 'noopener');
 }
 function shareFacebook() {
+  // quote= prefills the post text; the link preview itself comes from the
+  // page's Open Graph tags (see index.html).
+  const quote = 'I am exploring real brain neurons in EyeWire II';
   window.open(
-    `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin)}`,
+    `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin)}&quote=${encodeURIComponent(quote)}`,
     '_blank', 'noopener');
 }
 function shareEmail() {

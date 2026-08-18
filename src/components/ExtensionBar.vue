@@ -117,7 +117,10 @@ function shareActionX() {
 }
 function shareActionFacebook() {
   dismissShareToast();
-  const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`;
+  // quote= prefills the post text; the link preview comes from the page's
+  // Open Graph tags (index.html).
+  const quote = 'Check out this neuron in EyeWire II';
+  const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}&quote=${encodeURIComponent(quote)}`;
   window.open(url, '_blank', 'noopener,width=600,height=520');
 }
 
