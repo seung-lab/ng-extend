@@ -39,3 +39,13 @@ split overlay. Draft questions before we scale past the two demo neurons:
 
 6. minnie65_public is the demo datastack. For EyeWire II production we would
    want stroeh_mouse_retina: any blockers to running the detector there?
+
+7. Edit permissions: submitting a multicut on the rolling public graph
+   fails with "Missing permission: edit for dataset microns_public". Can
+   you grant edit rights to the EyeWire II pilot reviewers (starting with
+   Amy), or should accepted splits target a different datastack?
+
+8. Executing accepted splits: what do you use to apply a decided split,
+   and could the export carry a supervoxel id per token point? With ids
+   we can pre-seed neuroglancer's multicut groups from the proposed
+   partition, so a reviewer only confirms and submits.
