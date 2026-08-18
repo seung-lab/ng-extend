@@ -212,14 +212,14 @@ function drawSpecimen(now: number) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const W = canvas.width, H = canvas.height;
-  const spin = now * 0.000018;
+  const spin = now * 0.000006;
   const ca = Math.cos(spin), sa = Math.sin(spin);
   const tilt = 0.42;
   const ct = Math.cos(tilt), st = Math.sin(tilt);
   const v = wf.verts;
   const n = Math.floor(v.length / 3);
   const px = new Float32Array(n), py = new Float32Array(n);
-  const sc = Math.min(W, H) / 2000;
+  const sc = Math.min(W, H) / 1650;
   for (let i = 0; i < n; i++) {
     // Swap the data y and z axes: the wide field arbor is a flat pancake in
     // dataset x/y, and this lays it horizontal so the branches stretch wide
@@ -639,7 +639,7 @@ onUnmounted(() => {
 
         <!-- Giant hologram neuron in the open sky above the hall: the real
              specimen mesh when it loads, the hand drawn one until then -->
-        <div class="mus-neuron" :style="{transform: `translate3d(0px, ${CEIL_Y - 560}px, -1700px) rotateY(var(--mus-yaw))`}">
+        <div class="mus-neuron" :style="{transform: `translate3d(0px, ${CEIL_Y - 470}px, -1150px) rotateY(var(--mus-yaw))`}">
           <canvas v-if="wireframe" ref="neuronCanvasEl" class="mus-neuron-canvas" width="1600" height="1000"></canvas>
           <svg v-else class="mus-neuron-svg" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
             <g class="mus-neuron-layer mus-neuron-layer--glow">
@@ -1242,10 +1242,10 @@ onUnmounted(() => {
 }
 .mus-neuron-canvas {
   position: absolute;
-  left: -1800px;
-  top: -1160px;
-  width: 3600px;
-  height: 2250px;
+  left: -2100px;
+  top: -1330px;
+  width: 4200px;
+  height: 2625px;
 }
 .mus-hud-specimen {
   font-family: 'Orbitron', sans-serif;
