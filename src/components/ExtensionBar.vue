@@ -933,7 +933,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <teleport to="body">
   <nav v-if="isMobileRef" class="nge-mobile-nav">
     <button :class="{ 'nge-mnav--active': showCellLibrary }" @click="mobileNavTap('cells')">
-      <span class="nge-mnav-icon">🧬</span>
+      <span class="nge-mnav-icon"><img :src="neuronIcon" class="nge-mnav-neuron" alt="" /></span>
       <span class="nge-mnav-label">Cells</span>
     </button>
     <button :class="{ 'nge-mnav--active': showChat }" @click="mobileNavTap('chat')">

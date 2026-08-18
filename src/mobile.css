@@ -261,6 +261,16 @@ body.nge-mobile .nge-cl-panel {
   line-height: 1;
 }
 
+/* Cells uses the neuron glyph (connectomics, not genomics). */
+.nge-mobile-nav .nge-mnav-neuron {
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
+}
+.nge-mobile-nav button.nge-mnav--active .nge-mnav-neuron {
+  filter: drop-shadow(0 0 7px rgba(53, 181, 255, 0.8));
+}
+
 .nge-mobile-nav button .nge-mnav-label {
   font-family: 'Orbitron', sans-serif;
   font-size: 8.5px;

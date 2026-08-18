@@ -10,9 +10,12 @@
  *
  * State lives in ExtensionBar (`showMobileWelcome`); the Guide button in the
  * bottom nav reopens it. Actions are emitted upward so ExtensionBar keeps
- * sole ownership of panel visibility.
+ * sole ownership of panel visibility. The 101 explainers link out to the
+ * existing connectome.quest mobile experiences.
  */
-import {ref} from 'vue';
+// The neuron glyph, same as the top bar's Cell Library icon. Connectomics,
+// not genomics: never the DNA emoji (Amy 2026-08-18).
+import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 defineProps<{ show: boolean }>();
 
@@ -23,17 +26,21 @@ const emit = defineEmits<{
   (e: 'open', panel: 'cells' | 'chat' | 'profile' | 'leaderboard'): void;
 }>();
 
-type View = 'home' | 'brain' | 'connectome';
-const view = ref<View>('home');
-
 function openPanel(panel: 'cells' | 'chat' | 'profile' | 'leaderboard') {
   emit('open', panel);
   emit('hide');
 }
 
 function dismiss() {
-  view.value = 'home';
   emit('hide');
+}
+
+/* The 101 explainers are the existing connectome.quest mobile experiences. */
+function openLearn() {
+  window.open('https://connectome.quest/learn.html', '_blank', 'noopener');
+}
+function openAtlas() {
+  window.open('https://connectome.quest/atlas/#top', '_blank', 'noopener');
 }
 
 /* Share actions: same targets as the desktop share toast. */
@@ -67,7 +74,7 @@ function shareEmail() {
         <button class="nge-mw-close" @click="dismiss" title="Close">×</button>
 
         <!-- ── Home ── -->
-        <div v-if="view === 'home'" class="nge-mw-body">
+        <div class="nge-mw-body">
           <div class="nge-mw-kicker">MOBILE UPLINK · LIMITED BANDWIDTH</div>
           <h2 class="nge-mw-title">Welcome, scientist</h2>
           <p class="nge-mw-copy">
@@ -76,7 +83,7 @@ function shareEmail() {
             Start here:
           </p>
 
-          <button class="nge-mw-learn" @click="view = 'brain'">
+          <button class="nge-mw-learn" @click="openLearn">
             <span class="nge-mw-learn-icon">🧠</span>
             <span class="nge-mw-learn-text">
               <span class="nge-mw-learn-title">What is a brain anyway?</span>
@@ -84,7 +91,7 @@ function shareEmail() {
             </span>
             <span class="nge-mw-learn-arrow">›</span>
           </button>
-          <button class="nge-mw-learn" @click="view = 'connectome'">
+          <button class="nge-mw-learn" @click="openAtlas">
             <span class="nge-mw-learn-icon">🕸️</span>
             <span class="nge-mw-learn-text">
               <span class="nge-mw-learn-title">What is a connectome?</span>
@@ -97,7 +104,7 @@ function shareEmail() {
 
           <div class="nge-mw-grid">
             <button class="nge-mw-action" @click="openPanel('cells')">
-              <span class="nge-mw-action-icon">🧬</span>
+              <span class="nge-mw-action-icon"><img :src="neuronIcon" class="nge-mw-neuron-icon" alt="" /></span>
               <span class="nge-mw-action-label">Cell Library</span>
               <span class="nge-mw-action-sub">Browse real neurons in 3D</span>
             </button>
@@ -150,109 +157,6 @@ function shareEmail() {
           </button>
         </div>
 
-        <!-- ── Neuro 101 ── -->
-        <div v-else-if="view === 'brain'" class="nge-mw-body">
-          <button class="nge-mw-back" @click="view = 'home'">‹ BACK</button>
-          <div class="nge-mw-kicker">NEUROSCIENCE 101</div>
-          <h2 class="nge-mw-title">What is a brain anyway?</h2>
-
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">🌌</span>
-            <p>Your head contains a galaxy: about 86 billion neurons,
-            tiny cells that carry electricity, wired together more densely
-            than any machine humans have ever built.</p>
-          </div>
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">⚡</span>
-            <p>A neuron looks like a lightning tree. Branches called
-            dendrites listen. One long cable, the axon, shouts. The spot
-            where two neurons touch is a synapse, and you have about
-            100 trillion of them.</p>
-          </div>
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">🏎️</span>
-            <p>Signals race down axons at up to 400 km/h. Every thought,
-            memory, and dream you have ever had was neurons flashing in
-            patterns, right there in the dark.</p>
-          </div>
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">💡</span>
-            <p>The whole show runs on about 20 watts. Your brain outperforms
-            supercomputers on less power than a refrigerator light bulb.</p>
-          </div>
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">🔬</span>
-            <p>To see this wiring, scientists slice brain tissue thinner than
-            1/1000 of a human hair and photograph every slice with electron
-            microscopes. Those photos are exactly what you see in EyeWire II.</p>
-          </div>
-
-          <button class="nge-mw-cta" @click="openPanel('cells')">
-            SEE REAL NEURONS IN THE CELL LIBRARY ›
-          </button>
-        </div>
-
-        <!-- ── Connectome 101 ── -->
-        <div v-else class="nge-mw-body">
-          <button class="nge-mw-back" @click="view = 'home'">‹ BACK</button>
-          <div class="nge-mw-kicker">CONNECTOME 101</div>
-          <h2 class="nge-mw-title">What is a connectome?</h2>
-
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">🗺️</span>
-            <p>A connectome is the complete wiring map of a brain: which
-            neuron talks to which, synapse by synapse. It is the most
-            detailed map humans have ever tried to draw.</p>
-          </div>
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">🗄️</span>
-            <p>One cubic millimeter of brain, the size of a grain of sand,
-            becomes petabytes of microscope images. That is thousands of
-            laptops of data for a crumb of cortex.</p>
-          </div>
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">🤖</span>
-            <p>AI traces the neurons through the images first. But AI makes
-            mistakes: it glues neurons together or snaps them apart. Someone
-            has to check its homework.</p>
-          </div>
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">🧑‍🚀</span>
-            <p>That someone is you. Citizen scientists proofread the map,
-            neuron by neuron. EyeWire players have been doing this since
-            2012: over 200,000 people helped map the eye, and EyeWire II
-            now maps the cortex itself.</p>
-          </div>
-          <div class="nge-mw-fact">
-            <span class="nge-mw-fact-icon">🔓</span>
-            <p>Every neuron you help finish becomes open science: data that
-            helps researchers understand how brains compute, learn, and
-            sometimes break.</p>
-          </div>
-
-          <div class="nge-mw-divider"><span>BRING A FRIEND TO THE LAB</span></div>
-          <div class="nge-mw-share">
-            <button @click="shareX" title="Post to X">
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor">
-                <path d="M17.5 3h3.2l-7 8 8.2 10h-6.4l-5-6.5L4.7 21H1.5l7.5-8.5L1.2 3h6.6l4.5 6zm-1.1 16.2h1.8L7.7 4.7H5.8z"/>
-              </svg>
-              <span>Post</span>
-            </button>
-            <button @click="shareFacebook" title="Share to Facebook">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M14 7h3V4h-3c-1.93 0-3.5 1.57-3.5 3.5V10H8v3h2.5v8h3v-8H16l1-3h-3.5V7.5c0-.28.22-.5.5-.5z"/>
-              </svg>
-              <span>Share</span>
-            </button>
-            <button @click="shareEmail" title="Email a link">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="5" width="18" height="14" rx="1.5"/>
-                <path d="M3.5 6.5l8.5 6.5 8.5-6.5"/>
-              </svg>
-              <span>Email</span>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   </transition>
@@ -370,6 +274,12 @@ function shareEmail() {
   box-shadow: inset 0 0 18px rgba(53, 181, 255, 0.15), 0 0 14px rgba(53, 181, 255, 0.25);
 }
 .nge-mw-action-icon { font-size: 22px; }
+.nge-mw-neuron-icon {
+  width: 24px;
+  height: 24px;
+  vertical-align: middle;
+  filter: drop-shadow(0 0 6px rgba(53, 181, 255, 0.5));
+}
 .nge-mw-action-label {
   font-family: 'Orbitron', sans-serif;
   font-size: 12px;
@@ -471,7 +381,7 @@ function shareEmail() {
   box-shadow: 0 0 12px rgba(53, 181, 255, 0.3);
 }
 
-/* Bypass + back + CTA */
+/* Bypass + CTA */
 .nge-mw-bypass {
   display: block;
   width: 100%;
@@ -488,38 +398,7 @@ function shareEmail() {
 }
 .nge-mw-bypass:active { color: rgb(53, 181, 255); }
 
-.nge-mw-back {
-  background: none;
-  border: none;
-  padding: 4px 0;
-  margin-bottom: 4px;
-  color: rgba(53, 181, 255, 0.85);
-  font-family: 'Orbitron', sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 1.4px;
-  cursor: pointer;
-}
 
-.nge-mw-fact {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(53, 181, 255, 0.10);
-}
-.nge-mw-fact:last-of-type { border-bottom: none; }
-.nge-mw-fact-icon {
-  font-size: 22px;
-  flex: 0 0 auto;
-  margin-top: 1px;
-}
-.nge-mw-fact p {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: #c4d4ef;
-}
 
 .nge-mw-cta {
   display: block;
