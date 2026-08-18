@@ -423,11 +423,19 @@ export const useLayersStore = defineStore('layers', () => {
       const segmentationLayerName = segmentationLayer.name;
       const SETTINGS = DEFAULT_SETTINGS[segmentationLayerName]
       const dsCfg = getDatasetCaveConfig(segmentationLayerName);
-      viewer!.coordinateSpace.restoreState({
-        x: [SETTINGS.dimensions[0], "m"],
-        y: [SETTINGS.dimensions[1], "m"],
-        z: [SETTINGS.dimensions[2], "m"],
-      });
+      // A layer name missing from default-settings.json used to throw right
+      // here, silently killing the rest of the switch (camera, default
+      // segments): that is how MICrONS Live arrived with nothing selected.
+      if (!SETTINGS) {
+        console.warn(`[layers] No DEFAULT_SETTINGS entry for ${segmentationLayerName}; using dataset-config defaults only`);
+      }
+      if (SETTINGS) {
+        viewer!.coordinateSpace.restoreState({
+          x: [SETTINGS.dimensions[0], "m"],
+          y: [SETTINGS.dimensions[1], "m"],
+          z: [SETTINGS.dimensions[2], "m"],
+        });
+      }
 
       // Prefer dataset-config defaultPosition when set; fall back to DEFAULT_SETTINGS.position.
       // SETTINGS.position is an array of numbers in the JSON config; parsePositionString
@@ -435,17 +443,19 @@ export const useLayersStore = defineStore('layers', () => {
       let position: Float32Array | undefined;
       if (dsCfg.defaultPosition) {
         position = Float32Array.from(dsCfg.defaultPosition);
-      } else if (Array.isArray(SETTINGS.position)) {
+      } else if (SETTINGS && Array.isArray(SETTINGS.position)) {
         position = Float32Array.from(SETTINGS.position);
-      } else if (typeof SETTINGS.position === 'string') {
+      } else if (SETTINGS && typeof SETTINGS.position === 'string') {
         position = parsePositionString(SETTINGS.position, 3);
       }
       if (position !== undefined) {
         viewer!.navigationState.position.value = position;
       }
-      viewer!.crossSectionScale.value = SETTINGS.crossSectionScale;
-      viewer!.projectionScale.value = SETTINGS.projectionScale;
-      viewer!.projectionOrientation.restoreState(SETTINGS.projectionOrientation);
+      if (SETTINGS) {
+        viewer!.crossSectionScale.value = SETTINGS.crossSectionScale;
+        viewer!.projectionScale.value = SETTINGS.projectionScale;
+        viewer!.projectionOrientation.restoreState(SETTINGS.projectionOrientation);
+      }
 
       // Add default segments + apply per-segment colors so the user lands on a visible cell.
       // Re-applied in a setTimeout below because layer mount fires async callbacks that

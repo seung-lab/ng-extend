@@ -56,6 +56,13 @@
     "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
     "projectionScale": 30000.0
   },
+  "minnie65_public_live": {
+    "dimensions": [8e-9, 8e-9, 4e-8],
+    "position": [120320.0, 103936.0, 21360.0],
+    "crossSectionScale": 5.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 30000.0
+  },
   "fly_v26": {
     "dimensions": [4e-9, 4e-9, 4e-8],
     "position": [108360.0, 42086.0, 3279.0],
