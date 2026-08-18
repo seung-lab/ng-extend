@@ -106,7 +106,13 @@ export const DATASETS: DatasetEntry[] = [
     shortLabel: 'MICrONS Live',
     abbrev: 'Live',
     species: 'mouse',
-    description: 'MICrONS minnie65 on the LIVE graph (internal access) — where the AI merge-candidate roots resolve',
+    // The ROLLING public graphene table (plain minnie65_public), unlike the
+    // frozen v117 snapshot the main MICrONS entry uses. The Dorkenwald and
+    // Fuming export roots resolve here; this is also the table their
+    // merge-free demo actually queries (its bundles carry
+    // datastack minnie65_public). minnie65_phase3_v1 is a datastack /
+    // aligned-volume name, NOT a graphene table: using it as one 400s.
+    description: 'MICrONS minnie65 on the rolling public graph — where the AI merge-candidate roots resolve',
     layers: [
       {
         type: 'image',
@@ -116,11 +122,11 @@ export const DATASETS: DatasetEntry[] = [
       {
         type: 'segmentation',
         source: {
-          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/minnie65_phase3_v1',
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/minnie65_public',
           subsources: { default: true, mesh: true, graph: true },
           enableDefaultSubsources: true,
         },
-        name: 'minnie65_phase3_v1',
+        name: 'minnie65_public_live',
       },
     ],
   },

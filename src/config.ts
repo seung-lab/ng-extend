@@ -152,23 +152,36 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeSchema:   'bound_tag',
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5757172763852800',
   },
-  // The LIVE minnie65 chunked graph (internal access required). The
-  // Dorkenwald/Fuming exports carry root ids minted here, which the frozen
-  // public v117 table cannot resolve (their meshes silently never load), so
-  // AI candidate review happens on this entry. No defaultStateUrl: the v117
-  // saved state would re-spec the frozen table.
-  minnie65_phase3_v1: {
+  // MICrONS Live: the ROLLING public graphene table (plain minnie65_public,
+  // not the frozen v117 snapshot). The Dorkenwald/Fuming export roots
+  // resolve here. No defaultStateUrl: the v117 saved state would re-spec
+  // the frozen table. Keyed under both the dataset id and the layer name.
+  minnie65_live: {
     caveServer:       'https://minnie.microns-daf.com',
-    datastack:        'minnie65_phase3_v1',
+    datastack:        'minnie65_public',
     alignedVolume:    'minnie65_phase3',
     cellStatusTable:  'eyewire_ii_cell_status_v2',
     cellStatusSchema: 'bound_tag_user',
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
     // The two demo neurons from the Dorkenwald/Fuming export, preloaded so
-    // arriving on Live immediately shows whether the live graph resolves
-    // (meshes appear) or the account lacks phase3_v1 access (they stay
-    // dark). Position: a max-confidence candidate window on …774191.
+    // arriving on Live immediately proves the graph resolves (meshes
+    // appear). Position: a max-confidence candidate window on …774191.
+    defaultSegments:  ['864691135258774191', '864691135375361480'],
+    segmentColors:    {
+      '864691135258774191': '#FFD700',
+      '864691135375361480': '#4a9eff',
+    },
+    defaultPosition:  [101385, 114771, 22738],
+  },
+  minnie65_public_live: {
+    caveServer:       'https://minnie.microns-daf.com',
+    datastack:        'minnie65_public',
+    alignedVolume:    'minnie65_phase3',
+    cellStatusTable:  'eyewire_ii_cell_status_v2',
+    cellStatusSchema: 'bound_tag_user',
+    cellTypeTable:    'cell_type_dev',
+    cellTypeSchema:   'bound_tag',
     defaultSegments:  ['864691135258774191', '864691135375361480'],
     segmentColors:    {
       '864691135258774191': '#FFD700',
