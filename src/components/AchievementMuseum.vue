@@ -212,7 +212,7 @@ function drawSpecimen(now: number) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const W = canvas.width, H = canvas.height;
-  const spin = now * 0.00009;
+  const spin = now * 0.000018;
   const ca = Math.cos(spin), sa = Math.sin(spin);
   const tilt = 0.42;
   const ct = Math.cos(tilt), st = Math.sin(tilt);
@@ -256,14 +256,16 @@ let last = 0;
 
 const MOVE_KEYS = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'KeyW', 'KeyA', 'KeyS', 'KeyD',
-  'ShiftLeft', 'ShiftRight', 'Equal', 'Minus', 'KeyR', 'KeyE',
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE',
+  'PageUp', 'PageDown',
+  'ShiftLeft', 'ShiftRight', 'Equal', 'Minus', 'KeyR', 'KeyC',
 ]);
 
 function clampCam() {
   cam.x = Math.max(-ROOM_W / 2 + 90, Math.min(ROOM_W / 2 - 90, cam.x));
   cam.z = Math.max(-ROOM_D + 90, Math.min(-90, cam.z));
-  cam.pitch = Math.max(-34, Math.min(34, cam.pitch));
+  // Generous upward range so the specimen overhead is easy to take in.
+  cam.pitch = Math.max(-34, Math.min(62, cam.pitch));
 }
 
 function tick(now: number) {
@@ -305,6 +307,10 @@ function tick(now: number) {
   if (keys.has('KeyS')) { cam.x -= fwd.x * speed;   cam.z -= fwd.z * speed; }
   if (keys.has('KeyA')) { cam.x -= right.x * speed; cam.z -= right.z * speed; }
   if (keys.has('KeyD')) { cam.x += right.x * speed; cam.z += right.z * speed; }
+
+  const lookRate = 55 * dt;
+  if (keys.has('KeyQ') || keys.has('PageUp'))   cam.pitch += lookRate;
+  if (keys.has('KeyE') || keys.has('PageDown')) cam.pitch -= lookRate;
 
   if (joy.active) {
     cam.x += (fwd.x * -joy.y + right.x * joy.x) * speed;
@@ -456,7 +462,7 @@ function onKeyDown(e: KeyboardEvent) {
   e.preventDefault();
   e.stopImmediatePropagation();
   if (e.repeat) return;
-  if (e.code === 'KeyE' && props.editable) {
+  if (e.code === 'KeyC' && props.editable) {
     toggleEdit();
     return;
   }
@@ -633,8 +639,8 @@ onUnmounted(() => {
 
         <!-- Giant hologram neuron in the open sky above the hall: the real
              specimen mesh when it loads, the hand drawn one until then -->
-        <div class="mus-neuron" :style="{transform: `translate3d(0px, ${CEIL_Y - 700}px, ${-ROOM_D / 2}px) rotateY(var(--mus-yaw))`}">
-          <canvas v-if="wireframe" ref="neuronCanvasEl" class="mus-neuron-canvas" width="1400" height="900"></canvas>
+        <div class="mus-neuron" :style="{transform: `translate3d(0px, ${CEIL_Y - 720}px, -2300px) rotateY(var(--mus-yaw))`}">
+          <canvas v-if="wireframe" ref="neuronCanvasEl" class="mus-neuron-canvas" width="1600" height="1000"></canvas>
           <svg v-else class="mus-neuron-svg" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
             <g class="mus-neuron-layer mus-neuron-layer--glow">
               <use href="#musNeuronPaths" />
@@ -678,7 +684,7 @@ onUnmounted(() => {
 
         <!-- Big picture stats: a monument on the back wall, below the
              inscription, where no artifacts stand in front of the numbers -->
-        <div class="mus-wallstats" :style="{transform: `translate3d(-700px, -150px, ${-ROOM_D + 8}px)`}">
+        <div class="mus-wallstats" :style="{transform: `translate3d(-500px, -40px, ${-ROOM_D + 8}px)`}">
           <div class="mus-wallstats-title">CAREER TELEMETRY</div>
           <div class="mus-wallstats-row">
             <div v-for="row in statsRows" :key="row.label" class="mus-wallstats-item">
@@ -754,7 +760,7 @@ onUnmounted(() => {
           JOYSTICK: walk · DRAG: look around
         </template>
         <template v-else>
-          ARROWS or WASD: walk · SHIFT: run · DRAG: look around · SCROLL: glide · ESC: exit
+          ARROWS or WASD: walk · Q / E: look up and down · SHIFT: run · DRAG: look around · SCROLL: glide · ESC: exit
         </template>
       </div>
 
@@ -1236,10 +1242,10 @@ onUnmounted(() => {
 }
 .mus-neuron-canvas {
   position: absolute;
-  left: -1400px;
-  top: -930px;
-  width: 2800px;
-  height: 1800px;
+  left: -1800px;
+  top: -1160px;
+  width: 3600px;
+  height: 2250px;
 }
 .mus-hud-specimen {
   font-family: 'Orbitron', sans-serif;
@@ -1335,7 +1341,7 @@ onUnmounted(() => {
   position: absolute;
   left: 0;
   top: 0;
-  width: 1400px;
+  width: 1000px;
   transform-origin: 0 0;
   text-align: center;
   pointer-events: none;
@@ -1343,35 +1349,35 @@ onUnmounted(() => {
 }
 .mus-wallstats-title {
   font-family: 'Orbitron', sans-serif;
-  font-size: 18px;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 12px;
-  color: rgba(140, 215, 250, 0.7);
-  text-shadow: 0 0 14px rgba(53, 181, 255, 0.5);
+  letter-spacing: 8px;
+  color: rgba(140, 215, 250, 0.55);
+  text-shadow: 0 0 10px rgba(53, 181, 255, 0.4);
 }
 .mus-wallstats-row {
-  margin-top: 20px;
+  margin-top: 12px;
   display: flex;
   justify-content: center;
-  gap: 40px;
+  gap: 28px;
 }
-.mus-wallstats-item { min-width: 180px; }
+.mus-wallstats-item { min-width: 130px; }
 .mus-wallstats-value {
   font-family: 'Orbitron', sans-serif;
-  font-size: 56px;
+  font-size: 38px;
   font-weight: 700;
-  color: rgba(190, 232, 255, 0.95);
+  color: rgba(190, 232, 255, 0.92);
   text-shadow:
-    0 0 20px rgba(53, 181, 255, 0.8),
-    0 0 60px rgba(53, 181, 255, 0.35);
+    0 0 16px rgba(53, 181, 255, 0.7),
+    0 0 44px rgba(53, 181, 255, 0.3);
 }
 .mus-wallstats-label {
-  margin-top: 6px;
+  margin-top: 4px;
   font-family: 'Orbitron', sans-serif;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: 4px;
-  color: rgba(130, 200, 240, 0.7);
+  letter-spacing: 3px;
+  color: rgba(130, 200, 240, 0.65);
 }
 
 /* ── Touch joystick ── */
