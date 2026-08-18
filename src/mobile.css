@@ -135,6 +135,15 @@ body.nge-mobile .nge-overlay-blocker .nge-overlay.modal.overlay-content {
   overflow-y: auto;
 }
 
+/* ── Notifications: no Delete all on phones ───────────────────────────────
+   The button sits one thumb width from the X that closes the panel; too
+   easy to nuke the feed by accident. Desktop keeps it, behind its
+   existing confirmation step. */
+body.nge-mobile .nge-notif-delete-all,
+body.nge-mobile .nge-notif-confirm {
+  display: none !important;
+}
+
 /* ── Neuroglancer chrome: phone sized tap targets ─────────────────────────── */
 
 /* The per panel layout toggle squares (switch to xy, 4panel, 3d). */
