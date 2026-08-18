@@ -103,19 +103,20 @@ body.nge-mobile .nge-chat-float {
   position: fixed !important;
   left: 0 !important;
   right: 0 !important;
-  bottom: 0 !important;
+  /* Docked above the bottom nav: nothing inside a sheet (like the chat
+     input) can hide underneath it. */
+  bottom: calc(56px + env(safe-area-inset-bottom)) !important;
   top: auto !important;
   width: 100% !important;
   max-width: 100% !important;
-  height: min(74dvh, 620px) !important;
-  max-height: 74dvh !important;
+  height: min(68dvh, 600px) !important;
+  max-height: 68dvh !important;
   margin: 0 !important;
   border-radius: 16px 16px 0 0 !important;
   border-left: none !important;
   border-right: none !important;
   border-bottom: none !important;
   box-sizing: border-box;
-  padding-bottom: env(safe-area-inset-bottom);
   overflow-y: auto;
   z-index: 950 !important;
 }
@@ -172,6 +173,28 @@ body.nge-mobile .neuroglancer-side-panel-column {
   height: 70dvh !important;
   z-index: 940;
   background: #0a0e1a;
+}
+
+/* ── Trophy case: featured banner fits a phone ────────────────────────────
+   Desktop lays the 350px badge art beside its text; on a phone the banner
+   stacks and the art scales to the screen so nothing clips. */
+body.nge-mobile .nge-trophy-featured {
+  flex-direction: column;
+  text-align: center;
+  gap: 10px;
+  padding: 16px 12px;
+}
+body.nge-mobile .nge-trophy-featured-icon {
+  width: min(58vw, 230px);
+  height: min(58vw, 230px);
+}
+body.nge-mobile .nge-trophy-featured-star {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+}
+body.nge-mobile .nge-trophy-scroll {
+  overflow-x: hidden;
 }
 
 /* ── Bottom clearance ─────────────────────────────────────────────────────

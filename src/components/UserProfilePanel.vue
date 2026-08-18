@@ -7,6 +7,7 @@ import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
 import { runPanelTrace } from '../util/holo_trace';
+import { isMobileRef } from '../util/mobile';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
@@ -498,6 +499,15 @@ const favoriteSpecialBadge = computed(() => {
 });
 /** Badge shown in the Trophy Case featured banner. */
 const featuredBadge = computed(() => selectedBadge.value ?? favoriteBadge.value ?? latestEarnedBadge.value);
+
+/** Mobile: tapping the featured badge art opens it fullscreen with a
+ *  simplified award animation (Amy 2026-08-18: the banner cannot do the
+ *  badge justice on a phone). Desktop taps are inert. */
+const badgeZoom = ref<{ img: string; name: string; desc?: string; meta?: string } | null>(null);
+function zoomBadge(img?: string | null, name?: string | null, desc?: string | null, meta?: string | null) {
+  if (!isMobileRef.value || !img) return;
+  badgeZoom.value = { img, name: name || 'Award', desc: desc || undefined, meta: meta || undefined };
+}
 function toggleFavoriteBadge(badge: BadgeDefinition) {
   const newSlug = favoriteBadgeSlug.value === badge.slug ? '' : badge.slug;
   backendStore.saveFavoriteBadge(newSlug);
@@ -1292,6 +1302,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               :src="selectedSpecialBadge.badge?.image_url || selectedSpecialBadge.badge?.thumbnail_url"
               :alt="selectedSpecialBadge.badge?.name"
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
+              @click="zoomBadge(selectedSpecialBadge.badge?.image_url || selectedSpecialBadge.badge?.thumbnail_url, selectedSpecialBadge.badge?.name, selectedSpecialBadge.badge?.description, 'Won on ' + formatDate(selectedSpecialBadge.awarded_at))"
             />
             <div class="nge-trophy-featured-info">
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
@@ -1323,6 +1334,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               :src="favoriteSpecialBadge.badge?.image_url || favoriteSpecialBadge.badge?.thumbnail_url"
               :alt="favoriteSpecialBadge.badge?.name"
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
+              @click="zoomBadge(favoriteSpecialBadge.badge?.image_url || favoriteSpecialBadge.badge?.thumbnail_url, favoriteSpecialBadge.badge?.name, favoriteSpecialBadge.badge?.description, 'Won on ' + formatDate(favoriteSpecialBadge.awarded_at))"
             />
             <div class="nge-trophy-featured-info">
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ favoriteSpecialBadge.badge?.name || 'Award' }}</div>
@@ -1354,6 +1366,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               :alt="featuredBadge.name"
               class="nge-trophy-featured-icon nge-trophy-featured-icon--animated"
               :class="`nge-badge--${featuredBadge.slug}`"
+              @click="zoomBadge(getBadgeUrl(featuredBadge.imageKey), featuredBadge.name, featuredBadge.description, 'Unlocked at ' + featuredBadge.threshold.toLocaleString() + ' ' + thresholdLabel(featuredBadge))"
             />
             <div class="nge-trophy-featured-info">
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ featuredBadge.name }}</div>
@@ -1519,6 +1532,22 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       </div>
 
     </div>
+
+    <!-- Mobile fullscreen badge viewer: tap the featured badge art to see
+         it big, with a simplified award moment. Tap anywhere to close. -->
+    <teleport to="body">
+      <transition name="nge-bz">
+        <div v-if="badgeZoom" class="nge-badge-zoom" @click="badgeZoom = null">
+          <div class="nge-badge-zoom-halo"></div>
+          <div class="nge-badge-zoom-ring"></div>
+          <img :src="badgeZoom.img" :alt="badgeZoom.name" class="nge-badge-zoom-img" />
+          <div class="nge-badge-zoom-name">{{ badgeZoom.name }}</div>
+          <div v-if="badgeZoom.desc" class="nge-badge-zoom-desc">{{ badgeZoom.desc }}</div>
+          <div v-if="badgeZoom.meta" class="nge-badge-zoom-meta">{{ badgeZoom.meta }}</div>
+          <div class="nge-badge-zoom-hint">Tap anywhere to close</div>
+        </div>
+      </transition>
+    </teleport>
   </modal-overlay>
 </template>
 
@@ -3218,4 +3247,121 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   margin-top: 4px; line-height: 1.3;
   font-style: italic;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MOBILE FULLSCREEN BADGE VIEWER
+   Tap the featured badge art on a phone: the badge takes the whole screen
+   with a simplified award moment (bloom halo, one sweeping ring, springy
+   scale in). Tap anywhere to close.
+───────────────────────────────────────────────────────────────────────────── */
+.nge-badge-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 10600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  box-sizing: border-box;
+  background: radial-gradient(ellipse at 50% 42%, rgba(20, 40, 80, 0.92), rgba(2, 5, 12, 0.97) 70%);
+  backdrop-filter: blur(8px);
+  text-align: center;
+}
+.nge-badge-zoom-halo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(90vw, 420px);
+  height: min(90vw, 420px);
+  transform: translate(-50%, -62%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(53, 181, 255, 0.28) 0%, rgba(53, 181, 255, 0.08) 45%, transparent 70%);
+  animation: nge-bz-halo 2.4s ease-out both;
+  pointer-events: none;
+}
+.nge-badge-zoom-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(74vw, 340px);
+  height: min(74vw, 340px);
+  transform: translate(-50%, -62%);
+  border-radius: 50%;
+  border: 1px solid rgba(53, 181, 255, 0.55);
+  border-top-color: rgba(191, 233, 255, 0.9);
+  box-shadow: 0 0 24px rgba(53, 181, 255, 0.35), inset 0 0 24px rgba(53, 181, 255, 0.12);
+  animation: nge-bz-ring 2.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+  pointer-events: none;
+}
+.nge-badge-zoom-img {
+  width: min(64vw, 300px);
+  height: min(64vw, 300px);
+  object-fit: contain;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 0 24px rgba(100, 180, 255, 0.55));
+  animation: nge-bz-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.nge-badge-zoom-name {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #f0f6ff;
+  text-shadow: 0 0 14px rgba(53, 181, 255, 0.6);
+  animation: nge-bz-rise 0.5s 0.15s ease-out both;
+}
+.nge-badge-zoom-desc {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #aebfdd;
+  max-width: 320px;
+  animation: nge-bz-rise 0.5s 0.25s ease-out both;
+}
+.nge-badge-zoom-meta {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  color: rgba(53, 181, 255, 0.85);
+  text-transform: uppercase;
+  animation: nge-bz-rise 0.5s 0.35s ease-out both;
+}
+.nge-badge-zoom-hint {
+  position: absolute;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: rgba(143, 166, 204, 0.6);
+  text-transform: uppercase;
+  animation: nge-bz-rise 0.5s 0.6s ease-out both;
+}
+
+@keyframes nge-bz-pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+@keyframes nge-bz-rise {
+  from { transform: translateY(10px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes nge-bz-halo {
+  0%   { opacity: 0; transform: translate(-50%, -62%) scale(0.5); }
+  35%  { opacity: 1; }
+  100% { opacity: 0.75; transform: translate(-50%, -62%) scale(1); }
+}
+@keyframes nge-bz-ring {
+  0%   { opacity: 0; transform: translate(-50%, -62%) scale(0.45) rotate(0deg); }
+  30%  { opacity: 1; }
+  100% { opacity: 0.7; transform: translate(-50%, -62%) scale(1) rotate(200deg); }
+}
+
+.nge-bz-enter-active, .nge-bz-leave-active { transition: opacity 0.25s ease; }
+.nge-bz-enter-from, .nge-bz-leave-to { opacity: 0; }
+
+/* The featured art is a tap target on phones. */
+body.nge-mobile .nge-trophy-featured-icon { cursor: pointer; }
+
 </style>
