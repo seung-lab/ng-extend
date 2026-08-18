@@ -886,13 +886,13 @@ function ensureHoloCss() {
  * curved path shedding a fading dot trail, and the profile button absorbs
  * the landing with a pulse.
  */
-export function flyPlusOne(fromX: number, fromY: number, text = '+1'): void {
+export function flyPlusOne(fromX: number, fromY: number, text = '+1', rgb = '245,209,66'): void {
   ensureHoloCss();
   const el = document.createElement('div');
   el.textContent = text;
   el.style.cssText = `position:fixed;left:0;top:0;z-index:100000;` +
-    `pointer-events:none;font:700 15px 'Orbitron','Inter',sans-serif;color:#f5d142;` +
-    `text-shadow:0 0 8px rgba(245,209,66,0.8);will-change:transform;`;
+    `pointer-events:none;font:700 15px 'Orbitron','Inter',sans-serif;color:rgb(${rgb});` +
+    `text-shadow:0 0 8px rgba(${rgb},0.8);will-change:transform;`;
   document.body.appendChild(el);
   const targetEl = document.getElementById('profileBtn');
   const target = targetEl?.getBoundingClientRect();
@@ -919,7 +919,7 @@ export function flyPlusOne(fromX: number, fromY: number, text = '+1'): void {
       const d = document.createElement('div');
       const r = 2 + Math.random() * 2.5;
       d.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${r}px;height:${r}px;` +
-        `border-radius:50%;background:rgba(245,209,66,0.8);box-shadow:0 0 6px rgba(245,209,66,0.6);` +
+        `border-radius:50%;background:rgba(${rgb},0.8);box-shadow:0 0 6px rgba(${rgb},0.6);` +
         `pointer-events:none;z-index:99999;transform:translate(-50%,-50%);`;
       document.body.appendChild(d);
       d.animate([{opacity: 0.9}, {opacity: 0}], {duration: 420, easing: 'ease-out'}).onfinish = () => d.remove();

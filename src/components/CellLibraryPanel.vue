@@ -52,7 +52,8 @@ function resolveTagFun(tag: IssueTag, e: MouseEvent) {
   tagStore.resolve(tag.id);
   // Grim salutes: resolving a Cut tag gets the scythe swing.
   if (tag.tagType === 'merger') runScytheSwing(e.clientX, e.clientY, scytheIcon);
-  flyPlusOne(e.clientX, e.clientY);
+  // The orbit mote flings to the profile, in the beam blue.
+  flyPlusOne(e.clientX, e.clientY, '●', '53,181,255');
   // The moment of glory (Amy).
   tagSuccessToast.value = true;
   if (tagToastTimer) clearTimeout(tagToastTimer);
@@ -1904,7 +1905,7 @@ const panelStyle = computed(() => ({
                 <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
                         :disabled="isCrossDatasetTag(tag)"
                         :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location'">↗</button>
-                <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
+                <span class="nge-orbit-wrap"><span class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button></span>
                 <template v-if="confirmDeleteTagId === tag.id">
                   <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this tag for everyone">Delete?</button>
                   <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the tag">✕</button>
@@ -2021,7 +2022,7 @@ const panelStyle = computed(() => ({
                         :disabled="!tag.modelData?.posRelUm?.length"
                         title="Toggle the model's proposed split overlay"
                         @click="tagStore.toggleSplitOverlay(tag)">✂</button>
-                <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
+                <span class="nge-orbit-wrap"><span class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button></span>
                 <template v-if="confirmDeleteTagId === tag.id">
                   <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this candidate for everyone">Delete?</button>
                   <button class="nge-cl-btn" @click="confirmDeleteTagId = null" title="Keep the candidate">✕</button>
@@ -2415,6 +2416,35 @@ const panelStyle = computed(() => ({
 .nge-cl-tagwin-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
 .nge-cl-tagwin-enter-from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
 .nge-cl-tagwin-leave-to { opacity: 0; transform: translate(-50%, -56%) scale(0.97); }
+
+/* ── The orbit: a mote circles the resolve button, ducking behind it on
+   the back half of each lap (z-index steps sell the occlusion), and on
+   resolve it flings to the profile. ── */
+.nge-orbit-wrap { position: relative; display: inline-flex; }
+.nge-orbit-wrap .nge-cl-btn {
+  position: relative;
+  z-index: 1;
+  /* Opaque face so the mote truly disappears behind it. */
+  background-color: #141830;
+}
+.nge-orbit-dot {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 4px; height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: #35b5ff;
+  box-shadow: 0 0 6px rgba(53, 181, 255, 0.85);
+  pointer-events: none;
+  animation: nge-orbit 2.8s linear infinite;
+}
+@keyframes nge-orbit {
+  0%    { transform: rotate(0deg)   translateX(19px) scale(1);    z-index: 2; opacity: 1; }
+  49.9% { transform: rotate(180deg) translateX(19px) scale(1);    z-index: 2; opacity: 1; }
+  50%   { transform: rotate(180deg) translateX(19px) scale(0.75); z-index: 0; opacity: 0.55; }
+  99.9% { transform: rotate(360deg) translateX(19px) scale(0.75); z-index: 0; opacity: 0.55; }
+  100%  { transform: rotate(360deg) translateX(19px) scale(1);    z-index: 2; opacity: 1; }
+}
 
 /* Armed delete confirm */
 .nge-cl-btn--confirmdel {
