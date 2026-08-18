@@ -71,8 +71,10 @@ const SETTINGS_SVG    = `<svg viewBox="1.6 1.6 20.8 20.8" fill="none" style="${S
 const QUEST_SVG       = `<svg viewBox="0.85 1.1 14.3 14.3" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M8 2.5C5.2 2.5 3 4.7 3 7.4c0 1.4.6 2.7 1.6 3.6.5.4.7 1 .7 1.6V14h5.4v-1.4c0-.6.2-1.2.7-1.6 1-.9 1.6-2.2 1.6-3.6 0-2.7-2.2-4.9-5-4.9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.8 14h4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 const FEED_SVG        = `<svg viewBox="0.4 2.6 13.0 13.0" fill="none" style="${S}color:${NEUTRAL_COLOR}"><circle cx="3.2" cy="12.8" r="1.4" fill="currentColor"/><path d="M2 8.5a5.5 5.5 0 0 1 5.5 5.5M2 4a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 
-/** The ship itself: a rocket in three-quarter climb for Flight Mode. */
-const FLIGHT_SVG      = `<svg viewBox="1 1 14 14" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M9.3 2.6c1.9-.7 3.6-.6 4.1-.1.5.5.6 2.2-.1 4.1-.6 1.6-1.7 3.3-3.2 4.5l-.4 2.5c0 .3-.4.4-.6.2l-1.5-1.7c-.9.2-1.7.1-2.3-.4-.5-.6-.6-1.4-.4-2.3L3.2 8c-.2-.2-.1-.6.2-.6l2.5-.4c1.2-1.5 2.9-2.6 4.4-3.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="10.4" cy="5.6" r="1.15" stroke="currentColor" stroke-width="1.1"/><path d="M4.9 11.1c-.7.3-1.3 1.4-1.5 2.5 1.1-.2 2.2-.8 2.5-1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+/** The ship itself: a rocket in three-quarter climb for Flight Mode.
+ *  Not in the toolbar: flight is an easter egg (Amy). Kept for the day it
+ *  earns a plaque somewhere. */
+export const FLIGHT_SVG      = `<svg viewBox="1 1 14 14" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M9.3 2.6c1.9-.7 3.6-.6 4.1-.1.5.5.6 2.2-.1 4.1-.6 1.6-1.7 3.3-3.2 4.5l-.4 2.5c0 .3-.4.4-.6.2l-1.5-1.7c-.9.2-1.7.1-2.3-.4-.5-.6-.6-1.4-.4-2.3L3.2 8c-.2-.2-.1-.6.2-.6l2.5-.4c1.2-1.5 2.9-2.6 4.4-3.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="10.4" cy="5.6" r="1.15" stroke="currentColor" stroke-width="1.1"/><path d="M4.9 11.1c-.7.3-1.3 1.4-1.5 2.5 1.1-.2 2.2-.8 2.5-1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
 
 export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)' },
@@ -86,7 +88,6 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'batch',       emoji: '📦', svg: BATCH_SVG,       label: 'Batch Processor' },
   { id: 'help',        emoji: '🔍', svg: HELP_SVG,        label: 'Second Opinion Requests' },
   { id: 'tags',        emoji: '📍', svg: TAG_SVG,         label: 'Tag Mode (Shift+T)' },
-  { id: 'flight',      emoji: '🚀', svg: FLIGHT_SVG,      label: 'Flight Mode (Shift+F)' },
   { id: 'feed',        emoji: '📡', svg: FEED_SVG,        label: 'Activity Feed' },
   { id: 'notif',       emoji: '🔔', svg: NOTIF_SVG,       label: 'Notifications' },
   { id: 'chat',        emoji: '💬', svg: CHAT_SVG,        label: 'Chat' },
@@ -132,7 +133,6 @@ const AUTO_INJECT_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: 
   { id: 'findPath', after: 'merge' },
   { id: 'layers',   after: 'tags', beforeFallback: 'notif' },
   { id: 'tags',     after: 'help', beforeFallback: 'notif' },
-  { id: 'flight',   after: 'tags', beforeFallback: 'notif' },
 ];
 
 /**

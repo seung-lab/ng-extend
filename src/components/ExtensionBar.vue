@@ -153,6 +153,17 @@ onMounted(() => {
       e.stopImmediatePropagation();
       showFlightMode.value = !showFlightMode.value;
     }
+    // The other way in is the old legend: up up down down left right left
+    // right B A. Flight mode is an easter egg, it is FOUND, not labeled.
+    if (!typing && !showFlightMode.value) {
+      const K = ['arrowup','arrowup','arrowdown','arrowdown','arrowleft','arrowright','arrowleft','arrowright','b','a'];
+      konamiBuf.push(e.key.toLowerCase());
+      if (konamiBuf.length > K.length) konamiBuf.shift();
+      if (konamiBuf.length === K.length && konamiBuf.every((k, i) => k === K[i])) {
+        konamiBuf.length = 0;
+        showFlightMode.value = true;
+      }
+    }
   }, true);
 
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
@@ -232,6 +243,7 @@ const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const showTagMode = ref(false);
 const showFlightMode = ref(false);
+const konamiBuf: string[] = [];
 const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
 const cmdPalette = ref<InstanceType<typeof CommandPalette> | null>(null);
