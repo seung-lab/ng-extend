@@ -926,10 +926,13 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   </div>
 
   <!-- ── Mobile only: welcome sheet + bottom nav (util/mobile.ts) ───────── -->
+  <!-- logged-in gates the Guide's link mode on VALID sessions only: a stale
+       token in localStorage must not hide the Log in button (Amy: the
+       landing pop-up needs login until you are actually in). -->
   <mobile-welcome
     v-if="isMobileRef"
     :show="showMobileWelcome"
-    :logged-in="login.sessions.length > 0"
+    :logged-in="validLogins.length > 0"
     @hide="exploreWithoutLogin"
     @login="mobileWelcomeLogin"
     @open="mobileOpenPanel"
