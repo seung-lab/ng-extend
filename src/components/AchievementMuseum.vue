@@ -205,6 +205,43 @@ const specimenState = ref<'loading' | 'live' | 'fallback'>('loading');
 const specimenProgress = ref<{loaded: number; total: number} | null>(null);
 const neuronCanvasEl = ref<HTMLCanvasElement | null>(null);
 
+// The soma is not at the arbor's bounding box center: wide field cells are
+// asymmetric. Find it as the densest knot of mesh vertices and center the
+// drawing (and the spin pivot) there, so the soma hangs over the hall's
+// centerline with the arbor wheeling around it.
+let somaCenter = {x: 0, y: 0, z: 0};
+let somaMaxRadius = 1000;
+
+function computeSomaCenter(wf: MuseumWireframe) {
+  const v = wf.verts;
+  const n = Math.floor(v.length / 3);
+  const R2 = 150 * 150;
+  let best = 0, bestCount = -1;
+  const stride = n > 3000 ? 2 : 1;
+  for (let i = 0; i < n; i += stride) {
+    const xi = v[i * 3], yi = v[i * 3 + 1], zi = v[i * 3 + 2];
+    let c = 0;
+    for (let j = 0; j < n; j++) {
+      const dx = v[j * 3] - xi, dy = v[j * 3 + 1] - yi, dz = v[j * 3 + 2] - zi;
+      if (dx * dx + dy * dy + dz * dz < R2) c++;
+    }
+    if (c > bestCount) {
+      bestCount = c;
+      best = i;
+    }
+  }
+  somaCenter = {x: v[best * 3], y: v[best * 3 + 1], z: v[best * 3 + 2]};
+  let maxR2 = 1;
+  for (let i = 0; i < n; i++) {
+    const dx = v[i * 3] - somaCenter.x;
+    const dy = v[i * 3 + 1] - somaCenter.y;
+    const dz = v[i * 3 + 2] - somaCenter.z;
+    const r2 = dx * dx + dy * dy + dz * dz;
+    if (r2 > maxR2) maxR2 = r2;
+  }
+  somaMaxRadius = Math.sqrt(maxR2);
+}
+
 function drawSpecimen(now: number) {
   const canvas = neuronCanvasEl.value;
   const wf = wireframe.value;
@@ -219,12 +256,15 @@ function drawSpecimen(now: number) {
   const v = wf.verts;
   const n = Math.floor(v.length / 3);
   const px = new Float32Array(n), py = new Float32Array(n);
-  const sc = Math.min(W, H) / 1650;
+  // Fit the arbor to the canvas from its true pivot: the soma.
+  const sc = (Math.min(W, H) / 2) / somaMaxRadius * 0.96;
   for (let i = 0; i < n; i++) {
-    // Swap the data y and z axes: the wide field arbor is a flat pancake in
-    // dataset x/y, and this lays it horizontal so the branches stretch wide
-    // across the sky instead of standing on edge.
-    const x = v[i * 3], y = v[i * 3 + 2], z = v[i * 3 + 1];
+    // Recenter on the soma, then swap the data y and z axes: the wide field
+    // arbor is a flat pancake in dataset x/y, and this lays it horizontal so
+    // the branches stretch wide across the sky instead of standing on edge.
+    const x = v[i * 3] - somaCenter.x;
+    const y = v[i * 3 + 2] - somaCenter.z;
+    const z = v[i * 3 + 1] - somaCenter.y;
     const rx = x * ca + z * sa;
     const rz = -x * sa + z * ca;
     const ry = y * ct - rz * st;
@@ -523,6 +563,20 @@ const hiResKeys = ref<Set<string>>(new Set());
 const HI_RES_DIST = 1150;
 const hiResPreloading = new Set<string>();
 
+/** Images fade in only once fully loaded: progressive PNG paint reads as a
+ *  glitchy half drawn badge. */
+const loadedImgs = ref<Set<string>>(new Set());
+function onImgLoad(key: string) {
+  if (loadedImgs.value.has(key)) return;
+  const s = new Set(loadedImgs.value);
+  s.add(key);
+  loadedImgs.value = s;
+}
+
+/** Fog culling with hysteresis: a single threshold makes artifacts at the
+ *  boundary blink on and off with every step. */
+const farKeys = new Set<string>();
+
 function preloadHiRes(key: string, url: string) {
   if (!url || hiResPreloading.has(key)) return;
   hiResPreloading.add(key);
@@ -547,7 +601,9 @@ function updateLod() {
     const a = artifactByKey.value.get(key);
     const p = a ? poseOf(a) : null;
     const d = p ? Math.hypot(p.x - cam.x, p.z - cam.z) : Infinity;
-    el.classList.toggle('mus-artifact--far', d > 4800);
+    const isFar = farKeys.has(key) ? d > 4600 : d > 5000;
+    if (isFar) farKeys.add(key); else farKeys.delete(key);
+    el.classList.toggle('mus-artifact--far', isFar);
     if (a && d < HI_RES_DIST && !hiResKeys.value.has(key)) preloadHiRes(key, a.imgHi);
     scored.push({el, d});
   });
@@ -593,6 +649,7 @@ onMounted(() => {
       specimenProgress.value = {loaded, total};
     },
   }).then(wf => {
+    if (wf) computeSomaCenter(wf);
     wireframe.value = wf;
     specimenState.value = wf ? 'live' : 'fallback';
   }).catch(() => {
@@ -706,7 +763,7 @@ onUnmounted(() => {
           <div class="mus-beam"></div>
           <div class="mus-disc"></div>
           <div class="mus-float" :style="{animationDelay: `${(i % 9) * -0.7}s`}">
-            <img v-if="a.img" class="mus-badge-img" :src="hiResKeys.has(a.key) && a.imgHi ? a.imgHi : a.img" :alt="a.name" decoding="async" draggable="false" />
+            <img v-if="a.img" class="mus-badge-img" :class="{'mus-badge-img--ready': loadedImgs.has(a.key)}" :src="hiResKeys.has(a.key) && a.imgHi ? a.imgHi : a.img" :alt="a.name" decoding="async" draggable="false" @load="onImgLoad(a.key)" />
             <div v-else class="mus-badge-fallback">✦</div>
           </div>
           <div class="mus-plaque">
@@ -892,6 +949,10 @@ onUnmounted(() => {
   width: 0;
   height: 0;
   transform-style: preserve-3d;
+  /* Persistent GPU layer per artifact: during camera motion the compositor
+     keeps showing the previous raster while it redraws at the new scale,
+     instead of flashing blank. */
+  will-change: transform;
 }
 
 /* Spotlight cone from the ceiling */
@@ -939,14 +1000,24 @@ onUnmounted(() => {
 .mus-artifact--near .mus-float {
   animation: musBob 7.5s ease-in-out infinite;
 }
+.mus-artifact {
+  transition: opacity 0.45s ease;
+}
 .mus-artifact--far {
+  opacity: 0;
   visibility: hidden;
+  transition: opacity 0.45s ease, visibility 0s 0.45s;
 }
 .mus-badge-img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 0 14px rgba(53, 181, 255, 0.5));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.mus-badge-img--ready {
+  opacity: 1;
 }
 .mus-badge-fallback {
   width: 100%;
