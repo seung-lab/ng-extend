@@ -1,17 +1,23 @@
 <script setup lang="ts">
 /**
- * AchievementMuseum: a walkable CSS 3D gallery for earned achievements.
+ * AchievementMuseum: a walkable WebGL gallery for earned achievements.
  *
- * Badges are displayed as holographic artifacts on projector pedestals in a
- * navy gallery hall. Arrow keys or WASD walk, drag looks around, Esc exits.
- * Curate mode lets the owner select an artifact, drag it around the floor,
- * and resize it with the scroll wheel. Layout persists to localStorage keyed
- * by user id so each researcher's museum keeps its arrangement.
+ * Badges are holographic artifacts on projector pedestals in a navy gallery
+ * hall, with Amy's real wide field amacrine cell drifting over the hall as a
+ * wireframe canopy. Arrow keys or WASD walk, Q and E pan up and down, drag
+ * looks around, Esc exits. Curate mode lets the owner select, drag, and
+ * resize artifacts; the layout persists per user in localStorage.
+ *
+ * v1 rendered the room with CSS 3D transforms; the DOM compositor
+ * re-rasterizes planes during camera motion, which flickered. The room is
+ * now a single three.js scene (src/util/museum_scene.ts) and this component
+ * keeps all input, curation, and persistence logic.
  */
 import {ref, computed, watch, onMounted, onUnmounted} from 'vue';
 import {BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {getMuseumWireframe, MuseumWireframe} from '../util/museum_mesh';
+import {MuseumScene, SceneArtifact} from '../util/museum_scene';
 
 // Special badge awards arrive from Supabase joins; keep the shape loose.
 interface SpecialAwardLike {
@@ -42,16 +48,7 @@ interface BigPictureStats {
   longestStreak?: number;
 }
 
-interface MuseumArtifact {
-  key: string;
-  name: string;
-  subtitle: string;
-  desc: string;
-  /** Light image for distant viewing (320px set, or special thumbnail). */
-  img: string;
-  /** Full resolution image swapped in when the visitor walks close. */
-  imgHi: string;
-  kind: 'building' | 'exploration' | 'special';
+interface MuseumArtifact extends SceneArtifact {
   home: {x: number; z: number};
 }
 
@@ -67,13 +64,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{(e: 'close'): void}>();
 
-// ── Room geometry (1 unit = 1px at perspective 800) ──────────────────────────
-const PERSP = 800;
+// ── Room geometry (1 unit = 1px at the old CSS scale) ────────────────────────
 const ROOM_W = 2200;
 const ROOM_D = 6200;
 const WALL_H = 560;
-const FLOOR_Y = 180;   // eye level is y 0, floor sits 180 below
-const CEIL_Y = FLOOR_Y - WALL_H;
+const FLOOR_Y = 180;
 
 // ── Persisted layout ─────────────────────────────────────────────────────────
 const layoutKey = computed(() => `nge_museum_layout_v1_${props.userId || 'anon'}`);
@@ -113,10 +108,10 @@ function wallSlot(i: number, side: 1 | -1): {x: number; z: number} {
 
 const artifacts = computed<MuseumArtifact[]>(() => {
   const out: MuseumArtifact[] = [];
-  // The museum uses the 320px downsampled art set: full res center-art PNGs
-  // are 1024px and ~1.6MB each, far more than a 160px pedestal needs.
+  // The museum uses the 320px downsampled art set for distance and swaps in
+  // the full 1024px set up close; full res PNGs are ~1.6MB each.
   const smallArt = (key: string) =>
-    (BADGE_IMAGE_MAP[key] ?? '').replace('center-art/', 'center-art-320/');
+      (BADGE_IMAGE_MAP[key] ?? '').replace('center-art/', 'center-art-320/');
   props.building.forEach((b, i) => out.push({
     key: `b:${b.slug}`,
     name: b.name,
@@ -147,8 +142,8 @@ const artifacts = computed<MuseumArtifact[]>(() => {
     imgHi: a.badge?.image_url || a.badge?.thumbnail_url || '',
     kind: 'special',
     home: manySpecials
-      ? {x: i % 2 ? 270 : -270, z: -900 - Math.floor(i / 2) * 560}
-      : {x: 0, z: -900 - i * 560},
+      ? {x: i % 2 ? 270 : -270, z: -900 - Math.floor(i / 2) * 520}
+      : {x: 0, z: -900 - i * 520},
   }));
   return out;
 });
@@ -165,13 +160,6 @@ function poseOf(a: MuseumArtifact): ArtifactPose {
   return layout.value[a.key] ?? {x: a.home.x, z: a.home.z, s: 1};
 }
 
-function artifactStyle(a: MuseumArtifact) {
-  const p = poseOf(a);
-  return {
-    transform: `translate3d(${p.x}px, ${FLOOR_Y}px, ${p.z}px) rotateY(var(--mus-yaw)) scale3d(${p.s}, ${p.s}, ${p.s})`,
-  };
-}
-
 /** Seed a mutable pose entry in the layout for the given key. */
 function editablePose(key: string): ArtifactPose {
   if (!layout.value[key]) {
@@ -183,32 +171,45 @@ function editablePose(key: string): ArtifactPose {
   return layout.value[key];
 }
 
+// ── Big picture stats for the back wall ──────────────────────────────────────
+const statsRows = computed(() => {
+  const s = props.stats || {};
+  const n = (v: number | undefined) => (v ?? 0).toLocaleString();
+  const streak = s.longestStreak ?? 0;
+  return [
+    {label: 'EDITS ALL TIME', value: n(s.editsAllTime)},
+    {label: 'CELLS COMPLETED', value: n(s.cellsSubmitted)},
+    {label: 'MERGES', value: n(s.mergesAllTime)},
+    {label: 'SPLITS', value: n(s.splitsAllTime)},
+    {label: streak === 1 ? 'DAY LONGEST STREAK' : 'DAYS LONGEST STREAK', value: n(streak)},
+  ];
+});
+
 // ── Camera + input ───────────────────────────────────────────────────────────
 const cam = {x: 0, z: -140, yaw: 0, pitch: 0};
 const keys = new Set<string>();
 const editMode = ref(false);
 const selectedKey = ref<string | null>(null);
-const worldEl = ref<HTMLElement | null>(null);
 const viewportEl = ref<HTMLElement | null>(null);
+const glCanvasEl = ref<HTMLCanvasElement | null>(null);
+let museumScene: MuseumScene | null = null;
 
 // Touch devices get an on-screen joystick and resize buttons.
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
+const joyEl = ref<HTMLElement | null>(null);
+const joyKnobEl = ref<HTMLElement | null>(null);
+const joy = {active: false, id: -1, x: 0, y: 0};
 
 // ── Real specimen in the sky ─────────────────────────────────────────────────
-// Amy's wide field amacrine cell from the stroeh retina. Downloaded through
-// the viewer's own authenticated mesh pipeline, decimated, cached locally.
-// While it loads (or if it can't), the hand drawn SVG neuron stands in.
 const SPECIMEN_SEG_ID = '720575940569107563';
 const SPECIMEN_LABEL = 'WIDE FIELD AMACRINE · STROEH RETINA';
 const wireframe = ref<MuseumWireframe | null>(null);
 const specimenState = ref<'loading' | 'live' | 'fallback'>('loading');
 const specimenProgress = ref<{loaded: number; total: number} | null>(null);
-const neuronCanvasEl = ref<HTMLCanvasElement | null>(null);
 
 // The soma is not at the arbor's bounding box center: wide field cells are
-// asymmetric. Find it as the densest knot of mesh vertices and center the
-// drawing (and the spin pivot) there, so the soma hangs over the hall's
-// centerline with the arbor wheeling around it.
+// asymmetric. Find it as the densest knot of vertices so the cell body hangs
+// over the hall's centerline with the arbor wheeling around it.
 let somaCenter = {x: 0, y: 0, z: 0};
 let somaMaxRadius = 1000;
 
@@ -242,54 +243,6 @@ function computeSomaCenter(wf: MuseumWireframe) {
   somaMaxRadius = Math.sqrt(maxR2);
 }
 
-function drawSpecimen(now: number) {
-  const canvas = neuronCanvasEl.value;
-  const wf = wireframe.value;
-  if (!canvas || !wf) return;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const W = canvas.width, H = canvas.height;
-  const spin = now * 0.000006;
-  const ca = Math.cos(spin), sa = Math.sin(spin);
-  const tilt = 0.42;
-  const ct = Math.cos(tilt), st = Math.sin(tilt);
-  const v = wf.verts;
-  const n = Math.floor(v.length / 3);
-  const px = new Float32Array(n), py = new Float32Array(n);
-  // Fit the arbor to the canvas from its true pivot: the soma.
-  const sc = (Math.min(W, H) / 2) / somaMaxRadius * 0.96;
-  for (let i = 0; i < n; i++) {
-    // Recenter on the soma, then swap the data y and z axes: the wide field
-    // arbor is a flat pancake in dataset x/y, and this lays it horizontal so
-    // the branches stretch wide across the sky instead of standing on edge.
-    const x = v[i * 3] - somaCenter.x;
-    const y = v[i * 3 + 2] - somaCenter.z;
-    const z = v[i * 3 + 1] - somaCenter.y;
-    const rx = x * ca + z * sa;
-    const rz = -x * sa + z * ca;
-    const ry = y * ct - rz * st;
-    px[i] = W / 2 + rx * sc;
-    py[i] = H / 2 + ry * sc;
-  }
-  ctx.clearRect(0, 0, W, H);
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.lineCap = 'round';
-  const e = wf.edges;
-  for (const pass of [{w: 7, c: 'rgba(53, 181, 255, 0.09)'}, {w: 1.5, c: 'rgba(160, 230, 255, 0.75)'}]) {
-    ctx.lineWidth = pass.w;
-    ctx.strokeStyle = pass.c;
-    ctx.beginPath();
-    for (let i = 0; i + 1 < e.length; i += 2) {
-      ctx.moveTo(px[e[i]], py[e[i]]);
-      ctx.lineTo(px[e[i + 1]], py[e[i + 1]]);
-    }
-    ctx.stroke();
-  }
-}
-const joyEl = ref<HTMLElement | null>(null);
-const joyKnobEl = ref<HTMLElement | null>(null);
-const joy = {active: false, id: -1, x: 0, y: 0};
-
 let intro = true;
 let raf = 0;
 let last = 0;
@@ -304,7 +257,6 @@ const MOVE_KEYS = new Set([
 function clampCam() {
   cam.x = Math.max(-ROOM_W / 2 + 90, Math.min(ROOM_W / 2 - 90, cam.x));
   cam.z = Math.max(-ROOM_D + 90, Math.min(-90, cam.z));
-  // Generous upward range so the specimen overhead is easy to take in.
   cam.pitch = Math.max(-34, Math.min(62, cam.pitch));
 }
 
@@ -359,17 +311,30 @@ function tick(now: number) {
 
   clampCam();
 
-  const w = worldEl.value;
-  if (w) {
-    w.style.transform =
-      `translateZ(${PERSP}px) rotateX(${cam.pitch}deg) rotateY(${cam.yaw}deg) ` +
-      `translate3d(${-cam.x}px, 0px, ${-cam.z}px)`;
-    w.style.setProperty('--mus-yaw', `${-cam.yaw}deg`);
+  if (museumScene) {
+    museumScene.setCamera(cam.x, cam.z, cam.yaw, cam.pitch);
+    museumScene.render(now);
   }
-  if (++lodCounter % 20 === 0) updateLod();
-  if (wireframe.value && (lodCounter & 1) === 0) drawSpecimen(now);
   raf = requestAnimationFrame(tick);
 }
+
+// ── Scene sync ───────────────────────────────────────────────────────────────
+function syncArtifacts() {
+  if (!museumScene) return;
+  museumScene.setArtifacts(artifacts.value);
+  for (const a of artifacts.value) museumScene.setPose(a.key, poseOf(a));
+  museumScene.setSelected(selectedKey.value);
+}
+
+watch(artifacts, syncArtifacts);
+watch(layout, () => {
+  if (!museumScene) return;
+  for (const a of artifacts.value) museumScene.setPose(a.key, poseOf(a));
+}, {deep: true});
+watch(selectedKey, k => museumScene?.setSelected(k));
+watch(wireframe, wf => {
+  if (wf && museumScene) museumScene.setSpecimen(wf, somaCenter, somaMaxRadius);
+});
 
 // ── Pointer: drag to look, or drag artifacts in curate mode ──────────────────
 let dragMode: 'none' | 'look' | 'artifact' = 'none';
@@ -382,21 +347,21 @@ function onPointerDown(e: PointerEvent) {
   // HUD buttons keep their normal click behavior: capturing the pointer here
   // would swallow the click event they are about to receive. The joystick
   // manages its own pointer. A second finger never steals an active drag.
-  if (target.closest('.mus-hud-top, .mus-hud-selected, .mus-hud-help, .mus-joystick, .mus-door')) return;
+  if (target.closest('.mus-hud-top, .mus-hud-selected, .mus-hud-help, .mus-joystick')) return;
   if (dragMode !== 'none') return;
-  dragStart.id = e.pointerId;
-  const hit = target.closest('[data-akey]') as HTMLElement | null;
   dragDist = 0;
   dragStart.px = e.clientX;
   dragStart.py = e.clientY;
-  if (editMode.value && hit?.dataset.akey) {
+  dragStart.id = e.pointerId;
+  const hitKey = editMode.value ? museumScene?.pickArtifact(e.clientX, e.clientY) : null;
+  if (editMode.value && hitKey) {
     dragMode = 'artifact';
-    dragKey = hit.dataset.akey;
+    dragKey = hitKey;
     const p = editablePose(dragKey);
     dragStart.x = p.x;
     dragStart.z = p.z;
     const dist = Math.hypot(p.x - cam.x, p.z - cam.z);
-    dragStart.k = Math.max(0.6, dist / PERSP);
+    dragStart.k = Math.max(0.6, dist / 800);
   } else {
     dragMode = 'look';
     dragStart.yaw = cam.yaw;
@@ -428,8 +393,14 @@ function onPointerMove(e: PointerEvent) {
 
 function onPointerUp(e: PointerEvent) {
   if (e.pointerId !== dragStart.id) return;
-  if (dragMode === 'artifact' && dragDist < 6) {
-    selectedKey.value = selectedKey.value === dragKey ? null : dragKey;
+  if (dragDist < 6) {
+    if (dragMode === 'artifact') {
+      selectedKey.value = selectedKey.value === dragKey ? null : dragKey;
+    } else if (museumScene?.pickDoor(e.clientX, e.clientY)) {
+      emit('close');
+    } else if (editMode.value) {
+      selectedKey.value = null;
+    }
   }
   dragMode = 'none';
   dragStart.id = -1;
@@ -522,9 +493,21 @@ function onBlur() {
   keys.clear();
 }
 
+function onResize() {
+  museumScene?.resize();
+}
+
 function toggleEdit() {
   editMode.value = !editMode.value;
   if (!editMode.value) selectedKey.value = null;
+}
+
+function resetLayout() {
+  layout.value = {};
+  selectedKey.value = null;
+  try {
+    localStorage.removeItem(layoutKey.value);
+  } catch {}
 }
 
 /** Download the decimated wireframe so it can be baked into the app. */
@@ -539,97 +522,14 @@ function exportSpecimen() {
   URL.revokeObjectURL(a.href);
 }
 
-function resetLayout() {
-  layout.value = {};
-  selectedKey.value = null;
-  try {
-    localStorage.removeItem(layoutKey.value);
-  } catch {}
-}
-
 const selectedArtifact = computed(() =>
   artifacts.value.find(a => a.key === selectedKey.value) ?? null);
 
-// ── Distance based level of detail ───────────────────────────────────────────
-// Only the nearest handful of artifacts run the bobbing animation, and
-// artifacts far beyond the fog line stop painting entirely.
-const artifactByKey = computed(() => new Map(artifacts.value.map(a => [a.key, a])));
-let lodCounter = 0;
-
-/** Artifacts whose full resolution art is decoded and safe to display.
- *  One way only: once an artifact has earned hi res it keeps it, because
- *  swapping back down (or swapping before the image is decoded) flashes. */
-const hiResKeys = ref<Set<string>>(new Set());
-const HI_RES_DIST = 1150;
-const hiResPreloading = new Set<string>();
-
-/** Images fade in only once fully loaded: progressive PNG paint reads as a
- *  glitchy half drawn badge. */
-const loadedImgs = ref<Set<string>>(new Set());
-function onImgLoad(key: string) {
-  if (loadedImgs.value.has(key)) return;
-  const s = new Set(loadedImgs.value);
-  s.add(key);
-  loadedImgs.value = s;
-}
-
-/** Fog culling with hysteresis: a single threshold makes artifacts at the
- *  boundary blink on and off with every step. */
-const farKeys = new Set<string>();
-
-function preloadHiRes(key: string, url: string) {
-  if (!url || hiResPreloading.has(key)) return;
-  hiResPreloading.add(key);
-  const im = new Image();
-  im.decoding = 'async';
-  im.src = url;
-  im.decode().then(() => {
-    const next = new Set(hiResKeys.value);
-    next.add(key);
-    hiResKeys.value = next;
-  }).catch(() => {
-    hiResPreloading.delete(key);
-  });
-}
-
-function updateLod() {
-  const els = worldEl.value?.querySelectorAll('[data-akey]') as NodeListOf<HTMLElement> | undefined;
-  if (!els) return;
-  const scored: {el: HTMLElement; d: number}[] = [];
-  els.forEach(el => {
-    const key = el.dataset.akey || '';
-    const a = artifactByKey.value.get(key);
-    const p = a ? poseOf(a) : null;
-    const d = p ? Math.hypot(p.x - cam.x, p.z - cam.z) : Infinity;
-    const isFar = farKeys.has(key) ? d > 4600 : d > 5000;
-    if (isFar) farKeys.add(key); else farKeys.delete(key);
-    el.classList.toggle('mus-artifact--far', isFar);
-    if (a && d < HI_RES_DIST && !hiResKeys.value.has(key)) preloadHiRes(key, a.imgHi);
-    scored.push({el, d});
-  });
-  scored.sort((a, b) => a.d - b.d);
-  scored.forEach((s, i) => s.el.classList.toggle('mus-artifact--near', i < 6 && s.d < 1800));
-}
-
-// ── Big picture stats for the side wall ──────────────────────────────────────
-const statsRows = computed(() => {
-  const s = props.stats || {};
-  const n = (v: number | undefined) => (v ?? 0).toLocaleString();
-  const streak = s.longestStreak ?? 0;
-  return [
-    {label: 'EDITS ALL TIME', value: n(s.editsAllTime)},
-    {label: 'CELLS COMPLETED', value: n(s.cellsSubmitted)},
-    {label: 'MERGES', value: n(s.mergesAllTime)},
-    {label: 'SPLITS', value: n(s.splitsAllTime)},
-    {label: streak === 1 ? 'DAY LONGEST STREAK' : 'DAYS LONGEST STREAK', value: n(streak)},
-  ];
-});
-
 // The viewport meta lives only while the museum is open: adding it globally
 // to index.html changes page scaling for the whole app, and the app's 3D
-// viewport is not ours to resize. Scoped here, phones still get proper
-// scaling for the museum walkthrough.
+// viewport is not ours to resize.
 let injectedViewportMeta: HTMLMetaElement | null = null;
+let unmounted = false;
 
 onMounted(() => {
   if (!document.querySelector('meta[name="viewport"]')) {
@@ -642,8 +542,30 @@ onMounted(() => {
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);
   window.addEventListener('blur', onBlur);
+  window.addEventListener('resize', onResize);
+
+  // Plaque textures rasterize Orbitron, so wait for fonts before building.
+  const fontsReady: Promise<unknown> =
+      (document as any).fonts?.ready ?? Promise.resolve();
+  fontsReady.then(() => {
+    if (unmounted || !glCanvasEl.value) return;
+    museumScene = new MuseumScene(glCanvasEl.value, {
+      roomW: ROOM_W,
+      roomD: ROOM_D,
+      wallH: WALL_H,
+      floorY: FLOOR_Y,
+      userName: props.userName,
+      statsRows: statsRows.value,
+    });
+    syncArtifacts();
+    if (wireframe.value) {
+      museumScene.setSpecimen(wireframe.value, somaCenter, somaMaxRadius);
+    }
+  });
+
   last = performance.now();
   raf = requestAnimationFrame(tick);
+
   getMuseumWireframe(SPECIMEN_SEG_ID, {
     onProgress: (loaded, total) => {
       specimenProgress.value = {loaded, total};
@@ -658,6 +580,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  unmounted = true;
   injectedViewportMeta?.remove();
   injectedViewportMeta = null;
   cancelAnimationFrame(raf);
@@ -665,6 +588,9 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown, true);
   window.removeEventListener('keyup', onKeyUp, true);
   window.removeEventListener('blur', onBlur);
+  window.removeEventListener('resize', onResize);
+  museumScene?.dispose();
+  museumScene = null;
 });
 </script>
 
@@ -679,106 +605,7 @@ onUnmounted(() => {
       @pointerup="onPointerUp"
       @wheel="onWheel"
     >
-      <!-- ── 3D world ── -->
-      <div ref="worldEl" class="mus-world">
-        <!-- Room shell -->
-        <div class="mus-floor" :style="{width: ROOM_W + 'px', height: ROOM_D + 'px', transform: `translate3d(${-ROOM_W/2}px, ${FLOOR_Y}px, ${-ROOM_D}px) rotateX(90deg)`}"></div>
-        <div class="mus-wall mus-wall--left" :style="{width: ROOM_D + 'px', height: WALL_H + 'px', transform: `translate3d(${-ROOM_W/2}px, ${CEIL_Y}px, 0px) rotateY(90deg)`}"></div>
-        <div class="mus-wall mus-wall--right" :style="{width: ROOM_D + 'px', height: WALL_H + 'px', transform: `translate3d(${ROOM_W/2}px, ${CEIL_Y}px, ${-ROOM_D}px) rotateY(-90deg)`}"></div>
-        <div class="mus-wall mus-wall--back" :style="{width: ROOM_W + 'px', height: WALL_H + 'px', transform: `translate3d(${-ROOM_W/2}px, ${CEIL_Y}px, ${-ROOM_D}px)`}"></div>
-        <div class="mus-wall mus-wall--front" :style="{width: ROOM_W + 'px', height: WALL_H + 'px', transform: `translate3d(${ROOM_W/2}px, ${CEIL_Y}px, 0px) rotateY(180deg)`}"></div>
-
-        <!-- Back wall inscription -->
-        <div class="mus-inscription" :style="{transform: `translate3d(-600px, -270px, ${-ROOM_D + 6}px)`}">
-          <div class="mus-inscription-title">HALL OF ACHIEVEMENTS</div>
-          <div class="mus-inscription-sub">EYEWIRE II · CURATOR: {{ userName.toUpperCase() }}</div>
-        </div>
-
-        <!-- Giant hologram neuron in the open sky above the hall: the real
-             specimen mesh when it loads, the hand drawn one until then -->
-        <div class="mus-neuron" :style="{transform: `translate3d(0px, ${CEIL_Y - 470}px, -1150px) rotateY(var(--mus-yaw))`}">
-          <canvas v-if="wireframe" ref="neuronCanvasEl" class="mus-neuron-canvas" width="1600" height="1000"></canvas>
-          <svg v-else class="mus-neuron-svg" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <g class="mus-neuron-layer mus-neuron-layer--glow">
-              <use href="#musNeuronPaths" />
-            </g>
-            <g class="mus-neuron-layer mus-neuron-layer--line">
-              <g id="musNeuronPaths">
-                <!-- soma wireframe -->
-                <ellipse cx="600" cy="400" rx="72" ry="64" />
-                <ellipse cx="600" cy="400" rx="72" ry="26" />
-                <ellipse cx="600" cy="400" rx="30" ry="64" />
-                <circle cx="600" cy="400" r="18" />
-                <!-- dendrites -->
-                <path d="M585 340 C560 285 525 245 475 205 M475 205 C445 175 420 155 400 130 M475 205 C495 170 505 145 512 118 M400 130 C382 110 366 96 352 84 M512 118 C520 98 530 82 545 66" />
-                <path d="M640 348 C680 295 715 250 758 214 M758 214 C790 186 815 168 838 148 M758 214 C740 178 736 152 738 122 M838 148 C860 132 878 120 900 108" />
-                <path d="M532 388 C465 375 405 355 342 330 M342 330 C300 314 268 302 234 296 M342 330 C320 356 302 372 282 392 M234 296 C210 292 190 288 168 290" />
-                <path d="M560 456 C520 515 478 560 428 606 M428 606 C395 636 368 658 344 686 M428 606 C450 640 460 664 466 692 M344 686 C328 704 314 718 296 728" />
-                <path d="M618 468 C630 535 622 595 600 652 M600 652 C588 685 574 708 556 728 M600 652 C622 680 636 700 648 724" />
-                <!-- axon with terminal arbor -->
-                <path d="M668 416 C760 442 850 448 950 440 C1020 434 1070 428 1108 422 M1108 422 C1130 408 1146 394 1162 376 M1108 422 C1132 430 1150 442 1166 458 M1162 376 C1172 364 1180 354 1190 346 M1166 458 C1176 468 1184 478 1192 488" />
-              </g>
-            </g>
-            <g class="mus-neuron-nodes">
-              <circle cx="352" cy="84" r="5" /><circle cx="545" cy="66" r="5" />
-              <circle cx="900" cy="108" r="5" /><circle cx="738" cy="122" r="4" />
-              <circle cx="168" cy="290" r="5" /><circle cx="282" cy="392" r="4" />
-              <circle cx="296" cy="728" r="5" /><circle cx="466" cy="692" r="4" />
-              <circle cx="556" cy="728" r="4" /><circle cx="648" cy="724" r="4" />
-              <circle cx="1190" cy="346" r="5" /><circle cx="1192" cy="488" r="5" />
-            </g>
-          </svg>
-        </div>
-
-        <!-- Exit door on the entrance wall -->
-        <div class="mus-door" :style="{transform: `translate3d(190px, ${FLOOR_Y - 470}px, -2px) rotateY(180deg)`}" @click="emit('close')">
-          <div class="mus-door-arch"></div>
-          <div class="mus-door-glow"></div>
-          <div class="mus-door-label">EXIT</div>
-          <div class="mus-door-sub">BACK TO EYEWIRE 2</div>
-          <div class="mus-door-chevrons">⌃</div>
-        </div>
-
-        <!-- Big picture stats: a monument on the back wall, below the
-             inscription, where no artifacts stand in front of the numbers -->
-        <div class="mus-wallstats" :style="{transform: `translate3d(-500px, -40px, ${-ROOM_D + 8}px)`}">
-          <div class="mus-wallstats-title">CAREER TELEMETRY</div>
-          <div class="mus-wallstats-row">
-            <div v-for="row in statsRows" :key="row.label" class="mus-wallstats-item">
-              <div class="mus-wallstats-value">{{ row.value }}</div>
-              <div class="mus-wallstats-label">{{ row.label }}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Artifacts -->
-        <div
-          v-for="(a, i) in artifacts"
-          :key="a.key"
-          class="mus-artifact"
-          :class="[`mus-artifact--${a.kind}`, {'mus-artifact--selected': selectedKey === a.key}]"
-          :data-akey="a.key"
-          :style="artifactStyle(a)"
-        >
-          <div class="mus-beam"></div>
-          <div class="mus-disc"></div>
-          <div class="mus-float" :style="{animationDelay: `${(i % 9) * -0.7}s`}">
-            <img v-if="a.img" class="mus-badge-img" :class="{'mus-badge-img--ready': loadedImgs.has(a.key)}" :src="hiResKeys.has(a.key) && a.imgHi ? a.imgHi : a.img" :alt="a.name" decoding="async" draggable="false" @load="onImgLoad(a.key)" />
-            <div v-else class="mus-badge-fallback">✦</div>
-          </div>
-          <div class="mus-plaque">
-            <div class="mus-plaque-name">{{ a.name }}</div>
-            <div class="mus-plaque-sub">{{ a.subtitle }}</div>
-            <div class="mus-plaque-desc">{{ a.desc }}</div>
-          </div>
-        </div>
-
-        <!-- Empty museum message -->
-        <div v-if="artifacts.length === 0" class="mus-empty" :style="{transform: `translate3d(-300px, -120px, -1400px)`}">
-          <div class="mus-empty-title">THE HALL AWAITS</div>
-          <div class="mus-empty-sub">Earn badges to fill your museum with artifacts.</div>
-        </div>
-      </div>
+      <canvas ref="glCanvasEl" class="mus-gl"></canvas>
 
       <!-- ── HUD ── -->
       <div class="mus-vignette"></div>
@@ -804,6 +631,11 @@ onUnmounted(() => {
         <button class="mus-btn mus-btn--size" @click="scaleSelected(1.18)">+</button>
         <span v-if="!isTouch">drag to move · scroll to resize · R to reset · Esc to deselect</span>
         <span v-else>drag to move · tap again to deselect</span>
+      </div>
+
+      <div v-if="artifacts.length === 0" class="mus-empty-hud">
+        <div class="mus-empty-title">THE HALL AWAITS</div>
+        <div class="mus-empty-sub">Earn badges to fill your museum with artifacts.</div>
       </div>
 
       <div class="mus-hud-help">
@@ -838,7 +670,7 @@ onUnmounted(() => {
 
 <style scoped>
 /* ══════════════════════════════════════════════════════════════════════════
-   ACHIEVEMENT MUSEUM · holographic gallery hall
+   ACHIEVEMENT MUSEUM · WebGL gallery hall, DOM carries only the HUD
    ══════════════════════════════════════════════════════════════════════════ */
 
 .nge-museum {
@@ -846,16 +678,11 @@ onUnmounted(() => {
   inset: 0;
   z-index: 9500;
   overflow: hidden;
-  perspective: 800px;
-  background:
-    radial-gradient(ellipse at 50% 30%, rgba(10, 22, 44, 0.9) 0%, rgba(2, 5, 12, 0.98) 70%),
-    #02050c;
+  background: #02050c;
   cursor: grab;
   user-select: none;
   touch-action: none;
   animation: musFadeIn 0.5s ease-out;
-  /* Teleported to body, so set the type stack explicitly or descriptions
-     fall back to the browser's serif default. */
   font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
 }
 .nge-museum:active { cursor: grabbing; }
@@ -866,312 +693,12 @@ onUnmounted(() => {
   to   { opacity: 1; }
 }
 
-.mus-world {
+.mus-gl {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform-style: preserve-3d;
-  will-change: transform;
-}
-
-/* ── Room shell (open sky: no ceiling, the neuron hovers above) ── */
-.mus-floor, .mus-wall {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0;
-  backface-visibility: hidden;
-}
-
-/* Grid lines get soft edges: hard 1px stops shimmer and flash while the
-   camera moves, soft falloffs stay calm. */
-/* Dot grid instead of line grid: thin lines under perspective motion alias
-   into shimmering, dots stay calm. */
-.mus-floor {
-  background:
-    linear-gradient(90deg, transparent 45%, rgba(53, 181, 255, 0.07) 48%, rgba(120, 220, 255, 0.11) 50%, rgba(53, 181, 255, 0.07) 52%, transparent 55%),
-    radial-gradient(circle, rgba(90, 200, 255, 0.16) 0 3px, rgba(90, 200, 255, 0.05) 5px, transparent 8px),
-    linear-gradient(180deg, rgba(6, 14, 30, 0.99), rgba(3, 8, 18, 0.99));
-  background-size: 100% 100%, 146px 146px, 100% 100%;
-}
-
-/* No grid lines on walls: they shimmer during motion. Gradient plus the
-   parapet glow line carries the look. */
-.mus-wall {
-  background:
-    linear-gradient(to bottom, transparent calc(100% - 6px), rgba(53, 181, 255, 0.26) calc(100% - 1px)),
-    linear-gradient(to bottom, rgba(53, 181, 255, 0.14) 0, rgba(53, 181, 255, 0.04) 5px, transparent 10px),
-    linear-gradient(180deg, rgba(7, 14, 30, 0.97) 0%, rgba(4, 9, 20, 0.98) 100%);
-  background-size: 100% 100%, 100% 100%, 100% 100%;
-}
-
-.mus-wall--back {
-  background:
-    radial-gradient(ellipse at 50% 55%, rgba(53, 181, 255, 0.12) 0%, transparent 60%),
-    linear-gradient(to bottom, transparent calc(100% - 3px), rgba(53, 181, 255, 0.35) calc(100% - 1px)),
-    linear-gradient(180deg, rgba(7, 14, 30, 0.98) 0%, rgba(4, 9, 20, 0.99) 100%);
-}
-
-/* ── Back wall inscription ── */
-.mus-inscription {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 1200px;
-  text-align: center;
-  pointer-events: none;
-}
-.mus-inscription-title {
-  font-family: 'Orbitron', 'Rajdhani', sans-serif;
-  font-size: 64px;
-  font-weight: 700;
-  letter-spacing: 14px;
-  color: rgba(160, 225, 255, 0.9);
-  text-shadow:
-    0 0 18px rgba(53, 181, 255, 0.85),
-    0 0 60px rgba(53, 181, 255, 0.5);
-}
-.mus-inscription-sub {
-  margin-top: 14px;
-  font-family: 'Orbitron', 'Rajdhani', sans-serif;
-  font-size: 20px;
-  font-weight: 500;
-  letter-spacing: 8px;
-  color: rgba(120, 190, 235, 0.6);
-  text-shadow: 0 0 12px rgba(53, 181, 255, 0.4);
-}
-
-/* ── Artifacts ── */
-.mus-artifact {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  transform-style: preserve-3d;
-  /* Persistent GPU layer per artifact: during camera motion the compositor
-     keeps showing the previous raster while it redraws at the new scale,
-     instead of flashing blank. */
-  will-change: transform;
-}
-
-/* Spotlight cone from the ceiling */
-.mus-beam {
-  position: absolute;
-  left: -105px;
-  top: -540px;
-  width: 210px;
-  height: 540px;
-  clip-path: polygon(47% 0, 53% 0, 100% 100%, 0 100%);
-  background: linear-gradient(to bottom,
-    rgba(150, 225, 255, 0.15) 0%,
-    rgba(53, 181, 255, 0.055) 60%,
-    rgba(53, 181, 255, 0.01) 100%);
-  pointer-events: none;
-  backface-visibility: hidden;
-}
-
-/* Projector rings on the floor */
-.mus-disc {
-  position: absolute;
-  width: 190px;
-  height: 190px;
-  border-radius: 50%;
-  transform: translate3d(-95px, -2px, -95px) rotateX(90deg);
-  background:
-    radial-gradient(circle, rgba(120, 220, 255, 0.5) 0%, rgba(53, 181, 255, 0.16) 18%, transparent 34%),
-    radial-gradient(circle, transparent 52%, rgba(53, 181, 255, 0.4) 54%, transparent 57%),
-    radial-gradient(circle, transparent 72%, rgba(53, 181, 255, 0.25) 74%, transparent 77%),
-    radial-gradient(circle, transparent 92%, rgba(53, 181, 255, 0.35) 95%, transparent 98%);
-  pointer-events: none;
-}
-
-/* The floating relic itself */
-.mus-float {
-  position: absolute;
-  left: -80px;
-  top: -330px;
-  width: 160px;
-  height: 160px;
-  pointer-events: none;
-  backface-visibility: hidden;
-}
-/* Only the nearest artifacts animate; a hall of 60 bobbing layers janks. */
-.mus-artifact--near .mus-float {
-  animation: musBob 7.5s ease-in-out infinite;
-}
-.mus-artifact {
-  transition: opacity 0.45s ease;
-}
-.mus-artifact--far {
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.45s ease, visibility 0s 0.45s;
-}
-.mus-badge-img {
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 0 14px rgba(53, 181, 255, 0.5));
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-.mus-badge-img--ready {
-  opacity: 1;
-}
-.mus-badge-fallback {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 84px;
-  color: rgba(150, 225, 255, 0.9);
-  text-shadow: 0 0 28px rgba(53, 181, 255, 0.8);
-}
-
-@keyframes musBob {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-6px); }
-}
-
-/* Name plaque */
-.mus-plaque {
-  position: absolute;
-  left: -110px;
-  top: -145px;
-  width: 220px;
-  padding: 10px 12px 12px;
-  text-align: center;
-  background: linear-gradient(160deg, rgba(8, 18, 38, 0.88), rgba(5, 11, 24, 0.92));
-  border: 1px solid rgba(53, 181, 255, 0.35);
-  border-radius: 6px;
-  box-shadow:
-    0 0 18px rgba(53, 181, 255, 0.18),
-    inset 0 0 22px rgba(53, 181, 255, 0.07);
-  pointer-events: none;
-}
-.mus-plaque-name {
-  font-family: 'Orbitron', 'Rajdhani', sans-serif;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: rgba(190, 235, 255, 0.95);
-  text-shadow: 0 0 10px rgba(53, 181, 255, 0.6);
-  text-transform: uppercase;
-}
-.mus-plaque-sub {
-  margin-top: 4px;
-  font-family: 'Orbitron', 'Rajdhani', sans-serif;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 2px;
-  color: rgba(110, 185, 230, 0.85);
-}
-.mus-plaque-desc {
-  margin-top: 6px;
-  font-size: 11.5px;
-  line-height: 1.35;
-  color: rgba(170, 200, 225, 0.72);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* Track accents */
-.mus-artifact--building .mus-plaque-sub { color: rgba(255, 208, 138, 0.85); }
-.mus-artifact--building .mus-disc {
-  background:
-    radial-gradient(circle, rgba(255, 220, 160, 0.45) 0%, rgba(255, 190, 90, 0.14) 18%, transparent 34%),
-    radial-gradient(circle, transparent 52%, rgba(255, 190, 90, 0.35) 54%, transparent 57%),
-    radial-gradient(circle, transparent 72%, rgba(255, 190, 90, 0.2) 74%, transparent 77%),
-    radial-gradient(circle, transparent 92%, rgba(255, 190, 90, 0.3) 95%, transparent 98%);
-}
-.mus-artifact--exploration .mus-plaque-sub { color: rgba(144, 255, 242, 0.85); }
-.mus-artifact--exploration .mus-disc {
-  background:
-    radial-gradient(circle, rgba(160, 255, 242, 0.45) 0%, rgba(80, 230, 210, 0.14) 18%, transparent 34%),
-    radial-gradient(circle, transparent 52%, rgba(80, 230, 210, 0.35) 54%, transparent 57%),
-    radial-gradient(circle, transparent 72%, rgba(80, 230, 210, 0.2) 74%, transparent 77%),
-    radial-gradient(circle, transparent 92%, rgba(80, 230, 210, 0.3) 95%, transparent 98%);
-}
-.mus-artifact--special .mus-plaque {
-  border-color: rgba(206, 147, 216, 0.5);
-  box-shadow:
-    0 0 18px rgba(206, 147, 216, 0.22),
-    inset 0 0 22px rgba(206, 147, 216, 0.08);
-}
-.mus-artifact--special .mus-plaque-sub { color: rgba(226, 180, 235, 0.9); }
-.mus-artifact--special .mus-beam {
-  background: linear-gradient(to bottom,
-    rgba(235, 190, 255, 0.32) 0%,
-    rgba(206, 147, 216, 0.10) 60%,
-    rgba(206, 147, 216, 0.02) 100%);
-}
-.mus-artifact--special .mus-disc {
-  background:
-    radial-gradient(circle, rgba(235, 195, 245, 0.5) 0%, rgba(206, 147, 216, 0.16) 18%, transparent 34%),
-    radial-gradient(circle, transparent 52%, rgba(206, 147, 216, 0.4) 54%, transparent 57%),
-    radial-gradient(circle, transparent 72%, rgba(206, 147, 216, 0.25) 74%, transparent 77%),
-    radial-gradient(circle, transparent 92%, rgba(206, 147, 216, 0.35) 95%, transparent 98%);
-}
-
-/* Curate mode affordances. Artifact children are click-transparent while
-   walking so drags always look around; curate mode makes them grabbable. */
-.nge-museum--edit .mus-artifact { cursor: move; }
-.nge-museum--edit .mus-float,
-.nge-museum--edit .mus-plaque,
-.nge-museum--edit .mus-disc { pointer-events: auto; }
-.nge-museum--edit .mus-plaque::after {
-  content: '⬡ click to curate';
   display: block;
-  margin-top: 5px;
-  font-size: 9px;
-  letter-spacing: 1.5px;
-  color: rgba(53, 181, 255, 0.55);
-  font-family: 'Orbitron', sans-serif;
-}
-.mus-artifact--selected .mus-plaque {
-  border-color: rgba(140, 230, 255, 0.95);
-  box-shadow:
-    0 0 26px rgba(53, 181, 255, 0.55),
-    inset 0 0 26px rgba(53, 181, 255, 0.16);
-}
-.mus-artifact--selected .mus-plaque::after {
-  content: '⬡ selected';
-  color: rgba(140, 230, 255, 0.95);
-}
-.mus-artifact--selected .mus-badge-img {
-  filter: drop-shadow(0 0 24px rgba(120, 220, 255, 0.9));
-}
-.mus-artifact--selected .mus-disc {
-  animation: musDiscPulse 1.6s ease-in-out infinite;
-}
-@keyframes musDiscPulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.45; }
-}
-
-/* Empty state */
-.mus-empty {
-  position: absolute;
-  width: 600px;
-  text-align: center;
-  pointer-events: none;
-}
-.mus-empty-title {
-  font-family: 'Orbitron', sans-serif;
-  font-size: 34px;
-  font-weight: 700;
-  letter-spacing: 8px;
-  color: rgba(160, 225, 255, 0.85);
-  text-shadow: 0 0 18px rgba(53, 181, 255, 0.7);
-}
-.mus-empty-sub {
-  margin-top: 10px;
-  font-size: 15px;
-  color: rgba(150, 190, 220, 0.7);
 }
 
 /* ── HUD ── */
@@ -1210,6 +737,17 @@ onUnmounted(() => {
   letter-spacing: 3px;
   color: rgba(110, 185, 230, 0.75);
 }
+.mus-hud-specimen {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: rgba(140, 220, 255, 0.8);
+  text-shadow: 0 0 10px rgba(53, 181, 255, 0.5);
+}
+.mus-hud-specimen--dim {
+  color: rgba(120, 160, 195, 0.55);
+  text-shadow: none;
+}
 .mus-hud-actions {
   margin-left: auto;
   display: flex;
@@ -1238,6 +776,11 @@ onUnmounted(() => {
 }
 .mus-btn--exit { border-color: rgba(255, 120, 130, 0.45); }
 .mus-btn--exit:hover { box-shadow: 0 0 14px rgba(255, 120, 130, 0.4); }
+.mus-btn--size {
+  padding: 4px 12px;
+  font-size: 14px;
+  line-height: 1;
+}
 
 .mus-hud-selected {
   position: absolute;
@@ -1255,17 +798,34 @@ onUnmounted(() => {
   border: 1px solid rgba(53, 181, 255, 0.45);
   border-radius: 5px;
 }
-.mus-btn--size {
-  padding: 4px 12px;
-  font-size: 14px;
-  line-height: 1;
-}
 .mus-hud-selected-name {
   font-family: 'Orbitron', sans-serif;
   font-weight: 700;
   letter-spacing: 2px;
   color: rgba(190, 235, 255, 1);
   text-transform: uppercase;
+}
+
+.mus-empty-hud {
+  position: absolute;
+  top: 40%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+}
+.mus-empty-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  color: rgba(160, 225, 255, 0.85);
+  text-shadow: 0 0 18px rgba(53, 181, 255, 0.7);
+}
+.mus-empty-sub {
+  margin-top: 10px;
+  font-size: 15px;
+  color: rgba(150, 190, 220, 0.7);
 }
 
 .mus-hud-help {
@@ -1281,174 +841,6 @@ onUnmounted(() => {
   color: rgba(120, 190, 235, 0.7);
   background: linear-gradient(to top, rgba(2, 6, 14, 0.85), transparent);
   pointer-events: none;
-}
-
-/* ── Giant sky neuron ── */
-.mus-neuron {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-/* Kept below 2500px and unanimated: a huge always-pulsing layer is a
-   constant compositor tax and a glitch source. */
-.mus-neuron-svg {
-  position: absolute;
-  left: -1200px;
-  top: -758px;
-  width: 2400px;
-  height: 1516px;
-  overflow: visible;
-  opacity: 0.85;
-}
-.mus-neuron-layer { stroke: rgb(120, 220, 255); fill: none; stroke-linecap: round; }
-.mus-neuron-layer--glow { stroke: rgba(53, 181, 255, 0.30); stroke-width: 15; }
-.mus-neuron-layer--line { stroke-width: 3.5; opacity: 0.92; }
-.mus-neuron-nodes circle {
-  fill: rgba(160, 230, 255, 0.95);
-  stroke: rgba(53, 181, 255, 0.5);
-  stroke-width: 6;
-}
-.mus-neuron-canvas {
-  position: absolute;
-  left: -2100px;
-  top: -1330px;
-  width: 4200px;
-  height: 2625px;
-}
-.mus-hud-specimen {
-  font-family: 'Orbitron', sans-serif;
-  font-size: 10px;
-  letter-spacing: 3px;
-  color: rgba(140, 220, 255, 0.8);
-  text-shadow: 0 0 10px rgba(53, 181, 255, 0.5);
-}
-.mus-hud-specimen--dim {
-  color: rgba(120, 160, 195, 0.55);
-  text-shadow: none;
-}
-
-/* ── Exit door on the entrance wall ── */
-.mus-door {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 380px;
-  height: 470px;
-  transform-origin: 0 0;
-  cursor: pointer;
-  background: linear-gradient(to top, rgba(53, 181, 255, 0.16) 0%, rgba(53, 181, 255, 0.05) 55%, transparent 100%);
-  border: 2px solid rgba(120, 220, 255, 0.55);
-  border-bottom: none;
-  border-radius: 190px 190px 0 0;
-  box-shadow:
-    0 0 34px rgba(53, 181, 255, 0.35),
-    inset 0 0 44px rgba(53, 181, 255, 0.14);
-  text-align: center;
-  backface-visibility: hidden;
-}
-.mus-door:hover {
-  background: linear-gradient(to top, rgba(53, 181, 255, 0.26) 0%, rgba(53, 181, 255, 0.09) 55%, transparent 100%);
-  box-shadow:
-    0 0 54px rgba(53, 181, 255, 0.55),
-    inset 0 0 54px rgba(53, 181, 255, 0.22);
-}
-.mus-door-arch {
-  position: absolute;
-  inset: 22px 22px 0;
-  border: 1px solid rgba(53, 181, 255, 0.35);
-  border-bottom: none;
-  border-radius: 170px 170px 0 0;
-  pointer-events: none;
-}
-.mus-door-glow {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 240px;
-  height: 16px;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse at center, rgba(120, 220, 255, 0.55) 0%, transparent 70%);
-  pointer-events: none;
-}
-.mus-door-label {
-  margin-top: 150px;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 56px;
-  font-weight: 700;
-  letter-spacing: 12px;
-  color: rgba(190, 235, 255, 0.95);
-  text-shadow: 0 0 22px rgba(53, 181, 255, 0.9);
-  pointer-events: none;
-}
-.mus-door-sub {
-  margin-top: 12px;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 17px;
-  font-weight: 500;
-  letter-spacing: 4px;
-  color: rgba(130, 200, 240, 0.85);
-  text-shadow: 0 0 12px rgba(53, 181, 255, 0.5);
-  pointer-events: none;
-}
-.mus-door-chevrons {
-  margin-top: 26px;
-  font-size: 30px;
-  color: rgba(120, 220, 255, 0.7);
-  animation: musDoorChevron 2.2s ease-in-out infinite;
-  pointer-events: none;
-}
-@keyframes musDoorChevron {
-  0%, 100% { transform: translateY(0); opacity: 0.55; }
-  50%      { transform: translateY(-8px); opacity: 1; }
-}
-
-/* ── Big picture stats on the side wall ── */
-/* Plateless: pure glowing wall text like the inscription above it. A card
-   plate reads as an object and fights the artifacts; glow text never blocks. */
-.mus-wallstats {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 1000px;
-  transform-origin: 0 0;
-  text-align: center;
-  pointer-events: none;
-  backface-visibility: hidden;
-}
-.mus-wallstats-title {
-  font-family: 'Orbitron', sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 8px;
-  color: rgba(140, 215, 250, 0.55);
-  text-shadow: 0 0 10px rgba(53, 181, 255, 0.4);
-}
-.mus-wallstats-row {
-  margin-top: 12px;
-  display: flex;
-  justify-content: center;
-  gap: 28px;
-}
-.mus-wallstats-item { min-width: 130px; }
-.mus-wallstats-value {
-  font-family: 'Orbitron', sans-serif;
-  font-size: 38px;
-  font-weight: 700;
-  color: rgba(190, 232, 255, 0.92);
-  text-shadow:
-    0 0 16px rgba(53, 181, 255, 0.7),
-    0 0 44px rgba(53, 181, 255, 0.3);
-}
-.mus-wallstats-label {
-  margin-top: 4px;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 3px;
-  color: rgba(130, 200, 240, 0.65);
 }
 
 /* ── Touch joystick ── */
@@ -1484,10 +876,5 @@ onUnmounted(() => {
 @media (max-width: 640px) {
   .mus-hud-title { font-size: 12px; letter-spacing: 2px; }
   .mus-hud-count { display: none; }
-  .mus-inscription-title { font-size: 56px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mus-float, .mus-artifact--selected .mus-disc { animation: none; }
 }
 </style>

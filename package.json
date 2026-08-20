@@ -46,6 +46,7 @@
     "marked": "^15.0.7",
     "neuroglancer": "github:seung-lab/neuroglancer#737a902c8740ff37500ba0f2f658beacbbdd7c5a",
     "pinia": "^2.0.32",
+    "three": "^0.160.0",
     "vue": "^3.2.47",
     "vue-loader": "^17.2.2",
     "vue-router": "^4.1.6",
