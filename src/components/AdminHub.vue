@@ -86,6 +86,13 @@ watch(triageShowReviewed, () => loadTriage());
 
 async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done') {
   if (triageActing.value) return;
+  // Shipping a change closes the loop in Slack: the bridge posts a change
+  // update into the original thread and tags the approvers, carrying this
+  // note. Blank is fine, the update just goes noteless.
+  let resultNote: string | null = null;
+  if (status === 'done') {
+    resultNote = (window.prompt('One line for the Slack update (what shipped?)', '') || '').trim() || null;
+  }
   triageActing.value = row.id;
   try {
     const { supabase } = await import('../supabase');
@@ -119,6 +126,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
     const { error } = await supabase.from('feedback_triage').update({
       status,
       proposed_message: (triageEdits.value[row.id] ?? row.proposed_message) || null,
+      ...(status === 'done' ? { result_note: resultNote } : {}),
       reviewed_by: backend.userName || backend.userEmail || 'admin',
       reviewed_at: new Date().toISOString(),
     }).eq('id', row.id);

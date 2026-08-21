@@ -1528,21 +1528,20 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         </div>
       </div>
 
-      <!-- ── Achievement Museum (teleports to body, fullscreen) ── -->
-      <achievement-museum
-        v-if="showMuseum"
-        :building="earnedBuildingBadges.earned"
-        :exploration="earnedExplorationBadges.earned"
-        :specials="profileSpecialBadges"
-        :user-id="museumUserId"
-        :user-name="profileUsername || profileName"
-        :editable="!viewingOtherUser"
-        :stats="profileStats"
-        @close="showMuseum = false"
-      />
-
     </div>
   </modal-overlay>
+  <!-- Achievement Museum: teleports itself to body, fullscreen -->
+  <achievement-museum
+    v-if="showMuseum"
+    :building="earnedBuildingBadges.earned"
+    :exploration="earnedExplorationBadges.earned"
+    :specials="profileSpecialBadges"
+    :user-id="museumUserId"
+    :user-name="profileUsername || profileName"
+    :editable="!viewingOtherUser"
+    :stats="profileStats"
+    @close="showMuseum = false"
+  />
 </template>
 
 <style scoped>

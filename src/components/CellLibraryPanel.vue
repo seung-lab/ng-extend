@@ -1163,8 +1163,12 @@ const aiElsewhere = computed(() => {
   }
   const out: { ds: DatasetEntry; count: number }[] = [];
   for (const [canon, count] of byCanon) {
-    const ds = findDatasetBySegName(canon);
-    if (ds) out.push({ ds, count });
+    // ONE entry per canonical tag, preferring Live: the model's roots only
+    // draw meshes on the rolling graph, so offering the frozen public entry
+    // as well was offering a dead end (Amy).
+    const matches = DATASETS.filter(ds => canonicalDataset(segLayerName(ds)) === canon)
+      .sort((a, b) => Number(b.id.includes('live')) - Number(a.id.includes('live')));
+    if (matches.length) out.push({ ds: matches[0], count });
   }
   return out;
 });

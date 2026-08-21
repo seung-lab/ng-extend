@@ -21,8 +21,8 @@
  * User iteration: we only mirror operations for users we can attribute,
  * i.e. rows in Supabase `users` with a non-null cave_user_id (captured at
  * middleauth login). New users get picked up on their first sync after
- * login. First run backfills from EPOCH_START; later runs look back
- * LOOKBACK_DAYS to catch stragglers cheaply.
+ * login. First run backfills from EPOCH_START; later runs resume from the
+ * newest mirrored op minus a one-day margin, so history is fetched once.
  *
  * Response shape: user_operations returns per-operation records with an
  * operation id, a timestamp, and merge/split discriminator. Exact field
@@ -79,9 +79,9 @@ const TABLES = [
 ];
 
 // First sync backfills from before the earliest dataset existed
-// (stroeh's oldest_timestamp is 2025-02-20). Later runs use LOOKBACK_DAYS.
+// (stroeh's oldest_timestamp is 2025-02-20). Later runs resume from the
+// newest mirrored op minus RESUME_MARGIN_MS.
 const EPOCH_START   = '2025-01-01T00:00:00Z';
-const LOOKBACK_DAYS = 7;
 
 const flags = new Set(process.argv.slice(2));
 const dryRun = flags.has('--dry-run');
@@ -105,13 +105,18 @@ async function getAttributableUsers() {
   return rows;
 }
 
-/** True when the mirror already has rows (first run → full backfill). */
-async function mirrorHasRows() {
-  const url = `${SUPABASE_URL}/rest/v1/cave_edits_mirror?select=operation_id&limit=1`;
+/** Newest mirrored op timestamp for one dataset, or null when empty.
+ *  Each run resumes from here (minus a safety margin) instead of a fixed
+ *  window, so historical data is fetched exactly once and the steady-state
+ *  query stays about a day wide (Amy/Forrest: never requery history). */
+async function mirrorLatestTs(dataset) {
+  const url = `${SUPABASE_URL}/rest/v1/cave_edits_mirror` +
+    `?select=timestamp&dataset=eq.${encodeURIComponent(dataset)}&order=timestamp.desc&limit=1`;
   const res = await fetch(url, { headers: supabaseHeaders });
-  if (!res.ok) throw new Error(`mirror probe failed: ${res.status} ${await res.text()}`);
-  return (await res.json()).length > 0;
+  if (!res.ok) throw new Error(`mirror latest probe failed: ${res.status} ${await res.text()}`);
+  return (await res.json())[0]?.timestamp ?? null;
 }
+const RESUME_MARGIN_MS = 24 * 60 * 60 * 1000; // re-cover 1 day for stragglers
 
 const sampleLogged = new Set();
 
@@ -199,16 +204,20 @@ async function upsertBatch(rows) {
   const users = await getAttributableUsers();
   if (!users.length) { console.log('[sync-edits] nothing to do'); return; }
 
-  const backfill = fullBackfill || !(await mirrorHasRows());
   const endIso = new Date().toISOString();
-  const startIso = backfill
-    ? EPOCH_START
-    : new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  console.log(`[sync-edits] window ${startIso} → ${endIso} (${backfill ? 'FULL BACKFILL' : `${LOOKBACK_DAYS}d lookback`})`);
 
   let failed = 0;
+  const permissionWaits = [];
   for (const cfg of targets) {
-    console.log(`[sync-edits] === ${cfg.dataset} (${cfg.pcgTable}) ===`);
+    // Per-dataset incremental window: resume just behind the newest
+    // mirrored op; full backfill only when this dataset's mirror is empty
+    // (or --full-backfill). No fixed lookback: a long outage widens the
+    // window instead of leaving a gap.
+    const latest = fullBackfill ? null : await mirrorLatestTs(cfg.dataset);
+    const startIso = latest
+      ? new Date(Date.parse(latest) - RESUME_MARGIN_MS).toISOString()
+      : EPOCH_START;
+    console.log(`[sync-edits] === ${cfg.dataset} (${cfg.pcgTable}) window ${startIso} → ${endIso}${latest ? '' : ' (FULL BACKFILL)'} ===`);
     let tableTotal = 0;
     for (const u of users) {
       try {
@@ -226,15 +235,23 @@ async function upsertBatch(rows) {
         }
       } catch (e) {
         if (e.permissionGated) {
-          console.error(`[sync-edits] ${e.message}`);
-          console.error('[sync-edits] Aborting: every further call would 403. See HANDOFF-BUGFIX-WIP.md §3.1 for the exact grant to request.');
-          process.exit(2);
+          // Known waiting state, not a malfunction, and PER DATASET: CAVE
+          // grants admin_view per dataset, so a 403 on one (the probe's was
+          // stroeh-mouse-retina) must not block the others. Skip this
+          // dataset and move on; the summary below says which are waiting.
+          console.error(`[sync-edits] ${cfg.dataset}: ${e.message}`);
+          console.error(`[sync-edits] ${cfg.dataset}: WAITING on admin_view for this dataset, skipping it this run.`);
+          permissionWaits.push(cfg.dataset);
+          break;
         }
         failed++;
         console.error(`[sync-edits] ${cfg.dataset} user ${u.cave_user_id}: ${e.message}`);
       }
     }
     console.log(`[sync-edits] ${cfg.dataset}: upserted ${tableTotal} operations`);
+  }
+  if (permissionWaits.length) {
+    console.error(`[sync-edits] WAITING on admin_view for: ${permissionWaits.join(', ')} (HANDOFF-BUGFIX-WIP.md 3.1). Green exit so the cron does not page anyone; these datasets resume the moment the grant lands.`);
   }
   if (failed) {
     console.error(`[sync-edits] completed with ${failed} per-user failures`);

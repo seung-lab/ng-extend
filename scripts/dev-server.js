@@ -171,21 +171,35 @@ args.push('--config=dev', '--serve', '--watch', '--host', '0.0.0.0');
 
 // ── Copy badge center-art PNGs into dev output ─────────────────────────────
 const path = require('path');
-for (const artSet of ['center-art', 'center-art-320']) {
-  const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', artSet);
-  const DEV_OUT = path.join(__dirname, '..', 'dist', 'dev', artSet);
-  for (const track of ['building', 'exploration']) {
-    const srcDir = path.join(BADGE_ART, track);
-    const destDir = path.join(DEV_OUT, track);
-    if (fs.existsSync(srcDir)) {
-      fs.mkdirSync(destDir, { recursive: true });
-      for (const file of fs.readdirSync(srcDir)) {
-        if (file.endsWith('.png')) {
-          fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
-        }
+const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-art');
+const DEV_OUT = path.join(__dirname, '..', 'dist', 'dev', 'center-art');
+for (const track of ['building', 'exploration']) {
+  const srcDir = path.join(BADGE_ART, track);
+  const destDir = path.join(DEV_OUT, track);
+  if (fs.existsSync(srcDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+    for (const file of fs.readdirSync(srcDir)) {
+      if (file.endsWith('.png')) {
+        fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
       }
-      console.log(`Copied ${artSet}/${track} badge art → ${destDir}`);
     }
+    console.log(`Copied ${track} badge art → ${destDir}`);
+  }
+}
+
+// ── Copy 320px badge art into dev output (museum distance set) ──────────────
+const BADGE_ART_320 = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-art-320');
+for (const track of ['building', 'exploration']) {
+  const srcDir = path.join(BADGE_ART_320, track);
+  const destDir = path.join(__dirname, '..', 'dist', 'dev', 'center-art-320', track);
+  if (fs.existsSync(srcDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+    for (const file of fs.readdirSync(srcDir)) {
+      if (file.endsWith('.png')) {
+        fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
+      }
+    }
+    console.log(`Copied ${track} 320px badge art → ${destDir}`);
   }
 }
 
