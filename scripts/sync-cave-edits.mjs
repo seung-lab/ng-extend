@@ -226,9 +226,13 @@ async function upsertBatch(rows) {
         }
       } catch (e) {
         if (e.permissionGated) {
+          // Known waiting state, not a malfunction: the cron now runs every
+          // 30 minutes and a red X each time just spams Amy's inbox. Exit 0
+          // with a loud log; the day the admin_view grant lands, the same
+          // cron starts syncing with no further changes.
           console.error(`[sync-edits] ${e.message}`);
-          console.error('[sync-edits] Aborting: every further call would 403. See HANDOFF-BUGFIX-WIP.md §3.1 for the exact grant to request.');
-          process.exit(2);
+          console.error('[sync-edits] WAITING on the admin_view grant (HANDOFF-BUGFIX-WIP.md 3.1). Exiting green so the cron does not page anyone until then.');
+          process.exit(0);
         }
         failed++;
         console.error(`[sync-edits] ${cfg.dataset} user ${u.cave_user_id}: ${e.message}`);
