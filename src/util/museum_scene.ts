@@ -396,7 +396,7 @@ export class MuseumScene {
   // ── Specimen ───────────────────────────────────────────────────────────────
   setSpecimen(wf: MuseumWireframe, soma: {x: number; y: number; z: number}, maxRadius: number) {
     if (this.specimenGroup) this.scene.remove(this.specimenGroup);
-    const scale = 2100 / maxRadius;
+    const scale = 3000 / maxRadius;
     const pos: number[] = [];
     const v = wf.verts;
     for (let i = 0; i + 1 < wf.edges.length; i += 2) {
@@ -422,7 +422,7 @@ export class MuseumScene {
     const group = new THREE.Group();
     group.add(lines);
     group.rotation.x = 0.10;
-    group.position.set(0, -this.opts.floorY + 1100, -1600);
+    group.position.set(0, -this.opts.floorY + 1050, -1900);
     this.specimenGroup = group;
     this.scene.add(group);
   }
