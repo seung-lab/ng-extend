@@ -98,11 +98,11 @@ watch(layout, () => {
 // Track badges live in their wing (building left, exploration right) in a
 // grid; special awards line the main hall.
 function wingSlot(i: number, side: 1 | -1): {x: number; z: number} {
-  const col = i % 6;
-  const row = Math.floor(i / 6);
+  const col = i % 8;
+  const row = Math.floor(i / 8);
   return {
-    x: side * (1480 + col * 340),
-    z: -2780 - (row % 5) * 330 - Math.floor(row / 5) * 60,
+    x: side * (1500 + col * 440),
+    z: -2350 - (row % 6) * 410 - Math.floor(row / 6) * 90,
   };
 }
 

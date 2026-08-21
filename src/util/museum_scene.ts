@@ -49,12 +49,12 @@ const KIND_COLORS: Record<string, number> = {
 // The museum is a cross: a long main hall for special awards, plus two side
 // wings through portals in the side walls: building left, exploration right.
 export const WING = {
-  zNear: -2500,   // wing wall nearest the entrance
-  zFar: -4300,    // wing wall deepest
-  portalNear: -2600,
-  portalFar: -4200,
+  zNear: -1900,   // wing wall nearest the entrance
+  zFar: -4900,    // wing wall deepest
+  portalNear: -2000,
+  portalFar: -4800,
   xInner: 1100,   // main hall side wall
-  xOuter: 3500,   // wing far wall
+  xOuter: 5100,   // wing far wall
 };
 
 /** Clamp a ground position to the walkable cross-shaped union of the main
@@ -266,7 +266,7 @@ export class MuseumScene {
         this.scene.add(col);
       }
       // Wing name floating over the portal, readable from the main aisle.
-      const label = side < 0 ? 'BUILDING WING' : 'EXPLORATION WING';
+      const label = side < 0 ? 'PROOFREADING' : 'CELL COMPLETIONS';
       const labColor = side < 0 ? 'rgba(255,208,138,0.95)' : 'rgba(144,255,242,0.95)';
       const labTex = canvasTexture(1024, 128, ctx => {
         ctx.textAlign = 'center';
@@ -288,19 +288,20 @@ export class MuseumScene {
     // from fog so it reads from the entrance, with the curator's name huge.
     const insTex = canvasTexture(2048, 1024, ctx => {
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(180,235,255,1)';
+      const who = this.opts.userName.toUpperCase();
+      ctx.fillStyle = 'rgba(225,245,255,1)';
       ctx.shadowColor = 'rgba(53,181,255,1)';
+      ctx.shadowBlur = 42;
+      ctx.font = "700 128px Orbitron, sans-serif";
+      ctx.fillText(`${who}'S`, 1024, 210, 1950);
+      ctx.font = "700 108px Orbitron, sans-serif";
+      ctx.fillStyle = 'rgba(180,235,255,1)';
       ctx.shadowBlur = 34;
-      ctx.font = "700 118px Orbitron, sans-serif";
-      ctx.fillText('HALL OF ACHIEVEMENTS', 1024, 170);
-      ctx.font = "700 170px Orbitron, sans-serif";
-      ctx.fillStyle = 'rgba(235,250,255,1)';
-      ctx.shadowBlur = 46;
-      ctx.fillText(this.opts.userName.toUpperCase(), 1024, 400);
+      ctx.fillText('HALL OF ACHIEVEMENTS', 1024, 360, 1950);
       ctx.font = "500 34px Orbitron, sans-serif";
       ctx.fillStyle = 'rgba(120,190,235,0.85)';
       ctx.shadowBlur = 12;
-      ctx.fillText('EYEWIRE II CURATOR', 1024, 480);
+      ctx.fillText('EYEWIRE II CURATOR', 1024, 470);
       ctx.font = "500 26px Orbitron, sans-serif";
       ctx.fillStyle = 'rgba(140,215,250,0.6)';
       ctx.fillText('CAREER TELEMETRY', 1024, 620);
@@ -328,73 +329,104 @@ export class MuseumScene {
     this.inscription.position.set(0, yFloor + 620, -roomD + 420);
     this.scene.add(this.inscription);
 
-    // Exit door: a circuit board portal. Traces fan out from the arch like a
-    // PCB, elbowed lines ending in glowing via pads.
+    // Exit door: the frame itself IS the circuit. Three concentric arch
+    // tracks run like PCB traces, with perpendicular stubs branching off the
+    // outer track into glowing via pads at regular intervals.
     const doorTex = canvasTexture(768, 768, ctx => {
       const cx = 384;
-      // Circuit traces radiating from around the arch.
+      const baseY = 745;
+      const archTopY = 300;
+      const r0 = 220;
       ctx.lineCap = 'round';
-      const rng = (seed: number) => {
-        let s = seed;
-        return () => (s = (s * 16807) % 2147483647) / 2147483647;
-      };
-      const rand = rng(20260821);
+      ctx.lineJoin = 'round';
       const pad = (x: number, y: number, r: number) => {
+        ctx.save();
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(150,230,255,0.95)';
         ctx.shadowColor = 'rgba(53,181,255,1)';
-        ctx.shadowBlur = 14;
+        ctx.shadowBlur = 12;
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.beginPath();
-        ctx.arc(x, y, r + 5, 0, Math.PI * 2);
+        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(53,181,255,0.5)';
         ctx.lineWidth = 2;
         ctx.stroke();
+        ctx.restore();
       };
-      ctx.strokeStyle = 'rgba(80,200,255,0.65)';
-      ctx.shadowColor = 'rgba(53,181,255,0.8)';
-      for (let i = 0; i < 16; i++) {
-        const t = i / 16;
-        // Start on the arch boundary.
-        const onTop = t < 0.5;
-        const ang = Math.PI * (0.15 + t * 0.7);
-        const ax = cx + Math.cos(ang) * (onTop ? 205 : 235);
-        const ay = 260 - Math.sin(ang) * 195;
-        const dirX = ax < cx ? -1 : 1;
-        const seg1 = 30 + rand() * 70;
-        const seg2 = 30 + rand() * 90;
-        const upDown = rand() > 0.5 ? -1 : 1;
+      /** Point + outward normal at parameter t (0=base left, 1=base right). */
+      const framePoint = (t: number, off: number) => {
+        const sideLen = baseY - archTopY;
+        const arcLen = Math.PI * r0;
+        const total = sideLen * 2 + arcLen;
+        const d = t * total;
+        if (d < sideLen) {
+          return {x: cx - r0 - off, y: baseY - d, nx: -1, ny: 0};
+        }
+        if (d < sideLen + arcLen) {
+          const a = Math.PI - (d - sideLen) / r0;
+          return {
+            x: cx + Math.cos(a) * (r0 + off),
+            y: archTopY - Math.sin(a) * (r0 + off),
+            nx: Math.cos(a),
+            ny: -Math.sin(a),
+          };
+        }
+        return {x: cx + r0 + off, y: baseY - (total - d), nx: 1, ny: 0};
+      };
+      const strokeFrame = (off: number, width: number, style: string, blur: number) => {
+        ctx.strokeStyle = style;
+        ctx.lineWidth = width;
+        ctx.shadowColor = 'rgba(53,181,255,0.9)';
+        ctx.shadowBlur = blur;
+        ctx.beginPath();
+        for (let i = 0; i <= 120; i++) {
+          const p = framePoint(i / 120, off);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+      };
+      // Three concentric circuit tracks.
+      strokeFrame(0, 6, 'rgba(140,230,255,0.95)', 16);
+      strokeFrame(16, 3, 'rgba(80,200,255,0.6)', 8);
+      strokeFrame(30, 2, 'rgba(53,181,255,0.35)', 6);
+      // Stubs branching outward from the outer track into via pads, evenly
+      // spaced along the frame, skipping the very bottom.
+      for (let i = 0; i < 13; i++) {
+        const t = 0.06 + (i / 12) * 0.88;
+        const p = framePoint(t, 30);
+        const len = i % 3 === 0 ? 34 : 20;
+        ctx.strokeStyle = 'rgba(80,200,255,0.7)';
         ctx.lineWidth = 3;
+        ctx.shadowColor = 'rgba(53,181,255,0.8)';
         ctx.shadowBlur = 8;
         ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(ax + dirX * seg1, ay);
-        ctx.lineTo(ax + dirX * seg1, ay + upDown * seg2);
-        const ex = ax + dirX * (seg1 + 14 + rand() * 40);
-        const ey = ay + upDown * seg2;
-        ctx.lineTo(ex, ey);
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.nx * len, p.y + p.ny * len);
         ctx.stroke();
-        pad(ex, ey, 6 + rand() * 3);
+        pad(p.x + p.nx * len, p.y + p.ny * len, i % 3 === 0 ? 7 : 5);
       }
-      // The arch itself, doubled.
-      ctx.shadowBlur = 18;
-      ctx.strokeStyle = 'rgba(140,230,255,0.95)';
-      ctx.lineWidth = 7;
-      roundedArch(ctx, 149, 65, 470, 700, 235);
-      ctx.stroke();
-      ctx.shadowBlur = 8;
-      ctx.strokeStyle = 'rgba(53,181,255,0.5)';
-      ctx.lineWidth = 3;
-      roundedArch(ctx, 173, 89, 422, 676, 211);
-      ctx.stroke();
+      // Track link bridges between the rings, like vias tying layers.
+      for (const t of [0.16, 0.5, 0.84]) {
+        const a = framePoint(t, 0);
+        const b = framePoint(t, 30);
+        ctx.strokeStyle = 'rgba(120,220,255,0.55)';
+        ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
       // Door fill glow.
+      ctx.shadowBlur = 0;
       const g = ctx.createLinearGradient(0, 768, 0, 120);
       g.addColorStop(0, 'rgba(53,181,255,0.34)');
       g.addColorStop(1, 'rgba(53,181,255,0.03)');
       ctx.fillStyle = g;
-      roundedArch(ctx, 149, 65, 470, 700, 235);
+      roundedArch(ctx, 164, 80, 440, 665, 220);
       ctx.fill();
       // Text.
       ctx.textAlign = 'center';
@@ -567,7 +599,7 @@ export class MuseumScene {
   // ── Specimen ───────────────────────────────────────────────────────────────
   setSpecimen(wf: MuseumWireframe, soma: {x: number; y: number; z: number}, maxRadius: number) {
     if (this.specimenGroup) this.scene.remove(this.specimenGroup);
-    const scale = 3000 / maxRadius;
+    const scale = 4200 / maxRadius;
     const pos: number[] = [];
     const v = wf.verts;
     for (let i = 0; i + 1 < wf.edges.length; i += 2) {
@@ -593,7 +625,7 @@ export class MuseumScene {
     const group = new THREE.Group();
     group.add(lines);
     group.rotation.x = 0.10;
-    group.position.set(0, -this.opts.floorY + 1050, -1900);
+    group.position.set(0, -this.opts.floorY + 1200, -1900);
     this.specimenGroup = group;
     this.scene.add(group);
   }
