@@ -207,6 +207,7 @@ async function upsertBatch(rows) {
   const endIso = new Date().toISOString();
 
   let failed = 0;
+  const permissionWaits = [];
   for (const cfg of targets) {
     // Per-dataset incremental window: resume just behind the newest
     // mirrored op; full backfill only when this dataset's mirror is empty
@@ -234,19 +235,23 @@ async function upsertBatch(rows) {
         }
       } catch (e) {
         if (e.permissionGated) {
-          // Known waiting state, not a malfunction: the cron now runs every
-          // 30 minutes and a red X each time just spams Amy's inbox. Exit 0
-          // with a loud log; the day the admin_view grant lands, the same
-          // cron starts syncing with no further changes.
-          console.error(`[sync-edits] ${e.message}`);
-          console.error('[sync-edits] WAITING on the admin_view grant (HANDOFF-BUGFIX-WIP.md 3.1). Exiting green so the cron does not page anyone until then.');
-          process.exit(0);
+          // Known waiting state, not a malfunction, and PER DATASET: CAVE
+          // grants admin_view per dataset, so a 403 on one (the probe's was
+          // stroeh-mouse-retina) must not block the others. Skip this
+          // dataset and move on; the summary below says which are waiting.
+          console.error(`[sync-edits] ${cfg.dataset}: ${e.message}`);
+          console.error(`[sync-edits] ${cfg.dataset}: WAITING on admin_view for this dataset, skipping it this run.`);
+          permissionWaits.push(cfg.dataset);
+          break;
         }
         failed++;
         console.error(`[sync-edits] ${cfg.dataset} user ${u.cave_user_id}: ${e.message}`);
       }
     }
     console.log(`[sync-edits] ${cfg.dataset}: upserted ${tableTotal} operations`);
+  }
+  if (permissionWaits.length) {
+    console.error(`[sync-edits] WAITING on admin_view for: ${permissionWaits.join(', ')} (HANDOFF-BUGFIX-WIP.md 3.1). Green exit so the cron does not page anyone; these datasets resume the moment the grant lands.`);
   }
   if (failed) {
     console.error(`[sync-edits] completed with ${failed} per-user failures`);
