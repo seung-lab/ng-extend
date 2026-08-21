@@ -45,6 +45,41 @@ const KIND_COLORS: Record<string, number> = {
   special: 0xce93d8,
 };
 
+// ── Wing geometry (shared with the component's camera clamp) ────────────────
+// The museum is a cross: a long main hall for special awards, plus two side
+// wings through portals in the side walls: building left, exploration right.
+export const WING = {
+  zNear: -2500,   // wing wall nearest the entrance
+  zFar: -4300,    // wing wall deepest
+  portalNear: -2600,
+  portalFar: -4200,
+  xInner: 1100,   // main hall side wall
+  xOuter: 3500,   // wing far wall
+};
+
+/** Clamp a ground position to the walkable cross-shaped union of the main
+ *  hall and the two wings. Used for both the camera and dragged artifacts. */
+export function clampToMuseum(
+    x: number, z: number, roomW: number, roomD: number, m: number): {x: number; z: number} {
+  const rects = [
+    {x0: -roomW / 2 + m, x1: roomW / 2 - m, z0: -roomD + m, z1: -m},
+    {x0: -WING.xOuter + m, x1: -WING.xInner + m, z0: WING.zFar + m, z1: WING.zNear - m},
+    {x0: WING.xInner - m, x1: WING.xOuter - m, z0: WING.zFar + m, z1: WING.zNear - m},
+  ];
+  let best = {x, z};
+  let bestD = Infinity;
+  for (const r of rects) {
+    const cx = Math.max(r.x0, Math.min(r.x1, x));
+    const cz = Math.max(r.z0, Math.min(r.z1, z));
+    const d = (cx - x) * (cx - x) + (cz - z) * (cz - z);
+    if (d < bestD) {
+      bestD = d;
+      best = {x: cx, z: cz};
+    }
+  }
+  return best;
+}
+
 interface ArtifactNodes {
   group: THREE.Group;
   badge: THREE.Sprite;
@@ -70,6 +105,7 @@ export class MuseumScene {
   private artifacts = new Map<string, ArtifactNodes>();
   private pickables: THREE.Object3D[] = [];
   private doorMesh: THREE.Mesh | null = null;
+  private inscription: THREE.Mesh | null = null;
   private specimenGroup: THREE.Group | null = null;
   private specimenMat: LineMaterial | null = null;
   private opts: SceneOpts;
@@ -175,76 +211,211 @@ export class MuseumScene {
       glow.translateZ(1.5);
       this.scene.add(glow);
     };
-    mkWall(roomD, -roomW / 2, zMid, Math.PI / 2);
-    mkWall(roomD, roomW / 2, zMid, -Math.PI / 2);
+    // Side walls are split around the wing portals.
+    const frontSeg = -WING.portalNear;                    // 0 .. portalNear
+    const backSeg = roomD + WING.portalFar;               // portalFar .. -roomD
+    for (const side of [-1, 1] as const) {
+      const x = side * (roomW / 2);
+      const ry = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+      mkWall(frontSeg, x, WING.portalNear / 2, ry);
+      mkWall(backSeg, x, (WING.portalFar - roomD) / 2, ry);
+    }
     mkWall(roomW, 0, -roomD, 0);
     mkWall(roomW, 0, 0, Math.PI);
 
-    // Back wall inscription + career telemetry.
-    const insTex = canvasTexture(1024, 512, ctx => {
+    // ── Wings: building left, exploration right ──
+    const wingDepth = WING.xOuter - WING.xInner;
+    const wingSpan = WING.zNear - WING.zFar;
+    const wingZMid = (WING.zNear + WING.zFar) / 2;
+    for (const side of [-1, 1] as const) {
+      const xMid = side * (WING.xInner + wingDepth / 2);
+      // Wing floor.
+      const wFloorTex = floorTex.clone();
+      wFloorTex.repeat.set(wingDepth / 146, wingSpan / 146);
+      wFloorTex.needsUpdate = true;
+      const wFloor = new THREE.Mesh(
+          new THREE.PlaneGeometry(wingDepth, wingSpan),
+          new THREE.MeshBasicMaterial({map: wFloorTex}));
+      wFloor.rotation.x = -Math.PI / 2;
+      wFloor.position.set(xMid, yFloor, wingZMid);
+      this.scene.add(wFloor);
+      // Wing aisle from the portal to the far wall.
+      const wAisle = new THREE.Mesh(
+          new THREE.PlaneGeometry(230, wingDepth), additiveMat(aisleTex, 0.4));
+      wAisle.rotation.x = -Math.PI / 2;
+      wAisle.rotation.z = Math.PI / 2;
+      wAisle.position.set(xMid, yFloor + 1, wingZMid);
+      this.scene.add(wAisle);
+      // Wing walls: far wall and the two side walls.
+      mkWall(wingSpan, side * WING.xOuter, wingZMid, side < 0 ? Math.PI / 2 : -Math.PI / 2);
+      mkWall(wingDepth, xMid, WING.zNear, Math.PI);
+      mkWall(wingDepth, xMid, WING.zFar, 0);
+
+      // Portal frame: two glowing columns and a header.
+      const colGeo = new THREE.BoxGeometry(16, wallH, 16);
+      const colMat = new THREE.MeshBasicMaterial({
+        color: BEAM_BLUE,
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      for (const zEdge of [WING.portalNear, WING.portalFar]) {
+        const col = new THREE.Mesh(colGeo, colMat);
+        col.position.set(side * WING.xInner, (yFloor + yTop) / 2, zEdge);
+        this.scene.add(col);
+      }
+      // Wing name floating over the portal, readable from the main aisle.
+      const label = side < 0 ? 'BUILDING WING' : 'EXPLORATION WING';
+      const labColor = side < 0 ? 'rgba(255,208,138,0.95)' : 'rgba(144,255,242,0.95)';
+      const labTex = canvasTexture(1024, 128, ctx => {
+        ctx.textAlign = 'center';
+        ctx.font = "700 58px Orbitron, sans-serif";
+        ctx.fillStyle = labColor;
+        ctx.shadowColor = labColor;
+        ctx.shadowBlur = 26;
+        ctx.fillText(label, 512, 84);
+      });
+      const lab = new THREE.Mesh(
+          new THREE.PlaneGeometry(760, 95), additiveMat(labTex, 0.95));
+      (lab.material as THREE.MeshBasicMaterial).fog = false;
+      lab.position.set(side * (WING.xInner - 6), yTop - 60, wingZMid);
+      lab.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+      this.scene.add(lab);
+    }
+
+    // Hall inscription: a hologram panel floating OFF the back wall, exempt
+    // from fog so it reads from the entrance, with the curator's name huge.
+    const insTex = canvasTexture(2048, 1024, ctx => {
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(160,225,255,0.95)';
-      ctx.shadowColor = 'rgba(53,181,255,0.9)';
-      ctx.shadowBlur = 24;
-      ctx.font = "700 64px Orbitron, sans-serif";
-      ctx.fillText('HALL OF ACHIEVEMENTS', 512, 120);
-      ctx.font = "500 22px Orbitron, sans-serif";
-      ctx.fillStyle = 'rgba(120,190,235,0.7)';
-      ctx.shadowBlur = 10;
-      ctx.fillText(`EYEWIRE II · CURATOR: ${this.opts.userName.toUpperCase()}`, 512, 170);
-      ctx.font = "500 15px Orbitron, sans-serif";
-      ctx.fillStyle = 'rgba(140,215,250,0.55)';
-      ctx.fillText('CAREER TELEMETRY', 512, 250);
+      ctx.fillStyle = 'rgba(180,235,255,1)';
+      ctx.shadowColor = 'rgba(53,181,255,1)';
+      ctx.shadowBlur = 34;
+      ctx.font = "700 118px Orbitron, sans-serif";
+      ctx.fillText('HALL OF ACHIEVEMENTS', 1024, 170);
+      ctx.font = "700 170px Orbitron, sans-serif";
+      ctx.fillStyle = 'rgba(235,250,255,1)';
+      ctx.shadowBlur = 46;
+      ctx.fillText(this.opts.userName.toUpperCase(), 1024, 400);
+      ctx.font = "500 34px Orbitron, sans-serif";
+      ctx.fillStyle = 'rgba(120,190,235,0.85)';
+      ctx.shadowBlur = 12;
+      ctx.fillText('EYEWIRE II CURATOR', 1024, 480);
+      ctx.font = "500 26px Orbitron, sans-serif";
+      ctx.fillStyle = 'rgba(140,215,250,0.6)';
+      ctx.fillText('CAREER TELEMETRY', 1024, 620);
       const rows = this.opts.statsRows;
-      const span = 1024 / (rows.length + 1);
+      const span = 2048 / (rows.length + 1);
       rows.forEach((r, i) => {
         const x = span * (i + 1);
-        ctx.font = "700 44px Orbitron, sans-serif";
-        ctx.fillStyle = 'rgba(190,232,255,0.95)';
-        ctx.shadowBlur = 18;
-        ctx.fillText(r.value, x, 320);
-        ctx.font = "500 12px Orbitron, sans-serif";
-        ctx.fillStyle = 'rgba(130,200,240,0.7)';
-        ctx.shadowBlur = 6;
-        ctx.fillText(r.label, x, 348);
+        ctx.font = "700 60px Orbitron, sans-serif";
+        ctx.fillStyle = 'rgba(190,232,255,0.98)';
+        ctx.shadowBlur = 24;
+        ctx.fillText(r.value, x, 750, span - 40);
+        ctx.font = "500 20px Orbitron, sans-serif";
+        ctx.fillStyle = 'rgba(130,200,240,0.75)';
+        ctx.shadowBlur = 8;
+        ctx.fillText(r.label, x, 800, span - 30);
       });
+      // Hologram scanlines over the whole panel.
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(53,181,255,0.05)';
+      for (let y = 0; y < 1024; y += 8) ctx.fillRect(0, y, 2048, 3);
     });
-    const ins = new THREE.Mesh(
-        new THREE.PlaneGeometry(2000, 1000), additiveMat(insTex, 0.95));
-    ins.position.set(0, yFloor + 560, -roomD + 10);
-    this.scene.add(ins);
+    const insMat = additiveMat(insTex, 1);
+    insMat.fog = false;
+    this.inscription = new THREE.Mesh(new THREE.PlaneGeometry(2200, 1100), insMat);
+    this.inscription.position.set(0, yFloor + 620, -roomD + 420);
+    this.scene.add(this.inscription);
 
-    // Exit door on the entrance wall.
-    const doorTex = canvasTexture(512, 640, ctx => {
-      ctx.strokeStyle = 'rgba(120,220,255,0.8)';
-      ctx.lineWidth = 5;
-      roundedArch(ctx, 26, 26, 460, 610, 230);
+    // Exit door: a circuit board portal. Traces fan out from the arch like a
+    // PCB, elbowed lines ending in glowing via pads.
+    const doorTex = canvasTexture(768, 768, ctx => {
+      const cx = 384;
+      // Circuit traces radiating from around the arch.
+      ctx.lineCap = 'round';
+      const rng = (seed: number) => {
+        let s = seed;
+        return () => (s = (s * 16807) % 2147483647) / 2147483647;
+      };
+      const rand = rng(20260821);
+      const pad = (x: number, y: number, r: number) => {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(150,230,255,0.95)';
+        ctx.shadowColor = 'rgba(53,181,255,1)';
+        ctx.shadowBlur = 14;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 5, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(53,181,255,0.5)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      };
+      ctx.strokeStyle = 'rgba(80,200,255,0.65)';
+      ctx.shadowColor = 'rgba(53,181,255,0.8)';
+      for (let i = 0; i < 16; i++) {
+        const t = i / 16;
+        // Start on the arch boundary.
+        const onTop = t < 0.5;
+        const ang = Math.PI * (0.15 + t * 0.7);
+        const ax = cx + Math.cos(ang) * (onTop ? 205 : 235);
+        const ay = 260 - Math.sin(ang) * 195;
+        const dirX = ax < cx ? -1 : 1;
+        const seg1 = 30 + rand() * 70;
+        const seg2 = 30 + rand() * 90;
+        const upDown = rand() > 0.5 ? -1 : 1;
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax + dirX * seg1, ay);
+        ctx.lineTo(ax + dirX * seg1, ay + upDown * seg2);
+        const ex = ax + dirX * (seg1 + 14 + rand() * 40);
+        const ey = ay + upDown * seg2;
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+        pad(ex, ey, 6 + rand() * 3);
+      }
+      // The arch itself, doubled.
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = 'rgba(140,230,255,0.95)';
+      ctx.lineWidth = 7;
+      roundedArch(ctx, 149, 65, 470, 700, 235);
       ctx.stroke();
-      const g = ctx.createLinearGradient(0, 640, 0, 100);
-      g.addColorStop(0, 'rgba(53,181,255,0.30)');
-      g.addColorStop(1, 'rgba(53,181,255,0.02)');
+      ctx.shadowBlur = 8;
+      ctx.strokeStyle = 'rgba(53,181,255,0.5)';
+      ctx.lineWidth = 3;
+      roundedArch(ctx, 173, 89, 422, 676, 211);
+      ctx.stroke();
+      // Door fill glow.
+      const g = ctx.createLinearGradient(0, 768, 0, 120);
+      g.addColorStop(0, 'rgba(53,181,255,0.34)');
+      g.addColorStop(1, 'rgba(53,181,255,0.03)');
       ctx.fillStyle = g;
-      roundedArch(ctx, 26, 26, 460, 610, 230);
+      roundedArch(ctx, 149, 65, 470, 700, 235);
       ctx.fill();
+      // Text.
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(190,235,255,0.95)';
-      ctx.shadowColor = 'rgba(53,181,255,0.9)';
-      ctx.shadowBlur = 20;
-      ctx.font = "700 84px Orbitron, sans-serif";
-      ctx.fillText('EXIT', 256, 300);
-      ctx.font = "500 26px Orbitron, sans-serif";
-      ctx.fillStyle = 'rgba(130,200,240,0.85)';
-      ctx.shadowBlur = 10;
-      ctx.fillText('BACK TO EYEWIRE 2', 256, 350);
+      ctx.fillStyle = 'rgba(210,242,255,1)';
+      ctx.shadowColor = 'rgba(53,181,255,1)';
+      ctx.shadowBlur = 26;
+      ctx.font = "700 108px Orbitron, sans-serif";
+      ctx.fillText('EXIT', cx, 390);
+      ctx.font = "500 32px Orbitron, sans-serif";
+      ctx.fillStyle = 'rgba(140,210,245,0.9)';
+      ctx.shadowBlur = 12;
+      ctx.fillText('BACK TO EYEWIRE 2', cx, 452);
     });
-    this.doorMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(380, 475),
-        new THREE.MeshBasicMaterial({
-          map: doorTex,
-          transparent: true,
-          depthWrite: false,
-        }));
-    this.doorMesh.position.set(0, yFloor + 240, -3);
+    const doorMat = new THREE.MeshBasicMaterial({
+      map: doorTex,
+      transparent: true,
+      depthWrite: false,
+    });
+    doorMat.fog = false;
+    this.doorMesh = new THREE.Mesh(new THREE.PlaneGeometry(560, 560), doorMat);
+    this.doorMesh.position.set(0, yFloor + 285, -3);
     this.doorMesh.rotation.y = Math.PI;
     this.scene.add(this.doorMesh);
   }
@@ -452,6 +623,8 @@ export class MuseumScene {
     this.camera.position.set(x, 0, z);
     this.camera.rotation.y = -yawDeg * Math.PI / 180;
     this.camera.rotation.x = pitchDeg * Math.PI / 180;
+    // Debug hook for automated walkthrough tests.
+    (window as any).__musCam = {x, z, yaw: yawDeg, pitch: pitchDeg};
   }
 
   render(now: number) {
@@ -463,6 +636,9 @@ export class MuseumScene {
       }
       if (this.specimenGroup) {
         this.specimenGroup.rotation.y = now * 0.000006;
+      }
+      if (this.inscription) {
+        this.inscription.position.y = -this.opts.floorY + 620 + Math.sin(now * 0.0006) * 9;
       }
     }
     this.maybeUpgrade(this.camera.position.x, this.camera.position.z);
@@ -521,14 +697,27 @@ function plaqueTexture(art: SceneArtifact, selected: boolean): THREE.CanvasTextu
   const kindColor = art.kind === 'building' ? 'rgba(255,208,138,0.9)' :
       art.kind === 'exploration' ? 'rgba(144,255,242,0.9)' : 'rgba(226,180,235,0.95)';
   const tex = canvasTexture(512, 282, ctx => {
-    ctx.fillStyle = selected ? 'rgba(14,30,58,0.92)' : 'rgba(8,18,38,0.88)';
+    // Surface numbers carried from scifi-ui panel-surface.css (holopanel):
+    // 158deg gradient rgb(15 18 24/.96) to rgb(6 10 18/.98), 1px border at
+    // rgb(74 150 224/.30), and the lit hairline along the top edge.
+    const grad = ctx.createLinearGradient(0, 0, 120, 266);
+    grad.addColorStop(0, selected ? 'rgba(20,28,44,0.96)' : 'rgba(15,18,24,0.96)');
+    grad.addColorStop(1, 'rgba(6,10,18,0.98)');
+    ctx.fillStyle = grad;
     ctx.strokeStyle = selected ? 'rgba(140,230,255,0.95)' :
-        art.kind === 'special' ? 'rgba(206,147,216,0.55)' : 'rgba(53,181,255,0.4)';
-    ctx.lineWidth = selected ? 5 : 3;
+        art.kind === 'special' ? 'rgba(206,147,216,0.55)' : 'rgba(74,150,224,0.30)';
+    ctx.lineWidth = selected ? 5 : 2;
     ctx.beginPath();
     (ctx as any).roundRect(8, 8, 496, 266, 14);
     ctx.fill();
     ctx.stroke();
+    // Top hairline.
+    const hair = ctx.createLinearGradient(30, 0, 482, 0);
+    hair.addColorStop(0, 'rgba(196,228,255,0)');
+    hair.addColorStop(0.5, 'rgba(196,228,255,0.30)');
+    hair.addColorStop(1, 'rgba(196,228,255,0)');
+    ctx.fillStyle = hair;
+    ctx.fillRect(30, 9, 452, 2);
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(190,235,255,0.96)';
     ctx.shadowColor = 'rgba(53,181,255,0.8)';

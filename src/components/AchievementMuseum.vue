@@ -17,7 +17,7 @@ import {ref, computed, watch, onMounted, onUnmounted} from 'vue';
 import {BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {getMuseumWireframe, MuseumWireframe} from '../util/museum_mesh';
-import {MuseumScene, SceneArtifact} from '../util/museum_scene';
+import {MuseumScene, SceneArtifact, clampToMuseum} from '../util/museum_scene';
 
 // Special badge awards arrive from Supabase joins; keep the shape loose.
 interface SpecialAwardLike {
@@ -95,15 +95,20 @@ watch(layout, () => {
 }, {deep: true});
 
 // ── Artifact list with default gallery placement ─────────────────────────────
-function wallSlot(i: number, side: 1 | -1): {x: number; z: number} {
-  const perLine = 12;
-  const spacing = 430;
-  const line = Math.floor(i / perLine);
-  const slot = i % perLine;
+// Track badges live in their wing (building left, exploration right) in a
+// grid; special awards line the main hall.
+function wingSlot(i: number, side: 1 | -1): {x: number; z: number} {
+  const col = i % 6;
+  const row = Math.floor(i / 6);
   return {
-    x: side * (860 - line * 290),
-    z: -640 - slot * spacing - (line % 2 ? 215 : 0),
+    x: side * (1480 + col * 340),
+    z: -2780 - (row % 5) * 330 - Math.floor(row / 5) * 60,
   };
+}
+
+function mainHallSlot(i: number): {x: number; z: number} {
+  const side = i % 2 === 0 ? -1 : 1;
+  return {x: side * 780, z: -800 - Math.floor(i / 2) * 520};
 }
 
 const artifacts = computed<MuseumArtifact[]>(() => {
@@ -120,7 +125,7 @@ const artifacts = computed<MuseumArtifact[]>(() => {
     img: smallArt(b.imageKey),
     imgHi: BADGE_IMAGE_MAP[b.imageKey] ?? '',
     kind: 'building',
-    home: wallSlot(i, -1),
+    home: wingSlot(i, -1),
   }));
   props.exploration.forEach((b, i) => out.push({
     key: `e:${b.slug}`,
@@ -130,9 +135,8 @@ const artifacts = computed<MuseumArtifact[]>(() => {
     img: smallArt(b.imageKey),
     imgHi: BADGE_IMAGE_MAP[b.imageKey] ?? '',
     kind: 'exploration',
-    home: wallSlot(i, 1),
+    home: wingSlot(i, 1),
   }));
-  const manySpecials = props.specials.length > 4;
   props.specials.forEach((a, i) => out.push({
     key: `sp:${a.id}`,
     name: a.badge?.name || 'Special Award',
@@ -141,9 +145,7 @@ const artifacts = computed<MuseumArtifact[]>(() => {
     img: a.badge?.thumbnail_url || a.badge?.image_url || '',
     imgHi: a.badge?.image_url || a.badge?.thumbnail_url || '',
     kind: 'special',
-    home: manySpecials
-      ? {x: i % 2 ? 270 : -270, z: -900 - Math.floor(i / 2) * 520}
-      : {x: 0, z: -900 - i * 520},
+    home: mainHallSlot(i),
   }));
   return out;
 });
@@ -255,8 +257,9 @@ const MOVE_KEYS = new Set([
 ]);
 
 function clampCam() {
-  cam.x = Math.max(-ROOM_W / 2 + 90, Math.min(ROOM_W / 2 - 90, cam.x));
-  cam.z = Math.max(-ROOM_D + 90, Math.min(-90, cam.z));
+  const p = clampToMuseum(cam.x, cam.z, ROOM_W, ROOM_D, 90);
+  cam.x = p.x;
+  cam.z = p.z;
   cam.pitch = Math.max(-34, Math.min(62, cam.pitch));
 }
 
@@ -286,8 +289,9 @@ function tick(now: number) {
     if (keys.has('ArrowRight')) { sel.x += right.x * n; sel.z += right.z * n; }
     if (keys.has('Equal')) sel.s = Math.min(2.6, sel.s + 1.1 * dt);
     if (keys.has('Minus')) sel.s = Math.max(0.45, sel.s - 1.1 * dt);
-    sel.x = Math.max(-ROOM_W / 2 + 140, Math.min(ROOM_W / 2 - 140, sel.x));
-    sel.z = Math.max(-ROOM_D + 160, Math.min(-240, sel.z));
+    const sp = clampToMuseum(sel.x, sel.z, ROOM_W, ROOM_D, 150);
+    sel.x = sp.x;
+    sel.z = sp.z;
   } else {
     if (keys.has('ArrowLeft'))  cam.yaw -= turn;
     if (keys.has('ArrowRight')) cam.yaw += turn;
@@ -384,10 +388,13 @@ function onPointerMove(e: PointerEvent) {
     const yr = cam.yaw * Math.PI / 180;
     const k = dragStart.k;
     // Screen right follows the camera's right vector, screen up pushes away.
-    p.x = dragStart.x + (dx * Math.cos(yr) - dy * Math.sin(yr)) * k;
-    p.z = dragStart.z + (dx * Math.sin(yr) + dy * Math.cos(yr)) * k;
-    p.x = Math.max(-ROOM_W / 2 + 140, Math.min(ROOM_W / 2 - 140, p.x));
-    p.z = Math.max(-ROOM_D + 160, Math.min(-240, p.z));
+    const raw = {
+      x: dragStart.x + (dx * Math.cos(yr) - dy * Math.sin(yr)) * k,
+      z: dragStart.z + (dx * Math.sin(yr) + dy * Math.cos(yr)) * k,
+    };
+    const cp = clampToMuseum(raw.x, raw.z, ROOM_W, ROOM_D, 150);
+    p.x = cp.x;
+    p.z = cp.z;
   }
 }
 
