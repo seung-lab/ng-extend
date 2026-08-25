@@ -41,7 +41,10 @@ jobs:
       shell: bash
       run: echo "BRANCH_NAME=$(echo ${GITHUB_HEAD_REF} | tr / -)" >> $GITHUB_ENV
     - run: echo "BRANCH_NAME_URL=$(echo ${{ env.BRANCH_NAME }} | tr / - | tr _ -)" >> $GITHUB_ENV
+    # Deploy steps only run in the upstream repo: the GCP workload identity
+    # provider rejects credentials from forks, so forks build without deploying.
     - name: start deployment
+      if: github.repository == 'seung-lab/ng-extend'
       uses: bobheadxi/deployments@v1
       id: deployment
       with:
@@ -50,11 +53,13 @@ jobs:
         env: ${{ env.BRANCH_NAME }}
         desc: Setting up staging deployment for ${{ env.BRANCH_NAME }}
     - id: 'auth'
+      if: github.repository == 'seung-lab/ng-extend'
       uses: 'google-github-actions/auth@v1'
       with:
         workload_identity_provider: 'projects/483670036293/locations/global/workloadIdentityPools/neuroglancer-github/providers/github'
         service_account: 'chris-apps-deploy@seung-lab.iam.gserviceaccount.com'
     - id: deploy
+      if: github.repository == 'seung-lab/ng-extend'
       uses: google-github-actions/deploy-appengine@main
       with:
         version: ${{ env.BRANCH_NAME_URL }}
@@ -62,7 +67,7 @@ jobs:
         promote: false
     - name: update deployment status
       uses: bobheadxi/deployments@v1
-      if: always()
+      if: always() && github.repository == 'seung-lab/ng-extend'
       with:
         step: finish
         token: ${{ secrets.GITHUB_TOKEN }}

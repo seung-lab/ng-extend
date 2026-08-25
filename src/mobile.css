@@ -136,6 +136,26 @@ body.nge-mobile .nge-overlay-blocker .nge-overlay.modal.overlay-content {
   overflow-y: auto;
 }
 
+/* ── Chat strip: finger targets, not mouse targets ───────────────────────
+   The collapse and close buttons are 11-16px glyphs with a few px of
+   padding — untappable on a phone (Amy 2026-08-24). Give them 44px
+   Apple-guideline hit areas and bigger, brighter glyphs. */
+body.nge-mobile .nge-chat-strip {
+  min-height: 44px;
+  padding: 2px 4px;
+}
+body.nge-mobile .nge-chat-strip-btn {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: #9aabc4;
+}
+body.nge-mobile .nge-chat-collapse-btn { font-size: 16px; }
+body.nge-mobile .nge-chat-close-btn { font-size: 24px; }
+
 /* ── Notifications: no Delete all on phones ───────────────────────────────
    The button sits one thumb width from the X that closes the panel; too
    easy to nuke the feed by accident. Desktop keeps it, behind its

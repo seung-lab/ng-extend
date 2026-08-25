@@ -17,6 +17,17 @@ let ctx: CanvasRenderingContext2D | null = null;
 let animFrame = 0;
 let particles: Particle[] = [];
 let sparkles: Sparkle[] = [];
+/** Sparkle-only runs render UNDER the mobile welcome sheet (z 10400 vs its
+ *  10500): the shimmer is scenery the sheet floats over, never dots on top
+ *  of readable UI (Amy 2026-08-24). Confetti bursts flip back on top. */
+const underUI = ref(false);
+/** Mobile shimmer opens behind a dark particle veil that dissolves away,
+ *  so the app is REVEALED through the sparkles instead of overlapped.
+ *  veilT runs 0→1; opacity follows a cosine ease so the dissolve flows
+ *  smoothly out instead of dropping fast then crawling (Amy 2026-08-24). */
+let veilT = -1;            // -1 = no veil
+const VEIL_MAX = 0.85;
+const VEIL_STEP = 1 / 54;  // ~0.9s at 60fps
 
 // Color palettes for different milestone types
 const PALETTES: Record<string, string[]> = {
@@ -115,8 +126,9 @@ const SPARKLE_COLORS = [
 function createSparkles(count: number) {
   const canvas = canvasRef.value;
   if (!canvas) return;
-  // Mobile: the whole shimmer completes inside 2 seconds (Amy 2026-08-18),
-  // tighter spawn stagger and a faster lifecycle. Desktop keeps the longer
+  // Mobile: a brief orienting moment — the whole shimmer lives and dies
+  // in about a second while the mind settles into the space; any longer
+  // and it blocks the view (Amy 2026-08-24). Desktop keeps the longer
   // ambient wash (up to ~6s).
   const mobile = isMobileRef.value;
   for (let i = 0; i < count; i++) {
@@ -129,7 +141,7 @@ function createSparkles(count: number) {
       phase: Math.random() * Math.PI * 2,
       speed: 0.03 + Math.random() * 0.05,   // faster twinkle
       life: -spawnDelay,                     // negative = waiting to appear
-      lifeSpeed: mobile ? 0.026 + Math.random() * 0.012
+      lifeSpeed: mobile ? 0.046 + Math.random() * 0.018
                         : 0.008 + Math.random() * 0.01,
       color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
       maxOpacity: 0.7 + Math.random() * 0.3,  // brighter: 0.7–1.0
@@ -143,14 +155,30 @@ function animateSparkles() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   let alive = false;
+  // Dissolving veil: cosine ease from near-opaque to nothing (~1.4s) —
+  // smooth at both ends, no jump.
+  if (veilT >= 0 && veilT <= 1) {
+    const opacity = VEIL_MAX * (0.5 + 0.5 * Math.cos(Math.PI * veilT));
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = `rgba(4, 9, 18, ${opacity})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    veilT += VEIL_STEP;
+    alive = true;
+  } else {
+    veilT = -1;
+  }
   for (const s of sparkles) {
     s.life += s.lifeSpeed;
     if (s.life > 2) continue; // dead
     if (s.life < 0) { alive = true; continue; } // waiting to spawn
     alive = true;
 
-    // Bell curve: fade in 0→1, fade out 1→2
-    const envelope = s.life <= 1 ? s.life : 2 - s.life;
+    // Bell curve with smoothstep shoulders: eases in and out instead of
+    // ramping linearly, so sparkles bloom and dissolve rather than pop.
+    const lin = s.life <= 1 ? s.life : 2 - s.life;
+    const envelope = lin * lin * (3 - 2 * lin);
     // Twinkle: rapid sin oscillation on top of envelope
     const twinkle = 0.5 + 0.5 * Math.sin(s.phase + s.life * 80 * s.speed);
     const alpha = envelope * twinkle * s.maxOpacity;
@@ -227,6 +255,12 @@ function animateSparkles() {
  */
 function sparkle(intensity: number = 1) {
   resizeCanvas();
+  underUI.value = true;
+  // Phones get a thinner field too — density reads as obstruction there.
+  if (isMobileRef.value) intensity *= 0.6;
+  // Phones: the shimmer is a materialization — start behind a veil that
+  // dissolves to reveal the scene. Desktop keeps the plain ambient wash.
+  if (isMobileRef.value) veilT = 0;
   const count = Math.round(120 * intensity);
   createSparkles(count);
   if (!animFrame) {
@@ -241,6 +275,8 @@ function sparkle(intensity: number = 1) {
  */
 function trigger(palette: string = 'default', intensity: number = 1) {
   resizeCanvas();
+  underUI.value = false;
+  veilT = -1;
   const colors = PALETTES[palette] || PALETTES.default;
   const count = Math.round(80 * intensity);
   createParticles(count, colors);
@@ -271,6 +307,7 @@ defineExpose({ trigger, sparkle });
     <canvas
       ref="canvasRef"
       class="nge-confetti-canvas"
+      :class="{ 'nge-confetti-canvas--under': underUI }"
     />
   </Teleport>
 </template>
@@ -284,4 +321,6 @@ defineExpose({ trigger, sparkle });
   width: 100vw;
   height: 100vh;
 }
+/* Sparkle-only runs: below the mobile welcome sheet (10500), above the rest. */
+.nge-confetti-canvas--under { z-index: 10400; }
 </style>

@@ -11,7 +11,7 @@
  * Handles multiple concurrent login prompts (e.g. two auth servers).
  */
 import { ref, onMounted, onUnmounted } from 'vue';
-import { openSegPanel } from '../widgets/widget_utils';
+import { openSegPanel, showDefaultCell } from '../widgets/widget_utils';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
 import { isMobileRef, mobileWelcomeOpenRef } from '../util/mobile';
 
@@ -167,6 +167,18 @@ function dismiss() {
   // dataset switches) and we need the observer to react to them.
 }
 
+/**
+ * Mobile welcome sheet's LOG IN WITH GOOGLE button: start auth immediately
+ * instead of making the user tap Log in a second time here. Dispatched
+ * synchronously from the tap, so doLogin's window.open keeps the
+ * user-gesture flag. If no login prompt has surfaced yet, re-scan and try
+ * once more; failing that the modal simply stays visible as before.
+ */
+function requestLogin() {
+  scanForLoginPrompts();
+  loginAll();
+}
+
 function handleLoginSuccess() {
   console.log('[LoginModal] middleauthlogin event fired — marking waiting prompts as done');
   // Mark waiting prompts as done. Their DOM elements stay in
@@ -203,9 +215,19 @@ function handleLoginSuccess() {
       setTimeout(() => scanForLoginPrompts(), delay);
     }
 
-    // After login, auto-select the segmentation layer and open the Seg tab
-    // so the user lands in the expected view.
-    setTimeout(() => openSegPanel(), 1500);
+    // After login, land somewhere with something to see. Desktop:
+    // auto-select the segmentation layer and open the Seg tab. Phones:
+    // the forced-3D view is empty until a neuron is chosen, so the seg
+    // tab reads as a blank page (Amy 2026-08-24) — open the Cell
+    // Library instead: pick a neuron, see it in 3D.
+    if (isMobileRef.value) {
+      // Show the showcase cell (config defaultSegments — the pinky
+      // neuron) so login lands on a cell in 3D, not a black screen
+      // (Amy 2026-08-24). Meshes need the fresh auth, hence post-login.
+      setTimeout(() => showDefaultCell(), 800);
+    } else {
+      setTimeout(() => openSegPanel(), 1500);
+    }
   }
   // Otherwise modal stays open — user clicks the next server's Login button
 }
@@ -266,6 +288,9 @@ onMounted(() => {
   // dismisses identity verification (same as tapping BYPASS).
   document.addEventListener('nge:dismiss-login', dismiss);
 
+  // Mobile welcome sheet's login button: jump straight into the auth popup.
+  document.addEventListener('nge:request-login', requestLogin);
+
   // Try to find statusContainer immediately
   if (!watchForStatusContainer()) {
     // Not created yet — observe the neuroglancer container for its creation
@@ -301,6 +326,7 @@ onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
   window.removeEventListener('middleauthlogin', handleLoginSuccess);
   document.removeEventListener('nge:dismiss-login', dismiss);
+  document.removeEventListener('nge:request-login', requestLogin);
 });
 
 function shortUrl(url: string): string {

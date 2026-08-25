@@ -60,6 +60,17 @@ export const useLoginStore = defineStore('login', () => {
   }
 
   async function update() {
+    try {
+      await doUpdate();
+    } finally {
+      // The mobile welcome sheet holds its login section blank until the
+      // first token check settles, so this must flip true on every exit
+      // path — including the mid-loop early return and thrown errors.
+      checked.value = true;
+    }
+  }
+
+  async function doUpdate() {
     const localStorageKeys: string[] = [];
     for (const key of Object.keys(window.localStorage)) {
       if (key.startsWith(TOKEN_PREFIX)) {
@@ -121,7 +132,11 @@ export const useLoginStore = defineStore('login', () => {
     sessions.value = newSessions;
   }
   const sessions: Ref<loginSession[]> = ref([]);
-  return {sessions, update, logout};
+  /** True once the first update() has settled — before that, nobody knows
+   *  yet whether the stored tokens are valid, so UI shouldn't claim either
+   *  logged-in or logged-out. */
+  const checked = ref(false);
+  return {sessions, update, logout, checked};
 });
 
 export interface Volume {

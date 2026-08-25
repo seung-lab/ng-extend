@@ -15,11 +15,30 @@
  */
 // The neuron glyph, same as the top bar's Cell Library icon. Connectomics,
 // not genomics: never the DNA emoji (Amy 2026-08-18).
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
+import NeuronGlyph from 'components/NeuronGlyph.vue';
 
 /** loggedIn: after login the systems list becomes interactive links
- *  (tap Profile on the Guide to open the profile panel, etc.). */
-defineProps<{ show: boolean, loggedIn: boolean }>();
+ *  (tap Profile on the Guide to open the profile panel, etc.).
+ *  userName: shown in the signed-in status row so the sheet always says
+ *  where you stand — a hidden login button with no explanation reads as
+ *  "login is missing" (Amy 2026-08-24).
+ *  loginChecked: false until the first stored-token validation settles.
+ *  The check is async, so on load loggedIn is briefly false even for a
+ *  logged-in visitor; rendering the login button in that window makes it
+ *  appear and then vanish a second later (Amy 2026-08-24). Until checked,
+ *  the section shows a quiet verifying line instead of either state. */
+const props = defineProps<{ show: boolean, loggedIn: boolean, loginChecked?: boolean, userName?: string }>();
+
+/** Greeting matches who's there: a stranger is a citizen, a logged-in
+ *  player is greeted by first name (or as a citizen scientist when the
+ *  auth server gave us no name) — Amy 2026-08-24. */
+const greeting = computed(() => {
+  if (!props.loggedIn) return 'Welcome, citizen';
+  const first = props.userName?.trim().split(/\s+/)[0];
+  return first ? `Welcome, ${first}` : 'Welcome, citizen scientist';
+});
 
 const emit = defineEmits<{
   (e: 'hide'): void;
@@ -46,6 +65,48 @@ const SYSTEMS: { id: PanelId; icon: string; label: string; sub: string }[] = [
 function dismiss() {
   emit('hide');
 }
+
+// ── Spinnable cell ────────────────────────────────────────────────────────
+// A tiny rotating neuron (the login box's glyph) at the top of the sheet.
+// It idles in a slow spin; dragging spins it directly and a flick leaves
+// momentum that eases back to the idle rate (Amy 2026-08-25).
+const spinAngle = ref(0);
+const IDLE_VEL = 0.35;               // deg per frame ≈ 21°/s
+let spinVel = IDLE_VEL;
+let spinDragging = false;
+let spinLastX = 0;
+let spinRaf = 0;
+function spinTick() {
+  if (!spinDragging) {
+    spinAngle.value = (spinAngle.value + spinVel) % 360;
+    spinVel += (IDLE_VEL - spinVel) * 0.03;  // momentum eases to idle
+  }
+  spinRaf = requestAnimationFrame(spinTick);
+}
+onMounted(() => { spinRaf = requestAnimationFrame(spinTick); });
+onUnmounted(() => cancelAnimationFrame(spinRaf));
+function spinStart(e: PointerEvent) {
+  spinDragging = true;
+  spinLastX = e.clientX;
+  (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+}
+function spinMove(e: PointerEvent) {
+  if (!spinDragging) return;
+  const dx = e.clientX - spinLastX;
+  spinLastX = e.clientX;
+  spinAngle.value = (spinAngle.value + dx * 0.6) % 360;
+  spinVel = dx * 0.6;
+}
+function spinEnd() {
+  spinDragging = false;
+  spinVel = Math.max(-7, Math.min(7, spinVel));
+}
+
+// Portal social-proof line. Three candidate copies were wired as an A/B/C
+// test with Supabase conversion logging (commit 182be75; schema kept in
+// supabase-mobile-welcome-ab.sql) but traffic is too thin to test yet, so
+// the strongest line ships fixed — see TODO.md to revive the test.
+const PORTAL_LINE = 'People like you have mapped over 40,000 real neurons.';
 
 /* The 101 explainers are the existing connectome.quest mobile experiences. */
 function openLearn() {
@@ -85,16 +146,20 @@ function shareEmail() {
   <transition name="nge-mw">
     <div v-if="show" class="nge-mw-blocker" @click.self="dismiss">
       <div class="nge-mw-sheet" role="dialog" aria-label="EyeWire II on mobile">
-        <!-- A wee brilliant beautiful burst: 2 seconds of sparkle on open,
-             then gone. Pure CSS, plays on each mount. -->
-        <div class="nge-mw-sparkles" aria-hidden="true"></div>
         <div class="nge-mw-handle"></div>
         <button class="nge-mw-close" @click="dismiss" title="Close">×</button>
 
         <!-- ── Home ── -->
         <div class="nge-mw-body">
+          <div class="nge-mw-spin-stage" aria-hidden="true"
+              @pointerdown="spinStart" @pointermove="spinMove"
+              @pointerup="spinEnd" @pointercancel="spinEnd">
+            <div class="nge-mw-spin" :style="{ transform: `rotateX(8deg) rotateY(${spinAngle}deg)` }">
+              <NeuronGlyph />
+            </div>
+          </div>
           <div class="nge-mw-kicker">MOBILE UPLINK · LIMITED BANDWIDTH</div>
-          <h2 class="nge-mw-title">Welcome, scientist</h2>
+          <h2 class="nge-mw-title">{{ greeting }}</h2>
           <p class="nge-mw-copy">
             The full EyeWire II brain mapping interface needs a bigger
             screen. But your phone still has clearance. Start here:
@@ -103,7 +168,8 @@ function shareEmail() {
           <button class="nge-mw-learn" @click="openLearn">
             <span class="nge-mw-learn-icon">🧠</span>
             <span class="nge-mw-learn-text">
-              <span class="nge-mw-learn-title">What is a brain anyway?</span>
+              <!-- The playful "anyway" is for strangers; players get the tidy title. -->
+              <span class="nge-mw-learn-title">{{ loggedIn ? 'What is a brain?' : 'What is a brain anyway?' }}</span>
               <span class="nge-mw-learn-sub">Neuroscience 101</span>
             </span>
             <span class="nge-mw-learn-arrow">›</span>
@@ -139,8 +205,25 @@ function shareEmail() {
             </component>
           </div>
 
-          <button v-if="!loggedIn" class="nge-mw-cta" @click="emit('login')">
-            🔐 LOG IN · FULL ACCESS
+          <!-- Logged out: the mission invite IS the login path. Logged in:
+               an explicit status row instead — the sheet always shows where
+               you stand with the login system, never a silent gap. Until
+               the token check settles, neither: a quiet verifying line, so
+               the login button never flashes in and then vanishes. -->
+          <div v-if="!loginChecked" class="nge-mw-verifying">VERIFYING CLEARANCE&hellip;</div>
+          <template v-else-if="!loggedIn">
+            <div class="nge-mw-divider"><span>CITIZEN SCIENCE MOBILE PORTAL</span></div>
+            <p class="nge-mw-invite">{{ PORTAL_LINE }}</p>
+            <!-- Straight into the Google auth popup (via nge:request-login in
+                 ExtensionBar/LoginModal) — no second Log in tap on the
+                 Identity Verification box. -->
+            <button class="nge-mw-cta" @click="emit('login')">
+              🔐 LOG IN WITH GOOGLE
+            </button>
+            <div class="nge-mw-cta-sub">Become a citizen scientist · free · full access</div>
+          </template>
+          <button v-else class="nge-mw-signed" @click="openPanel('profile')">
+            ✓ CITIZEN SCIENTIST ON DUTY<template v-if="userName"> · {{ userName.toUpperCase() }}</template>
           </button>
 
           <div class="nge-mw-divider"><span>RECRUIT MORE SCIENTISTS</span></div>
@@ -178,69 +261,66 @@ function shareEmail() {
 </template>
 
 <style>
+/* No visible scrollbars on the landing box — it still scrolls by touch
+   when content overflows a short screen (Amy 2026-08-25). */
+.nge-mw-sheet { scrollbar-width: none; -ms-overflow-style: none; }
+.nge-mw-sheet::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* Spinnable cell: perspective stage; the glyph coin-spins on Y. */
+.nge-mw-spin-stage {
+  width: 76px;
+  height: 64px;
+  margin: 0 auto 2px;
+  perspective: 320px;
+  touch-action: none;
+  cursor: grab;
+}
+.nge-mw-spin-stage:active { cursor: grabbing; }
+.nge-mw-spin {
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  will-change: transform;
+  filter: drop-shadow(0 0 10px rgba(24, 207, 255, 0.35));
+}
+
+/* Fullscreen on phones: the sheet IS the landing page, not a box floating
+   over one (Amy 2026-08-25). The blocker just hosts it edge to edge. */
 .nge-mw-blocker {
   position: fixed;
   inset: 0;
   z-index: 10500;
-  background: rgba(2, 5, 12, 0.55);
-  backdrop-filter: blur(3px);
+  background: #070d1a;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
+  padding: 0;
   box-sizing: border-box;
 }
 
 .nge-mw-sheet {
   position: relative;
   width: 100%;
-  max-width: 520px;
-  max-height: 96dvh;
+  max-width: 560px;
+  height: 100dvh;
+  max-height: 100dvh;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 8px 18px calc(10px + env(safe-area-inset-bottom));
-  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  padding: calc(8px + env(safe-area-inset-top)) 18px calc(10px + env(safe-area-inset-bottom));
+  border-radius: 0;
+  border: none;
   background:
     radial-gradient(ellipse at 50% 0%, rgba(53, 181, 255, 0.10), transparent 60%),
     linear-gradient(180deg, #0b1424 0%, #070d1a 100%);
-  border: 1px solid rgba(53, 181, 255, 0.35);
-  border-top-color: rgba(53, 181, 255, 0.5);
-  box-shadow:
-    0 10px 40px rgba(0, 0, 0, 0.7),
-    0 0 30px rgba(53, 181, 255, 0.12),
-    inset 0 1px 0 rgba(53, 181, 255, 0.25);
   color: #dfe9ff;
   font-family: 'Roboto', sans-serif;
 }
 
-/* Sparkle burst overlay */
-.nge-mw-sparkles {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background-image:
-    radial-gradient(2px 2px at 12% 18%, rgba(191, 233, 255, 0.95) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 78% 12%, rgba(53, 181, 255, 0.9) 0%, transparent 100%),
-    radial-gradient(1px 1px at 32% 38%, rgba(255, 255, 255, 0.85) 0%, transparent 100%),
-    radial-gradient(2px 2px at 88% 42%, rgba(140, 210, 255, 0.85) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 52% 8%, rgba(206, 147, 216, 0.75) 0%, transparent 100%),
-    radial-gradient(1px 1px at 8% 62%, rgba(53, 181, 255, 0.8) 0%, transparent 100%),
-    radial-gradient(2px 2px at 64% 70%, rgba(191, 233, 255, 0.8) 0%, transparent 100%),
-    radial-gradient(1px 1px at 92% 82%, rgba(255, 255, 255, 0.7) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 24% 86%, rgba(140, 210, 255, 0.8) 0%, transparent 100%),
-    radial-gradient(1px 1px at 44% 56%, rgba(206, 147, 216, 0.65) 0%, transparent 100%),
-    radial-gradient(2px 2px at 70% 28%, rgba(53, 181, 255, 0.85) 0%, transparent 100%),
-    radial-gradient(1px 1px at 16% 44%, rgba(255, 255, 255, 0.6) 0%, transparent 100%);
-  animation: nge-mw-sparkle-burst 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes nge-mw-sparkle-burst {
-  0%   { opacity: 0;    transform: scale(0.72); filter: brightness(1.4); }
-  18%  { opacity: 1; }
-  55%  { opacity: 0.65; transform: scale(1.05); filter: brightness(2.4); }
-  100% { opacity: 0;    transform: scale(1.22); filter: brightness(1); }
-}
+/* Vertically center the content on tall screens without clipping short
+   ones: auto margins inside a scroll container collapse safely. */
+.nge-mw-body { margin-top: auto; margin-bottom: auto; }
 
 .nge-mw-handle {
   width: 42px;
@@ -490,6 +570,67 @@ function shareEmail() {
   box-shadow: 0 0 16px rgba(53, 181, 255, 0.18), inset 0 0 14px rgba(53, 181, 255, 0.08);
 }
 .nge-mw-cta:active { box-shadow: 0 0 22px rgba(53, 181, 255, 0.4); }
+
+.nge-mw-invite {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #aebfdd;
+  margin: 0;
+}
+
+.nge-mw-cta-sub {
+  margin-top: 6px;
+  text-align: center;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  color: rgba(143, 166, 204, 0.75);
+}
+
+/* Pre-check: quiet placeholder where the login section will land. Sized
+   like the signed-in row so the sheet doesn't jump when the check settles. */
+.nge-mw-verifying {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 11px;
+  padding: 11px;
+  border-radius: 9px;
+  border: 1px solid rgba(53, 181, 255, 0.18);
+  text-align: center;
+  color: rgba(143, 166, 204, 0.7);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  animation: nge-mw-verify-pulse 1.4s ease-in-out infinite;
+}
+@keyframes nge-mw-verify-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+
+/* Logged in: status row in the invite's place; tap opens the profile. */
+.nge-mw-signed {
+  display: block;
+  width: 100%;
+  margin-top: 11px;
+  padding: 10px;
+  border-radius: 9px;
+  background: rgba(0, 220, 120, 0.06);
+  border: 1px solid rgba(0, 220, 120, 0.35);
+  color: #b8f5d8;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nge-mw-signed:active { box-shadow: 0 0 16px rgba(0, 220, 120, 0.3); }
 
 /* Sheet transition */
 .nge-mw-enter-active,

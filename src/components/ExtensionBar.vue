@@ -171,6 +171,13 @@ onMounted(() => {
     }
   }, true);
 
+  // Mobile post-login landing: LoginModal asks for the Cell Library so a
+  // fresh login never stares at an empty forced-3D view.
+  document.addEventListener('nge:open-cell-library', (() => {
+    cellLibraryInitialTab.value = undefined;
+    showCellLibrary.value = true;
+  }) as EventListener);
+
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
     // Optional deep-link tab ('triage' opens Admin Hub > Triage, etc.)
@@ -265,7 +272,22 @@ const showMobileWelcome = ref(
 // LoginModal reads this shared ref: while the sheet is up, identity
 // verification stays out of the way (the sheet IS the mobile landing page).
 watch(showMobileWelcome, v => { mobileWelcomeOpenRef.value = v; }, {immediate: true});
+// A LOGGED-OUT mobile visit always leads with the sheet, even when this
+// browser session already saw it: without this, the seen-gate suppresses
+// the sheet on a revisit and Identity Verification fronts uninvited —
+// login should only pop after opting in from the sheet (Amy 2026-08-24).
+// One-shot per load, and never over a dismissal the visitor already made.
+let mobileWelcomeDismissedThisLoad = false;
+let mobileWelcomeAutoReopened = false;
+watch([() => login.checked, validLogins], ([checked, valid]) => {
+  if (!checked || !isMobileRef.value) return;
+  if (mobileWelcomeAutoReopened || mobileWelcomeDismissedThisLoad) return;
+  if ((valid as loginSession[]).length > 0 || showMobileWelcome.value) return;
+  mobileWelcomeAutoReopened = true;
+  showMobileWelcome.value = true;
+}, {immediate: true});
 function hideMobileWelcome() {
+  mobileWelcomeDismissedThisLoad = true;
   showMobileWelcome.value = false;
   try { sessionStorage.setItem(MOBILE_WELCOME_SEEN_KEY, '1'); } catch {}
 }
@@ -275,9 +297,13 @@ function exploreWithoutLogin() {
   hideMobileWelcome();
   document.dispatchEvent(new CustomEvent('nge:dismiss-login'));
 }
-/** "Log in" on the sheet: close it and let the login box take the stage. */
+/** "Log in" on the sheet: close it and start auth right away. The dispatch
+ *  is synchronous, so LoginModal's window.open still runs inside this tap's
+ *  user gesture — the Google popup isn't blocked. If no auth prompt has
+ *  surfaced yet, LoginModal simply takes the stage as before. */
 function mobileWelcomeLogin() {
   hideMobileWelcome();
+  document.dispatchEvent(new CustomEvent('nge:request-login'));
 }
 function mobileOpenPanel(panel: 'cells' | 'chat' | 'profile' | 'leaderboard') {
   switch (panel) {
@@ -933,6 +959,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     v-if="isMobileRef"
     :show="showMobileWelcome"
     :logged-in="validLogins.length > 0"
+    :login-checked="login.checked"
+    :user-name="validLogins[0]?.name"
     @hide="exploreWithoutLogin"
     @login="mobileWelcomeLogin"
     @open="mobileOpenPanel"

@@ -1,4 +1,6 @@
 import {formatScaleWithUnit} from "neuroglancer/util/si_units";
+import {Uint64} from "neuroglancer/util/uint64";
+import {getDatasetCaveConfig} from "../config";
 
 export const getLayerScales = (coordinateSpace: any) => {
     let scales = new Float32Array(coordinateSpace.value?.scales.length);
@@ -18,6 +20,49 @@ export const getLayerScales = (coordinateSpace: any) => {
  * Idempotent — safe to call repeatedly. Retries up to ~6 seconds in case
  * the layer hasn't finished initializing yet.
  */
+/**
+ * Make the active dataset's default segments visible (config.ts
+ * defaultSegments — e.g. the showcase pinky cell) with their configured
+ * colors. Used after login on phones: the forced-3D view is empty until a
+ * segment is visible, so without this a fresh login lands on a black
+ * screen (Amy 2026-08-24). Idempotent; retries while layers initialize.
+ */
+export function showDefaultCell(retryAttempts = 5): void {
+  try {
+    const viewer: any = (window as any)['viewer'];
+    const segLayer = viewer?.layerManager?.managedLayers?.find(
+      (l: any) => l.layer?.constructor?.name?.includes('Segmentation'),
+    );
+    if (!viewer || !segLayer?.layer) {
+      if (retryAttempts > 0) setTimeout(() => showDefaultCell(retryAttempts - 1), 1500);
+      return;
+    }
+    const dsCfg = getDatasetCaveConfig(segLayer.name);
+    if (!dsCfg?.defaultSegments?.length) return;
+    const groupState = segLayer.layer.displayState.segmentationGroupState.value;
+    const colorGroupState = segLayer.layer.displayState.segmentationColorGroupState.value;
+    for (const idStr of dsCfg.defaultSegments) {
+      const segId = Uint64.parseString(idStr);
+      if (!groupState.visibleSegments.has(segId)) {
+        groupState.visibleSegments.add(segId);
+      }
+      const colorHex = (dsCfg.segmentColors as Record<string, string> | undefined)?.[idStr];
+      if (colorHex) {
+        const m = /^#?([0-9a-f]{6})$/i.exec(colorHex);
+        if (m) {
+          const v = parseInt(m[1], 16);
+          // neuroglancer packs as 0xBBGGRR.
+          const packed = ((v >> 16) & 0xff) | (v & 0xff00) | ((v & 0xff) << 16);
+          colorGroupState.segmentStatedColors.set(segId, new Uint64(packed, 0));
+        }
+      }
+    }
+    console.info(`[showDefaultCell] ${dsCfg.defaultSegments.length} default segment(s) visible on ${segLayer.name}`);
+  } catch (e) {
+    console.warn('[showDefaultCell] failed:', e);
+  }
+}
+
 export function openSegPanel(retryAttempts = 3): void {
   try {
     // Mobile keeps the seg side panel closed (Amy 2026-08-18): it would
