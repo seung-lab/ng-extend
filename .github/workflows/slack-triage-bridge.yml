@@ -26,6 +26,11 @@ on:
     - cron: '45 * * * *'
   workflow_dispatch: {}
 
+# Reply recovery reads thread history before sending; serialize publishers.
+concurrency:
+  group: slack-triage-bridge
+  cancel-in-progress: false
+
 jobs:
   bridge:
     runs-on: ubuntu-latest
