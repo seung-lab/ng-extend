@@ -12,6 +12,7 @@ import {isMobileRef} from './util/mobile';
 import {currentDatasetTag, canonicalDataset, currentSegLayer} from './datasets';
 import {supabase} from './supabase';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
+import {createClaimRootRefresher, shouldRefreshClaimRoots} from './util/claim_root_refresh';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
 import pinVtkUrl from '../static/tags/pin.vtk';
@@ -294,8 +295,14 @@ export const useLayersStore = defineStore('layers', () => {
         // Grab & clear the tracked segment IDs for this operation
         const removedIds = pendingRemoved.size ? [...pendingRemoved].join(',') : null;
         const addedIds   = pendingAdded.size   ? [...pendingAdded].join(',')   : null;
+        // Root replacement can leave the visible count unchanged. A failed edit
+        // that restores the original IDs has identical added/removed sets.
+        const rootsChanged = shouldRefreshClaimRoots(tool, pendingRemoved, pendingAdded);
         pendingRemoved.clear();
         pendingAdded.clear();
+        if (rootsChanged) {
+          void useProofreadingBackendStore().refreshSegmentIds(true);
+        }
         if (net === 0) return; // changes cancelled out
         if (!tool) return;     // not a graphene edit — nothing to count
 
@@ -3903,25 +3910,26 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   function pointKey(pt: ClaimPoint): string { return `${pt[0]},${pt[1]},${pt[2]}`; }
 
-  /** Batch-refresh cached segment_ids by resolving supervoxel → current root via PCG.
-   *  Correctly follows edits and splits. */
-  async function refreshSegmentIds(): Promise<void> {
-    const tasksWithSv = tasks.value.filter(t => t.supervoxel_id);
-    if (!tasksWithSv.length) return;
-
-    const svIds = tasksWithSv.map(t => t.supervoxel_id!);
-    const resolved = await getRootsFromSupervoxels(svIds);
-    for (const task of tasksWithSv) {
-      const newRoot = resolved.get(task.supervoxel_id!);
-      if (newRoot && newRoot !== task.segment_id) {
-        task.segment_id = newRoot;
-        supabase.from('proofreading_tasks')
-          .update({ segment_id: newRoot })
-          .eq('id', task.id)
-          .then(() => {}, () => {});
-      }
-    }
-  }
+  /** Panel opening refreshes cached tasks; post-edit calls refresh active claims. */
+  const refreshSegmentIds = createClaimRootRefresher({
+    tasks: () => tasks.value,
+    dataset: currentDatasetTag,
+    canonicalDataset,
+    resolve: getRootsFromSupervoxels,
+    persist: async (task, root, previousRoot) => {
+      const { data, error } = await supabase.from('proofreading_tasks')
+        .update({ segment_id: root })
+        .eq('id', task.id)
+        .eq('supervoxel_id', task.supervoxel_id)
+        .eq('segment_id', previousRoot)
+        .select('id');
+      if (error) throw error;
+      // A concurrent writer may have changed the root without causing an error.
+      // Restore our old cache value on a zero-row update instead of claiming success.
+      return !!data?.length;
+    },
+    onError: error => console.warn('[backend] claim root refresh failed:', error),
+  });
 
   function _findTaskByPoint(point: ClaimPoint): ProofreadingTask | undefined {
     return tasks.value.find(
