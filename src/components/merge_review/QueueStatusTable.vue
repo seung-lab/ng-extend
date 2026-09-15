@@ -5,7 +5,7 @@ import { useMergeReviewStore } from "#src/merge_review/store.js";
 
 interface Row {
   id: number; window_id: string; status: string; approved: number;
-  keep_side: string | null; keep_root_id: number | null;
+  keep_side: string | null; keep_root_id: string | null; // string: exceeds 2^53
   operation_id: number | null; attempts: number; error: string | null;
 }
 const store = useMergeReviewStore();

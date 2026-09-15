@@ -138,7 +138,7 @@ export interface StatusRow {
   status: string;
   approved: boolean;
   keep_side: string | null;
-  keep_root_id: number | null;
+  keep_root_id: string | null; // string: root ids exceed JS safe-int range
   operation_id: number | null;
   attempts: number;
   error: string | null;
