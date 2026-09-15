@@ -1,28 +1,86 @@
-// Supabase-backed client for the merge-cut queue. Works from the HTTPS appspot (no localhost).
+// Candela-backed client for the merge-cut queue.
+//
+// Was Supabase/PostgREST; now talks to the Candela service (CAVEconnectome/Candela, which
+// also vendors this frontend). Two things changed and both matter:
+//   * Auth is CAVE middle-auth, not a Supabase anon key. We send the same bearer token the
+//     login flow already stashed in localStorage, so a reviewer who is signed in to CAVE is
+//     signed in here — and the server records WHO queued each cut.
+//   * The API is scoped by datastack, because a CAVE service is.
+//
 // Configure at runtime, before the app loads:
-//   window.SUPABASE_URL = "https://<ref>.supabase.co";
-//   window.SUPABASE_ANON_KEY = "eyJ...anon...";
-type W = { SUPABASE_URL?: string; SUPABASE_ANON_KEY?: string; MERGE_QUEUE_API?: string };
+//   window.CANDELA_API = "https://<host>/candela";   // no trailing slash
+//   window.CANDELA_DATASTACK = "minnie65_phase3_v1";
+type W = {
+  CANDELA_API?: string;
+  CANDELA_DATASTACK?: string;
+  MERGE_QUEUE_API?: string;
+};
 const w = (typeof window !== "undefined" ? (window as unknown as W) : {}) as W;
-// Defaults baked in for the appspot; override at runtime via window.SUPABASE_URL / SUPABASE_ANON_KEY.
-const DEFAULT_URL = "https://gqhfqgmbkzufzlpnehmp.supabase.co";
-const DEFAULT_KEY = "sb_publishable_402oLnzhhqf0ow8z24qZdg_mWWQn28q";
-const SB_URL = (w.SUPABASE_URL || DEFAULT_URL).replace(/\/$/, "");
-const SB_KEY = w.SUPABASE_ANON_KEY || DEFAULT_KEY;
-const REST = `${SB_URL}/rest/v1`;
 
-function hdr(extra: Record<string, string> = {}): Record<string, string> {
-  const h: Record<string, string> = {
-    apikey: SB_KEY,
-    "Content-Type": "application/json",
-    ...extra,
-  };
-  // Legacy anon keys are JWTs and also go in Authorization; new sb_publishable_ keys use apikey only.
-  if (SB_KEY.startsWith("eyJ")) h.Authorization = `Bearer ${SB_KEY}`;
-  return h;
+// Baked in at build time by webpack's DefinePlugin from config/ng-extend.json; the deploy
+// workflow patches that file so the deployed bundle knows its own API without anyone
+// setting a global by hand.
+declare const CONFIG:
+  | { candela_api?: string; candela_datastack?: string; autoproof_api?: string }
+  | undefined;
+const cfg = typeof CONFIG !== "undefined" && CONFIG ? CONFIG : {};
+
+// Precedence: runtime window override → build-time config → local dev default.
+const DEFAULT_API = "http://localhost:8080/candela";
+const DEFAULT_DATASTACK = "minnie65_phase3_v1";
+const API = (w.CANDELA_API || cfg.candela_api || DEFAULT_API).replace(/\/$/, "");
+const DATASTACK = w.CANDELA_DATASTACK || cfg.candela_datastack || DEFAULT_DATASTACK;
+const BASE = `${API}/api/v1/datastack/${encodeURIComponent(DATASTACK)}`;
+
+// The middleauth access tokens the login flow stashed in localStorage
+// (auth_token_v2_<login_url> → { url, accessToken }). Same source skeletonPath.ts reads.
+function middleauthTokens(): string[] {
+  const out: string[] = [];
+  try {
+    const ls = typeof window !== "undefined" ? window.localStorage : undefined;
+    if (!ls) return out;
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (!k || !k.startsWith("auth_token_v2_")) continue;
+      const raw = ls.getItem(k);
+      if (!raw) continue;
+      try {
+        const d = JSON.parse(raw);
+        if (d && typeof d.accessToken === "string") out.push(d.accessToken);
+      } catch {
+        /* skip malformed */
+      }
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return out;
 }
-function configured(): boolean {
-  return !!(SB_URL && SB_KEY);
+
+// Several CAVE deployments can be logged in at once, so try each token until one is
+// accepted rather than guessing which login this datastack belongs to.
+// No credentials:"include" — we send the bearer explicitly, and cookie-mode would
+// forbid the wildcard CORS origin the service replies with.
+// Exported so autoproofClient.ts speaks to the autoproof API with the same tokens.
+export async function authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const tokens = middleauthTokens();
+  const base: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init.headers as Record<string, string>) || {}),
+  };
+  if (tokens.length === 0) {
+    return fetch(url, { ...init, headers: base });
+  }
+  let last: Response | null = null;
+  for (const t of tokens) {
+    const r = await fetch(url, {
+      ...init,
+      headers: { ...base, Authorization: `Bearer ${t}` },
+    });
+    if (r.status !== 401 && r.status !== 403) return r;
+    last = r;
+  }
+  return last as Response;
 }
 
 export interface EnqueueBody {
@@ -41,44 +99,33 @@ export interface EnqueueBody {
 export async function enqueueJob(
   body: EnqueueBody,
 ): Promise<{ id: number } | { error: string }> {
-  if (!configured()) {
-    return { error: "Supabase not configured (window.SUPABASE_URL / SUPABASE_ANON_KEY)" };
-  }
   try {
-    const r = await fetch(`${REST}/merge_cut_queue`, {
+    // approved:false always — queueing must never arm a cut. Arming is a separate,
+    // deliberate step, and the worker refuses unapproved jobs unless run with
+    // --auto-approve.
+    const r = await authedFetch(`${BASE}/jobs`, {
       method: "POST",
-      headers: hdr({ Prefer: "return=representation" }),
-      body: JSON.stringify({ ...body, approved: false, status: "queued" }),
+      body: JSON.stringify({ ...body, approved: false }),
     });
-    if (!r.ok) return { error: `Supabase ${r.status}: ${(await r.text()).slice(0, 140)}` };
-    const rows = await r.json();
-    return { id: Array.isArray(rows) && rows[0] ? rows[0].id : 0 };
+    if (!r.ok) {
+      return { error: `Candela ${r.status}: ${(await r.text()).slice(0, 140)}` };
+    }
+    const d = await r.json();
+    return { id: d && typeof d.id === "number" ? d.id : 0 };
   } catch (e) {
     return { error: String(e) };
   }
 }
 
-// Cancel a still-queued job so the worker never cuts it. Scoped to status=queued
-// in the URL (and enforced by RLS), so a job already claimed/running/done can't
-// be cancelled — the PATCH simply matches 0 rows and we report that.
+// Cancel a still-queued job so the worker never cuts it. The server refuses once a job has
+// been claimed — cancelling then would not stop the CAVE edit — and answers 409.
 export async function cancelJob(
   id: number,
 ): Promise<{ ok: true } | { error: string }> {
-  if (!configured()) return { error: "Supabase not configured" };
   try {
-    const r = await fetch(
-      `${REST}/merge_cut_queue?id=eq.${id}&status=eq.queued`,
-      {
-        method: "PATCH",
-        headers: hdr({ Prefer: "return=representation" }),
-        body: JSON.stringify({ status: "cancelled" }),
-      },
-    );
-    if (!r.ok) return { error: `Supabase ${r.status}: ${(await r.text()).slice(0, 140)}` };
-    const rows = await r.json();
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return { error: "already running/done — too late to cancel" };
-    }
+    const r = await authedFetch(`${BASE}/jobs/${id}/cancel`, { method: "POST" });
+    if (r.status === 409) return { error: "already running/done — too late to cancel" };
+    if (!r.ok) return { error: `Candela ${r.status}: ${(await r.text()).slice(0, 140)}` };
     return { ok: true };
   } catch (e) {
     return { error: String(e) };
@@ -97,42 +144,37 @@ export interface StatusRow {
   error: string | null;
 }
 
-// One queue per neuron: pass the current root id to show only that neuron's
-// jobs (omit it to show every root's — e.g. an admin view).
+// One queue per neuron: pass the current root id to show only that neuron's jobs
+// (omit it for an admin view of every root).
 export async function fetchStatus(rootId?: string): Promise<StatusRow[]> {
-  if (!configured()) return [];
   try {
-    const cols =
-      "id,window_id,status,approved,keep_side,keep_root_id,operation_id,attempts,error";
-    let q = `${REST}/merge_cut_queue?select=${cols}&order=created_at.desc`;
-    if (rootId) q += `&source_root_id=eq.${encodeURIComponent(rootId)}`;
-    const r = await fetch(q, { headers: hdr() });
-    return r.ok ? await r.json() : [];
+    let q = `${BASE}/jobs?limit=200`;
+    if (rootId) q += `&source_root_id=${encodeURIComponent(rootId)}`;
+    const r = await authedFetch(q);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return Array.isArray(d?.jobs) ? d.jobs : [];
   } catch {
     return [];
   }
 }
 
-// Latest cleaned (keep) root for THIS neuron — scoped by root so the cleaned
-// layer never picks up another neuron's result.
+// Latest cleaned (keep) root for THIS neuron — scoped by root so the cleaned layer never
+// picks up another neuron's result.
 export async function fetchKeepRoot(rootId: string): Promise<string | null> {
-  if (!configured()) return null;
+  if (!rootId) return null;
   try {
-    let q = `${REST}/merge_cut_queue?select=keep_root_id&keep_root_id=not.is.null&order=created_at.desc&limit=1`;
-    if (rootId) q += `&source_root_id=eq.${encodeURIComponent(rootId)}`;
-    const r = await fetch(q, { headers: hdr() });
+    const r = await authedFetch(`${BASE}/keep_root/${encodeURIComponent(rootId)}`);
+    if (!r.ok) return null;
     const d = await r.json();
-    return Array.isArray(d) && d[0] && d[0].keep_root_id != null
-      ? String(d[0].keep_root_id)
-      : null;
+    return d && d.keep_root_id ? String(d.keep_root_id) : null;
   } catch {
     return null;
   }
 }
 
-// Anchor→window skeleton path (the "main branch"). Needs a live CAVE find_path; Supabase can't do
-// it. On the appspot this is a follow-up (route through CAVE directly). Uses a local path backend
-// only if window.MERGE_QUEUE_API is set.
+// Anchor→window skeleton path (the "main branch"). Needs a live CAVE find_path, which the
+// queue service does not proxy; used only if window.MERGE_QUEUE_API points at a path backend.
 export async function fetchAnchorPath(
   rootId: string,
   srcNm: number[],
@@ -154,4 +196,4 @@ export async function fetchAnchorPath(
   }
 }
 
-export const QUEUE_API = SB_URL;
+export const QUEUE_API = API;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useImport } from "#src/merge_review/useImport.js";
+import AutoproofPanel from "#src/components/merge_review/AutoproofPanel.vue";
 
 const { importBundle, importDecisions } = useImport();
 </script>
@@ -8,11 +9,17 @@ const { importBundle, importDecisions } = useImport();
   <div id="welcome-overlay">
     <div class="card">
       <h2>MERGER FREE</h2>
+      <p class="welcome-autoproof-lead">
+        Enter a neuron root id and run the auto-proofreader; its candidate
+        windows load into the review when the job finishes.
+      </p>
+      <autoproof-panel />
       <p>
         <button class="link-btn primary" @click="importBundle">
           ↑ Import bundle JSON
         </button>
-        &nbsp;Pick the per-neuron JSON your admin sent you to start.
+        &nbsp;Pick the per-neuron JSON your admin sent you to start — or run
+        the auto-proofreader on a root id first (above).
       </p>
       <p>
         <button class="link-btn" @click="importDecisions">

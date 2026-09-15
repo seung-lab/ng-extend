@@ -96,7 +96,9 @@ export function buildViewerState(
 
   // Pipeline-candidate windows carry a per-window partner segment (the
   // merge/split counterpart) — show it in pink like an old root.
-  if (window_.partner_root != null) {
+  // No partner (null) or an empty id must never reach the layer: neuroglancer
+  // parses segment ids as uint64 strings and "" fails to parse.
+  if (window_.partner_root != null && String(window_.partner_root) !== "") {
     const pid = String(window_.partner_root);
     if (!segs.includes(pid)) {
       segs.push(pid);

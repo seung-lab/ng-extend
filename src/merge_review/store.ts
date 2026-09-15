@@ -8,7 +8,7 @@
 // ng-extend's login store, so the MICrONS segmentation loads natively
 // instead of requiring a separate spelunker login.
 
-import { computed, ref, type Ref } from "vue";
+import { computed, reactive, ref, watch, type Ref } from "vue";
 import { defineStore } from "pinia";
 
 import type { Viewer } from "neuroglancer/unstable/viewer.js";
@@ -47,8 +47,39 @@ import {
   saveTokenEdits,
   setDecisionField,
 } from "#src/merge_review/decisions.js";
+import {
+  cancelAutoproof as apiCancelAutoproof,
+  fetchAutoproofCandidates,
+  fetchAutoproofJob,
+  fetchAutoproofJobsForRoot,
+  fetchAutoproofManifest,
+  isAutoproofError,
+  isAutoproofTerminal,
+  submitAutoproof as apiSubmitAutoproof,
+  type AutoproofRootRow,
+} from "#src/merge_review/autoproofClient.js";
+import {
+  clearAutoproofJob,
+  loadAutoproofJob,
+  saveAutoproofJob,
+} from "#src/merge_review/autoproofStorage.js";
 
 export type ReviewTab = "suspect" | "all";
+
+// Panel state for the auto-proofread job tracked for the current root.
+// `status` is "idle" | "submitting" | one of the API's per-root statuses
+// (QUEUED, PREPROC_RUNNING, PREPROC_DONE, INFER_RUNNING, DONE, FAILED, CANCELLED).
+// Ids are strings — root ids exceed 2^53 and must never pass through Number().
+export interface AutoproofState {
+  jobId: string | null;
+  rootId: string | null;
+  status: string;
+  counts: Record<string, number>;
+  error: string | null;
+  manifestUri: string | null;
+  resultsLoaded: boolean;
+  updatedAt: string | null;
+}
 
 export const useMergeReviewStore = defineStore("mergeReview", () => {
   let viewer: Viewer | undefined = undefined;
@@ -636,6 +667,28 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     return m.root_id != null && !!m.artifacts && typeof m.artifacts === "object";
   }
 
+  // JSON.parse has already run by the time we see the object, and it silently
+  // rounds an integer above 2^53.  The pipeline writes its ids as strings, so a
+  // non-safe number in root_id / partner_root means a stale artifact whose ids
+  // are already corrupt — it must be refused, never loaded as the wrong root.
+  function pipelineIdsRounded(obj: unknown): boolean {
+    const unsafe = (v: unknown) =>
+      typeof v === "number" && !Number.isSafeInteger(v);
+    if (Array.isArray(obj)) {
+      return obj.some(
+        (c) =>
+          !!c &&
+          typeof c === "object" &&
+          unsafe((c as PipelineCandidate).partner_root),
+      );
+    }
+    return (
+      !!obj &&
+      typeof obj === "object" &&
+      unsafe((obj as PipelineManifest).root_id)
+    );
+  }
+
   function isPipelineCandidates(obj: unknown): obj is PipelineCandidate[] {
     return (
       Array.isArray(obj) &&
@@ -655,7 +708,10 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   // candidate row (site_id repeats — one row per partner — so the array
   // index becomes the unique window idx).  Mapping:
   //   site_center_nm → center_um (÷1000), score → verify_prob,
-  //   partner_root/kind/site_id kept as window tags.
+  //   partner_root/kind/site_id kept as window tags,
+  //   datastack → neuron.datastack (the table the ids belong to; without it
+  //   the segmentation layer would fall back to its default datastack and ask
+  //   the wrong chunkedgraph for these ids).
   function bundleFromPipelineCandidates(
     cands: PipelineCandidate[],
     manifest: PipelineManifest,
@@ -670,7 +726,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       site_id: cand.site_id,
     }));
     return {
-      neuron: { latest_root_id: manifest.root_id },
+      neuron: { latest_root_id: manifest.root_id, datastack: manifest.datastack },
       windows,
       metadata: { n_suspects: windows.length, n_windows: windows.length },
       pipeline: {
@@ -682,9 +738,42 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   }
 
   // ─────────────────────── import / export ─────────────────────
+  // Install a freshly imported / loaded bundle and reset the per-neuron state
+  // around it.  Shared by the file import paths and the auto-proofread results
+  // load so they cannot drift apart.
+  function activateBundle(b: Bundle) {
+    bundle.value = b;
+    currentIdx.value = null;
+    // A new neuron: drop any anchor from the previous bundle. Its supervoxel is
+    // on a different object, so leaving it set makes every cut filter to nothing
+    // ("no_points_on_anchor_object"). The reviewer must set a fresh anchor.
+    clearAnchor();
+    // Restore any point edits previously saved for this root (survives
+    // reloads).  Fresh neuron with no saved edits → empty map.
+    tokenEdits.value = root.value != null ? loadTokenEdits(root.value) : {};
+    reloadDecisions();
+    // Auto-select the first window in the visible list so the
+    // reviewer is dropped straight into the EM view.
+    const first = visibleWindows.value[0];
+    if (first) selectWindow(first.idx);
+  }
+
   function importBundleFromText(text: string): boolean {
     try {
       const parsed = JSON.parse(text) as unknown;
+      if (
+        (isPipelineManifest(parsed) || isPipelineCandidates(parsed)) &&
+        pipelineIdsRounded(parsed)
+      ) {
+        alert(
+          "This pipeline file stores ids as bare integers above 2^53 and " +
+            "JSON.parse has already rounded them — the segments would be wrong.\n" +
+            "Load the results through the autoproof API instead (Run " +
+            "auto-proofread / Load results), or re-run the pipeline, which " +
+            "writes ids as strings.",
+        );
+        return false;
+      }
       // Pipeline manifest.json: its artifact URIs are file:// paths the
       // browser can't fetch, so just stash root id + provenance and ask
       // for the candidates file.
@@ -711,13 +800,8 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
           if (!entered || !entered.trim()) return false;
           manifest = { root_id: entered.trim(), artifacts: {} };
         }
-        bundle.value = bundleFromPipelineCandidates(parsed, manifest);
+        activateBundle(bundleFromPipelineCandidates(parsed, manifest));
         pendingManifest = null;
-        currentIdx.value = null;
-        tokenEdits.value = root.value != null ? loadTokenEdits(root.value) : {};
-        reloadDecisions();
-        const firstWin = visibleWindows.value[0];
-        if (firstWin) selectWindow(firstWin.idx);
         return true;
       }
       const obj = parsed as Bundle;
@@ -725,20 +809,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
         alert("That JSON doesn't look like a review bundle.");
         return false;
       }
-      bundle.value = obj;
-      currentIdx.value = null;
-      // A new neuron: drop any anchor from the previous bundle. Its supervoxel is
-      // on a different object, so leaving it set makes every cut filter to nothing
-      // ("no_points_on_anchor_object"). The reviewer must set a fresh anchor.
-      clearAnchor();
-      // Restore any point edits previously saved for this root (survives
-      // reloads).  Fresh neuron with no saved edits → empty map.
-      tokenEdits.value = root.value != null ? loadTokenEdits(root.value) : {};
-      reloadDecisions();
-      // Auto-select the first window in the visible list so the
-      // reviewer is dropped straight into the EM view.
-      const first = visibleWindows.value[0];
-      if (first) selectWindow(first.idx);
+      activateBundle(obj);
       return true;
     } catch (e) {
       alert("Failed to parse bundle JSON: " + (e as Error).message);
@@ -1049,6 +1120,403 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     startCleanedPoll();
   }
 
+  // ─────────────────────── auto-proofread jobs ─────────────────
+  // Submit a root to the autoproof pipeline, poll it, and load its candidates
+  // as the review bundle when it finishes.  One job is tracked at a time — the
+  // one for the root the panel shows — and the job id is remembered per root in
+  // localStorage so it can be resumed: by the root watcher when a bundle for
+  // that root comes in (re-import), and by Run itself, which picks the existing
+  // job up before it would submit a new one (so a page reload followed by Run
+  // on the same id finds the first job instead of queueing a duplicate).
+  const autoproof = reactive<AutoproofState>({
+    jobId: null,
+    rootId: null,
+    status: "idle",
+    counts: {},
+    error: null,
+    manifestUri: null,
+    resultsLoaded: false,
+    updatedAt: null,
+  });
+
+  let autoproofTimer: number | null = null;
+  let autoproofTickBusy = false;
+  let autoproofMisses = 0;
+  // Consecutive failed polls (3 s apart) before tracking is dropped so the
+  // panel does not sit locked forever while the API is down.
+  const AUTOPROOF_MAX_MISSES = 20;
+  // Bumped whenever tracking moves to another job/root, so a slow response from
+  // the previous one is discarded instead of overwriting the new state.
+  let autoproofEpoch = 0;
+
+  function stopAutoproofPoll() {
+    if (autoproofTimer != null) {
+      window.clearInterval(autoproofTimer);
+      autoproofTimer = null;
+    }
+  }
+
+  function resetAutoproof(rootId: string | null) {
+    stopAutoproofPoll();
+    autoproofEpoch++;
+    autoproofTickBusy = false;
+    autoproofMisses = 0;
+    autoproof.jobId = null;
+    autoproof.rootId = rootId;
+    autoproof.status = "idle";
+    autoproof.counts = {};
+    autoproof.error = null;
+    autoproof.manifestUri = null;
+    autoproof.resultsLoaded = false;
+    autoproof.updatedAt = null;
+  }
+
+  // The canonical root id form — what the API echoes back (it parses the id
+  // as an int and re-serialises it): digits with no leading zeros.  Every id
+  // the store tracks, polls for and keys localStorage by is in this form so it
+  // compares equal to what GET /jobs/<id> reports.
+  function canonicalRootId(s: string): string {
+    return s.trim().replace(/^0+(?=\d)/, "");
+  }
+
+  // Comma/whitespace-separated, digits only, canonicalised, de-duplicated,
+  // order kept.
+  function parseAutoproofRootIds(
+    text: string,
+  ): { ids: string[] } | { error: string } {
+    const parts = text.split(/[\s,]+/).filter((s) => s.length > 0);
+    if (parts.length === 0) return { error: "Enter a root id." };
+    const bad = parts.find((p) => !/^\d+$/.test(p));
+    if (bad !== undefined) {
+      return { error: `Not a root id: "${bad}" (digits only).` };
+    }
+    return { ids: Array.from(new Set(parts.map(canonicalRootId))) };
+  }
+
+  // Fold one per-root row from the API into the panel state.  Handles the DONE
+  // transition: auto-load the results when nothing is loaded yet, otherwise just
+  // offer them (the panel shows "Load results").
+  function applyAutoproofRow(
+    row: { status: string; error: string | null; manifest_uri: string | null },
+    counts?: Record<string, number>,
+  ) {
+    const was = autoproof.status;
+    autoproof.status = row.status;
+    autoproof.error = row.error ?? null;
+    autoproof.manifestUri = row.manifest_uri ?? null;
+    if (counts) autoproof.counts = counts;
+    autoproof.updatedAt = new Date().toISOString();
+    if (isAutoproofTerminal(row.status)) stopAutoproofPoll();
+    if (row.status === "DONE" && was !== "DONE") {
+      if (bundle.value === null) void loadAutoproofResults();
+      else autoproof.resultsLoaded = false;
+    }
+  }
+
+  async function autoproofTick() {
+    const { jobId, rootId } = autoproof;
+    if (!jobId || !rootId || autoproofTickBusy) return;
+    const epoch = autoproofEpoch;
+    autoproofTickBusy = true;
+    try {
+      const res = await fetchAutoproofJob(jobId);
+      if (epoch !== autoproofEpoch) return; // tracking moved on while we waited
+      if (!res.ok) {
+        if (res.missing) {
+          // Documented 404: the server no longer knows this job (its DB was
+          // reset, or the remembered id is stale).  Nothing to poll — and
+          // forget the key, so a reload asks the API for the root's history
+          // instead of resuming this job again.
+          stopAutoproofPoll();
+          autoproof.status = "FAILED";
+          autoproof.error = `job ${jobId} no longer exists on the server`;
+          clearAutoproofJob(rootId);
+          return;
+        }
+        // Transient (backend restarting, network blip, 5xx): keep polling, say
+        // so after a few misses, and give up after AUTOPROOF_MAX_MISSES so the
+        // panel does not stay locked.  The job id stays in localStorage, so a
+        // later resume (re-import / reload) picks the job back up.
+        autoproofMisses++;
+        if (autoproofMisses >= AUTOPROOF_MAX_MISSES) {
+          const short = jobId.slice(0, 8);
+          resetAutoproof(rootId);
+          autoproof.error =
+            `autoproof API unreachable — stopped polling job ${short}; ` +
+            "it may still be running: reload or re-import the root to resume";
+          return;
+        }
+        if (autoproofMisses >= 3) {
+          autoproof.error = `autoproof API unreachable — retrying (${res.error})`;
+        }
+        return;
+      }
+      autoproofMisses = 0;
+      const roll = res.roll;
+      const row = roll.roots.find((r) => r.root_id === rootId);
+      if (!row) {
+        stopAutoproofPoll();
+        autoproof.status = "FAILED";
+        autoproof.error = `root ${rootId} is not part of job ${jobId}`;
+        return;
+      }
+      applyAutoproofRow(row, roll.counts);
+    } finally {
+      if (epoch === autoproofEpoch) autoproofTickBusy = false;
+    }
+  }
+
+  // Poll the tracked job every 3 s until it reaches a terminal status.  Always
+  // clears the previous interval first, so there is never more than one.
+  function pollAutoproof() {
+    stopAutoproofPoll();
+    if (!autoproof.jobId || !autoproof.rootId) return;
+    autoproofMisses = 0;
+    void autoproofTick();
+    autoproofTimer = window.setInterval(() => void autoproofTick(), 3000);
+  }
+
+  // Parse the panel's text, submit, remember the job per root, start polling.
+  // With several ids the panel follows the first one (the API rolls up the rest
+  // in `counts`).  Returns whether a NEW job was submitted.
+  //
+  // A single root the panel is not already tracking is first resumed rather
+  // than re-submitted: after a reload nothing is loaded, so nothing else would
+  // ever consult the remembered job id or the API's history for it, and Run
+  // would queue a duplicate GPU job on top of a finished (or still running)
+  // one.  A DONE job auto-loads its results when nothing is loaded yet; a
+  // running one is polled.  Resume makes the panel track that root, so a
+  // second Run on the same id falls through to a real submit — that is how the
+  // reviewer asks for a fresh job.
+  async function submitAutoproof(
+    rootIdsText: string,
+    params?: Record<string, unknown>,
+  ): Promise<boolean> {
+    const parsed = parseAutoproofRootIds(rootIdsText);
+    if ("error" in parsed) {
+      autoproof.error = parsed.error;
+      StatusMessage.showTemporaryMessage(parsed.error, 4000);
+      return false;
+    }
+    const ids = parsed.ids;
+    if (ids.length === 1 && autoproof.rootId !== ids[0]) {
+      const found = await resumeAutoproof(ids[0]);
+      const { jobId, status } = autoproof;
+      if (
+        found &&
+        autoproof.rootId === ids[0] &&
+        jobId != null &&
+        status !== "FAILED" &&
+        status !== "CANCELLED"
+      ) {
+        StatusMessage.showTemporaryMessage(
+          `Picked up existing job ${jobId.slice(0, 8)} (${status}) for root ` +
+            `${ids[0]} — press Run again to start a fresh one.`,
+          6000,
+        );
+        return false;
+      }
+    }
+    resetAutoproof(ids[0]);
+    const epoch = autoproofEpoch;
+    autoproof.status = "submitting";
+    const r = await apiSubmitAutoproof(ids, params);
+    if (epoch !== autoproofEpoch) return false; // superseded meanwhile
+    if ("error" in r) {
+      autoproof.status = "idle";
+      autoproof.error = r.error;
+      StatusMessage.showTemporaryMessage(
+        "Auto-proofread submit failed: " + r.error,
+        6000,
+      );
+      return false;
+    }
+    autoproof.jobId = r.job_id;
+    // Follow the ids the server echoed (its canonical form is what GET
+    // /jobs/<id> reports and what the poll's roots.find() compares against);
+    // the parsed ids only stand in if the echo is missing.
+    const echoed = r.root_ids.length > 0 ? r.root_ids : ids;
+    autoproof.rootId = echoed[0];
+    autoproof.status = "QUEUED";
+    autoproof.updatedAt = new Date().toISOString();
+    for (const id of echoed) saveAutoproofJob(id, r.job_id);
+    StatusMessage.showTemporaryMessage(
+      `Auto-proofread job ${r.job_id.slice(0, 8)} queued for ${ids.length} root(s).`,
+      4000,
+    );
+    pollAutoproof();
+    return true;
+  }
+
+  // Pick a job back up for a root: the one this browser remembered, else the
+  // newest the API knows about.  Polls if it is still running.  Returns whether
+  // a job was found.
+  async function resumeAutoproof(rootId: string | number): Promise<boolean> {
+    const rid = canonicalRootId(String(rootId));
+    if (!/^\d+$/.test(rid)) return false;
+    // Already tracking (or submitting) a job for this root — nothing to do.
+    if (
+      autoproof.rootId === rid &&
+      (autoproof.jobId != null || autoproof.status === "submitting")
+    ) {
+      return true;
+    }
+    resetAutoproof(rid);
+    const epoch = autoproofEpoch;
+
+    // 1. The job this browser remembered for the root, if the server still
+    //    has it (and it really contains this root).
+    let jobId: string | null = null;
+    let row: AutoproofRootRow | null = null;
+    let counts: Record<string, number> | undefined;
+    let transient: string | null = null;
+    const remembered = loadAutoproofJob(rid);
+    if (remembered) {
+      const res = await fetchAutoproofJob(remembered);
+      if (epoch !== autoproofEpoch) return false;
+      const found = res.ok
+        ? res.roll.roots.find((r) => r.root_id === rid)
+        : undefined;
+      if (res.ok && found) {
+        jobId = remembered;
+        row = found;
+        counts = res.roll.counts;
+      } else if (res.ok || res.missing) {
+        clearAutoproofJob(rid); // gone from the server / not this root's
+      } else {
+        transient = res.error; // unreachable: the history lookup may still work
+      }
+    }
+
+    // 2. Ask the API when nothing usable was remembered — and also when the
+    //    remembered job ended FAILED/CANCELLED, so it cannot shadow a newer run
+    //    started elsewhere (CLI, another browser).  History is newest-first.
+    const rememberedEnded =
+      row != null && (row.status === "FAILED" || row.status === "CANCELLED");
+    if (jobId == null || rememberedEnded) {
+      const jobs = await fetchAutoproofJobsForRoot(rid);
+      if (epoch !== autoproofEpoch) return false;
+      if (jobs === null) {
+        if (jobId == null) {
+          autoproof.error =
+            "autoproof API unreachable — could not look up this root's jobs" +
+            (transient ? ` (${transient})` : "");
+          return false;
+        }
+        // history unavailable: keep showing the remembered (ended) job
+      } else {
+        const newest = jobs[0];
+        if (newest && newest.job_id !== jobId) {
+          jobId = newest.job_id;
+          counts = undefined;
+          row = {
+            root_id: rid,
+            status: newest.status,
+            attempt: newest.attempt,
+            error: newest.error,
+            manifest_uri: newest.manifest_uri,
+          };
+        }
+      }
+    }
+    if (jobId == null || row == null) return false; // no job; panel stays idle
+    autoproof.jobId = jobId;
+    saveAutoproofJob(rid, jobId);
+    applyAutoproofRow(row, counts);
+    if (!isAutoproofTerminal(row.status)) pollAutoproof();
+    return true;
+  }
+
+  // Fetch manifest + candidates for the tracked (DONE) job and make them the
+  // review bundle — the same bookkeeping as a candidates.json file import.
+  async function loadAutoproofResults(): Promise<boolean> {
+    const { jobId, rootId } = autoproof;
+    if (!jobId || !rootId) return false;
+    if (autoproof.status !== "DONE") {
+      StatusMessage.showTemporaryMessage(
+        "Auto-proofread results are not ready yet.",
+        3000,
+      );
+      return false;
+    }
+    const epoch = autoproofEpoch;
+    const [m, c] = await Promise.all([
+      fetchAutoproofManifest(jobId, rootId),
+      fetchAutoproofCandidates(jobId, rootId),
+    ]);
+    if (epoch !== autoproofEpoch) return false;
+    if (isAutoproofError(m)) {
+      autoproof.error = "manifest: " + m.error;
+      StatusMessage.showTemporaryMessage(
+        "Could not load results — " + m.error,
+        6000,
+      );
+      return false;
+    }
+    if (isAutoproofError(c)) {
+      autoproof.error = "candidates: " + c.error;
+      StatusMessage.showTemporaryMessage(
+        "Could not load results — " + c.error,
+        6000,
+      );
+      return false;
+    }
+    if (c.length === 0) {
+      // Nothing to review: mark the run consumed so the panel stops offering
+      // "Load results", and keep the outcome visible after the toast fades.
+      autoproof.resultsLoaded = true;
+      autoproof.error = `no candidates for root ${rootId} — nothing to review`;
+      StatusMessage.showTemporaryMessage(
+        `Auto-proofread finished for root ${rootId}: no candidates — nothing to review.`,
+        8000,
+      );
+      return false;
+    }
+    activateBundle(bundleFromPipelineCandidates(c, m));
+    pendingManifest = null;
+    autoproof.resultsLoaded = true;
+    autoproof.error = null;
+    StatusMessage.showTemporaryMessage(
+      `Loaded ${c.length} auto-proofread candidate(s) for root ${rootId}.`,
+      4000,
+    );
+    return true;
+  }
+
+  // Cancel the tracked job's still-queued roots (a running root finishes on its
+  // own); the next poll picks up CANCELLED.
+  async function cancelAutoproof(): Promise<boolean> {
+    const { jobId } = autoproof;
+    if (!jobId || isAutoproofTerminal(autoproof.status)) return false;
+    const r = await apiCancelAutoproof(jobId);
+    if ("error" in r) {
+      StatusMessage.showTemporaryMessage("Cancel failed: " + r.error, 6000);
+      return false;
+    }
+    StatusMessage.showTemporaryMessage(
+      r.cancelled > 0
+        ? `Cancelled ${r.cancelled} queued root(s).`
+        : "Nothing left to cancel — the root is already running or finished.",
+      4000,
+    );
+    if (autoproof.jobId === jobId) void autoproofTick();
+    return true;
+  }
+
+  // Follow the loaded neuron: when a bundle for another root comes in (file
+  // import, or results loaded for a different root), pick up that root's job —
+  // unless a job is live for the current one, which the panel keeps showing.
+  watch(root, (r) => {
+    if (r == null) return;
+    const rid = canonicalRootId(String(r));
+    if (autoproof.rootId === rid) return;
+    const live =
+      autoproof.status === "submitting" ||
+      (autoproof.jobId != null && !isAutoproofTerminal(autoproof.status));
+    if (live) return;
+    void resumeAutoproof(rid);
+  });
+
   return {
     // state
     bundle,
@@ -1091,5 +1559,13 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     setAnchorFromClick,
     clearAnchor,
     enqueueCurrentSplit,
+    // auto-proofread jobs
+    autoproof,
+    submitAutoproof,
+    pollAutoproof,
+    stopAutoproofPoll,
+    resumeAutoproof,
+    loadAutoproofResults,
+    cancelAutoproof,
   };
 });

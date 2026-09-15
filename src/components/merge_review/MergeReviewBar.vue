@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useMergeReviewStore } from "#src/merge_review/store.js";
 import { useImport } from "#src/merge_review/useImport.js";
+import AutoproofPanel from "#src/components/merge_review/AutoproofPanel.vue";
 
 const store = useMergeReviewStore();
 const { importBundle, importDecisions } = useImport();
@@ -23,6 +24,7 @@ function showDecision() {
     <button :disabled="!store.bundle" @click="store.exportDecisions()">
       ↓ Export decisions
     </button>
+    <autoproof-panel compact />
     <button class="panel-toggle" title="Re-open the windows panel" @click="showWindows">
       Windows
     </button>

@@ -28,7 +28,7 @@ export interface ReviewWindow {
   tokens?: Tokens;
   // Pipeline-candidate windows (autoproof candidates.json) also carry:
   kind?: string; // "merge" | "split"
-  partner_root?: string | number; // the candidate partner segment
+  partner_root?: string | number | null; // the candidate partner segment (null: none)
   site_id?: number; // pipeline site id (NOT unique — one row per partner)
 }
 
@@ -53,6 +53,10 @@ export interface Bundle {
 // import candidates.json directly.
 export interface PipelineManifest {
   root_id: string | number;
+  // The CAVE datastack the job was computed on: the segmentation table that
+  // root_id and every candidate's partner_root belong to.  Absent on manifests
+  // written before the pipeline recorded it.
+  datastack?: string;
   model_version?: string;
   params_hash?: string;
   generated_at?: string;
@@ -64,7 +68,9 @@ export interface PipelineManifest {
 export interface PipelineCandidate {
   site_id: number;
   kind: string; // "merge" | "split"
-  partner_root: string | number;
+  // The partner segment as a digit STRING (ids exceed 2^53); null when the
+  // candidate has no partner (a split candidate in general).
+  partner_root: string | number | null;
   score: number; // 0..1 confidence
   site_center_nm: number[];
 }
