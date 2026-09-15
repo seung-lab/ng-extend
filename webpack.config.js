@@ -7,6 +7,27 @@ import configKeybinds from "./config/custom-keybinds.json" with { type: "json" }
 import configNGExtend from "./config/ng-extend.json" with { type: "json" };
 import configStateServers from "./config/state_servers.json" with { type: "json" };
 
+// The MERGER FREE service endpoints can be given as environment variables at
+// build / dev-server time; a set variable wins over config/ng-extend.json, so a
+// local run (demo/run_local.sh) or a CI build points the bundle at its APIs
+// without editing a tracked file.  Same keys the clients read from CONFIG:
+//   CANDELA_API       -> candela_api        (mergeQueueClient.ts, decisionsClient.ts)
+//   CANDELA_DATASTACK -> candela_datastack  (mergeQueueClient.ts)
+//   AUTOPROOF_API     -> autoproof_api      (autoproofClient.ts)
+const ENV_CONFIG_KEYS = {
+  CANDELA_API: "candela_api",
+  CANDELA_DATASTACK: "candela_datastack",
+  AUTOPROOF_API: "autoproof_api",
+};
+const config = { ...configNGExtend };
+for (const [envVar, key] of Object.entries(ENV_CONFIG_KEYS)) {
+  const v = process.env[envVar];
+  if (v !== undefined && v.trim() !== "") {
+    config[key] = v.trim();
+    console.log(`ng-extend config: ${key} = ${config[key]} (from $${envVar})`);
+  }
+}
+
 export default {
   entry: "./src/main.ts",
   mode: "development",
@@ -76,7 +97,7 @@ export default {
     }),
     new VueLoaderPlugin(),
     new DefinePlugin({
-      CONFIG: JSON.stringify(configNGExtend),
+      CONFIG: JSON.stringify(config),
       STATE_SERVERS: JSON.stringify(configStateServers),
       CUSTOM_BINDINGS: JSON.stringify(configKeybinds),
     }),

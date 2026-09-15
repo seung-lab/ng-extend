@@ -7,6 +7,11 @@ export interface NeuronInfo {
   old_root_id?: string | number;
   old_root_ids?: (string | number)[];
   datastack?: string;
+  // A stable supervoxel on the neuron (the nucleus / keep side) resolved by
+  // the pipeline's preprocess stage, as a digit STRING (ids exceed 2^53).
+  // The store adopts it as the cut-queue anchor; the reviewer can still
+  // override it with A.  null / absent: none resolved — press A.
+  anchor_sv?: string | number | null;
 }
 
 export interface SpectralInfo {
@@ -73,10 +78,17 @@ export interface PipelineCandidate {
   partner_root: string | number | null;
   score: number; // 0..1 confidence
   site_center_nm: number[];
+  // Cluster tokens around the site (µm relative to site_center_nm/1000), when
+  // the scorer produced them; passed through to the review window so SPLIT
+  // WHICH / Queue cut work on a pipeline window like on a classic one.
+  tokens?: Tokens;
 }
 
-// Provenance recorded on a Bundle built from pipeline output.
+// Provenance recorded on a Bundle built from pipeline output.  The pipeline's
+// own bundle.json (GET …/bundle) writes this block itself; the manifest +
+// candidates fallback synthesises it.
 export interface PipelineInfo {
+  job_id?: string;
   model_version?: string;
   params_hash?: string;
   generated_at?: string;

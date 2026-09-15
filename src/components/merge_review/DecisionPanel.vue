@@ -64,6 +64,41 @@ function onNotesInput() {
   if (notesTimer) clearTimeout(notesTimer);
   notesTimer = setTimeout(() => store.setNotes(notes.value), 800);
 }
+
+// Where the anchor came from: picked in the viewer (A) or adopted from the
+// bundle (the pipeline resolved it) — the latter can be re-picked with A.
+const anchorText = computed(() =>
+  store.anchorOrigin === "bundle" ? "from pipeline" : "picked",
+);
+const anchorTitle = computed(() =>
+  store.anchorSv
+    ? `anchor supervoxel ${store.anchorSv}` +
+      (store.anchorOrigin === "bundle"
+        ? " (resolved by the pipeline — hover the nucleus and press A to override)"
+        : "")
+    : "",
+);
+
+// Server mirror of the decisions (Candela review_decisions): local storage is
+// written first, this only says whether the server copy is current.
+const SYNC_LABEL: Record<string, string> = {
+  idle: "",
+  pending: "saving…",
+  syncing: "saving…",
+  synced: "saved",
+  error: "not synced",
+};
+const syncText = computed(() => SYNC_LABEL[store.decisionsSync.status] ?? "");
+const syncTitle = computed(() => {
+  const s = store.decisionsSync;
+  if (s.status === "error") {
+    return `saved in this browser only — Candela sync failed: ${s.error ?? ""}`;
+  }
+  if (s.status === "synced" && s.lastSyncedAt) {
+    return `synced to Candela at ${new Date(s.lastSyncedAt).toLocaleTimeString()}`;
+  }
+  return "syncing decisions to Candela";
+});
 </script>
 
 <template>
@@ -184,10 +219,22 @@ function onNotesInput() {
       </div>
 
       <div class="anchor-row">
-        Anchor:
-        <span v-if="store.hasAnchor" style="color: #2e9e6b">set ✓</span>
-        <span v-else class="dim">none — hover the nucleus, press A</span>
-        <button v-if="store.hasAnchor" class="btn-reset-edits" @click="store.clearAnchor()">clear</button>
+        <span>
+          Anchor:
+          <span v-if="store.hasAnchor" class="anchor-set" :title="anchorTitle">
+            set ✓ <span class="dim">({{ anchorText }})</span>
+          </span>
+          <span v-else class="dim">none — hover the nucleus, press A</span>
+          <button v-if="store.hasAnchor" class="btn-reset-edits" @click="store.clearAnchor()">clear</button>
+        </span>
+        <span
+          v-if="syncText"
+          class="sync-state"
+          :class="'sync-' + store.decisionsSync.status"
+          :title="syncTitle"
+        >
+          {{ syncText }}
+        </span>
       </div>
       <input
         id="cur-notes"
@@ -199,3 +246,39 @@ function onNotesInput() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.anchor-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+  font-size: 12px;
+}
+.anchor-set {
+  color: #2e9e6b;
+}
+.anchor-row .btn-reset-edits {
+  margin-left: 6px;
+  background: #444;
+  color: #eee;
+  border: 1px solid #666;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.sync-state {
+  font-size: 10px;
+  color: #6b7280;
+  white-space: nowrap;
+  cursor: help;
+}
+.sync-synced {
+  color: #2e9e6b;
+}
+.sync-error {
+  color: #d0453b;
+}
+</style>

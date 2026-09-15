@@ -197,3 +197,7 @@ export async function fetchAnchorPath(
 }
 
 export const QUEUE_API = API;
+// The datastack-scoped base every Candela call hangs off (…/api/v1/datastack/<ds>);
+// decisionsClient.ts uses it so the decisions land in the same datastack as the cuts.
+export const QUEUE_BASE = BASE;
+export const QUEUE_DATASTACK = DATASTACK;

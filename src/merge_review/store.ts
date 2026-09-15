@@ -49,6 +49,7 @@ import {
 } from "#src/merge_review/decisions.js";
 import {
   cancelAutoproof as apiCancelAutoproof,
+  fetchAutoproofBundle,
   fetchAutoproofCandidates,
   fetchAutoproofJob,
   fetchAutoproofJobsForRoot,
@@ -63,6 +64,12 @@ import {
   loadAutoproofJob,
   saveAutoproofJob,
 } from "#src/merge_review/autoproofStorage.js";
+import {
+  fetchDecisions,
+  putDecisions,
+  type DecisionPatch,
+  type ServerDecision,
+} from "#src/merge_review/decisionsClient.js";
 
 export type ReviewTab = "suspect" | "all";
 
@@ -80,6 +87,25 @@ export interface AutoproofState {
   resultsLoaded: boolean;
   updatedAt: string | null;
 }
+
+// Where the cut-queue anchor came from: picked in the viewer (A) or adopted
+// from the loaded bundle (the pipeline's preprocess stage resolved it).
+export type AnchorOrigin = "pick" | "bundle";
+
+// Mirror of the decisions' fire-and-forget sync into Candela's review_decisions
+// table (see decisionsClient.ts).  localStorage stays the primary store; this
+// only tells the panel whether the server copy is current.
+export interface DecisionsSyncState {
+  status: "idle" | "pending" | "syncing" | "synced" | "error";
+  lastSyncedAt: string | null;
+  error: string | null;
+}
+
+// Only these decision fields are mirrored to the server; `ts` and the legacy
+// verdict/affinity names stay local (setDecisionField migrates the latter).
+type SyncField = keyof DecisionPatch;
+const SYNC_FIELDS: ReadonlySet<string> = new Set(["merge", "split", "notes"]);
+const DECISIONS_SYNC_DEBOUNCE_MS = 500;
 
 export const useMergeReviewStore = defineStore("mergeReview", () => {
   let viewer: Viewer | undefined = undefined;
@@ -431,6 +457,9 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     decisions.value = root.value != null ? loadDecisions(root.value) : {};
   }
 
+  // Every decision mutation goes through these two: localStorage first (the
+  // primary store), then the field is marked dirty for the debounced server
+  // sync (see "decisions sync" below).
   function setField(
     idx: number | string,
     field: keyof Decision,
@@ -439,12 +468,14 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     if (root.value == null) return;
     setDecisionField(root.value, idx, field, value);
     reloadDecisions();
+    markDecisionDirty(idx, field);
   }
 
   function clearField(idx: number | string, field: keyof Decision) {
     if (root.value == null) return;
     clearDecisionField(root.value, idx, field);
     reloadDecisions();
+    markDecisionDirty(idx, field);
   }
 
   // ─────────────────────── window selection ────────────────────
@@ -709,12 +740,17 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   // index becomes the unique window idx).  Mapping:
   //   site_center_nm → center_um (÷1000), score → verify_prob,
   //   partner_root/kind/site_id kept as window tags,
+  //   tokens (when a candidate carries them) passed through unchanged, so
+  //   SPLIT WHICH / Queue cut work on the window like on a classic bundle,
   //   datastack → neuron.datastack (the table the ids belong to; without it
   //   the segmentation layer would fall back to its default datastack and ask
   //   the wrong chunkedgraph for these ids).
+  // This is the fallback for results that predate bundle.json (and for file
+  // imports); loadAutoproofResults() prefers the pipeline's own bundle.
   function bundleFromPipelineCandidates(
     cands: PipelineCandidate[],
     manifest: PipelineManifest,
+    jobId?: string,
   ): Bundle {
     const windows: ReviewWindow[] = cands.map((cand, i) => ({
       idx: i,
@@ -724,12 +760,14 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       kind: cand.kind,
       partner_root: cand.partner_root,
       site_id: cand.site_id,
+      ...(cand.tokens ? { tokens: cand.tokens } : {}),
     }));
     return {
       neuron: { latest_root_id: manifest.root_id, datastack: manifest.datastack },
       windows,
       metadata: { n_suspects: windows.length, n_windows: windows.length },
       pipeline: {
+        ...(jobId ? { job_id: jobId } : {}),
         model_version: manifest.model_version,
         params_hash: manifest.params_hash,
         generated_at: manifest.generated_at,
@@ -742,16 +780,26 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   // around it.  Shared by the file import paths and the auto-proofread results
   // load so they cannot drift apart.
   function activateBundle(b: Bundle) {
+    // Push whatever the previous neuron still owes the server before its root
+    // changes underneath the dirty set.
+    void flushDecisionsSync();
     bundle.value = b;
     currentIdx.value = null;
     // A new neuron: drop any anchor from the previous bundle. Its supervoxel is
     // on a different object, so leaving it set makes every cut filter to nothing
-    // ("no_points_on_anchor_object"). The reviewer must set a fresh anchor.
+    // ("no_points_on_anchor_object"). The reviewer must set a fresh anchor —
+    // unless the bundle brought one (the pipeline's preprocess stage resolved
+    // a supervoxel near the skeleton centroid), which is adopted right away.
     clearAnchor();
+    const sv = b.neuron.anchor_sv == null ? "" : String(b.neuron.anchor_sv);
+    if (/^\d+$/.test(sv) && sv !== "0") adoptAnchor(sv);
     // Restore any point edits previously saved for this root (survives
     // reloads).  Fresh neuron with no saved edits → empty map.
     tokenEdits.value = root.value != null ? loadTokenEdits(root.value) : {};
     reloadDecisions();
+    // Fill in whatever this browser does not know from the server's copy
+    // (another browser / a cleared localStorage); local decisions win.
+    void pullServerDecisions();
     // Auto-select the first window in the visible list so the
     // reviewer is dropped straight into the EM view.
     const first = visibleWindows.value[0];
@@ -878,6 +926,10 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
         if (v.merge || v.split) {
           cur[k] = v as unknown as Decision;
           n++;
+          // An import is a mutation like any other — mirror it to the server.
+          for (const f of ["merge", "split", "notes"] as const) {
+            if (v[f] !== undefined) markDecisionDirty(k, f);
+          }
         }
       }
       saveDecisions(root.value, cur);
@@ -967,8 +1019,12 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   // ─────────────────────── anchor + background cut queue ───────
   // Anchor = a STABLE supervoxel (the nucleus / keep side). Hover the nucleus, press A.
   const anchorSv = ref<string | null>(null);
+  // Picked in the viewer, or adopted from the bundle (pipeline-resolved).
+  const anchorOrigin = ref<AnchorOrigin | null>(null);
   // The anchor's 3D position (viewer voxel coords) — drives the white
-  // "entrance" line/marker overlay (withAnchorPath).
+  // "entrance" line/marker overlay (withAnchorPath).  Unknown for an adopted
+  // anchor (the pipeline records the supervoxel, not a cursor position), so
+  // the overlay / skeleton route only appear once the reviewer re-picks with A.
   const anchorPos = ref<number[] | null>(null);
   // Skeleton route (viewer voxel coords) from the anchor to a window, and the
   // window idx it was computed for (so it's only drawn for that window).
@@ -992,7 +1048,10 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     const layers = (s.layers ?? []).filter((l) => l.name !== "cleaned");
     layers.push({
       type: "segmentation",
-      source: segmentationSources("minnie65_phase3_v1"),
+      // Same table the review layer shows (the ids belong to it).
+      source: segmentationSources(
+        bundle.value?.neuron.datastack || "minnie65_phase3_v1",
+      ),
       tab: "source",
       segments: [keepRoot],
       segmentColors: { [keepRoot]: "#2e9e6b" },
@@ -1022,6 +1081,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       const sv = supervoxelAt(managed.layer, pos);
       if (sv && sv !== 0n) {
         anchorSv.value = sv.toString();
+        anchorOrigin.value = "pick";
         anchorPos.value = pos; // for the white "entrance" line/marker
         anchorPathPoints.value = null; // recompute for the new anchor
         anchorPathForIdx.value = null;
@@ -1037,8 +1097,27 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     window.alert("No supervoxel here — make sure the segmentation is loaded, then retry.");
     return null;
   }
+  // Adopt the anchor a bundle carries (neuron.anchor_sv, resolved by the
+  // pipeline's preprocess stage): the same bookkeeping as setAnchorFromClick
+  // minus the viewer pick.  No cursor position → no entrance overlay and no
+  // skeleton route (enqueueCurrentSplit then cuts the first cluster unless
+  // the reviewer highlights which ones); pressing A replaces it as usual.
+  function adoptAnchor(sv: string) {
+    anchorSv.value = sv;
+    anchorOrigin.value = "bundle";
+    anchorPos.value = null;
+    anchorPathPoints.value = null;
+    anchorPathForIdx.value = null;
+    mainClusterLabel.value = null;
+    mainClusterForIdx.value = null;
+    StatusMessage.showTemporaryMessage(
+      `Anchor set from pipeline (supervoxel ${sv}) — press A over the nucleus to override.`,
+      5000,
+    );
+  }
   function clearAnchor() {
     anchorSv.value = null;
+    anchorOrigin.value = null;
     anchorPos.value = null;
     anchorPathPoints.value = null;
     anchorPathForIdx.value = null;
@@ -1427,8 +1506,12 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     return true;
   }
 
-  // Fetch manifest + candidates for the tracked (DONE) job and make them the
-  // review bundle — the same bookkeeping as a candidates.json file import.
+  // Load the tracked (DONE) job's results as the review bundle.  The pipeline's
+  // own bundle.json comes first: it is already in the review format, with the
+  // cluster tokens each window needs for SPLIT WHICH / Queue cut and the anchor
+  // supervoxel preproc resolved.  A 404 (results that predate bundle.json, or an
+  // older API) falls back to manifest + candidates — the same bookkeeping as a
+  // candidates.json file import.
   async function loadAutoproofResults(): Promise<boolean> {
     const { jobId, rootId } = autoproof;
     if (!jobId || !rootId) return false;
@@ -1440,6 +1523,40 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       return false;
     }
     const epoch = autoproofEpoch;
+    const br = await fetchAutoproofBundle(jobId, rootId);
+    if (epoch !== autoproofEpoch) return false;
+    if (br.ok) {
+      const b = br.bundle;
+      if (b.windows.length === 0) {
+        autoproof.resultsLoaded = true;
+        autoproof.error = `no candidates for root ${rootId} — nothing to review`;
+        StatusMessage.showTemporaryMessage(
+          `Auto-proofread finished for root ${rootId}: no candidates — nothing to review.`,
+          8000,
+        );
+        return false;
+      }
+      activateBundle(b);
+      pendingManifest = null;
+      autoproof.resultsLoaded = true;
+      autoproof.error = null;
+      const nTok = b.windows.filter((w) => !!w.tokens).length;
+      StatusMessage.showTemporaryMessage(
+        `Loaded ${b.windows.length} auto-proofread window(s) for root ${rootId}` +
+          (nTok < b.windows.length ? ` (${nTok} with cluster tokens)` : "") +
+          (b.neuron.anchor_sv ? ", anchor from pipeline." : ", no anchor — press A."),
+        6000,
+      );
+      return true;
+    }
+    if (!br.missing) {
+      autoproof.error = "bundle: " + br.error;
+      StatusMessage.showTemporaryMessage(
+        "Could not load results — " + br.error,
+        6000,
+      );
+      return false;
+    }
     const [m, c] = await Promise.all([
       fetchAutoproofManifest(jobId, rootId),
       fetchAutoproofCandidates(jobId, rootId),
@@ -1472,7 +1589,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
       );
       return false;
     }
-    activateBundle(bundleFromPipelineCandidates(c, m));
+    activateBundle(bundleFromPipelineCandidates(c, m, jobId));
     pendingManifest = null;
     autoproof.resultsLoaded = true;
     autoproof.error = null;
@@ -1501,6 +1618,226 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     );
     if (autoproof.jobId === jobId) void autoproofTick();
     return true;
+  }
+
+  // ─────────────────────── decisions sync (Candela) ────────────
+  // Mirror of the local decisions into Candela's review_decisions table.
+  // localStorage is written first, synchronously, on every mutation (setField /
+  // clearField); the touched fields are collected here PER ROOT and pushed
+  // 500 ms after the last change as ONE PUT per root — fire-and-forget: no
+  // spinner, the first failure per session shows a StatusMessage, later ones
+  // only log.  Failed fields stay dirty so the next flush retries them.  One
+  // PUT per root at a time, so two for the same neuron cannot land out of
+  // order on the server; a batch always carries the root (and the pipeline
+  // job) it was recorded against, so switching neurons mid-flight cannot file
+  // one root's verdicts under another.
+  const decisionsSync = reactive<DecisionsSyncState>({
+    status: "idle",
+    lastSyncedAt: null,
+    error: null,
+  });
+  type DirtyWindows = Map<string, Set<SyncField>>;
+  const dirtyByRoot = new Map<string, DirtyWindows>();
+  // The autoproof job the root's bundle came from, captured when a field is
+  // marked dirty (the bundle may be gone by the time the batch goes out).
+  const jobIdByRoot = new Map<string, string | undefined>();
+  const inFlightRoots = new Set<string>();
+  let syncTimer: number | null = null;
+  let syncFailureShown = false;
+  // Bumped when the loaded root changes so a slow GET cannot fill another
+  // neuron's decisions into this one.
+  let pullEpoch = 0;
+
+  // The autoproof job the loaded bundle came from, if any — recorded on every
+  // decision row so a verdict can be traced back to the model run it judged.
+  function bundleAutoproofJobId(): string | undefined {
+    const b = bundle.value;
+    if (!b?.pipeline) return undefined;
+    if (b.pipeline.job_id) return b.pipeline.job_id;
+    const rid = canonicalRootId(String(b.neuron.latest_root_id));
+    return autoproof.resultsLoaded && autoproof.rootId === rid && autoproof.jobId
+      ? autoproof.jobId
+      : undefined;
+  }
+
+  function markDecisionDirty(idx: number | string, field: keyof Decision) {
+    if (!SYNC_FIELDS.has(field) || root.value == null) return;
+    const rid = String(root.value);
+    let dirty = dirtyByRoot.get(rid);
+    if (!dirty) {
+      dirty = new Map();
+      dirtyByRoot.set(rid, dirty);
+    }
+    const wid = String(idx);
+    const set = dirty.get(wid) ?? new Set<SyncField>();
+    set.add(field as SyncField);
+    dirty.set(wid, set);
+    jobIdByRoot.set(rid, bundleAutoproofJobId());
+    scheduleDecisionsSync();
+  }
+
+  function scheduleDecisionsSync() {
+    if (syncTimer != null) window.clearTimeout(syncTimer);
+    decisionsSync.status = "pending";
+    syncTimer = window.setTimeout(() => {
+      syncTimer = null;
+      void flushDecisionsSync();
+    }, DECISIONS_SYNC_DEBOUNCE_MS);
+  }
+
+  function reportSyncFailure(what: string, error: string) {
+    decisionsSync.status = "error";
+    decisionsSync.error = error;
+    if (!syncFailureShown) {
+      syncFailureShown = true;
+      StatusMessage.showTemporaryMessage(
+        `${what} — decisions stay saved in this browser (${error})`,
+        8000,
+      );
+    } else {
+      console.warn(`[decisions-sync] ${what}:`, error);
+    }
+  }
+
+  function hasDirtyDecisions(): boolean {
+    for (const d of dirtyByRoot.values()) if (d.size) return true;
+    return false;
+  }
+
+  // Push every dirty field of every root.  `keepalive` is for the pagehide
+  // flush: it may go out while another PUT is in flight and must outlive the
+  // page.
+  async function flushDecisionsSync(opts: { keepalive?: boolean } = {}) {
+    if (syncTimer != null) {
+      window.clearTimeout(syncTimer);
+      syncTimer = null;
+    }
+    const sends: Promise<void>[] = [];
+    let deferred = false;
+    for (const [rid, dirty] of dirtyByRoot) {
+      if (dirty.size === 0) {
+        dirtyByRoot.delete(rid);
+        continue;
+      }
+      if (inFlightRoots.has(rid) && !opts.keepalive) {
+        deferred = true; // after this root's in-flight PUT settles
+        continue;
+      }
+      dirtyByRoot.delete(rid);
+      sends.push(sendDecisionBatch(rid, dirty, opts));
+    }
+    if (deferred) scheduleDecisionsSync();
+    await Promise.all(sends);
+  }
+
+  async function sendDecisionBatch(
+    rid: string,
+    batch: DirtyWindows,
+    opts: { keepalive?: boolean },
+  ) {
+    // Read the root's decisions from localStorage, not the reactive mirror —
+    // another neuron may be loaded by now.
+    const local = loadDecisions(rid);
+    const patch: Record<string, DecisionPatch> = {};
+    for (const [wid, fields] of batch) {
+      const d = local[wid] ?? {};
+      const p: DecisionPatch = {};
+      // A field the reviewer cleared goes out as null so the server clears
+      // it too (leaving it out would keep the stale value there).
+      if (fields.has("merge")) p.merge = d.merge ?? null;
+      if (fields.has("split")) p.split = d.split ?? null;
+      if (fields.has("notes")) p.notes = d.notes ?? null;
+      patch[wid] = p;
+    }
+    inFlightRoots.add(rid);
+    decisionsSync.status = "syncing";
+    const r = await putDecisions(
+      {
+        source_root_id: rid,
+        session_id: rid, // same session key the cut queue records
+        autoproof_job_id: jobIdByRoot.get(rid),
+        decisions: patch,
+      },
+      opts,
+    );
+    inFlightRoots.delete(rid);
+    if ("error" in r) {
+      // Keep the batch for the next flush (a field re-dirtied meanwhile is
+      // simply sent with its newest value).
+      let dirty = dirtyByRoot.get(rid);
+      if (!dirty) {
+        dirty = new Map();
+        dirtyByRoot.set(rid, dirty);
+      }
+      for (const [wid, fields] of batch) {
+        const set = dirty.get(wid) ?? new Set<SyncField>();
+        for (const f of fields) set.add(f);
+        dirty.set(wid, set);
+      }
+      reportSyncFailure("Could not sync decisions to Candela", r.error);
+      return;
+    }
+    const pending = hasDirtyDecisions();
+    decisionsSync.status = pending ? "pending" : "synced";
+    decisionsSync.lastSyncedAt = new Date().toISOString();
+    decisionsSync.error = null;
+    if (pending && syncTimer == null) scheduleDecisionsSync(); // edits made meanwhile
+  }
+
+  // Pull the server's decisions for the loaded root and fill in the windows
+  // this browser has nothing for.  Local decisions always win — the server is
+  // the mirror, not the master — and a window with an unsent local change is
+  // left alone.  Several reviewers' rows for one window → the newest.
+  async function pullServerDecisions() {
+    if (root.value == null) return;
+    const rid = String(root.value);
+    const epoch = ++pullEpoch;
+    const r = await fetchDecisions(rid);
+    if (epoch !== pullEpoch || String(root.value ?? "") !== rid) return;
+    if ("error" in r) {
+      reportSyncFailure("Could not fetch this neuron's decisions from Candela", r.error);
+      return;
+    }
+    const newest = new Map<string, ServerDecision>();
+    for (const row of r) {
+      const prev = newest.get(row.window_id);
+      if (!prev || (row.updated_at ?? "") > (prev.updated_at ?? "")) {
+        newest.set(row.window_id, row);
+      }
+    }
+    const local = loadDecisions(root.value);
+    const dirty = dirtyByRoot.get(rid);
+    let n = 0;
+    for (const [wid, row] of newest) {
+      const cur = local[wid];
+      if (cur && (isDecided(cur) || cur.notes)) continue; // local wins
+      if (dirty?.has(wid)) continue; // unsent local change
+      const d: Decision = {};
+      if (row.merge) d.merge = row.merge;
+      if (row.split === "skip" || (Array.isArray(row.split) && row.split.length)) {
+        d.split = row.split;
+      }
+      if (row.notes) d.notes = row.notes;
+      if (Object.keys(d).length === 0) continue;
+      d.ts = row.updated_at ?? new Date().toISOString();
+      local[wid] = d;
+      n++;
+    }
+    if (n === 0) return;
+    saveDecisions(root.value, local);
+    reloadDecisions();
+    StatusMessage.showTemporaryMessage(
+      `Restored ${n} decision(s) for root ${rid} from Candela.`,
+      4000,
+    );
+  }
+
+  // The debounce window is the one moment a decision exists only in this
+  // browser: push it before the page goes away.
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", () => {
+      void flushDecisionsSync({ keepalive: true });
+    });
   }
 
   // Follow the loaded neuron: when a bundle for another root comes in (file
@@ -1556,9 +1893,14 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     exportDecisions,
     // background cut queue
     hasAnchor,
+    anchorSv,
+    anchorOrigin,
     setAnchorFromClick,
     clearAnchor,
     enqueueCurrentSplit,
+    // decisions sync (Candela review_decisions)
+    decisionsSync,
+    flushDecisionsSync,
     // auto-proofread jobs
     autoproof,
     submitAutoproof,

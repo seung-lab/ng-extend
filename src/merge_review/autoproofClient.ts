@@ -10,8 +10,11 @@
 // a bare integer, which is exactly why the contract forbids them.
 
 import type {
+  Bundle,
   PipelineCandidate,
   PipelineManifest,
+  ReviewWindow,
+  Tokens,
 } from "#src/merge_review/types.js";
 import { authedFetch } from "#src/merge_review/mergeQueueClient.js";
 
@@ -122,6 +125,92 @@ function toCounts(raw: unknown): Record<string, number> {
     for (const [k, v] of Object.entries(raw as J)) out[k] = num(v);
   }
   return out;
+}
+
+function isNumArray(v: unknown, n?: number): v is number[] {
+  return (
+    Array.isArray(v) &&
+    (n === undefined || v.length === n) &&
+    v.every((x) => typeof x === "number" && Number.isFinite(x))
+  );
+}
+
+// A window's cluster tokens: pos_rel_um (µm relative to the window centre)
+// and one integer label per point.  Anything else — missing, mismatched
+// lengths, non-numeric — is dropped (the window then simply has no tokens),
+// never passed on half-formed.
+function toTokens(raw: unknown): Tokens | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const t = raw as J;
+  const pos = t.pos_rel_um;
+  const labels = t.labels;
+  if (!Array.isArray(pos) || !Array.isArray(labels)) return undefined;
+  if (pos.length !== labels.length || pos.length === 0) return undefined;
+  if (!pos.every((p) => isNumArray(p, 3))) return undefined;
+  if (!labels.every((l) => Number.isInteger(l))) return undefined;
+  const out: Tokens = {
+    pos_rel_um: pos as number[][],
+    labels: labels as number[],
+  };
+  if (t.spectral && typeof t.spectral === "object") {
+    out.spectral = t.spectral as Tokens["spectral"];
+  }
+  return out;
+}
+
+// bundle.json → Bundle.  Ids are kept as strings (never Number()), windows
+// without a usable centre are dropped, idx defaults to the array position
+// (the pipeline writes it that way too), and tokens go through toTokens().
+function toBundle(
+  raw: unknown,
+  jobId: string,
+  rootId: string,
+): Bundle | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const d = raw as J;
+  const n = (d.neuron && typeof d.neuron === "object" ? d.neuron : null) as J | null;
+  if (!n || !Array.isArray(d.windows)) return null;
+  const latest = str(n.latest_root_id);
+  const anchor = str(n.anchor_sv);
+  const windows: ReviewWindow[] = [];
+  (d.windows as unknown[]).forEach((raw, i) => {
+    const w = (raw && typeof raw === "object" ? raw : null) as J | null;
+    if (!w || !isNumArray(w.center_um, 3)) return;
+    const tokens = toTokens(w.tokens);
+    const prob = w.verify_prob == null ? null : num(w.verify_prob, NaN);
+    windows.push({
+      idx: Number.isInteger(w.idx) ? (w.idx as number) : i,
+      center_um: w.center_um,
+      is_suspect: w.is_suspect === undefined ? true : !!w.is_suspect,
+      verify_prob: prob == null || Number.isNaN(prob) ? null : prob,
+      ...(tokens ? { tokens } : {}),
+      ...(typeof w.kind === "string" ? { kind: w.kind } : {}),
+      // null on the wire stays null — never "" (see fetchAutoproofCandidates).
+      partner_root: w.partner_root == null ? null : String(w.partner_root),
+      ...(Number.isInteger(w.site_id) ? { site_id: w.site_id as number } : {}),
+    });
+  });
+  const md = (d.metadata && typeof d.metadata === "object" ? d.metadata : {}) as J;
+  const pl = (d.pipeline && typeof d.pipeline === "object" ? d.pipeline : {}) as J;
+  return {
+    neuron: {
+      latest_root_id: latest && /^\d+$/.test(latest) ? latest : rootId,
+      datastack:
+        typeof n.datastack === "string" && n.datastack ? n.datastack : undefined,
+      anchor_sv: anchor && /^\d+$/.test(anchor) && anchor !== "0" ? anchor : null,
+    },
+    windows,
+    metadata: {
+      n_suspects: md.n_suspects == null ? windows.length : num(md.n_suspects),
+      n_windows: md.n_windows == null ? windows.length : num(md.n_windows),
+    },
+    pipeline: {
+      job_id: str(pl.job_id) ?? jobId,
+      model_version: str(pl.model_version) ?? undefined,
+      params_hash: str(pl.params_hash) ?? undefined,
+      generated_at: str(pl.generated_at) ?? undefined,
+    },
+  };
 }
 
 // "autoproof 409: not ready (INFER_RUNNING)" — pulls {error, status} out of a JSON
@@ -289,6 +378,36 @@ export async function fetchAutoproofManifest(
   }
 }
 
+// GET /jobs/<job_id>/roots/<root_id>/bundle → the review bundle the inference
+// stage wrote (409 until DONE).  `missing` is a 404 of ANY flavour — the
+// documented JSON one (a job whose results predate bundle.json) and a bare
+// one from an older API that has no such route — because either way the
+// right move is the same: fall back to manifest + candidates.  Every other
+// failure is reported as-is (a 409 means "not ready", not "not there").
+export type AutoproofBundleResult =
+  | { ok: true; bundle: Bundle }
+  | { ok: false; missing: boolean; error: string };
+
+export async function fetchAutoproofBundle(
+  jobId: string,
+  rootId: string,
+): Promise<AutoproofBundleResult> {
+  try {
+    const r = await authedFetch(
+      url(`/jobs/${enc(jobId)}/roots/${enc(rootId)}/bundle`),
+    );
+    if (!r.ok) {
+      const e = await errorOf(r);
+      return { ok: false, missing: r.status === 404, error: e.error };
+    }
+    const b = toBundle((await r.json()) as unknown, jobId, rootId);
+    if (!b) return { ok: false, missing: false, error: "autoproof: malformed bundle" };
+    return { ok: true, bundle: b };
+  } catch (e) {
+    return { ok: false, missing: false, error: String(e) };
+  }
+}
+
 // GET /jobs/<job_id>/roots/<root_id>/candidates → candidates.json array (409 until DONE).
 export async function fetchAutoproofCandidates(
   jobId: string,
@@ -304,11 +423,15 @@ export async function fetchAutoproofCandidates(
     // partner_root arrives as a string; keep it that way (never Number()).  A
     // candidate without a partner is null on the wire and stays null — never
     // "" — so it cannot leak into the segmentation layer's segment list.
+    // tokens (when the scorer produced them) pass through after a shape check
+    // so a malformed block cannot crash the viewer-state builder.
     return (d as unknown[]).map((raw) => {
       const c = (raw && typeof raw === "object" ? raw : {}) as J;
+      const tokens = toTokens(c.tokens);
       return {
         ...(c as unknown as PipelineCandidate),
         partner_root: c.partner_root == null ? null : String(c.partner_root),
+        ...(tokens ? { tokens } : {}),
       };
     });
   } catch (e) {
