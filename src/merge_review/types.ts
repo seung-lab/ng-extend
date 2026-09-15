@@ -26,6 +26,10 @@ export interface ReviewWindow {
   is_suspect?: boolean;
   verify_prob?: number | null;
   tokens?: Tokens;
+  // Pipeline-candidate windows (autoproof candidates.json) also carry:
+  kind?: string; // "merge" | "split"
+  partner_root?: string | number; // the candidate partner segment
+  site_id?: number; // pipeline site id (NOT unique — one row per partner)
 }
 
 export interface BundleMetadata {
@@ -37,6 +41,39 @@ export interface Bundle {
   neuron: NeuronInfo;
   windows: ReviewWindow[];
   metadata?: BundleMetadata;
+  // Provenance sidecar when the bundle was synthesised from an autoproof
+  // pipeline manifest + candidates.json (absent for classic bundles).
+  pipeline?: PipelineInfo;
+}
+
+// ── Autoproof pipeline output format ─────────────────────────────
+// manifest.json produced by the auto-proofread pipeline.  The artifact
+// URIs are usually file:// paths that a browser cannot fetch, so we only
+// use the manifest for its root id + provenance and ask the user to
+// import candidates.json directly.
+export interface PipelineManifest {
+  root_id: string | number;
+  model_version?: string;
+  params_hash?: string;
+  generated_at?: string;
+  artifacts: Record<string, string>;
+  counts?: Record<string, number>;
+}
+
+// One entry of the pipeline's candidates.json array.
+export interface PipelineCandidate {
+  site_id: number;
+  kind: string; // "merge" | "split"
+  partner_root: string | number;
+  score: number; // 0..1 confidence
+  site_center_nm: number[];
+}
+
+// Provenance recorded on a Bundle built from pipeline output.
+export interface PipelineInfo {
+  model_version?: string;
+  params_hash?: string;
+  generated_at?: string;
 }
 
 // A single decision.  `split` is the new schema (array of cluster-id

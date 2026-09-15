@@ -17,6 +17,8 @@ import type {
   Bundle,
   Decision,
   DecisionMap,
+  PipelineCandidate,
+  PipelineManifest,
   ReviewWindow,
 } from "#src/merge_review/types.js";
 import {
@@ -623,10 +625,102 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     }
   }
 
+  // ─────────────────── pipeline (autoproof) import ─────────────
+  // Manifest imported ahead of its candidates.json — remembered so the
+  // follow-up candidates import picks up the root id + provenance.
+  let pendingManifest: PipelineManifest | null = null;
+
+  function isPipelineManifest(obj: unknown): obj is PipelineManifest {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+    const m = obj as PipelineManifest;
+    return m.root_id != null && !!m.artifacts && typeof m.artifacts === "object";
+  }
+
+  function isPipelineCandidates(obj: unknown): obj is PipelineCandidate[] {
+    return (
+      Array.isArray(obj) &&
+      obj.length > 0 &&
+      obj.every(
+        (c) =>
+          c &&
+          typeof c === "object" &&
+          "kind" in c &&
+          "partner_root" in c &&
+          "score" in c,
+      )
+    );
+  }
+
+  // Synthesise a review Bundle from pipeline candidates: one window per
+  // candidate row (site_id repeats — one row per partner — so the array
+  // index becomes the unique window idx).  Mapping:
+  //   site_center_nm → center_um (÷1000), score → verify_prob,
+  //   partner_root/kind/site_id kept as window tags.
+  function bundleFromPipelineCandidates(
+    cands: PipelineCandidate[],
+    manifest: PipelineManifest,
+  ): Bundle {
+    const windows: ReviewWindow[] = cands.map((cand, i) => ({
+      idx: i,
+      center_um: (cand.site_center_nm ?? [0, 0, 0]).map((v) => v / 1000),
+      is_suspect: true, // every candidate is a suspect by definition
+      verify_prob: cand.score ?? null,
+      kind: cand.kind,
+      partner_root: cand.partner_root,
+      site_id: cand.site_id,
+    }));
+    return {
+      neuron: { latest_root_id: manifest.root_id },
+      windows,
+      metadata: { n_suspects: windows.length, n_windows: windows.length },
+      pipeline: {
+        model_version: manifest.model_version,
+        params_hash: manifest.params_hash,
+        generated_at: manifest.generated_at,
+      },
+    };
+  }
+
   // ─────────────────────── import / export ─────────────────────
   function importBundleFromText(text: string): boolean {
     try {
-      const obj = JSON.parse(text) as Bundle;
+      const parsed = JSON.parse(text) as unknown;
+      // Pipeline manifest.json: its artifact URIs are file:// paths the
+      // browser can't fetch, so just stash root id + provenance and ask
+      // for the candidates file.
+      if (isPipelineManifest(parsed)) {
+        pendingManifest = parsed;
+        alert(
+          `Pipeline manifest for root ${parsed.root_id} loaded ` +
+            `(model ${parsed.model_version ?? "?"}).\n` +
+            "Its artifact URIs can't be fetched from the browser — " +
+            "please now import the candidates.json from the same folder.",
+        );
+        return true;
+      }
+      // Pipeline candidates.json: needs a root id, taken from a
+      // previously imported manifest or asked for interactively.
+      if (isPipelineCandidates(parsed)) {
+        let manifest = pendingManifest;
+        if (!manifest) {
+          const entered = window.prompt(
+            "Pipeline candidates.json carries no root id.\n" +
+              "Enter the neuron root id (see manifest.json), or import " +
+              "manifest.json first:",
+          );
+          if (!entered || !entered.trim()) return false;
+          manifest = { root_id: entered.trim(), artifacts: {} };
+        }
+        bundle.value = bundleFromPipelineCandidates(parsed, manifest);
+        pendingManifest = null;
+        currentIdx.value = null;
+        tokenEdits.value = root.value != null ? loadTokenEdits(root.value) : {};
+        reloadDecisions();
+        const firstWin = visibleWindows.value[0];
+        if (firstWin) selectWindow(firstWin.idx);
+        return true;
+      }
+      const obj = parsed as Bundle;
       if (!obj.neuron || !obj.windows) {
         alert("That JSON doesn't look like a review bundle.");
         return false;

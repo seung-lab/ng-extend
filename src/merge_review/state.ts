@@ -94,6 +94,16 @@ export function buildViewerState(
     }
   }
 
+  // Pipeline-candidate windows carry a per-window partner segment (the
+  // merge/split counterpart) — show it in pink like an old root.
+  if (window_.partner_root != null) {
+    const pid = String(window_.partner_root);
+    if (!segs.includes(pid)) {
+      segs.push(pid);
+      segColors[pid] = "#ff6688";
+    }
+  }
+
   const layers: Record<string, unknown>[] = [
     {
       type: "image",
