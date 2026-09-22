@@ -4,7 +4,6 @@
 **Written:** 2026-09-22
 **Scope:** everything needed to register a new connectome dataset in this app, end to end.
 **Companion doc:** `HANDOFF.md` at the repo root is the full project briefing. Section 6 there describes the datasets that exist today. This file is only about adding one.
-**Before you start:** claim a card on the shared kanban board (`github-kanban` MCP tools, workflow at `C:\Users\amyle\.hermes\github-kanban\WORKFLOW.md`) and leave a verified handoff on it when you stop.
 
 ---
 
