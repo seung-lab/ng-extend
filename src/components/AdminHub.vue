@@ -101,25 +101,31 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
     // reporter as a notification, when we know who reported it.
     if (status === 'approved' && row.recommendation === 'message') {
       const text = (triageEdits.value[row.id] ?? row.proposed_message ?? '').trim();
+      if (!text) throw new Error('Reply is empty; write a message before approving.');
       if (text) {
         let targetUserId: string | null = null;
         if (row.source === 'site_issue') {
-          const { data } = await supabase.from('site_issues').select('user_id').eq('id', row.source_id).single();
+          const { data, error } = await supabase.from('site_issues').select('user_id').eq('id', row.source_id).single();
+          if (error) throw error;
           targetUserId = data?.user_id ?? null;
+        }
+        if (typeof targetUserId !== 'string' || !targetUserId.trim()) {
+          throw new Error('No reporter account is available. No notification was sent; reply in the original feedback thread instead. This proposal remains pending.');
         }
         // The reply arrives "from Nurro": guide avatar icon + a random real
         // neuron render as the card image (admin-uploads/nurro-neurons).
         const storageBase = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads';
-        await supabase.from('notifications').insert({
+        const { error: notificationError } = await supabase.from('notifications').insert({
           title: '💬 Nurro replied to your feedback',
           body: text,
           thumbnail_url: `${storageBase}/nurro/guide-avatar.png`,
           image_url: `${storageBase}/nurro-neurons/neuron-${1 + Math.floor(Math.random() * 24)}.jpg`,
-          target_type: targetUserId ? 'user' : 'all',
+          target_type: 'user',
           target_id: targetUserId,
           send_at: new Date().toISOString(),
           created_by: backend.userId,
         });
+        if (notificationError) throw notificationError;
       }
     }
 

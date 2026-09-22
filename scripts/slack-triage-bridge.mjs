@@ -47,16 +47,20 @@
  * bridge runs is simply never asked about in Slack again.
  */
 
+import { pathToFileURL } from 'node:url';
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SLACK_TOKEN  = process.env.SLACK_BOT_TOKEN;
 const CHANNEL      = process.env.SLACK_CHANNEL_ID;
 const APPROVERS    = (process.env.APPROVER_SLACK_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
 
-for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: SUPABASE_KEY, SLACK_BOT_TOKEN: SLACK_TOKEN, SLACK_CHANNEL_ID: CHANNEL })) {
-  if (!v) { console.error(`Missing ${k}`); process.exit(1); }
+function validateEnvironment() {
+  for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: SUPABASE_KEY, SLACK_BOT_TOKEN: SLACK_TOKEN, SLACK_CHANNEL_ID: CHANNEL })) {
+    if (!v) { console.error(`Missing ${k}`); process.exit(1); }
+  }
+  if (!APPROVERS.length) { console.error('APPROVER_SLACK_IDS is empty: nobody could approve. Refusing to run.'); process.exit(1); }
 }
-if (!APPROVERS.length) { console.error('APPROVER_SLACK_IDS is empty: nobody could approve. Refusing to run.'); process.exit(1); }
 
 const sb = (path, init = {}) => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
   ...init,
@@ -148,30 +152,65 @@ async function postProposals() {
   return rows.length;
 }
 
-async function applyDecision(row, decision, approverId, extraText) {
+export async function postThreadReplyOnce(row, text, read = slackGet, post = slack) {
+  if (!row.slack_ts) throw new Error('No original Slack thread is available for this reply.');
+  const channel = row.slack_channel || CHANNEL;
+  const marker = `Triage reply ID: ${row.id}`;
+  let cursor = '';
+  do {
+    const page = await read('conversations.replies', {
+      channel, ts: row.slack_ts, limit: 100, ...(cursor ? { cursor } : {}),
+    });
+    if ((page.messages || []).some(message => message.bot_id && (message.text || '').split('\n').includes(marker))) return;
+    const nextCursor = page.response_metadata?.next_cursor || '';
+    if (page.has_more && !nextCursor) throw new Error('Incomplete Slack thread history; cannot safely check reply delivery.');
+    if (nextCursor && nextCursor === cursor) throw new Error('Slack thread pagination did not advance.');
+    cursor = nextCursor;
+  } while (cursor);
+  // The marker lets a later run recover after Slack succeeds but the status
+  // PATCH fails. The bridge must remain the sole, non-overlapping publisher.
+  await post('chat.postMessage', { channel, thread_ts: row.slack_ts, text: `${marker}\n${text}` });
+}
+
+export async function applyDecision(row, decision, approverId, extraText, request = sb, deliverThread = postThreadReplyOnce) {
   const reviewedBy = `slack:${approverId}`;
+  let delivery = null;
+  let replyText = '';
   if (decision === 'approved' && row.recommendation === 'message') {
     const text = (extraText || row.proposed_message || '').trim();
+    if (!text) throw new Error('Reply is empty; write a message before approving.');
+    replyText = text;
     if (text) {
       let targetUserId = null;
       if (row.source === 'site_issue') {
-        const r = await sb(`site_issues?id=eq.${row.source_id}&select=user_id`);
+        const r = await request(`site_issues?id=eq.${row.source_id}&select=user_id`);
+        if (!r.ok) throw new Error(`reporter lookup failed: ${r.status}`);
         targetUserId = (await r.json())[0]?.user_id ?? null;
       }
-      const ins = await sb('notifications', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: '💬 Nurro replied to your feedback', body: text,
-          thumbnail_url: NURRO_AVATAR_URL,
-          image_url: randomNeuronUrl(),
-          target_type: targetUserId ? 'user' : 'all', target_id: targetUserId,
-          send_at: new Date().toISOString(),
-        }),
-      });
-      if (!ins.ok) throw new Error(`notification insert failed: ${ins.status}`);
+      if (typeof targetUserId === 'string' && targetUserId.trim()) {
+        const ins = await request('notifications', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: '💬 Nurro replied to your feedback', body: text,
+            thumbnail_url: NURRO_AVATAR_URL,
+            image_url: randomNeuronUrl(),
+            target_type: 'user', target_id: targetUserId,
+            send_at: new Date().toISOString(),
+          }),
+        });
+        if (!ins.ok) throw new Error(`notification insert failed: ${ins.status}`);
+        delivery = 'reporter';
+      } else {
+        // Anonymous reports and client errors have no addressable recipient.
+        // Keep the reply in the report's Slack thread, never broadcast it.
+        delivery = 'thread_only';
+      }
     }
   }
-  const upd = await sb(`feedback_triage?id=eq.${row.id}`, {
+  if (delivery === 'thread_only') {
+    await deliverThread(row, decisionConfirmation(decision, approverId, { delivery, replyText }));
+  }
+  const upd = await request(`feedback_triage?id=eq.${row.id}`, {
     method: 'PATCH',
     body: JSON.stringify({
       status: decision,
@@ -180,6 +219,16 @@ async function applyDecision(row, decision, approverId, extraText) {
     }),
   });
   if (!upd.ok) throw new Error(`status update failed for ${row.id}: ${upd.status}`);
+  return { delivery, replyText };
+}
+
+export function decisionConfirmation(decision, approverId, result) {
+  if (decision !== 'approved') return `Dismissed by <@${approverId}>. ✓`;
+  if (result.delivery === 'reporter') return `Approved by <@${approverId}>. Message sent to the reporter. ✓`;
+  if (result.delivery === 'thread_only') {
+    return `Approved by <@${approverId}>. No reporter account is available; no in-app notification was sent. Reply recorded in this Slack thread only:\n${result.replyText}`;
+  }
+  return `Approved by <@${approverId}>. Marked accepted in the work queue. ✓`;
 }
 
 async function readApprovals() {
@@ -208,14 +257,10 @@ async function readApprovals() {
       }
       const decision = m[1].toLowerCase().startsWith('approve') ? 'approved' : 'dismissed';
       const extraText = m[2]?.trim() || '';
-      await applyDecision(row, decision, msg.user, extraText);
-      await slack('chat.postMessage', {
+      const result = await applyDecision(row, decision, msg.user, extraText);
+      if (result.delivery !== 'thread_only') await slack('chat.postMessage', {
         channel: row.slack_channel || CHANNEL, thread_ts: row.slack_ts,
-        text: decision === 'approved'
-          ? (row.recommendation === 'message'
-              ? `Approved by <@${msg.user}>. Message sent to the reporter. ✓`
-              : `Approved by <@${msg.user}>. Marked accepted in the work queue. ✓`)
-          : `Dismissed by <@${msg.user}>. ✓`,
+        text: decisionConfirmation(decision, msg.user, result),
       });
       console.log(`[bridge] ${row.id} ${decision} by ${msg.user}`);
       acted++;
@@ -252,7 +297,8 @@ async function announceDone() {
   return announced;
 }
 
-(async () => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) (async () => {
+  validateEnvironment();
   const posted = await postProposals();
   const acted = await readApprovals();
   const announced = await announceDone();
