@@ -117,6 +117,25 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultSegments:  ['648518346355727683'],
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
   },
+  // Same pinky100 volume as the other pinky rows, different PCG table. Without
+  // this key `getDatasetCaveConfig('pinky_training6')` matched nothing and fell
+  // through to DEFAULT_CAVE_CONFIG, so CAVE calls made while this layer was on
+  // screen were addressed to the stroeh retina's aligned volume carrying pinky
+  // root ids. Annotation tables are per aligned_volume, so the pinky100 tables
+  // are correct here regardless of which PCG table the layer points at.
+  pinky_training6: {
+    caveServer:       'https://minnie.microns-daf.com',
+    datastack:        'pinky_sandbox',
+    alignedVolume:    'pinky100',
+    cellStatusTable:  'eyewire_ii_cell_status_v2',
+    cellStatusSchema: 'bound_tag_user',
+    cellTypeTable:    'cell_type_dev',
+    cellTypeSchema:   'bound_tag',
+    // Taken from a working pinky_training6 state, so these resolve in THIS
+    // table's graph. Root ids are per PCG table and do not carry across.
+    defaultSegments:  ['648518346354708544', '648518346355322263'],
+    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+  },
   pinky_nf_v2: {
     caveServer:       'https://minnie.microns-daf.com',
     datastack:        'pinky_sandbox',
