@@ -14,8 +14,7 @@ import {
   useProofreadingQueueStore,
   CellHistoryEntry,
 } from '../store';
-import { setCellComplete } from '../widgets/lightbulb_service';
-import { EYEWIRE_II_CAVE_CONFIG } from '../config';
+import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 
 const emit = defineEmits({
@@ -581,7 +580,7 @@ async function markActiveSegmentComplete() {
   if (!seg || marking.value) return;
   marking.value = true;
   try {
-    const caveServer = annotStore.caveUrl || EYEWIRE_II_CAVE_CONFIG.caveServerOverride || '';
+    const caveServer = annotStore.caveUrl || activeCaveServer();
     await setCellComplete(caveServer, seg, true);
   } catch (e) {
     console.warn('[cmdPalette] mark complete failed:', e);

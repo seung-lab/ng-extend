@@ -130,6 +130,34 @@ export const DATASETS: DatasetEntry[] = [
       },
     ],
   },
+  {
+    id: 'pni_mec',
+    label: 'Medial Entorhinal Cortex',
+    shortLabel: 'MEC',
+    abbrev: 'MEC',
+    species: 'mouse',
+    description: 'PNI medial entorhinal cortex, grid cell circuitry (16×16×45 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://https://c10s.pni.princeton.edu/mec_alignment_2025-09/alignment/img/v2',
+        name: 'img',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://hc.himc-cave.com/segmentation/table/pni_mec',
+          subsources: { default: true, mesh: true, graph: true },
+          enableDefaultSubsources: true,
+        },
+        // Deliberately NOT 'seg', which is what the team's spelunker states call
+        // it. 'seg' is too short and too generic to key a CAVE config on; see
+        // MIN_SUBSTRING_MATCH in config.ts. Keep this identical to the
+        // pni_mec key in CAVE_CONFIGS_BY_DATASET.
+        name: 'pni_mec',
+      },
+    ],
+  },
 ];
 
 /** Segmentation-layer name for an entry (what `getCurrentDatasetName()` returns). */
@@ -203,6 +231,12 @@ export function currentDatasetTag(): string {
  *   • Stroeh retina:  'stroeh_mouse_retina', 'eyewire_ii', 'eyewire_ii_retina'
  *   • Pinky sandbox:  'pinky_nf_v2', 'pinky_training3', 'pinky_training6', 'pinky'
  *   • Minnie65:       'minnie65_public', 'minnie65_public_v117' (and other versions)
+ *   • MEC:            'pni_mec', 'mec'
+ *
+ * NOTE: the team's shared spelunker states name the MEC segmentation layer
+ * 'seg'. That is deliberately NOT mapped here — 'seg' is generic enough that
+ * claiming it would mislabel any other dataset that ever uses the same name.
+ * lightbulb_service falls back to the graphene table name for those states.
  */
 export function canonicalDataset(name: string | undefined | null): string {
   if (!name) return '';
@@ -211,6 +245,7 @@ export function canonicalDataset(name: string | undefined | null): string {
   if (n.startsWith('pinky')) return 'pinky_nf_v2';
   if (n.startsWith('minnie65')) return 'minnie65_public';
   if (n.startsWith('flywire') || n.includes('fly_v')) return 'flywire_fafb_sandbox';
+  if (n.startsWith('pni_mec') || n === 'mec') return 'pni_mec';
   return n;
 }
 

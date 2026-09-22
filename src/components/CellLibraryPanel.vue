@@ -17,7 +17,7 @@ import {
   type ClaimPoint,
 } from '../store';
 import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
-import { setCellComplete } from '../widgets/lightbulb_service';
+import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
 import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -442,7 +442,7 @@ async function completeCell(cell: typeof cells.value[0]) {
   // here as a fallback — that keeps cells_completed incrementing exactly once.
   let loggedViaCave = false;
   try {
-    const caveServer = EYEWIRE_II_CAVE_CONFIG.caveServerOverride || '';
+    const caveServer = activeCaveServer();
     const rootId = cell.finalSegId || cell.segId;
     if (caveServer && rootId) {
       const nums = (cell.somaCoords || '').split(/[\s,]+/).map(Number).filter(n => !Number.isNaN(n));

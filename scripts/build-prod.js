@@ -117,6 +117,32 @@ const DATASETS_CONFIG = {
       },
     ],
   },
+  pni_mec: {
+    dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4.5e-8, 'm'] },
+    position: [158487, 128036, 5061],
+    crossSectionScale: 2,
+    projectionScale: 30000,
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://https://c10s.pni.princeton.edu/mec_alignment_2025-09/alignment/img/v2',
+        name: 'img',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://hc.himc-cave.com/segmentation/table/pni_mec',
+          subsources: {
+            default: true,
+            mesh: true,
+            graph: true,
+          },
+          enableDefaultSubsources: true,
+        },
+        name: 'pni_mec',
+      },
+    ],
+  },
 };
 
 const dataset = DATASETS_CONFIG[DATASET];

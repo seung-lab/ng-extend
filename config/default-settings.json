@@ -76,5 +76,12 @@
     "crossSectionScale": 8.0,
     "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
     "projectionScale": 2230.0
+  },
+  "pni_mec": {
+    "dimensions": [1.6e-8, 1.6e-8, 4.5e-8],
+    "position": [158487, 128036, 5061],
+    "crossSectionScale": 2.0,
+    "projectionOrientation": [0.8547285795211792, 0.020196104422211647, -0.06204566732048988, -0.5149577260017395],
+    "projectionScale": 30000
   }
 }

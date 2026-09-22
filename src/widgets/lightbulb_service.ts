@@ -7,7 +7,7 @@
  * annotation tables, datastack, and aligned volume.
  */
 
-import {getDatasetCaveConfig, type DatasetCaveConfig} from '../config';
+import {getDatasetCaveConfig, isRegisteredDataset, EYEWIRE_II_CAVE_CONFIG, type DatasetCaveConfig} from '../config';
 import {useProofreadingBackendStore, useCellHistoryStore, useUserStatsStore} from '../store';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
 import {parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
@@ -289,9 +289,56 @@ function getViewerPosition(): [number, number, number] {
 
 // ─── Per-dataset config resolution ──────────────────────────────────────────
 
+/** PCG table name out of the active graphene layer URL, e.g. 'pni_mec'.
+ *  Unlike the layer name this is chosen by whoever built the volume, not by
+ *  whoever saved the state, so it is the reliable identifier. */
+function getCurrentGrapheneTable(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (url.startsWith('graphene://')) {
+        const m = url.match(/\/segmentation\/table\/([^/?#]+)/);
+        if (m) return m[1];
+      }
+    }
+  } catch {}
+  return '';
+}
+
 /** Resolve the CAVE config for the currently active dataset in the viewer. */
 function getActiveDatasetConfig(): DatasetCaveConfig {
-  return getDatasetCaveConfig(getCurrentDataset());
+  const layerName = getCurrentDataset();
+  if (isRegisteredDataset(layerName)) return getDatasetCaveConfig(layerName);
+  // The layer name did not resolve. States shared out of spelunker routinely
+  // use generic names ('seg', 'segmentation'), and accepting the default here
+  // is how CAVE writes end up on the production retina. Try the PCG table in
+  // the graphene URL before giving up.
+  const table = getCurrentGrapheneTable();
+  if (isRegisteredDataset(table)) return getDatasetCaveConfig(table);
+  return getDatasetCaveConfig(layerName);
+}
+
+/** CAVE host for whatever dataset is on screen.
+ *
+ *  MEC lives on hc.himc-cave.com while everything else lives on
+ *  minnie.microns-daf.com, so no caller may assume a single server. Priority
+ *  mirrors store.ts getCaveServerUrl(): the live graphene layer first (correct
+ *  even for an unregistered dataset), then the registered config, then the
+ *  global override as a last resort. */
+export function activeCaveServer(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (url.startsWith('graphene://')) {
+        const clean = url.replace('graphene://', '').replace('middleauth+', '');
+        const u = new URL(clean);
+        return `${u.protocol}//${u.host}${u.pathname.split('/segmentation')[0]}`;
+      }
+    }
+  } catch {}
+  return getActiveDatasetConfig().caveServer || EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
 }
 
 // ─── CAVE Annotation API v2 helpers ─────────────────────────────────────────

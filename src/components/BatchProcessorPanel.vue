@@ -6,9 +6,9 @@
  */
 import { ref, computed, onMounted } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
-import { setCellComplete, saveCellType, NURRO_IMAGES } from '../widgets/lightbulb_service';
+import { setCellComplete, saveCellType, activeCaveServer, NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { useProofreadingBackendStore, useUserStatsStore } from '../store';
-import { EYEWIRE_II_CAVE_CONFIG, RETINAL_CELL_TYPES } from '../config';
+import { RETINAL_CELL_TYPES } from '../config';
 
 const emit = defineEmits({ hide: null });
 
@@ -550,7 +550,7 @@ function segStatus(segId: string): 'saved' | 'skipped' | 'pending' {
 
 // Submit (only segments with saved points)
 async function submitGuidedComplete(group: SegmentGroup) {
-  const caveServer = EYEWIRE_II_CAVE_CONFIG.caveServerOverride || '';
+  const caveServer = activeCaveServer();
   if (!caveServer) { flash('No CAVE server'); return; }
   if (!guide.value) return;
 
@@ -606,7 +606,7 @@ async function submitGuidedComplete(group: SegmentGroup) {
 
 // Annotate (sequential with progress)
 async function batchAnnotate(group: SegmentGroup) {
-  const caveServer = EYEWIRE_II_CAVE_CONFIG.caveServerOverride || '';
+  const caveServer = activeCaveServer();
   const cellType = selectedCellType.value;
   if (!caveServer) { flash('No CAVE server'); return; }
   if (!cellType) { flash('Select a cell type first'); return; }

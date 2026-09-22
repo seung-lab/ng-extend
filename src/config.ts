@@ -151,6 +151,30 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
   },
 
   // ── Minnie (MICrONS) ────────────────────────────────────────────────────
+  // ── PNI medial entorhinal cortex (MEC) ──────────────────────────────────
+  // FIRST dataset on a CAVE server other than minnie.microns-daf.com. The app
+  // resolves the server live from the graphene layer URL, so nothing here is
+  // load-bearing for the host, but leaving caveServer wrong would still break
+  // the dev fallback path in store.ts getCaveServerUrl() step 2.
+  //
+  // Tables below do not exist yet. As of 2026-09-22 the hc.himc-cave.com
+  // annotation service does not have `pni_mec` registered as an aligned volume
+  // (400 invalid_table_id) and materialize returns 503, so completions will
+  // fail loudly until CAVE provisions them. That is deliberate: failing loudly
+  // on an unprovisioned table beats silently writing to the retina.
+  pni_mec: {
+    caveServer:       'https://hc.himc-cave.com',
+    datastack:        'pni_mec',
+    alignedVolume:    'pni_mec',
+    cellStatusTable:  'mec_cell_status_v1',
+    cellStatusSchema: 'bound_tag_user',
+    cellTypeTable:    'mec_cell_type_v1',
+    cellTypeSchema:   'bound_tag_user',
+    // Root ids and camera lifted from the team proofreading state
+    // (nglstate 6641601003126784), so they resolve in the pni_mec graph.
+    defaultSegments:  ['720575947322423718', '720575947401560895', '720575947322485926'],
+    defaultPosition:  [158487, 128036, 5061],
+  },
   minnie65_public: {
     caveServer:       'https://minnie.microns-daf.com',
     datastack:        'minnie65_public_v117',
@@ -265,14 +289,49 @@ export const EYEWIRE_II_CAVE_CONFIG = {
  * Accepts a dataset/layer name and returns the matching config,
  * falling back to DEFAULT_CAVE_CONFIG.
  */
+/** Substring matching below is a convenience for names like
+ *  'graphene://.../stroeh_mouse_retina'. Short names must NOT take part in it:
+ *  MEC's segmentation layer is literally called 'seg', and the other MEC
+ *  layers are 'em', 'img', 'ws', 'aff', 'sem' and 'size'. Without a floor,
+ *  any of those could match a key by accident.
+ *
+ *  The value is 5, not 6: 'pinky' is a real historical alias (see the variant
+ *  list in datasets.ts) and must keep resolving to pinky_sandbox/pinky100.
+ *  5 is the shortest floor that keeps 'pinky' working while excluding every
+ *  generic layer name above, the longest of which is 'size' at 4.
+ *  Verified against the compiled module: no registered key or known alias
+ *  resolves differently before and after this change. */
+const MIN_SUBSTRING_MATCH = 5;
+
+function findDatasetCaveConfig(name: string): DatasetCaveConfig | undefined {
+  const exact = CAVE_CONFIGS_BY_DATASET[name];
+  if (exact) return exact;
+  if (name.length < MIN_SUBSTRING_MATCH) return undefined;
+  for (const [key, val] of Object.entries(CAVE_CONFIGS_BY_DATASET)) {
+    if (key.length < MIN_SUBSTRING_MATCH) continue;
+    if (name.includes(key) || key.includes(name)) return val;
+  }
+  return undefined;
+}
+
+/** True when `name` resolves to a registered dataset rather than falling
+ *  through to DEFAULT_CAVE_CONFIG. Callers use this to tell "this really is
+ *  the retina" apart from "nobody registered this and we guessed the retina". */
+export function isRegisteredDataset(name?: string): boolean {
+  return !!name && !!findDatasetCaveConfig(name);
+}
+
 export function getDatasetCaveConfig(datasetOrLayerName?: string): DatasetCaveConfig {
   if (datasetOrLayerName) {
-    const cfg = CAVE_CONFIGS_BY_DATASET[datasetOrLayerName];
+    const cfg = findDatasetCaveConfig(datasetOrLayerName);
     if (cfg) return cfg;
-    // Try partial match (e.g. URL contains 'stroeh_mouse_retina')
-    for (const [key, val] of Object.entries(CAVE_CONFIGS_BY_DATASET)) {
-      if (datasetOrLayerName.includes(key) || key.includes(datasetOrLayerName)) return val;
-    }
+    // Silent fallback here has already cost us one production incident
+    // (pinky_training6 writing to the retina's aligned volume). Say so.
+    console.warn(
+      `[config] No CAVE config registered for '${datasetOrLayerName}'. ` +
+      `Falling back to ${DEFAULT_CAVE_CONFIG.datastack}/${DEFAULT_CAVE_CONFIG.alignedVolume}. ` +
+      `CAVE writes made now will address the WRONG volume. ` +
+      `Register it in CAVE_CONFIGS_BY_DATASET (see docs/HANDOFF-new-dataset.md).`);
   }
   return DEFAULT_CAVE_CONFIG;
 }

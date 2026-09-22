@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useProofreadingQueueStore, useCellHistoryStore, useUserStatsStore, useProofreadingBackendStore } from '../store';
-import { setCellComplete } from '../widgets/lightbulb_service';
-import { EYEWIRE_II_CAVE_CONFIG } from '../config';
+import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
 import { Uint64 } from 'neuroglancer/util/uint64';
 
 const queue = useProofreadingQueueStore();
@@ -339,7 +338,7 @@ async function markProofreadAndNext() {
   if (finalSegInput.value.trim()) queue.setEdit(item.segId, 'finalSegId', finalSegInput.value.trim());
   if (annotationInput.value.trim()) queue.setEdit(item.segId, 'annotation', annotationInput.value.trim());
 
-  const caveServer = EYEWIRE_II_CAVE_CONFIG.caveServerOverride || '';
+  const caveServer = activeCaveServer();
   await setCellComplete(caveServer, item.segId, true);
 
   // Auto-release claim when marking complete

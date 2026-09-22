@@ -83,6 +83,22 @@ const DATASTACKS = [
   //   datastack:       'minnie65_sandbox',
   //   cellStatusTable: 'eyewire_ii_cell_status_v2',
   // },
+  //
+  // pni_mec (MEC): blocked on CAVE infrastructure, not on this repo. As of
+  // 2026-09-22 hc.himc-cave.com returns 503 from nginx for the whole
+  // materialize service (even /materialize/api/versions), and its annotation
+  // service answers 400 invalid_table_id for aligned_volume pni_mec while
+  // happily answering 200 for minnie's volumes, so pni_mec is not registered
+  // there at all. Adding the row now would fail every 30 minutes forever
+  // (see trap 3 in docs/HANDOFF-new-dataset.md). Re-check with:
+  //   curl -s -H "Authorization: Bearer $CAVE_SERVICE_TOKEN"   //     https://hc.himc-cave.com/materialize/api/v3/datastack/pni_mec/versions
+  // A non-empty JSON array is the go signal.
+  // {
+  //   dataset:         'pni_mec',
+  //   caveServer:      'https://hc.himc-cave.com',
+  //   datastack:       'pni_mec',
+  //   cellStatusTable: 'mec_cell_status_v1',
+  // },
 ];
 
 const PAGE_SIZE = 5000;
