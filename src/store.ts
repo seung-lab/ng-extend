@@ -1035,6 +1035,17 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
     }
   }
 
+  /** Stamp `dataset` on every entry that has none (entries saved before cells
+   *  carried a dataset tag). Returns how many changed; persists only then. */
+  function assignUntagged(dataset: string): number {
+    let n = 0;
+    for (const c of cells.value) {
+      if (!c.dataset) { c.dataset = dataset; n++; }
+    }
+    if (n) persist();
+    return n;
+  }
+
   /** Lookup a nickname by segment ID (used globally to replace segID display). */
   function getNickname(segId: string): string | undefined {
     const cell = cells.value.find(c => c.segId === segId);
@@ -1129,7 +1140,7 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
     persist();
   }
 
-  return { cells, upsert, jumpToCell, toggleFavorite, setNickname, getNickname };
+  return { cells, upsert, jumpToCell, toggleFavorite, setNickname, getNickname, assignUntagged };
 });
 
 // ── Help requests (second-opinion) — backed by Supabase with realtime ────────

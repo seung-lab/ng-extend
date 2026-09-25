@@ -682,6 +682,17 @@ const overviewEdits = computed(() => {
 /** True when the Edits numbers really are this dataset's. */
 const editsScoped = computed(() => !!scopedEdits.value || (!scopedEditsFailed.value && !!activeDatasetCanon.value));
 
+// Amy's untagged history is all MICrONS work from before cells carried a
+// dataset tag (864691... roots, minnie65), so file it there for her (Amy
+// 2026-09-25). Nobody else's untagged cells are guessed at: theirs could be
+// any dataset, and they stay out of every per-dataset list.
+const AMY_USER_ID = '146a3fec-ee5c-46f9-b1ac-b1ea57501f81';
+watch(() => backendStore.userId, uid => {
+  if (uid !== AMY_USER_ID) return;
+  const n = historyStore.assignUntagged('minnie65_public');
+  if (n) console.info(`[profile] filed ${n} untagged cells under MICrONS`);
+}, { immediate: true });
+
 // ── Cell history helpers ──────────────────────────────────────────────────────
 /** This dataset's cells. Untagged legacy entries predate dataset tagging and
  *  can't be attributed to any dataset, so they no longer leak into every one

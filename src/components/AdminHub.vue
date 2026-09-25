@@ -31,6 +31,8 @@ interface TriageRow {
   status: 'proposed' | 'approved' | 'dismissed' | 'done';
   reviewed_by: string | null;
   created_at: string;
+  /** Reviewer's comment on approve/dismiss (supabase-triage-approver-note.sql). */
+  approver_note?: string | null;
 }
 const triageRows = ref<TriageRow[]>([]);
 const triageLoading = ref(false);
@@ -39,6 +41,9 @@ const triageShowReviewed = ref(false);
 const triageActing = ref<string | null>(null);
 /** Per-row edited message text, keyed by triage row id. */
 const triageEdits = ref<Record<string, string>>({});
+/** Per-row reviewer comment, saved as approver_note with the decision. Same
+ *  column and name the triage loop (claude/triage-loop) hands to Claude. */
+const triageNotes = ref<Record<string, string>>({});
 
 const TRIAGE_LABELS: Record<TriageRow['recommendation'], string> = {
   nothing: 'No action',
@@ -123,15 +128,31 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
       }
     }
 
-    const { error } = await supabase.from('feedback_triage').update({
+    const note = (triageNotes.value[row.id] ?? '').trim();
+    const update: Record<string, any> = {
       status,
       proposed_message: (triageEdits.value[row.id] ?? row.proposed_message) || null,
       ...(status === 'done' ? { result_note: resultNote } : {}),
+      ...(status !== 'done' && note ? { approver_note: note } : {}),
       reviewed_by: backend.userName || backend.userEmail || 'admin',
       reviewed_at: new Date().toISOString(),
-    }).eq('id', row.id);
+    };
+    let { error } = await supabase.from('feedback_triage').update(update).eq('id', row.id);
+    let noteLost = false;
+    // Until the approver_note migration runs, the column is missing: PostgREST
+    // answers PGRST204 "Could not find the 'approver_note' column" (probed
+    // 2026-09-25). Never let that block the decision: save it without.
+    if (error && 'approver_note' in update && (error.code === 'PGRST204' || /approver_note/.test(error.message))) {
+      delete update.approver_note;
+      noteLost = true;
+      ({ error } = await supabase.from('feedback_triage').update(update).eq('id', row.id));
+    }
     if (error) throw error;
+    delete triageNotes.value[row.id];
     await loadTriage();
+    if (noteLost) {
+      triageError.value = `Saved as ${status}, but your comment was not stored: the approver_note column does not exist yet. Run supabase-triage-approver-note.sql in the Supabase SQL editor. Your comment was: "${note}"`;
+    }
   } catch (e: any) {
     triageError.value = e?.message ?? String(e);
   } finally {
@@ -911,11 +932,27 @@ onMounted(() => {
               <span class="nge-triage-spec-text">{{ line.text }}</span>
             </div>
           </div>
+          <div v-if="row.approver_note" class="nge-triage-note">
+            <span class="nge-triage-spec-label">Comment</span>
+            <span class="nge-triage-spec-text">{{ row.approver_note }}</span>
+          </div>
+          <!-- Reviewer comment, saved with Approve or Dismiss. Internal: it is
+               never sent to the reporter (the message box above is). -->
+          <textarea
+            v-if="row.status === 'proposed'"
+            v-model="triageNotes[row.id]"
+            class="nge-triage-message nge-triage-comment"
+            rows="2"
+            placeholder="Comment (optional), saved with your decision"
+            @keydown.stop @keyup.stop @keypress.stop
+          ></textarea>
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
             <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
-              {{ row.recommendation === 'message' ? 'Approve + Send' : 'Approve' }}
+              {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
             </button>
-            <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'dismissed')">Dismiss</button>
+            <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'dismissed')">
+              {{ triageNotes[row.id]?.trim() ? 'Dismiss with comment' : 'Dismiss' }}
+            </button>
           </div>
           <div v-else-if="row.status === 'approved'" class="nge-triage-actions">
             <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'done')">Mark done</button>
@@ -1438,6 +1475,12 @@ onMounted(() => {
 .nge-triage-message {
   background: rgba(0,0,0,0.3); border: 1px solid rgba(100,200,255,0.2);
   border-radius: 6px; color: #dde; font-size: 12px; padding: 7px 9px; resize: vertical;
+}
+.nge-triage-comment { border-color: rgba(255,255,255,0.14); font-family: inherit; }
+.nge-triage-note {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 12px; line-height: 1.45;
+  padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,0.04);
 }
 .nge-triage-spec {
   background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);
