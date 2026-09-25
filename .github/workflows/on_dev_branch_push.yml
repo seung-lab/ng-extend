@@ -4,6 +4,9 @@ on:
   push:
     branches-ignore:
       - "master"
+  # The triage loop pushes with GITHUB_TOKEN, which does not fire push
+  # events, so it starts this deploy explicitly for its branch.
+  workflow_dispatch: {}
 jobs:
   build-and-deploy:
     permissions:

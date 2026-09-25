@@ -1,0 +1,63 @@
+name: Triage Propose
+
+# The triage agent: every 10 minutes, if any new site_issues report has no
+# feedback_triage row yet, Claude investigates the code and writes one
+# proposal per report. The Slack Triage Bridge then posts them for approval.
+# Replaces the hourly :42 claude.ai routine on Amy's personal account, and
+# runs on the Princeton subscription (CLAUDE_CODE_OAUTH_TOKEN). Off unless
+# repo variable TRIAGE_PROPOSER is 'on', so the old routine can be switched
+# off at the same moment. UNIQUE (source, source_id) means the two can never
+# double-propose even if both run.
+#
+# This file must ALSO exist on main for the cron to fire. Register it there
+# in a commit whose message contains [skip ci].
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: triage-propose
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  propose:
+    if: vars.TRIAGE_PROPOSER == 'on' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Any reports waiting?
+        id: pending
+        run: node scripts/triage-loop.mjs pending
+
+      - name: Claude triages them
+        if: steps.pending.outputs.count != '0'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: Read .triage/triage-prompt.md and do exactly what it says.
+          claude_args: >-
+            --model opus
+            --max-turns 60
+            --allowedTools "Read,Glob,Grep,Write,Bash(git log:*),Bash(git grep:*)"
+
+      - name: Save the proposals
+        if: steps.pending.outputs.count != '0'
+        run: node scripts/triage-loop.mjs insert-proposals

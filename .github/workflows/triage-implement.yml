@@ -1,0 +1,127 @@
+name: Triage Implement
+
+# Claude implements one approved feedback_triage row on branch triage/<id8>,
+# deploys it as a preview App Engine version, and tags the approver in the
+# Slack thread to test it. Dispatched by the Slack Triage Bridge; see
+# docs/TRIAGE-LOOP.md. Runs on Amy's Princeton Claude subscription
+# (secret CLAUDE_CODE_OAUTH_TOKEN, made with `claude setup-token` while
+# signed in as amylr@princeton.edu).
+#
+# This file must ALSO exist on main for workflow_dispatch to work. Register
+# it there in a commit whose message contains [skip ci].
+
+on:
+  workflow_dispatch:
+    inputs:
+      row_id:
+        description: feedback_triage row id
+        required: true
+        type: string
+
+concurrency:
+  group: triage-impl-${{ inputs.row_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    env:
+      ROW_ID: ${{ inputs.row_id }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID || 'C0BG5CN71C3' }}
+      APPROVER_SLACK_IDS: ${{ vars.APPROVER_SLACK_IDS || 'U02FH1DRC,U033NHWDE' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # No persisted credentials: Claude's session cannot push anything. The
+      # publish step below pushes the one branch, with the token, itself.
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Prepare prompt and branch
+        id: prep
+        run: node scripts/triage-loop.mjs prepare
+
+      - name: Check out the triage branch
+        run: |
+          B='${{ steps.prep.outputs.branch }}'
+          if git ls-remote --exit-code --heads origin "$B" >/dev/null; then
+            git fetch origin "$B"
+            git checkout -B "$B" "origin/$B"
+            # Pick up anything that landed on the base since the last attempt.
+            git -c user.name=ci -c user.email=ci@localhost merge --no-edit origin/eyewire-ii-community
+          else
+            git checkout -b "$B"
+          fi
+
+      - run: npm install
+
+      - name: Claude implements the change
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          # The spec lives in a file so no user text passes through YAML.
+          prompt: Read ${{ steps.prep.outputs.prompt_file }} and do exactly what it says.
+          claude_args: >-
+            --model opus
+            --max-turns 80
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(node scripts/build-prod.js),Bash(npm run typecheck),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
+
+      - name: Commit and push the branch
+        id: publish
+        run: |
+          S='${{ steps.prep.outputs.summary_file }}'
+          if [ -f "$S" ] && head -1 "$S" | grep -qi '^#* *BLOCKED'; then
+            node scripts/triage-loop.mjs blocked
+            echo "blocked=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git add -A -- . ':!node_modules' ':!dist' ':!appengine/frontend/static' ':!.triage'
+          if git diff --cached --quiet; then
+            echo "Claude made no changes and did not say BLOCKED" >&2; exit 1
+          fi
+          TITLE=$( [ -f "$S" ] && head -1 "$S" | sed 's/^#* *//' || echo "approved triage change" )
+          git -c user.name="Claude (triage)" -c user.email="noreply@anthropic.com" commit -q \
+            -m "Triage ${ROW_ID:0:8}: $TITLE" \
+            -m "Approved feedback_triage row $ROW_ID, attempt ${{ steps.prep.outputs.attempt }}. $RUN_URL" \
+            -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/${{ steps.prep.outputs.branch }}"
+
+      # A push made with GITHUB_TOKEN does not fire on_dev_branch_push, so the
+      # preview deploy is started explicitly and watched to the end.
+      - name: Deploy the preview
+        if: steps.publish.outputs.blocked != 'true'
+        run: |
+          B='${{ steps.prep.outputs.branch }}'
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run on_dev_branch_push.yml --ref "$B"
+          for i in $(seq 1 30); do
+            ID=$(gh run list --workflow on_dev_branch_push.yml --branch "$B" --event workflow_dispatch -L 1 \
+                 --json databaseId,createdAt --jq ".[] | select(.createdAt >= \"$SINCE\") | .databaseId")
+            [ -n "$ID" ] && break; sleep 5
+          done
+          [ -n "$ID" ] || { echo "preview deploy run never appeared" >&2; exit 1; }
+          gh run watch "$ID" --exit-status --interval 20
+
+      - name: Tag the tester
+        if: steps.publish.outputs.blocked != 'true'
+        run: node scripts/triage-loop.mjs ready
+
+      - name: Report failure
+        if: failure()
+        run: node scripts/triage-loop.mjs fail implementation
