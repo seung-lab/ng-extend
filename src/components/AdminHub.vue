@@ -957,7 +957,7 @@ onMounted(() => {
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
             <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by.startsWith('slack:') ? 'in Slack' : row.reviewed_by }}</template></span>
             <span v-if="row.impl_state" class="nge-triage-impl" :class="`nge-triage-impl--${row.impl_state}`">{{ IMPL_LABELS[row.impl_state] }}</span>
-            <a v-if="slackThreadUrl(row)" class="nge-triage-link" :href="slackThreadUrl(row)!" target="_blank" rel="noopener">Slack thread</a>
+            <a v-if="slackThreadUrl(row)" class="nge-triage-link" :href="slackThreadUrl(row) || undefined" target="_blank" rel="noopener">Slack thread</a>
           </div>
           <div v-if="row.source_excerpt" class="nge-triage-excerpt">"{{ row.source_excerpt }}"</div>
           <div v-if="row.rationale" class="nge-triage-rationale">{{ row.rationale }}</div>
