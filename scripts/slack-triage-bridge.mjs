@@ -443,6 +443,15 @@ async function pollThreads() {
         continue;
       }
       const live = state === 'live_testing';
+      if (/^note\b\s*:?/i.test(text) && state !== 'needs_info') {
+        // Extra information for Claude's next attempt. Nothing rebuilds.
+        log.push({ user: m.user, text: text.replace(/^note\b\s*:?\s*/i, ''), ts: m.ts, role: 'note' });
+        await patchRow(row.id, { last_reply_ts: m.ts, feedback_log: log });
+        const posted = await say(row, `📝 Noted, <@${m.user}>. Claude will see that next time it works on this. Nothing is rebuilding.`);
+        await patchRow(row.id, { last_reply_ts: posted.ts });
+        decided = true;
+        break;
+      }
       let next, reply, extra = {};
       if (state === 'needs_info') {
         log.push({ user: m.user, text, ts: m.ts, role: 'answer' });
@@ -469,6 +478,9 @@ async function pollThreads() {
           next = 'deploy_queued';
           reply = `Thanks <@${m.user}>, tested and good. Deploying to the live community site now; I'll post here when it's live.`;
         }
+      } else if (!live && /^rebuild\W*$/i.test(text)) {
+        next = 'changes_requested';
+        reply = `Rebuilding with everything in this thread, <@${m.user}>. A new preview link will follow here.`;
       } else if (!live && /^(ship to test|test (it )?live|test on live|needs real data|real data)\b/i.test(text)) {
         next = 'live_test_queued';
         reply = `OK <@${m.user}>, putting it on the live site so you can test it on real data. I'll tag you when it's up. Then reply *good* to keep it or *revert* to undo it.`;
@@ -509,6 +521,49 @@ async function pollThreads() {
     }
   }
   return nagged;
+}
+
+/**
+ * While Claude is busy (queued, building, answering), nobody is being asked
+ * anything, but people still reply. Keep those replies as notes so they are
+ * not lost: the next build sees them, and the preview message points out
+ * any that arrived too late for the build it shows.
+ */
+async function collectNotes() {
+  const busy = ['queued', 'implementing', 'changes_requested', 'answer_queued', 'answering'];
+  const res = await sb(`feedback_triage?impl_state=in.(${busy.join(',')})&slack_ts=not.is.null&select=*`);
+  const rows = await res.json();
+  let kept = 0;
+  for (const row of rows) {
+    let replies;
+    try {
+      replies = await slackGet('conversations.replies', {
+        channel: row.slack_channel || CHANNEL, ts: row.slack_ts, limit: 200,
+        ...(row.last_reply_ts ? { oldest: row.last_reply_ts } : {}),
+      });
+    } catch (e) { console.warn(`[bridge] replies fetch failed for ${row.id}: ${e.message}`); continue; }
+    const fresh = (replies.messages ?? [])
+      .filter(m => m.ts !== row.slack_ts && (!row.last_reply_ts || Number(m.ts) > Number(row.last_reply_ts)))
+      .filter(m => !m.bot_id && m.subtype !== 'bot_message');
+    if (!fresh.length) continue;
+    const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
+    let newest = row.last_reply_ts;
+    let added = 0;
+    for (const m of fresh) {
+      newest = m.ts;
+      const text = (m.text || '').trim();
+      if (!text || (BOT_USER_ID && text.includes(`<@${BOT_USER_ID}>`))) continue;
+      log.push({ user: m.user, text: text.replace(/^note\b\s*:?\s*/i, ''), ts: m.ts, role: 'note' });
+      added++;
+    }
+    await patchRow(row.id, { last_reply_ts: newest, feedback_log: log });
+    if (added) {
+      const posted = await say(row, `📝 Got ${added === 1 ? 'that' : 'those'}. Claude is busy right now, so ${added === 1 ? 'it is' : 'they are'} saved for its next pass; I'll say so again when the preview is up.`);
+      await patchRow(row.id, { last_reply_ts: posted.ts });
+      kept += added;
+    }
+  }
+  return kept;
 }
 
 /** Once a day from TOKEN_REMIND_AT, tag Amy to replace the Claude token. */
@@ -573,6 +628,7 @@ let LOOP = false;
   if (LOOP) {
     started = await dispatchWork();
     nagged = await pollThreads();
+    await collectNotes().catch(e => console.warn('[bridge] note collection failed:', e.message));
   }
   const announced = await announceDone();
   await tokenReminder().catch(e => console.warn('[bridge] token reminder failed:', e.message));

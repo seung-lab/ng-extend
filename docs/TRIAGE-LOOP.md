@@ -35,7 +35,13 @@ Claude subscription (amylr@princeton.edu) through the
      built. Nothing is rebuilt.
    - anything else: taken as what is wrong. Claude gets it, fixes the
      branch, and posts a new preview. Tagging starts again.
+   - `note: ...`: extra information saved for Claude's next attempt.
+     Nothing rebuilds.
+   - `rebuild`: build again with everything in the thread.
    - `hand off to @someone`: that person becomes the tester.
+   Replies posted while Claude is still building are kept as notes, never
+   lost. The next preview message lists any that arrived too late for that
+   build, so the tester can reply `rebuild` or test as is.
    Comments from anyone else in the thread are passed to Claude as context,
    but only the tester's reply moves the fix forward. Messages that mention
    @Amy's Claude are questions for the Q&A bot and are left alone.
