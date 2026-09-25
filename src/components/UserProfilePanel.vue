@@ -119,7 +119,7 @@ const playerAssists = computed(() => {
   if (viewingOtherUser.value) return 0;
   const name = backendStore.userName || backendStore.userEmail?.split('@')[0];
   if (!name) return 0;
-  return helpStore.requests.filter(r => r.resolved && r.resolvedByName === name).length;
+  return helpStore.requests.filter(r => r.resolved && r.resolvedByName === name && inScope(r.dataset)).length;
 });
 
 // ── Local state ───────────────────────────────────────────────────────────────
@@ -180,15 +180,16 @@ function openWeekInScience() {
   maybeSendWeeklyRecapNotification();
 }
 
-// ── Scout Report: your tag activity, all lanes ───────────────────────────────
+// ── Scout Report: your tag activity on the dataset on screen ─────────────────
 const issueTagStore = useIssueTagStore();
 const myTagsPlaced = computed(() =>
-  issueTagStore.tags.filter((t: IssueTag) => t.userId && t.userId === backendStore.userId));
+  issueTagStore.tags.filter((t: IssueTag) =>
+    t.userId && t.userId === backendStore.userId && inScope(t.dataset)));
 const myTagsFixed = computed(() =>
   myTagsPlaced.value.filter((t: IssueTag) => t.status === 'resolved'));
 const tagsIFixed = computed(() =>
   issueTagStore.tags.filter((t: IssueTag) =>
-    t.status === 'resolved' && t.resolvedById && t.resolvedById === backendStore.userId));
+    t.status === 'resolved' && t.resolvedById && t.resolvedById === backendStore.userId && inScope(t.dataset)));
 
 // The particle trace: an arc of light runs the shell boundary once when the
 // profile arrives (scifi-ui hologram.js section 1, via util/holo_trace).
@@ -224,7 +225,11 @@ function clampProfile() {
     overlay.style.top = '50%';
     overlay.style.left = '50%';
     overlay.style.transform = 'translate(-50%, -50%)';
-    overlay.style.overflow = 'auto';
+    // hidden, never auto: the holographic edge (::before, inset -1px) always
+    // overhangs the box by a pixel, so auto drew a vertical AND a horizontal
+    // scrollbar around the whole profile. The shell is clamped above and
+    // every tab body scrolls internally, so nothing needs the overlay to.
+    overlay.style.overflow = 'hidden';
   }
 }
 let clampTimer: ReturnType<typeof setInterval> | null = null;
@@ -285,7 +290,11 @@ function refreshActiveDatasetCanon() {
  *  sync config's own name (e.g. 'pinky_sandbox' where canonical is
  *  'pinky_nf_v2'), so count with .in() across the variants. */
 function datasetTagVariants(ds: DatasetEntry): string[] {
-  return [...new Set([canonicalDataset(segLayerName(ds)), ds.id, segLayerName(ds)])];
+  const canon = canonicalDataset(segLayerName(ds));
+  // edit_log.dataset DEFAULTs to 'eyewire_ii', so any row written without an
+  // explicit tag carries that legacy retina name.
+  const legacy = canon === 'stroeh_mouse_retina' ? ['eyewire_ii', 'eyewire_ii_retina'] : [];
+  return [...new Set([canon, ds.id, segLayerName(ds), ...legacy])];
 }
 
 async function loadDatasetStats() {
@@ -579,30 +588,107 @@ const nextExplorationAchievement = computed(() =>
   nextForTrack(EXPLORATION_BADGES, profileStats.value.cellsSubmitted ?? 0)
 );
 
-// ── Current dataset helper (for filtering cells) ────────────────────────────
-function getCurrentDataset(): string {
-  try {
-    const viewer = (window as any)['viewer'];
-    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
-      // Check layer type name (works even if dataSources haven't loaded)
-      const typeName = ml.layer?.constructor?.name ?? '';
-      if (typeName.includes('Segmentation')) return ml.name ?? '';
-      // Fallback: check URL
-      const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
-      if (url.includes('graphene') || url.includes('segmentation')) return ml.name ?? '';
-    }
-  } catch {}
-  return '';
+// ── Overview scope: the dataset on screen ──────────────────────────────────
+// The Overview's left column (Edits, Cells, Scout Report, Recent Cells) is
+// scoped to the dataset currently loaded, so working on MEC shows MEC numbers
+// (Amy 2026-09-25). Achievements, streak and awards stay career-wide.
+// Everything compares CANONICAL tags: cell history stores raw layer names
+// ('pinky_training6', 'pni_mec_seg'...) while Supabase rows are canonical.
+onMounted(refreshActiveDatasetCanon);
+
+/** DATASETS entry for the dataset on screen, if it is a known one. */
+const scopeDataset = computed<DatasetEntry | null>(() =>
+  DATASETS.find(ds => canonicalDataset(segLayerName(ds)) === activeDatasetCanon.value) ?? null);
+const scopeLabel = computed(() => scopeDataset.value?.label || activeDatasetCanon.value);
+function inScope(tag: string | null | undefined): boolean {
+  return !activeDatasetCanon.value || canonicalDataset(tag) === activeDatasetCanon.value;
 }
-const currentDataset = ref('');
-onMounted(() => { currentDataset.value = getCurrentDataset(); });
+
+// Per-dataset edit counts come from edit_log (one row per edit, tagged with a
+// canonical dataset). Verified 2026-09-25: its merge + split rows sum exactly
+// to users.total_edits, so the per-dataset numbers add up to the career total.
+interface EditWindow { edits: number; merges: number; splits: number; }
+const scopedEdits = ref<{ today: EditWindow; week: EditWindow; all: EditWindow } | null>(null);
+const scopedEditsFailed = ref(false);
+let scopedEditsReq = 0;
+
+async function loadScopedEdits() {
+  refreshActiveDatasetCanon();
+  const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
+  const canon = activeDatasetCanon.value;
+  const req = ++scopedEditsReq;
+  scopedEditsFailed.value = false;
+  if (!uid || !canon) { scopedEdits.value = null; return; }
+  const tags = scopeDataset.value ? datasetTagVariants(scopeDataset.value) : [canon];
+  try {
+    const { supabase } = await import('../supabase');
+    const rows: Array<{ operation: string; timestamp: string; success: boolean | null }> = [];
+    const PAGE = 1000;  // PostgREST's default row cap per request
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase.from('edit_log')
+        .select('operation, timestamp, success')
+        .eq('user_id', uid).in('dataset', tags).in('operation', ['merge', 'split'])
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      rows.push(...(data ?? []));
+      if (!data || data.length < PAGE) break;
+    }
+    if (req !== scopedEditsReq) return;  // a newer load superseded this one
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    const weekAgo = Date.now() - 7 * 86400000;
+    const blank = (): EditWindow => ({ edits: 0, merges: 0, splits: 0 });
+    const out = { today: blank(), week: blank(), all: blank() };
+    for (const r of rows) {
+      if (r.success === false) continue;  // failed edits never counted toward users.total_edits
+      const t = new Date(r.timestamp).getTime();
+      const wins = [out.all];
+      if (t >= weekAgo) wins.push(out.week);
+      if (t >= startOfToday.getTime()) wins.push(out.today);
+      for (const w of wins) {
+        w.edits++;
+        if (r.operation === 'merge') w.merges++; else w.splits++;
+      }
+    }
+    scopedEdits.value = out;
+  } catch (e) {
+    if (req !== scopedEditsReq) return;
+    console.warn('[profile] per-dataset edits failed, showing all datasets:', e);
+    scopedEdits.value = null;
+    scopedEditsFailed.value = true;
+  }
+}
+loadScopedEdits();
+watch(() => backendStore.userId, () => loadScopedEdits());
+// Re-scope when coming back to Overview (the Datasets tab can switch datasets).
+watch(activeTab, tab => { if (tab === 'overview') loadScopedEdits(); });
+
+/** Edits section numbers: this dataset's, or career-wide if edit_log failed. */
+const overviewEdits = computed(() => {
+  const s = scopedEdits.value;
+  if (s) return s;
+  const p = profileStats.value;
+  if (scopedEditsFailed.value || !activeDatasetCanon.value) {
+    return {
+      today: { edits: p.editsToday, merges: p.mergesToday, splits: p.splitsToday },
+      week:  { edits: p.editsThisWeek, merges: p.mergesThisWeek, splits: p.splitsThisWeek },
+      all:   { edits: p.editsAllTime, merges: p.mergesAllTime, splits: p.splitsAllTime },
+    };
+  }
+  // Still loading: zeros, never another dataset's numbers.
+  const z = { edits: 0, merges: 0, splits: 0 };
+  return { today: z, week: z, all: z };
+});
+/** True when the Edits numbers really are this dataset's. */
+const editsScoped = computed(() => !!scopedEdits.value || (!scopedEditsFailed.value && !!activeDatasetCanon.value));
 
 // ── Cell history helpers ──────────────────────────────────────────────────────
-/** Filter cells by current dataset (if set). Cells without a dataset tag always show. */
+/** This dataset's cells. Untagged legacy entries predate dataset tagging and
+ *  can't be attributed to any dataset, so they no longer leak into every one
+ *  (they showed MICrONS cells on the MEC profile). */
 const filteredCellHistory = computed(() => {
-  const ds = currentDataset.value;
-  if (!ds) return cellHistory.value;
-  return cellHistory.value.filter(c => !c.dataset || c.dataset === ds);
+  if (!activeDatasetCanon.value) return cellHistory.value;
+  return cellHistory.value.filter(c => !!c.dataset && inScope(c.dataset));
 });
 
 const completedCells = computed(() => filteredCellHistory.value.filter(c => c.isComplete));
@@ -802,14 +888,30 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </template>
           </div>
 
+          <!-- Which dataset this column's numbers belong to. Clicking opens
+               the Datasets tab, where every dataset's totals sit side by side. -->
+          <button
+            v-if="activeDatasetCanon"
+            class="nge-profile-scope"
+            :class="{ 'nge-profile-scope--fallback': !editsScoped }"
+            :title="editsScoped ? 'Numbers below are for this dataset only. Click to compare datasets.' : 'Per-dataset edits could not be loaded, so Edits shows all datasets.'"
+            @click="!viewingOtherUser && (activeTab = 'datasets')"
+          >
+            <span class="nge-profile-scope-icon">{{ scopeDataset ? SPECIES_ICONS[scopeDataset.species] : '🧬' }}</span>
+            <span class="nge-profile-scope-text">
+              <span class="nge-profile-scope-kicker">{{ editsScoped ? 'Stats for' : 'Edits across all datasets · cells for' }}</span>
+              <span class="nge-profile-scope-name">{{ scopeLabel }}</span>
+            </span>
+          </button>
+
           <!-- Edits stats -->
           <div class="nge-profile-section nge-profile-section--edits">
             <div class="nge-profile-section-label">▌ Edits</div>
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" v-for="(col, i) in [
-                {label:'Today',    val:profileStats.editsToday,    merges:profileStats.mergesToday,    splits:profileStats.splitsToday},
-                {label:'Past 7d',  val:profileStats.editsThisWeek, merges:profileStats.mergesThisWeek, splits:profileStats.splitsThisWeek},
-                {label:'All Time', val:profileStats.editsAllTime,  merges:profileStats.mergesAllTime,  splits:profileStats.splitsAllTime},
+                {label:'Today',    val:overviewEdits.today.edits, merges:overviewEdits.today.merges, splits:overviewEdits.today.splits},
+                {label:'Past 7d',  val:overviewEdits.week.edits,  merges:overviewEdits.week.merges,  splits:overviewEdits.week.splits},
+                {label:'All Time', val:overviewEdits.all.edits,   merges:overviewEdits.all.merges,   splits:overviewEdits.all.splits},
               ]" :key="i">
                 <div class="nge-profile-stat-label">{{ col.label }}</div>
                 <div class="nge-profile-stat-val"><RollUp :value="col.val" /></div>
@@ -890,7 +992,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-cell-list" v-if="filteredCellHistory.length > 0">
               <div class="nge-cell-list-header">
                 <span class="nge-cell-list-title">Recent Cells</span>
-                <span v-if="currentDataset" class="nge-cell-list-dataset" :title="'Filtered to ' + currentDataset">{{ currentDataset }}</span>
+                <span v-if="activeDatasetCanon" class="nge-cell-list-dataset" :title="'Filtered to ' + scopeLabel">{{ scopeDataset?.shortLabel || activeDatasetCanon }}</span>
               </div>
               <div class="nge-cell-list-columns">
                 <span class="nge-cell-col-label nge-cell-col-label--id">Segment</span>
@@ -925,7 +1027,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </div>
             </div>
             <div class="nge-cell-empty" v-else>
-              Select segments and mark complete or set cell type to build your history.
+              <template v-if="activeDatasetCanon">No cells on {{ scopeDataset?.shortLabel || activeDatasetCanon }} yet. </template>Select segments and mark complete or set cell type to build your history.
             </div>
           </div>
 
@@ -933,6 +1035,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
         <!-- CENTER: countdown + badges + streak -->
         <div class="nge-profile-col nge-profile-col--center">
+
+          <!-- The left column is one dataset; achievements are a career. -->
+          <div v-if="activeDatasetCanon" class="nge-profile-career-note">Achievements count every dataset</div>
 
           <!-- Proofreading Achievements (building track) -->
           <div class="nge-profile-section nge-profile-section--badges">
@@ -2607,6 +2712,50 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   font-weight: 500;
 }
 
+/* Dataset scope banner at the top of the Overview's left column. */
+.nge-profile-scope {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 2px 0 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(74, 158, 255, 0.07);
+  border: 1px solid rgba(74, 158, 255, 0.22);
+  color: #e0e8f5;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.nge-profile-scope:hover {
+  background: rgba(74, 158, 255, 0.13);
+  border-color: rgba(74, 158, 255, 0.4);
+}
+.nge-profile-scope--fallback { border-color: rgba(245, 166, 35, 0.35); }
+.nge-profile-scope-icon { font-size: 18px; line-height: 1; }
+.nge-profile-scope-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.nge-profile-scope-kicker {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(120, 180, 255, 0.75);
+}
+.nge-profile-scope-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nge-profile-career-note {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0 0 10px;
+}
+
 .nge-cell-list-scroll {
   max-height: 200px;
   overflow-y: auto;
@@ -2770,10 +2919,21 @@ const emit = defineEmits({hide: null, 'open-settings': null});
    ADMIN HUB TAB — fills the body, AdminHub.vue handles internal padding
 ───────────────────────────────────────────────────────────────────────────── */
 .nge-profile-body--admin {
-  display: block;
+  /* Flex column, not block: AdminHub's own height:100% resolved against an
+     auto-height parent, so it grew to its full content height and this
+     overflow:hidden clipped it with nothing left to scroll (Triage, the
+     longest sub-tab, was unreachable past the first cards). As a shrinking
+     flex item it is bounded by the body and its own overflow-y takes over. */
+  display: flex;
+  flex-direction: column;
   padding: 0;
   max-height: calc(90vh - 100px);
   overflow: hidden;
+}
+.nge-profile-body--admin > :deep(.nge-admin-hub) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
 }
 
 .nge-trophy-scroll {

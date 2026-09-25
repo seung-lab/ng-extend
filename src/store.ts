@@ -19,6 +19,7 @@ import pinOtherVtkUrl from '../static/tags/pin-other.vtk';
 import scytheVtkUrl from '../static/tags/scythe.vtk';
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 import {Uint64} from "neuroglancer/util/uint64";
+import {setStatedColor} from "./widgets/widget_utils";
 
 declare const CONFIG: Config|undefined;
 declare const DEFAULT_SETTINGS: {  [key: string]: any }
@@ -543,7 +544,7 @@ export const useLayersStore = defineStore('layers', () => {
             if (rgb) {
               // neuroglancer packs as 0xBBGGRR.
               const packed = rgb.r | (rgb.g << 8) | (rgb.b << 16);
-              colorGroupState.segmentStatedColors.set(segId, new Uint64(packed, 0));
+              setStatedColor(colorGroupState.segmentStatedColors, segId, packed);
             }
           }
           console.info(`[layers] Applied ${dsCfg.defaultSegments.length} default segment(s) for ${segmentationLayerName}`);
