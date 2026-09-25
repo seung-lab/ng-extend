@@ -61,6 +61,9 @@ jobs:
           # The loop stays off until this repo variable is 'on' (after the
           # CLAUDE_CODE_OAUTH_TOKEN secret exists). Sync works without it.
           TRIAGE_LOOP: ${{ vars.TRIAGE_LOOP }}
+          # Approvals before this time are backlog: shown in the Admin Hub with
+          # a "Have Claude build it" button, never started automatically.
+          TRIAGE_LOOP_SINCE: ${{ vars.TRIAGE_LOOP_SINCE }}
           APPROVER_NAME_MAP: ${{ vars.APPROVER_NAME_MAP }}
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/slack-triage-bridge.mjs

@@ -51,7 +51,9 @@ const LOOP_WANTED  = (process.env.TRIAGE_LOOP || '').toLowerCase() === 'on';
 const GH_TOKEN     = process.env.GITHUB_TOKEN;
 const GH_REPO      = process.env.GITHUB_REPOSITORY || 'seung-lab/ng-extend';
 const BASE_BRANCH  = 'eyewire-ii-community';
-const LOOP_SINCE   = process.env.TRIAGE_LOOP_SINCE || '2026-09-25T00:00:00Z';
+// Set by repo variable TRIAGE_LOOP_SINCE to the moment the loop was switched
+// on; the fallback is deliberately late so a missing variable starts nothing old.
+const LOOP_SINCE   = process.env.TRIAGE_LOOP_SINCE || '2026-09-26T00:00:00Z';
 const NAG_EVERY_MS = 10 * 60 * 1000;
 // A cron tick lands a little early or late; nag if at least this much passed.
 const NAG_SLACK_MS = 60 * 1000;
