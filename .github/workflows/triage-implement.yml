@@ -1,11 +1,13 @@
 name: Triage Implement
 
-# Claude implements one approved feedback_triage row on branch triage/<id8>,
-# deploys it as a preview App Engine version, and tags the approver in the
-# Slack thread to test it. Dispatched by the Slack Triage Bridge; see
-# docs/TRIAGE-LOOP.md. Runs on Amy's Princeton Claude subscription
-# (secret CLAUDE_CODE_OAUTH_TOKEN, made with `claude setup-token` while
-# signed in as amylr@princeton.edu).
+# Claude works on one approved feedback_triage row. Dispatched by the Slack
+# Triage Bridge; see docs/TRIAGE-LOOP.md. Runs on Amy's Princeton Claude
+# subscription (secret CLAUDE_CODE_OAUTH_TOKEN, made with `claude
+# setup-token` while signed in as amylr@princeton.edu).
+#
+#   mode=build   implement on triage/<id8>, deploy that branch as a preview,
+#                tag the tester. Or stop with a QUESTION / BLOCKED.
+#   mode=answer  answer the tester's question about the build; no changes.
 #
 # This file must ALSO exist on main for workflow_dispatch to work. Register
 # it there in a commit whose message contains [skip ci].
@@ -16,6 +18,11 @@ on:
       row_id:
         description: feedback_triage row id
         required: true
+        type: string
+      mode:
+        description: build or answer
+        required: false
+        default: build
         type: string
 
 concurrency:
@@ -32,6 +39,7 @@ jobs:
     timeout-minutes: 80
     env:
       ROW_ID: ${{ inputs.row_id }}
+      TRIAGE_MODE: ${{ inputs.mode }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -63,15 +71,20 @@ jobs:
           if git ls-remote --exit-code --heads origin "$B" >/dev/null; then
             git fetch origin "$B"
             git checkout -B "$B" "origin/$B"
-            # Pick up anything that landed on the base since the last attempt.
-            git -c user.name=ci -c user.email=ci@localhost merge --no-edit origin/eyewire-ii-community
+            if [ "$TRIAGE_MODE" = build ]; then
+              # Pick up anything that landed on the base since the last attempt.
+              git -c user.name=ci -c user.email=ci@localhost merge --no-edit origin/eyewire-ii-community
+            fi
           else
             git checkout -b "$B"
           fi
 
-      - run: npm install
+      - name: Install dependencies
+        if: inputs.mode != 'answer'
+        run: npm install
 
-      - name: Claude implements the change
+      - name: Claude builds it
+        if: inputs.mode != 'answer'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -83,17 +96,34 @@ jobs:
             --max-turns 80
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(node scripts/build-prod.js),Bash(npm run typecheck),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
 
+      - name: Claude answers the question
+        if: inputs.mode == 'answer'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: Read ${{ steps.prep.outputs.prompt_file }} and do exactly what it says.
+          claude_args: >-
+            --model opus
+            --max-turns 30
+            --allowedTools "Read,Glob,Grep,Write,Bash(git diff:*),Bash(git log:*)"
+
+      - name: Post the answer
+        if: inputs.mode == 'answer'
+        run: node scripts/triage-loop.mjs answered
+
       - name: Commit and push the branch
         id: publish
+        if: inputs.mode != 'answer'
         run: |
           S='${{ steps.prep.outputs.summary_file }}'
-          if [ -f "$S" ] && head -1 "$S" | grep -qi '^#* *BLOCKED'; then
+          if [ -f "$S" ] && head -1 "$S" | grep -qiE '^#* *(BLOCKED|QUESTION)'; then
             node scripts/triage-loop.mjs blocked
-            echo "blocked=true" >> "$GITHUB_OUTPUT"; exit 0
+            echo "stopped=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           git add -A -- . ':!node_modules' ':!dist' ':!appengine/frontend/static' ':!.triage'
           if git diff --cached --quiet; then
-            echo "Claude made no changes and did not say BLOCKED" >&2; exit 1
+            echo "Claude made no changes and did not say BLOCKED or QUESTION" >&2; exit 1
           fi
           TITLE=$( [ -f "$S" ] && head -1 "$S" | sed 's/^#* *//' || echo "approved triage change" )
           git -c user.name="Claude (triage)" -c user.email="noreply@anthropic.com" commit -q \
@@ -105,7 +135,7 @@ jobs:
       # A push made with GITHUB_TOKEN does not fire on_dev_branch_push, so the
       # preview deploy is started explicitly and watched to the end.
       - name: Deploy the preview
-        if: steps.publish.outputs.blocked != 'true'
+        if: inputs.mode != 'answer' && steps.publish.outputs.stopped != 'true'
         run: |
           B='${{ steps.prep.outputs.branch }}'
           SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -119,9 +149,9 @@ jobs:
           gh run watch "$ID" --exit-status --interval 20
 
       - name: Tag the tester
-        if: steps.publish.outputs.blocked != 'true'
+        if: inputs.mode != 'answer' && steps.publish.outputs.stopped != 'true'
         run: node scripts/triage-loop.mjs ready
 
       - name: Report failure
         if: failure()
-        run: node scripts/triage-loop.mjs fail implementation
+        run: node scripts/triage-loop.mjs fail "${{ inputs.mode == 'answer' && 'answer' || 'implementation' }}"

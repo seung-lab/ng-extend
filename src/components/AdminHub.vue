@@ -46,8 +46,9 @@ interface TriageRow {
   slack_ts?: string | null;
   slack_channel?: string | null;
 }
-type ImplState = 'queued' | 'implementing' | 'testing' | 'changes_requested'
-  | 'deploy_queued' | 'deploying' | 'deployed' | 'failed';
+type ImplState = 'queued' | 'implementing' | 'needs_info' | 'testing' | 'changes_requested'
+  | 'answer_queued' | 'answering' | 'deploy_queued' | 'deploying' | 'deployed'
+  | 'live_test_queued' | 'live_testing' | 'revert_queued' | 'reverting' | 'failed';
 const triageRows = ref<TriageRow[]>([]);
 const triageLoading = ref(false);
 const triageError = ref('');
@@ -61,6 +62,13 @@ const triageNotes = ref<Record<string, string>>({});
 const IMPL_LABELS: Record<ImplState, string> = {
   queued: 'Waiting for Claude',
   implementing: 'Claude is building it',
+  needs_info: 'Claude has a question (answer in Slack)',
+  answer_queued: 'Tester asked a question',
+  answering: 'Claude is answering the tester',
+  live_test_queued: 'Going live for a real-data test',
+  live_testing: 'Live test, waiting for the tester',
+  revert_queued: 'Taking it off the live site',
+  reverting: 'Reverting the live site',
   testing: 'Preview up, waiting for the tester',
   changes_requested: 'Tester sent it back',
   deploy_queued: 'Tested, deploy starting',
@@ -68,6 +76,8 @@ const IMPL_LABELS: Record<ImplState, string> = {
   deployed: 'Live',
   failed: 'Failed, needs a look',
 };
+const ROLE_LABELS: Record<string, string> = { tester: 'Tester', question: 'Question', answer: 'Answer' };
+const roleLabel = (role: string) => ROLE_LABELS[role] || 'Comment';
 const isBuildable = (r: TriageRow) => r.recommendation === 'bug_fix_spec' || r.recommendation === 'new_feature';
 const slackThreadUrl = (r: TriageRow) =>
   r.slack_ts ? `https://eyewire.slack.com/archives/${r.slack_channel || 'C0BG5CN71C3'}/p${r.slack_ts.replace('.', '')}` : null;
@@ -984,8 +994,8 @@ onMounted(() => {
           <div v-if="row.impl_state" class="nge-triage-loop">
             <div v-if="row.impl_summary"><span class="nge-triage-spec-label">Change</span> {{ row.impl_summary }}</div>
             <div v-if="row.preview_url"><span class="nge-triage-spec-label">Preview</span> <a :href="row.preview_url" target="_blank" rel="noopener">{{ row.preview_url }}</a></div>
-            <div v-if="row.impl_state === 'testing'"><span class="nge-triage-spec-label">Tester</span> reply "good" in the Slack thread to deploy, or say what is wrong. Reminded {{ row.nag_count || 0 }} time{{ row.nag_count === 1 ? '' : 's' }}.</div>
-            <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts"><span class="nge-triage-spec-label">{{ f.role === 'tester' ? 'Tester' : 'Comment' }}</span> {{ f.text }}</div>
+            <div v-if="row.impl_state === 'testing' || row.impl_state === 'live_testing' || row.impl_state === 'needs_info'"><span class="nge-triage-spec-label">Waiting on</span> the tester in the Slack thread{{ row.impl_state === 'needs_info' ? ', to answer Claude' : '' }}. Reminded {{ row.nag_count || 0 }} time{{ row.nag_count === 1 ? '' : 's' }}.</div>
+            <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> {{ f.text }}</div>
             <div v-if="row.impl_run_url"><a :href="row.impl_run_url" target="_blank" rel="noopener">Claude's run log</a><template v-if="row.impl_attempts"> · attempt {{ row.impl_attempts }}</template></div>
           </div>
           <textarea
@@ -1525,7 +1535,8 @@ onMounted(() => {
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
   background: rgba(100,200,255,0.12); color: #8fd3ff;
 }
-.nge-triage-impl--testing, .nge-triage-impl--changes_requested { background: rgba(255,210,90,0.14); color: #ffd35a; }
+.nge-triage-impl--testing, .nge-triage-impl--changes_requested,
+.nge-triage-impl--needs_info, .nge-triage-impl--live_testing { background: rgba(255,210,90,0.14); color: #ffd35a; }
 .nge-triage-impl--deployed { background: rgba(160,255,160,0.12); color: #8e8; }
 .nge-triage-impl--failed { background: rgba(255,120,120,0.16); color: #f88; }
 .nge-triage-link { font-size: 11px; color: #8fd3ff; }

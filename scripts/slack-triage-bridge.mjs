@@ -24,8 +24,11 @@
  *   approved spec/feature -> impl_state 'queued' -> triage-implement.yml
  *   -> preview posted, approver tagged -> 'testing'
  *   while testing: the approver is re-tagged every 10 minutes until they
- *   reply "good" (-> triage-deploy.yml, live) or reply with a problem
- *   (-> Claude fixes it and posts a new preview).
+ *   reply "good" (-> triage-deploy.yml, live), "ship to test" (live for a
+ *   real-data test, then good or revert), a question ending in "?" (Claude
+ *   answers it), or a problem (-> Claude fixes it, new preview). Claude can
+ *   ask a question too (needs_info); the answer sends it back to work.
+ *   "hand off to @someone" moves the tagging. See pollThreads().
  *
  * DONE SWEEP: rows moved to status='done' get a "change shipped" update in
  * their thread tagging every approver. done_slack_ts records it.
@@ -59,6 +62,13 @@ const NAG_EVERY_MS = 10 * 60 * 1000;
 const NAG_SLACK_MS = 60 * 1000;
 const STALE_RUN_MS = 90 * 60 * 1000;
 const MAX_PARALLEL_IMPL = 3;
+// @Amy's Claude, the Q&A bot. A reply that mentions it is a question for
+// that bot, not a tester's verdict, so the loop leaves it alone.
+const BOT_USER_ID = process.env.SLACK_BOT_USER_ID || 'U0B02RD6XQR';
+// The Princeton token from `claude setup-token` lasts a year (made
+// 2026-09-25). From this date Amy is tagged daily until it is replaced and
+// CLAUDE_TOKEN_REMIND_AT is moved on a year.
+const TOKEN_REMIND_AT = process.env.CLAUDE_TOKEN_REMIND_AT || '2027-08-25T00:00:00Z';
 let NAME_MAP = { amy: 'U02FH1DRC', celia: 'U033NHWDE' };
 try { if (process.env.APPROVER_NAME_MAP) NAME_MAP = JSON.parse(process.env.APPROVER_NAME_MAP); }
 catch { console.warn('[bridge] APPROVER_NAME_MAP is not JSON, using defaults'); }
@@ -110,11 +120,11 @@ const say = (row, text) => slack('chat.postMessage', {
   channel: row.slack_channel || CHANNEL, thread_ts: row.slack_ts, text,
 });
 
-async function dispatchWorkflow(file, rowId) {
+async function dispatchWorkflow(file, rowId, mode) {
   const res = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/${file}/dispatches`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' },
-    body: JSON.stringify({ ref: BASE_BRANCH, inputs: { row_id: rowId } }),
+    body: JSON.stringify({ ref: BASE_BRANCH, inputs: { row_id: rowId, ...(mode ? { mode } : {}) } }),
   });
   if (res.status !== 204) throw new Error(`dispatch ${file} failed: ${res.status} ${await res.text()}`);
 }
@@ -327,47 +337,79 @@ async function echoAppDecisions() {
   return echoed;
 }
 
-/** Start Claude on queued rows, and the deploy on rows the tester passed. */
+/** What each waiting state starts, and the state it moves to while running. */
+const DISPATCH = {
+  queued:            ['triage-implement.yml', 'build',     'implementing'],
+  changes_requested: ['triage-implement.yml', 'build',     'implementing'],
+  answer_queued:     ['triage-implement.yml', 'answer',    'answering'],
+  deploy_queued:     ['triage-deploy.yml',    'final',     'deploying'],
+  live_test_queued:  ['triage-deploy.yml',    'live_test', 'deploying'],
+  revert_queued:     ['triage-deploy.yml',    'revert',    'reverting'],
+};
+const RUNNING = ['implementing', 'answering', 'deploying', 'reverting'];
+const RUN_LABEL = { implementing: 'implementation', answering: 'answer', deploying: 'deploy', reverting: 'revert' };
+
+/** Start Claude, a deploy, a live test or a revert for rows waiting on one. */
 async function dispatchWork() {
-  const res = await sb('feedback_triage?impl_state=in.(queued,changes_requested,deploy_queued,implementing,deploying)&select=*');
+  const states = [...Object.keys(DISPATCH), ...RUNNING].join(',');
+  const res = await sb(`feedback_triage?impl_state=in.(${states})&select=*`);
   const rows = await res.json();
   let running = rows.filter(r => r.impl_state === 'implementing').length;
   let started = 0;
   for (const row of rows) {
-    if (row.impl_state === 'implementing' || row.impl_state === 'deploying') {
+    if (RUNNING.includes(row.impl_state)) {
       const age = Date.now() - new Date(row.impl_started_at || 0).getTime();
       if (age > STALE_RUN_MS) {
         await patchRow(row.id, { impl_state: 'failed' });
-        if (row.slack_ts) await say(row, `⚠️ The ${row.impl_state === 'deploying' ? 'deploy' : 'implementation'} run has been going ${Math.round(age / 60000)} minutes, so I've marked it failed. <@${APPROVERS[0]}> please look${row.impl_run_url ? `: ${row.impl_run_url}` : ''}. Retry is in the Admin Hub, Triage tab.`);
+        if (row.slack_ts) await say(row, `⚠️ The ${RUN_LABEL[row.impl_state]} run has been going ${Math.round(age / 60000)} minutes, so I've marked it failed. <@${APPROVERS[0]}> please look${row.impl_run_url ? `: ${row.impl_run_url}` : ''}. Reply *retry* here, or use Retry in the Admin Hub.`);
       }
       continue;
     }
-    const deploy = row.impl_state === 'deploy_queued';
-    if (!deploy && running >= MAX_PARALLEL_IMPL) continue;
+    const [file, mode, next] = DISPATCH[row.impl_state];
+    if (next === 'implementing' && running >= MAX_PARALLEL_IMPL) continue;
     // A "good" or a Retry clicked in the Admin Hub has no Slack reply behind
     // it, so say so in the thread before starting.
-    if (row.slack_ts && deploy && row.tested_by && !row.tested_by.startsWith('slack:')) {
+    if (row.slack_ts && mode === 'final' && row.tested_by && !row.tested_by.startsWith('slack:')) {
       await say(row, `Marked tested and good in the Admin Hub by ${row.tested_by}. Deploying to the live community site now.`);
     } else if (row.slack_ts && row.impl_state === 'queued' && row.impl_attempts > 0) {
       await say(row, 'Retry requested. Claude is starting on it again.');
     }
-    await dispatchWorkflow(deploy ? 'triage-deploy.yml' : 'triage-implement.yml', row.id);
-    await patchRow(row.id, { impl_state: deploy ? 'deploying' : 'implementing', impl_started_at: new Date().toISOString() });
-    if (!deploy) running++;
-    console.log(`[bridge] dispatched ${deploy ? 'deploy' : 'implement'} for ${row.id}`);
+    await dispatchWorkflow(file, row.id, mode);
+    await patchRow(row.id, { impl_state: next, impl_started_at: new Date().toISOString() });
+    if (next === 'implementing') running++;
+    console.log(`[bridge] dispatched ${mode} for ${row.id}`);
     started++;
   }
   return started;
 }
 
-/** While a preview is up: read the tester's reply, else re-tag them. */
-async function pollTesting() {
-  const res = await sb('feedback_triage?impl_state=eq.testing&select=*');
+const LIVE_URL = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/';
+const WAITING = ['testing', 'live_testing', 'needs_info', 'failed'];
+
+/**
+ * Read replies on every row waiting on a human, and act on the first one
+ * that decides something. Replies from the tester (or any approver, for a
+ * question Claude asked or a failed run) count; others are logged as
+ * context. Messages addressed to the Q&A bot (@Amy's Claude) are its
+ * business, not a verdict, and bot messages are ignored.
+ *
+ *   testing:      good -> deploy live | ship to test -> live test
+ *                 ...? -> Claude answers | anything else -> back to Claude
+ *   live_testing: good -> keep, done | revert -> undo
+ *                 ...? -> Claude answers | anything else -> undo, then fix
+ *   needs_info:   any reply -> Claude carries on with the answer
+ *   failed:       retry -> run again | anything else -> Claude, with it
+ *   any of them:  "hand off to @someone" -> they become the tester
+ * If nothing decides, the tester is re-tagged every 10 minutes (not while
+ * failed: Amy was tagged once and a failure is hers to look at).
+ */
+async function pollThreads() {
+  const res = await sb(`feedback_triage?impl_state=in.(${WAITING.join(',')})&slack_ts=not.is.null&select=*`);
   const rows = await res.json();
   let nagged = 0;
   for (const row of rows) {
-    if (!row.slack_ts) continue;
     const tester = row.approver_slack_id || slackIdFor(row.reviewed_by);
+    const state = row.impl_state;
     let replies;
     try {
       replies = await slackGet('conversations.replies', {
@@ -378,42 +420,108 @@ async function pollTesting() {
     const fresh = (replies.messages ?? [])
       .filter(m => m.ts !== row.slack_ts && (!row.last_reply_ts || Number(m.ts) > Number(row.last_reply_ts)))
       .filter(m => !m.bot_id && m.subtype !== 'bot_message');
-    let decided = false;
     const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
     let newest = row.last_reply_ts;
+    let decided = false;
     for (const m of fresh) {
       newest = m.ts;
       const text = (m.text || '').trim();
-      if (m.user !== tester) {
-        // Anyone can add context, but only the tester's reply moves the row.
-        log.push({ user: m.user, text, ts: m.ts, role: 'comment' });
-        continue;
-      }
-      if (/^(good|looks good|lgtm)\b/i.test(text)) {
-        await patchRow(row.id, { impl_state: 'deploy_queued', tested_by: `slack:${m.user}`, tested_at: new Date().toISOString(), last_reply_ts: m.ts, feedback_log: log });
-        const posted = await say(row, `Thanks <@${m.user}>, tested and good. Deploying to the live community site now; I'll post here when it's live.`);
+      if (BOT_USER_ID && text.includes(`<@${BOT_USER_ID}>`)) continue;
+      const mayDecide = m.user === tester || ((state === 'needs_info' || state === 'failed') && APPROVERS.includes(m.user));
+      const handoff = text.match(/^(?:hand\s*(?:it\s*)?off|reassign|pass)\b.*?<@([A-Z0-9]+)>/i);
+      if (handoff && (m.user === tester || APPROVERS.includes(m.user))) {
+        const to = handoff[1];
+        await patchRow(row.id, { approver_slack_id: to, last_reply_ts: m.ts, last_nag_at: new Date().toISOString(), nag_count: 0 });
+        const posted = await say(row, `OK, <@${to}> is the tester now. <@${to}>, ${state === 'needs_info' ? 'Claude is waiting on an answer to its question above' : state === 'failed' ? 'this one needs a look, see above' : `please test ${state === 'live_testing' ? LIVE_URL : row.preview_url || 'the preview above'} and reply *good* or what's wrong`}. I'll tag you every 10 minutes until then.`);
         await patchRow(row.id, { last_reply_ts: posted.ts });
         decided = true;
         break;
       }
-      log.push({ user: m.user, text, ts: m.ts, role: 'tester' });
-      await patchRow(row.id, { impl_state: 'changes_requested', last_reply_ts: m.ts, feedback_log: log });
-      const posted = await say(row, `Got it <@${m.user}>. Sending that back to Claude, and a new preview link will follow here.`);
+      if (!mayDecide) {
+        // Anyone can add context, but only the tester's reply moves the row.
+        log.push({ user: m.user, text, ts: m.ts, role: 'comment' });
+        continue;
+      }
+      const live = state === 'live_testing';
+      let next, reply, extra = {};
+      if (state === 'needs_info') {
+        log.push({ user: m.user, text, ts: m.ts, role: 'answer' });
+        next = 'changes_requested';
+        reply = `Thanks <@${m.user}>. Claude is carrying on with that; a preview link will follow here.`;
+      } else if (state === 'failed') {
+        if (/^retry\b/i.test(text)) {
+          next = row.tested_by ? 'deploy_queued' : 'queued';
+          reply = `Retrying, <@${m.user}>.`;
+        } else {
+          log.push({ user: m.user, text, ts: m.ts, role: 'answer' });
+          next = 'changes_requested';
+          reply = `Thanks <@${m.user}>. Claude is trying again with that; a preview link will follow here.`;
+        }
+      } else if (/^(good|looks good|lgtm)\b/i.test(text)) {
+        extra = { tested_by: `slack:${m.user}`, tested_at: new Date().toISOString() };
+        if (live) {
+          next = 'deployed';
+          extra.status = 'done';
+          extra.result_note = [row.impl_summary || 'The approved change', `(tested on live data by <@${m.user}>).`,
+            row.impl_run_url?.includes('/commit/') ? `Details: ${row.impl_run_url}` : null].filter(Boolean).join(' ');
+          reply = `Thanks <@${m.user}>, confirmed on real data. It stays live. ✓`;
+        } else {
+          next = 'deploy_queued';
+          reply = `Thanks <@${m.user}>, tested and good. Deploying to the live community site now; I'll post here when it's live.`;
+        }
+      } else if (!live && /^(ship to test|test (it )?live|test on live|needs real data|real data)\b/i.test(text)) {
+        next = 'live_test_queued';
+        reply = `OK <@${m.user}>, putting it on the live site so you can test it on real data. I'll tag you when it's up. Then reply *good* to keep it or *revert* to undo it.`;
+      } else if (/\?\s*$/.test(text)) {
+        log.push({ user: m.user, text, ts: m.ts, role: 'question', return_to: state });
+        next = 'answer_queued';
+        reply = `Good question, <@${m.user}>. Asking Claude; the answer will be here in a few minutes.`;
+      } else if (live && /^revert\W*$/i.test(text)) {
+        next = 'revert_queued';
+        reply = `Reverting the live site now, <@${m.user}>. Then reply here with what to change, or dismiss it in the Admin Hub.`;
+      } else {
+        log.push({ user: m.user, text, ts: m.ts, role: 'tester', ...(live ? { fix_after_revert: true } : {}) });
+        next = live ? 'revert_queued' : 'changes_requested';
+        reply = live
+          ? `Got it <@${m.user}>. Taking it off the live site first, then sending your note to Claude for a new preview.`
+          : `Got it <@${m.user}>. Sending that back to Claude, and a new preview link will follow here.`;
+      }
+      await patchRow(row.id, { impl_state: next, last_reply_ts: m.ts, feedback_log: log, ...extra });
+      const posted = await say(row, reply);
       await patchRow(row.id, { last_reply_ts: posted.ts });
       decided = true;
       break;
     }
     if (decided) continue;
     if (newest !== row.last_reply_ts) await patchRow(row.id, { last_reply_ts: newest, feedback_log: log });
+    if (state === 'failed') continue;
     const since = Date.now() - new Date(row.last_nag_at || 0).getTime();
     if (since >= NAG_EVERY_MS - NAG_SLACK_MS) {
       const n = (row.nag_count || 0) + 1;
-      const posted = await say(row, `⏰ <@${tester}> reminder ${n}: please test ${row.preview_url || 'the preview'} and reply *good* to deploy it, or reply with what's wrong. I'll keep asking every 10 minutes until you do.`);
+      const text = state === 'needs_info'
+        ? `⏰ <@${tester}> reminder ${n}: Claude is waiting on your answer to its question above. Reply here (or *hand off to @someone*).`
+        : state === 'live_testing'
+          ? `⏰ <@${tester}> reminder ${n}: this is live for your real-data test at ${LIVE_URL} . Reply *good* to keep it, *revert* (or what's wrong) to undo it, or ask a question. (*hand off to @someone* if you can't.)`
+          : `⏰ <@${tester}> reminder ${n}: please test ${row.preview_url || 'the preview'} and reply *good* to deploy it, *ship to test* to try it on the live site, a question ending in *?*, or what's wrong. (*hand off to @someone* if you can't.)`;
+      const posted = await say(row, text);
       await patchRow(row.id, { last_nag_at: new Date().toISOString(), nag_count: n, last_reply_ts: posted.ts });
       nagged++;
     }
   }
   return nagged;
+}
+
+/** Once a day from TOKEN_REMIND_AT, tag Amy to replace the Claude token. */
+async function tokenReminder() {
+  const now = new Date();
+  if (now < new Date(TOKEN_REMIND_AT)) return 0;
+  // The 14:00 UTC tick only (10am Eastern), so once a day.
+  if (now.getUTCHours() !== 14 || now.getUTCMinutes() >= 10) return 0;
+  await slack('chat.postMessage', {
+    channel: CHANNEL,
+    text: `🔑 <@${APPROVERS[0]}> the Princeton Claude token behind the triage bot expires around 25 September (it lasts a year). To replace it, run \`princeton-compute\\claude-princeton.ps1 setup-token\` signed in as amylr@princeton.edu, then \`gh secret set CLAUDE_CODE_OAUTH_TOKEN -R seung-lab/ng-extend\`, then move the repo variable CLAUDE_TOKEN_REMIND_AT on a year. I'll repeat this daily until then.`,
+  });
+  return 1;
 }
 
 /** Post a change update into the thread when an approved row ships. */
@@ -464,8 +572,9 @@ let LOOP = false;
   if (COLS) echoed = await echoAppDecisions();
   if (LOOP) {
     started = await dispatchWork();
-    nagged = await pollTesting();
+    nagged = await pollThreads();
   }
   const announced = await announceDone();
+  await tokenReminder().catch(e => console.warn('[bridge] token reminder failed:', e.message));
   console.log(`[bridge] done: ${posted} posted, ${acted} decided, ${echoed} echoed, ${started} started, ${nagged} nagged, ${announced} announced (sync ${COLS ? 'on' : 'off'}, loop ${LOOP ? 'on' : 'off'})`);
 })().catch(e => { console.error('[bridge] fatal:', e.message); process.exit(1); });

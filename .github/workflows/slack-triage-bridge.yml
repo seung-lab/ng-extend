@@ -64,6 +64,8 @@ jobs:
           # Approvals before this time are backlog: shown in the Admin Hub with
           # a "Have Claude build it" button, never started automatically.
           TRIAGE_LOOP_SINCE: ${{ vars.TRIAGE_LOOP_SINCE }}
+          # From this date Amy is tagged daily to renew the Claude token.
+          CLAUDE_TOKEN_REMIND_AT: ${{ vars.CLAUDE_TOKEN_REMIND_AT }}
           APPROVER_NAME_MAP: ${{ vars.APPROVER_NAME_MAP }}
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/slack-triage-bridge.mjs

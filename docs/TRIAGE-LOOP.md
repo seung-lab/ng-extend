@@ -22,14 +22,29 @@ Claude subscription (amylr@princeton.edu) through the
    `https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/`.
    The live site is untouched.
 5. **Test.** The bot posts the preview link in the thread and tags the person
-   who approved it. **That person must test it.** They are tagged again every
-   10 minutes until they reply:
+   who approved it. **That person must test it.** The preview uses the real
+   data (same CAVE, accounts and database). They are tagged again every 10
+   minutes until they reply:
    - `good` (or `looks good`, `lgtm`): the fix is merged into
      `eyewire-ii-community` and deployed live by `triage-deploy.yml`.
+   - `ship to test`: for things only the live site does (sync jobs, Cloud
+     Functions, what other users see). It goes live, and the tester is tagged
+     until they reply `good` (it stays) or `revert` (it comes off). Any other
+     reply also takes it off, then goes to Claude as what to fix.
+   - a question ending in `?`: Claude answers it in the thread from what it
+     built. Nothing is rebuilt.
    - anything else: taken as what is wrong. Claude gets it, fixes the
      branch, and posts a new preview. Tagging starts again.
+   - `hand off to @someone`: that person becomes the tester.
    Comments from anyone else in the thread are passed to Claude as context,
-   but only the approver's reply moves the fix forward.
+   but only the tester's reply moves the fix forward. Messages that mention
+   @Amy's Claude are questions for the Q&A bot and are left alone.
+
+   **When Claude has a question.** If the spec can be read two ways, Claude
+   builds nothing and asks in the thread. The tester is tagged every 10
+   minutes; the first reply from them or an approver goes back to Claude,
+   which carries on. The same happens after a failure or a refusal: reply
+   `retry`, or reply with what to do differently.
 6. **Shipped.** The row becomes `done` and the thread gets "Change shipped",
    tagging the approvers.
 
@@ -54,7 +69,7 @@ Claude subscription (amylr@princeton.edu) through the
 | schema | `supabase-triage-loop-columns.sql` | once, in the SQL editor |
 | review UI | `src/components/AdminHub.vue`, Triage tab | in the app |
 
-Row state is `feedback_triage.impl_state`: queued, implementing, testing,
+Row state is `feedback_triage.impl_state` (see supabase-triage-loop-states.sql): queued, implementing, needs_info, testing, answer_queued, answering, live_test_queued, live_testing, revert_queued, reverting,
 changes_requested, deploy_queued, deploying, deployed, failed. `status`
 keeps its old meaning. A run stuck over 90 minutes is marked failed and
 Amy is tagged.
@@ -65,6 +80,7 @@ Amy is tagged.
 |---|---|
 | `TRIAGE_LOOP=on` | approvals are built, testers are chased. Off: the bridge only posts, reads decisions, and syncs with the Admin Hub. |
 | `TRIAGE_PROPOSER=on` | the proposer runs. Turn off the old :42 claude.ai routine at the same time. |
+| `CLAUDE_TOKEN_REMIND_AT` | optional; from this date Amy is tagged daily to renew the Princeton token. Default 2027-08-25. |
 | `APPROVER_NAME_MAP` | optional JSON, first name of an Admin Hub reviewer to Slack id. Default `{"amy":"U02FH1DRC","celia":"U033NHWDE"}`. |
 
 ## Rules GitHub imposes
