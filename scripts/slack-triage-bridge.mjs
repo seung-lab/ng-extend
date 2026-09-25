@@ -138,6 +138,31 @@ const NEURON_RENDER_COUNT = 24; // scifi-ui media + CA3 + microns + FlyWire gall
 const randomNeuronUrl = () =>
   `${SUPABASE_URL}/storage/v1/object/public/admin-uploads/nurro-neurons/neuron-${1 + Math.floor(Math.random() * NEURON_RENDER_COUNT)}.jpg`;
 
+/** In-game update to the person who filed the report. Only ever targeted:
+ *  if we cannot tell who reported it, nobody is notified (never broadcast). */
+async function notifyReporter(row, title, body) {
+  if (row.source !== 'site_issue') return false;
+  const r = await sb(`site_issues?id=eq.${row.source_id}&select=user_id`);
+  const userId = r.ok ? (await r.json())[0]?.user_id : null;
+  if (!userId) return false;
+  const ins = await sb('notifications', {
+    method: 'POST',
+    body: JSON.stringify({
+      title, body,
+      thumbnail_url: NURRO_AVATAR_URL, image_url: randomNeuronUrl(),
+      target_type: 'user', target_id: userId,
+      send_at: new Date().toISOString(),
+    }),
+  });
+  if (!ins.ok) { console.warn(`[bridge] reporter notification failed for ${row.id}: ${ins.status}`); return false; }
+  return true;
+}
+
+const quoteReport = row => {
+  const t = (row.source_excerpt || '').trim();
+  return t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}"` : 'Thanks for your report.';
+};
+
 const REC_LABEL = {
   nothing: 'No action', message: 'Send a message',
   bug_fix_spec: 'Bug fix spec', new_feature: 'New feature',
@@ -254,6 +279,7 @@ async function readApprovals() {
       const extraText = m[2]?.trim() || '';
       await applyDecision(row, decision, msg.user, extraText);
       const building = LOOP && decision === 'approved' && isBuildable(row);
+      if (building) await notifyReporter(row, '🛠️ Your report is being worked on', `${quoteReport(row)} It was accepted and a fix is being built now. You'll get another note when it's live.`);
       const posted = await say(row, decision === 'approved'
         ? (row.recommendation === 'message'
             ? `Approved by <@${msg.user}>. Message sent to the reporter. ✓`
@@ -405,6 +431,12 @@ async function announceDone() {
     const note = (row.result_note || '').trim();
     const posted = await say(row, `🔧 Change shipped for this one${note ? `: ${note}` : ''}. ${tags} ✓`);
     await patchRow(row.id, { done_slack_ts: posted.ts });
+    // Slack mention syntax means nothing in the game; drop it there.
+    const plain = note.replace(/<@[A-Z0-9]+>/g, 'a tester').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1');
+    if (row.recommendation !== 'message' && row.recommendation !== 'nothing') {
+      const sent = await notifyReporter(row, '🔧 Your report was fixed', `${quoteReport(row)} ${plain || 'The fix is live now.'} Thank you for helping improve EyeWire II!`);
+      if (sent) console.log(`[bridge] told the reporter of ${row.id}`);
+    }
     console.log(`[bridge] announced done ${row.id}`);
     announced++;
   }

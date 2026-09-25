@@ -95,9 +95,14 @@ async function loadTriage() {
   try {
     const { supabase } = await import('../supabase');
     let q = supabase.from('feedback_triage').select('*').order('created_at', { ascending: false }).limit(100);
-    // Default view: anything still moving (awaiting a decision, or approved
-    // and not yet live). "Show reviewed" adds dismissed and shipped rows.
-    if (!triageShowReviewed.value) q = q.in('status', ['proposed', 'approved']);
+    // Default view: everything still open (awaiting a decision, or approved
+    // and not yet live) plus anything finished in the last 5 days, so recent
+    // updates stay visible and then clear themselves. Open items never age
+    // out. "Show older" shows every row.
+    if (!triageShowReviewed.value) {
+      const since = new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString();
+      q = q.or(`status.in.(proposed,approved),reviewed_at.gte.${since},tested_at.gte.${since}`);
+    }
     const { data, error } = await q;
     if (error) throw error;
     triageRows.value = (data ?? []) as TriageRow[];
@@ -934,7 +939,7 @@ onMounted(() => {
           <label class="nge-admin-label">Feedback Triage</label>
           <label class="nge-triage-toggle">
             <input type="checkbox" v-model="triageShowReviewed" />
-            <span>Show reviewed</span>
+            <span>Show older</span>
           </label>
           <button class="nge-admin-action-btn" @click="loadTriage" :disabled="triageLoading">↻ Refresh</button>
         </div>

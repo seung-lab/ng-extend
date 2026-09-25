@@ -51,6 +51,8 @@ jobs:
           git fetch origin "$B"
           git -c user.name="Claude (triage)" -c user.email="noreply@anthropic.com" \
             merge --no-ff "origin/$B" -m "Merge $B: tested and approved in Slack ($RUN_URL)"
+          # The release note links to the merge, which shows the whole change.
+          echo "MERGE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/$BASE"
 
       - name: Deploy the live community version

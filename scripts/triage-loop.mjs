@@ -190,7 +190,11 @@ async function deployed() {
   await patchRow(row.id, {
     status: 'done', impl_state: 'deployed',
     // The bridge's done sweep posts "Change shipped: <result_note>".
-    result_note: row.impl_summary ? `${row.impl_summary} (tested by ${row.tested_by?.startsWith('slack:') ? `<@${row.tested_by.slice(6)}>` : row.tested_by || 'the approver'})` : null,
+    result_note: [
+      row.impl_summary || 'The approved change',
+      `(tested by ${row.tested_by?.startsWith('slack:') ? `<@${row.tested_by.slice(6)}>` : row.tested_by || 'the approver'}).`,
+      env.MERGE_SHA ? `Details: https://github.com/seung-lab/ng-extend/commit/${env.MERGE_SHA}` : null,
+    ].filter(Boolean).join(' '),
   });
   console.log(`[loop] ${row.id} deployed`);
 }
