@@ -13,6 +13,17 @@ export const getLayerScales = (coordinateSpace: any) => {
 }
 
 /**
+ * Set a segment's stated color (packed 0xBBGGRR), replacing any color it
+ * already has. neuroglancer's Uint64Map.set is add-only: when the key is
+ * already present it returns without writing or dispatching, so a plain set
+ * only ever works the FIRST time a segment is recolored. Delete first.
+ */
+export function setStatedColor(segmentStatedColors: any, segId: Uint64, packed: number): void {
+  segmentStatedColors.delete(segId);
+  segmentStatedColors.set(segId, new Uint64(packed, 0));
+}
+
+/**
  * Select the segmentation layer, open the side panel, and switch to the
  * Seg. tab. Used both after login (initial landing view) and after a
  * dataset switch (so the user always sees the segment list immediately).
@@ -53,7 +64,7 @@ export function showDefaultCell(retryAttempts = 5): void {
           const v = parseInt(m[1], 16);
           // neuroglancer packs as 0xBBGGRR.
           const packed = ((v >> 16) & 0xff) | (v & 0xff00) | ((v & 0xff) << 16);
-          colorGroupState.segmentStatedColors.set(segId, new Uint64(packed, 0));
+          setStatedColor(colorGroupState.segmentStatedColors, segId, packed);
         }
       }
     }

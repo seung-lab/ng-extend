@@ -6,6 +6,7 @@
  */
 import { ref, computed, onMounted } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
+import { setStatedColor } from '../widgets/widget_utils';
 import { setCellComplete, saveCellType, activeCaveServer, NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { useProofreadingBackendStore, useUserStatsStore } from '../store';
 import { RETINAL_CELL_TYPES } from '../config';
@@ -297,7 +298,7 @@ function batchRecolor(group: SegmentGroup, hexColor: string) {
   for (const segId of group.segmentIds) {
     try {
       const id = Uint64.parseString(segId);
-      colorGroupState.segmentStatedColors.set(id, new Uint64(packed, 0));
+      setStatedColor(colorGroupState.segmentStatedColors, id, packed);
       count++;
     } catch {}
   }

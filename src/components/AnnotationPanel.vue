@@ -10,6 +10,7 @@ import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useH
 import { getCellStatus, setCellComplete, saveCellType, CellStatus } from '../widgets/lightbulb_service';
 import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
 import { RETINAL_CELL_TYPES } from '../config';
+import { currentSegLayerName } from '../datasets';
 
 const annotStore = useSegmentAnnotationStore();
 const statsStore = useUserStatsStore();
@@ -156,6 +157,7 @@ async function toggleComplete() {
       isComplete: willBeComplete,
       cellType: annotation.value!.cellType,
       position: getViewerPosition(),
+      dataset: currentSegLayerName(),
     });
     // Notify sidebar buttons — pass current status so they don't re-fetch
     document.dispatchEvent(new CustomEvent('nge:seg-status-changed', {
@@ -187,6 +189,7 @@ async function pickCellType(type: string) {
       isComplete: annotation.value!.isComplete,
       cellType: type,
       position: getViewerPosition(),
+      dataset: currentSegLayerName(),
     });
     // Notify sidebar buttons — pass current status so they don't re-fetch
     document.dispatchEvent(new CustomEvent('nge:seg-status-changed', {

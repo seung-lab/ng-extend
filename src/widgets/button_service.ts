@@ -1,5 +1,6 @@
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {Uint64} from 'neuroglancer/util/uint64';
+import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {RETINAL_CELL_TYPES} from '../config';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
@@ -606,7 +607,7 @@ export class ButtonService {
       const packed = (Math.round(r * 255)) |
                      (Math.round(g * 255) << 8) |
                      (Math.round(b * 255) << 16);
-      segmentStatedColors.set(segId, new Uint64(packed, 0));
+      setStatedColor(segmentStatedColors, segId, packed);
     } catch (e) {
       console.warn('[buttonService] Failed to set segment color:', e);
     }
@@ -716,15 +717,15 @@ export class ButtonService {
       const priorColor = new Uint64();
       const hadOverride = segmentStatedColors.get(segId, priorColor);
       // Snapshot as primitives so we don't mutate the saved value via later set/get.
+      // Colors are 24-bit, so only the low word is meaningful.
       const priorLow = hadOverride ? priorColor.low : 0;
-      const priorHigh = hadOverride ? priorColor.high : 0;
 
       // Two-pulse bloom: white → cyan-blue accent → white → restore.
       const whitePacked = 0xFFFFFF;
       const accentPacked = 0x99CCFF; // soft cyan-blue mid-pulse
 
       const setColor = (packed: number) => {
-        segmentStatedColors.set(segId, new Uint64(packed, 0));
+        setStatedColor(segmentStatedColors, segId, packed);
       };
 
       setColor(whitePacked);
@@ -732,7 +733,7 @@ export class ButtonService {
       setTimeout(() => setColor(whitePacked), 500);
       setTimeout(() => {
         if (hadOverride) {
-          segmentStatedColors.set(segId, new Uint64(priorLow, priorHigh));
+          setStatedColor(segmentStatedColors, segId, priorLow);
         } else {
           segmentStatedColors.delete(segId);
         }
