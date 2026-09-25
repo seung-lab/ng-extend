@@ -68,4 +68,8 @@ jobs:
           CLAUDE_TOKEN_REMIND_AT: ${{ vars.CLAUDE_TOKEN_REMIND_AT }}
           APPROVER_NAME_MAP: ${{ vars.APPROVER_NAME_MAP }}
           GITHUB_TOKEN: ${{ github.token }}
+          # Reads tester replies in the context of the whole thread (a small
+          # model on the Princeton subscription). Without it, keyword rules.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          TRIAGE_UNDERSTAND: ${{ vars.TRIAGE_UNDERSTAND }}
         run: node scripts/slack-triage-bridge.mjs

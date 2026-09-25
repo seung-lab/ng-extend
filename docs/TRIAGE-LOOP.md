@@ -42,6 +42,14 @@ Claude subscription (amylr@princeton.edu) through the
    Replies posted while Claude is still building are kept as notes, never
    lost. The next preview message lists any that arrived too late for that
    build, so the tester can reply `rebuild` or test as is.
+   **Replies are read like a conversation.** Each reply from the tester is
+   read in the context of the whole thread by a small Claude model (Haiku,
+   on the Princeton subscription), which picks one of the next steps allowed
+   at that moment and writes the bot's reply. So "looks right but the yellow
+   is too bright" is a change, "can Celia check this" is a hand off, and
+   "thanks, will test after lunch" changes nothing. The loop, not the model,
+   performs the step. The keywords above always work, and are the fallback if
+   the model is unavailable (repo variable `TRIAGE_UNDERSTAND=off` forces it).
    Comments from anyone else in the thread are passed to Claude as context,
    but only the tester's reply moves the fix forward. Messages that mention
    @Amy's Claude are questions for the Q&A bot and are left alone.
