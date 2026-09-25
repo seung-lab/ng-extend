@@ -1,0 +1,81 @@
+name: Triage Deploy
+
+# The tester replied "good": merge triage/<id8> into eyewire-ii-community,
+# deploy the live community version, and close the row (the bridge then posts
+# "Change shipped" in the thread). Dispatched by the Slack Triage Bridge.
+#
+# This file must ALSO exist on main for workflow_dispatch to work. Register
+# it there in a commit whose message contains [skip ci].
+
+on:
+  workflow_dispatch:
+    inputs:
+      row_id:
+        description: feedback_triage row id
+        required: true
+        type: string
+
+# One live deploy at a time; a second "good" waits its turn.
+concurrency:
+  group: triage-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      ROW_ID: ${{ inputs.row_id }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID || 'C0BG5CN71C3' }}
+      APPROVER_SLACK_IDS: ${{ vars.APPROVER_SLACK_IDS || 'U02FH1DRC,U033NHWDE' }}
+      GH_TOKEN: ${{ github.token }}
+      BASE: eyewire-ii-community
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Merge the tested branch
+        run: |
+          B="triage/${ROW_ID:0:8}"
+          git fetch origin "$B"
+          git -c user.name="Claude (triage)" -c user.email="noreply@anthropic.com" \
+            merge --no-ff "origin/$B" -m "Merge $B: tested and approved in Slack ($RUN_URL)"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/$BASE"
+
+      - name: Deploy the live community version
+        run: |
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run on_dev_branch_push.yml --ref "$BASE"
+          for i in $(seq 1 30); do
+            ID=$(gh run list --workflow on_dev_branch_push.yml --branch "$BASE" --event workflow_dispatch -L 1 \
+                 --json databaseId,createdAt --jq ".[] | select(.createdAt >= \"$SINCE\") | .databaseId")
+            [ -n "$ID" ] && break; sleep 5
+          done
+          [ -n "$ID" ] || { echo "deploy run never appeared" >&2; exit 1; }
+          gh run watch "$ID" --exit-status --interval 20
+
+      - name: Verify the live site answers
+        run: |
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/)
+            [ "$code" = 200 ] && exit 0; sleep 15
+          done
+          echo "live site did not return 200" >&2; exit 1
+
+      - name: Close the row
+        run: node scripts/triage-loop.mjs deployed
+
+      - name: Report failure
+        if: failure()
+        run: node scripts/triage-loop.mjs fail deploy
