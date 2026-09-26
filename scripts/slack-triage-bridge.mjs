@@ -179,6 +179,7 @@ async function notifyUser(userId, title, body, imageUrl) {
 const ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
 const FIXED_IMAGE_URL = `${ART}/nurro-cape-card.png`;      // Super Nurro
 const WORKING_IMAGE_URL = `${ART}/nurro-3d-card.jpg`;      // 3D space Nurro, on the job
+const ADMIN_FIXED_IMAGE_URL = `${ART}/nurro-super-v2.png`; // Super Nurro v2, for admins
 
 /** App user ids of everyone in the admins table (matched on middleauth_email). */
 let adminIdsCache = null;
@@ -734,7 +735,7 @@ async function announceDone() {
       const report = (row.source_excerpt || '').trim();
       for (const id of await adminUserIds()) {
         await notifyUser(id, '🎉 Fixed!',
-          `"${report.length > 90 ? report.slice(0, 87) + '...' : report}" is fixed and live. ${plain}`, FIXED_IMAGE_URL);
+          `"${report.length > 90 ? report.slice(0, 87) + '...' : report}" is fixed and live. ${plain}`, ADMIN_FIXED_IMAGE_URL);
       }
     }
     console.log(`[bridge] announced done ${row.id}`);
