@@ -64,6 +64,13 @@ const NAG_EVERY_MS = 10 * 60 * 1000;
 const NAG_SLACK_MS = 60 * 1000;
 const STALE_RUN_MS = 90 * 60 * 1000;
 const MAX_PARALLEL_IMPL = 3;
+// Quiet period: no 10 minute tags until QUIET_UNTIL, and one summary
+// reminder to Amy at QUIET_REMIND_AT. Defaults are Amy's night of
+// 2026-09-25 (quiet until 1 pm ET, reminder at 9 am ET); repo variables
+// TRIAGE_QUIET_UNTIL / TRIAGE_QUIET_REMIND_AT set later ones.
+const QUIET_UNTIL = process.env.TRIAGE_QUIET_UNTIL || '2026-09-26T17:00:00Z';
+const QUIET_REMIND_AT = process.env.TRIAGE_QUIET_REMIND_AT || '2026-09-26T13:00:00Z';
+const quietNow = () => Date.now() < Date.parse(QUIET_UNTIL);
 // @Amy's Claude, the Q&A bot. A reply that mentions it is a question for
 // that bot, not a tester's verdict, so the loop leaves it alone.
 const BOT_USER_ID = process.env.SLACK_BOT_USER_ID || 'U0B02RD6XQR';
@@ -644,6 +651,7 @@ async function pollThreads() {
     if (decided) continue;
     if (newest !== row.last_reply_ts) await patchRow(row.id, { last_reply_ts: newest, feedback_log: log });
     if (state === 'failed') continue;
+    if (quietNow()) continue;
     const since = Date.now() - new Date(row.last_nag_at || 0).getTime();
     if (since >= NAG_EVERY_MS - NAG_SLACK_MS) {
       const n = (row.nag_count || 0) + 1;
@@ -701,6 +709,26 @@ async function collectNotes() {
     }
   }
   return kept;
+}
+
+/** During a quiet period, one summary to Amy at QUIET_REMIND_AT. */
+async function quietReminder() {
+  const at = Date.parse(QUIET_REMIND_AT), now = Date.now();
+  // Only the first 10 minute tick after the time, so it is sent once.
+  if (!(now >= at && now < at + 10 * 60 * 1000) || !quietNow()) return 0;
+  const res = await sb('feedback_triage?impl_state=in.(testing,live_testing,needs_info,failed)&select=*');
+  const rows = res.ok ? await res.json() : [];
+  const until = new Date(QUIET_UNTIL).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+  const lines = rows.map(r => {
+    const link = r.slack_ts ? `https://eyewire.slack.com/archives/${r.slack_channel || CHANNEL}/p${r.slack_ts.replace('.', '')}` : '';
+    const what = { testing: 'preview ready to test', live_testing: 'live test waiting', needs_info: 'Claude asked a question', failed: 'needs a look' }[r.impl_state];
+    return `• ${what}: "${(r.source_excerpt || '').slice(0, 80)}"${r.preview_url ? ` ${r.preview_url}` : ''} ${link}`;
+  });
+  await slack('chat.postMessage', {
+    channel: CHANNEL,
+    text: `☀️ Good morning <@${APPROVERS[0]}>. ${rows.length ? `${rows.length} triage item${rows.length === 1 ? '' : 's'} waiting on you:\n${lines.join('\n')}` : 'Nothing is waiting on you.'}\nThe 10 minute reminders start again at ${until}.`,
+  });
+  return 1;
 }
 
 /** Once a day from TOKEN_REMIND_AT, tag Amy to replace the Claude token. */
@@ -777,5 +805,6 @@ let LOOP = false;
   }
   const announced = await announceDone();
   await tokenReminder().catch(e => console.warn('[bridge] token reminder failed:', e.message));
+  if (LOOP) await quietReminder().catch(e => console.warn('[bridge] quiet reminder failed:', e.message));
   console.log(`[bridge] done: ${posted} posted, ${acted} decided, ${echoed} echoed, ${started} started, ${nagged} nagged, ${announced} announced (sync ${COLS ? 'on' : 'off'}, loop ${LOOP ? 'on' : 'off'})`);
 })().catch(e => { console.error('[bridge] fatal:', e.message); process.exit(1); });

@@ -79,6 +79,9 @@ export const branchFor = id => `triage/${id.slice(0, 8)}`;
 // App Engine version from on_dev_branch_push.yml: '/' and '_' become '-'.
 export const previewFor = id => `https://triage-${id.slice(0, 8)}-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/`;
 const testerOf = row => row.approver_slack_id || AMY;
+// During the bridge's quiet period, posts name the tester without tagging.
+const QUIET_UNTIL = env.TRIAGE_QUIET_UNTIL || '2026-09-26T17:00:00Z';
+const tag = id => (Date.now() < Date.parse(QUIET_UNTIL) ? 'you (no ping overnight)' : `<@${id}>`);
 const summaryFirstLine = () =>
   existsSync(SUMMARY_FILE) ? readFileSync(SUMMARY_FILE, 'utf8').trim().split('\n')[0].replace(/^#+\s*/, '').trim() : '';
 
@@ -219,7 +222,7 @@ async function ready() {
     `🛠️ ${attempt > 1 ? `Take ${attempt} is` : 'The fix is'} ready to test on a preview copy of the site (the live site is untouched):`,
     url,
     summary ? '```' + summary.slice(0, 2500) + '```' : null,
-    `<@${tester}> you approved this, so you test it. The preview uses the real data (same cells, accounts and database) at a separate address, so you may need to log in again.`,
+    `${tag(tester)}: you approved this, so you test it. The preview uses the real data (same cells, accounts and database) at a separate address, so you may need to log in again.`,
     liveOnly
       ? `⚠️ Claude says this one can only be checked on the live site. Reply *ship to test* to put it live for a real-data test (you can *revert* after).`
       : null,
@@ -243,12 +246,12 @@ async function blocked() {
   const tester = testerOf(row);
   if (/^QUESTION:/i.test(first)) {
     const q = first.replace(/^QUESTION:\s*/i, '');
-    const ts = await say(row, `❓ Claude has a question before it builds this:\n> ${q}\n<@${tester}>${tester !== AMY ? ` <@${AMY}>` : ''} reply here with the answer and it will carry on. I'll tag you every 10 minutes until then.`);
+    const ts = await say(row, `❓ Claude has a question before it builds this:\n> ${q}\n${tag(tester)}: reply here with the answer and it will carry on. I'll tag you every 10 minutes until then.`);
     await patchRow(row.id, { impl_state: 'needs_info', impl_summary: `QUESTION: ${q}`, last_nag_at: new Date().toISOString(), nag_count: 0, ...(ts ? { last_reply_ts: ts } : {}) });
     return;
   }
   const why = first.replace(/^BLOCKED:\s*/i, '') || 'no reason given';
-  const ts = await say(row, `🤚 Claude did not change anything: ${why}\n<@${AMY}> <@${tester}> reply here with a correction and it will try again, or dismiss it in the Admin Hub.`);
+  const ts = await say(row, `🤚 Claude did not change anything: ${why}\n${tag(tester)}: reply here with a correction and it will try again, or dismiss it in the Admin Hub.`);
   await patchRow(row.id, { impl_state: 'failed', impl_summary: `BLOCKED: ${why}`, ...(ts ? { last_reply_ts: ts } : {}) });
 }
 
@@ -268,11 +271,11 @@ async function fail(stage) {
   if (stage === 'answer') {
     // Answering is optional; do not fail the fix over it.
     const back = lastOf(row, 'question')?.return_to === 'live_testing' ? 'live_testing' : 'testing';
-    const ts = await say(row, `Sorry, Claude couldn't answer that one${env.RUN_URL ? ` (${env.RUN_URL})` : ''}. <@${testerOf(row)}> you can still reply *good*, ${back === 'live_testing' ? '*revert*' : '*ship to test*'}, or what's wrong.`);
+    const ts = await say(row, `Sorry, Claude couldn't answer that one${env.RUN_URL ? ` (${env.RUN_URL})` : ''}. ${tag(testerOf(row))} you can still reply *good*, ${back === 'live_testing' ? '*revert*' : '*ship to test*'}, or what's wrong.`);
     await patchRow(row.id, { impl_state: back, last_nag_at: new Date().toISOString(), ...(ts ? { last_reply_ts: ts } : {}) });
     return;
   }
-  const ts = await say(row, `⚠️ The ${stage} step failed${env.RUN_URL ? `: ${env.RUN_URL}` : ''}. <@${AMY}> please look. Reply *retry* here, or use Retry in the Admin Hub.`);
+  const ts = await say(row, `⚠️ The ${stage} step failed${env.RUN_URL ? `: ${env.RUN_URL}` : ''}. ${tag(AMY)} please look. Reply *retry* here, or use Retry in the Admin Hub.`);
   // A failed deploy leaves the tested branch intact, so Retry goes straight
   // back to deploying rather than re-implementing.
   await patchRow(row.id, { impl_state: 'failed', ...(ts ? { last_reply_ts: ts } : {}) });
@@ -295,7 +298,7 @@ async function deployed() {
 /** Merged live so the tester can try it on real data; they still decide. */
 async function live() {
   const row = await getRow(env.ROW_ID);
-  const ts = await say(row, `🧪 It's live for your real-data test: ${LIVE_URL}\n<@${testerOf(row)}> reply *good* to keep it, *revert* (or what's wrong) to undo it, or ask a question. I'll tag you every 10 minutes until you do.`);
+  const ts = await say(row, `🧪 It's live for your real-data test: ${LIVE_URL}\n${tag(testerOf(row))} reply *good* to keep it, *revert* (or what's wrong) to undo it, or ask a question. I'll tag you every 10 minutes until you do.`);
   await patchRow(row.id, {
     impl_state: 'live_testing', last_nag_at: new Date().toISOString(), nag_count: 0,
     ...(env.MERGE_SHA ? { impl_run_url: `https://github.com/seung-lab/ng-extend/commit/${env.MERGE_SHA}` } : {}),
@@ -310,7 +313,7 @@ async function reverted() {
   const back = Boolean(log.length && log[log.length - 1].fix_after_revert);
   const ts = await say(row, back
     ? `↩️ Reverted: the live site is back to how it was. Claude is working on your note now; a new preview will follow here.`
-    : `↩️ Reverted: the live site is back to how it was. <@${testerOf(row)}> reply here with what to change and Claude will try again, or dismiss it in the Admin Hub.`);
+    : `↩️ Reverted: the live site is back to how it was. ${tag(testerOf(row))} reply here with what to change and Claude will try again, or dismiss it in the Admin Hub.`);
   await patchRow(row.id, { impl_state: back ? 'changes_requested' : 'failed', ...(ts ? { last_reply_ts: ts } : {}) });
 }
 
