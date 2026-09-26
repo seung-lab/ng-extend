@@ -152,22 +152,43 @@ const randomNeuronUrl = () =>
 
 /** In-game update to the person who filed the report. Only ever targeted:
  *  if we cannot tell who reported it, nobody is notified (never broadcast). */
-async function notifyReporter(row, title, body) {
+async function notifyReporter(row, title, body, imageUrl) {
   if (row.source !== 'site_issue') return false;
   const r = await sb(`site_issues?id=eq.${row.source_id}&select=user_id`);
   const userId = r.ok ? (await r.json())[0]?.user_id : null;
   if (!userId) return false;
+  return notifyUser(userId, title, body, imageUrl);
+}
+
+async function notifyUser(userId, title, body, imageUrl) {
   const ins = await sb('notifications', {
     method: 'POST',
     body: JSON.stringify({
       title, body,
-      thumbnail_url: NURRO_AVATAR_URL, image_url: randomNeuronUrl(),
+      thumbnail_url: NURRO_AVATAR_URL, image_url: imageUrl || randomNeuronUrl(),
       target_type: 'user', target_id: userId,
       send_at: new Date().toISOString(),
     }),
   });
-  if (!ins.ok) { console.warn(`[bridge] reporter notification failed for ${row.id}: ${ins.status}`); return false; }
+  if (!ins.ok) { console.warn(`[bridge] notification to ${userId} failed: ${ins.status}`); return false; }
   return true;
+}
+
+// "Fixed!" cards: confetti Nurro, and a 🎉 title the notification feed styles
+// in its happy colours.
+const FIXED_IMAGE_URL = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/nurro-confetti-card.png';
+
+/** App user ids of everyone in the admins table (matched on middleauth_email). */
+let adminIdsCache = null;
+async function adminUserIds() {
+  if (adminIdsCache) return adminIdsCache;
+  const a = await sb('admins?select=email');
+  const emails = a.ok ? (await a.json()).map(x => x.email).filter(Boolean) : [];
+  if (!emails.length) return (adminIdsCache = []);
+  const list = emails.map(e => `"${e.replace(/"/g, '')}"`).join(',');
+  const u = await sb(`users?middleauth_email=in.(${encodeURIComponent(list)})&select=id`);
+  adminIdsCache = u.ok ? (await u.json()).map(x => x.id) : [];
+  return adminIdsCache;
 }
 
 const quoteReport = row => {
@@ -702,8 +723,16 @@ async function announceDone() {
     // Slack mention syntax means nothing in the game; drop it there.
     const plain = note.replace(/<@[A-Z0-9]+>/g, 'a tester').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1');
     if (row.recommendation !== 'message' && row.recommendation !== 'nothing') {
-      const sent = await notifyReporter(row, '🔧 Your report was fixed', `${quoteReport(row)} ${plain || 'The fix is live now.'} Thank you for helping improve EyeWire II!`);
+      // The person who reported it: only them, never a broadcast.
+      const sent = await notifyReporter(row, '🎉 Fixed!',
+        `${quoteReport(row)} It's fixed and live now. ${plain} Thank you for helping make EyeWire II better!`, FIXED_IMAGE_URL);
       if (sent) console.log(`[bridge] told the reporter of ${row.id}`);
+      // And every admin, so fixes are visible in the game, not just in Slack.
+      const report = (row.source_excerpt || '').trim();
+      for (const id of await adminUserIds()) {
+        await notifyUser(id, '🎉 Fixed!',
+          `"${report.length > 90 ? report.slice(0, 87) + '...' : report}" is fixed and live. ${plain}`, FIXED_IMAGE_URL);
+      }
     }
     console.log(`[bridge] announced done ${row.id}`);
     announced++;

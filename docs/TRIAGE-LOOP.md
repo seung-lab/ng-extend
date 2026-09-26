@@ -24,8 +24,10 @@ Claude subscription (amylr@princeton.edu) through the
    until they reply (see below).
 6. **Shipped.** When the tester says it is good, it is merged into
    `eyewire-ii-community` and deployed live. The thread gets "Change
-   shipped" with a link to the change, and the person who reported it gets
-   a "your report was fixed" notification in the game.
+   shipped" with a link to the change. In the game, the person who reported
+   it and every admin get a "🎉 Fixed!" notification (confetti Nurro, mint and
+   gold card) saying what changed. The reporter also gets a note when their
+   report is accepted and being built. Only they are told, never everyone.
 
 ## Talking to the robot
 
