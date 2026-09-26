@@ -176,7 +176,9 @@ async function notifyUser(userId, title, body, imageUrl) {
 
 // "Fixed!" cards: confetti Nurro, and a 🎉 title the notification feed styles
 // in its happy colours.
-const FIXED_IMAGE_URL = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/nurro-confetti-card.png';
+const ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
+const FIXED_IMAGE_URL = `${ART}/nurro-cape-card.png`;      // Super Nurro
+const WORKING_IMAGE_URL = `${ART}/nurro-3d-card.jpg`;      // 3D space Nurro, on the job
 
 /** App user ids of everyone in the admins table (matched on middleauth_email). */
 let adminIdsCache = null;
@@ -312,7 +314,7 @@ async function readApprovals() {
       const extraText = m[2]?.trim() || '';
       await applyDecision(row, decision, msg.user, extraText);
       const building = LOOP && decision === 'approved' && isBuildable(row);
-      if (building) await notifyReporter(row, '🛠️ Your report is being worked on', `${quoteReport(row)} It was accepted and a fix is being built now. You'll get another note when it's live.`);
+      if (building) await notifyReporter(row, '🛠️ Your report is being worked on', `${quoteReport(row)} It was accepted and a fix is being built now. You'll get another note when it's live.`, WORKING_IMAGE_URL);
       const posted = await say(row, decision === 'approved'
         ? (row.recommendation === 'message'
             ? `Approved by <@${msg.user}>. Message sent to the reporter. ✓`
