@@ -1,8 +1,13 @@
 name: Triage Deploy
 
-# The tester replied "good": merge triage/<id8> into eyewire-ii-community,
-# deploy the live community version, and close the row (the bridge then posts
-# "Change shipped" in the thread). Dispatched by the Slack Triage Bridge.
+# Puts a tested triage/<id8> branch on the live community site, or takes it
+# off again. Dispatched by the Slack Triage Bridge; see docs/TRIAGE-LOOP.md.
+#
+#   mode=final      tester replied "good": merge, deploy, close the row
+#   mode=live_test  tester replied "ship to test": merge and deploy so they
+#                   can test on the live site; they still reply good/revert
+#   mode=revert     undo that merge on the live site, and keep the change
+#                   on the triage branch so Claude can fix it and re-merge
 #
 # This file must ALSO exist on main for workflow_dispatch to work. Register
 # it there in a commit whose message contains [skip ci].
@@ -14,8 +19,13 @@ on:
         description: feedback_triage row id
         required: true
         type: string
+      mode:
+        description: final, live_test or revert
+        required: false
+        default: final
+        type: string
 
-# One live deploy at a time; a second "good" waits its turn.
+# One live change at a time; a second "good" waits its turn.
 concurrency:
   group: triage-deploy
   cancel-in-progress: false
@@ -30,6 +40,7 @@ jobs:
     timeout-minutes: 40
     env:
       ROW_ID: ${{ inputs.row_id }}
+      MODE: ${{ inputs.mode }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -46,12 +57,37 @@ jobs:
           persist-credentials: false
 
       - name: Merge the tested branch
+        if: inputs.mode != 'revert'
         run: |
           B="triage/${ROW_ID:0:8}"
           git fetch origin "$B"
+          LABEL=$([ "$MODE" = live_test ] && echo "live test" || echo "tested and approved in Slack")
           git -c user.name="Claude (triage)" -c user.email="noreply@anthropic.com" \
-            merge --no-ff "origin/$B" -m "Merge $B: tested and approved in Slack ($RUN_URL)"
+            merge --no-ff "origin/$B" -m "Merge $B: $LABEL ($RUN_URL)"
+          # The release note links to the merge, which shows the whole change.
+          echo "MERGE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/$BASE"
+
+      - name: Revert the live merge
+        if: inputs.mode == 'revert'
+        run: |
+          B="triage/${ROW_ID:0:8}"
+          PUSH="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          M=$(git log --merges -1 --format=%H --grep="^Merge $B:" HEAD)
+          [ -n "$M" ] || { echo "no merge of $B found on $BASE" >&2; exit 1; }
+          git -c user.name="Claude (triage)" -c user.email="noreply@anthropic.com" \
+            revert --no-edit -m 1 "$M"
+          R=$(git rev-parse HEAD)
+          git push "$PUSH" "HEAD:refs/heads/$BASE"
+          # Git would treat the reverted commits as already merged and never
+          # bring them back. Put the change back on the triage branch (revert
+          # the revert there), so Claude's fix and the next merge carry it.
+          git fetch origin "$B"
+          git checkout -B "$B" "origin/$B"
+          git -c user.name="Claude (triage)" -c user.email="noreply@anthropic.com" merge --no-edit "origin/$BASE"
+          git -c user.name="Claude (triage)" -c user.email="noreply@anthropic.com" revert --no-edit "$R"
+          git push "$PUSH" "HEAD:refs/heads/$B"
+          git checkout "$BASE"
 
       - name: Deploy the live community version
         run: |
@@ -73,9 +109,14 @@ jobs:
           done
           echo "live site did not return 200" >&2; exit 1
 
-      - name: Close the row
-        run: node scripts/triage-loop.mjs deployed
+      - name: Update the row
+        run: |
+          case "$MODE" in
+            live_test) node scripts/triage-loop.mjs live ;;
+            revert)    node scripts/triage-loop.mjs reverted ;;
+            *)         node scripts/triage-loop.mjs deployed ;;
+          esac
 
       - name: Report failure
         if: failure()
-        run: node scripts/triage-loop.mjs fail deploy
+        run: node scripts/triage-loop.mjs fail "${{ inputs.mode == 'revert' && 'revert' || 'deploy' }}"
