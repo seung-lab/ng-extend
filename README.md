@@ -162,6 +162,21 @@ Line and box annotations display computed distances (in nm) directly in the anno
 
 ---
 
+## Auto dev robot (feedback triage loop)
+
+User reports become proposals, approved fixes are built by Claude in GitHub
+Actions, previewed, tested by the approver in Slack, and deployed on their
+"good". How it works: [docs/TRIAGE-LOOP.md](docs/TRIAGE-LOOP.md). Live status
+and Amy's list: https://connectome.quest/admin/ (password protected).
+
+**Agent update.** If you change the pipeline
+(`scripts/slack-triage-bridge.mjs`, `scripts/triage-loop.mjs`,
+`.github/workflows/triage-*.yml`, `.github/workflows/slack-triage-bridge.yml`,
+`supabase-triage-*.sql`, the Admin Hub Triage tab), update
+`docs/TRIAGE-LOOP.md` in the same change, then run `/agent-update` so the admin
+page and Amy's to do list match. Workflow file changes also need a `[skip ci]`
+copy on `main`.
+
 ## Datasets
 
 ### Minnie65 (default)

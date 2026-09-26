@@ -31,9 +31,24 @@ interface TriageRow {
   status: 'proposed' | 'approved' | 'dismissed' | 'done';
   reviewed_by: string | null;
   created_at: string;
-  /** Reviewer's comment on approve/dismiss (supabase-triage-approver-note.sql). */
+  // Implement-on-approval loop (supabase-triage-loop-columns.sql,
+  // docs/TRIAGE-LOOP.md). Slack and this tab read and write the same row.
   approver_note?: string | null;
+  impl_state?: ImplState | null;
+  impl_summary?: string | null;
+  impl_run_url?: string | null;
+  impl_attempts?: number;
+  preview_url?: string | null;
+  feedback_log?: { user: string; text: string; ts: string; role: string }[];
+  nag_count?: number;
+  approver_slack_id?: string | null;
+  tested_by?: string | null;
+  slack_ts?: string | null;
+  slack_channel?: string | null;
 }
+type ImplState = 'queued' | 'implementing' | 'needs_info' | 'testing' | 'changes_requested'
+  | 'answer_queued' | 'answering' | 'deploy_queued' | 'deploying' | 'deployed'
+  | 'live_test_queued' | 'live_testing' | 'revert_queued' | 'reverting' | 'failed';
 const triageRows = ref<TriageRow[]>([]);
 const triageLoading = ref(false);
 const triageError = ref('');
@@ -41,9 +56,33 @@ const triageShowReviewed = ref(false);
 const triageActing = ref<string | null>(null);
 /** Per-row edited message text, keyed by triage row id. */
 const triageEdits = ref<Record<string, string>>({});
-/** Per-row reviewer comment, saved as approver_note with the decision. Same
- *  column and name the triage loop (claude/triage-loop) hands to Claude. */
+/** Per-row reviewer comment, saved as approver_note with Approve or Dismiss
+ *  on every proposal type; for a buildable spec the loop also hands it to
+ *  Claude. */
 const triageNotes = ref<Record<string, string>>({});
+
+const IMPL_LABELS: Record<ImplState, string> = {
+  queued: 'Waiting for Claude',
+  implementing: 'Claude is building it',
+  needs_info: 'Claude has a question (answer in Slack)',
+  answer_queued: 'Tester asked a question',
+  answering: 'Claude is answering the tester',
+  live_test_queued: 'Going live for a real-data test',
+  live_testing: 'Live test, waiting for the tester',
+  revert_queued: 'Taking it off the live site',
+  reverting: 'Reverting the live site',
+  testing: 'Preview up, waiting for the tester',
+  changes_requested: 'Tester sent it back',
+  deploy_queued: 'Tested, deploy starting',
+  deploying: 'Deploying live',
+  deployed: 'Live',
+  failed: 'Failed, needs a look',
+};
+const ROLE_LABELS: Record<string, string> = { tester: 'Tester', question: 'Question', answer: 'Answer' };
+const roleLabel = (role: string) => ROLE_LABELS[role] || 'Comment';
+const isBuildable = (r: TriageRow) => r.recommendation === 'bug_fix_spec' || r.recommendation === 'new_feature';
+const slackThreadUrl = (r: TriageRow) =>
+  r.slack_ts ? `https://eyewire.slack.com/archives/${r.slack_channel || 'C0BG5CN71C3'}/p${r.slack_ts.replace('.', '')}` : null;
 
 const TRIAGE_LABELS: Record<TriageRow['recommendation'], string> = {
   nothing: 'No action',
@@ -68,7 +107,14 @@ async function loadTriage() {
   try {
     const { supabase } = await import('../supabase');
     let q = supabase.from('feedback_triage').select('*').order('created_at', { ascending: false }).limit(100);
-    if (!triageShowReviewed.value) q = q.eq('status', 'proposed');
+    // Default view: everything still open (awaiting a decision, or approved
+    // and not yet live) plus anything finished in the last 5 days, so recent
+    // updates stay visible and then clear themselves. Open items never age
+    // out. "Show older" shows every row.
+    if (!triageShowReviewed.value) {
+      const since = new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString();
+      q = q.or(`status.in.(proposed,approved),reviewed_at.gte.${since},tested_at.gte.${since}`);
+    }
     const { data, error } = await q;
     if (error) throw error;
     triageRows.value = (data ?? []) as TriageRow[];
@@ -132,8 +178,11 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
     const update: Record<string, any> = {
       status,
       proposed_message: (triageEdits.value[row.id] ?? row.proposed_message) || null,
-      ...(status === 'done' ? { result_note: resultNote } : {}),
       ...(status !== 'done' && note ? { approver_note: note } : {}),
+      // Approving a spec hands it straight to Claude; the bridge echoes the
+      // decision into the Slack thread and tags you as the tester.
+      ...(status === 'approved' && isBuildable(row) ? { impl_state: 'queued' } : {}),
+      ...(status === 'done' ? { result_note: resultNote } : {}),
       reviewed_by: backend.userName || backend.userEmail || 'admin',
       reviewed_at: new Date().toISOString(),
     };
@@ -153,6 +202,27 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
     if (noteLost) {
       triageError.value = `Saved as ${status}, but your comment was not stored: the approver_note column does not exist yet. Run supabase-triage-approver-note.sql in the Supabase SQL editor. Your comment was: "${note}"`;
     }
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageActing.value = null;
+  }
+}
+
+/** Loop actions from this tab. Each only flips impl_state; the bridge (every
+ *  10 min) does the work and posts in the Slack thread, so both stay in step. */
+async function setImplState(row: TriageRow, next: ImplState) {
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  try {
+    const { supabase } = await import('../supabase');
+    const who = backend.userName || backend.userEmail || 'admin';
+    const { error } = await supabase.from('feedback_triage').update({
+      impl_state: next,
+      ...(next === 'deploy_queued' ? { tested_by: who, tested_at: new Date().toISOString() } : {}),
+    }).eq('id', row.id);
+    if (error) throw error;
+    await loadTriage();
   } catch (e: any) {
     triageError.value = e?.message ?? String(e);
   } finally {
@@ -895,14 +965,16 @@ onMounted(() => {
           <label class="nge-admin-label">Feedback Triage</label>
           <label class="nge-triage-toggle">
             <input type="checkbox" v-model="triageShowReviewed" />
-            <span>Show reviewed</span>
+            <span>Show older</span>
           </label>
           <button class="nge-admin-action-btn" @click="loadTriage" :disabled="triageLoading">↻ Refresh</button>
         </div>
         <div class="nge-admin-hint">
           The triage agent reads every incoming report and proposes an action.
-          Nothing happens until you approve it here. Approving "Send a message"
-          delivers the text below to the reporter as a notification.
+          Nothing happens until you approve it, here or in Slack; both show the
+          same list. Approving "Send a message" delivers the text to the
+          reporter. Approving a fix sends it to Claude, who posts a preview in
+          the Slack thread for you to test before anything goes live.
         </div>
         <div v-if="triageError" class="nge-admin-error">⚠ {{ triageError }}</div>
         <div v-if="triageLoading && !triageRows.length" class="nge-admin-hint">Loading…</div>
@@ -914,7 +986,9 @@ onMounted(() => {
           <div class="nge-triage-meta">
             <span class="nge-triage-rec" :class="`nge-triage-rec--${row.recommendation}`">{{ TRIAGE_LABELS[row.recommendation] }}</span>
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
-            <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by }}</template></span>
+            <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by.startsWith('slack:') ? 'in Slack' : row.reviewed_by }}</template></span>
+            <span v-if="row.impl_state" class="nge-triage-impl" :class="`nge-triage-impl--${row.impl_state}`">{{ IMPL_LABELS[row.impl_state] }}</span>
+            <a v-if="slackThreadUrl(row)" class="nge-triage-link" :href="slackThreadUrl(row) || undefined" target="_blank" rel="noopener">Slack thread</a>
           </div>
           <div v-if="row.source_excerpt" class="nge-triage-excerpt">"{{ row.source_excerpt }}"</div>
           <div v-if="row.rationale" class="nge-triage-rationale">{{ row.rationale }}</div>
@@ -936,6 +1010,13 @@ onMounted(() => {
             <span class="nge-triage-spec-label">Comment</span>
             <span class="nge-triage-spec-text">{{ row.approver_note }}</span>
           </div>
+          <div v-if="row.impl_state" class="nge-triage-loop">
+            <div v-if="row.impl_summary"><span class="nge-triage-spec-label">Change</span> {{ row.impl_summary }}</div>
+            <div v-if="row.preview_url"><span class="nge-triage-spec-label">Preview</span> <a :href="row.preview_url" target="_blank" rel="noopener">{{ row.preview_url }}</a></div>
+            <div v-if="row.impl_state === 'testing' || row.impl_state === 'live_testing' || row.impl_state === 'needs_info'"><span class="nge-triage-spec-label">Waiting on</span> the tester in the Slack thread{{ row.impl_state === 'needs_info' ? ', to answer Claude' : '' }}. Reminded {{ row.nag_count || 0 }} time{{ row.nag_count === 1 ? '' : 's' }}.</div>
+            <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> {{ f.text }}</div>
+            <div v-if="row.impl_run_url"><a :href="row.impl_run_url" target="_blank" rel="noopener">Claude's run log</a><template v-if="row.impl_attempts"> · attempt {{ row.impl_attempts }}</template></div>
+          </div>
           <!-- Reviewer comment, saved with Approve or Dismiss. Internal: it is
                never sent to the reporter (the message box above is). -->
           <textarea
@@ -955,6 +1036,9 @@ onMounted(() => {
             </button>
           </div>
           <div v-else-if="row.status === 'approved'" class="nge-triage-actions">
+            <button v-if="isBuildable(row) && !row.impl_state" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Have Claude build it</button>
+            <button v-if="row.impl_state === 'testing'" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'deploy_queued')">I tested it, good, deploy</button>
+            <button v-if="row.impl_state === 'failed'" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, row.tested_by ? 'deploy_queued' : 'queued')">{{ row.tested_by ? 'Retry deploy' : 'Retry build' }}</button>
             <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'done')">Mark done</button>
           </div>
         </div>
@@ -1469,7 +1553,23 @@ onMounted(() => {
 .nge-triage-rec--bug_fix_spec { background: rgba(255,120,120,0.14); color: #f88; }
 .nge-triage-rec--new_feature  { background: rgba(160,255,160,0.12); color: #8e8; }
 .nge-triage-src { font-size: 11px; color: rgba(255,255,255,0.4); }
-.nge-triage-status { font-size: 11px; color: rgba(255,255,255,0.5); font-style: italic; }
+.nge-triage-status { font-size: 11px; color: rgba(255,255,255,0.62); }
+.nge-triage-impl {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+  background: rgba(100,200,255,0.12); color: #8fd3ff;
+}
+.nge-triage-impl--testing, .nge-triage-impl--changes_requested,
+.nge-triage-impl--needs_info, .nge-triage-impl--live_testing { background: rgba(255,210,90,0.14); color: #ffd35a; }
+.nge-triage-impl--deployed { background: rgba(160,255,160,0.12); color: #8e8; }
+.nge-triage-impl--failed { background: rgba(255,120,120,0.16); color: #f88; }
+.nge-triage-link { font-size: 11px; color: #8fd3ff; }
+.nge-triage-note { font-size: 12px; color: rgba(235,238,250,0.88); line-height: 1.45; }
+.nge-triage-loop {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 12px; color: rgba(235,238,250,0.88); line-height: 1.45;
+  padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,0.03);
+}
+.nge-triage-loop a { color: #8fd3ff; word-break: break-all; }
 .nge-triage-excerpt { font-size: 12px; color: rgba(255,255,255,0.75); }
 .nge-triage-rationale { font-size: 11.5px; color: rgba(255,255,255,0.5); line-height: 1.4; }
 .nge-triage-message {

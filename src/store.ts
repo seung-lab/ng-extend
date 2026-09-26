@@ -3570,6 +3570,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
       await supabase.from('users').update(updates).eq('id', userId.value);
 
+      // Third edit: a thank you from Nurro, once, at the moment of crossing.
+      if ((row.total_edits || 0) < 3 && (updates.total_edits || 0) >= 3) {
+        sendThirdEditThanks().catch(() => {});
+      }
+
       // Immediately update local stats store for instant UI feedback
       const statsStore = useUserStatsStore();
       const localUpdates: Record<string, any> = {};
@@ -3584,6 +3589,29 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch (e: any) {
       console.warn('[backend] logEdit error:', e.message);
     }
+  }
+
+  /** A personal "thank you, for science" notification after someone's third
+   *  edit. Guarded so a double count or a second tab can never send two. */
+  async function sendThirdEditThanks() {
+    const uid = userId.value;
+    if (!uid) return;
+    const key = `nge-thanks-3-edits-${uid}`;
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch {}
+    const title = '💙 Thank you, for science!';
+    const { data: already } = await supabase.from('notifications')
+      .select('id').eq('target_type', 'user').eq('target_id', uid).eq('title', title).limit(1);
+    if (already?.length) return;
+    const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
+    await supabase.from('notifications').insert({
+      title,
+      body: "You've made 3 edits. Every one of them helps map the brain, and real scientists will use the cells you fix. Thank you for giving your time to science!",
+      thumbnail_url: 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/nurro/guide-avatar.png',
+      image_url: `${art}/nurro-thank-you-science.jpg`,
+      target_type: 'user', target_id: uid,
+      send_at: new Date().toISOString(),
+    });
+    loadNotifications().catch(() => {});
   }
 
   // ── Activity feed ─────────────────────────────────────────────────────

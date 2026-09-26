@@ -210,7 +210,7 @@ function plainText(text: string): string {
         v-for="notif in backend.notifications"
         :key="notif.id"
         class="nge-notif-card"
-        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂') }"
+        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙') }"
         @click="openDetail(notif)"
       >
         <div class="nge-notif-card-row">
@@ -398,6 +398,24 @@ function plainText(text: string): string {
 }
 .nge-notif-card--triage .nge-notif-card-title {
   color: #ff8d8d;
+}
+/* "Fixed!" cards (title starts with 🎉): a report shipped. Happy mint and gold. */
+.nge-notif-card--fixed {
+  border-left: 3px solid #5ee8a8;
+  background: linear-gradient(90deg, rgba(94, 232, 168, 0.12), rgba(255, 211, 90, 0.05));
+}
+.nge-notif-card--fixed .nge-notif-card-title {
+  color: #ffd35a;
+  font-weight: 700;
+}
+/* Thank you cards (title starts with 💙): the neon blue and pink of the art. */
+.nge-notif-card--thanks {
+  border-left: 3px solid #d65bf0;
+  background: linear-gradient(90deg, rgba(214, 91, 240, 0.12), rgba(90, 160, 255, 0.06));
+}
+.nge-notif-card--thanks .nge-notif-card-title {
+  color: #8fc4ff;
+  font-weight: 700;
 }
 
 .nge-notif-card {

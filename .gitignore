@@ -4,3 +4,6 @@ tsconfig.tsbuildinfo
 .venv
 .idea
 src/images/scythe_hero.png
+
+# triage loop scratch (prompt, summary, proposals)
+.triage
