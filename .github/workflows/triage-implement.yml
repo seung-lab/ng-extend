@@ -88,6 +88,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The bridge (github-actions) starts these runs; the action refuses
+          # bot-started runs unless the bot is listed.
+          allowed_bots: github-actions
           github_token: ${{ github.token }}
           # The spec lives in a file so no user text passes through YAML.
           prompt: Read ${{ steps.prep.outputs.prompt_file }} and do exactly what it says.
@@ -101,6 +104,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The bridge (github-actions) starts these runs; the action refuses
+          # bot-started runs unless the bot is listed.
+          allowed_bots: github-actions
           github_token: ${{ github.token }}
           prompt: Read ${{ steps.prep.outputs.prompt_file }} and do exactly what it says.
           claude_args: >-
