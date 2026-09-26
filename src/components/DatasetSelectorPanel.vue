@@ -5,6 +5,7 @@
  * Switching loads new neuroglancer layers + updates CAVE config automatically.
  */
 import { ref, onMounted } from 'vue';
+import { StatusMessage } from 'neuroglancer/status';
 import { DATASETS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry } from '../datasets';
 
 const emit = defineEmits({ hide: null });
@@ -34,13 +35,23 @@ onMounted(detectCurrentDataset);
 // ── Switch dataset ──────────────────────────────────────────────────────────
 
 const switching = ref(false);
+const switchingId = ref('');
 
 async function switchTo(ds: DatasetEntry) {
-  if (ds.id === currentDatasetId.value) return;
+  if (ds.id === currentDatasetId.value || switching.value) return;
   switching.value = true;
+  switchingId.value = ds.id;
+  // switchToDataset runs synchronously, so give the "Switching" state a moment
+  // to paint before the layer swap blocks the main thread.
+  await new Promise(resolve => setTimeout(resolve, 400));
   const ok = await switchToDataset(ds);
-  if (ok) currentDatasetId.value = ds.id;
   switching.value = false;
+  switchingId.value = '';
+  if (ok) {
+    currentDatasetId.value = ds.id;
+    StatusMessage.showTemporaryMessage(`Switched to ${ds.label}.`, 3000);
+    emit('hide');
+  }
 }
 </script>
 
@@ -58,13 +69,15 @@ async function switchTo(ds: DatasetEntry) {
           class="nge-ds-card"
           :class="{
             'nge-ds-active': ds.id === currentDatasetId,
-            'nge-ds-switching': switching,
+            'nge-ds-switching': switching && ds.id !== switchingId,
+            'nge-ds-switching-target': ds.id === switchingId,
           }"
           @click="switchTo(ds)"
         >
           <div class="nge-ds-card-label">{{ ds.label }}</div>
           <div class="nge-ds-card-desc">{{ ds.description }}</div>
-          <div v-if="ds.id === currentDatasetId" class="nge-ds-badge">Active</div>
+          <div v-if="ds.id === switchingId" class="nge-ds-badge">Switching...</div>
+          <div v-else-if="ds.id === currentDatasetId" class="nge-ds-badge">Active</div>
         </div>
       </div>
     </div>
@@ -139,6 +152,11 @@ async function switchTo(ds: DatasetEntry) {
 }
 .nge-ds-switching {
   opacity: 0.5;
+  pointer-events: none;
+}
+.nge-ds-switching-target {
+  background: rgba(100, 200, 255, 0.1);
+  border-color: rgba(100, 200, 255, 0.4);
   pointer-events: none;
 }
 

@@ -48,3 +48,15 @@ summaries.
 ## Learned from builds
 
 (The robot adds lines here as fixes are approved.)
+
+- `npm run typecheck` is plain `tsc --noEmit`: it never reads `.vue` files, and
+  its output is now dozens of vendored neuroglancer errors (spec globals, jpgjs),
+  none under `src/`. Check `npm run typecheck 2>&1 | grep "^src/"` is empty; the
+  esbuild prod build is what actually compiles components (2026-09-26, ran both).
+- For a short user-facing notice, `StatusMessage.showTemporaryMessage(msg, ms)`
+  from `neuroglancer/status` works from Vue components and outlives a panel that
+  closes itself; there is no generic app toast (AchievementToast is badge-only)
+  (2026-09-26, dataset switch fix).
+- `switchToDataset` in src/datasets.ts is synchronous under its async signature,
+  so any "loading" state set just before calling it never paints unless you yield
+  first (2026-09-26, read the code).
