@@ -48,3 +48,11 @@ summaries.
 ## Learned from builds
 
 (The robot adds lines here as fixes are approved.)
+
+- User prefs (`nge_prefs_v1`) live only in localStorage, and `save()` writes
+  the whole prefs object, so any field in the store's default ref gets
+  persisted for every user even if they never touched it. Changing what a
+  default value means needs a legacy check for already-stored defaults
+  (2026-09-26, found fixing the empty-toolbar bug in src/store.ts).
+- `npm run typecheck` prints hundreds of third_party errors, not six; filter
+  with `grep -E "^src/|TS5"` to see only app errors (2026-09-26, from the run).

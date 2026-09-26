@@ -846,8 +846,9 @@ const PREFS_KEY = 'nge_prefs_v1';
 export interface UserPreferences {
   flag: string;   // flag emoji e.g. "🇺🇸"
   bio: string;    // free-text, capped at 280 chars in the UI
-  /** Which toolbar icons to show, in order. Empty = show all defaults. */
-  toolbarIcons: string[];
+  /** Which toolbar icons to show, in order. Unset = show all defaults;
+   *  [] = the user cleared every icon. */
+  toolbarIcons?: string[] | null;
   /** Icon ids that have already been auto-injected into this user's saved
    *  order (icons added after their prefs were first saved). Lets
    *  resolveToolbarOrder tell "pref predates the icon" apart from "user
@@ -865,7 +866,7 @@ export interface UserPreferences {
 }
 
 export const useUserPreferencesStore = defineStore('userPrefs', () => {
-  const prefs: Ref<UserPreferences> = ref({ flag: '', bio: '', toolbarIcons: [], chatMuted: false, helpMuted: false });
+  const prefs: Ref<UserPreferences> = ref({ flag: '', bio: '', chatMuted: false, helpMuted: false });
 
   function load() {
     try {

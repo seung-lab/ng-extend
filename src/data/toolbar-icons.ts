@@ -149,7 +149,7 @@ const REPOSITION_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: s
 /**
  * Canonical toolbar order for a given saved preference. The ONE place that
  * turns a user's stored `toolbarIcons` into what actually renders: fall back to
- * the default when empty, inject icons added since the prefs were saved, and
+ * the default when never customized, inject icons added since the prefs were saved, and
  * drop retired ids. Both the live toolbar (ExtensionBar) and the Settings grid
  * call this, so what you toggle in Settings is exactly what the top bar shows.
  *
@@ -164,11 +164,15 @@ const REPOSITION_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: s
  * that persist prefs should also persist markInjected() to record the ids
  * this call injected.
  */
-export function resolveToolbarOrder(saved: string[], injected: string[] = []): string[] {
-  const order = saved.length > 0 ? [...saved] : [...DEFAULT_TOOLBAR_ORDER];
+export function resolveToolbarOrder(saved: string[] | null | undefined, injected: string[] = []): string[] {
+  // Unset (never customized) is null/undefined. Older prefs stored [] by
+  // default, so [] with no injected marker also counts as unset. [] saved
+  // from Settings or a drag always carries the marker: a genuinely empty bar.
+  const unset = !saved || (saved.length === 0 && injected.length === 0);
+  const order = unset ? [...DEFAULT_TOOLBAR_ORDER] : [...saved];
   for (const spec of AUTO_INJECT_TOOLBAR_ICONS) {
     if (order.includes(spec.id)) continue;
-    if (saved.length > 0 && injected.includes(spec.id)) continue; // user removed it
+    if (!unset && injected.includes(spec.id)) continue; // user removed it
     let at = order.length;
     if (spec.after && order.indexOf(spec.after) >= 0) {
       at = order.indexOf(spec.after) + 1;
@@ -178,7 +182,7 @@ export function resolveToolbarOrder(saved: string[], injected: string[] = []): s
     order.splice(at, 0, spec.id);
   }
   for (const spec of REPOSITION_TOOLBAR_ICONS) {
-    if (saved.length === 0) continue;                 // defaults already have the new spot
+    if (unset) continue;                              // defaults already have the new spot
     if (injected.includes(spec.marker)) continue;     // move already applied and saved
     const from = order.indexOf(spec.id);
     if (from < 0) continue;
