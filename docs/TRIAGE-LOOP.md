@@ -11,56 +11,78 @@ Claude subscription (amylr@princeton.edu) through the
 2. **Proposal.** `triage-propose.yml` (every 10 min, only when a report is
    waiting) has Claude read the code and write one `feedback_triage` row:
    no action, send a message, bug fix spec, or new feature.
-3. **Decision.** The bridge posts the proposal in the report's Slack thread.
-   An approver (Amy or Celia) replies `approve` or `dismiss`, in Slack or in
-   Admin Hub > Triage. Text after `approve` is kept as a note and given to
-   Claude with the spec. Both places show the same rows: a decision made in
-   the Admin Hub is echoed into the Slack thread.
-4. **Build.** An approved fix or feature goes to `triage-implement.yml`.
-   Claude implements it on branch `triage/<first 8 of row id>` and runs the
-   production build. Pushing the branch deploys a **preview**:
-   `https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/`.
-   The live site is untouched.
-5. **Test.** The bot posts the preview link in the thread and tags the person
-   who approved it. **That person must test it.** The preview uses the real
-   data (same CAVE, accounts and database). They are tagged again every 10
-   minutes until they reply:
-   - `good` (or `looks good`, `lgtm`): the fix is merged into
-     `eyewire-ii-community` and deployed live by `triage-deploy.yml`.
-   - `ship to test`: for things only the live site does (sync jobs, Cloud
-     Functions, what other users see). It goes live, and the tester is tagged
-     until they reply `good` (it stays) or `revert` (it comes off). Any other
-     reply also takes it off, then goes to Claude as what to fix.
-   - a question ending in `?`: Claude answers it in the thread from what it
-     built. Nothing is rebuilt.
-   - anything else: taken as what is wrong. Claude gets it, fixes the
-     branch, and posts a new preview. Tagging starts again.
-   - `note: ...`: extra information saved for Claude's next attempt.
-     Nothing rebuilds.
-   - `rebuild`: build again with everything in the thread.
-   - `hand off to @someone`: that person becomes the tester.
-   Replies posted while Claude is still building are kept as notes, never
-   lost. The next preview message lists any that arrived too late for that
-   build, so the tester can reply `rebuild` or test as is.
-   **Replies are read like a conversation.** Each reply from the tester is
-   read in the context of the whole thread by a small Claude model (Haiku,
-   on the Princeton subscription), which picks one of the next steps allowed
-   at that moment and writes the bot's reply. So "looks right but the yellow
-   is too bright" is a change, "can Celia check this" is a hand off, and
-   "thanks, will test after lunch" changes nothing. The loop, not the model,
-   performs the step. The keywords above always work, and are the fallback if
-   the model is unavailable (repo variable `TRIAGE_UNDERSTAND=off` forces it).
-   Comments from anyone else in the thread are passed to Claude as context,
-   but only the tester's reply moves the fix forward. Messages that mention
-   @Amy's Claude are questions for the Q&A bot and are left alone.
+3. **Decision.** The proposal is posted in the report's Slack thread. An
+   approver (Amy or Celia) approves or dismisses it, in Slack or in Admin Hub
+   > Triage. Both places always show the same rows.
+4. **Build.** Claude implements an approved fix on branch
+   `triage/<first 8 of row id>`, checks the production build, and deploys a
+   **preview**: `https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/`.
+   The preview uses the real data (same CAVE, accounts and database). The
+   live site is untouched.
+5. **Test.** The bot posts the preview in the thread and tags the person who
+   approved it. **That person must test it**, and is tagged every 10 minutes
+   until they reply (see below).
+6. **Shipped.** When the tester says it is good, it is merged into
+   `eyewire-ii-community` and deployed live. The thread gets "Change
+   shipped" with a link to the change, and the person who reported it gets
+   a "your report was fixed" notification in the game.
 
-   **When Claude has a question.** If the spec can be read two ways, Claude
-   builds nothing and asks in the thread. The tester is tagged every 10
-   minutes; the first reply from them or an approver goes back to Claude,
-   which carries on. The same happens after a failure or a refusal: reply
-   `retry`, or reply with what to do differently.
-6. **Shipped.** The row becomes `done` and the thread gets "Change shipped",
-   tagging the approvers.
+## Talking to the robot
+
+Everything happens in the report's Slack thread. **Just reply in your own
+words**: each reply is read in the context of the whole thread by a small
+Claude model (Haiku, on the Princeton subscription), which works out what you
+mean and answers like a person. The keywords below always work too, and are
+the fallback if the model is unavailable (`TRIAGE_UNDERSTAND=off` forces them).
+
+| When | You want to | Say something like | What happens |
+|---|---|---|---|
+| Approving | approve, with details | `approve, use a warm gold and leave the tag layer blue` | the text after approve goes to Claude with the spec, and shows in the Admin Hub |
+| | turn it down | `dismiss` | nothing is built |
+| Claude is building | add details | `also check it on the MEC dataset` | saved as a note, never lost; the preview message lists any that came too late for that build |
+| Claude asked a question | answer it | `gold, not lemon yellow` | Claude carries on with your answer |
+| Preview is up | ship it | `good`, `looks good`, `lgtm` | merged and deployed live |
+| | ask about it | `where do I click to see it?` | Claude answers from what it built; nothing is rebuilt |
+| | ask for changes | `works, but the yellow is too bright` | Claude fixes it and posts a new preview |
+| | add details without a rebuild | `note: Celia prefers amber` | saved for Claude's next attempt |
+| | build again now | `rebuild` | a new build with everything in the thread |
+| | test on the live site | `ship to test` | goes live for a real-data test (sync jobs, Cloud Functions, what other users see) |
+| Live test | keep it | `good` | stays live, row closed |
+| | take it off | `revert` | the live site goes back; say what to change and Claude tries again |
+| | report a problem | `it broke the tag panel` | taken off the live site first, then back to Claude |
+| Anytime | pass the testing on | `hand off to @Celia`, `can Celia check this` | that person becomes the tester and gets the reminders |
+| | just chat | `thanks, will test after lunch` | nothing changes, nothing rebuilds |
+| Something failed | try again | `retry` | the failed step runs again |
+| | correct it | `it's in ExtensionBar.vue, not the settings panel` | Claude tries again with that |
+
+Comments from other people in the thread are passed to Claude as background,
+but only the tester moves a fix forward (an approver can also answer Claude,
+retry, or hand off). Messages that mention **@Amy's Claude** go to the Q&A
+bot, which can tell you where any fix is; the robot ignores them. Claude can
+also ask *you* a question when a spec can be read two ways, instead of
+guessing.
+
+## How the robot learns
+
+Each build starts from nothing but the code, so what earlier builds learned is
+kept in **[docs/TRIAGE-KNOWLEDGE.md](TRIAGE-KNOWLEDGE.md)**:
+
+- **Every build, answer and proposal reads it first**: the app's traps, how to
+  check a build, and how the team wants things (no dashes in copy, readable
+  text, change only what the spec asks).
+- **Every build adds to it.** When a build teaches Claude something the next
+  one should know (a trap in the code, how to test a feature, what the tester
+  actually wanted when the spec said otherwise), it adds one dated line in the
+  same change as the fix.
+- **Lessons only land when a human approves.** The knowledge file rides along
+  with the fix, so a lesson is saved only when its tester says the fix is
+  good. A rejected build's lessons are dropped with it, and anyone can edit
+  or correct the file directly.
+- **Your replies are the best teachers.** When you send a fix back with what
+  was wrong, that correction is exactly the kind of thing that gets written
+  down, so the next build does not make the same mistake.
+- The Slack Q&A bot can read the same file, so both agents share what has
+  been learned.
 
 ## Where Claude's work is
 
@@ -80,6 +102,7 @@ Claude subscription (amylr@princeton.edu) through the
 | implementer | `.github/workflows/triage-implement.yml` | dispatched by the bridge |
 | deployer | `.github/workflows/triage-deploy.yml` | dispatched by the bridge |
 | shared steps | `scripts/triage-loop.mjs` | inside those workflows |
+| what it has learned | `docs/TRIAGE-KNOWLEDGE.md` | read by every build; each build may add a line |
 | schema | `supabase-triage-loop-columns.sql` | once, in the SQL editor |
 | review UI | `src/components/AdminHub.vue`, Triage tab | in the app |
 

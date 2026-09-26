@@ -452,7 +452,7 @@ ${msg.text}
 Pick the one intent that fits the new message, from: ${allowed.join(', ')}.
 ${INTENT_HELP}
 Set for_claude to a clean restatement of what Claude should know or do (empty if nothing).
-Set handoff_to to the Slack id (U...) only for handoff.
+Set handoff_to to the Slack id (U...) only for handoff. People you may be asked to hand off to by name: ${Object.entries(NAME_MAP).map(([n, id]) => `${n} = ${id}`).join(', ')}; anyone else must be @mentioned.
 Set reply to one or two short, friendly sentences the bot will post back, addressing <@${msg.user}>. Plain words, no em or en dashes, no promises about timing beyond "a new preview will follow here".`;
   const schema = {
     type: 'object',
