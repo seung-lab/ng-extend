@@ -373,6 +373,8 @@ const DISPATCH = {
   revert_queued:     ['triage-deploy.yml',    'revert',    'reverting'],
 };
 const RUNNING = ['implementing', 'answering', 'deploying', 'reverting'];
+const HAS_CLAUDE_KEY = Boolean((process.env.CLAUDE_CODE_OAUTH_TOKEN || '').trim() || (process.env.ANTHROPIC_API_KEY || '').trim());
+let heldForKey = 0;
 const RUN_LABEL = { implementing: 'implementation', answering: 'answer', deploying: 'deploy', reverting: 'revert' };
 
 /** Start Claude, a deploy, a live test or a revert for rows waiting on one. */
@@ -393,6 +395,10 @@ async function dispatchWork() {
     }
     const [file, mode, next] = DISPATCH[row.impl_state];
     if (next === 'implementing' && running >= MAX_PARALLEL_IMPL) continue;
+    // Claude runs need a key. Without one a build can only fail and tag
+    // Amy, so hold the job quietly until a key is added. Deploys and
+    // reverts do not need Claude and still run.
+    if (file === 'triage-implement.yml' && !HAS_CLAUDE_KEY) { heldForKey++; continue; }
     // A "good" or a Retry clicked in the Admin Hub has no Slack reply behind
     // it, so say so in the thread before starting.
     if (row.slack_ts && mode === 'final' && row.tested_by && !row.tested_by.startsWith('slack:')) {
@@ -406,6 +412,7 @@ async function dispatchWork() {
     console.log(`[bridge] dispatched ${mode} for ${row.id}`);
     started++;
   }
+  if (heldForKey) console.warn(`[bridge] ${heldForKey} Claude job(s) held: no CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY secret`);
   return started;
 }
 
