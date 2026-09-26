@@ -97,8 +97,11 @@ jobs:
           github_token: ${{ github.token }}
           # The spec lives in a file so no user text passes through YAML.
           prompt: Read ${{ steps.prep.outputs.prompt_file }} and do exactly what it says.
+          # Temporary while the first real builds are checked: log every step.
+          show_full_output: true
           claude_args: >-
             --model opus
+            --permission-mode acceptEdits
             --max-turns 80
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(node scripts/build-prod.js),Bash(npm run typecheck),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
 
