@@ -19,7 +19,7 @@ import {
 import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
 import { getAccessToken } from '../widgets/google_sheets_auth';
-import { findDatasetBySegName, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -167,6 +167,24 @@ async function loadCellsForActiveDataset() {
     await queue.loadFromSheet(sheetUrl, canonicalDataset(dsName));
   }
 }
+
+// Follow the viewer's dataset while the panel is open. activeDataset used to
+// be read once on mount, so switching datasets from the top bar left the
+// panel on the old one: on Retina it still called MEC "CURRENT", and jumping
+// to a MEC help request dropped MEC root IDs into the Retina layer
+// (Amy 2026-09-25). layersChanged fires on every dataset switch.
+function syncActiveDataset() {
+  const live = getCurrentDatasetName();
+  if (live && canonicalDataset(live) !== canonicalDataset(activeDataset.value)) {
+    loadCellsForActiveDataset();
+  }
+}
+let unsubLayers: (() => void) | null = null;
+onMounted(() => {
+  const lm = (window as any)['viewer']?.layerManager;
+  if (lm?.layersChanged?.add) unsubLayers = lm.layersChanged.add(syncActiveDataset);
+});
+onBeforeUnmount(() => { unsubLayers?.(); });
 
 onMounted(async () => {
   loading.value = true;
@@ -1009,17 +1027,51 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function jumpToReq(req: HelpRequest) {
-  if (isCrossDatasetReq(req)) {
-    // Different dataset — show a confirmation modal so the user can save
-    // their current state URL before the viewer reloads with new layers.
-    jumpConfirmReq.value = req;
-    jumpConfirmTargetDs.value = findDatasetBySegName(req.dataset!) ?? null;
-    jumpConfirmCopied.value = false;
+/** DATASETS entry for any dataset tag a row may carry (raw layer name or
+ *  canonical key). */
+function datasetEntryFor(raw: string | undefined | null): DatasetEntry | undefined {
+  if (!raw) return undefined;
+  return findDatasetBySegName(raw) ?? findDatasetByCanonical(canonicalDataset(raw));
+}
+/** Heading for a dataset group: the same name the Dataset switcher shows. */
+function datasetHeading(raw: string | undefined | null): string {
+  const ds = datasetEntryFor(raw);
+  return ds ? `${SPECIES_ICONS[ds.species]} ${ds.label}` : (datasetDisplayName(raw) || raw || 'Unknown dataset');
+}
+
+/**
+ * If `raw` is not the dataset on screen, switch to it first. Reads the LIVE
+ * viewer (never the cached activeDataset) so a stale value can't send a root
+ * ID into the wrong dataset's layer. Returns false if it couldn't switch.
+ */
+async function ensureDataset(raw: string | undefined | null): Promise<boolean> {
+  activeDataset.value = getCurrentDatasetName() || activeDataset.value;
+  if (!raw || canonicalDataset(raw) === canonicalDataset(activeDataset.value)) return true;
+  const target = datasetEntryFor(raw);
+  if (!target) return false;
+  const ok = await switchToDataset(target);
+  if (!ok) return false;
+  activeDataset.value = segLayerName(target);
+  // Give neuroglancer a moment to swap layers before navigating.
+  await new Promise(r => setTimeout(r, 400));
+  return true;
+}
+
+/** Jump to a help request, switching dataset automatically when it lives on
+ *  another one (Amy: "check dataset ID and automatically jump"). */
+async function jumpToReq(req: HelpRequest) {
+  if (!(await ensureDataset(req.dataset))) {
+    flashJumpError(`Could not switch to ${datasetHeading(req.dataset)}.`);
     return;
   }
   activeHelpId.value = req.id;
   history.jumpToCell(req.segId, req.position);
+}
+
+const jumpError = ref('');
+function flashJumpError(msg: string) {
+  jumpError.value = msg;
+  setTimeout(() => { if (jumpError.value === msg) jumpError.value = ''; }, 5000);
 }
 
 // ── Scout tags (Tags tab) ────────────────────────────────────────────
@@ -1051,8 +1103,11 @@ function zoomToTagLevel() {
   } catch {}
 }
 
-function jumpToTag(tag: IssueTag) {
-  if (isCrossDatasetTag(tag)) return; // button is disabled; belt and braces
+async function jumpToTag(tag: IssueTag) {
+  if (!(await ensureDataset(tag.dataset))) {
+    flashJumpError(`Could not switch to ${datasetHeading(tag.dataset)}.`);
+    return;
+  }
   if (tag.segId) {
     history.jumpToCell(tag.segId, tag.position as [number, number, number]);
     zoomToTagLevel();
@@ -1091,6 +1146,11 @@ const datasetTags = computed(() =>
 const tagLane = ref<'all' | 'merger' | 'missing_branch'>('all');
 const laneFilteredTags = computed(() =>
   tagLane.value === 'all' ? datasetTags.value : datasetTags.value.filter((t: IssueTag) => t.tagType === tagLane.value));
+const thisDatasetOpenTagCount = computed(() =>
+  humanOpenTags.value.filter((t: IssueTag) => !isCrossDatasetTag(t)).length);
+function laneCount(lane: 'merger' | 'missing_branch'): number {
+  return datasetTags.value.filter((t: IssueTag) => t.tagType === lane).length;
+}
 
 // ── AI candidates (AI tab) ───────────────────────────────────────────
 // Model-seeded merger candidates, sorted hottest first. Rows reuse the
@@ -1410,18 +1470,41 @@ const dragOffset = ref({ x: 0, y: 0 });
 // Position is persisted alongside size (Amy: "saving my resizing but not
 // placement"). The old off-screen worry is handled by clamping into the
 // CURRENT viewport on load instead of by refusing to save.
+// Saved with the viewport it was saved in, so a panel parked against the
+// right edge of a 13" laptop stays against the right edge of a big display
+// (it used to keep its raw left px, and the old clamp let all but 120px of it
+// sit off screen: Amy 2026-09-25, MacBook to Cinema Display).
 const CL_POS_KEY = 'nge_cell_library_pos_v1';
 const panelPos = ref((() => {
   const fallback = { x: window.innerWidth / 2 - 220, y: 80 };
   try {
     const saved = JSON.parse(localStorage.getItem(CL_POS_KEY) || 'null');
     if (!saved || !Number.isFinite(saved.x) || !Number.isFinite(saved.y)) return fallback;
-    return {
-      x: Math.max(-200, Math.min(saved.x, window.innerWidth - 120)),
-      y: Math.max(40, Math.min(saved.y, window.innerHeight - 80)),
-    };
+    let { x, y } = saved;
+    if (Number.isFinite(saved.vw) && Number.isFinite(saved.w) && saved.x + saved.w / 2 > saved.vw / 2) {
+      x = window.innerWidth - (saved.vw - saved.x);  // keep the same gap to the right edge
+    }
+    return { x, y };  // clampPanelPos() below makes it fully visible
   } catch { return fallback; }
 })());
+
+/** Keep the WHOLE panel inside the viewport. */
+function clampPanelPos() {
+  const w = panelWidth.value;
+  const h = panelEl.value?.offsetHeight ?? resizedHeight.value ?? 300;
+  const maxX = Math.max(12, window.innerWidth - w - 12);
+  const maxY = Math.max(40, window.innerHeight - Math.min(h, window.innerHeight - 52) - 12);
+  const x = Math.max(12, Math.min(panelPos.value.x, maxX));
+  const y = Math.max(40, Math.min(panelPos.value.y, maxY));
+  if (x !== panelPos.value.x || y !== panelPos.value.y) panelPos.value = { x, y };
+}
+function persistPos() {
+  try {
+    localStorage.setItem(CL_POS_KEY, JSON.stringify({
+      ...panelPos.value, w: panelWidth.value, vw: window.innerWidth, vh: window.innerHeight,
+    }));
+  } catch { /* ignore */ }
+}
 
 function startDrag(e: MouseEvent) {
   isDragging.value = true;
@@ -1433,7 +1516,8 @@ function startDrag(e: MouseEvent) {
     isDragging.value = false;
     window.removeEventListener('mousemove', move);
     window.removeEventListener('mouseup', up);
-    try { localStorage.setItem(CL_POS_KEY, JSON.stringify(panelPos.value)); } catch { /* ignore */ }
+    clampPanelPos();
+    persistPos();
   };
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
@@ -1542,6 +1626,12 @@ function startResize(e: MouseEvent) {
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
 }
+
+// Clamp once the panel has a real height, and again whenever the window
+// changes size (moving the browser between displays fires resize too).
+onMounted(() => requestAnimationFrame(clampPanelPos));
+window.addEventListener('resize', clampPanelPos);
+onBeforeUnmount(() => window.removeEventListener('resize', clampPanelPos));
 
 const panelStyle = computed(() => ({
   left: panelPos.value.x + 'px',
@@ -1753,9 +1843,9 @@ const panelStyle = computed(() => ({
                 class="nge-cl-help-ds-arrow"
                 :class="{ 'nge-cl-help-ds-arrow--collapsed': !group.isCurrent && collapsedDatasets.has(group.dataset) }"
               >▾</span>
-              <span class="nge-cl-help-ds-name">{{ group.label }}</span>
-              <span v-if="group.isCurrent" class="nge-cl-help-ds-tag nge-cl-help-ds-tag--current">current</span>
-              <span v-else class="nge-cl-help-ds-tag nge-cl-help-ds-tag--other">other dataset</span>
+              <span class="nge-cl-help-ds-name" :title="group.label">{{ datasetHeading(group.dataset) }}</span>
+              <span v-if="group.isCurrent" class="nge-cl-help-ds-tag nge-cl-help-ds-tag--current">viewing now</span>
+              <span v-else class="nge-cl-help-ds-tag nge-cl-help-ds-tag--other" title="Jump switches the viewer to this dataset">jump switches</span>
               <span class="nge-cl-help-ds-count">{{ group.requests.length }}</span>
             </div>
 
@@ -1950,15 +2040,22 @@ const panelStyle = computed(() => ({
             </div>
           </div>
 
+          <!-- Two separate questions, two rows (Amy: "are all these my current
+               dataset? The 16 are in other dataset or is other a category?").
+               Row 1 is WHERE: this dataset or every dataset. Row 2 is WHAT:
+               tag type, counted within the chosen scope. -->
           <div class="nge-cl-tags-lanes">
-            <button :class="{ 'nge-cl-lane--active': tagLane === 'all' }" @click="tagLane = 'all'">All ({{ datasetTags.length }})</button>
-            <button :class="{ 'nge-cl-lane--active': tagLane === 'merger' }" @click="tagLane = 'merger'"><img :src="scytheIcon" class="nge-cl-lane-icon" alt="" /> For Scythes</button>
-            <button :class="{ 'nge-cl-lane--active': tagLane === 'missing_branch' }" @click="tagLane = 'missing_branch'"><img :src="tracerIcon" class="nge-cl-lane-icon" alt="" /> For Tracers</button>
-            <button
-              :class="{ 'nge-cl-lane--active': showAllDatasetTags }"
-              :title="showAllDatasetTags ? 'Showing every dataset' : 'Showing only ' + (datasetDisplayName(activeDataset) || 'this dataset')"
-              @click="showAllDatasetTags = !showAllDatasetTags"
-            >🌐 All datasets ({{ humanOpenTags.length }})</button>
+            <span class="nge-cl-lanes-label">Dataset</span>
+            <button :class="{ 'nge-cl-lane--active': !showAllDatasetTags }" @click="showAllDatasetTags = false"
+                    title="Open tags on the dataset you are viewing">{{ datasetDisplayName(activeDataset) || 'This dataset' }} ({{ thisDatasetOpenTagCount }})</button>
+            <button :class="{ 'nge-cl-lane--active': showAllDatasetTags }" @click="showAllDatasetTags = true"
+                    title="Open tags on every dataset, including this one">🌐 All datasets ({{ humanOpenTags.length }})</button>
+          </div>
+          <div class="nge-cl-tags-lanes">
+            <span class="nge-cl-lanes-label">Type</span>
+            <button :class="{ 'nge-cl-lane--active': tagLane === 'all' }" @click="tagLane = 'all'">Any ({{ datasetTags.length }})</button>
+            <button :class="{ 'nge-cl-lane--active': tagLane === 'merger' }" @click="tagLane = 'merger'"><img :src="scytheIcon" class="nge-cl-lane-icon" alt="" /> For Scythes ({{ laneCount('merger') }})</button>
+            <button :class="{ 'nge-cl-lane--active': tagLane === 'missing_branch' }" @click="tagLane = 'missing_branch'"><img :src="tracerIcon" class="nge-cl-lane-icon" alt="" /> For Tracers ({{ laneCount('missing_branch') }})</button>
           </div>
 
           <div v-if="!laneFilteredTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
@@ -1989,8 +2086,7 @@ const panelStyle = computed(() => ({
               </div>
               <div class="nge-cl-row-actions">
                 <span class="nge-orbit-wrap"><span v-if="orbitOn(tagIdx, laneFilteredTags.length)" class="nge-orbit-dot" aria-hidden="true"></span><button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToTag(tag)"
-                        :disabled="isCrossDatasetTag(tag)"
-                        :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetDisplayName(tag.dataset) + ' first' : 'Jump to location'">↗</button></span>
+                        :title="isCrossDatasetTag(tag) ? 'Switch to ' + datasetHeading(tag.dataset) + ' and jump' : 'Jump to location'">↗</button></span>
                 <button class="nge-cl-btn nge-cl-btn--complete nge-cl-btn--tagdone" @click="resolveTagFun(tag, $event)" title="I fixed this! Claim the tag">✓</button>
                 <template v-if="confirmDeleteTagId === tag.id">
                   <button class="nge-cl-btn nge-cl-btn--confirmdel" @click="confirmDeleteTag(tag)" title="Yes, delete this tag for everyone">Delete?</button>
@@ -2267,6 +2363,7 @@ const panelStyle = computed(() => ({
         <!-- Cell list -->
         <div v-else class="nge-cl-list">
           <!-- Claim error banner -->
+          <div v-if="jumpError" class="nge-cl-error-banner" @click="jumpError = ''">{{ jumpError }}</div>
           <div v-if="claimError" class="nge-cl-error-banner" @click="claimError = ''">
             {{ claimError }}
             <span class="nge-cl-error-dismiss">×</span>
@@ -3277,7 +3374,12 @@ select.nge-cl-response-input:hover {
   border-color: rgba(96, 192, 96, 0.5) !important;
 }
 
-.nge-cl-tags-lanes { display: flex; gap: 6px; flex-wrap: wrap; }
+.nge-cl-tags-lanes { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.nge-cl-tags-lanes + .nge-cl-tags-lanes { margin-top: 6px; }
+.nge-cl-lanes-label {
+  width: 52px; flex: 0 0 auto;
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(170, 187, 204, 0.6);
+}
 .nge-cl-tags-lanes button {
   padding: 4px 10px; border-radius: 12px; font-size: 11.5px; cursor: pointer;
   background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #abc;

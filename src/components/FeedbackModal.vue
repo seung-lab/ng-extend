@@ -7,6 +7,7 @@
  */
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
+import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { useProofreadingBackendStore } from '../store';
 import { mintShortStateLink } from '../util/state_link';
 
@@ -25,6 +26,21 @@ const sending = ref(false);
 const attachView = ref(true);
 const done = ref(false);
 const error = ref('');
+
+// Screenshot attachment. Reuses the help request flow unchanged:
+// ScreenshotDialog in `attach` mode captures the viewer, lets the user
+// annotate it with the pen, uploads the PNG to Supabase Storage
+// (admin-uploads/help-screenshots via backend.uploadHelpScreenshot) and emits
+// the public URL.
+const screenshotUrl = ref('');
+const showScreenshotDialog = ref(false);
+function onScreenshotAttached(payload: { url: string }) {
+  screenshotUrl.value = payload.url;
+  error.value = '';
+}
+function clearScreenshot() {
+  screenshotUrl.value = '';
+}
 
 function currentDataset(): string {
   try {
@@ -59,15 +75,22 @@ async function submit() {
       const at = pos ? ` @ ${Math.round(pos[0])},${Math.round(pos[1])},${Math.round(pos[2])}` : '';
       pageUrl = `${window.location.origin}${window.location.pathname}${at}`;
     }
+    const shot = screenshotUrl.value;
+    // The submitIssue Cloud Function only relays message/category/url/
+    // dataset/user to Slack, so the screenshot link rides in the message
+    // text to reach #citsci_feedback. `screenshotUrl` is sent too, for when
+    // the function learns to read it.
+    const slackText = shot ? `${text}\n\nScreenshot: ${shot}` : text;
     const res = await fetch(ISSUE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: text,
+        message: slackText,
         category: category.value,
         url: pageUrl,
         dataset: currentDataset(),
         user: backend.userName || '',
+        screenshotUrl: shot || undefined,
       }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -77,21 +100,34 @@ async function submit() {
     // Best-effort: a failure here must not surface as a failed submit.
     try {
       const { supabase } = await import('../supabase');
-      await supabase.from('site_issues').insert({
+      const row: Record<string, any> = {
         category: category.value,
         message: text,
         url: pageUrl,
         dataset: currentDataset() || null,
         user_id: backend.userId || null,
         user_name: backend.userName || null,
-      });
+      };
+      if (shot) row.screenshot_url = shot;
+      let { error: insErr } = await supabase.from('site_issues').insert(row);
+      // Until supabase-site-issues-screenshot.sql runs, the column is
+      // missing: PostgREST answers PGRST204 "Could not find the
+      // 'screenshot_url' column" (probed 2026-09-25). Never drop the report:
+      // retry without the column and keep the link in the message instead.
+      if (insErr && 'screenshot_url' in row &&
+          (insErr.code === 'PGRST204' || /screenshot_url/.test(insErr.message || ''))) {
+        delete row.screenshot_url;
+        row.message = slackText;
+        ({ error: insErr } = await supabase.from('site_issues').insert(row));
+      }
+      if (insErr) throw insErr;
     } catch (e) {
       console.warn('[feedback] Supabase mirror failed:', e);
     }
     done.value = true;
     setTimeout(() => emit('hide'), 1600);
   } catch (e: any) {
-    error.value = 'Could not submit — please try again.';
+    error.value = 'Could not submit. Please try again.';
     console.warn('[feedback] submit failed:', e);
   } finally {
     sending.value = false;
@@ -263,9 +299,22 @@ onBeforeUnmount(() => {
       <canvas ref="fxCanvas" class="nge-fb-fx" aria-hidden="true"></canvas>
       <button class="nge-fb-exit" @click="emit('hide')">×</button>
 
+      <!-- The same capture + annotate + upload dialog the help request form
+           uses. Teleported to <body>: .nge-overlay-content has a
+           backdrop-filter, which would otherwise become the containing block
+           for the dialog's position: fixed overlay and clip it to the modal. -->
+      <Teleport to="body">
+        <ScreenshotDialog
+          :show="showScreenshotDialog"
+          mode="attach"
+          @close="showScreenshotDialog = false"
+          @attached="onScreenshotAttached"
+        />
+      </Teleport>
+
       <div v-if="!done" class="nge-fb-body">
         <div class="nge-fb-title">Submit an issue</div>
-        <div class="nge-fb-hint">Found a bug or have an idea? Tell us — it goes straight to the team.</div>
+        <div class="nge-fb-hint">Found a bug or have an idea? Tell us, it goes straight to the team.</div>
 
         <div class="nge-fb-chips">
           <button
@@ -290,6 +339,30 @@ onBeforeUnmount(() => {
           <span>Attach my current view, a share link so the team sees exactly what I see</span>
         </label>
 
+        <div class="nge-fb-shot-row">
+          <button
+            v-if="!screenshotUrl"
+            class="nge-fb-chip nge-fb-shot-btn"
+            :disabled="sending"
+            title="Capture the current view and mark it up with the pen"
+            @click="showScreenshotDialog = true"
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 8h3l2-2.5h8L18 8h3v11H3z"/>
+              <circle cx="12" cy="13.5" r="3.8"/>
+            </svg>
+            <span>Screenshot</span>
+          </button>
+          <div v-else class="nge-fb-shot-preview">
+            <a :href="screenshotUrl" target="_blank" rel="noopener" title="Open full size">
+              <img :src="screenshotUrl" alt="Attached screenshot" />
+            </a>
+            <button class="nge-fb-shot-remove" :disabled="sending" title="Remove screenshot"
+                    aria-label="Remove screenshot" @click="clearScreenshot">×</button>
+          </div>
+        </div>
+
         <div v-if="error" class="nge-fb-err">{{ error }}</div>
 
         <div class="nge-fb-actions">
@@ -303,7 +376,7 @@ onBeforeUnmount(() => {
       <div v-else class="nge-fb-done holoscan holo-on">
         <span class="holoscan-line" aria-hidden="true"></span>
         <div class="nge-fb-done-icon">✓</div>
-        <div class="nge-fb-done-text">Thanks — your report was sent.</div>
+        <div class="nge-fb-done-text">Thanks, your report was sent.</div>
       </div>
     </div>
   </modal-overlay>
@@ -397,6 +470,51 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .nge-fb-attach input { accent-color: #7890ff; }
+.nge-fb-shot-row {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+.nge-fb-shot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.nge-fb-shot-btn:disabled { opacity: 0.5; cursor: default; }
+.nge-fb-shot-preview {
+  position: relative;
+  display: inline-block;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 140, 255, 0.3);
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  line-height: 0;
+}
+.nge-fb-shot-preview img {
+  display: block;
+  max-width: 160px;
+  max-height: 90px;
+  object-fit: contain;
+}
+.nge-fb-shot-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(4, 6, 14, 0.8);
+  color: #ccd;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nge-fb-shot-remove:hover { color: #fff; border-color: rgba(150, 170, 255, 0.6); }
 .nge-fb-actions {
   display: flex;
   gap: 8px;

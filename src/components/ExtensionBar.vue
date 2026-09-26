@@ -1059,25 +1059,36 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   display: none !important;
 }
 
-/* Style NG's Share button to look clickable */
+/* NG's Share button: the same pill as the AI and Data buttons on the left
+   (height, radius, Orbitron caps, tint), so the three read as one family. */
 #insertNGTopBar .neuroglancer-icon[title*="Share"],
 #insertNGTopBar button[title*="hare"],
 #insertNGTopBar .neuroglancer-share-button,
 #insertNGTopBar [class*="share" i] {
-  background: rgba(74, 158, 255, 0.1) !important;
-  border: 1px solid rgba(74, 158, 255, 0.3) !important;
-  border-radius: 4px !important;
-  padding: 2px 8px !important;
-  color: rgba(74, 158, 255, 0.9) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+  height: 30px !important;
+  padding: 0 14px !important;
+  background: rgba(74, 158, 255, 0.16) !important;
+  border: 1px solid rgba(74, 158, 255, 0.5) !important;
+  border-radius: 14px !important;
+  color: #cfe0f5 !important;
+  font-family: 'Orbitron', 'Inter', sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.08em !important;
   cursor: pointer !important;
-  transition: background 0.15s, border-color 0.15s !important;
+  opacity: 1 !important;
+  transition: background 0.15s, border-color 0.15s, color 0.15s !important;
 }
 #insertNGTopBar .neuroglancer-icon[title*="Share"]:hover,
 #insertNGTopBar button[title*="hare"]:hover,
 #insertNGTopBar .neuroglancer-share-button:hover,
 #insertNGTopBar [class*="share" i]:hover {
-  background: rgba(74, 158, 255, 0.2) !important;
+  background: rgba(74, 158, 255, 0.22) !important;
   border-color: rgba(74, 158, 255, 0.5) !important;
+  color: #eaf2ff !important;
 }
 
 #extensionBar {
