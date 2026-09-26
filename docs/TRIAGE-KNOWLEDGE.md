@@ -48,3 +48,10 @@ summaries.
 ## Learned from builds
 
 (The robot adds lines here as fixes are approved.)
+
+- "Use scifi-ui" means reuse what is already ported in this repo, not a new
+  dependency: `runPanelTrace` in `src/util/holo_trace.ts` (beam on arrival)
+  and the softened `nge-holo-materialize` keyframes in TagModePanel.vue.
+  A panel centred with `translate(-50%, -50%)` must repeat that translate in
+  every materialize keyframe or it jumps off centre (2026-09-26, dataset
+  panel build, from reading WeeklyRecapPanel and TagModePanel).
