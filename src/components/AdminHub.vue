@@ -209,6 +209,39 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
   }
 }
 
+/** "Work on it with Claude": a self-contained briefing for any report,
+ *  copied to the clipboard and opened as a new claude.ai chat. Paste the same
+ *  text into a Claude Code session to have it change the code. */
+const claudeCopied = ref<string | null>(null);
+function claudeBriefing(row: TriageRow): string {
+  const log = (row.feedback_log || []).map(f => `- [${f.role}] ${f.text}`).join('\n');
+  return [
+    'You are helping with the EyeWire II community app (seung-lab/ng-extend, branch eyewire-ii-community;',
+    'a Vue 3 + Pinia extension of neuroglancer). Work on this user report.',
+    '',
+    `Report (${row.source.replace('_', ' ')}, ${row.created_at.slice(0, 10)}): "${row.source_excerpt || ''}"`,
+    `Triage proposal: ${TRIAGE_LABELS[row.recommendation]}. Status: ${row.status}${row.impl_state ? `, robot state: ${row.impl_state}` : ''}.`,
+    row.rationale ? `Rationale: ${row.rationale}` : '',
+    row.spec ? `Spec:\n${row.spec}` : '',
+    row.approver_note ? `Approver's note (overrides the spec): ${row.approver_note}` : '',
+    row.impl_summary ? `What the triage robot already built: ${row.impl_summary}` : '',
+    row.impl_branch ? `Its branch: https://github.com/seung-lab/ng-extend/tree/${row.impl_branch}` : '',
+    row.preview_url ? `Its preview site: ${row.preview_url}` : '',
+    log ? `Replies in the Slack thread:\n${log}` : '',
+    slackThreadUrl(row) ? `Slack thread: ${slackThreadUrl(row)}` : '',
+    '',
+    'Before changing code, read docs/TRIAGE-KNOWLEDGE.md and docs/TRIAGE-LOOP.md in the repo. Confirm the cause in the',
+    'code first. Check the build with node scripts/build-prod.js. Copy has no em or en dashes. Push work branches to the',
+    'amy fork; do not push eyewire-ii-community (that deploys the live site) without asking Amy.',
+  ].filter(Boolean).join('\n');
+}
+async function openInClaude(row: TriageRow) {
+  const text = claudeBriefing(row);
+  try { await navigator.clipboard.writeText(text); claudeCopied.value = row.id; } catch { claudeCopied.value = null; }
+  setTimeout(() => { if (claudeCopied.value === row.id) claudeCopied.value = null; }, 4000);
+  window.open(`https://claude.ai/new?q=${encodeURIComponent(text.slice(0, 6000))}`, '_blank', 'noopener');
+}
+
 /** Loop actions from this tab. Each only flips impl_state; the bridge (every
  *  10 min) does the work and posts in the Slack thread, so both stay in step. */
 async function setImplState(row: TriageRow, next: ImplState) {
@@ -1027,6 +1060,10 @@ onMounted(() => {
             placeholder="Comment (optional), saved with your decision"
             @keydown.stop @keyup.stop @keypress.stop
           ></textarea>
+          <div class="nge-triage-claude">
+            <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
+            <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
+          </div>
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
             <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
               {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
@@ -1563,6 +1600,8 @@ onMounted(() => {
 .nge-triage-impl--deployed { background: rgba(160,255,160,0.12); color: #8e8; }
 .nge-triage-impl--failed { background: rgba(255,120,120,0.16); color: #f88; }
 .nge-triage-link { font-size: 11px; color: #8fd3ff; }
+.nge-triage-claude { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nge-triage-copied { font-size: 12px; color: #8ee88e; }
 .nge-triage-note { font-size: 12px; color: rgba(235,238,250,0.88); line-height: 1.45; }
 .nge-triage-loop {
   display: flex; flex-direction: column; gap: 4px;
