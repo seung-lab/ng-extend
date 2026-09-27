@@ -9,6 +9,7 @@ import {
   useUserStatsStore,
   useWorkingLinksStore,
   useIssueTagStore,
+  useUserPreferencesStore,
   isModelTag,
   type IssueTag,
   type ProofreadingTask,
@@ -1144,6 +1145,12 @@ const datasetTags = computed(() =>
   showAllDatasetTags.value ? humanOpenTags.value : humanOpenTags.value.filter((t: IssueTag) => !isCrossDatasetTag(t)));
 /** Lane filter: Scythes work mergers, Tracers work extensions. */
 const tagLane = ref<'all' | 'merger' | 'missing_branch'>('all');
+/** Scout tag and pin layers are off until turned on here (remembered). */
+const prefsStore = useUserPreferencesStore();
+const showTagsOnMap = computed({
+  get: () => prefsStore.prefs.showScoutTags === true,
+  set: (v: boolean) => { prefsStore.save({ showScoutTags: v }); tagStore.syncTagLayer(); },
+});
 const laneFilteredTags = computed(() =>
   tagLane.value === 'all' ? datasetTags.value : datasetTags.value.filter((t: IssueTag) => t.tagType === tagLane.value));
 const thisDatasetOpenTagCount = computed(() =>
@@ -1536,15 +1543,24 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'help',      label: 'Help' },
   { key: 'tags',      label: 'Tags' },
   { key: 'ai',        label: 'AI' },
-  { key: 'links',     label: 'My Saved Links' },
+  { key: 'links',     label: 'My Links' },
 ];
 /** Hidden by default (still in the gear picker): the tab bar was cropping
  *  at 9 tabs, and Completed is the least-visited (Amy 2026-08-17). */
-const DEFAULT_HIDDEN_CL_TABS = ['completed'];
+const DEFAULT_HIDDEN_CL_TABS = ['completed', 'ai'];
 const visibleTabs = ref<string[]>((() => {
   try {
     const saved = JSON.parse(localStorage.getItem(CL_TABS_KEY) || 'null');
-    if (Array.isArray(saved) && saved.length) return saved;
+    if (Array.isArray(saved) && saved.length) {
+      // AI was hidden for everyone on 2026-09-26 (Amy); do it once for tab
+      // lists saved before then. It stays available in the gear picker.
+      if (!localStorage.getItem('nge_cl_tabs_ai_hidden_v1')) {
+        localStorage.setItem('nge_cl_tabs_ai_hidden_v1', '1');
+        const next = saved.filter((k: string) => k !== 'ai');
+        if (next.length) { localStorage.setItem(CL_TABS_KEY, JSON.stringify(next)); return next; }
+      }
+      return saved;
+    }
   } catch {}
   return ALL_CL_TABS.map(t => t.key).filter(k => !DEFAULT_HIDDEN_CL_TABS.includes(k));
 })());
@@ -1676,34 +1692,57 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- Filter tabs -->
-        <div class="nge-cl-filters">
-          <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'">
-            My Cells ({{ myClaimCount }})
-          </button>
-          <button v-if="tabShown('available')" :class="{ active: filter === 'available' }" @click="filter = 'available'">
-            Available ({{ availableCount }})
-          </button>
-          <button v-if="tabShown('claimed')" :class="{ active: filter === 'claimed', 'nge-cl-claimed-tab': true }" @click="filter = 'claimed'">
-            Claimed ({{ claimedCount }})
-          </button>
-          <button v-if="tabShown('all')" :class="{ active: filter === 'all' }" @click="filter = 'all'">
-            All ({{ datasetScopedCells.length }})
-          </button>
-          <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
-            Completed ({{ completedCount }})
-          </button>
-          <button v-if="tabShown('help')" :class="{ active: filter === 'help', 'nge-cl-help-tab': true }" @click="filter = 'help'">
-            Help ({{ pendingHelp.length }})
-          </button>
-          <button v-if="tabShown('tags')" :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'">
-            Tags ({{ datasetTags.length }})
-          </button>
-          <button v-if="tabShown('ai')" :class="{ active: filter === 'ai', 'nge-cl-ai-tab': true }" @click="filter = 'ai'">
-            AI ({{ aiDatasetTags.length }})
-          </button>
-          <button v-if="tabShown('links')" :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'">
-            My Saved Links ({{ linksStore.links.length }})
-          </button>
+        <!-- Tabs in three coloured groups: cells (cyan), community (gold),
+             yours (violet). AI and Completed live in the gear picker. -->
+        <div class="nge-cl-filters nge-cl-filters--grouped">
+          <div class="nge-cl-tabgroup nge-cl-tabgroup--cells">
+            <span class="nge-cl-tabgroup-label">Cells</span>
+            <div class="nge-cl-tabgroup-row">
+              <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
+                      title="Cells you have claimed, and cells you completed">
+                My Cells <b>{{ myClaimCount }}</b>
+              </button>
+              <button v-if="tabShown('available')" :class="{ active: filter === 'available' }" @click="filter = 'available'"
+                      title="Cells nobody has claimed yet">
+                Available <b>{{ availableCount }}</b>
+              </button>
+              <button v-if="tabShown('claimed')" :class="{ active: filter === 'claimed', 'nge-cl-claimed-tab': true }" @click="filter = 'claimed'"
+                      title="Cells anyone has claimed and is working on, yours included">
+                Claimed <b>{{ claimedCount }}</b>
+              </button>
+              <button v-if="tabShown('all')" :class="{ active: filter === 'all' }" @click="filter = 'all'" title="Every cell in this dataset">
+                All <b>{{ datasetScopedCells.length }}</b>
+              </button>
+              <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
+                Completed <b>{{ completedCount }}</b>
+              </button>
+            </div>
+          </div>
+          <div class="nge-cl-tabgroup nge-cl-tabgroup--community" v-if="tabShown('help') || tabShown('tags') || tabShown('ai')">
+            <span class="nge-cl-tabgroup-label">Community</span>
+            <div class="nge-cl-tabgroup-row">
+              <button v-if="tabShown('help')" :class="{ active: filter === 'help', 'nge-cl-help-tab': true }" @click="filter = 'help'"
+                      title="Questions from other proofreaders">
+                Help <b>{{ pendingHelp.length }}</b>
+              </button>
+              <button v-if="tabShown('tags')" :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'"
+                      title="Scout tags: spots someone flagged to cut or extend">
+                Tags <b>{{ datasetTags.length }}</b>
+              </button>
+              <button v-if="tabShown('ai')" :class="{ active: filter === 'ai', 'nge-cl-ai-tab': true }" @click="filter = 'ai'">
+                AI <b>{{ aiDatasetTags.length }}</b>
+              </button>
+            </div>
+          </div>
+          <div class="nge-cl-tabgroup nge-cl-tabgroup--mine" v-if="tabShown('links')">
+            <span class="nge-cl-tabgroup-label">Yours</span>
+            <div class="nge-cl-tabgroup-row">
+              <button :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'"
+                      title="Links you saved">
+                My Links <b>{{ linksStore.links.length }}</b>
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Search (not shown on Help / Links tabs) -->
@@ -2044,6 +2083,12 @@ const panelStyle = computed(() => ({
                dataset? The 16 are in other dataset or is other a category?").
                Row 1 is WHERE: this dataset or every dataset. Row 2 is WHAT:
                tag type, counted within the chosen scope. -->
+          <label class="nge-cl-map-switch" :class="{ 'nge-cl-map-switch--on': showTagsOnMap }">
+            <input type="checkbox" v-model="showTagsOnMap" />
+            <span class="nge-cl-map-switch-track" aria-hidden="true"><span></span></span>
+            Show tags on the map
+            <span class="nge-cl-map-switch-note">{{ showTagsOnMap ? 'Scout tags and pins layers are on' : 'Off: no tag layers are added' }}</span>
+          </label>
           <div class="nge-cl-tags-lanes">
             <span class="nge-cl-lanes-label">Dataset</span>
             <button :class="{ 'nge-cl-lane--active': !showAllDatasetTags }" @click="showAllDatasetTags = false"
@@ -2062,7 +2107,8 @@ const panelStyle = computed(() => ({
             No open tags in this lane. The volume is momentarily unsuspicious.
           </div>
 
-          <div v-for="(tag, tagIdx) in laneFilteredTags" :key="tag.id" class="nge-cl-help-item">
+          <div v-for="(tag, tagIdx) in laneFilteredTags" :key="tag.id" class="nge-cl-help-item nge-cl-tag-card"
+               :style="{ '--tag-color': TAG_TYPE_META[tag.tagType]?.pip ?? '#889' }">
             <div class="nge-cl-row">
               <div class="nge-cl-row-left">
                 <span class="nge-cl-pip" :style="{ background: TAG_TYPE_META[tag.tagType]?.pip ?? '#889' }"></span>
@@ -2528,11 +2574,14 @@ const panelStyle = computed(() => ({
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  background: #1a1a2e;
-  border: 1px solid rgba(120, 140, 255, 0.15);
+  /* scifi-ui .holopanel surface: dark gradient, soft rim, lit inset line.
+     Body text in the UI sans; ids and coordinates keep a mono face below. */
+  background: linear-gradient(158deg, rgba(15, 18, 24, 0.96) 0%, rgba(6, 10, 18, 0.98) 100%);
+  border: 1px solid rgba(74, 150, 224, 0.30);
   border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  font-family: 'SF Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 0 60px rgba(74, 150, 224, 0.06), inset 0 1px 0 rgba(196, 228, 255, 0.10);
+  backdrop-filter: blur(10px) saturate(1.2);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   /* Readable base so the panel's em-scaled text doesn't inherit a tiny size and
      compound down (see the typography guideline in common.css). */
   font-size: var(--nge-fs-base);
@@ -2560,6 +2609,15 @@ const panelStyle = computed(() => ({
   z-index: 2;
 }
 .nge-cl-resize:hover { color: rgba(160, 175, 230, 0.9); }
+/* A grip people can find: three lit diagonal lines in the corner. */
+.nge-cl-resize {
+  width: 22px; height: 22px; cursor: nwse-resize;
+  background:
+    linear-gradient(135deg, transparent 0 55%, rgba(120, 200, 255, 0.55) 55% 60%, transparent 60% 70%,
+      rgba(120, 200, 255, 0.55) 70% 75%, transparent 75% 85%, rgba(120, 200, 255, 0.55) 85% 90%, transparent 90%);
+  border-bottom-right-radius: 14px;
+}
+.nge-cl-resize:hover { filter: brightness(1.6); }
 
 .nge-cl-topbar {
   display: flex;
@@ -3375,6 +3433,58 @@ select.nge-cl-response-input:hover {
 }
 
 .nge-cl-tags-lanes { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+/* ── Grouped tab bar ── */
+.nge-cl-filters--grouped { display: flex; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px 8px; background: transparent; }
+.nge-cl-tabgroup { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.nge-cl-tabgroup--cells { flex: 1 1 100%; }
+.nge-cl-tabgroup-label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--grp); opacity: 0.85; }
+.nge-cl-tabgroup-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.nge-cl-tabgroup--cells { --grp: #42d5ec; }
+.nge-cl-tabgroup--community { --grp: #e6c760; }
+.nge-cl-tabgroup--mine { --grp: #c98bff; }
+.nge-cl-filters--grouped button {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 8px; font-size: 12.5px; font-weight: 500;
+  color: rgba(220, 232, 245, 0.78); background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.nge-cl-filters--grouped button b { font-weight: 700; font-size: 11.5px; color: var(--grp); }
+.nge-cl-filters--grouped button:hover { border-color: color-mix(in srgb, var(--grp) 45%, transparent); color: #fff; }
+.nge-cl-filters--grouped button.active {
+  color: #fff; background: color-mix(in srgb, var(--grp) 16%, transparent);
+  border-color: color-mix(in srgb, var(--grp) 60%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--grp) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ── Show tags on the map ── */
+.nge-cl-map-switch {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer;
+  margin: 8px 0 10px; padding: 9px 12px; border-radius: 10px;
+  background: rgba(230, 199, 96, 0.06); border: 1px solid rgba(230, 199, 96, 0.22);
+  font-size: 13px; font-weight: 600; color: #f0e3b0;
+}
+.nge-cl-map-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.nge-cl-map-switch-track { width: 34px; height: 18px; border-radius: 10px; background: rgba(255, 255, 255, 0.14); position: relative; transition: background 0.15s; flex: 0 0 auto; }
+.nge-cl-map-switch-track span { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #cfd8e3; transition: transform 0.15s; }
+.nge-cl-map-switch--on .nge-cl-map-switch-track { background: #e6c760; }
+.nge-cl-map-switch--on .nge-cl-map-switch-track span { transform: translateX(16px); background: #1a1405; }
+.nge-cl-map-switch-note { flex-basis: 100%; font-size: 11.5px; font-weight: 400; color: rgba(240, 227, 176, 0.65); margin-left: 44px; margin-top: -4px; }
+
+/* ── Tag rows as cards: a type-coloured stripe, readable text ── */
+.nge-cl-tag-card {
+  margin: 0 0 8px; border: 1px solid rgba(255, 255, 255, 0.07); border-left: 3px solid var(--tag-color);
+  border-radius: 10px; background: linear-gradient(158deg, rgba(20, 26, 36, 0.9), rgba(10, 14, 22, 0.9));
+  padding: 4px 2px;
+}
+.nge-cl-tag-card:hover { border-color: rgba(255, 255, 255, 0.14); border-left-color: var(--tag-color); }
+.nge-cl-tag-card .nge-cl-row-name { font-size: 14px; font-weight: 700; color: #eef4fb; letter-spacing: 0.01em; }
+.nge-cl-tag-card .nge-cl-row-name .nge-cl-notes { font-size: 11.5px; font-weight: 500; }
+.nge-cl-tag-card .nge-cl-notes { font-size: 12px; color: rgba(190, 205, 222, 0.75); }
+.nge-cl-tag-card .nge-cl-row-meta .nge-cl-notes:first-child {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', monospace; font-size: 11px; color: rgba(150, 200, 240, 0.7);
+}
+.nge-cl-tag-card .nge-cl-pip { box-shadow: 0 0 8px var(--tag-color); }
 .nge-cl-tags-lanes + .nge-cl-tags-lanes { margin-top: 6px; }
 .nge-cl-lanes-label {
   width: 52px; flex: 0 0 auto;
