@@ -1069,6 +1069,16 @@ async function jumpToReq(req: HelpRequest) {
   history.jumpToCell(req.segId, req.position);
 }
 
+/** The dataset header's "switch here" (Amy: the old "jump switches" tag
+ *  looked like a button and did nothing). Switch datasets and open the group. */
+async function switchToDatasetGroup(group: HelpDatasetGroup) {
+  if (!(await ensureDataset(group.dataset))) {
+    flashJumpError(`Could not switch to ${datasetHeading(group.dataset)}.`);
+    return;
+  }
+  collapsedDatasets.value.delete(group.dataset);
+}
+
 const jumpError = ref('');
 function flashJumpError(msg: string) {
   jumpError.value = msg;
@@ -1884,7 +1894,9 @@ const panelStyle = computed(() => ({
               >▾</span>
               <span class="nge-cl-help-ds-name" :title="group.label">{{ datasetHeading(group.dataset) }}</span>
               <span v-if="group.isCurrent" class="nge-cl-help-ds-tag nge-cl-help-ds-tag--current">viewing now</span>
-              <span v-else class="nge-cl-help-ds-tag nge-cl-help-ds-tag--other" title="Jump switches the viewer to this dataset">jump switches</span>
+              <button v-else class="nge-cl-help-ds-tag nge-cl-help-ds-tag--other nge-cl-help-ds-switch"
+                      title="Switch the viewer to this dataset"
+                      @click.stop="switchToDatasetGroup(group)">switch here</button>
               <span class="nge-cl-help-ds-count">{{ group.requests.length }}</span>
             </div>
 
@@ -3878,6 +3890,12 @@ select.nge-cl-response-input:hover {
   background: rgba(245, 166, 35, 0.08);
   border: 1px solid rgba(245, 166, 35, 0.18);
   color: rgba(245, 166, 35, 0.85);
+}
+.nge-cl-help-ds-switch { cursor: pointer; font: inherit; }
+.nge-cl-help-ds-switch:hover {
+  background: rgba(245, 166, 35, 0.22);
+  border-color: rgba(245, 166, 35, 0.5);
+  color: #ffd27a;
 }
 .nge-cl-help-ds-count {
   font-size: 0.7em;

@@ -39,8 +39,41 @@ const height = ref(1080);
 const transparent = ref(false);
 const hideBoundingBox = ref(false);
 const showScaleBar = ref(true);
+/** Capture the whole tab, panels included, instead of the viewer canvas
+ *  (Amy: a bug report needs the windows that were open). Uses the browser's
+ *  screen capture of this tab, so it asks once and takes one frame. */
+const wholeScreen = ref(props.mode === 'attach');
 const busy = ref(false);
 const errorMsg = ref('');
+const dialogHidden = ref(false);
+
+async function captureWholeScreen(): Promise<HTMLCanvasElement> {
+  const md = navigator.mediaDevices as any;
+  if (!md?.getDisplayMedia) throw new Error('This browser cannot capture the screen. Untick "Whole screen" to capture the viewer only.');
+  // Hide this dialog so it is not in the picture.
+  dialogHidden.value = true;
+  await new Promise(r => setTimeout(r, 80));
+  const stream: MediaStream = await md.getDisplayMedia({
+    video: { displaySurface: 'browser' }, audio: false,
+    preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude',
+  });
+  try {
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.muted = true;
+    await video.play();
+    // Let the picker's own overlay fade before grabbing a frame.
+    await new Promise(r => setTimeout(r, 400));
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    c.getContext('2d')!.drawImage(video, 0, 0);
+    return c;
+  } finally {
+    stream.getTracks().forEach(t => t.stop());
+    dialogHidden.value = false;
+  }
+}
 
 // Captured source frame (with toggles applied) — kept in 2D canvas form,
 // alongside the per-source-pixel physical size in nanometers (computed at
@@ -512,6 +545,37 @@ async function uploadBlob(blob: Blob): Promise<string> {
 
 async function download() {
   errorMsg.value = '';
+  if (wholeScreen.value) {
+    busy.value = true;
+    try {
+      const c = await captureWholeScreen();
+      const blob: Blob = await new Promise((resolve, reject) => {
+        c.toBlob(b => b ? resolve(b) : reject(new Error('toBlob returned null')), 'image/png');
+      });
+      if (props.mode === 'attach') {
+        const publicUrl = await uploadBlob(blob);
+        emit('attached', { url: publicUrl });
+        emit('close');
+        return;
+      }
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `eyewire-${ts}-screen.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      emit('close');
+    } catch (e: any) {
+      // A dismissed picker is not an error worth shouting about.
+      if (e?.name !== 'NotAllowedError') errorMsg.value = e?.message ?? String(e);
+    } finally {
+      busy.value = false;
+    }
+    return;
+  }
   const w = Math.max(16, Math.min(8192, Math.floor(width.value || 0)));
   const h = Math.max(16, Math.min(8192, Math.floor(height.value || 0)));
   if (!w || !h) {
@@ -609,7 +673,7 @@ async function download() {
 </script>
 
 <template>
-  <div v-if="show" class="nge-shotdlg-overlay" @click.self="close">
+  <div v-if="show" class="nge-shotdlg-overlay" :style="dialogHidden ? 'visibility:hidden' : ''" @click.self="close">
     <div class="nge-shotdlg" role="dialog"
          :aria-label="props.mode === 'attach' ? 'Attach screenshot' : 'Save screenshot'">
       <div class="nge-shotdlg-header">
@@ -717,6 +781,10 @@ async function download() {
         <section class="nge-shotdlg-sec">
           <h3 class="nge-shotdlg-sechead">Options</h3>
           <div class="nge-shotdlg-checks">
+            <label class="nge-shotdlg-check" title="Captures this tab as you see it, open panels included. The browser asks once which tab to share; pick this one.">
+              <input type="checkbox" v-model="wholeScreen" />
+              <span>Whole screen, with panels (the browser will ask to share this tab)</span>
+            </label>
             <label class="nge-shotdlg-check">
               <input type="checkbox" v-model="transparent" />
               <span>Transparent background</span>
