@@ -250,7 +250,7 @@ It missed a branch. Let's see if we can find it.`,
   },
   //12a - split screen tip
   {
-    text: `You're now in split screen view — EM on the left, 3D on the right. If you ever end up in 4 panel view, look for the ◫ button to get back to split screen.`,
+    text: `You're now in split screen view: EM on the left, 3D on the right. If you ever end up in 4 panel view, look for the ◫ button to get back to split screen.`,
     position: OVER_2D,
   },
   //13 - gif

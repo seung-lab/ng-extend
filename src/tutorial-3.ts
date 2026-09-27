@@ -109,11 +109,11 @@ export const steps: Step[] = [
   //  INTRODUCTION
   // ═══════════════════════════════════════
 
-  // 1 — Welcome
+  // 1: Welcome
   {
     title: "Cut & Merge",
     text: `
-AI reconstructions of neurons are impressive — but they're not perfect. Sometimes the AI fuses two separate neurons into one. Other times, it misses a branch entirely, leaving a neuron incomplete.
+AI reconstructions of neurons are impressive, but they're not perfect. Sometimes the AI fuses two separate neurons into one. Other times, it misses a branch entirely, leaving a neuron incomplete.
 
 **Cut** and **Merge** are the two core tools you'll use to fix these errors and help map the brain accurately.
 `
@@ -125,10 +125,10 @@ AI reconstructions of neurons are impressive — but they're not perfect. Someti
     nextLabel: "Let's learn!",
   },
 
-  // 2 — Why it matters
+  // 2: Why it matters
   {
     text: `
-Every correction you make improves the connectome — the wiring diagram of the brain.
+Every correction you make improves the connectome, the wiring diagram of the brain.
 
 **Merge** reconnects branches that the AI missed. **Cut** separates neurons the AI incorrectly fused together.
 
@@ -142,21 +142,21 @@ These two operations are the bread and butter of proofreading. Let's start with 
   //  MERGE
   // ═══════════════════════════════════════
 
-  // 3 — What is merge?
+  // 3: What is merge?
   {
     title: "Merge",
     text: `
 A **merge** joins two separate segments that actually belong to the same neuron.
 
-This is needed when the AI fails to connect parts of a cell — for example, a dendrite that should be attached to the soma but was reconstructed as a separate piece.`,
+This is needed when the AI fails to connect parts of a cell. For example, a dendrite that should be attached to the soma but was reconstructed as a separate piece.`,
     position: MIDDLE,
     width: "480px",
-    // TODO: Amy — add merge illustration image
-    // TODO: Amy — state with a neuron that has an obviously disconnected branch nearby
+    // TODO: Amy: add merge illustration image
+    // TODO: Amy: state with a neuron that has an obviously disconnected branch nearby
     // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
   },
 
-  // 5 — Activating merge
+  // 5: Activating merge
   {
     title: "How to Merge",
     text: `
@@ -170,7 +170,7 @@ Once activated, you'll see the merge tool appear at the bottom of the viewer.`,
     onEnter: closeSidePanel,
   },
 
-  // 6 — Placing merge points
+  // 6: Placing merge points
   {
     text: `
 With the merge tool active:
@@ -195,11 +195,11 @@ Behind this box is a cell with a branch cut off it. It is yours to practice on f
     },
   },
 
-  // 7 — Merge tips
+  // 7: Merge tips
   {
     title: "Merge Tips",
     text: `
-- Click as **close to the junction** as possible — where the two pieces should connect.
+- Click as **close to the junction** as possible, where the two pieces should connect.
 - In the **2D view**, you can see the cross-section to find the exact spot where the segments touch.
 - If a merge fails, try clicking at a slightly different location.
 - Merged the wrong piece? There is no undo key. Fix it with a **cut** between the two pieces, which the Cut section teaches next.`,
@@ -207,7 +207,7 @@ Behind this box is a cell with a branch cut off it. It is yours to practice on f
     width: "400px",
   },
 
-  // 8 — Try it yourself
+  // 8: Try it yourself
   {
     title: "Your Turn!",
     text: `
@@ -234,29 +234,29 @@ Press **next** once the box below says the merge landed (or skip if you'd like t
   //  CUT
   // ═══════════════════════════════════════
 
-  // 9 — What is cut?
+  // 9: What is cut?
   {
     title: "Cut",
     text: `
-A **cut** separates a segment into two pieces. This is needed when the AI incorrectly fuses two different neurons into one — a common error, especially in densely packed regions.
+A **cut** separates a segment into two pieces. This is needed when the AI incorrectly fuses two different neurons into one, a common error, especially in densely packed regions.
 
 If you see a segment with a branch that clearly belongs to a *different* cell, that's a cut waiting to happen.
 
 Behind this box: an axon that the AI ran into a dendrite. The join is marked in red.`,
     position: OVER_3D,
     width: "480px",
-    // TODO: Amy — add cut illustration image
+    // TODO: Amy: add cut illustration image
     state: STATE_CUT_FUSED,
     onEnter: closeSidePanel,
   },
 
-  // 11 — Activating cut
+  // 11: Activating cut
   {
     title: "How to Cut",
     text: `
 To start a cut, press the **C** key on your keyboard.
 
-The cut tool uses a **red and blue point** system. You'll **Ctrl+Click** to place points on *each side* of where you want to cut — red on one side, blue on the other.
+The cut tool uses a **red and blue point** system. You'll **Ctrl+Click** to place points on *each side* of where you want to cut: red on one side, blue on the other.
 
 You can place **multiple points** per color for more precision. The system then finds the best place to separate the segment.`,
     position: MIDDLE,
@@ -264,13 +264,13 @@ You can place **multiple points** per color for more precision. The system then 
     onEnter: closeSidePanel,
   },
 
-  // 12 — Red and blue groups
+  // 12: Red and blue groups
   {
     title: "Red & Blue Points",
     text: `
 When the cut tool is active, you'll see a group indicator at the bottom showing which color you're placing.
 
-Red and blue simply mark the **two sides** of where the cut should happen — one color on each side of the boundary.
+Red and blue simply mark the **two sides** of where the cut should happen, one color on each side of the boundary.
 
 **Ctrl+Click** to place a point. Press **G** to switch between red and blue groups.
 
@@ -285,7 +285,7 @@ Here the points are already placed: red along the axon, blue on the dendrite it 
     },
   },
 
-  // 13 — Where to place points
+  // 13: Where to place points
   {
     title: "Placement Tips",
     text: `
@@ -293,19 +293,19 @@ For the best results:
 
 - Place points **near the junction** where you want the cut to happen.
 - Use the **2D view** to navigate to the exact cross-section where the two neurons meet.
-- You can place **multiple points** per color — more points near the boundary means a cleaner cut.
+- You can place **multiple points** per color. More points near the boundary means a cleaner cut.
 - The closer your points are to the actual error, the better the result.`,
     position: OVER_2D,
     width: "420px",
   },
 
-  // 14 — Submitting the cut
+  // 14: Submitting the cut
   {
     text: `
 After placing your red and blue points:
 
 - Press **Enter** to submit the cut.
-- You'll see a "splitting..." status — wait for it to process (this can take a moment).
+- You'll see a "splitting..." status. Wait for it to process (this can take a moment).
 - If successful, the segment will split into two separate pieces.
 - If the result isn't right, there is no undo key. Rejoin the pieces with a **merge**.
 
@@ -316,7 +316,7 @@ This is the same cell after the cut: the axon is its own segment now.`,
     onEnter: closeSidePanel,
   },
 
-  // 15 — Try it yourself
+  // 15: Try it yourself
   {
     title: "Your Turn!",
     text: `
@@ -345,7 +345,7 @@ Press **next** once the box below says the cut landed.`,
   //  WRAP-UP
   // ═══════════════════════════════════════
 
-  // 16 — Quick reference
+  // 16: Quick reference
   {
     title: "Quick Reference",
     text: `
@@ -361,7 +361,7 @@ Here's your cheat sheet:
 | **Fix a bad merge** | Cut it apart |
 | **Fix a bad cut** | Merge it back |
 
-You can also find video guides in the **☰ menu** at the top right.`,
+You can also find video guides in the **book menu** at the top right.`,
     position: MIDDLE,
     width: "400px",
     onEnter: () => {
@@ -371,13 +371,13 @@ You can also find video guides in the **☰ menu** at the top right.`,
     },
   },
 
-  // 17 — You're ready
+  // 17: You're ready
   {
     title: "You're Ready!",
     text: `
 You now know the two most important proofreading operations in connectomics. Every merge reconnects a lost branch. Every cut untangles confused neurons.
 
-The brain is vast and full of mysteries — and every correction you make brings us closer to understanding it.
+The brain is vast and full of mysteries, and every correction you make brings us closer to understanding it.
 
 Happy proofreading!`,
     position: MIDDLE,
