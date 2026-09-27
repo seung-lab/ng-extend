@@ -174,6 +174,9 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     // (nglstate 6641601003126784), so they resolve in the pni_mec graph.
     defaultSegments:  ['720575947322423718', '720575947401560895', '720575947322485926'],
     defaultPosition:  [158487, 128036, 5061],
+    // Amy's curated MEC view (2026-09-26): two proofread cells, blue and
+    // yellow. The colours, cells and camera live in the saved state itself.
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5742946691317760',
   },
   minnie65_public: {
     caveServer:       'https://minnie.microns-daf.com',
