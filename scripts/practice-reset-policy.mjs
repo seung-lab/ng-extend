@@ -40,7 +40,7 @@ export function operationsAfter(data, rootId, baseline) {
     rows = Object.keys(ids).map(i => ({operation_id: ids[i], timestamp: rows.timestamp?.[i]}));
   }
   const ops = rows.map(row => ({operationId:Number(row.operation_id),at:parsePcgStamp(row.timestamp)}));
-  if (ops.some(row => !Number.isSafeInteger(row.operationId) || row.operationId < 0 || !Number.isFinite(row.at))) throw Error('Unrecognized CAVE operation history');
+  if (ops.some(row => !Number.isSafeInteger(row.operationId) || row.operationId < 0 || !Number.isFinite(row.at) || row.at > Date.now()+60000)) throw Error('Unrecognized CAVE operation history');
   return ops.filter(row => row.at > Date.parse(baseline))
     .sort((a,b) => b.at - a.at);
 }

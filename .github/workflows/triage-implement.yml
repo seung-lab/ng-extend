@@ -4,8 +4,12 @@ on:
     inputs:
       row_id:
         description: Approved feedback triage UUID
-        required: true
+        required: false
         type: string
+      self_test:
+        description: Test the model and artifact validation without publishing or messaging
+        type: boolean
+        default: false
       mode:
         description: Build a preview or answer the tester
         type: choice
@@ -34,6 +38,7 @@ jobs:
       - id: code
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Prepare the approved request
+        if: '!inputs.self_test'
         id: plan
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -42,6 +47,11 @@ jobs:
         run: |
           node scripts/triage-loop.mjs prepare
           node scripts/triage-secure.mjs plan
+      - name: Prepare an isolated self-test
+        if: inputs.self_test
+        run: |
+          mkdir -p .triage
+          printf '%s\n' 'Create docs/triage-self-test.md containing exactly: EyeWire triage self-test passed.' 'Write .triage/triage-summary.md containing: Self-test completed.' 'Do not change any other file. This is a synthetic integration test.' > .triage/triage-prompt.md
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: triage-input
@@ -57,7 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ needs.prepare.outputs.source_sha }}
+          ref: ${{ needs.prepare.outputs.source_sha || needs.prepare.outputs.code_sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -84,6 +94,7 @@ jobs:
           retention-days: 1
   publish:
     needs: [prepare, model]
+    if: '!inputs.self_test'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -121,9 +132,23 @@ jobs:
           APPROVER_SLACK_IDS: ${{ vars.APPROVER_SLACK_IDS || 'U02FH1DRC,U033NHWDE' }}
         run: |
           case "$NEXT" in ready|blocked|answered) node scripts/triage-loop.mjs "$NEXT";; *) exit 1;; esac
+  self-test:
+    needs: [prepare, model]
+    if: inputs.self_test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.prepare.outputs.code_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: triage-result
+          path: model-output
+      - run: node scripts/triage-self-test.mjs
   failure:
     needs: [prepare, model, publish]
-    if: failure()
+    if: failure() && !inputs.self_test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
