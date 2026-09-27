@@ -858,7 +858,9 @@ async function resetPracticeNow(ex: PracticeExample) {
   try {
     await patchPractice(ex.id, { status: 'resetting', claimed_by: null, claimed_at: null, expires_at: null });
     const r = await undoSinceBaseline(ex);
-    await patchPractice(ex.id, { status: 'ready', root_a: r.a, root_b: r.b, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() });
+    // A cut example keeps its post-cut roots: the tutorial previews them.
+    const roots = ex.kind === 'cut' ? {} : { root_a: r.a, root_b: r.b };
+    await patchPractice(ex.id, { status: 'ready', ...roots, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() });
     practiceNotice.value = `${ex.title}: undid ${r.undone} operation(s), ready.`;
   } catch (e: any) {
     const msg = e?.message ?? String(e);

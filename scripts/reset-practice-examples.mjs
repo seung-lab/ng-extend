@@ -168,8 +168,10 @@ async function main() {
     await patchRow(ex.id, { status: 'resetting', claimed_by: null, claimed_at: null, expires_at: null, updated_at: new Date().toISOString() });
     try {
       const { a, b } = await resetExample(ex);
+      // A cut example keeps its post-cut roots: the tutorial previews them.
+      const roots = ex.kind === 'cut' ? {} : { root_a: a, root_b: b };
       await patchRow(ex.id, {
-        status: 'ready', root_a: a, root_b: b, reset_failures: 0, last_error: null,
+        status: 'ready', ...roots, reset_failures: 0, last_error: null,
         last_reset_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       });
       console.log(`[reset] ${ex.title || ex.id}: ready (roots ${a}, ${b})`);

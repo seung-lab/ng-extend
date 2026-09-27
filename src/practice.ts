@@ -294,12 +294,21 @@ function userId(): string | null {
  * other kind is handed back first.
  * Returns null when nobody is logged in or every example is busy.
  */
-export async function beginPractice(kind: PracticeKind = 'merge_then_cut'): Promise<PracticeExample | null> {
+/**
+ * For a cut example, `root_a` and `root_b` are the two pieces as they were
+ * after Amy's cut (the row is registered from them and resets leave them
+ * alone), while the cell at rest is the fused root. 'preview' shows those
+ * two pieces in yellow and purple, the result the learner is about to
+ * reproduce; 'start' shows the fused root for them to cut.
+ */
+export type PracticeView = 'start' | 'preview';
+
+export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start'): Promise<PracticeExample | null> {
   const uid = userId();
   if (!uid) { session.phase = 'unavailable'; return null; }
   if (session.example && session.example.claimed_by === uid) {
     if (session.example.kind === kind) {
-      await showExample(session.example);
+      await showExample(session.example, view);
       return session.example;
     }
     await endPractice();
@@ -311,7 +320,7 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut'): Prom
   if (!row) row = await takeNeedsReset(uid, kind) ?? undefined;
   if (!row) { session.phase = 'busy'; return null; }
   session.example = row;
-  await showExample(row);
+  await showExample(row, view);
   session.phase = kind === 'cut' ? 'cut' : 'merge';
   return row;
 }
@@ -352,9 +361,10 @@ async function takeNeedsReset(uid: string, kind: PracticeKind): Promise<Practice
   if (error) return null;
   try {
     const r = await undoSinceBaseline(row);
+    const roots = row.kind === 'cut' ? {} : { root_a: r.a, root_b: r.b };
     await supabase.from('tutorial_practice_examples')
-      .update({ root_a: r.a, root_b: r.b, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() }).eq('id', row.id);
-    row.root_a = r.a; row.root_b = r.b;
+      .update({ ...roots, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() }).eq('id', row.id);
+    if (row.kind !== 'cut') { row.root_a = r.a; row.root_b = r.b; }
     row.status = 'in_use'; row.claimed_by = uid;
     return row;
   } catch (e: any) {
@@ -365,7 +375,7 @@ async function takeNeedsReset(uid: string, kind: PracticeKind): Promise<Practice
   }
 }
 
-async function showExample(ex: PracticeExample) {
+async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
   if (session.shownId !== ex.id) {
     await useLayersStore().loadState(ex.state_url);
     // restoreState applies asynchronously; give the layer a moment to exist.
@@ -377,6 +387,12 @@ async function showExample(ex: PracticeExample) {
   const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
   session.rootA = a ?? ex.root_a;
   session.rootB = b ?? ex.root_b;
+  if (view === 'preview' && ex.kind === 'cut') {
+    // The finished cut: piece yellow, cell purple. Old roots still render.
+    showOnly(ex.dataset, [ex.root_b, ex.root_a]);
+    colorSegments(ex.dataset, [[ex.root_b, PURPLE], [ex.root_a, YELLOW]]);
+    return;
+  }
   showOnly(ex.dataset, session.rootA === session.rootB ? [session.rootA] : [session.rootA, session.rootB]);
   // Merge example: cell purple, loose piece yellow. Cut example: the fused
   // segment purple, so the piece cut off it stands out in its own colour.
@@ -425,7 +441,10 @@ export function endPractice(): Promise<void> {
     }
     const { error } = await supabase.rpc('release_practice_example', {
       p_id: ex.id, p_user: uid, p_clean: clean,
-      p_root_a: rootA || null, p_root_b: rootB || null, p_error: err,
+      // A cut example keeps its post-cut roots: they are the preview.
+      p_root_a: ex.kind === 'cut' ? null : (rootA || null),
+      p_root_b: ex.kind === 'cut' ? null : (rootB || null),
+      p_error: err,
     });
     if (error) console.warn('[practice] release failed:', error.message);
     session.example = null;

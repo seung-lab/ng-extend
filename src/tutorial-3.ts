@@ -54,6 +54,18 @@ function practiceStatus(text: string, done = false) {
   el.textContent = text;
   el.style.background = done ? 'rgba(96,192,96,0.14)' : 'rgba(53,181,255,0.10)';
   el.style.borderLeftColor = done ? '#60c060' : 'rgba(53,181,255,0.75)';
+  // Stuck? One click opens the community chat, where people answer.
+  let help = chip.querySelector('.nge-practice-help') as HTMLElement | null;
+  if (!help) {
+    help = document.createElement('button');
+    help.className = 'nge-practice-help';
+    help.textContent = 'Ask for help in chat';
+    help.style.cssText = 'margin:8px 0 0;padding:5px 10px;border-radius:4px;font:inherit;font-size:0.85em;cursor:pointer;'
+      + 'background:rgba(74,158,255,0.12);border:1px solid rgba(74,158,255,0.4);color:#cde;';
+    help.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:open-chat')));
+    chip.appendChild(help);
+  }
+  help.style.display = done ? 'none' : '';
 }
 
 /** Wait for the chip to render, then keep a status line current while
@@ -210,14 +222,14 @@ With the merge tool active:
 
 1. **Ctrl+Click** the yellow branch.
 2. **Ctrl+Click** the purple cell, close to where the branch should join it.
-3. Press **Enter**.
+3. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
 The server connects the two. You'll see "trying..." and then "done", and the branch turns purple.`,
     position: OVER_3D,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Enter.', 'Merged! The branch is part of the cell now.');
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merged! The branch is part of the cell now.');
       await beginPractice('merge_then_cut');
       // The previous step said "press M"; if they pressed next instead,
       // the tool comes on anyway.
@@ -229,7 +241,6 @@ The server connects the two. You'll see "trying..." and then "done", and the bra
   {
     title: "Merge Tips",
     text: `
-- Click as **close to the junction** as possible, where the two pieces should connect.
 - In the **2D view**, you can see the cross-section to find the exact spot where the segments touch.
 - If a merge fails, try clicking at a slightly different location.
 - Merged the wrong piece? There is no undo key. Fix it with a <strong style="color:#e06060">cut</strong> between the two pieces, which the Cut section teaches next.`,
@@ -246,14 +257,14 @@ Time to practice! This is a real cell in the sandbox, and it is yours alone unti
 1. Press **M** to activate the merge tool.
 2. **Ctrl+Click** the yellow branch.
 3. **Ctrl+Click** the purple cell next to it.
-4. Press **Enter** and watch them join!
+4. Press **Submit merge** (or Enter) and watch them join!
 
 Press **next** once the box below says the merge landed (or skip if you'd like to move on).`,
     position: OVER_3D,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Enter.', 'Merged! The branch is part of the cell now. Press next.');
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merged! The branch is part of the cell now. Press next.');
       await beginPractice('merge_then_cut');
       setTimeout(() => ensureTool('merge'), 400);
     },
@@ -271,26 +282,37 @@ A <strong style="color:#e06060">cut</strong> separates a segment into two pieces
 
 If you see a segment with a branch that clearly belongs to a *different* cell, that's a cut waiting to happen.
 
-Behind this box: an axon that the AI ran into a dendrite. The join is marked in red.`,
+Behind this box is a finished cut: the yellow axon had been fused to the purple dendrite, and someone cut it off. In a moment you'll get the fused version and make this cut yourself.`,
     position: OVER_3D,
     width: "480px",
-    // TODO: Amy: add cut illustration image
-    state: STATE_CUT_FUSED,
-    onEnter: closeSidePanel,
+    onEnter: async () => {
+      closeSidePanel();
+      stopWatching();
+      // Claim the cut cell now and show the result first (Amy). Without a
+      // cell, her saved view of the same axon before the cut.
+      const ex = await beginPractice('cut', 'preview');
+      if (!ex) await useLayersStore().loadState(STATE_CUT_FUSED);
+    },
   },
 
   // 11: Activating cut
   {
     title: "How to Cut",
     text: `
+Now the same cell as the AI left it: the axon and the dendrite are one purple segment. Your job is to separate them.
+
 To start a cut, press the **C** key on your keyboard.
 
 The cut tool uses a **red and blue point** system. You'll **Ctrl+Click** to place points on *each side* of where you want to cut: red on one side, blue on the other.
 
 You can place **multiple points** per color for more precision. The system then finds the best place to separate the segment.`,
-    position: MIDDLE,
+    position: OVER_3D,
     width: "460px",
-    onEnter: closeSidePanel,
+    onEnter: async () => {
+      closeSidePanel();
+      watchPractice(false, 'Press C, then red points on the axon, G, blue points on the dendrite, Submit cut.', 'Cut! The two pieces are separate now.');
+      await beginPractice('cut', 'start');
+    },
   },
 
   // 12: Red and blue groups
@@ -333,7 +355,7 @@ For the best results:
     text: `
 After placing your red and blue points:
 
-- Press **Enter** to submit the cut.
+- Press **Submit cut** on the bar at the bottom, or **Enter**.
 - You'll see a "splitting..." status. Wait for it to process (this can take a moment).
 - If successful, the segment will split into two separate pieces.
 - If the result isn't right, there is no undo key. Rejoin the pieces with a <strong style="color:#60c060">merge</strong>.
@@ -355,7 +377,7 @@ Practice time! This cell is yours alone until you finish. A thin axon runs into 
 2. **Ctrl+Click** 3 or 4 **red points** on the axon, the piece that doesn't belong, working back from the join.
 3. Press **G** to switch to blue, then **Ctrl+Click** 3 or 4 **blue points** on the cell, just past the join.
 4. Keep every point on this one segment. Points on a neighbour make the server refuse the cut.
-5. Press **Enter** to submit.
+5. Press **Submit cut** on the bar at the bottom, or **Enter**.
 
 Press **next** once the box below says the cut landed.`,
     position: OVER_3D,

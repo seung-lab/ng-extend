@@ -181,6 +181,11 @@ onMounted(() => {
     showCellLibrary.value = true;
   }) as EventListener);
 
+  // "Ask for help" in the tutorial practice steps opens the community chat.
+  document.addEventListener('nge:open-chat', (() => {
+    showChat.value = true;
+  }) as EventListener);
+
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
     // Optional deep-link tab ('triage' opens Admin Hub > Triage, etc.)
