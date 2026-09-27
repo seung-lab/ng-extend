@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 
 import nurroLaser from '../../static/nurro/nurro-laser-teach.png';
 import nurroInspector from '../../static/nurro/nurro-inspector.png';
@@ -55,15 +55,23 @@ const only3d = ref(false);
 /** Nurro in a corner of the picture, because why not (Amy). Cycles through
  *  the transparent Nurros in static/nurro; null means none. */
 const NURROS = [nurroLaser, nurroInspector, nurroConfetti, nurroPopcorn, nurroOriginal, nurroSuper];
-const nurroIndex = ref(-1);
+const nurroOn = ref(false);
+const nurroIndex = ref(0);
 const nurroImg = ref<HTMLImageElement | null>(null);
-function addNurro() {
-  nurroIndex.value = (nurroIndex.value + 1) % (NURROS.length + 1);
-  if (nurroIndex.value === NURROS.length) { nurroIndex.value = -1; nurroImg.value = null; renderPreview(); return; }
+const nurroSrc = computed(() => NURROS[nurroIndex.value]);
+function loadNurro() {
+  if (!nurroOn.value) { nurroImg.value = null; renderPreview(); return; }
   const img = new Image();
-  img.onload = () => { nurroImg.value = img; renderPreview(); };
-  img.src = NURROS[nurroIndex.value];
+  const src = NURROS[nurroIndex.value];
+  img.onload = () => { if (nurroOn.value && src === NURROS[nurroIndex.value]) { nurroImg.value = img; renderPreview(); } };
+  img.src = src;
 }
+function nextNurro() {
+  nurroIndex.value = (nurroIndex.value + 1) % NURROS.length;
+  if (!nurroOn.value) nurroOn.value = true;
+  loadNurro();
+}
+watch(nurroOn, loadNurro);
 /** Bottom right corner, a quarter of the image height, with a margin. */
 function drawNurro(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }) {
   const img = nurroImg.value;
@@ -563,7 +571,7 @@ watch(() => props.show, async (open) => {
     hideBoundingBox.value = false;
     transparent.value = false;
     only3d.value = false;
-    nurroIndex.value = -1;
+    nurroOn.value = false;
     nurroImg.value = null;
     strokes.value = [];
     layoutFrame();
@@ -618,6 +626,7 @@ async function download() {
     busy.value = true;
     try {
       const c = await captureWholeScreen();
+      drawNurro(c.getContext('2d')!, { x: 0, y: 0, w: c.width, h: c.height });
       const blob: Blob = await new Promise((resolve, reject) => {
         c.toBlob(b => b ? resolve(b) : reject(new Error('toBlob returned null')), 'image/png');
       });
@@ -872,9 +881,14 @@ async function download() {
               <span>3D view only</span>
             </label>
           </div>
-          <button class="nge-shotdlg-nurro" @click="addNurro" :disabled="wholeScreen" title="Put a Nurro in the corner. Click again for another, and again to take it off.">
-            {{ nurroImg ? 'Another Nurro' : 'Add a Nurro' }}
-          </button>
+          <div class="nge-shotdlg-nurro-row">
+            <label class="nge-shotdlg-check" title="Put a Nurro in the bottom right corner of the picture">
+              <input type="checkbox" v-model="nurroOn" />
+              <span>Add a Nurro</span>
+            </label>
+            <img :src="nurroSrc" alt="" class="nge-shotdlg-nurro-thumb" :class="{ 'is-on': nurroOn }" @click="nextNurro" title="Click for another Nurro" />
+            <button class="nge-shotdlg-nurro-next" @click="nextNurro" title="Another Nurro">another</button>
+          </div>
         </section>
 
         <div v-if="errorMsg" class="nge-shotdlg-err">{{ errorMsg }}</div>
@@ -893,19 +907,19 @@ async function download() {
 </template>
 
 <style scoped>
-.nge-shotdlg-nurro {
-  margin-top: 8px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(245, 166, 35, 0.45);
-  background: rgba(245, 166, 35, 0.12);
-  color: #ffd27a;
-  font: inherit;
-  font-size: 0.85em;
-  cursor: pointer;
+.nge-shotdlg-nurro-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.nge-shotdlg-nurro-thumb {
+  width: 40px; height: 40px; object-fit: contain; cursor: pointer;
+  opacity: 0.45; transition: opacity 0.15s, transform 0.15s;
 }
-.nge-shotdlg-nurro:hover:not(:disabled) { background: rgba(245, 166, 35, 0.24); }
-.nge-shotdlg-nurro:disabled { opacity: 0.4; cursor: default; }
+.nge-shotdlg-nurro-thumb.is-on { opacity: 1; }
+.nge-shotdlg-nurro-thumb:hover { transform: scale(1.12); opacity: 1; }
+.nge-shotdlg-nurro-next {
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid rgba(245, 166, 35, 0.45); background: rgba(245, 166, 35, 0.12);
+  color: #ffd27a; font: inherit; font-size: 0.8em; cursor: pointer;
+}
+.nge-shotdlg-nurro-next:hover { background: rgba(245, 166, 35, 0.24); }
 .nge-shotdlg-check.is-off { opacity: 0.45; }
 
 /* Styled after Amy's scifi-ui library (holopanel surface, holoframe corner
