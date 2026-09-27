@@ -47,7 +47,7 @@ function weekRangeLabel() {
   const sun = new Date(mon);
   sun.setDate(mon.getDate() + 6);
   const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${fmt(mon)} – ${fmt(sun)}, ${sun.getFullYear()}`;
+  return `${fmt(mon)} to ${fmt(sun)}, ${sun.getFullYear()}`;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -72,9 +72,10 @@ async function main() {
     const uid = log.user_id;
     if (!uid) continue;
     if (!userStats[uid]) userStats[uid] = { merges: 0, splits: 0, total: 0 };
-    userStats[uid].total++;
-    if (log.operation === 'merge') userStats[uid].merges++;
-    if (log.operation === 'split') userStats[uid].splits++;
+    // "Edits" are merges and cuts. The log also holds other actions, which
+    // made the total disagree with its own breakdown (9 edits = 3 + 5).
+    if (log.operation === 'merge') { userStats[uid].merges++; userStats[uid].total++; }
+    if (log.operation === 'split') { userStats[uid].splits++; userStats[uid].total++; }
   }
 
   const userIds = Object.keys(userStats);
@@ -96,6 +97,7 @@ async function main() {
   const notifications = [];
 
   for (const [userId, s] of Object.entries(userStats)) {
+    if (!s.total) continue;
     const user = userMap[userId];
     const name = user?.display_name || 'Scientist';
     const streak = user?.current_streak || 0;
@@ -109,11 +111,15 @@ async function main() {
     let body = `You made **${s.total} edit${s.total > 1 ? 's' : ''}** this week${breakdown}!`;
     if (streak > 0) body += ` Current streak: **${streak} day${streak > 1 ? 's' : ''}** 🔥`;
     if (communityTotal > s.total) body += `\nYou contributed ${pct}% of community edits this week.`;
-    body += `\nKeep mapping the brain — every edit counts! 🧬`;
+    body += `\nKeep mapping the brain. Every edit counts! 🧬\nOpen this to see your whole week.`;
 
     notifications.push({
-      title: `✨ Your Week in Science — ${weekLabel}`,
+      title: `✨ Your Week in Science: ${weekLabel}`,
       body,
+      // Science Nurro at the microscope; the feed styles ✨ cards and opens
+      // the profile's Week in Science tab when one is clicked.
+      thumbnail_url: 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/nurro/guide-avatar.png',
+      image_url: 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/nurro-experiment-recap.png',
       target_type: 'user',
       target_id: userId,
       send_at: new Date().toISOString(),
