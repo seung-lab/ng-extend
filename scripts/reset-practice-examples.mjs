@@ -24,6 +24,10 @@
  *   node scripts/reset-practice-examples.mjs [--dry-run] [--id <uuid>]
  */
 
+import fs from 'node:fs';
+import { validateResetExample } from './practice-reset-policy.mjs';
+const manifest = JSON.parse(fs.readFileSync(new URL('../config/practice-reset-manifest.json', import.meta.url), 'utf8'));
+
 const flags = new Set(process.argv.slice(2));
 const dryRun = flags.has('--dry-run');
 const idArgIdx = process.argv.indexOf('--id');
@@ -66,10 +70,10 @@ async function patchRow(id, body) {
 // ── PCG ────────────────────────────────────────────────────────────────────
 
 const caveHeaders = { Authorization: `Bearer ${CAVE_TOKEN}`, 'Content-Type': 'application/json' };
-const base = (ex) => `${ex.pcg_server}/segmentation/api/v1/table/${ex.pcg_table}`;
+const base = (ex) => validateResetExample(ex, manifest);
 
 async function rootOf(ex, sv) {
-  const res = await fetch(`${base(ex)}/node/${sv}/root?int64_as_str=1`, { headers: caveHeaders });
+  const res = await fetch(`${base(ex)}/node/${sv}/root?int64_as_str=1`, { headers: caveHeaders, redirect: 'error', signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`root of ${sv}: ${res.status} ${(await res.text()).slice(0, 200)}`);
   const data = await res.json();
   return String(data.root_id);
@@ -81,7 +85,7 @@ const pcgLayer = (id) => Math.floor(Number(id) / 2 ** 56);
 async function anySupervoxelOf(ex, rootId) {
   let id = rootId;
   for (let i = 0; i < 12 && pcgLayer(id) > 1; i++) {
-    const res = await fetch(`${base(ex)}/node/${id}/children?int64_as_str=1`, { headers: caveHeaders });
+    const res = await fetch(`${base(ex)}/node/${id}/children?int64_as_str=1`, { headers: caveHeaders, redirect: 'error', signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error(`children of ${id}: ${res.status}`);
     const data = await res.json();
     const kids = (data.children_ids ?? data.children ?? []).map(String);
@@ -101,7 +105,7 @@ async function ensureSupervoxels(ex) {
 
 /** Operations in a root's lineage after `since`, newest first. */
 async function opsSince(ex, rootId, since) {
-  const res = await fetch(`${base(ex)}/root/${rootId}/tabular_change_log`, { headers: caveHeaders });
+  const res = await fetch(`${base(ex)}/root/${rootId}/tabular_change_log`, { headers: caveHeaders, redirect: 'error', signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`tabular_change_log ${rootId}: ${res.status}`);
   const data = await res.json();
   const ids = data.operation_id ?? [];
@@ -118,7 +122,7 @@ async function opsSince(ex, rootId, since) {
 async function undo(ex, operationId) {
   if (dryRun) { console.log(`[reset] dry-run undo ${operationId} on ${ex.pcg_table}`); return; }
   const res = await fetch(`${base(ex)}/undo?int64_as_str=1`, {
-    method: 'POST', headers: caveHeaders, body: JSON.stringify({ operation_id: operationId }),
+    method: 'POST', headers: caveHeaders, redirect: 'error', signal: AbortSignal.timeout(15000), body: JSON.stringify({ operation_id: operationId }),
   });
   if (!res.ok) throw new Error(`undo ${operationId}: ${res.status} ${(await res.text()).slice(0, 200)}`);
 }
@@ -165,6 +169,8 @@ async function main() {
 
   let failed = 0;
   for (const ex of due) {
+    // Validate before even touching reset status or making authenticated GETs.
+    validateResetExample(ex, manifest);
     await patchRow(ex.id, { status: 'resetting', claimed_by: null, claimed_at: null, expires_at: null, updated_at: new Date().toISOString() });
     try {
       const { a, b } = await resetExample(ex);

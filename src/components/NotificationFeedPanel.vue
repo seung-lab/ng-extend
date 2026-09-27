@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue';
-import { marked } from 'marked';
+import { renderSafeMarkdown } from '../util/safe_markdown';
 import { useProofreadingBackendStore } from '../store';
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
@@ -153,19 +153,8 @@ function openHelpTab() {
   emit('open-help');
 }
 
-/** Render a notification body (markdown) to safe HTML.
- *  HTML is escaped FIRST — bodies can carry user text (e.g. help-response
- *  responder names / note previews, see store.createNotification), and there's
- *  no sanitizer dep — so raw tags become inert text. marked then turns
- *  **bold** / _italic_ / links / lists into markup (gfm autolinks bare URLs,
- *  breaks turns newlines into <br>). Links get target/rel + the panel link
- *  class via a post-pass so they still open in a new tab. */
-function renderMarkdown(text: string): string {
-  const escaped = (text || '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const html = marked.parse(escaped, { gfm: true, breaks: true, async: false }) as string;
-  return html.replace(/<a /g, '<a target="_blank" rel="noopener" class="nge-notif-link" ');
-}
+/** Sanitize stored Markdown, including generated URLs; remote images are omitted. */
+const renderMarkdown = (text: string) => renderSafeMarkdown(text, true);
 
 /** Markdown stripped to plain text, for the compact card preview line. */
 function plainText(text: string): string {
