@@ -3,8 +3,8 @@
     "kind": "cut",
     "pcg_server": "https://minnie.microns-daf.com",
     "pcg_table": "pinky_nf_v2",
-    "supervoxel_a": "",
-    "supervoxel_b": "",
+    "supervoxel_a": "73676831806855086",
+    "supervoxel_b": "76492406274891317",
     "baseline_at": "2026-09-27T01:22:48.880227+00:00",
     "root_a": "648518346357382723",
     "root_b": "648518346351477262"

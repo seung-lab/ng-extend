@@ -16,6 +16,12 @@ export function resetDue(ex, now, force = false) {
   return force || ex.status === 'needs_reset' || ex.status === 'in_use' || ex.status === 'resetting';
 }
 
+export function overlapsActive(ex, rows, now) {
+  const pieces=new Set([ex.supervoxel_a,ex.supervoxel_b].filter(Boolean));
+  return rows.some(other => other.id!==ex.id && !resetDue(other,now,true) &&
+    [other.supervoxel_a,other.supervoxel_b].some(sv=>pieces.has(sv)));
+}
+
 export function parsePcgStamp(value) {
   if (typeof value === 'number') return value < 1e11 ? value * 1000 : value;
   if (typeof value !== 'string') return NaN;
@@ -29,6 +35,7 @@ export function operationsAfter(data, rootId, baseline) {
   let rows = data[String(rootId)] ?? data;
   if (typeof rows === 'string') rows = JSON.parse(rows);
   if (!Array.isArray(rows)) {
+    if (!Object.hasOwn(rows,'operation_id') || !Object.hasOwn(rows,'timestamp')) throw Error('Unrecognized CAVE operation history shape');
     const ids = rows.operation_id ?? {};
     rows = Object.keys(ids).map(i => ({operation_id: ids[i], timestamp: rows.timestamp?.[i]}));
   }
