@@ -156,17 +156,6 @@ This is needed when the AI fails to connect parts of a cell — for example, a d
     // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
   },
 
-  // 4 — Merge video
-  {
-    title: "Merge in Action",
-    html: `<iframe style="margin-bottom: -4px;" width='500' height='281'
-        src="https://www.youtube.com/embed/48GS9Sizrvw?si=1"
-        frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
-    position: MIDDLE,
-    modal: true,
-    width: "540px",
-  },
-
   // 5 — Activating merge
   {
     title: "How to Merge",
@@ -255,17 +244,6 @@ Behind this box: an axon that the AI ran into a dendrite. The join is marked in 
     // TODO: Amy — add cut illustration image
     state: STATE_CUT_FUSED,
     onEnter: closeSidePanel,
-  },
-
-  // 10 — Cut video
-  {
-    title: "Cut in Action",
-    html: `<iframe style="margin-bottom: -4px;" width='500' height='281'
-        src="https://www.youtube.com/embed/DB6wmQWGsck?si=1"
-        frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
-    position: MIDDLE,
-    modal: true,
-    width: "540px",
   },
 
   // 11 — Activating cut

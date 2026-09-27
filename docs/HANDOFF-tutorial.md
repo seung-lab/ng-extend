@@ -71,8 +71,9 @@ one learner at a time, and put it back afterwards.
   historical, the learner only merges). The UI calls them cut example and
   merge example. Amy's first cut example
   (2026-09-26) is a fused axon in the sandbox; its three states (marked,
-  points placed, split) are the illustration states in tutorial-3.ts steps
-  9, 12 and 14. Register the same cell as a `cut` practice example from the
+  points placed, split) are the illustration states in tutorial-3.ts (What is
+  cut, Red & Blue Points, Submitting the cut). The two YouTube video steps
+  were removed 2026-09-26: Amy wants the tutorial fully interactive. Register the same cell as a `cut` practice example from the
   first state. More examples: register them in the tab, nothing is hard
   coded.
 - Cut candidates from Amy, 2026-09-26 (state links on global.brain-wire-test.org,
