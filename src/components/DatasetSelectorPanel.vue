@@ -7,6 +7,7 @@
 import { ref, onMounted } from 'vue';
 import { DATASETS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry } from '../datasets';
 import { runPanelTrace } from '../util/holo_trace';
+import { startDatasetTransition } from '../util/dataset_transition';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -44,6 +45,11 @@ const switching = ref(false);
 
 async function switchTo(ds: DatasetEntry) {
   if (ds.id === currentDatasetId.value) return;
+  // Close the switcher and play "Now entering" (it survives the reload a
+  // curated dataset triggers). Let it paint before the switch blocks.
+  startDatasetTransition(ds);
+  emit('hide');
+  await new Promise(r => setTimeout(r, 60));
   switching.value = true;
   const ok = await switchToDataset(ds);
   if (ok) currentDatasetId.value = ds.id;
