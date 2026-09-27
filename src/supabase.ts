@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { communityFetch } from './community_fetch';
 
 // These are client-safe: the publishable key is public by design, and RLS
 // plus ewSecureWrite (src/secure_write.ts) protect the data.
@@ -7,7 +8,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 export const SUPABASE_URL = 'https://javthknksdcrlhiaaptj.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_a5r5rfbOuWNoVw0Qb_LtRg_xA4H6Jxb';
 
-export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: communityFetch } });
 
 /** Quick connectivity check — logs result to console on startup. */
 supabase.from('users').select('id', { count: 'exact', head: true }).then(

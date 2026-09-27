@@ -19,6 +19,7 @@
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from './widgets/widget_utils';
 import { supabase } from './supabase';
+import { practiceBase, practiceToken } from './util/practice_destination';
 import { useLayersStore, useProofreadingBackendStore } from './store';
 
 export type PracticeKind = 'merge_then_cut' | 'cut';
@@ -57,19 +58,7 @@ function getViewer(): any {
 // not necessarily the example's dataset.)
 
 function caveToken(server: string): string | null {
-  let fallback: string | null = null;
-  for (const key of Object.keys(window.localStorage)) {
-    if (!key.startsWith('auth_token_v2_')) continue;
-    try {
-      const data = JSON.parse(window.localStorage.getItem(key) || '{}');
-      if (!data.accessToken) continue;
-      try {
-        if (new URL(data.url).hostname === new URL(server).hostname) return data.accessToken;
-      } catch { /* keep looking */ }
-      fallback = fallback ?? data.accessToken;
-    } catch { /* not ours */ }
-  }
-  return fallback;
+  return practiceToken(window.localStorage, server);
 }
 
 function pcgHeaders(server: string): HeadersInit {
@@ -78,13 +67,13 @@ function pcgHeaders(server: string): HeadersInit {
 }
 
 function pcgBase(ex: Pick<PracticeExample, 'pcg_server' | 'pcg_table'>) {
-  return `${ex.pcg_server}/segmentation/api/v1/table/${ex.pcg_table}`;
+  return practiceBase(ex.pcg_server, ex.pcg_table);
 }
 
 export async function rootOfSupervoxel(ex: Pick<PracticeExample, 'pcg_server' | 'pcg_table'>, sv: string): Promise<string | null> {
   // Three tries: a fresh login can race the token, and the server rate limits.
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(`${pcgBase(ex)}/node/${sv}/root?int64_as_str=1`, { headers: pcgHeaders(ex.pcg_server) });
+    const res = await fetch(`${pcgBase(ex)}/node/${sv}/root?int64_as_str=1`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
     if (res.ok) {
       const data = await res.json();
       return data.root_id != null ? String(data.root_id) : null;
@@ -107,7 +96,7 @@ function pcgLayer(id: string): number {
 export async function anySupervoxelOf(ex: Pick<PracticeExample, 'pcg_server' | 'pcg_table'>, rootId: string): Promise<string> {
   let id = rootId;
   for (let i = 0; i < 12 && pcgLayer(id) > 1; i++) {
-    const res = await fetch(`${pcgBase(ex)}/node/${id}/children?int64_as_str=1`, { headers: pcgHeaders(ex.pcg_server) });
+    const res = await fetch(`${pcgBase(ex)}/node/${id}/children?int64_as_str=1`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error(`children of ${id}: ${res.status}`);
     const data = await res.json();
     const kids: string[] = (data.children_ids ?? data.children ?? []).map(String);
@@ -135,7 +124,7 @@ interface LogOp { operationId: number; at: number }
 
 /** Operations in a root's lineage made after `sinceIso`, newest first. */
 async function opsSince(ex: PracticeExample, rootId: string, sinceIso: string): Promise<LogOp[]> {
-  const res = await fetch(`${pcgBase(ex)}/root/${rootId}/tabular_change_log`, { headers: pcgHeaders(ex.pcg_server) });
+  const res = await fetch(`${pcgBase(ex)}/root/${rootId}/tabular_change_log`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`tabular_change_log ${res.status}`);
   const data = await res.json();
   const ids: any[] = data.operation_id ?? [];
@@ -151,7 +140,7 @@ async function opsSince(ex: PracticeExample, rootId: string, sinceIso: string): 
 
 async function undoOp(ex: PracticeExample, operationId: number): Promise<void> {
   const res = await fetch(`${pcgBase(ex)}/undo?int64_as_str=1`, {
-    method: 'POST', headers: pcgHeaders(ex.pcg_server),
+    method: 'POST', headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000),
     body: JSON.stringify({ operation_id: operationId }),
   });
   if (!res.ok) throw new Error(`undo ${operationId}: ${res.status} ${(await res.text()).slice(0, 200)}`);

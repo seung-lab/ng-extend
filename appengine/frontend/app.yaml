@@ -10,10 +10,20 @@ handlers:
     upload: static/index.html
     login: optional
     secure: always
+    http_headers:
+      X-Content-Type-Options: nosniff
+      Referrer-Policy: strict-origin-when-cross-origin
+      Permissions-Policy: "camera=(), microphone=(), geolocation=()"
+      Content-Security-Policy: "object-src 'none'; base-uri 'self'; frame-ancestors 'self' https://connectome.quest"
     redirect_http_response_code: 301
 
   - url: /
     static_dir: static
     login: optional
     secure: always
+    http_headers:
+      X-Content-Type-Options: nosniff
+      Referrer-Policy: strict-origin-when-cross-origin
+      Permissions-Policy: "camera=(), microphone=(), geolocation=()"
+      Content-Security-Policy: "object-src 'none'; base-uri 'self'; frame-ancestors 'self' https://connectome.quest"
     redirect_http_response_code: 301

@@ -546,7 +546,8 @@ function ruleIntent(text, state) {
   if (state === 'needs_info') return { intent: 'answer', for_claude: text };
   if (state === 'failed') return /^retry\b/i.test(text) ? { intent: 'retry' } : { intent: 'answer', for_claude: text };
   if (/^note\b\s*:?/i.test(text)) return { intent: 'note', for_claude: text.replace(/^note\b\s*:?\s*/i, '') };
-  if (/^(good|looks good|lgtm)\b/i.test(text)) return { intent: 'good' };
+  // Free-form text never authorizes production deployment.
+  if (/^(good|looks good|lgtm)\b/i.test(text)) return { intent: 'note', for_claude: text };
   if (state === 'testing' && /^rebuild\W*$/i.test(text)) return { intent: 'rebuild' };
   if (state === 'testing' && /^(ship to test|test (it )?live|test on live|needs real data|real data)\b/i.test(text)) return { intent: 'ship_to_test' };
   if (/\?\s*$/.test(text)) return { intent: 'question', for_claude: text };
@@ -560,6 +561,8 @@ function ruleIntent(text, state) {
  * cannot, and the caller falls back to ruleIntent.
  */
 function understand(row, state, msg, history, tester) {
+  // Disabled until classification runs without database/Slack/GitHub credentials.
+  return null;
   if (!(process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY) || process.env.TRIAGE_UNDERSTAND === 'off') return null;
   const who = u => (u === tester ? 'TESTER' : APPROVERS.includes(u) ? 'APPROVER' : 'OTHER');
   const transcript = history.slice(-40).map(m =>
