@@ -116,10 +116,11 @@ async function main() {
     notifications.push({
       title: `✨ Your Week in Science: ${weekLabel}`,
       body,
-      // Science Nurro at the microscope; the feed styles ✨ cards and opens
-      // the profile's Week in Science tab when one is clicked.
-      thumbnail_url: 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/nurro/guide-avatar.png',
-      image_url: 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/nurro-experiment-recap.png',
+      // 980 reconstructed cells: square icon in the feed, wide banner in the
+      // detail view. The feed styles ✨ cards and opens the profile's Week in
+      // Science tab, which shows the same render as its header banner.
+      thumbnail_url: 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/recap/week-in-science-icon.jpg',
+      image_url: 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/recap/week-in-science-banner.jpg',
       target_type: 'user',
       target_id: userId,
       send_at: new Date().toISOString(),

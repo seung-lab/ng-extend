@@ -2,6 +2,8 @@
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
+// Banner: 980 reconstructed cells (static/images/recap, original alongside).
+import recapBanner from '../../static/images/recap/week-in-science-banner.jpg';
 
 import { useUserStatsStore, useCellHistoryStore, useIssueTagStore, useHelpRequestStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badge_definitions';
@@ -158,7 +160,7 @@ function jumpToCell(segId: string) {
       <div class="nge-recap-content">
 
         <!-- Hero header -->
-        <div class="nge-recap-hero">
+        <div class="nge-recap-hero" :style="{ '--recap-banner': `url(${recapBanner})` }">
           <!-- "My" when shown inside your own profile, "Your" when it appears
                as a standalone toast/panel addressed to the reader. -->
           <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} Week in Science</div>
@@ -415,21 +417,30 @@ function jumpToCell(segId: string) {
 /* ── Hero header ── */
 .nge-recap-hero {
   text-align: center;
-  padding-bottom: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 34px 16px 22px;
   margin-bottom: 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(66, 213, 236, 0.18);
+  /* The render behind the title, darkened toward the bottom so the white
+     title and the date stay readable on every part of the image. */
+  background:
+    linear-gradient(180deg, rgba(4, 6, 12, 0.25) 0%, rgba(4, 6, 12, 0.72) 70%, rgba(4, 6, 12, 0.88) 100%),
+    var(--recap-banner) center 35% / cover no-repeat;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
 .nge-recap-hero-title {
   font-size: 1.5em;
   font-weight: 700;
   color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.85);
 }
 
 .nge-recap-hero-daterange {
   margin-top: 4px;
-  font-size: 0.82em;
-  color: #9e9e9e;
+  font-size: 0.85em;
+  color: #d6e6f5;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
 }
 
 /* ── Big hero stat ── */
