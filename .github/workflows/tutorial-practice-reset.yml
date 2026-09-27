@@ -39,16 +39,6 @@ jobs:
         env:
           CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
         run: node scripts/inspect-practice-examples.mjs
-      - name: Inspect reset operation links
-        if: inputs.inspect
-        env:
-          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
-        run: |
-          node --input-type=module <<'JS'
-          const r=await fetch('https://minnie.microns-daf.com/segmentation/api/v1/table/pinky_nf_v2/operation_details?operation_ids=%5B1667%2C1668%5D&int64_as_str=1',{headers:{Authorization:`Bearer ${process.env.CAVE_SERVICE_TOKEN}`},redirect:'error',signal:AbortSignal.timeout(20000)});
-          if(!r.ok)throw Error('Operation details '+r.status);
-          for(const [id,op] of Object.entries(await r.json()))console.log(JSON.stringify({id,keys:Object.keys(op),links:Object.fromEntries(Object.entries(op).filter(([k])=>/undo|redo|operation/.test(k)))}));
-          JS
       - name: Reset abandoned cells and verify their starting state
         if: '!inputs.inspect'
         env:

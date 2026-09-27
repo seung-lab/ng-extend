@@ -20,7 +20,7 @@ import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from './widgets/widget_utils';
 import { supabase } from './supabase';
 import { practiceBase, practiceToken } from './util/practice_destination';
-import { practiceOperationsAfter } from './util/practice_history';
+import { practiceOperationsAfter, remainingPracticeOperations } from './util/practice_history';
 export { parsePcgStamp } from './util/practice_history';
 import { useLayersStore, useProofreadingBackendStore } from './store';
 
@@ -190,19 +190,27 @@ export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: strin
   for (const r of roots) for (const op of await opsSince(ex, r, ex.baseline_at)) {
     if (!seen.has(op.operationId)) { seen.add(op.operationId); ops.push(op); }
   }
-  ops.sort((x, y) => y.at - x.at);
-  for (const op of ops) await undoOp(ex, op.operationId);
+  if (ops.length > 10000) throw Error('Unexpectedly large practice history; ask an admin to review this example.');
+  const details: Record<string, any> = {};
+  for (let i = 0; i < ops.length; i += 100) {
+    const ids = ops.slice(i, i + 100).map(op => op.operationId);
+    const res = await fetch(`${pcgBase(ex)}/operation_details?int64_as_str=1&operation_ids=${encodeURIComponent(JSON.stringify(ids))}`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw Error(`operation_details ${res.status}`);
+    Object.assign(details, await res.json());
+  }
+  const activeOps = remainingPracticeOperations(ops, details);
+  for (const op of activeOps) await undoOp(ex, op.operationId);
   const a = await rootOfSupervoxel(ex, ex.supervoxel_a);
   const b = await rootOfSupervoxel(ex, ex.supervoxel_b);
   if (!a || !b) throw new Error(`could not look up the roots of supervoxels ${ex.supervoxel_a} and ${ex.supervoxel_b} on ${ex.pcg_server} ${ex.pcg_table} (see the console for the server's answer)`);
   // A cut example starts fused; a merge example starts separate.
   const wantFused = ex.kind === 'cut';
   if ((a === b) !== wantFused) {
-    const detail = `${ops.length} operation(s) after the baseline ${ex.baseline_at} were undone; see the console for the operation log`;
+    const detail = `${activeOps.length} operation(s) after the baseline ${ex.baseline_at} were undone`;
     throw new Error(wantFused ? `after undo the pieces are still apart (${a}, ${b}); ${detail}`
                               : `after undo both pieces are still on root ${a}; ${detail}`);
   }
-  return { a, b, undone: ops.length };
+  return { a, b, undone: activeOps.length };
 }
 
 // ─── Viewer colours and tools ───────────────────────────────────────────────

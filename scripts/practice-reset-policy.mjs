@@ -44,3 +44,23 @@ export function operationsAfter(data, rootId, baseline) {
   return ops.filter(row => row.at > Date.parse(baseline))
     .sort((a,b) => b.at - a.at);
 }
+
+export function remainingOperations(ops, details) {
+  const ids=new Set(ops.map(op=>op.operationId)), cancelled=new Set();
+  for(const op of [...ops].sort((a,b)=>b.at-a.at || b.operationId-a.operationId)) {
+    const detail=details[String(op.operationId)];
+    if(!detail || Number(detail.operation_status)!==0) throw Error('Missing or unsuccessful CAVE operation details');
+    if(cancelled.has(op.operationId)) continue;
+    if(detail.undo_operation_id != null) {
+      const target=Number(detail.undo_operation_id);
+      if(!Number.isSafeInteger(target)||target<0||target>=op.operationId) throw Error('Invalid CAVE undo reference');
+      if(ids.has(target)) {
+        if(cancelled.has(target)) throw Error('Ambiguous repeated CAVE undo; manual review required');
+        cancelled.add(op.operationId);cancelled.add(target);
+      }
+    }
+  }
+  const active=ops.filter(op=>!cancelled.has(op.operationId)).sort((a,b)=>b.at-a.at || b.operationId-a.operationId);
+  if(active.length>200)throw Error('Unexpectedly large active practice history; manual review required');
+  return active;
+}

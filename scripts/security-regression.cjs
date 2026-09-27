@@ -7,6 +7,22 @@ global.window=dom.window; global.document=dom.window.document;
 function load(file){const code=esbuild.buildSync({entryPoints:[file],bundle:true,platform:'browser',format:'cjs',write:false}).outputFiles[0].text;const m={exports:{}};new Function('module','exports',code)(m,m.exports);return m.exports;}
 const {renderSafeMarkdown}=load('src/util/safe_markdown.ts');
 const {practiceBase,practiceToken}=load('src/util/practice_destination.ts');
+test('practice retries skip completed undo pairs and preserve later learner edits',async()=>{
+ const {remainingPracticeOperations}=load('src/util/practice_history.ts');
+ const {remainingOperations}=await import('./practice-reset-policy.mjs');
+ const ops=[{operationId:1667,at:1},{operationId:1668,at:2},{operationId:1669,at:3}];
+ const details={1667:{operation_status:0},1668:{operation_status:0,undo_operation_id:'1667'},1669:{operation_status:0}};
+ for(const remaining of [remainingPracticeOperations,remainingOperations]) {
+   assert.deepEqual(remaining(ops.slice(0,2),details),[]);
+   assert.deepEqual(remaining(ops,details),[ops[2]]);
+   assert.deepEqual(remaining(ops,{...details,1669:{operation_status:0,undo_operation_id:'1668'}}),[ops[0]]);
+   assert.deepEqual(remaining(ops,{...details,1669:{operation_status:0,redo_operation_id:'1667'}}),[ops[2]]);
+   assert.deepEqual(remaining([ops[1]],details),[ops[1]]); // Undo of a pre-baseline edit must itself be reversed.
+   assert.throws(()=>remaining(ops,{}));
+   assert.throws(()=>remaining(ops,{...details,1669:{operation_status:0,undo_operation_id:'1670'}}));
+   assert.throws(()=>remaining(ops,{...details,1669:{operation_status:0,undo_operation_id:'1667'}}));
+ }
+});
 test('practice history parses the live pandas map and fails closed on malformed operations',async()=>{
  const {practiceOperationsAfter}=load('src/util/practice_history.ts');
  const {operationsAfter}=await import('./practice-reset-policy.mjs');
