@@ -116,7 +116,33 @@ jobs:
           workload_identity_provider: projects/483670036293/locations/global/workloadIdentityPools/neuroglancer-github/providers/github
           service_account: chris-apps-deploy@seung-lab.iam.gserviceaccount.com
       - uses: google-github-actions/deploy-appengine@a343979004148afb93c94c712b467e8e9f01b06b # v2
+        if: github.ref_name != 'codex/cleanup-repair-previews'
         with:
           version: ${{ env.APP_VERSION }}
           deliverables: site/app.yaml
           promote: false
+      - name: Remove only merged repair previews with no routed traffic
+        if: github.ref_name == 'codex/cleanup-repair-previews'
+        run: |
+          node --input-type=module <<'JS'
+          import {execFileSync} from 'node:child_process';
+          const token=execFileSync('gcloud',['auth','print-access-token'],{encoding:'utf8'}).trim();
+          const root='https://appengine.googleapis.com/v1/',base='apps/seung-lab/services/brain-wire';
+          const api=async(path,method='GET')=>{const r=await fetch(root+path,{method,headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(30000)});const d=await r.json();if(!r.ok)throw Error(`${method} ${path}: ${r.status} ${d.error?.message||''}`);return d;};
+          const allowed=new Set(['codex-restore-secure-automation','codex-complete-practice-fixtures','codex-secure-triage-restoration','codex-automation-verification','codex-automation-live-checks','codex-fix-practice-live-history']);
+          const versions=[];let page='';
+          do{const r=await api(base+'/versions?pageSize=100'+(page?'&pageToken='+encodeURIComponent(page):''));versions.push(...(r.versions||[]));page=r.nextPageToken||'';}while(page);
+          console.log('Service versions before cleanup:',versions.length);
+          let removed=0;
+          for(const version of versions.filter(v=>allowed.has(v.id))) {
+            if(!version.createTime?.startsWith('2026-09-27T'))throw Error('Unexpected creation date for '+version.id);
+            const service=await api(base);
+            if(Number(service.split?.allocations?.[version.id]||0)!==0)throw Error('Preview has routed traffic: '+version.id);
+            const op=await api(base+'/versions/'+version.id,'DELETE');
+            let result=op;
+            for(let i=0;!result.done&&i<24;i++){await new Promise(r=>setTimeout(r,5000));result=await api(op.name);}
+            if(!result.done||result.error)throw Error('Version deletion did not complete: '+version.id);
+            console.log('Removed merged repair preview:',version.id);removed++;
+          }
+          console.log('Removed repair previews:',removed);
+          JS
