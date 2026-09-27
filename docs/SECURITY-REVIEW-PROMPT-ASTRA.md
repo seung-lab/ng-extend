@@ -49,7 +49,9 @@ Your job is to find problems and explain them. Do not fix anything.
 ## The system
 
 **Sites**
-- Live app: https://brain-wire-dot-seung-lab.ue.r.appspot.com/ (Google App
+- Live app: https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/
+  (the bare https://brain-wire-dot-seung-lab.ue.r.appspot.com/ serves an old
+  default version; include it in scope) (Google App
   Engine, project `seung-lab`, service `brain-wire`). Every branch pushed to
   the repo also deploys a public preview at
   `https://<branch>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/`.
