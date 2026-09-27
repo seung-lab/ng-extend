@@ -1,6 +1,7 @@
 import { Step } from "./store-pyr";
 import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
+import { beginPractice, currentPractice, endPractice, piecesMerged } from './practice';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function getViewer(): any {
@@ -13,6 +14,50 @@ function closeSidePanel() {
   if (!viewer) return;
   try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
 }
+
+// ─── Practice cell wiring (src/practice.ts) ────────────────────────────────
+// One sandbox example per user at a time. The status line under the step
+// text is the only live part of the tutorial: it says whether the example
+// loaded, and flips when the viewer confirms the merge or the cut landed.
+
+let practiceWatch = 0;
+
+function practiceStatus(text: string, done = false) {
+  const chip = document.querySelector('.introductionStepAnchor .chip .html');
+  if (!chip) return;
+  let el = chip.querySelector('.nge-practice-status') as HTMLElement | null;
+  if (!el) {
+    el = document.createElement('p');
+    el.className = 'nge-practice-status';
+    el.style.cssText = 'margin:10px 0 0;padding:8px 10px;border-radius:4px;font-size:0.92em;line-height:1.4;'
+      + 'background:rgba(53,181,255,0.10);border-left:2px solid rgba(53,181,255,0.75);color:#d0e8ff;';
+    chip.appendChild(el);
+  }
+  el.textContent = text;
+  el.style.background = done ? 'rgba(96,192,96,0.14)' : 'rgba(53,181,255,0.10)';
+  el.style.borderLeftColor = done ? '#60c060' : 'rgba(53,181,255,0.75)';
+}
+
+/** Wait for the chip to render, then keep a status line current while
+ *  polling the graph until `wantMerged` matches, or the step changes. */
+function watchPractice(wantMerged: boolean, waiting: string, finished: string) {
+  const token = ++practiceWatch;
+  const tick = async () => {
+    if (token !== practiceWatch) return;
+    const p = currentPractice();
+    if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); return; }
+    if (p.phase === 'busy') { practiceStatus('Every practice cell is in use right now. Read along and press next, or come back in a few minutes.'); return; }
+    if (!p.example) { practiceStatus('Loading a practice cell…'); setTimeout(tick, 1000); return; }
+    const merged = await piecesMerged();
+    if (token !== practiceWatch) return;
+    if (merged === wantMerged) { practiceStatus(finished, true); return; }
+    practiceStatus(waiting);
+    setTimeout(tick, 3000);
+  };
+  setTimeout(tick, 600);
+}
+
+function stopWatching() { practiceWatch++; }
 
 const MIDDLE = {
   element: "body",
@@ -138,19 +183,21 @@ The system will attempt to connect these two segments. You'll see a status messa
   {
     title: "Your Turn!",
     text: `
-Time to practice! You should see a neuron with a disconnected branch nearby.
+Time to practice! This is a real cell in the sandbox, and it is yours alone until you finish. The AI left a branch disconnected from it.
 
 1. Press **M** to activate the merge tool.
 2. **Ctrl+Click** on the main neuron body.
 3. **Ctrl+Click** on the disconnected branch.
 4. Watch them join together!
 
-Press **next** when you're done (or skip if you'd like to move on).`,
+Press **next** once the box below says the merge landed (or skip if you'd like to move on).`,
     position: OVER_3D,
     width: "400px",
-    // TODO: Amy — state with a practice merge scenario (obvious disconnected branch)
-    // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
-    onEnter: closeSidePanel,
+    onEnter: async () => {
+      closeSidePanel();
+      watchPractice(true, 'Waiting for your merge…', 'Merged! The branch is part of the cell now. Press next.');
+      await beginPractice();
+    },
   },
 
   // ═══════════════════════════════════════
@@ -242,19 +289,21 @@ After placing your red and blue points:
   {
     title: "Your Turn!",
     text: `
-Practice time! You should see a segment where two neurons are incorrectly fused.
+Practice time! Remember the branch you merged on? Now cut it back off, right where you joined it.
 
 1. Press **C** to activate the cut tool.
-2. **Ctrl+Click** to place **red points** on one side of the error.
-3. Press **G** to switch to blue, then **Ctrl+Click** to place **blue points** on the other side.
+2. **Ctrl+Click** to place **red points** on the cell side of the join.
+3. Press **G** to switch to blue, then **Ctrl+Click** to place **blue points** on the branch side.
 4. Press **Enter** to submit the cut.
 
-Press **next** when you're done.`,
+Press **next** once the box below says the cut landed.`,
     position: OVER_3D,
     width: "400px",
-    // TODO: Amy — state with a practice cut scenario (obvious fusion error)
-    // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
-    onEnter: closeSidePanel,
+    onEnter: async () => {
+      closeSidePanel();
+      watchPractice(false, 'Waiting for your cut… (if the branch is not merged yet, go back a few steps and merge it first)', 'Cut! The branch is separate again. Press next.');
+      await beginPractice();
+    },
   },
 
   // ═══════════════════════════════════════
@@ -280,6 +329,11 @@ Here's your cheat sheet:
 You can also find video guides in the **☰ menu** at the top right.`,
     position: MIDDLE,
     width: "400px",
+    onEnter: () => {
+      stopWatching();
+      // Whatever state the practice cell is in, put it back for the next person.
+      endPractice();
+    },
   },
 
   // 17 — You're ready

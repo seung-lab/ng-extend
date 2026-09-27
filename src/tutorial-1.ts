@@ -28,7 +28,10 @@ function setAnnotationColor(color: string) {
   }
 }
 
-/** Remove a segment from the first segmentation layer */
+/** Remove a segment from the first segmentation layer.
+ *  The visible set lives in segmentationGroupState in this neuroglancer;
+ *  the older `rootSegments` is kept as a fallback (it was the only path
+ *  before, and it does not exist here, so these removals never happened). */
 function removeSegment(segId: string) {
   const viewer = getViewer();
   if (!viewer) return;
@@ -38,7 +41,8 @@ function removeSegment(segId: string) {
     const layer = ml.layer;
     const name = layer && layer.constructor && layer.constructor.name;
     if (name && (name as string).indexOf('Segmentation') >= 0) {
-      const rootSegs = layer.displayState && layer.displayState.rootSegments;
+      const rootSegs = layer.displayState?.segmentationGroupState?.value?.visibleSegments
+        ?? layer.displayState?.rootSegments;
       if (rootSegs) {
         for (const seg of rootSegs) {
           if (seg.toString() === segId) {

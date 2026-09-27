@@ -47,6 +47,27 @@ missing states (say exactly which neuron views are needed and Amy will pick
 them), MEC dataset coverage if it makes sense, and Nurro art on the steps
 where it helps.
 
+## Practice cells (built 2026-09-26, needs Amy's examples)
+
+Tutorial 3's two "Your Turn" steps hand each learner a real sandbox cell,
+one learner at a time, and put it back afterwards.
+
+- `supabase-tutorial-practice-schema.sql`: table `tutorial_practice_examples`
+  plus `claim_practice_example` and `release_practice_example`. Apply it in
+  the Supabase SQL editor before testing.
+- `src/practice.ts`: claim, show the two pieces at their current roots, poll
+  whether they share a root, and on finish or exit undo every PyChunkedGraph
+  operation since the example's baseline (newest first) with the learner's
+  own token.
+- `scripts/reset-practice-examples.mjs` and
+  `.github/workflows/tutorial-practice-reset.yml`: the same undo with
+  `CAVE_SERVICE_TOKEN` for expired claims and failed client resets, every
+  10 minutes once the workflow is on the default branch.
+- Admin Hub > Practice cells: register an example from the current view
+  (hover the cell, "Use hovered as A"; hover the piece, "Use hovered as B"),
+  check it, reset it now, disable or delete it.
+- Amy is finding 3 examples. Register them there; nothing is hard coded.
+
 ## Rules
 
 - Copy: no em or en dashes (commas and periods), no gradient text, no thin
