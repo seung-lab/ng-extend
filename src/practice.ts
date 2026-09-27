@@ -87,6 +87,41 @@ export async function rootOfSupervoxel(ex: Pick<PracticeExample, 'pcg_server' | 
   return data.root_id != null ? String(data.root_id) : null;
 }
 
+/** PyChunkedGraph ids carry their layer in the top byte; supervoxels are layer 1. */
+function pcgLayer(id: string): number {
+  // Number() keeps 53 bits, plenty for the top byte of a 64-bit id.
+  return Math.floor(Number(id) / 2 ** 56);
+}
+
+/** Walk a root down to one of its supervoxels (about eight calls). Works for
+ *  old roots too, so a row registered by root id alone can be completed. */
+export async function anySupervoxelOf(ex: Pick<PracticeExample, 'pcg_server' | 'pcg_table'>, rootId: string): Promise<string> {
+  let id = rootId;
+  for (let i = 0; i < 12 && pcgLayer(id) > 1; i++) {
+    const res = await fetch(`${pcgBase(ex)}/node/${id}/children?int64_as_str=1`, { headers: pcgHeaders(ex.pcg_server) });
+    if (!res.ok) throw new Error(`children of ${id}: ${res.status}`);
+    const data = await res.json();
+    const kids: string[] = (data.children_ids ?? data.children ?? []).map(String);
+    if (!kids.length) throw new Error(`node ${id} has no children`);
+    id = kids[0];
+  }
+  if (pcgLayer(id) !== 1) throw new Error(`could not reach a supervoxel from ${rootId}`);
+  return id;
+}
+
+/** Rows registered by root id alone get their supervoxels on first use. */
+export async function ensureSupervoxels(ex: PracticeExample): Promise<PracticeExample> {
+  if (ex.supervoxel_a && ex.supervoxel_b) return ex;
+  const a = ex.supervoxel_a || await anySupervoxelOf(ex, ex.root_a);
+  const b = ex.supervoxel_b || await anySupervoxelOf(ex, ex.root_b);
+  const { error } = await supabase.from('tutorial_practice_examples')
+    .update({ supervoxel_a: a, supervoxel_b: b, updated_at: new Date().toISOString() }).eq('id', ex.id);
+  if (error) console.warn('[practice] could not save supervoxels:', error.message);
+  ex.supervoxel_a = a;
+  ex.supervoxel_b = b;
+  return ex;
+}
+
 interface LogOp { operationId: number; at: number }
 
 /** Operations in a root's lineage made after `sinceIso`, newest first. */
@@ -144,6 +179,7 @@ function showOnly(dataset: string, rootIds: string[]) {
  * by the tutorial hand-back and by the admin "Reset now" button.
  */
 export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: string; b: string; undone: number }> {
+  await ensureSupervoxels(ex);
   // Both lineages, since a cut can leave the pieces on different roots with
   // the merge in each history.
   const roots = new Set<string>();
@@ -218,13 +254,33 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut'): Prom
   return row;
 }
 
+/** The saved view knows which graphene table the example lives in. A row
+ *  registered by hand may carry a guess; correct it from the loaded layer. */
+function adoptTableFromViewer(ex: PracticeExample) {
+  const viewer = getViewer();
+  for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+    const url: string = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+    const m = url.match(/^graphene:\/\/(?:middleauth\+)?(https?:\/\/[^/]+)\/segmentation\/table\/([^/?#]+)/);
+    if (!m) continue;
+    if (m[1] !== ex.pcg_server || m[2] !== ex.pcg_table || ml.name !== ex.dataset) {
+      ex.pcg_server = m[1]; ex.pcg_table = m[2]; ex.dataset = ml.name;
+      supabase.from('tutorial_practice_examples')
+        .update({ pcg_server: m[1], pcg_table: m[2], dataset: ml.name, updated_at: new Date().toISOString() })
+        .eq('id', ex.id).then(({ error }) => { if (error) console.warn('[practice] table fix failed:', error.message); });
+    }
+    return;
+  }
+}
+
 async function showExample(ex: PracticeExample) {
-  const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
-  session.rootA = a ?? ex.root_a;
-  session.rootB = b ?? ex.root_b;
   await useLayersStore().loadState(ex.state_url);
   // restoreState applies asynchronously; give the layer a moment to exist.
   await new Promise(r => setTimeout(r, 800));
+  adoptTableFromViewer(ex);
+  await ensureSupervoxels(ex);
+  const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
+  session.rootA = a ?? ex.root_a;
+  session.rootB = b ?? ex.root_b;
   showOnly(ex.dataset, session.rootA === session.rootB ? [session.rootA] : [session.rootA, session.rootB]);
 }
 
@@ -232,6 +288,7 @@ async function showExample(ex: PracticeExample) {
 export async function piecesMerged(): Promise<boolean | null> {
   const ex = session.example;
   if (!ex) return null;
+  await ensureSupervoxels(ex);
   const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
   if (!a || !b) return null;
   session.rootA = a;

@@ -75,6 +75,30 @@ async function rootOf(ex, sv) {
   return String(data.root_id);
 }
 
+const pcgLayer = (id) => Math.floor(Number(id) / 2 ** 56);
+
+/** Walk a root down to one of its supervoxels (layer 1). */
+async function anySupervoxelOf(ex, rootId) {
+  let id = rootId;
+  for (let i = 0; i < 12 && pcgLayer(id) > 1; i++) {
+    const res = await fetch(`${base(ex)}/node/${id}/children?int64_as_str=1`, { headers: caveHeaders });
+    if (!res.ok) throw new Error(`children of ${id}: ${res.status}`);
+    const data = await res.json();
+    const kids = (data.children_ids ?? data.children ?? []).map(String);
+    if (!kids.length) throw new Error(`node ${id} has no children`);
+    id = kids[0];
+  }
+  if (pcgLayer(id) !== 1) throw new Error(`could not reach a supervoxel from ${rootId}`);
+  return id;
+}
+
+async function ensureSupervoxels(ex) {
+  if (ex.supervoxel_a && ex.supervoxel_b) return;
+  ex.supervoxel_a = ex.supervoxel_a || await anySupervoxelOf(ex, ex.root_a);
+  ex.supervoxel_b = ex.supervoxel_b || await anySupervoxelOf(ex, ex.root_b);
+  await patchRow(ex.id, { supervoxel_a: ex.supervoxel_a, supervoxel_b: ex.supervoxel_b });
+}
+
 /** Operations in a root's lineage after `since`, newest first. */
 async function opsSince(ex, rootId, since) {
   const res = await fetch(`${base(ex)}/root/${rootId}/tabular_change_log`, { headers: caveHeaders });
@@ -102,6 +126,7 @@ async function undo(ex, operationId) {
 // ── Reset one example ──────────────────────────────────────────────────────
 
 async function resetExample(ex) {
+  await ensureSupervoxels(ex);
   const roots = new Set([await rootOf(ex, ex.supervoxel_a), await rootOf(ex, ex.supervoxel_b)]);
   const seen = new Set();
   const ops = [];

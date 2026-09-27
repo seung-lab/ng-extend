@@ -5,7 +5,7 @@ import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 import {supabase} from '../supabase';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
-import {rootOfSupervoxel, undoSinceBaseline, type PracticeExample, type PracticeKind} from '../practice';
+import {rootOfSupervoxel, undoSinceBaseline, ensureSupervoxels, type PracticeExample, type PracticeKind} from '../practice';
 
 const backend = useProofreadingBackendStore();
 
@@ -705,6 +705,11 @@ const practiceTitle = ref('');
 const practiceKind = ref<PracticeKind>('cut');
 const practiceA = ref<{ sv: string; root: string } | null>(null);
 const practiceB = ref<{ sv: string; root: string } | null>(null);
+/** Typed root ids, the no-hover way in: supervoxels are looked up on first use. */
+const practiceRootA = ref('');
+const practiceRootB = ref('');
+watch(practiceRootA, v => { const t = v.trim(); if (/^\d{10,}$/.test(t)) practiceA.value = { sv: '', root: t }; });
+watch(practiceRootB, v => { const t = v.trim(); if (/^\d{10,}$/.test(t)) practiceB.value = { sv: '', root: t }; });
 const practiceHover = ref<{ sv: string; root: string } | null>(null);
 const practiceSaving = ref(false);
 const practiceActing = ref<string | null>(null);
@@ -776,7 +781,8 @@ async function registerPractice() {
   practiceError.value = ''; practiceNotice.value = '';
   const a = practiceA.value, b = practiceB.value;
   if (!a || !b) { practiceError.value = 'Pick both pieces first.'; return; }
-  if (a.sv === b.sv) { practiceError.value = 'A and B are the same spot. Hover two different places.'; return; }
+  if (a.sv && a.sv === b.sv) { practiceError.value = 'A and B are the same spot. Hover two different places.'; return; }
+  if (a.root === b.root && practiceKind.value === 'cut' && !a.sv) { practiceError.value = 'For a cut example typed in by id, give the two root ids as they are after the cut; the cell is then merged back and both pieces are known.'; return; }
   if (practiceKind.value === 'merge_then_cut' && a.root === b.root) { practiceError.value = 'A and B are on the same root. For a merge example, the piece must start disconnected.'; return; }
   if (practiceKind.value === 'cut' && a.root !== b.root) { practiceError.value = 'A and B are on different roots. For a cut example, hover two spots on the fused segment, one each side of the join.'; return; }
   const pcg = getPcgInfo();
@@ -798,6 +804,7 @@ async function registerPractice() {
     if (error) throw new Error(error.message);
     practiceNotice.value = `Registered "${row.title}".`;
     practiceTitle.value = ''; practiceA.value = null; practiceB.value = null;
+    practiceRootA.value = ''; practiceRootB.value = '';
     await loadPractice();
   } catch (e: any) {
     practiceError.value = e?.message ?? String(e);
@@ -839,6 +846,7 @@ async function deletePractice(ex: PracticeExample) {
 async function checkPractice(ex: PracticeExample) {
   practiceActing.value = ex.id; practiceError.value = ''; practiceNotice.value = '';
   try {
+    await ensureSupervoxels(ex);
     const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
     practiceNotice.value = a === b ? `${ex.title}: the pieces are MERGED right now (root ${a}).`
       : `${ex.title}: the pieces are separate (roots ${a}, ${b}).`;
@@ -1150,6 +1158,11 @@ function practiceWhen(iso: string | null) {
         <div class="nge-admin-row nge-practice-picks">
           <span>A: <code>{{ practiceA ? practiceA.root : '…' }}</code></span>
           <span>B: <code>{{ practiceB ? practiceB.root : '…' }}</code></span>
+        </div>
+        <div class="nge-admin-row">
+          <span class="nge-admin-hint">Or type root ids:</span>
+          <input v-model="practiceRootA" class="nge-admin-input nge-admin-input--sm" placeholder="root A" />
+          <input v-model="practiceRootB" class="nge-admin-input nge-admin-input--sm" placeholder="root B" />
         </div>
         <div class="nge-admin-row">
           <input v-model="practiceTitle" class="nge-admin-input" placeholder="Title, e.g. Pyramidal cell, missing apical branch" />
