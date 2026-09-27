@@ -709,6 +709,18 @@ const practiceHover = ref<{ sv: string; root: string } | null>(null);
 const practiceSaving = ref(false);
 const practiceActing = ref<string | null>(null);
 let hoverTimer: ReturnType<typeof setInterval> | null = null;
+/** Picking mode: the profile modal is hidden (body class, unscoped style
+ *  below) so the viewer can be hovered, and a small floating chip carries
+ *  the A and B buttons. AdminHub stays mounted, so nothing is lost. */
+const practicePicking = ref(false);
+function startPicking() {
+  practicePicking.value = true;
+  document.body.classList.add('nge-practice-picking');
+}
+function stopPicking() {
+  practicePicking.value = false;
+  document.body.classList.remove('nge-practice-picking');
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function sampleHover() {
@@ -728,11 +740,12 @@ watch(adminSubTab, t => {
   if (t === 'practice') {
     loadPractice();
     if (!hoverTimer) hoverTimer = setInterval(sampleHover, 200);
-  } else if (hoverTimer) {
-    clearInterval(hoverTimer); hoverTimer = null;
+  } else {
+    stopPicking();
+    if (hoverTimer) { clearInterval(hoverTimer); hoverTimer = null; }
   }
 }, { immediate: true });
-onUnmounted(() => { if (hoverTimer) clearInterval(hoverTimer); });
+onUnmounted(() => { stopPicking(); if (hoverTimer) clearInterval(hoverTimer); });
 
 async function loadPractice() {
   practiceLoading.value = true; practiceError.value = '';
@@ -1121,10 +1134,19 @@ function practiceWhen(iso: string | null) {
           <label class="nge-practice-kind"><input type="radio" value="merge_then_cut" v-model="practiceKind" /> Merge example: B is wrongly disconnected from A, the learner merges it back</label>
         </div>
         <div class="nge-admin-row">
-          <span class="nge-practice-hover">Hovered: <code>{{ practiceHover ? practiceHover.root : 'nothing yet' }}</code></span>
-          <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('a')">Use hovered as A</button>
-          <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('b')">Use hovered as B</button>
+          <button class="nge-admin-primary-btn" @click="startPicking">Pick A and B in the viewer</button>
+          <span class="nge-admin-hint">Hides this panel so you can hover the cell. A small chip stays on screen with the A and B buttons.</span>
         </div>
+        <Teleport to="body">
+          <div v-if="practicePicking" class="nge-practice-picker">
+            <span class="nge-practice-picker-label">Practice cell</span>
+            <span class="nge-practice-hover">Hovered: <code>{{ practiceHover ? practiceHover.root : 'move over a segment' }}</code></span>
+            <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('a')">Use as A</button>
+            <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('b')">Use as B</button>
+            <span class="nge-practice-picks">A: <code>{{ practiceA ? practiceA.root : '…' }}</code> B: <code>{{ practiceB ? practiceB.root : '…' }}</code></span>
+            <button class="nge-admin-primary-btn" @click="stopPicking">Back to Admin Hub</button>
+          </div>
+        </Teleport>
         <div class="nge-admin-row nge-practice-picks">
           <span>A: <code>{{ practiceA ? practiceA.root : '…' }}</code></span>
           <span>B: <code>{{ practiceB ? practiceB.root : '…' }}</code></span>
@@ -1872,4 +1894,18 @@ function practiceWhen(iso: string | null) {
 .nge-practice-row--ready .nge-practice-status { color: #60c060; }
 .nge-practice-row--needs_reset .nge-practice-status, .nge-practice-row--broken .nge-practice-status { color: #e06060; }
 .nge-practice-row--in_use .nge-practice-status { color: #f5d142; }
+.nge-practice-picker {
+  position: fixed; top: 64px; right: 16px; z-index: 200;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  max-width: 520px; padding: 10px 12px; border-radius: 8px;
+  background: rgba(8, 12, 24, 0.96); border: 1px solid rgba(74, 158, 255, 0.35);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); color: #cde; font-size: 0.9em;
+}
+.nge-practice-picker-label { font-size: 0.75em; letter-spacing: 0.12em; text-transform: uppercase; color: #9fd0ff; }
+</style>
+
+<style>
+/* Picking mode for practice cells: hide the whole profile modal (its
+   backdrop swallows clicks and closes on them) while AdminHub stays mounted. */
+body.nge-practice-picking #nge-profile-modal { display: none !important; }
 </style>
