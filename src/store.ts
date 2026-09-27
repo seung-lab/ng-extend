@@ -4467,30 +4467,29 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   function subscribeToNotifications() {
     if (notifSubscription) return;
-    notifSubscription = supabase
-      .channel('notifications_realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' },
-        (payload: any) => {
-          loadNotifications();
-          // Auto-trigger hero celebration for badge award notifications
-          const row = payload?.new;
-          if (row?.title?.includes('New Achievement') && row?.target_type !== 'group') {
-            // Only show if it's for the current user
-            if (!row.target_id || row.target_id === userId.value) {
-              pendingBadgeCelebration.value = {
-                title: row.title,
-                body: row.body || '',
-                imageUrl: row.image_url || row.thumbnail_url || '',
-              };
-            }
-          }
-        })
-      .subscribe();
+    // Private notifications cannot use an anonymous Realtime subscription.
+    // Refresh through the identity-verified route, without overlapping requests.
+    let refreshing = false;
+    notifSubscription = setInterval(async () => {
+      if (refreshing || document.hidden) return;
+      refreshing = true;
+      const existing = new Set(notifications.value.map(n => n.id));
+      try {
+        await loadNotifications();
+        const row = notifications.value.find(n => !existing.has(n.id) &&
+          n.title?.includes('New Achievement') && n.target_type !== 'group' &&
+          (!n.target_id || n.target_id === userId.value));
+        if (row) pendingBadgeCelebration.value = {
+          title: row.title, body: row.body || '', imageUrl: row.image_url || row.thumbnail_url || '',
+        };
+      } catch { /* retry on the next refresh */ }
+      finally { refreshing = false; }
+    }, 30000);
   }
 
   function unsubscribeFromNotifications() {
     if (notifSubscription) {
-      supabase.removeChannel(notifSubscription);
+      clearInterval(notifSubscription);
       notifSubscription = null;
     }
   }
