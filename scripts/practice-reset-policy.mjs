@@ -35,6 +35,7 @@ export function operationsAfter(data, rootId, baseline) {
   let rows = data[String(rootId)] ?? data;
   if (typeof rows === 'string') rows = JSON.parse(rows);
   if (!Array.isArray(rows)) {
+    if (!Object.hasOwn(rows,'operation_id') || !Object.hasOwn(rows,'timestamp')) throw Error('Unrecognized CAVE operation history shape');
     const ids = rows.operation_id ?? {};
     rows = Object.keys(ids).map(i => ({operation_id: ids[i], timestamp: rows.timestamp?.[i]}));
   }

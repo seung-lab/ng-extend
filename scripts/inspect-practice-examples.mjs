@@ -12,4 +12,9 @@ for(const [id,fixture] of Object.entries(manifest)) {
  const b=fixture.supervoxel_b||await descend(fixture.root_b);
  const rootA=await get(base,`/node/${a}/root?int64_as_str=1`),rootB=await get(base,`/node/${b}/root?int64_as_str=1`);
  console.log(JSON.stringify({id,...fixture,supervoxel_a:a,supervoxel_b:b,current_root_a:rootA.root_id,current_root_b:rootB.root_id}));
+ for(const root of new Set([rootA.root_id,rootB.root_id])) {
+  const log=await get(base,`/root/${root}/tabular_change_log`);
+  const describe=value=>({type:Array.isArray(value)?'array':typeof value,keys:value&&typeof value==='object'?Object.keys(value).slice(0,12):[],length:Array.isArray(value)?value.length:undefined});
+  console.log(JSON.stringify({root,history:describe(log),children:Object.fromEntries(Object.entries(log).slice(0,6).map(([k,v])=>[k,describe(v)]))}));
+ }
 }
