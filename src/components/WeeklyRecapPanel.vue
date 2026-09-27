@@ -226,7 +226,8 @@ function jumpToCell(segId: string) {
     :class="props.embedded ? 'nge-recap-embedded' : 'nge-recap-modal'"
     @hide="emit('hide')"
   >
-    <div class="nge-recap-shell" :class="{ 'nge-recap-shell--embedded': props.embedded }">
+    <div class="nge-recap-shell" :class="{ 'nge-recap-shell--embedded': props.embedded }"
+         :style="{ '--recap-banner': `url(${recapBanner})` }">
 
       <!-- Non-scrolling topbar (modal only) -->
       <div v-if="!props.embedded" class="nge-recap-topbar">
@@ -237,7 +238,7 @@ function jumpToCell(segId: string) {
       <div class="nge-recap-content">
 
         <!-- Hero header -->
-        <div class="nge-recap-hero" :style="{ '--recap-banner': `url(${recapBanner})` }">
+        <div class="nge-recap-hero">
           <!-- "My" when shown inside your own profile, "Your" when it appears
                as a standalone toast/panel addressed to the reader. -->
           <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} Week in Science</div>
@@ -387,6 +388,8 @@ function jumpToCell(segId: string) {
         <!-- Global stats: everyone together -->
         <div class="nge-recap-section nge-recap-global" v-if="globalStats">
           <div class="nge-recap-section-label">Global Stats</div>
+          <div class="nge-recap-global-halves">
+          <div class="nge-recap-global-half">
           <div class="nge-recap-global-sub">Everyone in EyeWire II, last 7 days</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
@@ -406,7 +409,9 @@ function jumpToCell(segId: string) {
             You made <strong>{{ globalStats.mineWeek.toLocaleString() }}</strong> of them,
             <strong>{{ Math.round(globalStats.mineWeek / globalStats.editsWeek * 100) }}%</strong> of the community's edits.
           </div>
-          <div class="nge-recap-global-sub nge-recap-global-sub--all">All time</div>
+          </div>
+          <div class="nge-recap-global-half">
+          <div class="nge-recap-global-sub">All time</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
               <div class="nge-recap-month-num">{{ globalStats.editsAll.toLocaleString() }}</div>
@@ -420,6 +425,8 @@ function jumpToCell(segId: string) {
               <div class="nge-recap-month-num">{{ globalStats.scientists.toLocaleString() }}</div>
               <div class="nge-recap-month-key">citizen scientists</div>
             </div>
+          </div>
+          </div>
           </div>
         </div>
 
@@ -444,10 +451,29 @@ function jumpToCell(segId: string) {
    which read as a small centred box inside the wider profile. */
 .nge-recap-shell--embedded { max-height: none; }
 .nge-recap-embedded { display: block; width: 100%; }
+.nge-recap-shell--embedded { width: 100%; }
+/* Embedded in the wide profile tab: sections flow into three columns so the
+   whole week fits on one screen. Title, big number, and the global stats
+   run the full width. */
 .nge-recap-shell--embedded .nge-recap-content {
   width: 100%;
-  padding: 8px 32px 32px;
+  padding: 8px 32px 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 28px;
+  align-content: start;
 }
+.nge-recap-shell--embedded .nge-recap-content > .nge-recap-hero,
+.nge-recap-shell--embedded .nge-recap-content > .nge-recap-big-stat,
+.nge-recap-shell--embedded .nge-recap-content > .nge-recap-global { grid-column: 1 / -1; }
+.nge-recap-shell--embedded .nge-recap-hero { padding: 40px 16px 8px; margin-bottom: 4px; }
+.nge-recap-shell--embedded .nge-recap-big-stat { padding: 4px 0 16px; }
+.nge-recap-shell--embedded .nge-recap-section { margin-bottom: 14px; padding-bottom: 14px; }
+@media (max-width: 900px) {
+  .nge-recap-shell--embedded .nge-recap-content { grid-template-columns: minmax(0, 1fr); }
+}
+.nge-recap-global-halves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+@media (max-width: 900px) { .nge-recap-global-halves { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── Sci-fi materialize ── */
 .nge-recap-modal :deep(.nge-overlay) {
@@ -521,16 +547,16 @@ function jumpToCell(segId: string) {
 /* ── Hero header ── */
 .nge-recap-hero {
   text-align: center;
-  padding: 34px 16px 22px;
+  padding: 70px 16px 26px;
   margin-bottom: 20px;
-  border-radius: 10px;
-  border: 1px solid rgba(66, 213, 236, 0.18);
-  /* The render behind the title, darkened toward the bottom so the white
-     title and the date stay readable on every part of the image. */
+}
+/* The 980 cells render fills the whole tab: vivid behind the title, then
+   darkened down the page so every stat stays readable over it. */
+.nge-recap-shell {
   background:
-    linear-gradient(180deg, rgba(4, 6, 12, 0.25) 0%, rgba(4, 6, 12, 0.72) 70%, rgba(4, 6, 12, 0.88) 100%),
-    var(--recap-banner) center 35% / cover no-repeat;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    linear-gradient(180deg, rgba(4, 6, 12, 0.2) 0px, rgba(4, 6, 12, 0.55) 220px, rgba(4, 6, 12, 0.86) 420px, rgba(4, 6, 12, 0.92) 100%),
+    var(--recap-banner) center top / cover no-repeat,
+    #04060c;
 }
 
 .nge-recap-hero-title {
@@ -558,7 +584,8 @@ function jumpToCell(segId: string) {
 .nge-recap-big-number {
   font-size: 3.2em;
   font-weight: 800;
-  color: #4a9eff;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(120, 190, 255, 0.45), 0 2px 10px rgba(0, 0, 0, 0.8);
   line-height: 1;
   letter-spacing: -0.02em;
 }
@@ -804,7 +831,7 @@ function jumpToCell(segId: string) {
   font-size: 0.8em;
   color: #9fb3c8;
 }
-.nge-recap-global-sub--all { margin: 16px 0 10px; }
+
 .nge-recap-global-share {
   margin-top: 10px;
   font-size: 0.86em;

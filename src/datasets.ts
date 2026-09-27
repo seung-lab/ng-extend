@@ -4,6 +4,12 @@
  * Both DatasetSelectorPanel and CellLibraryPanel (cross-dataset help-request
  * jump) need this info, so it lives here instead of inside a single component.
  */
+// Dataset thumbnails (static/images/datasets). MICrONS art is Amy's pick for
+// every MICrONS volume, pinky included.
+import thumbMicrons from '../static/images/datasets/microns.jpg';
+import thumbMec from '../static/images/datasets/mec.jpg';
+// EyeWire II retina: e2_overview.png from eyewire.ai.
+import thumbRetina from '../static/images/datasets/retina.jpg';
 import { useLayersStore } from './store';
 import { getDatasetCaveConfig } from './config';
 import { openSegPanel } from './widgets/widget_utils';
@@ -21,6 +27,9 @@ export interface DatasetEntry {
   /** Wide render of this dataset's own cells, shown behind its name on the
    *  profile. Only set it to a render OF this volume, never a stand-in. */
   banner?: string;
+  /** Small 16:9 image for dataset cards (profile Datasets tab). Falls back
+   *  to the species icon when unset. */
+  thumbnail?: string;
   layers: any[];
 }
 
@@ -33,11 +42,12 @@ export const SPECIES_ICONS: Record<DatasetEntry['species'], string> = {
 export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
+    thumbnail: thumbRetina,
     label: 'EyeWire II: Retina',
     shortLabel: 'EyeWire II',
     abbrev: 'Retina',
     species: 'mouse',
-    description: 'EyeWire II — mouse retinal connectome (16×16×40 nm)',
+    description: 'EyeWire II mouse retinal connectome (16×16×40 nm)',
     layers: [
       {
         type: 'image',
@@ -57,11 +67,12 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pinky_sandbox',
+    thumbnail: thumbMicrons,
     label: 'Pinky Sandbox',
     shortLabel: 'Pinky',
     abbrev: 'Pinky',
     species: 'mouse',
-    description: 'MICrONS pinky — small cortex volume for testing (4×4×40 nm)',
+    description: 'MICrONS pinky, a small cortex volume for testing (4×4×40 nm)',
     layers: [
       {
         type: 'image',
@@ -81,11 +92,12 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65',
+    thumbnail: thumbMicrons,
     label: 'MICrONS Minnie65',
     shortLabel: 'MICrONS',
     abbrev: 'MICrONS',
     species: 'mouse',
-    description: 'MICrONS — 1mm³ mouse visual cortex (8×8×40 nm)',
+    description: 'MICrONS, 1 mm³ of mouse visual cortex (8×8×40 nm)',
     layers: [
       {
         type: 'image',
@@ -105,6 +117,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65_live',
+    thumbnail: thumbMicrons,
     label: 'MICrONS Live',
     shortLabel: 'MICrONS Live',
     abbrev: 'Live',
@@ -115,7 +128,7 @@ export const DATASETS: DatasetEntry[] = [
     // merge-free demo actually queries (its bundles carry
     // datastack minnie65_public). minnie65_phase3_v1 is a datastack /
     // aligned-volume name, NOT a graphene table: using it as one 400s.
-    description: 'MICrONS minnie65 on the rolling public graph — where the AI merge-candidate roots resolve',
+    description: 'MICrONS minnie65 on the rolling public graph, where the AI merge candidate roots resolve',
     layers: [
       {
         type: 'image',
@@ -135,6 +148,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pni_mec',
+    thumbnail: thumbMec,
     label: 'Medial Entorhinal Cortex',
     shortLabel: 'MEC',
     abbrev: 'MEC',

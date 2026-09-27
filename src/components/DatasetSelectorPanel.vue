@@ -69,8 +69,11 @@ async function switchTo(ds: DatasetEntry) {
           }"
           @click="switchTo(ds)"
         >
+          <img v-if="ds.thumbnail" :src="ds.thumbnail" class="nge-ds-card-thumb" alt="" loading="lazy" />
+          <div class="nge-ds-card-text">
           <div class="nge-ds-card-label">{{ ds.label }}</div>
           <div class="nge-ds-card-desc">{{ ds.description }}</div>
+          </div>
           <div v-if="ds.id === currentDatasetId" class="nge-ds-badge">Active</div>
         </div>
       </div>
@@ -87,7 +90,7 @@ async function switchTo(ds: DatasetEntry) {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 340px;
+  width: 440px;
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 96px);
   background: rgba(6, 10, 20, 0.95);
@@ -165,6 +168,20 @@ async function switchTo(ds: DatasetEntry) {
   pointer-events: none;
 }
 
+.nge-ds-card:has(.nge-ds-card-thumb) {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.nge-ds-card-text { min-width: 0; }
+.nge-ds-card-thumb {
+  width: 104px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
 .nge-ds-card-label {
   font-size: 12.5px;
   font-weight: 600;
