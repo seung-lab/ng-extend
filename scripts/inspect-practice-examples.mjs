@@ -12,10 +12,14 @@ for(const [id,fixture] of Object.entries(manifest)) {
  const b=fixture.supervoxel_b||await descend(fixture.root_b);
  const rootA=await get(base,`/node/${a}/root?int64_as_str=1`),rootB=await get(base,`/node/${b}/root?int64_as_str=1`);
  console.log(JSON.stringify({id,...fixture,supervoxel_a:a,supervoxel_b:b,current_root_a:rootA.root_id,current_root_b:rootB.root_id}));
+ const baselineRoots=[];
+ for(const sv of [a,b])baselineRoots.push(await get(base,`/node/${sv}/root?int64_as_str=1&timestamp=${Date.parse(fixture.baseline_at)/1000}`));
+ console.log(JSON.stringify({id,baselineRoots}));
  for(const root of new Set([rootA.root_id,rootB.root_id])) {
-  const log=await get(base,`/root/${root}/tabular_change_log`);
+  console.log(JSON.stringify({root,changeLog:await get(base,`/root/${root}/change_log?filtered=false&int64_as_str=1`)}));
+  const log=await get(base,`/root/${root}/tabular_change_log?filtered=false&int64_as_str=1`);
   const describe=value=>({type:Array.isArray(value)?'array':typeof value,keys:value&&typeof value==='object'?Object.keys(value).slice(0,12):[],length:Array.isArray(value)?value.length:undefined});
   console.log(JSON.stringify({root,history:describe(log),children:Object.fromEntries(Object.entries(log).slice(0,6).map(([k,v])=>[k,describe(v)]))}));
-  if(log.operation_id && log.timestamp) console.log(JSON.stringify({root,operations:Object.keys(log.operation_id).slice(-10).map(i=>({id:log.operation_id[i],timestamp:log.timestamp[i],is_merge:log.is_merge?.[i],before:log.before_root_ids?.[i],after:log.after_root_ids?.[i]}))}));
+  if(log.operation_id && log.timestamp) console.log(JSON.stringify({root,operations:Object.keys(log.operation_id).slice(-30).map(i=>({id:log.operation_id[i],timestamp:log.timestamp[i],is_merge:log.is_merge?.[i],before:log.before_root_ids?.[i],after:log.after_root_ids?.[i]}))}));
  }
 }
