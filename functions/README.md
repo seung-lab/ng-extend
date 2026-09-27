@@ -23,7 +23,7 @@ so EyeWire II has its own code, secrets and project.
 From the repo root (not from `functions/`):
 
 ```bash
-firebase deploy --only functions,firestore:rules --project <eyewire project id>
+firebase deploy --only functions,firestore:rules --project eyewire-ii-e4d52
 ```
 
 Run the tests first: `cd functions && npm ci --legacy-peer-deps && npm test`.
