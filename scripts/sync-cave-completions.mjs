@@ -109,7 +109,7 @@ const onlyDatastack = onlyArgIdx >= 0 ? process.argv[onlyArgIdx + 1] : null;
 
 const supabaseHeaders = {
   apikey: SUPABASE_KEY,
-  Authorization: `Bearer ${SUPABASE_KEY}`,
+  ...(SUPABASE_KEY.startsWith('sb_') ? {} : { Authorization: `Bearer ${SUPABASE_KEY}` }),
   'Content-Type': 'application/json',
   // Use Prefer: resolution=merge-duplicates so PostgREST UPSERTS
   // (ON CONFLICT update) the row instead of erroring.

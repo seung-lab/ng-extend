@@ -90,7 +90,7 @@ if (!APPROVERS.length) { console.error('APPROVER_SLACK_IDS is empty: nobody coul
 const sb = (path, init = {}) => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
   ...init,
   headers: {
-    apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+    apikey: SUPABASE_KEY, ...(SUPABASE_KEY.startsWith('sb_') ? {} : { Authorization: `Bearer ${SUPABASE_KEY}` }),
     'Content-Type': 'application/json', Prefer: 'return=representation',
     ...(init.headers || {}),
   },
