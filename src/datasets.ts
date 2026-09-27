@@ -4,6 +4,12 @@
  * Both DatasetSelectorPanel and CellLibraryPanel (cross-dataset help-request
  * jump) need this info, so it lives here instead of inside a single component.
  */
+// Dataset thumbnails (static/images/datasets). MICrONS art is Amy's pick for
+// every MICrONS volume, pinky included.
+import thumbMicrons from '../static/images/datasets/microns.jpg';
+import thumbMec from '../static/images/datasets/mec.jpg';
+// EyeWire II retina: e2_overview.png from eyewire.ai.
+import thumbRetina from '../static/images/datasets/retina.jpg';
 import { useLayersStore } from './store';
 import { getDatasetCaveConfig } from './config';
 import { openSegPanel } from './widgets/widget_utils';
@@ -21,6 +27,9 @@ export interface DatasetEntry {
   /** Wide render of this dataset's own cells, shown behind its name on the
    *  profile. Only set it to a render OF this volume, never a stand-in. */
   banner?: string;
+  /** Small 16:9 image for dataset cards (profile Datasets tab). Falls back
+   *  to the species icon when unset. */
+  thumbnail?: string;
   layers: any[];
 }
 
@@ -33,6 +42,7 @@ export const SPECIES_ICONS: Record<DatasetEntry['species'], string> = {
 export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
+    thumbnail: thumbRetina,
     label: 'EyeWire II: Retina',
     shortLabel: 'EyeWire II',
     abbrev: 'Retina',
@@ -57,6 +67,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pinky_sandbox',
+    thumbnail: thumbMicrons,
     label: 'Pinky Sandbox',
     shortLabel: 'Pinky',
     abbrev: 'Pinky',
@@ -81,6 +92,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65',
+    thumbnail: thumbMicrons,
     label: 'MICrONS Minnie65',
     shortLabel: 'MICrONS',
     abbrev: 'MICrONS',
@@ -105,6 +117,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65_live',
+    thumbnail: thumbMicrons,
     label: 'MICrONS Live',
     shortLabel: 'MICrONS Live',
     abbrev: 'Live',
@@ -135,6 +148,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pni_mec',
+    thumbnail: thumbMec,
     label: 'Medial Entorhinal Cortex',
     shortLabel: 'MEC',
     abbrev: 'MEC',

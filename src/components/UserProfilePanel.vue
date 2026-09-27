@@ -1587,11 +1587,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             :class="{
               'nge-ds-tab-card--active': canonicalDataset(segLayerName(ds)) === activeDatasetCanon,
               'nge-ds-tab-card--switching': switchingDatasetId === ds.id,
+              'nge-ds-tab-card--thumb': !!ds.thumbnail,
             }"
             @click="switchProfileDataset(ds)"
           >
+            <img v-if="ds.thumbnail" :src="ds.thumbnail" class="nge-ds-tab-thumb" alt="" loading="lazy" />
+            <div class="nge-ds-tab-card-body">
             <div class="nge-ds-tab-card-head">
-              <span class="nge-ds-tab-species">{{ SPECIES_ICONS[ds.species] }}</span>
+              <span v-if="!ds.thumbnail" class="nge-ds-tab-species">{{ SPECIES_ICONS[ds.species] }}</span>
               <span class="nge-ds-tab-label">{{ ds.label }}</span>
               <span v-if="canonicalDataset(segLayerName(ds)) === activeDatasetCanon" class="nge-ds-tab-badge">Active</span>
               <span v-else class="nge-ds-tab-switch">Switch ▸</span>
@@ -1605,6 +1608,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <span v-if="!hasContributed(ds)" class="nge-ds-tab-stat nge-ds-tab-stat--none">no contributions yet</span>
               </template>
               <span v-else class="nge-ds-tab-stat nge-ds-tab-stat--none">…</span>
+            </div>
             </div>
           </div>
         </div>
@@ -1859,6 +1863,26 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   gap: 8px;
 }
 .nge-ds-tab-species { font-size: 16px; line-height: 1; }
+/* Cards with a render get it as a small 16:9 thumbnail on the left. */
+.nge-ds-tab-card--thumb {
+  display: grid;
+  grid-template-columns: 124px 1fr;
+  gap: 14px;
+  align-items: center;
+}
+.nge-ds-tab-card-body { min-width: 0; }
+.nge-ds-tab-thumb {
+  width: 124px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+@media (max-width: 520px) {
+  .nge-ds-tab-card--thumb { grid-template-columns: 84px 1fr; gap: 10px; }
+  .nge-ds-tab-thumb { width: 84px; }
+}
 .nge-ds-tab-label {
   font-size: 13px;
   font-weight: 600;

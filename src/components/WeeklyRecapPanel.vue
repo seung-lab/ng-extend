@@ -226,7 +226,8 @@ function jumpToCell(segId: string) {
     :class="props.embedded ? 'nge-recap-embedded' : 'nge-recap-modal'"
     @hide="emit('hide')"
   >
-    <div class="nge-recap-shell" :class="{ 'nge-recap-shell--embedded': props.embedded }">
+    <div class="nge-recap-shell" :class="{ 'nge-recap-shell--embedded': props.embedded }"
+         :style="{ '--recap-banner': `url(${recapBanner})` }">
 
       <!-- Non-scrolling topbar (modal only) -->
       <div v-if="!props.embedded" class="nge-recap-topbar">
@@ -237,7 +238,7 @@ function jumpToCell(segId: string) {
       <div class="nge-recap-content">
 
         <!-- Hero header -->
-        <div class="nge-recap-hero" :style="{ '--recap-banner': `url(${recapBanner})` }">
+        <div class="nge-recap-hero">
           <!-- "My" when shown inside your own profile, "Your" when it appears
                as a standalone toast/panel addressed to the reader. -->
           <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} Week in Science</div>
@@ -521,16 +522,16 @@ function jumpToCell(segId: string) {
 /* ── Hero header ── */
 .nge-recap-hero {
   text-align: center;
-  padding: 34px 16px 22px;
+  padding: 70px 16px 26px;
   margin-bottom: 20px;
-  border-radius: 10px;
-  border: 1px solid rgba(66, 213, 236, 0.18);
-  /* The render behind the title, darkened toward the bottom so the white
-     title and the date stay readable on every part of the image. */
+}
+/* The 980 cells render fills the whole tab: vivid behind the title, then
+   darkened down the page so every stat stays readable over it. */
+.nge-recap-shell {
   background:
-    linear-gradient(180deg, rgba(4, 6, 12, 0.25) 0%, rgba(4, 6, 12, 0.72) 70%, rgba(4, 6, 12, 0.88) 100%),
-    var(--recap-banner) center 35% / cover no-repeat;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    linear-gradient(180deg, rgba(4, 6, 12, 0.2) 0px, rgba(4, 6, 12, 0.55) 220px, rgba(4, 6, 12, 0.86) 420px, rgba(4, 6, 12, 0.92) 100%),
+    var(--recap-banner) center top / 100% auto no-repeat,
+    #04060c;
 }
 
 .nge-recap-hero-title {
