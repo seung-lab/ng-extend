@@ -114,6 +114,12 @@ function isBadgeNotification(notif: any): boolean {
 
 function openDetail(notif: any) {
   backend.markNotificationRead(notif.id);
+  // The weekly recap opens the full Week in Science tab in the profile.
+  if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Week in Science')) {
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
+    emit('hide');
+    return;
+  }
   // Triage alerts jump straight to the review queue (Admin Hub > Triage).
   if ((notif.title || '').startsWith('🗂')) {
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'triage' } }));
@@ -210,7 +216,7 @@ function plainText(text: string): string {
         v-for="notif in backend.notifications"
         :key="notif.id"
         class="nge-notif-card"
-        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙') }"
+        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙'), 'nge-notif-card--recap': (notif.title || '').startsWith('✨') }"
         @click="openDetail(notif)"
       >
         <div class="nge-notif-card-row">
@@ -406,6 +412,15 @@ function plainText(text: string): string {
 }
 .nge-notif-card--fixed .nge-notif-card-title {
   color: #ffd35a;
+  font-weight: 700;
+}
+/* Weekly recap cards (title starts with ✨): science cyan and violet. */
+.nge-notif-card--recap {
+  border-left: 3px solid #42d5ec;
+  background: linear-gradient(90deg, rgba(66, 213, 236, 0.12), rgba(150, 120, 255, 0.06));
+}
+.nge-notif-card--recap .nge-notif-card-title {
+  color: #8fe9f5;
   font-weight: 700;
 }
 /* Thank you cards (title starts with 💙): the neon blue and pink of the art. */

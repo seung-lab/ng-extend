@@ -49,6 +49,18 @@ summaries.
 
 (The robot adds lines here as fixes are approved.)
 
+- "Use scifi-ui" means reuse what is already ported in this repo, not a new
+  dependency: `runPanelTrace` in `src/util/holo_trace.ts` (beam on arrival)
+  and the softened `nge-holo-materialize` keyframes in TagModePanel.vue.
+  A panel centred with `translate(-50%, -50%)` must repeat that translate in
+  every materialize keyframe or it jumps off centre (2026-09-26, dataset
+  panel build, from reading WeeklyRecapPanel and TagModePanel).
+- Per-user counts must come from shared records, never the local stats tally:
+  `useUserStatsStore` daily counts live in one browser's storage and miss
+  edits made elsewhere. Count from `edit_log` (merges and splits, skip
+  `success = false`) or `user_edit_counts` (CAVE mirror, rolling 7 days).
+  Say which window a number covers (2026-09-26, recap showed 6 edits where
+  edit_log and CAVE had 13).
 - Tutorials: `TutorialStep.vue` listens for Enter and Space on `window` in the
   capture phase and swallows them. A step that tells the user to press Enter in
   the viewer (Cut, Merge and Find Path submit on Enter) only works because the

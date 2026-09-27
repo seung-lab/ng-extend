@@ -18,6 +18,7 @@ App code imports them (`import x from '../../static/nurro/<file>'`).
 | `nurro-super-v2.png` | `originals/nurro-super-v2.png` | Super Nurro, second pose | **In use:** the admins' "🎉 Fixed!" notification |
 | `nurro-3d-card.jpg` | `originals/nurro-3d.webp` | 3D fluffy Nurro in a space suit with a jetpack | **In use:** "🛠️ Your report is being worked on". For fun anywhere |
 | `nurro-thank-you-science.jpg` | `originals/nurro-thank-you-science.png` | "THANK YOU!" in neon neuron branches, three Nurros, "for science! ♥ Eyewire" | **In use:** "💙 Thank you, for science!" after a person's third edit. The original's handwriting is a transparent cut-out, so it needs a white backdrop (the web copy has one) |
+| `nurro-experiment-recap.png` | `originals/nurro-experiment-recap.png` | Science Nurro winking into a microscope, notebook in paw | Research moments, "doing science" steps. (The weekly recap uses the 980 cells render in `static/images/recap` instead.) |
 | `nurro-confetti-card.png` | `nurro-confetti.png` | Nurro with a party popper; the streamers are neurons | Celebrations: completing a tutorial, a milestone, a badge |
 | `nurro-popcorn-card.png` | `nurro-popcorn.png` | Nurro eating popcorn | "The show heats up": leaderboard races, live events, watching a replay |
 | `nurro-microscope.png` | `originals/nurro-microscope.png` | Science Nurro at a desk with a microscope and laptop | Explaining the science, "how we know", research updates |
