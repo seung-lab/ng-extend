@@ -764,7 +764,7 @@ async function registerPractice() {
   const a = practiceA.value, b = practiceB.value;
   if (!a || !b) { practiceError.value = 'Pick both pieces first.'; return; }
   if (a.sv === b.sv) { practiceError.value = 'A and B are the same spot. Hover two different places.'; return; }
-  if (practiceKind.value === 'merge_then_cut' && a.root === b.root) { practiceError.value = 'A and B are on the same root. For merge then cut, the piece must start disconnected.'; return; }
+  if (practiceKind.value === 'merge_then_cut' && a.root === b.root) { practiceError.value = 'A and B are on the same root. For a merge example, the piece must start disconnected.'; return; }
   if (practiceKind.value === 'cut' && a.root !== b.root) { practiceError.value = 'A and B are on different roots. For a cut example, hover two spots on the fused segment, one each side of the join.'; return; }
   const pcg = getPcgInfo();
   if (!pcg) { practiceError.value = 'No graphene segmentation layer in the viewer.'; return; }
@@ -1117,8 +1117,8 @@ function practiceWhen(iso: string | null) {
         <label class="nge-admin-label">Register a practice cell from the current view</label>
         <p class="nge-admin-hint">Open the sandbox view learners should start from. Hover one piece in the viewer, come back and press A. Hover the other, press B. The view is saved as the start state.</p>
         <div class="nge-admin-row">
-          <label class="nge-practice-kind"><input type="radio" value="cut" v-model="practiceKind" /> Cut: A and B start fused (hover each side of the join)</label>
-          <label class="nge-practice-kind"><input type="radio" value="merge_then_cut" v-model="practiceKind" /> Merge then cut: B starts disconnected from A</label>
+          <label class="nge-practice-kind"><input type="radio" value="cut" v-model="practiceKind" /> Cut example: A and B are wrongly fused, the learner cuts them apart (hover each side of the join)</label>
+          <label class="nge-practice-kind"><input type="radio" value="merge_then_cut" v-model="practiceKind" /> Merge example: B is wrongly disconnected from A, the learner merges it back</label>
         </div>
         <div class="nge-admin-row">
           <span class="nge-practice-hover">Hovered: <code>{{ practiceHover ? practiceHover.root : 'nothing yet' }}</code></span>
@@ -1147,7 +1147,7 @@ function practiceWhen(iso: string | null) {
           <div class="nge-practice-main">
             <strong>{{ ex.title }}</strong>
             <span class="nge-practice-status">{{ ex.status }}{{ ex.enabled ? '' : ', disabled' }}</span>
-            <span class="nge-admin-hint">{{ ex.kind === 'cut' ? 'cut' : 'merge then cut' }}</span>
+            <span class="nge-admin-hint">{{ ex.kind === 'cut' ? 'cut example' : 'merge example' }}</span>
             <span class="nge-admin-hint">{{ ex.dataset }} · used {{ ex.uses }}×<template v-if="ex.last_reset_at"> · reset {{ practiceWhen(ex.last_reset_at) }}</template><template v-if="ex.claimed_by"> · claimed until {{ practiceWhen(ex.expires_at) }}</template></span>
             <span v-if="ex.last_error" class="nge-admin-warn-inline">{{ ex.last_error }}</span>
           </div>

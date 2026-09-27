@@ -67,7 +67,9 @@ one learner at a time, and put it back afterwards.
   (hover the cell, "Use hovered as A"; hover the piece, "Use hovered as B"),
   check it, reset it now, disable or delete it.
 - Two kinds: `cut` (A and B start fused; hover each side of the join) and
-  `merge_then_cut` (B starts disconnected). Amy's first cut example
+  `merge_then_cut` (a merge example: B starts disconnected; the name is
+  historical, the learner only merges). The UI calls them cut example and
+  merge example. Amy's first cut example
   (2026-09-26) is a fused axon in the sandbox; its three states (marked,
   points placed, split) are the illustration states in tutorial-3.ts steps
   9, 12 and 14. Register the same cell as a `cut` practice example from the
@@ -87,6 +89,8 @@ one learner at a time, and put it back afterwards.
   5090441737273344, then after Amy's cut: axon 648518346357382723, corrected
   cell 648518346351477262. That view is a third `cut` candidate once the two
   are merged back together.
+- Cut candidate 3 from Amy, 2026-09-26: 648518346353862024 has several
+  merges that need cutting, annotated in view 6280196063756288.
 - Merge candidate from Amy, 2026-09-26: a branch cut in half, view
   5653391690694656, pieces 648518346350730372 and 648518346351348401.
   Register it as `merge_then_cut` from that view (hover the cell for A, the

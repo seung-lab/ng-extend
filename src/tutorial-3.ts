@@ -347,14 +347,9 @@ Press **next** once the box below says the cut landed.`,
     onEnter: async () => {
       closeSidePanel();
       watchPractice(false, 'Waiting for your cut…', 'Cut! The two pieces are separate now. Press next.');
-      // If the merge step's cell is still merged, cutting it apart is the
-      // exercise; otherwise hand it back and take a fused cell.
-      const held = currentPractice().example;
-      if (held && held.kind === 'merge_then_cut' && (await piecesMerged()) === true) {
-        await beginPractice('merge_then_cut');
-      } else {
-        await beginPractice('cut');
-      }
+      // A cut example of its own. beginPractice hands the merge cell back
+      // first (its merge is undone), so the two exercises stay independent.
+      await beginPractice('cut');
     },
   },
 

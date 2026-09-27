@@ -2,9 +2,10 @@
  * practice.ts — resettable practice cells for the Cut & Merge tutorial.
  *
  * Schema: supabase-tutorial-practice-schema.sql. One example goes to one
- * user at a time. Two kinds: `merge_then_cut` (B starts disconnected; merge
- * it onto A, then cut it off) and `cut` (A and B start fused; cut them
- * apart).
+ * user at a time. Two kinds: `merge_then_cut` (a merge example: B starts
+ * wrongly disconnected and the learner merges it onto A) and `cut` (A and B
+ * start wrongly fused and the learner cuts them apart). The kind name is
+ * historical; the reset undoes whatever the learner did either way.
  * When they finish or leave, every PyChunkedGraph operation made on the
  * example since its baseline is undone, newest first, with the user's own
  * CAVE token, and the example goes back to `ready` with refreshed roots.
