@@ -39,11 +39,21 @@ async function supabasePost(table, rows) {
 }
 
 // ── Week range label ──────────────────────────────────────────────────────────
+// The recap week is Monday 00:00 to now, US Eastern (the lab's clock), the
+// same Monday to Sunday week the app's Week in Science tab shows. It used to
+// count a rolling 7 days under a Monday to Sunday label, so the two numbers
+// never matched.
+function easternMondayStart(now = new Date()) {
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const offsetMs = Math.round((now.getTime() - et.getTime()) / 60000) * 60000; // ET wall clock to UTC, whole minutes
+  const mon = new Date(et);
+  mon.setHours(0, 0, 0, 0);
+  mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));  // back to Monday
+  return { utc: new Date(mon.getTime() + offsetMs), et: mon };
+}
+
 function weekRangeLabel() {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - ((day + 6) % 7)); // Monday
+  const { et: mon } = easternMondayStart();
   const sun = new Date(mon);
   sun.setDate(mon.getDate() + 6);
   const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -52,13 +62,13 @@ function weekRangeLabel() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo = easternMondayStart().utc.toISOString(); // Monday 00:00 ET (name kept for the log line)
 
   // 1. Get active users from edit_log in the past 7 days
   //    Aggregate: count by operation per user
   const editLogs = await supabaseGet(
     'edit_log',
-    `select=user_id,operation&timestamp=gte.${sevenDaysAgo}`
+    `select=user_id,operation&timestamp=gte.${sevenDaysAgo}&success=not.is.false`
   );
 
   if (!editLogs.length) {

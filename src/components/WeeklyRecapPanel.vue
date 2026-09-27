@@ -45,6 +45,54 @@ interface GlobalStats {
   editsAll: number; cellsAll: number; scientists: number; mineWeek: number;
 }
 const globalStats = ref<GlobalStats | null>(null);
+
+// ── Your week and month, from the shared edit log ──
+// The local stats tally lives in this browser only, so edits made on
+// another computer never reached it (Amy's week showed 6 where the edit
+// log and CAVE both had 13). Count merges and splits from edit_log for the
+// same Monday to Sunday week the header shows, and the calendar month.
+// Falls back to the local tally if the log cannot be read.
+const serverCounts = ref<{ week: [number, number]; month: [number, number] } | null>(null);
+const shown = computed(() => {
+  const s = stats.value;
+  const c = serverCounts.value;
+  if (!c) return s;
+  return {
+    ...s,
+    mergesThisWeek: c.week[0], splitsThisWeek: c.week[1], editsThisWeek: c.week[0] + c.week[1],
+    mergesThisMonth: c.month[0], splitsThisMonth: c.month[1], editsThisMonth: c.month[0] + c.month[1],
+  };
+});
+onMounted(async () => {
+  const uid = backendW.userId;
+  if (!uid) return;
+  try {
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); // Monday
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const since = weekStart < monthStart ? weekStart : monthStart;
+    const { supabase } = await import('../supabase');
+    const { data, error } = await supabase.from('edit_log')
+      .select('operation, timestamp, success')
+      .eq('user_id', uid)
+      .gte('timestamp', since.toISOString())
+      .limit(20000);
+    if (error || !data) return;
+    const week: [number, number] = [0, 0];
+    const month: [number, number] = [0, 0];
+    for (const r of data as any[]) {
+      if (r.success === false) continue;
+      const i = r.operation === 'merge' ? 0 : r.operation === 'split' ? 1 : -1;
+      if (i < 0) continue;
+      const t = new Date(r.timestamp);
+      if (t >= weekStart) week[i]++;
+      if (t >= monthStart) month[i]++;
+    }
+    serverCounts.value = { week, month };
+  } catch { /* keep the local tally */ }
+});
 onMounted(async () => {
   try {
     const { supabase } = await import('../supabase');
@@ -198,11 +246,11 @@ function jumpToCell(segId: string) {
 
         <!-- Big hero edit number -->
         <div class="nge-recap-big-stat">
-          <div class="nge-recap-big-number">{{ stats.editsThisWeek.toLocaleString() }}</div>
+          <div class="nge-recap-big-number">{{ shown.editsThisWeek.toLocaleString() }}</div>
           <div class="nge-recap-big-label">edits this week</div>
           <div class="nge-recap-big-sub">
-            {{ stats.mergesThisWeek.toLocaleString() }} merges
-            + {{ stats.splitsThisWeek.toLocaleString() }} splits
+            {{ shown.mergesThisWeek.toLocaleString() }} merges
+            + {{ shown.splitsThisWeek.toLocaleString() }} splits
           </div>
         </div>
 
@@ -233,15 +281,15 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-section-label">{{ monthLabel }}</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ stats.editsThisMonth.toLocaleString() }}</div>
+              <div class="nge-recap-month-num">{{ shown.editsThisMonth.toLocaleString() }}</div>
               <div class="nge-recap-month-key">total edits</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ stats.mergesThisMonth.toLocaleString() }}</div>
+              <div class="nge-recap-month-num">{{ shown.mergesThisMonth.toLocaleString() }}</div>
               <div class="nge-recap-month-key">merges</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ stats.splitsThisMonth.toLocaleString() }}</div>
+              <div class="nge-recap-month-num">{{ shown.splitsThisMonth.toLocaleString() }}</div>
               <div class="nge-recap-month-key">splits</div>
             </div>
           </div>
