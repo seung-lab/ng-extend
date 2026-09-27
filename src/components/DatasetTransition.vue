@@ -8,7 +8,7 @@
  */
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { datasetTransition, resumeDatasetTransition, endDatasetTransition } from '../util/dataset_transition';
-import { runPanelDraw, runParticleBurst } from '../util/holo_trace';
+import { runPanelDraw } from '../util/holo_trace';
 
 const boxEl = ref<HTMLElement | null>(null);
 const phase = ref<'loading' | 'zip' | null>(null);
@@ -48,35 +48,108 @@ function play() {
   tick();
 }
 
+/**
+ * The zip: runPanelDraw's two light heads start at the bottom middle, run up
+ * both sides, then along the top edge from the corners to the centre while
+ * the box clips away from the bottom. Particles stream off the top edge
+ * right behind those heads, so the pop follows the zip inward rather than
+ * bursting from fixed points.
+ */
 function zip() {
   const box = boxEl.value;
   phase.value = 'zip';
-  if (!box) { endDatasetTransition(); phase.value = null; return; }
+  if (!box) { finish(); return; }
+  const r = box.getBoundingClientRect();
+  const emitter = startEdgeEmitter(r);
+  // Share of the path spent on the top edge: half the width out of (w + h).
+  const topStart = 1 - (r.width / 2) / (r.width + r.height);
+  let last = topStart;
   const total = runPanelDraw(box, 'up', frac => {
     if (boxEl.value) boxEl.value.style.clipPath = `inset(0 0 ${(frac * 100).toFixed(2)}% 0)`;
-    if (frac >= 1) pop();
-  });
-  if (!total) pop(); // reduced motion: straight to the end
-}
-
-let popped = false;
-function pop() {
-  if (popped) return;
-  popped = true;
-  const box = boxEl.value;
-  if (box) {
-    // Pop along the whole top edge, rippling left to right like a zip.
-    const r = box.getBoundingClientRect();
-    const N = 5;
-    for (let i = 0; i < N; i++) {
-      const x = r.left + r.width * (0.1 + 0.8 * i / (N - 1));
-      timers.push(window.setTimeout(() => runParticleBurst(x, r.top + 4, '66,213,236'), i * 40));
+    if (frac > topStart && emitter) {
+      // Fill every step since the last frame so the stream has no gaps.
+      const a = (last - topStart) / (1 - topStart), b = (Math.min(frac, 1) - topStart) / (1 - topStart);
+      emitter.emitSpan(a, b);
+      last = frac;
     }
-  }
-  timers.push(window.setTimeout(() => { endDatasetTransition(); phase.value = null; popped = false; }, 120));
+    if (frac >= 1) { emitter?.stop(); timers.push(window.setTimeout(finish, 120)); }
+  });
+  if (!total) { emitter?.stop(); finish(); } // reduced motion: straight to the end
 }
 
-watch(() => datasetTransition.current, t => { if (t) { popped = false; play(); } });
+function finish() { endDatasetTransition(); phase.value = null; }
+
+/** Particles along the box's top edge. emitSpan(a, b) spawns them between
+ *  progress a and b of the corner to centre run, on both halves at once. */
+function startEdgeEmitter(r: DOMRect) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return null;
+  const PADX = 60, PADT = 170, PADB = 90;
+  const W = r.width + PADX * 2, H = PADT + PADB;
+  const cv = document.createElement('canvas');
+  cv.style.cssText = `position:fixed;left:${r.left - PADX}px;top:${r.top - PADT}px;width:${W}px;height:${H}px;pointer-events:none;z-index:100000;`;
+  cv.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  if (!ctx) { cv.remove(); return null; }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const y0 = PADT, half = r.width / 2, cx = PADX + half;
+  type P = { x: number; y: number; vx: number; vy: number; life: number; age: number; s: number; hue: number };
+  const parts: P[] = [];
+  const spawn = (x: number, inward: number) => {
+    const up = Math.random() < 0.78;
+    parts.push({
+      x, y: y0,
+      vx: inward * (0.25 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.7,
+      vy: up ? -(0.6 + Math.random() * 2.4) : 0.3 + Math.random() * 1.1,
+      life: 650 + Math.random() * 650, age: 0,
+      s: 0.8 + Math.random() * 1.9,
+      hue: Math.random(),
+    });
+  };
+  let stopped = false, raf = 0, prev = performance.now();
+  const frame = (now: number) => {
+    const dt = Math.min(40, now - prev); prev = now;
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.age += dt;
+      if (p.age >= p.life) { parts.splice(i, 1); continue; }
+      const k = dt / 16.7;
+      p.x += p.vx * k; p.y += p.vy * k;
+      p.vy += 0.018 * k; p.vx *= 0.985;
+      const t = p.age / p.life, a = (1 - t) * (1 - t);
+      // cyan into violet, like the progress bar
+      const rC = Math.round(66 + (201 - 66) * p.hue), gC = Math.round(213 + (139 - 213) * p.hue), bC = Math.round(236 + (255 - 236) * p.hue);
+      ctx.fillStyle = `rgba(${rC},${gC},${bC},${(a * 0.9).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (1 - t * 0.4), 0, 6.283); ctx.fill();
+      ctx.fillStyle = `rgba(${rC},${gC},${bC},${(a * 0.18).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.s * 3.2, 0, 6.283); ctx.fill();
+    }
+    if (stopped && !parts.length) { cv.remove(); return; }
+    raf = requestAnimationFrame(frame);
+  };
+  raf = requestAnimationFrame(frame);
+  return {
+    emitSpan(a: number, b: number) {
+      const PER_PX = 0.55;                       // particles per pixel of edge, per side
+      const x0 = a * half, x1 = b * half;         // distance travelled from each corner
+      const n = Math.max(1, Math.round((x1 - x0) * PER_PX));
+      for (let i = 0; i < n; i++) {
+        const d = x0 + (x1 - x0) * Math.random();
+        spawn(PADX + d, +1);                      // left head, moving right (inward)
+        spawn(PADX + r.width - d, -1);            // right head, moving left (inward)
+      }
+      if (b >= 1) for (let i = 0; i < 26; i++) spawn(cx + (Math.random() - 0.5) * 16, Math.random() < 0.5 ? 1 : -1); // the meeting point pops
+    },
+    stop() { stopped = true; },
+    cancel() { cancelAnimationFrame(raf); cv.remove(); },
+  };
+}
+
+watch(() => datasetTransition.current, t => { if (t) play(); });
 onMounted(() => { resumeDatasetTransition(); if (datasetTransition.current) play(); });
 onBeforeUnmount(clearTimers);
 </script>
@@ -163,28 +236,28 @@ onBeforeUnmount(clearTimers);
 }
 .nge-dst-thumb img {
   width: 100%; height: 100%; object-fit: cover; display: block;
-  animation: nge-dst-reveal 2s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: var(--dst-in, 0ms);
+  /* Revealed top to bottom exactly as the scan line passes (same timing). */
+  animation: nge-dst-wipe 0.95s cubic-bezier(0.4, 0, 0.3, 1) both;
+  animation-delay: calc(var(--dst-in, 0ms) + 0.25s);
 }
-/* The render resolves from blurred and dim to sharp while it "loads". */
-@keyframes nge-dst-reveal {
-  0%   { filter: blur(10px) brightness(0.45) saturate(0.6); transform: scale(1.08); }
-  100% { filter: blur(0) brightness(1) saturate(1.1); transform: scale(1); }
+@keyframes nge-dst-wipe {
+  from { clip-path: inset(0 0 100% 0); filter: brightness(1.6); }
+  to   { clip-path: inset(0 0 0 0); filter: brightness(1); }
 }
 .nge-dst-thumb--empty { background: radial-gradient(circle at 50% 50%, rgba(66, 213, 236, 0.18), #04070d 70%); }
-/* A bright scan line sweeps down the image, over and over. */
+/* One fast bright line down the image; the image appears behind it. Its
+   top edge tracks the wipe's edge (same duration, easing and delay). */
 .nge-dst-scan {
-  position: absolute; left: 0; right: 0; top: 0; height: 30%;
-  background: linear-gradient(180deg, transparent, rgba(120, 220, 255, 0.10) 70%, rgba(180, 240, 255, 0.55) 98%, transparent);
-  mix-blend-mode: screen;
-  /* One pass down the image during the load. */
-  animation: nge-dst-sweep 1.8s cubic-bezier(0.45, 0, 0.55, 1) both;
-  animation-delay: var(--dst-in, 0ms);
+  position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: rgba(200, 245, 255, 0.95);
+  box-shadow: 0 0 14px 3px rgba(120, 220, 255, 0.8), 0 -18px 30px rgba(120, 220, 255, 0.25);
+  animation: nge-dst-sweep 0.95s cubic-bezier(0.4, 0, 0.3, 1) both;
+  animation-delay: calc(var(--dst-in, 0ms) + 0.25s);
 }
 @keyframes nge-dst-sweep {
-  0%   { transform: translateY(-100%); opacity: 1; }
-  90%  { opacity: 1; }
-  100% { transform: translateY(340%); opacity: 0; }
+  0%   { top: 0; opacity: 1; }
+  92%  { opacity: 1; }
+  100% { top: calc(100% - 2px); opacity: 0; }
 }
 .nge-dst-grid {
   position: absolute; inset: 0; opacity: 0.18; pointer-events: none;
