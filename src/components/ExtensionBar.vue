@@ -18,6 +18,7 @@ import { runSpotlight } from "../assistant/spotlight";
 import { showDefaultCell } from "../widgets/widget_utils";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import TagModePanel from "components/TagModePanel.vue";
+import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
@@ -1016,6 +1017,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     </button>
   </nav>
   </teleport>
+  <!-- "Now entering <dataset>" after a dataset switch (survives the reload). -->
+  <DatasetTransition />
 </template>
 
 <style>

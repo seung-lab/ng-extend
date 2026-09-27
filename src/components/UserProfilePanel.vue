@@ -3,6 +3,7 @@ import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
+import { startDatasetTransition } from '../util/dataset_transition';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
@@ -339,6 +340,8 @@ async function switchProfileDataset(ds: DatasetEntry) {
   const canon = canonicalDataset(segLayerName(ds));
   if (canon === activeDatasetCanon.value || switchingDatasetId.value) return;
   switchingDatasetId.value = ds.id;
+  startDatasetTransition(ds);
+  await new Promise(r => setTimeout(r, 60));
   const ok = await switchToDataset(ds);
   if (ok) refreshActiveDatasetCanon();
   switchingDatasetId.value = null;
