@@ -16,5 +16,6 @@ for(const [id,fixture] of Object.entries(manifest)) {
   const log=await get(base,`/root/${root}/tabular_change_log`);
   const describe=value=>({type:Array.isArray(value)?'array':typeof value,keys:value&&typeof value==='object'?Object.keys(value).slice(0,12):[],length:Array.isArray(value)?value.length:undefined});
   console.log(JSON.stringify({root,history:describe(log),children:Object.fromEntries(Object.entries(log).slice(0,6).map(([k,v])=>[k,describe(v)]))}));
+  if(log.operation_id && log.timestamp) console.log(JSON.stringify({root,operations:Object.keys(log.operation_id).slice(-10).map(i=>({id:log.operation_id[i],timestamp:log.timestamp[i],is_merge:log.is_merge?.[i],before:log.before_root_ids?.[i],after:log.after_root_ids?.[i]}))}));
  }
 }
