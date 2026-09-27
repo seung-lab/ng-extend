@@ -334,12 +334,13 @@ This is the same cell after the cut: the axon is its own segment now.`,
   {
     title: "Your Turn!",
     text: `
-Practice time! This cell is yours alone until you finish. Two pieces that belong to different neurons are fused. Cut them apart.
+Practice time! This cell is yours alone until you finish. A thin axon runs into it and the AI fused the two. Cut the axon off.
 
 1. Press **C** to activate the cut tool.
-2. **Ctrl+Click** to place **red points** on one side of the join.
-3. Press **G** to switch to blue, then **Ctrl+Click** to place **blue points** on the other side.
-4. Press **Enter** to submit the cut.
+2. **Ctrl+Click** 3 or 4 **red points** on the axon, the piece that doesn't belong, working back from the join.
+3. Press **G** to switch to blue, then **Ctrl+Click** 3 or 4 **blue points** on the cell, just past the join.
+4. Keep every point on this one segment. Points on a neighbour make the server refuse the cut.
+5. Press **Enter** to submit.
 
 Press **next** once the box below says the cut landed.`,
     position: OVER_3D,

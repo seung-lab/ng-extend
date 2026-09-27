@@ -87,8 +87,9 @@ one learner at a time, and put it back afterwards.
 - Before and after pictures on step 1 (`src/images/cut-before.jpg`,
   `cut-after.jpg`): cell 648518346350730372 with a fused axon, view
   5090441737273344, then after Amy's cut: axon 648518346357382723, corrected
-  cell 648518346351477262. That view is a third `cut` candidate once the two
-  are merged back together.
+  cell 648518346351477262. Amy wants this fused axon as the cut practice
+  cell: merge 648518346357382723 back onto 648518346351477262, then register
+  the merged cell as a `cut` example (A on the axon, B on the cell).
 - Cut candidate 3 from Amy, 2026-09-26: 648518346353862024 has several
   merges that need cutting, annotated in view 6280196063756288. Amy's pick
   for the cut example is view 5646028774572032 (register it as `cut`).
