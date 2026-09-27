@@ -416,6 +416,10 @@ function parseCoords(s: string): [number, number, number] {
 async function claimCell(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value) return;
   claimError.value = '';
+  if (backend.myActiveClaimCount() >= backend.MAX_CLAIMS) {
+    claimError.value = `Max ${backend.MAX_CLAIMS} claims reached`;
+    return;
+  }
   // Derive claim point: use cell's existing claim point, parse nucCoords, or use viewer position
   let point: ClaimPoint;
   if (cell.claimPoint) {
@@ -436,7 +440,7 @@ async function claimCell(cell: typeof cells.value[0]) {
     return;
   }
   // Write claim to Google Sheet (best-effort)
-  syncCellToSheet('claim', cell.segId).catch(showSheetError);
+  syncCellToSheet('claim', cell.segId, undefined, cell.dataset).catch(showSheetError);
   await backend.loadTasks();
 }
 
@@ -454,7 +458,7 @@ async function completeCell(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value || !cell.taskId) return;
   await backend.completeTask(cell.taskId, cell.finalSegId || undefined, cell.somaCoords || undefined);
   // Write completion to Google Sheet (best-effort)
-  syncCellToSheet('complete', cell.segId).catch(showSheetError);
+  syncCellToSheet('complete', cell.segId, undefined, cell.dataset).catch(showSheetError);
 
   // Record the completion in CAVE (cell_status annotation) so it materializes
   // to the leaderboard — same path ProofreadingQueuePanel uses. The root is the
