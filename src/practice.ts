@@ -334,6 +334,38 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   return row;
 }
 
+/**
+ * Nothing ready? A cell left in needs_reset (a learner's tab closed, or the
+ * reset job has not run) can be put right here with this learner's token,
+ * then used. Not atomic like the RPC, but the row is marked in_use first so
+ * two learners racing for it is unlikely.
+ */
+async function takeNeedsReset(uid: string, kind: PracticeKind): Promise<PracticeExample | null> {
+  const { data } = await supabase.from('tutorial_practice_examples').select('*')
+    .eq('enabled', true).eq('kind', kind).eq('status', 'needs_reset').order('uses').limit(1);
+  const row = (data?.[0] ?? null) as PracticeExample | null;
+  if (!row) return null;
+  const expires = new Date(Date.now() + 45 * 60 * 1000).toISOString();
+  const { error } = await supabase.from('tutorial_practice_examples')
+    .update({ status: 'in_use', claimed_by: uid, claimed_at: new Date().toISOString(), expires_at: expires, updated_at: new Date().toISOString() })
+    .eq('id', row.id).eq('status', 'needs_reset');
+  if (error) return null;
+  try {
+    const r = await undoSinceBaseline(row);
+    const roots = row.kind === 'cut' ? {} : { root_a: r.a, root_b: r.b };
+    await supabase.from('tutorial_practice_examples')
+      .update({ ...roots, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() }).eq('id', row.id);
+    if (row.kind !== 'cut') { row.root_a = r.a; row.root_b = r.b; }
+    row.status = 'in_use'; row.claimed_by = uid;
+    return row;
+  } catch (e: any) {
+    console.warn('[practice] could not reset a waiting cell:', e?.message ?? e);
+    await supabase.from('tutorial_practice_examples')
+      .update({ status: 'needs_reset', claimed_by: null, claimed_at: null, expires_at: null, last_error: String(e?.message ?? e).slice(0, 500) }).eq('id', row.id);
+    return null;
+  }
+}
+
 async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
   if (session.shownId !== ex.id) {
     await useLayersStore().loadState(ex.state_url);
