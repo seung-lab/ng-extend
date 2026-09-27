@@ -907,12 +907,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <button
             v-if="activeDatasetCanon"
             class="nge-profile-scope"
-            :class="{ 'nge-profile-scope--fallback': !editsScoped, 'nge-profile-scope--banner': !!scopeDataset?.banner }"
-            :style="scopeDataset?.banner ? { '--nge-scope-banner': `url(${JSON.stringify(scopeDataset.banner)})` } : undefined"
+            :class="{ 'nge-profile-scope--fallback': !editsScoped }"
             :title="editsScoped ? 'Numbers below are for this dataset only. Click to compare datasets.' : 'Per-dataset edits could not be loaded, so Edits shows all datasets.'"
             @click="!viewingOtherUser && (activeTab = 'datasets')"
           >
-            <span v-if="!scopeDataset?.banner" class="nge-profile-scope-icon">{{ scopeDataset ? SPECIES_ICONS[scopeDataset.species] : '🧬' }}</span>
+            <span class="nge-profile-scope-icon">{{ scopeDataset ? SPECIES_ICONS[scopeDataset.species] : '🧬' }}</span>
             <span class="nge-profile-scope-text">
               <span class="nge-profile-scope-kicker">{{ editsScoped ? 'Stats for' : 'Edits across all datasets · cells for' }}</span>
               <span class="nge-profile-scope-name">{{ scopeLabel }}</span>
@@ -2798,40 +2797,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   border-color: rgba(74, 158, 255, 0.4);
 }
 .nge-profile-scope--fallback { border-color: rgba(245, 166, 35, 0.35); }
-/* Dataset render behind the name. The dark left-to-right wash keeps the
-   text readable while the cells stay visible on the right. The render drifts
-   in once as the profile opens. */
-.nge-profile-scope--banner {
-  position: relative;
-  overflow: hidden;
-  min-height: 74px;
-  padding: 12px 14px;
-  border-color: rgba(120, 180, 255, 0.35);
-  background: #04060b;
-}
-.nge-profile-scope--banner::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--nge-scope-banner) center 38% / cover no-repeat;
-  animation: ngeScopeBannerIn 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.nge-profile-scope--banner::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(4, 6, 11, 0.9) 0%, rgba(4, 6, 11, 0.55) 45%, rgba(4, 6, 11, 0.05) 100%);
-}
-.nge-profile-scope--banner .nge-profile-scope-text { position: relative; z-index: 1; }
-.nge-profile-scope--banner .nge-profile-scope-name { font-size: 16px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
-.nge-profile-scope--banner:hover::before { filter: brightness(1.15); }
-@keyframes ngeScopeBannerIn {
-  from { opacity: 0; transform: scale(1.08); }
-  to   { opacity: 1; transform: scale(1); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .nge-profile-scope--banner::before { animation: none; }
-}
 .nge-profile-scope-icon { font-size: 18px; line-height: 1; }
 .nge-profile-scope-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .nge-profile-scope-kicker {

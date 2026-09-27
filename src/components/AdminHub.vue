@@ -43,7 +43,8 @@ interface TriageRow {
   impl_run_url?: string | null;
   impl_attempts?: number;
   preview_url?: string | null;
-  feedback_log?: { user: string; text: string; ts: string; role: string }[];
+  feedback_log?: { user?: string; text: string; ts: string; role: string; by?: string; at?: string; via?: string; sent?: boolean; echoed?: boolean }[];
+  result_note?: string | null;
   nag_count?: number;
   approver_slack_id?: string | null;
   tested_by?: string | null;
@@ -82,7 +83,10 @@ const IMPL_LABELS: Record<ImplState, string> = {
   deployed: 'Live',
   failed: 'Failed, needs a look',
 };
-const ROLE_LABELS: Record<string, string> = { tester: 'Tester', question: 'Question', answer: 'Answer' };
+const ROLE_LABELS: Record<string, string> = {
+  tester: 'Tester', question: 'Question', answer: 'Answer',
+  reporter_update: 'To submitter', reporter_draft: 'Draft', reporter_ignored: 'Comment',
+};
 const roleLabel = (role: string) => ROLE_LABELS[role] || 'Comment';
 const isBuildable = (r: TriageRow) => r.recommendation === 'bug_fix_spec' || r.recommendation === 'new_feature';
 const slackThreadUrl = (r: TriageRow) =>
@@ -248,6 +252,94 @@ async function openInClaude(row: TriageRow) {
 
 /** Loop actions from this tab. Each only flips impl_state; the bridge (every
  *  10 min) does the work and posts in the Slack thread, so both stay in step. */
+// ── Optional update to the submitter ─────────────────────────────────────
+// Amy 2026-09-25: an optional, editable note to the person who filed the
+// report, about its outcome. Mirrors draftReporterUpdate / reporterUpdates in
+// scripts/slack-triage-bridge.mjs; sends are logged in feedback_log (role
+// 'reporter_update') and the bridge echoes Admin Hub sends into Slack.
+/** Open composers, keyed by row id (absent = closed). */
+const reporterDrafts = ref<Record<string, string>>({});
+const reporterSending = ref<string | null>(null);
+
+/** Draft from the card's state. Never includes the internal reviewer comment. */
+function draftReporterUpdate(row: TriageRow): string {
+  const t = (row.source_excerpt || '').trim();
+  const q = t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}".` : 'Thanks for your report.';
+  const shipped = (row.result_note || '').replace(/<@[A-Z0-9]+>/g, 'a tester')
+    .replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1').trim();
+  if (row.status === 'done' || row.impl_state === 'deployed') {
+    return `${q} Good news: it's fixed and live now.${shipped ? ' ' + shipped : ''} Thank you for helping make EyeWire II better!`;
+  }
+  if (row.status === 'dismissed') {
+    return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
+  }
+  if (row.status === 'approved') {
+    return isBuildable(row)
+      ? `${q} Thanks! The team accepted it and a fix is in the works. We'll let you know when it's live.`
+      : `${q} Thanks! The team reviewed it and is following up.`;
+  }
+  return `${q} Thanks! The team has it and is looking into it now.`;
+}
+
+function closeReporterDraft(row: TriageRow) {
+  delete reporterDrafts.value[row.id];
+}
+
+function reporterUpdatesFor(row: TriageRow) {
+  return (row.feedback_log || []).filter(e => e.role === 'reporter_update' && e.sent !== false);
+}
+
+function relTime(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  return hrs < 24 ? `${hrs}h ago` : `${Math.floor(hrs / 24)}d ago`;
+}
+
+async function sendReporterUpdate(row: TriageRow) {
+  const text = (reporterDrafts.value[row.id] || '').trim();
+  if (!text || reporterSending.value) return;
+  reporterSending.value = row.id;
+  triageError.value = '';
+  try {
+    const { supabase } = await import('../supabase');
+    const { data: issue } = await supabase.from('site_issues').select('user_id').eq('id', row.source_id).single();
+    const userId = issue?.user_id ?? null;
+    // Only ever targeted: an anonymous report gets nothing, never a broadcast.
+    if (!userId) {
+      triageError.value = 'This report has no signed-in submitter, so there is nobody to notify. Nothing was sent.';
+      return;
+    }
+    const storageBase = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads';
+    const { error: nErr } = await supabase.from('notifications').insert({
+      title: '💬 An update on your report',
+      body: text,
+      thumbnail_url: `${storageBase}/nurro/guide-avatar.png`,
+      image_url: `${storageBase}/nurro-neurons/neuron-${1 + Math.floor(Math.random() * 24)}.jpg`,
+      target_type: 'user',
+      target_id: userId,
+      send_at: new Date().toISOString(),
+      created_by: backend.userId,
+    });
+    if (nErr) throw nErr;
+    // Re-read the log right before appending, so a bridge write in between
+    // is not overwritten.
+    const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
+    const log = Array.isArray(fresh?.feedback_log) ? [...fresh!.feedback_log] : [];
+    const at = new Date().toISOString();
+    log.push({ role: 'reporter_update', via: 'admin', by: backend.userName || backend.userEmail || 'admin', text, ts: at, at, sent: true, echoed: false });
+    const { error: lErr } = await supabase.from('feedback_triage').update({ feedback_log: log }).eq('id', row.id);
+    if (lErr) console.warn('[triage] reporter update sent but not logged:', lErr.message);
+    delete reporterDrafts.value[row.id];
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = `Could not send the update: ${e?.message ?? String(e)}`;
+  } finally {
+    reporterSending.value = null;
+  }
+}
+
 async function setImplState(row: TriageRow, next: ImplState) {
   if (triageActing.value) return;
   triageActing.value = row.id;
@@ -1316,6 +1408,32 @@ function practiceWhen(iso: string | null) {
             <button v-if="row.impl_state === 'failed'" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, row.tested_by ? 'deploy_queued' : 'queued')">{{ row.tested_by ? 'Retry deploy' : 'Retry build' }}</button>
             <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'done')">Mark done</button>
           </div>
+
+          <!-- Optional note to the person who filed the report. Drafted from
+               the card's state; edit, send, or close it and nothing is sent.
+               Slack threads get the same thing via "update reporter". -->
+          <div v-if="row.source === 'site_issue'" class="nge-triage-reporter">
+            <div v-for="u in reporterUpdatesFor(row)" :key="u.ts" class="nge-triage-note">
+              <span class="nge-triage-spec-label">Sent to submitter</span>
+              <span class="nge-triage-spec-text">{{ u.text }}<span class="nge-triage-reporter-by"> · {{ u.by || 'Slack' }}{{ u.at ? ', ' + relTime(u.at) : '' }}</span></span>
+            </div>
+            <template v-if="reporterDrafts[row.id] !== undefined">
+              <textarea
+                v-model="reporterDrafts[row.id]"
+                class="nge-triage-message nge-triage-comment"
+                rows="3"
+                @keydown.stop @keyup.stop @keypress.stop
+              ></textarea>
+              <div class="nge-triage-actions">
+                <button class="nge-admin-primary-btn" :disabled="reporterSending === row.id || !reporterDrafts[row.id]?.trim()" @click="sendReporterUpdate(row)">
+                  {{ reporterSending === row.id ? 'Sending…' : 'Send to submitter' }}
+                </button>
+                <button class="nge-admin-action-btn" :disabled="reporterSending === row.id" @click="closeReporterDraft(row)">Not now</button>
+              </div>
+            </template>
+            <button v-else class="nge-admin-action-btn nge-triage-reporter-open" @click="reporterDrafts[row.id] = draftReporterUpdate(row)"
+                    title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1854,6 +1972,12 @@ function practiceWhen(iso: string | null) {
   border-radius: 6px; color: #dde; font-size: 12px; padding: 7px 9px; resize: vertical;
 }
 .nge-triage-comment { border-color: rgba(255,255,255,0.14); font-family: inherit; }
+.nge-triage-reporter {
+  display: flex; flex-direction: column; gap: 6px;
+  padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08);
+}
+.nge-triage-reporter-open { align-self: flex-start; }
+.nge-triage-reporter-by { color: rgba(255,255,255,0.45); }
 .nge-triage-note {
   display: flex; gap: 8px; align-items: baseline;
   font-size: 12px; line-height: 1.45;

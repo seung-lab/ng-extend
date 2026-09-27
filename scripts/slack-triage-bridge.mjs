@@ -206,6 +206,100 @@ const quoteReport = row => {
   return t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}"` : 'Thanks for your report.';
 };
 
+// ── Optional update to the submitter (Amy 2026-09-25) ────────────────────
+// Any triage thread: an approver replies "update reporter" and gets a draft
+// written from the row's state; "send update" sends that draft, "update:
+// <words>" sends their own wording, and ignoring it sends nothing. The Admin
+// Hub has the same composer. Every send is logged in feedback_log with role
+// 'reporter_update' (Admin Hub sends are echoed here). pollThreads and
+// collectNotes skip these commands so they are never read as tester replies.
+const REPORTER_CMD = /^(update\s+(the\s+)?(reporter|submitter)|draft\s+(an?\s+)?update|send\s+(the\s+)?update|update\s*:)/i;
+
+/** Draft for the submitter from the row's state. Never includes internal
+ *  notes (approver_note is the reviewers' own comment). Mirrors
+ *  draftReporterUpdate in AdminHub.vue. */
+function draftReporterUpdate(row) {
+  const t = (row.source_excerpt || '').trim();
+  const q = t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}".` : 'Thanks for your report.';
+  const shipped = (row.result_note || '').replace(/<@[A-Z0-9]+>/g, 'a tester')
+    .replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1').trim();
+  if (row.status === 'done' || row.impl_state === 'deployed') {
+    return `${q} Good news: it's fixed and live now.${shipped ? ' ' + shipped : ''} Thank you for helping make EyeWire II better!`;
+  }
+  if (row.status === 'dismissed') {
+    return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
+  }
+  if (row.status === 'approved') {
+    return isBuildable(row)
+      ? `${q} Thanks! The team accepted it and a fix is in the works. We'll let you know when it's live.`
+      : `${q} Thanks! The team reviewed it and is following up.`;
+  }
+  return `${q} Thanks! The team has it and is looking into it now.`;
+}
+
+async function reporterUserId(row) {
+  if (row.source !== 'site_issue') return null;
+  const r = await sb(`site_issues?id=eq.${row.source_id}&select=user_id`);
+  return r.ok ? ((await r.json())[0]?.user_id ?? null) : null;
+}
+
+/** Handle update commands in threads, and echo Admin Hub sends to Slack. */
+async function reporterUpdates() {
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  const res = await sb(`feedback_triage?source=eq.site_issue&slack_ts=not.is.null&created_at=gte.${encodeURIComponent(since)}&select=*&order=created_at.desc&limit=60`);
+  if (!res.ok) { console.warn(`[bridge] reporter updates skipped (${res.status})`); return 0; }
+  let sent = 0;
+  for (const row of await res.json()) {
+    const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
+    let changed = false;
+
+    // Admin Hub sends that have not been mentioned in the thread yet.
+    for (const e of log) {
+      if (e.role === 'reporter_update' && e.via === 'admin' && !e.echoed) {
+        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}:\n> ${e.text}`).catch(() => {});
+        e.echoed = true;
+        changed = true;
+      }
+    }
+
+    let thread;
+    try {
+      thread = await slackGet('conversations.replies', { channel: row.slack_channel || CHANNEL, ts: row.slack_ts, limit: 200 });
+    } catch (e) { console.warn(`[bridge] replies fetch failed for ${row.id}: ${e.message}`); continue; }
+    const handled = new Set(log.filter(e => (e.role || '').startsWith('reporter_')).map(e => e.ts));
+    for (const m of (thread.messages ?? []).slice(1)) {
+      if (m.bot_id || m.subtype === 'bot_message' || handled.has(m.ts)) continue;
+      const text = (m.text || '').trim();
+      if (!REPORTER_CMD.test(text)) continue;
+      handled.add(m.ts);
+      changed = true;
+      if (!APPROVERS.includes(m.user)) {
+        log.push({ role: 'reporter_ignored', ts: m.ts, user: m.user });
+        await say(row, `Only listed approvers can message the reporter (<@${m.user}> is not on the list).`).catch(() => {});
+        continue;
+      }
+      const own = text.match(/^update\s*:\s*([\s\S]+)$/i);
+      if (/^(update\s+(the\s+)?(reporter|submitter)|draft\s+(an?\s+)?update)/i.test(text)) {
+        const draft = draftReporterUpdate(row);
+        log.push({ role: 'reporter_draft', ts: m.ts, user: m.user, text: draft });
+        await say(row, `✉️ Draft update for the reporter:\n> ${draft}\nReply *send update* to send it as is, *update: your own words* to send your version, or just ignore this.`);
+        continue;
+      }
+      const body = own ? own[1].trim()
+        : ([...log].reverse().find(e => e.role === 'reporter_draft')?.text || draftReporterUpdate(row));
+      const userId = await reporterUserId(row);
+      const ok = userId ? await notifyUser(userId, '💬 An update on your report', body) : false;
+      log.push({ role: 'reporter_update', ts: m.ts, user: m.user, via: 'slack', text: body, sent: ok, at: new Date().toISOString() });
+      await say(row, ok
+        ? `✉️ Sent to the reporter, <@${m.user}>:\n> ${body}`
+        : `I couldn't send it: this report has no signed-in reporter to notify, so nobody was messaged.`);
+      if (ok) sent++;
+    }
+    if (changed) await patchRow(row.id, { feedback_log: log });
+  }
+  return sent;
+}
+
 const REC_LABEL = {
   nothing: 'No action', message: 'Send a message',
   bug_fix_spec: 'Bug fix spec', new_feature: 'New feature',
@@ -257,7 +351,7 @@ async function postProposals() {
   const rows = await res.json();
   for (const row of rows) {
     const where = await openThread(row,
-      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also reviewable in Admin Hub, Triage tab.`);
+      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also reviewable in Admin Hub, Triage tab. Anytime, reply *update reporter* to draft a note to the person who reported it.`);
     console.log(`[bridge] posted proposal ${row.id} (${where})`);
   }
   return rows.length;
@@ -556,6 +650,7 @@ async function pollThreads() {
       newest = m.ts;
       const text = (m.text || '').trim();
       if (!text || (BOT_USER_ID && text.includes(`<@${BOT_USER_ID}>`))) continue;
+      if (REPORTER_CMD.test(text)) continue; // handled by reporterUpdates()
       const mayDecide = m.user === tester || APPROVERS.includes(m.user);
       if (!mayDecide) {
         // Anyone can add context, but only the tester (or an approver) moves the row.
@@ -698,6 +793,7 @@ async function collectNotes() {
       newest = m.ts;
       const text = (m.text || '').trim();
       if (!text || (BOT_USER_ID && text.includes(`<@${BOT_USER_ID}>`))) continue;
+      if (REPORTER_CMD.test(text)) continue; // handled by reporterUpdates()
       log.push({ user: m.user, text: text.replace(/^note\b\s*:?\s*/i, ''), ts: m.ts, role: 'note' });
       added++;
     }
@@ -804,6 +900,7 @@ let LOOP = false;
     await collectNotes().catch(e => console.warn('[bridge] note collection failed:', e.message));
   }
   const announced = await announceDone();
+  if (COLS) await reporterUpdates().catch(e => console.warn('[bridge] reporter updates failed:', e.message));
   await tokenReminder().catch(e => console.warn('[bridge] token reminder failed:', e.message));
   if (LOOP) await quietReminder().catch(e => console.warn('[bridge] quiet reminder failed:', e.message));
   console.log(`[bridge] done: ${posted} posted, ${acted} decided, ${echoed} echoed, ${started} started, ${nagged} nagged, ${announced} announced (sync ${COLS ? 'on' : 'off'}, loop ${LOOP ? 'on' : 'off'})`);

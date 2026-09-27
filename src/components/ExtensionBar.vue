@@ -898,72 +898,44 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost" title="Resources and tutorials">
       <template #buttonTitle><span v-html="RESOURCES_MENU_SVG"></span></template>
       <template #listItems>
+        <!-- Grouped (Amy 2026-09-25: "more structured organization"). Each
+             tutorial appears once: the old list had a "Reset Tutorial N" AND a
+             named entry for the same tutorial (both start it from step 0).
+             The Merge / Split / Find path video links were dropped: those
+             tools live in the top bar, and the Cut & Merge tutorial covers
+             them (the Find Path video stays in the Ask dock / Ctrl+K). -->
+        <li class="nge-menu-heading" @click.stop>Guided tour</li>
         <li>
           <div class="logoutButton button nge-tour-btn" @click="tutorialStore.activeTutorial = 4; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span>🧭 Take the Site Tour</span>
+            <span>🧭 Site Tour</span>
+          </div>
+        </li>
+        <li class="nge-menu-heading" @click.stop>Tutorials</li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 1; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">1</span><span>Getting Started</span>
           </div>
         </li>
         <li>
-          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 1; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span>Reset Tutorial 1</span>
-          </div>
-        </li>
-        <li v-if="tutorialStore.tutorialStep2 >= 0">
-          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span>Reset Tutorial 2</span>
-          </div>
-        </li>
-        <li v-if="tutorialStore.tutorialStep3 >= 0">
-          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span>Reset Tutorial 3</span>
-          </div>
-        </li>
-        <li v-if="tutorialStore.tutorialStep4 >= 0">
-          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 4; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span>Reset Site Tour</span>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">2</span><span>Advanced Interface</span>
           </div>
         </li>
         <li>
-          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span>Advanced Interface Tutorial</span>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">3</span><span>Cut &amp; Merge</span>
           </div>
         </li>
+        <li class="nge-menu-heading" @click.stop>Learn more</li>
         <li>
-          <div class="logoutButton button" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span>Cut & Merge Tutorial</span>
+          <div class="logoutButton button">
+            <span><a target="_blank" rel="noopener"
+                href="https://blog.pyr.ai/2024/12/20/proofreading-101-climb-into-spelunker/">Proofreading Guide ↗</a></span>
           </div>
         </li>
         <li>
           <div class="logoutButton button">
-            <span><a target="_blank" href="https://forum.eyewire.org">Forum</a></span>
-          </div>
-        </li>
-        <li>
-          <div class="logoutButton button">
-            <span><a target="_blank"
-                href="https://blog.pyr.ai/2024/12/20/proofreading-101-climb-into-spelunker/">Proofreading
-                Guide</a></span>
-          </div>
-        </li>
-        <!--
-          TODO: User reports Merge (48GS9Sizrvw) and Split (DB6wmQWGsck) videos
-          are unreachable for them while Find path (CGooeAhSryg) works. URLs
-          return HTTP 200 but may be unlisted/region-restricted. Verify with the
-          EyeWire YouTube channel and replace if needed.
-        -->
-        <li>
-          <div class="logoutButton button">
-            <span><a target="_blank" href="https://youtu.be/48GS9Sizrvw">Merge</a></span>
-          </div>
-        </li>
-        <li>
-          <div class="logoutButton button">
-            <span><a target="_blank" href="https://youtu.be/DB6wmQWGsck">Split</a></span>
-          </div>
-        </li>
-        <li>
-          <div class="logoutButton button">
-            <span><a target="_blank" href="https://youtu.be/CGooeAhSryg">Find path</a></span>
+            <span><a target="_blank" rel="noopener" href="https://forum.eyewire.org">Forum ↗</a></span>
           </div>
         </li>
       </template>
@@ -1583,5 +1555,40 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   color: unset;
   text-decoration: unset;
   font-size: inherit;
+}
+
+/* Section headings: labels, not buttons. */
+#hamburger li.nge-menu-heading {
+  justify-content: start;
+  padding: 12px 14px 4px;
+  cursor: default;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(120, 180, 255, 0.7);
+}
+#hamburger li.nge-menu-heading:hover { background: none; }
+#hamburger li.nge-menu-heading:not(:first-child) {
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+#hamburger li .nge-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.nge-menu-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(74, 158, 255, 0.45);
+  color: #9cc8ff;
+  font-size: 10.5px;
+  font-weight: 600;
 }
 </style>

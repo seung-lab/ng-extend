@@ -1,0 +1,204 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   FIND PATH: neuroglancer's own tool bar, restyled in place (Amy 2026-09-25:
+   "preserve everything that is in find path in neuroglancer, just wrap it in a
+   UI that matches the site"). Nothing is rebuilt: Submit, Clear, Precision
+   mode, Ctrl+Click endpoints, and the endpoint rows (click to jump, x to
+   delete) are all still neuroglancer's elements and handlers
+   (graphene/frontend.ts FindPathTool). Only the look changes, to match the Cut
+   and Merge bars (SplitMergeOverlay.vue) in Find Path's toolbar purple.
+
+   DOM (tool.ts makeToolActivationStatusMessageWithHeader):
+     #statusContainer li.neuroglancer-tool-status
+       .neuroglancer-tool-status-content
+         .neuroglancer-tool-status-header-container > .neuroglancer-tool-status-header  "Find Path"
+         .neuroglancer-tool-status-body.graphene-tool-status.graphene-find-path
+           .neuroglancer-icon "Submit"  .neuroglancer-icon "Clear"
+           label  "Precision mode:" + checkbox
+           .find-path-annotations > .neuroglancer-annotation-list-entry  (0 to 2)
+       .neuroglancer-tool-status-bindings  (raw key map text)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+#statusContainer li.neuroglancer-tool-status:has(.graphene-find-path) {
+  background: linear-gradient(
+    90deg,
+    rgba(120, 70, 200, 0.9) 0%,
+    rgba(20, 14, 40, 0.94) 26%,
+    rgba(20, 14, 40, 0.94) 100%
+  ) !important;
+  border-top: 2px solid rgba(200, 164, 255, 0.55);
+  backdrop-filter: blur(8px);
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 16px !important;
+  color: #e0e0e0;
+  font: 13px/1.3 'Inter', 'Roboto', sans-serif;
+  max-height: none;
+}
+
+/* The raw key map ("shift?+control+mousedown0: add-point") is replaced by
+   the plain-language hints below. */
+#statusContainer li.neuroglancer-tool-status:has(.graphene-find-path) .neuroglancer-tool-status-bindings {
+  display: none;
+}
+
+#statusContainer li:has(.graphene-find-path) .neuroglancer-tool-status-content {
+  align-items: center;
+  gap: 14px;
+  min-height: 30px;
+}
+
+/* "Find Path" header becomes the mode badge. */
+#statusContainer li:has(.graphene-find-path) .neuroglancer-tool-status-header-container {
+  width: auto;
+  flex-shrink: 0;
+  padding: 4px 14px;
+  background: rgba(140, 90, 220, 0.55);
+  border: 1px solid rgba(200, 164, 255, 0.75);
+  border-radius: 6px;
+  animation: ngeFindPathPulse 2s ease-in-out infinite;
+}
+#statusContainer li:has(.graphene-find-path) .neuroglancer-tool-status-header {
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #eadcff;
+  text-shadow: 0 0 8px rgba(200, 164, 255, 0.6);
+}
+@keyframes ngeFindPathPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 164, 255, 0); }
+  50%      { box-shadow: 0 0 14px 1px rgba(200, 164, 255, 0.35); }
+}
+
+.graphene-tool-status.graphene-find-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+}
+
+/* Submit / Clear: pills like the site's buttons. */
+.graphene-find-path > .neuroglancer-icon {
+  display: inline-flex !important;
+  align-items: center;
+  box-sizing: border-box;
+  height: 26px !important;
+  min-width: 0;
+  padding: 0 14px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #dfe6f3 !important;
+  font: 600 11px 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.graphene-find-path > .neuroglancer-icon:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+/* Submit (first button) is the primary action. */
+.graphene-find-path > .neuroglancer-icon:first-child {
+  background: rgba(200, 164, 255, 0.2) !important;
+  border-color: rgba(200, 164, 255, 0.6) !important;
+  color: #f1e8ff !important;
+}
+.graphene-find-path > .neuroglancer-icon:first-child:hover {
+  background: rgba(200, 164, 255, 0.32) !important;
+}
+/* Both endpoints placed: Submit glows so the next step is obvious. */
+.graphene-find-path:has(.find-path-annotations > :nth-child(2)) > .neuroglancer-icon:first-child {
+  animation: ngeFindPathReady 1.4s ease-in-out infinite;
+}
+@keyframes ngeFindPathReady {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 164, 255, 0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(200, 164, 255, 0); }
+}
+
+/* Precision mode: a toggle pill. The checkbox itself stays neuroglancer's. */
+.graphene-find-path > label {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  color: #c9d3e6;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.graphene-find-path > label > span { display: inline; }
+.graphene-find-path > label input[type="checkbox"] {
+  accent-color: #c8a4ff;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Endpoint rows: chips. Clicking one still jumps to it; x still deletes. */
+.graphene-find-path .find-path-annotations {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry {
+  position: relative;
+  padding: 1px 10px 1px 22px;
+  border-radius: 8px;
+  border: 1px solid rgba(200, 164, 255, 0.3);
+  background: rgba(8, 10, 24, 0.75) !important;
+  color: #dfe6f3;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry:hover {
+  border-color: rgba(200, 164, 255, 0.7);
+  background: rgba(40, 26, 70, 0.85) !important;
+}
+/* Start is green, end is pink, matching the path's two ends. */
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #6fe0a0;
+  box-shadow: 0 0 6px rgba(111, 224, 160, 0.7);
+}
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry:nth-child(2)::before {
+  background: #ff8fcf;
+  box-shadow: 0 0 6px rgba(255, 143, 207, 0.7);
+}
+
+/* Plain-language next step, driven by how many endpoints exist. */
+.graphene-find-path .find-path-annotations::after {
+  font-size: 12px;
+  font-weight: 500;
+  color: #eadcff;
+  white-space: nowrap;
+}
+.graphene-find-path .find-path-annotations:empty::after {
+  content: 'Ctrl + Click the start of the path on a cell';
+}
+.graphene-find-path .find-path-annotations:has(> :only-child)::after {
+  content: 'Now Ctrl + Click the end point on the same cell';
+}
+.graphene-find-path .find-path-annotations:has(> :nth-child(2))::after {
+  content: 'Press Enter or Submit to trace the path';
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #statusContainer li:has(.graphene-find-path) .neuroglancer-tool-status-header-container,
+  .graphene-find-path > .neuroglancer-icon:first-child { animation: none; }
+}
