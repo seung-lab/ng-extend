@@ -20,6 +20,8 @@ import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from './widgets/widget_utils';
 import { supabase } from './supabase';
 import { practiceBase, practiceToken } from './util/practice_destination';
+import { practiceOperationsAfter } from './util/practice_history';
+export { parsePcgStamp } from './util/practice_history';
 import { useLayersStore, useProofreadingBackendStore } from './store';
 
 export type PracticeKind = 'merge_then_cut' | 'cut';
@@ -126,37 +128,14 @@ export async function ensureSupervoxels(ex: PracticeExample): Promise<PracticeEx
 /** PyChunkedGraph timestamps arrive as epoch seconds, epoch milliseconds
  *  or "YYYY-MM-DD HH:MM:SS.ffffff" strings depending on the version; read
  *  them all. NaN means unparseable. */
-export function parsePcgStamp(v: unknown): number {
-  if (typeof v === 'number') return v < 1e11 ? v * 1000 : v;
-  if (typeof v === 'string') {
-    if (/^\d+(\.\d+)?$/.test(v)) return parsePcgStamp(Number(v));
-    let t = Date.parse(v);
-    if (Number.isNaN(t)) t = Date.parse(v.replace(' ', 'T') + (/[zZ]$|[+-]\d\d:?\d\d$/.test(v) ? '' : 'Z'));
-    return t;
-  }
-  return NaN;
-}
-
 interface LogOp { operationId: number; at: number }
 
 /** Operations in a root's lineage made after `sinceIso`, newest first. */
 async function opsSince(ex: PracticeExample, rootId: string, sinceIso: string): Promise<LogOp[]> {
-  const res = await fetch(`${pcgBase(ex)}/root/${rootId}/tabular_change_log`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
+  const res = await fetch(`${pcgBase(ex)}/root/${rootId}/tabular_change_log?filtered=false`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`tabular_change_log ${res.status}`);
   const data = await res.json();
-  const ids: any[] = data.operation_id ?? [];
-  const stamps: any[] = data.timestamp ?? [];
-  const since = new Date(sinceIso).getTime();
-  const out: LogOp[] = [];
-  let unparsed = 0;
-  for (let i = 0; i < ids.length; i++) {
-    const at = parsePcgStamp(stamps[i]);
-    if (!Number.isFinite(at)) { unparsed++; continue; }
-    if (at > since) out.push({ operationId: Number(ids[i]), at });
-  }
-  if (unparsed) console.warn(`[practice] ${unparsed} log entries with unreadable timestamps on root ${rootId}, sample:`, stamps[0]);
-  console.info(`[practice] root ${rootId}: ${ids.length} operations in its history, ${out.length} after ${sinceIso}, newest stamp`, stamps[ids.length - 1]);
-  return out.sort((a, b) => b.at - a.at);
+  return practiceOperationsAfter(data, rootId, sinceIso);
 }
 
 async function undoOp(ex: PracticeExample, operationId: number): Promise<void> {
