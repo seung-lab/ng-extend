@@ -675,105 +675,8 @@ async function handleReviewComment(event, botToken) {
   }).catch((e) => console.error("[guide] confirm reply failed:", e));
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// caveProxy — path-through CORS-adding proxy for the CAVE AnnotationEngine.
-//
-// Fixes a browser CORS block: minnie.microns-daf.com/annotation/api/v2/* does
-// not return Access-Control-* headers, so browsers block our writes. We
-// forward the request verbatim and attach CORS headers to the response.
-// Reads (Materializer, PCG) still go direct — they already have CORS.
-// ──────────────────────────────────────────────────────────────────────────
-
-const CAVE_UPSTREAM = "https://minnie.microns-daf.com";
-const CAVE_ALLOWED_PATH_RE = /^\/annotation\/api\/v2\/aligned_volume\/stroeh_mouse_retina\/table\/(eyewire_ii_cell_status|eyewire_ii_cell_type)\/annotations(\?.*)?$/;
-const CAVE_ALLOWED_METHODS = new Set(["POST", "DELETE", "PUT"]);
-const CAVE_ALLOWED_ORIGINS = new Set([
-  "https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com",
-  "https://amyleesterling.github.io",
-  "http://localhost:8080",
-  "http://localhost:3000",
-  "http://127.0.0.1:8080",
-  "http://127.0.0.1:3000",
-]);
-const CAVE_MAX_BODY_BYTES = 1024 * 1024; // 1 MB
-
-function setCaveCors(res, origin) {
-  res.set("Access-Control-Allow-Origin", origin);
-  res.set("Access-Control-Allow-Methods", "POST, DELETE, PUT, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.set("Access-Control-Max-Age", "3600");
-  res.set("Vary", "Origin");
-}
-
-exports.caveProxy = onRequest({ cors: false, invoker: "public" }, async (req, res) => {
-  const origin = req.get("origin") || "";
-  const originOk = CAVE_ALLOWED_ORIGINS.has(origin);
-
-  if (req.method === "OPTIONS") {
-    if (!originOk) { res.status(403).send("origin not allowed"); return; }
-    setCaveCors(res, origin);
-    res.status(204).send("");
-    return;
-  }
-
-  if (!originOk) { res.status(403).send("origin not allowed"); return; }
-  setCaveCors(res, origin);
-
-  if (!CAVE_ALLOWED_METHODS.has(req.method)) {
-    res.status(405).send("method not allowed");
-    return;
-  }
-
-  // req.path drops any function prefix, leaving the upstream path
-  if (!CAVE_ALLOWED_PATH_RE.test(req.url)) {
-    res.status(403).json({ error: "path not allowed", path: req.url });
-    return;
-  }
-
-  const auth = req.get("authorization") || "";
-  if (!/^Bearer [A-Za-z0-9_\-\.]+$/.test(auth)) {
-    res.status(401).json({ error: "missing or malformed Authorization header" });
-    return;
-  }
-
-  const rawBody = req.rawBody || Buffer.from("");
-  if (rawBody.length > CAVE_MAX_BODY_BYTES) {
-    res.status(413).send("body too large");
-    return;
-  }
-
-  const upstreamUrl = CAVE_UPSTREAM + req.url;
-  const started = Date.now();
-  try {
-    const upstream = await fetch(upstreamUrl, {
-      method: req.method,
-      headers: {
-        "Authorization": auth,
-        "Content-Type": req.get("content-type") || "application/json",
-        "Accept": "application/json",
-      },
-      body: req.method === "DELETE" && rawBody.length === 0 ? undefined : rawBody,
-    });
-    const bodyText = await upstream.text();
-    const tokHash = crypto.createHash("sha256").update(auth).digest("hex").slice(0, 12);
-    console.log(JSON.stringify({
-      tag: "caveProxy",
-      method: req.method,
-      path: req.url,
-      status: upstream.status,
-      bytes: bodyText.length,
-      ms: Date.now() - started,
-      tokHash,
-      origin,
-    }));
-    const ct = upstream.headers.get("content-type");
-    if (ct) res.set("Content-Type", ct);
-    res.status(upstream.status).send(bodyText);
-  } catch (err) {
-    console.error("caveProxy upstream error:", err);
-    res.status(502).json({ error: "upstream fetch failed", detail: String(err) });
-  }
-});
+// caveProxy (a CORS proxy for CAVE annotation writes) was retired on
+// 2026-09-27: nothing calls it, and it was not deployed any more.
 
 // ──────────────────────────────────────────────────────────────────────
 // signScreenshotUpload — mints a 5-minute signed PUT URL for an EyeWire II
@@ -1857,5 +1760,52 @@ exports.ewSecureUpload = onRequest(
    if(!r.ok)throw ewErr(502,"Image storage is temporarily unavailable.");
    return res.json({url:url.replace("/object/","/object/public/")});
   }catch(e){return res.status(e.status||500).json({error:e.status?e.message:"Image upload failed."});}
+ }
+);
+
+exports.ewSheetSync = onRequest(
+ {region:"us-central1",serviceAccount:"eyewire-sheet-sync@eyewire-ii-e4d52.iam.gserviceaccount.com",secrets:[ewServiceKey],cors:EW_ORIGINS,invoker:"public",maxInstances:1,concurrency:1,timeoutSeconds:90},
+ async(req,res)=>{
+  res.set("Cache-Control","no-store");
+  if(req.method!=="POST") return res.status(405).json({error:"POST only"});
+  if(Buffer.byteLength(JSON.stringify(req.body||{}))>8192) return res.status(413).json({error:"Input too large"});
+  try {
+   const input=req.body||{};
+   if(input.action==='health') {
+    if(!(await rateLimit(req,false,'sheets:health')).ok) throw ewErr(429,'Please wait.');
+    const {SOURCES}=require('./sheet-policy'),{sheetsApi}=require('./sheet-sync');
+    for(const source of Object.values(SOURCES)) {
+     const meta=await sheetsApi(admin.credential.applicationDefault(),source.id+'?fields=sheets(properties,protectedRanges)');
+     const sheet=meta.sheets.find(s=>s.properties.sheetId===source.gid);
+     if(!sheet) throw Error('Registered sheet tab missing');
+     const range="'"+sheet.properties.title.replace(/'/g,"''")+"'!A1:AZ10";
+     const grid=await sheetsApi(admin.credential.applicationDefault(),source.id+'/values/'+encodeURIComponent(range));
+     const norm=v=>String(v??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+     const headerRow=(grid.values||[]).findIndex(row=>row.some(v=>['startseg','segmentid','segment','segid'].some(p=>norm(v).includes(p))));
+     if(headerRow<0) throw Error('Registered sheet header missing');
+     const columns=grid.values[headerRow].map((v,i)=>({name:norm(v),i})).filter(({name})=>['proofreader','claimedby','completedby','status','datecomplete','completedtime','finalseg','correctedsoma','somacoord'].some(p=>name.includes(p)));
+     if(!columns.length) throw Error('Registered sheet write columns missing');
+     // Probe only the actual write columns. A whole-sheet probe hits the
+     // owner's protected reference columns even when writeback is permitted.
+     // Identity replacement cannot change a value, even if the text existed.
+     const probe='__eyewire_sync_noop_785ea491a19d4f7bab5b__';
+     console.info('[ewSheetSync] write probe',JSON.stringify({sheet:source.gid,columns,protections:(sheet.protectedRanges||[]).map(p=>({range:p.range,canEdit:p.requestingUserCanEdit,warningOnly:p.warningOnly,unprotected:p.unprotectedRanges}))}));
+     await sheetsApi(admin.credential.applicationDefault(),source.id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:columns.map(({i})=>({findReplace:{find:probe,replacement:probe,range:{sheetId:source.gid,startRowIndex:headerRow+1,endRowIndex:headerRow+2,startColumnIndex:i,endColumnIndex:i+1},matchCase:true}}))})});
+    }
+    return res.json({ok:true,sheets:Object.keys(SOURCES),keyless:true,writable:true});
+   }
+   const who=await ewVerify(input.token);
+   if(!who) throw ewErr(401,"Sign in before syncing a cell.");
+   require('./sheet-policy').sourceFor(input);
+   if(!(await rateLimit({ip:who.email},true,"write:sheets")).ok) throw ewErr(429,"Please wait before syncing another cell.");
+   const sb=ewSb(ewServiceKey.value().trim());
+   const me=(await sb('users?middleauth_email=eq.'+encodeURIComponent(who.email)+'&select=id,display_name,username&limit=1'))[0];
+   if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
+   const tasks=await sb('proofreading_tasks?dataset=eq.'+encodeURIComponent(input.dataset)+'&segment_id=eq.'+input.segmentId+'&assigned_to=eq.'+me.id+'&select=*&order=updated_at.desc&limit=1');
+   return res.json(await require('./sheet-sync').syncSheet(input,me,tasks[0],admin.credential.applicationDefault()));
+  } catch(e) {
+   console.warn('[ewSheetSync]',e.status||500,e.message);
+   return res.status(e.status||503).json({error:e.status?e.message:"Sheet syncing is temporarily unavailable. Your cell is saved; retry syncing shortly."});
+  }
  }
 );

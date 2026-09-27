@@ -8,11 +8,11 @@ Everything EyeWire II runs on a server, in one place:
 | `guideAssistant` | Nurro, the in-app Guide |
 | `guideFeedback` | thumbs up or down on a Guide answer |
 | `submitIssue` | the in-app "report an issue" form, posted to Slack |
-| `caveProxy` | fixed CAVE lookups the browser cannot make directly |
 | `signScreenshotUpload` | retired, answers 410 |
 | `ewSecureWrite` | admin writes (notifications, triage) after a verified CAVE sign in |
 | `ewCommunityData` | private community reads and writes after a verified CAVE sign in |
 | `ewSecureUpload` | image uploads after a verified CAVE sign in |
+| `ewSheetSync` | claim and completion writes to the two source Google Sheets, keyless: it runs as `eyewire-sheet-sync@eyewire-ii-e4d52.iam.gserviceaccount.com`, which must have edit access to those sheets |
 
 Until 2026-09-27 these lived in the philogelos repo (ytho.club) and ran in
 its Firebase project `ytho-4bff2`, sharing its secrets. They were moved here
