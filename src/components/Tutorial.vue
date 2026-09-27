@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import TutorialStep from "components/TutorialStep.vue";
 
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useTutorialStore } from '../store-pyr';
 import { useProofreadingBackendStore } from '../store';
@@ -10,6 +10,7 @@ import { steps as steps1 } from '../tutorial-1';
 import { steps as steps2 } from '../tutorial-2';
 import { steps as steps3 } from '../tutorial-3';
 import { steps as steps4 } from '../site-tour';
+import { endPractice } from '../practice';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 
@@ -124,9 +125,13 @@ const next = () => {
         }
     }
 };
+// Switching to another tutorial from the book menu also hands the cell back.
+watch(() => store.activeTutorial, (now, before) => { if (before === 3 && now !== 3) endPractice(); });
 const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() - 1)); };
 const exitIntro = () => {
     console.log('exiting intro!');
+    // Leaving Tutorial 3 mid practice hands the practice cell back.
+    if (store.activeTutorial === 3) endPractice();
     store.setTutorialStep(steps.value.length);
 };
 

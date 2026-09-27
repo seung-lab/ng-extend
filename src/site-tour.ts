@@ -4,7 +4,7 @@ import mossyFibersHero from '../static/tour-mossy-fibers.png';
 import brainToSynapseHero from '../static/tour-brain-to-synapse.png';
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Title icons — the same SVGs that live in the top toolbar
+   Title icons, the same SVGs that live in the top toolbar
    (`ExtensionBar.vue`), re-emitted here at the size the tour title
    expects (24px) so each step's popup wears its toolbar's face. Keep the
    strokes, fills, and palette identical to ExtensionBar.vue so a user who
@@ -92,7 +92,7 @@ export const steps: Step[] = [
     title: "The Pyr Logo",
     text: `That little neuron in the top-left is **Pyr**, our pyramidal mascot.
 
-**Click Pyr to hard-refresh the page** — the fastest way to pull in a fresh deploy without hunting for Ctrl+F5.`,
+**Click Pyr to hard-refresh the page**, the fastest way to pull in a fresh deploy without hunting for Ctrl+F5.`,
     position: { element: ".nge-pyr-logo", side: "bottom", offset: { x: 0, y: 12 } },
     highlight: true,
   },
@@ -100,7 +100,7 @@ export const steps: Step[] = [
   // ── 3. Share button ──────────────────────────────────────────
   {
     title: "Share",
-    text: `Click **Share** to copy a link to your current view — same dataset, same camera, same selected segments.
+    text: `Click **Share** to copy a link to your current view: same dataset, same camera, same selected segments.
 
 Drop it into chat, email, or the forum and the recipient lands exactly where you are.`,
     position: { element: '[title="Share State"]', side: "bottom", offset: { x: 0, y: 14 } },
@@ -296,7 +296,7 @@ You never have to fix what you find. Finding it is the contribution.`,
     title: "Your Researcher Profile",
     text: `As a citizen scientist, you are officially contributing to scientific research.
 
-Click here to open up your profile — home of your stats, achievements, recent cells, and more.
+Click here to open up your profile, home of your stats, achievements, recent cells, and more.
 
 Click any user's name in chat or the leaderboard to open *their* profile.`,
     position: { element: "#profileBtn", side: "bottom", offset: { x: 0, y: 14 } },
@@ -306,7 +306,7 @@ Click any user's name in chat or the leaderboard to open *their* profile.`,
   // ── 18. Hamburger menu ───────────────────────────────────────
   {
     title: "📖 Tutorials & Help",
-    text: `Three numbered tutorials — **Basics** (navigation), **Advanced Interface** (every panel), and **Cut & Merge** (proofreading operations) — plus links to the **Forum** and YouTube videos for each tool.`,
+    text: `Three numbered tutorials, **Basics** (navigation), **Advanced Interface** (every panel), and **Cut & Merge** (proofreading operations), plus links to the **Forum** and YouTube videos for each tool.`,
     position: { element: "#hamburger", side: "left", offset: { x: -10, y: 0 } },
     highlight: true,
   },

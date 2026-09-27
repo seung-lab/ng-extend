@@ -39,26 +39,36 @@ async function supabasePost(table, rows) {
 }
 
 // ── Week range label ──────────────────────────────────────────────────────────
+// The recap week is Monday 00:00 to now, US Eastern (the lab's clock), the
+// same Monday to Sunday week the app's Week in Science tab shows. It used to
+// count a rolling 7 days under a Monday to Sunday label, so the two numbers
+// never matched.
+function easternMondayStart(now = new Date()) {
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const offsetMs = Math.round((now.getTime() - et.getTime()) / 60000) * 60000; // ET wall clock to UTC, whole minutes
+  const mon = new Date(et);
+  mon.setHours(0, 0, 0, 0);
+  mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));  // back to Monday
+  return { utc: new Date(mon.getTime() + offsetMs), et: mon };
+}
+
 function weekRangeLabel() {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - ((day + 6) % 7)); // Monday
+  const { et: mon } = easternMondayStart();
   const sun = new Date(mon);
   sun.setDate(mon.getDate() + 6);
   const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${fmt(mon)} – ${fmt(sun)}, ${sun.getFullYear()}`;
+  return `${fmt(mon)} to ${fmt(sun)}, ${sun.getFullYear()}`;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo = easternMondayStart().utc.toISOString(); // Monday 00:00 ET (name kept for the log line)
 
   // 1. Get active users from edit_log in the past 7 days
   //    Aggregate: count by operation per user
   const editLogs = await supabaseGet(
     'edit_log',
-    `select=user_id,operation&timestamp=gte.${sevenDaysAgo}`
+    `select=user_id,operation&timestamp=gte.${sevenDaysAgo}&success=not.is.false`
   );
 
   if (!editLogs.length) {
@@ -72,9 +82,10 @@ async function main() {
     const uid = log.user_id;
     if (!uid) continue;
     if (!userStats[uid]) userStats[uid] = { merges: 0, splits: 0, total: 0 };
-    userStats[uid].total++;
-    if (log.operation === 'merge') userStats[uid].merges++;
-    if (log.operation === 'split') userStats[uid].splits++;
+    // "Edits" are merges and cuts. The log also holds other actions, which
+    // made the total disagree with its own breakdown (9 edits = 3 + 5).
+    if (log.operation === 'merge') { userStats[uid].merges++; userStats[uid].total++; }
+    if (log.operation === 'split') { userStats[uid].splits++; userStats[uid].total++; }
   }
 
   const userIds = Object.keys(userStats);
@@ -96,6 +107,7 @@ async function main() {
   const notifications = [];
 
   for (const [userId, s] of Object.entries(userStats)) {
+    if (!s.total) continue;
     const user = userMap[userId];
     const name = user?.display_name || 'Scientist';
     const streak = user?.current_streak || 0;
@@ -109,11 +121,16 @@ async function main() {
     let body = `You made **${s.total} edit${s.total > 1 ? 's' : ''}** this week${breakdown}!`;
     if (streak > 0) body += ` Current streak: **${streak} day${streak > 1 ? 's' : ''}** 🔥`;
     if (communityTotal > s.total) body += `\nYou contributed ${pct}% of community edits this week.`;
-    body += `\nKeep mapping the brain — every edit counts! 🧬`;
+    body += `\nKeep mapping the brain. Every edit counts! 🧬\nOpen this to see your whole week.`;
 
     notifications.push({
-      title: `✨ Your Week in Science — ${weekLabel}`,
+      title: `✨ Your Week in Science: ${weekLabel}`,
       body,
+      // 980 reconstructed cells: square icon in the feed, wide banner in the
+      // detail view. The feed styles ✨ cards and opens the profile's Week in
+      // Science tab, which shows the same render as its header banner.
+      thumbnail_url: 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/recap/week-in-science-icon.jpg',
+      image_url: 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/recap/week-in-science-banner.jpg',
       target_type: 'user',
       target_id: userId,
       send_at: new Date().toISOString(),

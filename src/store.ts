@@ -1844,8 +1844,9 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     try {
       const viewer: any = (window as any)['viewer'];
       if (!viewer?.state) return;
-      // Ambient display is a preference (default on); tag mode overrides.
-      const ambientOn = useUserPreferencesStore().prefs.showScoutTags !== false;
+      // Ambient display is a preference, off by default (Amy: tag layers only
+      // when asked for, from the Tags tab); tag mode overrides.
+      const ambientOn = useUserPreferencesStore().prefs.showScoutTags === true; // off until turned on in Tags
       if (!tagModeActive.value && !ambientOn) {
         for (const name of [TAG_LAYER_NAME, PIN_LAYER_NAME]) {
           const stale = viewer.layerManager?.managedLayers?.find((l: any) => l.name === name);
@@ -1964,7 +1965,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     try {
       const viewer: any = (window as any)['viewer'];
       if (!viewer?.state) return;
-      const ambientOn = useUserPreferencesStore().prefs.showScoutTags !== false;
+      const ambientOn = useUserPreferencesStore().prefs.showScoutTags === true; // off until turned on in Tags
       const points = aiPointAnnotations();
       if (!aiLayerOn.value || !ambientOn || !points.length) {
         removeLayerByName(viewer, AI_LAYER_NAME);

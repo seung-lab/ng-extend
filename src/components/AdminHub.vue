@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import {ref, computed, watch, onMounted} from 'vue';
+import {ref, computed, watch, onMounted, onUnmounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
+import {supabase} from '../supabase';
+import {getPcgInfo} from '../widgets/pcg_service';
+import {mintShortStateLink} from '../util/state_link';
+import {rootOfSupervoxel, undoSinceBaseline, ensureSupervoxels, type PracticeExample, type PracticeKind} from '../practice';
 
 const backend = useProofreadingBackendStore();
 
 const props = defineProps<{ initialSubTab?: string }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage'>(
-  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges'
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice'>(
+  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice'
     ? props.initialSubTab
     : 'notifications');
 
@@ -211,6 +215,39 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
   } finally {
     triageActing.value = null;
   }
+}
+
+/** "Work on it with Claude": a self-contained briefing for any report,
+ *  copied to the clipboard and opened as a new claude.ai chat. Paste the same
+ *  text into a Claude Code session to have it change the code. */
+const claudeCopied = ref<string | null>(null);
+function claudeBriefing(row: TriageRow): string {
+  const log = (row.feedback_log || []).map(f => `- [${f.role}] ${f.text}`).join('\n');
+  return [
+    'You are helping with the EyeWire II community app (seung-lab/ng-extend, branch eyewire-ii-community;',
+    'a Vue 3 + Pinia extension of neuroglancer). Work on this user report.',
+    '',
+    `Report (${row.source.replace('_', ' ')}, ${row.created_at.slice(0, 10)}): "${row.source_excerpt || ''}"`,
+    `Triage proposal: ${TRIAGE_LABELS[row.recommendation]}. Status: ${row.status}${row.impl_state ? `, robot state: ${row.impl_state}` : ''}.`,
+    row.rationale ? `Rationale: ${row.rationale}` : '',
+    row.spec ? `Spec:\n${row.spec}` : '',
+    row.approver_note ? `Approver's note (overrides the spec): ${row.approver_note}` : '',
+    row.impl_summary ? `What the triage robot already built: ${row.impl_summary}` : '',
+    row.impl_branch ? `Its branch: https://github.com/seung-lab/ng-extend/tree/${row.impl_branch}` : '',
+    row.preview_url ? `Its preview site: ${row.preview_url}` : '',
+    log ? `Replies in the Slack thread:\n${log}` : '',
+    slackThreadUrl(row) ? `Slack thread: ${slackThreadUrl(row)}` : '',
+    '',
+    'Before changing code, read docs/TRIAGE-KNOWLEDGE.md and docs/TRIAGE-LOOP.md in the repo. Confirm the cause in the',
+    'code first. Check the build with node scripts/build-prod.js. Copy has no em or en dashes. Push work branches to the',
+    'amy fork; do not push eyewire-ii-community (that deploys the live site) without asking Amy.',
+  ].filter(Boolean).join('\n');
+}
+async function openInClaude(row: TriageRow) {
+  const text = claudeBriefing(row);
+  try { await navigator.clipboard.writeText(text); claudeCopied.value = row.id; } catch { claudeCopied.value = null; }
+  setTimeout(() => { if (claudeCopied.value === row.id) claudeCopied.value = null; }, 4000);
+  window.open(`https://claude.ai/new?q=${encodeURIComponent(text.slice(0, 6000))}`, '_blank', 'noopener');
 }
 
 /** Loop actions from this tab. Each only flips impl_state; the bridge (every
@@ -779,6 +816,175 @@ onMounted(() => {
   backend.loadAdminNotifications();
   restoreDraft();
 });
+// ── Practice cells (Cut & Merge tutorial) ───────────────────────────────────
+// supabase-tutorial-practice-schema.sql, src/practice.ts. Registering one:
+// open the sandbox view you want learners to start from, hover the main cell
+// and press "Use hovered as A", hover the disconnected piece and press "Use
+// hovered as B", give it a title, Register. The current view is saved as the
+// start state and the two hovered supervoxels as the durable identity.
+const practiceRows = ref<PracticeExample[]>([]);
+const practiceLoading = ref(false);
+const practiceError = ref('');
+const practiceNotice = ref('');
+const practiceTitle = ref('');
+const practiceKind = ref<PracticeKind>('cut');
+const practiceA = ref<{ sv: string; root: string } | null>(null);
+const practiceB = ref<{ sv: string; root: string } | null>(null);
+/** Typed root ids, the no-hover way in: supervoxels are looked up on first use. */
+const practiceRootA = ref('');
+const practiceRootB = ref('');
+watch(practiceRootA, v => { const t = v.trim(); if (/^\d{10,}$/.test(t)) practiceA.value = { sv: '', root: t }; });
+watch(practiceRootB, v => { const t = v.trim(); if (/^\d{10,}$/.test(t)) practiceB.value = { sv: '', root: t }; });
+const practiceHover = ref<{ sv: string; root: string } | null>(null);
+const practiceSaving = ref(false);
+const practiceActing = ref<string | null>(null);
+let hoverTimer: ReturnType<typeof setInterval> | null = null;
+/** Picking mode: the profile modal is hidden (body class, unscoped style
+ *  below) so the viewer can be hovered, and a small floating chip carries
+ *  the A and B buttons. AdminHub stays mounted, so nothing is lost. */
+const practicePicking = ref(false);
+function startPicking() {
+  practicePicking.value = true;
+  document.body.classList.add('nge-practice-picking');
+}
+function stopPicking() {
+  practicePicking.value = false;
+  document.body.classList.remove('nge-practice-picking');
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function sampleHover() {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const sel = ml.layer?.displayState?.segmentSelectionState;
+      if (!sel?.hasSelectedSegment) continue;
+      const sv = sel.baseSelectedSegment?.toString?.();
+      const root = sel.selectedSegment?.toString?.();
+      if (sv && root && sv !== '0') { practiceHover.value = { sv, root }; return; }
+    }
+  } catch { /* viewer not ready */ }
+}
+
+watch(adminSubTab, t => {
+  if (t === 'practice') {
+    loadPractice();
+    if (!hoverTimer) hoverTimer = setInterval(sampleHover, 200);
+  } else {
+    stopPicking();
+    if (hoverTimer) { clearInterval(hoverTimer); hoverTimer = null; }
+  }
+}, { immediate: true });
+onUnmounted(() => { stopPicking(); if (hoverTimer) clearInterval(hoverTimer); });
+
+async function loadPractice() {
+  practiceLoading.value = true; practiceError.value = '';
+  const { data, error } = await supabase.from('tutorial_practice_examples').select('*').order('created_at');
+  if (error) practiceError.value = error.message;
+  else practiceRows.value = (data ?? []) as PracticeExample[];
+  practiceLoading.value = false;
+}
+
+function usePracticeHover(which: 'a' | 'b') {
+  if (!practiceHover.value) return;
+  if (which === 'a') practiceA.value = { ...practiceHover.value };
+  else practiceB.value = { ...practiceHover.value };
+}
+
+function practiceDataset(): string {
+  try {
+    const viewer = (window as any)['viewer'];
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      const url: string = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (url.includes('segmentation/table/')) return ml.name;
+    }
+  } catch { /* */ }
+  return '';
+}
+
+async function registerPractice() {
+  practiceError.value = ''; practiceNotice.value = '';
+  const a = practiceA.value, b = practiceB.value;
+  if (!a || !b) { practiceError.value = 'Pick both pieces first.'; return; }
+  if (a.sv && a.sv === b.sv) { practiceError.value = 'A and B are the same spot. Hover two different places.'; return; }
+  if (a.root === b.root && practiceKind.value === 'cut' && !a.sv) { practiceError.value = 'For a cut example typed in by id, give the two root ids as they are after the cut; the cell is then merged back and both pieces are known.'; return; }
+  if (practiceKind.value === 'merge_then_cut' && a.root === b.root) { practiceError.value = 'A and B are on the same root. For a merge example, the piece must start disconnected.'; return; }
+  if (practiceKind.value === 'cut' && a.root !== b.root) { practiceError.value = 'A and B are on different roots. For a cut example, hover two spots on the fused segment, one each side of the join.'; return; }
+  const pcg = getPcgInfo();
+  if (!pcg) { practiceError.value = 'No graphene segmentation layer in the viewer.'; return; }
+  practiceSaving.value = true;
+  try {
+    const link = await mintShortStateLink();
+    if (!link) throw new Error('Could not save the current view as a state link.');
+    const stateUrl = link.slice(link.indexOf('#!') + 2);
+    const row = {
+      title: practiceTitle.value.trim() || `Practice ${practiceRows.value.length + 1}`,
+      kind: practiceKind.value,
+      dataset: practiceDataset(), pcg_server: pcg.server, pcg_table: pcg.table,
+      state_url: stateUrl,
+      supervoxel_a: a.sv, supervoxel_b: b.sv, root_a: a.root, root_b: b.root,
+      created_by: backend.userId,
+    };
+    const { error } = await supabase.from('tutorial_practice_examples').insert(row);
+    if (error) throw new Error(error.message);
+    practiceNotice.value = `Registered "${row.title}".`;
+    practiceTitle.value = ''; practiceA.value = null; practiceB.value = null;
+    practiceRootA.value = ''; practiceRootB.value = '';
+    await loadPractice();
+  } catch (e: any) {
+    practiceError.value = e?.message ?? String(e);
+  } finally {
+    practiceSaving.value = false;
+  }
+}
+
+async function patchPractice(id: string, body: Record<string, unknown>) {
+  const { error } = await supabase.from('tutorial_practice_examples').update({ ...body, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) practiceError.value = error.message;
+  await loadPractice();
+}
+
+/** Undo everything since the baseline with the admin's own token, right now. */
+async function resetPracticeNow(ex: PracticeExample) {
+  practiceActing.value = ex.id; practiceError.value = ''; practiceNotice.value = '';
+  try {
+    await patchPractice(ex.id, { status: 'resetting', claimed_by: null, claimed_at: null, expires_at: null });
+    const r = await undoSinceBaseline(ex);
+    await patchPractice(ex.id, { status: 'ready', root_a: r.a, root_b: r.b, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() });
+    practiceNotice.value = `${ex.title}: undid ${r.undone} operation(s), ready.`;
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    await patchPractice(ex.id, { status: 'needs_reset', last_error: msg });
+    practiceError.value = `${ex.title}: ${msg}`;
+  } finally {
+    practiceActing.value = null;
+  }
+}
+
+async function deletePractice(ex: PracticeExample) {
+  if (!window.confirm(`Delete "${ex.title}"? Its cell is left as it is now.`)) return;
+  const { error } = await supabase.from('tutorial_practice_examples').delete().eq('id', ex.id);
+  if (error) practiceError.value = error.message;
+  await loadPractice();
+}
+
+async function checkPractice(ex: PracticeExample) {
+  practiceActing.value = ex.id; practiceError.value = ''; practiceNotice.value = '';
+  try {
+    await ensureSupervoxels(ex);
+    const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
+    practiceNotice.value = a === b ? `${ex.title}: the pieces are MERGED right now (root ${a}).`
+      : `${ex.title}: the pieces are separate (roots ${a}, ${b}).`;
+  } catch (e: any) {
+    practiceError.value = e?.message ?? String(e);
+  } finally {
+    practiceActing.value = null;
+  }
+}
+
+function practiceWhen(iso: string | null) {
+  return iso ? formatEt(iso) : '';
+}
 </script>
 
 <template>
@@ -811,6 +1017,7 @@ onMounted(() => {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'groups' }" @click="adminSubTab = 'groups'">Groups</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'triage' }" @click="adminSubTab = 'triage'">Triage</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
     </div>
 
     <!-- ── Notifications ── -->
@@ -1050,6 +1257,70 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- ═══ PRACTICE CELLS (resettable Cut & Merge examples) ═══ -->
+    <div v-if="adminSubTab === 'practice'" class="nge-admin-section">
+      <div class="nge-admin-block">
+        <label class="nge-admin-label">Register a practice cell from the current view</label>
+        <p class="nge-admin-hint">Open the sandbox view learners should start from. Hover one piece in the viewer, come back and press A. Hover the other, press B. The view is saved as the start state.</p>
+        <div class="nge-admin-row">
+          <label class="nge-practice-kind"><input type="radio" value="cut" v-model="practiceKind" /> Cut example: A and B are wrongly fused, the learner cuts them apart (hover each side of the join)</label>
+          <label class="nge-practice-kind"><input type="radio" value="merge_then_cut" v-model="practiceKind" /> Merge example: B is wrongly disconnected from A, the learner merges it back</label>
+        </div>
+        <div class="nge-admin-row">
+          <button class="nge-admin-primary-btn" @click="startPicking">Pick A and B in the viewer</button>
+          <span class="nge-admin-hint">Hides this panel so you can hover the cell. A small chip stays on screen with the A and B buttons.</span>
+        </div>
+        <Teleport to="body">
+          <div v-if="practicePicking" class="nge-practice-picker">
+            <span class="nge-practice-picker-label">Practice cell</span>
+            <span class="nge-practice-hover">Hovered: <code>{{ practiceHover ? practiceHover.root : 'move over a segment' }}</code></span>
+            <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('a')">Use as A</button>
+            <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('b')">Use as B</button>
+            <span class="nge-practice-picks">A: <code>{{ practiceA ? practiceA.root : '…' }}</code> B: <code>{{ practiceB ? practiceB.root : '…' }}</code></span>
+            <button class="nge-admin-primary-btn" @click="stopPicking">Back to Admin Hub</button>
+          </div>
+        </Teleport>
+        <div class="nge-admin-row nge-practice-picks">
+          <span>A: <code>{{ practiceA ? practiceA.root : '…' }}</code></span>
+          <span>B: <code>{{ practiceB ? practiceB.root : '…' }}</code></span>
+        </div>
+        <div class="nge-admin-row">
+          <span class="nge-admin-hint">Or type root ids:</span>
+          <input v-model="practiceRootA" class="nge-admin-input nge-admin-input--sm" placeholder="root A" />
+          <input v-model="practiceRootB" class="nge-admin-input nge-admin-input--sm" placeholder="root B" />
+        </div>
+        <div class="nge-admin-row">
+          <input v-model="practiceTitle" class="nge-admin-input" placeholder="Title, e.g. Pyramidal cell, missing apical branch" />
+          <button class="nge-admin-primary-btn" :disabled="practiceSaving || !practiceA || !practiceB" @click="registerPractice">
+            {{ practiceSaving ? 'Saving…' : 'Register' }}
+          </button>
+        </div>
+        <div v-if="practiceError" class="nge-admin-error">⚠ {{ practiceError }}</div>
+        <div v-if="practiceNotice" class="nge-admin-success">{{ practiceNotice }}</div>
+      </div>
+
+      <div class="nge-admin-block">
+        <label class="nge-admin-label">Practice cells <button class="nge-admin-action-btn" style="margin-left:8px" @click="loadPractice">Refresh</button></label>
+        <p v-if="practiceLoading" class="nge-admin-hint">Loading…</p>
+        <p v-else-if="!practiceRows.length" class="nge-admin-hint">None registered yet. Tutorial 3 tells learners every cell is busy until one exists.</p>
+        <div v-for="ex in practiceRows" :key="ex.id" class="nge-practice-row" :class="'nge-practice-row--' + ex.status">
+          <div class="nge-practice-main">
+            <strong>{{ ex.title }}</strong>
+            <span class="nge-practice-status">{{ ex.status }}{{ ex.enabled ? '' : ', disabled' }}</span>
+            <span class="nge-admin-hint">{{ ex.kind === 'cut' ? 'cut example' : 'merge example' }}</span>
+            <span class="nge-admin-hint">{{ ex.dataset }} · used {{ ex.uses }}×<template v-if="ex.last_reset_at"> · reset {{ practiceWhen(ex.last_reset_at) }}</template><template v-if="ex.claimed_by"> · claimed until {{ practiceWhen(ex.expires_at) }}</template></span>
+            <span v-if="ex.last_error" class="nge-admin-warn-inline">{{ ex.last_error }}</span>
+          </div>
+          <div class="nge-admin-row">
+            <button class="nge-admin-action-btn" :disabled="practiceActing === ex.id" @click="checkPractice(ex)">Check</button>
+            <button class="nge-admin-action-btn" :disabled="practiceActing === ex.id" @click="resetPracticeNow(ex)">Reset now</button>
+            <button class="nge-admin-action-btn" :disabled="practiceActing === ex.id" @click="patchPractice(ex.id, { enabled: !ex.enabled })">{{ ex.enabled ? 'Disable' : 'Enable' }}</button>
+            <button class="nge-admin-action-btn" :disabled="practiceActing === ex.id" @click="deletePractice(ex)">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ TRIAGE (agent proposals awaiting human review) ═══ -->
     <div v-if="adminSubTab === 'triage'" class="nge-admin-section">
       <div class="nge-admin-block">
@@ -1119,6 +1390,10 @@ onMounted(() => {
             placeholder="Comment (optional), saved with your decision"
             @keydown.stop @keyup.stop @keypress.stop
           ></textarea>
+          <div class="nge-triage-claude">
+            <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
+            <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
+          </div>
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
             <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
               {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
@@ -1681,6 +1956,8 @@ onMounted(() => {
 .nge-triage-impl--deployed { background: rgba(160,255,160,0.12); color: #8e8; }
 .nge-triage-impl--failed { background: rgba(255,120,120,0.16); color: #f88; }
 .nge-triage-link { font-size: 11px; color: #8fd3ff; }
+.nge-triage-claude { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nge-triage-copied { font-size: 12px; color: #8ee88e; }
 .nge-triage-note { font-size: 12px; color: rgba(235,238,250,0.88); line-height: 1.45; }
 .nge-triage-loop {
   display: flex; flex-direction: column; gap: 4px;
@@ -1780,4 +2057,31 @@ onMounted(() => {
   padding: 6px 10px;
   border-radius: 4px;
 }
+.nge-practice-hover code, .nge-practice-picks code { font-size: 0.85em; color: #9fd0ff; }
+.nge-practice-picks { color: #cde; font-size: 0.9em; }
+.nge-practice-kind { color: #cde; font-size: 0.88em; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.nge-practice-row {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 10px; border-radius: 6px;
+  border: 1px solid rgba(74, 158, 255, 0.18); background: rgba(255, 255, 255, 0.02);
+}
+.nge-practice-main { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.nge-practice-status { font-size: 0.8em; letter-spacing: 0.06em; text-transform: uppercase; color: #9fd0ff; }
+.nge-practice-row--ready .nge-practice-status { color: #60c060; }
+.nge-practice-row--needs_reset .nge-practice-status, .nge-practice-row--broken .nge-practice-status { color: #e06060; }
+.nge-practice-row--in_use .nge-practice-status { color: #f5d142; }
+.nge-practice-picker {
+  position: fixed; top: 64px; right: 16px; z-index: 200;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  max-width: 520px; padding: 10px 12px; border-radius: 8px;
+  background: rgba(8, 12, 24, 0.96); border: 1px solid rgba(74, 158, 255, 0.35);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); color: #cde; font-size: 0.9em;
+}
+.nge-practice-picker-label { font-size: 0.75em; letter-spacing: 0.12em; text-transform: uppercase; color: #9fd0ff; }
+</style>
+
+<style>
+/* Picking mode for practice cells: hide the whole profile modal (its
+   backdrop swallows clicks and closes on them) while AdminHub stays mounted. */
+body.nge-practice-picking #nge-profile-modal { display: none !important; }
 </style>

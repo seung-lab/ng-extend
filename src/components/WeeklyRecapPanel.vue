@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
+// 980 reconstructed cells (static/images/recap, original alongside).
+// Full screen version, shown behind the profile popup while this tab is open.
+import recapBackdrop from '../../static/images/recap/week-in-science-bg.jpg';
 
 import { useUserStatsStore, useCellHistoryStore, useIssueTagStore, useHelpRequestStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badge_definitions';
@@ -25,7 +28,7 @@ const weekRange = computed<string>(() => {
   const fmt = (d: Date) =>
     d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-  return `${fmt(monday)} – ${fmt(sunday)}, ${sunday.getFullYear()}`;
+  return `${fmt(monday)} to ${fmt(sunday)}, ${sunday.getFullYear()}`;
 });
 
 // ── Scout and help activity this week (Amy: the recap was missing tag
@@ -34,6 +37,89 @@ const weekRange = computed<string>(() => {
 const tagStoreW = useIssueTagStore();
 const helpStoreW = useHelpRequestStore();
 const backendW = useProofreadingBackendStore();
+
+// ── Global stats: the whole community, from the leaderboard's own view ──
+// user_edit_counts counts edits over a rolling 7 days (not Monday to
+// Sunday), so the section says "last 7 days" rather than "this week".
+interface GlobalStats {
+  editsWeek: number; activeWeek: number; cellsWeek: number;
+  editsAll: number; cellsAll: number; scientists: number; mineWeek: number;
+}
+const globalStats = ref<GlobalStats | null>(null);
+
+// The render sits on the page behind the popup (the modal backdrop), not
+// inside the box. The backdrop lives outside this component, so hand it the
+// image through a CSS variable on <html> while this tab is mounted.
+onMounted(() => document.documentElement.style.setProperty('--nge-recap-backdrop', `url(${recapBackdrop})`));
+onBeforeUnmount(() => document.documentElement.style.removeProperty('--nge-recap-backdrop'));
+
+// ── Your week and month, from the shared edit log ──
+// The local stats tally lives in this browser only, so edits made on
+// another computer never reached it (Amy's week showed 6 where the edit
+// log and CAVE both had 13). Count merges and splits from edit_log for the
+// same Monday to Sunday week the header shows, and the calendar month.
+// Falls back to the local tally if the log cannot be read.
+const serverCounts = ref<{ week: [number, number]; month: [number, number] } | null>(null);
+const shown = computed(() => {
+  const s = stats.value;
+  const c = serverCounts.value;
+  if (!c) return s;
+  return {
+    ...s,
+    mergesThisWeek: c.week[0], splitsThisWeek: c.week[1], editsThisWeek: c.week[0] + c.week[1],
+    mergesThisMonth: c.month[0], splitsThisMonth: c.month[1], editsThisMonth: c.month[0] + c.month[1],
+  };
+});
+onMounted(async () => {
+  const uid = backendW.userId;
+  if (!uid) return;
+  try {
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); // Monday
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const since = weekStart < monthStart ? weekStart : monthStart;
+    const { supabase } = await import('../supabase');
+    const { data, error } = await supabase.from('edit_log')
+      .select('operation, timestamp, success')
+      .eq('user_id', uid)
+      .gte('timestamp', since.toISOString())
+      .limit(20000);
+    if (error || !data) return;
+    const week: [number, number] = [0, 0];
+    const month: [number, number] = [0, 0];
+    for (const r of data as any[]) {
+      if (r.success === false) continue;
+      const i = r.operation === 'merge' ? 0 : r.operation === 'split' ? 1 : -1;
+      if (i < 0) continue;
+      const t = new Date(r.timestamp);
+      if (t >= weekStart) week[i]++;
+      if (t >= monthStart) month[i]++;
+    }
+    serverCounts.value = { week, month };
+  } catch { /* keep the local tally */ }
+});
+onMounted(async () => {
+  try {
+    const { supabase } = await import('../supabase');
+    const { data, error } = await supabase.from('user_edit_counts')
+      .select('id, edits_week, completions_week, edits_alltime, completions_alltime')
+      .limit(10000);
+    if (error || !data) return;
+    const sum = (k: string) => data.reduce((n: number, r: any) => n + (r[k] || 0), 0);
+    const me = data.find((r: any) => r.id === backendW.userId);
+    globalStats.value = {
+      editsWeek: sum('edits_week'),
+      activeWeek: data.filter((r: any) => (r.edits_week || 0) > 0).length,
+      cellsWeek: sum('completions_week'),
+      editsAll: sum('edits_alltime'),
+      cellsAll: sum('completions_alltime'),
+      scientists: data.filter((r: any) => (r.edits_alltime || 0) > 0 || (r.completions_alltime || 0) > 0).length,
+      mineWeek: me?.edits_week || 0,
+    };
+  } catch { /* the section just stays hidden */ }
+});
 const weekStartMs = computed(() => {
   const now = new Date();
   const day = now.getDay();
@@ -96,10 +182,10 @@ const nextBadge = computed<NextBadgeInfo | null>(() => {
 
 // ── Rotating science facts (cycles by ISO week — same all week) ───────────
 const SCIENCE_FACTS = [
-  'Each neuron you trace may connect to thousands of others — mapping even one cell helps scientists understand entire circuits.',
+  'Each neuron you trace may connect to thousands of others. Mapping even one cell helps scientists understand entire circuits.',
   'The MICrONS dataset contains roughly 200,000 neurons and 500 million synapses from a cubic millimeter of mouse cortex.',
   'Neuron tracing data from citizen scientists has contributed to peer-reviewed discoveries about how the eye processes motion.',
-  'Thanks to projects like EyeWire and FlyWire, the first complete wiring diagram of a fruit fly brain — 140,000 neurons — now exists.',
+  'Thanks to projects like EyeWire and FlyWire, the first complete wiring diagram of a fruit fly brain, 140,000 neurons, now exists.',
 ];
 
 const currentFact = computed<string>(() => {
@@ -167,11 +253,11 @@ function jumpToCell(segId: string) {
 
         <!-- Big hero edit number -->
         <div class="nge-recap-big-stat">
-          <div class="nge-recap-big-number">{{ stats.editsThisWeek.toLocaleString() }}</div>
+          <div class="nge-recap-big-number">{{ shown.editsThisWeek.toLocaleString() }}</div>
           <div class="nge-recap-big-label">edits this week</div>
           <div class="nge-recap-big-sub">
-            {{ stats.mergesThisWeek.toLocaleString() }} merges
-            + {{ stats.splitsThisWeek.toLocaleString() }} splits
+            {{ shown.mergesThisWeek.toLocaleString() }} merges
+            + {{ shown.splitsThisWeek.toLocaleString() }} splits
           </div>
         </div>
 
@@ -202,15 +288,15 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-section-label">{{ monthLabel }}</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ stats.editsThisMonth.toLocaleString() }}</div>
+              <div class="nge-recap-month-num">{{ shown.editsThisMonth.toLocaleString() }}</div>
               <div class="nge-recap-month-key">total edits</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ stats.mergesThisMonth.toLocaleString() }}</div>
+              <div class="nge-recap-month-num">{{ shown.mergesThisMonth.toLocaleString() }}</div>
               <div class="nge-recap-month-key">merges</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ stats.splitsThisMonth.toLocaleString() }}</div>
+              <div class="nge-recap-month-num">{{ shown.splitsThisMonth.toLocaleString() }}</div>
               <div class="nge-recap-month-key">splits</div>
             </div>
           </div>
@@ -273,18 +359,6 @@ function jumpToCell(segId: string) {
           </div>
         </div>
 
-        <!-- Community pulse -->
-        <div class="nge-recap-section nge-recap-community"
-             v-if="stats.communityEditsThisWeek > 0">
-          <div class="nge-recap-section-label">Community This Week</div>
-          <div class="nge-recap-community-total">
-            🌐 {{ stats.communityEditsThisWeek.toLocaleString() }} edits by the EyeWire II community
-          </div>
-          <div class="nge-recap-community-share" v-if="contributionPct">
-            Your contribution: <strong>{{ contributionPct }}%</strong> of this week's science
-          </div>
-        </div>
-
         <!-- Next badge progress -->
         <div class="nge-recap-section nge-recap-badge-progress" v-if="nextBadge">
           <div class="nge-recap-section-label">Next Badge</div>
@@ -317,6 +391,51 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-fact-text">{{ currentFact }}</div>
         </div>
 
+        <!-- Global stats: everyone together -->
+        <div class="nge-recap-section nge-recap-global" v-if="globalStats">
+          <div class="nge-recap-section-label">Global Stats</div>
+          <div class="nge-recap-global-halves">
+          <div class="nge-recap-global-half">
+          <div class="nge-recap-global-sub">Everyone in EyeWire II, last 7 days</div>
+          <div class="nge-recap-month-grid">
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num" style="color: #42d5ec;">{{ globalStats.editsWeek.toLocaleString() }}</div>
+              <div class="nge-recap-month-key">edits</div>
+            </div>
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num" style="color: #c98bff;">{{ globalStats.activeWeek.toLocaleString() }}</div>
+              <div class="nge-recap-month-key">scientists editing</div>
+            </div>
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num" style="color: #7f8;">{{ globalStats.cellsWeek.toLocaleString() }}</div>
+              <div class="nge-recap-month-key">cells completed</div>
+            </div>
+          </div>
+          <div class="nge-recap-global-share" v-if="globalStats.mineWeek > 0 && globalStats.editsWeek > 0">
+            You made <strong>{{ globalStats.mineWeek.toLocaleString() }}</strong> of them,
+            <strong>{{ Math.round(globalStats.mineWeek / globalStats.editsWeek * 100) }}%</strong> of the community's edits.
+          </div>
+          </div>
+          <div class="nge-recap-global-half">
+          <div class="nge-recap-global-sub">All time</div>
+          <div class="nge-recap-month-grid">
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num">{{ globalStats.editsAll.toLocaleString() }}</div>
+              <div class="nge-recap-month-key">edits</div>
+            </div>
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num">{{ globalStats.cellsAll.toLocaleString() }}</div>
+              <div class="nge-recap-month-key">cells completed</div>
+            </div>
+            <div class="nge-recap-month-cell">
+              <div class="nge-recap-month-num">{{ globalStats.scientists.toLocaleString() }}</div>
+              <div class="nge-recap-month-key">citizen scientists</div>
+            </div>
+          </div>
+          </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </component>
@@ -338,10 +457,29 @@ function jumpToCell(segId: string) {
    which read as a small centred box inside the wider profile. */
 .nge-recap-shell--embedded { max-height: none; }
 .nge-recap-embedded { display: block; width: 100%; }
+.nge-recap-shell--embedded { width: 100%; }
+/* Embedded in the wide profile tab: sections flow into three columns so the
+   whole week fits on one screen. Title, big number, and the global stats
+   run the full width. */
 .nge-recap-shell--embedded .nge-recap-content {
   width: 100%;
-  padding: 8px 32px 32px;
+  padding: 8px 32px 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 28px;
+  align-content: start;
 }
+.nge-recap-shell--embedded .nge-recap-content > .nge-recap-hero,
+.nge-recap-shell--embedded .nge-recap-content > .nge-recap-big-stat,
+.nge-recap-shell--embedded .nge-recap-content > .nge-recap-global { grid-column: 1 / -1; }
+.nge-recap-shell--embedded .nge-recap-hero { padding: 18px 16px 6px; margin-bottom: 4px; }
+.nge-recap-shell--embedded .nge-recap-big-stat { padding: 4px 0 16px; }
+.nge-recap-shell--embedded .nge-recap-section { margin-bottom: 14px; padding-bottom: 14px; }
+@media (max-width: 900px) {
+  .nge-recap-shell--embedded .nge-recap-content { grid-template-columns: minmax(0, 1fr); }
+}
+.nge-recap-global-halves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+@media (max-width: 900px) { .nge-recap-global-halves { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── Sci-fi materialize ── */
 .nge-recap-modal :deep(.nge-overlay) {
@@ -415,21 +553,23 @@ function jumpToCell(segId: string) {
 /* ── Hero header ── */
 .nge-recap-hero {
   text-align: center;
-  padding-bottom: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 70px 16px 26px;
   margin-bottom: 20px;
 }
+
 
 .nge-recap-hero-title {
   font-size: 1.5em;
   font-weight: 700;
   color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.85);
 }
 
 .nge-recap-hero-daterange {
   margin-top: 4px;
-  font-size: 0.82em;
-  color: #9e9e9e;
+  font-size: 0.85em;
+  color: #d6e6f5;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
 }
 
 /* ── Big hero stat ── */
@@ -443,7 +583,8 @@ function jumpToCell(segId: string) {
 .nge-recap-big-number {
   font-size: 3.2em;
   font-weight: 800;
-  color: #4a9eff;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(120, 190, 255, 0.45), 0 2px 10px rgba(0, 0, 0, 0.8);
   line-height: 1;
   letter-spacing: -0.02em;
 }
@@ -678,9 +819,34 @@ function jumpToCell(segId: string) {
 }
 
 .nge-recap-fact-text {
-  font-size: 0.85em;
-  color: #bbb;
+  font-size: 0.9em;
+  color: #d4dce8;
   line-height: 1.55;
-  font-style: italic;
+}
+
+.nge-recap-global { margin-top: 20px; }
+.nge-recap-global-sub {
+  margin: -4px 0 10px;
+  font-size: 0.8em;
+  color: #9fb3c8;
+}
+
+.nge-recap-global-share {
+  margin-top: 10px;
+  font-size: 0.86em;
+  color: #c9d6e3;
+}
+.nge-recap-global-share strong { color: #42d5ec; }
+</style>
+
+<style>
+/* Unscoped: the modal backdrop is outside this component. While the Week in
+   Science tab is open, the backdrop behind the popup shows the render, dimmed
+   so the popup stays the focus. */
+.nge-overlay-blocker:has(.nge-profile-shell--week) {
+  background:
+    radial-gradient(ellipse at center, rgba(2, 4, 10, 0.35) 0%, rgba(2, 4, 10, 0.75) 100%),
+    var(--nge-recap-backdrop, none) center / cover no-repeat,
+    #02040a;
 }
 </style>

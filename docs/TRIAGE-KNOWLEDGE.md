@@ -48,3 +48,36 @@ summaries.
 ## Learned from builds
 
 (The robot adds lines here as fixes are approved.)
+
+- "Use scifi-ui" means reuse what is already ported in this repo, not a new
+  dependency: `runPanelTrace` in `src/util/holo_trace.ts` (beam on arrival)
+  and the softened `nge-holo-materialize` keyframes in TagModePanel.vue.
+  A panel centred with `translate(-50%, -50%)` must repeat that translate in
+  every materialize keyframe or it jumps off centre (2026-09-26, dataset
+  panel build, from reading WeeklyRecapPanel and TagModePanel).
+- Per-user counts must come from shared records, never the local stats tally:
+  `useUserStatsStore` daily counts live in one browser's storage and miss
+  edits made elsewhere. Count from `edit_log` (merges and splits, skip
+  `success = false`) or `user_edit_counts` (CAVE mirror, rolling 7 days).
+  Say which window a number covers (2026-09-26, recap showed 6 edits where
+  edit_log and CAVE had 13).
+- Tutorials: `TutorialStep.vue` listens for Enter and Space on `window` in the
+  capture phase and swallows them. A step that tells the user to press Enter in
+  the viewer (Cut, Merge and Find Path submit on Enter) only works because the
+  handler now steps aside while a viewer tool is active (2026-09-26, from the
+  tutorial audit build).
+- There is no Ctrl+Z undo in the app or in neuroglancer. PyChunkedGraph does
+  have `POST /table/{table}/undo` with `{operation_id}`, and merge and split
+  responses include `operation_id`; the practice cell reset uses it
+  (2026-09-26, checked against the PyChunkedGraph routes).
+- Close a layer side panel with `viewer.selectedLayer.visible = false` (or the
+  panel state's `location.visible`). Setting `display:none` on side panel
+  elements leaves them unopenable until reload (2026-09-26, from the tutorial
+  audit).
+- In this neuroglancer the visible root set is
+  `layer.displayState.segmentationGroupState.value.visibleSegments`;
+  `displayState.rootSegments` does not exist, so code that used it was a
+  silent no-op (2026-09-26, checked in the browser on the preview).
+- The Browser pane counts as a hidden tab: requestAnimationFrame never fires
+  there, so neuroglancer will not redraw or open panels in it. Verify panel
+  changes on a real screen (2026-09-26, from the tutorial audit).
