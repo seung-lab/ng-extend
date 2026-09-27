@@ -6,12 +6,16 @@
  * up with light like the Scout tag mode box, and pops into particles.
  * State lives in util/dataset_transition.ts so it survives the reload.
  */
-import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { datasetTransition, resumeDatasetTransition, endDatasetTransition } from '../util/dataset_transition';
-import { runPanelTrace, runPanelDraw, runParticleBurst } from '../util/holo_trace';
+import { runPanelDraw, runParticleBurst } from '../util/holo_trace';
 
 const boxEl = ref<HTMLElement | null>(null);
 const phase = ref<'loading' | 'zip' | null>(null);
+/** ms since the switch was clicked. Animations start that far in, so after
+ *  the page reloads mid switch they carry on instead of replaying from zero
+ *  (the replay was the flash). */
+const elapsed = ref(0);
 const stepIdx = ref(0);
 const STEPS = ['Loading the volume', 'Fetching cells', 'Aligning the view', 'Almost there'];
 let timers: number[] = [];
@@ -29,10 +33,12 @@ function play() {
   const t = datasetTransition.current;
   if (!t) return;
   clearTimers();
+  elapsed.value = Math.max(0, Date.now() - t.t0);
   phase.value = 'loading';
-  stepIdx.value = 0;
-  for (let i = 1; i < STEPS.length; i++) timers.push(window.setTimeout(() => { stepIdx.value = i; }, i * 650));
-  nextTick(() => { if (boxEl.value) runPanelTrace(boxEl.value, 6); });
+  stepIdx.value = Math.min(STEPS.length - 1, Math.floor(elapsed.value / 650));
+  for (let i = stepIdx.value + 1; i < STEPS.length; i++) {
+    timers.push(window.setTimeout(() => { stepIdx.value = i; }, i * 650 - elapsed.value));
+  }
   const tick = () => {
     const age = Date.now() - t.t0;
     const ready = !datasetTransition.resumed || viewerReady();
@@ -59,8 +65,13 @@ function pop() {
   popped = true;
   const box = boxEl.value;
   if (box) {
+    // Pop along the whole top edge, rippling left to right like a zip.
     const r = box.getBoundingClientRect();
-    runParticleBurst(r.left + r.width / 2, r.top + 6, '66,213,236');
+    const N = 5;
+    for (let i = 0; i < N; i++) {
+      const x = r.left + r.width * (0.1 + 0.8 * i / (N - 1));
+      timers.push(window.setTimeout(() => runParticleBurst(x, r.top + 4, '66,213,236'), i * 40));
+    }
   }
   timers.push(window.setTimeout(() => { endDatasetTransition(); phase.value = null; popped = false; }, 120));
 }
@@ -72,7 +83,9 @@ onBeforeUnmount(clearTimers);
 
 <template>
   <Teleport to="body">
-    <div v-if="datasetTransition.current && phase" class="nge-dst" :class="{ 'nge-dst--zip': phase === 'zip' }" aria-live="polite">
+    <div v-if="datasetTransition.current && phase" class="nge-dst"
+         :class="{ 'nge-dst--zip': phase === 'zip', 'nge-dst--resumed': datasetTransition.resumed }"
+         :style="{ '--dst-in': `-${elapsed}ms` }" aria-live="polite">
       <div ref="boxEl" class="nge-dst-box">
         <div class="nge-dst-eyebrow"><span class="nge-dst-dot"></span>Now entering</div>
         <div class="nge-dst-title">{{ datasetTransition.current.label }}</div>
@@ -96,11 +109,18 @@ onBeforeUnmount(clearTimers);
   position: fixed; inset: 0; z-index: 10050;
   display: grid; place-items: center;
   pointer-events: none;
-  background: radial-gradient(ellipse at center, rgba(2, 6, 14, 0.55), rgba(2, 6, 14, 0.2) 70%, transparent);
   animation: nge-dst-fade 0.3s ease both;
 }
-.nge-dst--zip { background: transparent; transition: background 0.3s; }
+/* The haze behind the card is its own layer so it can fade out smoothly
+   (a gradient background cannot transition, so it used to blink off). */
+.nge-dst::before {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, rgba(2, 6, 14, 0.55), rgba(2, 6, 14, 0.2) 70%, transparent);
+  transition: opacity 0.45s ease;
+}
+.nge-dst--zip::before { opacity: 0; }
 @keyframes nge-dst-fade { from { opacity: 0; } to { opacity: 1; } }
+.nge-dst--resumed, .nge-dst--resumed .nge-dst-box { animation: none; }
 
 /* scifi-ui holopanel surface, with the soft materialize the app uses. */
 .nge-dst-box {
@@ -144,6 +164,7 @@ onBeforeUnmount(clearTimers);
 .nge-dst-thumb img {
   width: 100%; height: 100%; object-fit: cover; display: block;
   animation: nge-dst-reveal 2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--dst-in, 0ms);
 }
 /* The render resolves from blurred and dim to sharp while it "loads". */
 @keyframes nge-dst-reveal {
@@ -156,9 +177,15 @@ onBeforeUnmount(clearTimers);
   position: absolute; left: 0; right: 0; top: 0; height: 30%;
   background: linear-gradient(180deg, transparent, rgba(120, 220, 255, 0.10) 70%, rgba(180, 240, 255, 0.55) 98%, transparent);
   mix-blend-mode: screen;
-  animation: nge-dst-sweep 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  /* One pass down the image during the load. */
+  animation: nge-dst-sweep 1.8s cubic-bezier(0.45, 0, 0.55, 1) both;
+  animation-delay: var(--dst-in, 0ms);
 }
-@keyframes nge-dst-sweep { from { transform: translateY(-100%); } to { transform: translateY(340%); } }
+@keyframes nge-dst-sweep {
+  0%   { transform: translateY(-100%); opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(340%); opacity: 0; }
+}
 .nge-dst-grid {
   position: absolute; inset: 0; opacity: 0.18; pointer-events: none;
   background-image:
@@ -182,6 +209,7 @@ onBeforeUnmount(clearTimers);
   background: linear-gradient(90deg, #42d5ec, #c98bff);
   box-shadow: 0 0 12px rgba(66, 213, 236, 0.7);
   animation: nge-dst-fill 2.2s cubic-bezier(0.3, 0.1, 0.2, 1) both;
+  animation-delay: var(--dst-in, 0ms);
 }
 @keyframes nge-dst-fill { from { transform: scaleX(0.04); } to { transform: scaleX(1); } }
 

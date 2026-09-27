@@ -13,7 +13,7 @@
  * The box is draggable by its header and remembers its position; the default
  * perch overlaps the 2D EM pane, upper left.
  */
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useIssueTagStore, useSegmentAnnotationStore, IssueTagType } from '../store';
 import { storeToRefs } from 'pinia';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
@@ -252,25 +252,74 @@ const collapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1');
 const drawingIn = ref(false);
 function setCollapsed(v: boolean) {
   if (v) {
-    // Collapse (Amy): the zip triggers at the BOTTOM of the full box and
-    // races upward, masking the box away beneath it; the slim strip stands
-    // where the light finishes.
+    // Collapse (Amy 2026-09-25): the big box SHRINKS INTO the strip. It used
+    // to zip up to its top line and vanish, then the strip popped in. Now a
+    // snapshot of the box morphs to the strip's exact rect (border shifting
+    // gold to blue, contents scaling down and fading), and as it lands,
+    // particles trace each chip and button of the strip, which resolves under
+    // them. Expand (revealFormWithBeam) is deliberately untouched.
     if (collapsed.value) return;
-    const finish = () => {
-      const b = boxEl.value;
-      if (b) b.style.clipPath = '';
+    const commit = () => {
       collapsed.value = true;
       try { localStorage.setItem(COLLAPSED_KEY, '1'); } catch {}
     };
     const box = boxEl.value;
-    if (!box || !wrapEl.value) { finish(); return; }
-    const total = runPanelDraw(wrapEl.value, 'up', frac => {
-      const b = boxEl.value;
-      if (!b) return;
-      if (frac >= 1) finish();
-      else b.style.clipPath = `inset(0 0 ${(frac * 100).toFixed(2)}% 0)`;
+    const from = box?.getBoundingClientRect();
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (!box || !from || !from.width || reduce) { commit(); return; }
+
+    // The snapshot: a frame with the box's own clone inside, so it can keep
+    // shrinking after the real box has been swapped for the strip.
+    const ghost = document.createElement('div');
+    Object.assign(ghost.style, {
+      position: 'fixed', left: `${from.left}px`, top: `${from.top}px`,
+      width: `${from.width}px`, height: `${from.height}px`,
+      zIndex: '10006', pointerEvents: 'none', overflow: 'hidden',
+      borderRadius: '10px', boxSizing: 'border-box',
+      background: 'rgba(6, 10, 20, 0.95)',
+      border: '1px solid rgba(245, 209, 66, 0.35)',
+      boxShadow: '0 6px 28px rgba(0, 0, 0, 0.55)',
+    } as Partial<CSSStyleDeclaration>);
+    const snap = box.cloneNode(true) as HTMLElement;
+    Object.assign(snap.style, {
+      animation: 'none', clipPath: '', margin: '0', border: 'none', boxShadow: 'none',
+      width: `${from.width}px`, height: `${from.height}px`, maxHeight: 'none',
+      overflow: 'hidden', transformOrigin: 'top left', position: 'absolute', left: '0', top: '0',
+    } as Partial<CSSStyleDeclaration>);
+    ghost.appendChild(snap);
+    document.body.appendChild(ghost);
+    commit();
+
+    nextTick(() => {
+      const strip = stripEl.value;
+      const to = strip?.getBoundingClientRect();
+      if (!strip || !to || !to.width) { ghost.remove(); return; }
+      strip.style.opacity = '0';
+      const D = 480;
+      ghost.animate([
+        { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`,
+          borderColor: 'rgba(245, 209, 66, 0.35)' },
+        { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`,
+          borderColor: 'rgba(53, 181, 255, 0.55)' },
+      ], { duration: D, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', fill: 'forwards' });
+      snap.animate([
+        { transform: 'scale(1, 1)', opacity: 1, filter: 'blur(0)' },
+        { transform: `scale(${to.width / from.width}, ${to.height / from.height})`, opacity: 0, filter: 'blur(3px)' },
+      ], { duration: D * 0.8, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', fill: 'forwards' });
+
+      // As it lands: particles write the strip's chips and buttons.
+      setTimeout(() => {
+        const targets = Array.from(strip.children)
+          .filter(el => (el as HTMLElement).offsetWidth > 0)
+          .map(el => el.getBoundingClientRect());
+        runParticleWrite(targets, to);
+        strip.style.transition = 'opacity 0.42s ease 0.12s';
+        strip.style.opacity = '1';
+        const fade = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' });
+        fade.onfinish = () => ghost.remove();
+        setTimeout(() => { strip.style.transition = ''; }, 700);
+      }, D * 0.78);
     });
-    if (!total) finish();
     return;
   }
   collapsed.value = false;
@@ -278,6 +327,95 @@ function setCollapsed(v: boolean) {
   // Expand: no pop. The beam draws the frame AND acts as a mask, the box
   // content is revealed exactly as far down as the beam has travelled.
   revealFormWithBeam();
+}
+
+/**
+ * Particles that "write" a set of targets: each flies from a random point in
+ * `origin` along a curve to a point on a target's outline, arriving in a
+ * staggered wave, glows briefly, and fades. Additive blue light, the UI's
+ * one beam colour (LIGHT_RGB). Self-contained canvas, removed when done.
+ */
+function runParticleWrite(targets: DOMRect[], origin: DOMRect) {
+  if (!targets.length) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(innerWidth * dpr);
+  cv.height = Math.round(innerHeight * dpr);
+  Object.assign(cv.style, {
+    position: 'fixed', inset: '0', width: '100vw', height: '100vh',
+    pointerEvents: 'none', zIndex: '10007',
+  } as Partial<CSSStyleDeclaration>);
+  document.body.appendChild(cv);
+  const ctx = cv.getContext('2d');
+  if (!ctx) { cv.remove(); return; }
+  ctx.scale(dpr, dpr);
+
+  /** A point on a rounded-rect outline, t in [0, 1). */
+  const onOutline = (r: DOMRect, t: number) => {
+    const per = 2 * (r.width + r.height);
+    let d = t * per;
+    if (d < r.width) return [r.left + d, r.top];
+    d -= r.width;
+    if (d < r.height) return [r.right, r.top + d];
+    d -= r.height;
+    if (d < r.width) return [r.right - d, r.bottom];
+    d -= r.width;
+    return [r.left, r.bottom - d];
+  };
+  type P = { x0: number; y0: number; cx: number; cy: number; x1: number; y1: number; delay: number; dur: number };
+  const ps: P[] = [];
+  for (const r of targets) {
+    // Density follows perimeter, so a wide chip gets more light than a dot.
+    const n = Math.max(6, Math.min(22, Math.round((r.width + r.height) / 7)));
+    for (let i = 0; i < n; i++) {
+      const [x1, y1] = onOutline(r, (i + Math.random() * 0.5) / n);
+      const x0 = origin.left + Math.random() * origin.width;
+      const y0 = origin.top + origin.height * (0.5 + (Math.random() - 0.5) * 3);
+      ps.push({
+        x0, y0, x1, y1,
+        cx: (x0 + x1) / 2 + (Math.random() - 0.5) * 60,
+        cy: Math.min(y0, y1) - 12 - Math.random() * 28,
+        delay: ((r.left - origin.left) / Math.max(1, origin.width)) * 140 + Math.random() * 90,
+        dur: 300 + Math.random() * 160,
+      });
+    }
+  }
+  const HOLD = 180;
+  const end = Math.max(...ps.map(p => p.delay + p.dur)) + HOLD + 260;
+  const t0 = performance.now();
+  const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+  const frame = (now: number) => {
+    const el = now - t0;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of ps) {
+      const t = (el - p.delay) / p.dur;
+      if (t < 0) continue;
+      const k = ease(Math.min(1, t));
+      const x = (1 - k) * (1 - k) * p.x0 + 2 * (1 - k) * k * p.cx + k * k * p.x1;
+      const y = (1 - k) * (1 - k) * p.y0 + 2 * (1 - k) * k * p.cy + k * k * p.y1;
+      // In flight: bright head. Landed: glow, then fade over the tail.
+      const after = el - p.delay - p.dur;
+      const a = t < 1 ? 0.35 + 0.65 * k : Math.max(0, 1 - Math.max(0, after - HOLD) / 260);
+      if (a <= 0) continue;
+      const rad = t < 1 ? 1.4 : 1.8;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rad * 4);
+      g.addColorStop(0, `rgba(${LIGHT_RGB},${a})`);
+      g.addColorStop(0.35, `rgba(${LIGHT_RGB},${a * 0.45})`);
+      g.addColorStop(1, `rgba(${LIGHT_RGB},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, rad * 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(235,248,255,${a})`;
+      ctx.beginPath();
+      ctx.arc(x, y, rad * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (el < end) requestAnimationFrame(frame);
+    else cv.remove();
+  };
+  requestAnimationFrame(frame);
 }
 
 /** The beam-draw reveal of the form box, shared by expand-from-strip and
@@ -337,7 +475,7 @@ function dragMove(e: PointerEvent) {
   const w = document.documentElement.clientWidth;
   const h = document.documentElement.clientHeight;
   panelPos.value = {
-    left: Math.min(Math.max(8 - 340, e.clientX - dragOff.x), w - 60),
+    left: Math.min(Math.max(8 - 380, e.clientX - dragOff.x), w - 60),
     top: Math.min(Math.max(44, e.clientY - dragOff.y), h - 60),
   };
 }
@@ -480,6 +618,7 @@ onBeforeUnmount(() => {
           <button class="nge-tagmode-close" title="Exit tag mode (Esc)" @pointerdown.stop @click="closeWithZip">×</button>
         </div>
         <div class="nge-tagmode-hint">
+          <div class="nge-tagmode-lede">Tag a spot for another player to review.</div>
           Pick a type, then <b>hold T and click</b> the spot, or <b>tap T</b> to arm Click to tag. <b>Submit</b> saves it.
         </div>
         <div class="nge-tagmode-chips">
@@ -573,7 +712,8 @@ onBeforeUnmount(() => {
 .nge-tagmode-wrap {
   position: fixed;
   z-index: 10005;
-  width: 340px;
+  /* 380 (was 340): the form felt crowded (Amy 2026-09-25). */
+  width: 380px;
   max-width: calc(100vw - 24px);
 }
 
@@ -585,7 +725,7 @@ onBeforeUnmount(() => {
   position: relative;
   max-height: calc(100vh - 90px);
   overflow-y: auto;
-  padding: 12px 14px;
+  padding: 16px 18px 18px;
   border-radius: 10px;
   background: rgba(6, 10, 20, 0.95);
   border: 1px solid rgba(245, 209, 66, 0.35);
@@ -593,7 +733,7 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   font-family: 'Inter', 'Segoe UI', sans-serif;
   animation: nge-holo-materialize 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -781,7 +921,9 @@ onBeforeUnmount(() => {
   line-height: 1; cursor: pointer; padding: 0 2px;
 }
 .nge-tagmode-close:hover { color: #fff; }
-.nge-tagmode-hint { font-size: 11px; color: rgba(255, 255, 255, 0.55); line-height: 1.45; }
+.nge-tagmode-hint { font-size: 11.5px; color: rgba(255, 255, 255, 0.6); line-height: 1.5; }
+.nge-tagmode-lede { font-size: 13px; font-weight: 600; color: #eef3fb; margin-bottom: 4px; }
+.nge-tagmode-chips { gap: 8px !important; }
 .nge-tagmode-hint b { color: #f5d142; font-weight: 600; }
 .nge-tagmode-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-tagmode-chip {
