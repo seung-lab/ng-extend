@@ -150,7 +150,7 @@ These two operations are the bread and butter of proofreading. Let's start with 
     text: `
 A <strong style="color:#60c060">merge</strong> joins two separate segments that actually belong to the same neuron.
 
-This is needed when the AI fails to connect parts of a cell. For example, a dendrite that should be attached to the soma but was reconstructed as a separate piece.
+This is needed when the AI fails to connect parts of a cell.
 
 Like this one: the yellow branch belongs to the purple cell, but the AI left it as its own segment. You will fix it in a moment.`,
     position: MIDDLE,
