@@ -73,6 +73,15 @@ one learner at a time, and put it back afterwards.
   9, 12 and 14. Register the same cell as a `cut` practice example from the
   first state. More examples: register them in the tab, nothing is hard
   coded.
+- Cut candidates from Amy, 2026-09-26 (state links on global.brain-wire-test.org,
+  `nglstate/api/v1/<id>`):
+  1. Fused axon into a dendrite: marked 5679121900240896, points placed
+     5745573634244608, after the split 5675806990794752. Used as the
+     illustration states in tutorial-3.ts.
+  2. Root 648518346355200442, view 5763166390714368. Amy already split it
+     into 648518346357382467 and 648518346351477006 (view 5674918603653120),
+     so merge the two back together before registering it as a `cut`
+     example; the registration takes the fused state as the baseline.
 
 ## Rules
 
