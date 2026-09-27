@@ -33,7 +33,8 @@ function checkBaseline(ex,[a,b]) {
 async function reset(ex) {
  const ops=new Map();
  for(const root of new Set(await roots(ex))) {
-  const data=await cave(ex,`/root/${root}/tabular_change_log`);
+  // The filtered view can omit recent merges and splits from a root's lineage.
+  const data=await cave(ex,`/root/${root}/tabular_change_log?filtered=false`);
   for(const op of operationsAfter(data,root,ex.baseline_at))ops.set(op.operationId,op);
  }
  if(ops.size>200)throw Error('Unexpectedly large practice history; manual review required');
