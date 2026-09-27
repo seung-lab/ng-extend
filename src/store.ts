@@ -1,3 +1,4 @@
+import { secureWrite } from './secure_write';
 import {Ref, ref, reactive, computed} from 'vue';
 import {defineStore} from 'pinia';
 
@@ -1321,14 +1322,9 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
     if (r?.userId && r.userId !== backend.userId) {
       const note = payload.note || (payload.screenshotUrl ? 'attached a screenshot' : '');
       const notePreview = note.slice(0, 120) + (note.length > 120 ? '...' : '');
-      await supabase.from('notifications').insert({
-        title: `💬 Response to your help request`,
-        body: `${responderName} responded on ${r.segId}: ${notePreview}`,
-        target_type: 'user',
-        target_id: r.userId,
-        send_at: new Date().toISOString(),
-        created_by: backend.userId,
-      }).then(({ error: e }) => { if (e) console.warn('[helpRequests] notification error:', e.message); });
+      // The server builds the wording and checks the target asked for help.
+      await secureWrite('notification.helpReply', { targetUserId: r.userId, segId: r.segId, note: notePreview })
+        .catch((e: any) => console.warn('[helpRequests] notification error:', e?.message));
     }
   }
 
@@ -3604,13 +3600,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .select('id').eq('target_type', 'user').eq('target_id', uid).eq('title', title).limit(1);
     if (already?.length) return;
     const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
-    await supabase.from('notifications').insert({
+    // The server checks the edit count and that this goes to the caller only.
+    await secureWrite('notification.self', {
       title,
       body: "You've made 3 edits. Every one of them helps map the brain, and real scientists will use the cells you fix. Thank you for giving your time to science!",
       thumbnail_url: 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/nurro/guide-avatar.png',
       image_url: `${art}/nurro-thank-you-science.jpg`,
-      target_type: 'user', target_id: uid,
-      send_at: new Date().toISOString(),
     });
     loadNotifications().catch(() => {});
   }
@@ -4250,8 +4245,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     post_to_chat?: boolean;
   }) {
     if (!isAdmin.value) return;
-    const { error } = await supabase.from('notifications').update(fields).eq('id', id);
-    if (error) { console.warn('[admin] updateNotification failed:', error.message); throw new Error(error.message); }
+    try { await secureWrite('notification.update', { id, fields }); }
+    catch (error: any) { console.warn('[admin] updateNotification failed:', error?.message); throw error; }
     // Reflect locally without a full refetch.
     const patch = (list: Notification[]) => {
       const i = list.findIndex(n => n.id === id);
@@ -4305,9 +4300,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     };
     // Select the id back so the chat announcement can link to this exact
     // notification rather than telling people to go and find it.
-    const { data: created, error: err } = await supabase
-      .from('notifications').insert(row).select('id').single();
-    if (err) console.warn('[admin] createNotification error:', err.message);
+    let created: any = null;
+    try { created = await secureWrite('notification.insert', { row }); }
+    catch (err: any) { console.warn('[admin] createNotification error:', err?.message); }
     const newNotifId: number | null = created?.id ?? null;
 
     // Post to chat as a system message if requested — but ONLY for
@@ -4348,9 +4343,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           // Only mark it when we actually sent: if chat was offline we couldn't
           // post, so leave chat_posted_at null and let the cron be the fallback.
           if (newNotifId != null) {
-            await supabase.from('notifications')
-              .update({ chat_posted_at: new Date().toISOString() })
-              .eq('id', newNotifId);
+            await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: new Date().toISOString() } })
+              .catch(() => { /* the cron's copy check is the fallback */ });
           }
         }
       } catch (e) { console.warn('[admin] post_to_chat failed:', e); }
@@ -4388,14 +4382,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     for (const n of due) {
       // Atomic claim: only the row still NULL gets updated, and only one client's
       // UPDATE can win that race, so exactly one client proceeds to post.
-      const { data: claimed, error: claimErr } = await supabase
-        .from('notifications')
-        .update({ chat_posted_at: new Date().toISOString() })
-        .eq('id', n.id)
-        .is('chat_posted_at', null)
-        .select('id');
-      if (claimErr) { console.warn('[admin] claim chat announcement failed:', claimErr.message); continue; }
-      if (claimed && claimed.length) {
+      let claimed = false;
+      try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: n.id })).claimed; }
+      catch (claimErr: any) { console.warn('[admin] claim chat announcement failed:', claimErr?.message); continue; }
+      if (claimed) {
         chatStore.sendMessage(`📢 ${n.title}`, n.id);
       }
     }
@@ -4419,15 +4409,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       post_to_chat: false,
       created_by: userId.value,
     };
-    const { error: err } = await supabase.from('notifications').insert(row);
-    if (err) console.warn('[notifications] self-notification error:', err.message);
+    await secureWrite('notification.self', { title: row.title, body: row.body, image_url: row.image_url, thumbnail_url: row.thumbnail_url })
+      .catch((err: any) => console.warn('[notifications] self-notification error:', err?.message));
     await loadNotifications();
   }
 
   async function deleteNotification(notifId: number) {
     if (!isAdmin.value) return;
-    const { error } = await supabase.from('notifications').delete().eq('id', notifId);
-    if (error) { console.warn('[admin] deleteNotification failed:', error.message); throw new Error(error.message); }
+    try { await secureWrite('notification.delete', { id: notifId }); }
+    catch (error: any) { console.warn('[admin] deleteNotification failed:', error?.message); throw error; }
     notifications.value = notifications.value.filter(n => n.id !== notifId);
     // Also drop it from the scheduled queue — deleting a pending notification
     // is how an admin cancels it.

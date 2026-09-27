@@ -162,15 +162,8 @@ async function maybeSendWeeklyRecapNotification() {
   try {
     const s = stats.value;
     const body = `${s.editsThisWeek.toLocaleString()} edits · ${s.mergesThisWeek.toLocaleString()} merges · ${s.splitsThisWeek.toLocaleString()} splits this week. Open your profile → Week in Science for the full recap.`;
-    const { supabase } = await import('../supabase');
-    await supabase.from('notifications').insert({
-      title: '📊 Your Week in Science',
-      body,
-      target_type: 'user',
-      target_id: uid,
-      send_at: new Date().toISOString(),
-      created_by: uid,
-    });
+    const { secureWrite } = await import('../secure_write');
+    await secureWrite('notification.self', { title: '📊 Your Week in Science', body });
   } catch (e) {
     console.warn('[profile] weekly recap notification failed:', e);
     localStorage.removeItem(key); // allow a retry next time
