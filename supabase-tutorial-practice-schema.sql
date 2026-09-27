@@ -1,9 +1,12 @@
 -- EyeWire II — Resettable practice cells for the Cut & Merge tutorial
 -- Apply in Supabase Dashboard > SQL Editor.
 --
--- A practice example is a sandbox cell (root A) with a piece nearby (root B)
--- that the AI left disconnected. Tutorial 3 hands one example to one user at
--- a time: they merge B onto A, then cut it off again. Whatever they did, the
+-- A practice example is a sandbox cell with two marked pieces, A and B:
+--   merge_then_cut: B starts disconnected. The learner merges it onto A,
+--                   then cuts it off again.
+--   cut:            A and B start fused (a real merge error, e.g. an axon
+--                   running into a dendrite). The learner cuts them apart.
+-- Tutorial 3 hands one example to one user at a time. Whatever they did, the
 -- example is put back exactly as registered by undoing every PyChunkedGraph
 -- operation made on it since `baseline_at`, newest first. The client tries
 -- that itself when the user finishes or leaves; the reset job
@@ -17,6 +20,7 @@
 CREATE TABLE IF NOT EXISTS tutorial_practice_examples (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'merge_then_cut' CHECK (kind IN ('merge_then_cut', 'cut')),
 
   -- Where the example lives
   dataset    TEXT NOT NULL,   -- segmentation layer name, e.g. pinky_nf_v2
@@ -53,6 +57,9 @@ CREATE TABLE IF NOT EXISTS tutorial_practice_examples (
 
 CREATE INDEX IF NOT EXISTS tutorial_practice_examples_status_idx
   ON tutorial_practice_examples (status, enabled);
+-- Re-runnable on an older table without the column.
+ALTER TABLE tutorial_practice_examples
+  ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'merge_then_cut';
 
 ALTER TABLE tutorial_practice_examples ENABLE ROW LEVEL SECURITY;
 -- Same model as the other app tables: anon-key auth, gating in the JS layer.
@@ -67,8 +74,9 @@ END $$;
 -- ═══════════════════════════════════════════
 -- Picks the least used ready example, or one whose claim expired, or the one
 -- this user already holds (a reload mid tutorial keeps the same cell).
--- Returns no row when every example is busy.
-CREATE OR REPLACE FUNCTION claim_practice_example(p_user UUID, p_minutes INTEGER DEFAULT 45)
+-- Returns no row when every example of that kind is busy.
+DROP FUNCTION IF EXISTS claim_practice_example(UUID, INTEGER);
+CREATE OR REPLACE FUNCTION claim_practice_example(p_user UUID, p_kind TEXT DEFAULT 'merge_then_cut', p_minutes INTEGER DEFAULT 45)
 RETURNS SETOF tutorial_practice_examples AS $$
 DECLARE
   v_row tutorial_practice_examples%ROWTYPE;
@@ -76,6 +84,7 @@ BEGIN
   SELECT * INTO v_row
     FROM tutorial_practice_examples
    WHERE enabled
+     AND kind = p_kind
      AND (
        (status = 'in_use' AND claimed_by = p_user)
        OR status = 'ready'

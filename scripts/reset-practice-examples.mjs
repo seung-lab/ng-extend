@@ -114,7 +114,12 @@ async function resetExample(ex) {
 
   const a = await rootOf(ex, ex.supervoxel_a);
   const b = await rootOf(ex, ex.supervoxel_b);
-  if (a === b) throw new Error(`after undo both supervoxels are on root ${a}`);
+  // A cut example starts fused; a merge_then_cut example starts separate.
+  const wantFused = ex.kind === 'cut';
+  if ((a === b) !== wantFused) {
+    throw new Error(wantFused ? `after undo the pieces are still apart (${a}, ${b})`
+                              : `after undo both supervoxels are on root ${a}`);
+  }
   return { a, b };
 }
 

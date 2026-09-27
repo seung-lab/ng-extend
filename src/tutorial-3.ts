@@ -3,6 +3,13 @@ import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
 import { beginPractice, currentPractice, endPractice, piecesMerged } from './practice';
 
+// Amy's cut walkthrough, 2026-09-26: a fused axon in the sandbox, the same
+// cell before the cut with the error marked, with the red and blue points
+// placed, and after a successful split.
+const STATE_CUT_FUSED  = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5679121900240896';
+const STATE_CUT_POINTS = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5745573634244608';
+const STATE_CUT_DONE   = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5675806990794752';
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function getViewer(): any {
   return (window as any)['viewer'];
@@ -46,7 +53,7 @@ function watchPractice(wantMerged: boolean, waiting: string, finished: string) {
     if (token !== practiceWatch) return;
     const p = currentPractice();
     if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); return; }
-    if (p.phase === 'busy') { practiceStatus('Every practice cell is in use right now. Read along and press next, or come back in a few minutes.'); return; }
+    if (p.phase === 'busy') { practiceStatus('No practice cell is free right now. Read along and press next, or come back in a few minutes.'); return; }
     if (!p.example) { practiceStatus('Loading a practice cell…'); setTimeout(tick, 1000); return; }
     const merged = await piecesMerged();
     if (token !== practiceWatch) return;
@@ -210,12 +217,14 @@ Press **next** once the box below says the merge landed (or skip if you'd like t
     text: `
 A **cut** separates a segment into two pieces. This is needed when the AI incorrectly fuses two different neurons into one — a common error, especially in densely packed regions.
 
-If you see a segment with a branch that clearly belongs to a *different* cell, that's a cut waiting to happen.`,
-    position: MIDDLE,
+If you see a segment with a branch that clearly belongs to a *different* cell, that's a cut waiting to happen.
+
+Behind this box: an axon that the AI ran into a dendrite. The join is marked in red.`,
+    position: OVER_3D,
     width: "480px",
     // TODO: Amy — add cut illustration image
-    // TODO: Amy — state showing a segment with an obvious merge error (two cells fused)
-    // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
+    state: STATE_CUT_FUSED,
+    onEnter: closeSidePanel,
   },
 
   // 10 — Cut video
@@ -240,8 +249,6 @@ The cut tool uses a **red and blue point** system. You'll **Ctrl+Click** to plac
 You can place **multiple points** per color for more precision. The system then finds the best place to separate the segment.`,
     position: MIDDLE,
     width: "460px",
-    // TODO: Amy — state with a segment ready for cutting
-    // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
     onEnter: closeSidePanel,
   },
 
@@ -253,9 +260,13 @@ When the cut tool is active, you'll see a group indicator at the bottom showing 
 
 Red and blue simply mark the **two sides** of where the cut should happen — one color on each side of the boundary.
 
-**Ctrl+Click** to place a point. Press **G** to switch between red and blue groups.`,
+**Ctrl+Click** to place a point. Press **G** to switch between red and blue groups.
+
+Here the points are already placed: red along the axon, blue on the dendrite it ran into.`,
     position: OVER_2D,
     width: "420px",
+    state: STATE_CUT_POINTS,
+    onEnter: closeSidePanel,
   },
 
   // 13 — Where to place points
@@ -280,20 +291,24 @@ After placing your red and blue points:
 - Press **Enter** to submit the cut.
 - You'll see a "splitting..." status — wait for it to process (this can take a moment).
 - If successful, the segment will split into two separate pieces.
-- If the result isn't right, there is no undo key. Rejoin the pieces with a **merge**.`,
+- If the result isn't right, there is no undo key. Rejoin the pieces with a **merge**.
+
+This is the same cell after the cut: the axon is its own segment now.`,
     position: OVER_3D,
     width: "400px",
+    state: STATE_CUT_DONE,
+    onEnter: closeSidePanel,
   },
 
   // 15 — Try it yourself
   {
     title: "Your Turn!",
     text: `
-Practice time! Remember the branch you merged on? Now cut it back off, right where you joined it.
+Practice time! This cell is yours alone until you finish. Two pieces that belong to different neurons are fused. Cut them apart.
 
 1. Press **C** to activate the cut tool.
-2. **Ctrl+Click** to place **red points** on the cell side of the join.
-3. Press **G** to switch to blue, then **Ctrl+Click** to place **blue points** on the branch side.
+2. **Ctrl+Click** to place **red points** on one side of the join.
+3. Press **G** to switch to blue, then **Ctrl+Click** to place **blue points** on the other side.
 4. Press **Enter** to submit the cut.
 
 Press **next** once the box below says the cut landed.`,
@@ -301,8 +316,15 @@ Press **next** once the box below says the cut landed.`,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(false, 'Waiting for your cut… (if the branch is not merged yet, go back a few steps and merge it first)', 'Cut! The branch is separate again. Press next.');
-      await beginPractice();
+      watchPractice(false, 'Waiting for your cut…', 'Cut! The two pieces are separate now. Press next.');
+      // If the merge step's cell is still merged, cutting it apart is the
+      // exercise; otherwise hand it back and take a fused cell.
+      const held = currentPractice().example;
+      if (held && held.kind === 'merge_then_cut' && (await piecesMerged()) === true) {
+        await beginPractice('merge_then_cut');
+      } else {
+        await beginPractice('cut');
+      }
     },
   },
 

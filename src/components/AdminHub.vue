@@ -5,7 +5,7 @@ import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 import {supabase} from '../supabase';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
-import {rootOfSupervoxel, undoSinceBaseline, type PracticeExample} from '../practice';
+import {rootOfSupervoxel, undoSinceBaseline, type PracticeExample, type PracticeKind} from '../practice';
 
 const backend = useProofreadingBackendStore();
 
@@ -702,6 +702,7 @@ const practiceLoading = ref(false);
 const practiceError = ref('');
 const practiceNotice = ref('');
 const practiceTitle = ref('');
+const practiceKind = ref<PracticeKind>('cut');
 const practiceA = ref<{ sv: string; root: string } | null>(null);
 const practiceB = ref<{ sv: string; root: string } | null>(null);
 const practiceHover = ref<{ sv: string; root: string } | null>(null);
@@ -762,7 +763,9 @@ async function registerPractice() {
   practiceError.value = ''; practiceNotice.value = '';
   const a = practiceA.value, b = practiceB.value;
   if (!a || !b) { practiceError.value = 'Pick both pieces first.'; return; }
-  if (a.root === b.root) { practiceError.value = 'A and B are on the same root. The piece must start disconnected.'; return; }
+  if (a.sv === b.sv) { practiceError.value = 'A and B are the same spot. Hover two different places.'; return; }
+  if (practiceKind.value === 'merge_then_cut' && a.root === b.root) { practiceError.value = 'A and B are on the same root. For merge then cut, the piece must start disconnected.'; return; }
+  if (practiceKind.value === 'cut' && a.root !== b.root) { practiceError.value = 'A and B are on different roots. For a cut example, hover two spots on the fused segment, one each side of the join.'; return; }
   const pcg = getPcgInfo();
   if (!pcg) { practiceError.value = 'No graphene segmentation layer in the viewer.'; return; }
   practiceSaving.value = true;
@@ -772,6 +775,7 @@ async function registerPractice() {
     const stateUrl = link.slice(link.indexOf('#!') + 2);
     const row = {
       title: practiceTitle.value.trim() || `Practice ${practiceRows.value.length + 1}`,
+      kind: practiceKind.value,
       dataset: practiceDataset(), pcg_server: pcg.server, pcg_table: pcg.table,
       state_url: stateUrl,
       supervoxel_a: a.sv, supervoxel_b: b.sv, root_a: a.root, root_b: b.root,
@@ -1111,11 +1115,15 @@ function practiceWhen(iso: string | null) {
     <div v-if="adminSubTab === 'practice'" class="nge-admin-section">
       <div class="nge-admin-block">
         <label class="nge-admin-label">Register a practice cell from the current view</label>
-        <p class="nge-admin-hint">Open the sandbox view learners should start from. Hover the main cell in the viewer, come back and press A. Hover the disconnected piece, press B. The view is saved as the start state.</p>
+        <p class="nge-admin-hint">Open the sandbox view learners should start from. Hover one piece in the viewer, come back and press A. Hover the other, press B. The view is saved as the start state.</p>
+        <div class="nge-admin-row">
+          <label class="nge-practice-kind"><input type="radio" value="cut" v-model="practiceKind" /> Cut: A and B start fused (hover each side of the join)</label>
+          <label class="nge-practice-kind"><input type="radio" value="merge_then_cut" v-model="practiceKind" /> Merge then cut: B starts disconnected from A</label>
+        </div>
         <div class="nge-admin-row">
           <span class="nge-practice-hover">Hovered: <code>{{ practiceHover ? practiceHover.root : 'nothing yet' }}</code></span>
-          <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('a')">Use hovered as A (cell)</button>
-          <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('b')">Use hovered as B (piece)</button>
+          <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('a')">Use hovered as A</button>
+          <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('b')">Use hovered as B</button>
         </div>
         <div class="nge-admin-row nge-practice-picks">
           <span>A: <code>{{ practiceA ? practiceA.root : '…' }}</code></span>
@@ -1139,6 +1147,7 @@ function practiceWhen(iso: string | null) {
           <div class="nge-practice-main">
             <strong>{{ ex.title }}</strong>
             <span class="nge-practice-status">{{ ex.status }}{{ ex.enabled ? '' : ', disabled' }}</span>
+            <span class="nge-admin-hint">{{ ex.kind === 'cut' ? 'cut' : 'merge then cut' }}</span>
             <span class="nge-admin-hint">{{ ex.dataset }} · used {{ ex.uses }}×<template v-if="ex.last_reset_at"> · reset {{ practiceWhen(ex.last_reset_at) }}</template><template v-if="ex.claimed_by"> · claimed until {{ practiceWhen(ex.expires_at) }}</template></span>
             <span v-if="ex.last_error" class="nge-admin-warn-inline">{{ ex.last_error }}</span>
           </div>
@@ -1852,6 +1861,7 @@ function practiceWhen(iso: string | null) {
 }
 .nge-practice-hover code, .nge-practice-picks code { font-size: 0.85em; color: #9fd0ff; }
 .nge-practice-picks { color: #cde; font-size: 0.9em; }
+.nge-practice-kind { color: #cde; font-size: 0.88em; display: flex; gap: 6px; align-items: center; cursor: pointer; }
 .nge-practice-row {
   display: flex; flex-direction: column; gap: 6px;
   padding: 8px 10px; border-radius: 6px;

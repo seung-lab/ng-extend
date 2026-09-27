@@ -66,7 +66,13 @@ one learner at a time, and put it back afterwards.
 - Admin Hub > Practice cells: register an example from the current view
   (hover the cell, "Use hovered as A"; hover the piece, "Use hovered as B"),
   check it, reset it now, disable or delete it.
-- Amy is finding 3 examples. Register them there; nothing is hard coded.
+- Two kinds: `cut` (A and B start fused; hover each side of the join) and
+  `merge_then_cut` (B starts disconnected). Amy's first cut example
+  (2026-09-26) is a fused axon in the sandbox; its three states (marked,
+  points placed, split) are the illustration states in tutorial-3.ts steps
+  9, 12 and 14. Register the same cell as a `cut` practice example from the
+  first state. More examples: register them in the tab, nothing is hard
+  coded.
 
 ## Rules
 

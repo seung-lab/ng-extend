@@ -2,7 +2,9 @@
  * practice.ts — resettable practice cells for the Cut & Merge tutorial.
  *
  * Schema: supabase-tutorial-practice-schema.sql. One example goes to one
- * user at a time. They merge piece B onto cell A, then cut it off again.
+ * user at a time. Two kinds: `merge_then_cut` (B starts disconnected; merge
+ * it onto A, then cut it off) and `cut` (A and B start fused; cut them
+ * apart).
  * When they finish or leave, every PyChunkedGraph operation made on the
  * example since its baseline is undone, newest first, with the user's own
  * CAVE token, and the example goes back to `ready` with refreshed roots.
@@ -17,9 +19,12 @@ import { Uint64 } from 'neuroglancer/util/uint64';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
 import { useLayersStore, useProofreadingBackendStore } from './store';
 
+export type PracticeKind = 'merge_then_cut' | 'cut';
+
 export interface PracticeExample {
   id: string;
   title: string;
+  kind: PracticeKind;
   dataset: string;
   pcg_server: string;
   pcg_table: string;
@@ -155,7 +160,12 @@ export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: strin
   const a = await rootOfSupervoxel(ex, ex.supervoxel_a);
   const b = await rootOfSupervoxel(ex, ex.supervoxel_b);
   if (!a || !b) throw new Error(`could not resolve roots after undo (${a}, ${b})`);
-  if (a === b) throw new Error(`after undo both pieces are still on root ${a}`);
+  // A cut example starts fused; a merge example starts separate.
+  const wantFused = ex.kind === 'cut';
+  if ((a === b) !== wantFused) {
+    throw new Error(wantFused ? `after undo the pieces are still apart (${a}, ${b})`
+                              : `after undo both pieces are still on root ${a}`);
+  }
   return { a, b, undone: ops.length };
 }
 
@@ -180,25 +190,30 @@ function userId(): string | null {
 }
 
 /**
- * Claim an example for this user and put the viewer on it: load the saved
- * view, then show only the two pieces at their current root ids.
+ * Claim an example of the given kind for this user and put the viewer on
+ * it: load the saved view, then show only the two pieces at their current
+ * root ids. A held example of that kind is reused; a held example of the
+ * other kind is handed back first.
  * Returns null when nobody is logged in or every example is busy.
  */
-export async function beginPractice(): Promise<PracticeExample | null> {
+export async function beginPractice(kind: PracticeKind = 'merge_then_cut'): Promise<PracticeExample | null> {
   const uid = userId();
   if (!uid) { session.phase = 'unavailable'; return null; }
   if (session.example && session.example.claimed_by === uid) {
-    await showExample(session.example);
-    return session.example;
+    if (session.example.kind === kind) {
+      await showExample(session.example);
+      return session.example;
+    }
+    await endPractice();
   }
   session.phase = 'claiming';
-  const { data, error } = await supabase.rpc('claim_practice_example', { p_user: uid });
+  const { data, error } = await supabase.rpc('claim_practice_example', { p_user: uid, p_kind: kind });
   if (error) { console.warn('[practice] claim failed:', error.message); session.phase = 'unavailable'; return null; }
   const row = (Array.isArray(data) ? data[0] : data) as PracticeExample | undefined;
   if (!row) { session.phase = 'busy'; return null; }
   session.example = row;
   await showExample(row);
-  session.phase = 'merge';
+  session.phase = kind === 'cut' ? 'cut' : 'merge';
   return row;
 }
 
@@ -250,6 +265,8 @@ export function endPractice(): Promise<void> {
     });
     if (error) console.warn('[practice] release failed:', error.message);
     session.example = null;
+    session.rootA = '';
+    session.rootB = '';
     session.phase = 'done';
     session.releasing = null;
   })();
