@@ -3,18 +3,20 @@ name: Weekly Recap Notifications
 on:
   schedule:
     # Every Saturday at 11pm UTC (6pm ET, 3pm PT)
-    - cron: '0 23 * * 6'
+    # Sunday 23:00 UTC (7 pm Eastern in summer), after the Monday to Sunday
+    # week it reports on is (nearly) over. It used to run Saturday.
+    - cron: '0 23 * * 0'
   workflow_dispatch: # Allow manual trigger
 
 jobs:
   send-recap:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
       - name: Send weekly recap notifications
         env:
