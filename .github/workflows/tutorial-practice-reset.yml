@@ -1,0 +1,54 @@
+name: Tutorial Practice Reset
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      id:
+        description: Optional example UUID (active learners are never interrupted)
+        type: string
+        default: ''
+      dry_run:
+        description: List resets without changing CAVE or the database
+        type: boolean
+        default: false
+      inspect:
+        description: Read reviewed fixture roots and supervoxels without changing anything
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: tutorial-practice-reset
+  cancel-in-progress: false
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: node --test scripts/practice-reset-policy.test.mjs
+      - name: Inspect reviewed sandbox fixtures
+        if: inputs.inspect
+        env:
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+        run: node scripts/inspect-practice-examples.mjs
+      - name: Reset abandoned cells and verify their starting state
+        if: '!inputs.inspect'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+          EXAMPLE_ID: ${{ inputs.id }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          if [ -n "$EXAMPLE_ID" ]; then args+=(--id "$EXAMPLE_ID"); fi
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          node scripts/reset-practice-examples.mjs "${args[@]}"
