@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Resets only reviewed Pinky practice fixtures after the learner releases them.
 import fs from 'node:fs';
-import {validateResetExample,resetDue,operationsAfter,overlapsActive} from './practice-reset-policy.mjs';
+import {validateResetExample,resetDue,operationsAfter,overlapsActive,remainingOperations} from './practice-reset-policy.mjs';
 const manifest=JSON.parse(fs.readFileSync(new URL('../config/practice-reset-manifest.json',import.meta.url),'utf8'));
 const args=process.argv.slice(2),dryRun=args.includes('--dry-run');
 const onlyId=args.includes('--id') ? args[args.indexOf('--id')+1] : null;
@@ -37,9 +37,12 @@ async function reset(ex) {
   const data=await cave(ex,`/root/${root}/tabular_change_log?filtered=false`);
   for(const op of operationsAfter(data,root,ex.baseline_at))ops.set(op.operationId,op);
  }
- if(ops.size>200)throw Error('Unexpectedly large practice history; manual review required');
- console.log(`[reset] ${ex.id}: ${ops.size} operation(s) after the reviewed baseline`);
- for(const op of [...ops.values()].sort((a,b)=>b.at-a.at)) {
+ if(ops.size>10000)throw Error('Unexpectedly large practice history; manual review required');
+ const ids=[...ops.keys()],details={};
+ for(let i=0;i<ids.length;i+=100)Object.assign(details,await cave(ex,'/operation_details?int64_as_str=1&operation_ids='+encodeURIComponent(JSON.stringify(ids.slice(i,i+100)))));
+ const active=remainingOperations([...ops.values()],details);
+ console.log(`[reset] ${ex.id}: ${active.length} active operation(s) after the reviewed baseline (${ops.size-active.length} cancelled history entries)`);
+ for(const op of active) {
   if(dryRun)console.log('[reset] would undo '+op.operationId);
   else await cave(ex,'/undo?int64_as_str=1',{operation_id:op.operationId});
  }

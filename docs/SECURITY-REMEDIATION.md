@@ -4,9 +4,9 @@ The production site is https://eyewire-ii-community-dot-brain-wire-dot-seung-lab
 
 ## Emergency containment
 
-The exposed Google Sheets service-account key was matched by its public-key fingerprint and disabled through Google IAM. Legacy Supabase JWT API keys are disabled; do not select “Re-enable JWT-based API keys,” which would restore the leaked key. The client uses the publishable key. Browser Sheets writeback is temporarily unavailable; application records remain saved separately.
+The exposed Google Sheets service-account key was matched by its public-key fingerprint and disabled through Google IAM. Legacy Supabase JWT API keys are disabled; do not select “Re-enable JWT-based API keys,” which would restore the leaked key. The client uses the publishable key. Sheets writeback now uses the verified `ewSheetSync` server endpoint with short-lived Google credentials and a dedicated runtime identity. Read and write-permission checks pass for both registered source sheets.
 
-The triage implement, propose, deploy, and Slack bridge workflows were disabled manually. The three model-driven workflows now contain only a security hold. Free-form “good” replies no longer approve deployment, and the bridge no longer invokes a model with repository credentials. Keep these workflows disabled until a reviewed replacement binds explicit approval to a specific commit and separates untrusted feedback from credentials.
+The triage workflows were temporarily disabled during containment, then replaced and re-enabled. Model jobs cannot access database, Slack, cloud, repository-write or dispatch credentials. Trusted jobs validate inert file artifacts and deploy a preview. Release approval must name that exact preview commit and come from its assigned human tester. Free-form “good” replies do not approve deployment. The isolated model/file-export/validation self-test passed. See `AUTOMATION-RESTORATION.md` for operation and verification details.
 
 ## Application and backend changes
 
@@ -14,7 +14,7 @@ Private community reads and protected writes go through the `ewCommunityData` Fi
 
 `ewSecureUpload` verifies identity, reserves official uploads for admins, checks image signatures, limits size and frequency, and generates unique paths. The old public screenshot-signing function returns HTTP 410. `ewSecureWrite` verifies admin actions and bounds requests and write frequency.
 
-Guide and notification Markdown share a DOMPurify allowlist; executable markup and remote tracking images are removed. Practice operations accept only named sandbox hosts/tables and do not follow redirects with credentials. Automatic practice resets require a reviewed manifest; the empty manifest deliberately pauses resets until examples are pinned.
+Guide and notification Markdown share a DOMPurify allowlist; executable markup and remote tracking images are removed. Practice operations accept only named sandbox hosts/tables and do not follow redirects with credentials. Automatic resets run against two reviewed, pinned examples. Database leases prevent overlapping examples from being claimed or reset simultaneously, and jobs verify the resulting starting state. Complete CAVE history and bounded parsers replace the filtered query and array assumption that hid learner edits.
 
 Paid model requests have bounded input and atomic per-client/global quotas. Quota storage failures reject requests. Slack bot memory is read-only. Deployment builds run without cloud identity; a separate job uploads a static artifact using pinned Actions and a fixed hosting configuration. Content security, referrer, permissions, and MIME-sniffing headers are set on static responses.
 
@@ -34,4 +34,4 @@ Production bundling and focused security regression tests pass. Browser renderin
 
 Repository owners still need to enforce protected branches/environments and restrict the Google Workload Identity provider to reviewed deployment refs. The current GitHub account has maintain, not admin, permission. Artifact separation alone cannot stop an authorized repository writer from changing a deployment workflow.
 
-Follow-up work remains: CAVE-authoritative statistics rather than client-reported own counters; ownership enforcement for remaining practice RPCs and community tables; stronger help-reply/Guide-feedback ownership; review of existing bot memory; dependency and vendored typing cleanup; and restoring Sheets integration with a server-held identity. This containment release is not a claim that every review finding is resolved. Do not store private signing keys or service keys in browser source or public Git history.
+Follow-up work remains: CAVE-authoritative statistics rather than client-reported own counters; ownership enforcement for remaining practice RPCs and task/community tables; stronger help-reply/Guide-feedback ownership; review of existing bot memory; and dependency and vendored typing cleanup. Task ownership checked by Sheets still depends on those task records; completing server enforcement of task writes remains a security priority. This release is not a claim that every review finding is resolved. Do not store private signing keys or service keys in browser source or public Git history.
