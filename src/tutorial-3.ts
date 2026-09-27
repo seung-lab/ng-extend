@@ -5,6 +5,8 @@ import imgBravoNurro from './images/bravo-nurro.png';
 // axon off it (2026-09-26). Web-sized JPEGs; originals in her images.
 import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
+// Amy's merge example, 2026-09-26: the cut-in-half branch, cell purple, loose piece yellow.
+import imgMergeExample from './images/merge-example.jpg';
 import { beginPractice, currentPractice, endPractice, ensureTool, piecesMerged } from './practice';
 import { useLayersStore } from './store';
 
@@ -148,12 +150,12 @@ These two operations are the bread and butter of proofreading. Let's start with 
     text: `
 A <strong style="color:#60c060">merge</strong> joins two separate segments that actually belong to the same neuron.
 
-This is needed when the AI fails to connect parts of a cell. For example, a dendrite that should be attached to the soma but was reconstructed as a separate piece.`,
+This is needed when the AI fails to connect parts of a cell. For example, a dendrite that should be attached to the soma but was reconstructed as a separate piece.
+
+Like this one: the yellow branch belongs to the purple cell, but the AI left it as its own segment. You will fix it in a moment.`,
     position: MIDDLE,
-    width: "480px",
-    // TODO: Amy: add merge illustration image
-    // TODO: Amy: state with a neuron that has an obviously disconnected branch nearby
-    // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
+    width: "560px",
+    image: imgMergeExample,
   },
 
   // 5: Activating merge
