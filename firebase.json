@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "source": "functions",
+    "ignore": ["node_modules", "*.test.js"]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
