@@ -1,3 +1,4 @@
+import { secureUpload } from './secure_upload';
 import { secureWrite } from './secure_write';
 import {Ref, ref, reactive, computed} from 'vue';
 import {defineStore} from 'pinia';
@@ -4466,30 +4467,29 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   function subscribeToNotifications() {
     if (notifSubscription) return;
-    notifSubscription = supabase
-      .channel('notifications_realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' },
-        (payload: any) => {
-          loadNotifications();
-          // Auto-trigger hero celebration for badge award notifications
-          const row = payload?.new;
-          if (row?.title?.includes('New Achievement') && row?.target_type !== 'group') {
-            // Only show if it's for the current user
-            if (!row.target_id || row.target_id === userId.value) {
-              pendingBadgeCelebration.value = {
-                title: row.title,
-                body: row.body || '',
-                imageUrl: row.image_url || row.thumbnail_url || '',
-              };
-            }
-          }
-        })
-      .subscribe();
+    // Private notifications cannot use an anonymous Realtime subscription.
+    // Refresh through the identity-verified route, without overlapping requests.
+    let refreshing = false;
+    notifSubscription = setInterval(async () => {
+      if (refreshing || document.hidden) return;
+      refreshing = true;
+      const existing = new Set(notifications.value.map(n => n.id));
+      try {
+        await loadNotifications();
+        const row = notifications.value.find(n => !existing.has(n.id) &&
+          n.title?.includes('New Achievement') && n.target_type !== 'group' &&
+          (!n.target_id || n.target_id === userId.value));
+        if (row) pendingBadgeCelebration.value = {
+          title: row.title, body: row.body || '', imageUrl: row.image_url || row.thumbnail_url || '',
+        };
+      } catch { /* retry on the next refresh */ }
+      finally { refreshing = false; }
+    }, 30000);
   }
 
   function unsubscribeFromNotifications() {
     if (notifSubscription) {
-      supabase.removeChannel(notifSubscription);
+      clearInterval(notifSubscription);
       notifSubscription = null;
     }
   }
@@ -4742,82 +4742,20 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     return '';
   }
 
-  async function uploadAdminImage(
-    file: File, type: 'notifications' | 'badges',
-  ): Promise<{fullUrl: string; thumbUrl: string}> {
-    const invalid = validateAdminImage(file);
-    if (invalid) throw new Error(invalid);
-    const timestamp = Date.now();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const fullPath = `${type}/${timestamp}-${safeName}`;
-    const thumbPath = `${type}/${timestamp}-${safeName}-thumb.png`;
-
-    // Upload full image
-    const { error: fullErr } = await supabase.storage
-      .from('admin-uploads')
-      .upload(fullPath, file, { contentType: file.type, upsert: true });
-    if (fullErr) throw new Error('Full image upload failed: ' + fullErr.message);
-
-    // Generate thumbnail client-side
-    const thumbBlob = await generateThumbnail(file, 120);
-    const { error: thumbErr } = await supabase.storage
-      .from('admin-uploads')
-      .upload(thumbPath, thumbBlob, { contentType: 'image/png', upsert: true });
-    if (thumbErr) throw new Error('Thumbnail upload failed: ' + thumbErr.message);
-
-    const { data: fullData } = supabase.storage.from('admin-uploads').getPublicUrl(fullPath);
-    const { data: thumbData } = supabase.storage.from('admin-uploads').getPublicUrl(thumbPath);
-
-    return { fullUrl: fullData.publicUrl, thumbUrl: thumbData.publicUrl };
+  async function uploadAdminImage(file: File, type: 'notifications' | 'badges'): Promise<{fullUrl:string;thumbUrl:string}> {
+    const invalid=validateAdminImage(file); if(invalid) throw new Error(invalid);
+    const fullUrl=await secureUpload(file,type);
+    const thumbUrl=await secureUpload(await generateThumbnail(file,120),type);
+    return {fullUrl,thumbUrl};
   }
 
-  /**
-   * Upload a help-request screenshot and return its public URL.
-   *
-   * Deliberately goes straight to Supabase Storage rather than through the
-   * signScreenshotUpload Cloud Function. That function mints a v4 signed URL,
-   * which requires the runtime service account to sign via the IAM signBlob
-   * API — a permission it was never granted, so every request 500'd and
-   * screenshot attach was broken. Supabase Storage needs no signing step, no
-   * extra IAM, and no Cloud Function: the bucket and its policies already
-   * exist for admin uploads, and the same anon key already in the bundle can
-   * write to it. Fewer moving parts and nothing new to pay for.
-   */
   async function uploadHelpScreenshot(blob: Blob): Promise<string> {
-    if (blob.size > MAX_ADMIN_IMAGE_BYTES) {
-      const mb = (blob.size / (1024 * 1024)).toFixed(1);
-      throw new Error(`Screenshot is ${mb} MB — the limit is ${MAX_ADMIN_IMAGE_BYTES / (1024 * 1024)} MB. Try a smaller size.`);
-    }
-    const day = new Date().toISOString().slice(0, 10);
-    const rand = Math.random().toString(36).slice(2, 10);
-    const path = `help-screenshots/${day}/${userId.value || 'anon'}-${rand}.png`;
-    const { error } = await supabase.storage
-      .from('admin-uploads')
-      .upload(path, blob, { contentType: 'image/png', upsert: false });
-    if (error) throw new Error('Screenshot upload failed: ' + error.message);
-    const { data } = supabase.storage.from('admin-uploads').getPublicUrl(path);
-    return data.publicUrl;
+    return secureUpload(blob,'help');
   }
 
-  /**
-   * Upload a small icon used as the notification's feed thumbnail.
-   *
-   * The feed shows a thumbnail per card. Deriving it from a large hero image
-   * gives a crop that often reads poorly at 120px, so an admin can supply a
-   * purpose-made icon instead. Downscaled to 128px on upload regardless of what
-   * was picked, so the feed always loads something small.
-   */
   async function uploadAdminIcon(file: File): Promise<string> {
-    const invalid = validateAdminImage(file);
-    if (invalid) throw new Error(invalid);
-    const iconBlob = await generateThumbnail(file, 128);
-    const path = `notifications/icon-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}.png`;
-    const { error } = await supabase.storage
-      .from('admin-uploads')
-      .upload(path, iconBlob, { contentType: 'image/png', upsert: true });
-    if (error) throw new Error('Icon upload failed: ' + error.message);
-    const { data } = supabase.storage.from('admin-uploads').getPublicUrl(path);
-    return data.publicUrl;
+    const invalid=validateAdminImage(file); if(invalid) throw new Error(invalid);
+    return secureUpload(await generateThumbnail(file,128),'notifications');
   }
 
   function generateThumbnail(file: File, maxWidth: number): Promise<Blob> {
@@ -5074,7 +5012,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const { data, error } = await supabase
         .from('chat_messages')
-        .select('name, rank, text, created_at, dataset, notification_id')
+        .select('user_id, name, rank, text, created_at, dataset, notification_id')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error || !data) return;
@@ -5084,7 +5022,7 @@ export const useChatStore = defineStore('chat', () => {
         chatMessages.value.push({
           type: 'message',
           name: r.name,
-          rank: r.rank || 'player',
+          rank: r.user_id ? (r.rank || 'player') : 'player',
           time: formatTime(date),
           dateTime: date,
           parts: parseMessageParts(r.name, r.text),
@@ -5116,83 +5054,18 @@ export const useChatStore = defineStore('chat', () => {
     // Show the recent conversation before we announce the join / go live.
     await loadRecentMessages();
 
-    channel = supabase.channel('eyewire-ii-chat', {
-      config: { broadcast: { self: true } },
-    });
-
-    channel
-      .on('broadcast', { event: 'message' }, (payload) => {
-        const { name, rank, text, timestamp, senderId, dataset, notificationId } = payload.payload;
-        const date = new Date(timestamp);
-        addTimeSeparatorIfNeeded(date);
-        chatMessages.value.push({
-          type: 'message',
-          name,
-          rank: rank || 'player',
-          time: formatTime(date),
-          dateTime: date,
-          parts: parseMessageParts(name, text),
-          dataset: dataset ?? null,
-          notificationId: notificationId ?? null,
-        });
-        // The channel runs with `broadcast: { self: true }` so the sender also
-        // receives their own message — that's how it lands in their own list.
-        // But you can't have unread mail from yourself, so don't let it light
-        // up the green toolbar pip. Prefer the sender id; fall back to the
-        // display name for clients built before senderId was in the payload.
-        const isOwnMessage = senderId
-          ? senderId === backend.userId
-          : name === backend.userName;
-        // Also skip the bump if the user muted chat — they explicitly opted
-        // out of the green pip on the toolbar.
-        const prefs = useUserPreferencesStore();
-        if (!isOwnMessage && !prefs.prefs.chatMuted) {
-          unreadMessages.value = true;
-          unreadCount.value++;
-        }
-      })
-      .on('broadcast', { event: 'join' }, (payload) => {
-        const { name } = payload.payload;
-        const now = new Date();
-        chatMessages.value.push({
-          type: 'join',
-          name,
-          rank: '',
-          time: formatTime(now),
-          dateTime: now,
-          parts: [{ type: 'text', text: `${name} joined the chat` }],
-        });
-      })
-      .on('broadcast', { event: 'leave' }, (payload) => {
-        const { name } = payload.payload;
-        const now = new Date();
-        chatMessages.value.push({
-          type: 'leave',
-          name,
-          rank: '',
-          time: formatTime(now),
-          dateTime: now,
-          parts: [{ type: 'text', text: `${name} left the chat` }],
-        });
-      })
-      .on('presence', { event: 'sync' }, () => {
-        // Could track online users here in the future
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          connected.value = true;
-          // Announce join
-          await channel!.send({
-            type: 'broadcast',
-            event: 'join',
-            payload: { name: displayName },
-          });
-          // Track presence
-          await channel!.track({ name: displayName, joined_at: new Date().toISOString() });
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          connected.value = false;
-        }
-      });
+    // Only database rows written by the verified backend reach the chat UI.
+    // Public broadcast events are never treated as authenticated messages.
+    channel = supabase.channel('eyewire-ii-chat-verified');
+    channel.on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload => {
+      const row = payload.new;
+      if (!row.user_id) return;
+      const date = new Date(row.created_at);
+      addTimeSeparatorIfNeeded(date);
+      chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
+        parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null});
+      if (row.user_id !== backend.userId && !useUserPreferencesStore().prefs.chatMuted) { unreadMessages.value=true; unreadCount.value++; }
+    }).subscribe(status => { connected.value = status === 'SUBSCRIBED'; });
     connecting = false; // channel is now assigned; the guard above holds
   }
 
@@ -5206,25 +5079,6 @@ export const useChatStore = defineStore('chat', () => {
     const backend = useProofreadingBackendStore();
     const name = backend.chatHandle;
     const rank = backend.isAdmin ? 'admin' : 'player';
-    channel.send({
-      type: 'broadcast',
-      event: 'message',
-      payload: {
-        name,
-        rank,
-        text,
-        notificationId,
-        timestamp: new Date().toISOString(),
-        // Lets the receiving handler recognise this message as our own and
-        // skip the unread bump (the channel echoes it back via self: true).
-        senderId: backend.userId || null,
-        // Root IDs are only meaningful inside ONE segmentation, so a shared
-        // #SegID is meaningless (or silently wrong) without knowing which
-        // dataset the sender was looking at. Stamp it so the reader can warn /
-        // offer to switch instead of jumping to a different cell entirely.
-        dataset: currentDatasetName(),
-      },
-    });
     // Persist for history so the last messages show on next open (best-effort;
     // no-ops if the chat_messages table isn't present).
     supabase.from('chat_messages')
@@ -5241,11 +5095,6 @@ export const useChatStore = defineStore('chat', () => {
     if (channel) {
       const backend = useProofreadingBackendStore();
       const name = backend.chatHandle;
-      channel.send({
-        type: 'broadcast',
-        event: 'leave',
-        payload: { name },
-      });
       supabase.removeChannel(channel);
       channel = null;
       connected.value = false;

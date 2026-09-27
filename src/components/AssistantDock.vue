@@ -5,7 +5,7 @@
 // dispatch(). Styling mirrors ChatPanel.vue.
 
 import { ref, computed, nextTick, watch } from "vue";
-import { marked } from "marked";
+import { renderSafeMarkdown } from "../util/safe_markdown";
 import { buildAppContext, type UiState } from "../assistant/context";
 import { buildUiReference } from "../assistant/knowledge";
 import { getMaterializationInfo } from "../assistant/materialization";
@@ -146,13 +146,7 @@ const SUGGESTIONS = [
 const QUEST_LINKS = CONNECTOME_QUEST_RESOURCES.filter(
   r => ['quest-neuro101', 'quest-videos', 'quest-help'].includes(r.id));
 
-function renderMarkdown(text: string): string {
-  try {
-    return marked.parse(text, { async: false }) as string;
-  } catch {
-    return text;
-  }
-}
+const renderMarkdown = renderSafeMarkdown;
 
 async function scrollToBottom() {
   await nextTick();
