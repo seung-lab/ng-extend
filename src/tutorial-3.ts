@@ -1,6 +1,10 @@
 import { Step } from "./store-pyr";
 import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
+// Amy's sandbox cell 648518346350730372 before and after she cut a fused
+// axon off it (2026-09-26). Web-sized JPEGs; originals in her images.
+import imgCutBefore from './images/cut-before.jpg';
+import imgCutAfter from './images/cut-after.jpg';
 import { beginPractice, currentPractice, endPractice, piecesMerged } from './practice';
 import { useLayersStore } from './store';
 
@@ -71,6 +75,17 @@ function watchPractice(wantMerged: boolean, waiting: string, finished: string) {
 
 function stopWatching() { practiceWatch++; }
 
+/** Two captioned pictures side by side, inline styled because the step
+ *  html is rendered outside TutorialStep's scoped CSS. */
+function beforeAfter(before: string, beforeCaption: string, after: string, afterCaption: string) {
+  const fig = (src: string, cap: string) =>
+    `<figure style="margin:0;flex:1 1 0;min-width:0">`
+    + `<img src="${src}" alt="${cap}" style="display:block;width:100%;height:auto;border-radius:4px;border:1px solid rgba(74,158,255,0.25)">`
+    + `<figcaption style="margin-top:6px;font-size:0.85em;line-height:1.35;color:#9fd0ff">${cap}</figcaption>`
+    + `</figure>`;
+  return `<div style="display:flex;gap:12px;align-items:flex-start;margin-top:14px">${fig(before, beforeCaption)}${fig(after, afterCaption)}</div>`;
+}
+
 const MIDDLE = {
   element: "body",
   x: 0.5,
@@ -100,11 +115,13 @@ export const steps: Step[] = [
     text: `
 AI reconstructions of neurons are impressive — but they're not perfect. Sometimes the AI fuses two separate neurons into one. Other times, it misses a branch entirely, leaving a neuron incomplete.
 
-**Cut** and **Merge** are the two core tools you'll use to fix these errors and help map the brain accurately.`,
+**Cut** and **Merge** are the two core tools you'll use to fix these errors and help map the brain accurately.
+`
+    + beforeAfter(
+        imgCutBefore, 'Before: a thin axon runs into this dendrite, and the AI made them one segment.',
+        imgCutAfter, 'After a cut: the axon (yellow) is its own segment again.'),
     position: MIDDLE,
-    width: "520px",
-    // TODO: Amy — set a state showing a clear 3D neuron, maybe one with a visible merge error
-    // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
+    width: "640px",
     nextLabel: "Let's learn!",
   },
 

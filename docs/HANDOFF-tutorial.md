@@ -82,6 +82,11 @@ one learner at a time, and put it back afterwards.
      into 648518346357382467 and 648518346351477006 (view 5674918603653120),
      so merge the two back together before registering it as a `cut`
      example; the registration takes the fused state as the baseline.
+- Before and after pictures on step 1 (`src/images/cut-before.jpg`,
+  `cut-after.jpg`): cell 648518346350730372 with a fused axon, view
+  5090441737273344, then after Amy's cut: axon 648518346357382723, corrected
+  cell 648518346351477262. That view is a third `cut` candidate once the two
+  are merged back together.
 - Merge candidate from Amy, 2026-09-26: a branch cut in half, view
   5653391690694656, pieces 648518346350730372 and 648518346351348401.
   Register it as `merge_then_cut` from that view (hover the cell for A, the
