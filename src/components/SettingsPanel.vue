@@ -34,7 +34,7 @@ onMounted(() => {
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
-  draftShowScoutTags.value = prefsStore.prefs.showScoutTags !== false;
+  draftShowScoutTags.value = prefsStore.prefs.showScoutTags === true;
   // Seed via the same resolver the toolbar uses, so the grid reflects exactly
   // what's in the top bar — including icons auto-injected into older prefs.
   draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
