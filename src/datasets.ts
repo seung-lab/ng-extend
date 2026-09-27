@@ -69,8 +69,9 @@ export const DATASETS: DatasetEntry[] = [
     id: 'pinky_sandbox',
     thumbnail: thumbMicrons,
     label: 'Pinky Sandbox',
-    shortLabel: 'Pinky',
-    abbrev: 'Pinky',
+    // Shown in the top bar ("Data: Sandbox") and inline chips (Amy).
+    shortLabel: 'Sandbox',
+    abbrev: 'Sandbox',
     species: 'mouse',
     description: 'MICrONS pinky, a small cortex volume for testing (4×4×40 nm)',
     layers: [
