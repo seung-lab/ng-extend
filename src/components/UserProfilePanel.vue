@@ -1799,8 +1799,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* Give Week in Science a real, consistent width instead of letting the shell
    shrink to the recap's old fixed content width (which read as a tiny box). */
 .nge-profile-shell--week {
-  width: 720px;
-  max-width: 90vw;
+  /* Wide enough for the recap's three columns to fit without scrolling. */
+  width: 1180px;
+  max-width: 94vw;
 }
 .nge-profile-shell--datasets {
   width: 640px;
@@ -1871,6 +1872,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   align-items: center;
 }
 .nge-ds-tab-card-body { min-width: 0; }
+/* With a thumbnail there is no species icon, so the description and stats
+   line up under the name instead of keeping the icon's 24px indent. */
+.nge-ds-tab-card--thumb .nge-ds-tab-desc,
+.nge-ds-tab-card--thumb .nge-ds-tab-stats { margin-left: 0; }
+/* The week tab fits its content; on a short window it still scrolls, just
+   without a visible bar. */
+.nge-profile-body--week { scrollbar-width: none; }
+.nge-profile-body--week::-webkit-scrollbar { display: none; }
+.nge-profile-body--week :deep(*) { scrollbar-width: none; }
 .nge-ds-tab-thumb {
   width: 124px;
   aspect-ratio: 16 / 9;

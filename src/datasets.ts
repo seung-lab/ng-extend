@@ -47,7 +47,7 @@ export const DATASETS: DatasetEntry[] = [
     shortLabel: 'EyeWire II',
     abbrev: 'Retina',
     species: 'mouse',
-    description: 'EyeWire II — mouse retinal connectome (16×16×40 nm)',
+    description: 'EyeWire II mouse retinal connectome (16×16×40 nm)',
     layers: [
       {
         type: 'image',
@@ -72,7 +72,7 @@ export const DATASETS: DatasetEntry[] = [
     shortLabel: 'Pinky',
     abbrev: 'Pinky',
     species: 'mouse',
-    description: 'MICrONS pinky — small cortex volume for testing (4×4×40 nm)',
+    description: 'MICrONS pinky, a small cortex volume for testing (4×4×40 nm)',
     layers: [
       {
         type: 'image',
@@ -97,7 +97,7 @@ export const DATASETS: DatasetEntry[] = [
     shortLabel: 'MICrONS',
     abbrev: 'MICrONS',
     species: 'mouse',
-    description: 'MICrONS — 1mm³ mouse visual cortex (8×8×40 nm)',
+    description: 'MICrONS, 1 mm³ of mouse visual cortex (8×8×40 nm)',
     layers: [
       {
         type: 'image',
@@ -128,7 +128,7 @@ export const DATASETS: DatasetEntry[] = [
     // merge-free demo actually queries (its bundles carry
     // datastack minnie65_public). minnie65_phase3_v1 is a datastack /
     // aligned-volume name, NOT a graphene table: using it as one 400s.
-    description: 'MICrONS minnie65 on the rolling public graph — where the AI merge-candidate roots resolve',
+    description: 'MICrONS minnie65 on the rolling public graph, where the AI merge candidate roots resolve',
     layers: [
       {
         type: 'image',
