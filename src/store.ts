@@ -2807,7 +2807,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
 
   /** Sync the exact segment row through the authenticated Sheets service. */
   async function writeSomaCoordsToSheet(segId: string, coords: string) {
-    return syncCellToSheet('coordinates', segId, coords);
+    return syncCellToSheet('coordinates', segId, coords, items.value.find(item => item.segId === segId)?.dataset);
   }
 
   // ── Computed-like helpers ───────────────────────────────────────────────

@@ -300,19 +300,35 @@ function validateSomaCoords(input: string): { valid: boolean; error: string } {
 }
 
 const somaValidation = computed(() => validateSomaCoords(somaInput.value));
+const sheetSyncError = ref('');
+const claiming = ref(false);
 
 /** Claim the cell by saving soma coords, then jump to segment. */
-function claimCell() {
+async function claimCell() {
   const item = current.value;
   if (!item) return;
   const coords = somaInput.value.trim();
   if (!coords) return;
   const v = validateSomaCoords(coords);
   if (!v.valid) return;
-  queue.setEdit(item.segId, 'somaCoords', coords);
-  // Write soma coords back to Google Sheet
-  queue.writeSomaCoordsToSheet(item.segId, coords);
-  queue.navigateToCurrentItem();
+  if (claiming.value) return;
+  claiming.value = true;
+  sheetSyncError.value = '';
+  try {
+    await backend.loadTasks();
+    const task = backend.tasks.find(t => t.segment_id === item.segId && (!item.dataset || t.dataset === item.dataset));
+    if (!task || task.assigned_to !== backend.userId || !['assigned','in_progress','completed'].includes(task.status)) {
+      if (backend.myActiveClaimCount() >= backend.MAX_CLAIMS) throw new Error(`Max ${backend.MAX_CLAIMS} claims reached`);
+      const result = task ? {ok: await backend.claimTask(task.id), reason: backend.error}
+        : await backend.claimCell(coords.split(',').map(Number) as [number,number,number], item.segId);
+      if (!result.ok) throw new Error(result.reason || 'Claim failed');
+    }
+    queue.setEdit(item.segId, 'somaCoords', coords);
+    await queue.writeSomaCoordsToSheet(item.segId, coords);
+    queue.navigateToCurrentItem();
+  } catch (e: any) {
+    sheetSyncError.value = e.message || 'Sheet syncing failed. Your coordinates are saved.';
+  } finally { claiming.value = false; }
 }
 
 /** Save final seg ID to local edits. */
@@ -662,6 +678,7 @@ function shareOnX() {
               <div class="nge-quest-field-error" v-if="somaInput.trim() && !somaValidation.valid && somaValidation.error">
                 {{ somaValidation.error }}
               </div>
+              <div v-if="sheetSyncError" role="alert" class="nge-quest-field-error" style="font-size: 14px; line-height: 1.4">{{ sheetSyncError }}</div>
             </div>
 
             <!-- STEP 2: Final Seg ID -->
