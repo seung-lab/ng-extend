@@ -7,7 +7,7 @@ import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
 // Amy's merge example, 2026-09-26: the cut-in-half branch, cell purple, loose piece yellow.
 import imgMergeExample from './images/merge-example.jpg';
-import { beginPractice, currentPractice, endPractice, ensureTool, piecesMerged } from './practice';
+import { beginPractice, colorFirstTwoVisible, currentPractice, endPractice, ensureTool, piecesMerged } from './practice';
 import { useLayersStore } from './store';
 
 // Amy's cut walkthrough, 2026-09-26: a fused axon in the sandbox, the same
@@ -76,6 +76,28 @@ function watchPractice(wantMerged: boolean, waiting: string, finished: string) {
 }
 
 function stopWatching() { practiceWatch++; }
+
+/** A small (i) in the step text. Hover for the tip, click to flash the
+ *  segmentation layer chip at the top of the viewer. Inline onclick works
+ *  inside v-html where a Vue handler would not. */
+const INFO_LAYER = '<span class="nge-tut-info" role="button" tabindex="0"'
+  + ' title="Tools act on the selected layer. Press 2, or right-click the segmentation chip at the top, to select it. Click here to show which chip."'
+  + ' onclick="document.dispatchEvent(new CustomEvent(\'nge:tutorial-flash-seg-layer\'))"'
+  + ' style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:4px;border-radius:50%;border:1px solid #7ecaff;color:#7ecaff;font-size:12px;font-weight:700;cursor:pointer;vertical-align:middle;line-height:1">i</span>';
+
+document.addEventListener('nge:tutorial-flash-seg-layer', () => {
+  const viewer = getViewer();
+  const layers: any[] = viewer?.layerManager?.managedLayers ?? [];
+  const idx = layers.findIndex(ml => (ml.layer?.constructor?.name ?? '').includes('Segmentation'));
+  const chips = document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item');
+  const chip = chips[idx] as HTMLElement | undefined;
+  if (!chip) return;
+  const old = chip.style.boxShadow;
+  chip.style.transition = 'box-shadow 0.3s';
+  let on = false;
+  const timer = setInterval(() => { on = !on; chip.style.boxShadow = on ? '0 0 0 3px #7ecaff, 0 0 18px 6px rgba(126,202,255,0.8)' : old; }, 350);
+  setTimeout(() => { clearInterval(timer); chip.style.boxShadow = old; }, 3200);
+});
 
 /** Two captioned pictures side by side, inline styled because the step
  *  html is rendered outside TutorialStep's scoped CSS. */
@@ -162,14 +184,23 @@ Like this one: the yellow branch belongs to the purple cell, but the AI left it 
   {
     title: "How to Merge",
     text: `
-To start a merge, press the **M** key on your keyboard (make sure the segmentation layer is selected).
+Let's jump to an area that needs a merge. The purple cell behind this box has a yellow branch the AI left off it. It is yours to practice on until the end of the merge section.
 
-You can also activate it from the toolbar at the top of the screen.
+Press the **M** key to start the merge tool. The segmentation layer has to be selected for that. ` + INFO_LAYER + `
 
-Once activated, you'll see the merge tool appear at the bottom of the viewer.`,
-    position: MIDDLE,
+You can also start it from the toolbar at the top of the screen. Once it's on, the merge tool appears at the bottom of the viewer.`,
+    position: OVER_3D,
     width: "450px",
-    onEnter: closeSidePanel,
+    onEnter: async () => {
+      closeSidePanel();
+      watchPractice(true, 'Press M, then Ctrl+click the yellow branch and the purple cell.', 'Merged! The branch is part of the cell now.');
+      const ex = await beginPractice('merge_then_cut');
+      // No cell free (or not signed in): show Amy's example to look at.
+      if (!ex) {
+        await useLayersStore().loadState(STATE_MERGE_EXAMPLE);
+        setTimeout(() => colorFirstTwoVisible('pinky_nf_v2'), 1200);
+      }
+    },
   },
 
   // 6: Placing merge points
@@ -177,20 +208,17 @@ Once activated, you'll see the merge tool appear at the bottom of the viewer.`,
     text: `
 With the merge tool active:
 
-1. **Ctrl+Click** on the first segment (the one you're merging *from*).
-2. **Ctrl+Click** on the second segment (the one you're merging *into*).
+1. **Ctrl+Click** the yellow branch.
+2. **Ctrl+Click** the purple cell, close to where the branch should join it.
+3. Press **Enter**.
 
-The system will attempt to connect these two segments. You'll see a status message, "trying..." and then "done" if successful.
-
-Behind this box is a cell with a branch cut off it. It is yours to practice on from here to the end of the merge section.`,
+The server connects the two. You'll see "trying..." and then "done", and the branch turns purple.`,
     position: OVER_3D,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'This branch needs a merge. Try it now, or read on and do it at Your Turn.', 'Merged! The branch is part of the cell now.');
-      const ex = await beginPractice('merge_then_cut');
-      // No cell free (or not signed in): show Amy's example to look at.
-      if (!ex) await useLayersStore().loadState(STATE_MERGE_EXAMPLE);
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Enter.', 'Merged! The branch is part of the cell now.');
+      await beginPractice('merge_then_cut');
       // The previous step said "press M"; if they pressed next instead,
       // the tool comes on anyway.
       setTimeout(() => ensureTool('merge'), 400);
@@ -216,18 +244,17 @@ Behind this box is a cell with a branch cut off it. It is yours to practice on f
 Time to practice! This is a real cell in the sandbox, and it is yours alone until you finish. The AI left a branch disconnected from it.
 
 1. Press **M** to activate the merge tool.
-2. **Ctrl+Click** on the main neuron body.
-3. **Ctrl+Click** on the disconnected branch.
-4. Watch them join together!
+2. **Ctrl+Click** the yellow branch.
+3. **Ctrl+Click** the purple cell next to it.
+4. Press **Enter** and watch them join!
 
 Press **next** once the box below says the merge landed (or skip if you'd like to move on).`,
     position: OVER_3D,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Waiting for your merge…', 'Merged! The branch is part of the cell now. Press next.');
-      const ex = await beginPractice('merge_then_cut');
-      if (!ex) await useLayersStore().loadState(STATE_MERGE_EXAMPLE);
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Enter.', 'Merged! The branch is part of the cell now. Press next.');
+      await beginPractice('merge_then_cut');
       setTimeout(() => ensureTool('merge'), 400);
     },
   },
