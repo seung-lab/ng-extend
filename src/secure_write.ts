@@ -1,3 +1,4 @@
+import { functionUrl } from './functions_base';
 /**
  * Writes to notifications and feedback_triage go through the ewSecureWrite
  * Cloud Function, never straight to Supabase: the anon key the app ships is
@@ -6,7 +7,7 @@
  * admin actions, checks the admins table with a key the browser never sees.
  */
 const ENDPOINT = (window as any).__NGE_SECURE_WRITE_URL
-  || 'https://us-central1-ytho-4bff2.cloudfunctions.net/ewSecureWrite';
+  || functionUrl('ewSecureWrite');
 const STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
 
 function caveToken(): string | null {

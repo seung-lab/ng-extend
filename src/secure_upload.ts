@@ -1,3 +1,4 @@
+import { functionUrl } from './functions_base';
 export async function secureUpload(blob: Blob, kind: 'help' | 'notifications' | 'badges'): Promise<string> {
   if (blob.size > 8 * 1024 * 1024) throw new Error('Images must be under 8 MB.');
   let token: string | null = null;
@@ -9,7 +10,7 @@ export async function secureUpload(blob: Blob, kind: 'help' | 'notifications' | 
     reader.onerror = () => reject(new Error('Could not read image.'));
     reader.readAsDataURL(blob);
   });
-  const response = await fetch('https://us-central1-ytho-4bff2.cloudfunctions.net/ewSecureUpload', {
+  const response = await fetch(functionUrl('ewSecureUpload'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
     body: JSON.stringify({ token, kind, contentType: blob.type, data }),
   });

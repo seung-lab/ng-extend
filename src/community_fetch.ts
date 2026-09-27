@@ -1,5 +1,6 @@
+import { functionUrl } from './functions_base';
 // Preserve Supabase's response contract while protecting private reads and writes.
-const ENDPOINT = 'https://us-central1-ytho-4bff2.cloudfunctions.net/ewCommunityData';
+const ENDPOINT = functionUrl('ewCommunityData');
 const PROTECTED = new Set(['users', 'admins', 'notifications', 'notification_reads', 'working_links', 'feedback_triage', 'site_issues', 'user_groups', 'user_group_members', 'chat_messages']);
 const nativeFetch = window.fetch.bind(window);
 
