@@ -3,7 +3,7 @@ import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
 // Amy's merge example, 2026-09-26: the cut-in-half branch, cell purple, loose piece yellow.
 import imgMergeExample from './images/merge-example.jpg';
-import { beginPractice, colorFirstTwoVisible, currentPractice, endPractice, ensureTool, piecesMerged, placeMergeLine } from './practice';
+import { beginPractice, colorFirstTwoVisible, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, type PracticeKind } from './practice';
 import { useLayersStore } from './store';
 import { useTutorialStore } from './store-pyr';
 
@@ -107,7 +107,8 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     if (token !== practiceWatch) return;
     const p = currentPractice();
     if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); return; }
-    if (p.phase === 'busy') { practiceStatus('No practice cell is free right now. Read along and press next, or come back in a few minutes.'); return; }
+    if (p.phase === 'busy') { waitForCell(wantMerged ? 'merge_then_cut' : 'cut', wantMerged, waiting, finished); return; }
+    if (p.phase === 'released') { return; }
     if (!p.example) { practiceStatus('Loading a practice cell…'); setTimeout(tick, 1000); return; }
     const merged = await piecesMerged();
     if (token !== practiceWatch) return;
@@ -123,7 +124,41 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
-export function stopWatching() { practiceWatch++; }
+export function stopWatching() { practiceWatch++; leaveWaitlist(); }
+
+// Idle countdown under the status line (Amy): appears after a quiet minute,
+// and at zero the cell is undone and released.
+document.addEventListener('nge:practice-countdown', ((e: CustomEvent) => {
+  const chip = chipBody();
+  if (!chip) return;
+  const secs = e.detail?.seconds as number | null;
+  let el = chip.querySelector('.nge-practice-countdown') as HTMLElement | null;
+  if (secs == null) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('p');
+    el.className = 'nge-practice-countdown';
+    el.style.cssText = 'margin:8px 0 0;padding:6px 10px;border-radius:4px;font-size:0.88em;line-height:1.4;'
+      + 'background:rgba(245,166,35,0.12);border-left:2px solid rgba(245,166,35,0.8);color:#ffd27a;';
+    chip.appendChild(el);
+  }
+  const m = Math.floor(secs / 60), s = String(secs % 60).padStart(2, '0');
+  el.textContent = `Still there? Your practice cell goes to the next person in ${m}:${s}. Move the mouse or press a key to keep it.`;
+}) as EventListener);
+
+document.addEventListener('nge:practice-released', () => {
+  practiceStatus('Your practice cell was released after five quiet minutes and put back for the next person. Press back, then next, to get a cell again.');
+});
+
+/** Every cell of this kind is held: queue up, and take the cell the moment
+ *  it is our turn. The status line shows the position. */
+function waitForCell(kind: PracticeKind, wantMerged: boolean, waiting: string, finished: string) {
+  const token = practiceWatch;
+  joinWaitlist(kind,
+    () => { if (token === practiceWatch) watchPractice(wantMerged, waiting, finished); },
+    (pos) => { if (token === practiceWatch) practiceStatus(pos <= 1
+      ? 'You are next in line for a practice cell. It becomes yours the moment it is free.'
+      : `Every practice cell is in use. You are number ${pos} in line; this box updates when one is yours. Read along meanwhile.`); });
+}
 
 /** A small (i) in the step text. Hover for the tip, click to flash the
  *  segmentation layer chip at the top of the viewer. Inline onclick works

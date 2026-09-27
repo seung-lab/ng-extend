@@ -77,6 +77,22 @@ DO $$ BEGIN
 END $$;
 
 -- ═══════════════════════════════════════════
+-- WAITING LIST: who wants a cell of which kind, in order
+-- ═══════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS tutorial_practice_waitlist (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, kind)
+);
+ALTER TABLE tutorial_practice_waitlist ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'tutorial_practice_waitlist' AND policyname = 'tutorial_practice_waitlist_all') THEN
+    CREATE POLICY tutorial_practice_waitlist_all ON tutorial_practice_waitlist FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+-- ═══════════════════════════════════════════
 -- CLAIM: one user per example, atomically
 -- ═══════════════════════════════════════════
 -- Picks the least used ready example, or one whose claim expired, or the one
