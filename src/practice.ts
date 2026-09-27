@@ -123,6 +123,20 @@ export async function ensureSupervoxels(ex: PracticeExample): Promise<PracticeEx
   return ex;
 }
 
+/** PyChunkedGraph timestamps arrive as epoch seconds, epoch milliseconds
+ *  or "YYYY-MM-DD HH:MM:SS.ffffff" strings depending on the version; read
+ *  them all. NaN means unparseable. */
+export function parsePcgStamp(v: unknown): number {
+  if (typeof v === 'number') return v < 1e11 ? v * 1000 : v;
+  if (typeof v === 'string') {
+    if (/^\d+(\.\d+)?$/.test(v)) return parsePcgStamp(Number(v));
+    let t = Date.parse(v);
+    if (Number.isNaN(t)) t = Date.parse(v.replace(' ', 'T') + (/[zZ]$|[+-]\d\d:?\d\d$/.test(v) ? '' : 'Z'));
+    return t;
+  }
+  return NaN;
+}
+
 interface LogOp { operationId: number; at: number }
 
 /** Operations in a root's lineage made after `sinceIso`, newest first. */
@@ -134,10 +148,14 @@ async function opsSince(ex: PracticeExample, rootId: string, sinceIso: string): 
   const stamps: any[] = data.timestamp ?? [];
   const since = new Date(sinceIso).getTime();
   const out: LogOp[] = [];
+  let unparsed = 0;
   for (let i = 0; i < ids.length; i++) {
-    const at = new Date(stamps[i]).getTime();
-    if (Number.isFinite(at) && at > since) out.push({ operationId: Number(ids[i]), at });
+    const at = parsePcgStamp(stamps[i]);
+    if (!Number.isFinite(at)) { unparsed++; continue; }
+    if (at > since) out.push({ operationId: Number(ids[i]), at });
   }
+  if (unparsed) console.warn(`[practice] ${unparsed} log entries with unreadable timestamps on root ${rootId}, sample:`, stamps[0]);
+  console.info(`[practice] root ${rootId}: ${ids.length} operations in its history, ${out.length} after ${sinceIso}, newest stamp`, stamps[ids.length - 1]);
   return out.sort((a, b) => b.at - a.at);
 }
 
@@ -201,8 +219,9 @@ export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: strin
   // A cut example starts fused; a merge example starts separate.
   const wantFused = ex.kind === 'cut';
   if ((a === b) !== wantFused) {
-    throw new Error(wantFused ? `after undo the pieces are still apart (${a}, ${b})`
-                              : `after undo both pieces are still on root ${a}`);
+    const detail = `${ops.length} operation(s) after the baseline ${ex.baseline_at} were undone; see the console for the operation log`;
+    throw new Error(wantFused ? `after undo the pieces are still apart (${a}, ${b}); ${detail}`
+                              : `after undo both pieces are still on root ${a}; ${detail}`);
   }
   return { a, b, undone: ops.length };
 }

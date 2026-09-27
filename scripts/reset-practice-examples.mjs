@@ -81,6 +81,18 @@ async function rootOf(ex, sv) {
 
 const pcgLayer = (id) => Math.floor(Number(id) / 2 ** 56);
 
+/** PCG timestamps: epoch seconds, epoch ms, or "YYYY-MM-DD HH:MM:SS.ffffff". */
+function parsePcgStamp(v) {
+  if (typeof v === 'number') return v < 1e11 ? v * 1000 : v;
+  if (typeof v === 'string') {
+    if (/^\d+(\.\d+)?$/.test(v)) return parsePcgStamp(Number(v));
+    let t = Date.parse(v);
+    if (Number.isNaN(t)) t = Date.parse(v.replace(' ', 'T') + (/[zZ]$|[+-]\d\d:?\d\d$/.test(v) ? '' : 'Z'));
+    return t;
+  }
+  return NaN;
+}
+
 /** Walk a root down to one of its supervoxels (layer 1). */
 async function anySupervoxelOf(ex, rootId) {
   let id = rootId;
@@ -113,7 +125,7 @@ async function opsSince(ex, rootId, since) {
   const cutoff = new Date(since).getTime();
   const out = [];
   for (let i = 0; i < ids.length; i++) {
-    const at = new Date(stamps[i]).getTime();
+    const at = parsePcgStamp(stamps[i]);
     if (Number.isFinite(at) && at > cutoff) out.push({ operationId: Number(ids[i]), at });
   }
   return out.sort((a, b) => b.at - a.at);
