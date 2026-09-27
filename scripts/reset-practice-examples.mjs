@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Resets only reviewed Pinky practice fixtures after the learner releases them.
 import fs from 'node:fs';
-import {validateResetExample,resetDue,operationsAfter} from './practice-reset-policy.mjs';
+import {validateResetExample,resetDue,operationsAfter,overlapsActive} from './practice-reset-policy.mjs';
 const manifest=JSON.parse(fs.readFileSync(new URL('../config/practice-reset-manifest.json',import.meta.url),'utf8'));
 const args=process.argv.slice(2),dryRun=args.includes('--dry-run');
 const onlyId=args.includes('--id') ? args[args.indexOf('--id')+1] : null;
@@ -46,12 +46,14 @@ async function reset(ex) {
  const result=await roots(ex);checkBaseline(ex,result);return result;
 }
 async function main() {
- const path='tutorial_practice_examples?enabled=eq.true'+(onlyId?'&id=eq.'+onlyId:'');
+ const path='tutorial_practice_examples?enabled=eq.true';
  const rows=await sb(path+'&select=*');let failed=0;
  for(const ex of rows) {
+  if(onlyId&&ex.id!==onlyId)continue;
   let lockQuery;
   try {
    validateResetExample(ex,manifest);
+   if(overlapsActive(ex,rows,Date.now())){console.log('[reset] '+ex.id+': shares a piece with an active learner, skipped');continue;}
    if(!resetDue(ex,Date.now(),Boolean(onlyId))) {
     if(ex.status==='ready'){checkBaseline(ex,await roots(ex));console.log('[practice test] '+ex.id+': ready state verified');}
     else if(ex.status==='broken')throw Error('Practice fixture is marked broken');
