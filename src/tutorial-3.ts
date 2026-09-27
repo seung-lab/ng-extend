@@ -5,7 +5,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 // axon off it (2026-09-26). Web-sized JPEGs; originals in her images.
 import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
-import { beginPractice, currentPractice, endPractice, piecesMerged } from './practice';
+import { beginPractice, currentPractice, endPractice, ensureTool, piecesMerged } from './practice';
 import { useLayersStore } from './store';
 
 // Amy's cut walkthrough, 2026-09-26: a fused axon in the sandbox, the same
@@ -189,6 +189,9 @@ Behind this box is a cell with a branch cut off it. It is yours to practice on f
       const ex = await beginPractice('merge_then_cut');
       // No cell free (or not signed in): show Amy's example to look at.
       if (!ex) await useLayersStore().loadState(STATE_MERGE_EXAMPLE);
+      // The previous step said "press M"; if they pressed next instead,
+      // the tool comes on anyway.
+      setTimeout(() => ensureTool('merge'), 400);
     },
   },
 
@@ -223,6 +226,7 @@ Press **next** once the box below says the merge landed (or skip if you'd like t
       watchPractice(true, 'Waiting for your merge…', 'Merged! The branch is part of the cell now. Press next.');
       const ex = await beginPractice('merge_then_cut');
       if (!ex) await useLayersStore().loadState(STATE_MERGE_EXAMPLE);
+      setTimeout(() => ensureTool('merge'), 400);
     },
   },
 
@@ -274,7 +278,11 @@ Here the points are already placed: red along the axon, blue on the dendrite it 
     position: OVER_2D,
     width: "420px",
     state: STATE_CUT_POINTS,
-    onEnter: closeSidePanel,
+    onEnter: () => {
+      closeSidePanel();
+      // The previous step said "press C"; turn the tool on if they didn't.
+      setTimeout(() => ensureTool('multicut'), 400);
+    },
   },
 
   // 13 — Where to place points
@@ -329,6 +337,7 @@ Press **next** once the box below says the cut landed.`,
       // A cut example of its own. beginPractice hands the merge cell back
       // first (its merge is undone), so the two exercises stay independent.
       await beginPractice('cut');
+      setTimeout(() => ensureTool('multicut'), 400);
     },
   },
 

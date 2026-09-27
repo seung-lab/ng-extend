@@ -17,6 +17,7 @@
  * up from them whenever the example is handed out.
  */
 import { Uint64 } from 'neuroglancer/util/uint64';
+import { setStatedColor } from './widgets/widget_utils';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
 import { useLayersStore, useProofreadingBackendStore } from './store';
 
@@ -206,6 +207,46 @@ export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: strin
   return { a, b, undone: ops.length };
 }
 
+// ─── Viewer colours and tools ───────────────────────────────────────────────
+
+/** Amy: the cell is purple, the loose piece yellow, and after the merge the
+ *  whole thing is purple. Packed as 0xBBGGRR, the stated-colour format. */
+const PURPLE = 0xff40a0 | 0; // rgb(160, 64, 255)
+const YELLOW = 0x00d7ff | 0; // rgb(255, 215, 0)
+
+export function colorSegments(dataset: string, colors: Array<[string, number]>) {
+  const layer = segLayer(dataset);
+  const map = layer?.displayState?.segmentationColorGroupState?.value?.segmentStatedColors;
+  if (!map) return;
+  for (const [id, packed] of colors) {
+    try { setStatedColor(map, Uint64.parseString(id), packed); } catch (e) { console.warn('[practice] colour', id, e); }
+  }
+}
+
+/** Activate the merge or cut tool if none is active, the way the command
+ *  palette does: the segmentation layer gets selected and the tool's key is
+ *  sent to the viewer. Used when a step says "press M" and the learner
+ *  pressed next instead. */
+export function ensureTool(tool: 'merge' | 'multicut') {
+  const viewer = getViewer();
+  if (!viewer) return;
+  try {
+    if (viewer.globalToolBinder?.activeTool_ || viewer.toolBinder?.activeTool_) return;
+  } catch { /* check the DOM instead */ }
+  if (document.querySelector('.neuroglancer-tool-status')) return;
+  try {
+    const seg = viewer.layerManager?.managedLayers?.find((x: any) => x.layer?.constructor?.name?.includes('Segmentation'));
+    if (seg) { viewer.selectedLayer.layer = seg; viewer.selectedLayer.visible = true; }
+  } catch { /* non-critical */ }
+  const key = tool === 'multicut' ? 'c' : 'm';
+  const init: KeyboardEventInit = { key, code: key === 'c' ? 'KeyC' : 'KeyM', bubbles: true, cancelable: true };
+  for (const el of [viewer.element, viewer.display?.container, document.getElementById('neuroglancer-container')]) {
+    if (!el) continue;
+    if (el instanceof HTMLElement) el.focus();
+    el.dispatchEvent(new KeyboardEvent('keydown', init));
+  }
+}
+
 // ─── Session state ──────────────────────────────────────────────────────────
 
 export type PracticePhase = 'none' | 'claiming' | 'merge' | 'cut' | 'busy' | 'unavailable' | 'done';
@@ -282,6 +323,11 @@ async function showExample(ex: PracticeExample) {
   session.rootA = a ?? ex.root_a;
   session.rootB = b ?? ex.root_b;
   showOnly(ex.dataset, session.rootA === session.rootB ? [session.rootA] : [session.rootA, session.rootB]);
+  // Merge example: cell purple, loose piece yellow. Cut example: the fused
+  // segment purple, so the piece cut off it stands out in its own colour.
+  colorSegments(ex.dataset, session.rootA === session.rootB
+    ? [[session.rootA, PURPLE]]
+    : [[session.rootA, PURPLE], [session.rootB, YELLOW]]);
 }
 
 /** True when the two pieces currently share a root. */
@@ -291,8 +337,13 @@ export async function piecesMerged(): Promise<boolean | null> {
   await ensureSupervoxels(ex);
   const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
   if (!a || !b) return null;
+  const changed = a !== session.rootA || b !== session.rootB;
   session.rootA = a;
   session.rootB = b;
+  if (changed) {
+    // New roots after an edit: keep the story's colours on them.
+    colorSegments(ex.dataset, a === b ? [[a, PURPLE]] : [[a, PURPLE], [b, YELLOW]]);
+  }
   return a === b;
 }
 
