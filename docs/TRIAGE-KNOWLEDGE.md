@@ -55,3 +55,9 @@ summaries.
   A panel centred with `translate(-50%, -50%)` must repeat that translate in
   every materialize keyframe or it jumps off centre (2026-09-26, dataset
   panel build, from reading WeeklyRecapPanel and TagModePanel).
+- Per-user counts must come from shared records, never the local stats tally:
+  `useUserStatsStore` daily counts live in one browser's storage and miss
+  edits made elsewhere. Count from `edit_log` (merges and splits, skip
+  `success = false`) or `user_edit_counts` (CAVE mirror, rolling 7 days).
+  Say which window a number covers (2026-09-26, recap showed 6 edits where
+  edit_log and CAVE had 13).
