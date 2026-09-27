@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS tutorial_practice_examples (
   supervoxel_b TEXT NOT NULL,
   root_a TEXT NOT NULL,
   root_b TEXT NOT NULL,
+  -- Where the admin hovered when registering (viewer voxel coordinates, JSON
+  -- [x, y, z]). Lets the merge tutorial place the merge line for a stuck learner.
+  point_a TEXT,
+  point_b TEXT,
 
   -- Operations after this instant are undone at reset.
   baseline_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -60,6 +64,9 @@ CREATE INDEX IF NOT EXISTS tutorial_practice_examples_status_idx
 -- Re-runnable on an older table without the column.
 ALTER TABLE tutorial_practice_examples
   ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'merge_then_cut';
+ALTER TABLE tutorial_practice_examples
+  ADD COLUMN IF NOT EXISTS point_a TEXT,
+  ADD COLUMN IF NOT EXISTS point_b TEXT;
 
 ALTER TABLE tutorial_practice_examples ENABLE ROW LEVEL SECURITY;
 -- Same model as the other app tables: anon-key auth, gating in the JS layer.

@@ -350,8 +350,33 @@ function onKeyDown(e: KeyboardEvent) {
     }
 }
 
+// A practice step fires this when the learner's edit lands (Amy: "merge
+// success!" deserves a celebration).
+function onCelebrate() { launchConfetti(); }
+
+// Drag the box out of the way (Amy: the cut box hid the 3D view). The
+// handle is the title bar; the offset is added to the computed position and
+// resets with the next step, since each step is a fresh component.
+const dragOffset = ref({ x: 0, y: 0 });
+let dragStart: { x: number; y: number; ox: number; oy: number } | null = null;
+function onDragStart(e: PointerEvent) {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragStart = { x: e.clientX, y: e.clientY, ox: dragOffset.value.x, oy: dragOffset.value.y };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+}
+function onDragMove(e: PointerEvent) {
+    if (!dragStart) return;
+    dragOffset.value = { x: dragStart.ox + e.clientX - dragStart.x, y: dragStart.oy + e.clientY - dragStart.y };
+}
+function onDragEnd() { dragStart = null; }
+
 onMounted(() => {
     window.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('nge:tutorial-celebrate', onCelebrate);
+});
+onUnmounted(() => {
+    document.removeEventListener('nge:tutorial-celebrate', onCelebrate);
 });
 
 onUnmounted(() => {
@@ -371,7 +396,7 @@ onUnmounted(() => {
         <div v-if="computedStep.modal" class="nge-overlay-blocker" @mousedown.stop.prevent></div>
         <div class="ng-extend introductionStepAnchor chipBuildIn"
             :class="[computedStep.cssClass, { 'nge-no-arrow': !!step.highlight, 'nge-quick-anim': !computedStep.modal }]"
-            :style="{ left: computedStep.left, top: computedStep.top }">
+            :style="{ left: computedStep.left, top: computedStep.top, transform: dragOffset.x || dragOffset.y ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined }">
             <div class="arrow"></div>
 
             <div v-if="!inExitConfirm" class="chip"
@@ -380,6 +405,8 @@ onUnmounted(() => {
                 <span class="corner corner-tr"></span>
                 <span class="corner corner-bl"></span>
                 <span class="corner corner-br"></span>
+                <div class="nge-chip-drag" title="Drag to move this box"
+                     @pointerdown="onDragStart" @pointermove="onDragMove" @pointerup="onDragEnd" @pointercancel="onDragEnd">⠿ drag</div>
                 <button class="exit" @click="inExitConfirm = true">×</button>
                 <div class="title" v-if="computedStep.title">
                   <span v-if="computedStep.titleIcon" class="title-icon" v-html="computedStep.titleIcon"></span>
@@ -419,6 +446,24 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.nge-chip-drag {
+    position: absolute;
+    top: 6px;
+    left: 14px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(126, 202, 255, 0.55);
+    cursor: grab;
+    user-select: none;
+    line-height: 1;
+    padding: 4px 6px;
+    z-index: 3;
+    touch-action: none;
+}
+.nge-chip-drag:hover { color: #7ecaff; }
+.nge-chip-drag:active { cursor: grabbing; }
+
 .nge-overlay-blocker {
     z-index: 89;
 }

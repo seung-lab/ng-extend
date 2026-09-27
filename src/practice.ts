@@ -35,6 +35,9 @@ export interface PracticeExample {
   supervoxel_b: string;
   root_a: string;
   root_b: string;
+  /** JSON [x, y, z] in viewer voxels, from the registering admin's hover. */
+  point_a?: string | null;
+  point_b?: string | null;
   baseline_at: string;
   status: 'ready' | 'in_use' | 'needs_reset' | 'resetting' | 'broken';
   enabled: boolean;
@@ -270,6 +273,45 @@ export function ensureTool(tool: 'merge' | 'multicut', attempt = 0) {
     if (!el) continue;
     if (el instanceof HTMLElement) el.focus();
     el.dispatchEvent(new KeyboardEvent('keydown', init));
+  }
+}
+
+/**
+ * Put the example's registered points into the merge tool as a finished
+ * merge line, so a stuck learner only has to press Submit. The graphene
+ * layer keeps merge lines as annotations in `mergeAnnotationState`; adding
+ * one there is exactly what two Ctrl+clicks do. Points are in the viewer's
+ * voxel space; the annotation layer shares it for these datasets.
+ */
+export function placeMergeLine(): boolean {
+  const ex = session.example;
+  if (!ex || !ex.point_a || !ex.point_b) return false;
+  let pa: number[], pb: number[];
+  try { pa = JSON.parse(ex.point_a); pb = JSON.parse(ex.point_b); } catch { return false; }
+  if (!Array.isArray(pa) || !Array.isArray(pb) || pa.length < 3 || pb.length < 3) return false;
+  const layer = segLayer(ex.dataset);
+  const gc = layer?.graphConnection?.value;
+  const source = gc?.mergeAnnotationState?.source;
+  if (!source) { console.warn('[practice] no merge annotation source; is the merge tool on?'); return false; }
+  const rootA = session.rootA || ex.root_a, rootB = session.rootB || ex.root_b;
+  try {
+    // The sink is the cell (B side of the line is the piece), matching what
+    // the tool records from two clicks: [sinkRoot, sinkSupervoxel, sourceRoot, sourceSupervoxel].
+    source.add({
+      id: `nge-practice-${ex.id}`,
+      type: 1, // AnnotationType.LINE
+      pointA: Float32Array.from(pa.slice(0, 3)),
+      pointB: Float32Array.from(pb.slice(0, 3)),
+      relatedSegments: [[
+        Uint64.parseString(rootA), Uint64.parseString(ex.supervoxel_a),
+        Uint64.parseString(rootB), Uint64.parseString(ex.supervoxel_b),
+      ]],
+      properties: [],
+    });
+    return true;
+  } catch (e) {
+    console.warn('[practice] placing the merge line failed:', e);
+    return false;
   }
 }
 

@@ -930,7 +930,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         </li>
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">3</span><span>Cut &amp; Merge</span>
+            <span class="nge-menu-num">3</span><span>Merge</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 5; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">4</span><span>Cut</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Learn more</li>

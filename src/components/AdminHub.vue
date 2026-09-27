@@ -824,14 +824,14 @@ const practiceError = ref('');
 const practiceNotice = ref('');
 const practiceTitle = ref('');
 const practiceKind = ref<PracticeKind>('cut');
-const practiceA = ref<{ sv: string; root: string } | null>(null);
-const practiceB = ref<{ sv: string; root: string } | null>(null);
+const practiceA = ref<{ sv: string; root: string; pos?: number[] } | null>(null);
+const practiceB = ref<{ sv: string; root: string; pos?: number[] } | null>(null);
 /** Typed root ids, the no-hover way in: supervoxels are looked up on first use. */
 const practiceRootA = ref('');
 const practiceRootB = ref('');
 watch(practiceRootA, v => { const t = v.trim(); if (/^\d{10,}$/.test(t)) practiceA.value = { sv: '', root: t }; });
 watch(practiceRootB, v => { const t = v.trim(); if (/^\d{10,}$/.test(t)) practiceB.value = { sv: '', root: t }; });
-const practiceHover = ref<{ sv: string; root: string } | null>(null);
+const practiceHover = ref<{ sv: string; root: string; pos?: number[] } | null>(null);
 const practiceSaving = ref(false);
 const practiceActing = ref<string | null>(null);
 let hoverTimer: ReturnType<typeof setInterval> | null = null;
@@ -857,7 +857,11 @@ function sampleHover() {
       if (!sel?.hasSelectedSegment) continue;
       const sv = sel.baseSelectedSegment?.toString?.();
       const root = sel.selectedSegment?.toString?.();
-      if (sv && root && sv !== '0') { practiceHover.value = { sv, root }; return; }
+      // The mouse position too: it becomes the merge point for "place the
+      // merge points for me" in the tutorial.
+      const p = viewer?.mouseState?.position;
+      const pos = p && p.length >= 3 ? [p[0], p[1], p[2]].map((v: number) => Math.round(v * 100) / 100) : undefined;
+      if (sv && root && sv !== '0') { practiceHover.value = { sv, root, pos }; return; }
     }
   } catch { /* viewer not ready */ }
 }
@@ -919,6 +923,8 @@ async function registerPractice() {
       dataset: practiceDataset(), pcg_server: pcg.server, pcg_table: pcg.table,
       state_url: stateUrl,
       supervoxel_a: a.sv, supervoxel_b: b.sv, root_a: a.root, root_b: b.root,
+      point_a: a.pos ? JSON.stringify(a.pos) : null,
+      point_b: b.pos ? JSON.stringify(b.pos) : null,
       created_by: backend.userId,
     };
     const { error } = await supabase.from('tutorial_practice_examples').insert(row);
