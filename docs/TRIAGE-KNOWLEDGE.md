@@ -55,3 +55,7 @@ summaries.
   A panel centred with `translate(-50%, -50%)` must repeat that translate in
   every materialize keyframe or it jumps off centre (2026-09-26, dataset
   panel build, from reading WeeklyRecapPanel and TagModePanel).
+- Changing a neuroglancer `TrackableRGB` default also recolours saved states
+  and links that used the old default, because `toJSON` omits the colour when
+  it equals the default; only explicitly picked colours are kept (2026-09-27,
+  annotation yellow build, from util/color.ts and ui/annotations.ts).

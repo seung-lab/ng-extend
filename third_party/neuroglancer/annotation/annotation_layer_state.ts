@@ -106,7 +106,7 @@ export class AnnotationDisplayState extends RefCounted {
   fallbackShaderControls =
       new WatchableValue(getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)));
   shaderError = makeWatchableShaderError();
-  color = new TrackableRGB(vec3.fromValues(0.10, 0.25, 0.60));
+  color = new TrackableRGB(vec3.fromValues(1.0, 0.84, 0.0));
   relationshipStates = this.registerDisposer(new WatchableAnnotationRelationshipStates());
   ignoreNullSegmentFilter = new TrackableBoolean(true);
   disablePicking = new WatchableValue(false);
