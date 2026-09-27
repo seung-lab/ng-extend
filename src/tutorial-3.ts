@@ -19,7 +19,7 @@ const STATE_CUT_DONE   = 'middleauth+https://global.brain-wire-test.org/nglstate
 // Amy's merge example, 2026-09-26: a branch she cut in half in the sandbox
 // (648518346350730372 and 648518346351348401). Shown when no practice cell
 // can be claimed, so the merge steps always have something to point at.
-const STATE_MERGE_EXAMPLE = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5653391690694656';
+const STATE_MERGE_EXAMPLE = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5718864172154880';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function getViewer(): any {
@@ -210,7 +210,7 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
       // No cell free (or not signed in): show Amy's example to look at.
       if (!ex) {
         await useLayersStore().loadState(STATE_MERGE_EXAMPLE);
-        setTimeout(() => colorFirstTwoVisible('pinky_nf_v2'), 1200);
+        colorFirstTwoVisible('pinky_nf_v2');
       }
     },
   },

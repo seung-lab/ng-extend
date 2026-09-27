@@ -82,10 +82,18 @@ function pcgBase(ex: Pick<PracticeExample, 'pcg_server' | 'pcg_table'>) {
 }
 
 export async function rootOfSupervoxel(ex: Pick<PracticeExample, 'pcg_server' | 'pcg_table'>, sv: string): Promise<string | null> {
-  const res = await fetch(`${pcgBase(ex)}/node/${sv}/root?int64_as_str=1`, { headers: pcgHeaders(ex.pcg_server) });
-  if (!res.ok) { console.warn(`[practice] root of ${sv}: ${res.status}`); return null; }
-  const data = await res.json();
-  return data.root_id != null ? String(data.root_id) : null;
+  // Three tries: a fresh login can race the token, and the server rate limits.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`${pcgBase(ex)}/node/${sv}/root?int64_as_str=1`, { headers: pcgHeaders(ex.pcg_server) });
+    if (res.ok) {
+      const data = await res.json();
+      return data.root_id != null ? String(data.root_id) : null;
+    }
+    console.warn(`[practice] root of ${sv} on ${ex.pcg_table}: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    if (res.status === 401 || res.status === 403 || res.status === 404) break;
+    await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+  }
+  return null;
 }
 
 /** PyChunkedGraph ids carry their layer in the top byte; supervoxels are layer 1. */
@@ -197,7 +205,7 @@ export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: strin
   for (const op of ops) await undoOp(ex, op.operationId);
   const a = await rootOfSupervoxel(ex, ex.supervoxel_a);
   const b = await rootOfSupervoxel(ex, ex.supervoxel_b);
-  if (!a || !b) throw new Error(`could not resolve roots after undo (${a}, ${b})`);
+  if (!a || !b) throw new Error(`could not look up the roots of supervoxels ${ex.supervoxel_a} and ${ex.supervoxel_b} on ${ex.pcg_server} ${ex.pcg_table} (see the console for the server's answer)`);
   // A cut example starts fused; a merge example starts separate.
   const wantFused = ex.kind === 'cut';
   if ((a === b) !== wantFused) {
@@ -225,12 +233,13 @@ export function colorSegments(dataset: string, colors: Array<[string, number]>) 
 
 /** No practice cell: colour the first two visible segments of Amy's
  *  example so the copy ("yellow branch", "purple cell") still holds. */
-export function colorFirstTwoVisible(dataset: string) {
+export function colorFirstTwoVisible(dataset: string, attempt = 0) {
   const layer = segLayer(dataset);
   const set = layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
-  if (!set) return;
   const ids: string[] = [];
-  for (const seg of set) ids.push(seg.toString());
+  if (set) for (const seg of set) ids.push(seg.toString());
+  // The saved view takes a moment to populate; keep trying for ten seconds.
+  if (ids.length < 2 && attempt < 20) { setTimeout(() => colorFirstTwoVisible(dataset, attempt + 1), 500); if (!ids.length) return; }
   const colors: Array<[string, number]> = [];
   if (ids[0]) colors.push([ids[0], PURPLE]);
   if (ids[1]) colors.push([ids[1], YELLOW]);
