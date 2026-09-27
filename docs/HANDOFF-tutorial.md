@@ -90,7 +90,8 @@ one learner at a time, and put it back afterwards.
   cell 648518346351477262. That view is a third `cut` candidate once the two
   are merged back together.
 - Cut candidate 3 from Amy, 2026-09-26: 648518346353862024 has several
-  merges that need cutting, annotated in view 6280196063756288.
+  merges that need cutting, annotated in view 6280196063756288. Amy's pick
+  for the cut example is view 5646028774572032 (register it as `cut`).
 - Merge candidate from Amy, 2026-09-26: a branch cut in half, view
   5653391690694656, pieces 648518346350730372 and 648518346351348401.
   Register it as `merge_then_cut` from that view (hover the cell for A, the
