@@ -76,7 +76,7 @@ function etHour(at = new Date()) {
 
 const supabaseHeaders = {
   apikey: SUPABASE_KEY,
-  Authorization: `Bearer ${SUPABASE_KEY}`,
+  ...(SUPABASE_KEY.startsWith('sb_') ? {} : { Authorization: `Bearer ${SUPABASE_KEY}` }),
   'Content-Type': 'application/json',
 };
 

@@ -1,52 +1,54 @@
 name: Tutorial Practice Reset
-
-# Puts Cut & Merge practice cells back to their registered state after a
-# user's claim expired or the in-browser undo failed. See
-# scripts/reset-practice-examples.mjs and supabase-tutorial-practice-schema.sql.
-#
-# NOTE ON REGISTRATION: schedule and workflow_dispatch only register from the
-# default branch, the same constraint as cave-edits-sync.yml. Until this file
-# is on the default branch, run it by hand:
-#   node scripts/reset-practice-examples.mjs
-# with SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and CAVE_SERVICE_TOKEN set.
-
 on:
   schedule:
-    # Every 10 minutes: a practice cell is out of service between an abandoned
-    # session and this run, and there are only a few of them.
     - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
       id:
-        description: 'Optional: reset this one example (uuid), whatever its status'
-        required: false
+        description: Optional example UUID (active learners are never interrupted)
+        type: string
         default: ''
       dry_run:
-        description: 'If "true", list what would be undone without touching CAVE or Supabase'
-        required: false
-        default: 'false'
-
+        description: List resets without changing CAVE or the database
+        type: boolean
+        default: false
+      inspect:
+        description: Read reviewed fixture roots and supervoxels without changing anything
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: tutorial-practice-reset
+  cancel-in-progress: false
 jobs:
   reset:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          node-version: '20'
-
-      - name: Reset practice cells
+          ref: eyewire-ii-community
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: node --test scripts/practice-reset-policy.test.mjs
+      - name: Inspect reviewed sandbox fixtures
+        if: inputs.inspect
+        env:
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+        run: node scripts/inspect-practice-examples.mjs
+      - name: Reset abandoned cells and verify their starting state
+        if: '!inputs.inspect'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+          EXAMPLE_ID: ${{ inputs.id }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          ARGS=""
-          if [ -n "${{ inputs.id }}" ]; then
-            ARGS="$ARGS --id ${{ inputs.id }}"
-          fi
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            ARGS="$ARGS --dry-run"
-          fi
-          node scripts/reset-practice-examples.mjs $ARGS
+          args=()
+          if [ -n "$EXAMPLE_ID" ]; then args+=(--id "$EXAMPLE_ID"); fi
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          node scripts/reset-practice-examples.mjs "${args[@]}"

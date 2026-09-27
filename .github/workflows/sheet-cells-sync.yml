@@ -1,61 +1,45 @@
-# ============================================================================
-# sheet-cells-sync — nightly import of new Cell Library rows into Supabase.
-# ----------------------------------------------------------------------------
-# Adds cells that have appeared in a dataset's Google Sheet since the last run
-# so they show up under "Available" without a manual re-import.
-#
-# APPEND-ONLY: rows removed from a sheet are never deleted from Supabase —
-# someone may already have claimed or completed that cell.
-#
-# TIMING: the ask is midnight Eastern. GitHub cron is UTC-only and midnight ET
-# is 04:00 UTC under EDT but 05:00 UTC under EST, so we fire at BOTH and let
-# the script's ET guard no-op the wrong one. That yields exactly one run per
-# night year-round without a DST-aware scheduler. `--force` on manual runs
-# bypasses the guard.
-# ============================================================================
 name: Sheet Cells Sync
-
 on:
   schedule:
-    - cron: '0 4 * * *'   # midnight ET while EDT is in effect
-    - cron: '0 5 * * *'   # midnight ET while EST is in effect
+    - cron: '0 4,5 * * *'
   workflow_dispatch:
     inputs:
       dataset:
-        description: 'Only sync this dataset (blank = all)'
-        required: false
+        description: Dataset to import (blank imports both registered sheets)
+        type: choice
+        options: ['', pinky_nf_v2, stroeh_mouse_retina]
         default: ''
       dry_run:
-        description: 'Report what would be inserted without writing'
+        description: Report new cells without writing
         type: boolean
-        required: false
         default: false
-
+permissions:
+  contents: read
+concurrency:
+  group: sheet-cells-sync
+  cancel-in-progress: false
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          node-version: '20'
-
-      - name: Import new cells from the Cell Library sheets
+          ref: eyewire-ii-community
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Import new cells without changing existing tasks
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATASET: ${{ inputs.dataset }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          EVENT: ${{ github.event_name }}
         run: |
-          ARGS=""
-          # Manual runs should act immediately rather than waiting for the ET
-          # guard to line up, so force them.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ARGS="$ARGS --force"
-          fi
-          if [ -n "${{ inputs.dataset }}" ]; then
-            ARGS="$ARGS --dataset ${{ inputs.dataset }}"
-          fi
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            ARGS="$ARGS --dry-run"
-          fi
-          node scripts/sync-sheet-cells.mjs $ARGS
+          args=()
+          if [ "$EVENT" = workflow_dispatch ]; then args+=(--force); fi
+          if [ -n "$DATASET" ]; then args+=(--dataset "$DATASET"); fi
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          node scripts/sync-sheet-cells.mjs "${args[@]}"

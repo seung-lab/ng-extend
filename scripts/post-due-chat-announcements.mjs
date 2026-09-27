@@ -37,7 +37,7 @@ const dryRun = process.argv.includes('--dry-run');
 
 const headers = {
   apikey: SUPABASE_KEY,
-  Authorization: `Bearer ${SUPABASE_KEY}`,
+  ...(SUPABASE_KEY.startsWith('sb_') ? {} : { Authorization: `Bearer ${SUPABASE_KEY}` }),
   'Content-Type': 'application/json',
 };
 

@@ -19,7 +19,7 @@ import {
 } from '../store';
 import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
-import { getAccessToken } from '../widgets/google_sheets_auth';
+import { syncCellToSheet } from '../sheet_sync';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
@@ -426,7 +426,9 @@ async function claimCell(cell: typeof cells.value[0]) {
   } else {
     point = getViewerPos();
   }
-  const result = await backend.claimCell(point);
+  const result = cell.taskId
+    ? { ok: await backend.claimTask(cell.taskId), reason: backend.error }
+    : await backend.claimCell(point, cell.segId);
   if (!result.ok) {
     claimError.value = result.reason || 'Claim failed';
     if (claimErrorTimer) clearTimeout(claimErrorTimer);
@@ -434,7 +436,7 @@ async function claimCell(cell: typeof cells.value[0]) {
     return;
   }
   // Write claim to Google Sheet (best-effort)
-  writeClaimToSheet(cell.segId, backend.userName);
+  syncCellToSheet('claim', cell.segId).catch(showSheetError);
   await backend.loadTasks();
 }
 
@@ -452,7 +454,7 @@ async function completeCell(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value || !cell.taskId) return;
   await backend.completeTask(cell.taskId, cell.finalSegId || undefined, cell.somaCoords || undefined);
   // Write completion to Google Sheet (best-effort)
-  writeCompletionToSheet(cell.segId, backend.userName, cell.finalSegId || '', cell.somaCoords || '');
+  syncCellToSheet('complete', cell.segId).catch(showSheetError);
 
   // Record the completion in CAVE (cell_status annotation) so it materializes
   // to the leaderboard — same path ProofreadingQueuePanel uses. The root is the
@@ -519,148 +521,10 @@ async function releaseCell(cell: typeof cells.value[0]) {
   await backend.loadTasks();
 }
 
-// ── Google Sheet write-back ──────────────────────────────────────────
-async function writeClaimToSheet(segId: string, userName: string) {
-  try {
-    // Stroeh sheet tracks the worker in 'Proofreader'; other sheets may use 'claimedby'.
-    await writeToSheetColumn(segId, ['proofreader', 'claimedby'], userName);
-  } catch (e) {
-    console.warn('[cellLibrary] Sheet claim write-back failed:', e);
-  }
-}
-
-async function writeCompletionToSheet(segId: string, userName: string, finalSegId: string, somaCoords: string) {
-  try {
-    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    await writeToSheetColumn(segId, ['proofreader', 'completedby'], userName);
-    await writeToSheetColumn(segId, ['status'], 'Complete');
-    if (finalSegId) await writeToSheetColumn(segId, ['finalseg'], finalSegId);
-    // Corrected coords go to a dedicated column on the Stroeh sheet; the pinky
-    // sheet just has 'SOMA COORDS'.
-    if (somaCoords) await writeToSheetColumn(segId, ['correctedsoma', 'somacoord'], somaCoords);
-    await writeToSheetColumn(segId, ['datecomplete', 'completedtime'], timestamp);
-  } catch (e) {
-    console.warn('[cellLibrary] Sheet completion write-back failed:', e);
-  }
-}
-
-/** CSV → grid, honoring quoted fields that contain commas/newlines. A naive
- *  split(',') would misalign columns on sheets whose coord cells look like
- *  "48469, 47551, 2014" — and misalignment means writing to the wrong cell. */
-function parseCsvGrid(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [], field = '', inQ = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inQ) {
-      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
-      else field += ch;
-    } else if (ch === '"') { inQ = true; }
-    else if (ch === ',') { row.push(field); field = ''; }
-    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
-    else if (ch !== '\r') { field += ch; }
-  }
-  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
-  return rows;
-}
-
-/** Generic write-back: find a column by name pattern(s) and write a value for
- *  the row matching segId. Accepts a list of patterns and writes to the first
- *  column that exists, so it works across the different per-dataset sheet
- *  layouts. */
-async function writeToSheetColumn(segId: string, columnPatterns: string | string[], value: string) {
-  const source = queue.sheetUrl;
-  if (!source) return;
-
-  const idMatch = source.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (!idMatch) return;
-  const spreadsheetId = idMatch[1];
-  const gidMatch = source.match(/gid=(\d+)/);
-  const gid = gidMatch ? gidMatch[1] : '0';
-
-  const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
-  const res = await fetch(csvUrl);
-  if (!res.ok) return;
-  const text = await res.text();
-  const rows = parseCsvGrid(text);
-  if (rows.length < 2) return;
-
-  const norm = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const segPatterns = ['startseg', 'segmentid', 'segment', 'segid'];
-
-  // Header row = first of the first 10 rows that has a segment-id-like column.
-  let headerIdx = -1, header: string[] = [], segColIdx = -1;
-  for (let i = 0; i < Math.min(rows.length, 10); i++) {
-    const h = rows[i].map(norm);
-    const sc = h.findIndex(c => segPatterns.some(p => c.includes(p)));
-    if (sc >= 0) { headerIdx = i; header = h; segColIdx = sc; break; }
-  }
-  if (segColIdx < 0) { console.warn('[cellLibrary] No segment column found in sheet'); return; }
-
-  const patterns = Array.isArray(columnPatterns) ? columnPatterns : [columnPatterns];
-  let colIdx = -1;
-  for (const p of patterns) { colIdx = header.findIndex(h => h.includes(p)); if (colIdx >= 0) break; }
-  if (colIdx < 0) {
-    console.warn(`[cellLibrary] No "${patterns.join('/')}" column found in sheet`);
-    return;
-  }
-
-  // Find the row with this segId (exact match on the segment column).
-  let rowIdx = -1;
-  for (let r = headerIdx + 1; r < rows.length; r++) {
-    if ((rows[r][segColIdx] || '').trim() === segId) { rowIdx = r; break; }
-  }
-  if (rowIdx < 0) { console.warn(`[cellLibrary] segId ${segId} not found in sheet — skipping write`); return; }
-
-  // SAFETY: only fill empty cells. Never overwrite existing data in the sheet.
-  const existingVal = (rows[rowIdx][colIdx] || '').trim();
-  if (existingVal) {
-    console.info(`[cellLibrary] segId ${segId}: "${patterns[0]}" cell already has "${existingVal}" — not overwriting`);
-    return;
-  }
-
-  // Convert to A1 notation
-  const colLetter = (idx: number) => {
-    let s = '';
-    let n = idx;
-    while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
-    return s;
-  };
-  const cellRef = `${colLetter(colIdx)}${rowIdx + 1}`;
-
-  // Resolve sheet name from gid — use service account auth
-  const accessToken = await getAccessToken();
-  const authHeaders = { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
-  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`, { headers: authHeaders });
-  let sheetName = 'Sheet1';
-  if (metaRes.ok) {
-    const meta = await metaRes.json();
-    const sheet = meta.sheets?.find((s: any) => String(s.properties.sheetId) === gid);
-    if (sheet) sheetName = sheet.properties.title;
-  }
-
-  const range = `${sheetName}!${cellRef}`;
-  const writeRes = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
-    {
-      method: 'PUT',
-      headers: authHeaders,
-      body: JSON.stringify({
-        range,
-        majorDimension: 'ROWS',
-        values: [[value]],
-      }),
-    },
-  );
-
-  if (writeRes.ok) {
-    console.info(`[cellLibrary] Wrote "${value}" to sheet cell ${range}`);
-  } else {
-    const body = await writeRes.text().catch(() => '');
-    console.warn(`[cellLibrary] Sheet write failed (${writeRes.status}): ${body.slice(0, 200)}`);
-    // Note: Sheets API v4 requires an API key or OAuth token even for publicly-editable sheets.
-    // The CSV export endpoint works without auth, but the values PUT endpoint does not.
-  }
+// The claim/completion is saved even if the source sheet is temporarily unavailable.
+function showSheetError(error: Error) {
+  claimError.value = error.message;
+  console.warn('[cellLibrary] Sheet sync:', error.message);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
