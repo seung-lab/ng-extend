@@ -18,7 +18,7 @@
  */
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from './widgets/widget_utils';
-import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
+import { supabase } from './supabase';
 import { useLayersStore, useProofreadingBackendStore } from './store';
 
 export type PracticeKind = 'merge_then_cut' | 'cut';
@@ -223,17 +223,34 @@ export function colorSegments(dataset: string, colors: Array<[string, number]>) 
   }
 }
 
+/** No practice cell: colour the first two visible segments of Amy's
+ *  example so the copy ("yellow branch", "purple cell") still holds. */
+export function colorFirstTwoVisible(dataset: string) {
+  const layer = segLayer(dataset);
+  const set = layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+  if (!set) return;
+  const ids: string[] = [];
+  for (const seg of set) ids.push(seg.toString());
+  const colors: Array<[string, number]> = [];
+  if (ids[0]) colors.push([ids[0], PURPLE]);
+  if (ids[1]) colors.push([ids[1], YELLOW]);
+  colorSegments(dataset, colors);
+}
+
 /** Activate the merge or cut tool if none is active, the way the command
  *  palette does: the segmentation layer gets selected and the tool's key is
  *  sent to the viewer. Used when a step says "press M" and the learner
  *  pressed next instead. */
-export function ensureTool(tool: 'merge' | 'multicut') {
+export function ensureTool(tool: 'merge' | 'multicut', attempt = 0) {
   const viewer = getViewer();
   if (!viewer) return;
   try {
     if (viewer.globalToolBinder?.activeTool_ || viewer.toolBinder?.activeTool_) return;
   } catch { /* check the DOM instead */ }
   if (document.querySelector('.neuroglancer-tool-status')) return;
+  // A freshly loaded state can drop the tool once its layer finishes
+  // loading, so keep trying for a few seconds until the tool bar is up.
+  if (attempt < 8) setTimeout(() => ensureTool(tool, attempt + 1), 700);
   try {
     const seg = viewer.layerManager?.managedLayers?.find((x: any) => x.layer?.constructor?.name?.includes('Segmentation'));
     if (seg) { viewer.selectedLayer.layer = seg; viewer.selectedLayer.visible = true; }
@@ -253,6 +270,9 @@ export type PracticePhase = 'none' | 'claiming' | 'merge' | 'cut' | 'busy' | 'un
 
 const session = {
   example: null as PracticeExample | null,
+  /** Example whose saved view is currently loaded, so later steps do not
+   *  reload it (a reload drops the active tool and the colours). */
+  shownId: '',
   rootA: '',
   rootB: '',
   phase: 'none' as PracticePhase,
@@ -287,7 +307,8 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut'): Prom
   session.phase = 'claiming';
   const { data, error } = await supabase.rpc('claim_practice_example', { p_user: uid, p_kind: kind });
   if (error) { console.warn('[practice] claim failed:', error.message); session.phase = 'unavailable'; return null; }
-  const row = (Array.isArray(data) ? data[0] : data) as PracticeExample | undefined;
+  let row = (Array.isArray(data) ? data[0] : data) as PracticeExample | undefined;
+  if (!row) row = await takeNeedsReset(uid, kind) ?? undefined;
   if (!row) { session.phase = 'busy'; return null; }
   session.example = row;
   await showExample(row);
@@ -313,10 +334,44 @@ function adoptTableFromViewer(ex: PracticeExample) {
   }
 }
 
+/**
+ * Nothing ready? A cell left in needs_reset (a learner's tab closed, or the
+ * reset job has not run) can be put right here with this learner's token,
+ * then used. Not atomic like the RPC, but the row is marked in_use first so
+ * two learners racing for it is unlikely.
+ */
+async function takeNeedsReset(uid: string, kind: PracticeKind): Promise<PracticeExample | null> {
+  const { data } = await supabase.from('tutorial_practice_examples').select('*')
+    .eq('enabled', true).eq('kind', kind).eq('status', 'needs_reset').order('uses').limit(1);
+  const row = (data?.[0] ?? null) as PracticeExample | null;
+  if (!row) return null;
+  const expires = new Date(Date.now() + 45 * 60 * 1000).toISOString();
+  const { error } = await supabase.from('tutorial_practice_examples')
+    .update({ status: 'in_use', claimed_by: uid, claimed_at: new Date().toISOString(), expires_at: expires, updated_at: new Date().toISOString() })
+    .eq('id', row.id).eq('status', 'needs_reset');
+  if (error) return null;
+  try {
+    const r = await undoSinceBaseline(row);
+    await supabase.from('tutorial_practice_examples')
+      .update({ root_a: r.a, root_b: r.b, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() }).eq('id', row.id);
+    row.root_a = r.a; row.root_b = r.b;
+    row.status = 'in_use'; row.claimed_by = uid;
+    return row;
+  } catch (e: any) {
+    console.warn('[practice] could not reset a waiting cell:', e?.message ?? e);
+    await supabase.from('tutorial_practice_examples')
+      .update({ status: 'needs_reset', claimed_by: null, claimed_at: null, expires_at: null, last_error: String(e?.message ?? e).slice(0, 500) }).eq('id', row.id);
+    return null;
+  }
+}
+
 async function showExample(ex: PracticeExample) {
-  await useLayersStore().loadState(ex.state_url);
-  // restoreState applies asynchronously; give the layer a moment to exist.
-  await new Promise(r => setTimeout(r, 800));
+  if (session.shownId !== ex.id) {
+    await useLayersStore().loadState(ex.state_url);
+    // restoreState applies asynchronously; give the layer a moment to exist.
+    await new Promise(r => setTimeout(r, 800));
+    session.shownId = ex.id;
+  }
   adoptTableFromViewer(ex);
   await ensureSupervoxels(ex);
   const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
@@ -374,6 +429,7 @@ export function endPractice(): Promise<void> {
     });
     if (error) console.warn('[practice] release failed:', error.message);
     session.example = null;
+    session.shownId = '';
     session.rootA = '';
     session.rootB = '';
     session.phase = 'done';
@@ -381,19 +437,3 @@ export function endPractice(): Promise<void> {
   })();
   return session.releasing;
 }
-
-// A closed tab cannot undo anything, so the claim simply expires and the
-// reset job takes the example. `keepalive` at least records the hand-back.
-window.addEventListener('pagehide', () => {
-  const ex = session.example;
-  const uid = userId();
-  if (!ex || !uid) return;
-  try {
-    const key = SUPABASE_ANON_KEY;
-    fetch(`${SUPABASE_URL}/rest/v1/rpc/release_practice_example`, {
-      method: 'POST', keepalive: true,
-      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_id: ex.id, p_user: uid, p_clean: false, p_error: 'tab closed' }),
-    }).catch(() => { /* best effort */ });
-  } catch { /* best effort */ }
-});
