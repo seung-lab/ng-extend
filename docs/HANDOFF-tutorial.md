@@ -82,6 +82,11 @@ one learner at a time, and put it back afterwards.
      into 648518346357382467 and 648518346351477006 (view 5674918603653120),
      so merge the two back together before registering it as a `cut`
      example; the registration takes the fused state as the baseline.
+- Merge candidate from Amy, 2026-09-26: a branch cut in half, view
+  5653391690694656, pieces 648518346350730372 and 648518346351348401.
+  Register it as `merge_then_cut` from that view (hover the cell for A, the
+  cut-off branch for B). tutorial-3.ts also loads this view on the merge
+  steps when no practice cell can be claimed.
 
 ## Rules
 

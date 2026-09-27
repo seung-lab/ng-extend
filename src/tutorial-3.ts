@@ -2,6 +2,7 @@ import { Step } from "./store-pyr";
 import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
 import { beginPractice, currentPractice, endPractice, piecesMerged } from './practice';
+import { useLayersStore } from './store';
 
 // Amy's cut walkthrough, 2026-09-26: a fused axon in the sandbox, the same
 // cell before the cut with the error marked, with the red and blue points
@@ -9,6 +10,10 @@ import { beginPractice, currentPractice, endPractice, piecesMerged } from './pra
 const STATE_CUT_FUSED  = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5679121900240896';
 const STATE_CUT_POINTS = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5745573634244608';
 const STATE_CUT_DONE   = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5675806990794752';
+// Amy's merge example, 2026-09-26: a branch she cut in half in the sandbox
+// (648518346350730372 and 648518346351348401). Shown when no practice cell
+// can be claimed, so the merge steps always have something to point at.
+const STATE_MERGE_EXAMPLE = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5653391690694656';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function getViewer(): any {
@@ -156,8 +161,6 @@ You can also activate it from the toolbar at the top of the screen.
 Once activated, you'll see the merge tool appear at the bottom of the viewer.`,
     position: MIDDLE,
     width: "450px",
-    // TODO: Amy — state with segmentation layer selected, clean view
-    // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
     onEnter: closeSidePanel,
   },
 
@@ -169,9 +172,18 @@ With the merge tool active:
 1. **Ctrl+Click** on the first segment (the one you're merging *from*).
 2. **Ctrl+Click** on the second segment (the one you're merging *into*).
 
-The system will attempt to connect these two segments. You'll see a status message — "trying..." and then "done" if successful.`,
+The system will attempt to connect these two segments. You'll see a status message, "trying..." and then "done" if successful.
+
+Behind this box is a cell with a branch cut off it. It is yours to practice on from here to the end of the merge section.`,
     position: OVER_3D,
     width: "400px",
+    onEnter: async () => {
+      closeSidePanel();
+      watchPractice(true, 'This branch needs a merge. Try it now, or read on and do it at Your Turn.', 'Merged! The branch is part of the cell now.');
+      const ex = await beginPractice('merge_then_cut');
+      // No cell free (or not signed in): show Amy's example to look at.
+      if (!ex) await useLayersStore().loadState(STATE_MERGE_EXAMPLE);
+    },
   },
 
   // 7 — Merge tips
@@ -203,7 +215,8 @@ Press **next** once the box below says the merge landed (or skip if you'd like t
     onEnter: async () => {
       closeSidePanel();
       watchPractice(true, 'Waiting for your merge…', 'Merged! The branch is part of the cell now. Press next.');
-      await beginPractice();
+      const ex = await beginPractice('merge_then_cut');
+      if (!ex) await useLayersStore().loadState(STATE_MERGE_EXAMPLE);
     },
   },
 
