@@ -36,6 +36,9 @@ export interface PracticeExample {
   supervoxel_b: string;
   root_a: string;
   root_b: string;
+  /** JSON [x, y, z] in viewer voxels, from the registering admin's hover. */
+  point_a?: string | null;
+  point_b?: string | null;
   baseline_at: string;
   status: 'ready' | 'in_use' | 'needs_reset' | 'resetting' | 'broken';
   enabled: boolean;
@@ -120,6 +123,20 @@ export async function ensureSupervoxels(ex: PracticeExample): Promise<PracticeEx
   return ex;
 }
 
+/** PyChunkedGraph timestamps arrive as epoch seconds, epoch milliseconds
+ *  or "YYYY-MM-DD HH:MM:SS.ffffff" strings depending on the version; read
+ *  them all. NaN means unparseable. */
+export function parsePcgStamp(v: unknown): number {
+  if (typeof v === 'number') return v < 1e11 ? v * 1000 : v;
+  if (typeof v === 'string') {
+    if (/^\d+(\.\d+)?$/.test(v)) return parsePcgStamp(Number(v));
+    let t = Date.parse(v);
+    if (Number.isNaN(t)) t = Date.parse(v.replace(' ', 'T') + (/[zZ]$|[+-]\d\d:?\d\d$/.test(v) ? '' : 'Z'));
+    return t;
+  }
+  return NaN;
+}
+
 interface LogOp { operationId: number; at: number }
 
 /** Operations in a root's lineage made after `sinceIso`, newest first. */
@@ -131,10 +148,14 @@ async function opsSince(ex: PracticeExample, rootId: string, sinceIso: string): 
   const stamps: any[] = data.timestamp ?? [];
   const since = new Date(sinceIso).getTime();
   const out: LogOp[] = [];
+  let unparsed = 0;
   for (let i = 0; i < ids.length; i++) {
-    const at = new Date(stamps[i]).getTime();
-    if (Number.isFinite(at) && at > since) out.push({ operationId: Number(ids[i]), at });
+    const at = parsePcgStamp(stamps[i]);
+    if (!Number.isFinite(at)) { unparsed++; continue; }
+    if (at > since) out.push({ operationId: Number(ids[i]), at });
   }
+  if (unparsed) console.warn(`[practice] ${unparsed} log entries with unreadable timestamps on root ${rootId}, sample:`, stamps[0]);
+  console.info(`[practice] root ${rootId}: ${ids.length} operations in its history, ${out.length} after ${sinceIso}, newest stamp`, stamps[ids.length - 1]);
   return out.sort((a, b) => b.at - a.at);
 }
 
@@ -198,8 +219,9 @@ export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: strin
   // A cut example starts fused; a merge example starts separate.
   const wantFused = ex.kind === 'cut';
   if ((a === b) !== wantFused) {
-    throw new Error(wantFused ? `after undo the pieces are still apart (${a}, ${b})`
-                              : `after undo both pieces are still on root ${a}`);
+    const detail = `${ops.length} operation(s) after the baseline ${ex.baseline_at} were undone; see the console for the operation log`;
+    throw new Error(wantFused ? `after undo the pieces are still apart (${a}, ${b}); ${detail}`
+                              : `after undo both pieces are still on root ${a}; ${detail}`);
   }
   return { a, b, undone: ops.length };
 }
@@ -262,9 +284,154 @@ export function ensureTool(tool: 'merge' | 'multicut', attempt = 0) {
   }
 }
 
+/**
+ * Put the example's registered points into the merge tool as a finished
+ * merge line, so a stuck learner only has to press Submit. The graphene
+ * layer keeps merge lines as annotations in `mergeAnnotationState`; adding
+ * one there is exactly what two Ctrl+clicks do. Points are in the viewer's
+ * voxel space; the annotation layer shares it for these datasets.
+ */
+export function placeMergeLine(): boolean {
+  const ex = session.example;
+  if (!ex || !ex.point_a || !ex.point_b) return false;
+  let pa: number[], pb: number[];
+  try { pa = JSON.parse(ex.point_a); pb = JSON.parse(ex.point_b); } catch { return false; }
+  if (!Array.isArray(pa) || !Array.isArray(pb) || pa.length < 3 || pb.length < 3) return false;
+  const layer = segLayer(ex.dataset);
+  const gc = layer?.graphConnection?.value;
+  const source = gc?.mergeAnnotationState?.source;
+  if (!source) { console.warn('[practice] no merge annotation source; is the merge tool on?'); return false; }
+  const rootA = session.rootA || ex.root_a, rootB = session.rootB || ex.root_b;
+  try {
+    // The sink is the cell (B side of the line is the piece), matching what
+    // the tool records from two clicks: [sinkRoot, sinkSupervoxel, sourceRoot, sourceSupervoxel].
+    source.add({
+      id: `nge-practice-${ex.id}`,
+      type: 1, // AnnotationType.LINE
+      pointA: Float32Array.from(pa.slice(0, 3)),
+      pointB: Float32Array.from(pb.slice(0, 3)),
+      relatedSegments: [[
+        Uint64.parseString(rootA), Uint64.parseString(ex.supervoxel_a),
+        Uint64.parseString(rootB), Uint64.parseString(ex.supervoxel_b),
+      ]],
+      properties: [],
+    });
+    return true;
+  } catch (e) {
+    console.warn('[practice] placing the merge line failed:', e);
+    return false;
+  }
+}
+
+// ─── Holding a cell: activity keeps it, silence hands it back ───────────────
+// Amy: a cell is held while the learner is active; after a minute of
+// silence a countdown shows, and at five minutes the cell is undone and
+// released for the next person. The claim itself expires after the same five
+// minutes, so a closed tab releases on the server side too.
+
+export const HOLD_MINUTES = 5;
+const WARN_AFTER_MS = 60 * 1000;
+const RELEASE_AFTER_MS = HOLD_MINUTES * 60 * 1000;
+
+let lastActivity = Date.now();
+let lastHeartbeat = 0;
+let activityTimer: ReturnType<typeof setInterval> | null = null;
+let activityListening = false;
+
+function noteActivity() {
+  lastActivity = Date.now();
+}
+
+/** Seconds left before the cell is released, or null when not counting down. */
+export function releaseCountdown(): number | null {
+  if (!session.example) return null;
+  const idle = Date.now() - lastActivity;
+  if (idle < WARN_AFTER_MS) return null;
+  return Math.max(0, Math.ceil((RELEASE_AFTER_MS - idle) / 1000));
+}
+
+function startActivityWatch() {
+  lastActivity = Date.now();
+  if (!activityListening) {
+    activityListening = true;
+    for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel']) {
+      window.addEventListener(ev, noteActivity, { passive: true, capture: true });
+    }
+  }
+  if (activityTimer) return;
+  activityTimer = setInterval(async () => {
+    const ex = session.example;
+    if (!ex) { clearInterval(activityTimer!); activityTimer = null; return; }
+    const idle = Date.now() - lastActivity;
+    // Active: push the claim's expiry along once a minute.
+    if (idle < WARN_AFTER_MS && Date.now() - lastHeartbeat > 60 * 1000) {
+      lastHeartbeat = Date.now();
+      supabase.from('tutorial_practice_examples')
+        .update({ expires_at: new Date(Date.now() + RELEASE_AFTER_MS).toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', ex.id).eq('status', 'in_use')
+        .then(({ error }) => { if (error) console.warn('[practice] heartbeat failed:', error.message); });
+    }
+    document.dispatchEvent(new CustomEvent('nge:practice-countdown', { detail: { seconds: releaseCountdown() } }));
+    if (idle >= RELEASE_AFTER_MS) {
+      clearInterval(activityTimer!); activityTimer = null;
+      session.phase = 'released';
+      await endPractice();
+      session.phase = 'released';
+      document.dispatchEvent(new CustomEvent('nge:practice-released'));
+    }
+  }, 1000);
+}
+
+// ─── Waiting list ───────────────────────────────────────────────────────────
+// When every cell of a kind is held, the learner joins the queue
+// (tutorial_practice_waitlist). While the tutorial step is open the client
+// checks every 20 s; the first in line whose turn comes gets the cell and a
+// notification. Someone who leaves the step drops out of the queue.
+
+let waitTimer: ReturnType<typeof setInterval> | null = null;
+
+export async function joinWaitlist(kind: PracticeKind, onReady: (ex: PracticeExample) => void, onPosition: (n: number) => void) {
+  const uid = userId();
+  if (!uid) return;
+  leaveWaitlist();
+  const { error } = await supabase.from('tutorial_practice_waitlist')
+    .upsert({ user_id: uid, kind, created_at: new Date().toISOString() }, { onConflict: 'user_id,kind' });
+  if (error) { console.warn('[practice] waitlist join failed:', error.message); return; }
+  const check = async () => {
+    const { data } = await supabase.from('tutorial_practice_waitlist')
+      .select('user_id').eq('kind', kind).order('created_at');
+    const queue = (data ?? []).map((r: any) => r.user_id as string);
+    const pos = queue.indexOf(uid);
+    onPosition(pos < 0 ? 0 : pos + 1);
+    if (pos !== 0) return; // not our turn yet
+    const ex = await beginPractice(kind);
+    if (ex) {
+      leaveWaitlist();
+      try {
+        const { useProofreadingBackendStore } = await import('./store');
+        await useProofreadingBackendStore().createSelfNotification({
+          title: 'Your practice cell is ready',
+          body: 'A cell freed up for the tutorial. Jump in, it is yours while you work; after five quiet minutes it goes to the next person in line.',
+        });
+      } catch { /* the status box says it too */ }
+      onReady(ex);
+    }
+  };
+  await check();
+  waitTimer = setInterval(check, 20 * 1000);
+}
+
+export function leaveWaitlist() {
+  if (waitTimer) { clearInterval(waitTimer); waitTimer = null; }
+  const uid = userId();
+  if (!uid) return;
+  supabase.from('tutorial_practice_waitlist').delete().eq('user_id', uid)
+    .then(({ error }) => { if (error) console.warn('[practice] waitlist leave failed:', error.message); });
+}
+
 // ─── Session state ──────────────────────────────────────────────────────────
 
-export type PracticePhase = 'none' | 'claiming' | 'merge' | 'cut' | 'busy' | 'unavailable' | 'done';
+export type PracticePhase = 'none' | 'claiming' | 'merge' | 'cut' | 'busy' | 'unavailable' | 'done' | 'released';
 
 const session = {
   example: null as PracticeExample | null,
@@ -312,7 +479,7 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
     await endPractice();
   }
   session.phase = 'claiming';
-  const { data, error } = await supabase.rpc('claim_practice_example', { p_user: uid, p_kind: kind });
+  const { data, error } = await supabase.rpc('claim_practice_example', { p_user: uid, p_kind: kind, p_minutes: HOLD_MINUTES });
   if (error) { console.warn('[practice] claim failed:', error.message); session.phase = 'unavailable'; return null; }
   let row = (Array.isArray(data) ? data[0] : data) as PracticeExample | undefined;
   if (!row) row = await takeNeedsReset(uid, kind) ?? undefined;
@@ -320,6 +487,7 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   session.example = row;
   await showExample(row, view);
   session.phase = kind === 'cut' ? 'cut' : 'merge';
+  startActivityWatch();
   return row;
 }
 
@@ -334,7 +502,7 @@ async function takeNeedsReset(uid: string, kind: PracticeKind): Promise<Practice
     .eq('enabled', true).eq('kind', kind).eq('status', 'needs_reset').order('uses').limit(1);
   const row = (data?.[0] ?? null) as PracticeExample | null;
   if (!row) return null;
-  const expires = new Date(Date.now() + 45 * 60 * 1000).toISOString();
+  const expires = new Date(Date.now() + HOLD_MINUTES * 60 * 1000).toISOString();
   const { error } = await supabase.from('tutorial_practice_examples')
     .update({ status: 'in_use', claimed_by: uid, claimed_at: new Date().toISOString(), expires_at: expires, updated_at: new Date().toISOString() })
     .eq('id', row.id).eq('status', 'needs_reset');
