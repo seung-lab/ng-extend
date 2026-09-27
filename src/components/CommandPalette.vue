@@ -211,17 +211,6 @@ function buildActions(): PaletteItem[] {
     action: () => activateTool('multicut'),
   });
   items.push({
-    id: 'tool-undo',
-    label: 'Undo',
-    description: 'Undo last action',
-    category: 'tool',
-    icon: '↩️',
-    shortcut: 'Ctrl+Z',
-    action: () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', ctrlKey: true, bubbles: true }));
-    },
-  });
-  items.push({
     id: 'reset-view',
     label: 'Reset Viewer Position',
     description: 'Return to default position',

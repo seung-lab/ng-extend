@@ -28,7 +28,10 @@ function setAnnotationColor(color: string) {
   }
 }
 
-/** Remove a segment from the first segmentation layer */
+/** Remove a segment from the first segmentation layer.
+ *  The visible set lives in segmentationGroupState in this neuroglancer;
+ *  the older `rootSegments` is kept as a fallback (it was the only path
+ *  before, and it does not exist here, so these removals never happened). */
 function removeSegment(segId: string) {
   const viewer = getViewer();
   if (!viewer) return;
@@ -38,7 +41,8 @@ function removeSegment(segId: string) {
     const layer = ml.layer;
     const name = layer && layer.constructor && layer.constructor.name;
     if (name && (name as string).indexOf('Segmentation') >= 0) {
-      const rootSegs = layer.displayState && layer.displayState.rootSegments;
+      const rootSegs = layer.displayState?.segmentationGroupState?.value?.visibleSegments
+        ?? layer.displayState?.rootSegments;
       if (rootSegs) {
         for (const seg of rootSegs) {
           if (seg.toString() === segId) {
@@ -48,6 +52,19 @@ function removeSegment(segId: string) {
         }
       }
     }
+  }
+}
+
+/** Close the viewer's side panels through neuroglancer's own state, so they
+ *  can be reopened normally. (These steps used to set display:none on every
+ *  side panel element, which left the panels unopenable until a reload.) */
+function closeSidePanels() {
+  const viewer = getViewer();
+  if (!viewer) return;
+  try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+  for (const panel of [viewer.layerListPanelState, viewer.selectionDetailsState,
+                       viewer.helpPanelState, viewer.settingsPanelState]) {
+    try { panel.location.visible = false; } catch (e) { /* */ }
   }
 }
 
@@ -309,35 +326,10 @@ Hit next to reveal the answer.`,
       offset: { x: 0, y: 0 },
     },
     onEnter: () => {
-      const viewer = getViewer();
-      if (!viewer) return;
-      // Close layers side panel aggressively
-      function closePanel() {
-        try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
-        try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
-        // Hide any side panel elements by broad class matching
-        var selectors = [
-          '.neuroglancer-layer-side-panel-container',
-          '.neuroglancer-layer-list-panel',
-          '.neuroglancer-selected-layer-side-panel',
-          '[class*="side-panel"]',
-          '[class*="sidepanel"]',
-          '[class*="SidePanel"]',
-        ];
-        for (var i = 0; i < selectors.length; i++) {
-          var els = document.querySelectorAll(selectors[i]);
-          for (var j = 0; j < els.length; j++) {
-            (els[j] as HTMLElement).style.display = 'none';
-          }
-        }
-        // Also try toggling the layer bar visibility
-        try { viewer.showLayerPanel.value = false; } catch (e) { /* */ }
-        try { viewer.layerSpecification.visible = false; } catch (e) { /* */ }
-      }
-      closePanel();
-      setTimeout(closePanel, 300);
-      setTimeout(closePanel, 1000);
-      setTimeout(closePanel, 2000);
+      // The state load can reopen a panel, so close again once it settles.
+      closeSidePanels();
+      setTimeout(closeSidePanels, 300);
+      setTimeout(closeSidePanels, 1000);
 
       // Fun hamburger emoji animation on the menu button
       setTimeout(() => {
@@ -405,19 +397,6 @@ Thanks for being a part of the neuroscience community. For Science!`,
     image:
       imgTutorialFinal,
     width: "600px",
-    onEnter: () => {
-      const viewer = getViewer();
-      if (!viewer) return;
-      try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
-      try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
-      try { viewer.showLayerPanel.value = false; } catch (e) { /* */ }
-      var selectors = ['[class*="side-panel"]', '[class*="sidepanel"]', '[class*="SidePanel"]'];
-      for (var i = 0; i < selectors.length; i++) {
-        var els = document.querySelectorAll(selectors[i]);
-        for (var j = 0; j < els.length; j++) {
-          (els[j] as HTMLElement).style.display = 'none';
-        }
-      }
-    },
+    onEnter: closeSidePanels,
   },
 ];
