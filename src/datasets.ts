@@ -24,9 +24,6 @@ export interface DatasetEntry {
   /** Organism the volume comes from; drives the species icon. */
   species: 'mouse' | 'fly';
   description: string;
-  /** Wide render of this dataset's own cells, shown behind its name on the
-   *  profile. Only set it to a render OF this volume, never a stand-in. */
-  banner?: string;
   /** Small 16:9 image for dataset cards (profile Datasets tab). Falls back
    *  to the species icon when unset. */
   thumbnail?: string;
@@ -155,8 +152,6 @@ export const DATASETS: DatasetEntry[] = [
     abbrev: 'MEC',
     species: 'mouse',
     description: 'PNI medial entorhinal cortex, grid cell circuitry (16×16×45 nm)',
-    // The hero render from connectome.quest/mec (MEC neurons, 1920x1280).
-    banner: 'https://connectome.quest/assets/images/mec-banner-hero.jpg',
     layers: [
       {
         type: 'image',
