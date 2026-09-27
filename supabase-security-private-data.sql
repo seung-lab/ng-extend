@@ -36,7 +36,7 @@ revoke all privileges on public.admins, public.feedback_triage,
 do $$
 declare t text; col text;
 begin
-  foreach t in array array['users','working_links','notification_reads','user_groups','user_group_members','admins','feedback_triage','notifications','site_issues'] loop
+  foreach t in array array['users','working_links','notification_reads','user_groups','user_group_members','admins','feedback_triage','notifications','site_issues','chat_messages','cave_edits_mirror','cave_completions_mirror','weekly_winners'] loop
     for col in select column_name from information_schema.columns where table_schema='public' and table_name=t loop
       execute format('revoke insert (%I), update (%I) on public.%I from public, anon, authenticated', col, col, t);
       if t in ('users','admins','feedback_triage','notifications','site_issues','notification_reads') then
