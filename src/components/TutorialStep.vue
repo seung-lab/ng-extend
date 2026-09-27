@@ -492,9 +492,11 @@ onUnmounted(() => {
     position: absolute;
     width: auto;
     max-width: min(80vw, calc(100vw - 24px));
-    /* Tall steps scroll instead of cropping on short laptop screens. */
+    /* Tall steps scroll instead of cropping on short laptop screens, but
+       without a visible scrollbar (Amy): the wheel still works. */
     max-height: calc(100vh - 90px);
     overflow-y: auto;
+    scrollbar-width: none;
     color: #d0e8ff;
     padding: 30px;
     padding-bottom: 20px;
@@ -878,6 +880,9 @@ onUnmounted(() => {
     border: 1px solid rgba(120, 180, 240, 0.18);
     background: rgba(0, 0, 0, 0.35);
     line-height: 0;
+}
+.chip::-webkit-scrollbar {
+    display: none;
 }
 .nge-tour-welcome-hero img {
     display: block;
