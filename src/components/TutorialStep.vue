@@ -198,6 +198,14 @@ async function updateChipPosition() {
             left = `${step.position.x * rect.width + rect.left}px`;
             top = `${step.position.y * rect.height + rect.top}px`;
         }
+    } else {
+        // The target is gone (a toolbar icon the user removed, or a UI
+        // redesign). Centre the box instead of leaving it stuck in the top
+        // left corner, and say which selector failed so audits catch it.
+        console.warn('[tutorial] step target not found, centring:', step.position.element);
+        cssClass = 'center';
+        left = `${window.innerWidth / 2}px`;
+        top = `${window.innerHeight / 2}px`;
     }
 
     chipBounds.value = { top: 'auto', left: 'auto', 'width': 'inherit' };
@@ -310,9 +318,22 @@ onMounted(async () => {
 
 // Intercept ENTER to advance tutorial, SPACE for specific steps
 // Skip if user is typing in an input/textarea (e.g. coordinate fields)
+// While a viewer tool (Cut, Merge, Find Path) is active, Enter is its
+// "submit" key, so the tutorial must leave Enter and Space to the viewer.
+// Otherwise "press Enter to submit the cut" just advanced the tutorial.
+function viewerToolActive(): boolean {
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+    const viewer = (window as any)['viewer'];
+    try {
+        if (viewer?.globalToolBinder?.activeTool_ || viewer?.toolBinder?.activeTool_) return true;
+    } catch (_) { /* fall through to the DOM check */ }
+    return !!document.querySelector('.neuroglancer-tool-status');
+}
+
 function onKeyDown(e: KeyboardEvent) {
     const tag = (document.activeElement as HTMLElement)?.tagName;
     const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable;
+    if ((e.code === 'Enter' || e.code === 'Space') && viewerToolActive()) return;
 
     if (e.code === 'Enter' && !isTyping) {
         e.preventDefault();

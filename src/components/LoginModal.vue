@@ -694,7 +694,10 @@ function serverLabel(url: string): string {
 
 .nge-login-why {
   position: relative;
-  margin: 14px auto 0;
+  /* The server list above ends in a 24px margin, so pull up a little and
+     leave room below: with a zero bottom margin the callout sat flush on the
+     Initialize Connection button and its shadow read as an overlap. */
+  margin: -8px auto 20px;
   max-width: 340px;
   font-size: 11.5px;
   line-height: 1.55;

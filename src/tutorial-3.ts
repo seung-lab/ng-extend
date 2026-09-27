@@ -120,7 +120,6 @@ With the merge tool active:
 The system will attempt to connect these two segments. You'll see a status message — "trying..." and then "done" if successful.`,
     position: OVER_3D,
     width: "400px",
-    spaceAdvances: true,
   },
 
   // 7 — Merge tips
@@ -130,7 +129,7 @@ The system will attempt to connect these two segments. You'll see a status messa
 - Click as **close to the junction** as possible — where the two pieces should connect.
 - In the **2D view**, you can see the cross-section to find the exact spot where the segments touch.
 - If a merge fails, try clicking at a slightly different location.
-- You can **undo** a merge with **Ctrl+Z**.`,
+- Merged the wrong piece? There is no undo key. Fix it with a **cut** between the two pieces, which the Cut section teaches next.`,
     position: OVER_2D,
     width: "400px",
   },
@@ -152,7 +151,6 @@ Press **next** when you're done (or skip if you'd like to move on).`,
     // TODO: Amy — state with a practice merge scenario (obvious disconnected branch)
     // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
     onEnter: closeSidePanel,
-    spaceAdvances: true,
   },
 
   // ═══════════════════════════════════════
@@ -235,10 +233,9 @@ After placing your red and blue points:
 - Press **Enter** to submit the cut.
 - You'll see a "splitting..." status — wait for it to process (this can take a moment).
 - If successful, the segment will split into two separate pieces.
-- You can **undo** with **Ctrl+Z** if the result isn't right.`,
+- If the result isn't right, there is no undo key. Rejoin the pieces with a **merge**.`,
     position: OVER_3D,
     width: "400px",
-    spaceAdvances: true,
   },
 
   // 15 — Try it yourself
@@ -258,7 +255,6 @@ Press **next** when you're done.`,
     // TODO: Amy — state with a practice cut scenario (obvious fusion error)
     // state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/XXXXXXXXX",
     onEnter: closeSidePanel,
-    spaceAdvances: true,
   },
 
   // ═══════════════════════════════════════
@@ -278,7 +274,8 @@ Here's your cheat sheet:
 | **Place point** | Ctrl+Click |
 | **Switch red/blue** | G |
 | **Submit cut** | Enter |
-| **Undo** | Ctrl+Z |
+| **Fix a bad merge** | Cut it apart |
+| **Fix a bad cut** | Merge it back |
 
 You can also find video guides in the **☰ menu** at the top right.`,
     position: MIDDLE,

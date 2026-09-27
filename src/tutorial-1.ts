@@ -51,6 +51,19 @@ function removeSegment(segId: string) {
   }
 }
 
+/** Close the viewer's side panels through neuroglancer's own state, so they
+ *  can be reopened normally. (These steps used to set display:none on every
+ *  side panel element, which left the panels unopenable until a reload.) */
+function closeSidePanels() {
+  const viewer = getViewer();
+  if (!viewer) return;
+  try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+  for (const panel of [viewer.layerListPanelState, viewer.selectionDetailsState,
+                       viewer.helpPanelState, viewer.settingsPanelState]) {
+    try { panel.location.visible = false; } catch (e) { /* */ }
+  }
+}
+
 const MIDDLE = {
   element: "body",
   x: 0.5,
@@ -309,35 +322,10 @@ Hit next to reveal the answer.`,
       offset: { x: 0, y: 0 },
     },
     onEnter: () => {
-      const viewer = getViewer();
-      if (!viewer) return;
-      // Close layers side panel aggressively
-      function closePanel() {
-        try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
-        try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
-        // Hide any side panel elements by broad class matching
-        var selectors = [
-          '.neuroglancer-layer-side-panel-container',
-          '.neuroglancer-layer-list-panel',
-          '.neuroglancer-selected-layer-side-panel',
-          '[class*="side-panel"]',
-          '[class*="sidepanel"]',
-          '[class*="SidePanel"]',
-        ];
-        for (var i = 0; i < selectors.length; i++) {
-          var els = document.querySelectorAll(selectors[i]);
-          for (var j = 0; j < els.length; j++) {
-            (els[j] as HTMLElement).style.display = 'none';
-          }
-        }
-        // Also try toggling the layer bar visibility
-        try { viewer.showLayerPanel.value = false; } catch (e) { /* */ }
-        try { viewer.layerSpecification.visible = false; } catch (e) { /* */ }
-      }
-      closePanel();
-      setTimeout(closePanel, 300);
-      setTimeout(closePanel, 1000);
-      setTimeout(closePanel, 2000);
+      // The state load can reopen a panel, so close again once it settles.
+      closeSidePanels();
+      setTimeout(closeSidePanels, 300);
+      setTimeout(closeSidePanels, 1000);
 
       // Fun hamburger emoji animation on the menu button
       setTimeout(() => {
@@ -405,19 +393,6 @@ Thanks for being a part of the neuroscience community. For Science!`,
     image:
       imgTutorialFinal,
     width: "600px",
-    onEnter: () => {
-      const viewer = getViewer();
-      if (!viewer) return;
-      try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
-      try { viewer.selectedLayer.layer = null; } catch (e) { /* */ }
-      try { viewer.showLayerPanel.value = false; } catch (e) { /* */ }
-      var selectors = ['[class*="side-panel"]', '[class*="sidepanel"]', '[class*="SidePanel"]'];
-      for (var i = 0; i < selectors.length; i++) {
-        var els = document.querySelectorAll(selectors[i]);
-        for (var j = 0; j < els.length; j++) {
-          (els[j] as HTMLElement).style.display = 'none';
-        }
-      }
-    },
+    onEnter: closeSidePanels,
   },
 ];
