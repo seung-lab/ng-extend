@@ -99,6 +99,7 @@ jobs:
           prompt: Read ${{ steps.prep.outputs.prompt_file }} and do exactly what it says.
           claude_args: >-
             --model opus
+            --permission-mode acceptEdits
             --max-turns 80
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(node scripts/build-prod.js),Bash(npm run typecheck),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
 
@@ -133,7 +134,9 @@ jobs:
             node scripts/triage-loop.mjs blocked
             echo "stopped=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          git add -A -- . ':!node_modules' ':!dist' ':!appengine/frontend/static' ':!.triage'
+          # .gitignore already keeps node_modules, dist and .triage out; naming
+          # ignored paths here makes git add fail and lose Claude's work.
+          git add -A
           if git diff --cached --quiet; then
             echo "Claude made no changes and did not say BLOCKED or QUESTION" >&2; exit 1
           fi
