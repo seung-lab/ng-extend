@@ -115,7 +115,7 @@ export const steps: Step[] = [
     text: `
 AI reconstructions of neurons are impressive, but they're not perfect. Sometimes the AI fuses two separate neurons into one. Other times, it misses a branch entirely, leaving a neuron incomplete.
 
-**Cut** and **Merge** are the two core tools you'll use to fix these errors and help map the brain accurately.
+<strong style="color:#e06060">Cut</strong> and <strong style="color:#60c060">Merge</strong> are the two core tools you'll use to fix these errors and help map the brain accurately.
 `
     + beforeAfter(
         imgCutBefore, 'Before: a thin axon runs into this dendrite, and the AI made them one segment.',
@@ -130,7 +130,7 @@ AI reconstructions of neurons are impressive, but they're not perfect. Sometimes
     text: `
 Every correction you make improves the connectome, the wiring diagram of the brain.
 
-**Merge** reconnects branches that the AI missed. **Cut** separates neurons the AI incorrectly fused together.
+<strong style="color:#60c060">Merge</strong> reconnects branches that the AI missed. <strong style="color:#e06060">Cut</strong> separates neurons the AI incorrectly fused together.
 
 These two operations are the bread and butter of proofreading. Let's start with Merge.`,
     position: MIDDLE,
@@ -146,7 +146,7 @@ These two operations are the bread and butter of proofreading. Let's start with 
   {
     title: "Merge",
     text: `
-A **merge** joins two separate segments that actually belong to the same neuron.
+A <strong style="color:#60c060">merge</strong> joins two separate segments that actually belong to the same neuron.
 
 This is needed when the AI fails to connect parts of a cell. For example, a dendrite that should be attached to the soma but was reconstructed as a separate piece.`,
     position: MIDDLE,
@@ -202,7 +202,7 @@ Behind this box is a cell with a branch cut off it. It is yours to practice on f
 - Click as **close to the junction** as possible, where the two pieces should connect.
 - In the **2D view**, you can see the cross-section to find the exact spot where the segments touch.
 - If a merge fails, try clicking at a slightly different location.
-- Merged the wrong piece? There is no undo key. Fix it with a **cut** between the two pieces, which the Cut section teaches next.`,
+- Merged the wrong piece? There is no undo key. Fix it with a <strong style="color:#e06060">cut</strong> between the two pieces, which the Cut section teaches next.`,
     position: OVER_2D,
     width: "400px",
   },
@@ -238,7 +238,7 @@ Press **next** once the box below says the merge landed (or skip if you'd like t
   {
     title: "Cut",
     text: `
-A **cut** separates a segment into two pieces. This is needed when the AI incorrectly fuses two different neurons into one, a common error, especially in densely packed regions.
+A <strong style="color:#e06060">cut</strong> separates a segment into two pieces. This is needed when the AI incorrectly fuses two different neurons into one, a common error, especially in densely packed regions.
 
 If you see a segment with a branch that clearly belongs to a *different* cell, that's a cut waiting to happen.
 
@@ -307,7 +307,7 @@ After placing your red and blue points:
 - Press **Enter** to submit the cut.
 - You'll see a "splitting..." status. Wait for it to process (this can take a moment).
 - If successful, the segment will split into two separate pieces.
-- If the result isn't right, there is no undo key. Rejoin the pieces with a **merge**.
+- If the result isn't right, there is no undo key. Rejoin the pieces with a <strong style="color:#60c060">merge</strong>.
 
 This is the same cell after the cut: the axon is its own segment now.`,
     position: OVER_3D,
@@ -353,8 +353,8 @@ Here's your cheat sheet:
 
 | Action | Key |
 |--------|-----|
-| **Merge** | M |
-| **Cut** | C |
+| <strong style="color:#60c060">Merge</strong> | M |
+| <strong style="color:#e06060">Cut</strong> | C |
 | **Place point** | Ctrl+Click |
 | **Switch red/blue** | G |
 | **Submit cut** | Enter |
