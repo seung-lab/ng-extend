@@ -568,6 +568,8 @@ const toolbarActions: Record<string, ToolbarAction> = {
   quest:       { action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
   cells:       { action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
   batch:       { action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
+  // Toolbar camera (Amy): the same Save screenshot dialog the palette opens.
+  screenshot:  { action: () => { showScreenshotDialog.value = true; } },
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
   tags:        { action: () => { showTagMode.value = !showTagMode.value; } },

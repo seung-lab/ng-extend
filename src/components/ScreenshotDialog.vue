@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onBeforeUnmount } from 'vue';
 
+import nurroLaser from '../../static/nurro/nurro-laser-teach.png';
+import nurroInspector from '../../static/nurro/nurro-inspector.png';
+import nurroConfetti from '../../static/nurro/nurro-confetti-card.png';
+import nurroPopcorn from '../../static/nurro/nurro-popcorn-card.png';
+import nurroOriginal from '../../static/nurro/nurro-original.png';
+import nurroSuper from '../../static/nurro/nurro-super-v2.png';
+
 const props = withDefaults(defineProps<{
   show: boolean;
   /** 'download' (default) saves to disk; 'attach' uploads to Firebase Storage
@@ -43,6 +50,29 @@ const showScaleBar = ref(true);
  *  (Amy: a bug report needs the windows that were open). Uses the browser's
  *  screen capture of this tab, so it asks once and takes one frame. */
 const wholeScreen = ref(props.mode === 'attach');
+/** Crop to the 3D panel only (Amy), for clean neuron renders. */
+const only3d = ref(false);
+/** Nurro in a corner of the picture, because why not (Amy). Cycles through
+ *  the transparent Nurros in static/nurro; null means none. */
+const NURROS = [nurroLaser, nurroInspector, nurroConfetti, nurroPopcorn, nurroOriginal, nurroSuper];
+const nurroIndex = ref(-1);
+const nurroImg = ref<HTMLImageElement | null>(null);
+function addNurro() {
+  nurroIndex.value = (nurroIndex.value + 1) % (NURROS.length + 1);
+  if (nurroIndex.value === NURROS.length) { nurroIndex.value = -1; nurroImg.value = null; renderPreview(); return; }
+  const img = new Image();
+  img.onload = () => { nurroImg.value = img; renderPreview(); };
+  img.src = NURROS[nurroIndex.value];
+}
+/** Bottom right corner, a quarter of the image height, with a margin. */
+function drawNurro(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }) {
+  const img = nurroImg.value;
+  if (!img || !img.naturalWidth) return;
+  const h = Math.round(rect.h * 0.28);
+  const w = Math.round(h * img.naturalWidth / img.naturalHeight);
+  const m = Math.round(rect.h * 0.02);
+  ctx.drawImage(img, rect.x + rect.w - w - m, rect.y + rect.h - h - m, w, h);
+}
 const busy = ref(false);
 const errorMsg = ref('');
 const dialogHidden = ref(false);
@@ -164,12 +194,31 @@ function scheduleRelayout() {
  *  physicalSizePerPixel = zoomFactor / canvasHeight (in canonical base units,
  *  meters), so multiply by 1e9 to land in nm. Falls back to the slice-view
  *  navigation state for layouts without a perspective panel. */
+/** The 3D panel's element: the only rendered panel that carries the
+ *  "show slice views" checkbox. */
+function perspectivePanelEl(): HTMLElement | null {
+  return (document.querySelector('.perspective-panel-show-slice-views')?.closest('.neuroglancer-rendered-data-panel') as HTMLElement | null) ?? null;
+}
+
+/** Nanometres per SOURCE pixel in the 3D view, the way neuroglancer's own
+ *  perspective scale bar computes it: zoomFactor is canonical voxels per
+ *  panel height, times the canonical voxel's physical size. The old
+ *  version divided by the whole canvas height and assumed metres, which
+ *  printed things like "10000 m". */
 function computeNmPerPx(viewer: any, sh: number): number | null {
   if (!sh) return null;
   const persp = viewer?.perspectiveNavigationState ?? viewer?.navigationState;
   const zoom = persp?.zoomFactor?.value;
   if (typeof zoom !== 'number' || !isFinite(zoom) || zoom <= 0) return null;
-  return (zoom / sh) * 1e9;
+  const voxelM = viewer?.navigationState?.displayDimensionRenderInfo?.value?.canonicalVoxelPhysicalSize;
+  if (typeof voxelM !== 'number' || !isFinite(voxelM) || voxelM <= 0) return null;
+  const panel = perspectivePanelEl();
+  const canvas: HTMLCanvasElement | undefined = viewer?.display?.canvas;
+  const cssHeight = panel?.clientHeight || canvas?.clientHeight || 0;
+  if (!cssHeight) return null;
+  // Source pixels per CSS pixel (device pixel ratio of the WebGL canvas).
+  const dpr = canvas && canvas.clientHeight ? canvas.height / canvas.clientHeight : 1;
+  return (zoom / (cssHeight * dpr)) * voxelM * 1e9;
 }
 
 /** Capture a 2D canvas of the viewer's WebGL output with the given toggles
@@ -207,11 +256,27 @@ function captureSource(opts: { hideBoundingBox: boolean; showScaleBar: boolean }
       viewer.display.draw();
     }
     const out = document.createElement('canvas');
-    out.width = sw;
-    out.height = sh;
+    // 3D only: crop the source to the perspective panel's box.
+    let crop = { x: 0, y: 0, w: sw, h: sh };
+    if (only3d.value) {
+      const panel = perspectivePanelEl();
+      if (panel && sourceCanvas.clientWidth && sourceCanvas.clientHeight) {
+        const cr = sourceCanvas.getBoundingClientRect();
+        const pr = panel.getBoundingClientRect();
+        const kx = sw / cr.width, ky = sh / cr.height;
+        crop = {
+          x: Math.max(0, Math.round((pr.left - cr.left) * kx)),
+          y: Math.max(0, Math.round((pr.top - cr.top) * ky)),
+          w: Math.min(sw, Math.round(pr.width * kx)),
+          h: Math.min(sh, Math.round(pr.height * ky)),
+        };
+      }
+    }
+    out.width = crop.w;
+    out.height = crop.h;
     const ctx = out.getContext('2d')!;
-    ctx.drawImage(sourceCanvas, 0, 0);
-    return { canvas: out, sw, sh, nmPerPx: computeNmPerPx(viewer, sh) };
+    ctx.drawImage(sourceCanvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+    return { canvas: out, sw: crop.w, sh: crop.h, nmPerPx: computeNmPerPx(viewer, sh) };
   } catch (e) {
     console.error('captureSource failed:', e);
     return null;
@@ -357,6 +422,7 @@ function renderPreview() {
   if (showScaleBar.value && src.nmPerPx) {
     drawScaleBarOverlay(ctx, imgRect.value, src.nmPerPx, sh);
   }
+  drawNurro(ctx, imgRect.value);
 
   renderMarkup();
 }
@@ -496,13 +562,16 @@ watch(() => props.show, async (open) => {
     }
     hideBoundingBox.value = false;
     transparent.value = false;
+    only3d.value = false;
+    nurroIndex.value = -1;
+    nurroImg.value = null;
     strokes.value = [];
     layoutFrame();
     await refreshSource();
   }
 });
 
-watch([hideBoundingBox], () => {
+watch([hideBoundingBox, only3d], () => {
   if (props.show) refreshSource();
 });
 // Scale bar toggle is post-process, so no need to recapture, just redraw.
@@ -636,6 +705,7 @@ async function download() {
     if (showScaleBar.value && nmPerPx) {
       drawScaleBarOverlay(ctx, outRect, nmPerPx, sh);
     }
+    drawNurro(ctx, outRect);
 
     // Markup at full output resolution. Points are 0..1 of the image rect and
     // sizes are a fraction of image height, so outRect alone places them.
@@ -754,7 +824,7 @@ async function download() {
 
       <!-- Right bar: output, options, actions. -->
       <div class="nge-shotdlg-side">
-        <section class="nge-shotdlg-sec">
+        <section class="nge-shotdlg-sec" v-if="props.mode !== 'attach'">
           <h3 class="nge-shotdlg-sechead">Output size</h3>
           <div class="nge-shotdlg-dims">
             <label class="nge-shotdlg-field">
@@ -768,7 +838,7 @@ async function download() {
             </label>
             <span class="nge-shotdlg-px">px</span>
           </div>
-          <div class="nge-shotdlg-presets">
+          <div class="nge-shotdlg-presets" v-if="props.mode !== 'attach'">
             <button v-for="p in PRESETS" :key="p.label"
                     :class="{ 'is-active': isPreset(p.w, p.h) }"
                     @click="preset(p.w, p.h)">
@@ -797,7 +867,14 @@ async function download() {
               <input type="checkbox" v-model="showScaleBar" />
               <span>Show scale bar</span>
             </label>
+            <label class="nge-shotdlg-check" :class="{ 'is-off': wholeScreen }" title="Crop to the 3D view">
+              <input type="checkbox" v-model="only3d" :disabled="wholeScreen" />
+              <span>3D view only</span>
+            </label>
           </div>
+          <button class="nge-shotdlg-nurro" @click="addNurro" :disabled="wholeScreen" title="Put a Nurro in the corner. Click again for another, and again to take it off.">
+            {{ nurroImg ? 'Another Nurro' : 'Add a Nurro' }}
+          </button>
         </section>
 
         <div v-if="errorMsg" class="nge-shotdlg-err">{{ errorMsg }}</div>
@@ -816,6 +893,21 @@ async function download() {
 </template>
 
 <style scoped>
+.nge-shotdlg-nurro {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  background: rgba(245, 166, 35, 0.12);
+  color: #ffd27a;
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.nge-shotdlg-nurro:hover:not(:disabled) { background: rgba(245, 166, 35, 0.24); }
+.nge-shotdlg-nurro:disabled { opacity: 0.4; cursor: default; }
+.nge-shotdlg-check.is-off { opacity: 0.45; }
+
 /* Styled after Amy's scifi-ui library (holopanel surface, holoframe corner
    brackets, holoscan single pass), with the values copied inline rather than
    depending on the library at runtime. */
