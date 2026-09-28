@@ -33,12 +33,16 @@ async function pointsInState(stateUrl: string): Promise<number[][]> {
     const { url, credentialsProvider } = parseSpecialUrl(stateUrl, defaultCredentialsManager);
     const state: any = await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
     const out: number[][] = [];
-    for (const layer of state?.layers ?? []) {
+    // Layers are an array in current states and a name-keyed object in old ones.
+    const layers: any[] = Array.isArray(state?.layers) ? state.layers : Object.values(state?.layers ?? {});
+    for (const layer of layers) {
       if (layer?.type !== 'annotation') continue;
       for (const a of layer.annotations ?? []) {
-        if (a?.type === 'point' && Array.isArray(a.point)) out.push(a.point.slice(0, 3).map(Number));
+        const pt = a?.point ?? (a?.type === undefined && Array.isArray(a) ? a : null);
+        if ((a?.type === 'point' || a?.type === undefined) && Array.isArray(pt)) out.push(pt.slice(0, 3).map(Number));
       }
     }
+    console.info(`[tutorial] hint state: ${layers.length} layers, ${layers.filter(l => l?.type === 'annotation').length} annotation layers, ${out.length} points`);
     return out;
   } catch (e) {
     console.warn('[tutorial] could not read hint points:', e);
@@ -272,15 +276,28 @@ document.addEventListener('nge:tutorial-layer-note', () => {
 document.addEventListener('nge:tutorial-flash-seg-layer', () => {
   const viewer = getViewer();
   const layers: any[] = viewer?.layerManager?.managedLayers ?? [];
-  const idx = layers.findIndex(ml => (ml.layer?.constructor?.name ?? '').includes('Segmentation'));
-  const chips = document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item');
-  const chip = chips[idx] as HTMLElement | undefined;
-  if (!chip) return;
-  const old = chip.style.boxShadow;
-  chip.style.transition = 'box-shadow 0.3s';
+  const seg = layers.find(ml => (ml.layer?.constructor?.name ?? '').includes('Segmentation'));
+  const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
+  // Match the chip by its label; fall back to the layer's index.
+  let chip = seg ? chips.find(c => (c.textContent ?? '').includes(seg.name)) : undefined;
+  if (!chip) chip = chips[Math.max(0, layers.indexOf(seg))];
+  if (!chip) { console.warn('[tutorial] no layer chip to flash'); return; }
+  // The layer bar clips box shadows, so flash the chip itself: background,
+  // colour and a little scale, which stay inside the bar.
+  const old = { bg: chip.style.background, color: chip.style.color, transform: chip.style.transform, transition: chip.style.transition, z: chip.style.zIndex };
+  chip.style.transition = 'background 0.2s, transform 0.2s';
+  chip.style.zIndex = '5';
   let on = false;
-  const timer = setInterval(() => { on = !on; chip.style.boxShadow = on ? '0 0 0 3px #7ecaff, 0 0 18px 6px rgba(126,202,255,0.8)' : old; }, 350);
-  setTimeout(() => { clearInterval(timer); chip.style.boxShadow = old; }, 3200);
+  const timer = setInterval(() => {
+    on = !on;
+    chip!.style.background = on ? '#edd040' : old.bg;
+    chip!.style.color = on ? '#000' : old.color;
+    chip!.style.transform = on ? 'scale(1.12)' : old.transform;
+  }, 320);
+  setTimeout(() => {
+    clearInterval(timer);
+    Object.assign(chip!.style, { background: old.bg, color: old.color, transform: old.transform, transition: old.transition, zIndex: old.z });
+  }, 3500);
 });
 
 // A step's html can ask to start another tutorial (the merge tutorial's last
@@ -397,24 +414,26 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     },
   },
 
-  // 4: Placing merge points
+  // 4: Another merge, on a second cell
   {
+    title: "Let's try another merge",
     text: `
-With the merge tool active:
+This time an axon is missing a branch. The purple axon behind this box lost the yellow piece; the AI left it as its own segment.
 
-1. **Ctrl+Click** the yellow branch.
-2. **Ctrl+Click** the purple cell, close to where the branch should join it.
-3. Press **Submit merge** on the bar at the bottom, or press **Enter**.
+1. Press **M** if the merge tool is off.
+2. **Ctrl+Click** the yellow piece.
+3. **Ctrl+Click** the purple axon, close to where the piece should join it.
+4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
-The server connects the two. You'll see "trying..." and then "done", and the branch turns purple.`,
+You'll see "trying..." and then "done", and the piece turns purple.`,
     position: OVER_3D,
-    width: "400px",
+    width: "420px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merge success! You did it. The branch is part of the cell now.');
-      await beginPractice('merge_then_cut');
-      // The previous step said "press M"; if they pressed next instead,
-      // the tool comes on anyway.
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merge success! You did it again. The piece is part of the axon now.');
+      // Hand the first cell back (it is put right) and take another merge
+      // cell. With one registered it is the same cell, reset.
+      await beginPractice('merge_then_cut', 'start', { fresh: true });
       setTimeout(() => ensureTool('merge'), 400);
     },
   },
@@ -431,7 +450,7 @@ Merged already? Press next.`,
     position: OVER_2D,
     width: "400px",
     onEnter: () => {
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merge success! You did it. The branch is part of the cell now.');
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merge success! You did it. The piece is part of the axon now.');
     },
   },
 

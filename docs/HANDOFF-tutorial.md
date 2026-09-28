@@ -56,6 +56,26 @@ ends with a button that starts the cut one. Shared helpers (status box,
 watcher, (i) layer hint, before/after figure, positions) are exported from
 tutorial-3.ts. The book menu shows them as 3 Merge and 4 Cut.
 
+## Where things stand, 2026-09-28
+
+- Live on eyewire-ii-community. Both tutorials run on registered practice
+  cells with a five minute hold, idle countdown, auto release, waiting list
+  (`tutorial_practice_waitlist`; re-run the schema SQL once).
+- `src/markers.ts` draws Pyr pins over the 3D view (Show me where to click
+  in the I'm stuck panel; hint points from state 5751472100737024 or the
+  example's `point_a`/`point_b`). Projection assumes world = global voxel
+  coordinates times `canonicalVoxelFactors`; verify on screen once, the
+  Browser pane cannot render 3D.
+- Badges: Merge Master (tutorial 3) and Cut Master (tutorial 5) use Nurro
+  art until badge art exists, and need matching `special_badges` rows
+  (Admin Hub > Special Badges) to persist beyond the local celebration.
+- Another session (commit bd3641c) rewrote scripts/reset-practice-examples.mjs
+  around `config/practice-reset-manifest.json` and a policy module; the
+  client side reset in src/practice.ts is independent of it.
+- Still wanted by Amy: an image with several different merge examples, an
+  invitation to the Cut tutorial after a learner's third cut, more cut cells
+  registered (candidates listed below), `users.tutorial_5_step`.
+
 ## Practice cells (built 2026-09-26, needs Amy's examples)
 
 Tutorial 3's two "Your Turn" steps hand each learner a real sandbox cell,

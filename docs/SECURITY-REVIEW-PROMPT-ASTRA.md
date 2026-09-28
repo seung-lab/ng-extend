@@ -66,6 +66,10 @@ Your job is to find problems and explain them. Do not fix anything.
   `supabase-*.sql` (database policies as written), `.github/workflows/`,
   `scripts/slack-triage-bridge.mjs`, `scripts/triage-loop.mjs`,
   `docs/TRIAGE-LOOP.md`.
+- **Update 2026-09-27:** the EyeWire II server functions now live in this
+  repo's `functions/` and run in Firebase project `eyewire-ii-e4d52` (see
+  `functions/README.md`); review those. The text below describes the setup
+  at the time of the original review.
 - Server functions: https://github.com/amyleesterling/philogelos,
   `functions/index.js` (Firebase Cloud Functions, project `ytho-4bff2`,
   region us-central1). EyeWire II uses `ewSecureWrite`, `slackBot`,
