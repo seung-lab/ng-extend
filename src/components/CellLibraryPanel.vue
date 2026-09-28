@@ -460,7 +460,16 @@ function parseCoords(s: string): [number, number, number] {
   return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
 }
 
+/** Cells being claimed right now: their Claim buttons show a spinner. */
+const claiming = reactive(new Set<string>());
 async function claimCell(cell: typeof cells.value[0]) {
+  const key = cellKey(cell);
+  if (claiming.has(key)) return;
+  claiming.add(key);
+  try { await claimCellNow(cell); } finally { claiming.delete(key); }
+}
+
+async function claimCellNow(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value) return;
   claimError.value = '';
   // The limit counts claims in every dataset; `backend.tasks` has only this one.
@@ -2633,8 +2642,9 @@ const panelStyle = computed(() => ({
               <button
                 v-if="cell.status === 'pending' && isLoggedIn"
                 class="nge-cl-btn nge-cl-btn--claim"
+                :disabled="claiming.has(cellKey(cell))"
                 @click="claimCell(cell)"
-              >Claim</button>
+              ><span v-if="claiming.has(cellKey(cell))" class="nge-cl-spin" />{{ claiming.has(cellKey(cell)) ? 'Claiming…' : 'Claim' }}</button>
 
               <button
                 v-if="isMyClaim(cell)"

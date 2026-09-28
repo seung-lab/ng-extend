@@ -3375,13 +3375,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       activeTaskId.value = taskId;
       startHeartbeat();
 
-      // Log to edit_log
-      await logEdit({ operation: 'claim_task', task_id: taskId });
-
-      // Post to activity feed
+      // Log to edit_log and the activity feed without holding the button.
+      void Promise.resolve(logEdit({ operation: 'claim_task', task_id: taskId })).catch(() => {});
       const t = tasks.value.find(x => x.id === taskId);
       const label = t?.segment_id ? `...${t.segment_id.slice(-4)}` : `#${taskId}`;
-      await postActivity(`claimed cell ${label}`);
+      void Promise.resolve(postActivity(`claimed cell ${label}`)).catch(() => {});
 
       return true;
     } catch (e: any) {
@@ -3992,9 +3990,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       const task = await taskAction('claim_cell', { dataset: currentDatasetTag(), segment_id: currentSegId, point, supervoxel_id: supervoxelId });
       activeTaskId.value = task.id;
       startHeartbeat();
-      await logEdit({ operation: 'claim_task', task_id: task.id });
+      // The claim is made; logging and the activity feed need not hold the
+      // button (Amy 2026-09-28: Claim felt slow). Only the task sync waits.
+      void Promise.resolve(logEdit({ operation: 'claim_task', task_id: task.id })).catch(() => {});
+      void Promise.resolve(postActivity(`claimed cell ${currentSegId ? `...${currentSegId.slice(-4)}` : pointKey(point)}`)).catch(() => {});
       await loadTasks();
-      await postActivity(`claimed cell ${currentSegId ? `...${currentSegId.slice(-4)}` : pointKey(point)}`);
       return { ok: true };
     } catch (e: any) {
       console.warn('[backend] claimCell error:', e.message);
