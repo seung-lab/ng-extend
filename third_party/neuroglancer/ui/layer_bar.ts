@@ -116,19 +116,23 @@ class LayerWidget extends RefCounted {
     positionWidget.element.addEventListener('dblclick', (event: MouseEvent) => {
       event.stopPropagation();
     });
+    // EyeWire II (Amy 2026-09-28): swapped from upstream, which hid a layer on
+    // a plain click. Left click activates the layer (opens its side panel);
+    // right click toggles it on and off. Ctrl+click still toggles, alt+click
+    // still flips spatial selection.
     element.addEventListener('click', (event: MouseEvent) => {
-      if (event.ctrlKey) {
-        panel.selectedLayer.toggle(layer);
+      if (event.ctrlKey || event.metaKey) {
+        layer.setVisible(!layer.visible);
       } else if (event.altKey) {
         layer.pickEnabled = !layer.pickEnabled;
       } else {
-        layer.setVisible(!layer.visible);
+        panel.selectedLayer.layer = layer;
+        panel.selectedLayer.visible = true;
       }
     });
 
     element.addEventListener('contextmenu', (event: MouseEvent) => {
-      panel.selectedLayer.layer = layer;
-      panel.selectedLayer.visible = true;
+      layer.setVisible(!layer.visible);
       event.stopPropagation();
       event.preventDefault();
     });
@@ -143,13 +147,7 @@ class LayerWidget extends RefCounted {
     element.dataset.visible = layer.visible.toString();
     element.dataset.selected = (layer === this.panel.selectedLayer.layer).toString();
     element.dataset.pick = layer.pickEnabled.toString();
-    let title = `Click to ${layer.visible ? 'hide' : 'show'}, control+click to show side panel`;
-    if (layer.supportsPickOption) {
-      title +=
-          `, alt+click to ${layer.pickEnabled ? 'disable' : 'enable'} spatial object selection`;
-    }
-    title += `, drag to move, shift+drag to copy`;
-    element.title = title;
+    element.title = 'Left click to activate, right click to toggle on/off';
   }
 
   disposed() {
