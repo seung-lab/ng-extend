@@ -1,5 +1,20 @@
 # To-do
 
+## Chat: reply to a message (parked, Ames 2026-09-28)
+
+Click a message to reply: the reply quotes it (name plus a short excerpt,
+clickable to scroll back to the original) and pings the original author the
+same way an @mention does. Keeps threads readable when a few conversations
+overlap. Parked for now; the pieces it needs already exist: message ids are
+uuids on `chat_messages`, `mentionsMe` / `mentionPing` drive the flash and the
+background alerts, and the gateway would need one new writable column
+(`reply_to uuid references chat_messages(id)`) on `chat_messages`.
+
+Shipped alongside it on 2026-09-28: history paging, @ autocomplete,
+background mention alerts (tab title + optional notification), Share my
+view, and emoji reactions (`supabase-chat-reactions.sql`).
+
+
 ## Mobile welcome sheet: revive the portal copy A/B test
 
 The Citizen Science Mobile Portal section (above LOG IN WITH GOOGLE in

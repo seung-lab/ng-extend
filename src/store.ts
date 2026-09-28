@@ -4907,8 +4907,8 @@ export interface ChatMessage {
   dataset?: string | null;
   /** Set on announcement messages so clicking opens that notification. */
   notificationId?: number | null;
-  /** chat_messages row id (persisted messages), for deletion. */
-  id?: number | null;
+  /** chat_messages row id (a uuid), for deletion and reactions. */
+  id?: string | number | null;
   /** Verified sender (chat_messages.user_id), so authors can delete their own. */
   userId?: string | null;
 }
@@ -5015,7 +5015,7 @@ export const useChatStore = defineStore('chat', () => {
   const loadingHistory = ref(false);
   let oldestLoadedAt: string | null = null;
   /** Reactions per message id: emoji to who reacted. */
-  const reactions = ref<Record<number, Record<string, Array<{ userId: string; name: string }>>>>({});
+  const reactions = ref<Record<string, Record<string, Array<{ userId: string; name: string }>>>>({});
   /** Browser notification on @mentions while EyeWire is in the background. */
   const mentionNotify = ref(readMentionNotifyPref());
 
@@ -5147,7 +5147,7 @@ export const useChatStore = defineStore('chat', () => {
         addTimeSeparatorIfNeeded(new Date(r.created_at));
         chatMessages.value.push(rowToMessage(r));
       }
-      void loadReactions(rows.map((r: any) => r.id).filter((id: any) => id != null));
+      void loadReactions(rows.map((r: any) => String(r.id)).filter((id: string) => id && id !== 'null'));
     } catch (e) {
       console.warn('[chat] loadRecentMessages failed:', e);
     }
@@ -5164,7 +5164,7 @@ export const useChatStore = defineStore('chat', () => {
       const older = rows.filter((r: any) => !known.has(r.id)).map(rowToMessage);
       chatMessages.value = [...older, ...chatMessages.value];
       rebuildSeparators();
-      void loadReactions(older.map(m => m.id!).filter(id => id != null));
+      void loadReactions(older.filter(m => m.id != null).map(m => String(m.id)));
       return older.length;
     } catch (e) {
       console.warn('[chat] loadOlder failed:', e);
@@ -5194,12 +5194,12 @@ export const useChatStore = defineStore('chat', () => {
   // Reactions (Ames 2026-09-28). chat_reactions rows are written only through
   // the verified gateway, which stamps user_id and name from the signed-in
   // identity; everyone may read them.
-  function addReactionLocal(messageId: number, emoji: string, userId: string, name: string) {
+  function addReactionLocal(messageId: string, emoji: string, userId: string, name: string) {
     const byEmoji = reactions.value[messageId] ?? (reactions.value[messageId] = {});
     const list = byEmoji[emoji] ?? (byEmoji[emoji] = []);
     if (!list.some(r => r.userId === userId)) list.push({ userId, name });
   }
-  function removeReactionLocal(messageId: number, emoji: string, userId: string) {
+  function removeReactionLocal(messageId: string, emoji: string, userId: string) {
     const byEmoji = reactions.value[messageId];
     const list = byEmoji?.[emoji];
     if (!list) return;
@@ -5208,7 +5208,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!list.length) delete byEmoji[emoji];
   }
 
-  async function loadReactions(ids: number[]) {
+  async function loadReactions(ids: string[]) {
     if (!ids.length) return;
     const { data, error } = await supabase.from('chat_reactions')
       .select('message_id,user_id,name,emoji').in('message_id', ids).limit(2000);
@@ -5216,7 +5216,7 @@ export const useChatStore = defineStore('chat', () => {
     for (const r of data as any[]) addReactionLocal(r.message_id, r.emoji, r.user_id, r.name);
   }
 
-  async function toggleReaction(messageId: number, emoji: string) {
+  async function toggleReaction(messageId: string, emoji: string) {
     const backend = useProofreadingBackendStore();
     const me = backend.userId;
     if (!me || !CHAT_REACTION_EMOJI.includes(emoji)) return;
@@ -5357,7 +5357,7 @@ export const useChatStore = defineStore('chat', () => {
       .then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); });
   }
 
-  function removeLocal(id: number) {
+  function removeLocal(id: string | number) {
     const i = chatMessages.value.findIndex(m => m.id === id);
     if (i >= 0) chatMessages.value.splice(i, 1);
   }
@@ -5367,7 +5367,7 @@ export const useChatStore = defineStore('chat', () => {
    * chat_messages changes other than POST only for admins, by message id, so
    * this is enforced server side as well as hidden in the UI.
    */
-  async function deleteMessage(id: number): Promise<boolean> {
+  async function deleteMessage(id: string | number): Promise<boolean> {
     // The gateway scopes a player's delete to their own messages (admins: any),
     // so a zero-row result means "not yours", not success.
     const { data, error } = await supabase.from('chat_messages').delete().eq('id', id).select('id');

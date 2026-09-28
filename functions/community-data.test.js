@@ -92,3 +92,15 @@ test('chat cannot forge a staff role, sender or official notice',()=>{
  assert.throws(()=>plan('chat_messages','POST','',{text:'hello',notification_id:1}),/admin/);
  assert.throws(()=>plan('chat_messages','POST','',{text:'hello'},anon),/Sign in/);
 });
+test('chat reactions are your own, from the offered set, and removable only by you',()=>{
+ const p=plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:'\u{1F525}',user_id:b,name:'Admin'});
+ assert.equal(p.body.user_id,a);assert.equal(p.body.name,'Player');assert.equal(p.body.message_id,'33333333-3333-4333-8333-333333333333');
+ assert.throws(()=>plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:'<script>'}),/Unsupported reaction/);
+ assert.throws(()=>plan('chat_reactions','POST','',{message_id:42,emoji:'\u{1F525}'}),/Unknown message/);
+ assert.throws(()=>plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:'\u{1F525}'},anon),/Sign in/);
+ assert.throws(()=>plan('chat_reactions','PATCH','id=eq.1',{emoji:'\u{1F525}'}),/cannot be edited/);
+ assert.throws(()=>plan('chat_reactions','DELETE','message_id=eq.42'),/message and emoji/);
+ const del=plan('chat_reactions','DELETE',`message_id=eq.42&emoji=eq.x&user_id=eq.${b}`);
+ assert.equal(del.query.get('and'),`(user_id.eq.${a})`);
+ assert.equal(plan('chat_reactions','GET','message_id=in.(1,2)',undefined,anon).table,'chat_reactions');
+});

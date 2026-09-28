@@ -7,7 +7,10 @@
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useChatStore, useProofreadingBackendStore, ChatMessage, isSelfMentionToken } from '../store';
+import { useChatStore, useProofreadingBackendStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI } from '../store';
+import ScreenshotDialog from 'components/ScreenshotDialog.vue';
+import { mintShortStateLink } from '../util/state_link';
+import { supabase } from '../supabase';
 import { canonicalDataset, datasetDisplayName, switchToDataset, segLayerName, DATASETS } from '../datasets';
 
 const emit = defineEmits({ hide: null });
@@ -169,6 +172,8 @@ watch(() => chatStore.mentionPing, () => {
 });
 
 onUnmounted(() => {
+  document.removeEventListener('mousedown', closePopovers);
+  if (handleSearchTimer) clearTimeout(handleSearchTimer);
   chatStore.setPanelVisible(false);
   if (mentionTimer) clearTimeout(mentionTimer);
   document.removeEventListener('mousemove', onResize);
@@ -222,8 +227,164 @@ function send() {
   if (!text) return;
   chatStore.sendMessage(text);
   messageInput.value = '';
+  mentionQuery.value = null;
   inputEl.value?.focus();
 }
+
+// ── @ autocomplete (Ames 2026-09-28) ──
+// Typing "@" offers people: online now first, then recent speakers, then any
+// username that starts with what you typed. Mentions only ping someone when
+// the handle is exact, so picking from the list keeps them reliable.
+const mentionQuery = ref<string | null>(null);
+const mentionIndex = ref(0);
+const remoteHandles = ref<string[]>([]);
+let handleSearchTimer: ReturnType<typeof setTimeout> | null = null;
+
+function mentionToken(): { start: number; end: number; q: string } | null {
+  const el = inputEl.value;
+  const end = el?.selectionStart ?? messageInput.value.length;
+  const m = messageInput.value.slice(0, end).match(/(?:^|\s)@([A-Za-z0-9._-]{0,30})$/);
+  return m ? { start: end - m[1].length - 1, end, q: m[1] } : null;
+}
+
+function onInputChange() {
+  const t = mentionToken();
+  mentionQuery.value = t ? t.q : null;
+  mentionIndex.value = 0;
+  if (handleSearchTimer) clearTimeout(handleSearchTimer);
+  if (t && t.q.length >= 1) {
+    const q = t.q;
+    handleSearchTimer = setTimeout(async () => {
+      try {
+        const { data } = await supabase.from('users').select('username')
+          .ilike('username', `${q}%`).not('username', 'is', null).limit(8);
+        if (mentionQuery.value === q) remoteHandles.value = (data || []).map((u: any) => u.username).filter(Boolean);
+      } catch { /* suggestions are best effort */ }
+    }, 180);
+  } else {
+    remoteHandles.value = [];
+  }
+}
+
+const mentionOptions = computed(() => {
+  if (mentionQuery.value === null) return [];
+  const q = mentionQuery.value.toLowerCase();
+  const me = (backendStore.username || '').toLowerCase();
+  const seen = new Set<string>();
+  const out: Array<{ handle: string; online: boolean; prefix: boolean }> = [];
+  const add = (h: string | undefined, online: boolean) => {
+    if (!h || /\s/.test(h)) return;
+    const k = h.toLowerCase();
+    if (seen.has(k) || k === me || (q && !k.includes(q))) return;
+    seen.add(k);
+    out.push({ handle: h, online, prefix: k.startsWith(q) });
+  };
+  for (const p of Object.values(chatStore.online)) add(p.name, true);
+  for (let i = chatMessages.value.length - 1; i >= 0; i--) {
+    const m = chatMessages.value[i];
+    if (m.type === 'message' && !m.notificationId) add(m.name, false);
+  }
+  for (const h of remoteHandles.value) add(h, false);
+  return out
+    .sort((a, b) => Number(b.prefix) - Number(a.prefix) || Number(b.online) - Number(a.online))
+    .slice(0, 6);
+});
+
+function pickMention(handle: string) {
+  const t = mentionToken();
+  if (!t) return;
+  const v = messageInput.value;
+  messageInput.value = v.slice(0, t.start) + '@' + handle + ' ' + v.slice(t.end);
+  mentionQuery.value = null;
+  const caret = t.start + handle.length + 2;
+  nextTick(() => { inputEl.value?.focus(); inputEl.value?.setSelectionRange(caret, caret); });
+}
+
+function onInputKeydown(e: KeyboardEvent) {
+  const opts = mentionOptions.value;
+  if (opts.length) {
+    if (e.key === 'ArrowDown') { mentionIndex.value = (mentionIndex.value + 1) % opts.length; e.preventDefault(); return; }
+    if (e.key === 'ArrowUp') { mentionIndex.value = (mentionIndex.value - 1 + opts.length) % opts.length; e.preventDefault(); return; }
+    if (e.key === 'Escape') { mentionQuery.value = null; e.preventDefault(); return; }
+    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+      pickMention(opts[Math.min(mentionIndex.value, opts.length - 1)].handle);
+      e.preventDefault();
+      return;
+    }
+  }
+  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    e.preventDefault();
+    send();
+  }
+}
+
+// ── Share my view (Ames 2026-09-28) ──
+// Posts a short link to exactly what you're looking at, optionally with a
+// screenshot. Anything typed in the box rides along as the caption.
+const shareMenuOpen = ref(false);
+const sharing = ref(false);
+const shareError = ref('');
+const showShareShot = ref(false);
+
+async function postView(shotUrl: string | null) {
+  sharing.value = true;
+  shareError.value = '';
+  try {
+    const link = await mintShortStateLink();
+    if (!link) { shareError.value = 'Could not make a link to your view. Try again in a moment.'; return; }
+    const caption = messageInput.value.trim();
+    chatStore.sendMessage([caption || '📍 My view', link, shotUrl].filter(Boolean).join(' '));
+    if (caption) messageInput.value = '';
+  } finally {
+    sharing.value = false;
+  }
+}
+function shareView(withShot: boolean) {
+  shareMenuOpen.value = false;
+  if (withShot) showShareShot.value = true;
+  else void postView(null);
+}
+function onShareShotAttached(payload: { url: string }) {
+  showShareShot.value = false;
+  void postView(payload.url);
+}
+
+// Links in messages: a shared view opens in place, and our own screenshots
+// show as thumbnails instead of long storage URLs.
+const OWN_STORAGE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/';
+function isViewLink(u: string): boolean {
+  try { const x = new URL(u); return x.origin === window.location.origin && x.hash.startsWith('#!'); } catch { return false; }
+}
+function isShotLink(u: string): boolean {
+  return u.startsWith(OWN_STORAGE) && /\.(png|jpe?g|webp)$/i.test(u);
+}
+function openView(u: string) {
+  try {
+    const hash = new URL(u).hash;
+    if (window.location.hash === hash) window.dispatchEvent(new HashChangeEvent('hashchange'));
+    else window.location.hash = hash;
+  } catch { window.open(u, '_blank', 'noopener'); }
+}
+
+// ── Reactions (Ames 2026-09-28) ──
+const pickerFor = ref<string | null>(null);
+function togglePicker(id: string) { pickerFor.value = pickerFor.value === id ? null : id; }
+function react(id: string, emoji: string) {
+  pickerFor.value = null;
+  void chatStore.toggleReaction(id, emoji);
+}
+function reactionsOf(msg: ChatMessage) {
+  return msg.id != null ? chatStore.reactions[String(msg.id)] || {} : {};
+}
+function reactedByMe(list: Array<{ userId: string }>) {
+  return list.some(r => r.userId === backendStore.userId);
+}
+function closePopovers(e: MouseEvent) {
+  const t = e.target as HTMLElement;
+  if (!t.closest?.('.nge-chat-react-add')) pickerFor.value = null;
+  if (!t.closest?.('.nge-chat-share')) shareMenuOpen.value = false;
+}
+document.addEventListener('mousedown', closePopovers);
 
 /**
  * Is this @mention aimed at the current user?
@@ -396,10 +557,16 @@ async function openUserProfile(displayName: string) {
 function handleScroll() {
   const el = scrollContainer.value;
   if (!el) return;
-  isScrolledUp.value = el.scrollTop > 60;
+  // column-reverse: scrollTop is 0 at the newest message and grows negative
+  // as you scroll up (the old "> 60" test never fired in Chrome).
+  const up = Math.abs(el.scrollTop);
+  isScrolledUp.value = up > 60;
   if (!isScrolledUp.value) {
     chatStore.markRead();
   }
+  // Near the top: fetch the previous page. The view is anchored to the
+  // bottom, so older messages appear above without moving what you read.
+  if (el.scrollHeight - el.clientHeight - up < 40) void chatStore.loadOlder();
 }
 
 function scrollToBottom() {
@@ -443,6 +610,11 @@ function toggleCollapse() {
         <span v-if="collapsed && unreadMessages" class="nge-chat-strip-unread" title="New messages"></span>
         <span v-if="mentionFlash && chatStore.lastMentionFrom" class="nge-chat-mentioned-by">@ from {{ chatStore.lastMentionFrom }}</span>
         <span class="nge-chat-strip-spacer"></span>
+        <button class="nge-chat-strip-btn nge-chat-bell-btn" :class="{ 'nge-chat-bell-btn--on': chatStore.mentionNotify }"
+                @click.stop="chatStore.setMentionNotify(!chatStore.mentionNotify)"
+                :title="chatStore.mentionNotify ? 'Browser notifications for @mentions are on (click to turn off)' : 'Get a browser notification when someone @mentions you while EyeWire is in the background'">
+          {{ chatStore.mentionNotify ? '🔔' : '🔕' }}
+        </button>
         <button class="nge-chat-strip-btn nge-chat-collapse-btn" @click.stop="toggleCollapse" :title="collapsed ? 'Expand chat' : 'Collapse chat'">
           {{ collapsed ? '▲' : '▼' }}
         </button>
@@ -460,7 +632,12 @@ function toggleCollapse() {
             @scroll="handleScroll"
           >
             <div class="nge-chat-messages-inner">
-              <template v-for="(msg, i) in chatMessages" :key="i">
+              <div v-if="isLoggedIn && chatMessages.length" class="nge-chat-history-top">
+                <button v-if="chatStore.hasMoreHistory" class="nge-chat-history-btn" :disabled="chatStore.loadingHistory"
+                        @click="chatStore.loadOlder()">{{ chatStore.loadingHistory ? 'Loading…' : 'Load earlier messages' }}</button>
+                <span v-else>Beginning of chat</span>
+              </div>
+              <template v-for="(msg, i) in chatMessages" :key="msg.id ?? ('i' + i)">
                 <div v-if="msg.type === 'time'" class="nge-chat-time-sep">
                   <span>{{ msg.time }}</span>
                 </div>
@@ -493,6 +670,10 @@ function toggleCollapse() {
                   <button class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: rankColor(msg.rank) }" @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</button>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
+                    <button v-else-if="part.type === 'link' && isViewLink(part.text)" class="nge-chat-view-chip"
+                            @click="openView(part.text)" title="Open this view here">📍 Open view</button>
+                    <a v-else-if="part.type === 'link' && isShotLink(part.text)" :href="part.text" target="_blank" rel="noopener"
+                       class="nge-chat-shot" title="Open the screenshot full size"><img :src="part.text" alt="Screenshot" loading="lazy" /></a>
                     <a v-else-if="part.type === 'link'" :href="part.text" target="_blank" rel="noopener" class="nge-chat-link">{{ part.text }}</a>
                     <span
                       v-else-if="part.type === 'mention'"
@@ -524,6 +705,21 @@ function toggleCollapse() {
                   <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
                           :title="msg.userId === backendStore.userId ? 'Delete your message' : 'Delete this message for everyone (admin)'"
                           @click.stop="deleteChatMessage(msg)">🗑</button>
+                  <template v-if="msg.id != null && isLoggedIn">
+                    <span class="nge-chat-react-add">
+                      <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
+                              @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
+                      <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
+                        <button v-for="e in CHAT_REACTION_EMOJI" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                      </span>
+                    </span>
+                    <div v-if="Object.keys(reactionsOf(msg)).length" class="nge-chat-react-row">
+                      <button v-for="(list, emo) in reactionsOf(msg)" :key="emo" class="nge-chat-react"
+                              :class="{ 'nge-chat-react--mine': reactedByMe(list) }"
+                              :title="list.map(r => r.name).join(', ')"
+                              @click.stop="react(String(msg.id), String(emo))">{{ emo }}<span>{{ list.length }}</span></button>
+                    </div>
+                  </template>
                 </div>
               </template>
 
@@ -559,20 +755,42 @@ function toggleCollapse() {
 
         <!-- Input -->
         <div class="nge-chat-input-wrap">
-          <input
-            ref="inputEl"
-            v-model="messageInput"
-            class="nge-chat-input"
-            :placeholder="isLoggedIn ? 'Message...' : 'Log in to chat'"
-            @keydown.stop
-            @keyup.stop
-            @keypress.stop
-            @keydown.enter.exact.prevent="send"
-            spellcheck="true"
-            autocomplete="off"
-            :disabled="!isLoggedIn || !connected"
-          />
+          <div v-if="mentionOptions.length" class="nge-chat-mention-menu" role="listbox">
+            <button v-for="(o, oi) in mentionOptions" :key="o.handle" class="nge-chat-mention-opt"
+                    :class="{ 'nge-chat-mention-opt--active': oi === mentionIndex }" role="option"
+                    @mousedown.prevent="pickMention(o.handle)" @mouseenter="mentionIndex = oi">
+              <span class="nge-chat-mention-dot" :class="{ 'nge-chat-mention-dot--on': o.online }"></span>@{{ o.handle }}
+            </button>
+          </div>
+          <div v-if="shareError" class="nge-chat-share-error" @click="shareError = ''">{{ shareError }}</div>
+          <div class="nge-chat-input-row">
+            <span class="nge-chat-share">
+              <button class="nge-chat-share-btn" :disabled="!isLoggedIn || !connected || sharing"
+                      @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat">{{ sharing ? '…' : '📍' }}</button>
+              <span v-if="shareMenuOpen" class="nge-chat-share-menu">
+                <button @click="shareView(false)">📍 Share my view</button>
+                <button @click="shareView(true)">📷 Share view + screenshot</button>
+              </span>
+            </span>
+            <input
+              ref="inputEl"
+              v-model="messageInput"
+              class="nge-chat-input"
+              :placeholder="isLoggedIn ? 'Message... (@ to mention)' : 'Log in to chat'"
+              @keydown.stop="onInputKeydown"
+              @keyup.stop
+              @keypress.stop
+              @input="onInputChange"
+              @click="onInputChange"
+              @blur="mentionQuery = null"
+              spellcheck="true"
+              autocomplete="off"
+              :disabled="!isLoggedIn || !connected"
+            />
+          </div>
         </div>
+        <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
+                          @close="showShareShot = false" @attached="onShareShotAttached" />
       </template>
     </div>
   </Teleport>
@@ -1027,6 +1245,195 @@ function toggleCollapse() {
   box-sizing: border-box;
 }
 .nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.3); }
+
+/* ── History header ── */
+.nge-chat-history-top {
+  text-align: center;
+  padding: 4px 0 6px;
+  font-size: 11px;
+  color: #667;
+}
+.nge-chat-history-btn {
+  background: rgba(74, 158, 255, 0.08);
+  border: 1px solid rgba(74, 158, 255, 0.2);
+  color: #9cc8ff;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.nge-chat-history-btn:hover:not(:disabled) { background: rgba(74, 158, 255, 0.18); }
+.nge-chat-history-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* ── Mention bell ── */
+.nge-chat-bell-btn { font-size: 11px; padding: 2px 4px; opacity: 0.55; }
+.nge-chat-bell-btn--on { opacity: 1; }
+
+/* ── @ autocomplete ── */
+.nge-chat-input-wrap { position: relative; }
+.nge-chat-mention-menu {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: calc(100% + 2px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 16, 30, 0.98);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 6px;
+  padding: 3px;
+  z-index: 5;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+.nge-chat-mention-opt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #cfe0ff;
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.nge-chat-mention-opt--active { background: rgba(74, 158, 255, 0.2); color: #fff; }
+.nge-chat-mention-dot { width: 7px; height: 7px; border-radius: 50%; background: #445; flex-shrink: 0; }
+.nge-chat-mention-dot--on { background: #4ad07a; box-shadow: 0 0 6px rgba(74, 208, 122, 0.7); }
+
+/* ── Share my view ── */
+.nge-chat-input-row { display: flex; align-items: center; gap: 4px; }
+.nge-chat-input-row .nge-chat-input { flex: 1; min-width: 0; }
+.nge-chat-share { position: relative; flex-shrink: 0; }
+.nge-chat-share-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid rgba(100, 180, 255, 0.15);
+  background: rgba(20, 24, 40, 0.9);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.nge-chat-share-btn:hover:not(:disabled) { border-color: rgba(74, 158, 255, 0.5); }
+.nge-chat-share-btn:disabled { opacity: 0.4; cursor: default; }
+.nge-chat-share-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 4px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 16, 30, 0.98);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 6px;
+  padding: 3px;
+  z-index: 6;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+.nge-chat-share-menu button {
+  background: none;
+  border: none;
+  color: #cfe0ff;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 5px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.nge-chat-share-menu button:hover { background: rgba(74, 158, 255, 0.2); color: #fff; }
+.nge-chat-share-error {
+  font-size: 12px;
+  color: #ffb3b3;
+  padding: 2px 4px 4px;
+  cursor: pointer;
+}
+.nge-chat-view-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0 2px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(74, 158, 255, 0.4);
+  background: rgba(74, 158, 255, 0.12);
+  color: #9cc8ff;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.nge-chat-view-chip:hover { background: rgba(74, 158, 255, 0.25); color: #fff; }
+.nge-chat-shot { display: block; margin: 4px 0 2px; }
+.nge-chat-shot img {
+  display: block;
+  max-width: 100%;
+  max-height: 140px;
+  border-radius: 4px;
+  border: 1px solid rgba(74, 158, 255, 0.25);
+}
+
+/* ── Reactions ── */
+.nge-chat-msg { position: relative; }
+.nge-chat-react-add { position: absolute; top: 1px; right: 2px; }
+.nge-chat-react-plus {
+  opacity: 0;
+  background: rgba(20, 26, 44, 0.95);
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  color: #9cc8ff;
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 0 6px;
+  line-height: 18px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.nge-chat-msg:hover .nge-chat-react-plus,
+.nge-chat-react-plus--open { opacity: 1; }
+.nge-chat-react-picker {
+  position: absolute;
+  right: calc(100% + 4px);
+  top: -4px;
+  display: flex;
+  gap: 1px;
+  background: rgba(10, 16, 30, 0.98);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 999px;
+  padding: 2px 4px;
+  z-index: 6;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+.nge-chat-react-picker button {
+  background: none;
+  border: none;
+  font-size: 17px;
+  line-height: 1;
+  padding: 3px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.nge-chat-react-picker button:hover { transform: scale(1.25); background: rgba(74, 158, 255, 0.15); }
+.nge-chat-react-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.nge-chat-react {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  line-height: 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cfd8e8;
+  font-size: 13px;
+  cursor: pointer;
+}
+.nge-chat-react span { font-size: 11px; color: #9ab; }
+.nge-chat-react:hover { border-color: rgba(74, 158, 255, 0.45); }
+.nge-chat-react--mine { border-color: rgba(74, 158, 255, 0.6); background: rgba(74, 158, 255, 0.18); }
+.nge-chat-react--mine span { color: #cfe0ff; }
 .nge-chat-input::placeholder { color: #556; }
 .nge-chat-input:disabled { opacity: 0.3; }
 
