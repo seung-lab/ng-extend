@@ -616,10 +616,26 @@ async function submitComplete(cell: CellRow) {
 
 async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string }) {
   if (!isLoggedIn.value || !cell.taskId) return;
+  // CAVE and the claim are independent, so write them at the same time (the
+  // Complete button used to wait for one, then the other). The sheet waits for
+  // the claim: the server only syncs a completed claim.
+  const cavePromise = writeCaveCompletion(cell, done);
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   // Write completion to the source sheet, including the Final Link.
   syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes).catch(showSheetError);
+  const loggedViaCave = await cavePromise;
+  if (!loggedViaCave) {
+    // Log as mark_complete for stats (CAVE write didn't record it)
+    await backend.logEdit({ operation: 'mark_complete', task_id: cell.taskId });
+  }
+  // Notify UI that status changed (claim is already cleared by completeTask)
+  document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
+  void backend.loadTasks();  // incremental, in the background
+  // Celebration!
+  triggerCellCelebration();
+}
 
+async function writeCaveCompletion(cell: CellRow, done: { finalSegId: string; coords: string }): Promise<boolean> {
   // Record the completion in CAVE (cell_status annotation) so it materializes
   // to the leaderboard — same path ProofreadingQueuePanel uses. The root is the
   // proofread final segment (fall back to the original). setCellComplete logs
@@ -638,15 +654,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   } catch (e) {
     console.warn('[cellLibrary] CAVE completion write failed (non-blocking):', e);
   }
-  if (!loggedViaCave) {
-    // Log as mark_complete for stats (CAVE write didn't record it)
-    await backend.logEdit({ operation: 'mark_complete', task_id: cell.taskId });
-  }
-  // Notify UI that status changed (claim is already cleared by completeTask)
-  document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
-  await backend.loadTasks();
-  // Celebration!
-  triggerCellCelebration();
+  return loggedViaCave;
 }
 
 import nurroSuccess from '../../static/nurro/nurro-success.png';
@@ -2639,7 +2647,7 @@ const panelStyle = computed(() => ({
                 class="nge-cl-btn nge-cl-btn--complete"
                 :disabled="completing.submitting || completing.checking || !completing.ok || !linkLooksValid(completing.link)"
                 @click="submitComplete(cell)"
-              >{{ completing.submitting ? 'Saving…' : 'Mark complete' }}</button>
+              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : 'Mark complete' }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
           </div>
