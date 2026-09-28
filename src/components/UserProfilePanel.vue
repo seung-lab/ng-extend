@@ -4,6 +4,7 @@ import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
 import { startDatasetTransition } from '../util/dataset_transition';
+import { loadContribution, datasetTagVariants as sharedTagVariants } from '../util/dataset_contribution';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
@@ -161,15 +162,8 @@ async function maybeSendWeeklyRecapNotification() {
   try {
     const s = stats.value;
     const body = `${s.editsThisWeek.toLocaleString()} edits · ${s.mergesThisWeek.toLocaleString()} merges · ${s.splitsThisWeek.toLocaleString()} splits this week. Open your profile → Week in Science for the full recap.`;
-    const { supabase } = await import('../supabase');
-    await supabase.from('notifications').insert({
-      title: '📊 Your Week in Science',
-      body,
-      target_type: 'user',
-      target_id: uid,
-      send_at: new Date().toISOString(),
-      created_by: uid,
-    });
+    const { secureWrite } = await import('../secure_write');
+    await secureWrite('notification.self', { title: '📊 Your Week in Science', body });
   } catch (e) {
     console.warn('[profile] weekly recap notification failed:', e);
     localStorage.removeItem(key); // allow a retry next time
@@ -290,13 +284,8 @@ function refreshActiveDatasetCanon() {
  *  help_requests are canonicalised, but cave_completions_mirror stamps the
  *  sync config's own name (e.g. 'pinky_sandbox' where canonical is
  *  'pinky_nf_v2'), so count with .in() across the variants. */
-function datasetTagVariants(ds: DatasetEntry): string[] {
-  const canon = canonicalDataset(segLayerName(ds));
-  // edit_log.dataset DEFAULTs to 'eyewire_ii', so any row written without an
-  // explicit tag carries that legacy retina name.
-  const legacy = canon === 'stroeh_mouse_retina' ? ['eyewire_ii', 'eyewire_ii_retina'] : [];
-  return [...new Set([canon, ds.id, segLayerName(ds), ...legacy])];
-}
+// Shared with the "Now entering" card (util/dataset_contribution.ts).
+const datasetTagVariants = sharedTagVariants;
 
 async function loadDatasetStats() {
   if (datasetStatsLoading.value) return;
@@ -305,26 +294,9 @@ async function loadDatasetStats() {
   try {
     const uid = backendStore.userId;
     if (!uid) return;
-    const { supabase } = await import('../supabase');
-    // Numeric CAVE id keys the completions mirror (users.cave_user_id).
-    let caveId: number | null = null;
-    try {
-      const { data } = await supabase.from('users').select('cave_user_id').eq('id', uid).single();
-      caveId = data?.cave_user_id ?? null;
-    } catch {}
     const out: Record<string, DatasetContribution> = {};
     await Promise.all(DATASETS.map(async ds => {
-      const tags = datasetTagVariants(ds);
-      const [edits, completions, helpRequests] = await Promise.all([
-        supabase.from('edit_log').select('id', { count: 'exact', head: true })
-          .eq('user_id', uid).in('dataset', tags).then((r: any) => r.count ?? 0),
-        caveId == null ? Promise.resolve(0) :
-          supabase.from('cave_completions_mirror').select('segment_id', { count: 'exact', head: true })
-            .eq('cave_user_id', caveId).in('dataset', tags).then((r: any) => r.count ?? 0),
-        supabase.from('help_requests').select('id', { count: 'exact', head: true })
-          .eq('user_id', uid).in('dataset', tags).then((r: any) => r.count ?? 0),
-      ]);
-      out[canonicalDataset(segLayerName(ds))] = { edits, completions, helpRequests };
+      out[canonicalDataset(segLayerName(ds))] = await loadContribution(ds, uid);
     }));
     datasetStats.value = out;
   } catch (e) {

@@ -106,7 +106,9 @@ export class AnnotationDisplayState extends RefCounted {
   fallbackShaderControls =
       new WatchableValue(getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)));
   shaderError = makeWatchableShaderError();
-  color = new TrackableRGB(vec3.fromValues(0.10, 0.25, 0.60));
+  // #edd040, EyeWire II's annotation yellow (Amy, 2026-09-28): readable on
+  // grey EM and on every segment colour.
+  color = new TrackableRGB(vec3.fromValues(0.929, 0.816, 0.251));
   relationshipStates = this.registerDisposer(new WatchableAnnotationRelationshipStates());
   ignoreNullSegmentFilter = new TrackableBoolean(true);
   disablePicking = new WatchableValue(false);

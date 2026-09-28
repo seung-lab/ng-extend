@@ -181,6 +181,11 @@ onMounted(() => {
     showCellLibrary.value = true;
   }) as EventListener);
 
+  // "Ask for help" in the tutorial practice steps opens the community chat.
+  document.addEventListener('nge:open-chat', (() => {
+    showChat.value = true;
+  }) as EventListener);
+
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
     // Optional deep-link tab ('triage' opens Admin Hub > Triage, etc.)
@@ -563,6 +568,8 @@ const toolbarActions: Record<string, ToolbarAction> = {
   quest:       { action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
   cells:       { action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
   batch:       { action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
+  // Toolbar camera (Amy): the same Save screenshot dialog the palette opens.
+  screenshot:  { action: () => { showScreenshotDialog.value = true; } },
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
   tags:        { action: () => { showTagMode.value = !showTagMode.value; } },
@@ -923,7 +930,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         </li>
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">3</span><span>Cut &amp; Merge</span>
+            <span class="nge-menu-num">3</span><span>Merge</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 5; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">4</span><span>Cut</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Learn more</li>

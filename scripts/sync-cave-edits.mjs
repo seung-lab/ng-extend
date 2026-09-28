@@ -91,7 +91,7 @@ const onlyDataset = onlyArgIdx >= 0 ? process.argv[onlyArgIdx + 1] : null;
 
 const supabaseHeaders = {
   apikey: SUPABASE_KEY,
-  Authorization: `Bearer ${SUPABASE_KEY}`,
+  ...(SUPABASE_KEY.startsWith('sb_') ? {} : { Authorization: `Bearer ${SUPABASE_KEY}` }),
   'Content-Type': 'application/json',
   Prefer: 'resolution=merge-duplicates,return=minimal',
 };
@@ -184,7 +184,7 @@ function extractOperations(payload, tableLabel) {
 async function fetchUserOperations(cfg, caveUserId, startIso, endIso) {
   const url = `${cfg.caveServer}/segmentation/api/v1/table/${cfg.pcgTable}` +
     `/user_operations?user_id=${caveUserId}` +
-    `&start_time=${encodeURIComponent(startIso)}&end_time=${encodeURIComponent(endIso)}`;
+    `&start_time=${Math.floor(Date.parse(startIso) / 1000)}&end_time=${Math.floor(Date.parse(endIso) / 1000)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${CAVE_TOKEN}` } });
   if (res.status === 403) {
     const body = await res.text();

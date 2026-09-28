@@ -1,11 +1,14 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { communityFetch } from './community_fetch';
 
-// These are client-safe (anon key + RLS protect the data).
-// Get your anon key from: Supabase Dashboard → Settings → API → anon public
+// These are client-safe: the publishable key is public by design, and RLS
+// plus ewSecureWrite (src/secure_write.ts) protect the data.
+// Supabase Dashboard → Project Settings → API Keys → Publishable key.
+// (Replaced the legacy anon JWT on 2026-09-27; JWT keys are being disabled.)
 export const SUPABASE_URL = 'https://javthknksdcrlhiaaptj.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImphdnRoa25rc2RjcmxoaWFhcHRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzUyOTIsImV4cCI6MjA4ODIxMTI5Mn0.APdwuQ-uudyHISBr7Dj6HTylO7qavJ0HhB32E5X434g';
+export const SUPABASE_ANON_KEY = 'sb_publishable_a5r5rfbOuWNoVw0Qb_LtRg_xA4H6Jxb';
 
-export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: communityFetch } });
 
 /** Quick connectivity check — logs result to console on startup. */
 supabase.from('users').select('id', { count: 'exact', head: true }).then(

@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
+
+import nurroLaser from '../../static/nurro/nurro-laser-teach.png';
+import nurroInspector from '../../static/nurro/nurro-inspector.png';
+import nurroConfetti from '../../static/nurro/nurro-confetti-card.png';
+import nurroPopcorn from '../../static/nurro/nurro-popcorn-card.png';
+import nurroOriginal from '../../static/nurro/nurro-original.png';
+import nurroSuper from '../../static/nurro/nurro-super-v2.png';
 
 const props = withDefaults(defineProps<{
   show: boolean;
@@ -39,8 +46,72 @@ const height = ref(1080);
 const transparent = ref(false);
 const hideBoundingBox = ref(false);
 const showScaleBar = ref(true);
+/** Capture the whole tab, panels included, instead of the viewer canvas
+ *  (Amy: a bug report needs the windows that were open). Uses the browser's
+ *  screen capture of this tab, so it asks once and takes one frame. */
+const wholeScreen = ref(props.mode === 'attach');
+/** Crop to the 3D panel only (Amy), for clean neuron renders. */
+const only3d = ref(false);
+/** Nurro in a corner of the picture, because why not (Amy). Cycles through
+ *  the transparent Nurros in static/nurro; null means none. */
+const NURROS = [nurroLaser, nurroInspector, nurroConfetti, nurroPopcorn, nurroOriginal, nurroSuper];
+const nurroOn = ref(false);
+const nurroIndex = ref(0);
+const nurroImg = ref<HTMLImageElement | null>(null);
+const nurroSrc = computed(() => NURROS[nurroIndex.value]);
+function loadNurro() {
+  if (!nurroOn.value) { nurroImg.value = null; renderPreview(); return; }
+  const img = new Image();
+  const src = NURROS[nurroIndex.value];
+  img.onload = () => { if (nurroOn.value && src === NURROS[nurroIndex.value]) { nurroImg.value = img; renderPreview(); } };
+  img.src = src;
+}
+function nextNurro() {
+  nurroIndex.value = (nurroIndex.value + 1) % NURROS.length;
+  if (!nurroOn.value) nurroOn.value = true;
+  loadNurro();
+}
+watch(nurroOn, loadNurro);
+/** Bottom right corner, a quarter of the image height, with a margin. */
+function drawNurro(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }) {
+  const img = nurroImg.value;
+  if (!img || !img.naturalWidth) return;
+  const h = Math.round(rect.h * 0.28);
+  const w = Math.round(h * img.naturalWidth / img.naturalHeight);
+  const m = Math.round(rect.h * 0.02);
+  ctx.drawImage(img, rect.x + rect.w - w - m, rect.y + rect.h - h - m, w, h);
+}
 const busy = ref(false);
 const errorMsg = ref('');
+const dialogHidden = ref(false);
+
+async function captureWholeScreen(): Promise<HTMLCanvasElement> {
+  const md = navigator.mediaDevices as any;
+  if (!md?.getDisplayMedia) throw new Error('This browser cannot capture the screen. Untick "Whole screen" to capture the viewer only.');
+  // Hide this dialog so it is not in the picture.
+  dialogHidden.value = true;
+  await new Promise(r => setTimeout(r, 80));
+  const stream: MediaStream = await md.getDisplayMedia({
+    video: { displaySurface: 'browser' }, audio: false,
+    preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude',
+  });
+  try {
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.muted = true;
+    await video.play();
+    // Let the picker's own overlay fade before grabbing a frame.
+    await new Promise(r => setTimeout(r, 400));
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    c.getContext('2d')!.drawImage(video, 0, 0);
+    return c;
+  } finally {
+    stream.getTracks().forEach(t => t.stop());
+    dialogHidden.value = false;
+  }
+}
 
 // Captured source frame (with toggles applied) — kept in 2D canvas form,
 // alongside the per-source-pixel physical size in nanometers (computed at
@@ -131,12 +202,31 @@ function scheduleRelayout() {
  *  physicalSizePerPixel = zoomFactor / canvasHeight (in canonical base units,
  *  meters), so multiply by 1e9 to land in nm. Falls back to the slice-view
  *  navigation state for layouts without a perspective panel. */
+/** The 3D panel's element: the only rendered panel that carries the
+ *  "show slice views" checkbox. */
+function perspectivePanelEl(): HTMLElement | null {
+  return (document.querySelector('.perspective-panel-show-slice-views')?.closest('.neuroglancer-rendered-data-panel') as HTMLElement | null) ?? null;
+}
+
+/** Nanometres per SOURCE pixel in the 3D view, the way neuroglancer's own
+ *  perspective scale bar computes it: zoomFactor is canonical voxels per
+ *  panel height, times the canonical voxel's physical size. The old
+ *  version divided by the whole canvas height and assumed metres, which
+ *  printed things like "10000 m". */
 function computeNmPerPx(viewer: any, sh: number): number | null {
   if (!sh) return null;
   const persp = viewer?.perspectiveNavigationState ?? viewer?.navigationState;
   const zoom = persp?.zoomFactor?.value;
   if (typeof zoom !== 'number' || !isFinite(zoom) || zoom <= 0) return null;
-  return (zoom / sh) * 1e9;
+  const voxelM = viewer?.navigationState?.displayDimensionRenderInfo?.value?.canonicalVoxelPhysicalSize;
+  if (typeof voxelM !== 'number' || !isFinite(voxelM) || voxelM <= 0) return null;
+  const panel = perspectivePanelEl();
+  const canvas: HTMLCanvasElement | undefined = viewer?.display?.canvas;
+  const cssHeight = panel?.clientHeight || canvas?.clientHeight || 0;
+  if (!cssHeight) return null;
+  // Source pixels per CSS pixel (device pixel ratio of the WebGL canvas).
+  const dpr = canvas && canvas.clientHeight ? canvas.height / canvas.clientHeight : 1;
+  return (zoom / (cssHeight * dpr)) * voxelM * 1e9;
 }
 
 /** Capture a 2D canvas of the viewer's WebGL output with the given toggles
@@ -174,11 +264,27 @@ function captureSource(opts: { hideBoundingBox: boolean; showScaleBar: boolean }
       viewer.display.draw();
     }
     const out = document.createElement('canvas');
-    out.width = sw;
-    out.height = sh;
+    // 3D only: crop the source to the perspective panel's box.
+    let crop = { x: 0, y: 0, w: sw, h: sh };
+    if (only3d.value) {
+      const panel = perspectivePanelEl();
+      if (panel && sourceCanvas.clientWidth && sourceCanvas.clientHeight) {
+        const cr = sourceCanvas.getBoundingClientRect();
+        const pr = panel.getBoundingClientRect();
+        const kx = sw / cr.width, ky = sh / cr.height;
+        crop = {
+          x: Math.max(0, Math.round((pr.left - cr.left) * kx)),
+          y: Math.max(0, Math.round((pr.top - cr.top) * ky)),
+          w: Math.min(sw, Math.round(pr.width * kx)),
+          h: Math.min(sh, Math.round(pr.height * ky)),
+        };
+      }
+    }
+    out.width = crop.w;
+    out.height = crop.h;
     const ctx = out.getContext('2d')!;
-    ctx.drawImage(sourceCanvas, 0, 0);
-    return { canvas: out, sw, sh, nmPerPx: computeNmPerPx(viewer, sh) };
+    ctx.drawImage(sourceCanvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+    return { canvas: out, sw: crop.w, sh: crop.h, nmPerPx: computeNmPerPx(viewer, sh) };
   } catch (e) {
     console.error('captureSource failed:', e);
     return null;
@@ -324,6 +430,7 @@ function renderPreview() {
   if (showScaleBar.value && src.nmPerPx) {
     drawScaleBarOverlay(ctx, imgRect.value, src.nmPerPx, sh);
   }
+  drawNurro(ctx, imgRect.value);
 
   renderMarkup();
 }
@@ -463,13 +570,16 @@ watch(() => props.show, async (open) => {
     }
     hideBoundingBox.value = false;
     transparent.value = false;
+    only3d.value = false;
+    nurroOn.value = false;
+    nurroImg.value = null;
     strokes.value = [];
     layoutFrame();
     await refreshSource();
   }
 });
 
-watch([hideBoundingBox], () => {
+watch([hideBoundingBox, only3d], () => {
   if (props.show) refreshSource();
 });
 // Scale bar toggle is post-process, so no need to recapture, just redraw.
@@ -512,6 +622,38 @@ async function uploadBlob(blob: Blob): Promise<string> {
 
 async function download() {
   errorMsg.value = '';
+  if (wholeScreen.value) {
+    busy.value = true;
+    try {
+      const c = await captureWholeScreen();
+      drawNurro(c.getContext('2d')!, { x: 0, y: 0, w: c.width, h: c.height });
+      const blob: Blob = await new Promise((resolve, reject) => {
+        c.toBlob(b => b ? resolve(b) : reject(new Error('toBlob returned null')), 'image/png');
+      });
+      if (props.mode === 'attach') {
+        const publicUrl = await uploadBlob(blob);
+        emit('attached', { url: publicUrl });
+        emit('close');
+        return;
+      }
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `eyewire-${ts}-screen.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      emit('close');
+    } catch (e: any) {
+      // A dismissed picker is not an error worth shouting about.
+      if (e?.name !== 'NotAllowedError') errorMsg.value = e?.message ?? String(e);
+    } finally {
+      busy.value = false;
+    }
+    return;
+  }
   const w = Math.max(16, Math.min(8192, Math.floor(width.value || 0)));
   const h = Math.max(16, Math.min(8192, Math.floor(height.value || 0)));
   if (!w || !h) {
@@ -572,6 +714,7 @@ async function download() {
     if (showScaleBar.value && nmPerPx) {
       drawScaleBarOverlay(ctx, outRect, nmPerPx, sh);
     }
+    drawNurro(ctx, outRect);
 
     // Markup at full output resolution. Points are 0..1 of the image rect and
     // sizes are a fraction of image height, so outRect alone places them.
@@ -609,7 +752,7 @@ async function download() {
 </script>
 
 <template>
-  <div v-if="show" class="nge-shotdlg-overlay" @click.self="close">
+  <div v-if="show" class="nge-shotdlg-overlay" :style="dialogHidden ? 'visibility:hidden' : ''" @click.self="close">
     <div class="nge-shotdlg" role="dialog"
          :aria-label="props.mode === 'attach' ? 'Attach screenshot' : 'Save screenshot'">
       <div class="nge-shotdlg-header">
@@ -690,7 +833,7 @@ async function download() {
 
       <!-- Right bar: output, options, actions. -->
       <div class="nge-shotdlg-side">
-        <section class="nge-shotdlg-sec">
+        <section class="nge-shotdlg-sec" v-if="props.mode !== 'attach'">
           <h3 class="nge-shotdlg-sechead">Output size</h3>
           <div class="nge-shotdlg-dims">
             <label class="nge-shotdlg-field">
@@ -704,7 +847,7 @@ async function download() {
             </label>
             <span class="nge-shotdlg-px">px</span>
           </div>
-          <div class="nge-shotdlg-presets">
+          <div class="nge-shotdlg-presets" v-if="props.mode !== 'attach'">
             <button v-for="p in PRESETS" :key="p.label"
                     :class="{ 'is-active': isPreset(p.w, p.h) }"
                     @click="preset(p.w, p.h)">
@@ -717,6 +860,10 @@ async function download() {
         <section class="nge-shotdlg-sec">
           <h3 class="nge-shotdlg-sechead">Options</h3>
           <div class="nge-shotdlg-checks">
+            <label class="nge-shotdlg-check" title="Captures this tab as you see it, open panels included. The browser asks once which tab to share; pick this one.">
+              <input type="checkbox" v-model="wholeScreen" />
+              <span>Whole screen, with panels (the browser will ask to share this tab)</span>
+            </label>
             <label class="nge-shotdlg-check">
               <input type="checkbox" v-model="transparent" />
               <span>Transparent background</span>
@@ -729,6 +876,18 @@ async function download() {
               <input type="checkbox" v-model="showScaleBar" />
               <span>Show scale bar</span>
             </label>
+            <label class="nge-shotdlg-check" :class="{ 'is-off': wholeScreen }" title="Crop to the 3D view">
+              <input type="checkbox" v-model="only3d" :disabled="wholeScreen" />
+              <span>3D view only</span>
+            </label>
+          </div>
+          <div class="nge-shotdlg-nurro-row">
+            <label class="nge-shotdlg-check" title="Put a Nurro in the bottom right corner of the picture">
+              <input type="checkbox" v-model="nurroOn" />
+              <span>Add a Nurro</span>
+            </label>
+            <img :src="nurroSrc" alt="" class="nge-shotdlg-nurro-thumb" :class="{ 'is-on': nurroOn }" @click="nextNurro" title="Click for another Nurro" />
+            <button class="nge-shotdlg-nurro-next" @click="nextNurro" title="Another Nurro">another</button>
           </div>
         </section>
 
@@ -748,6 +907,21 @@ async function download() {
 </template>
 
 <style scoped>
+.nge-shotdlg-nurro-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.nge-shotdlg-nurro-thumb {
+  width: 40px; height: 40px; object-fit: contain; cursor: pointer;
+  opacity: 0.45; transition: opacity 0.15s, transform 0.15s;
+}
+.nge-shotdlg-nurro-thumb.is-on { opacity: 1; }
+.nge-shotdlg-nurro-thumb:hover { transform: scale(1.12); opacity: 1; }
+.nge-shotdlg-nurro-next {
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid rgba(245, 166, 35, 0.45); background: rgba(245, 166, 35, 0.12);
+  color: #ffd27a; font: inherit; font-size: 0.8em; cursor: pointer;
+}
+.nge-shotdlg-nurro-next:hover { background: rgba(245, 166, 35, 0.24); }
+.nge-shotdlg-check.is-off { opacity: 0.45; }
+
 /* Styled after Amy's scifi-ui library (holopanel surface, holoframe corner
    brackets, holoscan single pass), with the values copied inline rather than
    depending on the library at runtime. */

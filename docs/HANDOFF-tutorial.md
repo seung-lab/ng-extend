@@ -47,6 +47,15 @@ missing states (say exactly which neuron views are needed and Amy will pick
 them), MEC dataset coverage if it makes sense, and Nurro art on the steps
 where it helps.
 
+## Merge and Cut are two tutorials (2026-09-27)
+
+Amy split the Cut & Merge tutorial: `src/tutorial-3.ts` is Merge (tutorial
+3) and `src/tutorial-cut.ts` is Cut (tutorial 5, local-only progress like
+the site tour; add `users.tutorial_5_step` to persist it). The merge tutorial
+ends with a button that starts the cut one. Shared helpers (status box,
+watcher, (i) layer hint, before/after figure, positions) are exported from
+tutorial-3.ts. The book menu shows them as 3 Merge and 4 Cut.
+
 ## Practice cells (built 2026-09-26, needs Amy's examples)
 
 Tutorial 3's two "Your Turn" steps hand each learner a real sandbox cell,

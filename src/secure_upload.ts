@@ -1,0 +1,19 @@
+export async function secureUpload(blob: Blob, kind: 'help' | 'notifications' | 'badges'): Promise<string> {
+  if (blob.size > 8 * 1024 * 1024) throw new Error('Images must be under 8 MB.');
+  let token: string | null = null;
+  try { token = JSON.parse(localStorage.getItem('auth_token_v2_https://global.daf-apis.com/sticky_auth') || '{}').accessToken || null; } catch { /* no login */ }
+  if (!token) throw new Error('Sign in to upload an image.');
+  const data = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(new Error('Could not read image.'));
+    reader.readAsDataURL(blob);
+  });
+  const response = await fetch('https://us-central1-ytho-4bff2.cloudfunctions.net/ewSecureUpload', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
+    body: JSON.stringify({ token, kind, contentType: blob.type, data }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Image upload failed.');
+  return result.url;
+}

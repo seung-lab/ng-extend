@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { secureWrite } from '../secure_write';
 import {ref, computed, watch, onMounted, onUnmounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
@@ -169,7 +170,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
         // The reply arrives "from Nurro": guide avatar icon + a random real
         // neuron render as the card image (admin-uploads/nurro-neurons).
         const storageBase = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads';
-        await supabase.from('notifications').insert({
+        await secureWrite('notification.insert', { row: {
           title: '💬 Nurro replied to your feedback',
           body: text,
           thumbnail_url: `${storageBase}/nurro/guide-avatar.png`,
@@ -177,8 +178,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
           target_type: targetUserId ? 'user' : 'all',
           target_id: targetUserId,
           send_at: new Date().toISOString(),
-          created_by: backend.userId,
-        });
+        } });
       }
     }
 
@@ -194,17 +194,17 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
       reviewed_by: backend.userName || backend.userEmail || 'admin',
       reviewed_at: new Date().toISOString(),
     };
-    let { error } = await supabase.from('feedback_triage').update(update).eq('id', row.id);
     let noteLost = false;
-    // Until the approver_note migration runs, the column is missing: PostgREST
-    // answers PGRST204 "Could not find the 'approver_note' column" (probed
-    // 2026-09-25). Never let that block the decision: save it without.
-    if (error && 'approver_note' in update && (error.code === 'PGRST204' || /approver_note/.test(error.message))) {
+    try {
+      await secureWrite('triage.update', { id: row.id, fields: update });
+    } catch (err: any) {
+      // Until the approver_note migration runs, the column is missing
+      // (PostgREST PGRST204). Never let that block the decision: save without.
+      if (!('approver_note' in update) || !/PGRST204|approver_note/.test(err?.message || '')) throw err;
       delete update.approver_note;
       noteLost = true;
-      ({ error } = await supabase.from('feedback_triage').update(update).eq('id', row.id));
+      await secureWrite('triage.update', { id: row.id, fields: update });
     }
-    if (error) throw error;
     delete triageNotes.value[row.id];
     await loadTriage();
     if (noteLost) {
@@ -312,7 +312,7 @@ async function sendReporterUpdate(row: TriageRow) {
       return;
     }
     const storageBase = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads';
-    const { error: nErr } = await supabase.from('notifications').insert({
+    await secureWrite('notification.insert', { row: {
       title: '💬 An update on your report',
       body: text,
       thumbnail_url: `${storageBase}/nurro/guide-avatar.png`,
@@ -320,17 +320,15 @@ async function sendReporterUpdate(row: TriageRow) {
       target_type: 'user',
       target_id: userId,
       send_at: new Date().toISOString(),
-      created_by: backend.userId,
-    });
-    if (nErr) throw nErr;
+    } });
     // Re-read the log right before appending, so a bridge write in between
     // is not overwritten.
     const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
     const log = Array.isArray(fresh?.feedback_log) ? [...fresh!.feedback_log] : [];
     const at = new Date().toISOString();
     log.push({ role: 'reporter_update', via: 'admin', by: backend.userName || backend.userEmail || 'admin', text, ts: at, at, sent: true, echoed: false });
-    const { error: lErr } = await supabase.from('feedback_triage').update({ feedback_log: log }).eq('id', row.id);
-    if (lErr) console.warn('[triage] reporter update sent but not logged:', lErr.message);
+    await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } })
+      .catch((lErr: any) => console.warn('[triage] reporter update sent but not logged:', lErr?.message));
     delete reporterDrafts.value[row.id];
     await loadTriage();
   } catch (e: any) {
@@ -344,13 +342,11 @@ async function setImplState(row: TriageRow, next: ImplState) {
   if (triageActing.value) return;
   triageActing.value = row.id;
   try {
-    const { supabase } = await import('../supabase');
     const who = backend.userName || backend.userEmail || 'admin';
-    const { error } = await supabase.from('feedback_triage').update({
+    await secureWrite('triage.update', { id: row.id, fields: {
       impl_state: next,
       ...(next === 'deploy_queued' ? { tested_by: who, tested_at: new Date().toISOString() } : {}),
-    }).eq('id', row.id);
-    if (error) throw error;
+    } });
     await loadTriage();
   } catch (e: any) {
     triageError.value = e?.message ?? String(e);
@@ -828,14 +824,14 @@ const practiceError = ref('');
 const practiceNotice = ref('');
 const practiceTitle = ref('');
 const practiceKind = ref<PracticeKind>('cut');
-const practiceA = ref<{ sv: string; root: string } | null>(null);
-const practiceB = ref<{ sv: string; root: string } | null>(null);
+const practiceA = ref<{ sv: string; root: string; pos?: number[] } | null>(null);
+const practiceB = ref<{ sv: string; root: string; pos?: number[] } | null>(null);
 /** Typed root ids, the no-hover way in: supervoxels are looked up on first use. */
 const practiceRootA = ref('');
 const practiceRootB = ref('');
 watch(practiceRootA, v => { const t = v.trim(); if (/^\d{10,}$/.test(t)) practiceA.value = { sv: '', root: t }; });
 watch(practiceRootB, v => { const t = v.trim(); if (/^\d{10,}$/.test(t)) practiceB.value = { sv: '', root: t }; });
-const practiceHover = ref<{ sv: string; root: string } | null>(null);
+const practiceHover = ref<{ sv: string; root: string; pos?: number[] } | null>(null);
 const practiceSaving = ref(false);
 const practiceActing = ref<string | null>(null);
 let hoverTimer: ReturnType<typeof setInterval> | null = null;
@@ -861,7 +857,11 @@ function sampleHover() {
       if (!sel?.hasSelectedSegment) continue;
       const sv = sel.baseSelectedSegment?.toString?.();
       const root = sel.selectedSegment?.toString?.();
-      if (sv && root && sv !== '0') { practiceHover.value = { sv, root }; return; }
+      // The mouse position too: it becomes the merge point for "place the
+      // merge points for me" in the tutorial.
+      const p = viewer?.mouseState?.position;
+      const pos = p && p.length >= 3 ? [p[0], p[1], p[2]].map((v: number) => Math.round(v * 100) / 100) : undefined;
+      if (sv && root && sv !== '0') { practiceHover.value = { sv, root, pos }; return; }
     }
   } catch { /* viewer not ready */ }
 }
@@ -923,6 +923,8 @@ async function registerPractice() {
       dataset: practiceDataset(), pcg_server: pcg.server, pcg_table: pcg.table,
       state_url: stateUrl,
       supervoxel_a: a.sv, supervoxel_b: b.sv, root_a: a.root, root_b: b.root,
+      point_a: a.pos ? JSON.stringify(a.pos) : null,
+      point_b: b.pos ? JSON.stringify(b.pos) : null,
       created_by: backend.userId,
     };
     const { error } = await supabase.from('tutorial_practice_examples').insert(row);
@@ -950,7 +952,9 @@ async function resetPracticeNow(ex: PracticeExample) {
   try {
     await patchPractice(ex.id, { status: 'resetting', claimed_by: null, claimed_at: null, expires_at: null });
     const r = await undoSinceBaseline(ex);
-    await patchPractice(ex.id, { status: 'ready', root_a: r.a, root_b: r.b, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() });
+    // A cut example keeps its post-cut roots: the tutorial previews them.
+    const roots = ex.kind === 'cut' ? {} : { root_a: r.a, root_b: r.b };
+    await patchPractice(ex.id, { status: 'ready', ...roots, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() });
     practiceNotice.value = `${ex.title}: undid ${r.undone} operation(s), ready.`;
   } catch (e: any) {
     const msg = e?.message ?? String(e);

@@ -41,13 +41,14 @@ jobs:
   bridge:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: eyewire-ii-community
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Post proposals + read approvals
         env:
@@ -68,9 +69,6 @@ jobs:
           CLAUDE_TOKEN_REMIND_AT: ${{ vars.CLAUDE_TOKEN_REMIND_AT }}
           APPROVER_NAME_MAP: ${{ vars.APPROVER_NAME_MAP }}
           GITHUB_TOKEN: ${{ github.token }}
-          # Reads tester replies in the context of the whole thread (a small
-          # model on the Princeton subscription). Without it, keyword rules.
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN == '' && secrets.ANTHROPIC_API_KEY || '' }}
-          TRIAGE_UNDERSTAND: ${{ vars.TRIAGE_UNDERSTAND }}
+          # Model credentials exist only in the isolated model jobs.
+          TRIAGE_MODEL_CONFIGURED: 'true'
         run: node scripts/slack-triage-bridge.mjs

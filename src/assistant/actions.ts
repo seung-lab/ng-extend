@@ -63,10 +63,11 @@ export const ACTION_REGISTRY: Record<string, Validator> = {
     return { target, note };
   },
 
-  // Launch a tutorial (1-3) or the site tour (4) at an optional step.
+  // Launch a tutorial (1 basics, 2 interface, 3 merge, 5 cut) or the site
+  // tour (4) at an optional step.
   startTutorial: (args) => {
     const id = Number(args?.id);
-    if (![1, 2, 3, 4].includes(id)) return null;
+    if (![1, 2, 3, 4, 5].includes(id)) return null;
     const step = Number.isFinite(Number(args?.step)) ? Math.max(0, Math.floor(Number(args.step))) : 0;
     return { id, step };
   },

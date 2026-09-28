@@ -21,6 +21,9 @@ const resultIsError = computed(() => store.resultFlash === 'error');
 // Show inline result on bar (merge mode stays open, shows temporary result)
 const hasInlineResult = computed(() => hasResult.value && !store.pendingClose);
 const hasMergeSegments = computed(() => store.mergeSegments.length > 0);
+/** Something is ready to submit: the button pulses (Amy). */
+const mergeReady = computed(() => store.mergeSegments.some(p => p.length >= 2));
+const cutReady = computed(() => store.redPointCount > 0 && store.bluePointCount > 0);
 
 const contextHint = computed(() => {
   if (store.statusMessage) return store.statusMessage;
@@ -72,6 +75,19 @@ function toggleAutoSubmit() {
   if (!mergeEl) return;
   const checkbox = mergeEl.querySelector('label input[type="checkbox"]') as HTMLInputElement | null;
   if (checkbox) checkbox.click();
+}
+
+/** Press neuroglancer's own Submit icon for the active tool. The keyboard
+ *  hint used to be the only "button" here and it was not clickable, which
+ *  left mouse users, and anyone in a tutorial, without a way to submit. */
+function submitTool(kind: 'multicut' | 'merge') {
+  const title = kind === 'multicut' ? 'Submit multicut' : 'Submit merge';
+  const icon = document.querySelector(`.neuroglancer-icon[title="${title}"]`) as HTMLElement | null;
+  if (icon) { icon.click(); return; }
+  // Fallback: the tool's own Enter binding.
+  const viewer = (window as any)['viewer'];
+  const target = viewer?.element ?? document.getElementById('neuroglancer-container');
+  target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
 }
 
 /** Exit the current split/merge tool (cancel the operation). */
@@ -130,7 +146,7 @@ function cancelTool() {
           <div class="nge-smo-actions" v-if="!isSubmitting">
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
             <span class="nge-smo-key-hint"><kbd>G</kbd> Swap</span>
-            <span class="nge-smo-key-hint"><kbd>Enter</kbd> Submit</span>
+            <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': cutReady }" @click="submitTool('multicut')" title="Submit the cut (or press Enter)">Submit cut</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd>Esc</kbd> Cancel</button>
           </div>
           <div class="nge-smo-loading-indicator" v-if="isSubmitting">
@@ -152,7 +168,7 @@ function cancelTool() {
               auto-submit
             </label>
             <span class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
-            <span class="nge-smo-key-hint"><kbd>Enter</kbd> Submit</span>
+            <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': mergeReady }" @click="submitTool('merge')" title="Submit the merge (or press Enter)">Submit merge</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit merge mode"><kbd>Esc</kbd> Cancel</button>
           </div>
           <div class="nge-smo-loading-indicator" v-if="isSubmitting">
@@ -463,6 +479,24 @@ function cancelTool() {
 .nge-smo-action-btn:active {
   background: rgba(255, 255, 255, 0.25);
   transform: scale(0.96);
+}
+
+.nge-smo-action-btn.submit-btn {
+  background: rgba(0, 200, 100, 0.22);
+  border-color: rgba(0, 220, 120, 0.55);
+  color: #e6ffef;
+  font-weight: 600;
+}
+.nge-smo-action-btn.submit-btn:hover {
+  background: rgba(0, 220, 120, 0.38);
+  border-color: rgba(0, 240, 140, 0.8);
+}
+.nge-smo-action-btn.submit-btn.is-ready {
+  animation: nge-smo-submit-pulse 1.1s ease-in-out infinite;
+}
+@keyframes nge-smo-submit-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 220, 120, 0.0); background: rgba(0, 200, 100, 0.22); }
+  50%      { box-shadow: 0 0 14px 4px rgba(0, 220, 120, 0.55); background: rgba(0, 220, 120, 0.42); }
 }
 
 .nge-smo-key-hint {

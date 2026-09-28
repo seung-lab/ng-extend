@@ -216,7 +216,7 @@ Don't worry if you can't find it - the Next button will take you there.`,
       imgInspectorNurro,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
-    onEnter: () => { setAnnotationColor('#ffff00'); },
+    onEnter: () => { setAnnotationColor('#edd040'); },
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
@@ -230,7 +230,7 @@ It missed a branch. Let's see if we can find it.`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
     width: "200px",
-    onEnter: () => { setAnnotationColor('#ffff00'); },
+    onEnter: () => { setAnnotationColor('#edd040'); },
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 

@@ -187,6 +187,12 @@ export const useTutorialStore = defineStore("tutorial", () => {
   const tutorialStep4: Ref<number> = ref(
     parseInt(localStorage.getItem(`nge-tutorial-4-step`) ?? "-1")
   );
+  // Tutorial 5, Cut (split off the Cut & Merge tutorial 2026-09-27). Local
+  // only for now, like the site tour; users.tutorial_5_step would need a
+  // migration to follow the account.
+  const tutorialStep5: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-5-step`) ?? "-1")
+  );
 
   // Track whether we've already hydrated for the current user so we don't
   // clobber locally-advanced progress on every re-render.
@@ -197,6 +203,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 1) return tutorialStep1.value;
     if (activeTutorial.value === 2) return tutorialStep2.value;
     if (activeTutorial.value === 3) return tutorialStep3.value;
+    if (activeTutorial.value === 5) return tutorialStep5.value;
     return tutorialStep4.value;
   }
 
@@ -204,6 +211,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 1) tutorialStep1.value = val;
     else if (activeTutorial.value === 2) tutorialStep2.value = val;
     else if (activeTutorial.value === 3) tutorialStep3.value = val;
+    else if (activeTutorial.value === 5) tutorialStep5.value = val;
     else tutorialStep4.value = val;
   }
 
@@ -289,6 +297,9 @@ export const useTutorialStore = defineStore("tutorial", () => {
     localStorage.setItem(`nge-tutorial-4-step`, `${tutorialStep4.value}`);
     // Tutorial 4 (site tour) is local-only — not persisted to Supabase
   });
+  watch(tutorialStep5, () => {
+    localStorage.setItem(`nge-tutorial-5-step`, `${tutorialStep5.value}`);
+  });
   watch(activeTutorial, () => {
     localStorage.setItem(`nge-active-tutorial`, `${activeTutorial.value}`);
     scheduleSync();
@@ -319,6 +330,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep2,
     tutorialStep3,
     tutorialStep4,
+    tutorialStep5,
     hydrateFromSupabase,
   };
 });

@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
-// 980 reconstructed cells (static/images/recap, original alongside).
-// Full screen version, shown behind the profile popup while this tab is open.
-import recapBackdrop from '../../static/images/recap/week-in-science-bg.jpg';
+// Banner: 980 reconstructed cells (static/images/recap, original alongside).
+import recapBanner from '../../static/images/recap/week-in-science-banner.jpg';
 
 import { useUserStatsStore, useCellHistoryStore, useIssueTagStore, useHelpRequestStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badge_definitions';
@@ -46,12 +45,6 @@ interface GlobalStats {
   editsAll: number; cellsAll: number; scientists: number; mineWeek: number;
 }
 const globalStats = ref<GlobalStats | null>(null);
-
-// The render sits on the page behind the popup (the modal backdrop), not
-// inside the box. The backdrop lives outside this component, so hand it the
-// image through a CSS variable on <html> while this tab is mounted.
-onMounted(() => document.documentElement.style.setProperty('--nge-recap-backdrop', `url(${recapBackdrop})`));
-onBeforeUnmount(() => document.documentElement.style.removeProperty('--nge-recap-backdrop'));
 
 // ── Your week and month, from the shared edit log ──
 // The local stats tally lives in this browser only, so edits made on
@@ -257,7 +250,8 @@ function jumpToCell(segId: string) {
     :class="props.embedded ? 'nge-recap-embedded' : 'nge-recap-modal'"
     @hide="emit('hide')"
   >
-    <div class="nge-recap-shell" :class="{ 'nge-recap-shell--embedded': props.embedded }">
+    <div class="nge-recap-shell" :class="{ 'nge-recap-shell--embedded': props.embedded }"
+         :style="{ '--recap-banner': `url(${recapBanner})` }">
 
       <!-- Non-scrolling topbar (modal only) -->
       <div v-if="!props.embedded" class="nge-recap-topbar">
@@ -501,7 +495,7 @@ function jumpToCell(segId: string) {
 .nge-recap-shell--embedded .nge-recap-content > .nge-recap-hero,
 .nge-recap-shell--embedded .nge-recap-content > .nge-recap-big-stat,
 .nge-recap-shell--embedded .nge-recap-content > .nge-recap-global { grid-column: 1 / -1; }
-.nge-recap-shell--embedded .nge-recap-hero { padding: 18px 16px 6px; margin-bottom: 4px; }
+.nge-recap-shell--embedded .nge-recap-hero { padding: 40px 16px 8px; margin-bottom: 4px; }
 .nge-recap-shell--embedded .nge-recap-big-stat { padding: 4px 0 16px; }
 .nge-recap-shell--embedded .nge-recap-section { margin-bottom: 14px; padding-bottom: 14px; }
 @media (max-width: 900px) {
@@ -585,7 +579,14 @@ function jumpToCell(segId: string) {
   padding: 70px 16px 26px;
   margin-bottom: 20px;
 }
-
+/* The 980 cells render fills the whole tab: vivid behind the title, then
+   darkened down the page so every stat stays readable over it. */
+.nge-recap-shell {
+  background:
+    linear-gradient(180deg, rgba(4, 6, 12, 0.2) 0px, rgba(4, 6, 12, 0.55) 220px, rgba(4, 6, 12, 0.86) 420px, rgba(4, 6, 12, 0.92) 100%),
+    var(--recap-banner) center top / cover no-repeat,
+    #04060c;
+}
 
 .nge-recap-hero-title {
   font-size: 1.5em;
@@ -940,16 +941,4 @@ function jumpToCell(segId: string) {
 .nge-recap-badge-track--exploration .nge-recap-badge-kind { background: rgba(94, 234, 212, 0.14); color: #5eead4; }
 .nge-recap-badge-track--building .nge-recap-progress-fill { background: linear-gradient(90deg, #f5a623, #ffd08a); }
 .nge-recap-badge-track--exploration .nge-recap-progress-fill { background: linear-gradient(90deg, #14b8a6, #5eead4); }
-</style>
-
-<style>
-/* Unscoped: the modal backdrop is outside this component. While the Week in
-   Science tab is open, the backdrop behind the popup shows the render, dimmed
-   so the popup stays the focus. */
-.nge-overlay-blocker:has(.nge-profile-shell--week) {
-  background:
-    radial-gradient(ellipse at center, rgba(2, 4, 10, 0.35) 0%, rgba(2, 4, 10, 0.75) 100%),
-    var(--nge-recap-backdrop, none) center / cover no-repeat,
-    #02040a;
-}
 </style>

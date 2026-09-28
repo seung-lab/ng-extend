@@ -10,20 +10,26 @@ import { steps as steps1 } from '../tutorial-1';
 import { steps as steps2 } from '../tutorial-2';
 import { steps as steps3 } from '../tutorial-3';
 import { steps as steps4 } from '../site-tour';
+import { steps as steps5 } from '../tutorial-cut';
 import { endPractice } from '../practice';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
+// Badge art for the merge and cut tutorials is not drawn yet (Amy, 2026-09-28);
+// until it is, the confetti and super Nurros from static/nurro stand in.
+import badgeMerge from '../../static/nurro/nurro-confetti-card.png';
+import badgeCut from '../../static/nurro/nurro-super-v2.png';
 
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5 };
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {
     if (store.activeTutorial === 1) return store.tutorialStep1;
     if (store.activeTutorial === 2) return store.tutorialStep2;
     if (store.activeTutorial === 3) return store.tutorialStep3;
+    if (store.activeTutorial === 5) return store.tutorialStep5;
     return store.tutorialStep4;
 });
 
@@ -44,7 +50,8 @@ const activeStep = computed(() => {
 const BADGE_KEYS: Record<number, { key: string; title: string; image: string }> = {
     1: { key: 'nge-badge-citizen-scientist', title: 'Citizen Scientist', image: badgeCitizenScientist },
     2: { key: 'nge-badge-advanced-operator', title: 'Advanced Operator', image: badgeClearanceLevel2 },
-    // 3: Tutorial 3 badge TBD
+    3: { key: 'nge-badge-merge-master', title: 'Merge Master', image: badgeMerge },
+    5: { key: 'nge-badge-cut-master', title: 'Cut Master', image: badgeCut },
 };
 
 async function awardBadgeIfNew(tutorialNum: number) {
@@ -126,12 +133,15 @@ const next = () => {
     }
 };
 // Switching to another tutorial from the book menu also hands the cell back.
-watch(() => store.activeTutorial, (now, before) => { if (before === 3 && now !== 3) endPractice(); });
+const PRACTICE_TUTORIALS = [3, 5];
+watch(() => store.activeTutorial, (now, before) => {
+  if (PRACTICE_TUTORIALS.includes(before) && !PRACTICE_TUTORIALS.includes(now)) endPractice();
+});
 const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() - 1)); };
 const exitIntro = () => {
     console.log('exiting intro!');
-    // Leaving Tutorial 3 mid practice hands the practice cell back.
-    if (store.activeTutorial === 3) endPractice();
+    // Leaving the merge or cut tutorial mid practice hands the cell back.
+    if (store.activeTutorial === 3 || store.activeTutorial === 5) endPractice();
     store.setTutorialStep(steps.value.length);
 };
 
