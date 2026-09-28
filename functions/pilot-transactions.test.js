@@ -37,6 +37,11 @@ test('PostgreSQL enforces membership, atomic claims, owner checks, limits and re
   await assert.rejects(()=>task(A,'claim_cell',{dataset:'pinky_nf_v2',segment_id:'131',point:[9,2,3]}),/Max 8/);
   assert.equal((await db.query('SELECT count(*)::integer AS n FROM proofreading_tasks')).rows[0].n,8);
   await task(A,'release',{id:1}); await task(B,'claim',{id:1});
+  // Each claim keeps its own saved view: owner only, https only (2026-09-28).
+  await task(B,'save_link',{id:1,link:'https://spelunker.cave-explorer.org/#!middleauth+https://x.test/1'});
+  assert.equal((await db.query('SELECT working_link FROM proofreading_tasks WHERE id=1')).rows[0].working_link,'https://spelunker.cave-explorer.org/#!middleauth+https://x.test/1');
+  await assert.rejects(()=>task(A,'save_link',{id:1,link:'https://x.test/2'}),/current owner/);
+  for (const bad of ['http://x.test','javascript:alert(1)','https://a b','']) await assert.rejects(()=>task(B,'save_link',{id:1,link:bad}),/https link/);
   await db.exec("UPDATE task_assignments SET status='expired',expires_at=now()-interval '1 minute' WHERE task_id=1 AND user_id='"+A+"'; SELECT expire_stale_assignments();");
   assert.equal((await db.query('SELECT assigned_to FROM proofreading_tasks WHERE id=1')).rows[0].assigned_to,B);
   const held=await practice(A,'claim',{kind:'cut'});assert.equal(held.id,X);

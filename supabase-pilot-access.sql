@@ -22,6 +22,8 @@ $$;
 
 -- One transaction owns the task and assignment together. All claim paths share
 -- this lock, including claims by point and duplicate imported rows of one cell.
+ALTER TABLE public.proofreading_tasks ADD COLUMN IF NOT EXISTS working_link text;
+
 CREATE OR REPLACE FUNCTION public.pilot_task_action(p_user uuid, p_action text, p_args jsonb DEFAULT '{}')
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE t public.proofreading_tasks%ROWTYPE; a public.task_assignments%ROWTYPE;
@@ -81,6 +83,15 @@ BEGIN
         soma_coords=CASE WHEN p_action='complete' THEN coalesce(p_args->>'soma_coords',soma_coords) ELSE soma_coords END,
         updated_at=now() WHERE id=t.id RETURNING * INTO t;
     END IF;
+  ELSIF p_action = 'save_link' THEN
+    -- Each claimed cell keeps its own saved view (Amy 2026-09-28), so moving
+    -- between claims restores that cell's annotation layers. Owner only,
+    -- active claims only, one https link.
+    IF t.assigned_to IS DISTINCT FROM p_user THEN RAISE EXCEPTION 'Only the current owner can change this claim' USING ERRCODE='42501'; END IF;
+    IF t.status NOT IN ('assigned','in_progress') THEN RAISE EXCEPTION 'This claim is no longer active'; END IF;
+    IF coalesce(p_args->>'link','') !~ '^https://[^[:space:]"''<>]+$' OR length(p_args->>'link') > 2000
+      THEN RAISE EXCEPTION 'The link must be a single https link'; END IF;
+    UPDATE public.proofreading_tasks SET working_link=p_args->>'link',updated_at=now() WHERE id=t.id RETURNING * INTO t;
   ELSE RAISE EXCEPTION 'Unknown claim action'; END IF;
   RETURN to_jsonb(t);
 END;

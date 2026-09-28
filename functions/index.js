@@ -1673,7 +1673,7 @@ exports.ewSecureWrite = onRequest(
       switch (action) {
         case "pilot.task":
         case "pilot.practice": {
-          const allowed = action === "pilot.task" ? ["claim","claim_cell","release","complete","heartbeat"] : ["claim","heartbeat","begin_reset","check_reset","finish_reset"];
+          const allowed = action === "pilot.task" ? ["claim","claim_cell","release","complete","heartbeat","save_link"] : ["claim","heartbeat","begin_reset","check_reset","finish_reset"];
           if(!allowed.includes(args.operation)) throw ewErr(400,"Unknown pilot action");
           const payload={p_user:me.id,p_action:args.operation,p_args:args.args||{}};
           out=await sb("rpc/"+(action === "pilot.task"?"pilot_task_action":"pilot_practice_action"),{method:"POST",body:JSON.stringify(payload)});

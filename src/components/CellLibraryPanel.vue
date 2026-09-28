@@ -411,6 +411,40 @@ function getCachedUserName(userId: string): string {
   return userNameCache.value[userId];
 }
 
+// ── Each claim keeps its own view (Amy 2026-09-28) ───────────────────
+// Retina players annotate a cell in its own layers (Soma, True End, Can't Fix,
+// Hits Edge, Notes), which live only in the viewer state. Moving to another
+// claim first saves the current view to the claim you were working on, then
+// loads the next claim's saved view (or its sheet Start link).
+const WORKING_KEY = 'nge_cl_working_task';
+let workingTaskId: number | null = (() => {
+  try { const v = Number(localStorage.getItem(WORKING_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; }
+})();
+function setWorkingTask(id: number | null) {
+  workingTaskId = id;
+  try { id ? localStorage.setItem(WORKING_KEY, String(id)) : localStorage.removeItem(WORKING_KEY); } catch {}
+}
+/** Save the view to the claim being worked on. False = stay put. */
+async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
+  const id = workingTaskId;
+  if (!id || id === nextTaskId) return true;
+  const t = backend.tasks.find(x => x.id === id);
+  if (!t || t.assigned_to !== backend.userId || (t.status !== 'assigned' && t.status !== 'in_progress')) return true;
+  const link = await mintShortStateLink();
+  if (link && await backend.saveWorkingLink(id, link)) return true;
+  const row = queue.items.find(i => i.segId === t.segment_id);
+  return window.confirm(`Your work on ${row?.index || 'your current cell'} could not be saved. Switch anyway? Its unsaved annotations would be lost.`);
+}
+/** Go to one of your claims with its own layers. */
+async function switchToClaim(cell: CellRow) {
+  if (!cell.taskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords);
+  if (!(await leaveCurrentWork(cell.taskId))) return;
+  const t = backend.tasks.find(x => x.id === cell.taskId);
+  if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords);
+  jumpedSegId.value = cell.segId;
+  setWorkingTask(cell.taskId);
+}
+
 // ── Actions ──────────────────────────────────────────────────────────
 function jumpToCell(segId: string, coords: string) {
   const pos = parseCoords(coords);
@@ -459,8 +493,13 @@ async function claimCell(cell: typeof cells.value[0]) {
   await backend.loadTasks();
   // Open the cell's curated starting view (sheet "Start link", column E), so
   // the claimer lands with its Soma / True End / Can't Fix / Hits Edge / Notes
-  // layers (Amy 2026-09-28).
-  openStartLink(cell.startLink);
+  // layers (Amy 2026-09-28). Save the claim you were on first.
+  const claimed = backend.tasks.find(t => t.segment_id === cell.segId && t.assigned_to === backend.userId
+    && (t.status === 'assigned' || t.status === 'in_progress'));
+  if (await leaveCurrentWork(claimed?.id ?? null)) {
+    openStartLink(cell.startLink);
+    if (claimed) setWorkingTask(claimed.id);
+  }
 }
 
 // ── Claim limit: name every claim you hold, in any dataset, with Release ──
@@ -485,6 +524,7 @@ async function releaseHeld(t: ProofreadingTask) {
   releasing.add(key);
   let ok = false;
   try { ok = await backend.releaseTaskById(t.id); } finally { releasing.delete(key); }
+  if (ok && workingTaskId === t.id) setWorkingTask(null);
   if (!ok) { claimError.value = backend.error || 'Could not release this claim.'; return; }
   const held = await backend.loadMyActiveClaims();
   if (held.length >= backend.MAX_CLAIMS) { claimLimit.value = held; return; }
@@ -621,6 +661,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // the claim: the server only syncs a completed claim.
   const cavePromise = writeCaveCompletion(cell, done);
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
+  if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Write completion to the source sheet, including the Final Link.
   syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes).catch(showSheetError);
   const loggedViaCave = await cavePromise;
@@ -706,6 +747,7 @@ async function releaseCell(cell: typeof cells.value[0]) {
     return;
   }
   if (completing.value?.key === cellKey(cell)) completing.value = null;
+  if (cell.taskId && workingTaskId === cell.taskId) setWorkingTask(null);
   // Dispatch event so seg dot pips update
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
   if (!cell.taskId) await backend.loadTasks();  // releaseTaskById already synced
@@ -2582,7 +2624,7 @@ const panelStyle = computed(() => ({
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
                 :class="{ 'nge-cl-btn--jump-active': cell.segId === jumpedSegId }"
-                @click="jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords)"
+                @click="isMyClaim(cell) ? switchToClaim(cell) : jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords)"
                 :title="cell.segId === jumpedSegId ? 'Currently viewing — jump again' : 'Jump to segment'"
               >↗</button>
 

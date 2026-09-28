@@ -3025,6 +3025,8 @@ export interface ProofreadingTask {
   claim_point_z: number | null;
   /** Immutable supervoxel ID at claim point — used to resolve current root after edits/splits. */
   supervoxel_id: string | null;
+  /** The claimer's saved view of this cell, annotation layers included. */
+  working_link?: string | null;
 }
 
 export interface EditLogEntry {
@@ -4033,6 +4035,20 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     return (data ?? []) as ProofreadingTask[];
   }
 
+  /** Save a view (short link) as this claim's work in progress, so coming
+   *  back to the cell restores its annotation layers (Amy 2026-09-28). */
+  async function saveWorkingLink(taskId: number, link: string): Promise<boolean> {
+    try {
+      await taskAction('save_link', { id: taskId, link });
+      const t = tasks.value.find(x => x.id === taskId);
+      if (t) t.working_link = link;
+      return true;
+    } catch (e: any) {
+      console.warn('[backend] saveWorkingLink error:', e.message);
+      return false;
+    }
+  }
+
   async function releaseTaskById(taskId: number): Promise<boolean> {
     const prevActive = activeTaskId.value;
     activeTaskId.value = taskId;
@@ -4788,7 +4804,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
-    claimCell, releaseCell, releaseBySegment, releaseTaskById, loadMyActiveClaims, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
+    claimCell, releaseCell, releaseBySegment, releaseTaskById, saveWorkingLink, loadMyActiveClaims, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
     refreshSegmentIds,
     MAX_CLAIMS,
     // Admin Hub
@@ -4967,6 +4983,18 @@ export function isSelfMentionToken(token: string, username?: string | null, disp
   return target === norm(me) || target === norm(me.split(' ')[0]);
 }
 
+const MENTION_NOTIFY_KEY = 'nge-chat-mention-notify';
+function readMentionNotifyPref(): boolean {
+  try {
+    return localStorage.getItem(MENTION_NOTIFY_KEY) === '1'
+      && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  } catch { return false; }
+}
+
+/** Reactions offered on chat messages. The ewCommunityData gateway accepts
+ *  exactly these, so keep functions/community-data.js in step. */
+export const CHAT_REACTION_EMOJI = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
+
 export const useChatStore = defineStore('chat', () => {
   const chatMessages = ref<ChatMessage[]>([]);
   const connected = ref(false);
@@ -4982,6 +5010,14 @@ export const useChatStore = defineStore('chat', () => {
    *  the chat panel can flash to draw your eye. */
   const mentionPing = ref(0);
   const lastMentionFrom = ref('');
+  /** History paging: the oldest message loaded, and whether older ones exist. */
+  const hasMoreHistory = ref(true);
+  const loadingHistory = ref(false);
+  let oldestLoadedAt: string | null = null;
+  /** Reactions per message id: emoji to who reacted. */
+  const reactions = ref<Record<number, Record<string, Array<{ userId: string; name: string }>>>>({});
+  /** Browser notification on @mentions while EyeWire is in the background. */
+  const mentionNotify = ref(readMentionNotifyPref());
 
   let channel: ReturnType<typeof supabase.channel> | null = null;
   let connecting = false;
@@ -5068,33 +5104,176 @@ export const useChatStore = defineStore('chat', () => {
   /** Seed the panel with the most recent persisted messages (chronological, with
    *  timestamps) so users see context instead of a blank chat on open. Silently
    *  no-ops if the `chat_messages` table isn't present yet. */
-  async function loadRecentMessages(limit = 5) {
+  function rowToMessage(r: any): ChatMessage {
+    const date = new Date(r.created_at);
+    return {
+      type: 'message',
+      name: r.name,
+      rank: r.user_id ? (r.rank || 'player') : 'player',
+      time: formatTime(date),
+      dateTime: date,
+      parts: parseMessageParts(r.name, r.text),
+      dataset: r.dataset ?? null,
+      notificationId: r.notification_id ?? null,
+      id: r.id ?? null,
+      userId: r.user_id ?? null,
+    };
+  }
+
+  const HISTORY_PAGE = 30;
+
+  async function fetchPage(before: string | null) {
+    let q = supabase
+      .from('chat_messages')
+      .select('id, user_id, name, rank, text, created_at, dataset, notification_id')
+      .order('created_at', { ascending: false })
+      .limit(HISTORY_PAGE);
+    if (before) q = q.lt('created_at', before);
+    const { data, error } = await q;
+    if (error || !data) return null;
+    if (data.length < HISTORY_PAGE) hasMoreHistory.value = false;
+    if (data.length) oldestLoadedAt = data[data.length - 1].created_at;
+    return data.slice().reverse();                        // chronological
+  }
+
+  /** Seed the panel with the last page of persisted messages (Ames
+   *  2026-09-28: it used to show only 5, so people arrived to no context).
+   *  Silently no-ops if the `chat_messages` table isn't present yet. */
+  async function loadRecentMessages() {
     try {
-      const { data, error } = await supabase
-        .from('chat_messages')
-        .select('id, user_id, name, rank, text, created_at, dataset, notification_id')
-        .order('created_at', { ascending: false })
-        .limit(limit);
-      if (error || !data) return;
-      for (const r of data.slice().reverse()) {          // reverse → chronological
-        const date = new Date(r.created_at);
-        addTimeSeparatorIfNeeded(date);
-        chatMessages.value.push({
-          type: 'message',
-          name: r.name,
-          rank: r.user_id ? (r.rank || 'player') : 'player',
-          time: formatTime(date),
-          dateTime: date,
-          parts: parseMessageParts(r.name, r.text),
-          dataset: r.dataset ?? null,
-          notificationId: r.notification_id ?? null,
-          id: r.id ?? null,
-          userId: r.user_id ?? null,
-        });
+      const rows = await fetchPage(null);
+      if (!rows) return;
+      for (const r of rows) {
+        addTimeSeparatorIfNeeded(new Date(r.created_at));
+        chatMessages.value.push(rowToMessage(r));
       }
+      void loadReactions(rows.map((r: any) => r.id).filter((id: any) => id != null));
     } catch (e) {
       console.warn('[chat] loadRecentMessages failed:', e);
     }
+  }
+
+  /** Scrolled to the top: fetch the page before the oldest loaded message. */
+  async function loadOlder(): Promise<number> {
+    if (loadingHistory.value || !hasMoreHistory.value || !oldestLoadedAt) return 0;
+    loadingHistory.value = true;
+    try {
+      const rows = await fetchPage(oldestLoadedAt);
+      if (!rows?.length) return 0;
+      const known = new Set(chatMessages.value.map(m => m.id).filter(id => id != null));
+      const older = rows.filter((r: any) => !known.has(r.id)).map(rowToMessage);
+      chatMessages.value = [...older, ...chatMessages.value];
+      rebuildSeparators();
+      void loadReactions(older.map(m => m.id!).filter(id => id != null));
+      return older.length;
+    } catch (e) {
+      console.warn('[chat] loadOlder failed:', e);
+      return 0;
+    } finally {
+      loadingHistory.value = false;
+    }
+  }
+
+  /** Re-derive the date separators after older messages are prepended. */
+  function rebuildSeparators() {
+    const out: ChatMessage[] = [];
+    let last = '';
+    for (const m of chatMessages.value) {
+      if (m.type === 'time') continue;
+      const d = m.dateTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      if (d !== last) {
+        out.push({ type: 'time', name: '', rank: '', time: d, dateTime: m.dateTime, parts: [] });
+        last = d;
+      }
+      out.push(m);
+    }
+    chatMessages.value = out;
+    lastMessageDate = last;
+  }
+
+  // Reactions (Ames 2026-09-28). chat_reactions rows are written only through
+  // the verified gateway, which stamps user_id and name from the signed-in
+  // identity; everyone may read them.
+  function addReactionLocal(messageId: number, emoji: string, userId: string, name: string) {
+    const byEmoji = reactions.value[messageId] ?? (reactions.value[messageId] = {});
+    const list = byEmoji[emoji] ?? (byEmoji[emoji] = []);
+    if (!list.some(r => r.userId === userId)) list.push({ userId, name });
+  }
+  function removeReactionLocal(messageId: number, emoji: string, userId: string) {
+    const byEmoji = reactions.value[messageId];
+    const list = byEmoji?.[emoji];
+    if (!list) return;
+    const i = list.findIndex(r => r.userId === userId);
+    if (i >= 0) list.splice(i, 1);
+    if (!list.length) delete byEmoji[emoji];
+  }
+
+  async function loadReactions(ids: number[]) {
+    if (!ids.length) return;
+    const { data, error } = await supabase.from('chat_reactions')
+      .select('message_id,user_id,name,emoji').in('message_id', ids).limit(2000);
+    if (error || !data) return;            // table not created yet: no reactions
+    for (const r of data as any[]) addReactionLocal(r.message_id, r.emoji, r.user_id, r.name);
+  }
+
+  async function toggleReaction(messageId: number, emoji: string) {
+    const backend = useProofreadingBackendStore();
+    const me = backend.userId;
+    if (!me || !CHAT_REACTION_EMOJI.includes(emoji)) return;
+    const mine = reactions.value[messageId]?.[emoji]?.some(r => r.userId === me);
+    if (mine) {
+      removeReactionLocal(messageId, emoji, me);
+      const { error } = await supabase.from('chat_reactions').delete().eq('message_id', messageId).eq('emoji', emoji);
+      if (error) { console.warn('[chat] unreact failed:', error.message); addReactionLocal(messageId, emoji, me, backend.chatHandle); }
+    } else {
+      addReactionLocal(messageId, emoji, me, backend.chatHandle);
+      const { error } = await supabase.from('chat_reactions').insert({ message_id: messageId, emoji });
+      if (error && error.code !== '23505') { console.warn('[chat] react failed:', error.message); removeReactionLocal(messageId, emoji, me); }
+    }
+  }
+
+  // Mentions while EyeWire is in the background (Ames 2026-09-28): the tab
+  // title blinks until you come back, plus an optional browser notification.
+  let titleTimer: ReturnType<typeof setInterval> | null = null;
+  let baseTitle = '';
+  function stopTitleFlash() {
+    if (document.hidden || !document.hasFocus()) return;
+    if (titleTimer) { clearInterval(titleTimer); titleTimer = null; document.title = baseTitle; }
+    document.removeEventListener('visibilitychange', stopTitleFlash);
+    window.removeEventListener('focus', stopTitleFlash);
+  }
+  function alertMentionAway(from: string, text: string) {
+    if (!document.hidden && document.hasFocus()) return;
+    if (!titleTimer) {
+      baseTitle = document.title;
+      let on = false;
+      titleTimer = setInterval(() => {
+        on = !on;
+        document.title = on ? `(@) ${lastMentionFrom.value} mentioned you` : baseTitle;
+      }, 1000);
+      document.addEventListener('visibilitychange', stopTitleFlash);
+      window.addEventListener('focus', stopTitleFlash);
+    }
+    if (mentionNotify.value && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const n = new Notification(`${from} mentioned you in EyeWire II chat`, {
+          body: text.slice(0, 160), tag: 'ew-chat-mention',
+        });
+        n.onclick = () => { window.focus(); n.close(); };
+      } catch { /* notifications unavailable in this context */ }
+    }
+  }
+
+  /** Turn browser notifications for @mentions on or off. Asking for
+   *  permission needs a click, so this is called from the chat's bell. */
+  async function setMentionNotify(on: boolean): Promise<boolean> {
+    if (on && !('Notification' in window)) on = false;
+    if (on && Notification.permission !== 'granted') {
+      try { if (await Notification.requestPermission() !== 'granted') on = false; } catch { on = false; }
+    }
+    mentionNotify.value = on;
+    try { localStorage.setItem(MENTION_NOTIFY_KEY, on ? '1' : '0'); } catch { /* private mode */ }
+    return on;
   }
 
   async function connect() {
@@ -5128,7 +5307,10 @@ export const useChatStore = defineStore('chat', () => {
         parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null});
       if (row.user_id !== backend.userId) {
         // A direct @mention always gets through, even with chat muted.
-        if (mentionsMe(row.text || '')) { mentionPing.value++; lastMentionFrom.value = row.name || ''; }
+        if (mentionsMe(row.text || '')) {
+          mentionPing.value++; lastMentionFrom.value = row.name || '';
+          alertMentionAway(row.name || 'Someone', row.text || '');
+        }
         if (!useUserPreferencesStore().prefs.chatMuted) {
           unreadMessages.value = true;
           if (!panelVisible.value) unreadCount.value++;
@@ -5138,6 +5320,12 @@ export const useChatStore = defineStore('chat', () => {
       // A deleted message disappears for everyone watching.
       const id = (payload.old as any)?.id;
       if (id != null) removeLocal(id);
+    }).on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_reactions'}, payload => {
+      const r = payload.new as any;
+      if (r?.message_id != null) addReactionLocal(r.message_id, r.emoji, r.user_id, r.name);
+    }).on('postgres_changes', {event:'DELETE', schema:'public', table:'chat_reactions'}, payload => {
+      const r = payload.old as any;
+      if (r?.message_id != null) removeReactionLocal(r.message_id, r.emoji, r.user_id);
     }).on('postgres_changes', {event:'*', schema:'public', table:'chat_presence'}, onPresence)
       .subscribe(status => {
         connected.value = status === 'SUBSCRIBED';
@@ -5225,5 +5413,6 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online,
-    panelVisible, setPanelVisible, mentionPing, lastMentionFrom };
+    panelVisible, setPanelVisible, mentionPing, lastMentionFrom,
+    hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };
 });
