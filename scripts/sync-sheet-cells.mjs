@@ -54,7 +54,7 @@ const onlyDataset = val('--dataset');
 const SHEETS = [
   {
     dataset: 'stroeh_mouse_retina',
-    url: 'https://docs.google.com/spreadsheets/d/1H9KV0-CDGAzd3nvM0Vp1iXun9okwkpe-7tHhpkJbfWc/edit?gid=37544110',
+    url: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
   },
   {
     dataset: 'pinky_nf_v2',

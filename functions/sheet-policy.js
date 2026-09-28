@@ -1,6 +1,6 @@
 'use strict';
 const SOURCES = Object.freeze({
-  stroeh_mouse_retina: {id:'1H9KV0-CDGAzd3nvM0Vp1iXun9okwkpe-7tHhpkJbfWc', gid:37544110},
+  stroeh_mouse_retina: {id:'10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w', gid:37544110},
   pinky_nf_v2: {id:'1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU', gid:0},
 });
 const fail = (status,message) => {throw Object.assign(new Error(message),{status});};

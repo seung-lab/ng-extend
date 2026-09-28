@@ -69,7 +69,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
       '720575940565386350': '#ffd700',
     },
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1H9KV0-CDGAzd3nvM0Vp1iXun9okwkpe-7tHhpkJbfWc/edit?gid=37544110',
+    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
   },
   // Alias — neuroglancer layer name used in the viewer
   eyewire_ii: {
@@ -86,7 +86,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
       '720575940565386350': '#ffd700',
     },
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1H9KV0-CDGAzd3nvM0Vp1iXun9okwkpe-7tHhpkJbfWc/edit?gid=37544110',
+    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
   },
 
   // ── Pinky sandbox (dev / testing) ────────────────────────────────────────

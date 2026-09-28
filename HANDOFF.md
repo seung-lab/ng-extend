@@ -101,7 +101,7 @@ All dataset → CAVE wiring lives in **`src/config.ts`** (`CAVE_CONFIGS_BY_DATAS
 
 | Dataset key(s) | Science | CAVE server | datastack / aligned_volume | cell_status table (schema) | cell_type table (schema) | Cell Library sheet |
 |---|---|---|---|---|---|---|
-| `stroeh_mouse_retina`, `eyewire_ii` | **EyeWire II production** — mouse retina | `minnie.microns-daf.com` | `stroeh_mouse_retina` / `stroeh_mouse_retina` | `eyewire_ii_cell_status_v2` (`bound_tag_user`) | `eyewire_ii_cell_type_v2` (`bound_tag_user`) | sheet `1H9KV0-…JbFWc` gid `37544110` |
+| `stroeh_mouse_retina`, `eyewire_ii` | **EyeWire II production** — mouse retina | `minnie.microns-daf.com` | `stroeh_mouse_retina` / `stroeh_mouse_retina` | `eyewire_ii_cell_status_v2` (`bound_tag_user`) | `eyewire_ii_cell_type_v2` (`bound_tag_user`) | sheet `10cPvkLY…g70w` gid `37544110` (the copy from 2026-09-28) |
 | `pinky_sandbox`, `pinky_training3`, `pinky_nf_v2` | **dev/sandbox & tutorial** — mouse visual cortex (pinky100) | `minnie.microns-daf.com` | `pinky_sandbox` / `pinky100` | `eyewire_ii_cell_status_v2` (`bound_tag_user`) | `cell_type_dev` (`bound_tag`) | sheet `1SdepJz…UAJjU` |
 | `minnie65_public`, `minnie65_public_v117` | **MICrONS** — mouse visual cortex | `minnie.microns-daf.com` | `minnie65_public_v117` / `minnie65_phase3` | `eyewire_ii_cell_status_v2` (`bound_tag_user`) | `cell_type_dev` (`bound_tag`) | — |
 | `fly_v26`, `flywire_fafb_sandbox` | **FlyWire** — fly brain (FAFB) | `global.daf-apis.com` | `flywire_fafb_sandbox` / `fafb_seung_import` | `cell_status_dev` | `cell_type_dev` (`bound_tag`) | — |
