@@ -88,11 +88,11 @@ export class ButtonService {
   private _applyStatus(button: HTMLButtonElement, status: CellStatus): void {
     button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete', 'nge-lb-annotated', 'nge-lb-claimed');
     if (status.isComplete && status.cellType) {
-      button.classList.add('nge-lb-complete');        // gold: done (proofread AND typed)
+      button.classList.add('nge-lb-complete');        // green: done (proofread AND typed)
     } else if (status.isComplete) {
       button.classList.add('nge-lb-done-unlabeled');  // blue: proofread but not typed
     } else if (status.cellType) {
-      button.classList.add('nge-lb-annotated');        // pink: typed but not proofread
+      button.classList.add('nge-lb-annotated');        // yellow: typed but not proofread
     } else {
       button.classList.add('nge-lb-incomplete');        // gray: nothing set
     }
