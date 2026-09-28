@@ -234,7 +234,8 @@ function isSelfMention(token: string): boolean {
 async function deleteChatMessage(msg: ChatMessage) {
   if (msg.id == null) return;
   const preview = msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('').slice(0, 80);
-  if (!window.confirm(`Delete this message from ${msg.name} for everyone?\n\n"${preview}"`)) return;
+  const mine = msg.userId && msg.userId === backendStore.userId;
+  if (!window.confirm(`${mine ? 'Delete your message' : `Delete this message from ${msg.name}`} for everyone?\n\n"${preview}"`)) return;
   const ok = await chatStore.deleteMessage(msg.id);
   if (!ok) window.alert('Could not delete that message. Please try again.');
 }
@@ -426,6 +427,8 @@ function toggleCollapse() {
       <div class="nge-chat-strip" @mousedown="startDrag" @dblclick="toggleCollapse">
         <span class="nge-chat-strip-dot" :class="{ 'nge-chat-strip-dot--on': connected }"></span>
         <span v-if="collapsed" class="nge-chat-strip-label">Chat</span>
+        <span v-if="connected && chatStore.onlineCount > 0" class="nge-chat-online"
+              :title="Object.values(chatStore.online).map(p => p.name).join(', ')">{{ chatStore.onlineCount }} online</span>
         <span v-if="collapsed && unreadMessages" class="nge-chat-strip-unread" title="New messages"></span>
         <span class="nge-chat-strip-spacer"></span>
         <button class="nge-chat-strip-btn nge-chat-collapse-btn" @click.stop="toggleCollapse" :title="collapsed ? 'Expand chat' : 'Collapse chat'">
@@ -506,8 +509,9 @@ function toggleCollapse() {
                       >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
                     <span v-else class="nge-chat-msg-text">{{ part.text }}</span>
                   </template>
-                  <button v-if="backendStore.isAdmin && msg.id != null" class="nge-chat-del"
-                          title="Delete this message for everyone (admin)" @click.stop="deleteChatMessage(msg)">🗑</button>
+                  <button v-if="msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
+                          :title="msg.userId === backendStore.userId ? 'Delete your message' : 'Delete this message for everyone (admin)'"
+                          @click.stop="deleteChatMessage(msg)">🗑</button>
                 </div>
               </template>
 
@@ -741,6 +745,13 @@ function toggleCollapse() {
   font-size: 14.5px;
 }
 .nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
+.nge-chat-online {
+  margin-left: 6px;
+  font-size: 11px;
+  color: rgba(125, 255, 176, 0.85);
+  white-space: nowrap;
+  cursor: default;
+}
 .nge-chat-del {
   visibility: hidden;
   margin-left: 6px;

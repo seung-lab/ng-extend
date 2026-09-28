@@ -2302,6 +2302,9 @@ export interface WorkingLink {
   sharedGroupId?: number;
   createdAt: string;
   updatedAt: string;
+  /** Optional picture of the view (working_links.screenshot_url), uploaded
+   *  through ewSecureUpload; the gateway rejects any other host. */
+  screenshotUrl?: string;
 }
 
 function rowToWorkingLink(row: any): WorkingLink {
@@ -2321,6 +2324,7 @@ function rowToWorkingLink(row: any): WorkingLink {
     sharedGroupId: row.shared_group_id ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    screenshotUrl: row.screenshot_url ?? undefined,
   };
 }
 
@@ -2384,6 +2388,7 @@ export const useWorkingLinksStore = defineStore('workingLinks', () => {
     starred?: boolean;
     isPublic?: boolean;
     sharedGroupId?: number | null;
+    screenshotUrl?: string | null;
   }): Promise<string | null> {
     const backend = useProofreadingBackendStore();
     if (!backend.userId) {
@@ -2403,6 +2408,7 @@ export const useWorkingLinksStore = defineStore('workingLinks', () => {
       visible_segments: input.visibleSegments ?? [],
       is_public: !!input.isPublic,
       shared_group_id: input.sharedGroupId ?? null,
+      ...(input.screenshotUrl ? { screenshot_url: input.screenshotUrl } : {}),
     };
     try {
       const { data, error } = await supabase
@@ -4852,6 +4858,8 @@ export interface ChatMessage {
   notificationId?: number | null;
   /** chat_messages row id (persisted messages), for deletion. */
   id?: number | null;
+  /** Verified sender (chat_messages.user_id), so authors can delete their own. */
+  userId?: string | null;
 }
 
 /**
@@ -4920,6 +4928,65 @@ export const useChatStore = defineStore('chat', () => {
   let connecting = false;
   let lastMessageDate = '';
 
+  // ── Presence (Amy 2026-09-28: join notices and "# online" came back) ──────
+  // chat_presence rows are written only through the verified gateway: it sets
+  // user_id, name and last_seen_at from the signed-in identity, and a database
+  // trigger stamps joined_at when someone returns after 2+ minutes away
+  // (supabase-chat-presence-and-link-screenshots.sql). So a join notice can't
+  // be forged, unlike the old open broadcast the security fix removed.
+  const ONLINE_MS = 90_000;
+  const HEARTBEAT_MS = 60_000;
+  const online = ref<Record<string, { name: string; lastSeen: number }>>({});
+  /** Bumped every 30 s so onlineCount re-evaluates as people go stale. */
+  const presenceTick = ref(0);
+  const onlineCount = computed(() => {
+    void presenceTick.value; // re-evaluate on the tick; Date.now() is not reactive
+    const cutoff = Date.now() - ONLINE_MS;
+    return Object.values(online.value).filter(p => p.lastSeen >= cutoff).length;
+  });
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let staleTimer: ReturnType<typeof setInterval> | null = null;
+
+  function sysLine(type: 'join' | 'leave', name: string) {
+    const now = new Date();
+    addTimeSeparatorIfNeeded(now);
+    chatMessages.value.push({ type, name, rank: '', time: formatTime(now), dateTime: now,
+      parts: [{ type: 'text', text: `${name} ${type === 'join' ? 'joined' : 'left'} the chat` }] });
+  }
+
+  async function heartbeat() {
+    const { error } = await supabase.from('chat_presence').upsert({}, { onConflict: 'user_id' });
+    if (error) console.warn('[chat] presence heartbeat failed:', error.message);
+  }
+
+  async function loadOnline() {
+    const since = new Date(Date.now() - ONLINE_MS).toISOString();
+    const { data, error } = await supabase.from('chat_presence')
+      .select('user_id,name,last_seen_at').gte('last_seen_at', since).limit(500);
+    if (error || !data) return;
+    const next: Record<string, { name: string; lastSeen: number }> = {};
+    for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime() };
+    online.value = next;
+  }
+
+  function onPresence(payload: any) {
+    const me = useProofreadingBackendStore().userId;
+    if (payload.eventType === 'DELETE') {
+      const old = payload.old || {};
+      const name = old.name || online.value[old.user_id]?.name;
+      if (old.user_id) delete online.value[old.user_id];
+      if (name && old.user_id !== me) sysLine('leave', name);
+      return;
+    }
+    const row = payload.new || {};
+    if (!row.user_id) return;
+    const seen = new Date(row.last_seen_at).getTime();
+    const joined = new Date(row.joined_at).getTime();
+    online.value[row.user_id] = { name: row.name, lastSeen: seen };
+    // joined_at is only moved on a real (re)join, so a routine heartbeat is silent.
+    if (row.user_id !== me && Math.abs(seen - joined) < 5000) sysLine('join', row.name);
+  }
+
   function addTimeSeparatorIfNeeded(date: Date) {
     const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     if (dateStr !== lastMessageDate) {
@@ -4959,6 +5026,7 @@ export const useChatStore = defineStore('chat', () => {
           dataset: r.dataset ?? null,
           notificationId: r.notification_id ?? null,
           id: r.id ?? null,
+          userId: r.user_id ?? null,
         });
       }
     } catch (e) {
@@ -4994,13 +5062,23 @@ export const useChatStore = defineStore('chat', () => {
       const date = new Date(row.created_at);
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
-        parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null});
+        parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null});
       if (row.user_id !== backend.userId && !useUserPreferencesStore().prefs.chatMuted) { unreadMessages.value=true; unreadCount.value++; }
     }).on('postgres_changes', {event:'DELETE', schema:'public', table:'chat_messages'}, payload => {
-      // A message an admin deleted disappears for everyone watching.
+      // A deleted message disappears for everyone watching.
       const id = (payload.old as any)?.id;
       if (id != null) removeLocal(id);
-    }).subscribe(status => { connected.value = status === 'SUBSCRIBED'; });
+    }).on('postgres_changes', {event:'*', schema:'public', table:'chat_presence'}, onPresence)
+      .subscribe(status => {
+        connected.value = status === 'SUBSCRIBED';
+        if (status === 'SUBSCRIBED') {
+          // Say we're here (other open chats show the join), then who else is.
+          void heartbeat().then(loadOnline);
+          if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
+          if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; void loadOnline(); }, 30_000);
+        }
+      });
+    window.addEventListener('pagehide', leavePresence);
     connecting = false; // channel is now assigned; the guard above holds
   }
 
@@ -5032,11 +5110,18 @@ export const useChatStore = defineStore('chat', () => {
    * this is enforced server side as well as hidden in the UI.
    */
   async function deleteMessage(id: number): Promise<boolean> {
-    if (!useProofreadingBackendStore().isAdmin) return false;
-    const { error } = await supabase.from('chat_messages').delete().eq('id', id);
-    if (error) { console.warn('[chat] delete failed:', error.message); return false; }
+    // The gateway scopes a player's delete to their own messages (admins: any),
+    // so a zero-row result means "not yours", not success.
+    const { data, error } = await supabase.from('chat_messages').delete().eq('id', id).select('id');
+    if (error || !data?.length) { console.warn('[chat] delete failed:', error?.message ?? 'no row'); return false; }
     removeLocal(id);
     return true;
+  }
+
+  /** Remove our presence row so other chats show the leave. Best effort. */
+  function leavePresence() {
+    const me = useProofreadingBackendStore().userId;
+    if (me) void supabase.from('chat_presence').delete().eq('user_id', me);
   }
 
   function markRead() {
@@ -5046,8 +5131,11 @@ export const useChatStore = defineStore('chat', () => {
 
   function disconnect() {
     if (channel) {
-      const backend = useProofreadingBackendStore();
-      const name = backend.chatHandle;
+      leavePresence();
+      if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+      if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
+      window.removeEventListener('pagehide', leavePresence);
+      online.value = {};
       supabase.removeChannel(channel);
       channel = null;
       connected.value = false;
@@ -5055,5 +5143,5 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage };
+  return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online };
 });
