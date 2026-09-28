@@ -72,3 +72,51 @@ export function forScienceReply(seed: string): { text: string; language: string 
   const [text, language] = FOR_SCIENCE[(h >>> 0) % FOR_SCIENCE.length];
   return { text, language };
 }
+
+/**
+ * Nurro answers "!" commands, like nkem_test did in 2013, for everyone in
+ * chat (there are no private messages). nkem_test itself only does science.
+ * Keep these true to the app: they name real buttons and keys.
+ */
+export const NURRO_NAME = 'Nurro';
+
+export const NURRO_ANSWERS: Record<string, string> = {
+  about: 'Every cell you proofread becomes part of a real map of brain wiring that scientists use. The AI traces neurons fast but makes mistakes, and you fix them. 🧠',
+  faq: 'New here? Take the 🧭 Site Tour in Resources and tutorials (top right). Ask me anything with the AI button (top left). Found a bug? The ! button in the top bar sends it straight to the team.',
+  merge: 'A merge joins a branch the AI cut off. Press M, Ctrl+click the branch, Ctrl+click the cell near where it joins, then Submit merge or Enter. Tutorial: Resources and tutorials › Merge.',
+  cut: "A cut separates two cells the AI fused. Press C, Ctrl+click 3 or 4 red points on the piece that doesn't belong, press G, add blue points on the cell, then Submit cut or Enter. No undo key: fix a bad cut with a merge. Tutorial: Resources and tutorials › Cut.",
+  cells: "Open the Cell Library (the neuron button in the top bar) to claim a cell. My Cells shows what you're working on, and Release gives one back.",
+  datasets: 'Switch datasets with the Data button (top left): EyeWire II retina, MEC, MICrONS, and the Sandbox for practice. Cell IDs only exist in their own dataset.',
+  stats: "Your edits, merges, cuts, finished cells and streaks are on your profile (the person icon, top right), per dataset. Click anyone's name in chat to see theirs.",
+  points: "We don't have a points system... yet! 👀 For now your edits, cells and streaks live on your profile, and the 🏆 Leaderboard crowns the Weekly Champions.",
+  share: "Press 📍 next to the chat box to post a link to exactly what you're looking at, with an optional screenshot.",
+  tags: 'Found something odd but not sure how to fix it? Press Shift+T for Tag Mode and tag a spot for another player to review.',
+};
+const ALIASES: Record<string, string> = { commands: 'help', split: 'cut', cell: 'cells', dataset: 'datasets', tag: 'tags', stat: 'stats', point: 'points' };
+const HELP = 'Try !about, !faq, !merge, !cut, !cells, !datasets, !stats, !points, !share, !tags or !online. Or just say "for science" 🧪';
+
+export type BotReply = { name: string; text: string; language?: string };
+
+/**
+ * The bot's answer to a chat message, or null. `online` is who's here now,
+ * or null when replaying history (a stale head count would mislead, so
+ * !online only answers live).
+ */
+export function botReply(seed: string, text: string, online: string[] | null): BotReply | null {
+  const cmd = text.trim().match(/^!([a-z]+)\b/i)?.[1]?.toLowerCase();
+  if (cmd) {
+    const key = ALIASES[cmd] ?? cmd;
+    if (key === 'science') return { name: BOT_NAME, ...forScienceReply(seed) };
+    if (key === 'help') return { name: NURRO_NAME, text: HELP };
+    if (key === 'online') {
+      if (!online) return null;
+      return { name: NURRO_NAME, text: online.length
+        ? `${online.length} online right now: ${online.join(', ')}`
+        : "It's just us right now. Hi! 👋" };
+    }
+    if (NURRO_ANSWERS[key]) return { name: NURRO_NAME, text: NURRO_ANSWERS[key] };
+    return { name: NURRO_NAME, text: `I don't know !${cmd} yet. ${HELP}` };
+  }
+  if (isForScience(text)) return { name: BOT_NAME, ...forScienceReply(seed) };
+  return null;
+}

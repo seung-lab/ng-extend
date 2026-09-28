@@ -1,4 +1,4 @@
-import { BOT_NAME, forScienceReply, isForScience } from './chat_bot';
+import { botReply } from './chat_bot';
 import { taskAction } from './pilot_actions';
 import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
@@ -5126,14 +5126,18 @@ export const useChatStore = defineStore('chat', () => {
   const HISTORY_PAGE = 30;
 
   /** nkem_test answers "for science" (src/chat_bot.ts). Local only. */
-  function botReplyTo(m: ChatMessage): ChatMessage | null {
-    if (m.type !== 'message' || m.notificationId || m.id == null) return null;
+  /** nkem_test ("for science") and Nurro ("!" commands), src/chat_bot.ts.
+   *  Local only: every reader's browser works out the same reply. */
+  function botReplyTo(m: ChatMessage, live = false): ChatMessage | null {
+    if (m.type !== 'message' || m.notificationId || m.id == null || m.rank === 'bot') return null;
     const text = m.parts.filter(p => p.type !== 'sender').map(p => p.text).join('');
-    if (!isForScience(text)) return null;
-    const { text: reply, language } = forScienceReply(String(m.id));
+    const cutoff = Date.now() - ONLINE_MS;
+    const here = live ? Object.values(online.value).filter(p => p.lastSeen >= cutoff).map(p => p.name) : null;
+    const r = botReply(String(m.id), text, here);
+    if (!r) return null;
     const at = new Date(m.dateTime.getTime() + 1);
-    return { type: 'message', name: BOT_NAME, rank: 'bot', time: formatTime(at), dateTime: at,
-      parts: [{ type: 'sender', text: BOT_NAME }, { type: 'text', text: reply }], botLanguage: language };
+    return { type: 'message', name: r.name, rank: 'bot', time: formatTime(at), dateTime: at,
+      parts: [{ type: 'sender', text: r.name }, { type: 'text', text: r.text }], botLanguage: r.language };
   }
   function withBot(m: ChatMessage): ChatMessage[] {
     const r = botReplyTo(m);
@@ -5324,7 +5328,7 @@ export const useChatStore = defineStore('chat', () => {
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
         parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null});
       // nkem_test takes a beat to answer, like it used to.
-      const reply = botReplyTo(chatMessages.value[chatMessages.value.length - 1]);
+      const reply = botReplyTo(chatMessages.value[chatMessages.value.length - 1], true);
       if (reply) setTimeout(() => { reply.dateTime = new Date(); reply.time = formatTime(reply.dateTime); chatMessages.value.push(reply); }, 900);
       if (row.user_id !== backend.userId) {
         // A direct @mention always gets through, even with chat muted.

@@ -11,6 +11,12 @@ import { useChatStore, useProofreadingBackendStore, ChatMessage, isSelfMentionTo
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
+import nurroAvatar from '../../static/nurro/nurro-original.png';
+
+/** Nurro's joke profile (NurroProfile.vue, opened by ExtensionBar). */
+function openNurroProfile() {
+  document.dispatchEvent(new CustomEvent('nge:open-nurro-profile'));
+}
 import { canonicalDataset, datasetDisplayName, switchToDataset, segLayerName, DATASETS } from '../datasets';
 
 const emit = defineEmits({ hide: null });
@@ -542,6 +548,7 @@ async function copySegId(segRef: string, ev: Event) {
 
 // ── Open user profile from chat name click ──
 async function openUserProfile(displayName: string) {
+  if (/^nurro$/i.test(displayName.trim())) { openNurroProfile(); return; }
   try {
     const results = await backendStore.searchUsers(displayName);
     const match = results.find((u: any) => u.display_name === displayName) || results[0];
@@ -667,7 +674,9 @@ function toggleCollapse() {
                 <div v-else-if="msg.type === 'message'" class="nge-chat-msg">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
-                  <span v-if="msg.rank === 'bot'" class="nge-chat-msg-name nge-chat-bot-name"
+                  <button v-if="msg.rank === 'bot' && msg.name === 'Nurro'" class="nge-chat-msg-name nge-chat-nurro-name"
+                          @click="openNurroProfile" title="Nurro's profile"><img :src="nurroAvatar" alt="" />Nurro<span class="nge-chat-bot-tag nge-chat-nurro-tag">guide</span></button>
+                  <span v-else-if="msg.rank === 'bot'" class="nge-chat-msg-name nge-chat-bot-name"
                         :title="'nkem_test: the original EyeWire chat bot, by @nkem (2013). Say \'for science\' and it answers.'">nkem_test<span class="nge-chat-bot-tag">bot</span></span>
                   <button v-else class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: rankColor(msg.rank) }" @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</button>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
@@ -702,7 +711,7 @@ function toggleCollapse() {
                         @click="copySegId(part.text, $event)"
                         :title="'Copy ' + part.text.slice(1)"
                       >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
-                    <span v-else class="nge-chat-msg-text" :class="{ 'nge-chat-bot-text': msg.rank === 'bot' }">{{ part.text }}</span>
+                    <span v-else class="nge-chat-msg-text" :class="{ 'nge-chat-bot-text': msg.rank === 'bot' && msg.name !== 'Nurro' }">{{ part.text }}</span>
                   </template>
                   <span v-if="msg.botLanguage" class="nge-chat-bot-lang">{{ msg.botLanguage }}</span>
                   <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
@@ -1248,6 +1257,24 @@ function toggleCollapse() {
   box-sizing: border-box;
 }
 .nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.3); }
+
+/* ── Nurro ── */
+.nge-chat-nurro-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: #7ee8ff;
+  cursor: pointer;
+  vertical-align: bottom;
+}
+.nge-chat-nurro-name:hover { text-decoration: underline; }
+.nge-chat-nurro-name img { width: 18px; height: 18px; object-fit: contain; }
+.nge-chat-bot-tag.nge-chat-nurro-tag { background: #7ee8ff; color: #04202a; }
 
 /* ── nkem_test ── */
 .nge-chat-bot-name {

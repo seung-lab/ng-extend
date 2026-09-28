@@ -21,6 +21,7 @@ import TagModePanel from "components/TagModePanel.vue";
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
 import FeedbackModal from "components/FeedbackModal.vue";
+import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
@@ -247,6 +248,9 @@ function openWeekRecap() {
 }
 const showRecap = ref(false);
 const showFeedback = ref(false);
+// Nurro's joke profile, opened from Nurro's name in chat.
+const showNurroProfile = ref(false);
+document.addEventListener('nge:open-nurro-profile', () => { showNurroProfile.value = true; });
 const showLeaderboard = ref(false);
 const showSettings = ref(false);
 const showQueue = ref(false);
@@ -743,6 +747,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
+  <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
   <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
