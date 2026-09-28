@@ -3,6 +3,7 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
+import {requestCompleteClaim} from '../util/complete_claim';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
 import {getSelectedSupervoxelId} from './pcg_service';
@@ -294,6 +295,13 @@ export class ButtonService {
       toggleBtn.disabled = true;
       toggleBtn.textContent = 'Saving…';
       const willBeComplete = !(cachedStatus?.isComplete ?? false);
+      // Holding a Cell Library claim? Finish it there (link, crosshairs,
+      // sheet) instead of writing CAVE alone and releasing the claim.
+      if (willBeComplete && requestCompleteClaim(segmentIDString)) {
+        toggleBtn.disabled = false;
+        toggleBtn.textContent = 'Mark as Proofread';
+        return;
+      }
       const ok = await setCellComplete(
           localServerURL, segmentIDString, willBeComplete, cachedStatus?.annotationId);
       if (ok) {

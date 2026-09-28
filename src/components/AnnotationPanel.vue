@@ -10,6 +10,7 @@ import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useH
 import { getCellStatus, setCellComplete, saveCellType, CellStatus } from '../widgets/lightbulb_service';
 import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
 import { currentSegLayerName, currentCellTypes } from '../datasets';
+import { requestCompleteClaim } from '../util/complete_claim';
 
 const annotStore = useSegmentAnnotationStore();
 const statsStore = useUserStatsStore();
@@ -135,6 +136,11 @@ async function toggleComplete() {
   if (!activeSegId.value || !annotation.value || savingComplete.value) return;
   savingComplete.value = true;
   const willBeComplete = !annotation.value.isComplete;
+  // Holding a Cell Library claim? Finish it there (link, crosshairs, sheet).
+  if (willBeComplete && requestCompleteClaim(activeSegId.value)) {
+    savingComplete.value = false;
+    return;
+  }
   const ok = await setCellComplete(
     caveUrl.value,
     activeSegId.value,

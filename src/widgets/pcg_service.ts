@@ -283,9 +283,12 @@ export async function getRootFromSupervoxel(
       console.warn(`[pcg] root_from_supervoxel ${res.status}:`, errText);
       return null;
     }
-    const data = await res.json();
-    const rootId = data.root_id ?? data;
-    return rootId ? String(rootId) : null;
+    // Read the id as TEXT. res.json() turns an 18-digit root into a float and
+    // rounds it (…841234 came back as …841300), so the Complete check said the
+    // crosshairs were in a different cell (Amy 2026-09-28).
+    const body = await res.text();
+    const m = body.match(/"root_id"\s*:\s*"?(\d+)/) ?? body.match(/^\s*"?(\d+)"?\s*$/);
+    return m && m[1] !== '0' ? m[1] : null;
   } catch (e) {
     console.warn('[pcg] root_from_supervoxel network error:', e);
     return null;

@@ -23,6 +23,7 @@ import { syncCellToSheet } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
+import { pendingCompleteRequest } from '../util/complete_claim';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
@@ -520,10 +521,17 @@ const completing = ref<{
 } | null>(null);
 
 function cellKey(cell: CellRow): string { return String(cell.taskId ?? cell.segId); }
+
+// "Mark as Proofread" elsewhere hands a claimed cell to this form. Match the
+// segment you were on to one of your claims; after edits it may be a new root,
+// so with several claims and no match, ask which one you finished.
+const chooseClaim = ref(false);
+
 function shortId(id: string) { return id.length > 10 ? '…' + id.slice(-6) : id; }
 function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((link || '').trim()); }
 
 function openComplete(cell: CellRow) {
+  chooseClaim.value = false;
   completing.value = { key: cellKey(cell), link: '', notes: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null };
   void runCrosshairCheck(cell);
 }
@@ -702,6 +710,20 @@ function statusClass(status: string) {
 const isMyClaim = (cell: typeof cells.value[0]) =>
   (cell.status === 'assigned' || cell.status === 'in_progress') && cell.assignedTo === backend.userId;
 
+// Runs once your claims are in the list (the panel may have just opened).
+watch([pendingCompleteRequest, datasetScopedCells, () => backend.loading], () => {
+  const req = pendingCompleteRequest.value;
+  if (!req) return;
+  const mine = datasetScopedCells.value.filter(c => isMyClaim(c));
+  if (!mine.length && backend.loading) return;
+  pendingCompleteRequest.value = null;
+  filter.value = 'mine';
+  search.value = '';
+  const match = mine.find(c => c.segId === req.segId || c.finalSegId === req.segId)
+    ?? (mine.length === 1 ? mine[0] : null);
+  if (match) openComplete(match);
+  else chooseClaim.value = mine.length > 0;
+}, { immediate: true });
 // ── Help request helpers ────────────────────────────────────────────
 const showResolved = ref(false);
 const activeHelpId = ref<string | null>(null);
@@ -2457,6 +2479,12 @@ const panelStyle = computed(() => ({
         <div v-else class="nge-cl-list">
           <!-- Claim error banner -->
           <div v-if="jumpError" class="nge-cl-error-banner" @click="jumpError = ''">{{ jumpError }}</div>
+          <div v-if="chooseClaim" class="nge-cl-limit">
+            <div class="nge-cl-limit-head">
+              Which of your claims did you finish? Click Complete on it below.
+              <span class="nge-cl-error-dismiss" @click="chooseClaim = false">×</span>
+            </div>
+          </div>
           <div v-if="claimLimit" class="nge-cl-limit">
             <div class="nge-cl-limit-head">
               You hold {{ claimLimit.length }} claims, the most allowed. Release one to claim this cell.
