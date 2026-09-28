@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref, computed, onMounted, type Ref} from 'vue';
+import {ref, computed, onMounted, onUnmounted, type Ref} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {DEMO_USERS, DemoUser} from '../data/demo-users';
@@ -177,7 +177,7 @@ async function close() {
     const s = Math.max(0.04, Math.min(b.width / a.width, b.height / a.height));
     // Clear the dim and blur behind it (not the whole backdrop's opacity,
     // which would hide the panel mid-flight).
-    if (blocker) {
+    if (blocker && !props.peek) {
       blocker.style.backgroundImage = 'none';
       blocker.animate([
         { backgroundColor: 'rgba(0, 6, 16, 0.85)', backdropFilter: 'blur(6px)' },
@@ -221,10 +221,19 @@ function userFlag(user: DemoUser): string {
 }
 
 const emit = defineEmits({hide: null});
+/** Peek: the arrival greeting. No dim or blur, the site stays usable, and
+ *  the first click anywhere else zips it away (Ames 2026-09-28). */
+const props = defineProps<{ peek?: boolean }>();
+function onPeekPointerDown(e: PointerEvent) {
+  const panel = document.querySelector('#nge-lb-modal .nge-overlay');
+  if (panel && !panel.contains(e.target as Node)) void close();
+}
+onMounted(() => { if (props.peek) document.addEventListener('pointerdown', onPeekPointerDown, true); });
+onUnmounted(() => document.removeEventListener('pointerdown', onPeekPointerDown, true));
 </script>
 
 <template>
-  <modal-overlay id="nge-lb-modal" class="nge-lb-modal" @hide="close">
+  <modal-overlay id="nge-lb-modal" class="nge-lb-modal" :class="{ 'nge-lb-modal--peek': props.peek }" @hide="close">
     <div class="nge-lb-shell">
 
       <!-- ── LIST VIEW ─────────────────────────────────── -->
@@ -465,6 +474,21 @@ const emit = defineEmits({hide: null});
 <style scoped>
 .nge-lb-modal {
   font-size: 0.9em;
+}
+/* Peek: no dim, no blur, clicks go through to the site around the panel. */
+.nge-lb-modal--peek {
+  background: none !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+.nge-lb-modal--peek :deep(.nge-holo-modal-particles) { display: none; }
+.nge-lb-modal--peek :deep(.nge-overlay) {
+  pointer-events: auto;
+  animation: nge-lb-peek-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes nge-lb-peek-in {
+  from { translate: 40px 0; opacity: 0; }
+  to { translate: 0 0; opacity: 1; }
 }
 
 /* ── Sidebar override ──────────────────────────────────────────────────────

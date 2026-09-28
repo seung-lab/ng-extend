@@ -252,6 +252,8 @@ const showFeedback = ref(false);
 const showNurroProfile = ref(false);
 document.addEventListener('nge:open-nurro-profile', () => { showNurroProfile.value = true; });
 const showLeaderboard = ref(false);
+/** Opened by the arrival greeting: shown as a peek (no dim, clicks go through). */
+const leaderboardPeek = ref(false);
 // The leaderboard greets you once per visit, a moment after you're signed in
 // (Ames 2026-09-28), unless you turned that off on the leaderboard, a
 // tutorial is running, another window is open, or you're on a phone.
@@ -263,6 +265,7 @@ function maybeOpenLeaderboardOnArrival() {
   if (document.body.classList.contains('nge-mobile')) return;
   if (document.querySelector('.introductionStep, .nge-overlay-blocker')) return;
   try { sessionStorage.setItem('nge-lb-greeted', '1'); } catch { /* private mode */ }
+  leaderboardPeek.value = true;
   showLeaderboard.value = true;
 }
 const showSettings = ref(false);
@@ -763,7 +766,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
-  <leaderboard-panel v-if="showLeaderboard" @hide="showLeaderboard = false" />
+  <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek" @hide="showLeaderboard = false; leaderboardPeek = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />

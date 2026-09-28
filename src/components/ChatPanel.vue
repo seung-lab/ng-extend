@@ -897,6 +897,11 @@ function toggleCollapse() {
 .nge-chat-float--quiet .nge-chat-input-wrap { background: rgba(8, 10, 20, 0.45); border-top-color: transparent; }
 .nge-chat-float--quiet .nge-chat-input { background: rgba(20, 24, 40, 0.5); }
 .nge-chat-float--quiet .nge-chat-react-add { display: none; }
+/* The top of the quiet chat fades away completely, header and all. */
+.nge-chat-float--quiet {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 22%, rgba(0, 0, 0, 0.55) 48%, #000 70%);
+  mask-image: linear-gradient(to bottom, transparent 0%, transparent 22%, rgba(0, 0, 0, 0.55) 48%, #000 70%);
+}
 
 /* ── Resize handles ── */
 .nge-chat-resize { position: absolute; z-index: 10; }

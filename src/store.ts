@@ -5295,13 +5295,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // Mentions while EyeWire is in the background (Ames 2026-09-28): the tab
-  // title blinks until you come back, plus an optional browser notification.
-  let titleTimer: ReturnType<typeof setInterval> | null = null;
+  // Chat while EyeWire is in the background (Ames 2026-09-28): the tab title
+  // counts new messages until you come back, plus an optional notification.
   let baseTitle = '';
   function stopTitleFlash() {
     if (document.hidden || !document.hasFocus()) return;
-    if (titleTimer) { clearInterval(titleTimer); titleTimer = null; document.title = baseTitle; }
+    if (awayCount) document.title = baseTitle;
     awayCount = 0;
     document.removeEventListener('visibilitychange', stopTitleFlash);
     window.removeEventListener('focus', stopTitleFlash);
@@ -5309,22 +5308,18 @@ export const useChatStore = defineStore('chat', () => {
   // Every new message while you are away (Amy 2026-09-28), not only
   // @mentions: the tab title counts them, and with the bell on each one also
   // raises a browser notification. A mention is called out as a mention.
+  // The tab shows a steady count of new messages, "(3) EyeWire II", no
+  // blinking (Amy 2026-09-28); it clears when you come back.
   let awayCount = 0;
-  let awayLine = '';
   function alertMentionAway(from: string, text: string, isMention = true) {
     if (!document.hidden && document.hasFocus()) return;
-    awayCount++;
-    awayLine = isMention ? `(@) ${from} mentioned you` : `(${awayCount}) ${from} in chat`;
-    if (!titleTimer) {
+    if (!awayCount) {
       baseTitle = document.title;
-      let on = false;
-      titleTimer = setInterval(() => {
-        on = !on;
-        document.title = on ? awayLine : baseTitle;
-      }, 1000);
       document.addEventListener('visibilitychange', stopTitleFlash);
       window.addEventListener('focus', stopTitleFlash);
     }
+    awayCount++;
+    document.title = `(${awayCount}) ${baseTitle}`;
     if (mentionNotify.value && 'Notification' in window && Notification.permission === 'granted') {
       try {
         const n = new Notification(isMention ? `${from} mentioned you in EyeWire II chat` : `${from} in EyeWire II chat`, {
