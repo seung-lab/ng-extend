@@ -1,4 +1,5 @@
 import { canonicalDataset, currentDatasetTag } from './datasets';
+import { functionUrl } from './functions_base';
 
 /** Only the server holds Sheets credentials and chooses the destination/range. */
 export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinates', segmentId: string, coordinates?: string, sourceDataset?: string) {
@@ -7,7 +8,7 @@ export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinate
   let token: string | null = null;
   try { token = JSON.parse(localStorage.getItem('auth_token_v2_https://global.daf-apis.com/sticky_auth') || '{}').accessToken || null; } catch {}
   if (!token) throw new Error('Sign in before syncing a cell.');
-  const response = await fetch('https://us-central1-ytho-4bff2.cloudfunctions.net/ewSheetSync', {
+  const response = await fetch(functionUrl('ewSheetSync'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
     body: JSON.stringify({ action, segmentId, coordinates, dataset, token }),
   });

@@ -21,7 +21,7 @@ Triage models run in jobs without database, Slack, deployment, repository-write 
 ## Rollout and validation
 
 1. Apply `supabase-pilot-access.sql` to install the server-only procedures. Existing data is retained.
-2. Deploy the verified gateways from `functions/` to the active Firebase endpoints. Production still uses ytho endpoints until the separately managed Firebase cutover; keep equivalent hardening in the new EyeWire project.
+2. Deploy the verified gateways from `functions/` to the active Firebase endpoints. The client now targets the EyeWire Firebase project, eyewire-ii-e4d52. Equivalent gateway hardening was also applied to the former ytho endpoints for stale clients; their eventual retirement belongs to the Firebase migration.
 3. Deploy the client and reset worker, then apply `supabase-pilot-lockdown.sql`. This revokes direct public table writes and RPC execution, including legacy practice RPCs. Service-role jobs retain access.
 4. Deploy the token-requiring Guide and feedback functions after the new client is live. Reload existing browser tabs.
 

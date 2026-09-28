@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { caveToken } from '../secure_write';
+import { functionUrl } from '../functions_base';
 /**
  * FeedbackModal.vue
  * "Submit an issue" — lets any user report a bug / idea / data problem from
@@ -17,7 +18,7 @@ const backend = useProofreadingBackendStore();
 
 const ISSUE_URL =
   (window as any).__NGE_SUBMIT_ISSUE_URL ||
-  'https://us-central1-ytho-4bff2.cloudfunctions.net/submitIssue';
+  functionUrl('submitIssue');
 
 const CATEGORIES = ['Bug', 'Idea', 'Data problem', 'Other'] as const;
 const category = ref<typeof CATEGORIES[number]>('Bug');

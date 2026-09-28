@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { caveToken } from '../secure_write';
+import { functionUrl } from '../functions_base';
 // AssistantDock.vue — the EyeWire II Guide chat dock. A slim floating panel
 // that answers questions and drives the UI. It posts to the guideAssistant
 // Cloud Function and runs the returned actions through the allow-list in
@@ -44,10 +45,10 @@ const emit = defineEmits<{ (e: "hide"): void }>();
 // Stable alias URLs for the v2 functions (work regardless of the Cloud Run hash).
 const GUIDE_URL =
   (window as any).__NGE_GUIDE_URL ||
-  "https://us-central1-ytho-4bff2.cloudfunctions.net/guideAssistant";
+  functionUrl("guideAssistant");
 const FEEDBACK_URL =
   (window as any).__NGE_GUIDE_FEEDBACK_URL ||
-  "https://us-central1-ytho-4bff2.cloudfunctions.net/guideFeedback";
+  functionUrl("guideFeedback");
 
 interface Msg {
   role: "user" | "assistant";
