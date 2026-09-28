@@ -57,6 +57,35 @@ test('report ownership and displayed author are server-derived',()=>{
  const p=plan('site_issues','POST','',{message:'A test',user_id:b,user_name:'Nurro'});
  assert.deepEqual(p.body,{message:'A test',user_id:a,user_name:'Player'});
 });
+test('players delete only their own chat messages; admins any; nobody edits',()=>{
+ const own=plan('chat_messages','DELETE','id=eq.7');
+ assert.equal(own.query.get('and'),`(user_id.eq.${a})`);
+ // A hostile scope cannot widen it.
+ const hostile=plan('chat_messages','DELETE',`id=eq.7&and=(user_id.eq.${b})`);
+ assert.equal(hostile.query.get('and'),`(user_id.eq.${a})`);
+ const adm=plan('chat_messages','DELETE','id=eq.7',undefined,{...user,isAdmin:true});
+ assert.equal(adm.query.has('and'),false);
+ assert.throws(()=>plan('chat_messages','DELETE',''),/message id/);
+ assert.throws(()=>plan('chat_messages','PATCH','id=eq.7',{text:'edited'}),/Admins only/);
+ assert.throws(()=>plan('chat_messages','DELETE','id=eq.7',undefined,anon),/Sign in/);
+});
+test('chat presence identity and time are server-derived',()=>{
+ const p=plan('chat_presence','POST','on_conflict=user_id',{user_id:b,name:'Admin',last_seen_at:'2099-01-01T00:00:00Z',joined_at:'2000-01-01T00:00:00Z'});
+ assert.deepEqual(p.body,{user_id:a,name:'Player',last_seen_at:user.now});
+ assert.throws(()=>plan('chat_presence','POST','',{}),/conflict/);
+ assert.throws(()=>plan('chat_presence','PATCH','',{}),/heartbeat/);
+ assert.throws(()=>plan('chat_presence','POST','on_conflict=user_id',{},anon),/Sign in/);
+ const leave=plan('chat_presence','DELETE',`user_id=eq.${b}`);
+ assert.equal(leave.query.get('and'),`(user_id.eq.${a})`);
+ assert.equal(plan('chat_presence','GET','last_seen_at=gte.2026-09-27T00:00:00Z',undefined,anon).table,'chat_presence');
+});
+test('saved-link screenshots must be our own uploads',()=>{
+ const ok='https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/eyewire-ii/x.png';
+ assert.equal(plan('working_links','POST','',{title:'t',url:'https://x.test/#!a',screenshot_url:ok}).body.screenshot_url,ok);
+ for(const bad of ['https://evil.test/x.png','http://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/x.png','javascript:alert(1)'])
+   assert.throws(()=>plan('working_links','POST','',{title:'t',url:'https://x.test/',screenshot_url:bad}),/uploaded through EyeWire/);
+ assert.equal(plan('working_links','PATCH','id=eq.3',{screenshot_url:null}).body.screenshot_url,null);
+});
 test('chat cannot forge a staff role, sender or official notice',()=>{
  const p=plan('chat_messages','POST','',{text:'hello',name:'Admin',rank:'admin',user_id:b});
  assert.equal(p.body.user_id,a);assert.equal(p.body.rank,'player');assert.equal(p.body.name,'Player');
