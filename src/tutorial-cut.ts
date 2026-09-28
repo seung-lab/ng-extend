@@ -6,8 +6,7 @@ import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
 // Amy's cut with the points placed (2026-09-26): red along the axon, blue on the dendrite.
 import imgCutPoints from './images/cut-points-example.jpg';
-import { beginPractice, currentPractice, endPractice, ensureTool } from './practice';
-import { useLayersStore } from './store';
+import { beginPractice, endPractice, ensureTool } from './practice';
 import { INFO_LAYER, MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, stopWatching, watchPractice } from './tutorial-3';
 
 /**
@@ -16,18 +15,6 @@ import { INFO_LAYER, MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSid
  * finished cut (the two post-cut roots), "How to Cut" loads the fused root
  * for the learner to separate, and the wrap-up hands the cell back.
  */
-
-// Amy's cut walkthrough, 2026-09-26: a fused axon in the sandbox, the same
-// cell before the cut with the error marked, with the red and blue points
-// placed, and after a successful split. Shown when no practice cell can be
-// claimed; with a cell, the learner's own view stays put.
-const STATE_CUT_FUSED  = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5679121900240896';
-const STATE_CUT_POINTS = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5745573634244608';
-// After the split: 5675806990794752 (kept in docs/HANDOFF-tutorial.md).
-
-async function showStaticIfNoCell(state: string) {
-  if (!currentPractice().example) await useLayersStore().loadState(state);
-}
 
 export const steps: Step[] = [
   // 1: Welcome
@@ -58,10 +45,8 @@ In a moment you'll get the fused version of this very cell and make the cut your
     onEnter: async () => {
       closeSidePanel();
       stopWatching();
-      // Claim the cut cell now and show the result first (Amy). Without a
-      // cell, her saved view of the same axon before the cut.
-      const ex = await beginPractice('cut', 'preview');
-      if (!ex) await useLayersStore().loadState(STATE_CUT_FUSED);
+      // Claim before loading any shared practice geometry.
+      await beginPractice('cut', 'preview');
     },
   },
 
@@ -120,7 +105,6 @@ When the cut tool is active, the bar at the bottom shows which colour you're pla
     width: "420px",
     onEnter: () => {
       closeSidePanel();
-      showStaticIfNoCell(STATE_CUT_POINTS);
       setTimeout(() => ensureTool('multicut'), 400);
     },
   },
