@@ -5302,25 +5302,33 @@ export const useChatStore = defineStore('chat', () => {
   function stopTitleFlash() {
     if (document.hidden || !document.hasFocus()) return;
     if (titleTimer) { clearInterval(titleTimer); titleTimer = null; document.title = baseTitle; }
+    awayCount = 0;
     document.removeEventListener('visibilitychange', stopTitleFlash);
     window.removeEventListener('focus', stopTitleFlash);
   }
-  function alertMentionAway(from: string, text: string) {
+  // Every new message while you are away (Amy 2026-09-28), not only
+  // @mentions: the tab title counts them, and with the bell on each one also
+  // raises a browser notification. A mention is called out as a mention.
+  let awayCount = 0;
+  let awayLine = '';
+  function alertMentionAway(from: string, text: string, isMention = true) {
     if (!document.hidden && document.hasFocus()) return;
+    awayCount++;
+    awayLine = isMention ? `(@) ${from} mentioned you` : `(${awayCount}) ${from} in chat`;
     if (!titleTimer) {
       baseTitle = document.title;
       let on = false;
       titleTimer = setInterval(() => {
         on = !on;
-        document.title = on ? `(@) ${lastMentionFrom.value} mentioned you` : baseTitle;
+        document.title = on ? awayLine : baseTitle;
       }, 1000);
       document.addEventListener('visibilitychange', stopTitleFlash);
       window.addEventListener('focus', stopTitleFlash);
     }
     if (mentionNotify.value && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        const n = new Notification(`${from} mentioned you in EyeWire II chat`, {
-          body: text.slice(0, 160), tag: 'ew-chat-mention',
+        const n = new Notification(isMention ? `${from} mentioned you in EyeWire II chat` : `${from} in EyeWire II chat`, {
+          body: text.slice(0, 160), tag: isMention ? 'ew-chat-mention' : 'ew-chat',
         });
         n.onclick = () => { window.focus(); n.close(); };
       } catch { /* notifications unavailable in this context */ }
@@ -5376,9 +5384,12 @@ export const useChatStore = defineStore('chat', () => {
       if (reply) setTimeout(() => { reply.dateTime = new Date(); reply.time = formatTime(reply.dateTime); chatMessages.value.push(reply); }, 900);
       if (row.user_id !== backend.userId) {
         // A direct @mention always gets through, even with chat muted.
-        if (mentionsMe(row.text || '') && !onlineTarget(row.text || '')) {
+        const mention = mentionsMe(row.text || '') && !onlineTarget(row.text || '');
+        if (mention) {
           mentionPing.value++; lastMentionFrom.value = row.name || '';
-          alertMentionAway(row.name || 'Someone', row.text || '');
+          alertMentionAway(row.name || 'Someone', row.text || '', true);
+        } else if (!useUserPreferencesStore().prefs.chatMuted && row.notification_id == null) {
+          alertMentionAway(row.name || 'Someone', row.text || '', false);
         }
         if (!useUserPreferencesStore().prefs.chatMuted) {
           unreadMessages.value = true;

@@ -659,8 +659,12 @@ function toggleCollapse() {
         <span class="nge-chat-strip-spacer"></span>
         <button class="nge-chat-strip-btn nge-chat-bell-btn" :class="{ 'nge-chat-bell-btn--on': chatStore.mentionNotify }"
                 @click.stop="chatStore.setMentionNotify(!chatStore.mentionNotify)"
-                :title="chatStore.mentionNotify ? 'Browser notifications for @mentions are on (click to turn off)' : 'Get a browser notification when someone @mentions you while EyeWire is in the background'">
-          {{ chatStore.mentionNotify ? '🔔' : '🔕' }}
+                :title="chatStore.mentionNotify ? 'Chat notifications are on: new messages notify you while EyeWire is in the background (click to turn off)' : 'Turn on browser notifications for new chat messages while EyeWire is in the background'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            <line v-if="!chatStore.mentionNotify" x1="3" y1="3" x2="21" y2="21" />
+          </svg>
         </button>
         <button class="nge-chat-strip-btn nge-chat-collapse-btn" @click.stop="toggleCollapse" :title="collapsed ? 'Expand chat' : 'Collapse chat'">
           {{ collapsed ? '▲' : '▼' }}
@@ -1377,8 +1381,8 @@ function toggleCollapse() {
 .nge-chat-history-btn:disabled { opacity: 0.6; cursor: default; }
 
 /* ── Mention bell ── */
-.nge-chat-bell-btn { font-size: 11px; padding: 2px 4px; opacity: 0.55; }
-.nge-chat-bell-btn--on { opacity: 1; }
+.nge-chat-bell-btn { display: inline-flex; align-items: center; padding: 2px 4px; opacity: 0.5; }
+.nge-chat-bell-btn--on { opacity: 1; filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.55)); }
 
 /* ── @ autocomplete ── */
 .nge-chat-input-wrap { position: relative; }
