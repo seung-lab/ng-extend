@@ -3,7 +3,7 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
-import {requestCompleteClaim} from '../util/complete_claim';
+import {planMenuCompletion, finishMenuCompletion} from '../util/menu_complete';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
 import {getSelectedSupervoxelId} from './pcg_service';
@@ -295,11 +295,14 @@ export class ButtonService {
       toggleBtn.disabled = true;
       toggleBtn.textContent = 'Saving…';
       const willBeComplete = !(cachedStatus?.isComplete ?? false);
-      // Holding a Cell Library claim? Finish it there (link, crosshairs,
-      // sheet) instead of writing CAVE alone and releasing the claim.
-      if (willBeComplete && requestCompleteClaim(segmentIDString)) {
-        toggleBtn.disabled = false;
+      // The Delta menu is where cells get completed (Amy 2026-09-28): a Cell
+      // Library sheet cell is also claimed, completed and written to the sheet.
+      // Plan first, so a cell someone else holds stops before CAVE is written.
+      const plan = willBeComplete ? await planMenuCompletion(segmentIDString) : null;
+      if (plan?.blocked) {
+        statusLine.textContent = plan.blocked;
         toggleBtn.textContent = 'Mark as Proofread';
+        toggleBtn.disabled = false;
         return;
       }
       const ok = await setCellComplete(
@@ -310,8 +313,16 @@ export class ButtonService {
         if (cachedStatus) cachedStatus.isComplete = willBeComplete;
         this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
 
-        // Auto-release claim when marking complete
-        if (willBeComplete) {
+        if (plan?.row) {
+          statusLine.textContent = '✓ Proofread. Writing to the sheet…';
+          try {
+            statusLine.textContent = '✓ Proofread. ' + await finishMenuCompletion(plan);
+          } catch (e: any) {
+            statusLine.textContent = '✓ Proofread. ' + (e?.message || 'The sheet could not be updated.');
+          }
+          document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'completed' } }));
+        } else if (willBeComplete) {
+          // Not a sheet cell: a claim on it is released, as before.
           const backend = useProofreadingBackendStore();
           const claimInfo = backend.isClaimedSegment(segmentIDString);
           if (claimInfo.claimed && claimInfo.byMe) {

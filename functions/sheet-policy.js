@@ -19,7 +19,10 @@ function sheetValues(input, me, task, now) {
   const name = String(me.display_name || me.username || 'Player').slice(0,120);
   const coords = String(input.action === 'coordinates' ? input.coordinates || '' : task.soma_coords || '').trim();
   if (coords && !/^\[?\s*-?\d+(?:\.\d+)?[\s,]+-?\d+(?:\.\d+)?[\s,]+-?\d+(?:\.\d+)?\s*\]?$/.test(coords)) fail(400,'Enter three numeric coordinates.');
-  const fields = input.action === 'coordinates' ? [] : [[['proofreader','claimedby','completedby'],name]];
+  // On completion the completer IS the proofreader: replace a name left by an
+  // earlier claim (Amy's claim stayed on a row Celia completed, 2026-09-28),
+  // but only while the row is not already marked complete.
+  const fields = input.action === 'coordinates' ? [] : [[['proofreader','claimedby','completedby'],name,input.action === 'complete' ? {replaceUntilStatus:true} : undefined]];
   if (input.action === 'complete') {
     fields.push([['status'],'Complete'],[['datecomplete','completedtime'],now]);
     if (task.final_segment_id && /^\d{1,20}$/.test(task.final_segment_id)) fields.push([['finalseg'],task.final_segment_id]);
@@ -56,10 +59,15 @@ function planSheetUpdate(grid, title, segmentId, fields) {
   for(let i=headerRow+1;i<grid.length;i++) if(String(grid[i][segCol]??'').trim()===segmentId) matches.push(i);
   if(matches.length!==1) fail(409,matches.length ? 'This segment appears more than once in the source sheet.' : 'This segment is missing from the source sheet.');
   const row=matches[0], data=[];
-  for(const [patterns,value] of fields) {
+  const statusCol=firstColumn(header,['status']);
+  const statusEmpty=statusCol<0 || !String(grid[row][statusCol]??'').trim();
+  for(const [patterns,value,opts] of fields) {
     const col=firstColumn(header,patterns);
+    if(col<0) continue;
+    const existing=String(grid[row][col]??'').trim();
     // Preserve the sheet owner's existing data. Retrying a write is harmless.
-    if(col<0 || String(grid[row][col]??'').trim()) continue;
+    // Exception: the Proofreader on completion, while Status is still empty.
+    if(existing && !(opts?.replaceUntilStatus && statusEmpty && existing!==String(value))) continue;
     let letters='',n=col;
     do {letters=String.fromCharCode(65+n%26)+letters; n=Math.floor(n/26)-1;} while(n>=0);
     data.push({range:`'${title.replace(/'/g,"''")}'!${letters}${row+1}`,values:[[String(value)]]});

@@ -538,6 +538,7 @@ function openComplete(cell: CellRow) {
   chooseClaim.value = false;
   completing.value = { key: cellKey(cell), link: '', notes: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null };
   void runCrosshairCheck(cell);
+  void useCurrentViewLink();  // prefilled with the current view; editable (Amy 2026-09-28)
 }
 
 async function useCurrentViewLink() {

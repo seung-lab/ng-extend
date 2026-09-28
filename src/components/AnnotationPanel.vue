@@ -10,7 +10,7 @@ import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useH
 import { getCellStatus, setCellComplete, saveCellType, CellStatus } from '../widgets/lightbulb_service';
 import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
 import { currentSegLayerName, currentCellTypes } from '../datasets';
-import { requestCompleteClaim } from '../util/complete_claim';
+import { planMenuCompletion, finishMenuCompletion } from '../util/menu_complete';
 
 const annotStore = useSegmentAnnotationStore();
 const statsStore = useUserStatsStore();
@@ -45,6 +45,8 @@ function getCurrentDataset(): string {
 const { activeSegId, caveUrl, annotation } = storeToRefs(annotStore);
 
 const savingComplete  = ref(false);
+/** What happened with the Cell Library sheet on the last completion. */
+const sheetNote = ref('');
 const savingType      = ref(false);
 const savedFlash      = ref(false);
 const customTypeInput = ref('');
@@ -82,6 +84,7 @@ const cellTypeLabel = computed(() => {
 
 // ── Fetch status from CAVE whenever the active segment changes ───────────────
 watch(activeSegId, async (id) => {
+  sheetNote.value = '';
   if (!id) return;
   changeLog.value = null;
   changeLogLoading.value = true;
@@ -136,8 +139,11 @@ async function toggleComplete() {
   if (!activeSegId.value || !annotation.value || savingComplete.value) return;
   savingComplete.value = true;
   const willBeComplete = !annotation.value.isComplete;
-  // Holding a Cell Library claim? Finish it there (link, crosshairs, sheet).
-  if (willBeComplete && requestCompleteClaim(activeSegId.value)) {
+  // Same completion as the Delta menu: a Cell Library sheet cell is also
+  // claimed, completed and written to the sheet (Amy 2026-09-28).
+  const plan = willBeComplete ? await planMenuCompletion(activeSegId.value) : null;
+  if (plan?.blocked) {
+    sheetNote.value = plan.blocked;
     savingComplete.value = false;
     return;
   }
@@ -172,6 +178,11 @@ async function toggleComplete() {
       },
     }));
     flash();
+    if (plan?.row) {
+      sheetNote.value = 'Writing to the sheet…';
+      try { sheetNote.value = await finishMenuCompletion(plan); }
+      catch (e: any) { sheetNote.value = e?.message || 'The sheet could not be updated.'; }
+    }
   }
   savingComplete.value = false;
 }
@@ -283,6 +294,7 @@ function submitHelpRequest() {
       >
         {{ savingComplete ? 'Saving…' : annotation?.isComplete ? 'Unmark' : 'Mark as Proofread' }}
       </button>
+      <div v-if="sheetNote" class="nge-ann-sheet-note">{{ sheetNote }}</div>
     </div>
 
     <!-- Edit history row (merge/split counts from PCG) -->
@@ -389,6 +401,7 @@ function submitHelpRequest() {
 </template>
 
 <style scoped>
+.nge-ann-sheet-note { margin-top: 6px; font-size: 0.78em; line-height: 1.4; color: #9cd; }
 .nge-ann-panel {
   position: fixed;
   bottom: 48px;

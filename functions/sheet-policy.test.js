@@ -38,3 +38,14 @@ test('complete on the 2026-09-28 retina sheet writes exactly Proofreader, Status
  assert.equal(byHeader.Notes,'axon cut off');
  assert.equal(byHeader['Final SegID'],'456');
 });
+test('completion replaces a Proofreader left by an earlier claim, but never on a completed row',()=>{
+ const header=['Start SegID','Proofreader','Status','Final SegID'];
+ const celia={id:'mine',display_name:'Celia D'};
+ const t={...task,dataset:'stroeh_mouse_retina'};
+ const open=planSheetUpdate([header,['123','Amy R. Sterling','','']],'s','123',sheetValues({...input,dataset:'stroeh_mouse_retina'},celia,t,'now'));
+ assert.equal(open.data.find(x=>x.range.endsWith('!B2')).values[0][0],'Celia D');
+ const done=planSheetUpdate([header,['123','Amy R. Sterling','Complete','']],'s','123',sheetValues({...input,dataset:'stroeh_mouse_retina'},celia,t,'now'));
+ assert.equal(done.data.find(x=>x.range.endsWith('!B2')),undefined);
+ const claim=planSheetUpdate([header,['123','Amy R. Sterling','','']],'s','123',sheetValues({...input,dataset:'stroeh_mouse_retina',action:'claim'},celia,{...t,status:'assigned'},'now'));
+ assert.equal(claim.data.find(x=>x.range.endsWith('!B2')),undefined);
+});
