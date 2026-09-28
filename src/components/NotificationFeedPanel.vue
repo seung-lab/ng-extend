@@ -656,6 +656,13 @@ function padRank(rank: number): string {
 }
 .nge-notif-card:hover { background: rgba(74, 158, 255, 0.04); }
 .nge-notif-card--unread { background: rgba(74, 158, 255, 0.03); }
+/* Read vs unread must be obvious at a glance. The coloured left edge means
+   the TYPE (recap, fixed, triage...), so unread is shown another way: read
+   cards fade back, unread titles are bright and bold with a glowing dot. */
+.nge-notif-card:not(.nge-notif-card--unread) .nge-notif-card-row { opacity: 0.55; transition: opacity 0.15s; }
+.nge-notif-card:not(.nge-notif-card--unread):hover .nge-notif-card-row { opacity: 0.85; }
+.nge-notif-card--unread .nge-notif-card-title { font-weight: 700; } /* keeps its type colour */
+.nge-notif-card--unread .nge-notif-card-body { color: #b4bfd2; }
 
 .nge-notif-card-row {
   display: flex;
@@ -688,13 +695,20 @@ function padRank(rank: number): string {
 }
 
 .nge-notif-unread-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: #4a9eff;
+  background: #5cc8ff;
+  box-shadow: 0 0 6px 1px rgba(92, 200, 255, 0.75);
   flex-shrink: 0;
   margin-top: 4px;
+  animation: nge-notif-dot-pulse 2.4s ease-in-out infinite;
 }
+@keyframes nge-notif-dot-pulse {
+  0%, 100% { box-shadow: 0 0 6px 1px rgba(92, 200, 255, 0.75); }
+  50% { box-shadow: 0 0 10px 3px rgba(92, 200, 255, 0.35); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-notif-unread-dot { animation: none; } }
 
 .nge-notif-card-header {
   display: flex;
