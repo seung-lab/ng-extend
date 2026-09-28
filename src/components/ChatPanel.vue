@@ -556,6 +556,7 @@ function toggleCollapse() {
 .nge-chat-float {
   position: fixed;
   bottom: 36px;
+  transition: bottom 0.25s ease;
   left: 8px;
   z-index: 9000;
   display: flex;
@@ -967,4 +968,6 @@ function toggleCollapse() {
   font-size: 13.5px;
   font-style: italic;
 }
+/* The cut/merge bar is open: clear it. */
+body.nge-tool-bar-open .nge-chat-float { bottom: 96px; }
 </style>
