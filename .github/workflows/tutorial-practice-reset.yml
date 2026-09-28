@@ -38,7 +38,15 @@ jobs:
         if: inputs.inspect
         env:
           CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
-        run: node scripts/inspect-practice-examples.mjs
+        run: |
+          node scripts/inspect-practice-examples.mjs
+          node --input-type=module <<'NODE'
+          const base='https://minnie.microns-daf.com/segmentation/api/v1/table/pinky_nf_v2';
+          const get=async(path)=>{const r=await fetch(base+path,{headers:{Authorization:'Bearer '+process.env.CAVE_SERVICE_TOKEN},redirect:'error',signal:AbortSignal.timeout(20000)});if(!r.ok)throw Error('Read-only fixture inspection failed '+r.status);return r.json();};
+          const descend=async(root)=>{let node=root;for(let i=0;i<12;i++){if(!/^\d{1,20}$/.test(node))throw Error('Invalid graph node');if(BigInt(node)>>56n===1n)return node;const d=await get('/node/'+node+'/children?int64_as_str=1');node=String((d.children_ids??d.children??[])[0]);}throw Error('No stable piece found');};
+          const timestamp=Date.parse('2026-09-28T14:00:18.825411+00:00')/1000;
+          for(const root of ['648518346351228233','648518346351580589']){const sv=await descend(root);const current=await get('/node/'+sv+'/root?int64_as_str=1');const baseline=await get('/node/'+sv+'/root?int64_as_str=1&timestamp='+timestamp);console.log(JSON.stringify({fixture:'a4bd2f76-67e9-4093-adc7-e670230d1577',root,supervoxel:sv,current,baseline}));}
+          NODE
       - name: Reset abandoned cells and verify their starting state
         if: '!inputs.inspect'
         env:
