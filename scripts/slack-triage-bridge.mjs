@@ -591,11 +591,40 @@ const LIVE_URL = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r
 const STOP_CMD = /^(?:stop|cancel|close)(?:\s+(?:this|it|work(?:ing)?(?:\s+on\s+(?:this|it))?))?\s*(?:$|[.!]+\s*$|[-:,]\s*(.*)$)/is;
 const STOP_RUNNING = ['implementing', 'answering', 'deploying', 'reverting'];
 
+/** Dismissed in the Admin Hub after work had started: stop the work too. */
+async function cancelRun(row) {
+  const runId = STOP_RUNNING.includes(row.impl_state) && String(row.impl_run_url || '').match(/\/actions\/runs\/(\d+)/)?.[1];
+  if (!runId || !GH_TOKEN) return false;
+  const c = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/runs/${runId}/cancel`, {
+    method: 'POST', headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' },
+  }).catch(() => null);
+  return !!c && (c.status === 202 || c.status === 409);
+}
+
+async function dismissedInFlight() {
+  const res = await sb('feedback_triage?status=eq.dismissed&impl_state=not.is.null&select=*');
+  if (!res.ok) return 0;
+  let n = 0;
+  for (const row of await res.json()) {
+    // Live tests and deploys are not undone silently; the thread says so.
+    if (['deployed', 'deploying', 'live_testing', 'live_test_queued', 'revert_queued', 'reverting'].includes(row.impl_state)) continue;
+    const cancelled = await cancelRun(row);
+    await patchRow(row.id, { impl_state: null });
+    if (row.slack_ts) {
+      const p = await say(row, `🛑 Dismissed, so Claude has stopped${cancelled ? ' and the running build is cancelled' : ''}. Nobody will be tagged about this.`);
+      await patchRow(row.id, { last_reply_ts: p.ts });
+    }
+    console.log(`[bridge] stopped dismissed ${row.id}${cancelled ? ' (run cancelled)' : ''}`);
+    n++;
+  }
+  return n;
+}
+
 async function stopRequests() {
+  let stopped = await dismissedInFlight();
   const res = await sb('feedback_triage?status=in.(proposed,approved)&slack_ts=not.is.null&select=*');
   if (!res.ok) return 0;
   const rows = (await res.json()).filter(r => r.status === 'proposed' || (r.impl_state && r.impl_state !== 'deployed'));
-  let stopped = 0;
   for (const row of rows) {
     let thread;
     try { thread = await slackGet('conversations.replies', { channel: CHANNEL, ts: row.slack_ts, limit: 200 }); }
@@ -617,14 +646,7 @@ async function stopRequests() {
       await patchRow(row.id, { decision_slack_ts: p.ts });
       continue;
     }
-    let cancelled = false;
-    const runId = STOP_RUNNING.includes(row.impl_state) && String(row.impl_run_url || '').match(/\/actions\/runs\/(\d+)/)?.[1];
-    if (runId && GH_TOKEN) {
-      const c = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/runs/${runId}/cancel`, {
-        method: 'POST', headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' },
-      }).catch(() => null);
-      cancelled = !!c && (c.status === 202 || c.status === 409);
-    }
+    const cancelled = await cancelRun(row);
     const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
     log.push({ user: m.user, text: m.text, ts: m.ts, role: 'stop' });
     const who = `slack:${m.user}`;
