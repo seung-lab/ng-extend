@@ -56,7 +56,9 @@ function lastCompletedWeek() {
   return {
     startISO: lastMonday.toISOString(),
     endISO: thisMonday.toISOString(),
-    label: `${fmt(lastMonday)} – ${fmt(lastSunday)}, ${lastSunday.getUTCFullYear()}`,
+    // "Sep 21 to Sep 27, 2026". No en dash: Amy's copy rules forbid em and en
+    // dashes anywhere user facing, and the detail view parses this label.
+    label: `${fmt(lastMonday)} to ${fmt(lastSunday)}, ${lastSunday.getUTCFullYear()}`,
   };
 }
 
@@ -131,7 +133,9 @@ function formatList(rows, names, unitSingular, unitPlural) {
   return rows.map((r, i) => {
     const name = names.get(r.user_id) || 'Anonymous';
     const unit = r.count === 1 ? unitSingular : unitPlural;
-    return `${rankLabel(i)}  **${name}** — ${r.count.toLocaleString()} ${unit}`;
+    // "🥇  **Name**, 19 edits". NotificationFeedPanel.vue parses this line
+    // shape into the champions podium, so keep it in step with that parser.
+    return `${rankLabel(i)}  **${name}**, ${r.count.toLocaleString()} ${unit}`;
   }).join('\n');
 }
 
@@ -146,7 +150,7 @@ async function main() {
   ]);
 
   if (editorsRaw.length === 0 && completersRaw.length === 0) {
-    console.log('[broadcast] No activity this week — skipping notification.');
+    console.log('[broadcast] No activity this week, skipping notification.');
     return;
   }
 
@@ -162,11 +166,11 @@ async function main() {
     `**Top Completers**`,
     formatList(completersRaw, names, 'cell', 'cells'),
     ``,
-    `Across all datasets — every edit and every completion brings the connectome a little closer to done. Keep going! 🧬`,
+    `Across all datasets, every edit and every completion brings the connectome a little closer to done. Keep going! 🧬`,
   ].join('\n');
 
   const notification = {
-    title: `🏆 Weekly Champions — ${week.label}`,
+    title: `🏆 Weekly Champions, ${week.label}`,
     body,
     target_type: 'all',
     target_id: null,

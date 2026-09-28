@@ -1499,7 +1499,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               >
                 <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
-                <div class="nge-trophy-badge-desc">{{ badge.description }}</div>
+                <div class="nge-trophy-badge-desc" :title="badge.description">{{ badge.description }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
             </div>
@@ -1523,7 +1523,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               >
                 <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
-                <div class="nge-trophy-badge-desc">{{ badge.description }}</div>
+                <div class="nge-trophy-badge-desc" :title="badge.description">{{ badge.description }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
             </div>
@@ -1543,7 +1543,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               >
                 <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
                 <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
-                <div v-if="award.badge?.description" class="nge-trophy-badge-desc">{{ award.badge.description }}</div>
+                <div v-if="award.badge?.description" class="nge-trophy-badge-desc" :title="award.badge.description">{{ award.badge.description }}</div>
               </div>
             </div>
           </div>
@@ -1980,25 +1980,43 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-col::-webkit-scrollbar-thumb:hover { background: rgba(74, 158, 255, 0.4); }
 
 /* Left: stats + recent cells */
+/* Column sizes: ideal 460 / 460 / 360 (1280 total), but each may shrink to a
+   minimum. They were fixed-width and unshrinkable, so any window narrower
+   than about 1310px cut the right column off the profile (fit audit,
+   Amy 2026-09-28: 13" laptops and non-full-screen windows). */
 .nge-profile-col--left {
-  width: 460px;
-  flex-shrink: 0;
+  flex: 0 1 460px;
+  min-width: 300px;
 }
 
 /* Center: badges + streak + countdown */
 .nge-profile-col--center {
-  width: 460px;
-  flex-shrink: 0;
+  flex: 0 1 460px;
+  min-width: 330px;
   overflow-x: hidden;
   border-left: 1px solid rgba(74, 158, 255, 0.08);
   border-right: 1px solid rgba(74, 158, 255, 0.08);
   background: rgba(74, 158, 255, 0.01);
 }
 
+/* Very narrow windows (below the three columns' minimums): the right column
+   drops under the other two and the body scrolls as one. */
+@media (max-width: 960px) {
+  body:not(.nge-mobile) .nge-profile-body:has(> .nge-profile-col--right) {
+    flex-wrap: wrap;
+    overflow-y: auto;
+  }
+  body:not(.nge-mobile) .nge-profile-body > .nge-profile-col--right {
+    flex: 1 1 100%;
+    overflow-y: visible;
+    border-top: 1px solid rgba(74, 158, 255, 0.08);
+  }
+}
+
 /* Right: latest badge / badge detail */
 .nge-profile-col--right {
-  width: 360px;
-  flex-shrink: 0;
+  flex: 0 1 360px;
+  min-width: 250px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2633,9 +2651,16 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   font-size: 1.1em; font-weight: 700; color: rgba(255,255,255,0.18); font-style: italic; line-height: 1;
 }
 
+/* Never split a name mid-word ("Screwdri / ver" when the columns shrink on
+   a laptop, fit audit 2026-09-28); a narrow center column uses a smaller
+   size instead (container query below). */
 .nge-profile-badge-name {
   font-size: 0.78em; color: #cde; margin-top: 3px; line-height: 1.2;
-  max-width: 80px; word-break: break-word;
+  max-width: 80px; word-break: normal; overflow-wrap: normal; hyphens: none;
+}
+.nge-profile-col--center { container-type: inline-size; }
+@container (max-width: 420px) {
+  .nge-profile-badge-name { font-size: 0.64em; letter-spacing: -0.01em; }
 }
 .nge-profile-badge-name--locked { color: #333; }
 
@@ -2917,6 +2942,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 ───────────────────────────────────────────────────────────────────────────── */
 .nge-profile-tabbar {
   display: flex;
+  /* Wrap rather than crop: in the narrower Settings / Datasets shells the
+     tabs are wider than the box and "Admin Hub" was cut off (fit audit). */
+  flex-wrap: wrap;
   gap: 2px;
   padding: 0 16px;
   border-bottom: 1px solid rgba(74, 158, 255, 0.1);
@@ -2946,9 +2974,19 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* ─────────────────────────────────────────────────────────────────────────────
    TROPHY CASE TAB
 ───────────────────────────────────────────────────────────────────────────── */
+/* Flex column so the scroll area takes exactly the space left under the tab
+   bar. Its old max-height (90vh minus a guessed 100px) was ~15px taller than
+   that space, so the bottom of the grid was clipped (fit audit 2026-09-28). */
 .nge-profile-body--trophy {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   padding: 0;
+}
+.nge-profile-body--trophy > .nge-trophy-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 /* Week in Science tab — embedded recap, scrolls within the profile body. */
@@ -3091,11 +3129,16 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   color: #445;
 }
 
+/* Two lines, then an ellipsis (the full text is the tooltip). It used to be
+   a plain height cap, which cut sentences mid-word with no sign they
+   continued (fit audit 2026-09-28). */
 .nge-trophy-badge-desc {
   font-size: 0.62em;
-  color: #667;
+  color: #8f9ab0;
   line-height: 1.3;
-  max-height: 2.6em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 

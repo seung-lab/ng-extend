@@ -81,4 +81,12 @@ import Overlay from "components/Overlay.vue";
 .nge-overlay.modal.overlay-content {
   overflow: visible;
 }
+
+/* While a full-screen window (profile, settings, leaderboard...) is open,
+   the floating chat (ChatPanel .nge-chat-float, z-index 9000) tucks behind
+   it instead of covering its left column, and returns when it closes
+   (fit audit, Amy 2026-09-28). */
+body:has(.nge-overlay-blocker) .nge-chat-float {
+  z-index: 140 !important;
+}
 </style>

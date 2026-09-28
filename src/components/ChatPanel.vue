@@ -574,6 +574,10 @@ function toggleCollapse() {
   transition: bottom 0.25s ease;
   left: 8px;
   z-index: 9000;
+}
+/* (While a ModalOverlay window is open, chat tucks behind it: the rule is
+   in ModalOverlay.vue's unscoped styles.) */
+.nge-chat-float {
   display: flex;
   flex-direction: column;
   background: rgba(6, 10, 20, 0.85);

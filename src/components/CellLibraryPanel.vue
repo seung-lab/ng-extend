@@ -3771,6 +3771,9 @@ select.nge-cl-response-input:hover {
 
 .nge-cl-help-create-note {
   width: 100%;
+  /* border-box: width 100% plus padding and border poked past the form's
+     right edge (fit audit 2026-09-28). */
+  box-sizing: border-box;
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
