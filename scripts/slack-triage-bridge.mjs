@@ -353,8 +353,22 @@ async function postProposals() {
     const where = await openThread(row,
       `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also reviewable in Admin Hub, Triage tab. Anytime, reply *update reporter* to draft a note to the person who reported it.`);
     console.log(`[bridge] posted proposal ${row.id} (${where})`);
+    await notifyAdminsOfProposal(row);
   }
   return rows.length;
+}
+
+/** In-game bell for every admin when a proposal is ready (the feed styles a
+ *  🗂 title as a triage card). Sent once: the row gets slack_ts right after
+ *  its card is posted, so it never comes round again. */
+async function notifyAdminsOfProposal(row) {
+  const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
+  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" Claude has a suggestion ready. Approve or dismiss it in Admin Hub, Triage tab, or in the Slack thread.`;
+  let sent = 0;
+  for (const id of await adminUserIds()) {
+    if (await notifyUser(id, '🗂️ Feedback triage: new suggestion', body)) sent++;
+  }
+  console.log(`[bridge] proposal ${row.id}: notified ${sent} admin(s)`);
 }
 
 async function applyDecision(row, decision, approverId, extraText) {
@@ -860,7 +874,11 @@ let LOOP = false;
   }
   const announced = await announceDone();
   if (COLS) await reporterUpdates().catch(e => console.warn('[bridge] reporter updates failed:', e.message));
-  await tokenReminder().catch(e => console.warn('[bridge] token reminder failed:', e.message));
-  if (LOOP) await quietReminder().catch(e => console.warn('[bridge] quiet reminder failed:', e.message));
+  // The workflow runs several passes a minute apart; timed reminders only on
+  // the first, or each would post once per pass inside its window.
+  if ((process.env.BRIDGE_PASS || '1') === '1') {
+    await tokenReminder().catch(e => console.warn('[bridge] token reminder failed:', e.message));
+    if (LOOP) await quietReminder().catch(e => console.warn('[bridge] quiet reminder failed:', e.message));
+  }
   console.log(`[bridge] done: ${posted} posted, ${acted} decided, ${echoed} echoed, ${started} started, ${nagged} nagged, ${announced} announced (sync ${COLS ? 'on' : 'off'}, loop ${LOOP ? 'on' : 'off'})`);
 })().catch(e => { console.error('[bridge] fatal:', e.message); process.exit(1); });
