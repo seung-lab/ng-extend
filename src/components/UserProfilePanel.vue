@@ -8,6 +8,7 @@ import { loadContribution, datasetTagVariants as sharedTagVariants } from '../ut
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
+import MyCellsTab from 'components/MyCellsTab.vue';
 import { runPanelTrace } from '../util/holo_trace';
 import { isMobileRef } from '../util/mobile';
 
@@ -137,7 +138,7 @@ const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
 const SPECIAL_PREVIEW_LIMIT = 8;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
-const activeTab = ref<'overview' | 'trophyCase' | 'datasets' | 'weekInScience' | 'adminHub' | 'settings'>('overview');
+const activeTab = ref<'overview' | 'trophyCase' | 'myCells' | 'datasets' | 'weekInScience' | 'adminHub' | 'settings'>('overview');
 
 function openWeekInScience() {
   activeTab.value = 'weekInScience';
@@ -761,6 +762,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           @click="activeTab = 'trophyCase'"
         >🏆 Trophy Case</button>
         <button
+          class="nge-profile-tab"
+          :class="{ 'nge-profile-tab--active': activeTab === 'myCells' }"
+          @click="activeTab = 'myCells'"
+        >🔬 {{ viewingOtherUser ? 'Cells' : 'My Cells' }}</button>
+        <button
           v-if="!viewingOtherUser"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'datasets' }"
@@ -957,6 +963,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-cell-list-header">
                 <span class="nge-cell-list-title">Recent Cells</span>
                 <span v-if="activeDatasetCanon" class="nge-cell-list-dataset" :title="'Filtered to ' + scopeLabel">{{ scopeDataset?.shortLabel || activeDatasetCanon }}</span>
+                <button class="nge-cell-list-all" @click="activeTab = 'myCells'" title="Every cell, by dataset">{{ viewingOtherUser ? 'All cells' : 'My cells' }} →</button>
               </div>
               <div class="nge-cell-list-columns">
                 <span class="nge-cell-col-label nge-cell-col-label--id">Segment</span>
@@ -1522,6 +1529,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
         </div>
       </div><!-- end Trophy Case -->
+
+      <!-- ── My Cells: claims and completions by dataset, loaded on open ── -->
+      <div v-if="activeTab === 'myCells'" class="nge-profile-body nge-profile-body--mycells">
+        <MyCellsTab
+          :user-id="props.viewUserId || backendStore.userId"
+          :is-self="!viewingOtherUser"
+          @jumped="handleClose"
+        />
+      </div>
 
       <!-- ── Datasets tab: contributions per dataset + switcher ── -->
       <div v-if="activeTab === 'datasets'" class="nge-profile-body nge-profile-body--datasets">
@@ -2742,6 +2758,19 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-cell-col-label--type { width: 110px; text-align: left; }
 .nge-cell-col-label--time { width: 64px; text-align: right; padding-right: 18px; }
 
+.nge-cell-list-all {
+  margin-left: auto;
+  background: none;
+  border: 1px solid rgba(120, 170, 255, 0.35);
+  border-radius: 8px;
+  color: #8cf;
+  font: inherit;
+  font-size: 0.72em;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.nge-cell-list-all:hover { background: rgba(120, 170, 255, 0.12); }
+.nge-profile-body--mycells { display: block; overflow-y: auto; padding: 18px 28px; }
 .nge-cell-list-dataset {
   font-size: 0.62em !important;
   font-style: normal !important;
