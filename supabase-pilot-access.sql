@@ -55,8 +55,8 @@ BEGIN
       (o.claim_point_x=t.claim_point_x AND o.claim_point_y=t.claim_point_y AND o.claim_point_z=t.claim_point_z)))
       THEN RAISE EXCEPTION 'This cell is already claimed'; END IF;
     IF t.assigned_to IS DISTINCT FROM p_user AND
-       (SELECT count(*) FROM public.proofreading_tasks WHERE assigned_to=p_user AND status IN ('assigned','in_progress')) >= 3
-      THEN RAISE EXCEPTION 'Max 3 claims reached'; END IF;
+       (SELECT count(*) FROM public.proofreading_tasks WHERE assigned_to=p_user AND status IN ('assigned','in_progress')) >= 8
+      THEN RAISE EXCEPTION 'Max 8 claims reached'; END IF;
     UPDATE public.proofreading_tasks SET status='assigned',assigned_to=p_user,updated_at=now() WHERE id=t.id RETURNING * INTO t;
     SELECT * INTO a FROM public.task_assignments WHERE task_id=t.id AND user_id=p_user AND status='active' ORDER BY id DESC LIMIT 1;
     IF NOT FOUND THEN

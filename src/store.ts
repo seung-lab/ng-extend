@@ -3855,7 +3855,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
 
   // ── Point-in-space claim helpers ──────────────────────────────────────
-  const MAX_CLAIMS = 3;
+  const MAX_CLAIMS = 8;  // must match pilot_task_action in supabase-pilot-access.sql
 
   function pointKey(pt: ClaimPoint): string { return `${pt[0]},${pt[1]},${pt[2]}`; }
 

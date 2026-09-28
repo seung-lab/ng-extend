@@ -21,7 +21,7 @@ import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
 import { syncCellToSheet } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
-import { getRootFromSupervoxel } from '../widgets/pcg_service';
+import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
@@ -567,14 +567,20 @@ async function runCrosshairCheck(cell: CellRow) {
   } else {
     const expected = cell.svId ? await getRootFromSupervoxel(String(cell.svId)) : null;
     const known = [expected, cell.segId, cell.finalSegId].filter(Boolean) as string[];
-    if (known.includes(at.root)) {
+    // Edits give the cell a new root id; its edit history still leads back to
+    // the claim's Start SegID, so ask CAVE (Amy 2026-09-28).
+    const lineage = known.includes(at.root) ? at.root : await ancestorAmong(at.root, known);
+    if (lineage) {
       c.ok = true;
-      c.message = `The crosshairs are inside this cell (${shortId(at.root)}).`;
-    } else if (!expected && isVisibleRoot(at.root)) {
+      c.message = lineage === at.root
+        ? `The crosshairs are inside this cell (${shortId(at.root)}).`
+        : `The crosshairs are inside this cell. It has been edited since the claim, so its ID is now ${shortId(at.root)}; that is recorded as the Final SegID.`;
+    } else if (lineage === undefined && isVisibleRoot(at.root)) {
+      // Could not reach the edit history: accept the cell on screen.
       c.ok = true;
-      c.message = `The crosshairs are inside ${shortId(at.root)}, the cell on screen. It is recorded as the final cell.`;
+      c.message = `The crosshairs are inside ${shortId(at.root)}, the cell on screen. It is recorded as the Final SegID.`;
     } else {
-      c.message = `The crosshairs are inside ${shortId(at.root)}, which is not this cell${expected ? ` (${shortId(expected)})` : ''}. Move them into the cell and check again.`;
+      c.message = `The crosshairs are inside ${shortId(at.root)}, which is not this cell and did not come from it. Move them into the cell and check again.`;
     }
   }
   c.checking = false;
@@ -711,7 +717,7 @@ const isMyClaim = (cell: typeof cells.value[0]) =>
   (cell.status === 'assigned' || cell.status === 'in_progress') && cell.assignedTo === backend.userId;
 
 // Runs once your claims are in the list (the panel may have just opened).
-watch([pendingCompleteRequest, datasetScopedCells, () => backend.loading], () => {
+watch([pendingCompleteRequest, datasetScopedCells, () => backend.loading], async () => {
   const req = pendingCompleteRequest.value;
   if (!req) return;
   const mine = datasetScopedCells.value.filter(c => isMyClaim(c));
@@ -719,8 +725,13 @@ watch([pendingCompleteRequest, datasetScopedCells, () => backend.loading], () =>
   pendingCompleteRequest.value = null;
   filter.value = 'mine';
   search.value = '';
-  const match = mine.find(c => c.segId === req.segId || c.finalSegId === req.segId)
-    ?? (mine.length === 1 ? mine[0] : null);
+  let match = mine.find(c => c.segId === req.segId || c.finalSegId === req.segId) ?? null;
+  if (!match && mine.length) {
+    // Edited since the claim: find the claim this cell descends from.
+    const hit = await ancestorAmong(req.segId, mine.flatMap(c => [c.segId, c.finalSegId || '']).filter(Boolean));
+    if (hit) match = mine.find(c => c.segId === hit || c.finalSegId === hit) ?? null;
+  }
+  if (!match && mine.length === 1) match = mine[0];
   if (match) openComplete(match);
   else chooseClaim.value = mine.length > 0;
 }, { immediate: true });

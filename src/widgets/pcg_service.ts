@@ -342,6 +342,41 @@ export function getSelectedSupervoxelId(): string | null {
 // ─── Root lineage endpoints ─────────────────────────────────────────────────
 
 /**
+ * Which of `candidates` is `root` itself or one of its ANCESTORS in the edit
+ * history? Proofreading gives a cell a new root id with every merge or split,
+ * so a claim's Start SegID stops matching the cell on screen; its lineage
+ * still leads back to it (Amy 2026-09-28).
+ *
+ * Endpoint: GET /segmentation/api/v1/table/{table}/root/{root}/lineage_graph
+ * (about 0.2 s; returns every past root that led to this one). Ids are read as
+ * TEXT: they are 18 digits and JSON numbers would round them.
+ *
+ * Returns the matching candidate, null when none matches, or undefined when
+ * the lookup itself failed (so callers can fall back instead of rejecting).
+ */
+export async function ancestorAmong(root: string, candidates: string[]): Promise<string | null | undefined> {
+  const wanted = candidates.filter(c => /^\d+$/.test(c));
+  if (!wanted.length) return null;
+  if (wanted.includes(root)) return root;
+  const pcg = getPcgInfo();
+  if (!pcg) return undefined;
+  try {
+    const res = await fetch(
+      `${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${root}/lineage_graph`,
+      { headers: authHeaders(pcg.server) });
+    if (!res.ok) { console.warn(`[pcg] lineage_graph ${res.status}`); return undefined; }
+    const body = await res.text();
+    const seen = new Set<string>();
+    for (const m of body.matchAll(/"(?:source|target|id)"\s*:\s*"?(\d+)/g)) seen.add(m[1]);
+    return wanted.find(c => seen.has(c)) ?? null;
+  } catch (e) {
+    console.warn('[pcg] lineage_graph network error:', e);
+    return undefined;
+  }
+}
+
+
+/**
  * Check which root IDs are still current (not superseded by edits).
  *
  * Endpoint: GET /segmentation/api/v1/table/{table}/is_latest_roots?root_ids=...

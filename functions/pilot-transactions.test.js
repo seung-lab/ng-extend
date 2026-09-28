@@ -32,10 +32,10 @@ test('PostgreSQL enforces membership, atomic claims, owner checks, limits and re
   await task(A,'claim',{id:1});
   assert.equal((await db.query('SELECT count(*)::integer AS n FROM task_assignments')).rows[0].n,1);
   await assert.rejects(()=>task(B,'claim_cell',{dataset:'pinky_nf_v2',segment_id:'123',point:[1,2,3]}),/already claimed/);
-  await task(A,'claim_cell',{dataset:'pinky_nf_v2',segment_id:'124',point:[2,2,3]});
-  await task(A,'claim_cell',{dataset:'pinky_nf_v2',segment_id:'125',point:[3,2,3]});
-  await assert.rejects(()=>task(A,'claim_cell',{dataset:'pinky_nf_v2',segment_id:'126',point:[4,2,3]}),/Max 3/);
-  assert.equal((await db.query('SELECT count(*)::integer AS n FROM proofreading_tasks')).rows[0].n,3);
+  // Claim limit is 8 (Amy 2026-09-28): A already holds task 1, so 7 more fit.
+  for (let i=0;i<7;i++) await task(A,'claim_cell',{dataset:'pinky_nf_v2',segment_id:String(124+i),point:[2+i,2,3]});
+  await assert.rejects(()=>task(A,'claim_cell',{dataset:'pinky_nf_v2',segment_id:'131',point:[9,2,3]}),/Max 8/);
+  assert.equal((await db.query('SELECT count(*)::integer AS n FROM proofreading_tasks')).rows[0].n,8);
   await task(A,'release',{id:1}); await task(B,'claim',{id:1});
   await db.exec("UPDATE task_assignments SET status='expired',expires_at=now()-interval '1 minute' WHERE task_id=1 AND user_id='"+A+"'; SELECT expire_stale_assignments();");
   assert.equal((await db.query('SELECT assigned_to FROM proofreading_tasks WHERE id=1')).rows[0].assigned_to,B);
