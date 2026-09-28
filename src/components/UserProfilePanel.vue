@@ -220,11 +220,10 @@ function clampProfile() {
     overlay.style.top = '50%';
     overlay.style.left = '50%';
     overlay.style.transform = 'translate(-50%, -50%)';
-    // hidden, never auto: the holographic edge (::before, inset -1px) always
-    // overhangs the box by a pixel, so auto drew a vertical AND a horizontal
-    // scrollbar around the whole profile. The shell is clamped above and
-    // every tab body scrolls internally, so nothing needs the overlay to.
-    overlay.style.overflow = 'hidden';
+    // visible, never auto (scrollbars) or hidden (clips the edge glow at the
+    // rounded corners). The shell is clamped above and every tab body scrolls
+    // internally, so nothing needs the overlay to scroll or clip.
+    overlay.style.overflow = 'visible';
   }
 }
 let clampTimer: ReturnType<typeof setInterval> | null = null;
@@ -245,7 +244,14 @@ watch(() => shellEl.value, () => requestAnimationFrame(clampProfile));
 watch(() => activeTab.value, () => { requestAnimationFrame(clampProfile); setTimeout(clampProfile, 320); });
 
 onMounted(() => {
-  setTimeout(() => { if (shellEl.value) runPanelTrace(shellEl.value); }, 60);
+  // Trace the visible rounded box (the overlay), not the square inner shell:
+  // on the shell the light ran a guessed 15px corner 15px inside a 10px box,
+  // so its corners never matched the border it was circling (Amy 2026-09-28).
+  setTimeout(() => {
+    const box = shellEl.value?.closest('.overlay-content') as HTMLElement | null;
+    const host = box ?? shellEl.value;
+    if (host) runPanelTrace(host);
+  }, 60);
 });
 
 // Deep-link: open directly on a given tab (e.g. from the toolbar/command palette
@@ -1658,16 +1664,19 @@ const emit = defineEmits({hide: null, 'open-settings': null});
    has position:absolute; top:50%; left:50%; transform:translate(-50%,-50%).
    Adding position:relative would override that and break centering.          */
 .nge-profile-modal :deep(.nge-overlay) {
-  /* !important: ng-override.css forces overflow:auto !important on every
-     .nge-overlay.modal.overlay-content, and this box's content is 1px larger
-     than it (the border), so that rule drew a vertical AND a horizontal
-     scrollbar around the whole profile. The shell is height-capped and every
-     tab body scrolls on its own, so the wrapper never needs to. */
-  overflow: hidden !important;
+  /* visible, !important: ng-override.css forces overflow:auto !important on
+     every .nge-overlay.modal.overlay-content, and this box's content is 1px
+     larger than it, which drew scrollbars around the whole profile. Visible
+     never draws scrollbars, and the shell is height-capped with each tab body
+     scrolling on its own, so nothing escapes. NOT hidden: hidden clipped the
+     orbiting edge glow (::before, inset -1px) along the straight edges but only
+     partly at the rounded corners, so the corner looked sharp as the light
+     passed it (Amy 2026-09-28). */
+  overflow: visible !important;
 }
 /* Out-specifies ng-override's 0,3,0 !important rule regardless of load order. */
 .nge-profile-modal :deep(.nge-overlay.modal.overlay-content) {
-  overflow: hidden !important;
+  overflow: visible !important;
 }
 .nge-profile-modal :deep(.nge-overlay) {
   animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
