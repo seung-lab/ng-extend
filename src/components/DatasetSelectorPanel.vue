@@ -8,6 +8,7 @@ import { ref, onMounted } from 'vue';
 import { DATASETS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry } from '../datasets';
 import { runPanelTrace } from '../util/holo_trace';
 import { startDatasetTransition } from '../util/dataset_transition';
+import { loadDatasetPermissions, datasetAccess } from '../util/dataset_access';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -39,12 +40,20 @@ function detectCurrentDataset() {
 
 onMounted(detectCurrentDataset);
 
+// ── Access (from CAVE): locked cards are greyed and do not switch ───────────
+onMounted(() => { loadDatasetPermissions(); });
+/** The dataset on screen is never shown locked, whatever the lookup says. */
+const accessOf = (ds: DatasetEntry) => ds.id === currentDatasetId.value ? 'edit' : datasetAccess(ds.caveDataset);
+const lockedTip = 'Your CAVE account does not have access to this dataset yet. Ask an EyeWire II admin to request it for you.';
+const viewTip = 'You can look around here, but your CAVE account cannot save edits in this dataset.';
+
 // ── Switch dataset ──────────────────────────────────────────────────────────
 
 const switching = ref(false);
 
 async function switchTo(ds: DatasetEntry) {
   if (ds.id === currentDatasetId.value) return;
+  if (accessOf(ds) === 'none') return;
   // Close the switcher and play "Now entering" (it survives the reload a
   // curated dataset triggers). Let it paint before the switch blocks.
   startDatasetTransition(ds);
@@ -72,7 +81,10 @@ async function switchTo(ds: DatasetEntry) {
           :class="{
             'nge-ds-active': ds.id === currentDatasetId,
             'nge-ds-switching': switching,
+            'nge-ds-locked': accessOf(ds) === 'none',
           }"
+          :title="accessOf(ds) === 'none' ? lockedTip : accessOf(ds) === 'view' ? viewTip : undefined"
+          :aria-disabled="accessOf(ds) === 'none' ? 'true' : undefined"
           @click="switchTo(ds)"
         >
           <img v-if="ds.thumbnail" :src="ds.thumbnail" class="nge-ds-card-thumb" alt="" loading="lazy" />
@@ -81,6 +93,8 @@ async function switchTo(ds: DatasetEntry) {
           <div class="nge-ds-card-desc">{{ ds.description }}</div>
           </div>
           <div v-if="ds.id === currentDatasetId" class="nge-ds-badge">Active</div>
+          <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-badge nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
+          <div v-else-if="accessOf(ds) === 'view'" class="nge-ds-badge nge-ds-badge--view">View only</div>
         </div>
       </div>
     </div>
@@ -173,6 +187,13 @@ async function switchTo(ds: DatasetEntry) {
   opacity: 0.5;
   pointer-events: none;
 }
+/* No CAVE access: greyed, not clickable, the reason in the tooltip. */
+.nge-ds-locked { cursor: not-allowed; }
+.nge-ds-locked .nge-ds-card-thumb { filter: grayscale(1) brightness(0.55); }
+.nge-ds-locked .nge-ds-card-text { opacity: 0.45; }
+.nge-ds-card.nge-ds-locked:hover { background: none; border-color: rgba(255, 255, 255, 0.08); }
+.nge-ds-badge--locked { color: #c9ccd4; background: rgba(255, 255, 255, 0.08); }
+.nge-ds-badge--view { color: #e8c46a; background: rgba(232, 196, 106, 0.12); }
 
 .nge-ds-card:has(.nge-ds-card-thumb) {
   display: grid;
