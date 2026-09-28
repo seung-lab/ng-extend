@@ -93,7 +93,7 @@ export const NURRO_ANSWERS: Record<string, string> = {
   tags: 'Found something odd but not sure how to fix it? Press Shift+T for Tag Mode and tag a spot for another player to review.',
 };
 const ALIASES: Record<string, string> = { commands: 'help', split: 'cut', cell: 'cells', dataset: 'datasets', tag: 'tags', stat: 'stats', point: 'points' };
-const HELP = 'Try !about, !faq, !merge, !cut, !cells, !datasets, !stats, !points, !share, !tags or !online. Or just say "for science" 🧪';
+const HELP = 'Try !about, !faq, !merge, !cut, !cells, !datasets, !stats, !points, !share, !tags or !online. Or just say "for science!"';
 
 export type BotReply = { name: string; text: string; language?: string };
 
