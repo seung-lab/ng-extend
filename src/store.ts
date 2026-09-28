@@ -1,3 +1,4 @@
+import { BOT_NAME, forScienceReply, isForScience } from './chat_bot';
 import { taskAction } from './pilot_actions';
 import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
@@ -4911,6 +4912,8 @@ export interface ChatMessage {
   id?: string | number | null;
   /** Verified sender (chat_messages.user_id), so authors can delete their own. */
   userId?: string | null;
+  /** Set on nkem_test's replies: the language of its "for science". */
+  botLanguage?: string;
 }
 
 /**
@@ -5122,6 +5125,21 @@ export const useChatStore = defineStore('chat', () => {
 
   const HISTORY_PAGE = 30;
 
+  /** nkem_test answers "for science" (src/chat_bot.ts). Local only. */
+  function botReplyTo(m: ChatMessage): ChatMessage | null {
+    if (m.type !== 'message' || m.notificationId || m.id == null) return null;
+    const text = m.parts.filter(p => p.type !== 'sender').map(p => p.text).join('');
+    if (!isForScience(text)) return null;
+    const { text: reply, language } = forScienceReply(String(m.id));
+    const at = new Date(m.dateTime.getTime() + 1);
+    return { type: 'message', name: BOT_NAME, rank: 'bot', time: formatTime(at), dateTime: at,
+      parts: [{ type: 'sender', text: BOT_NAME }, { type: 'text', text: reply }], botLanguage: language };
+  }
+  function withBot(m: ChatMessage): ChatMessage[] {
+    const r = botReplyTo(m);
+    return r ? [m, r] : [m];
+  }
+
   async function fetchPage(before: string | null) {
     let q = supabase
       .from('chat_messages')
@@ -5145,7 +5163,7 @@ export const useChatStore = defineStore('chat', () => {
       if (!rows) return;
       for (const r of rows) {
         addTimeSeparatorIfNeeded(new Date(r.created_at));
-        chatMessages.value.push(rowToMessage(r));
+        chatMessages.value.push(...withBot(rowToMessage(r)));
       }
       void loadReactions(rows.map((r: any) => String(r.id)).filter((id: string) => id && id !== 'null'));
     } catch (e) {
@@ -5161,7 +5179,7 @@ export const useChatStore = defineStore('chat', () => {
       const rows = await fetchPage(oldestLoadedAt);
       if (!rows?.length) return 0;
       const known = new Set(chatMessages.value.map(m => m.id).filter(id => id != null));
-      const older = rows.filter((r: any) => !known.has(r.id)).map(rowToMessage);
+      const older = rows.filter((r: any) => !known.has(r.id)).flatMap((r: any) => withBot(rowToMessage(r)));
       chatMessages.value = [...older, ...chatMessages.value];
       rebuildSeparators();
       void loadReactions(older.filter(m => m.id != null).map(m => String(m.id)));
@@ -5305,6 +5323,9 @@ export const useChatStore = defineStore('chat', () => {
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
         parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null});
+      // nkem_test takes a beat to answer, like it used to.
+      const reply = botReplyTo(chatMessages.value[chatMessages.value.length - 1]);
+      if (reply) setTimeout(() => { reply.dateTime = new Date(); reply.time = formatTime(reply.dateTime); chatMessages.value.push(reply); }, 900);
       if (row.user_id !== backend.userId) {
         // A direct @mention always gets through, even with chat muted.
         if (mentionsMe(row.text || '')) {

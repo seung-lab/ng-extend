@@ -282,7 +282,7 @@ const mentionOptions = computed(() => {
   for (const p of Object.values(chatStore.online)) add(p.name, true);
   for (let i = chatMessages.value.length - 1; i >= 0; i--) {
     const m = chatMessages.value[i];
-    if (m.type === 'message' && !m.notificationId) add(m.name, false);
+    if (m.type === 'message' && !m.notificationId && m.rank !== 'bot') add(m.name, false);
   }
   for (const h of remoteHandles.value) add(h, false);
   return out
@@ -667,7 +667,9 @@ function toggleCollapse() {
                 <div v-else-if="msg.type === 'message'" class="nge-chat-msg">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
-                  <button class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: rankColor(msg.rank) }" @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</button>
+                  <span v-if="msg.rank === 'bot'" class="nge-chat-msg-name nge-chat-bot-name"
+                        :title="'nkem_test: the original EyeWire chat bot, by @nkem (2013). Say \'for science\' and it answers.'">nkem_test<span class="nge-chat-bot-tag">bot</span></span>
+                  <button v-else class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: rankColor(msg.rank) }" @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</button>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <button v-else-if="part.type === 'link' && isViewLink(part.text)" class="nge-chat-view-chip"
@@ -700,8 +702,9 @@ function toggleCollapse() {
                         @click="copySegId(part.text, $event)"
                         :title="'Copy ' + part.text.slice(1)"
                       >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
-                    <span v-else class="nge-chat-msg-text">{{ part.text }}</span>
+                    <span v-else class="nge-chat-msg-text" :class="{ 'nge-chat-bot-text': msg.rank === 'bot' }">{{ part.text }}</span>
                   </template>
+                  <span v-if="msg.botLanguage" class="nge-chat-bot-lang">{{ msg.botLanguage }}</span>
                   <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
                           :title="msg.userId === backendStore.userId ? 'Delete your message' : 'Delete this message for everyone (admin)'"
                           @click.stop="deleteChatMessage(msg)">🗑</button>
@@ -1245,6 +1248,31 @@ function toggleCollapse() {
   box-sizing: border-box;
 }
 .nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.3); }
+
+/* ── nkem_test ── */
+.nge-chat-bot-name {
+  color: #c79bff;
+  font-weight: 600;
+  cursor: help;
+}
+.nge-chat-bot-tag {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  color: #1a0f2a;
+  background: #c79bff;
+}
+.nge-chat-bot-text { color: #e8d9ff; font-weight: 600; }
+.nge-chat-bot-lang {
+  margin-left: 6px;
+  font-size: 11px;
+  color: rgba(199, 155, 255, 0.65);
+}
 
 /* ── History header ── */
 .nge-chat-history-top {
