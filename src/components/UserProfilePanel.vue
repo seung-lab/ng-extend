@@ -139,40 +139,12 @@ const SPECIAL_PREVIEW_LIMIT = 8;
 // ── Profile tabs ─────────────────────────────────────────────────────────────
 const activeTab = ref<'overview' | 'trophyCase' | 'datasets' | 'weekInScience' | 'adminHub' | 'settings'>('overview');
 
-/** Monday-anchored key for the current week, e.g. "2026-07-13". */
-function isoWeekKey(): string {
-  const now = new Date();
-  const day = now.getDay();
-  const diffToMon = day === 0 ? -6 : 1 - day;
-  const mon = new Date(now);
-  mon.setDate(now.getDate() + diffToMon);
-  mon.setHours(0, 0, 0, 0);
-  return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, '0')}-${String(mon.getDate()).padStart(2, '0')}`;
-}
-
-/** Push the user's weekly recap into their notification feed — once per week.
- *  Deduped via a per-user, per-week localStorage flag so re-opening the tab
- *  doesn't spam. */
-async function maybeSendWeeklyRecapNotification() {
-  const uid = backendStore.userId;
-  if (!uid) return;
-  const key = `nge_recap_notif_${uid}_${isoWeekKey()}`;
-  if (localStorage.getItem(key)) return;
-  localStorage.setItem(key, '1'); // set first so a rapid re-open can't double-send
-  try {
-    const s = stats.value;
-    const body = `${s.editsThisWeek.toLocaleString()} edits · ${s.mergesThisWeek.toLocaleString()} merges · ${s.splitsThisWeek.toLocaleString()} splits this week. Open your profile → Week in Science for the full recap.`;
-    const { secureWrite } = await import('../secure_write');
-    await secureWrite('notification.self', { title: '📊 Your Week in Science', body });
-  } catch (e) {
-    console.warn('[profile] weekly recap notification failed:', e);
-    localStorage.removeItem(key); // allow a retry next time
-  }
-}
-
 function openWeekInScience() {
   activeTab.value = 'weekInScience';
-  maybeSendWeeklyRecapNotification();
+  // No notification from here any more: the Sunday recap (scripts/
+  // weekly-recap.mjs) is the one Week in Science card, counted the same way
+  // for everyone. This one counted the week in progress, so the numbers
+  // never matched.
 }
 
 // ── Scout Report: your tag activity on the dataset on screen ─────────────────
