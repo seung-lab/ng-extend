@@ -378,8 +378,8 @@ function jumpToCell(segId: string) {
           <div v-for="nb in nextBadges" :key="nb.track" class="nge-recap-badge-track" :class="`nge-recap-badge-track--${nb.track}`">
             <div class="nge-recap-badge-row">
               <div class="nge-recap-badge-name">
+                <!-- Badge names hidden here (Amy 2026-09-28): the next badge is a surprise. -->
                 <span class="nge-recap-badge-kind">{{ nb.track === 'building' ? 'Edits' : 'Cells' }}</span>
-                {{ nb.name }}
               </div>
               <div class="nge-recap-badge-remaining">
                 {{ nb.remaining.toLocaleString() }} {{ nb.track === 'building' ? 'edits' : 'cells' }} to go
