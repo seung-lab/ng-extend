@@ -58,3 +58,24 @@ test('the completion date is entered as a real date only when it is a plain M/D/
  assert.equal(odd.userEnteredData.length,0);
  assert.equal(odd.valueInputOption,'RAW');
 });
+test('MEC rows are found by Starting XYZ Coords; claim fills Date Started, complete fills Date Ended and Final NG Link',()=>{
+ const header=['Index','Starting XYZ Coords','Cell Type (EWH)','Cell Type (NN)','AIS Coords','Status','Proofreader','Date Started','Date Ended','AIS annotated?','Final NG Link','Notes/Temp Links'];
+ const grid=[['','Princeton Server START LINK: https://x'],header,
+   ['1280','129296, 128864, 6565','Pyramidal','excitatory','128388, 128062, 6576','','','','','','',''],
+   ['1281','156624, 133344, 4436','Pyramidal','excitatory','','','','','','','','']];
+ const mec={dataset:'pni_mec',segmentId:'720575947373272744'};
+ const t={assigned_to:'mine',dataset:'pni_mec',segment_id:mec.segmentId,claim_point_x:129296,claim_point_y:128864,claim_point_z:6565};
+ const claim=planSheetUpdate(grid,'Cells',{segmentId:mec.segmentId,point:[129296,128864,6565]},sheetValues({...mec,action:'claim'},{id:'mine',username:'celiad'},{...t,status:'assigned'},'9/28/2026'));
+ assert.deepEqual(claim.data.map(d=>[d.range,d.values[0][0]]),[["'Cells'!G3",'celiad']]);
+ assert.deepEqual(claim.userEnteredData.map(d=>[d.range,d.values[0][0]]),[["'Cells'!H3",'9/28/2026']]);
+ const link='https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/1';
+ const done=planSheetUpdate(grid,'Cells',{segmentId:mec.segmentId,point:[129296,128864,6565]},sheetValues({...mec,action:'complete',link},{id:'mine',username:'celiad'},{...t,status:'completed'},'9/29/2026'));
+ const all=[...done.data,...done.userEnteredData].map(d=>[d.range,d.values[0][0]]).sort();
+ assert.deepEqual(all,[["'Cells'!F3",'Complete'],["'Cells'!G3",'celiad'],["'Cells'!I3",'9/29/2026'],["'Cells'!K3",link]]);
+ // A point that is not in the sheet, or appears twice, is refused.
+ assert.throws(()=>planSheetUpdate(grid,'Cells',{segmentId:'1',point:[1,2,3]},[]),/missing/);
+ assert.throws(()=>planSheetUpdate([...grid,grid[2]],'Cells',{segmentId:'1',point:[129296,128864,6565]},[]),/more than once/);
+ assert.throws(()=>planSheetUpdate(grid,'Cells',{segmentId:'1',point:[null,null,null]},[]),/starting point/);
+ // Retina's segment matching is unchanged.
+ assert.equal(sourceFor({...mec,action:'claim'}).matchBy,'startcoords');
+});

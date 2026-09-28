@@ -60,6 +60,18 @@ const SHEETS = [
     dataset: 'pinky_nf_v2',
     url: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
   },
+  {
+    // MEC (Ames 2026-09-28): rows carry "Starting XYZ Coords", not segment
+    // IDs. Each new point is resolved to its supervoxel and root, and the
+    // point becomes the task's claim point, which is also how the sheet
+    // write-back finds the row again (functions/sheet-policy.js).
+    dataset: 'pni_mec',
+    url: 'https://docs.google.com/spreadsheets/d/1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw/edit?gid=869365415',
+    byPoint: {
+      cloudpath: 'graphene://https://hc.himc-cave.com/segmentation/table/pni_mec',
+      resolution: '16,16,45',
+    },
+  },
 ];
 
 // ── Eastern-time guard ───────────────────────────────────────────────
@@ -138,6 +150,100 @@ function extractCells(rows) {
     });
   }
   return out;
+}
+
+/** Rows of a coordinate sheet: {index, point:[x,y,z], coords, typeA, typeB, ais, notes}. */
+function extractPointCells(rows) {
+  const keys = ['startingxyz', 'startingcoord', 'startcoord'];
+  let headerIdx = -1;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const h = rows[i].map(c => c.toLowerCase().replace(/[^a-z0-9]/g, ''));
+    if (h.some(c => keys.some(k => c.includes(k)))) { headerIdx = i; break; }
+  }
+  if (headerIdx < 0) throw new Error('Could not find a Starting XYZ Coords column');
+  const header = rows[headerIdx].map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  const col = (...names) => { for (const n of names) { const i = header.findIndex(h => h.includes(n)); if (i >= 0) return i; } return -1; };
+  const iPoint = col(...keys), iIndex = col('index'), iAis = col('aiscoord');
+  const iTypes = header.map((h, i) => (h.startsWith('celltype') ? i : -1)).filter(i => i >= 0);
+  const out = [];
+  for (let r = headerIdx + 1; r < rows.length; r++) {
+    const nums = (rows[r][iPoint] || '').match(/-?\d+(?:\.\d+)?/g);
+    if (!nums || nums.length !== 3) continue;
+    const point = nums.map(n => Math.round(Number(n)));
+    const types = [...new Set(iTypes.map(i => (rows[r][i] || '').trim()).filter(Boolean))];
+    const ais = iAis >= 0 ? (rows[r][iAis] || '').trim() : '';
+    const index = iIndex >= 0 ? (rows[r][iIndex] || '').trim() : '';
+    out.push({ index, point, coords: point.join(', '), types, ais });
+  }
+  return out;
+}
+
+/** Claim points already imported for a dataset, as "x,y,z". */
+async function existingPoints(dataset) {
+  const pts = new Set();
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const url = `${SUPABASE_URL}/rest/v1/proofreading_tasks`
+      + `?select=claim_point_x,claim_point_y,claim_point_z&dataset=eq.${encodeURIComponent(dataset)}`
+      + `&limit=${PAGE}&offset=${offset}`;
+    const res = await fetch(url, { headers: supabaseHeaders });
+    if (!res.ok) throw new Error(`read tasks ${res.status}: ${await res.text()}`);
+    const rows = await res.json();
+    for (const r of rows) if (r.claim_point_x != null) pts.add(`${r.claim_point_x},${r.claim_point_y},${r.claim_point_z}`);
+    if (rows.length < PAGE) break;
+  }
+  return pts;
+}
+
+/** Points -> {sv, root} via scripts/resolve_points.py (cloud-volume). */
+async function resolvePoints(byPoint, points) {
+  const { spawnSync } = await import('node:child_process');
+  const py = process.env.PYTHON || 'python3';
+  const r = spawnSync(py, [new URL('./resolve_points.py', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), byPoint.cloudpath, byPoint.resolution],
+    { input: JSON.stringify(points), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) throw new Error(`resolve_points failed: ${(r.stderr || '').slice(-800)}`);
+  return JSON.parse(r.stdout);
+}
+
+async function syncPointSheet(cfg) {
+  console.log(`\n[cells] === ${cfg.dataset} (by starting coordinates) ===`);
+  const res = await fetch(csvUrlFor(cfg.url));
+  if (!res.ok) throw new Error(`sheet fetch ${res.status}`);
+  const cells = extractPointCells(parseCsv(await res.text()));
+  console.log(`[cells] sheet rows with a starting point: ${cells.length}`);
+  const known = await existingPoints(cfg.dataset);
+  console.log(`[cells] claim points already in proofreading_tasks: ${known.size}`);
+  const seen = new Set();
+  const fresh = cells.filter(c => { const k = c.point.join(','); if (known.has(k) || seen.has(k)) return false; seen.add(k); return true; });
+  if (!fresh.length) { console.log('[cells] nothing new'); return 0; }
+
+  // Resolve even on a dry run: it's read-only, and it proves the points land on cells.
+  const resolved = await resolvePoints(cfg.byPoint, fresh.map(c => c.point));
+  const toInsert = [];
+  let empty = 0;
+  fresh.forEach((c, i) => {
+    const r = resolved[i];
+    if (!r || r.root === '0') { empty++; console.log(`[cells] #${c.index} ${c.coords}: no cell at this point, skipped`); return; }
+    const notes = [c.index && `Sheet #${c.index}`, c.types.length && c.types.join(', '), c.ais && `AIS ${c.ais}`].filter(Boolean).join('. ');
+    toInsert.push({
+      segment_id: r.root,
+      supervoxel_id: r.sv,
+      dataset: cfg.dataset,
+      nucleus_coords: c.coords,
+      claim_point_x: c.point[0], claim_point_y: c.point[1], claim_point_z: c.point[2],
+      notes: notes || null,
+      status: 'pending',          // i.e. Available
+      source_sheet_url: cfg.url,
+    });
+  });
+  if (empty) console.log(`[cells] ${empty} point(s) had no cell`);
+  if (dryRun) {
+    console.log(`[cells] DRY-RUN would insert ${toInsert.length}: ${toInsert.slice(0, 3).map(t => `${t.notes} -> ${t.segment_id}`).join(' | ')}${toInsert.length > 3 ? ' ...' : ''}`);
+    return toInsert.length;
+  }
+  for (let i = 0; i < toInsert.length; i += 500) await insertTasks(toInsert.slice(i, i + 500));
+  console.log(`[cells] inserted ${toInsert.length} new cell(s)`);
+  return toInsert.length;
 }
 
 async function existingSegmentIds(dataset) {
@@ -219,7 +325,7 @@ async function syncSheet(cfg) {
   }
   let added = 0, failed = 0;
   for (const cfg of targets) {
-    try { added += await syncSheet(cfg); }
+    try { added += await (cfg.byPoint ? syncPointSheet(cfg) : syncSheet(cfg)); }
     catch (e) { console.error(`[cells] ${cfg.dataset} failed:`, e.message); failed++; }
   }
   console.log(`\n[cells] done — ${added} added, ${failed} dataset(s) failed`);

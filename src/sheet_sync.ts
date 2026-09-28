@@ -6,7 +6,7 @@ import { functionUrl } from './functions_base';
  *  "Notes" columns; the server never overwrites a filled cell. */
 export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinates', segmentId: string, coordinates?: string, sourceDataset?: string, link?: string, notes?: string) {
   const dataset = canonicalDataset(sourceDataset || currentDatasetTag());
-  if (!['pinky_nf_v2', 'stroeh_mouse_retina'].includes(dataset)) return;
+  if (!['pinky_nf_v2', 'stroeh_mouse_retina', 'pni_mec'].includes(dataset)) return;
   let token: string | null = null;
   try { token = JSON.parse(localStorage.getItem('auth_token_v2_https://global.daf-apis.com/sticky_auth') || '{}').accessToken || null; } catch {}
   if (!token) throw new Error('Sign in before syncing a cell.');

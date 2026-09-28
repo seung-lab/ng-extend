@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       dataset:
-        description: Dataset to import (blank imports both registered sheets)
+        description: Dataset to import (blank imports every registered sheet)
         type: choice
-        options: ['', pinky_nf_v2, stroeh_mouse_retina]
+        options: ['', pinky_nf_v2, stroeh_mouse_retina, pni_mec]
         default: ''
       dry_run:
         description: Report new cells without writing
@@ -30,10 +30,18 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      # MEC's sheet lists starting coordinates, not segment IDs; resolving a
+      # point to its cell needs cloud-volume (scripts/resolve_points.py).
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install cloud-volume
+        run: pip install --quiet cloud-volume
       - name: Import new cells without changing existing tasks
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
           DATASET: ${{ inputs.dataset }}
           DRY_RUN: ${{ inputs.dry_run }}
           EVENT: ${{ github.event_name }}

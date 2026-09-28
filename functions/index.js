@@ -1853,7 +1853,7 @@ exports.ewSheetSync = onRequest(
    const input=req.body||{};
    if(input.action==='health') {
     if(!(await rateLimit(req,false,'sheets:health')).ok) throw ewErr(429,'Please wait.');
-    const {SOURCES}=require('./sheet-policy'),{sheetsApi}=require('./sheet-sync');
+    const {SOURCES,SEGMENT_HEADERS,START_COORD_HEADERS}=require('./sheet-policy'),{sheetsApi}=require('./sheet-sync');
     for(const source of Object.values(SOURCES)) {
      const meta=await sheetsApi(admin.credential.applicationDefault(),source.id+'?fields=sheets(properties,protectedRanges)');
      const sheet=meta.sheets.find(s=>s.properties.sheetId===source.gid);
@@ -1861,9 +1861,10 @@ exports.ewSheetSync = onRequest(
      const range="'"+sheet.properties.title.replace(/'/g,"''")+"'!A1:AZ10";
      const grid=await sheetsApi(admin.credential.applicationDefault(),source.id+'/values/'+encodeURIComponent(range));
      const norm=v=>String(v??'').toLowerCase().replace(/[^a-z0-9]/g,'');
-     const headerRow=(grid.values||[]).findIndex(row=>row.some(v=>['startseg','segmentid','segment','segid'].some(p=>norm(v).includes(p))));
+     const keys=source.matchBy==='startcoords'?START_COORD_HEADERS:SEGMENT_HEADERS;
+     const headerRow=(grid.values||[]).findIndex(row=>row.some(v=>keys.some(p=>norm(v).includes(p))));
      if(headerRow<0) throw Error('Registered sheet header missing');
-     const columns=grid.values[headerRow].map((v,i)=>({name:norm(v),i})).filter(({name})=>['proofreader','claimedby','completedby','status','datecomplete','completedtime','finalseg','correctedsoma','somacoord'].some(p=>name.includes(p)));
+     const columns=grid.values[headerRow].map((v,i)=>({name:norm(v),i})).filter(({name})=>['proofreader','claimedby','completedby','status','datecomplete','completedtime','datestarted','dateended','finalseg','finallink','finalnglink','correctedsoma','somacoord'].some(p=>name.includes(p)));
      if(!columns.length) throw Error('Registered sheet write columns missing');
      // Probe only the actual write columns. A whole-sheet probe hits the
      // owner's protected reference columns even when writeback is permitted.

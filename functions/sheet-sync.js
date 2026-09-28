@@ -32,7 +32,11 @@ async function syncSheet(input,me,task,credential) {
   const title=sheet.properties.title;
   const range="'"+title.replace(/'/g,"''")+"'!A1:AZ20000";
   const grid=await sheetsApi(credential,source.id+'/values/'+encodeURIComponent(range)+'?valueRenderOption=FORMATTED_VALUE');
-  const plan=planSheetUpdate(grid.values||[],title,input.segmentId,fields);
+  // MEC's sheet has no segment IDs: its rows are found by the task's claim point.
+  const match=source.matchBy==='startcoords'
+    ? {segmentId:input.segmentId,point:[task?.claim_point_x,task?.claim_point_y,task?.claim_point_z]}
+    : input.segmentId;
+  const plan=planSheetUpdate(grid.values||[],title,match,fields);
   if(plan.data.length) await sheetsApi(credential,source.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data:plan.data})});
   if(plan.userEnteredData.length) await sheetsApi(credential,source.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'USER_ENTERED',data:plan.userEnteredData})});
   return {ok:true,updated:plan.data.length+plan.userEnteredData.length};
