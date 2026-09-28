@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { caveToken } from '../secure_write';
 /**
  * FeedbackModal.vue
  * "Submit an issue" — lets any user report a bug / idea / data problem from
@@ -85,6 +86,7 @@ async function submit() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        token: caveToken(),
         message: slackText,
         category: category.value,
         url: pageUrl,

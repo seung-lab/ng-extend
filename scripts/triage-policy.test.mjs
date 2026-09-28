@@ -14,3 +14,7 @@ test('model artifacts cannot alter trusted workflow, server or authentication co
  assert.equal(permittedPath('src/components/CellLibraryPanel.vue'),true);
  assert.throws(()=>validateResult({summary:'test',files:[{path:'src/x.ts',content:Buffer.from('sb_secret_FAKE_TEST').toString('base64')}]}));
 });
+
+test('pilot gateway and backend stay outside automated model publishing',()=>{
+ for(const path of ['src/pilot_actions.ts','src/functions_base.ts','functions/index.js','supabase-pilot-access.sql']) assert.equal(permittedPath(path),false);
+});

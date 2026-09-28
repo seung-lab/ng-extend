@@ -1,3 +1,4 @@
+import { practiceAction } from './pilot_actions';
 /**
  * practice.ts — resettable practice cells for the Cut & Merge tutorial.
  *
@@ -45,6 +46,7 @@ export interface PracticeExample {
   status: 'ready' | 'in_use' | 'needs_reset' | 'resetting' | 'broken';
   enabled: boolean;
   claimed_by: string | null;
+  claim_nonce: string | null;
   claimed_at: string | null;
   expires_at: string | null;
   uses: number;
@@ -117,9 +119,6 @@ export async function ensureSupervoxels(ex: PracticeExample): Promise<PracticeEx
   if (ex.supervoxel_a && ex.supervoxel_b) return ex;
   const a = ex.supervoxel_a || await anySupervoxelOf(ex, ex.root_a);
   const b = ex.supervoxel_b || await anySupervoxelOf(ex, ex.root_b);
-  const { error } = await supabase.from('tutorial_practice_examples')
-    .update({ supervoxel_a: a, supervoxel_b: b, updated_at: new Date().toISOString() }).eq('id', ex.id);
-  if (error) console.warn('[practice] could not save supervoxels:', error.message);
   ex.supervoxel_a = a;
   ex.supervoxel_b = b;
   return ex;
@@ -176,7 +175,8 @@ function showOnly(dataset: string, rootIds: string[]) {
  * Throws if an undo fails or the pieces still share a root afterwards. Used
  * by the tutorial hand-back and by the admin "Reset now" button.
  */
-export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: string; b: string; undone: number }> {
+async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise<void>): Promise<{ a: string; b: string; undone: number }> {
+  await assertLease();
   await ensureSupervoxels(ex);
   // Both lineages, since a cut can leave the pieces on different roots with
   // the merge in each history.
@@ -199,7 +199,8 @@ export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: strin
     Object.assign(details, await res.json());
   }
   const activeOps = remainingPracticeOperations(ops, details);
-  for (const op of activeOps) await undoOp(ex, op.operationId);
+  for (const op of activeOps) { await assertLease(); await undoOp(ex, op.operationId); }
+  await assertLease();
   const a = await rootOfSupervoxel(ex, ex.supervoxel_a);
   const b = await rootOfSupervoxel(ex, ex.supervoxel_b);
   if (!a || !b) throw new Error(`could not look up the roots of supervoxels ${ex.supervoxel_a} and ${ex.supervoxel_b} on ${ex.pcg_server} ${ex.pcg_table} (see the console for the server's answer)`);
@@ -353,10 +354,9 @@ function startActivityWatch() {
     // Active: push the claim's expiry along once a minute.
     if (idle < WARN_AFTER_MS && Date.now() - lastHeartbeat > 60 * 1000) {
       lastHeartbeat = Date.now();
-      supabase.from('tutorial_practice_examples')
-        .update({ expires_at: new Date(Date.now() + RELEASE_AFTER_MS).toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', ex.id).eq('status', 'in_use')
-        .then(({ error }) => { if (error) console.warn('[practice] heartbeat failed:', error.message); });
+      practiceAction('heartbeat', { id: ex.id, session: ex.claim_nonce }).catch((error) => {
+        console.warn('[practice] heartbeat failed:', error.message);
+      });
     }
     document.dispatchEvent(new CustomEvent('nge:practice-countdown', { detail: { seconds: releaseCountdown() } }));
     if (idle >= RELEASE_AFTER_MS) {
@@ -460,16 +460,17 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   if (!uid) { session.phase = 'unavailable'; return null; }
   if (session.example && session.example.claimed_by === uid) {
     if (session.example.kind === kind) {
+      try { await practiceAction('heartbeat', { id: session.example.id, session: session.example.claim_nonce }); }
+      catch { session.example = null; session.phase = 'unavailable'; return null; }
       await showExample(session.example, view);
       return session.example;
     }
     await endPractice();
   }
   session.phase = 'claiming';
-  const { data, error } = await supabase.rpc('claim_practice_example', { p_user: uid, p_kind: kind, p_minutes: HOLD_MINUTES });
-  if (error) { console.warn('[practice] claim failed:', error.message); session.phase = 'unavailable'; return null; }
-  let row = (Array.isArray(data) ? data[0] : data) as PracticeExample | undefined;
-  if (!row) row = await takeNeedsReset(uid, kind) ?? undefined;
+  let row: PracticeExample | null;
+  try { row = await practiceAction('claim', { kind }); }
+  catch (error: any) { console.warn('[practice] claim failed:', error.message); session.phase = 'unavailable'; return null; }
   if (!row) { session.phase = 'busy'; return null; }
   session.example = row;
   await showExample(row, view);
@@ -478,35 +479,24 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   return row;
 }
 
-/**
- * Nothing ready? A cell left in needs_reset (a learner's tab closed, or the
- * reset job has not run) can be put right here with this learner's token,
- * then used. Not atomic like the RPC, but the row is marked in_use first so
- * two learners racing for it is unlikely.
- */
-async function takeNeedsReset(uid: string, kind: PracticeKind): Promise<PracticeExample | null> {
-  const { data } = await supabase.from('tutorial_practice_examples').select('*')
-    .eq('enabled', true).eq('kind', kind).eq('status', 'needs_reset').order('uses').limit(1);
-  const row = (data?.[0] ?? null) as PracticeExample | null;
-  if (!row) return null;
-  const expires = new Date(Date.now() + HOLD_MINUTES * 60 * 1000).toISOString();
-  const { error } = await supabase.from('tutorial_practice_examples')
-    .update({ status: 'in_use', claimed_by: uid, claimed_at: new Date().toISOString(), expires_at: expires, updated_at: new Date().toISOString() })
-    .eq('id', row.id).eq('status', 'needs_reset');
-  if (error) return null;
+/** Every browser undo obtains a fresh server lease and uses its saved geometry.
+ * A paused tab must revalidate before each operation; it cannot resume a reset
+ * after the scheduled worker or another learner has taken over. */
+export async function resetPracticeExample(exampleId: string, sessionNonce?: string | null): Promise<{a: string; b: string; undone: number}> {
+  const ex = await practiceAction('begin_reset', { id: exampleId, session: sessionNonce });
+  const nonce = ex.reset_nonce;
+  const started = Date.now();
+  const assertLease = async () => {
+    if (Date.now() - started > 120000) throw new Error('Reset timed out. The scheduled reset will finish it.');
+    await practiceAction('check_reset', { id: ex.id, nonce });
+  };
   try {
-    const r = await undoSinceBaseline(row);
-    const roots = row.kind === 'cut' ? {} : { root_a: r.a, root_b: r.b };
-    await supabase.from('tutorial_practice_examples')
-      .update({ ...roots, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() }).eq('id', row.id);
-    if (row.kind !== 'cut') { row.root_a = r.a; row.root_b = r.b; }
-    row.status = 'in_use'; row.claimed_by = uid;
-    return row;
-  } catch (e: any) {
-    console.warn('[practice] could not reset a waiting cell:', e?.message ?? e);
-    await supabase.from('tutorial_practice_examples')
-      .update({ status: 'needs_reset', claimed_by: null, claimed_at: null, expires_at: null, last_error: String(e?.message ?? e).slice(0, 500) }).eq('id', row.id);
-    return null;
+    const result = await undoSinceBaseline(ex, assertLease);
+    await practiceAction('finish_reset', { id: ex.id, nonce, clean: true, root_a: result.a, root_b: result.b });
+    return result;
+  } catch (error: any) {
+    await practiceAction('finish_reset', { id: ex.id, nonce, clean: false, error: String(error?.message || error) }).catch(() => {});
+    throw error;
   }
 }
 
@@ -562,25 +552,8 @@ export function endPractice(): Promise<void> {
   const uid = userId();
   if (!ex || !uid) { session.phase = 'none'; return Promise.resolve(); }
   session.releasing = (async () => {
-    let clean = false;
-    let err: string | null = null;
-    let rootA = '';
-    let rootB = '';
-    try {
-      const r = await undoSinceBaseline(ex);
-      clean = true; rootA = r.a; rootB = r.b;
-    } catch (e: any) {
-      err = e?.message ?? String(e);
-      console.warn('[practice] client reset failed, leaving it to the reset job:', err);
-    }
-    const { error } = await supabase.rpc('release_practice_example', {
-      p_id: ex.id, p_user: uid, p_clean: clean,
-      // A cut example keeps its post-cut roots: they are the preview.
-      p_root_a: ex.kind === 'cut' ? null : (rootA || null),
-      p_root_b: ex.kind === 'cut' ? null : (rootB || null),
-      p_error: err,
-    });
-    if (error) console.warn('[practice] release failed:', error.message);
+    try { await resetPracticeExample(ex.id, ex.claim_nonce); }
+    catch (error: any) { console.warn('[practice] reset left to the scheduled worker:', error?.message || error); }
     session.example = null;
     session.shownId = '';
     session.rootA = '';

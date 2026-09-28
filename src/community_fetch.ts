@@ -1,13 +1,14 @@
 // Preserve Supabase's response contract while protecting private reads and writes.
 const ENDPOINT = 'https://us-central1-ytho-4bff2.cloudfunctions.net/ewCommunityData';
-const PROTECTED = new Set(['users', 'admins', 'notifications', 'notification_reads', 'working_links', 'feedback_triage', 'site_issues', 'user_groups', 'user_group_members', 'chat_messages']);
+const PROTECTED = new Set(['users', 'admins', 'notifications', 'notification_reads', 'working_links', 'feedback_triage', 'site_issues', 'user_groups', 'user_group_members', 'chat_messages', 'pilot_members']);
 const nativeFetch = window.fetch.bind(window);
 
 export const communityFetch: typeof fetch = async (input, init) => {
   const request = new Request(input, init);
   const url = new URL(request.url);
   const table = url.pathname.match(/^\/rest\/v1\/([a-z_]+)$/)?.[1];
-  if (url.origin !== 'https://javthknksdcrlhiaaptj.supabase.co' || !table || !PROTECTED.has(table)) return nativeFetch(request);
+  const read = ['GET', 'HEAD'].includes(request.method);
+  if (url.origin !== 'https://javthknksdcrlhiaaptj.supabase.co' || !table || (read && !PROTECTED.has(table))) return nativeFetch(request);
   let token: string | null = null;
   try { token = JSON.parse(localStorage.getItem('auth_token_v2_https://global.daf-apis.com/sticky_auth') || '{}').accessToken || null; } catch { /* anonymous read */ }
   const text = ['GET', 'HEAD'].includes(request.method) ? '' : await request.text();

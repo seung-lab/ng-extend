@@ -10,8 +10,8 @@ const url=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY,tok
 if(!url||!key||!token) throw Error('Missing configured Supabase or CAVE credentials');
 if(new URL(url).origin!=='https://javthknksdcrlhiaaptj.supabase.co') throw Error('Unapproved database');
 const headers={apikey:key,...(key.startsWith('sb_')?{}:{Authorization:`Bearer ${key}`}), 'Content-Type':'application/json',Prefer:'return=representation'};
-async function sb(path,body) {
- const r=await fetch(url+'/rest/v1/'+path,{method:body?'PATCH':'GET',headers,body:body?JSON.stringify(body):undefined,redirect:'error',signal:AbortSignal.timeout(20000)});
+async function sb(path,body,method=body?'PATCH':'GET') {
+ const r=await fetch(url+'/rest/v1/'+path,{method,headers,body:body?JSON.stringify(body):undefined,redirect:'error',signal:AbortSignal.timeout(20000)});
  if(!r.ok)throw Error('Practice database request failed ('+r.status+')');return r.json();
 }
 async function cave(ex,path,body) {
@@ -30,7 +30,7 @@ async function roots(ex) {
 function checkBaseline(ex,[a,b]) {
  if((a===b)!==(ex.kind==='cut'))throw Error('Practice pieces do not match their registered starting state');
 }
-async function reset(ex) {
+async function reset(ex,assertLease=async()=>{}) {
  const ops=new Map();
  for(const root of new Set(await roots(ex))) {
   // The filtered view can omit recent merges and splits from a root's lineage.
@@ -44,7 +44,7 @@ async function reset(ex) {
  console.log(`[reset] ${ex.id}: ${active.length} active operation(s) after the reviewed baseline (${ops.size-active.length} cancelled history entries)`);
  for(const op of active) {
   if(dryRun)console.log('[reset] would undo '+op.operationId);
-  else await cave(ex,'/undo?int64_as_str=1',{operation_id:op.operationId});
+  else { await assertLease(); await cave(ex,'/undo?int64_as_str=1',{operation_id:op.operationId}); }
  }
  if(dryRun)return null;
  const result=await roots(ex);checkBaseline(ex,result);return result;
@@ -65,21 +65,23 @@ async function main() {
     continue;
    }
    if(!dryRun) {
-    const stamp=new Date().toISOString();
-    const locked=await sb('tutorial_practice_examples?id=eq.'+ex.id+'&status=eq.'+encodeURIComponent(ex.status)+'&updated_at=eq.'+encodeURIComponent(ex.updated_at),
-      {status:'resetting',claimed_by:null,claimed_at:null,expires_at:null,updated_at:stamp});
-    if(!locked.length){console.log('[reset] '+ex.id+': session changed, skipped');continue;}
-    lockQuery='tutorial_practice_examples?id=eq.'+ex.id+'&status=eq.resetting&updated_at=eq.'+encodeURIComponent(stamp);
+    const locked=await sb('rpc/pilot_worker_reset_lease',{p_id:ex.id,p_expected:ex.updated_at},'POST');
+    if(!locked){console.log('[reset] '+ex.id+': session changed, skipped');continue;}
+    lockQuery='tutorial_practice_examples?id=eq.'+ex.id+'&status=eq.resetting&reset_nonce=eq.'+locked.reset_nonce;
+
    }
-   const result=await reset(ex);
+   const result=await reset(ex,async()=>{
+    const lease=await sb(lockQuery+'&select=id');
+    if(!lease.length)throw Error('Reset lease changed; stopped before undo');
+   });
    if(result) {
-    const updated=await sb(lockQuery,{status:'ready',...(ex.kind==='cut'?{}:{root_a:result[0],root_b:result[1]}),reset_failures:0,last_error:null,last_reset_at:new Date().toISOString(),updated_at:new Date().toISOString()});
+    const updated=await sb(lockQuery,{status:'ready',reset_nonce:null,...(ex.kind==='cut'?{}:{root_a:result[0],root_b:result[1]}),reset_failures:0,last_error:null,last_reset_at:new Date().toISOString(),updated_at:new Date().toISOString()});
     if(!updated.length)throw Error('Reset lease changed; row was not overwritten');
     console.log('[practice test] '+ex.id+': reset and starting state verified');
    }
   }catch(e){
    failed++;console.error('[reset] '+ex.id+': '+e.message);
-   if(lockQuery){const failures=(ex.reset_failures||0)+1;await sb(lockQuery,{status:failures>=3?'broken':'needs_reset',reset_failures:failures,last_error:e.message.slice(0,500),updated_at:new Date().toISOString()});}
+   if(lockQuery){const failures=(ex.reset_failures||0)+1;await sb(lockQuery,{status:failures>=3?'broken':'needs_reset',reset_nonce:null,reset_failures:failures,last_error:e.message.slice(0,500),updated_at:new Date().toISOString()});}
   }
  }
  if(failed)process.exitCode=2;
