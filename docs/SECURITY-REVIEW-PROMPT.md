@@ -48,8 +48,9 @@ automation do something harmful. Report findings; do not fix anything.
    on global.daf-apis.com or minnie.microns-daf.com). Can a user claim to be
    someone else anywhere the app or a backend trusts a user id or email sent
    by the browser?
-3. **Cloud Functions** in `C:\Users\amyle\philogelos\functions\index.js`
-   (Firebase project ytho-4bff2): `chat`, `subscribe`, `slackBot`,
+3. **Cloud Functions** (since 2026-09-27 in this repo's `functions/`,
+   Firebase project eyewire-ii-e4d52; previously
+   `C:\Users\amyle\philogelos\functions\index.js` on ytho-4bff2): `chat`, `subscribe`, `slackBot`,
    `caveProxy`, `signScreenshotUpload`, `guideAssistant`, `submitIssue`,
    `guideFeedback`, and any added since. For each: who can call it, CORS,
    auth checks, rate limits, what it can reach (Anthropic key, Slack token,
