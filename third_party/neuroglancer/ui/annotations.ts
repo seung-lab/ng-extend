@@ -1228,7 +1228,14 @@ export function UserLayerWithAnnotationsMixin<TBase extends {new (...args: any[]
 
     restoreState(specification: any) {
       super.restoreState(specification);
-      this.annotationDisplayState.color.restoreState(specification[ANNOTATION_COLOR_JSON_KEY]);
+      // EyeWire II (Amy 2026-09-28): on image and segmentation layers this
+      // colour only draws the volume bounding box, and Spelunker saves
+      // "#00ff64" into every state it writes, which turned the box neon green
+      // when a sheet Start link loaded. The box stays dark blue here; only
+      // annotation layers take their colour from the saved state.
+      if ((this.constructor as any).type === 'annotation') {
+        this.annotationDisplayState.color.restoreState(specification[ANNOTATION_COLOR_JSON_KEY]);
+      }
     }
 
     captureSelectionState(state: this['selectionState'], mouseState: MouseSelectionState) {
