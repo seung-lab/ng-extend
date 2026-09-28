@@ -250,6 +250,7 @@ export function colorFirstTwoVisible(dataset: string, attempt = 0) {
  *  sent to the viewer. Used when a step says "press M" and the learner
  *  pressed next instead. */
 export function ensureTool(tool: 'merge' | 'multicut', attempt = 0) {
+  if (!session.example?.claim_nonce || !['merge', 'cut'].includes(session.phase)) return;
   const viewer = getViewer();
   if (!viewer) return;
   try {
@@ -357,8 +358,13 @@ function startActivityWatch() {
       for (const ex of cells) {
         practiceAction('heartbeat', { id: ex.id, session: ex.claim_nonce }).catch((error) => {
           console.warn('[practice] heartbeat failed:', error.message);
+          for (const [slot, held] of Object.entries(session.held)) {
+            if (held.id === ex.id && held.claim_nonce === ex.claim_nonce) delete session.held[slot];
+          }
+          if (session.example?.id === ex.id && session.example?.claim_nonce === ex.claim_nonce) practiceUnavailable();
         });
       }
+
     }
     document.dispatchEvent(new CustomEvent('nge:practice-countdown', { detail: { seconds: releaseCountdown() } }));
     if (idle >= RELEASE_AFTER_MS) {
@@ -443,6 +449,20 @@ export function currentPractice() {
   return session;
 }
 
+function pausePracticeTools() {
+  const viewer = getViewer();
+  viewer?.globalToolBinder?.activeTool_?.cancel?.();
+  viewer?.toolBinder?.activeTool_?.cancel?.();
+}
+
+function practiceUnavailable() {
+  session.example = null;
+  session.shownId = '';
+  session.phase = 'unavailable';
+  pausePracticeTools();
+  document.dispatchEvent(new CustomEvent('nge:practice-unavailable'));
+}
+
 function userId(): string | null {
   try { return useProofreadingBackendStore().userId; } catch { return null; }
 }
@@ -470,33 +490,45 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   // signed in" while signed in).
   let uid = userId();
   for (let i = 0; !uid && i < 12; i++) { await new Promise(r => setTimeout(r, 500)); uid = userId(); }
-  if (!uid) { session.phase = 'unavailable'; return null; }
+  if (!uid) { practiceUnavailable(); return null; }
   const held = session.held[slot];
   if (held && held.claimed_by === uid && held.kind === kind) {
     try { await practiceAction('heartbeat', { id: held.id, session: held.claim_nonce }); }
-    catch { delete session.held[slot]; session.example = null; session.phase = 'unavailable'; return null; }
+    catch { delete session.held[slot]; practiceUnavailable(); return null; }
     session.example = held;
     await showExample(held, view);
+    session.phase = kind === 'cut' ? 'cut' : 'merge';
+    startActivityWatch();
     return held;
+
   }
   // A different kind in this slot (merge tutorial, then cut tutorial): put
   // everything back first.
   if (Object.values(session.held).some(ex => ex.kind !== kind)) await endPractice();
   session.phase = 'claiming';
+  pausePracticeTools();
   const exclude = Object.values(session.held).map(ex => ex.id);
   let row: PracticeExample | null;
   try { row = await practiceAction('claim', { kind, exclude }); }
-  catch (error: any) { console.warn('[practice] claim failed:', error.message); session.phase = 'unavailable'; return null; }
+  catch (error: any) { console.warn('[practice] claim failed:', error.message); practiceUnavailable(); return null; }
   if (!row) {
     // Nothing else free. With only one cell of this kind registered, the
     // second practice step reuses the one already held rather than waiting
     // in line for itself.
     const same = Object.values(session.held).find(ex => ex.kind === kind);
-    if (same) { session.example = same; await showExample(same, view); session.phase = kind === 'cut' ? 'cut' : 'merge'; return same; }
+    if (same) {
+      try { await practiceAction('heartbeat', { id: same.id, session: same.claim_nonce }); }
+      catch { practiceUnavailable(); return null; }
+      session.example = same;
+      await showExample(same, view);
+      session.phase = kind === 'cut' ? 'cut' : 'merge';
+      return same;
+    }
     session.phase = 'busy';
     return null;
   }
   session.held[slot] = row;
+
   session.example = row;
   await showExample(row, view);
   session.phase = kind === 'cut' ? 'cut' : 'merge';

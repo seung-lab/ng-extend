@@ -40,6 +40,8 @@ test('PostgreSQL enforces membership, atomic claims, owner checks, limits and re
   await db.exec("UPDATE task_assignments SET status='expired',expires_at=now()-interval '1 minute' WHERE task_id=1 AND user_id='"+A+"'; SELECT expire_stale_assignments();");
   assert.equal((await db.query('SELECT assigned_to FROM proofreading_tasks WHERE id=1')).rows[0].assigned_to,B);
   const held=await practice(A,'claim',{kind:'cut'});assert.equal(held.id,X);
+  assert.equal(await practice(A,'claim',{kind:'cut',exclude:[X]}),null);
+  assert.equal((await practice(A,'claim',{kind:'cut'})).claim_nonce,held.claim_nonce);
   assert.equal(await practice(B,'claim',{kind:'merge_then_cut'}),null);
   await assert.rejects(()=>practice(B,'begin_reset',{id:X}),/no longer yours/);
   await assert.rejects(()=>practice(A,'begin_reset',{id:X,session:Y}),/no longer yours/);

@@ -3,8 +3,7 @@ import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
 // Amy's merge example, 2026-09-26: the cut-in-half branch, cell purple, loose piece yellow.
 import imgMergeExample from './images/merge-example.jpg';
-import { beginPractice, colorFirstTwoVisible, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, type PracticeKind } from './practice';
-import { useLayersStore } from './store';
+import { beginPractice, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
@@ -18,10 +17,6 @@ import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/util/sp
  * the cut one. The helpers below are shared by both.
  */
 
-// Amy's merge example, 2026-09-26: a branch she cut in half in the sandbox
-// (648518346350730372 and 648518346351348401). Shown when no practice cell
-// can be claimed, so the merge steps always have something to point at.
-const STATE_MERGE_EXAMPLE = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5718864172154880';
 // Amy's saved view with point annotations at the two spots to Ctrl+click for
 // that merge (2026-09-28). Only its points are read; the tutorial draws Pyr
 // pins there instead of loading the annotation layer.
@@ -106,7 +101,7 @@ export function practiceStatus(text: string, done = false) {
   if (!el) {
     el = document.createElement('p');
     el.className = 'nge-practice-status';
-    el.style.cssText = 'margin:10px 0 0;padding:8px 10px;border-radius:4px;font-size:0.92em;line-height:1.4;'
+    el.style.cssText = 'margin:10px 0 0;padding:8px 10px;border-radius:4px;font-size:1rem;line-height:1.4;'
       + 'background:rgba(53,181,255,0.10);border-left:2px solid rgba(53,181,255,0.75);color:#d0e8ff;';
     chip.appendChild(el);
   }
@@ -154,7 +149,7 @@ function toggleStuckPanel() {
   row.style.cssText = 'display:flex;flex-wrap:wrap;gap:0 4px;margin-top:6px';
   row.appendChild(smallButton('nge-practice-stuck-layer', 'Show me the layer', () => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer'))));
   const ex = currentPractice().example;
-  if (!ex || ex.kind === 'merge_then_cut') {
+  if (ex && ex.kind === 'merge_then_cut') {
     row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to click', async () => {
       ensureTool('merge');
       const shown = await showWhereToClick();
@@ -201,7 +196,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   const tick = async () => {
     if (token !== practiceWatch) return;
     const p = currentPractice();
-    if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); return; }
+    if (p.phase === 'unavailable') { practiceStatus('Practice needs an invited account and a current session. Sign in, or press back then next to try again. You can read along while waiting.'); return; }
     if (p.phase === 'busy') { waitForCell(wantMerged ? 'merge_then_cut' : 'cut', wantMerged, waiting, finished); return; }
     if (p.phase === 'released') { return; }
     if (!p.example) { practiceStatus('Loading a practice cell…'); setTimeout(tick, 1000); return; }
@@ -263,6 +258,11 @@ document.addEventListener('nge:practice-countdown', ((e: CustomEvent) => {
   const m = Math.floor(secs / 60), s = String(secs % 60).padStart(2, '0');
   el.textContent = `Still there? Your practice cell goes to the next person in ${m}:${s}. Move the mouse or press a key to keep it.`;
 }) as EventListener);
+
+document.addEventListener('nge:practice-unavailable', () => {
+  hidePyrMarkers();
+  practiceStatus('Your practice session could not be renewed. Editing is paused. Press back, then next, to get a session again.');
+});
 
 document.addEventListener('nge:practice-released', () => {
   practiceStatus('Your practice cell was released after five quiet minutes and put back for the next person. Press back, then next, to get a cell again.');
@@ -435,12 +435,7 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
       watchTool('Press M to activate merge mode.', 'Merge mode is on. Press next.');
       // Point at the segmentation layer chip without being asked (Amy).
       setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
-      const ex = await beginPractice('merge_then_cut');
-      // No cell free (or not signed in): show Amy's example to look at.
-      if (!ex) {
-        await useLayersStore().loadState(STATE_MERGE_EXAMPLE);
-        colorFirstTwoVisible('pinky_nf_v2');
-      }
+      await beginPractice('merge_then_cut');
     },
   },
 
