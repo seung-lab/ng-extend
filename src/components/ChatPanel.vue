@@ -148,6 +148,29 @@ const isQuiet = computed(() => !chatFocused.value && !collapsed.value && !isResi
   && panelHeight.value > QUIET_H && !document.body.classList.contains('nge-mobile'));
 const shownHeight = computed(() => isQuiet.value ? QUIET_H : panelHeight.value);
 
+// In quiet mode chat is invisible, like the original EyeWire: a message that
+// arrives pops up and fades out after FRESH_MS (Ames 2026-09-28).
+const FRESH_MS = 12_000;
+const freshUntil = new WeakMap<object, number>();
+const freshTick = ref(0);
+watch(() => chatMessages.value.length, () => {
+  const now = Date.now();
+  let added = false;
+  for (let i = chatMessages.value.length - 1; i >= 0; i--) {
+    const m = chatMessages.value[i];
+    if (freshUntil.has(m)) break;                       // reached what we've seen
+    // Only live arrivals: history (older than a minute) never pops up.
+    freshUntil.set(m, now - m.dateTime.getTime() < 60_000 ? now + FRESH_MS : 0);
+    added = true;
+  }
+  if (added) setTimeout(() => { freshTick.value++; }, FRESH_MS + 50);
+  freshTick.value++;
+});
+function isFresh(m: ChatMessage): boolean {
+  void freshTick.value;
+  return (freshUntil.get(m) ?? 0) > Date.now();
+}
+
 // ── Position style ──
 const positionStyle = computed(() => {
   // Collapsed: always settle at the bottom of the screen. Keep whatever
@@ -695,7 +718,7 @@ function toggleCollapse() {
 
                 <div v-else-if="msg.type === 'join' || msg.type === 'leave' || msg.type === 'disconnected'"
                      class="nge-chat-sys"
-                     :class="{ 'nge-chat-sys--warn': msg.type === 'disconnected' }">
+                     :class="{ 'nge-chat-sys--warn': msg.type === 'disconnected', 'nge-chat-fresh': isFresh(msg) }">
                   {{ msg.type === 'join' ? '→' : msg.type === 'leave' ? '←' : '⚠' }}
                   {{ msg.parts[0]?.text || '' }}
                 </div>
@@ -705,6 +728,7 @@ function toggleCollapse() {
                      reader to go and look for it. -->
                 <div v-else-if="msg.type === 'message' && msg.notificationId"
                      class="nge-chat-msg nge-chat-announce"
+                     :class="{ 'nge-chat-fresh': isFresh(msg) }"
                      role="button"
                      tabindex="0"
                      @click="openAnnouncement(msg.notificationId)"
@@ -715,7 +739,7 @@ function toggleCollapse() {
                   <span class="nge-chat-announce-cta">Open →</span>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg">
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg) }">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
                   <button v-if="msg.rank === 'bot' && msg.name === 'Nurro'" class="nge-chat-msg-name nge-chat-nurro-name"
@@ -833,7 +857,7 @@ function toggleCollapse() {
               ref="inputEl"
               v-model="messageInput"
               class="nge-chat-input"
-              :placeholder="isLoggedIn ? 'Message... (@ to mention)' : 'Log in to chat'"
+              :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : 'Message... (@ to mention)'"
               @keydown.stop="onInputKeydown"
               @keyup.stop
               @keypress.stop
@@ -884,24 +908,46 @@ function toggleCollapse() {
   user-select: none;
 }
 
-/* Quiet mode: shrunk to the latest messages, chrome faded back. */
+/* Quiet mode, like the original EyeWire chat (Ames 2026-09-28): click away
+   and the panel disappears. No background, no bands, no header; only a faint
+   ">" line to click back into, and new messages that pop up and fade out.
+   Clicks pass through to the viewer everywhere but that line. */
 .nge-chat-float:not(.nge-chat-float--dragging):not(.nge-chat-float--resizing) {
-  transition: bottom 0.25s ease, height 0.25s ease, top 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;
+  transition: bottom 0.25s ease, height 0.25s ease, top 0.25s ease, background-color 0.3s ease, border-color 0.3s ease;
 }
 .nge-chat-float--quiet {
-  background: rgba(6, 10, 20, 0.35);
+  background: transparent !important;
+  border-color: transparent !important;
+  pointer-events: none;
+}
+.nge-chat-float--quiet .nge-chat-resize,
+.nge-chat-float--quiet .nge-chat-react-add,
+.nge-chat-float--quiet .nge-chat-fade,
+.nge-chat-float--quiet .nge-chat-new-banner,
+.nge-chat-float--quiet .nge-chat-share { display: none; }
+.nge-chat-float--quiet .nge-chat-strip { opacity: 0; }
+.nge-chat-float .nge-chat-strip,
+.nge-chat-float .nge-chat-msg,
+.nge-chat-float .nge-chat-sys,
+.nge-chat-float .nge-chat-time-sep,
+.nge-chat-float .nge-chat-history-top { transition: opacity 0.6s ease; }
+.nge-chat-float--quiet .nge-chat-msg:not(.nge-chat-fresh),
+.nge-chat-float--quiet .nge-chat-sys:not(.nge-chat-fresh),
+.nge-chat-float--quiet .nge-chat-time-sep,
+.nge-chat-float--quiet .nge-chat-history-top { opacity: 0; transition: opacity 1.4s ease; }
+.nge-chat-float--quiet .nge-chat-msg:hover { background: none; }
+.nge-chat-float--quiet .nge-chat-fresh { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.7); }
+.nge-chat-float--quiet .nge-chat-input-wrap {
+  pointer-events: auto;
+  background: transparent;
+  border-top-color: transparent;
+}
+.nge-chat-float--quiet .nge-chat-input {
+  background: transparent;
   border-color: transparent;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
-.nge-chat-float--quiet .nge-chat-resize { display: none; }
-.nge-chat-float--quiet .nge-chat-strip { opacity: 0.55; }
-.nge-chat-float--quiet .nge-chat-input-wrap { background: rgba(8, 10, 20, 0.45); border-top-color: transparent; }
-.nge-chat-float--quiet .nge-chat-input { background: rgba(20, 24, 40, 0.5); }
-.nge-chat-float--quiet .nge-chat-react-add { display: none; }
-/* The top of the quiet chat fades away completely, header and all. */
-.nge-chat-float--quiet {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 22%, rgba(0, 0, 0, 0.55) 48%, #000 70%);
-  mask-image: linear-gradient(to bottom, transparent 0%, transparent 22%, rgba(0, 0, 0, 0.55) 48%, #000 70%);
-}
+.nge-chat-float--quiet .nge-chat-input::placeholder { color: rgba(200, 215, 235, 0.45); }
 
 /* ── Resize handles ── */
 .nge-chat-resize { position: absolute; z-index: 10; }

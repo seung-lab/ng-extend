@@ -895,8 +895,15 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <screenshot-dialog :show="showScreenshotDialog" @close="showScreenshotDialog = false" />
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
-         class="nge-streak-chip" :title="`Editing streak: ${stats.currentStreak} day${stats.currentStreak === 1 ? '' : 's'} in a row with at least one edit`">
+         class="nge-streak-chip" tabindex="0" :aria-label="`Editing streak: ${stats.currentStreak} days`">
       🔥 {{ stats.currentStreak }}
+      <!-- Styled hover card (Ames 2026-09-28: "what it be do"). -->
+      <div class="nge-streak-tip" role="tooltip">
+        <div class="nge-streak-tip-title">🔥 {{ stats.currentStreak }}-day editing streak</div>
+        <div class="nge-streak-tip-body">You've made at least one edit {{ stats.currentStreak === 1 ? 'today' : `${stats.currentStreak} days in a row` }}. Edit tomorrow to keep the flame going.</div>
+        <div v-if="stats.longestStreak > stats.currentStreak" class="nge-streak-tip-best">Your best: {{ stats.longestStreak }} days</div>
+        <div v-else-if="stats.currentStreak > 1" class="nge-streak-tip-best">This is your best streak yet! 🏆</div>
+      </div>
     </div>
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
@@ -1332,6 +1339,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 .nge-share-toast-leave-to   { opacity: 0; transform: translateX(-50%) translateY(-4px) scale(0.97); }
 
 .nge-streak-chip {
+  position: relative;
   display: flex;
   align-items: center;
   height: 100%;
@@ -1343,6 +1351,31 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   cursor: default;
   user-select: none;
 }
+.nge-streak-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 230px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(10, 14, 26, 0.97);
+  border: 1px solid rgba(245, 166, 35, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(245, 166, 35, 0.12);
+  color: #d8e2f0;
+  font-weight: 400;
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: normal;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 10000;
+}
+.nge-streak-chip:hover .nge-streak-tip,
+.nge-streak-chip:focus-visible .nge-streak-tip { opacity: 1; transform: translateY(0); }
+.nge-streak-tip-title { font-weight: 700; font-size: 13px; color: #ffc46b; margin-bottom: 4px; }
+.nge-streak-tip-best { margin-top: 6px; font-size: 11.5px; color: #9fb3cc; }
 
 /* ── Dataset button: borderless to match the toolbar SVG icons.
    Same gentle hover wash as .nge-icon-btn. ── */
