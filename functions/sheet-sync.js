@@ -23,7 +23,9 @@ async function sheetsApi(credential,path,init={}) {
   return r.json();
 }
 async function syncSheet(input,me,task,credential) {
-  const source=sourceFor(input),fields=sheetValues(input,me,task,new Date().toISOString());
+  // The retina sheet's dates read M/D/YYYY (9/28/2026); the lab is on US Eastern time.
+  const today=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric'}).format(new Date());
+  const source=sourceFor(input),fields=sheetValues(input,me,task,today);
   const meta=await sheetsApi(credential,source.id+'?fields=sheets.properties');
   const sheet=meta.sheets.find(s=>s.properties.sheetId===source.gid);
   if(!sheet) throw new Error('Registered sheet tab missing');
@@ -31,7 +33,8 @@ async function syncSheet(input,me,task,credential) {
   const range="'"+title.replace(/'/g,"''")+"'!A1:AZ20000";
   const grid=await sheetsApi(credential,source.id+'/values/'+encodeURIComponent(range)+'?valueRenderOption=FORMATTED_VALUE');
   const plan=planSheetUpdate(grid.values||[],title,input.segmentId,fields);
-  if(plan.data.length) await sheetsApi(credential,source.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify(plan)});
-  return {ok:true,updated:plan.data.length};
+  if(plan.data.length) await sheetsApi(credential,source.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data:plan.data})});
+  if(plan.userEnteredData.length) await sheetsApi(credential,source.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'USER_ENTERED',data:plan.userEnteredData})});
+  return {ok:true,updated:plan.data.length+plan.userEnteredData.length};
 }
 module.exports={syncSheet,sheetsApi};

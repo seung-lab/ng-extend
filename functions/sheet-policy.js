@@ -24,7 +24,9 @@ function sheetValues(input, me, task, now) {
   // but only while the row is not already marked complete.
   const fields = input.action === 'coordinates' ? [] : [[['proofreader','claimedby','completedby'],name,input.action === 'complete' ? {replaceUntilStatus:true} : undefined]];
   if (input.action === 'complete') {
-    fields.push([['status'],'Complete'],[['datecomplete','completedtime'],now]);
+    // A plain M/D/YYYY date is entered like a person typing it, so the sheet
+    // stores a real date (9/28/2026), not an ISO timestamp as text.
+    fields.push([['status'],'Complete'],[['datecomplete','completedtime'],now,{userEntered:/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(now))}]);
     if (task.final_segment_id && /^\d{1,20}$/.test(task.final_segment_id)) fields.push([['finalseg'],task.final_segment_id]);
     // The proofreader's view of the finished cell (Amy 2026-09-28): the
     // retina sheet's "Final Link" column. https only, no spaces or quotes;
@@ -58,7 +60,7 @@ function planSheetUpdate(grid, title, segmentId, fields) {
   const matches=[];
   for(let i=headerRow+1;i<grid.length;i++) if(String(grid[i][segCol]??'').trim()===segmentId) matches.push(i);
   if(matches.length!==1) fail(409,matches.length ? 'This segment appears more than once in the source sheet.' : 'This segment is missing from the source sheet.');
-  const row=matches[0], data=[];
+  const row=matches[0], data=[], userEnteredData=[];
   const statusCol=firstColumn(header,['status']);
   const statusEmpty=statusCol<0 || !String(grid[row][statusCol]??'').trim();
   for(const [patterns,value,opts] of fields) {
@@ -70,8 +72,9 @@ function planSheetUpdate(grid, title, segmentId, fields) {
     if(existing && !(opts?.replaceUntilStatus && statusEmpty && existing!==String(value))) continue;
     let letters='',n=col;
     do {letters=String.fromCharCode(65+n%26)+letters; n=Math.floor(n/26)-1;} while(n>=0);
-    data.push({range:`'${title.replace(/'/g,"''")}'!${letters}${row+1}`,values:[[String(value)]]});
+    (opts?.userEntered ? userEnteredData : data).push({range:`'${title.replace(/'/g,"''")}'!${letters}${row+1}`,values:[[String(value)]]});
   }
-  return {valueInputOption:'RAW',data};
+  // userEnteredData holds only validated M/D/YYYY dates; everything else is RAW.
+  return {valueInputOption:'RAW',data,userEnteredData};
 }
 module.exports={SOURCES,sourceFor,sheetValues,planSheetUpdate};

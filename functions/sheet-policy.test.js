@@ -33,7 +33,7 @@ test('complete on the 2026-09-28 retina sheet writes exactly Proofreader, Status
  const row=['12517','Topleft 500x500','BC16931','','','','123','https://start','','','','','','','t3a'];
  const link='https://spelunker.cave-explorer.org/#!middleauth+https://global.daf-apis.com/nglstate/api/v1/9';
  const plan=planSheetUpdate([header,row],'Focused BCs','123',sheetValues({...input,dataset:'stroeh_mouse_retina',link,notes:'  axon  cut\noff '},me,{...task,dataset:'stroeh_mouse_retina'},'9/28/2026'));
- const byHeader=Object.fromEntries(plan.data.map(x=>{const c=x.range.split('!')[1].replace(/\d+$/,'');return [header[c.charCodeAt(0)-65],x.values[0][0]];}));
+ const byHeader=Object.fromEntries([...plan.data,...plan.userEnteredData].map(x=>{const c=x.range.split('!')[1].replace(/\d+$/,'');return [header[c.charCodeAt(0)-65],x.values[0][0]];}));
  assert.deepEqual(Object.keys(byHeader).sort(),['Date Complete','Final Link','Final SegID','Notes','Proofreader','Status']);
  assert.equal(byHeader.Notes,'axon cut off');
  assert.equal(byHeader['Final SegID'],'456');
@@ -48,4 +48,13 @@ test('completion replaces a Proofreader left by an earlier claim, but never on a
  assert.equal(done.data.find(x=>x.range.endsWith('!B2')),undefined);
  const claim=planSheetUpdate([header,['123','Amy R. Sterling','','']],'s','123',sheetValues({...input,dataset:'stroeh_mouse_retina',action:'claim'},celia,{...t,status:'assigned'},'now'));
  assert.equal(claim.data.find(x=>x.range.endsWith('!B2')),undefined);
+});
+test('the completion date is entered as a real date only when it is a plain M/D/YYYY value',()=>{
+ const header=['Start SegID','Status','Date Complete'];
+ const ok=planSheetUpdate([header,['123','','']],'s','123',sheetValues(input,me,task,'9/28/2026'));
+ assert.deepEqual(ok.userEnteredData.map(x=>x.values[0][0]),['9/28/2026']);
+ assert.equal(ok.data.some(x=>x.values[0][0]==='9/28/2026'),false);
+ const odd=planSheetUpdate([header,['123','','']],'s','123',sheetValues(input,me,task,'=NOW()'));
+ assert.equal(odd.userEnteredData.length,0);
+ assert.equal(odd.valueInputOption,'RAW');
 });
