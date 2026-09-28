@@ -56,6 +56,9 @@ async function main() {
   if(onlyId&&ex.id!==onlyId)continue;
   let lockQuery;
   try {
+   // A cell nobody has reviewed into the manifest is not this job's to touch.
+   // Skipping it is not a failure: a failure here emails the repo owner every run.
+   if(!manifest[ex.id]){console.log('[reset] '+ex.id+': not in the reviewed manifest, skipped');continue;}
    validateResetExample(ex,manifest);
    if(overlapsActive(ex,rows,Date.now())){console.log('[reset] '+ex.id+': shares a piece with an active learner, skipped');continue;}
    if(!resetDue(ex,Date.now(),Boolean(onlyId))) {
