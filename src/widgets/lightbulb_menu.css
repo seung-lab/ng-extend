@@ -271,6 +271,23 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   cursor: pointer;
 }
 
+/* The open list is drawn by the OS: without these the options fall back to
+   the Windows default pale grey. color-scheme also darkens its scrollbar. */
+.nge-lb-select {
+  color-scheme: dark;
+}
+.nge-lb-select option {
+  background-color: #0b1424;
+  color: rgba(220, 230, 245, 0.95);
+}
+.nge-lb-select option:checked {
+  background-color: #1b3a66;
+  color: #fff;
+}
+.nge-lb-select option[value=''] {
+  color: rgba(140, 160, 195, 0.75);
+}
+
 .nge-lb-select:focus,
 .nge-lb-text-input:focus {
   border-color: rgba(74, 158, 255, 0.55);
