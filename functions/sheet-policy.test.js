@@ -28,3 +28,13 @@ test('complete writes the Final Link column, https only, never Start link',()=>{
  for(const bad of ['http://x.test','javascript:alert(1)','=IMPORTXML("https://a","b")','https://a b']) assert.throws(()=>sheetValues({...input,link:bad},me,task,'now'),/https link/);
  assert.doesNotThrow(()=>sheetValues({...input,link:''},me,task,'now'));
 });
+test('complete on the 2026-09-28 retina sheet writes exactly Proofreader, Status, Date Complete, Final SegID, Final Link, Notes',()=>{
+ const header=['Priority (0=highest)','box_name','Index BC Sheet','Index Master','New Index','Soma or stem Coords','Start SegID','Start link','Proofreader','Status','Date Complete','Final SegID','Final Link','Notes','AI-predicted BC type'];
+ const row=['12517','Topleft 500x500','BC16931','','','','123','https://start','','','','','','','t3a'];
+ const link='https://spelunker.cave-explorer.org/#!middleauth+https://global.daf-apis.com/nglstate/api/v1/9';
+ const plan=planSheetUpdate([header,row],'Focused BCs','123',sheetValues({...input,dataset:'stroeh_mouse_retina',link,notes:'  axon  cut\noff '},me,{...task,dataset:'stroeh_mouse_retina'},'9/28/2026'));
+ const byHeader=Object.fromEntries(plan.data.map(x=>{const c=x.range.split('!')[1].replace(/\d+$/,'');return [header[c.charCodeAt(0)-65],x.values[0][0]];}));
+ assert.deepEqual(Object.keys(byHeader).sort(),['Date Complete','Final Link','Final SegID','Notes','Proofreader','Status']);
+ assert.equal(byHeader.Notes,'axon cut off');
+ assert.equal(byHeader['Final SegID'],'456');
+});

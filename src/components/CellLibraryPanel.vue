@@ -482,7 +482,7 @@ function getViewerPos(): ClaimPoint {
 // ── Complete: link + crosshairs-in-cell, then write (Amy 2026-09-28) ──────
 type CellRow = typeof cells.value[0];
 const completing = ref<{
-  key: string; link: string; minting: boolean;
+  key: string; link: string; notes: string; minting: boolean;
   checking: boolean; ok: boolean; message: string; submitting: boolean;
   check: CrosshairCell | null;
 } | null>(null);
@@ -492,7 +492,7 @@ function shortId(id: string) { return id.length > 10 ? '…' + id.slice(-6) : id
 function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((link || '').trim()); }
 
 function openComplete(cell: CellRow) {
-  completing.value = { key: cellKey(cell), link: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null };
+  completing.value = { key: cellKey(cell), link: '', notes: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null };
   void runCrosshairCheck(cell);
 }
 
@@ -552,6 +552,7 @@ async function submitComplete(cell: CellRow) {
       finalSegId: c.check.root,
       coords: c.check.position.join(', '),
       link: c.link.trim(),
+      notes: c.notes.trim(),
     });
     completing.value = null;
   } catch (e: any) {
@@ -562,11 +563,11 @@ async function submitComplete(cell: CellRow) {
   }
 }
 
-async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string }) {
+async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string }) {
   if (!isLoggedIn.value || !cell.taskId) return;
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   // Write completion to the source sheet, including the Final Link.
-  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link).catch(showSheetError);
+  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes).catch(showSheetError);
 
   // Record the completion in CAVE (cell_status annotation) so it materializes
   // to the leaderboard — same path ProofreadingQueuePanel uses. The root is the
@@ -2514,6 +2515,15 @@ const panelStyle = computed(() => ({
             <div v-if="completing.link && !linkLooksValid(completing.link)" class="nge-cl-complete-msg nge-cl-complete-msg--bad">
               Paste a full https viewer link.
             </div>
+            <label class="nge-cl-complete-label">Notes (optional)</label>
+            <textarea
+              v-model="completing.notes"
+              class="nge-cl-search-input nge-cl-complete-notes"
+              rows="2"
+              maxlength="1000"
+              placeholder="Anything the reviewers should know, e.g. axon cut off at the edge"
+              @keydown.stop @keyup.stop @keypress.stop
+            ></textarea>
             <label class="nge-cl-complete-label">Crosshairs</label>
             <div class="nge-cl-complete-msg" :class="completing.checking ? '' : (completing.ok ? 'nge-cl-complete-msg--ok' : 'nge-cl-complete-msg--bad')">
               <template v-if="completing.checking">Checking where the crosshairs are…</template>
@@ -3055,6 +3065,7 @@ const panelStyle = computed(() => ({
   cursor: pointer;
 }
 .nge-cl-complete-recheck:hover:not(:disabled) { border-color: rgba(160, 190, 220, 0.6); }
+.nge-cl-complete-notes { resize: vertical; min-height: 2.6em; font-family: inherit; width: 100%; box-sizing: border-box; }
 .nge-cl-complete-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
 
 .nge-cl-btn--release {

@@ -31,8 +31,17 @@ function sheetValues(input, me, task, now) {
       if (link.length > 2000 || !/^https:\/\/[^\s"'<>]+$/i.test(link)) fail(400,'The link must be a single https link.');
       fields.push([['finallink'],link]);
     }
+    // Optional note from the Complete form, for the sheet's Notes column.
+    const notes = String(input.notes ?? '').replace(/\s+/g,' ').trim();
+    if (notes) {
+      if (notes.length > 1000) fail(400,'Keep the note under 1000 characters.');
+      fields.push([['notes'],notes]);
+    }
   }
-  if (input.action !== 'claim' && coords) fields.push([['correctedsoma','somacoord'],coords]);
+  // Completion writes exactly Proofreader, Status, Date Complete, Final SegID,
+  // Final Link and Notes (Amy 2026-09-28). Coordinates go only to a
+  // "Corrected soma" column, never the original "Soma or stem Coords".
+  if (input.action === 'coordinates' && coords) fields.push([['correctedsoma'],coords]);
   return fields;
 }
 function planSheetUpdate(grid, title, segmentId, fields) {

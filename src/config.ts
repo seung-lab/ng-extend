@@ -184,8 +184,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     alignedVolume:    'minnie65_phase3',
     cellStatusTable:  'eyewire_ii_cell_status_v2',
     cellStatusSchema: 'bound_tag_user',
-    cellTypeTable:    'cell_type_dev',
-    cellTypeSchema:   'bound_tag',
+    cellTypeTable:    'eyewire_ii_cell_type_v2',  // created 2026-09-28, 8x8x40 nm
+    cellTypeSchema:   'bound_tag_user',
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5757172763852800',
   },
   minnie65_public_v117: {
@@ -194,8 +194,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     alignedVolume:    'minnie65_phase3',
     cellStatusTable:  'eyewire_ii_cell_status_v2',
     cellStatusSchema: 'bound_tag_user',
-    cellTypeTable:    'cell_type_dev',
-    cellTypeSchema:   'bound_tag',
+    cellTypeTable:    'eyewire_ii_cell_type_v2',  // created 2026-09-28, 8x8x40 nm
+    cellTypeSchema:   'bound_tag_user',
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5757172763852800',
   },
   // MICrONS Live: the ROLLING public graphene table (plain minnie65_public,
@@ -208,8 +208,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     alignedVolume:    'minnie65_phase3',
     cellStatusTable:  'eyewire_ii_cell_status_v2',
     cellStatusSchema: 'bound_tag_user',
-    cellTypeTable:    'cell_type_dev',
-    cellTypeSchema:   'bound_tag',
+    cellTypeTable:    'eyewire_ii_cell_type_v2',  // created 2026-09-28, 8x8x40 nm
+    cellTypeSchema:   'bound_tag_user',
     // The two demo neurons from the Dorkenwald/Fuming export, preloaded so
     // arriving on Live immediately proves the graph resolves (meshes
     // appear). Position: a max-confidence candidate window on …774191.
@@ -226,8 +226,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     alignedVolume:    'minnie65_phase3',
     cellStatusTable:  'eyewire_ii_cell_status_v2',
     cellStatusSchema: 'bound_tag_user',
-    cellTypeTable:    'cell_type_dev',
-    cellTypeSchema:   'bound_tag',
+    cellTypeTable:    'eyewire_ii_cell_type_v2',  // created 2026-09-28, 8x8x40 nm
+    cellTypeSchema:   'bound_tag_user',
     defaultSegments:  ['864691135258774191', '864691135375361480'],
     segmentColors:    {
       '864691135258774191': '#FFD700',
