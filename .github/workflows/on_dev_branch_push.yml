@@ -72,6 +72,9 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   deploy:
+    concurrency:
+      group: eyewire-deploy-${{ inputs.version || github.ref_name }}
+      cancel-in-progress: false
     needs: build
     if: github.repository == 'seung-lab/ng-extend'
     runs-on: ubuntu-latest
