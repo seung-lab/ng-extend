@@ -437,7 +437,9 @@ async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
 }
 /** Go to one of your claims with its own layers. */
 async function switchToClaim(cell: CellRow) {
-  if (!cell.taskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords);
+  // Already working on this claim: its layers are loaded, so just move the
+  // camera. Reloading its saved view would drop anything done since the save.
+  if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords);
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
   if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords);
