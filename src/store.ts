@@ -3967,6 +3967,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   /** Release a claim by its task id: works for claims made on a point, which
    *  have no segment id (Release used to bail out silently on those). */
+  /** My active claims in EVERY dataset. The server's 3-claim limit spans
+   *  datasets, but `tasks` holds only the dataset on screen, so a claim left on
+   *  MEC silently blocked every Retina claim (Amy 2026-09-28). */
+  async function loadMyActiveClaims(): Promise<ProofreadingTask[]> {
+    if (!userId.value) return [];
+    const { data, error: e } = await supabase
+      .from('proofreading_tasks')
+      .select('*')
+      .eq('assigned_to', userId.value)
+      .in('status', ['assigned', 'in_progress'])
+      .order('updated_at', { ascending: true });
+    if (e) { console.warn('[backend] loadMyActiveClaims error:', e.message); return []; }
+    return (data ?? []) as ProofreadingTask[];
+  }
+
   async function releaseTaskById(taskId: number): Promise<boolean> {
     const prevActive = activeTaskId.value;
     activeTaskId.value = taskId;
@@ -4722,7 +4737,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
-    claimCell, releaseCell, releaseBySegment, releaseTaskById, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
+    claimCell, releaseCell, releaseBySegment, releaseTaskById, loadMyActiveClaims, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
     refreshSegmentIds,
     MAX_CLAIMS,
     // Admin Hub

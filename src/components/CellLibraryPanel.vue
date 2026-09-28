@@ -339,6 +339,7 @@ const filteredCells = computed(() => {
     const q = search.value.trim().toLowerCase();
     list = list.filter(c =>
       c.segId.toLowerCase().includes(q) ||
+      (c.index || '').toLowerCase().includes(q) ||
       (c.notes || '').toLowerCase().includes(q) ||
       (history.getNickname(c.segId) || '').toLowerCase().includes(q),
     );
@@ -425,10 +426,9 @@ function parseCoords(s: string): [number, number, number] {
 async function claimCell(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value) return;
   claimError.value = '';
-  if (backend.myActiveClaimCount() >= backend.MAX_CLAIMS) {
-    claimError.value = `Max ${backend.MAX_CLAIMS} claims reached`;
-    return;
-  }
+  // The limit counts claims in every dataset; `backend.tasks` has only this one.
+  const held = await backend.loadMyActiveClaims();
+  if (held.length >= backend.MAX_CLAIMS) { showClaimLimit(held); return; }
   // Derive claim point: use cell's existing claim point, parse nucCoords, or use viewer position
   let point: ClaimPoint;
   if (cell.claimPoint) {
@@ -442,6 +442,10 @@ async function claimCell(cell: typeof cells.value[0]) {
   const result = cell.taskId
     ? { ok: await backend.claimTask(cell.taskId), reason: backend.error }
     : await backend.claimCell(point, cell.segId);
+  if (!result.ok && /max \d+ claims/i.test(result.reason || '')) {
+    showClaimLimit(await backend.loadMyActiveClaims());
+    return;
+  }
   if (!result.ok) {
     claimError.value = result.reason || 'Claim failed';
     if (claimErrorTimer) clearTimeout(claimErrorTimer);
@@ -455,6 +459,24 @@ async function claimCell(cell: typeof cells.value[0]) {
   // the claimer lands with its Soma / True End / Can't Fix / Hits Edge / Notes
   // layers (Amy 2026-09-28).
   openStartLink(cell.startLink);
+}
+
+// ── Claim limit: name every claim you hold, in any dataset, with Release ──
+const claimLimit = ref<ProofreadingTask[] | null>(null);
+function showClaimLimit(held: ProofreadingTask[]) {
+  claimLimit.value = held.length ? held : null;
+  if (!held.length) claimError.value = `Max ${backend.MAX_CLAIMS} claims reached`;
+}
+function heldLabel(t: ProofreadingTask): string {
+  const row = queue.items.find(i => i.segId === t.segment_id);
+  const name = row?.index || (t.segment_id ? '…' + t.segment_id.slice(-6) : 'a point claim');
+  return `${name} on ${datasetDisplayName((t as any).dataset)}`;
+}
+async function releaseHeld(t: ProofreadingTask) {
+  const ok = await backend.releaseTaskById(t.id);
+  if (!ok) { claimError.value = backend.error || 'Could not release this claim.'; return; }
+  const held = await backend.loadMyActiveClaims();
+  claimLimit.value = held.length >= backend.MAX_CLAIMS ? held : null;
 }
 
 /** Load a viewer link's state into this viewer. Only its "#!" state part is
@@ -2425,6 +2447,16 @@ const panelStyle = computed(() => ({
         <div v-else class="nge-cl-list">
           <!-- Claim error banner -->
           <div v-if="jumpError" class="nge-cl-error-banner" @click="jumpError = ''">{{ jumpError }}</div>
+          <div v-if="claimLimit" class="nge-cl-limit">
+            <div class="nge-cl-limit-head">
+              You hold {{ claimLimit.length }} claims, the most allowed. Release one to claim this cell.
+              <span class="nge-cl-error-dismiss" @click="claimLimit = null">×</span>
+            </div>
+            <div v-for="t in claimLimit" :key="t.id" class="nge-cl-limit-row">
+              <span>{{ heldLabel(t) }}</span>
+              <button class="nge-cl-btn nge-cl-btn--release" @click="releaseHeld(t)">Release</button>
+            </div>
+          </div>
           <div v-if="claimError" class="nge-cl-error-banner" @click="claimError = ''">
             {{ claimError }}
             <span class="nge-cl-error-dismiss">×</span>
@@ -3173,6 +3205,19 @@ const panelStyle = computed(() => ({
   margin-left: 8px;
 }
 .nge-cl-error-banner:hover .nge-cl-error-dismiss { opacity: 1; }
+.nge-cl-limit {
+  padding: 8px 14px;
+  background: rgba(255, 170, 60, 0.1);
+  border-bottom: 1px solid rgba(255, 170, 60, 0.25);
+  color: #fc8;
+  font-size: 0.8em;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.nge-cl-limit-head { display: flex; justify-content: space-between; gap: 8px; }
+.nge-cl-limit-head .nge-cl-error-dismiss { cursor: pointer; opacity: 0.7; }
+.nge-cl-limit-row { display: flex; justify-content: space-between; align-items: center; color: #dde; }
 
 /* Help response form */
 .nge-cl-help-item {
