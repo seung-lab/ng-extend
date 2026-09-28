@@ -16,7 +16,7 @@ const STATS: Stat[] = [
   { icon: '🌌', label: 'Galaxies visited', value: 1024 },
   { icon: '🥽', label: 'Miles run in VR', value: 3141, note: 'zero in real life' },
   { icon: '🌿', label: 'Catnip meadows frolicked', value: 88 },
-  { icon: '🐟', label: 'Fish caught', value: 12406, note: 'all released, mostly' },
+  { icon: '🐟', label: 'Fish caught', value: 12406 },
   { icon: '🔴', label: 'Laser dots chased', value: 58210, note: 'caught: 0' },
   { icon: '🧶', label: 'Yarn balls untangled', value: 902, note: 'axon training' },
   { icon: '😴', label: 'Naps taken mid-trace', value: null, shown: '∞' },
