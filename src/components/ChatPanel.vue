@@ -77,13 +77,20 @@ function stopDrag() {
 const panelWidth = ref(280);
 const panelHeight = ref(200);
 const isResizing = ref(false);
-let resizeStart = { mx: 0, my: 0, w: 0, h: 0, py: 0 };
+let resizeStart = { mx: 0, my: 0, w: 0, h: 0, px: 0, py: 0 };
 let resizeAxis: 'corner' | 'top' | 'right' = 'corner';
 
 function startResize(e: MouseEvent, axis: 'corner' | 'top' | 'right' = 'corner') {
   isResizing.value = true;
   resizeAxis = axis;
-  resizeStart = { mx: e.clientX, my: e.clientY, w: panelWidth.value, h: panelHeight.value, py: posY.value ?? 0 };
+  // The top-left corner moves the left edge, so the panel has to be free
+  // positioned for that edge to follow the mouse.
+  if (axis === 'corner' && (posX.value === null || posY.value === null) && panelEl.value) {
+    const rect = panelEl.value.getBoundingClientRect();
+    posX.value = rect.left;
+    posY.value = rect.top;
+  }
+  resizeStart = { mx: e.clientX, my: e.clientY, w: panelWidth.value, h: panelHeight.value, px: posX.value ?? 0, py: posY.value ?? 0 };
   document.addEventListener('mousemove', onResize);
   document.addEventListener('mouseup', stopResize);
   e.preventDefault();
@@ -92,12 +99,18 @@ function startResize(e: MouseEvent, axis: 'corner' | 'top' | 'right' = 'corner')
 
 function onResize(e: MouseEvent) {
   if (!isResizing.value) return;
-  if (resizeAxis === 'corner' || resizeAxis === 'right') {
-    // Right edge or corner: dragging right = wider (panel anchored at left when positioned)
-    const newW = posX.value !== null
-      ? resizeStart.w + (e.clientX - resizeStart.mx)   // free-positioned: grow right
-      : resizeStart.w - (e.clientX - resizeStart.mx);  // CSS default (left:8px): grow left
-    panelWidth.value = Math.max(200, Math.min(600, newW));
+  // The panel's left edge is anchored in both modes (CSS default left: 8px,
+  // or a dragged left), so (Ames 2026-09-28: width moved the wrong way):
+  //   right edge: drag right = wider;
+  //   top-left corner: drag left = wider, and the left edge follows the mouse.
+  const dx = e.clientX - resizeStart.mx;
+  if (resizeAxis === 'right') {
+    panelWidth.value = Math.max(200, Math.min(600, resizeStart.w + dx));
+  } else if (resizeAxis === 'corner') {
+    // Can't grow past the screen's left edge: the right edge stays put.
+    const newW = Math.max(200, Math.min(600, resizeStart.w + resizeStart.px, resizeStart.w - dx));
+    panelWidth.value = newW;
+    posX.value = Math.max(0, resizeStart.px + (resizeStart.w - newW));
   }
   if (resizeAxis === 'corner' || resizeAxis === 'top') {
     const dy = e.clientY - resizeStart.my;
