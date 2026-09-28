@@ -15,7 +15,14 @@
  *     lot of trust (and CAVE's materializer is rate-sensitive).
  *   - CAVE materializations only run on a cron (every other day on
  *     stroeh). Querying them on every leaderboard load is wasteful.
- *   - A 30-min sync gives us "near-live" data with bounded cost.
+ *   - Runs once a day at 1 AM US Eastern (Amy 2026-09-28). It reads the
+ *     latest materialized version, which only changes about every other
+ *     day, so the old 30-minute schedule mostly re-read unchanged data.
+ *     The in-app completion celebration counts a just-completed cell itself.
+ *   - Root ids are 18 digits: parsed as TEXT (bigJson). res.json() rounded
+ *     them (…216384 stored as …216400), so every mirrored id was wrong.
+ *   - After a COMPLETE read of a dataset, mirror rows CAVE no longer has
+ *     (rounded ids, deleted annotations) are removed for that dataset.
  *
  * Endpoints used (per datastack):
  *   POST {caveServer}/materialize/api/v3/datastack/{ds}/query?return_pyarrow=false
@@ -142,7 +149,34 @@ async function fetchPage(caveServer, datastack, version, table, offset) {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`query ${res.status}: ${await res.text()}`);
-  return res.json();
+  return bigJson(await res.text());
+}
+
+/** JSON.parse that keeps 16+ digit integers exact by reading them as strings. */
+function bigJson(text) {
+  return JSON.parse(text.replace(/([:\[,]\s*)(-?\d{16,})(?=\s*[,\]}])/g, '$1"$2"'));
+}
+
+/** Delete this dataset's mirror rows that the full CAVE read did not return. */
+async function removeStale(dataset, keep) {
+  const url = `${SUPABASE_URL}/rest/v1/cave_completions_mirror?dataset=eq.${encodeURIComponent(dataset)}&select=cave_user_id,segment_id`;
+  const res = await fetch(url, { headers: supabaseHeaders });
+  if (!res.ok) throw new Error(`mirror read failed: ${res.status} ${await res.text()}`);
+  const stale = (bigJson(await res.text())).filter(r => !keep.has(`${r.cave_user_id}|${r.segment_id}`));
+  if (!stale.length) return 0;
+  if (dryRun) { console.log(`[sync] DRY-RUN would remove ${stale.length} stale rows from ${dataset}`); return stale.length; }
+  const byUser = new Map();
+  for (const r of stale) (byUser.get(r.cave_user_id) ?? byUser.set(r.cave_user_id, []).get(r.cave_user_id)).push(String(r.segment_id));
+  for (const [user, segs] of byUser) {
+    for (let i = 0; i < segs.length; i += 100) {
+      const chunk = segs.slice(i, i + 100);
+      const del = `${SUPABASE_URL}/rest/v1/cave_completions_mirror?dataset=eq.${encodeURIComponent(dataset)}` +
+        `&cave_user_id=eq.${user}&segment_id=in.(${chunk.join(',')})`;
+      const d = await fetch(del, { method: 'DELETE', headers: supabaseHeaders });
+      if (!d.ok) throw new Error(`stale delete failed: ${d.status} ${await d.text()}`);
+    }
+  }
+  return stale.length;
 }
 
 async function upsertBatch(rows) {
@@ -183,6 +217,7 @@ async function syncDatastack(cfg) {
   let offset = 0;
   let totalRead = 0;
   let totalWritten = 0;
+  const seen = new Set();  // cave_user_id|segment_id returned by CAVE this run
 
   // CAVE rows look like:
   //   { id, valid, created, deleted, superceded_id, pt_position, pt_root_id,
@@ -227,6 +262,7 @@ async function syncDatastack(cfg) {
       const completedAt = (typeof rawTs === 'number' || /^\d{10,}$/.test(String(rawTs)))
         ? new Date(Number(rawTs)).toISOString()
         : String(rawTs);
+      seen.add(`${Number(caveUserId)}|${String(segId)}`);
       toUpsert.push({
         cave_user_id: Number(caveUserId),
         dataset: cfg.dataset,
@@ -241,7 +277,9 @@ async function syncDatastack(cfg) {
     offset += PAGE_SIZE;
   }
 
-  console.log(`[sync] ${cfg.dataset}: read ${totalRead}, upserted ${totalWritten}`);
+  // The loop only ends here after the last page, so the read is complete.
+  const removed = await removeStale(cfg.dataset, seen);
+  console.log(`[sync] ${cfg.dataset}: read ${totalRead}, upserted ${totalWritten}, removed ${removed} stale`);
 }
 
 (async () => {

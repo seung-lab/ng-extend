@@ -594,6 +594,7 @@ export async function setCellComplete(
             backend.pendingCellCelebration = {
               totalCells: total,
               imageUrl: nurro,
+              segId: rootId,
             };
           } catch { /* non-critical */ }
         }

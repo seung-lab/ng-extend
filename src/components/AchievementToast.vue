@@ -15,6 +15,7 @@ import { useUserStatsStore, useProofreadingQueueStore, useProofreadingBackendSto
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
+import { datasetCellCount } from '../util/dataset_contribution';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 const statsStore = useUserStatsStore();
@@ -344,12 +345,21 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 });
 
 // ── Cell completion celebration ──
-const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number } | null>(null);
+const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number } | null>(null);
 
 watch(() => backend.pendingCellCelebration, (pending) => {
   if (!pending) return;
-  cellCelebration.value = { ...pending };
+  const shown = { ...pending };
+  cellCelebration.value = shown;
   backend.pendingCellCelebration = null;
+  // Cells on THIS dataset (Amy 2026-09-28), fetched only now: two tiny counts.
+  if (backend.userId && !(pending.batchCount && pending.batchCount > 1)) {
+    datasetCellCount(backend.userId, pending.segId).then(r => {
+      if (r && cellCelebration.value && cellCelebration.value.imageUrl === shown.imageUrl && cellCelebration.value.totalCells === shown.totalCells) {
+        cellCelebration.value = { ...cellCelebration.value, datasetLabel: r.label, datasetCells: r.count };
+      }
+    }).catch(() => {});
+  }
   // Batch completions get the hero treatment: cascading confetti bursts
   // (cyan → gold → magenta → cyan) and a longer dwell so the user can take
   // it in. Single-cell stays as the original quick cyan pop.
@@ -508,7 +518,9 @@ function playBatchChime() {
           <div class="nge-cell-text">
             <div class="nge-cell-congrats">Congratulations, Cell Complete!</div>
             <div class="nge-cell-thanks">Thank you for helping to map the brain. For science!</div>
-            <div class="nge-cell-stats">+1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong></div>
+            <div v-if="cellCelebration.datasetLabel" class="nge-cell-stats">+1 cell brings your {{ cellCelebration.datasetLabel }} total to <strong>{{ cellCelebration.datasetCells }}</strong></div>
+            <div v-if="cellCelebration.datasetLabel" class="nge-cell-stats nge-cell-stats--all">{{ cellCelebration.totalCells }} cells across all datasets</div>
+            <div v-else class="nge-cell-stats">+1 cell brings your total to <strong>{{ cellCelebration.totalCells }}</strong></div>
           </div>
           <div class="nge-cell-hint">Click to dismiss</div>
         </div>
@@ -1220,6 +1232,7 @@ function playBatchChime() {
   letter-spacing: 0.04em;
   animation: nge-cell-fade-in 0.4s ease-out 0.9s both;
 }
+.nge-cell-stats--all { font-size: 13px; color: #9ab; margin-top: 4px; }
 .nge-cell-stats strong {
   font-size: 22px;
   color: #00dca0;

@@ -7,10 +7,11 @@ name: CAVE Completions Sync
 
 on:
   schedule:
-    # Every 30 minutes. CAVE materialization runs less often (~daily on
-    # stroeh) so most runs will be no-ops, but the cadence keeps fresh
-    # post-materialization completions in the leaderboard within minutes.
-    - cron: '*/30 * * * *'
+    # Once a day at 1 AM US Eastern (05:00 UTC; midnight in winter) (Amy
+    # 2026-09-28). The sync reads CAVE's latest materialized version, which
+    # only refreshes about every other day, so the old 30-minute schedule
+    # re-read unchanged data 47 times out of 48.
+    - cron: '0 5 * * *'
   workflow_dispatch:
     inputs:
       datastack:

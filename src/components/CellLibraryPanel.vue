@@ -684,7 +684,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
   void backend.loadTasks();  // incremental, in the background
   // Celebration!
-  triggerCellCelebration();
+  triggerCellCelebration(done.finalSegId);
 }
 
 async function writeCaveCompletion(cell: CellRow, done: { finalSegId: string; coords: string }): Promise<boolean> {
@@ -721,7 +721,7 @@ import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
 import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 const NURRO_IMAGES = [nurroSuccess, nurroTrophy, nurroCelebrate, nurroDance, nurroAtHome, nurroConfetti, nurroCelebrate2, nurroPopcorn, nurroCelebrate3, nurroExperiment];
 
-async function triggerCellCelebration() {
+async function triggerCellCelebration(segId?: string) {
   await backend.loadUserStats(); // refresh from DB for accurate count
   const statsStore = useUserStatsStore();
   const total = statsStore.stats.cellsSubmitted;
@@ -729,6 +729,7 @@ async function triggerCellCelebration() {
   backend.pendingCellCelebration = {
     totalCells: total,
     imageUrl: nurro,
+    segId,
   };
 }
 
