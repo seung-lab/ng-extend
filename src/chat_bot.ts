@@ -93,7 +93,38 @@ export const NURRO_ANSWERS: Record<string, string> = {
   tags: 'Found something odd but not sure how to fix it? Press Shift+T for Tag Mode and tag a spot for another player to review.',
 };
 const ALIASES: Record<string, string> = { commands: 'help', split: 'cut', cell: 'cells', dataset: 'datasets', tag: 'tags', stat: 'stats', point: 'points' };
-const HELP = 'Try !about, !faq, !merge, !cut, !cells, !datasets, !stats, !points, !share, !tags or !online. Or just say "for science!"';
+const HELP = 'Try !about, !faq, !merge, !cut, !cells, !datasets, !stats, !points, !share, !tags, !online or !online @username. Or just say "for science!"';
+
+/** "!online celiad" / "!online @celiad": whose status to look up, or null. */
+export function onlineTarget(text: string): string | null {
+  return text.trim().match(/^!online\s+@?([A-Za-z0-9._-]{2,40})\b/i)?.[1] ?? null;
+}
+
+function ago(d: Date, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - d.getTime()) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} minute${m === 1 ? '' : 's'} ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const days = Math.round(h / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+function when(d: Date): string {
+  return `${ago(d)} (${d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })})`;
+}
+
+/** Nurro's answer to "!online name", from what the app knows about them. */
+export function describeLastSeen(asked: string, info: { name?: string; onlineNow?: boolean; lastChat?: Date | null; lastEdit?: Date | null; exists: boolean }): string {
+  const who = info.name || asked;
+  if (info.onlineNow) return `${who} is online right now 🟢`;
+  if (!info.exists) return `I can't find anyone called ${asked}. Check the spelling?`;
+  const { lastChat, lastEdit } = info;
+  if (lastChat && lastEdit) return `${who} was last in chat ${when(lastChat)} and last edited ${when(lastEdit)}.`;
+  if (lastChat) return `${who} was last in chat ${when(lastChat)}.`;
+  if (lastEdit) return `${who} last edited ${when(lastEdit)}. No chat messages yet.`;
+  return `${who} hasn't chatted or edited yet.`;
+}
 
 export type BotReply = { name: string; text: string; language?: string };
 
@@ -109,7 +140,8 @@ export function botReply(seed: string, text: string, online: string[] | null): B
     if (key === 'science') return { name: BOT_NAME, ...forScienceReply(seed) };
     if (key === 'help') return { name: NURRO_NAME, text: HELP };
     if (key === 'online') {
-      if (!online) return null;
+      // "!online name" needs a lookup; the chat store answers it live.
+      if (!online || onlineTarget(text)) return null;
       return { name: NURRO_NAME, text: online.length
         ? `${online.length} online right now: ${online.join(', ')}`
         : "It's just us right now. Hi! 👋" };

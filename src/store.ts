@@ -1,4 +1,4 @@
-import { botReply } from './chat_bot';
+import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
 import { taskAction } from './pilot_actions';
 import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
@@ -5139,6 +5139,41 @@ export const useChatStore = defineStore('chat', () => {
     return { type: 'message', name: r.name, rank: 'bot', time: formatTime(at), dateTime: at,
       parts: [{ type: 'sender', text: r.name }, { type: 'text', text: r.text }], botLanguage: r.language };
   }
+  /** Nurro's "!online name": online now, else last chat message and last
+   *  edit. Presence rows are deleted on leave, so they can't say "last seen". */
+  async function answerOnline(handle: string) {
+    const lc = handle.toLowerCase();
+    const cutoff = Date.now() - ONLINE_MS;
+    const here = Object.values(online.value).find(p => (p.name || '').toLowerCase() === lc && p.lastSeen >= cutoff);
+    let text: string;
+    if (here) {
+      text = describeLastSeen(handle, { name: here.name, onlineNow: true, exists: true });
+    } else {
+      // Exact, case-insensitive match: escape LIKE wildcards ("_" is common in handles).
+      const pat = handle.replace(/[\\%_]/g, m => '\\' + m);
+      try {
+        const [u, msg] = await Promise.all([
+          supabase.from('users').select('username,last_edit_at').ilike('username', pat).limit(1),
+          supabase.from('chat_messages').select('name,created_at').ilike('name', pat)
+            .order('created_at', { ascending: false }).limit(1),
+        ]);
+        const user = (u.data as any[] | null)?.[0];
+        const last = (msg.data as any[] | null)?.[0];
+        text = describeLastSeen(handle, {
+          name: user?.username || last?.name,
+          exists: !!(user || last),
+          lastChat: last?.created_at ? new Date(last.created_at) : null,
+          lastEdit: user?.last_edit_at ? new Date(user.last_edit_at) : null,
+        });
+      } catch {
+        text = `I couldn't look up ${handle} just now. Try again in a moment?`;
+      }
+    }
+    const at = new Date();
+    chatMessages.value.push({ type: 'message', name: NURRO_NAME, rank: 'bot', time: formatTime(at), dateTime: at,
+      parts: [{ type: 'sender', text: NURRO_NAME }, { type: 'text', text }] });
+  }
+
   function withBot(m: ChatMessage): ChatMessage[] {
     const r = botReplyTo(m);
     return r ? [m, r] : [m];
@@ -5327,12 +5362,15 @@ export const useChatStore = defineStore('chat', () => {
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
         parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null});
+      // "!online name": Nurro looks the person up, then answers (live only).
+      const target = row.notification_id == null ? onlineTarget(row.text || '') : null;
+      if (target) void answerOnline(target);
       // nkem_test takes a beat to answer, like it used to.
       const reply = botReplyTo(chatMessages.value[chatMessages.value.length - 1], true);
       if (reply) setTimeout(() => { reply.dateTime = new Date(); reply.time = formatTime(reply.dateTime); chatMessages.value.push(reply); }, 900);
       if (row.user_id !== backend.userId) {
         // A direct @mention always gets through, even with chat muted.
-        if (mentionsMe(row.text || '')) {
+        if (mentionsMe(row.text || '') && !onlineTarget(row.text || '')) {
           mentionPing.value++; lastMentionFrom.value = row.name || '';
           alertMentionAway(row.name || 'Someone', row.text || '');
         }
