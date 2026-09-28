@@ -46,6 +46,11 @@ export interface DatasetCaveConfig {
    *  keeps its own sheet; the Cell Library loads the one for the active dataset.
    *  Include the gid in the URL for multi-tab sheets. */
   cellLibrarySheetUrl?: string;
+  /** 'edit_log': this dataset's CAVE annotation tables can't be written yet,
+   *  so completions and cell types are logged ONLY to Supabase edit_log
+   *  (server-stamped user, cell ID, point) and read back from there. Each row
+   *  keeps its point, so the log can be replayed into CAVE once it exists. */
+  annotationLog?: 'edit_log';
 }
 
 export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
@@ -170,6 +175,9 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellStatusSchema: 'bound_tag_user',
     cellTypeTable:    'mec_cell_type_v1',
     cellTypeSchema:   'bound_tag_user',
+    // Still true 2026-09-28: hc.himc-cave.com annotation returns 400
+    // invalid_table_id for pni_mec and materialize 503. Log to Supabase (Ames).
+    annotationLog:    'edit_log',
     // Root ids and camera lifted from the team proofreading state
     // (nglstate 6641601003126784), so they resolve in the pni_mec graph.
     defaultSegments:  ['720575947322423718', '720575947401560895', '720575947322485926'],

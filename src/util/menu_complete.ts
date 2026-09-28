@@ -47,8 +47,14 @@ function parsePoint(s: string): [number, number, number] | null {
 export async function planMenuCompletion(segId: string): Promise<MenuCompletionPlan> {
   const dataset = currentDatasetTag();
   const plan: MenuCompletionPlan = { dataset, segId };
-  const sheetUrl = getDatasetCaveConfig(dataset).cellLibrarySheetUrl;
-  if (!sheetUrl) return plan;  // no sheet for this dataset: CAVE only
+  const cfg = getDatasetCaveConfig(dataset);
+  const sheetUrl = cfg.cellLibrarySheetUrl;
+  if (!sheetUrl) {
+    // No segment-ID sheet (MEC): the Cell Library tasks are the list. The
+    // server writes the sheet by the task's starting point (sheet-policy.js).
+    if (cfg.annotationLog) await planFromTasks(plan);
+    return plan;
+  }
 
   const queue = useProofreadingQueueStore();
   if (queue.sheetUrl !== sheetUrl || !queue.items.length) await queue.loadFromSheet(sheetUrl, dataset);
@@ -76,6 +82,33 @@ export async function planMenuCompletion(segId: string): Promise<MenuCompletionP
   return plan;
 }
 
+/** MEC: find the Cell Library task for this cell (following edits back to the
+ *  task's root) and present it as the row to complete. */
+async function planFromTasks(plan: MenuCompletionPlan) {
+  const backend = useProofreadingBackendStore();
+  await backend.loadTasks(plan.dataset);
+  const tasks = backend.tasks.filter(t => t.segment_id && /^\d+$/.test(t.segment_id));
+  let task = tasks.find(t => t.segment_id === plan.segId || t.final_segment_id === plan.segId);
+  if (!task && tasks.length) {
+    const hit = await ancestorAmong(plan.segId, tasks.map(t => t.segment_id));
+    if (hit) task = tasks.find(t => t.segment_id === hit);
+  }
+  if (!task) return;  // not a Cell Library cell: logged only
+  const index = (task.notes || '').match(/Sheet #([\w-]+)/)?.[1] ?? '';
+  plan.task = task;
+  plan.row = {
+    segId: task.segment_id, index: index ? `#${index}` : '', nucCoords: task.nucleus_coords || '',
+    somaCoords: task.soma_coords || '', finalSegId: task.final_segment_id || '', finalNucId: '',
+    notes: task.notes || '', dataset: plan.dataset,
+  };
+  if (task.status === 'completed') {
+    plan.blocked = task.assigned_to === backend.userId ? undefined
+      : 'Someone else already completed this cell in the Cell Library.';
+  } else if ((task.status === 'assigned' || task.status === 'in_progress') && task.assigned_to && task.assigned_to !== backend.userId) {
+    plan.blocked = 'Another player has claimed this cell. Ask them, or pick another cell.';
+  }
+}
+
 /** Claim (if needed), complete the claim and write the sheet. Returns a short
  *  note for the menu, or throws with a plain-English message. */
 export async function finishMenuCompletion(plan: MenuCompletionPlan): Promise<string> {
@@ -90,10 +123,10 @@ export async function finishMenuCompletion(plan: MenuCompletionPlan): Promise<st
       const claimed = task
         ? { ok: await backend.claimTask(task.id), reason: backend.error }
         : await backend.claimCell(point, row.segId);
-      if (!claimed.ok) throw new Error(`Saved to CAVE, but the sheet was not updated: ${claimed.reason || 'could not claim this cell'}.`);
+      if (!claimed.ok) throw new Error(`Saved, but the sheet was not updated: ${claimed.reason || 'could not claim this cell'}.`);
       await backend.loadTasks(plan.dataset);
       task = backend.tasks.find(t => t.segment_id === row.segId);
-      if (!task) throw new Error('Saved to CAVE, but the Cell Library claim could not be found.');
+      if (!task) throw new Error('Saved, but the Cell Library claim could not be found.');
     }
     await backend.completeTask(task.id, plan.segId, viewerPoint().join(', '));
   }

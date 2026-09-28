@@ -9,6 +9,8 @@
 
 import {getDatasetCaveConfig, isRegisteredDataset, EYEWIRE_II_CAVE_CONFIG, type DatasetCaveConfig} from '../config';
 import {useProofreadingBackendStore, useCellHistoryStore, useUserStatsStore} from '../store';
+import {supabase} from '../supabase';
+import {currentDatasetTag} from '../datasets';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
 import {parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import nurroSuccess from '../../static/nurro/nurro-success.png';
@@ -383,11 +385,53 @@ export async function caveFetch(url: string, init?: RequestInit): Promise<Respon
  * Uses materialization to find annotations at the current viewer position,
  * with localStorage fallback when CAVE is unavailable.
  */
+/**
+ * Completion + cell type for a root from Supabase edit_log, for datasets whose
+ * CAVE tables don't exist yet (config annotationLog: 'edit_log', MEC). The
+ * newest mark_complete / unmark_complete decides completion; the newest
+ * set_cell_type decides the type.
+ */
+async function statusFromEditLog(rootId: string): Promise<CellStatus> {
+  const status: CellStatus = {isComplete: false};
+  try {
+    const {data} = await supabase.from('edit_log')
+      .select('operation,user_id,metadata,timestamp')
+      .eq('dataset', currentDatasetTag()).eq('segment_after', rootId)
+      .in('operation', ['mark_complete', 'unmark_complete', 'set_cell_type'])
+      .order('timestamp', {ascending: false}).limit(50);
+    const rows = (data || []) as any[];
+    const done = rows.find(r => r.operation === 'mark_complete' || r.operation === 'unmark_complete');
+    if (done?.operation === 'mark_complete') {
+      status.isComplete = true;
+      status.annotationId = -1;
+      if (done.user_id) status.completedBy = String(done.user_id);
+    }
+    const typed = rows.find(r => r.operation === 'set_cell_type' && r.metadata?.cell_type);
+    if (typed) {
+      status.cellType = String(typed.metadata.cell_type);
+      status.cellTypeAnnotationId = -1;
+      if (typed.user_id) status.labeledBy = String(typed.user_id);
+    }
+  } catch (e) {
+    console.warn('[lightbulb] edit_log status read failed:', e);
+  }
+  return status;
+}
+
 export async function getCellStatus(
     caveServer: string, rootId: string): Promise<CellStatus | null> {
   const dsCfg = getActiveDatasetConfig();
   const {cellStatusTable, cellTypeTable, datastack, cellTypeSchema} = dsCfg;
   if (!caveServer) return null;
+
+  if (dsCfg.annotationLog === 'edit_log') {
+    const logged = await statusFromEditLog(rootId);
+    // Your own just-made change shows at once, even before the read sees it.
+    const local = getLocalAnnotations()[segKey(rootId)];
+    if (local && local.isComplete !== undefined && !logged.isComplete && local.isComplete) { logged.isComplete = true; logged.annotationId = -1; }
+    if (local?.cellType && !logged.cellType) { logged.cellType = local.cellType; logged.cellTypeAnnotationId = -1; }
+    return logged;
+  }
 
   console.info(`[lightbulb] getCellStatus: datastack=${datastack}, rootId=${rootId}`);
 
@@ -496,7 +540,8 @@ export async function setCellComplete(
 
   const baseUrl = annotationBaseUrl(caveServer, cellStatusTable, alignedVolume);
 
-  try {
+  // annotationLog: no CAVE table to write; the edit_log path below is the record.
+  if (!dsCfg.annotationLog) try {
     if (!complete && existingAnnotationId !== undefined) {
       // Local annotation — just clear localStorage
       if (existingAnnotationId < 0) {
@@ -608,8 +653,11 @@ export async function setCellComplete(
   }
 
   // localStorage fallback — save locally so UI still works (keyed by rootId)
-  const fallbackPos = getViewerPosition();
+  const fallbackPos = pointOverride ?? getViewerPosition();
   setLocalAnnotation(segKey(rootId), {isComplete: complete});
+  document.dispatchEvent(new CustomEvent('nge:seg-status-changed', {
+    detail: { segId: rootId, status: { isComplete: complete } },
+  }));
   console.info(`[lightbulb] Saved completion locally for ${segKey(rootId)} (CAVE unavailable)`);
   // Update local cell history & stats so Profile UI reflects immediately
   try {
@@ -637,7 +685,7 @@ export async function setCellComplete(
       backend.logEdit({
         operation: complete ? 'mark_complete' : 'unmark_complete',
         segment_after: rootId,
-        coordinates: (() => { const p = getViewerPosition(); return `${p[0]}, ${p[1]}, ${p[2]}`; })(),
+        coordinates: `${fallbackPos[0]}, ${fallbackPos[1]}, ${fallbackPos[2]}`,
         metadata: { root_id: rootId },
       });
       backend.postActivity(
@@ -679,7 +727,8 @@ export async function saveCellType(
   const baseUrl = annotationBaseUrl(caveServer, cellTypeTable, alignedVolume);
   const pos = getViewerPosition();
 
-  try {
+  // annotationLog: no CAVE table to write; the edit_log path below is the record.
+  if (!dsCfg.annotationLog) try {
     // Delete old annotation if updating
     if (existingAnnotationId !== undefined && existingAnnotationId >= 0) {
       await fetch(baseUrl, {
@@ -779,7 +828,7 @@ export async function saveCellType(
   try {
     const backend = useProofreadingBackendStore();
     if (backend.userId) {
-      backend.logEdit({ operation: 'set_cell_type', segment_after: rootId, metadata: { root_id: rootId, cell_type: cellType } });
+      backend.logEdit({ operation: 'set_cell_type', segment_after: rootId, coordinates: `${pos[0]}, ${pos[1]}, ${pos[2]}`, metadata: { root_id: rootId, cell_type: cellType } });
       backend.postActivity(`labeled ...${rootId.slice(-4)} as ${cellType}`, rootId);
     }
   } catch { /* non-critical */ }
