@@ -2,6 +2,8 @@
 
 // Pure policy builder: tested without credentials, a database, or production writes.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Screenshots only ever point at our own public storage (ewSecureUpload output).
+const OWN_STORAGE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/';
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 const PUBLIC_USER_COLUMNS = 'id,display_name,flag,bio,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,created_at,updated_at,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,cave_user_id,username,last_edit_at,last_cave_sync_at';
 const columns = {
@@ -9,7 +11,9 @@ const columns = {
   admins: 'id,user_id,email,created_at',
   notifications: 'id,title,body,image_url,thumbnail_url,send_at,expires_at,target_type,target_id,post_to_chat,created_at,created_by,chat_posted_at',
   notification_reads: 'id,notification_id,user_id,read_at,dismissed,dismissed_at',
-  working_links: 'id,user_id,title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,created_at,updated_at',
+  working_links: 'id,user_id,title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,created_at,updated_at,screenshot_url',
+  // Who is in chat right now. Public: usernames are already public in chat.
+  chat_presence: 'user_id,name,last_seen_at,joined_at',
   feedback_triage: 'id,source,source_id,source_excerpt,recommendation,rationale,proposed_message,spec,status,reviewed_by,reviewed_at,created_at,slack_channel,slack_ts,result_note,done_slack_ts,approver_slack_id,approver_note,decision_slack_ts,impl_state,impl_branch,impl_summary,impl_run_url,impl_attempts,impl_started_at,preview_url,feedback_log,last_reply_ts,last_nag_at,nag_count,tested_by,tested_at',
   site_issues: 'id,category,message,url,dataset,user_id,user_name,created_at,screenshot_url',
   user_groups: 'id,name,description,color,created_at,created_by',
@@ -18,7 +22,9 @@ const columns = {
 };
 const writable = {
   users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date',
-  working_links: 'title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,updated_at',
+  working_links: 'title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,updated_at,screenshot_url',
+  // Nothing from the client is kept: every field is set below from identity.
+  chat_presence: 'last_seen_at',
   notification_reads: 'notification_id,dismissed,dismissed_at',
   user_groups: 'name,description,color',
   user_group_members: 'group_id,user_id',
@@ -90,13 +96,25 @@ function authorizeData(input, ctx) {
   if (['user_groups','user_group_members'].includes(table)) admin();
   else if (!(table === 'users' && method === 'POST' && ctx.who?.email)) own();
   if (table === 'site_issues' && method !== 'POST') admin();
-  if (table === 'chat_messages' && method !== 'POST') { admin(); if (!query.has('id')) fail(400,'A message id is required.'); }
+  if (table === 'chat_messages' && method !== 'POST') {
+    if (!query.has('id')) fail(400,'A message id is required.');
+    // Anyone may delete a message they wrote; only admins delete others' or edit.
+    if (method === 'DELETE' && !ctx.isAdmin) scope('user_id.eq.'+own());
+    else admin();
+  }
+  if (table === 'chat_presence') {
+    // Heartbeat upsert on the owner's own row, or DELETE of it on leave.
+    if (method === 'PATCH') fail(405, 'Use the heartbeat.');
+    if (method === 'POST' && query.get('on_conflict') !== 'user_id') fail(400, 'Unsupported conflict target');
+    if (method === 'DELETE') scope('user_id.eq.'+own());
+  }
   if (table === 'users') {
     if (method === 'DELETE') fail(403, 'Profile deletion is not supported here.');
     if (method !== 'POST') scope('id.eq.'+own());
     else if (!ctx.who?.email) fail(401, 'Verified identity required.');
   } else if (table === 'working_links' || table === 'notification_reads') scope('user_id.eq.'+own());
   const validConflict = (table === 'notification_reads' && query.get('on_conflict') === 'notification_id,user_id') ||
+    (table === 'chat_presence' && query.get('on_conflict') === 'user_id') ||
     (table === 'user_group_members' && ctx.isAdmin && query.get('on_conflict') === 'group_id,user_id');
   if (query.has('on_conflict') && !validConflict) fail(400, 'Unsupported conflict target');
   if (method === 'DELETE') return {table,method,query};
@@ -126,6 +144,15 @@ function authorizeData(input, ctx) {
     }
     if (table === 'working_links' && row.shared_group_id != null && !ctx.isAdmin && !groups.includes(String(row.shared_group_id))) fail(403, 'You are not a member of that group.');
     if (table === 'working_links' && 'url' in row && !/^https:\/\//i.test(String(row.url))) fail(400, 'Saved links must use HTTPS.');
+    if (table === 'working_links' && row.screenshot_url != null &&
+        (typeof row.screenshot_url !== 'string' || !row.screenshot_url.startsWith(OWN_STORAGE) || row.screenshot_url.length > 1024)) {
+      fail(400, 'Screenshots must be uploaded through EyeWire II.');
+    }
+    if (table === 'chat_presence') {
+      // Identity and time are the server's; the client only says "I'm here".
+      for (const k of Object.keys(row)) delete row[k];
+      row.user_id = own(); row.name = me.username || me.display_name || 'Player'; row.last_seen_at = ctx.now;
+    }
     if (table === 'user_groups' && method === 'POST') row.created_by = own();
     if (table === 'user_group_members' && method === 'POST') row.added_by = own();
     if (!Object.keys(row).length) fail(400, 'No permitted fields');

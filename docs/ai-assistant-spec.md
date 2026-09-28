@@ -1,5 +1,10 @@
 # EyeWire II Guide — AI Assistant Spec (build-ready)
 
+> **Note (2026-09-27):** this is the original design. The backend it describes
+> on philogelos / `ytho-4bff2` has moved: `guideAssistant` and `guideFeedback`
+> now live in this repo's `functions/` and run in Firebase `eyewire-ii-e4d52`
+> (see `functions/README.md` and `src/functions_base.ts`).
+
 A natural-language helper embedded in the EyeWire II neuroglancer app that
 **answers questions AND drives the UI**: it opens the right panel, switches to
 the right tool, spotlights the right button, or jumps the view to a segment, the

@@ -1187,6 +1187,11 @@ const showSaveLinkForm = ref(false);
 const newLinkTitle = ref('');
 const newLinkNote = ref('');
 const newLinkPublic = ref(false);
+const newLinkScreenshotUrl = ref('');
+const showLinkScreenshotDialog = ref(false);
+function onLinkScreenshotAttached(payload: { url: string }) {
+  newLinkScreenshotUrl.value = payload.url;
+}
 const renamingLinkId = ref<string | null>(null);
 const renamingLinkValue = ref('');
 const linksOwnershipFilter = ref<'all' | 'mine' | 'shared'>('all');
@@ -1242,12 +1247,14 @@ async function submitNewLink() {
     position: pos.length === 3 ? [pos[0], pos[1], pos[2]] : undefined,
     visibleSegments: getVisibleSegmentIds(),
     isPublic: newLinkPublic.value,
+    screenshotUrl: newLinkScreenshotUrl.value || null,
   });
   if (id) {
     showSaveLinkForm.value = false;
     newLinkTitle.value = '';
     newLinkNote.value = '';
     newLinkPublic.value = false;
+    newLinkScreenshotUrl.value = '';
   }
 }
 
@@ -2206,7 +2213,15 @@ const panelStyle = computed(() => ({
                 <input type="checkbox" v-model="newLinkPublic" />
                 Make public (anyone in the lab can see)
               </label>
+              <!-- Optional picture of the view (Amy 2026-09-28), same capture
+                   and pen dialog as help requests. -->
+              <div v-if="newLinkScreenshotUrl" class="nge-cl-help-shot-preview nge-cl-help-shot-preview--sm">
+                <img :src="newLinkScreenshotUrl" alt="Attached screenshot" />
+                <button class="nge-cl-help-shot-remove" @click="newLinkScreenshotUrl = ''" title="Remove screenshot">×</button>
+              </div>
               <div class="nge-cl-help-create-actions">
+                <button v-if="!newLinkScreenshotUrl" class="nge-cl-help-create-cancel" @click="showLinkScreenshotDialog = true"
+                        title="Attach a screenshot of the current view">📸 Screenshot</button>
                 <button class="nge-cl-help-create-submit" @click="submitNewLink">💾 Save Link</button>
                 <button class="nge-cl-help-create-cancel" @click="showSaveLinkForm = false">Cancel</button>
               </div>
@@ -2264,6 +2279,10 @@ const panelStyle = computed(() => ({
                     <span class="nge-cl-notes">{{ relativeTimeShort(link.createdAt) }}</span>
                   </div>
                   <div v-if="link.note" class="nge-cl-help-note">{{ link.note }}</div>
+                  <a v-if="link.screenshotUrl" :href="link.screenshotUrl" target="_blank" rel="noopener"
+                     class="nge-cl-help-shot-thumb" title="Open full screenshot">
+                    <img :src="link.screenshotUrl" alt="Screenshot of this view" />
+                  </a>
                 </div>
               </div>
               <div class="nge-cl-row-actions">
@@ -2451,6 +2470,12 @@ const panelStyle = computed(() => ({
     mode="attach"
     @close="showResponseScreenshotDialog = false"
     @attached="onResponseScreenshotAttached"
+  />
+  <ScreenshotDialog
+    :show="showLinkScreenshotDialog"
+    mode="attach"
+    @close="showLinkScreenshotDialog = false"
+    @attached="onLinkScreenshotAttached"
   />
 </template>
 

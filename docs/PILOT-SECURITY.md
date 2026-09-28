@@ -28,3 +28,13 @@ Triage models run in jobs without database, Slack, deployment, repository-write 
 Run `npm ci --prefix functions` and `node --test functions/*.test.js`. The PostgreSQL tests exercise real function bodies with disposable local data: membership, racing requests, rollback on claim-limit failure, owner checks, expiry, overlap protection, stale session/reset identifiers and role privileges. Existing browser security, practice-policy and triage-policy tests also apply. Live verification uses read-only health checks, transaction rollback fixtures, and the scheduled automation runs; do not claim or complete scientific cells merely to test security.
 
 Policy references: [Supabase function privileges](https://supabase.com/docs/guides/database/functions) and [PostgreSQL transaction locks](https://www.postgresql.org/docs/current/explicit-locking.html).
+
+## Live verification, 2026-09-28
+
+PR #113 deployed at `5e177cedd9ce73a21b383d171649c46c49c30b23`. Both SQL stages are installed: catalog checks show zero publicly writable public tables and zero publicly executable public functions. No-match REST probes return 401 for task, practice, edit, help and tag writes, the invite roster and pilot RPCs. The service role can still read practice state and invoke the worker lease procedure. Signed-in admin access to Pilot testers was verified; the list starts empty because existing admins already qualify.
+
+The matching gateways, Guide and feedback functions are deployed in `eyewire-ii-e4d52` and the former endpoints. Anonymous paid/feedback calls return 401. Both registered Sheets pass keyless read/write-permission probes. After lockdown, Sheets run 36433752656 and practice run 36433746482 passed. The original merge and cut exercises have verified starting states.
+
+A concurrently added example, `a4bd2f76-67e9-4093-adc7-e670230d1577` (Axon missing a branch), is reversibly disabled pending review. It had empty stable-piece IDs, shared a piece with existing exercises, and its two pieces were already joined at its proposed merge baseline. Read-only inspection 36434117844 captured the evidence; no scientific edits were made for it.
+
+Triage credentials are still isolated, but the fresh synthetic model test 36433485794 is blocked by Anthropic HTTP 401, API key is invalid. The repository Actions secret `ANTHROPIC_API_KEY` must be replaced by its owner, then the synthetic test rerun. Do not claim all automation is ready until that passes. Full model output is enabled only for the synthetic test, not real user reports.

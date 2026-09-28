@@ -277,7 +277,7 @@ Error: Permission 'iam.serviceAccounts.signBlob' denied on resource
 
 **Fix:** rather than chase an IAM grant, uploads now go **directly to Supabase Storage**. No signing step, no Cloud Function, no extra IAM, and the `admin-uploads` bucket and policies already existed. Cost is ~the same per GB (~$0.02), with 1 GB free.
 
-**The Cloud Function is now unused** and can be deleted from `ytho-4bff2`. Its source lives in `philogelos/functions/index.js` (a **different repo**), along with `guideAssistant`, `guideFeedback`, and `submitIssue`.
+**The Cloud Function is now unused** and can be deleted from `ytho-4bff2`. Its source lived in `philogelos/functions/index.js`, along with `guideAssistant`, `guideFeedback`, and `submitIssue`. **Since 2026-09-27 all EyeWire II server functions live in this repo's `functions/` and run in Firebase `eyewire-ii-e4d52`** (see `functions/README.md`); `signScreenshotUpload` there answers 410.
 
 ---
 
