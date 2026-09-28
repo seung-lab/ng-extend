@@ -111,7 +111,11 @@ BEGIN
     -- Expired edits must be reset, including when the same learner returns.
     UPDATE public.tutorial_practice_examples SET status='needs_reset',claimed_by=NULL,claimed_at=NULL,expires_at=NULL,updated_at=now()
       WHERE status='in_use' AND expires_at<=now();
+    -- p_args.exclude: cells this learner already holds. A tutorial hands the
+    -- same learner two cells of a kind (one per practice step), so the second
+    -- claim must not return the first.
     SELECT * INTO ex FROM public.tutorial_practice_examples e WHERE e.enabled AND e.kind=p_args->>'kind'
+      AND NOT (e.id::text IN (SELECT jsonb_array_elements_text(coalesce(p_args->'exclude','[]'::jsonb))))
       AND (e.status='ready' OR (e.status='in_use' AND e.claimed_by=p_user AND e.expires_at>now()))
       AND NOT EXISTS(SELECT 1 FROM public.tutorial_practice_examples o WHERE o.id<>e.id AND o.enabled
         AND o.pcg_server=e.pcg_server AND o.pcg_table=e.pcg_table

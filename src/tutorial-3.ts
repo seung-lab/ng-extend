@@ -431,9 +431,9 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
     onEnter: async () => {
       closeSidePanel();
       watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merge success! You did it again. The piece is part of the axon now.');
-      // Hand the first cell back (it is put right) and take another merge
-      // cell. With one registered it is the same cell, reset.
-      await beginPractice('merge_then_cut', 'start', { fresh: true });
+      // A second merge cell, held alongside the first; both go back at the
+      // end. With one registered, the same cell is shown again (already merged).
+      await beginPractice('merge_then_cut', 'start', { slot: 'b' });
       setTimeout(() => ensureTool('merge'), 400);
     },
   },

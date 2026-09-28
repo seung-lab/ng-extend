@@ -332,7 +332,7 @@ function noteActivity() {
 
 /** Seconds left before the cell is released, or null when not counting down. */
 export function releaseCountdown(): number | null {
-  if (!session.example) return null;
+  if (!Object.keys(session.held).length) return null;
   const idle = Date.now() - lastActivity;
   if (idle < WARN_AFTER_MS) return null;
   return Math.max(0, Math.ceil((RELEASE_AFTER_MS - idle) / 1000));
@@ -348,15 +348,17 @@ function startActivityWatch() {
   }
   if (activityTimer) return;
   activityTimer = setInterval(async () => {
-    const ex = session.example;
-    if (!ex) { clearInterval(activityTimer!); activityTimer = null; return; }
+    const cells = Object.values(session.held);
+    if (!cells.length) { clearInterval(activityTimer!); activityTimer = null; return; }
     const idle = Date.now() - lastActivity;
-    // Active: push the claim's expiry along once a minute.
+    // Active: push every held claim's expiry along once a minute.
     if (idle < WARN_AFTER_MS && Date.now() - lastHeartbeat > 60 * 1000) {
       lastHeartbeat = Date.now();
-      practiceAction('heartbeat', { id: ex.id, session: ex.claim_nonce }).catch((error) => {
-        console.warn('[practice] heartbeat failed:', error.message);
-      });
+      for (const ex of cells) {
+        practiceAction('heartbeat', { id: ex.id, session: ex.claim_nonce }).catch((error) => {
+          console.warn('[practice] heartbeat failed:', error.message);
+        });
+      }
     }
     document.dispatchEvent(new CustomEvent('nge:practice-countdown', { detail: { seconds: releaseCountdown() } }));
     if (idle >= RELEASE_AFTER_MS) {
@@ -421,7 +423,13 @@ export function leaveWaitlist() {
 export type PracticePhase = 'none' | 'claiming' | 'merge' | 'cut' | 'busy' | 'unavailable' | 'done' | 'released';
 
 const session = {
+  /** The cell the current step works on. */
   example: null as PracticeExample | null,
+  /** Every cell this learner holds, by slot ('a' for the first practice
+   *  step of a tutorial, 'b' for the second). All go back together at the
+   *  end, so one learner runs the whole tutorial on cells nobody else can
+   *  take (Amy: one person at a time, and the merge section has two parts). */
+  held: {} as Record<string, PracticeExample>,
   /** Example whose saved view is currently loaded, so later steps do not
    *  reload it (a reload drops the active tool and the colours). */
   shownId: '',
@@ -455,30 +463,40 @@ function userId(): string | null {
  */
 export type PracticeView = 'start' | 'preview';
 
-export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { fresh?: boolean } = {}): Promise<PracticeExample | null> {
+export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { slot?: string } = {}): Promise<PracticeExample | null> {
+  const slot = opts.slot ?? 'a';
   // Right after a reload the login is still settling; give it a few seconds
   // before deciding the learner is signed out (Amy saw "you need to be
   // signed in" while signed in).
   let uid = userId();
   for (let i = 0; !uid && i < 12; i++) { await new Promise(r => setTimeout(r, 500)); uid = userId(); }
   if (!uid) { session.phase = 'unavailable'; return null; }
-  if (session.example && session.example.claimed_by === uid) {
-    if (session.example.kind === kind && !opts.fresh) {
-      try { await practiceAction('heartbeat', { id: session.example.id, session: session.example.claim_nonce }); }
-      catch { session.example = null; session.phase = 'unavailable'; return null; }
-      await showExample(session.example, view);
-      return session.example;
-    }
-    // A different kind, or a second cell of the same kind: hand this one
-    // back (it is put right) and take another. The one just returned has
-    // one more use, so a different ready cell wins when there is one.
-    await endPractice();
+  const held = session.held[slot];
+  if (held && held.claimed_by === uid && held.kind === kind) {
+    try { await practiceAction('heartbeat', { id: held.id, session: held.claim_nonce }); }
+    catch { delete session.held[slot]; session.example = null; session.phase = 'unavailable'; return null; }
+    session.example = held;
+    await showExample(held, view);
+    return held;
   }
+  // A different kind in this slot (merge tutorial, then cut tutorial): put
+  // everything back first.
+  if (Object.values(session.held).some(ex => ex.kind !== kind)) await endPractice();
   session.phase = 'claiming';
+  const exclude = Object.values(session.held).map(ex => ex.id);
   let row: PracticeExample | null;
-  try { row = await practiceAction('claim', { kind }); }
+  try { row = await practiceAction('claim', { kind, exclude }); }
   catch (error: any) { console.warn('[practice] claim failed:', error.message); session.phase = 'unavailable'; return null; }
-  if (!row) { session.phase = 'busy'; return null; }
+  if (!row) {
+    // Nothing else free. With only one cell of this kind registered, the
+    // second practice step reuses the one already held rather than waiting
+    // in line for itself.
+    const same = Object.values(session.held).find(ex => ex.kind === kind);
+    if (same) { session.example = same; await showExample(same, view); session.phase = kind === 'cut' ? 'cut' : 'merge'; return same; }
+    session.phase = 'busy';
+    return null;
+  }
+  session.held[slot] = row;
   session.example = row;
   await showExample(row, view);
   session.phase = kind === 'cut' ? 'cut' : 'merge';
@@ -555,12 +573,15 @@ export async function piecesMerged(): Promise<boolean | null> {
  */
 export function endPractice(): Promise<void> {
   if (session.releasing) return session.releasing;
-  const ex = session.example;
+  const cells = Object.values(session.held);
   const uid = userId();
-  if (!ex || !uid) { session.phase = 'none'; return Promise.resolve(); }
+  if (!cells.length || !uid) { session.phase = 'none'; return Promise.resolve(); }
   session.releasing = (async () => {
-    try { await resetPracticeExample(ex.id, ex.claim_nonce); }
-    catch (error: any) { console.warn('[practice] reset left to the scheduled worker:', error?.message || error); }
+    for (const ex of cells) {
+      try { await resetPracticeExample(ex.id, ex.claim_nonce); }
+      catch (error: any) { console.warn('[practice] reset left to the scheduled worker:', error?.message || error); }
+    }
+    session.held = {};
     session.example = null;
     session.shownId = '';
     session.rootA = '';
