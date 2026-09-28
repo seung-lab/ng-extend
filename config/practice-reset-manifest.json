@@ -1,1 +1,22 @@
-{}
+{
+  "dbc61749-70b5-469e-acdc-89a897cd9270": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "73676831806855086",
+    "supervoxel_b": "76492406274891317",
+    "baseline_at": "2026-09-27T01:22:48.880227+00:00",
+    "root_a": "648518346357382723",
+    "root_b": "648518346351477262"
+  },
+  "b231f4e7-e9f3-4214-941f-975b8b25a237": {
+    "kind": "merge_then_cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "76492406274891317",
+    "supervoxel_b": "75578299325640365",
+    "baseline_at": "2026-09-27T01:22:48.880227+00:00",
+    "root_a": "648518346352996950",
+    "root_b": "648518346351348401"
+  }
+}

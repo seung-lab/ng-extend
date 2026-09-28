@@ -7,6 +7,35 @@ global.window=dom.window; global.document=dom.window.document;
 function load(file){const code=esbuild.buildSync({entryPoints:[file],bundle:true,platform:'browser',format:'cjs',write:false}).outputFiles[0].text;const m={exports:{}};new Function('module','exports',code)(m,m.exports);return m.exports;}
 const {renderSafeMarkdown}=load('src/util/safe_markdown.ts');
 const {practiceBase,practiceToken}=load('src/util/practice_destination.ts');
+test('practice retries skip completed undo pairs and preserve later learner edits',async()=>{
+ const {remainingPracticeOperations}=load('src/util/practice_history.ts');
+ const {remainingOperations}=await import('./practice-reset-policy.mjs');
+ const ops=[{operationId:1667,at:1},{operationId:1668,at:2},{operationId:1669,at:3}];
+ const details={1667:{operation_status:0},1668:{operation_status:0,undo_operation_id:'1667'},1669:{operation_status:0}};
+ for(const remaining of [remainingPracticeOperations,remainingOperations]) {
+   assert.deepEqual(remaining(ops.slice(0,2),details),[]);
+   assert.deepEqual(remaining(ops,details),[ops[2]]);
+   assert.deepEqual(remaining(ops,{...details,1669:{operation_status:0,undo_operation_id:'1668'}}),[ops[0]]);
+   assert.deepEqual(remaining(ops,{...details,1669:{operation_status:0,redo_operation_id:'1667'}}),[ops[2]]);
+   assert.deepEqual(remaining([ops[1]],details),[ops[1]]); // Undo of a pre-baseline edit must itself be reversed.
+   assert.throws(()=>remaining(ops,{}));
+   assert.throws(()=>remaining(ops,{...details,1669:{operation_status:0,undo_operation_id:'1670'}}));
+   assert.throws(()=>remaining(ops,{...details,1669:{operation_status:0,undo_operation_id:'1667'}}));
+ }
+});
+test('practice history parses the live pandas map and fails closed on malformed operations',async()=>{
+ const {practiceOperationsAfter}=load('src/util/practice_history.ts');
+ const {operationsAfter}=await import('./practice-reset-policy.mjs');
+ const baseline='2026-09-27T01:22:48.880Z';
+ const live={operation_id:{0:1665,1:1667},timestamp:{0:1790471778577,1:1790513698899}};
+ const expected=[{operationId:1667,at:1790513698899}];
+ for(const parse of [practiceOperationsAfter,operationsAfter]) {
+   assert.deepEqual(parse(live,'123',baseline),expected);
+   assert.deepEqual(parse({'123':JSON.stringify(live)},'123',baseline),expected);
+   assert.throws(()=>parse({operation_id:{0:1667},timestamp:{0:'invalid'}},'123',baseline));
+   assert.throws(()=>parse({operation_id:{0:1667},timestamp:{0:Date.now()+120000}},'123',baseline));
+ }
+});
 test('model and notification markup cannot retain executable content or tracking images',()=>{
  for(const payload of ['<img src="https://tracker.invalid/pixel" onerror="window.pwned=1">','<svg/onload=alert(1)>','[click](javascript:alert(1))','[click](data:text/html,evil)','<a href="javascript&#58;alert(1)" onclick="alert(1)">click</a>','<iframe srcdoc="<script>alert(1)</script>"></iframe>','<form id="document"><input name="cookie"></form>']) {
    for(const mode of [false,true]) {const html=renderSafeMarkdown(payload,mode);const el=document.createElement('div');el.innerHTML=html;assert.equal(el.querySelectorAll('img,svg,script,iframe,form,input,[onerror],[onload],[onclick]').length,0);for(const a of el.querySelectorAll('a[href]'))assert.match(a.getAttribute('href'),/^(https:\/\/|\/(?!\/)|#)/i);}

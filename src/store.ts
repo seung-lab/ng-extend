@@ -1,3 +1,4 @@
+import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
 import { secureWrite } from './secure_write';
 import {Ref, ref, reactive, computed} from 'vue';
@@ -2804,82 +2805,9 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
 
   // ── Google Sheets write-back ─────────────────────────────────────────
 
-  /**
-   * Write soma coordinates back to the Google Sheet for the given segment.
-   * Uses Google Sheets API v4 with an API key (sheet must be publicly editable,
-   * or the user must be signed into Google in this browser).
-   */
+  /** Sync the exact segment row through the authenticated Sheets service. */
   async function writeSomaCoordsToSheet(segId: string, coords: string) {
-    const source = sheetUrl.value;
-    if (!source) return;
-
-    // Extract spreadsheet ID
-    const idMatch = source.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    if (!idMatch) { console.warn('[quest] Cannot extract spreadsheet ID from URL'); return; }
-    const spreadsheetId = idMatch[1];
-    const gidMatch = source.match(/gid=(\d+)/);
-    const gid = gidMatch ? gidMatch[1] : '0';
-
-    // Find the row for this segId in our items array
-    const item = items.value.find(i => i.segId === segId);
-    if (!item) return;
-    const itemIdx = items.value.indexOf(item);
-
-    // We need to know the header row offset and soma column.
-    // Re-fetch the sheet to find the exact cell reference.
-    try {
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
-      const res = await fetch(csvUrl);
-      if (!res.ok) { console.warn('[quest] Could not fetch sheet for write-back'); return; }
-      const text = await res.text();
-      const rows = parseCsv(text);
-
-      // Find header row
-      let headerIdx = 0;
-      for (let i = 0; i < Math.min(rows.length, 10); i++) {
-        const lower = rows[i].map(c => c.toLowerCase());
-        if (lower.some(c => c.includes('segment'))) { headerIdx = i; break; }
-      }
-
-      const header = rows[headerIdx].map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
-      const somaColIdx = header.findIndex(h => h.includes('somacoord') || h.includes('soma'));
-      if (somaColIdx < 0) { console.warn('[quest] No "Soma Coords" column found'); return; }
-
-      // Convert column index to letter (A, B, C, ... Z, AA, AB, etc.)
-      const colLetter = (idx: number) => {
-        let s = '';
-        let n = idx;
-        while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
-        return s;
-      };
-
-      // The data row is: headerIdx + 1 + itemIdx (0-based data rows)
-      // In the sheet, row numbers are 1-based
-      const sheetRow = headerIdx + 1 + itemIdx + 1; // +1 for header, +1 for 1-based
-      const cellRef = `${colLetter(somaColIdx)}${sheetRow}`;
-
-      // Try writing via Google Sheets API v4 (requires the sheet to be editable)
-      const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${cellRef}?valueInputOption=USER_ENTERED`;
-      const writeRes = await fetch(apiUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          range: cellRef,
-          majorDimension: 'ROWS',
-          values: [[coords]],
-        }),
-      });
-
-      if (writeRes.ok) {
-        console.info(`[quest] ✓ Soma coords written to sheet cell ${cellRef}`);
-      } else {
-        const errText = await writeRes.text().catch(() => '');
-        console.warn(`[quest] Sheet write failed (${writeRes.status}): ${errText}`);
-        console.info('[quest] Soma coords saved locally. To enable Google Sheets write-back, share the sheet with "anyone with the link can edit" and add a Google API key.');
-      }
-    } catch (e) {
-      console.warn('[quest] Sheet write-back error:', e);
-    }
+    return syncCellToSheet('coordinates', segId, coords, items.value.find(item => item.segId === segId)?.dataset);
   }
 
   // ── Computed-like helpers ───────────────────────────────────────────────

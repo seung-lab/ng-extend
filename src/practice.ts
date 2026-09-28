@@ -20,6 +20,8 @@ import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from './widgets/widget_utils';
 import { supabase } from './supabase';
 import { practiceBase, practiceToken } from './util/practice_destination';
+import { practiceOperationsAfter, remainingPracticeOperations } from './util/practice_history';
+export { parsePcgStamp } from './util/practice_history';
 import { useLayersStore, useProofreadingBackendStore } from './store';
 
 export type PracticeKind = 'merge_then_cut' | 'cut';
@@ -126,37 +128,14 @@ export async function ensureSupervoxels(ex: PracticeExample): Promise<PracticeEx
 /** PyChunkedGraph timestamps arrive as epoch seconds, epoch milliseconds
  *  or "YYYY-MM-DD HH:MM:SS.ffffff" strings depending on the version; read
  *  them all. NaN means unparseable. */
-export function parsePcgStamp(v: unknown): number {
-  if (typeof v === 'number') return v < 1e11 ? v * 1000 : v;
-  if (typeof v === 'string') {
-    if (/^\d+(\.\d+)?$/.test(v)) return parsePcgStamp(Number(v));
-    let t = Date.parse(v);
-    if (Number.isNaN(t)) t = Date.parse(v.replace(' ', 'T') + (/[zZ]$|[+-]\d\d:?\d\d$/.test(v) ? '' : 'Z'));
-    return t;
-  }
-  return NaN;
-}
-
 interface LogOp { operationId: number; at: number }
 
 /** Operations in a root's lineage made after `sinceIso`, newest first. */
 async function opsSince(ex: PracticeExample, rootId: string, sinceIso: string): Promise<LogOp[]> {
-  const res = await fetch(`${pcgBase(ex)}/root/${rootId}/tabular_change_log`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
+  const res = await fetch(`${pcgBase(ex)}/root/${rootId}/tabular_change_log?filtered=false`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`tabular_change_log ${res.status}`);
   const data = await res.json();
-  const ids: any[] = data.operation_id ?? [];
-  const stamps: any[] = data.timestamp ?? [];
-  const since = new Date(sinceIso).getTime();
-  const out: LogOp[] = [];
-  let unparsed = 0;
-  for (let i = 0; i < ids.length; i++) {
-    const at = parsePcgStamp(stamps[i]);
-    if (!Number.isFinite(at)) { unparsed++; continue; }
-    if (at > since) out.push({ operationId: Number(ids[i]), at });
-  }
-  if (unparsed) console.warn(`[practice] ${unparsed} log entries with unreadable timestamps on root ${rootId}, sample:`, stamps[0]);
-  console.info(`[practice] root ${rootId}: ${ids.length} operations in its history, ${out.length} after ${sinceIso}, newest stamp`, stamps[ids.length - 1]);
-  return out.sort((a, b) => b.at - a.at);
+  return practiceOperationsAfter(data, rootId, sinceIso);
 }
 
 async function undoOp(ex: PracticeExample, operationId: number): Promise<void> {
@@ -211,19 +190,27 @@ export async function undoSinceBaseline(ex: PracticeExample): Promise<{ a: strin
   for (const r of roots) for (const op of await opsSince(ex, r, ex.baseline_at)) {
     if (!seen.has(op.operationId)) { seen.add(op.operationId); ops.push(op); }
   }
-  ops.sort((x, y) => y.at - x.at);
-  for (const op of ops) await undoOp(ex, op.operationId);
+  if (ops.length > 10000) throw Error('Unexpectedly large practice history; ask an admin to review this example.');
+  const details: Record<string, any> = {};
+  for (let i = 0; i < ops.length; i += 100) {
+    const ids = ops.slice(i, i + 100).map(op => op.operationId);
+    const res = await fetch(`${pcgBase(ex)}/operation_details?int64_as_str=1&operation_ids=${encodeURIComponent(JSON.stringify(ids))}`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw Error(`operation_details ${res.status}`);
+    Object.assign(details, await res.json());
+  }
+  const activeOps = remainingPracticeOperations(ops, details);
+  for (const op of activeOps) await undoOp(ex, op.operationId);
   const a = await rootOfSupervoxel(ex, ex.supervoxel_a);
   const b = await rootOfSupervoxel(ex, ex.supervoxel_b);
   if (!a || !b) throw new Error(`could not look up the roots of supervoxels ${ex.supervoxel_a} and ${ex.supervoxel_b} on ${ex.pcg_server} ${ex.pcg_table} (see the console for the server's answer)`);
   // A cut example starts fused; a merge example starts separate.
   const wantFused = ex.kind === 'cut';
   if ((a === b) !== wantFused) {
-    const detail = `${ops.length} operation(s) after the baseline ${ex.baseline_at} were undone; see the console for the operation log`;
+    const detail = `${activeOps.length} operation(s) after the baseline ${ex.baseline_at} were undone`;
     throw new Error(wantFused ? `after undo the pieces are still apart (${a}, ${b}); ${detail}`
                               : `after undo both pieces are still on root ${a}; ${detail}`);
   }
-  return { a, b, undone: ops.length };
+  return { a, b, undone: activeOps.length };
 }
 
 // ─── Viewer colours and tools ───────────────────────────────────────────────

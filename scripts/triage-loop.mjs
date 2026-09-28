@@ -22,6 +22,7 @@
  */
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { SHA, UUID } from './triage-policy.mjs';
 
 const env = process.env;
 // Inside the checkout (Claude Code works within its working directory), and
@@ -40,13 +41,14 @@ const PROPOSE_SINCE = env.TRIAGE_PROPOSE_SINCE || '2026-09-25T00:00:00Z';
 const sb = (path, init = {}) => fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
   ...init,
   headers: {
-    apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    apikey: env.SUPABASE_SERVICE_ROLE_KEY, ...(env.SUPABASE_SERVICE_ROLE_KEY?.startsWith('sb_') ? {} : { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` }),
     'Content-Type': 'application/json', Prefer: 'return=representation',
     ...(init.headers || {}),
   },
 });
 
 async function getRow(id) {
+  if (!UUID.test(id || '')) throw new Error('Invalid triage UUID');
   const r = await sb(`feedback_triage?id=eq.${id}&select=*`);
   const row = (await r.json())[0];
   if (!row) throw new Error(`no feedback_triage row ${id}`);
@@ -63,7 +65,7 @@ async function say(row, text) {
   const res = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ channel: row.slack_channel || CHANNEL, thread_ts: row.slack_ts, text }),
+    body: JSON.stringify({ channel: CHANNEL, thread_ts: row.slack_ts, text }),
   });
   const json = await res.json();
   if (!json.ok) throw new Error(`chat.postMessage: ${json.error}`);
@@ -96,7 +98,7 @@ function buildPrompt(row, branch) {
   const iterating = row.impl_attempts > 0 || log.some(e => e.role === 'answer' || e.role === 'note');
   return `You are implementing an approved change to the EyeWire II community app
 (ng-extend, a Vue 3 + Pinia extension of neuroglancer). This checkout is
-branch ${branch}${row.impl_attempts > 0 ? ', which already holds your earlier attempt' : ', cut from eyewire-ii-community'}.
+the latest eyewire-ii-community commit. The workflow will publish your changes on ${branch}.
 
 A human approved the spec below. Implement it, and nothing beyond it.
 
@@ -131,9 +133,8 @@ ${log.map(e => `- [${e.role}] ${e.text}`).join('\n') || '(none recorded)'}
 - Smallest change that does the job. Match the surrounding code's style and
   comment density. No unrelated refactors or formatting churn.
 - User-facing copy: no em or en dashes; commas and periods instead.
-- Confirm the app still builds: run \`node scripts/build-prod.js\`. It must
-  succeed. (\`npm run typecheck\` has six pre-existing tsconfig errors about
-  removed options; ignore those, but add no new errors.)
+- The workflow builds and runs checks in a separate job after your changes. You have file tools only.
+- Automatic edits are limited to ordinary src/, static/ and docs/ files. Changes to credentials, authentication, dependencies, scripts, workflows or server policy require a reviewed pull request: mark those BLOCKED.
 - Do not commit, push, or touch .github/. The workflow commits your diff.
 - If you need a human decision to do this right (which behaviour they want,
   which of two readings of the spec), change nothing and start the summary
@@ -191,6 +192,7 @@ and suggest they reply with what to change.
 
 async function prepare() {
   const row = await getRow(env.ROW_ID);
+  if (row.status !== 'approved' || !['bug_fix_spec','new_feature'].includes(row.recommendation)) throw new Error('Only approved buildable proposals may run');
   const branch = branchFor(row.id);
   writeFileSync(PROMPT_FILE, MODE === 'answer' ? answerPrompt(row) : buildPrompt(row, branch));
   await patchRow(row.id, { impl_branch: branch, impl_run_url: env.RUN_URL || null });
@@ -204,10 +206,11 @@ async function prepare() {
 
 async function ready() {
   const row = await getRow(env.ROW_ID);
+  if (!SHA.test(env.COMMIT_SHA || '') || !SHA.test(env.BASE_SHA || '')) throw new Error('Missing verified preview commit');
   const url = previewFor(row.id);
   let ok = false;
   for (let i = 0; i < 20 && !ok; i++) {
-    try { ok = (await fetch(url)).status === 200; } catch {}
+    try { const r=await fetch(url+'build-commit.txt?run='+encodeURIComponent(env.RUN_URL||'')); ok=r.ok&&(await r.text()).trim()===env.COMMIT_SHA; } catch {}
     if (!ok) await new Promise(r => setTimeout(r, 15000));
   }
   if (!ok) throw new Error(`preview ${url} never returned 200`);
@@ -229,11 +232,14 @@ async function ready() {
     lateNotes.length
       ? `📝 Notes added while Claude was building are NOT in this preview:\n${lateNotes.map(n => `> ${n.text.slice(0, 200)}`).join('\n')}\nReply *rebuild* to include them, or test it as is.`
       : null,
-    `Reply *good* to deploy it live, *ship to test* to try it on the live site first, a question ending in *?*, *note: ...* to add information without rebuilding, or what's wrong and I'll fix it. I'll tag you every 10 minutes until you do.`,
+    `Build: \`${env.COMMIT_SHA}\``,
+    `After testing, reply exactly *good ${env.COMMIT_SHA.slice(0,12)}* to deploy, or *ship to test ${env.COMMIT_SHA.slice(0,12)}* for a live test. A question ending in *?* asks for help; *note: ...* saves context; describe a problem to request changes.`,
   ].filter(Boolean).join('\n'));
   await patchRow(row.id, {
     impl_state: 'testing', preview_url: url, impl_summary: summaryFirstLine() || null,
     impl_attempts: attempt, last_nag_at: new Date().toISOString(), nag_count: 0,
+    tested_by: null, tested_at: null,
+    feedback_log: [...logOf(row), {role:'preview',sha:env.COMMIT_SHA,base_sha:env.BASE_SHA,ts}],
     ...(ts ? { last_reply_ts: ts } : {}),
   });
   console.log(`[loop] ${row.id} ready at ${url}`);
@@ -310,7 +316,8 @@ async function live() {
 async function reverted() {
   const row = await getRow(env.ROW_ID);
   const log = logOf(row);
-  const back = Boolean(log.length && log[log.length - 1].fix_after_revert);
+  const preview = [...log].reverse().find(e => e.role === 'preview');
+  const back = log.some(e => e.fix_after_revert && Number(e.ts) > Number(preview?.ts || 0));
   const ts = await say(row, back
     ? `↩️ Reverted: the live site is back to how it was. Claude is working on your note now; a new preview will follow here.`
     : `↩️ Reverted: the live site is back to how it was. ${tag(testerOf(row))} reply here with what to change and Claude will try again, or dismiss it in the Admin Hub.`);
@@ -324,7 +331,7 @@ async function pending() {
   ]);
   if (!issuesRes.ok || !triageRes.ok) throw new Error(`pending query failed: ${issuesRes.status}/${triageRes.status}`);
   const seen = new Set((await triageRes.json()).map(r => r.source_id));
-  const todo = (await issuesRes.json()).filter(i => !seen.has(i.id));
+  const todo = (await issuesRes.json()).filter(i => !seen.has(i.id)).slice(0,20);
   writeFileSync(PENDING_FILE, JSON.stringify(todo, null, 2));
   writeFileSync(PROMPT_FILE, `You are the triage agent for the EyeWire II community app (ng-extend, a
 Vue 3 + Pinia extension of neuroglancer). ${PENDING_FILE} lists new user
@@ -366,16 +373,23 @@ array with one object per report:
 
 async function insertProposals() {
   if (!existsSync(PROPOSALS_FILE)) throw new Error(`${PROPOSALS_FILE} was not written`);
-  const list = JSON.parse(readFileSync(PROPOSALS_FILE, 'utf8'));
-  const valid = new Set(JSON.parse(readFileSync(PENDING_FILE, 'utf8')).map(i => i.id));
+  const raw = readFileSync(PROPOSALS_FILE, 'utf8');
+  if (raw.length > 1000000) throw new Error('Proposal artifact too large');
+  const list = JSON.parse(raw);
+  if (!Array.isArray(list) || list.length > 20) throw new Error('Invalid proposal count');
+  const sourceIds = [...new Set(list.map(p => p.source_id).filter(id => UUID.test(id || '')))];
+  if (!sourceIds.length) return;
+  const reports = await sb('site_issues?id=in.('+sourceIds.join(',')+')&select=id');
+  if (!reports.ok) throw new Error('Cannot verify proposal source reports');
+  const valid = new Set((await reports.json()).map(i => i.id));
   const REC = ['nothing', 'message', 'bug_fix_spec', 'new_feature'];
   const rows = list.filter(p => valid.has(p.source_id) && REC.includes(p.recommendation)).map(p => ({
     source: 'site_issue', source_id: p.source_id,
     source_excerpt: String(p.source_excerpt || '').slice(0, 500),
     recommendation: p.recommendation,
-    rationale: p.rationale || null,
-    proposed_message: p.recommendation === 'message' ? (p.proposed_message || null) : null,
-    spec: ['bug_fix_spec', 'new_feature'].includes(p.recommendation) ? (p.spec || null) : null,
+    rationale: String(p.rationale || '').slice(0,6000) || null,
+    proposed_message: p.recommendation === 'message' ? String(p.proposed_message || '').slice(0,4000) || null : null,
+    spec: ['bug_fix_spec', 'new_feature'].includes(p.recommendation) ? String(p.spec || '').slice(0,12000) || null : null,
   }));
   if (!rows.length) { console.log('[loop] no valid proposals'); return; }
   // UNIQUE (source, source_id): if anything else proposed it first, keep theirs.
