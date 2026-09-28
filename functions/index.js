@@ -28,6 +28,33 @@ console.log(`[bot] Loaded ${BOT_DOCS.length} reference docs:`, BOT_DOCS.map(d =>
 const anthropicKey = defineSecret("ANTHROPIC_API_KEY");
 const slackBotToken = defineSecret("SLACK_BOT_TOKEN");
 const slackSigningSecret = defineSecret("SLACK_SIGNING_SECRET");
+// Fine-grained GitHub token: Actions read/write on seung-lab/ng-extend only.
+// Lets events start the triage workflows instead of them polling.
+const githubDispatchToken = defineSecret("GITHUB_DISPATCH_TOKEN");
+
+/**
+ * Start a triage workflow now, because something just happened (a report was
+ * filed, an approval came in). At most one start per workflow per 20 seconds:
+ * a burst of events shares one run. Never throws; the workflows' own slow
+ * timer is the backstop if this fails.
+ */
+async function wakeWorkflow(file, why) {
+  try {
+    const slot = Math.floor(Date.now() / 20000);
+    try { await db.collection("workflow_wakes").doc(`${file}:${slot}`).create({ at: admin.firestore.FieldValue.serverTimestamp(), why }); }
+    catch (e) { return "debounced"; }
+    const r = await fetch(`https://api.github.com/repos/seung-lab/ng-extend/actions/workflows/${file}/dispatches`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${githubDispatchToken.value().trim()}`, Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "eyewire-ii-functions", "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: "main" }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) { console.warn(`[wake] ${file} (${why}) failed: ${r.status}`); return "failed"; }
+    console.log(`[wake] started ${file} (${why})`);
+    return "started";
+  } catch (e) { console.warn(`[wake] ${file} (${why}) error: ${e.message}`); return "failed"; }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Slack bot — Amy's Claude. Responds to @mentions in allowed channels only.
@@ -558,7 +585,7 @@ async function handleMention(event, botToken, anthropicApiKey) {
 }
 
 exports.slackBot = onRequest(
-  { secrets: [anthropicKey, slackBotToken, slackSigningSecret], invoker: "public", cors: false },
+  { secrets: [anthropicKey, slackBotToken, slackSigningSecret, githubDispatchToken], invoker: "public", cors: false },
   async (req, res) => {
     // Slack URL verification challenge (sent once when you configure Event Subscriptions)
     if (req.body && req.body.type === "url_verification") {
@@ -604,6 +631,9 @@ exports.slackBot = onRequest(
         event.thread_ts && event.thread_ts !== event.ts &&
         !event.bot_id && !event.subtype) {
       res.status(200).send("ok");
+      // A reply in a triage thread (approve, dismiss, good, a note): the
+      // bridge reads and answers it now instead of on its next timer.
+      if (event.channel === "C0BG5CN71C3") await wakeWorkflow("slack-triage-bridge.yml", "slack reply");
       try { await handleReviewComment(event, slackBotToken.value()); }
       catch (err) { console.error("handleReviewComment error:", err); }
       return;
@@ -1609,7 +1639,7 @@ const EW_SELF_TITLES = ["📊 Your Week in Science", "💙 Thank you, for scienc
 const ewErr = (status, msg) => Object.assign(new Error(msg), { status });
 
 exports.ewSecureWrite = onRequest(
-  { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
+  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({error:"Input too large"});
@@ -1672,6 +1702,9 @@ exports.ewSecureWrite = onRequest(
           needAdmin();
           if (!/^[0-9a-f-]{36}$/i.test(String(args.id))) throw ewErr(400, "bad id");
           out = (await sb(`feedback_triage?id=eq.${args.id}`, { method: "PATCH", body: JSON.stringify(ewPick(args.fields, EW_TRIAGE_FIELDS)) }))[0];
+          // An Admin Hub decision: the bridge mirrors it to Slack and starts
+          // any build now instead of on its next timer.
+          await wakeWorkflow("slack-triage-bridge.yml", "admin hub");
           break;
         }
         // ── any signed in user, fixed shapes only ──
@@ -1725,7 +1758,7 @@ exports.ewSecureWrite = onRequest(
 
 
 exports.ewCommunityData = onRequest(
-  { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
+  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
     res.set("Cache-Control", "no-store");
     if (req.method !== "POST") return res.status(405).json({message:"POST only"});
@@ -1776,6 +1809,8 @@ exports.ewCommunityData = onRequest(
         let code; try { code = JSON.parse(body).code; } catch {}
         body = JSON.stringify({code, message:upstream.status===406 ? "Requested row was not found or was not unique." : "The requested operation could not be completed."});
       }
+      // A new report exists now: have Claude write its suggestion straight away.
+      if (upstream.ok && plan.table === "site_issues" && plan.method === "POST") await wakeWorkflow("triage-propose.yml", "new report");
       const responseHeaders = {"Content-Type":"application/json"};
       for (const name of ["content-range","range-unit"]) if (upstream.headers.has(name)) responseHeaders[name]=upstream.headers.get(name);
       return res.json({status:upstream.status,headers:responseHeaders,body});

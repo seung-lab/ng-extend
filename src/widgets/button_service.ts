@@ -247,7 +247,7 @@ export class ButtonService {
     header.appendChild(segIdLabel);
     menu.appendChild(header);
 
-    const cachedStatus: CellStatus|null = (parent as any)._cellStatus ?? null;
+    let cachedStatus: CellStatus|null = (parent as any)._cellStatus ?? null;
 
     // ── Section 1: Completion Status ──────────────────────────────────────
     const completionSection = document.createElement('div');
@@ -264,6 +264,28 @@ export class ButtonService {
         (cachedStatus.isComplete ? '✓ Proofread' : '○ In Progress') :
         '… Loading';
     completionSection.appendChild(statusLine);
+    // The menu used to show only a status fetched earlier for the pip, so if
+    // that fetch had not finished (or found nothing) it said Loading forever.
+    // Fetch it here too and fill in whatever the menu shows.
+    if (!cachedStatus) {
+      if (!localServerURL) {
+        statusLine.textContent = 'Status not available for this dataset';
+      } else {
+        getCellStatus(localServerURL, segmentIDString).then(st => {
+          if (!statusLine.isConnected) return;
+          cachedStatus = st;
+          if (st) {
+            (parent as any)._cellStatus = st;
+            this._applyStatus(parent as HTMLButtonElement, st);
+          }
+          statusLine.textContent = st?.isComplete ? '✓ Proofread' : '○ In Progress';
+          if (!toggleBtn.disabled) toggleBtn.textContent = st?.isComplete ? 'Unmark Proofread' : 'Mark as Proofread';
+          if (st?.cellType && !select.value) select.value = st.cellType;
+        }).catch(() => {
+          if (statusLine.isConnected) statusLine.textContent = 'Could not load status. Reopen to retry.';
+        });
+      }
+    }
 
     const toggleBtn = document.createElement('button');
     toggleBtn.classList.add('nge-lb-section-button', 'nge-lb-toggle-btn');

@@ -59,7 +59,10 @@ function play() {
   const tick = () => {
     const age = Date.now() - t.t0;
     const ready = !datasetTransition.resumed || viewerReady();
-    if ((age >= MIN_MS && ready) || age >= MAX_MS) { zip(); return; }
+    // Signed out: the viewer cannot finish until they log in, so waiting for
+    // it would park this card over the sign in box. Get out of the way.
+    const loginShowing = !!document.querySelector('.nge-login-blocker');
+    if ((age >= MIN_MS && ready) || age >= MAX_MS || (loginShowing && age >= 600)) { zip(); return; }
     timers.push(window.setTimeout(tick, 150));
   };
   tick();
@@ -207,7 +210,8 @@ onBeforeUnmount(clearTimers);
 
 <style scoped>
 .nge-dst {
-  position: fixed; inset: 0; z-index: 10050;
+  /* Below the sign in box (.nge-login-blocker, 10000): never cover login. */
+  position: fixed; inset: 0; z-index: 9990;
   display: grid; place-items: center;
   pointer-events: none;
   animation: nge-dst-fade 0.3s ease both;
