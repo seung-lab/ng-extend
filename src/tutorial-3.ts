@@ -189,7 +189,7 @@ function offerPlacePoints() {
  *  polling the graph until `wantMerged` matches, or the step changes.
  *  Success gets confetti once, and the black box note (Amy): a fresh mesh
  *  can render as a black box until the page is refreshed. */
-export function watchPractice(wantMerged: boolean, waiting: string, finished: string) {
+export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
   const token = ++practiceWatch;
   helpWanted = true;
   let celebrated = false;
@@ -204,6 +204,12 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     if (token !== practiceWatch) return;
     if (merged === wantMerged) {
       hidePyrMarkers();
+      if (opts.advance) {
+        // The next step is the success box; it celebrates.
+        practiceWatch++;
+        document.dispatchEvent(new CustomEvent('nge:tutorial-next'));
+        return;
+      }
       practiceStatus(finished + ' If a black box appears where the pieces meet, the new mesh is still being built: click the Pyr logo top left to refresh, your place here is saved.', true);
       if (!celebrated) { celebrated = true; document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); }
       return;
@@ -222,6 +228,15 @@ function toolIsOn(): boolean {
   try { if (viewer?.globalToolBinder?.activeTool_ || viewer?.toolBinder?.activeTool_) return true; } catch { /* DOM check */ }
   return !!document.querySelector('.neuroglancer-tool-status');
 }
+
+/** The success box after a practice edit: confetti, the black box note. */
+export function celebrateStep() {
+  stopWatching();
+  helpWanted = false;
+  document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
+}
+
+export const BLACK_BOX_NOTE = 'If a black box appears where the pieces meet, the new mesh is still being built: click the Pyr logo top left to refresh. Your place in the tutorial is saved.';
 
 /** A step that only asks for the tool to be switched on: the status line
  *  flips when it is. No help button on such a step (Amy). */
@@ -454,7 +469,7 @@ The server connects the two. You'll see "trying..." and then "done", and the bra
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merge success! You did it. The branch is part of the cell now.');
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       await beginPractice('merge_then_cut');
       // The previous step said "press M"; if they pressed next instead,
       // the tool comes on anyway.
@@ -462,7 +477,22 @@ The server connects the two. You'll see "trying..." and then "done", and the bra
     },
   },
 
-  // 5: Another merge, on a second cell
+  // 5: Merge success
+  {
+    title: "Merge success!",
+    text: `
+You did it. The branch is part of the cell now, and the whole thing is purple.
+
+` + BLACK_BOX_NOTE + `
+
+Ready for one more?`,
+    position: OVER_3D,
+    width: "420px",
+    image: imgBravoNurro,
+    onEnter: celebrateStep,
+  },
+
+  // 6: Another merge, on a second cell
   {
     title: "Let's try another merge",
     text: `
@@ -478,7 +508,7 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
     width: "420px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merge success! You did it again. The piece is part of the axon now.');
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       // A second merge cell, held alongside the first; both go back at the
       // end. With one registered, the same cell is shown again (already merged).
       await beginPractice('merge_then_cut', 'start', { slot: 'b' });
@@ -486,23 +516,23 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
     },
   },
 
-  // 6: Merge tips
+  // 7: Success again, with the tips
   {
-    title: "Merge Tips",
+    title: "Merge success, again!",
     text: `
+Two for two. The piece is part of the axon now.
+
+A few things worth knowing:
+
 - Not sure two pieces belong together? The **2D panel** on the left shows the raw electron microscope slices. Scroll through them at the join for context the 3D can't give you.
 - If a merge fails, try clicking at a slightly different spot on each piece.
-- Merged the wrong piece? There is no undo key. Fix it with a <strong style="color:#e06060">cut</strong> between the two pieces, which the Cut tutorial teaches.
-
-Merged already? Press next.`,
+- Merged the wrong piece? There is no undo key. Fix it with a <strong style="color:#e06060">cut</strong> between the two pieces, which the Cut tutorial teaches.`,
     position: OVER_2D,
-    width: "400px",
-    onEnter: () => {
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merge success! You did it. The piece is part of the axon now.');
-    },
+    width: "420px",
+    onEnter: celebrateStep,
   },
 
-  // 7: Done, and on to cuts
+  // 8: Done, and on to cuts
   {
     title: "Merge: done!",
     text: `

@@ -124,6 +124,9 @@ function cancelTool() {
 
         <!-- MULTICUT / SPLIT MODE -->
         <template v-else-if="isMulticut">
+          <div class="nge-smo-loading-indicator nge-smo-loading-indicator--left" v-if="isSubmitting">
+            <span class="nge-smo-spinner"></span>
+          </div>
           <div class="nge-smo-mode-badge split-badge">
             CUT MODE
           </div>
@@ -152,15 +155,16 @@ function cancelTool() {
             <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': cutReady }" @click="submitTool('multicut')" title="Submit the cut (or press Enter)">Submit cut</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd>Esc</kbd> Cancel</button>
           </div>
-          <div class="nge-smo-loading-indicator" v-if="isSubmitting">
-            <span class="nge-smo-spinner"></span>
-          </div>
         </template>
 
         <!-- MERGE MODE -->
         <template v-else-if="isMerge">
           <div class="nge-smo-mode-badge merge-badge">
             MERGE MODE
+          </div>
+          <!-- Progress sits by the badge, where the eye already is (Amy). -->
+          <div class="nge-smo-loading-indicator nge-smo-loading-indicator--left" v-if="isSubmitting">
+            <span class="nge-smo-spinner"></span>
           </div>
 
           <div class="nge-smo-hint merge-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>
@@ -173,9 +177,6 @@ function cancelTool() {
             <span class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
             <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': mergeReady }" @click="submitTool('merge')" title="Submit the merge (or press Enter)">Submit merge</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit merge mode"><kbd>Esc</kbd> Cancel</button>
-          </div>
-          <div class="nge-smo-loading-indicator" v-if="isSubmitting">
-            <span class="nge-smo-spinner"></span>
           </div>
         </template>
 
@@ -872,4 +873,6 @@ function cancelTool() {
     filter: brightness(2) saturate(0);
   }
 }
+/* Progress by the mode badge instead of the far right. */
+.nge-smo-loading-indicator--left { margin: 0 0 0 10px; order: 0; }
 </style>

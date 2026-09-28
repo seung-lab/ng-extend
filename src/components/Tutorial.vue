@@ -137,6 +137,9 @@ const PRACTICE_TUTORIALS = [3, 5];
 watch(() => store.activeTutorial, (now, before) => {
   if (PRACTICE_TUTORIALS.includes(before) && !PRACTICE_TUTORIALS.includes(now)) endPractice();
 });
+// A practice step advances by itself when the edit lands (Amy: straight
+// to the success box).
+document.addEventListener('nge:tutorial-next', () => { if (activeStep.value) next(); });
 const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() - 1)); };
 const exitIntro = () => {
     console.log('exiting intro!');
