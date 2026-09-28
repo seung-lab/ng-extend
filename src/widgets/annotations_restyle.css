@@ -153,6 +153,53 @@ textarea.neuroglancer-annotation-details-description:focus {
   outline: 1px solid rgba(74, 158, 255, 0.4);
 }
 
+/* Active layer tool as a pill in the top bar ("Ctrl+click adds a point to
+   True End  ×"), matching the Share / Data pills. */
+.neuroglancer-annotation-tool-status-widget.nge-tool-pill {
+  gap: 7px;
+  height: 26px;
+  padding: 0 4px 0 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 200, 80, 0.45);
+  background: rgba(40, 32, 10, 0.72);
+  box-shadow: 0 0 10px rgba(245, 190, 60, 0.15);
+  cursor: default;
+}
+.neuroglancer-annotation-tool-status-widget.nge-tool-pill:hover {
+  outline: none;
+  border-color: rgba(245, 200, 80, 0.8);
+}
+.nge-tool-pill .neuroglancer-annotation-tool-status-widget-layer-number {
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  border-radius: 999px;
+  text-align: center;
+  font: 600 11px/18px 'Inter', 'Roboto', sans-serif;
+  color: #1a1204;
+  background: #f5c450;
+}
+.nge-tool-pill .neuroglancer-annotation-tool-status-widget-description {
+  color: #ffe6a8 !important;
+  font: 500 12px 'Inter', 'Roboto', sans-serif;
+}
+.nge-tool-pill-off {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 230, 168, 0.7);
+  font-size: 14px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.nge-tool-pill-off:hover {
+  background: rgba(245, 196, 80, 0.25);
+  color: #fff;
+}
+
 /* ── Annotation property labels ── */
 .neuroglancer-annotation-property-label {
   color: rgba(140, 160, 190, 0.65) !important;

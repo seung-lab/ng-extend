@@ -4951,6 +4951,22 @@ function formatTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
+/**
+ * Is this @mention token aimed at the given user? The unique, space-free
+ * username is the reliable match; the display name ("Amy S.") is a fuzzy
+ * fallback for people who haven't set a username yet.
+ */
+export function isSelfMentionToken(token: string, username?: string | null, displayName?: string | null): boolean {
+  const norm = (s: string) => s.replace(/[.\s]+$/, '').trim().toLowerCase();
+  const target = norm(token.replace(/^@/, ''));
+  if (!target) return false;
+  const handle = (username || '').trim();
+  if (handle) return target === norm(handle);
+  const me = (displayName || '').trim();
+  if (!me) return false;
+  return target === norm(me) || target === norm(me.split(' ')[0]);
+}
+
 export const useChatStore = defineStore('chat', () => {
   const chatMessages = ref<ChatMessage[]>([]);
   const connected = ref(false);
@@ -4958,6 +4974,14 @@ export const useChatStore = defineStore('chat', () => {
   /** Numeric unread counter for the green pip on the chat toolbar
    *  icon. Cleared on markRead(); muting prevents increments. */
   const unreadCount = ref(0);
+  /** True while the chat panel is open and expanded (ChatPanel sets it).
+   *  Messages you can already see don't add to the toolbar counter (Ames,
+   *  2026-09-28: "if I have chat open, I don't need a message counter"). */
+  const panelVisible = ref(false);
+  /** Bumped each time someone @mentions you, so the toolbar chat button and
+   *  the chat panel can flash to draw your eye. */
+  const mentionPing = ref(0);
+  const lastMentionFrom = ref('');
 
   let channel: ReturnType<typeof supabase.channel> | null = null;
   let connecting = false;
@@ -5098,7 +5122,14 @@ export const useChatStore = defineStore('chat', () => {
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
         parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null});
-      if (row.user_id !== backend.userId && !useUserPreferencesStore().prefs.chatMuted) { unreadMessages.value=true; unreadCount.value++; }
+      if (row.user_id !== backend.userId) {
+        // A direct @mention always gets through, even with chat muted.
+        if (mentionsMe(row.text || '')) { mentionPing.value++; lastMentionFrom.value = row.name || ''; }
+        if (!useUserPreferencesStore().prefs.chatMuted) {
+          unreadMessages.value = true;
+          if (!panelVisible.value) unreadCount.value++;
+        }
+      }
     }).on('postgres_changes', {event:'DELETE', schema:'public', table:'chat_messages'}, payload => {
       // A deleted message disappears for everyone watching.
       const id = (payload.old as any)?.id;
@@ -5164,6 +5195,17 @@ export const useChatStore = defineStore('chat', () => {
     unreadCount.value = 0;
   }
 
+  function setPanelVisible(v: boolean) {
+    panelVisible.value = v;
+    if (v) unreadCount.value = 0;
+  }
+
+  /** Does this message text @mention the current user? */
+  function mentionsMe(text: string): boolean {
+    const b = useProofreadingBackendStore();
+    return parseMessageParts('', text).some(p => p.type === 'mention' && isSelfMentionToken(p.text, b.username, b.userName));
+  }
+
   function disconnect() {
     if (channel) {
       leavePresence();
@@ -5178,5 +5220,6 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online };
+  return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online,
+    panelVisible, setPanelVisible, mentionPing, lastMentionFrom };
 });

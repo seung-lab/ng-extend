@@ -104,6 +104,27 @@ export class AnnotationToolStatusWidget extends RefCounted {
       const index = managedLayer.nonArchivedLayerIndex;
       layerNumberElement.textContent = (index + 1).toString();
       element.appendChild(layerNumberElement);
+      // EyeWire II (Ames 2026-09-28): the bare "4 annotate point" read as
+      // noise. Say which layer the tool writes to and how to use it, and give
+      // it a visible way to turn off (the old way was a hidden double click).
+      if (tool instanceof LegacyTool) {
+        element.classList.add('nge-tool-pill');
+        const verb = tool.description.replace(/^annotate\s+/i, '');
+        descriptionElement.textContent = `Ctrl+click adds a ${verb} to ${managedLayer.name}`;
+        element.title = `The ${managedLayer.name} layer has its ${tool.description} tool on, so Ctrl+click places a ${verb} there. Press × to turn it off.`;
+        element.appendChild(descriptionElement);
+        const off = document.createElement('button');
+        off.className = 'nge-tool-pill-off';
+        off.type = 'button';
+        off.textContent = '×';
+        off.title = 'Turn this tool off';
+        off.addEventListener('click', (e) => {
+          e.stopPropagation();
+          tool.layer.tool.value = undefined;
+        });
+        element.appendChild(off);
+        return element;
+      }
     }
     element.appendChild(descriptionElement);
     return element;

@@ -7,7 +7,7 @@
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useChatStore, useProofreadingBackendStore, ChatMessage } from '../store';
+import { useChatStore, useProofreadingBackendStore, ChatMessage, isSelfMentionToken } from '../store';
 import { canonicalDataset, datasetDisplayName, switchToDataset, segLayerName, DATASETS } from '../datasets';
 
 const emit = defineEmits({ hide: null });
@@ -152,7 +152,25 @@ watch(isLoggedIn, (loggedIn) => {
   }
 });
 
+// The toolbar counter only counts messages you can't see: open and expanded
+// means you're reading along, so no counter.
+watch(collapsed, (c) => chatStore.setPanelVisible(!c), { immediate: true });
+
+// Someone @mentioned you: flash the panel so it catches your eye mid-trace.
+const mentionFlash = ref(false);
+let mentionTimer: ReturnType<typeof setTimeout> | null = null;
+watch(() => chatStore.mentionPing, () => {
+  mentionFlash.value = false;
+  nextTick(() => {
+    mentionFlash.value = true;
+    if (mentionTimer) clearTimeout(mentionTimer);
+    mentionTimer = setTimeout(() => { mentionFlash.value = false; }, 3200);
+  });
+});
+
 onUnmounted(() => {
+  chatStore.setPanelVisible(false);
+  if (mentionTimer) clearTimeout(mentionTimer);
   document.removeEventListener('mousemove', onResize);
   document.removeEventListener('mouseup', stopResize);
   document.removeEventListener('mousemove', onDrag);
@@ -215,18 +233,7 @@ function send() {
  * display name and its first word, case-insensitively, ignoring trailing dots.
  */
 function isSelfMention(token: string): boolean {
-  const norm = (s: string) => s.replace(/[.\s]+$/, '').trim().toLowerCase();
-  const target = norm(token.slice(1));
-  if (!target) return false;
-  // Username is the reliable match: unique and space-free, so "@celia" resolves
-  // to exactly one person.
-  const handle = (backendStore.username || '').trim();
-  if (handle) return target === norm(handle);
-  // Fallback for users who haven't set one yet — necessarily fuzzy, which is
-  // precisely why usernames exist.
-  const me = (backendStore.userName || '').trim();
-  if (!me) return false;
-  return target === norm(me) || target === norm(me.split(' ')[0]);
+  return isSelfMentionToken(token, backendStore.username, backendStore.userName);
 }
 
 /** Open the notification an announcement message refers to. */
@@ -412,7 +419,7 @@ function toggleCollapse() {
     <div
       ref="panelEl"
       class="nge-chat-float"
-      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging }"
+      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash }"
       :style="{
         ...(collapsed ? {} : { width: panelWidth + 'px', height: panelHeight + 'px' }),
         ...positionStyle
@@ -430,6 +437,7 @@ function toggleCollapse() {
         <span v-if="connected && chatStore.onlineCount > 0" class="nge-chat-online"
               :title="Object.values(chatStore.online).map(p => p.name).join(', ')">{{ chatStore.onlineCount }} online</span>
         <span v-if="collapsed && unreadMessages" class="nge-chat-strip-unread" title="New messages"></span>
+        <span v-if="mentionFlash && chatStore.lastMentionFrom" class="nge-chat-mentioned-by">@ from {{ chatStore.lastMentionFrom }}</span>
         <span class="nge-chat-strip-spacer"></span>
         <button class="nge-chat-strip-btn nge-chat-collapse-btn" @click.stop="toggleCollapse" :title="collapsed ? 'Expand chat' : 'Collapse chat'">
           {{ collapsed ? '▲' : '▼' }}
@@ -890,6 +898,24 @@ function toggleCollapse() {
   transition: background 0.15s, color 0.15s;
 }
 .nge-chat-mention:hover { background: rgba(74, 158, 255, 0.25); color: #cfe0ff; }
+/* Flash when someone @mentions you: an amber ring pulses three times. */
+.nge-chat-float--mentioned {
+  animation: nge-chat-mention-flash 1s ease-in-out 3;
+}
+@keyframes nge-chat-mention-flash {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.25), 0 0 0 rgba(245, 166, 35, 0); }
+  50% { box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.95), 0 0 28px rgba(245, 166, 35, 0.55); }
+}
+.nge-chat-mentioned-by {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1a1204;
+  background: #f5a623;
+  white-space: nowrap;
+}
 .nge-chat-mention--me {
   color: #ffe6a8;
   background: rgba(245, 166, 35, 0.2);

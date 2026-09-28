@@ -333,6 +333,12 @@ function mobileWelcomeLogin() {
   hideMobileWelcome();
   document.dispatchEvent(new CustomEvent('nge:request-login'));
 }
+// Someone @mentioned you while chat was closed: the chat button glows amber
+// until you open chat (Ames, 2026-09-28). With chat open, ChatPanel flashes.
+const chatMentionPending = ref(false);
+watch(() => chatStore.mentionPing, () => { if (!showChat.value) chatMentionPending.value = true; });
+watch(showChat, (open) => { if (open) chatMentionPending.value = false; });
+
 function mobileOpenPanel(panel: 'cells' | 'chat' | 'profile' | 'leaderboard') {
   switch (panel) {
     case 'cells':
@@ -886,6 +892,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         class="nge-icon-btn"
         :class="{
           'nge-icon-btn--badge': icon.badge && icon.badge() > 0,
+          'nge-icon-btn--mention': icon.id === 'chat' && chatMentionPending,
           'nge-icon-btn--active': isIconActive(icon.id),
           'nge-icon-btn--dragging': dragId === icon.id,
           'nge-icon-btn--drag-over': dragOverId === icon.id && dragId !== icon.id,
@@ -1518,6 +1525,21 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   background: #4ad07a;
   color: #06170d;
   box-shadow: 0 0 8px rgba(74, 208, 122, 0.55);
+}
+
+/* You were @mentioned while chat was closed. */
+.nge-icon-btn.nge-icon-btn--mention {
+  animation: nge-chat-btn-mention 1.1s ease-in-out infinite;
+  border-radius: 8px;
+}
+.nge-icon-btn--mention .nge-toolbar-badge--chat {
+  background: #f5a623;
+  color: #1a1204;
+  box-shadow: 0 0 10px rgba(245, 166, 35, 0.8);
+}
+@keyframes nge-chat-btn-mention {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); background-color: transparent; }
+  50% { box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.9), 0 0 18px rgba(245, 166, 35, 0.6); background-color: rgba(245, 166, 35, 0.18); }
 }
 
 @keyframes nge-badge-pop {
