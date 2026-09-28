@@ -6,6 +6,10 @@ import imgMergeExample from './images/merge-example.jpg';
 import { beginPractice, colorFirstTwoVisible, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, type PracticeKind } from './practice';
 import { useLayersStore } from './store';
 import { useTutorialStore } from './store-pyr';
+import { hidePyrMarkers, showPyrMarkers } from './markers';
+import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
+import { responseJson } from 'neuroglancer/util/http_request';
+import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/util/special_protocol_request';
 
 /**
  * Tutorial 3: Merge.
@@ -18,6 +22,41 @@ import { useTutorialStore } from './store-pyr';
 // (648518346350730372 and 648518346351348401). Shown when no practice cell
 // can be claimed, so the merge steps always have something to point at.
 const STATE_MERGE_EXAMPLE = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5718864172154880';
+// Amy's saved view with point annotations at the two spots to Ctrl+click for
+// that merge (2026-09-28). Only its points are read; the tutorial draws Pyr
+// pins there instead of loading the annotation layer.
+const STATE_MERGE_HINTS = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5751472100737024';
+
+/** Point annotations in a saved state, as global voxel coordinates. */
+async function pointsInState(stateUrl: string): Promise<number[][]> {
+  try {
+    const { url, credentialsProvider } = parseSpecialUrl(stateUrl, defaultCredentialsManager);
+    const state: any = await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
+    const out: number[][] = [];
+    for (const layer of state?.layers ?? []) {
+      if (layer?.type !== 'annotation') continue;
+      for (const a of layer.annotations ?? []) {
+        if (a?.type === 'point' && Array.isArray(a.point)) out.push(a.point.slice(0, 3).map(Number));
+      }
+    }
+    return out;
+  } catch (e) {
+    console.warn('[tutorial] could not read hint points:', e);
+    return [];
+  }
+}
+
+/** Pyr pins at the click spots: the example's registered points if it has
+ *  them, else Amy's hint state for the built-in merge example. */
+async function showWhereToClick(): Promise<boolean> {
+  const ex = currentPractice().example;
+  let pts: number[][] = [];
+  if (ex?.point_a && ex?.point_b) {
+    try { pts = [JSON.parse(ex.point_a), JSON.parse(ex.point_b)]; } catch { pts = []; }
+  }
+  if (!pts.length) pts = await pointsInState(STATE_MERGE_HINTS);
+  return showPyrMarkers(pts, ['Ctrl+click', 'Ctrl+click'], 60);
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function getViewer(): any {
@@ -105,15 +144,15 @@ function toggleStuckPanel() {
   row.style.cssText = 'display:flex;flex-wrap:wrap;gap:0 4px;margin-top:6px';
   row.appendChild(smallButton('nge-practice-stuck-layer', 'Show me the layer', () => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer'))));
   const ex = currentPractice().example;
-  if (ex && ex.kind === 'merge_then_cut') {
-    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to click', () => {
-      if (!ex.point_a || !ex.point_b) { practiceStatus('This cell was registered without click points, so there is nothing to show. Ctrl+click anywhere on the yellow branch, then anywhere on the purple cell near it.'); return; }
+  if (!ex || ex.kind === 'merge_then_cut') {
+    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to click', async () => {
       ensureTool('merge');
-      setTimeout(() => {
-        const ok = placeMergeLine();
-        practiceStatus(ok ? 'The merge line is placed between the two pieces: that is where the clicks go. Press Submit merge, or Enter.'
-                          : 'Could not place the line. Ctrl+click the yellow branch, then the purple cell near it.');
-      }, 700);
+      const shown = await showWhereToClick();
+      if (!shown) { practiceStatus('No click hints for this cell yet. Ctrl+click anywhere on the yellow branch, then anywhere on the purple cell near it.'); return; }
+      const placed = ex?.point_a && ex?.point_b ? placeMergeLine() : false;
+      practiceStatus(placed
+        ? 'Pyr marks the two spots and the merge line is already placed. Press Submit merge, or Enter.'
+        : 'Pyr marks the two spots: Ctrl+click the one on the yellow branch, then the one on the purple cell, then Submit merge.');
     }));
   }
   row.appendChild(smallButton('nge-practice-stuck-chat', 'Ask in chat', () => document.dispatchEvent(new CustomEvent('nge:open-chat'))));
@@ -158,6 +197,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     const merged = await piecesMerged();
     if (token !== practiceWatch) return;
     if (merged === wantMerged) {
+      hidePyrMarkers();
       practiceStatus(finished + ' If a black box appears where the pieces meet, the new mesh is still being built: click the Pyr logo top left to refresh, your place here is saved.', true);
       if (!celebrated) { celebrated = true; document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); }
       return;
@@ -169,7 +209,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
-export function stopWatching() { practiceWatch++; leaveWaitlist(); }
+export function stopWatching() { practiceWatch++; leaveWaitlist(); hidePyrMarkers(); }
 
 // Idle countdown under the status line (Amy): appears after a quiet minute,
 // and at zero the cell is undone and released.
