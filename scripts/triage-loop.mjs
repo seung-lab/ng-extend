@@ -206,6 +206,7 @@ async function prepare() {
 
 async function ready() {
   const row = await getRow(env.ROW_ID);
+  if (row.status === 'dismissed') { console.log('[loop] row was stopped; nothing to do'); return; }
   if (!SHA.test(env.COMMIT_SHA || '') || !SHA.test(env.BASE_SHA || '')) throw new Error('Missing verified preview commit');
   const url = previewFor(row.id);
   let ok = false;
@@ -248,6 +249,7 @@ async function ready() {
 /** Claude stopped without building: a question for a human, or a refusal. */
 async function blocked() {
   const row = await getRow(env.ROW_ID);
+  if (row.status === 'dismissed') { console.log('[loop] row was stopped; nothing to do'); return; }
   const first = summaryFirstLine();
   const tester = testerOf(row);
   if (/^QUESTION:/i.test(first)) {
@@ -264,6 +266,7 @@ async function blocked() {
 /** Claude answered the tester's question; go back to waiting on them. */
 async function answered() {
   const row = await getRow(env.ROW_ID);
+  if (row.status === 'dismissed') { console.log('[loop] row was stopped; nothing to do'); return; }
   const q = lastOf(row, 'question');
   const answer = existsSync(SUMMARY_FILE) ? readFileSync(SUMMARY_FILE, 'utf8').trim() : '';
   if (!answer) throw new Error('Claude wrote no answer');
@@ -274,6 +277,7 @@ async function answered() {
 
 async function fail(stage) {
   const row = await getRow(env.ROW_ID);
+  if (row.status === 'dismissed') { console.log('[loop] row was stopped; nothing to do'); return; }
   if (stage === 'answer') {
     // Answering is optional; do not fail the fix over it.
     const back = lastOf(row, 'question')?.return_to === 'live_testing' ? 'live_testing' : 'testing';
