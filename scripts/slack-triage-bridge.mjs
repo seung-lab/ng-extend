@@ -579,6 +579,88 @@ function ruleIntent(text, state) {
 function understand() { return null; }
 
 const LIVE_URL = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/';
+
+/**
+ * "stop" in a thread ends all work on that row: a proposal is dismissed, a
+ * build in flight is cancelled, nobody is tagged again, and the Admin Hub
+ * shows it as dismissed. Only the approvers or the row's tester may stop it.
+ * Whole message only ("stop", "cancel", "close", optionally "this"/"it", then
+ * an optional reason after a dash or colon), so a change request that merely
+ * starts with "stop showing..." is never read as a stop.
+ */
+const STOP_CMD = /^(?:stop|cancel|close)(?:\s+(?:this|it|work(?:ing)?(?:\s+on\s+(?:this|it))?))?\s*(?:$|[.!]+\s*$|[-:,]\s*(.*)$)/is;
+const STOP_RUNNING = ['implementing', 'answering', 'deploying', 'reverting'];
+
+/** Dismissed in the Admin Hub after work had started: stop the work too. */
+async function cancelRun(row) {
+  const runId = STOP_RUNNING.includes(row.impl_state) && String(row.impl_run_url || '').match(/\/actions\/runs\/(\d+)/)?.[1];
+  if (!runId || !GH_TOKEN) return false;
+  const c = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/runs/${runId}/cancel`, {
+    method: 'POST', headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' },
+  }).catch(() => null);
+  return !!c && (c.status === 202 || c.status === 409);
+}
+
+async function dismissedInFlight() {
+  const res = await sb('feedback_triage?status=eq.dismissed&impl_state=not.is.null&select=*');
+  if (!res.ok) return 0;
+  let n = 0;
+  for (const row of await res.json()) {
+    // Live tests and deploys are not undone silently; the thread says so.
+    if (['deployed', 'deploying', 'live_testing', 'live_test_queued', 'revert_queued', 'reverting'].includes(row.impl_state)) continue;
+    const cancelled = await cancelRun(row);
+    await patchRow(row.id, { impl_state: null });
+    if (row.slack_ts) {
+      const p = await say(row, `🛑 Dismissed, so Claude has stopped${cancelled ? ' and the running build is cancelled' : ''}. Nobody will be tagged about this.`);
+      await patchRow(row.id, { last_reply_ts: p.ts });
+    }
+    console.log(`[bridge] stopped dismissed ${row.id}${cancelled ? ' (run cancelled)' : ''}`);
+    n++;
+  }
+  return n;
+}
+
+async function stopRequests() {
+  let stopped = await dismissedInFlight();
+  const res = await sb('feedback_triage?status=in.(proposed,approved)&slack_ts=not.is.null&select=*');
+  if (!res.ok) return 0;
+  const rows = (await res.json()).filter(r => r.status === 'proposed' || (r.impl_state && r.impl_state !== 'deployed'));
+  for (const row of rows) {
+    let thread;
+    try { thread = await slackGet('conversations.replies', { channel: CHANNEL, ts: row.slack_ts, limit: 200 }); }
+    catch (e) { continue; }
+    const tester = row.approver_slack_id || slackIdFor(row.reviewed_by);
+    const since = Number(row.decision_slack_ts || row.slack_ts || 0);
+    const m = (thread.messages ?? []).find(x => Number(x.ts) > since && !x.bot_id && x.subtype !== 'bot_message'
+      && (APPROVERS.includes(x.user) || x.user === tester) && STOP_CMD.test((x.text || '').trim()));
+    if (!m) continue;
+    const reason = ((m.text || '').trim().match(STOP_CMD)[1] || '').trim();
+    if (['live_test_queued', 'live_testing', 'revert_queued'].includes(row.impl_state)) {
+      const last = [...(row.feedback_log || [])].reverse().find(e => e.role === 'preview');
+      const p = await say(row, `🛑 <@${m.user}>, this is on the live site as a test, so it can't just stop. Reply *revert ${last?.sha?.slice(0, 12) || '<build ID>'}* to take it off, then *stop*.`);
+      await patchRow(row.id, { decision_slack_ts: p.ts });
+      continue;
+    }
+    if (row.impl_state === 'deploying') {
+      const p = await say(row, `🛑 <@${m.user}>, too late to stop: it is deploying to the live site right now. When it is live, reply *revert <build ID>* if it should come off.`);
+      await patchRow(row.id, { decision_slack_ts: p.ts });
+      continue;
+    }
+    const cancelled = await cancelRun(row);
+    const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
+    log.push({ user: m.user, text: m.text, ts: m.ts, role: 'stop' });
+    const who = `slack:${m.user}`;
+    await patchRow(row.id, {
+      status: 'dismissed', impl_state: null, reviewed_by: row.reviewed_by || who, reviewed_at: row.reviewed_at || new Date().toISOString(),
+      result_note: `Stopped in Slack by <@${m.user}>${reason ? `: ${reason}` : ''}.`, feedback_log: log, last_reply_ts: m.ts,
+    });
+    const p = await say(row, `🛑 Stopped by <@${m.user}>${reason ? ` (${reason})` : ''}.${cancelled ? ' The build that was running is cancelled.' : ''} Claude won't work on this and nobody will be tagged about it. It shows as dismissed in the Admin Hub; approve it there again to restart.`);
+    await patchRow(row.id, { decision_slack_ts: p.ts, last_reply_ts: p.ts });
+    console.log(`[bridge] stopped ${row.id} by ${m.user}${cancelled ? ' (run cancelled)' : ''}`);
+    stopped++;
+  }
+  return stopped;
+}
 const WAITING = ['testing', 'live_testing', 'needs_info', 'failed'];
 
 /**
@@ -864,6 +946,7 @@ let LOOP = false;
     else LOOP = true;
   }
   const posted = await postProposals();
+  const halted = COLS ? await stopRequests().catch(e => { console.warn('[bridge] stop check failed:', e.message); return 0; }) : 0;
   const acted = await readApprovals();
   let echoed = 0, started = 0, nagged = 0;
   if (COLS) echoed = await echoAppDecisions();
@@ -880,5 +963,5 @@ let LOOP = false;
     await tokenReminder().catch(e => console.warn('[bridge] token reminder failed:', e.message));
     if (LOOP) await quietReminder().catch(e => console.warn('[bridge] quiet reminder failed:', e.message));
   }
-  console.log(`[bridge] done: ${posted} posted, ${acted} decided, ${echoed} echoed, ${started} started, ${nagged} nagged, ${announced} announced (sync ${COLS ? 'on' : 'off'}, loop ${LOOP ? 'on' : 'off'})`);
+  console.log(`[bridge] done: ${posted} posted, ${halted} stopped, ${acted} decided, ${echoed} echoed, ${started} started, ${nagged} nagged, ${announced} announced (sync ${COLS ? 'on' : 'off'}, loop ${LOOP ? 'on' : 'off'})`);
 })().catch(e => { console.error('[bridge] fatal:', e.message); process.exit(1); });
