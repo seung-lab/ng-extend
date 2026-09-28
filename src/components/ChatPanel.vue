@@ -583,10 +583,16 @@ async function openUserProfile(displayName: string) {
   if (String(window.getSelection() || '').length) return;
   if (/^nurro$/i.test(displayName.trim())) { openNurroProfile(); return; }
   try {
-    const results = await backendStore.searchUsers(displayName);
-    const match = results.find((u: any) => u.display_name === displayName) || results[0];
+    const name = displayName.trim().replace(/^@/, '');
+    const results = await backendStore.searchUsers(name);
+    const lower = name.toLowerCase();
+    const match = results.find((u: any) => u.display_name === name || u.username === name)
+      || results.find((u: any) => (u.display_name || '').toLowerCase() === lower || (u.username || '').toLowerCase() === lower)
+      || results[0];
     if (match) {
       document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: match.id } }));
+    } else {
+      console.warn('[chat] no profile found for', name);
     }
   } catch (e) {
     console.warn('[chat] openUserProfile error:', e);

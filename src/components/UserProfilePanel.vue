@@ -53,6 +53,8 @@ async function loadOtherUser() {
   await loadPodium();
 }
 loadOtherUser();
+// Clicking another name while a profile is open swaps the profile shown.
+watch(() => props.viewUserId, () => { void loadOtherUser(); });
 
 // ── Weekly podium counts (🥇/🥈/🥉) ─────────────────────────────────
 // Two podiums: edits (split+merge wins) and completions (cell-mark wins).
@@ -1538,6 +1540,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       <!-- ── My Cells: claims and completions by dataset, loaded on open ── -->
       <div v-if="activeTab === 'myCells'" class="nge-profile-body nge-profile-body--mycells">
         <MyCellsTab
+          :key="props.viewUserId || backendStore.userId || ''"
           :user-id="props.viewUserId || backendStore.userId"
           :is-self="!viewingOtherUser"
           @jumped="handleClose"

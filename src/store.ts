@@ -4564,15 +4564,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     await loadGroups();
   }
 
-  async function searchUsers(query: string): Promise<Array<{id: string; display_name: string; email: string}>> {
-    if (!query || query.length < 2) return [];
-    const { data } = await supabase
+  /** Find players by display name or @username. Email is private (the public
+   *  key may not read users.middleauth_email), and asking for it made the whole
+   *  query fail, so chat names, the Admin Hub member search and badge awards
+   *  all found nobody (2026-09-28). */
+  async function searchUsers(query: string): Promise<Array<{id: string; display_name: string; username: string; email: string}>> {
+    const q = (query || '').trim().replace(/^@/, '').replace(/[,()*%]/g, '');
+    if (q.length < 2) return [];
+    const { data, error: e } = await supabase
       .from('users')
-      .select('id, display_name, middleauth_email')
-      .or(`display_name.ilike.%${query}%,middleauth_email.ilike.%${query}%`)
+      .select('id, display_name, username')
+      .or(`display_name.ilike.%${q}%,username.ilike.%${q}%`)
       .limit(10);
+    if (e) console.warn('[backend] searchUsers error:', e.message);
     return (data || []).map((u: any) => ({
-      id: u.id, display_name: u.display_name, email: u.middleauth_email,
+      id: u.id, display_name: u.display_name, username: u.username || '', email: '',
     }));
   }
 
