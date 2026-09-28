@@ -3,7 +3,7 @@ import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
 // Amy's merge example, 2026-09-26: the cut-in-half branch, cell purple, loose piece yellow.
 import imgMergeExample from './images/merge-example.jpg';
-import { beginPractice, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, type PracticeKind } from './practice';
+import { beginPractice, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
@@ -345,14 +345,60 @@ document.addEventListener('nge:tutorial-flash-seg-layer', () => {
   }, 3500);
 });
 
-// A step's html can ask to start another tutorial (the merge tutorial's last
-// step invites the learner to the cut one).
-document.addEventListener('nge:tutorial-start', ((e: CustomEvent) => {
-  const id = Number(e.detail?.id);
-  if (!Number.isFinite(id)) return;
+// Starting a tutorial (book menu, or the merge tutorial's last step). The
+// merge and cut tutorials run on practice cells one learner at a time, so
+// when the cells are held the learner gets a "get in line" card instead
+// (Amy), and a notification when it is their turn.
+function openTutorial(id: number) {
   const store = useTutorialStore();
   store.activeTutorial = id;
   store.setTutorialStep(0);
+}
+
+const PRACTICE_KIND: Record<number, PracticeKind> = { 3: 'merge_then_cut', 5: 'cut' };
+const TUTORIAL_NAME: Record<number, string> = { 3: 'Merge', 5: 'Cut' };
+
+function removeGateCard() {
+  document.getElementById('nge-tutorial-gate')?.remove();
+}
+
+function showGateCard(id: number, kind: PracticeKind) {
+  removeGateCard();
+  const name = TUTORIAL_NAME[id];
+  const card = document.createElement('div');
+  card.id = 'nge-tutorial-gate';
+  card.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9500;width:min(440px,92vw);'
+    + 'padding:22px 24px;border-radius:10px;background:rgba(8,12,24,0.97);border:1px solid rgba(74,158,255,0.45);'
+    + 'box-shadow:0 12px 40px rgba(0,0,0,0.6);color:#d0e8ff;font-size:15px;line-height:1.45';
+  card.innerHTML = `<div style="font-size:1.25em;font-weight:600;margin-bottom:8px">The ${name} tutorial is in use</div>`
+    + `<p style="margin:0 0 12px">Someone is practising on its cells right now. It is one learner at a time, so the cells go back to their starting state between people.</p>`
+    + `<p class="nge-gate-status" style="margin:0 0 14px;color:#9fd0ff">Get in line and we'll tell you when it's your turn.</p>`
+    + `<div style="display:flex;gap:8px;flex-wrap:wrap"></div>`;
+  const row = card.querySelector('div:last-child') as HTMLElement;
+  const status = card.querySelector('.nge-gate-status') as HTMLElement;
+  const lineBtn = smallButton('nge-gate-line', 'Get in line', () => {
+    lineBtn.disabled = true;
+    lineBtn.textContent = 'In line…';
+    waitForTutorial(kind,
+      () => { removeGateCard(); openTutorial(id); },
+      (pos, needed) => { status.textContent = pos <= 1
+        ? `You're next. This card opens the tutorial the moment its ${needed === 1 ? 'cell is' : 'cells are'} free, and a notification will say so too.`
+        : `You're number ${pos} in line. Keep the app open; a notification will say when it's your turn.`; });
+  });
+  const readBtn = smallButton('nge-gate-read', 'Read it without a cell', () => { stopWaitingForTutorial(); removeGateCard(); openTutorial(id); });
+  const noBtn = smallButton('nge-gate-no', 'Not now', () => { stopWaitingForTutorial(); removeGateCard(); });
+  for (const b of [lineBtn, readBtn, noBtn]) { b.style.margin = '0'; row.appendChild(b); }
+  document.body.appendChild(card);
+}
+
+document.addEventListener('nge:tutorial-start', (async (e: CustomEvent) => {
+  const id = Number(e.detail?.id);
+  if (!Number.isFinite(id)) return;
+  const kind = PRACTICE_KIND[id];
+  if (!kind) { openTutorial(id); return; }
+  const need = await tutorialNeeds(kind);
+  if (need.registered === 0 || need.free >= need.needed) { removeGateCard(); openTutorial(id); return; }
+  showGateCard(id, kind);
 }) as EventListener);
 
 export function startTutorialButton(id: number, label: string) {

@@ -416,6 +416,65 @@ export async function joinWaitlist(kind: PracticeKind, onReady: (ex: PracticeExa
   waitTimer = setInterval(check, 20 * 1000);
 }
 
+/** How many cells of a kind exist, and how many could be claimed right now
+ *  (ready, or held by this learner, or expired). Reads only. */
+export async function practiceAvailability(kind: PracticeKind): Promise<{ registered: number; free: number }> {
+  const uid = userId();
+  const { data, error } = await supabase.from('tutorial_practice_examples')
+    .select('status,claimed_by,expires_at').eq('enabled', true).eq('kind', kind);
+  if (error || !data) { console.warn('[practice] availability check failed:', error?.message); return { registered: 0, free: 0 }; }
+  const now = Date.now();
+  const free = data.filter((r: any) => r.status === 'ready'
+    || (r.status === 'in_use' && (r.claimed_by === uid || (r.expires_at && Date.parse(r.expires_at) < now)))).length;
+  return { registered: data.length, free };
+}
+
+/** Cells a tutorial needs before it starts: both of its practice cells when
+ *  two are registered, otherwise whatever exists. */
+export async function tutorialNeeds(kind: PracticeKind): Promise<{ needed: number; free: number; registered: number }> {
+  const a = await practiceAvailability(kind);
+  return { needed: Math.min(2, Math.max(1, a.registered)), free: a.free, registered: a.registered };
+}
+
+let tutorialWaitTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Get in line for a whole tutorial (Amy): join the queue, watch every 20 s,
+ * and when first in line with enough cells free, notify and call onReady.
+ */
+export async function waitForTutorial(kind: PracticeKind, onReady: () => void, onPosition: (n: number, needed: number) => void) {
+  const uid = userId();
+  if (!uid) return;
+  stopWaitingForTutorial();
+  const { error } = await supabase.from('tutorial_practice_waitlist')
+    .upsert({ user_id: uid, kind, created_at: new Date().toISOString() }, { onConflict: 'user_id,kind' });
+  if (error) console.warn('[practice] waitlist join failed:', error.message);
+  const check = async () => {
+    const { data } = await supabase.from('tutorial_practice_waitlist').select('user_id').eq('kind', kind).order('created_at');
+    const queue = (data ?? []).map((r: any) => r.user_id as string);
+    const pos = queue.indexOf(uid);
+    const need = await tutorialNeeds(kind);
+    onPosition(pos < 0 ? 1 : pos + 1, need.needed);
+    if (pos > 0 || need.free < need.needed) return;
+    stopWaitingForTutorial();
+    try {
+      const { useProofreadingBackendStore } = await import('./store');
+      await useProofreadingBackendStore().createSelfNotification({
+        title: kind === 'cut' ? 'The Cut tutorial is free' : 'The Merge tutorial is free',
+        body: 'Your turn. Open the book menu at the top right and start it; the practice cells are yours while you work.',
+      });
+    } catch { /* the card says it too */ }
+    onReady();
+  };
+  await check();
+  if (!tutorialWaitTimer) tutorialWaitTimer = setInterval(check, 20 * 1000);
+}
+
+export function stopWaitingForTutorial() {
+  if (tutorialWaitTimer) { clearInterval(tutorialWaitTimer); tutorialWaitTimer = null; }
+  leaveWaitlist();
+}
+
 export function leaveWaitlist() {
   if (waitTimer) { clearInterval(waitTimer); waitTimer = null; }
   const uid = userId();
@@ -514,6 +573,7 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   // A claim that hands back a cell already held (the database still has
   // the claim function without p_exclude) counts as nothing free: a
   // practice step never shows the previous step's cell again (Amy).
+  console.info(`[practice] claim ${kind} slot ${slot} excluding [${exclude.join(', ')}] returned`, row ? `${row.id} (${row.title})` : 'nothing');
   if (row && exclude.includes(row.id)) row = null;
   if (!row) { session.phase = 'busy'; return null; }
   session.held[slot] = row;
