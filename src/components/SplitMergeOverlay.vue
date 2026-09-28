@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { useSplitMergeOverlayStore } from 'src/store';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 
@@ -7,6 +7,9 @@ const store = useSplitMergeOverlayStore();
 
 // Bar stays visible during pendingClose (success hold before exit)
 const isVisible = computed(() => store.toolActive !== null || store.pendingClose);
+// Other floating panels (the chat) sit on the same bottom edge; tell them
+// the bar is there (Amy: chat was hidden behind merge mode).
+watch(isVisible, v => document.body.classList.toggle('nge-tool-bar-open', v), { immediate: true });
 const isMulticut = computed(() => store.toolActive === 'multicut' || store.closingTool === 'multicut');
 const isMerge = computed(() => store.toolActive === 'merge' || store.closingTool === 'merge');
 const isRedActive = computed(() => store.activeGroup === 'red');

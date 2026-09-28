@@ -1,3 +1,4 @@
+import { functionUrl } from './functions_base';
 /**
  * Writes to notifications and feedback_triage go through the ewSecureWrite
  * Cloud Function, never straight to Supabase: the anon key the app ships is
@@ -6,10 +7,10 @@
  * admin actions, checks the admins table with a key the browser never sees.
  */
 const ENDPOINT = (window as any).__NGE_SECURE_WRITE_URL
-  || 'https://us-central1-ytho-4bff2.cloudfunctions.net/ewSecureWrite';
+  || functionUrl('ewSecureWrite');
 const STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
 
-function caveToken(): string | null {
+export function caveToken(): string | null {
   try {
     const raw = window.localStorage.getItem(`auth_token_v2_${STICKY_AUTH_URL}`);
     return raw ? (JSON.parse(raw).accessToken ?? null) : null;
@@ -19,6 +20,7 @@ function caveToken(): string | null {
 export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
   | 'triage.update'
+  | 'pilot.task' | 'pilot.practice' | 'pilot.status'
   | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost';
 
 /** Returns the row (or result) the function wrote; throws with a readable message. */
@@ -28,7 +30,8 @@ export async function secureWrite<T = any>(action: SecureAction, args: Record<st
   const res = await fetch(ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, token, ...args }),
+    body: JSON.stringify({ ...args, action, token }),
+    redirect: 'error',
   });
   let json: any = null;
   try { json = await res.json(); } catch { /* non JSON error page */ }
