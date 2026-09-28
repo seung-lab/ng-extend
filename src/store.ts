@@ -3285,20 +3285,27 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loading.value = true;
     error.value = '';
     try {
-      let query = supabase
-        .from('proofreading_tasks')
-        .select('*')
-        .eq('dataset', dataset)
-        .order('priority', { ascending: false })
-        .order('created_at', { ascending: true });
-
-      if (statusFilter) {
-        query = query.eq('status', statusFilter);
+      // Page through everything: the API returns at most 1,000 rows per read,
+      // and Retina has 2,300+ tasks, so new claims (the newest ids) were cut off
+      // and never showed in My Cells (Amy 2026-09-28).
+      const PAGE = 1000;
+      const all: ProofreadingTask[] = [];
+      for (let from = 0; ; from += PAGE) {
+        let query = supabase
+          .from('proofreading_tasks')
+          .select('*')
+          .eq('dataset', dataset)
+          .order('priority', { ascending: false })
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (statusFilter) query = query.eq('status', statusFilter);
+        const { data, error: fetchErr } = await query;
+        if (fetchErr) throw fetchErr;
+        all.push(...((data ?? []) as ProofreadingTask[]));
+        if (!data || data.length < PAGE || from > 50_000) break;
       }
-
-      const { data, error: fetchErr } = await query;
-      if (fetchErr) throw fetchErr;
-      tasks.value = data ?? [];
+      tasks.value = all;
     } catch (e: any) {
       error.value = e.message || 'Failed to load tasks';
       console.warn('[backend] loadTasks error:', e.message);

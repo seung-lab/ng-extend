@@ -428,7 +428,7 @@ async function claimCell(cell: typeof cells.value[0]) {
   claimError.value = '';
   // The limit counts claims in every dataset; `backend.tasks` has only this one.
   const held = await backend.loadMyActiveClaims();
-  if (held.length >= backend.MAX_CLAIMS) { showClaimLimit(held); return; }
+  if (held.length >= backend.MAX_CLAIMS) { pendingClaim = cell; showClaimLimit(held); return; }
   // Derive claim point: use cell's existing claim point, parse nucCoords, or use viewer position
   let point: ClaimPoint;
   if (cell.claimPoint) {
@@ -443,6 +443,7 @@ async function claimCell(cell: typeof cells.value[0]) {
     ? { ok: await backend.claimTask(cell.taskId), reason: backend.error }
     : await backend.claimCell(point, cell.segId);
   if (!result.ok && /max \d+ claims/i.test(result.reason || '')) {
+    pendingClaim = cell;
     showClaimLimit(await backend.loadMyActiveClaims());
     return;
   }
@@ -463,6 +464,11 @@ async function claimCell(cell: typeof cells.value[0]) {
 
 // ── Claim limit: name every claim you hold, in any dataset, with Release ──
 const claimLimit = ref<ProofreadingTask[] | null>(null);
+/** The cell you tried to claim when the limit stopped you. Releasing a claim
+ *  from the list claims it straight away, so the list collapsing under the
+ *  mouse can't turn your next click into a claim on the wrong row. */
+let pendingClaim: CellRow | null = null;
+function dismissClaimLimit() { claimLimit.value = null; pendingClaim = null; }
 function showClaimLimit(held: ProofreadingTask[]) {
   claimLimit.value = held.length ? held : null;
   if (!held.length) claimError.value = `Max ${backend.MAX_CLAIMS} claims reached`;
@@ -476,7 +482,11 @@ async function releaseHeld(t: ProofreadingTask) {
   const ok = await backend.releaseTaskById(t.id);
   if (!ok) { claimError.value = backend.error || 'Could not release this claim.'; return; }
   const held = await backend.loadMyActiveClaims();
-  claimLimit.value = held.length >= backend.MAX_CLAIMS ? held : null;
+  if (held.length >= backend.MAX_CLAIMS) { claimLimit.value = held; return; }
+  claimLimit.value = null;
+  const next = pendingClaim;
+  pendingClaim = null;
+  if (next) await claimCell(next);
 }
 
 /** Load a viewer link's state into this viewer. Only its "#!" state part is
@@ -2450,11 +2460,11 @@ const panelStyle = computed(() => ({
           <div v-if="claimLimit" class="nge-cl-limit">
             <div class="nge-cl-limit-head">
               You hold {{ claimLimit.length }} claims, the most allowed. Release one to claim this cell.
-              <span class="nge-cl-error-dismiss" @click="claimLimit = null">×</span>
+              <span class="nge-cl-error-dismiss" @click="dismissClaimLimit">×</span>
             </div>
             <div v-for="t in claimLimit" :key="t.id" class="nge-cl-limit-row">
               <span>{{ heldLabel(t) }}</span>
-              <button class="nge-cl-btn nge-cl-btn--release" @click="releaseHeld(t)">Release</button>
+              <button class="nge-cl-btn nge-cl-limit-release" @click="releaseHeld(t)">Release</button>
             </div>
           </div>
           <div v-if="claimError" class="nge-cl-error-banner" @click="claimError = ''">
@@ -3217,7 +3227,14 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-limit-head { display: flex; justify-content: space-between; gap: 8px; }
 .nge-cl-limit-head .nge-cl-error-dismiss { cursor: pointer; opacity: 0.7; }
-.nge-cl-limit-row { display: flex; justify-content: space-between; align-items: center; color: #dde; }
+.nge-cl-limit-row { display: flex; justify-content: space-between; align-items: center; color: #dde; font-size: 1.05em; }
+.nge-cl-limit-release {
+  font-size: 1em;
+  padding: 5px 14px;
+  border-color: rgba(255, 170, 68, 0.5);
+  color: #fc8;
+}
+.nge-cl-limit-release:hover { background: rgba(255, 170, 68, 0.15); }
 
 /* Help response form */
 .nge-cl-help-item {
