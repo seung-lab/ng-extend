@@ -3,7 +3,9 @@ import { computed, ref, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 // Banner: 980 reconstructed cells (static/images/recap, original alongside).
-import recapBanner from '../../static/images/recap/week-in-science-banner.jpg';
+// Full CA3 render at 2400x1867 (Amy 2026-09-28): the old 1500x500 strip was
+// stretched ~1.6x to fill the panel and looked pixelated.
+import recapBanner from '../../static/images/recap/week-in-science-ca3.jpg';
 
 import { useUserStatsStore, useCellHistoryStore, useIssueTagStore, useHelpRequestStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badge_definitions';
