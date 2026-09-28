@@ -1498,6 +1498,7 @@ function practiceWhen(iso: string | null) {
 /* Sub-tabs */
 .nge-admin-subtabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   padding-bottom: 0;
@@ -1506,9 +1507,11 @@ function practiceWhen(iso: string | null) {
 .nge-admin-subtab {
   background: transparent;
   border: none;
-  color: #889;
-  font-size: 0.85em;
-  padding: 6px 12px;
+  color: #b8c7d9;
+  font-size: 1rem;
+  line-height: 1.4;
+  min-height: 44px;
+  padding: 8px 12px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: color 0.12s, border-color 0.12s;
