@@ -20,6 +20,9 @@ import {
 import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
 import { syncCellToSheet } from '../sheet_sync';
+import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
+import { getRootFromSupervoxel } from '../widgets/pcg_service';
+import { mintShortStateLink } from '../util/state_link';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
@@ -255,6 +258,8 @@ const cells = computed(() => {
         completedByName: null as string | null,
         // Point-in-space claim anchor
         claimPoint: task ? taskClaimPoint(task) : null,
+        startLink: item.startLink || '',
+        svId: task?.supervoxel_id ?? null,
       };
     });
 
@@ -275,6 +280,8 @@ const cells = computed(() => {
         finalSegId: t.final_segment_id,
         completedByName: null as string | null,
         claimPoint: taskClaimPoint(t),
+        startLink: '',
+        svId: t.supervoxel_id ?? null,
       }));
 
     return [...sheetCells, ...extraTasks];
@@ -295,6 +302,8 @@ const cells = computed(() => {
     finalSegId: t.final_segment_id,
     completedByName: null as string | null,
     claimPoint: taskClaimPoint(t),
+    startLink: '',
+    svId: t.supervoxel_id ?? null,
   }));
 });
 
@@ -442,6 +451,22 @@ async function claimCell(cell: typeof cells.value[0]) {
   // Write claim to Google Sheet (best-effort)
   syncCellToSheet('claim', cell.segId, undefined, cell.dataset).catch(showSheetError);
   await backend.loadTasks();
+  // Open the cell's curated starting view (sheet "Start link", column E), so
+  // the claimer lands with its Soma / True End / Can't Fix / Hits Edge / Notes
+  // layers (Amy 2026-09-28).
+  openStartLink(cell.startLink);
+}
+
+/** Load a viewer link's state into this viewer. Only its "#!" state part is
+ *  used (the host may be Spelunker), so the page never navigates away. */
+function openStartLink(link?: string): boolean {
+  if (!link) return false;
+  try {
+    const hash = new URL(link).hash;
+    if (!hash.startsWith('#!')) return false;
+    window.location.hash = hash;
+    return true;
+  } catch { return false; }
 }
 
 /** Get current viewer position as a ClaimPoint. */
@@ -454,11 +479,94 @@ function getViewerPos(): ClaimPoint {
   return [0, 0, 0];
 }
 
-async function completeCell(cell: typeof cells.value[0]) {
+// ── Complete: link + crosshairs-in-cell, then write (Amy 2026-09-28) ──────
+type CellRow = typeof cells.value[0];
+const completing = ref<{
+  key: string; link: string; minting: boolean;
+  checking: boolean; ok: boolean; message: string; submitting: boolean;
+  check: CrosshairCell | null;
+} | null>(null);
+
+function cellKey(cell: CellRow): string { return String(cell.taskId ?? cell.segId); }
+function shortId(id: string) { return id.length > 10 ? '…' + id.slice(-6) : id; }
+function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((link || '').trim()); }
+
+function openComplete(cell: CellRow) {
+  completing.value = { key: cellKey(cell), link: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null };
+  void runCrosshairCheck(cell);
+}
+
+async function useCurrentViewLink() {
+  const c = completing.value;
+  if (!c) return;
+  c.minting = true;
+  const short = await mintShortStateLink();
+  c.minting = false;
+  if (short) c.link = short;
+  else c.message = 'Could not make a link of this view (sign in, or paste one).';
+}
+
+function isVisibleRoot(root: string): boolean {
+  try {
+    const vs = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    return !!vs?.has(Uint64.parseString(root));
+  } catch { return false; }
+}
+
+/** The crosshairs must sit inside THIS cell. With a stored supervoxel we know
+ *  the cell's current root exactly; otherwise accept its sheet or final id,
+ *  or the cell you are viewing (it is recorded as the final segment). */
+async function runCrosshairCheck(cell: CellRow) {
+  const c = completing.value;
+  if (!c) return;
+  c.checking = true; c.ok = false; c.message = '';
+  const at = await cellAtCrosshair();
+  c.check = at;
+  if (!at.root) {
+    c.message = at.problem || 'Could not check the crosshairs.';
+  } else {
+    const expected = cell.svId ? await getRootFromSupervoxel(String(cell.svId)) : null;
+    const known = [expected, cell.segId, cell.finalSegId].filter(Boolean) as string[];
+    if (known.includes(at.root)) {
+      c.ok = true;
+      c.message = `The crosshairs are inside this cell (${shortId(at.root)}).`;
+    } else if (!expected && isVisibleRoot(at.root)) {
+      c.ok = true;
+      c.message = `The crosshairs are inside ${shortId(at.root)}, the cell on screen. It is recorded as the final cell.`;
+    } else {
+      c.message = `The crosshairs are inside ${shortId(at.root)}, which is not this cell${expected ? ` (${shortId(expected)})` : ''}. Move them into the cell and check again.`;
+    }
+  }
+  c.checking = false;
+}
+
+async function submitComplete(cell: CellRow) {
+  const c = completing.value;
+  if (!c || !linkLooksValid(c.link)) return;
+  c.submitting = true;
+  try {
+    // The crosshairs may have moved since the check: check once more.
+    await runCrosshairCheck(cell);
+    if (!c.ok || !c.check?.root) return;
+    await completeCell(cell, {
+      finalSegId: c.check.root,
+      coords: c.check.position.join(', '),
+      link: c.link.trim(),
+    });
+    completing.value = null;
+  } catch (e: any) {
+    c.message = e?.message || 'Could not complete this cell.';
+    c.ok = false;
+  } finally {
+    if (completing.value) completing.value.submitting = false;
+  }
+}
+
+async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string }) {
   if (!isLoggedIn.value || !cell.taskId) return;
-  await backend.completeTask(cell.taskId, cell.finalSegId || undefined, cell.somaCoords || undefined);
-  // Write completion to Google Sheet (best-effort)
-  syncCellToSheet('complete', cell.segId, undefined, cell.dataset).catch(showSheetError);
+  await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
+  // Write completion to the source sheet, including the Final Link.
+  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link).catch(showSheetError);
 
   // Record the completion in CAVE (cell_status annotation) so it materializes
   // to the leaderboard — same path ProofreadingQueuePanel uses. The root is the
@@ -468,9 +576,9 @@ async function completeCell(cell: typeof cells.value[0]) {
   let loggedViaCave = false;
   try {
     const caveServer = activeCaveServer();
-    const rootId = cell.finalSegId || cell.segId;
+    const rootId = done.finalSegId || cell.finalSegId || cell.segId;
     if (caveServer && rootId) {
-      const nums = (cell.somaCoords || '').split(/[\s,]+/).map(Number).filter(n => !Number.isNaN(n));
+      const nums = (done.coords || cell.somaCoords || '').split(/[\s,]+/).map(Number).filter(n => !Number.isNaN(n));
       const pt = nums.length === 3 ? (nums as [number, number, number]) : undefined;
       // suppressCelebration: completeCell runs its own triggerCellCelebration()
       loggedViaCave = await setCellComplete(caveServer, rootId, true, undefined, pt, true);
@@ -513,13 +621,19 @@ async function triggerCellCelebration() {
 }
 
 async function releaseCell(cell: typeof cells.value[0]) {
-  if (!cell.segId) return;
-  // Prefer point-based release, fall back to segment-based
-  if (cell.claimPoint) {
-    await backend.releaseCell(cell.claimPoint);
-  } else {
-    await backend.releaseBySegment(cell.segId);
+  // By claim id first: a claim made on a point has no segment id, and the old
+  // `if (!cell.segId) return` made Release do nothing, silently (Amy 2026-09-28).
+  let ok = false;
+  if (cell.taskId) ok = await backend.releaseTaskById(cell.taskId);
+  else if (cell.claimPoint) ok = await backend.releaseCell(cell.claimPoint);
+  else if (cell.segId) ok = await backend.releaseBySegment(cell.segId);
+  if (!ok) {
+    claimError.value = backend.error || 'Could not release this claim. Please try again.';
+    if (claimErrorTimer) clearTimeout(claimErrorTimer);
+    claimErrorTimer = setTimeout(() => { claimError.value = ''; }, 5000);
+    return;
   }
+  if (completing.value?.key === cellKey(cell)) completing.value = null;
   // Dispatch event so seg dot pips update
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
   await backend.loadTasks();
@@ -2325,9 +2439,8 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0" class="nge-cl-no-results">No matching cells</div>
 
+          <template v-for="cell in filteredCells" :key="cell.taskId ?? cell.segId">
           <div
-            v-for="cell in filteredCells"
-            :key="cell.segId"
             class="nge-cl-row"
             :class="{
               'nge-cl-row--done': cell.status === 'completed',
@@ -2377,10 +2490,46 @@ const panelStyle = computed(() => ({
               <button
                 v-if="isMyClaim(cell)"
                 class="nge-cl-btn nge-cl-btn--complete"
-                @click="completeCell(cell)"
+                :class="{ 'nge-cl-btn--complete-open': completing?.key === cellKey(cell) }"
+                @click="completing?.key === cellKey(cell) ? (completing = null) : openComplete(cell)"
               >Complete</button>
             </div>
           </div>
+
+          <!-- Complete: the finished cell's link, and the crosshairs inside it,
+               before anything is written (Amy 2026-09-28). -->
+          <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
+            <div class="nge-cl-complete-title">Complete this cell</div>
+            <label class="nge-cl-complete-label">Link to your finished cell</label>
+            <div class="nge-cl-complete-linkrow">
+              <input
+                v-model="completing.link"
+                class="nge-cl-search-input"
+                placeholder="https://… (the view of your finished cell)"
+                @keydown.stop @keyup.stop @keypress.stop
+              />
+              <button class="nge-cl-btn" :disabled="completing.minting" @click="useCurrentViewLink"
+                      title="Make a short link of what you are looking at now">{{ completing.minting ? '…' : 'Use my current view' }}</button>
+            </div>
+            <div v-if="completing.link && !linkLooksValid(completing.link)" class="nge-cl-complete-msg nge-cl-complete-msg--bad">
+              Paste a full https viewer link.
+            </div>
+            <label class="nge-cl-complete-label">Crosshairs</label>
+            <div class="nge-cl-complete-msg" :class="completing.checking ? '' : (completing.ok ? 'nge-cl-complete-msg--ok' : 'nge-cl-complete-msg--bad')">
+              <template v-if="completing.checking">Checking where the crosshairs are…</template>
+              <template v-else>{{ completing.ok ? '✓ ' : '✗ ' }}{{ completing.message }}</template>
+              <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
+            </div>
+            <div class="nge-cl-complete-actions">
+              <button
+                class="nge-cl-btn nge-cl-btn--complete"
+                :disabled="completing.submitting || completing.checking || !completing.ok || !linkLooksValid(completing.link)"
+                @click="submitComplete(cell)"
+              >{{ completing.submitting ? 'Saving…' : 'Mark complete' }}</button>
+              <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
+            </div>
+          </div>
+          </template>
         </div>
 
         <!-- Login prompt -->
@@ -2873,6 +3022,40 @@ const panelStyle = computed(() => ({
   color: #4af;
 }
 .nge-cl-btn--complete:hover { background: rgba(68, 170, 255, 0.12); }
+.nge-cl-btn--complete-open { background: rgba(68, 170, 255, 0.16); border-color: rgba(68, 170, 255, 0.55); }
+.nge-cl-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* Complete form: link + crosshairs check (Amy 2026-09-28) */
+.nge-cl-complete {
+  margin: 2px 6px 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(68, 170, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(10, 24, 44, 0.85);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nge-cl-complete-title { color: #8cf; font-weight: 600; font-size: 0.9em; letter-spacing: 0.03em; }
+.nge-cl-complete-label { color: #9ab; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+.nge-cl-complete-linkrow { display: flex; gap: 6px; align-items: center; }
+.nge-cl-complete-linkrow .nge-cl-search-input { flex: 1; min-width: 0; }
+.nge-cl-complete-linkrow .nge-cl-btn { white-space: nowrap; }
+.nge-cl-complete-msg { font-size: 0.8em; line-height: 1.4; color: #bcd; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.nge-cl-complete-msg--ok { color: #6d9; }
+.nge-cl-complete-msg--bad { color: #f98; }
+.nge-cl-complete-recheck {
+  margin-left: auto;
+  background: none;
+  border: 1px solid rgba(160, 190, 220, 0.3);
+  border-radius: 4px;
+  color: #bcd;
+  font-size: 0.9em;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.nge-cl-complete-recheck:hover:not(:disabled) { border-color: rgba(160, 190, 220, 0.6); }
+.nge-cl-complete-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
 
 .nge-cl-btn--release {
   border-color: rgba(255, 170, 68, 0.2);

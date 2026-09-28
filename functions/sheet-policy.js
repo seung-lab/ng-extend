@@ -23,6 +23,14 @@ function sheetValues(input, me, task, now) {
   if (input.action === 'complete') {
     fields.push([['status'],'Complete'],[['datecomplete','completedtime'],now]);
     if (task.final_segment_id && /^\d{1,20}$/.test(task.final_segment_id)) fields.push([['finalseg'],task.final_segment_id]);
+    // The proofreader's view of the finished cell (Amy 2026-09-28): the
+    // retina sheet's "Final Link" column. https only, no spaces or quotes;
+    // written RAW like every field, so it can never become a formula.
+    const link = String(input.link ?? '').trim();
+    if (link) {
+      if (link.length > 2000 || !/^https:\/\/[^\s"'<>]+$/i.test(link)) fail(400,'The link must be a single https link.');
+      fields.push([['finallink'],link]);
+    }
   }
   if (input.action !== 'claim' && coords) fields.push([['correctedsoma','somacoord'],coords]);
   return fields;

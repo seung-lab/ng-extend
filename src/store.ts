@@ -2532,6 +2532,7 @@ export interface QueueItem {
   dataset: string;            // dataset the cell belongs to (tagged at load time from its sheet)
   sheetStatus?: string;       // status text from the sheet (Stroeh: 'Status' column); '' if none
   assignee?: string;          // who's on it, from the sheet (Stroeh: 'Proofreader'); '' if none
+  startLink?: string;         // curated starting view (Stroeh: 'Start link', column E); opened on Claim
 }
 
 export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => {
@@ -2691,6 +2692,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
       const iDataset  = col('dataset');
       const iStatus   = col('status');
       const iAssignee = firstCol('proofreader', 'claimedby', 'assignee');
+      const iStartLink = col('startlink');
 
       if (iSeg < 0) { error.value = 'Could not find a Segment ID column'; loading.value = false; return; }
 
@@ -2713,6 +2715,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
           dataset:    (datasetName || (iDataset >= 0 ? (row[iDataset] || '').trim() : '')) || '',
           sheetStatus: (iStatus >= 0 ? (row[iStatus] || '').trim() : '') || '',
           assignee:    (iAssignee >= 0 ? (row[iAssignee] || '').trim() : '') || '',
+          startLink:   (iStartLink >= 0 ? (row[iStartLink] || '').trim() : '') || '',
         });
       }
 
@@ -3962,6 +3965,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     return true;
   }
 
+  /** Release a claim by its task id: works for claims made on a point, which
+   *  have no segment id (Release used to bail out silently on those). */
+  async function releaseTaskById(taskId: number): Promise<boolean> {
+    const prevActive = activeTaskId.value;
+    activeTaskId.value = taskId;
+    const released = await releaseTask();
+    activeTaskId.value = prevActive === taskId ? null : prevActive;
+    if (!released) return false;
+    await loadTasks();
+    return true;
+  }
+
   /** Release a claim by segment ID (finds matching task by cached segment_id). */
   async function releaseBySegment(segId: string): Promise<boolean> {
     const task = tasks.value.find(
@@ -4707,7 +4722,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
-    claimCell, releaseCell, releaseBySegment, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
+    claimCell, releaseCell, releaseBySegment, releaseTaskById, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
     refreshSegmentIds,
     MAX_CLAIMS,
     // Admin Hub

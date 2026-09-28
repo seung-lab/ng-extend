@@ -18,3 +18,13 @@ test('matches exact source IDs, quotes titles, preserves existing values and wri
  assert.equal(plan.data[0].values[0][0],me.display_name);
  assert.throws(()=>planSheetUpdate([...grid,grid[1]],'cells','123',[]));
 });
+test('complete writes the Final Link column, https only, never Start link',()=>{
+ const link='https://spelunker.cave-explorer.org/#!middleauth+https://global.daf-apis.com/nglstate/api/v1/123';
+ const grid=[['Start SegID','Start link','Status','Final SegID','Final Link'],['123','https://old','','','']];
+ const plan=planSheetUpdate(grid,'cells','123',sheetValues({...input,link},me,task,'now'));
+ const byCol=Object.fromEntries(plan.data.map(x=>[x.range.split('!')[1][0],x.values[0][0]]));
+ assert.equal(byCol.E,link);
+ assert.equal(byCol.B,undefined);
+ for(const bad of ['http://x.test','javascript:alert(1)','=IMPORTXML("https://a","b")','https://a b']) assert.throws(()=>sheetValues({...input,link:bad},me,task,'now'),/https link/);
+ assert.doesNotThrow(()=>sheetValues({...input,link:''},me,task,'now'));
+});
