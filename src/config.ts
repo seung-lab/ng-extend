@@ -359,3 +359,61 @@ export const RETINAL_CELL_TYPES: string[] = [
   'Other',
   'Unknown / Unsure',
 ];
+
+// Mouse visual cortex (MICrONS minnie65, and the pinky sandbox), in the
+// MICrONS classification's plain-English names.
+export const CORTEX_CELL_TYPES: string[] = [
+  'L2/3 Pyramidal',
+  'L4 Pyramidal',
+  'L4 Spiny Stellate',
+  'L5 IT Pyramidal',
+  'L5 ET Pyramidal',
+  'L5 NP Pyramidal',
+  'L6 IT Pyramidal',
+  'L6 CT Pyramidal',
+  'Basket Cell',
+  'Chandelier Cell',
+  'Martinotti Cell',
+  'Bipolar Interneuron',
+  'Neurogliaform Cell',
+  'Other Interneuron',
+  'Astrocyte',
+  'Oligodendrocyte',
+  'Oligodendrocyte Precursor (OPC)',
+  'Microglia',
+  'Vascular Cell',
+  'Other',
+  'Unknown / Unsure',
+];
+
+// Medial entorhinal cortex (pni_mec).
+export const MEC_CELL_TYPES: string[] = [
+  'Stellate Cell',
+  'Pyramidal Cell',
+  'Intermediate Stellate / Pyramidal',
+  'Horizontal Cell (deep layers)',
+  'Basket Cell',
+  'Chandelier Cell',
+  'Other Interneuron',
+  'Astrocyte',
+  'Oligodendrocyte',
+  'Oligodendrocyte Precursor (OPC)',
+  'Microglia',
+  'Vascular Cell',
+  'Other',
+  'Unknown / Unsure',
+];
+
+/** The cell type picker's list for a dataset (Amy 2026-09-28: "won't be
+ *  seeing amacrine cells in MEC"). Takes the canonical dataset key; an
+ *  unrecognised dataset gets only the neutral choices, never another tissue's
+ *  types. Users can still free-type any value. */
+export function cellTypesForDataset(canonical: string): string[] {
+  switch (canonical) {
+    case 'stroeh_mouse_retina': return RETINAL_CELL_TYPES;
+    case 'pinky_nf_v2':
+    case 'minnie65_public': return CORTEX_CELL_TYPES;
+    case 'pni_mec': return MEC_CELL_TYPES;
+    default: return ['Neuron', 'Glia', 'Other', 'Unknown / Unsure'];
+  }
+}

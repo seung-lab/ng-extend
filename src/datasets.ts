@@ -11,7 +11,7 @@ import thumbMec from '../static/images/datasets/mec.jpg';
 // EyeWire II retina: e2_overview.png from eyewire.ai.
 import thumbRetina from '../static/images/datasets/retina.jpg';
 import { useLayersStore } from './store';
-import { getDatasetCaveConfig } from './config';
+import { getDatasetCaveConfig, cellTypesForDataset } from './config';
 import { openSegPanel } from './widgets/widget_utils';
 
 export interface DatasetEntry {
@@ -235,6 +235,11 @@ export function currentSegLayerName(): string {
  */
 export function currentDatasetTag(): string {
   return canonicalDataset(currentSegLayerName()) || 'stroeh_mouse_retina';
+}
+
+/** Cell type picker choices for the dataset on screen. */
+export function currentCellTypes(): string[] {
+  return cellTypesForDataset(currentDatasetTag());
 }
 
 /**

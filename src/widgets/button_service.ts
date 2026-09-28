@@ -2,7 +2,7 @@ import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
-import {RETINAL_CELL_TYPES} from '../config';
+import {currentCellTypes} from '../datasets';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
 import {getSelectedSupervoxelId} from './pcg_service';
@@ -321,7 +321,7 @@ export class ButtonService {
     blankOpt.textContent = '— select type —';
     select.appendChild(blankOpt);
 
-    for (const ct of RETINAL_CELL_TYPES) {
+    for (const ct of currentCellTypes()) {
       const opt = document.createElement('option');
       opt.value = ct;
       opt.textContent = ct;

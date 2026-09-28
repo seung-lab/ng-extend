@@ -9,7 +9,7 @@ import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from '../widgets/widget_utils';
 import { setCellComplete, saveCellType, activeCaveServer, NURRO_IMAGES } from '../widgets/lightbulb_service';
 import { useProofreadingBackendStore, useUserStatsStore } from '../store';
-import { RETINAL_CELL_TYPES } from '../config';
+import { currentCellTypes } from '../datasets';
 
 const emit = defineEmits({ hide: null });
 
@@ -827,7 +827,7 @@ const panelStyle = computed(() => ({
                 <div class="nge-bp-sub-label">Cell type:</div>
                 <select v-model="selectedCellType" class="nge-bp-select" @keydown.stop @keyup.stop @keypress.stop>
                   <option value="">Select type...</option>
-                  <option v-for="ct in RETINAL_CELL_TYPES" :key="ct" :value="ct">{{ ct }}</option>
+                  <option v-for="ct in currentCellTypes()" :key="ct" :value="ct">{{ ct }}</option>
                 </select>
                 <button class="nge-bp-btn nge-bp-btn--go" @click="batchAnnotate(group)" :disabled="!selectedCellType">Apply</button>
               </div>

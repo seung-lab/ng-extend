@@ -9,8 +9,7 @@ import { storeToRefs } from 'pinia';
 import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useHelpRequestStore } from '../store';
 import { getCellStatus, setCellComplete, saveCellType, CellStatus } from '../widgets/lightbulb_service';
 import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
-import { RETINAL_CELL_TYPES } from '../config';
-import { currentSegLayerName } from '../datasets';
+import { currentSegLayerName, currentCellTypes } from '../datasets';
 
 const annotStore = useSegmentAnnotationStore();
 const statsStore = useUserStatsStore();
@@ -326,7 +325,7 @@ function submitHelpRequest() {
         <!-- Type dropdown -->
         <div class="nge-ann-type-menu" v-if="showTypeMenu">
           <button
-            v-for="t in RETINAL_CELL_TYPES"
+            v-for="t in currentCellTypes()"
             :key="t"
             class="nge-ann-type-item"
             :class="{ 'nge-ann-type-item--active': cellTypeLabel === t }"
