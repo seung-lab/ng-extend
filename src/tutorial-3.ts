@@ -95,6 +95,10 @@ function smallButton(cls: string, label: string, onClick: () => void): HTMLButto
   return b;
 }
 
+/** Whether the current step shows the "?" help button (a step that only
+ *  asks for a key press does not). */
+let helpWanted = true;
+
 export function practiceStatus(text: string, done = false) {
   const chip = chipBody();
   if (!chip) return;
@@ -110,13 +114,15 @@ export function practiceStatus(text: string, done = false) {
   el.style.background = done ? 'rgba(96,192,96,0.14)' : 'rgba(53,181,255,0.10)';
   el.style.borderLeftColor = done ? '#60c060' : 'rgba(53,181,255,0.75)';
   el.style.fontWeight = done ? '600' : '';
-  // Stuck? One button opens a small panel with the ways out (Amy).
+  // Stuck? A "?" on the right opens a small panel with the ways out (Amy).
   let help = chip.querySelector('.nge-practice-help') as HTMLElement | null;
   if (!help) {
-    help = smallButton('nge-practice-help', "I'm stuck", () => toggleStuckPanel());
+    help = smallButton('nge-practice-help', '?', () => toggleStuckPanel());
+    help.title = 'Stuck? Ways to get help';
+    help.style.cssText += 'float:right;width:30px;height:30px;padding:0;border-radius:50%;font-weight:700;font-size:1em;margin:8px 0 0;';
     chip.appendChild(help);
   }
-  help.style.display = done ? 'none' : '';
+  help.style.display = (done || !helpWanted) ? 'none' : '';
   const stuck = chip.querySelector('.nge-practice-stuck') as HTMLElement | null;
   if (stuck && done) stuck.remove();
   const place = chip.querySelector('.nge-practice-place') as HTMLElement | null;
@@ -190,6 +196,7 @@ function offerPlacePoints() {
  *  can render as a black box until the page is refreshed. */
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string) {
   const token = ++practiceWatch;
+  helpWanted = true;
   let celebrated = false;
   const tick = async () => {
     if (token !== practiceWatch) return;
@@ -213,7 +220,30 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
-export function stopWatching() { practiceWatch++; leaveWaitlist(); hidePyrMarkers(); }
+export function stopWatching() { practiceWatch++; leaveWaitlist(); hidePyrMarkers(); helpWanted = true; }
+
+function toolIsOn(): boolean {
+  const viewer = getViewer();
+  try { if (viewer?.globalToolBinder?.activeTool_ || viewer?.toolBinder?.activeTool_) return true; } catch { /* DOM check */ }
+  return !!document.querySelector('.neuroglancer-tool-status');
+}
+
+/** A step that only asks for the tool to be switched on: the status line
+ *  flips when it is. No help button on such a step (Amy). */
+export function watchTool(waiting: string, finished: string) {
+  const token = ++practiceWatch;
+  helpWanted = false;
+  const tick = () => {
+    if (token !== practiceWatch) return;
+    const p = currentPractice();
+    if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); return; }
+    if (p.phase === 'busy') { practiceStatus('Every practice cell is in use right now. Read along and press next.'); return; }
+    if (toolIsOn()) { practiceStatus(finished, true); return; }
+    practiceStatus(waiting);
+    setTimeout(tick, 700);
+  };
+  setTimeout(tick, 600);
+}
 
 // Idle countdown under the status line (Amy): appears after a quiet minute,
 // and at zero the cell is undone and released.
@@ -402,7 +432,7 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     width: "450px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(true, 'Press M, then Ctrl+click the yellow branch and the purple cell.', 'Merge success! You did it. The branch is part of the cell now.');
+      watchTool('Press M to activate merge mode.', 'Merge mode is on. Press next.');
       // Point at the segmentation layer chip without being asked (Amy).
       setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
       const ex = await beginPractice('merge_then_cut');
@@ -414,7 +444,30 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     },
   },
 
-  // 4: Another merge, on a second cell
+  // 4: Make the merge
+  {
+    title: "Make the merge",
+    text: `
+With merge mode on:
+
+1. **Ctrl+Click** the yellow branch.
+2. **Ctrl+Click** the purple cell, close to where the branch should join it.
+3. Press **Submit merge** on the bar at the bottom, or press **Enter**.
+
+The server connects the two. You'll see "trying..." and then "done", and the branch turns purple.`,
+    position: OVER_3D,
+    width: "400px",
+    onEnter: async () => {
+      closeSidePanel();
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', 'Merge success! You did it. The branch is part of the cell now.');
+      await beginPractice('merge_then_cut');
+      // The previous step said "press M"; if they pressed next instead,
+      // the tool comes on anyway.
+      setTimeout(() => ensureTool('merge'), 400);
+    },
+  },
+
+  // 5: Another merge, on a second cell
   {
     title: "Let's try another merge",
     text: `
@@ -438,7 +491,7 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
     },
   },
 
-  // 5: Merge tips
+  // 6: Merge tips
   {
     title: "Merge Tips",
     text: `
@@ -454,7 +507,7 @@ Merged already? Press next.`,
     },
   },
 
-  // 6: Done, and on to cuts
+  // 7: Done, and on to cuts
   {
     title: "Merge: done!",
     text: `
