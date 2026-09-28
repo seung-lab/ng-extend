@@ -132,6 +132,22 @@ function stopResize() {
   document.removeEventListener('mouseup', stopResize);
 }
 
+// ── Quiet mode (Ames 2026-09-28, like the original EyeWire chat) ──
+// Click away and chat shrinks to its latest messages, background fading out;
+// click back in and it takes its full size again. The bottom edge stays put.
+const QUIET_H = 150;
+const chatFocused = ref(true);
+function onDocPointerDown(e: PointerEvent) {
+  const t = e.target as HTMLElement | null;
+  const inside = !!t && (!!panelEl.value?.contains(t) || !!t.closest?.('.nge-shotdlg-overlay'));
+  chatFocused.value = inside;
+}
+function onPanelFocusIn() { chatFocused.value = true; }
+document.addEventListener('pointerdown', onDocPointerDown, true);
+const isQuiet = computed(() => !chatFocused.value && !collapsed.value && !isResizing.value && !isDragging.value
+  && panelHeight.value > QUIET_H && !document.body.classList.contains('nge-mobile'));
+const shownHeight = computed(() => isQuiet.value ? QUIET_H : panelHeight.value);
+
 // ── Position style ──
 const positionStyle = computed(() => {
   // Collapsed: always settle at the bottom of the screen. Keep whatever
@@ -147,7 +163,8 @@ const positionStyle = computed(() => {
   if (posX.value !== null && posY.value !== null) {
     return {
       left: posX.value + 'px',
-      top: posY.value + 'px',
+      // Quiet mode keeps the bottom edge where it was.
+      top: (posY.value + panelHeight.value - shownHeight.value) + 'px',
       right: 'auto',
       bottom: 'auto',
     };
@@ -191,6 +208,7 @@ watch(() => chatStore.mentionPing, () => {
 });
 
 onUnmounted(() => {
+  document.removeEventListener('pointerdown', onDocPointerDown, true);
   document.removeEventListener('mousedown', closePopovers);
   if (handleSearchTimer) clearTimeout(handleSearchTimer);
   chatStore.setPanelVisible(false);
@@ -561,6 +579,8 @@ async function copySegId(segRef: string, ev: Event) {
 
 // ── Open user profile from chat name click ──
 async function openUserProfile(displayName: string) {
+  // Selecting text across a name (to copy it) is not a click on the name.
+  if (String(window.getSelection() || '').length) return;
   if (/^nurro$/i.test(displayName.trim())) { openNurroProfile(); return; }
   try {
     const results = await backendStore.searchUsers(displayName);
@@ -610,9 +630,10 @@ function toggleCollapse() {
     <div
       ref="panelEl"
       class="nge-chat-float"
-      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash }"
+      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash, 'nge-chat-float--quiet': isQuiet, 'nge-chat-float--resizing': isResizing }"
+      @focusin="onPanelFocusIn"
       :style="{
-        ...(collapsed ? {} : { width: panelWidth + 'px', height: panelHeight + 'px' }),
+        ...(collapsed ? {} : { width: panelWidth + 'px', height: shownHeight + 'px' }),
         ...positionStyle
       }"
     >
@@ -691,7 +712,8 @@ function toggleCollapse() {
                           @click="openNurroProfile" title="Nurro's profile"><img :src="nurroAvatar" alt="" />Nurro<span class="nge-chat-bot-tag nge-chat-nurro-tag">guide</span></button>
                   <span v-else-if="msg.rank === 'bot'" class="nge-chat-msg-name nge-chat-bot-name"
                         :title="'nkem_test: the original EyeWire chat bot, by @nkem (2013). Say \'for science\' and it answers.'">nkem_test<span class="nge-chat-bot-tag">bot</span></span>
-                  <button v-else class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: rankColor(msg.rank) }" @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</button>
+                  <span v-else class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: rankColor(msg.rank) }"
+                        @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</span>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <button v-else-if="part.type === 'link' && isViewLink(part.text)" class="nge-chat-view-chip"
@@ -851,6 +873,20 @@ function toggleCollapse() {
 .nge-chat-float--dragging {
   user-select: none;
 }
+
+/* Quiet mode: shrunk to the latest messages, chrome faded back. */
+.nge-chat-float:not(.nge-chat-float--dragging):not(.nge-chat-float--resizing) {
+  transition: bottom 0.25s ease, height 0.25s ease, top 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;
+}
+.nge-chat-float--quiet {
+  background: rgba(6, 10, 20, 0.35);
+  border-color: transparent;
+}
+.nge-chat-float--quiet .nge-chat-resize { display: none; }
+.nge-chat-float--quiet .nge-chat-strip { opacity: 0.55; }
+.nge-chat-float--quiet .nge-chat-input-wrap { background: rgba(8, 10, 20, 0.45); border-top-color: transparent; }
+.nge-chat-float--quiet .nge-chat-input { background: rgba(20, 24, 40, 0.5); }
+.nge-chat-float--quiet .nge-chat-react-add { display: none; }
 
 /* ── Resize handles ── */
 .nge-chat-resize { position: absolute; z-index: 10; }
@@ -1043,6 +1079,7 @@ function toggleCollapse() {
   margin-right: 4px;
 }
 .nge-chat-msg-name--clickable {
+  user-select: text;
   background: none;
   border: none;
   padding: 0;
