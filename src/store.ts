@@ -3281,7 +3281,47 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   // ── Task management ───────────────────────────────────────────────────
   /** Load tasks for a dataset, with optional status filter. */
-  async function loadTasks(dataset: string = currentDatasetTag(), statusFilter?: string) {
+  // Incremental sync (Amy 2026-09-28: "don't go through thousands of rows each
+  // time"). The first load of a dataset pages through every task once; after
+  // that only rows whose updated_at moved are fetched and merged in. Every
+  // claim, release, completion and expiry bumps updated_at (pilot_task_action,
+  // expire_stale_assignments), so a claim or release costs one tiny query.
+  let tasksSyncedDataset = '';
+  let tasksSyncedAt = '';
+
+  async function loadTasks(dataset: string = currentDatasetTag(), statusFilter?: string, opts: { full?: boolean } = {}) {
+    if (!statusFilter && !opts.full && dataset === tasksSyncedDataset && tasksSyncedAt) {
+      try {
+        const { data, error: fetchErr } = await supabase
+          .from('proofreading_tasks')
+          .select('*')
+          .eq('dataset', dataset)
+          .gte('updated_at', tasksSyncedAt)
+          .order('updated_at', { ascending: true })
+          .limit(1000);
+        if (fetchErr) throw fetchErr;
+        const rows = (data ?? []) as ProofreadingTask[];
+        if (rows.length < 1000) {
+          const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
+          const next = tasks.value.slice();
+          let added = false;
+          for (const r of rows) {
+            const i = byId.get(r.id);
+            if (i === undefined) { next.push(r); added = true; } else next[i] = r;
+            if (r.updated_at > tasksSyncedAt) tasksSyncedAt = r.updated_at;
+          }
+          if (added) {
+            next.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)
+              || String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id);
+          }
+          if (rows.length) tasks.value = next;
+          return;
+        }
+        // Too much changed since the last sync: fall through to a full load.
+      } catch (e: any) {
+        console.warn('[backend] loadTasks delta failed, doing a full load:', e.message);
+      }
+    }
     loading.value = true;
     error.value = '';
     try {
@@ -3306,6 +3346,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         if (!data || data.length < PAGE || from > 50_000) break;
       }
       tasks.value = all;
+      if (!statusFilter) {
+        tasksSyncedDataset = dataset;
+        tasksSyncedAt = all.reduce((m, t) => (t.updated_at > m ? t.updated_at : m), '');
+      }
     } catch (e: any) {
       error.value = e.message || 'Failed to load tasks';
       console.warn('[backend] loadTasks error:', e.message);

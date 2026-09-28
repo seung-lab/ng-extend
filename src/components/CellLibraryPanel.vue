@@ -480,7 +480,11 @@ function heldLabel(t: ProofreadingTask): string {
   return `${name} on ${datasetDisplayName((t as any).dataset)}`;
 }
 async function releaseHeld(t: ProofreadingTask) {
-  const ok = await backend.releaseTaskById(t.id);
+  const key = String(t.id);
+  if (releasing.has(key)) return;
+  releasing.add(key);
+  let ok = false;
+  try { ok = await backend.releaseTaskById(t.id); } finally { releasing.delete(key); }
   if (!ok) { claimError.value = backend.error || 'Could not release this claim.'; return; }
   const held = await backend.loadMyActiveClaims();
   if (held.length >= backend.MAX_CLAIMS) { claimLimit.value = held; return; }
@@ -667,13 +671,25 @@ async function triggerCellCelebration() {
   };
 }
 
+/** Claims being released right now: their Release buttons show a spinner,
+ *  since the round trip takes a moment (Amy 2026-09-28). */
+const releasing = reactive(new Set<string>());
+function releaseKey(cell: CellRow): string { return cell.taskId != null ? String(cell.taskId) : cellKey(cell); }
+
 async function releaseCell(cell: typeof cells.value[0]) {
+  const key = releaseKey(cell);
+  if (releasing.has(key)) return;
+  releasing.add(key);
   // By claim id first: a claim made on a point has no segment id, and the old
   // `if (!cell.segId) return` made Release do nothing, silently (Amy 2026-09-28).
   let ok = false;
-  if (cell.taskId) ok = await backend.releaseTaskById(cell.taskId);
-  else if (cell.claimPoint) ok = await backend.releaseCell(cell.claimPoint);
-  else if (cell.segId) ok = await backend.releaseBySegment(cell.segId);
+  try {
+    if (cell.taskId) ok = await backend.releaseTaskById(cell.taskId);
+    else if (cell.claimPoint) ok = await backend.releaseCell(cell.claimPoint);
+    else if (cell.segId) ok = await backend.releaseBySegment(cell.segId);
+  } finally {
+    releasing.delete(key);
+  }
   if (!ok) {
     claimError.value = backend.error || 'Could not release this claim. Please try again.';
     if (claimErrorTimer) clearTimeout(claimErrorTimer);
@@ -683,7 +699,7 @@ async function releaseCell(cell: typeof cells.value[0]) {
   if (completing.value?.key === cellKey(cell)) completing.value = null;
   // Dispatch event so seg dot pips update
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
-  await backend.loadTasks();
+  if (!cell.taskId) await backend.loadTasks();  // releaseTaskById already synced
 }
 
 // The claim/completion is saved even if the source sheet is temporarily unavailable.
@@ -717,7 +733,10 @@ const isMyClaim = (cell: typeof cells.value[0]) =>
   (cell.status === 'assigned' || cell.status === 'in_progress') && cell.assignedTo === backend.userId;
 
 // Runs once your claims are in the list (the panel may have just opened).
-watch([pendingCompleteRequest, datasetScopedCells, () => backend.loading], async () => {
+// Started in onMounted, NOT during setup: an immediate watcher here evaluates
+// datasetScopedCells before later declarations exist, which threw "Cannot
+// access before initialization" and stopped the panel opening (2026-09-28).
+onMounted(() => watch([pendingCompleteRequest, datasetScopedCells, () => backend.loading], async () => {
   const req = pendingCompleteRequest.value;
   if (!req) return;
   const mine = datasetScopedCells.value.filter(c => isMyClaim(c));
@@ -734,7 +753,7 @@ watch([pendingCompleteRequest, datasetScopedCells, () => backend.loading], async
   if (!match && mine.length === 1) match = mine[0];
   if (match) openComplete(match);
   else chooseClaim.value = mine.length > 0;
-}, { immediate: true });
+}, { immediate: true }));
 // ── Help request helpers ────────────────────────────────────────────
 const showResolved = ref(false);
 const activeHelpId = ref<string | null>(null);
@@ -2503,7 +2522,9 @@ const panelStyle = computed(() => ({
             </div>
             <div v-for="t in claimLimit" :key="t.id" class="nge-cl-limit-row">
               <span>{{ heldLabel(t) }}</span>
-              <button class="nge-cl-btn nge-cl-limit-release" @click="releaseHeld(t)">Release</button>
+              <button class="nge-cl-btn nge-cl-limit-release" :disabled="releasing.has(String(t.id))" @click="releaseHeld(t)">
+                <span v-if="releasing.has(String(t.id))" class="nge-cl-spin" />{{ releasing.has(String(t.id)) ? 'Releasing…' : 'Release' }}
+              </button>
             </div>
           </div>
           <div v-if="claimError" class="nge-cl-error-banner" @click="claimError = ''">
@@ -2565,9 +2586,10 @@ const panelStyle = computed(() => ({
               <button
                 v-if="isMyClaim(cell)"
                 class="nge-cl-btn nge-cl-btn--release"
+                :disabled="releasing.has(releaseKey(cell))"
                 @click="releaseCell(cell)"
                 title="Release claim"
-              >Release</button>
+              ><span v-if="releasing.has(releaseKey(cell))" class="nge-cl-spin" />{{ releasing.has(releaseKey(cell)) ? 'Releasing…' : 'Release' }}</button>
 
               <button
                 v-if="isMyClaim(cell)"
@@ -3155,6 +3177,19 @@ const panelStyle = computed(() => ({
   font-size: 0.68em;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
+/* Small spinner inside a busy button (Release). */
+.nge-cl-spin {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 5px;
+  vertical-align: -0.1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: nge-cl-spin 0.7s linear infinite;
+}
+@keyframes nge-cl-spin { to { transform: rotate(360deg); } }
 
 /* States */
 .nge-cl-loading, .nge-cl-empty, .nge-cl-no-results {
