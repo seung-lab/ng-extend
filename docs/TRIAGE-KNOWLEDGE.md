@@ -81,3 +81,10 @@ summaries.
 - The Browser pane counts as a hidden tab: requestAnimationFrame never fires
   there, so neuroglancer will not redraw or open panels in it. Verify panel
   changes on a real screen (2026-09-26, from the tutorial audit).
+- A prior build's "what has happened so far" summary can describe a fix that
+  never actually landed in the checkout (no matching commit, no trace in the
+  file). Confirmed on the weekly champions card styling: the summary said the
+  🏆 class and CSS were added, but NotificationFeedPanel.vue had neither, which
+  is why the tester said they didn't see the card. Always grep the named file
+  for the described change before trusting that note (2026-09-28, weekly
+  champions styling build).

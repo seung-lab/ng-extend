@@ -205,7 +205,7 @@ function plainText(text: string): string {
         v-for="notif in backend.notifications"
         :key="notif.id"
         class="nge-notif-card"
-        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙'), 'nge-notif-card--recap': (notif.title || '').startsWith('✨') }"
+        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙'), 'nge-notif-card--recap': (notif.title || '').startsWith('✨'), 'nge-notif-card--champions': (notif.title || '').startsWith('🏆') }"
         @click="openDetail(notif)"
       >
         <div class="nge-notif-card-row">
@@ -419,6 +419,15 @@ function plainText(text: string): string {
 }
 .nge-notif-card--thanks .nge-notif-card-title {
   color: #8fc4ff;
+  font-weight: 700;
+}
+/* Weekly champions cards (title starts with 🏆): gold trophy accent. */
+.nge-notif-card--champions {
+  border-left: 3px solid #ffd35a;
+  background: linear-gradient(90deg, rgba(255, 211, 90, 0.12), rgba(255, 160, 60, 0.05));
+}
+.nge-notif-card--champions .nge-notif-card-title {
+  color: #ffd35a;
   font-weight: 700;
 }
 
