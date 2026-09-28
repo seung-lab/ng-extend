@@ -154,6 +154,30 @@ interface NextBadgeInfo {
   track: BadgeTrack;
 }
 
+/** Both tracks, edits first (Amy 2026-09-28: one bar for edits and one for
+ *  cells). The old single bar picked whichever track had fewer units
+ *  remaining, which compared edits against cells as if they were the same
+ *  thing ("25 cells" beat "118 edits"). */
+const nextBadges = computed<NextBadgeInfo[]>(() => {
+  const all = nextBadgeFor.value;
+  return [all.building, all.exploration].filter((x): x is NextBadgeInfo => !!x);
+});
+const nextBadgeFor = computed(() => {
+  function nextFor(badges: typeof BUILDING_BADGES, current: number, track: BadgeTrack): NextBadgeInfo | null {
+    const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
+    const idx = sorted.findIndex(b => current < b.threshold);
+    if (idx === -1) return null;
+    const target = sorted[idx];
+    const prev = idx > 0 ? sorted[idx - 1].threshold : 0;
+    const pct = Math.min(100, Math.round(((current - prev) / (target.threshold - prev)) * 100));
+    return { name: target.name, threshold: target.threshold, remaining: target.threshold - current, progressPct: pct, prevThreshold: prev, track };
+  }
+  return {
+    building: nextFor(BUILDING_BADGES, stats.value.editsAllTime ?? 0, 'building'),
+    exploration: nextFor(EXPLORATION_BADGES, stats.value.cellsSubmitted ?? 0, 'exploration'),
+  };
+});
+
 const nextBadge = computed<NextBadgeInfo | null>(() => {
   function nextFor(badges: typeof BUILDING_BADGES, current: number, track: BadgeTrack): NextBadgeInfo | null {
     const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
@@ -354,24 +378,29 @@ function jumpToCell(segId: string) {
         </div>
 
         <!-- Next badge progress -->
-        <div class="nge-recap-section nge-recap-badge-progress" v-if="nextBadge">
-          <div class="nge-recap-section-label">Next Badge</div>
-          <div class="nge-recap-badge-row">
-            <div class="nge-recap-badge-name">{{ nextBadge.name }}</div>
-            <div class="nge-recap-badge-remaining">
-              {{ nextBadge.remaining.toLocaleString() }} {{ nextBadge.track === 'building' ? 'edits' : 'cells' }} to go
+        <div class="nge-recap-section nge-recap-badge-progress" v-if="nextBadges.length">
+          <div class="nge-recap-section-label">Next Badges</div>
+          <div v-for="nb in nextBadges" :key="nb.track" class="nge-recap-badge-track" :class="`nge-recap-badge-track--${nb.track}`">
+            <div class="nge-recap-badge-row">
+              <div class="nge-recap-badge-name">
+                <span class="nge-recap-badge-kind">{{ nb.track === 'building' ? 'Edits' : 'Cells' }}</span>
+                {{ nb.name }}
+              </div>
+              <div class="nge-recap-badge-remaining">
+                {{ nb.remaining.toLocaleString() }} {{ nb.track === 'building' ? 'edits' : 'cells' }} to go
+              </div>
             </div>
-          </div>
-          <div class="nge-recap-progress-track">
-            <div
-              class="nge-recap-progress-fill"
-              :style="{ width: nextBadge.progressPct + '%' }"
-            ></div>
-          </div>
-          <div class="nge-recap-progress-labels">
-            <span>{{ nextBadge.prevThreshold.toLocaleString() }}</span>
-            <span>{{ nextBadge.progressPct }}%</span>
-            <span>{{ nextBadge.threshold.toLocaleString() }}</span>
+            <div class="nge-recap-progress-track">
+              <div
+                class="nge-recap-progress-fill"
+                :style="{ width: nb.progressPct + '%' }"
+              ></div>
+            </div>
+            <div class="nge-recap-progress-labels">
+              <span>{{ nb.prevThreshold.toLocaleString() }}</span>
+              <span>{{ nb.progressPct }}%</span>
+              <span>{{ nb.threshold.toLocaleString() }}</span>
+            </div>
           </div>
         </div>
         <div class="nge-recap-section nge-recap-badge-complete" v-else>
@@ -838,4 +867,78 @@ function jumpToCell(segId: string) {
   color: #c9d6e3;
 }
 .nge-recap-global-share strong { color: #42d5ec; }
+
+/* ── Readability over the render (Amy 2026-09-28: "some of these are hard to
+      read"). The neuron render now sits behind the recap, so the old #555 to
+      #666 labels and near-transparent tiles vanished into it. Labels are
+      lifted, every tile and panel gets a dark translucent backing, and all
+      text gets a soft dark halo. Kept as one block at the end so it layers on
+      the rules above without rewriting them. ── */
+.nge-recap-section-label,
+.nge-recap-month-key,
+.nge-recap-big-sub,
+.nge-recap-streak-record-label,
+.nge-recap-progress-labels {
+  color: #b4c3d6;
+}
+.nge-recap-streak-unit,
+.nge-recap-badge-remaining,
+.nge-recap-community-share,
+.nge-recap-cell-type { color: #d2dbe7; }
+.nge-recap-streak-record-num,
+.nge-recap-badge-name,
+.nge-recap-big-label { color: #f2f6fb; }
+.nge-recap-month-cell {
+  background: rgba(4, 8, 18, 0.78);
+  border-color: rgba(74, 158, 255, 0.28);
+  backdrop-filter: blur(6px);
+}
+.nge-recap-fact {
+  background: rgba(4, 8, 18, 0.8);
+  border-color: rgba(74, 158, 255, 0.22);
+  backdrop-filter: blur(6px);
+}
+.nge-recap-badge-progress,
+.nge-recap-streak-row {
+  background: rgba(4, 8, 18, 0.72);
+  border-radius: 8px;
+  padding: 10px 12px;
+  backdrop-filter: blur(6px);
+}
+.nge-recap-section-label,
+.nge-recap-month-key,
+.nge-recap-month-num,
+.nge-recap-streak-num,
+.nge-recap-streak-unit,
+.nge-recap-streak-record,
+.nge-recap-badge-name,
+.nge-recap-badge-remaining,
+.nge-recap-progress-labels,
+.nge-recap-big-label,
+.nge-recap-big-sub,
+.nge-recap-global-sub,
+.nge-recap-global-share,
+.nge-recap-fact-text {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.7);
+}
+.nge-recap-progress-track { background: rgba(255, 255, 255, 0.14); }
+
+/* Two countdowns, colour matched to the profile's badge sections:
+   Proofreading (edits) amber, Cell Achievements teal. */
+.nge-recap-badge-track + .nge-recap-badge-track { margin-top: 12px; }
+.nge-recap-badge-kind {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+.nge-recap-badge-track--building .nge-recap-badge-kind { background: rgba(255, 208, 138, 0.16); color: #ffd08a; }
+.nge-recap-badge-track--exploration .nge-recap-badge-kind { background: rgba(94, 234, 212, 0.14); color: #5eead4; }
+.nge-recap-badge-track--building .nge-recap-progress-fill { background: linear-gradient(90deg, #f5a623, #ffd08a); }
+.nge-recap-badge-track--exploration .nge-recap-progress-fill { background: linear-gradient(90deg, #14b8a6, #5eead4); }
 </style>

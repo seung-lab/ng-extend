@@ -4785,6 +4785,8 @@ export interface ChatMessage {
   dataset?: string | null;
   /** Set on announcement messages so clicking opens that notification. */
   notificationId?: number | null;
+  /** chat_messages row id (persisted messages), for deletion. */
+  id?: number | null;
 }
 
 /**
@@ -4875,7 +4877,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const { data, error } = await supabase
         .from('chat_messages')
-        .select('user_id, name, rank, text, created_at, dataset, notification_id')
+        .select('id, user_id, name, rank, text, created_at, dataset, notification_id')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error || !data) return;
@@ -4891,6 +4893,7 @@ export const useChatStore = defineStore('chat', () => {
           parts: parseMessageParts(r.name, r.text),
           dataset: r.dataset ?? null,
           notificationId: r.notification_id ?? null,
+          id: r.id ?? null,
         });
       }
     } catch (e) {
@@ -4926,8 +4929,12 @@ export const useChatStore = defineStore('chat', () => {
       const date = new Date(row.created_at);
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
-        parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null});
+        parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null});
       if (row.user_id !== backend.userId && !useUserPreferencesStore().prefs.chatMuted) { unreadMessages.value=true; unreadCount.value++; }
+    }).on('postgres_changes', {event:'DELETE', schema:'public', table:'chat_messages'}, payload => {
+      // A message an admin deleted disappears for everyone watching.
+      const id = (payload.old as any)?.id;
+      if (id != null) removeLocal(id);
     }).subscribe(status => { connected.value = status === 'SUBSCRIBED'; });
     connecting = false; // channel is now assigned; the guard above holds
   }
@@ -4949,6 +4956,24 @@ export const useChatStore = defineStore('chat', () => {
       .then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); });
   }
 
+  function removeLocal(id: number) {
+    const i = chatMessages.value.findIndex(m => m.id === id);
+    if (i >= 0) chatMessages.value.splice(i, 1);
+  }
+
+  /**
+   * Delete a persisted message. Admin only: the ewCommunityData gateway allows
+   * chat_messages changes other than POST only for admins, by message id, so
+   * this is enforced server side as well as hidden in the UI.
+   */
+  async function deleteMessage(id: number): Promise<boolean> {
+    if (!useProofreadingBackendStore().isAdmin) return false;
+    const { error } = await supabase.from('chat_messages').delete().eq('id', id);
+    if (error) { console.warn('[chat] delete failed:', error.message); return false; }
+    removeLocal(id);
+    return true;
+  }
+
   function markRead() {
     unreadMessages.value = false;
     unreadCount.value = 0;
@@ -4965,5 +4990,5 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect };
+  return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage };
 });

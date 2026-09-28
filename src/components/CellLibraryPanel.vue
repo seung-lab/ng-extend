@@ -1330,10 +1330,18 @@ function openLink(link: WorkingLink) {
 const pendingLinkOpen = ref<WorkingLink | null>(null);
 
 async function shareLinkToChat(link: WorkingLink) {
-  // Post the title + URL into the global chat broadcast.
+  // Post the title + a SHORT link. Saved links carry the whole viewer state
+  // in the URL (KB of encoded JSON), which flooded the chat (Amy 2026-09-28);
+  // shortenViewerUrl posts that state to the state server, like Share does.
   try {
+    const { shortenViewerUrl } = await import('../util/state_link');
+    const short = await shortenViewerUrl(link.url);
+    if (!short) {
+      flashJumpError('Could not make a short link for this view (try again after signing in). Nothing was posted.');
+      return;
+    }
     const chat = (await import('../store')).useChatStore();
-    chat.sendMessage(`📎 ${link.title}\n${link.url}`);
+    chat.sendMessage(`📎 ${link.title}\n${short}`);
   } catch (e) {
     console.warn('[workingLinks] share to chat failed:', e);
   }
