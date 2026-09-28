@@ -929,12 +929,15 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           </div>
         </li>
         <li>
-          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 3; tutorialStore.setTutorialStep(0); closeHamburger()">
+          <!-- Merge and Cut run on practice cells one learner at a time: the
+               start goes through a gate (tutorial-3.ts) that offers a place in
+               line when the cells are held. -->
+          <div class="logoutButton button nge-menu-item" @click="document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: 3 } })); closeHamburger()">
             <span class="nge-menu-num">3</span><span>Merge</span>
           </div>
         </li>
         <li>
-          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 5; tutorialStore.setTutorialStep(0); closeHamburger()">
+          <div class="logoutButton button nge-menu-item" @click="document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: 5 } })); closeHamburger()">
             <span class="nge-menu-num">4</span><span>Cut</span>
           </div>
         </li>
