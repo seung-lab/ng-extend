@@ -88,14 +88,20 @@ const dialogHidden = ref(false);
 async function captureWholeScreen(): Promise<HTMLCanvasElement> {
   const md = navigator.mediaDevices as any;
   if (!md?.getDisplayMedia) throw new Error('This browser cannot capture the screen. Untick "Whole screen" to capture the viewer only.');
-  // Hide this dialog so it is not in the picture.
+  // Hide this dialog so it is not in the picture, and the blurred pop-up that
+  // opened it (Submit an issue): Celia's bug report attached a picture of the
+  // report form over a blurred viewer. Every other window on screen (Cell
+  // Library, chat, layer panels) stays in the shot (Ames 2026-09-28).
   dialogHidden.value = true;
-  await new Promise(r => setTimeout(r, 80));
-  const stream: MediaStream = await md.getDisplayMedia({
-    video: { displaySurface: 'browser' }, audio: false,
-    preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude',
-  });
+  document.body.classList.add('nge-shot-capturing');
+  await new Promise(r => setTimeout(r, 120));
+  let stream: MediaStream | null = null;
   try {
+    // Inside the try: a dismissed picker must still bring the dialog back.
+    stream = await md.getDisplayMedia({
+      video: { displaySurface: 'browser' }, audio: false,
+      preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude',
+    }) as MediaStream;
     const video = document.createElement('video');
     video.srcObject = stream;
     video.muted = true;
@@ -108,8 +114,9 @@ async function captureWholeScreen(): Promise<HTMLCanvasElement> {
     c.getContext('2d')!.drawImage(video, 0, 0);
     return c;
   } finally {
-    stream.getTracks().forEach(t => t.stop());
+    stream?.getTracks().forEach(t => t.stop());
     dialogHidden.value = false;
+    document.body.classList.remove('nge-shot-capturing');
   }
 }
 
@@ -1500,5 +1507,15 @@ async function download() {
   .nge-shotdlg { animation: none; }
   .nge-shotdlg-scan { animation: none; display: none; }
   .nge-shotdlg-brk { transition: none; }
+}
+</style>
+
+<style>
+/* While the whole-screen capture runs: modal pop-ups and their blurred
+   backdrops step aside, windows stay. */
+body.nge-shot-capturing .nge-overlay-blocker,
+body.nge-shot-capturing .nge-shotdlg-overlay {
+  visibility: hidden !important;
+  backdrop-filter: none !important;
 }
 </style>
