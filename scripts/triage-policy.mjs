@@ -7,7 +7,7 @@ export function releaseCommand(text) {
 export function permittedPath(path) {
  if(typeof path!=='string'||path.length>200||! /^(src|static|docs)\/[a-zA-Z0-9_./-]+$/.test(path)||path.split('/').some(p=>p==='..'||p==='.'||p.startsWith('.')))return false;
  if(/(?:^|\/)(?:AGENTS|CLAUDE|SKILL)\.md$/i.test(path))return false;
- if(/(?:^|\/)(?:community_fetch|secure_write|secure_upload|sheet_sync|supabase|practice_destination|practice_history|safe_markdown|google_sheets_auth|practice)\./i.test(path))return false;
+ if(/(?:^|\/)(?:pilot_actions|functions_base|community_fetch|secure_write|secure_upload|sheet_sync|supabase|practice_destination|practice_history|safe_markdown|google_sheets_auth|practice)\./i.test(path))return false;
  return /\.(?:ts|vue|css|scss|html|json|md|png|jpg|jpeg|gif|webp|svg)$/.test(path);
 }
 export function validateResult(result) {

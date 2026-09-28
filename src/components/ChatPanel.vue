@@ -230,6 +230,15 @@ function isSelfMention(token: string): boolean {
 }
 
 /** Open the notification an announcement message refers to. */
+/** Admin moderation: delete a message for everyone (the gateway enforces admin). */
+async function deleteChatMessage(msg: ChatMessage) {
+  if (msg.id == null) return;
+  const preview = msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('').slice(0, 80);
+  if (!window.confirm(`Delete this message from ${msg.name} for everyone?\n\n"${preview}"`)) return;
+  const ok = await chatStore.deleteMessage(msg.id);
+  if (!ok) window.alert('Could not delete that message. Please try again.');
+}
+
 function openAnnouncement(id: number) {
   document.dispatchEvent(new CustomEvent('nge:open-notification', { detail: { id } }));
 }
@@ -497,6 +506,8 @@ function toggleCollapse() {
                       >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
                     <span v-else class="nge-chat-msg-text">{{ part.text }}</span>
                   </template>
+                  <button v-if="backendStore.isAdmin && msg.id != null" class="nge-chat-del"
+                          title="Delete this message for everyone (admin)" @click.stop="deleteChatMessage(msg)">🗑</button>
                 </div>
               </template>
 
@@ -731,6 +742,20 @@ function toggleCollapse() {
   font-size: 14.5px;
 }
 .nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
+.nge-chat-del {
+  visibility: hidden;
+  margin-left: 6px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+  vertical-align: middle;
+}
+.nge-chat-msg:hover .nge-chat-del { visibility: visible; }
+.nge-chat-del:hover { opacity: 1; }
 
 .nge-chat-msg-time {
   font-size: 11px;

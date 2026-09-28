@@ -6,17 +6,40 @@ import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 import {supabase} from '../supabase';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
-import {rootOfSupervoxel, undoSinceBaseline, ensureSupervoxels, type PracticeExample, type PracticeKind} from '../practice';
+import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, type PracticeExample, type PracticeKind} from '../practice';
 
 const backend = useProofreadingBackendStore();
 
 const props = defineProps<{ initialSubTab?: string }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice'>(
-  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice'
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot'>(
+  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot'
     ? props.initialSubTab
     : 'notifications');
+
+// Pilot membership is an explicit admin-maintained list of verified sign-in emails.
+const pilotRows = ref<{email:string;enabled:boolean}[]>([]);
+const pilotEmail = ref('');
+const pilotError = ref('');
+const pilotBusy = ref(false);
+async function loadPilot() {
+  const {data,error} = await supabase.from('pilot_members').select('*').order('email');
+  pilotError.value = error?.message || '';
+  pilotRows.value = data || [];
+}
+async function invitePilot() {
+  pilotBusy.value = true; pilotError.value = '';
+  const {error} = await supabase.from('pilot_members').upsert({email:pilotEmail.value.trim().toLowerCase(),enabled:true},{onConflict:'email'});
+  if(error) pilotError.value=error.message;
+  else {pilotEmail.value='';await loadPilot();}
+  pilotBusy.value=false;
+}
+async function setPilot(email:string,enabled:boolean) {
+  const {error} = await supabase.from('pilot_members').update({enabled}).eq('email',email);
+  if(error) pilotError.value=error.message; else await loadPilot();
+}
+watch(adminSubTab,t=>{if(t==='pilot')loadPilot();});
 
 // ── Feedback triage ──────────────────────────────────────────────────────────
 // A scheduled agent reads incoming feedback (site_issues, client_errors) and
@@ -950,15 +973,10 @@ async function patchPractice(id: string, body: Record<string, unknown>) {
 async function resetPracticeNow(ex: PracticeExample) {
   practiceActing.value = ex.id; practiceError.value = ''; practiceNotice.value = '';
   try {
-    await patchPractice(ex.id, { status: 'resetting', claimed_by: null, claimed_at: null, expires_at: null });
-    const r = await undoSinceBaseline(ex);
-    // A cut example keeps its post-cut roots: the tutorial previews them.
-    const roots = ex.kind === 'cut' ? {} : { root_a: r.a, root_b: r.b };
-    await patchPractice(ex.id, { status: 'ready', ...roots, reset_failures: 0, last_error: null, last_reset_at: new Date().toISOString() });
+    const r = await resetPracticeExample(ex.id);
     practiceNotice.value = `${ex.title}: undid ${r.undone} operation(s), ready.`;
   } catch (e: any) {
     const msg = e?.message ?? String(e);
-    await patchPractice(ex.id, { status: 'needs_reset', last_error: msg });
     practiceError.value = `${ex.title}: ${msg}`;
   } finally {
     practiceActing.value = null;
@@ -1022,9 +1040,26 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'triage' }" @click="adminSubTab = 'triage'">Triage</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'pilot' }" @click="adminSubTab = 'pilot'">Pilot testers</button>
     </div>
 
     <!-- ── Notifications ── -->
+    <section v-if="adminSubTab === 'pilot'" class="nge-pilot-admin">
+      <h2>Pilot testers</h2>
+      <p>Invited testers can claim cells, use practice cells, sync Sheets, and contribute to the site. Existing administrators already have access.</p>
+      <form @submit.prevent="invitePilot">
+        <label for="nge-pilot-email">Tester’s sign-in email</label>
+        <input id="nge-pilot-email" v-model="pilotEmail" type="email" required autocomplete="off" placeholder="tester@example.com" />
+        <button type="submit" :disabled="pilotBusy">{{ pilotBusy ? 'Saving…' : 'Add tester' }}</button>
+      </form>
+      <p v-if="pilotError" role="alert">{{ pilotError }}</p>
+      <p v-if="!pilotRows.length">No additional testers invited yet.</p>
+      <ul><li v-for="member in pilotRows" :key="member.email">
+        <span>{{ member.email }} · {{ member.enabled ? 'Invited' : 'Access paused' }}</span>
+        <button @click="setPilot(member.email,!member.enabled)">{{ member.enabled ? 'Pause access' : 'Restore access' }}</button>
+      </li></ul>
+    </section>
+
     <div v-if="adminSubTab === 'notifications'" class="nge-admin-section">
       <div class="nge-admin-block">
         <label class="nge-admin-label">
@@ -2088,4 +2123,16 @@ function practiceWhen(iso: string | null) {
 /* Picking mode for practice cells: hide the whole profile modal (its
    backdrop swallows clicks and closes on them) while AdminHub stays mounted. */
 body.nge-practice-picking #nge-profile-modal { display: none !important; }
+</style>
+
+<style scoped>
+.nge-pilot-admin { font-size: 1rem; line-height: 1.5; color: #f1f5f9; padding: 16px; }
+.nge-pilot-admin h2 { font-size: 1.25rem; }
+.nge-pilot-admin form, .nge-pilot-admin li { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:16px 0; }
+.nge-pilot-admin label { flex-basis:100%; font-size:1rem; }
+.nge-pilot-admin input { flex:1 1 220px; min-width:0; }
+.nge-pilot-admin input, .nge-pilot-admin button { font:inherit; padding:10px 12px; border:1px solid #74859a; border-radius:6px; background:#152434; color:#f1f5f9; }
+.nge-pilot-admin li span { flex:1 1 220px; overflow-wrap:anywhere; }
+.nge-pilot-admin ul { padding:0; list-style:none; }
+.nge-pilot-admin button { cursor:pointer; }
 </style>

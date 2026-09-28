@@ -20,7 +20,7 @@ const emit = defineEmits<{
 }>();
 
 /** Cloud Function that mints short-lived signed PUT URLs for screenshot
- *  uploads. Implementation lives at ytho-4bff2 (see firebase-screenshot-
+ *  uploads. Implementation lives in functions/ (Firebase project eyewire-ii-e4d52) (see firebase-screenshot-
  *  upload-draft.md). Update this endpoint after deploying. */
 // NOTE: the signScreenshotUpload Cloud Function is no longer used. It minted a
 // v4 signed upload URL, which needs the runtime service account to sign via the

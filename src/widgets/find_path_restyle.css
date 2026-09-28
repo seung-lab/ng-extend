@@ -198,7 +198,73 @@
   content: 'Press Enter or Submit to trace the path';
 }
 
+/* ── Progress lines (src/find_path_status.ts): "Finding path between...",
+      "Path found!", "Path finding failed: ..." restyled to match the bar. ── */
+#statusContainer li.nge-fp-status {
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  padding: 4px 16px !important;
+  background: rgba(20, 14, 40, 0.94) !important;
+  border-top: 1px solid rgba(200, 164, 255, 0.3);
+  color: #eadcff;
+  font: 500 12.5px/1.3 'Inter', 'Roboto', sans-serif;
+}
+/* The working line: neuroglancer's own text is hidden (kept as the title
+   tooltip, with the segment ids), the loader and timer stand in for it. */
+#statusContainer li.nge-fp-status--working,
+#statusContainer li.nge-fp-status--done { font-size: 0 !important; }
+.nge-fp-ui {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.nge-fp-loader {
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(200, 164, 255, 0.25);
+}
+.nge-fp-label {
+  font: 700 12px 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #eadcff;
+}
+.nge-fp-secs {
+  min-width: 3.2em;
+  font: 600 12px ui-monospace, 'Consolas', monospace;
+  color: #c8a4ff;
+}
+.nge-fp-note { color: rgba(234, 220, 255, 0.62); font-size: 12px; }
+.nge-fp-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(111, 224, 160, 0.18); border: 1px solid rgba(111, 224, 160, 0.6);
+  color: #6fe0a0; font-size: 12px; font-weight: 700;
+}
+#statusContainer li.nge-fp-status--done { border-top-color: rgba(111, 224, 160, 0.45); }
+#statusContainer li.nge-fp-status--error {
+  border-top-color: rgba(255, 120, 120, 0.6);
+  background: rgba(40, 12, 18, 0.94) !important;
+  color: #ffc0c0;
+}
+
+/* While a path is being traced, the tool bar says so. */
+body.nge-fp-busy .graphene-find-path > .neuroglancer-icon:first-child {
+  animation: ngeFindPathReady 1.4s ease-in-out infinite;
+  opacity: 0.75;
+}
+body.nge-fp-busy .graphene-find-path .find-path-annotations::after {
+  content: 'Tracing the path, this can take a little while' !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  body.nge-fp-busy .graphene-find-path > .neuroglancer-icon:first-child { animation: none; }
   #statusContainer li:has(.graphene-find-path) .neuroglancer-tool-status-header-container,
   .graphene-find-path > .neuroglancer-icon:first-child { animation: none; }
 }
