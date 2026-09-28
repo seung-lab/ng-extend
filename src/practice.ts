@@ -250,6 +250,7 @@ export function colorFirstTwoVisible(dataset: string, attempt = 0) {
  *  sent to the viewer. Used when a step says "press M" and the learner
  *  pressed next instead. */
 export function ensureTool(tool: 'merge' | 'multicut', attempt = 0) {
+  if (!session.example?.claim_nonce || !['merge', 'cut'].includes(session.phase)) return;
   const viewer = getViewer();
   if (!viewer) return;
   try {
@@ -356,6 +357,7 @@ function startActivityWatch() {
       lastHeartbeat = Date.now();
       practiceAction('heartbeat', { id: ex.id, session: ex.claim_nonce }).catch((error) => {
         console.warn('[practice] heartbeat failed:', error.message);
+        if (session.example?.id === ex.id && session.example?.claim_nonce === ex.claim_nonce) practiceUnavailable();
       });
     }
     document.dispatchEvent(new CustomEvent('nge:practice-countdown', { detail: { seconds: releaseCountdown() } }));
@@ -435,6 +437,20 @@ export function currentPractice() {
   return session;
 }
 
+function pausePracticeTools() {
+  const viewer = getViewer();
+  viewer?.globalToolBinder?.activeTool_?.cancel?.();
+  viewer?.toolBinder?.activeTool_?.cancel?.();
+}
+
+function practiceUnavailable() {
+  session.example = null;
+  session.shownId = '';
+  session.phase = 'unavailable';
+  pausePracticeTools();
+  document.dispatchEvent(new CustomEvent('nge:practice-unavailable'));
+}
+
 function userId(): string | null {
   try { return useProofreadingBackendStore().userId; } catch { return null; }
 }
@@ -461,11 +477,11 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   // signed in" while signed in).
   let uid = userId();
   for (let i = 0; !uid && i < 12; i++) { await new Promise(r => setTimeout(r, 500)); uid = userId(); }
-  if (!uid) { session.phase = 'unavailable'; return null; }
+  if (!uid) { practiceUnavailable(); return null; }
   if (session.example && session.example.claimed_by === uid) {
     if (session.example.kind === kind && !opts.fresh) {
       try { await practiceAction('heartbeat', { id: session.example.id, session: session.example.claim_nonce }); }
-      catch { session.example = null; session.phase = 'unavailable'; return null; }
+      catch { practiceUnavailable(); return null; }
       await showExample(session.example, view);
       return session.example;
     }
@@ -475,9 +491,10 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
     await endPractice();
   }
   session.phase = 'claiming';
+  pausePracticeTools();
   let row: PracticeExample | null;
   try { row = await practiceAction('claim', { kind }); }
-  catch (error: any) { console.warn('[practice] claim failed:', error.message); session.phase = 'unavailable'; return null; }
+  catch (error: any) { console.warn('[practice] claim failed:', error.message); practiceUnavailable(); return null; }
   if (!row) { session.phase = 'busy'; return null; }
   session.example = row;
   await showExample(row, view);
