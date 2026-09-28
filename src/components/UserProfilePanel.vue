@@ -1558,7 +1558,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         </div>
         <div class="nge-ds-tab-grid">
           <div
-            v-for="ds in DATASETS"
+            v-for="ds in DATASETS.filter(d => !d.hidden)"
             :key="ds.id"
             class="nge-ds-tab-card"
             :class="{

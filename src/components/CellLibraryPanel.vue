@@ -17,7 +17,7 @@ import {
   type WorkingLink,
   type ClaimPoint,
 } from '../store';
-import { EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig } from '../config';
+import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
 import { syncCellToSheet } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
@@ -166,8 +166,12 @@ async function loadCellsForActiveDataset() {
   const dsName = getCurrentDatasetName();
   activeDataset.value = dsName;
   const cfg = getDatasetCaveConfig(dsName);
-  const sheetUrl = cfg.cellLibrarySheetUrl || EYEWIRE_II_CAVE_CONFIG.cellLibrarySheetUrl;
-  if (!sheetUrl) return;
+  // No fallback sheet: borrowing the pinky sheet here tagged its rows with the
+  // current dataset, so MEC listed pinky cells (6485... ids) that have no
+  // segmentation in the MEC graph (Ames 2026-09-28). A dataset without its own
+  // segment-ID sheet (MEC, MICrONS) lists only its Supabase tasks.
+  const sheetUrl = cfg.cellLibrarySheetUrl;
+  if (!sheetUrl) { queue.items = []; return; }
   if (queue.sheetUrl !== sheetUrl || queue.items.length === 0) {
     await queue.loadFromSheet(sheetUrl, canonicalDataset(dsName));
   }

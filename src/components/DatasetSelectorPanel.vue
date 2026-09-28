@@ -75,7 +75,7 @@ async function switchTo(ds: DatasetEntry) {
       </div>
       <div class="nge-ds-list">
         <div
-          v-for="ds in DATASETS"
+          v-for="ds in DATASETS.filter(d => !d.hidden || d.id === currentDatasetId)"
           :key="ds.id"
           class="nge-ds-card"
           :class="{

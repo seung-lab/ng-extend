@@ -31,6 +31,9 @@ export interface DatasetEntry {
    *  /service/pychunkedgraph/table/<table>/dataset). Drives the lock and
    *  "View only" marks in the dataset switcher (util/dataset_access.ts). */
   caveDataset?: string;
+  /** Left out of the dataset switcher and profile (still resolvable, so saved
+   *  links and states that use it keep working). */
+  hidden?: boolean;
   layers: any[];
 }
 
@@ -155,6 +158,8 @@ export const DATASETS: DatasetEntry[] = [
   {
     id: 'microns_proofread',
     caveDataset: 'minnie65',
+    // Hidden for now (Ames 2026-09-28: "too many" datasets in the switcher).
+    hidden: true,
     thumbnail: thumbMicrons,
     label: 'MICrONS Proofreading',
     shortLabel: 'MICrONS Proofread',
