@@ -140,9 +140,9 @@ Press **next** once the box below says the cut landed.`,
     onEnter: async () => {
       closeSidePanel();
       watchPractice(false, 'Waiting for your cut: red on one side of the join, G, blue on the other, Submit cut.', 'Cut success! You did it again. The two pieces are separate now.');
-      // A second cut cell: the first goes back (put right) and another is
-      // taken. With only one cut cell registered it is the same cell, reset.
-      await beginPractice('cut', 'start', { fresh: true });
+      // A second cut cell, held alongside the first; both go back at the
+      // end. With only one registered, the same cell is shown again.
+      await beginPractice('cut', 'start', { slot: 'b' });
       setTimeout(() => ensureTool('multicut'), 400);
     },
   },
