@@ -7,10 +7,13 @@ Claude subscription (amylr@princeton.edu) through the
 ## What happens
 
 1. **Report.** A user submits an issue. `submitIssue` posts it to
-   #citsci_feedback and the app mirrors it into Supabase `site_issues`.
-2. **Proposal.** `triage-propose.yml` (every 10 min, only when a report is
-   waiting) has Claude read the code and write one `feedback_triage` row:
-   no action, send a message, bug fix spec, or new feature.
+   #citsci_feedback and the app saves it into Supabase `site_issues`
+   (through the `ewCommunityData` server function).
+2. **Proposal.** Saving the report starts `triage-propose.yml` straight away,
+   and so does the bridge the next time it sees a report waiting. Claude
+   reads the code and writes one `feedback_triage` row: no action, send a
+   message, bug fix spec, or new feature. Every admin gets a 🗂️ "Feedback
+   triage: new suggestion" notification in the app when it is posted.
 3. **Decision.** The proposal is posted in the report's Slack thread. An
    approver (Amy or Celia) approves or dismisses it, in Slack or in Admin Hub
    > Triage. Both places always show the same rows.
@@ -99,8 +102,9 @@ kept in **[docs/TRIAGE-KNOWLEDGE.md](TRIAGE-KNOWLEDGE.md)**:
 
 | piece | file | runs |
 |---|---|---|
-| bridge (Slack, sync, clock) | `scripts/slack-triage-bridge.mjs`, `.github/workflows/slack-triage-bridge.yml` | every 10 min |
-| proposer | `.github/workflows/triage-propose.yml` | every 10 min, if reports wait |
+| bridge (Slack, sync, clock) | `scripts/slack-triage-bridge.mjs`, `.github/workflows/slack-triage-bridge.yml` | a pass every 45 s through each 10 min slot; also started by a Slack thread reply or an Admin Hub decision |
+| proposer | `.github/workflows/triage-propose.yml` | started when a report is saved, or by the bridge when one waits; its own cron is the backstop |
+| event wake ups | `wakeWorkflow()` in `functions/index.js` (Firebase `eyewire-ii-e4d52`) | on events, at most once per workflow per 20 s |
 | implementer | `.github/workflows/triage-implement.yml` | dispatched by the bridge |
 | deployer | `.github/workflows/triage-deploy.yml` | dispatched by the bridge |
 | shared steps | `scripts/triage-loop.mjs` | inside those workflows |
@@ -128,8 +132,12 @@ Amy is tagged.
   on `main`. Register changes there with a `[skip ci]` commit, as before.
 - A push made with `GITHUB_TOKEN` does not trigger other workflows, so the
   implementer and deployer start `on_dev_branch_push.yml` themselves.
-- Scheduled runs can start a few minutes late when GitHub is busy, so "every
-  10 minutes" is a floor, not a promise.
+- Scheduled runs often start 5 to 25 minutes late, so nothing that needs a
+  quick answer waits for a cron. Events start the workflows through the
+  `GITHUB_DISPATCH_TOKEN` Firebase secret (a fine-grained token: Actions read
+  and write on ng-extend only; it needs a seung-lab owner's approval, and a
+  403 in the function logs means it is not approved yet). Until then the
+  bridge's 45 s passes keep replies within about a minute.
 
 ## Safety
 

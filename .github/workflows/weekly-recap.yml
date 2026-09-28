@@ -12,7 +12,12 @@ jobs:
   send-recap:
     runs-on: ubuntu-latest
     steps:
+      # Cron workflows run from main, whose copy of the script is old: it sent
+      # a second recap with different numbers. Always run the maintained one.
       - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:

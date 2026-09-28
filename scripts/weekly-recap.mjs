@@ -138,6 +138,16 @@ async function main() {
     });
   }
 
+  // One recap per person per week: a manual rerun (or the Sunday cron after
+  // one) must not send a second card with different numbers.
+  const title = `✨ Your Week in Science: ${weekLabel}`;
+  const already = new Set((await supabaseGet('notifications',
+    `select=target_id&target_type=eq.user&title=eq.${encodeURIComponent(title)}`)).map(r => r.target_id));
+  const fresh = notifications.filter(n => !already.has(n.target_id));
+  if (already.size) console.log(`${notifications.length - fresh.length} already have this week's recap; skipping them.`);
+  notifications.length = 0;
+  notifications.push(...fresh);
+
   // Insert in batches of 50
   for (let i = 0; i < notifications.length; i += 50) {
     const batch = notifications.slice(i, i + 50);
