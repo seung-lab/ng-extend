@@ -27,6 +27,10 @@ export interface DatasetEntry {
   /** Small 16:9 image for dataset cards (profile Datasets tab). Falls back
    *  to the species icon when unset. */
   thumbnail?: string;
+  /** CAVE auth dataset that owns the segmentation table (auth API
+   *  /service/pychunkedgraph/table/<table>/dataset). Drives the lock and
+   *  "View only" marks in the dataset switcher (util/dataset_access.ts). */
+  caveDataset?: string;
   layers: any[];
 }
 
@@ -39,6 +43,7 @@ export const SPECIES_ICONS: Record<DatasetEntry['species'], string> = {
 export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
+    caveDataset: 'stroeh-mouse-retina',
     thumbnail: thumbRetina,
     label: 'EyeWire II: Retina',
     shortLabel: 'EyeWire II',
@@ -64,6 +69,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pinky_sandbox',
+    caveDataset: 'pinky100',
     thumbnail: thumbMicrons,
     label: 'Pinky Sandbox',
     // Shown in the top bar ("Data: Sandbox") and inline chips (Amy).
@@ -90,6 +96,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65',
+    caveDataset: 'microns_public',
     thumbnail: thumbMicrons,
     label: 'MICrONS Minnie65',
     shortLabel: 'MICrONS',
@@ -115,6 +122,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65_live',
+    caveDataset: 'microns_public',
     thumbnail: thumbMicrons,
     label: 'MICrONS Live',
     shortLabel: 'MICrONS Live',
@@ -146,6 +154,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pni_mec',
+    caveDataset: 'HiMC',
     thumbnail: thumbMec,
     label: 'Medial Entorhinal Cortex',
     shortLabel: 'MEC',
