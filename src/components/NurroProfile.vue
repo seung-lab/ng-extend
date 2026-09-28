@@ -73,8 +73,6 @@ onUnmounted(() => cancelAnimationFrame(raf));
           <div v-if="s.note" class="nge-np-stat-note">{{ s.note }}</div>
         </div>
       </div>
-
-      <div class="nge-np-foot">Nurro's statistics are unofficial and wildly exaggerated. Yours are real. 💙</div>
     </div>
   </modal-overlay>
 </template>
@@ -165,12 +163,6 @@ onUnmounted(() => cancelAnimationFrame(raf));
 .nge-np-stat-label { margin-top: 2px; font-size: 12.5px; color: #9fc4e8; }
 .nge-np-stat-note { margin-top: 3px; font-size: 11px; color: #7f97b3; }
 
-.nge-np-foot {
-  margin-top: 18px;
-  text-align: center;
-  font-size: 12.5px;
-  color: #8ea6c2;
-}
 
 @media (max-width: 600px) {
   .nge-np { padding: 20px 16px 16px; }
