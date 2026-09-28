@@ -511,22 +511,11 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   let row: PracticeExample | null;
   try { row = await practiceAction('claim', { kind, exclude }); }
   catch (error: any) { console.warn('[practice] claim failed:', error.message); practiceUnavailable(); return null; }
-  if (!row) {
-    // Nothing else free. With only one cell of this kind registered, the
-    // second practice step reuses the one already held rather than waiting
-    // in line for itself.
-    const same = Object.values(session.held).find(ex => ex.kind === kind);
-    if (same) {
-      try { await practiceAction('heartbeat', { id: same.id, session: same.claim_nonce }); }
-      catch { practiceUnavailable(); return null; }
-      session.example = same;
-      await showExample(same, view);
-      session.phase = kind === 'cut' ? 'cut' : 'merge';
-      return same;
-    }
-    session.phase = 'busy';
-    return null;
-  }
+  // A claim that hands back a cell already held (the database still has
+  // the claim function without p_exclude) counts as nothing free: a
+  // practice step never shows the previous step's cell again (Amy).
+  if (row && exclude.includes(row.id)) row = null;
+  if (!row) { session.phase = 'busy'; return null; }
   session.held[slot] = row;
 
   session.example = row;
