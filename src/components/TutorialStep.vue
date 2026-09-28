@@ -2,7 +2,7 @@
 import { isNextToElementPostition, type Step } from '../store-pyr';
 import { useLayersStore } from 'src/store';
 import { marked } from 'marked';
-import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue';
 
 const layerStore = useLayersStore();
 
@@ -347,25 +347,69 @@ function onCelebrate() { launchConfetti(); }
 // handle is the title bar; the offset is added to the computed position and
 // resets with the next step, since each step is a fresh component.
 const dragOffset = ref({ x: 0, y: 0 });
+// Drag from ANYWHERE on the box (Amy 2026-09-28: "click anywhere in the box
+// to drag, not just at the top"). Controls keep working: presses on buttons,
+// links, fields, videos or anything marked data-no-drag never start a drag,
+// and a drag only begins after a 4px move, so a plain click on text or a
+// clickable span inside the step's html still acts as a click.
+const NO_DRAG = 'button, a, input, textarea, select, option, label, video, [contenteditable], [data-no-drag], .nge-no-drag';
+const dragging = ref(false);
 let dragStart: { x: number; y: number; ox: number; oy: number } | null = null;
 function onDragStart(e: PointerEvent) {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if (e.button !== 0 || (e.target as HTMLElement).closest(NO_DRAG)) return;
     dragStart = { x: e.clientX, y: e.clientY, ox: dragOffset.value.x, oy: dragOffset.value.y };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    e.preventDefault();
+    window.addEventListener('pointermove', onDragMove);
+    window.addEventListener('pointerup', onDragEnd);
+    window.addEventListener('pointercancel', onDragEnd);
 }
 function onDragMove(e: PointerEvent) {
     if (!dragStart) return;
-    dragOffset.value = { x: dragStart.ox + e.clientX - dragStart.x, y: dragStart.oy + e.clientY - dragStart.y };
+    const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+    if (!dragging.value) {
+        if (Math.hypot(dx, dy) < 4) return;
+        dragging.value = true;
+        window.getSelection()?.removeAllRanges();
+    }
+    e.preventDefault();
+    dragOffset.value = { x: dragStart.ox + dx, y: dragStart.oy + dy };
 }
-function onDragEnd() { dragStart = null; }
+function onDragEnd() {
+    dragStart = null;
+    dragging.value = false;
+    window.removeEventListener('pointermove', onDragMove);
+    window.removeEventListener('pointerup', onDragEnd);
+    window.removeEventListener('pointercancel', onDragEnd);
+}
+onUnmounted(onDragEnd);
+
+// The first clamp runs before the step's image or video has loaded, so the
+// chip then grew past the top of the window ("Merge success!" and "Place the
+// points" sat 100px off screen on a 13 inch laptop). Re-clamp on every resize
+// of the chip, and when the window itself resizes.
+let chipObserver: ResizeObserver | null = null;
+let observedChip: Element | null = null;
+function observeChip() {
+    const el = root.value?.querySelector('.chip:not(.exitConfirm)') ?? null;
+    if (el === observedChip) return;
+    chipObserver?.disconnect();
+    observedChip = el;
+    if (el) {
+        chipObserver ??= new ResizeObserver(() => { if (!dragging.value) clampChip(); });
+        chipObserver.observe(el);
+    }
+}
+watch(ready, (r) => { if (r) nextTick(observeChip); });
+watch(() => computedStep.value, () => nextTick(observeChip));
 
 onMounted(() => {
     window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('resize', onReclamp);
     document.addEventListener('nge:tutorial-celebrate', onCelebrate);
     document.addEventListener('nge:tutorial-reclamp', onReclamp);
 });
 onUnmounted(() => {
+    chipObserver?.disconnect();
+    window.removeEventListener('resize', onReclamp);
     document.removeEventListener('nge:tutorial-celebrate', onCelebrate);
     document.removeEventListener('nge:tutorial-reclamp', onReclamp);
 });
@@ -391,13 +435,13 @@ onUnmounted(() => {
             <div class="arrow"></div>
 
             <div v-if="!inExitConfirm" class="chip"
-                :class="{ modal: computedStep.modal, noborder: computedStep.noborder }" :style="chipBounds">
+                :class="{ modal: computedStep.modal, noborder: computedStep.noborder, 'nge-chip--dragging': dragging }" :style="chipBounds"
+                @pointerdown="onDragStart">
                 <span class="corner corner-tl"></span>
                 <span class="corner corner-tr"></span>
                 <span class="corner corner-bl"></span>
                 <span class="corner corner-br"></span>
-                <div class="nge-chip-drag" title="Drag to move this box"
-                     @pointerdown="onDragStart" @pointermove="onDragMove" @pointerup="onDragEnd" @pointercancel="onDragEnd">⠿ drag</div>
+                <div class="nge-chip-drag" title="Drag anywhere on this box to move it">⠿ drag</div>
                 <button class="exit" @click="inExitConfirm = true">×</button>
                 <div class="title" v-if="computedStep.title">
                   <span v-if="computedStep.titleIcon" class="title-icon" v-html="computedStep.titleIcon"></span>
@@ -410,14 +454,16 @@ onUnmounted(() => {
                     :src="computedStep.video"></video>
                 <img class="image" v-if="computedStep.image" :src="computedStep.image">
                 <div class="html" v-if="computedStep.html" v-html="computedStep.html"></div>
-                <div class="buttonContainer">
-                    <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
-                    <span class="stepCounter">{{ stepIndex + 1 }}/{{ totalSteps }}</span>
-                    <button v-if="computedStep.last" @click="launchConfetti(); $emit('next')" class="next">done</button>
-                    <button v-else @click="$emit('next')" class="next">{{ computedStep.nextLabel || 'next' }}</button>
-                </div>
-                <div class="progressBarContainer">
-                    <div class="progressBar" :style="{ width: ((stepIndex + 1) / totalSteps * 100) + '%' }"></div>
+                <div class="nge-chip-foot">
+                    <div class="buttonContainer">
+                        <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
+                        <span class="stepCounter">{{ stepIndex + 1 }}/{{ totalSteps }}</span>
+                        <button v-if="computedStep.last" @click="launchConfetti(); $emit('next')" class="next">done</button>
+                        <button v-else @click="$emit('next')" class="next">{{ computedStep.nextLabel || 'next' }}</button>
+                    </div>
+                    <div class="progressBarContainer">
+                        <div class="progressBar" :style="{ width: ((stepIndex + 1) / totalSteps * 100) + '%' }"></div>
+                    </div>
                 </div>
             </div>
 
@@ -453,7 +499,11 @@ onUnmounted(() => {
     touch-action: none;
 }
 .nge-chip-drag:hover { color: #7ecaff; }
-.nge-chip-drag:active { cursor: grabbing; }
+/* The whole box is the drag handle; controls inside keep their own cursor. */
+.chip { cursor: grab; }
+.chip :is(button, a, input, textarea, select, label, video) { cursor: pointer; }
+.chip :is(input, textarea) { cursor: text; }
+.chip.nge-chip--dragging, .chip.nge-chip--dragging * { cursor: grabbing !important; user-select: none; }
 
 .nge-overlay-blocker {
     z-index: 89;
@@ -724,6 +774,39 @@ onUnmounted(() => {
 .chip video,
 .chip .image {
     width: 100%;
+    /* On a 13 inch laptop the 480px step pictures pushed the text and the
+       Next button below the fold of the (scrollbar-less) chip. The picture
+       gives up height first so the words and controls always fit. */
+    max-height: max(120px, calc(100vh - 450px));
+    object-fit: contain;
+}
+/* Pictures written into a step's html (the before/after pair) shrink too. */
+.chip .html img {
+    max-height: max(100px, calc(100vh - 500px));
+    object-fit: contain;
+}
+/* Back / Next always stay in view. A step with a long list can still be
+   taller than a laptop window, and the chip scrolls without a scrollbar, so
+   the controls ride on the bottom edge and the words scroll up under them. */
+.ng-extend .chip .nge-chip-foot {
+    position: sticky;
+    bottom: -20px;
+    z-index: 2;
+    width: 100%;
+    margin: 0 0 -20px;
+    padding: 6px 0 20px;
+    background: rgb(7, 11, 23);
+}
+/* A short fade above the bar so words scrolling under it dissolve. */
+.ng-extend .chip .nge-chip-foot::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: 22px;
+    background: linear-gradient(to bottom, rgba(7, 11, 23, 0), rgb(7, 11, 23));
+    pointer-events: none;
 }
 
 .ng-extend .chip .buttonContainer {
