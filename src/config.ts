@@ -236,6 +236,22 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultPosition:  [101385, 114771, 22738],
   },
 
+  // MICrONS Proofreading: the PRIVATE minnie65 graph (datastack
+  // minnie65_phase3_v1, graphene table minnie3_v1, CAVE auth dataset
+  // minnie65). Only accounts with minnie65 edit can save edits; the switcher
+  // locks it for everyone else (util/dataset_access.ts). Same aligned volume
+  // as the public cards, so the same EyeWire annotation tables. Root ids here
+  // differ from the public graph's, so it has its own canonical key.
+  minnie3_v1: {
+    caveServer:       'https://minnie.microns-daf.com',
+    datastack:        'minnie65_phase3_v1',
+    alignedVolume:    'minnie65_phase3',
+    cellStatusTable:  'eyewire_ii_cell_status_v2',
+    cellStatusSchema: 'bound_tag_user',
+    cellTypeTable:    'eyewire_ii_cell_type_v2',
+    cellTypeSchema:   'bound_tag_user',
+  },
+
   // ── FlyWire (Drosophila FAFB) ───────────────────────────────────────────
   fly_v26: {
     caveServer:       'https://global.daf-apis.com',
@@ -412,7 +428,8 @@ export function cellTypesForDataset(canonical: string): string[] {
   switch (canonical) {
     case 'stroeh_mouse_retina': return RETINAL_CELL_TYPES;
     case 'pinky_nf_v2':
-    case 'minnie65_public': return CORTEX_CELL_TYPES;
+    case 'minnie65_public':
+    case 'minnie3_v1': return CORTEX_CELL_TYPES;
     case 'pni_mec': return MEC_CELL_TYPES;
     default: return ['Neuron', 'Glia', 'Other', 'Unknown / Unsure'];
   }
