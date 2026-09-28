@@ -143,6 +143,62 @@ function openFullProfile(userId: string) {
   emit('hide');
 }
 
+// ── Open on arrival, zip into the 🏆 on close (Ames 2026-09-28) ──
+// The leaderboard greets you when you open EyeWire II (ExtensionBar reads
+// this pref), and closing it shrinks it into its toolbar button so you
+// know where it went.
+const ON_OPEN_KEY = 'nge-leaderboard-on-open';
+const showOnOpen = ref(readShowOnOpen());
+function readShowOnOpen(): boolean {
+  try { return localStorage.getItem(ON_OPEN_KEY) !== '0'; } catch { return true; }
+}
+function setShowOnOpen(on: boolean) {
+  showOnOpen.value = on;
+  try { localStorage.setItem(ON_OPEN_KEY, on ? '1' : '0'); } catch { /* private mode */ }
+}
+
+function onShowOnOpenChange(e: Event) { setShowOnOpen((e.target as HTMLInputElement).checked); }
+
+let closing = false;
+async function close() {
+  if (closing) return;
+  closing = true;
+  const shell = document.querySelector('#nge-lb-modal .nge-overlay') as HTMLElement | null
+    ?? document.querySelector('#nge-lb-modal .nge-lb-shell') as HTMLElement | null;
+  const btn = document.querySelector('[data-icon-id="leaderboard"]') as HTMLElement | null;
+  // ModalOverlay passes id="nge-lb-modal" to its root, the dimmed backdrop.
+  const blocker = document.getElementById('nge-lb-modal');
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (shell && btn && !reduce && shell.animate) {
+    const a = shell.getBoundingClientRect();
+    const b = btn.getBoundingClientRect();
+    const dx = (b.left + b.width / 2) - (a.left + a.width / 2);
+    const dy = (b.top + b.height / 2) - (a.top + a.height / 2);
+    const s = Math.max(0.04, Math.min(b.width / a.width, b.height / a.height));
+    // Clear the dim and blur behind it (not the whole backdrop's opacity,
+    // which would hide the panel mid-flight).
+    if (blocker) {
+      blocker.style.backgroundImage = 'none';
+      blocker.animate([
+        { backgroundColor: 'rgba(0, 6, 16, 0.85)', backdropFilter: 'blur(6px)' },
+        { backgroundColor: 'rgba(0, 6, 16, 0)', backdropFilter: 'blur(0px)' },
+      ], { duration: 420, easing: 'ease-out', fill: 'forwards' });
+    }
+    // The panel is pinned with `transform: none !important` (below), which
+    // beats any animation of `transform`, so move it with the separate
+    // translate / scale properties instead.
+    const anim = shell.animate([
+      { translate: '0px 0px', scale: '1', opacity: 1, filter: 'blur(0px)' },
+      { translate: `${dx * 0.35}px ${dy * 0.35}px`, scale: '0.55', opacity: 0.85, filter: 'blur(0.5px)', offset: 0.45 },
+      { translate: `${dx}px ${dy}px`, scale: String(s), opacity: 0, filter: 'blur(2px)' },
+    ] as Keyframe[], { duration: 520, easing: 'cubic-bezier(0.55, 0, 0.35, 1)', fill: 'forwards' });
+    try { await anim.finished; } catch { /* interrupted */ }
+    btn.classList.add('nge-icon-btn--caught');
+    setTimeout(() => btn.classList.remove('nge-icon-btn--caught'), 700);
+  }
+  emit('hide');
+}
+
 const RANK_MEDAL: Record<number, string> = {1: '🥇', 2: '🥈', 3: '🥉'};
 
 /** Convert flag emoji to a CDN image URL (cross-platform, Windows compat). */
@@ -168,14 +224,14 @@ const emit = defineEmits({hide: null});
 </script>
 
 <template>
-  <modal-overlay id="nge-lb-modal" class="nge-lb-modal" @hide="emit('hide')">
+  <modal-overlay id="nge-lb-modal" class="nge-lb-modal" @hide="close">
     <div class="nge-lb-shell">
 
       <!-- ── LIST VIEW ─────────────────────────────────── -->
       <template v-if="!selectedUser">
 
         <div class="nge-lb-topbar">
-          <button class="nge-lb-exit nge-lb-exit--abs" @click="emit('hide')">×</button>
+          <button class="nge-lb-exit nge-lb-exit--abs" @click="close">×</button>
         </div>
 
         <div class="nge-lb-hero">
@@ -275,6 +331,10 @@ const emit = defineEmits({hide: null});
             </tbody>
           </table>
         </div>
+        <label class="nge-lb-onopen">
+          <input type="checkbox" :checked="showOnOpen" @change="onShowOnOpenChange" />
+          Show when I open EyeWire II
+        </label>
       </template>
 
       <!-- ── DETAIL VIEW ────────────────────────────────── -->
@@ -282,7 +342,7 @@ const emit = defineEmits({hide: null});
 
         <div class="nge-lb-topbar">
           <button class="nge-lb-back" @click="selectedUser = null">← Back</button>
-          <button class="nge-lb-exit" @click="emit('hide')">×</button>
+          <button class="nge-lb-exit" @click="close">×</button>
         </div>
 
         <div class="nge-lb-content nge-lb-detail">
@@ -448,6 +508,21 @@ const emit = defineEmits({hide: null});
 /* (scanline keyframe removed — using ModalOverlay holographic effects) */
 
 /* ── Shell — fills the full sidebar height ── */
+.nge-lb-onopen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px 10px;
+  font-size: 12px;
+  color: #8fa6c2;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+.nge-lb-onopen input { accent-color: #f5c450; cursor: pointer; }
+.nge-lb-onopen:hover { color: #cfe0ff; }
+
 .nge-lb-shell {
   display: flex;
   flex-direction: column;

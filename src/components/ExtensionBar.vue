@@ -252,6 +252,19 @@ const showFeedback = ref(false);
 const showNurroProfile = ref(false);
 document.addEventListener('nge:open-nurro-profile', () => { showNurroProfile.value = true; });
 const showLeaderboard = ref(false);
+// The leaderboard greets you once per visit, a moment after you're signed in
+// (Ames 2026-09-28), unless you turned that off on the leaderboard, a
+// tutorial is running, another window is open, or you're on a phone.
+function maybeOpenLeaderboardOnArrival() {
+  try {
+    if (localStorage.getItem('nge-leaderboard-on-open') === '0') return;
+    if (sessionStorage.getItem('nge-lb-greeted') === '1') return;
+  } catch { return; }
+  if (document.body.classList.contains('nge-mobile')) return;
+  if (document.querySelector('.introductionStep, .nge-overlay-blocker')) return;
+  try { sessionStorage.setItem('nge-lb-greeted', '1'); } catch { /* private mode */ }
+  showLeaderboard.value = true;
+}
 const showSettings = ref(false);
 const showQueue = ref(false);
 const showFeed = ref(false);
@@ -513,6 +526,8 @@ function handleAssistantAction(e: Event) {
 onMounted(() => document.addEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 onUnmounted(() => document.removeEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 const backendStore = useProofreadingBackendStore();
+// Signed in: give the page a moment to settle, then greet with the leaderboard.
+watch(() => backendStore.userId, id => { if (id) setTimeout(maybeOpenLeaderboardOnArrival, 1800); }, { immediate: true });
 const { tutorialStep } = storeToRefs(useTutorialStore());
 
 function logout(session: loginSession) {
@@ -1530,6 +1545,16 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   background: #4ad07a;
   color: #06170d;
   box-shadow: 0 0 8px rgba(74, 208, 122, 0.55);
+}
+
+/* The leaderboard just zipped into its button: a quick catch. */
+.nge-icon-btn.nge-icon-btn--caught {
+  animation: nge-lb-caught 0.7s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes nge-lb-caught {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 196, 80, 0); }
+  30% { transform: scale(1.35); box-shadow: 0 0 0 3px rgba(245, 196, 80, 0.85), 0 0 22px rgba(245, 196, 80, 0.7); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 196, 80, 0); }
 }
 
 /* You were @mentioned while chat was closed. */
