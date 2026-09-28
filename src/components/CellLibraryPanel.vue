@@ -1023,12 +1023,6 @@ const datasetTags = computed(() =>
   showAllDatasetTags.value ? humanOpenTags.value : humanOpenTags.value.filter((t: IssueTag) => !isCrossDatasetTag(t)));
 /** Lane filter: Scythes work mergers, Tracers work extensions. */
 const tagLane = ref<'all' | 'merger' | 'missing_branch'>('all');
-/** Scout tag and pin layers are off until turned on here (remembered). */
-const prefsStore = useUserPreferencesStore();
-const showTagsOnMap = computed({
-  get: () => prefsStore.prefs.showScoutTags === true,
-  set: (v: boolean) => { prefsStore.save({ showScoutTags: v }); tagStore.syncTagLayer(); },
-});
 const laneFilteredTags = computed(() =>
   tagLane.value === 'all' ? datasetTags.value : datasetTags.value.filter((t: IssueTag) => t.tagType === tagLane.value));
 const thisDatasetOpenTagCount = computed(() =>
@@ -1978,12 +1972,11 @@ const panelStyle = computed(() => ({
                dataset? The 16 are in other dataset or is other a category?").
                Row 1 is WHERE: this dataset or every dataset. Row 2 is WHAT:
                tag type, counted within the chosen scope. -->
-          <label class="nge-cl-map-switch" :class="{ 'nge-cl-map-switch--on': showTagsOnMap }">
-            <input type="checkbox" v-model="showTagsOnMap" />
-            <span class="nge-cl-map-switch-track" aria-hidden="true"><span></span></span>
-            Show tags on the map
-            <span class="nge-cl-map-switch-note">{{ showTagsOnMap ? 'Scout tags and pins layers are on' : 'Off: no tag layers are added' }}</span>
-          </label>
+          <!-- The old "Show tags on the map" switch is gone: tag layers exist
+               only while Scout Tag mode is open (Amy 2026-09-28). -->
+          <div class="nge-cl-tags-hint" style="margin: 6px 0 8px;">
+            Tags appear on the map while <b>Scout Tag mode</b> is open. Jump ↗ takes you to any tag.
+          </div>
           <div class="nge-cl-tags-lanes">
             <span class="nge-cl-lanes-label">Dataset</span>
             <button :class="{ 'nge-cl-lane--active': !showAllDatasetTags }" @click="showAllDatasetTags = false"
