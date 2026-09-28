@@ -35,11 +35,12 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write   # dispatch triage-implement.yml / triage-deploy.yml
+  actions: write   # dispatch triage-implement.yml / triage-deploy.yml / triage-propose.yml
 
 jobs:
   bridge:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -71,4 +72,25 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           # Model credentials exist only in the isolated model jobs.
           TRIAGE_MODEL_CONFIGURED: 'true'
-        run: node scripts/slack-triage-bridge.mjs
+          GH_TOKEN: ${{ github.token }}
+        # One run covers its 10 minute slot with a pass every 45 seconds, so an
+        # approve gets its reply within a minute instead of waiting for the next
+        # (often late) cron. Each pass also starts Triage Propose as soon as a
+        # new report is waiting, unless a propose run is queued, running, or
+        # started in the last 10 minutes (so a failing model is not hammered).
+        run: |
+          end=$((SECONDS + 540)); pass=0
+          while :; do
+            pass=$((pass + 1))
+            BRIDGE_PASS=$pass node scripts/slack-triage-bridge.mjs || echo "::warning::bridge pass $pass failed"
+            count=$(GITHUB_OUTPUT= node scripts/triage-loop.mjs pending 2>/dev/null | sed -n 's/^count=//p')
+            if [ "${count:-0}" != "0" ]; then
+              recent=$(gh run list -R "$GITHUB_REPOSITORY" -w triage-propose.yml -L 1 --json status,createdAt                 -q '.[] | select(.status != "completed" or ((now - (.createdAt | fromdateiso8601)) < 600)) | .status')
+              if [ -z "$recent" ]; then
+                echo "[bridge] $count new report(s): starting Triage Propose"
+                gh workflow run triage-propose.yml -R "$GITHUB_REPOSITORY" --ref main || echo "::warning::could not start Triage Propose"
+              fi
+            fi
+            [ "$SECONDS" -ge "$end" ] && break
+            sleep 45
+          done
