@@ -450,7 +450,14 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
       watchTool('Press M to activate merge mode.', 'Merge mode is on. Press next.');
       // Point at the segmentation layer chip without being asked (Amy).
       setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
-      await beginPractice('merge_then_cut');
+      // The whole tutorial runs on both merge cells (Amy): take both now, so
+      // a learner never starts on one and finds the other held.
+      const first = await beginPractice('merge_then_cut', 'start', { slot: 'a' });
+      if (first) {
+        const second = await beginPractice('merge_then_cut', 'start', { slot: 'b' });
+        if (!second) await endPractice();
+        else await beginPractice('merge_then_cut', 'start', { slot: 'a' }); // back on the first for this step
+      }
     },
   },
 
@@ -509,8 +516,7 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
     onEnter: async () => {
       closeSidePanel();
       watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
-      // A second merge cell, held alongside the first; both go back at the
-      // end. With one registered, the same cell is shown again (already merged).
+      // The second merge cell, taken at How to Merge together with the first.
       await beginPractice('merge_then_cut', 'start', { slot: 'b' });
       setTimeout(() => ensureTool('merge'), 400);
     },
