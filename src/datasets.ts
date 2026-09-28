@@ -153,6 +153,32 @@ export const DATASETS: DatasetEntry[] = [
     ],
   },
   {
+    id: 'microns_proofread',
+    caveDataset: 'minnie65',
+    thumbnail: thumbMicrons,
+    label: 'MICrONS Proofreading',
+    shortLabel: 'MICrONS Proofread',
+    abbrev: 'Proofread',
+    species: 'mouse',
+    description: 'MICrONS minnie65 private graph, where edits save (needs MICrONS proofreading access)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/minnie/minnie65/em',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/minnie3_v1',
+          subsources: { default: true, mesh: true, graph: true },
+          enableDefaultSubsources: true,
+        },
+        name: 'minnie3_v1',
+      },
+    ],
+  },
+  {
     id: 'pni_mec',
     caveDataset: 'HiMC',
     thumbnail: thumbMec,
@@ -273,6 +299,9 @@ export function canonicalDataset(name: string | undefined | null): string {
   if (n.includes('stroeh') || n.startsWith('eyewire_ii')) return 'stroeh_mouse_retina';
   if (n.startsWith('pinky')) return 'pinky_nf_v2';
   if (n.startsWith('minnie65')) return 'minnie65_public';
+  // Private MICrONS graph: its root ids are not the public ones, so it keeps
+  // its own key rather than sharing minnie65_public's rows.
+  if (n.startsWith('minnie3')) return 'minnie3_v1';
   if (n.startsWith('flywire') || n.includes('fly_v')) return 'flywire_fafb_sandbox';
   if (n.startsWith('pni_mec') || n === 'mec') return 'pni_mec';
   return n;

@@ -49,6 +49,13 @@
     "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
     "projectionScale": 30000.0
   },
+  "minnie3_v1": {
+    "dimensions": [8e-9, 8e-9, 4e-8],
+    "position": [120320.0, 103936.0, 21360.0],
+    "crossSectionScale": 5.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 30000.0
+  },
   "minnie65_public_v117": {
     "dimensions": [8e-9, 8e-9, 4e-8],
     "position": [120320.0, 103936.0, 21360.0],
