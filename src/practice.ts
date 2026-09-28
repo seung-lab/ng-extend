@@ -455,14 +455,21 @@ function userId(): string | null {
  */
 export type PracticeView = 'start' | 'preview';
 
-export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start'): Promise<PracticeExample | null> {
-  const uid = userId();
+export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { fresh?: boolean } = {}): Promise<PracticeExample | null> {
+  // Right after a reload the login is still settling; give it a few seconds
+  // before deciding the learner is signed out (Amy saw "you need to be
+  // signed in" while signed in).
+  let uid = userId();
+  for (let i = 0; !uid && i < 12; i++) { await new Promise(r => setTimeout(r, 500)); uid = userId(); }
   if (!uid) { session.phase = 'unavailable'; return null; }
   if (session.example && session.example.claimed_by === uid) {
-    if (session.example.kind === kind) {
+    if (session.example.kind === kind && !opts.fresh) {
       await showExample(session.example, view);
       return session.example;
     }
+    // A different kind, or a second cell of the same kind: hand this one
+    // back (it is put right) and take another. The one just returned has
+    // one more use, so a different ready cell wins when there is one.
     await endPractice();
   }
   session.phase = 'claiming';

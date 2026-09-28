@@ -23,7 +23,7 @@ import { INFO_LAYER, MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSid
 // claimed; with a cell, the learner's own view stays put.
 const STATE_CUT_FUSED  = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5679121900240896';
 const STATE_CUT_POINTS = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5745573634244608';
-const STATE_CUT_DONE   = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5675806990794752';
+// After the split: 5675806990794752 (kept in docs/HANDOFF-tutorial.md).
 
 async function showStaticIfNoCell(state: string) {
   if (!currentPractice().example) await useLayersStore().loadState(state);
@@ -88,13 +88,13 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
   {
     title: "Place the points",
     text: `
-The cut tool uses a **red and blue point** system, one colour on each side of where you want to cut.
+The cut tool uses a <strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> point system, one colour on each side of where you want to cut.
 
-1. **Ctrl+Click** 3 or 4 **red points** on the axon, the piece that doesn't belong, working back from the join.
-2. Press **G** to switch to blue, then **Ctrl+Click** 3 or 4 **blue points** on the cell, just past the join.
-3. Press **Submit cut** on the bar at the bottom, or **Enter**.
+1. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points on the axon, the piece that doesn't belong, working back from the join.
+2. Press **G** to switch to <strong style="color:#5c8cff">blue</strong>, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the cell, just past the join.
+3. Press **Submit cut** on the bar at the bottom, or **Enter**. You'll see "splitting..." for a moment, then the axon comes away as its own segment.
 
-The server finds the best place to separate the segment. Here is what a good set of points looks like: red along the piece to remove, blue on the cell just past the join.`,
+If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>. Here is what a good set of points looks like: <strong style="color:#ff5c5c">red</strong> along the piece to remove, <strong style="color:#5c8cff">blue</strong> on the cell just past the join.`,
     position: OVER_3D,
     width: "460px",
     image: imgCutPoints,
@@ -111,11 +111,11 @@ The server finds the best place to separate the segment. Here is what a good set
   {
     title: "Red & Blue Points",
     text: `
-When the cut tool is active, you'll see a group indicator at the bottom showing which color you're placing.
+When the cut tool is active, the bar at the bottom shows which colour you're placing.
 
-Red and blue simply mark the **two sides** of where the cut should happen, one color on each side of the boundary.
+<strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> simply mark the **two sides** of where the cut should happen, one colour on each side of the boundary.
 
-**Ctrl+Click** to place a point. Press **G** to switch between red and blue groups.`,
+**Ctrl+Click** to place a point. Press **G** to switch between the <strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> groups.`,
     position: OVER_2D,
     width: "420px",
     onEnter: () => {
@@ -139,32 +139,15 @@ For the best results:
     width: "420px",
   },
 
-  // 7: Submitting the cut
+  // 7: Try it yourself
   {
+    title: "Your Turn: another one",
     text: `
-After placing your red and blue points:
-
-- Press **Submit cut** on the bar at the bottom, or **Enter**.
-- You'll see a "splitting..." status. Wait for it to process (this can take a moment).
-- If successful, the segment will split into two separate pieces.
-- If the result isn't right, there is no undo key. Rejoin the pieces with a <strong style="color:#60c060">merge</strong>.`,
-    position: OVER_3D,
-    width: "400px",
-    onEnter: () => {
-      closeSidePanel();
-      showStaticIfNoCell(STATE_CUT_DONE);
-    },
-  },
-
-  // 8: Try it yourself
-  {
-    title: "Your Turn!",
-    text: `
-A thin axon runs into this cell and the AI fused the two. Cut the axon off.
+One more, on a different cell. Two pieces that belong to different neurons are fused here. Find the join and cut them apart.
 
 1. Press **C** to activate the cut tool.
-2. **Ctrl+Click** 3 or 4 **red points** on the axon, the piece that doesn't belong, working back from the join.
-3. Press **G** to switch to blue, then **Ctrl+Click** 3 or 4 **blue points** on the cell, just past the join.
+2. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points on the piece that doesn't belong.
+3. Press **G**, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the other side of the join.
 4. Press **Submit cut** on the bar at the bottom, or **Enter**.
 
 Press **next** once the box below says the cut landed.`,
@@ -172,13 +155,15 @@ Press **next** once the box below says the cut landed.`,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(false, 'Waiting for your cut…', 'Cut success! You did it. The two pieces are separate now.');
-      await beginPractice('cut', 'start');
+      watchPractice(false, 'Waiting for your cut: red on one side of the join, G, blue on the other, Submit cut.', 'Cut success! You did it again. The two pieces are separate now.');
+      // A second cut cell: the first goes back (put right) and another is
+      // taken. With only one cut cell registered it is the same cell, reset.
+      await beginPractice('cut', 'start', { fresh: true });
       setTimeout(() => ensureTool('multicut'), 400);
     },
   },
 
-  // 9: Done
+  // 8: Done
   {
     title: "Cut: done!",
     text: `

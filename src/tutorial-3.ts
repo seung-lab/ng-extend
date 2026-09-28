@@ -104,6 +104,18 @@ function toggleStuckPanel() {
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;flex-wrap:wrap;gap:0 4px;margin-top:6px';
   row.appendChild(smallButton('nge-practice-stuck-layer', 'Show me the layer', () => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer'))));
+  const ex = currentPractice().example;
+  if (ex && ex.kind === 'merge_then_cut') {
+    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to click', () => {
+      if (!ex.point_a || !ex.point_b) { practiceStatus('This cell was registered without click points, so there is nothing to show. Ctrl+click anywhere on the yellow branch, then anywhere on the purple cell near it.'); return; }
+      ensureTool('merge');
+      setTimeout(() => {
+        const ok = placeMergeLine();
+        practiceStatus(ok ? 'The merge line is placed between the two pieces: that is where the clicks go. Press Submit merge, or Enter.'
+                          : 'Could not place the line. Ctrl+click the yellow branch, then the purple cell near it.');
+      }, 700);
+    }));
+  }
   row.appendChild(smallButton('nge-practice-stuck-chat', 'Ask in chat', () => document.dispatchEvent(new CustomEvent('nge:open-chat'))));
   row.appendChild(smallButton('nge-practice-stuck-ai', 'Ask Nurro', () => (document.querySelector('.nge-ask-btn') as HTMLElement | null)?.click()));
   panel.appendChild(row);

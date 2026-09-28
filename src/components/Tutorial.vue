@@ -14,6 +14,10 @@ import { steps as steps5 } from '../tutorial-cut';
 import { endPractice } from '../practice';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
+// Badge art for the merge and cut tutorials is not drawn yet (Amy, 2026-09-28);
+// until it is, the confetti and super Nurros from static/nurro stand in.
+import badgeMerge from '../../static/nurro/nurro-confetti-card.png';
+import badgeCut from '../../static/nurro/nurro-super-v2.png';
 
 
 const store = useTutorialStore();
@@ -46,7 +50,8 @@ const activeStep = computed(() => {
 const BADGE_KEYS: Record<number, { key: string; title: string; image: string }> = {
     1: { key: 'nge-badge-citizen-scientist', title: 'Citizen Scientist', image: badgeCitizenScientist },
     2: { key: 'nge-badge-advanced-operator', title: 'Advanced Operator', image: badgeClearanceLevel2 },
-    // 3: Tutorial 3 badge TBD
+    3: { key: 'nge-badge-merge-master', title: 'Merge Master', image: badgeMerge },
+    5: { key: 'nge-badge-cut-master', title: 'Cut Master', image: badgeCut },
 };
 
 async function awardBadgeIfNew(tutorialNum: number) {
