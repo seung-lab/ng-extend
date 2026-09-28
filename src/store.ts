@@ -1843,10 +1843,11 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     try {
       const viewer: any = (window as any)['viewer'];
       if (!viewer?.state) return;
-      // Ambient display is a preference, off by default (Amy: tag layers only
-      // when asked for, from the Tags tab); tag mode overrides.
-      const ambientOn = useUserPreferencesStore().prefs.showScoutTags === true; // off until turned on in Tags
-      if (!tagModeActive.value && !ambientOn) {
+      // The tag layers exist ONLY while Scout Tag mode is open (Amy
+      // 2026-09-28: they were loading by default for users who had once
+      // switched on the old "show tags on the map" preference). That saved
+      // preference is deliberately ignored now.
+      if (!tagModeActive.value) {
         for (const name of [TAG_LAYER_NAME, PIN_LAYER_NAME]) {
           const stale = viewer.layerManager?.managedLayers?.find((l: any) => l.name === name);
           if (stale) viewer.layerManager.removeManagedLayer(stale);
@@ -1964,9 +1965,10 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     try {
       const viewer: any = (window as any)['viewer'];
       if (!viewer?.state) return;
-      const ambientOn = useUserPreferencesStore().prefs.showScoutTags === true; // off until turned on in Tags
+      // Same rule as the scout layers: only in Scout Tag mode, and only while
+      // the AI tab's own toggle is on.
       const points = aiPointAnnotations();
-      if (!aiLayerOn.value || !ambientOn || !points.length) {
+      if (!aiLayerOn.value || !tagModeActive.value || !points.length) {
         removeLayerByName(viewer, AI_LAYER_NAME);
         removeLayerByName(viewer, AI_CRYSTAL_LAYER_NAME);
         lastCrystalKey = '';
@@ -2278,6 +2280,23 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   // nothing syncs the layers on a fresh page load, so they only ever came
   // back via the URL state (stale shaders, no shards).
   for (const ms of [2000, 5000, 10000]) setTimeout(syncTagLayer, ms);
+  // Saved views and shared links carry these layers in their state, and the
+  // viewer can finish loading after the timed syncs above. Watch the layer
+  // list itself, so a tag layer that appears outside tag mode is removed as
+  // soon as it shows up, however late.
+  const TAG_MODE_ONLY = [TAG_LAYER_NAME, PIN_LAYER_NAME, AI_LAYER_NAME, AI_CRYSTAL_LAYER_NAME];
+  (function watchLayers(tries = 60) {
+    const lm = (window as any)['viewer']?.layerManager;
+    if (!lm?.layersChanged?.add) {
+      if (tries > 0) setTimeout(() => watchLayers(tries - 1), 1000);
+      return;
+    }
+    lm.layersChanged.add(() => {
+      if (tagModeActive.value) return;
+      if (lm.managedLayers?.some((l: any) => TAG_MODE_ONLY.includes(l.name))) syncTagLayer();
+    });
+    syncTagLayer();
+  })();
 
   return { tags, openTags, load, add, resolve, remove, syncTagLayer, setTagPreview, tagModeActive, setTagModeActive,
            aiLayerOn, setAiLayerOn, syncAiLayer,

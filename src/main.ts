@@ -11,7 +11,7 @@ import './widgets/annotations_restyle.css';
 import './widgets/find_path_restyle.css';
 
 import App from 'components/App.vue';
-import {useLayersStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';
+import {useIssueTagStore, useLayersStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';
 import {useStatsStore} from './store-pyr';
 import {exitGrapheneTool} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
@@ -115,6 +115,13 @@ window.addEventListener('DOMContentLoaded', () => {
 
   const {loopUpdateLeaderboard} = useStatsStore();
   loopUpdateLeaderboard();
+
+  // Start the scout tag store now, not on first use: its layer watcher is
+  // what strips "⚑ Scout tags" / "⚑ Scout pins" layers that arrive in a saved
+  // view or shared link. Lazily created, it never ran for someone who did not
+  // open the Cell Library or tag mode, so those layers stayed (Amy
+  // 2026-09-28: "loading for some users on default").
+  useIssueTagStore();
 
   // Auto-select segmentation layer after viewer loads (fallback for when
   // LoginModal doesn't fire — e.g. already authenticated or bypass).
