@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { caveToken } from '../secure_write';
 import { functionUrl } from '../functions_base';
 // AssistantDock.vue — the EyeWire II Guide chat dock. A slim floating panel
 // that answers questions and drives the UI. It posts to the guideAssistant
@@ -195,7 +196,7 @@ async function send(text?: string) {
     const resp = await fetch(GUIDE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history, appContext, uiReference, stream: true }),
+      body: JSON.stringify({ token: caveToken(), message, history, appContext, uiReference, stream: true }),
     });
 
     if (!resp.ok) {
@@ -203,7 +204,7 @@ async function send(text?: string) {
       const data = await resp.json().catch(() => ({} as any));
       messages.value.push({
         role: "assistant",
-        text: data?.reply || (resp.status === 429
+        text: data?.reply || data?.error || (resp.status === 429
           ? "You're going a little fast — give me a few seconds and try again."
           : "I couldn't reach the guide just now. Please try again in a moment."),
       });
@@ -289,6 +290,7 @@ async function submitFeedback(msg: Msg, verdict: "up" | "down") {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        token: caveToken(),
         logId: msg.logId,
         verdict,
         correction,

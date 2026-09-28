@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { caveToken } from '../secure_write';
 import { functionUrl } from '../functions_base';
 /**
  * FeedbackModal.vue
@@ -86,6 +87,7 @@ async function submit() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        token: caveToken(),
         message: slackText,
         category: category.value,
         url: pageUrl,

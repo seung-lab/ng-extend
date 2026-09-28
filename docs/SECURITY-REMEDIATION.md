@@ -1,4 +1,4 @@
-# EyeWire II security remediation — 27 September 2026
+# EyeWire II security remediation — 28 September 2026
 
 The production site is https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/.
 
@@ -34,4 +34,4 @@ Production bundling and focused security regression tests pass. Browser renderin
 
 Repository owners still need to enforce protected branches/environments and restrict the Google Workload Identity provider to reviewed deployment refs. The current GitHub account has maintain, not admin, permission. Artifact separation alone cannot stop an authorized repository writer from changing a deployment workflow.
 
-Follow-up work remains: CAVE-authoritative statistics rather than client-reported own counters; ownership enforcement for remaining practice RPCs and task/community tables; stronger help-reply/Guide-feedback ownership; review of existing bot memory; and dependency and vendored typing cleanup. Task ownership checked by Sheets still depends on those task records; completing server enforcement of task writes remains a security priority. This release is not a claim that every review finding is resolved. Do not store private signing keys or service keys in browser source or public Git history.
+The pilot update adds explicit invitations, server-gated community writes and atomic claims/reset leases, and revokes direct public table/RPC mutations. See `PILOT-SECURITY.md` for enrollment and rollout. Follow-up work remains: CAVE-authoritative statistics rather than client-reported own counters; finer help-reply/Guide-feedback ownership within the trusted cohort; review of existing bot memory; and dependency and vendored typing cleanup. This release is not a claim that every review finding is resolved. Do not store private signing keys or service keys in browser source or public Git history.

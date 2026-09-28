@@ -7,6 +7,9 @@ const path = require("path");
 
 admin.initializeApp();
 const db = admin.firestore();
+const ewServiceKey = defineSecret("EW_SUPABASE_SERVICE_KEY");
+const {pilotContext, requirePilot} = require("./pilot-access");
+const {authorizePilotData, conflicts:pilotConflicts} = require("./pilot-data");
 
 // Reference docs for the Slack bot — uploaded to Anthropic Files via
 // scripts/upload-bot-docs.js. JSON shape: {"<filename>": "<file_id>"}.
@@ -1091,7 +1094,7 @@ const GUIDE_ALLOWED_ORIGIN_RE =
   /^https:\/\/[a-z0-9-]+-dot-brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$|^https:\/\/amyleesterling\.github\.io$|^http:\/\/(localhost|127\.0\.0\.1):(8080|3000)$/;
 
 exports.guideAssistant = onRequest(
-  { region: "us-central1", secrets: [anthropicKey], cors: false, invoker: "public", maxInstances: 20 },
+  { region: "us-central1", secrets: [anthropicKey, ewServiceKey], cors: false, invoker: "public", maxInstances: 20 },
   async (req, res) => {
     const origin = req.get("origin") || "";
     const originOk = GUIDE_ALLOWED_ORIGIN_RE.test(origin);
@@ -1109,6 +1112,12 @@ exports.guideAssistant = onRequest(
     }
     if (!originOk) { res.status(403).json({ error: "origin not allowed" }); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    let pilot;
+    try {
+      pilot=await pilotContext(ewSb(ewServiceKey.value().trim()),await ewVerify(req.body?.token));
+      requirePilot(pilot);
+    } catch(error) { return res.status(error.status||503).json({error:error.status?error.message:"Please try again shortly.",reply:error.status?error.message:"The Guide is temporarily unavailable."}); }
+
 
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 48000) return res.status(413).json({error:"Input too large"});
     const { message, history, appContext, uiReference } = req.body || {};
@@ -1409,7 +1418,7 @@ async function postIssueToSlack(token, issue) {
 }
 
 exports.submitIssue = onRequest(
-  { region: "us-central1", cors: false, invoker: "public", maxInstances: 10, secrets: [slackBotToken] },
+  { region: "us-central1", cors: false, invoker: "public", maxInstances: 10, secrets: [slackBotToken, ewServiceKey] },
   async (req, res) => {
     const origin = req.get("origin") || "";
     const originOk = GUIDE_ALLOWED_ORIGIN_RE.test(origin);
@@ -1424,12 +1433,18 @@ exports.submitIssue = onRequest(
     }
     if (!originOk) { res.status(403).json({ error: "origin not allowed" }); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    let pilot;
+    try {
+      pilot=await pilotContext(ewSb(ewServiceKey.value().trim()),await ewVerify(req.body?.token));
+      requirePilot(pilot);
+    } catch(error) { return res.status(error.status||503).json({error:error.status?error.message:"Please try again shortly.",reply:error.status?error.message:"The Guide is temporarily unavailable."}); }
+
 
     const b = req.body || {};
     const message = typeof b.message === "string" ? b.message.trim().slice(0, 4000) : "";
     if (!message) { res.status(400).json({ error: "message required" }); return; }
     const category = ISSUE_CATEGORIES.includes(b.category) ? b.category : "Other";
-    const user = typeof b.user === "string" ? b.user.slice(0, 200) : "";
+    const user = pilot.me.username || pilot.me.display_name || "Player";
     const dataset = typeof b.dataset === "string" ? b.dataset.slice(0, 120) : "";
     const pageUrl = typeof b.url === "string" ? b.url.slice(0, 500) : "";
 
@@ -1453,7 +1468,7 @@ exports.submitIssue = onRequest(
 );
 
 exports.guideFeedback = onRequest(
-  { region: "us-central1", cors: false, invoker: "public", maxInstances: 10, secrets: [slackBotToken] },
+  { region: "us-central1", cors: false, invoker: "public", maxInstances: 10, secrets: [slackBotToken, ewServiceKey] },
   async (req, res) => {
     const origin = req.get("origin") || "";
     const originOk = GUIDE_ALLOWED_ORIGIN_RE.test(origin);
@@ -1468,13 +1483,19 @@ exports.guideFeedback = onRequest(
     }
     if (!originOk) { res.status(403).json({ error: "origin not allowed" }); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    let pilot;
+    try {
+      pilot=await pilotContext(ewSb(ewServiceKey.value().trim()),await ewVerify(req.body?.token));
+      requirePilot(pilot);
+    } catch(error) { return res.status(error.status||503).json({error:error.status?error.message:"Please try again shortly.",reply:error.status?error.message:"The Guide is temporarily unavailable."}); }
+
 
     const { logId, verdict, correction, reply, user } = req.body || {};
     if (verdict !== "up" && verdict !== "down") {
       res.status(400).json({ error: "verdict must be 'up' or 'down'" });
       return;
     }
-    const userName = typeof user === "string" ? user.slice(0, 200) : "";
+    const userName = pilot.me.username || pilot.me.display_name || "Player";
 
     // Light per-IP cap — feedback is cheap, but stop spam.
     const fbRl = await rateLimit(req, true, "fb");
@@ -1537,7 +1558,6 @@ exports.guideFeedback = onRequest(
 // browser never sees. Automation (GitHub Actions) keeps using its own
 // service key and does not come through here.
 // ════════════════════════════════════════════════════════════════════════
-const ewServiceKey = defineSecret("EW_SUPABASE_SERVICE_KEY");
 const { authorizeData } = require("./community-data");
 const EW_SB = "https://javthknksdcrlhiaaptj.supabase.co/rest/v1/";
 const EW_ORIGINS = [/^https:\/\/([a-z0-9-]+-dot-)?brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/, /^http:\/\/localhost(:\d+)?$/];
@@ -1573,7 +1593,11 @@ function ewSb(key) {
       headers: { apikey: key, ...(key.startsWith("sb_") ? {} : { Authorization: `Bearer ${key}` }), "Content-Type": "application/json", Prefer: "return=representation", ...(init.headers || {}) },
     });
     const text = await r.text();
-    if (!r.ok) throw new Error(`supabase ${r.status}: ${text.slice(0, 200)}`);
+    if (!r.ok) {
+      let error;try{error=JSON.parse(text);}catch{}
+      if(path.startsWith("rpc/pilot_") && ["P0001","42501","55P03"].includes(error?.code)) throw ewErr(error.code==="42501"?403:409,String(error.message).slice(0,300));
+      throw new Error(`supabase ${r.status}`);
+    }
     return text ? JSON.parse(text) : null;
   };
 }
@@ -1581,7 +1605,7 @@ function ewSb(key) {
 const EW_NOTIF_FIELDS = ["title", "body", "image_url", "thumbnail_url", "target_type", "target_id", "send_at", "expires_at", "post_to_chat", "chat_posted_at"];
 const EW_TRIAGE_FIELDS = ["status", "proposed_message", "approver_note", "impl_state", "reviewed_by", "reviewed_at", "result_note", "tested_by", "tested_at", "feedback_log", "approver_slack_id"];
 const ewPick = (obj, keys) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => keys.includes(k)));
-const EW_SELF_TITLES = ["📊 Your Week in Science", "💙 Thank you, for science!"];
+const EW_SELF_TITLES = ["📊 Your Week in Science", "💙 Thank you, for science!", "Your practice cell is ready"];
 const ewErr = (status, msg) => Object.assign(new Error(msg), { status });
 
 exports.ewSecureWrite = onRequest(
@@ -1610,11 +1634,21 @@ exports.ewSecureWrite = onRequest(
     if (!(await rateLimit({ip:who.email}, true, "write:secure")).ok) return res.status(429).json({error:"Please wait before sending another change."});
     const sb = ewSb(ewServiceKey.value().trim()); // a pasted key can carry a stray newline
     try {
-      const me = (await sb(`users?middleauth_email=eq.${encodeURIComponent(who.email)}&select=id,display_name,total_edits`))[0];
-      const isAdmin = (await sb(`admins?email=eq.${encodeURIComponent(who.email)}&select=id`)).length > 0;
+      const ctx = await pilotContext(sb,who);
+      const {me,isAdmin} = ctx;
+      if(action === "pilot.status") return res.json({ok:true,data:{invited:!!(isAdmin||ctx.isPilot),admin:isAdmin}});
+      requirePilot(ctx);
       const needAdmin = () => { if (!isAdmin) throw ewErr(403, "Admins only"); };
       let out = null;
       switch (action) {
+        case "pilot.task":
+        case "pilot.practice": {
+          const allowed = action === "pilot.task" ? ["claim","claim_cell","release","complete","heartbeat"] : ["claim","heartbeat","begin_reset","check_reset","finish_reset"];
+          if(!allowed.includes(args.operation)) throw ewErr(400,"Unknown pilot action");
+          const payload={p_user:me.id,p_action:args.operation,p_args:args.args||{}};
+          out=await sb("rpc/"+(action === "pilot.task"?"pilot_task_action":"pilot_practice_action"),{method:"POST",body:JSON.stringify(payload)});
+          break;
+        }
         // ── admins ──
         case "notification.insert": {
           needAdmin();
@@ -1701,10 +1735,19 @@ exports.ewCommunityData = onRequest(
       const who = input.token ? await ewVerify(input.token) : null;
       if (input.token && !who) return res.status(401).json({message:"Sign in again."});
       const key = ewServiceKey.value().trim(), sb = ewSb(key);
-      const me = who ? (await sb("users?middleauth_email=eq."+encodeURIComponent(who.email)+"&select=id,display_name,username&limit=1"))[0] : null;
-      const isAdmin = who ? (await sb("admins?email=eq."+encodeURIComponent(who.email)+"&select=id&limit=1")).length > 0 : false;
+      const ctx=await pilotContext(sb,who), {me,isAdmin}=ctx;
       const groups = me ? (await sb("user_group_members?user_id=eq."+me.id+"&select=group_id")).map(r=>r.group_id) : [];
-      const plan = authorizeData(input, {who,me,isAdmin,groups,now:new Date().toISOString()});
+      const context={...ctx,groups,now:new Date().toISOString()};
+      const read=["GET","HEAD"].includes(String(input.method||"GET").toUpperCase());
+      if(!read && !(input.table==="users" && input.method==="POST")) requirePilot(context);
+      const plan=authorizePilotData(input,context)||authorizeData(input,context);
+      if(plan.table==="special_badge_awards" && !isAdmin && plan.body) {
+        const rows=Array.isArray(plan.body)?plan.body:[plan.body];
+        for(const row of rows) {
+          const badges=await sb("special_badges?id=eq."+Number(row.badge_id)+"&select=name,slug&limit=1");
+          if(!badges.some(b=>["Citizen Scientist","Advanced Operator","Merge Master","Cut Master"].includes(b.name))) throw ewErr(403,"This award requires an admin.");
+        }
+      }
       if (plan.method !== "GET" && plan.method !== "HEAD") {
         const quota = await rateLimit({ip:who.email}, true, "write:"+plan.table);
         if (!quota.ok) throw ewErr(429,"Please wait before sending another change.");
@@ -1717,7 +1760,7 @@ exports.ewCommunityData = onRequest(
       headers.Accept = input.accept === "application/vnd.pgrst.object+json" ? input.accept : "application/json";
       const preferences = ["return=representation"];
       if (String(input.prefer).includes("count=exact")) preferences.push("count=exact");
-      if (["notification_reads","user_group_members"].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
+      if (["notification_reads","user_group_members",...Object.keys(pilotConflicts)].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
       headers.Prefer = preferences.join(",");
       if (typeof input.range === "string" && /^\d+-\d+$/.test(input.range)) {
         const [from,to] = input.range.split("-").map(Number);
@@ -1727,6 +1770,7 @@ exports.ewCommunityData = onRequest(
       const upstream = await fetch(EW_SB+plan.table+"?"+plan.query.toString(), {method:plan.method,headers,
         body:plan.body === undefined ? undefined : JSON.stringify(plan.body), redirect:"error", signal:AbortSignal.timeout(15000)});
       let body = await upstream.text();
+      if(upstream.ok && plan.table==="tutorial_practice_examples" && ["PATCH","DELETE"].includes(plan.method) && body==="[]") throw ewErr(409,"A learner or reset is using this practice cell. Try again after it is released.");
       // Expected API errors are useful to the SDK; hide database diagnostics.
       if (!upstream.ok) {
         let code; try { code = JSON.parse(body).code; } catch {}
@@ -1753,6 +1797,7 @@ exports.ewSecureUpload = onRequest(
    if(!who)throw ewErr(401,"Sign in first.");
    const key=ewServiceKey.value().trim(), sb=ewSb(key);
    const isAdmin=(await sb("admins?email=eq."+encodeURIComponent(who.email)+"&select=id&limit=1")).length>0;
+   requirePilot(await pilotContext(sb,who));
    const upload=require("./upload-policy").prepareUpload(input,who,isAdmin);
    if(!(await rateLimit({ip:who.email},false,"upload")).ok)throw ewErr(429,"Please wait before uploading another image.");
    const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/admin-uploads/"+upload.path;
@@ -1764,7 +1809,7 @@ exports.ewSecureUpload = onRequest(
 );
 
 exports.ewSheetSync = onRequest(
- {region:"us-central1",serviceAccount:"eyewire-sheet-sync@eyewire-ii-e4d52.iam.gserviceaccount.com",secrets:[ewServiceKey],cors:EW_ORIGINS,invoker:"public",maxInstances:1,concurrency:1,timeoutSeconds:90},
+ {region:"us-central1",serviceAccount:`eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`,secrets:[ewServiceKey],cors:EW_ORIGINS,invoker:"public",maxInstances:1,concurrency:1,timeoutSeconds:90},
  async(req,res)=>{
   res.set("Cache-Control","no-store");
   if(req.method!=="POST") return res.status(405).json({error:"POST only"});
@@ -1800,6 +1845,7 @@ exports.ewSheetSync = onRequest(
    if(!(await rateLimit({ip:who.email},true,"write:sheets")).ok) throw ewErr(429,"Please wait before syncing another cell.");
    const sb=ewSb(ewServiceKey.value().trim());
    const me=(await sb('users?middleauth_email=eq.'+encodeURIComponent(who.email)+'&select=id,display_name,username&limit=1'))[0];
+   requirePilot(await pilotContext(sb,who));
    if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
    const tasks=await sb('proofreading_tasks?dataset=eq.'+encodeURIComponent(input.dataset)+'&segment_id=eq.'+input.segmentId+'&assigned_to=eq.'+me.id+'&select=*&order=updated_at.desc&limit=1');
    return res.json(await require('./sheet-sync').syncSheet(input,me,tasks[0],admin.credential.applicationDefault()));

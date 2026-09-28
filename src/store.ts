@@ -1,3 +1,4 @@
+import { taskAction } from './pilot_actions';
 import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
 import { secureWrite } from './secure_write';
@@ -3287,22 +3288,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         error.value = 'This cell is already claimed by another user';
         return false;
       }
-      // Insert assignment
-      const { error: assignErr } = await supabase
-        .from('task_assignments')
-        .insert({
-          task_id: taskId,
-          user_id: userId.value,
-          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-        });
-      if (assignErr) throw assignErr;
-
-      // Update task status
-      const { error: taskErr } = await supabase
-        .from('proofreading_tasks')
-        .update({ status: 'assigned', assigned_to: userId.value, updated_at: new Date().toISOString() })
-        .eq('id', taskId);
-      if (taskErr) throw taskErr;
+      await taskAction('claim', { id: taskId });
 
       activeTaskId.value = taskId;
       startHeartbeat();
@@ -3328,26 +3314,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (!activeTaskId.value || !userId.value) return;
     const taskId = activeTaskId.value;
     try {
-      // Mark assignment as released
-      await supabase
-        .from('task_assignments')
-        .update({ status: 'released', released_at: new Date().toISOString() })
-        .eq('task_id', taskId)
-        .eq('user_id', userId.value)
-        .eq('status', 'active');
-
-      // Set task back to pending
-      await supabase
-        .from('proofreading_tasks')
-        .update({ status: 'pending', assigned_to: null, updated_at: new Date().toISOString() })
-        .eq('id', taskId);
+      await taskAction('release', { id: taskId });
 
       await logEdit({ operation: 'release_task', task_id: taskId });
 
       activeTaskId.value = null;
       stopHeartbeat();
+      return true;
     } catch (e: any) {
+      error.value = e.message || 'Could not release this claim';
       console.warn('[backend] releaseTask error:', e.message);
+      return false;
     }
   }
 
@@ -3355,25 +3332,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   async function completeTask(taskId: number, finalSegId?: string, somaCoords?: string) {
     if (!userId.value) return;
     try {
-      const updates: any = {
-        status: 'completed',
-        updated_at: new Date().toISOString(),
-      };
-      if (finalSegId) updates.final_segment_id = finalSegId;
-      if (somaCoords) updates.soma_coords = somaCoords;
-
-      await supabase
-        .from('proofreading_tasks')
-        .update(updates)
-        .eq('id', taskId);
-
-      // Mark assignment as completed
-      await supabase
-        .from('task_assignments')
-        .update({ status: 'completed', completed_at: new Date().toISOString() })
-        .eq('task_id', taskId)
-        .eq('user_id', userId.value)
-        .eq('status', 'active');
+      await taskAction('complete', { id: taskId, final_segment_id: finalSegId, soma_coords: somaCoords });
 
       await logEdit({
         operation: 'complete_task',
@@ -3398,6 +3357,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         .eq('id', userId.value);
     } catch (e: any) {
       console.warn('[backend] completeTask error:', e.message);
+      error.value = e.message || 'Could not complete this cell';
+      throw e;
     }
   }
 
@@ -3407,12 +3368,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     heartbeatInterval = setInterval(async () => {
       if (!activeTaskId.value || !userId.value) return;
       try {
-        await supabase
-          .from('task_assignments')
-          .update({ expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString() })
-          .eq('task_id', activeTaskId.value)
-          .eq('user_id', userId.value)
-          .eq('status', 'active');
+        await taskAction('heartbeat', { id: activeTaskId.value });
       } catch { /* heartbeat failure is non-fatal */ }
     }, 10 * 60 * 1000); // every 10 minutes
   }
@@ -3658,7 +3614,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       if (toInsert.length === 0) { error.value = 'No valid segments found'; loading.value = false; return; }
 
       // Batch insert (Supabase handles up to 1000 rows per insert)
-      const batchSize = 500;
+      const batchSize = 100;
       for (let i = 0; i < toInsert.length; i += batchSize) {
         const batch = toInsert.slice(i, i + batchSize);
         const { error: insertErr } = await supabase.from('proofreading_tasks').insert(batch);
@@ -3951,36 +3907,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
 
     try {
-      let task = _findTaskByPoint(point);
-      if (!task) {
-        const { data, error: insertErr } = await supabase
-          .from('proofreading_tasks')
-          .insert({
-            segment_id: currentSegId || '',
-            dataset: currentDatasetTag(),
-            status: 'pending',
-            claim_point_x: point[0],
-            claim_point_y: point[1],
-            claim_point_z: point[2],
-            supervoxel_id: supervoxelId || null,
-          })
-          .select('*')
-          .single();
-        if (insertErr) throw insertErr;
-        task = data;
-        tasks.value.push(data);
-      }
-
-      const ok = await claimTask(task!.id);
-      if (ok) {
-        const local = tasks.value.find(t => t.id === task!.id);
-        if (local) { local.status = 'assigned'; local.assigned_to = userId.value; }
-        await loadTasks();
-        const label = currentSegId ? `...${currentSegId.slice(-4)}` : pointKey(point);
-        await postActivity(`claimed cell ${label}`);
-        return { ok: true };
-      }
-      return { ok: false, reason: error.value || 'Claim failed' };
+      const task = await taskAction('claim_cell', { dataset: currentDatasetTag(), segment_id: currentSegId, point, supervoxel_id: supervoxelId });
+      activeTaskId.value = task.id;
+      startHeartbeat();
+      await logEdit({ operation: 'claim_task', task_id: task.id });
+      await loadTasks();
+      await postActivity(`claimed cell ${currentSegId ? `...${currentSegId.slice(-4)}` : pointKey(point)}`);
+      return { ok: true };
     } catch (e: any) {
       console.warn('[backend] claimCell error:', e.message);
       return { ok: false, reason: e.message };
@@ -3997,8 +3930,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (!task) return false;
     const prevActive = activeTaskId.value;
     activeTaskId.value = task.id;
-    await releaseTask();
+    const released = await releaseTask();
     activeTaskId.value = prevActive;
+    if (!released) return false;
     await loadTasks();
     return true;
   }
@@ -4012,8 +3946,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (!task) return false;
     const prevActive = activeTaskId.value;
     activeTaskId.value = task.id;
-    await releaseTask();
+    const released = await releaseTask();
     activeTaskId.value = prevActive;
+    if (!released) return false;
     await loadTasks();
     return true;
   }

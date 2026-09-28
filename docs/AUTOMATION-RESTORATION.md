@@ -20,4 +20,4 @@ Scheduled workflows must also be registered on `main`. They check out trusted co
 
 No production release approval was fabricated to test triage. The isolated model path and static deployment path were tested separately. A real report still requires its assigned tester's explicit approval before release.
 
-The security task's local `STATUS.md` records final reset and rollout results. Remaining task/practice database ownership and repository-owner controls are described in `SECURITY-REMEDIATION.md`.
+The security task's local `STATUS.md` records final reset and rollout results. The September 28 pilot update moves task ownership and practice leases behind verified invitations; `PILOT-SECURITY.md` describes the transaction tests and enrollment. Repository-owner controls remain documented in `SECURITY-REMEDIATION.md`.
