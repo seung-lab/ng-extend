@@ -38,7 +38,7 @@ import {LegacyTool, registerLegacyTool} from 'neuroglancer/ui/tool';
 import {animationFrameDebounce} from 'neuroglancer/util/animation_frame_debounce';
 import {arraysEqual, ArraySpliceOp} from 'neuroglancer/util/array';
 import {setClipboard} from 'neuroglancer/util/clipboard';
-import {serializeColor, unpackRGB, unpackRGBA, useWhiteBackground} from 'neuroglancer/util/color';
+import {serializeColor, TrackableRGB, unpackRGB, unpackRGBA, useWhiteBackground} from 'neuroglancer/util/color';
 import {Borrowed, disposableOnce, RefCounted} from 'neuroglancer/util/disposable';
 import {removeChildren} from 'neuroglancer/util/dom';
 import {Endianness, ENDIANNESS} from 'neuroglancer/util/endian';
@@ -1170,6 +1170,15 @@ export function UserLayerWithAnnotationsMixin<TBase extends {new (...args: any[]
 
     constructor(...args: any[]) {
       super(...args);
+      // EyeWire II (Amy 2026-09-28): annotations are yellow (#edd040, the
+      // AnnotationDisplayState default) but the volume bounding box stays dark
+      // blue. On image and segmentation layers this colour only ever draws
+      // that bounding box (their static data-bounds annotations), so those
+      // layers get the dark blue as THEIR default. Replacing the trackable
+      // (not setting its value) keeps the default out of saved state.
+      if ((this.constructor as any).type !== 'annotation') {
+        this.annotationDisplayState.color = new TrackableRGB(vec3.fromValues(0.10, 0.25, 0.60));
+      }
       this.annotationDisplayState.color.changed.add(this.specificationChanged.dispatch);
       this.annotationDisplayState.shader.changed.add(this.specificationChanged.dispatch);
       this.annotationDisplayState.shaderControls.changed.add(this.specificationChanged.dispatch);
