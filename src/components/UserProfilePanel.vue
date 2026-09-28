@@ -232,7 +232,7 @@ onMounted(() => {
 onMounted(() => {
   if (props.initialTab === 'weekInScience' && !viewingOtherUser.value) {
     openWeekInScience();
-  } else if (props.initialTab === 'datasets' && !viewingOtherUser.value) {
+  } else if (props.initialTab === 'datasets') {
     activeTab.value = 'datasets';
   } else if (props.initialTab === 'settings' && !viewingOtherUser.value) {
     activeTab.value = 'settings';
@@ -266,18 +266,23 @@ function refreshActiveDatasetCanon() {
 // Shared with the "Now entering" card (util/dataset_contribution.ts).
 const datasetTagVariants = sharedTagVariants;
 
+// Whose contributions: the profile being viewed (Ames 2026-09-28: someone
+// else's profile shows their Datasets tab too), else your own.
+let datasetStatsFor: string | null = null;
 async function loadDatasetStats() {
-  if (datasetStatsLoading.value) return;
+  const uid = viewingOtherUser.value ? props.viewUserId! : backendStore.userId;
+  if (datasetStatsLoading.value && datasetStatsFor === uid) return;
+  if (datasetStatsFor !== uid) datasetStats.value = {};
+  datasetStatsFor = uid;
   datasetStatsLoading.value = true;
   refreshActiveDatasetCanon();
   try {
-    const uid = backendStore.userId;
     if (!uid) return;
     const out: Record<string, DatasetContribution> = {};
     await Promise.all(DATASETS.map(async ds => {
       out[canonicalDataset(segLayerName(ds))] = await loadContribution(ds, uid);
     }));
-    datasetStats.value = out;
+    if (datasetStatsFor === uid) datasetStats.value = out;
   } catch (e) {
     console.warn('[profile] loadDatasetStats failed:', e);
   } finally {
@@ -286,6 +291,7 @@ async function loadDatasetStats() {
 }
 
 watch(activeTab, tab => { if (tab === 'datasets') loadDatasetStats(); });
+watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 async function switchProfileDataset(ds: DatasetEntry) {
   const canon = canonicalDataset(segLayerName(ds));
@@ -767,7 +773,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           @click="activeTab = 'myCells'"
         >🔬 {{ viewingOtherUser ? 'Cells' : 'My Cells' }}</button>
         <button
-          v-if="!viewingOtherUser"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'datasets' }"
           @click="activeTab = 'datasets'"
@@ -865,7 +870,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             class="nge-profile-scope"
             :class="{ 'nge-profile-scope--fallback': !editsScoped }"
             :title="editsScoped ? 'Numbers below are for this dataset only. Click to compare datasets.' : 'Per-dataset edits could not be loaded, so Edits shows all datasets.'"
-            @click="!viewingOtherUser && (activeTab = 'datasets')"
+            @click="activeTab = 'datasets'"
           >
             <span class="nge-profile-scope-icon">{{ scopeDataset ? SPECIES_ICONS[scopeDataset.species] : '🧬' }}</span>
             <span class="nge-profile-scope-text">
@@ -1542,10 +1547,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       <!-- ── Datasets tab: contributions per dataset + switcher ── -->
       <div v-if="activeTab === 'datasets'" class="nge-profile-body nge-profile-body--datasets">
         <div class="nge-ds-tab-intro">
-          Your contributions across datasets. Click one to switch the viewer to it.
+          {{ viewingOtherUser ? `${profileName}'s contributions across datasets.` : 'Your contributions across datasets.' }}
+          Click one to switch your viewer to it.
         </div>
         <div v-if="datasetStatsLoading && !Object.keys(datasetStats).length" class="nge-ds-tab-loading">
-          Counting your edits…
+          Counting edits…
         </div>
         <div class="nge-ds-tab-grid">
           <div
