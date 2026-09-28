@@ -4,9 +4,11 @@ import imgBravoNurro from './images/bravo-nurro.png';
 // axon off it (2026-09-26). Web-sized JPEGs; originals in her images.
 import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
+// Amy's cut with the points placed (2026-09-26): red along the axon, blue on the dendrite.
+import imgCutPoints from './images/cut-points-example.jpg';
 import { beginPractice, currentPractice, endPractice, ensureTool } from './practice';
 import { useLayersStore } from './store';
-import { MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, stopWatching, watchPractice } from './tutorial-3';
+import { INFO_LAYER, MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, stopWatching, watchPractice } from './tutorial-3';
 
 /**
  * Tutorial 5: Cut. Split off the Cut & Merge tutorial on 2026-09-27 (Amy).
@@ -21,7 +23,7 @@ import { MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, stop
 // claimed; with a cell, the learner's own view stays put.
 const STATE_CUT_FUSED  = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5679121900240896';
 const STATE_CUT_POINTS = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5745573634244608';
-const STATE_CUT_DONE   = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5675806990794752';
+// After the split: 5675806990794752 (kept in docs/HANDOFF-tutorial.md).
 
 async function showStaticIfNoCell(state: string) {
   if (!currentPractice().example) await useLayersStore().loadState(state);
@@ -69,40 +71,61 @@ In a moment you'll get the fused version of this very cell and make the cut your
     text: `
 Now the same cell as the AI left it: the axon and the dendrite are one purple segment. Your job is to separate them.
 
-To start a cut, press the **C** key on your keyboard.
+Press the **C** key to start the cut tool. The segmentation layer has to be selected for that. ` + INFO_LAYER + `
 
-The cut tool uses a **red and blue point** system. You'll **Ctrl+Click** to place points on *each side* of where you want to cut: red on one side, blue on the other.
-
-You can place **multiple points** per color for more precision. The system then finds the best place to separate the segment.`,
+Once it's on, the cut bar appears at the bottom of the viewer with the red group active.`,
     position: OVER_3D,
-    width: "460px",
+    width: "440px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(false, 'Press C, then red points on the axon, G, blue points on the dendrite, Submit cut.', 'Cut success! You did it. The two pieces are separate now.');
+      watchPractice(false, 'Press C to start the cut tool, then next.', 'Cut success! You did it. The two pieces are separate now.');
+      setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
       await beginPractice('cut', 'start');
     },
   },
 
-  // 4: Red and blue groups
+  // 4: Placing the points
   {
-    title: "Red & Blue Points",
+    title: "Place the points",
     text: `
-When the cut tool is active, you'll see a group indicator at the bottom showing which color you're placing.
+The cut tool uses a <strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> point system, one colour on each side of where you want to cut.
 
-Red and blue simply mark the **two sides** of where the cut should happen, one color on each side of the boundary.
+1. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points on the axon, the piece that doesn't belong, working back from the join.
+2. Press **G** to switch to <strong style="color:#5c8cff">blue</strong>, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the cell, just past the join.
+3. Press **Submit cut** on the bar at the bottom, or **Enter**. You'll see "splitting..." for a moment, then the axon comes away as its own segment.
 
-**Ctrl+Click** to place a point. Press **G** to switch between red and blue groups.`,
-    position: OVER_2D,
-    width: "420px",
-    onEnter: () => {
+If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>. Here is what a good set of points looks like: <strong style="color:#ff5c5c">red</strong> along the piece to remove, <strong style="color:#5c8cff">blue</strong> on the cell just past the join.`,
+    position: OVER_3D,
+    width: "460px",
+    image: imgCutPoints,
+    onEnter: async () => {
       closeSidePanel();
-      showStaticIfNoCell(STATE_CUT_POINTS);
+      watchPractice(false, 'Waiting for your cut: red on the axon, G, blue on the dendrite, Submit cut.', 'Cut success! You did it. The two pieces are separate now.');
+      await beginPractice('cut', 'start');
       // The previous step said "press C"; turn the tool on if they didn't.
       setTimeout(() => ensureTool('multicut'), 400);
     },
   },
 
-  // 5: Where to place points
+  // 5: Red and blue groups
+  {
+    title: "Red & Blue Points",
+    text: `
+When the cut tool is active, the bar at the bottom shows which colour you're placing.
+
+<strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> simply mark the **two sides** of where the cut should happen, one colour on each side of the boundary.
+
+**Ctrl+Click** to place a point. Press **G** to switch between the <strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> groups.`,
+    position: OVER_2D,
+    width: "420px",
+    onEnter: () => {
+      closeSidePanel();
+      showStaticIfNoCell(STATE_CUT_POINTS);
+      setTimeout(() => ensureTool('multicut'), 400);
+    },
+  },
+
+  // 6: Where to place points
   {
     title: "Placement Tips",
     text: `
@@ -116,32 +139,15 @@ For the best results:
     width: "420px",
   },
 
-  // 6: Submitting the cut
-  {
-    text: `
-After placing your red and blue points:
-
-- Press **Submit cut** on the bar at the bottom, or **Enter**.
-- You'll see a "splitting..." status. Wait for it to process (this can take a moment).
-- If successful, the segment will split into two separate pieces.
-- If the result isn't right, there is no undo key. Rejoin the pieces with a <strong style="color:#60c060">merge</strong>.`,
-    position: OVER_3D,
-    width: "400px",
-    onEnter: () => {
-      closeSidePanel();
-      showStaticIfNoCell(STATE_CUT_DONE);
-    },
-  },
-
   // 7: Try it yourself
   {
-    title: "Your Turn!",
+    title: "Your Turn: another one",
     text: `
-A thin axon runs into this cell and the AI fused the two. Cut the axon off.
+One more, on a different cell. Two pieces that belong to different neurons are fused here. Find the join and cut them apart.
 
 1. Press **C** to activate the cut tool.
-2. **Ctrl+Click** 3 or 4 **red points** on the axon, the piece that doesn't belong, working back from the join.
-3. Press **G** to switch to blue, then **Ctrl+Click** 3 or 4 **blue points** on the cell, just past the join.
+2. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points on the piece that doesn't belong.
+3. Press **G**, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the other side of the join.
 4. Press **Submit cut** on the bar at the bottom, or **Enter**.
 
 Press **next** once the box below says the cut landed.`,
@@ -149,8 +155,10 @@ Press **next** once the box below says the cut landed.`,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(false, 'Waiting for your cut…', 'Cut success! You did it. The two pieces are separate now.');
-      await beginPractice('cut', 'start');
+      watchPractice(false, 'Waiting for your cut: red on one side of the join, G, blue on the other, Submit cut.', 'Cut success! You did it again. The two pieces are separate now.');
+      // A second cut cell: the first goes back (put right) and another is
+      // taken. With only one cut cell registered it is the same cell, reset.
+      await beginPractice('cut', 'start', { fresh: true });
       setTimeout(() => ensureTool('multicut'), 400);
     },
   },

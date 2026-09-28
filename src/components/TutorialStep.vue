@@ -241,40 +241,29 @@ async function updateChipPosition() {
         floatingImage: step.floatingImage,
     }
 
-    nextTick(function () {
-        const el = root.value!.querySelector('.chip');
-        if (el) {
-            const rect = el.getBoundingClientRect();
-
-            function clamp(val: number, min: number, max: number) {
-                return Math.max(min, Math.min(max, val));
-            }
-
-            function clampWidth(val: number) {
-                const buffer = rect.width / 2 - (12 + 10); // half triangle width + border radius
-                return clamp(val, -buffer, buffer);
-            }
-
-            function clampHeight(val: number) {
-                const buffer = rect.height / 2 - (12 + 10); // half triangle width + border radius
-                return clamp(val, -buffer, buffer);
-            }
-
-            if (rect.top < 0) {
-                chipBounds.value.top = `${-rect.top + 8}px`;
-            }
-            if (rect.left < 0) {
-                chipBounds.value.left = `${-rect.left + 8}px`;
-            }
-            if (rect.right > window.innerWidth) {
-                chipBounds.value.left = `${window.innerWidth - rect.right - 8}px`;
-            }
-            if (rect.bottom > window.innerHeight) {
-                chipBounds.value.top = `${window.innerHeight - rect.bottom - 8}px`;
-            }
-        }
-    });
+    nextTick(clampChip);
 }
+
+/** Keep the chip on screen. Additive, so it can run again after the chip
+ *  grows (a practice status box or countdown appended under the text used
+ *  to push the title off the top). A chip taller than the window pins to
+ *  the top and scrolls. */
+function clampChip() {
+    const el = root.value?.querySelector('.chip');
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const cur = (v: string) => (typeof v === 'string' && v.endsWith('px')) ? parseFloat(v) : 0;
+    let top = cur(chipBounds.value.top), left = cur(chipBounds.value.left);
+    let changed = false;
+    if (rect.top < 0) { top += -rect.top + 8; changed = true; }
+    else if (rect.bottom > window.innerHeight && rect.top > 8) {
+        top += Math.max(window.innerHeight - rect.bottom - 8, 8 - rect.top); changed = true;
+    }
+    if (rect.left < 0) { left += -rect.left + 8; changed = true; }
+    else if (rect.right > window.innerWidth) { left += window.innerWidth - rect.right - 8; changed = true; }
+    if (changed) chipBounds.value = { ...chipBounds.value, top: `${top}px`, left: `${left}px` };
+}
+function onReclamp() { nextTick(clampChip); }
 
 const ready = ref(false);
 
@@ -374,9 +363,11 @@ function onDragEnd() { dragStart = null; }
 onMounted(() => {
     window.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('nge:tutorial-celebrate', onCelebrate);
+    document.addEventListener('nge:tutorial-reclamp', onReclamp);
 });
 onUnmounted(() => {
     document.removeEventListener('nge:tutorial-celebrate', onCelebrate);
+    document.removeEventListener('nge:tutorial-reclamp', onReclamp);
 });
 
 onUnmounted(() => {

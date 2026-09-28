@@ -6,6 +6,10 @@ import imgMergeExample from './images/merge-example.jpg';
 import { beginPractice, colorFirstTwoVisible, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, type PracticeKind } from './practice';
 import { useLayersStore } from './store';
 import { useTutorialStore } from './store-pyr';
+import { hidePyrMarkers, showPyrMarkers } from './markers';
+import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
+import { responseJson } from 'neuroglancer/util/http_request';
+import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/util/special_protocol_request';
 
 /**
  * Tutorial 3: Merge.
@@ -18,6 +22,41 @@ import { useTutorialStore } from './store-pyr';
 // (648518346350730372 and 648518346351348401). Shown when no practice cell
 // can be claimed, so the merge steps always have something to point at.
 const STATE_MERGE_EXAMPLE = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5718864172154880';
+// Amy's saved view with point annotations at the two spots to Ctrl+click for
+// that merge (2026-09-28). Only its points are read; the tutorial draws Pyr
+// pins there instead of loading the annotation layer.
+const STATE_MERGE_HINTS = 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5751472100737024';
+
+/** Point annotations in a saved state, as global voxel coordinates. */
+async function pointsInState(stateUrl: string): Promise<number[][]> {
+  try {
+    const { url, credentialsProvider } = parseSpecialUrl(stateUrl, defaultCredentialsManager);
+    const state: any = await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
+    const out: number[][] = [];
+    for (const layer of state?.layers ?? []) {
+      if (layer?.type !== 'annotation') continue;
+      for (const a of layer.annotations ?? []) {
+        if (a?.type === 'point' && Array.isArray(a.point)) out.push(a.point.slice(0, 3).map(Number));
+      }
+    }
+    return out;
+  } catch (e) {
+    console.warn('[tutorial] could not read hint points:', e);
+    return [];
+  }
+}
+
+/** Pyr pins at the click spots: the example's registered points if it has
+ *  them, else Amy's hint state for the built-in merge example. */
+async function showWhereToClick(): Promise<boolean> {
+  const ex = currentPractice().example;
+  let pts: number[][] = [];
+  if (ex?.point_a && ex?.point_b) {
+    try { pts = [JSON.parse(ex.point_a), JSON.parse(ex.point_b)]; } catch { pts = []; }
+  }
+  if (!pts.length) pts = await pointsInState(STATE_MERGE_HINTS);
+  return showPyrMarkers(pts, ['Ctrl+click', 'Ctrl+click'], 60);
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function getViewer(): any {
@@ -67,15 +106,60 @@ export function practiceStatus(text: string, done = false) {
   el.style.background = done ? 'rgba(96,192,96,0.14)' : 'rgba(53,181,255,0.10)';
   el.style.borderLeftColor = done ? '#60c060' : 'rgba(53,181,255,0.75)';
   el.style.fontWeight = done ? '600' : '';
-  // Stuck? One click opens the community chat, where people answer.
+  // Stuck? One button opens a small panel with the ways out (Amy).
   let help = chip.querySelector('.nge-practice-help') as HTMLElement | null;
   if (!help) {
-    help = smallButton('nge-practice-help', 'Ask for help in chat', () => document.dispatchEvent(new CustomEvent('nge:open-chat')));
+    help = smallButton('nge-practice-help', "I'm stuck", () => toggleStuckPanel());
     chip.appendChild(help);
   }
   help.style.display = done ? 'none' : '';
+  const stuck = chip.querySelector('.nge-practice-stuck') as HTMLElement | null;
+  if (stuck && done) stuck.remove();
   const place = chip.querySelector('.nge-practice-place') as HTMLElement | null;
   if (place) place.style.display = done ? 'none' : '';
+  // The chip just grew; keep it on screen.
+  document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+}
+
+function notePanel(cls: string, html: string): HTMLElement {
+  const el = document.createElement('div');
+  el.className = cls;
+  el.style.cssText = 'margin:8px 0 0;padding:10px 12px;border-radius:6px;font-size:0.9em;line-height:1.45;'
+    + 'background:rgba(8,12,24,0.9);border:1px solid rgba(74,158,255,0.35);color:#d0e8ff;';
+  el.innerHTML = html;
+  return el;
+}
+
+function toggleStuckPanel() {
+  const chip = chipBody();
+  if (!chip) return;
+  const existing = chip.querySelector('.nge-practice-stuck');
+  if (existing) { existing.remove(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); return; }
+  const panel = notePanel('nge-practice-stuck',
+    '<div style="font-weight:600;margin-bottom:6px">Stuck? Three ways out.</div>'
+    + '<div style="margin:4px 0">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer. Press <kbd>2</kbd> or right-click it to select it.</div>'
+    + '<div style="margin:4px 0">2. Ask people in the community chat. Someone is usually around.</div>'
+    + '<div style="margin:4px 0">3. Ask Nurro, the AI guide. It knows this tutorial and the tools.</div>');
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;flex-wrap:wrap;gap:0 4px;margin-top:6px';
+  row.appendChild(smallButton('nge-practice-stuck-layer', 'Show me the layer', () => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer'))));
+  const ex = currentPractice().example;
+  if (!ex || ex.kind === 'merge_then_cut') {
+    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to click', async () => {
+      ensureTool('merge');
+      const shown = await showWhereToClick();
+      if (!shown) { practiceStatus('No click hints for this cell yet. Ctrl+click anywhere on the yellow branch, then anywhere on the purple cell near it.'); return; }
+      const placed = ex?.point_a && ex?.point_b ? placeMergeLine() : false;
+      practiceStatus(placed
+        ? 'Pyr marks the two spots and the merge line is already placed. Press Submit merge, or Enter.'
+        : 'Pyr marks the two spots: Ctrl+click the one on the yellow branch, then the one on the purple cell, then Submit merge.');
+    }));
+  }
+  row.appendChild(smallButton('nge-practice-stuck-chat', 'Ask in chat', () => document.dispatchEvent(new CustomEvent('nge:open-chat'))));
+  row.appendChild(smallButton('nge-practice-stuck-ai', 'Ask Nurro', () => (document.querySelector('.nge-ask-btn') as HTMLElement | null)?.click()));
+  panel.appendChild(row);
+  chip.appendChild(panel);
+  document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
 }
 
 /** "Place the merge points for me": the registered points go into the merge
@@ -113,6 +197,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     const merged = await piecesMerged();
     if (token !== practiceWatch) return;
     if (merged === wantMerged) {
+      hidePyrMarkers();
       practiceStatus(finished + ' If a black box appears where the pieces meet, the new mesh is still being built: click the Pyr logo top left to refresh, your place here is saved.', true);
       if (!celebrated) { celebrated = true; document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); }
       return;
@@ -124,7 +209,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
-export function stopWatching() { practiceWatch++; leaveWaitlist(); }
+export function stopWatching() { practiceWatch++; leaveWaitlist(); hidePyrMarkers(); }
 
 // Idle countdown under the status line (Amy): appears after a quiet minute,
 // and at zero the cell is undone and released.
@@ -164,9 +249,25 @@ function waitForCell(kind: PracticeKind, wantMerged: boolean, waiting: string, f
  *  segmentation layer chip at the top of the viewer. Inline onclick works
  *  inside v-html where a Vue handler would not. */
 export const INFO_LAYER = '<span class="nge-tut-info" role="button" tabindex="0"'
-  + ' title="Tools act on the selected layer. Press 2, or right-click the segmentation chip at the top, to select it. Click here to show which chip."'
-  + ' onclick="document.dispatchEvent(new CustomEvent(\'nge:tutorial-flash-seg-layer\'))"'
+  + ' title="Which layer? Click for a note."'
+  + ' onclick="document.dispatchEvent(new CustomEvent(\'nge:tutorial-layer-note\'))"'
   + ' style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:4px;border-radius:50%;border:1px solid #7ecaff;color:#7ecaff;font-size:12px;font-weight:700;cursor:pointer;vertical-align:middle;line-height:1">i</span>';
+
+// The (i) next to "the segmentation layer has to be selected": a note in
+// the box (a browser tooltip ran off the screen and vanished), plus a flash
+// of the chip it means.
+document.addEventListener('nge:tutorial-layer-note', () => {
+  const chip = chipBody();
+  if (!chip) return;
+  if (!chip.querySelector('.nge-practice-layer-note')) {
+    const note = notePanel('nge-practice-layer-note',
+      'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, the one named after the dataset, next to <b>img</b>. '
+      + 'Press <kbd>2</kbd>, or right-click that chip, to select it. Tools like merge and cut only work on the selected layer.');
+    chip.appendChild(note);
+    document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+  }
+  document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer'));
+});
 
 document.addEventListener('nge:tutorial-flash-seg-layer', () => {
   const viewer = getViewer();
@@ -285,6 +386,8 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     onEnter: async () => {
       closeSidePanel();
       watchPractice(true, 'Press M, then Ctrl+click the yellow branch and the purple cell.', 'Merge success! You did it. The branch is part of the cell now.');
+      // Point at the segmentation layer chip without being asked (Amy).
+      setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
       const ex = await beginPractice('merge_then_cut');
       // No cell free (or not signed in): show Amy's example to look at.
       if (!ex) {
@@ -320,8 +423,8 @@ The server connects the two. You'll see "trying..." and then "done", and the bra
   {
     title: "Merge Tips",
     text: `
-- In the **2D view**, you can see the cross-section to find the exact spot where the segments touch.
-- If a merge fails, try clicking at a slightly different location.
+- Not sure two pieces belong together? The **2D panel** on the left shows the raw electron microscope slices. Scroll through them at the join for context the 3D can't give you.
+- If a merge fails, try clicking at a slightly different spot on each piece.
 - Merged the wrong piece? There is no undo key. Fix it with a <strong style="color:#e06060">cut</strong> between the two pieces, which the Cut tutorial teaches.
 
 Merged already? Press next.`,
