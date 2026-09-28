@@ -4,9 +4,11 @@ import imgBravoNurro from './images/bravo-nurro.png';
 // axon off it (2026-09-26). Web-sized JPEGs; originals in her images.
 import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
+// Amy's cut with the points placed (2026-09-26): red along the axon, blue on the dendrite.
+import imgCutPoints from './images/cut-points-example.jpg';
 import { beginPractice, currentPractice, endPractice, ensureTool } from './practice';
 import { useLayersStore } from './store';
-import { MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, stopWatching, watchPractice } from './tutorial-3';
+import { INFO_LAYER, MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, stopWatching, watchPractice } from './tutorial-3';
 
 /**
  * Tutorial 5: Cut. Split off the Cut & Merge tutorial on 2026-09-27 (Amy).
@@ -69,21 +71,43 @@ In a moment you'll get the fused version of this very cell and make the cut your
     text: `
 Now the same cell as the AI left it: the axon and the dendrite are one purple segment. Your job is to separate them.
 
-To start a cut, press the **C** key on your keyboard.
+Press the **C** key to start the cut tool. The segmentation layer has to be selected for that. ` + INFO_LAYER + `
 
-The cut tool uses a **red and blue point** system. You'll **Ctrl+Click** to place points on *each side* of where you want to cut: red on one side, blue on the other.
-
-You can place **multiple points** per color for more precision. The system then finds the best place to separate the segment.`,
+Once it's on, the cut bar appears at the bottom of the viewer with the red group active.`,
     position: OVER_3D,
-    width: "460px",
+    width: "440px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(false, 'Press C, then red points on the axon, G, blue points on the dendrite, Submit cut.', 'Cut success! You did it. The two pieces are separate now.');
+      watchPractice(false, 'Press C to start the cut tool, then next.', 'Cut success! You did it. The two pieces are separate now.');
+      setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
       await beginPractice('cut', 'start');
     },
   },
 
-  // 4: Red and blue groups
+  // 4: Placing the points
+  {
+    title: "Place the points",
+    text: `
+The cut tool uses a **red and blue point** system, one colour on each side of where you want to cut.
+
+1. **Ctrl+Click** 3 or 4 **red points** on the axon, the piece that doesn't belong, working back from the join.
+2. Press **G** to switch to blue, then **Ctrl+Click** 3 or 4 **blue points** on the cell, just past the join.
+3. Press **Submit cut** on the bar at the bottom, or **Enter**.
+
+The server finds the best place to separate the segment. Here is what a good set of points looks like: red along the piece to remove, blue on the cell just past the join.`,
+    position: OVER_3D,
+    width: "460px",
+    image: imgCutPoints,
+    onEnter: async () => {
+      closeSidePanel();
+      watchPractice(false, 'Waiting for your cut: red on the axon, G, blue on the dendrite, Submit cut.', 'Cut success! You did it. The two pieces are separate now.');
+      await beginPractice('cut', 'start');
+      // The previous step said "press C"; turn the tool on if they didn't.
+      setTimeout(() => ensureTool('multicut'), 400);
+    },
+  },
+
+  // 5: Red and blue groups
   {
     title: "Red & Blue Points",
     text: `
@@ -97,12 +121,11 @@ Red and blue simply mark the **two sides** of where the cut should happen, one c
     onEnter: () => {
       closeSidePanel();
       showStaticIfNoCell(STATE_CUT_POINTS);
-      // The previous step said "press C"; turn the tool on if they didn't.
       setTimeout(() => ensureTool('multicut'), 400);
     },
   },
 
-  // 5: Where to place points
+  // 6: Where to place points
   {
     title: "Placement Tips",
     text: `
@@ -116,7 +139,7 @@ For the best results:
     width: "420px",
   },
 
-  // 6: Submitting the cut
+  // 7: Submitting the cut
   {
     text: `
 After placing your red and blue points:
@@ -133,7 +156,7 @@ After placing your red and blue points:
     },
   },
 
-  // 7: Try it yourself
+  // 8: Try it yourself
   {
     title: "Your Turn!",
     text: `
@@ -155,7 +178,7 @@ Press **next** once the box below says the cut landed.`,
     },
   },
 
-  // 8: Done
+  // 9: Done
   {
     title: "Cut: done!",
     text: `
