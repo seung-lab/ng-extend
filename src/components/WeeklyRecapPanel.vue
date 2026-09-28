@@ -7,6 +7,7 @@ import recapBanner from '../../static/images/recap/week-in-science-banner.jpg';
 
 import { useUserStatsStore, useCellHistoryStore, useIssueTagStore, useHelpRequestStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badge_definitions';
+import { SCIENCE_FACTS } from '../data/science-facts';
 
 const { stats } = storeToRefs(useUserStatsStore());
 const emit = defineEmits({ hide: null });
@@ -198,12 +199,6 @@ const nextBadge = computed<NextBadgeInfo | null>(() => {
 });
 
 // ── Rotating science facts (cycles by ISO week — same all week) ───────────
-const SCIENCE_FACTS = [
-  'Each neuron you trace may connect to thousands of others. Mapping even one cell helps scientists understand entire circuits.',
-  'The MICrONS dataset contains roughly 200,000 neurons and 500 million synapses from a cubic millimeter of mouse cortex.',
-  'Neuron tracing data from citizen scientists has contributed to peer-reviewed discoveries about how the eye processes motion.',
-  'Thanks to projects like EyeWire and FlyWire, the first complete wiring diagram of a fruit fly brain, 140,000 neurons, now exists.',
-];
 
 const currentFact = computed<string>(() => {
   const now = new Date();
@@ -211,7 +206,7 @@ const currentFact = computed<string>(() => {
   const weekNo = Math.ceil(
     ((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7
   );
-  return SCIENCE_FACTS[weekNo % SCIENCE_FACTS.length];
+  return SCIENCE_FACTS[weekNo % SCIENCE_FACTS.length].text;
 });
 
 // ── Cell activity this week ──────────────────────────────────────────────
