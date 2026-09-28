@@ -24,6 +24,7 @@ import 'neuroglancer/sliceview/chunk_format_handlers';
 import './move_to_segment_patch';
 import './jump_to_list';
 import './split_screen_tip';
+import './find_path_status';
 import './drag_reorder';
 import {ButtonService} from "./widgets/button_service";
 import {AnnotationService, Point3D} from "./widgets/annotation_service";
