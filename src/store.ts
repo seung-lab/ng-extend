@@ -5041,9 +5041,13 @@ export const useChatStore = defineStore('chat', () => {
     if (!row.user_id) return;
     const seen = new Date(row.last_seen_at).getTime();
     const joined = new Date(row.joined_at).getTime();
+    // Someone already listed as online (a reload, reopening chat, a second
+    // tab) is not news: Ames saw "celiad joined the chat" three times in a
+    // row. Only announce people who weren't here.
+    const wasOnline = !!online.value[row.user_id];
     online.value[row.user_id] = { name: row.name, lastSeen: seen };
     // joined_at is only moved on a real (re)join, so a routine heartbeat is silent.
-    if (row.user_id !== me && Math.abs(seen - joined) < 5000) sysLine('join', row.name);
+    if (row.user_id !== me && !wasOnline && Math.abs(seen - joined) < 5000) sysLine('join', row.name);
   }
 
   function addTimeSeparatorIfNeeded(date: Date) {

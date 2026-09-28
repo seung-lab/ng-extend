@@ -237,6 +237,10 @@ function isSelfMention(token: string): boolean {
 }
 
 /** Open the notification an announcement message refers to. */
+/** The 🗑 on chat messages is hidden for now (Ames 2026-09-28). Deleting still
+ *  works server side; flip this to bring the button back. */
+const SHOW_CHAT_DELETE = false;
+
 /** Admin moderation: delete a message for everyone (the gateway enforces admin). */
 async function deleteChatMessage(msg: ChatMessage) {
   if (msg.id == null) return;
@@ -517,7 +521,7 @@ function toggleCollapse() {
                       >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
                     <span v-else class="nge-chat-msg-text">{{ part.text }}</span>
                   </template>
-                  <button v-if="msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
+                  <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
                           :title="msg.userId === backendStore.userId ? 'Delete your message' : 'Delete this message for everyone (admin)'"
                           @click.stop="deleteChatMessage(msg)">🗑</button>
                 </div>
