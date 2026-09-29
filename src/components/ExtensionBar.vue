@@ -70,6 +70,18 @@ function startTutorial(id: number) {
   document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id } }));
 }
 
+// Toolbar icon click animations: .nge-pop for 0.8 s (styles above the
+// burger's). Added on pointerdown so it plays even when the click opens a
+// window that covers the bar.
+document.addEventListener('pointerdown', (e) => {
+  const btn = (e.target as HTMLElement | null)?.closest?.('#extensionBar .nge-icon-btn, #extensionBar #ngFarRight > .neuroglancer-icon') as HTMLElement | null;
+  if (!btn || e.button !== 0) return;
+  btn.classList.remove('nge-pop');
+  void btn.offsetWidth;
+  btn.classList.add('nge-pop');
+  setTimeout(() => btn.classList.remove('nge-pop'), 800);
+}, true);
+
 // Burger bounce on click (Ames 2026-09-29). Restart the animation each time.
 document.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement | null)?.closest?.('#hamburger > button');
@@ -1653,6 +1665,177 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   opacity: 1;
   background: rgba(74, 158, 255, 0.12) !important;
   box-shadow: 0 1px 0 0 #4a9eff;
+}
+
+/* ══ Toolbar icon animations (Ames 2026-09-29: "I want them all!") ══════════
+   The icons stay exactly as drawn; these only move them, or parts of them,
+   on hover (a light loop or flourish) and on click (.nge-pop, added for
+   0.8 s by the click hook). Parts are picked by their order inside each SVG
+   in data/toolbar-icons.ts, so keep that order if an icon is redrawn. */
+#extensionBar .nge-icon-btn svg,
+#extensionBar .nge-icon-btn img,
+#extensionBar #ngFarRight > .neuroglancer-icon > svg,
+#extensionBar #ngFarRight > .neuroglancer-icon { transform-origin: center; }
+#extensionBar .nge-icon-btn svg *,
+#extensionBar #ngFarRight svg * { transform-box: fill-box; transform-origin: center; }
+#extensionBar #ngFarRight > .neuroglancer-icon { position: relative; }
+
+/* Shared click ripple (bell ding, camera flash use their own). */
+@keyframes nge-ti-ring { from { opacity: 0.8; transform: scale(0.4); } to { opacity: 0; transform: scale(1.5); } }
+
+/* ! Submit an issue: hover jitters like an alert, click pops. */
+#extensionBar .nge-feedback-btn:hover svg { animation: nge-ti-alert 0.5s ease-in-out; }
+#extensionBar .nge-feedback-btn.nge-pop svg { animation: nge-ti-pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes nge-ti-alert { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-12deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(3deg); } }
+@keyframes nge-ti-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
+
+/* Cut: the two lower ends pull apart; click snaps them wide and back. */
+#extensionBar [data-icon-id="split"]:hover svg > :nth-child(4) { animation: nge-ti-split-l 0.9s ease-in-out infinite; }
+#extensionBar [data-icon-id="split"]:hover svg > :nth-child(5) { animation: nge-ti-split-r 0.9s ease-in-out infinite; }
+#extensionBar [data-icon-id="split"].nge-pop svg { animation: nge-ti-snip 0.5s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes nge-ti-split-l { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-1.2px, 0.6px); } }
+@keyframes nge-ti-split-r { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(1.2px, 0.6px); } }
+@keyframes nge-ti-snip { 0% { transform: scaleX(1); } 35% { transform: scaleX(1.3) scaleY(0.9); } 70% { transform: scaleX(0.94); } 100% { transform: scaleX(1); } }
+
+/* Merge: the two top ends lean in; click snaps them together, the join flashes. */
+#extensionBar [data-icon-id="merge"]:hover svg > :nth-child(2) { animation: nge-ti-merge-l 0.9s ease-in-out infinite; }
+#extensionBar [data-icon-id="merge"]:hover svg > :nth-child(3) { animation: nge-ti-merge-r 0.9s ease-in-out infinite; }
+#extensionBar [data-icon-id="merge"].nge-pop svg > :nth-child(2) { animation: nge-ti-merge-snap-l 0.55s ease-in-out; }
+#extensionBar [data-icon-id="merge"].nge-pop svg > :nth-child(3) { animation: nge-ti-merge-snap-r 0.55s ease-in-out; }
+#extensionBar [data-icon-id="merge"].nge-pop svg > :nth-child(4) { animation: nge-ti-flash 0.55s ease-out; }
+@keyframes nge-ti-merge-l { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1.2px); } }
+@keyframes nge-ti-merge-r { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.2px); } }
+@keyframes nge-ti-merge-snap-l { 0%, 100% { transform: translateX(0); } 45% { transform: translateX(3.6px); } }
+@keyframes nge-ti-merge-snap-r { 0%, 100% { transform: translateX(0); } 45% { transform: translateX(-3.6px); } }
+@keyframes nge-ti-flash { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.9); filter: brightness(1.8); } }
+
+/* Find Path: the dotted path marches; click runs it fast and the ends pulse. */
+#extensionBar [data-icon-id="findPath"]:hover svg > :nth-child(3) { animation: nge-ti-march 0.8s linear infinite; }
+#extensionBar [data-icon-id="findPath"].nge-pop svg > :nth-child(3) { animation: nge-ti-march 0.25s linear 3; }
+#extensionBar [data-icon-id="findPath"].nge-pop svg > circle { animation: nge-ti-flash 0.6s ease-out; }
+@keyframes nge-ti-march { to { stroke-dashoffset: -6.4; } }
+
+/* Leaderboard: the cup wiggles; click hops it with a sparkle burst. */
+#extensionBar [data-icon-id="leaderboard"]:hover svg { animation: nge-ti-wiggle 0.6s ease-in-out; }
+#extensionBar [data-icon-id="leaderboard"].nge-pop svg { animation: nge-ti-hop 0.6s cubic-bezier(0.3, 1.5, 0.5, 1); }
+#extensionBar [data-icon-id="leaderboard"].nge-pop::after {
+  content: ''; position: absolute; left: 50%; top: 45%; width: 3px; height: 3px; border-radius: 50%;
+  background: #ffe29a; pointer-events: none;
+  box-shadow: -11px -8px 0 #ffd27a, 11px -9px 0 #fff3c4, -13px 4px 0 #ffe29a, 13px 3px 0 #ffd27a, 0 -14px 0 #fff3c4;
+  animation: nge-ti-sparkle 0.6s ease-out forwards;
+}
+@keyframes nge-ti-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-9deg); } 60% { transform: rotate(7deg); } 85% { transform: rotate(-3deg); } }
+@keyframes nge-ti-hop { 0% { transform: translateY(0) scale(1); } 20% { transform: translateY(1px) scale(1.1, 0.88); } 50% { transform: translateY(-5px) scale(0.95, 1.08); } 80% { transform: translateY(0) scale(1.05, 0.95); } 100% { transform: none; } }
+@keyframes nge-ti-sparkle { from { opacity: 1; transform: translate(-50%, -50%) scale(0.4); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.5); } }
+
+/* Second Opinion (magnifier): sweeps side to side; click zooms in. */
+#extensionBar [data-icon-id="help"]:hover svg { animation: nge-ti-sweep 1.1s ease-in-out infinite; }
+#extensionBar [data-icon-id="help"].nge-pop svg { animation: nge-ti-zoom 0.5s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes nge-ti-sweep { 0%, 100% { transform: translateX(0) rotate(0); } 30% { transform: translateX(-1.6px) rotate(-8deg); } 70% { transform: translateX(1.6px) rotate(8deg); } }
+@keyframes nge-ti-zoom { 0% { transform: scale(1); } 40% { transform: scale(1.4); } 100% { transform: scale(1); } }
+
+/* Tags (pin): bobs; click drops it in and it sticks with a squash. */
+#extensionBar [data-icon-id="tags"]:hover svg { animation: nge-ti-bob 0.9s ease-in-out infinite; }
+#extensionBar [data-icon-id="tags"].nge-pop svg { animation: nge-ti-drop 0.55s cubic-bezier(0.5, 0, 0.5, 1); }
+@keyframes nge-ti-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+@keyframes nge-ti-drop { 0% { transform: translateY(-9px); opacity: 0.4; } 55% { transform: translateY(0) scale(1.12, 0.82); opacity: 1; } 78% { transform: translateY(-1.5px) scale(0.96, 1.05); } 100% { transform: none; } }
+
+/* Layer side panel: the divider slides open; click slides it across. */
+#extensionBar [data-icon-id="layers"]:hover svg > :nth-child(2),
+#extensionBar [data-icon-id="layers"]:hover svg > :nth-child(3) { animation: nge-ti-panel 1s ease-in-out infinite; }
+#extensionBar [data-icon-id="layers"].nge-pop svg > :nth-child(2),
+#extensionBar [data-icon-id="layers"].nge-pop svg > :nth-child(3) { animation: nge-ti-panel-go 0.55s ease-in-out; }
+@keyframes nge-ti-panel { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1.4px); } }
+@keyframes nge-ti-panel-go { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(5px); } }
+
+/* Week in Science: the trend line redraws; click bounces it. */
+#extensionBar [data-icon-id="recap"]:hover svg > :nth-child(4) { stroke-dasharray: 12; animation: nge-ti-draw 0.8s ease-out; }
+#extensionBar [data-icon-id="recap"].nge-pop svg { animation: nge-ti-hop 0.55s cubic-bezier(0.3, 1.5, 0.5, 1); }
+@keyframes nge-ti-draw { from { stroke-dashoffset: 12; } to { stroke-dashoffset: 0; } }
+
+/* Brain Quest (bulb): flickers on; click glows. */
+#extensionBar [data-icon-id="quest"]:hover svg { animation: nge-ti-flicker 0.7s steps(1); }
+#extensionBar [data-icon-id="quest"].nge-pop svg { animation: nge-ti-glow 0.6s ease-out; }
+@keyframes nge-ti-flicker { 0%, 30%, 60%, 100% { opacity: 1; } 15%, 45% { opacity: 0.35; } }
+@keyframes nge-ti-glow { 0%, 100% { filter: none; } 40% { filter: drop-shadow(0 0 5px #ffe9a8) brightness(1.6); } }
+
+/* Cell Library (neuron): a slow sway with a glow; click fires it. */
+#extensionBar [data-icon-id="cells"]:hover img { animation: nge-ti-neuron 1.2s ease-in-out infinite; }
+#extensionBar [data-icon-id="cells"].nge-pop img { animation: nge-ti-fire 0.6s ease-out; }
+@keyframes nge-ti-neuron { 0%, 100% { transform: rotate(0); filter: drop-shadow(0 0 0 rgba(126, 232, 255, 0)); } 50% { transform: rotate(8deg); filter: drop-shadow(0 0 4px rgba(126, 232, 255, 0.8)); } }
+@keyframes nge-ti-fire { 0% { transform: scale(1); filter: none; } 30% { transform: scale(1.25); filter: brightness(2.2) drop-shadow(0 0 8px #7ee8ff); } 100% { transform: scale(1); filter: none; } }
+
+/* Batch Processor (cube): turns; click spins all the way round. */
+#extensionBar [data-icon-id="batch"]:hover svg { animation: nge-ti-turn 1.2s ease-in-out infinite; }
+#extensionBar [data-icon-id="batch"].nge-pop svg { animation: nge-ti-spin 0.6s cubic-bezier(0.5, 0, 0.3, 1); }
+@keyframes nge-ti-turn { 0%, 100% { transform: perspective(40px) rotateY(0); } 50% { transform: perspective(40px) rotateY(35deg); } }
+@keyframes nge-ti-spin { from { transform: perspective(40px) rotateY(0); } to { transform: perspective(40px) rotateY(360deg); } }
+
+/* Screenshot (camera): the lens glints; click is a shutter flash. */
+#extensionBar [data-icon-id="screenshot"]:hover svg > :nth-child(2) { animation: nge-ti-lens 0.9s ease-in-out infinite; }
+#extensionBar [data-icon-id="screenshot"].nge-pop svg > :nth-child(2) { animation: nge-ti-iris 0.45s ease-in-out; }
+#extensionBar [data-icon-id="screenshot"].nge-pop::after {
+  content: ''; position: absolute; inset: 4px; border-radius: 6px; background: #fff; pointer-events: none;
+  animation: nge-ti-shutter 0.35s ease-out forwards;
+}
+@keyframes nge-ti-lens { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+@keyframes nge-ti-iris { 0%, 100% { transform: scale(1); } 40% { transform: scale(0.35); } }
+@keyframes nge-ti-shutter { from { opacity: 0.85; } to { opacity: 0; } }
+
+/* Activity Feed: the waves pulse out. */
+#extensionBar [data-icon-id="feed"]:hover svg > :nth-child(2) { animation: nge-ti-waves 0.9s ease-in-out infinite; }
+#extensionBar [data-icon-id="feed"].nge-pop svg { animation: nge-ti-pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes nge-ti-waves { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* Notifications (bell): swings from its top; click rings it with a ripple. */
+#extensionBar [data-icon-id="notif"] svg { transform-origin: 50% 12%; }
+#extensionBar [data-icon-id="notif"]:hover svg { animation: nge-ti-swing 0.9s ease-in-out; }
+#extensionBar [data-icon-id="notif"].nge-pop svg { animation: nge-ti-ding 0.7s ease-out; }
+#extensionBar [data-icon-id="notif"].nge-pop::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px;
+  border-radius: 50%; border: 1.5px solid rgba(207, 220, 239, 0.8); pointer-events: none;
+  animation: nge-ti-ring 0.6s ease-out forwards;
+}
+@keyframes nge-ti-swing { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(14deg); } 45% { transform: rotate(-10deg); } 70% { transform: rotate(6deg); } 88% { transform: rotate(-2deg); } }
+@keyframes nge-ti-ding { 0%, 100% { transform: rotate(0); } 12% { transform: rotate(22deg); } 30% { transform: rotate(-18deg); } 50% { transform: rotate(12deg); } 70% { transform: rotate(-6deg); } }
+
+/* Chat: typing dots appear in the bubble; click pops it. */
+#extensionBar [data-icon-id="chat"]:hover::before {
+  content: '• • •'; position: absolute; left: 0; right: 0; top: 50%; margin-top: -0.62em;
+  font-size: 7px; line-height: 1; letter-spacing: -0.5px; text-align: center; color: #cfdcef; pointer-events: none;
+  animation: nge-ti-typing 1s steps(1) infinite;
+}
+#extensionBar [data-icon-id="chat"].nge-pop svg { animation: nge-ti-pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes nge-ti-typing { 0% { opacity: 0.3; } 33% { opacity: 0.65; } 66% { opacity: 1; } }
+
+/* Settings gear: spins on hover; click gives a half turn. */
+#extensionBar [data-icon-id="settings"]:hover svg { animation: nge-ti-gear 2.4s linear infinite; }
+#extensionBar [data-icon-id="settings"].nge-pop svg { animation: nge-ti-halfturn 0.5s cubic-bezier(0.3, 1.4, 0.5, 1); }
+@keyframes nge-ti-gear { to { transform: rotate(360deg); } }
+@keyframes nge-ti-halfturn { to { transform: rotate(180deg); } }
+
+/* Profile: a nod; click waves (tilts side to side). */
+#extensionBar #profileBtn:hover svg > :nth-child(1) { animation: nge-ti-nod 0.7s ease-in-out; }
+#extensionBar #profileBtn.nge-pop svg { animation: nge-ti-wave 0.6s ease-in-out; }
+@keyframes nge-ti-nod { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(1.3px); } 70% { transform: translateY(-0.4px); } }
+@keyframes nge-ti-wave { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 50% { transform: rotate(10deg); } 75% { transform: rotate(-5deg); } }
+
+/* ? and the layer panel toggle (neuroglancer's icons). */
+#extensionBar #ngFarRight > .neuroglancer-icon:first-child:hover { animation: nge-ti-alert 0.5s ease-in-out; }
+#extensionBar #ngFarRight > .neuroglancer-icon:first-child.nge-pop { animation: nge-ti-hop 0.55s cubic-bezier(0.3, 1.5, 0.5, 1); }
+#extensionBar #ngFarRight > .neuroglancer-icon:last-child:hover svg > :nth-child(odd) { animation: nge-ti-knob-a 0.9s ease-in-out infinite; }
+#extensionBar #ngFarRight > .neuroglancer-icon:last-child:hover svg > :nth-child(even) { animation: nge-ti-knob-b 0.9s ease-in-out infinite; }
+#extensionBar #ngFarRight > .neuroglancer-icon:last-child.nge-pop svg { animation: nge-ti-pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes nge-ti-knob-a { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1.6px); } }
+@keyframes nge-ti-knob-b { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.6px); } }
+
+/* 🔥 streak: the flame flickers on hover. */
+.nge-streak-chip:hover { animation: nge-ti-flame 0.5s ease-in-out infinite alternate; }
+@keyframes nge-ti-flame { from { transform: scale(1) rotate(-3deg); filter: brightness(1); } to { transform: scale(1.06) rotate(3deg); filter: brightness(1.25); } }
+
+@media (prefers-reduced-motion: reduce) {
+  #extensionBar .nge-icon-btn *, #extensionBar .nge-icon-btn::before, #extensionBar .nge-icon-btn::after,
+  #extensionBar #ngFarRight *, #extensionBar #ngFarRight > .neuroglancer-icon, .nge-streak-chip { animation: none !important; }
 }
 
 /* Burger bounce: on click it hops and its layers pull apart, then stack. */
