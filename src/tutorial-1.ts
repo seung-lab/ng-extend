@@ -1,4 +1,4 @@
-import { Step } from "./store-pyr";
+import { Step, useTutorialStore } from "./store-pyr";
 import imgMainBanner from './images/main-banner-vF.jpg';
 import imgSegmentation from './images/segmentation-tutorial.jpg';
 import imgSynapseWide from './images/synapse-wide.png';
@@ -53,6 +53,40 @@ function removeSegment(segId: string) {
       }
     }
   }
+}
+
+/** The visible root ids of the first segmentation layer. */
+function visibleSegmentIds(): Set<string> | null {
+  const layers = getViewer()?.layerManager?.managedLayers;
+  if (!layers) return null;
+  for (const ml of layers) {
+    const vs = ml.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (vs) return new Set([...vs].map((s: any) => s.toString()));
+  }
+  return null;
+}
+
+/** Step 17: when the learner double clicks the continuation in 2D, a new
+ *  segment joins the visible set; go straight to the reveal (Ames,
+ *  2026-09-29). Stops once the learner leaves this step. */
+function advanceWhenSegmentAdded() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  let base: Set<string> | null = null;
+  // Let the step's view finish loading before taking the baseline.
+  setTimeout(() => {
+    base = visibleSegmentIds();
+    const timer = setInterval(() => {
+      if (!here()) { clearInterval(timer); return; }
+      const now = visibleSegmentIds();
+      if (!base) { base = now; return; }
+      if (now && [...now].some(id => !base!.has(id))) {
+        clearInterval(timer);
+        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+      }
+    }, 400);
+  }, 2500);
 }
 
 /** Close the viewer's side panels through neuroglancer's own state, so they
@@ -370,6 +404,7 @@ Hit next to reveal the answer.`,
     position: MIDDLE,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5250067188416512",
+    onEnter: advanceWhenSegmentAdded,
   },
   //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
   {
@@ -385,7 +420,14 @@ Hit next to reveal the answer.`,
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5114308439572480",
   },
   {
-    text: `Now you know the basics. In the future, we will learn how to fuse branches together and slice away mergers. Feel free to click around and explore.`,
+    text: `Now you know the basics! Next, learn to join pieces that belong together in the new <strong style="color:#60c060">Merge</strong> tutorial.
+
+**If you already know how to merge branches, please DO NOT merge this branch, because it will break the tutorial 😉**`,
+    // Starts through the same gate as the book menu, which offers a place
+    // in line when the practice cells are in use.
+    html: `<button onclick="document.dispatchEvent(new CustomEvent('nge:tutorial-start',{detail:{id:3}}))"`
+      + ` style="margin-top:4px;padding:8px 16px;border-radius:6px;font:inherit;font-weight:600;cursor:pointer;`
+      + `background:rgba(96,192,96,0.18);border:1px solid rgba(96,192,96,0.6);color:#d6ffd6">Try the Merge tutorial</button>`,
     image:
       imgRikaSuccess,
     position: OVER_3D,
