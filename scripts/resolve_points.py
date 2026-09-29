@@ -26,8 +26,23 @@ import os
 import sys
 from collections import Counter
 
+import time
+
 import numpy as np
 from cloudvolume import CloudVolume
+
+
+def retry(fn, what, tries=4):
+    """hc.himc-cave.com answers 503 now and then (2026-09-29): wait and retry."""
+    for i in range(tries):
+        try:
+            return fn()
+        except Exception as e:
+            if i == tries - 1:
+                raise
+            wait = 10 * (i + 1)
+            print(f'[resolve] {what}: {type(e).__name__}, retrying in {wait}s', file=sys.stderr)
+            time.sleep(wait)
 
 MIN_SHARE = 0.6
 RING_HALF = 160          # cutout half width, coarsest-mip pixels (64 nm: ~20 um)
@@ -80,7 +95,7 @@ def main():
             print(f'[resolve] {[x, y, z]}: {type(e).__name__}', file=sys.stderr)
             svs.append(0)
     nonzero = [s for s in svs if s]
-    roots = dict(zip(nonzero, (int(r) for r in cv.get_roots(nonzero)))) if nonzero else {}
+    roots = dict(zip(nonzero, (int(r) for r in retry(lambda: cv.get_roots(nonzero), 'roots')))) if nonzero else {}
     out = [{'point': p, 'sv': str(s), 'root': str(roots.get(s, 0))} for p, s in zip(points, svs)]
     if nucleus:
         mip = len(cv.info['scales']) - 1
@@ -93,7 +108,11 @@ def main():
             o['share'] = 0.0
             if o['root'] == '0':
                 continue
-            cell, share, cell_sv = cell_around(cv, cv_agg, cv_sv, mip, [int(v) for v in o['point']], int(o['root']))
+            try:
+                cell, share, cell_sv = retry(lambda: cell_around(cv, cv_agg, cv_sv, mip, [int(v) for v in o['point']], int(o['root'])), f"ring {o['point']}")
+            except Exception as e:  # still failing: leave this one, don't sink the run
+                print(f"[resolve] {o['point']}: lookup failed ({type(e).__name__}), skipped", file=sys.stderr)
+                continue
             o['share'] = share
             if cell and cell_sv:
                 o['cell'] = str(cell)
