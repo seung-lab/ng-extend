@@ -31,6 +31,15 @@
  *   --force     skip the "is it midnight in ET?" guard (for manual runs)
  *   --refresh-nucleus  one-off for nucleus sheets (MEC): re-point tasks that
  *               were imported as the nucleus to the cell around it
+ *   --statuses  instead of importing, carry the sheet's own progress onto
+ *               tasks that are still Available (hourly, see
+ *               .github/workflows/sheet-status-sync.yml):
+ *                 Complete / Complete (cut off)  -> completed (+ Final SegID)
+ *                 Can't Complete / Not BC        -> skipped
+ *                 WIP, any other status, or a Proofreader name -> in_progress
+ *               Only rows still pending and unassigned in Supabase change, and
+ *               each PATCH re-checks that, so a claim or completion made in
+ *               EyeWire II always wins over the sheet.
  */
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -48,6 +57,7 @@ const dryRun = has('--dry-run');
 const force = has('--force');
 const onlyDataset = val('--dataset');
 const refreshNucleus = has('--refresh-nucleus');
+const statusesOnly = has('--statuses');
 
 /**
  * Datasets that have a Cell Library sheet. Mirrors `cellLibrarySheetUrl` in
@@ -57,6 +67,9 @@ const refreshNucleus = has('--refresh-nucleus');
 const SHEETS = [
   {
     dataset: 'stroeh_mouse_retina',
+    // Proofreaders also work straight in this sheet; --statuses carries their
+    // progress onto Available tasks. The older 1H9KV0 BC sheet is retired:
+    // never read it (Ames 2026-09-29).
     url: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
   },
   {
@@ -351,7 +364,119 @@ async function syncSheet(cfg) {
   return toInsert.length;
 }
 
+// ── Sheet progress -> Available tasks (--statuses) ─────────────────────
+/** {segId, who, status, date, finalSeg} for every row with a start segment. */
+function extractStatusRows(rows) {
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    if (rows[i].some(c => c.toLowerCase().includes('segment') || c.toLowerCase().includes('segid'))) { headerIdx = i; break; }
+  }
+  const header = rows[headerIdx].map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  const col = (...names) => { for (const n of names) { const i = header.findIndex(h => h.includes(n)); if (i >= 0) return i; } return -1; };
+  const iSeg = col('startseg', 'segmentid'), iWho = col('proofreader'), iStatus = header.indexOf('status');
+  const iDate = col('datecomplete', 'date'), iFinal = col('finalseg');
+  if (iSeg < 0 || (iStatus < 0 && iWho < 0)) return [];
+  const cell = (r, i) => (i >= 0 ? (r[i] || '').trim() : '');
+  const out = [];
+  for (let r = headerIdx + 1; r < rows.length; r++) {
+    const segId = cell(rows[r], iSeg);
+    if (!/^\d+$/.test(segId)) continue;
+    out.push({ segId, who: cell(rows[r], iWho), status: cell(rows[r], iStatus), date: cell(rows[r], iDate), finalSeg: cell(rows[r], iFinal) });
+  }
+  return out;
+}
+
+const RANK = { in_progress: 1, skipped: 2, completed: 3 };
+/** What the sheet says about a cell, or null when it is untouched there. */
+function sheetDecision(r) {
+  const s = r.status.toLowerCase();
+  const by = r.who ? ` by ${r.who}` : '';
+  if (/^complete/.test(s)) {
+    return { status: 'completed', note: `Completed in the spreadsheet${by}${r.date ? ` on ${r.date}` : ''}.`,
+      final: /^\d+$/.test(r.finalSeg) ? r.finalSeg : null };
+  }
+  if (/can.?t complete|not bc|not a bc|skip/.test(s)) return { status: 'skipped', note: `Marked "${r.status}" in the spreadsheet${by}.` };
+  if (s || r.who) return { status: 'in_progress', note: `Being proofread in the spreadsheet${by}${s ? ` (${r.status})` : ''}.` };
+  return null;
+}
+
+async function pendingTasks(dataset) {
+  const out = new Map();
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const url = `${SUPABASE_URL}/rest/v1/proofreading_tasks?select=id,segment_id,notes`
+      + `&dataset=eq.${encodeURIComponent(dataset)}&status=eq.pending&assigned_to=is.null&order=id&limit=${PAGE}&offset=${offset}`;
+    const res = await fetch(url, { headers: supabaseHeaders });
+    if (!res.ok) throw new Error(`read tasks ${res.status}: ${await res.text()}`);
+    const rows = await res.json();
+    for (const r of rows) if (!out.has(String(r.segment_id))) out.set(String(r.segment_id), r);
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
+async function syncStatuses(cfg) {
+  console.log(`\n[status] === ${cfg.dataset} ===`);
+  const best = new Map(); // segId -> strongest decision across the sheets
+  for (const url of cfg.statusUrls || [cfg.url]) {
+    const res = await fetch(csvUrlFor(url));
+    if (!res.ok) throw new Error(`sheet fetch ${res.status} for ${url}`);
+    const rows = extractStatusRows(parseCsv(await res.text()));
+    let marked = 0;
+    for (const r of rows) {
+      const d = sheetDecision(r);
+      if (!d) continue;
+      marked++;
+      const prev = best.get(r.segId);
+      if (!prev || RANK[d.status] > RANK[prev.status]) best.set(r.segId, d);
+    }
+    console.log(`[status] ${url.match(/\/d\/([^/]+)/)[1].slice(0, 8)}: ${rows.length} rows, ${marked} worked on in the sheet`);
+  }
+  const pending = await pendingTasks(cfg.dataset);
+  const todo = [...best].filter(([seg]) => pending.has(seg));
+  const tally = { completed: 0, skipped: 0, in_progress: 0 };
+  for (const [, d] of todo) tally[d.status]++;
+  console.log(`[status] Available in EyeWire II: ${pending.size}; the sheet says ${todo.length} of those are taken `
+    + `(${tally.completed} completed, ${tally.skipped} skipped, ${tally.in_progress} in progress)`);
+  if (dryRun || !todo.length) {
+    if (dryRun && todo.length) console.log(`[status] DRY-RUN, e.g. ${todo.slice(0, 5).map(([s, d]) => `${s}:${d.status}`).join(', ')}`);
+    return 0;
+  }
+  let changed = 0, skippedRace = 0;
+  const now = new Date().toISOString();
+  const queue = [...todo];
+  async function worker() {
+    for (let item = queue.shift(); item; item = queue.shift()) {
+      const [seg, d] = item;
+      const task = pending.get(seg);
+      const notes = [task.notes, d.note].filter(Boolean).join(' ').slice(0, 2000);
+      const body = { status: d.status, notes, updated_at: now, ...(d.final ? { final_segment_id: d.final } : {}) };
+      // The filter re-checks Available, so a claim made in EyeWire since the
+      // read above is never overwritten.
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/proofreading_tasks?id=eq.${task.id}&status=eq.pending&assigned_to=is.null`, {
+        method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=representation' }, body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`update task ${task.id} ${res.status}: ${await res.text()}`);
+      if ((await res.json()).length) changed++; else skippedRace++;
+    }
+  }
+  await Promise.all(Array.from({ length: 8 }, worker));
+  console.log(`[status] updated ${changed} task(s)${skippedRace ? `; ${skippedRace} were claimed in EyeWire meanwhile and left alone` : ''}`);
+  return changed;
+}
+
 (async () => {
+  if (statusesOnly) {
+    const targets = SHEETS.filter(s => !s.byPoint && (!onlyDataset || s.dataset === onlyDataset));
+    let changed = 0, failed = 0;
+    for (const cfg of targets) {
+      try { changed += await syncStatuses(cfg); }
+      catch (e) { console.error(`[status] ${cfg.dataset} failed:`, e.message); failed++; }
+    }
+    console.log(`\n[status] done: ${changed} task(s) updated, ${failed} dataset(s) failed`);
+    if (failed) process.exit(1);
+    return;
+  }
   const hour = etHour();
   if (!force && hour !== 0) {
     console.log(`[cells] ET hour is ${hour}, not midnight — skipping. (Use --force to override.)`);
