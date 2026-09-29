@@ -606,6 +606,7 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
     session.example = held;
     await showExample(held, view);
     session.phase = kind === 'cut' ? 'cut' : 'merge';
+    resumeTool();
     startActivityWatch();
     return held;
 
@@ -636,6 +637,7 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   session.example = row;
   await showExample(row, view);
   session.phase = kind === 'cut' ? 'cut' : 'merge';
+  resumeTool();
   startActivityWatch();
   return row;
 }
@@ -661,6 +663,14 @@ export async function resetPracticeExample(exampleId: string, sessionNonce?: str
   }
 }
 
+let resumeToolAfterLoad: 'merge' | 'multicut' | null = null;
+
+function resumeTool() {
+  const tool = resumeToolAfterLoad;
+  resumeToolAfterLoad = null;
+  if (tool) setTimeout(() => ensureTool(tool), 600);
+}
+
 /** True while a tool (merge, cut) is switched on. */
 function toolActive(): boolean {
   const viewer = getViewer();
@@ -676,7 +686,9 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     const wasOn = toolActive();
     pausePracticeTools();
     await useLayersStore().loadState(ex.state_url);
-    if (wasOn) setTimeout(() => ensureTool(ex.kind === 'cut' ? 'multicut' : 'merge'), 1200);
+    // Back on once the practice phase is set (beginPractice does it), so
+    // ensureTool's guard lets it through.
+    if (wasOn) resumeToolAfterLoad = ex.kind === 'cut' ? 'multicut' : 'merge';
     // restoreState applies asynchronously; give the layer a moment to exist.
     await new Promise(r => setTimeout(r, 800));
     session.shownId = ex.id;
