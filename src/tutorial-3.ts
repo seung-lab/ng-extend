@@ -3,7 +3,9 @@ import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
 // Amy's merge example, 2026-09-26: the cut-in-half branch, cell purple, loose piece yellow.
 import imgMergeExample from './images/merge-example.jpg';
-import { beginPractice, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
+import imgProfessorNurro from './images/professor-nurro.png';
+import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
+import { beginPractice, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
@@ -362,33 +364,145 @@ function removeGateCard() {
   document.getElementById('nge-tutorial-gate')?.remove();
 }
 
-function showGateCard(id: number, kind: PracticeKind) {
+/**
+ * "Moving you to the Sandbox": the dataset switch card, held over the first
+ * practice load (claiming cells and loading their view takes seconds, and
+ * the box used to sit there with no sign of life). Skipped when a practice
+ * view is already up.
+ */
+export async function movingToSandbox<T>(tutorial: string, work: () => Promise<T>): Promise<T> {
+  if (practiceShown()) return work();
+  startDatasetTransition({
+    id: 'practice-sandbox',
+    label: 'The Sandbox',
+    eyebrow: `${tutorial} tutorial · Moving you to`,
+    thumbnail: imgProfessorNurro,
+    contain: true,
+    hold: true,
+    steps: ['Finding your practice cells', 'Holding them for you', 'Loading the volume', 'Colouring the pieces', 'Almost there'],
+  });
+  try { return await work(); } finally { releaseDatasetTransition(); }
+}
+
+// The gate card wears the app's scifi-ui holopanel (the surface
+// DatasetTransition.vue uses) and the sign in dialog's holo buttons, with
+// Professor Nurro at the board (Ames, 2026-09-29).
+function ensureGateStyle() {
+  if (document.getElementById('nge-gate-style')) return;
+  const st = document.createElement('style');
+  st.id = 'nge-gate-style';
+  st.textContent = `
+    #nge-tutorial-gate { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 9500;
+      width: min(480px, 92vw); padding: 20px 22px 18px; border-radius: 14px;
+      border: 1px solid rgba(74, 150, 224, 0.35);
+      background: linear-gradient(158deg, rgba(15, 18, 24, 0.97), rgba(6, 10, 18, 0.98));
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6), 0 0 70px rgba(66, 213, 236, 0.10), inset 0 1px 0 rgba(196, 228, 255, 0.12);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      color: rgba(214, 228, 242, 0.9); font-size: 14.5px; line-height: 1.5;
+      animation: nge-gate-materialize 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    @keyframes nge-gate-materialize {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(1.025) translateY(-8px); filter: blur(14px); }
+      60% { opacity: 1; transform: translate(-50%, -50%) scale(0.995); filter: blur(0); }
+      100% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); } }
+    #nge-tutorial-gate .nge-gate-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 11px;
+      letter-spacing: 0.22em; text-transform: uppercase; font-weight: 600; color: rgba(140, 200, 245, 0.95); }
+    #nge-tutorial-gate .nge-gate-dot { width: 7px; height: 7px; border-radius: 50%; background: #42d5ec;
+      box-shadow: 0 0 10px #42d5ec; animation: nge-gate-pulse 1.1s ease-in-out infinite; }
+    @keyframes nge-gate-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+    #nge-tutorial-gate .nge-gate-title { margin: 6px 0 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+      color: #fff; text-shadow: 0 0 22px rgba(120, 190, 255, 0.35); }
+    #nge-tutorial-gate .nge-gate-art { display: block; width: 100%; height: auto; max-height: 190px; object-fit: contain;
+      margin: 0 0 12px; border-radius: 10px; padding: 8px 10px; box-sizing: border-box;
+      background: radial-gradient(ellipse at 45% 55%, rgba(66, 213, 236, 0.14), #04070d 72%);
+      border: 1px solid rgba(255, 255, 255, 0.08); }
+    #nge-tutorial-gate p { margin: 0 0 12px; }
+    #nge-tutorial-gate .nge-gate-status { color: #9fd0ff; }
+    #nge-tutorial-gate .nge-gate-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+    #nge-tutorial-gate button { position: relative; overflow: hidden; padding: 9px 16px; border-radius: 2px; cursor: pointer;
+      border: 1px solid rgba(0, 180, 255, 0.3); color: rgba(200, 230, 255, 0.95); font: 600 13px/1.2 inherit; letter-spacing: 0.04em;
+      background: linear-gradient(135deg, rgba(0, 100, 255, 0.2) 0%, rgba(0, 60, 180, 0.3) 50%, rgba(80, 0, 200, 0.2) 100%);
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s; }
+    #nge-tutorial-gate button:hover:not(:disabled) { border-color: rgba(0, 220, 255, 0.6); transform: translateY(-1px);
+      box-shadow: 0 0 30px rgba(0, 180, 255, 0.15), inset 0 0 30px rgba(0, 150, 255, 0.05); }
+    #nge-tutorial-gate button.nge-gate-primary::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(90deg, transparent 0%, rgba(0, 200, 255, 0.15) 50%, transparent 100%);
+      animation: nge-gate-sweep 3s ease-in-out infinite; }
+    @keyframes nge-gate-sweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+    #nge-tutorial-gate button.nge-gate-quiet { background: transparent; border-color: rgba(255, 255, 255, 0.12); color: rgba(214, 228, 242, 0.75); }
+    #nge-tutorial-gate button:disabled { cursor: default; opacity: 0.8; border-style: dashed; background: rgba(0, 60, 120, 0.12); }
+    #nge-tutorial-gate button:disabled::after { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      #nge-tutorial-gate, #nge-tutorial-gate .nge-gate-dot, #nge-tutorial-gate button::after { animation: none; } }
+  `;
+  document.head.appendChild(st);
+}
+
+function gateButton(label: string, cls: string, onClick: () => void) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = cls;
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function gateCard(eyebrow: string, title: string, paragraphs: string[], status: string) {
   removeGateCard();
-  const name = TUTORIAL_NAME[id];
+  ensureGateStyle();
   const card = document.createElement('div');
   card.id = 'nge-tutorial-gate';
-  card.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9500;width:min(440px,92vw);'
-    + 'padding:22px 24px;border-radius:10px;background:rgba(8,12,24,0.97);border:1px solid rgba(74,158,255,0.45);'
-    + 'box-shadow:0 12px 40px rgba(0,0,0,0.6);color:#d0e8ff;font-size:15px;line-height:1.45';
-  card.innerHTML = `<div style="font-size:1.25em;font-weight:600;margin-bottom:8px">The ${name} tutorial is in use</div>`
-    + `<p style="margin:0 0 12px">Someone is practising on its cells right now. It is one learner at a time, so the cells go back to their starting state between people.</p>`
-    + `<p class="nge-gate-status" style="margin:0 0 14px;color:#9fd0ff">Get in line and we'll tell you when it's your turn.</p>`
-    + `<div style="display:flex;gap:8px;flex-wrap:wrap"></div>`;
-  const row = card.querySelector('div:last-child') as HTMLElement;
-  const status = card.querySelector('.nge-gate-status') as HTMLElement;
-  const lineBtn = smallButton('nge-gate-line', 'Get in line', () => {
+  card.setAttribute('role', 'dialog');
+  card.innerHTML = `<div class="nge-gate-eyebrow"><span class="nge-gate-dot"></span>${eyebrow}</div>`
+    + `<div class="nge-gate-title">${title}</div>`
+    + `<img class="nge-gate-art" src="${imgProfessorNurro}" alt="Professor Nurro at the chalkboard">`
+    + paragraphs.map(t => `<p>${t}</p>`).join('')
+    + `<p class="nge-gate-status">${status}</p>`
+    + `<div class="nge-gate-row"></div>`;
+  document.body.appendChild(card);
+  return {
+    card,
+    row: card.querySelector('.nge-gate-row') as HTMLElement,
+    status: card.querySelector('.nge-gate-status') as HTMLElement,
+  };
+}
+
+/** When it is their turn: open the tutorial if the card is still up,
+ *  otherwise ask (they may be in the middle of something). */
+function yourTurn(id: number) {
+  if (document.getElementById('nge-tutorial-gate')) { removeGateCard(); openTutorial(id); return; }
+  const name = TUTORIAL_NAME[id];
+  const { row } = gateCard('Your turn', `The ${name} tutorial is free`, [
+    'The practice cells are free. Start now and they are held for you while you work through it.',
+  ], 'Or pass, and the next person in line gets them.');
+  row.append(
+    gateButton('Start the tutorial', 'nge-gate-primary', () => { removeGateCard(); openTutorial(id); }),
+    gateButton('Pass', 'nge-gate-quiet', () => removeGateCard()),
+  );
+}
+
+function showGateCard(id: number, kind: PracticeKind) {
+  const name = TUTORIAL_NAME[id];
+  const { row, status } = gateCard('One learner at a time', `The ${name} tutorial is in use`, [
+    'Someone is practising on its cells right now. The cells go back to their starting state between people.',
+  ], "Get in line and we'll tell you when it's your turn.");
+  const lineBtn = gateButton('Get in line', 'nge-gate-primary', () => {
+    // Waiting is not a button: it shows the state, and OK takes over as the
+    // way to get back to work while staying in line.
     lineBtn.disabled = true;
-    lineBtn.textContent = 'In line…';
+    lineBtn.textContent = 'In line';
+    lineBtn.classList.remove('nge-gate-primary');
+    readBtn.remove();
+    row.insertBefore(okBtn, noBtn);
     waitForTutorial(kind,
-      () => { removeGateCard(); openTutorial(id); },
+      () => yourTurn(id),
       (pos, needed) => { status.textContent = pos <= 1
-        ? `You're next. This card opens the tutorial the moment its ${needed === 1 ? 'cell is' : 'cells are'} free, and a notification will say so too.`
+        ? `You're next. We'll open the tutorial the moment its ${needed === 1 ? 'cell is' : 'cells are'} free, and a notification will say so too.`
         : `You're number ${pos} in line. Keep the app open; a notification will say when it's your turn.`; });
   });
-  const readBtn = smallButton('nge-gate-read', 'Read it without a cell', () => { stopWaitingForTutorial(); removeGateCard(); openTutorial(id); });
-  const noBtn = smallButton('nge-gate-no', 'Not now', () => { stopWaitingForTutorial(); removeGateCard(); });
-  for (const b of [lineBtn, readBtn, noBtn]) { b.style.margin = '0'; row.appendChild(b); }
-  document.body.appendChild(card);
+  const readBtn = gateButton('Read it without a cell', '', () => { stopWaitingForTutorial(); removeGateCard(); openTutorial(id); });
+  const okBtn = gateButton('OK', 'nge-gate-primary', () => removeGateCard());
+  const noBtn = gateButton('Nevermind', 'nge-gate-quiet', () => { stopWaitingForTutorial(); removeGateCard(); });
+  row.append(lineBtn, readBtn, noBtn);
 }
 
 document.addEventListener('nge:tutorial-start', (async (e: CustomEvent) => {
@@ -504,12 +618,14 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
       setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
       // The whole tutorial runs on both merge cells (Amy): take both now, so
       // a learner never starts on one and finds the other held.
-      const first = await beginPractice('merge_then_cut', 'start', { slot: 'a' });
-      if (first) {
-        const second = await beginPractice('merge_then_cut', 'start', { slot: 'b' });
-        if (!second) await endPractice();
-        else await beginPractice('merge_then_cut', 'start', { slot: 'a' }); // back on the first for this step
-      }
+      await movingToSandbox('Merge', async () => {
+        const first = await beginPractice('merge_then_cut', 'start', { slot: 'a' });
+        if (first) {
+          // The second cell is claimed now and shown at step 6.
+          const second = await beginPractice('merge_then_cut', 'start', { slot: 'b', show: false });
+          if (!second) await endPractice();
+        }
+      });
     },
   },
 

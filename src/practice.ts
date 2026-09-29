@@ -490,7 +490,7 @@ export async function waitForTutorial(kind: PracticeKind, onReady: () => void, o
       const { useProofreadingBackendStore } = await import('./store');
       await useProofreadingBackendStore().createSelfNotification({
         title: kind === 'cut' ? 'The Cut tutorial is free' : 'The Merge tutorial is free',
-        body: 'Your turn. Open the book menu at the top right and start it; the practice cells are yours while you work.',
+        body: 'Your turn. Open the burger menu at the top right and start it; the practice cells are yours once you begin.',
       });
     } catch { /* the card says it too */ }
     onReady();
@@ -571,8 +571,17 @@ function userId(): string | null {
  */
 export type PracticeView = 'start' | 'preview';
 
-export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { slot?: string } = {}): Promise<PracticeExample | null> {
+/** True once a practice view is on screen (no need to announce the move). */
+export function practiceShown(): boolean {
+  return !!session.shownId;
+}
+
+/** Claim (or keep) a practice cell in a slot and show it. `show: false`
+ *  only claims, for a slot the tutorial will show later (Merge step 3 takes
+ *  both cells up front; loading the second view there cost seconds). */
+export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { slot?: string; show?: boolean } = {}): Promise<PracticeExample | null> {
   const slot = opts.slot ?? 'a';
+  const show = opts.show !== false;
   // Right after a reload the login is still settling; give it a few seconds
   // before deciding the learner is signed out (Amy saw "you need to be
   // signed in" while signed in).
@@ -583,6 +592,7 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   if (held && held.claimed_by === uid && held.kind === kind) {
     try { await practiceAction('heartbeat', { id: held.id, session: held.claim_nonce }); }
     catch { delete session.held[slot]; practiceUnavailable(); return null; }
+    if (!show) return held;
     session.example = held;
     await showExample(held, view);
     session.phase = kind === 'cut' ? 'cut' : 'merge';
@@ -606,6 +616,12 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   if (row && exclude.includes(row.id)) row = null;
   if (!row) { session.phase = 'busy'; return null; }
   session.held[slot] = row;
+  if (!show) {
+    // Claimed, not shown: the step's own cell stays on screen.
+    if (session.example) session.phase = kind === 'cut' ? 'cut' : 'merge';
+    startActivityWatch();
+    return row;
+  }
 
   session.example = row;
   await showExample(row, view);
