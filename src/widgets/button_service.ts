@@ -1,3 +1,4 @@
+import { explainCellType } from '../data/cell_type_glossary';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {setStatedColor} from './widget_utils';
@@ -164,9 +165,9 @@ export class ButtonService {
       const segId = (idEl.textContent || '').trim();
       if (label) {
         idEl.dataset.ngeLabel = label;
-        idEl.title = `${label}
-${segId}
-Use the copy button for the ID`;
+        // Abbreviations written out (Ames: "hover tips to write out acronyms").
+        const spelled = explainCellType(label);
+        idEl.title = [label, ...spelled, '', `ID ${segId} (copy button on the left)`].join(String.fromCharCode(10));
       } else {
         delete idEl.dataset.ngeLabel;
         idEl.removeAttribute('title');
@@ -384,6 +385,7 @@ Use the copy button for the ID`;
       const opt = document.createElement('option');
       opt.value = ct;
       opt.textContent = ct;
+      { const spelled = explainCellType(ct); if (spelled.length) opt.title = spelled.join(String.fromCharCode(10)); }
       if (cachedStatus?.cellType === ct) opt.selected = true;
       select.appendChild(opt);
     }
