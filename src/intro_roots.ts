@@ -10,19 +10,38 @@
  * down to a supervoxel (supervoxels never change) and back up to its root
  * today, and the view is rewritten to use it.
  */
-import { anySupervoxelOf, rootOfSupervoxel } from './practice';
+import { anySupervoxelOf, rootOfSupervoxel, undoEditsSince } from './practice';
 
 const INTRO = { pcg_server: 'https://minnie.microns-daf.com', pcg_table: 'pinky_training6' };
 
 /** The neuron and the continuation branch the learner finds. */
 export const INTRO_ROOTS = ['648518346353862024', '648518346356484078'];
 
+/** Same as config/intro-reset-fixtures.json: edits after this are undone. */
+const BASELINE = '2026-09-29T14:03:21Z';
+
 // Re-resolved at most every 5 minutes, so an undo by the job is picked up.
 let cached: { at: number; map: Promise<Map<string, string>> } | null = null;
+let repairedThisVisit = false;
 
 function introRootMap(): Promise<Map<string, string>> {
   if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.map;
   const map = (async () => {
+    // Once per visit, when the tutorial first loads a view: if anyone has
+    // edited the neuron since the baseline, undo it now rather than waiting
+    // for the scheduled job (Ames, 2026-09-29). Nothing is changed when the
+    // neuron is as it should be. If this learner may not undo, the job
+    // (every 10 minutes) still will.
+    if (!repairedThisVisit) {
+      repairedThisVisit = true;
+      try {
+        const svs = await Promise.all(INTRO_ROOTS.map(r => anySupervoxelOf(INTRO, r)));
+        const undone = await undoEditsSince(INTRO, svs, BASELINE);
+        if (undone) console.info(`[tutorial] undid ${undone} edit(s) on the intro neuron`);
+      } catch (e) {
+        console.warn('[tutorial] could not check the intro neuron for edits:', e);
+      }
+    }
     const m = new Map<string, string>();
     await Promise.all(INTRO_ROOTS.map(async root => {
       try {
