@@ -16,19 +16,29 @@ export interface DatasetTransition {
   thumbnail?: string;
   /** When the switch was clicked, so time spent reloading counts. */
   t0: number;
+  /** Custom cards (the tutorials' "Moving you to the Sandbox"): */
+  eyebrow?: string;
+  steps?: string[];
+  /** Show the whole picture rather than filling the frame. */
+  contain?: boolean;
+  /** Stay up until releaseDatasetTransition() (or 25 s), for loads that
+   *  take as long as they take. */
+  hold?: boolean;
 }
 
 const KEY = 'nge-ds-transition';
 
-export const datasetTransition = reactive<{ current: DatasetTransition | null; resumed: boolean }>({
+export const datasetTransition = reactive<{ current: DatasetTransition | null; resumed: boolean; released: boolean }>({
   current: null,
   resumed: false,
+  released: false,
 });
 
-export function startDatasetTransition(ds: { id: string; label: string; thumbnail?: string }) {
-  const t: DatasetTransition = { id: ds.id, label: ds.label, thumbnail: ds.thumbnail, t0: Date.now() };
+export function startDatasetTransition(ds: Omit<DatasetTransition, 't0'>) {
+  const t: DatasetTransition = { ...ds, t0: Date.now() };
   datasetTransition.current = t;
   datasetTransition.resumed = false;
+  datasetTransition.released = false;
   try { sessionStorage.setItem(KEY, JSON.stringify(t)); } catch { /* private mode */ }
 }
 
@@ -42,6 +52,11 @@ export function resumeDatasetTransition() {
     datasetTransition.current = t;
     datasetTransition.resumed = true;
   } catch { /* nothing to resume */ }
+}
+
+/** A held card may now play out (it zips away once its minimum time is up). */
+export function releaseDatasetTransition() {
+  datasetTransition.released = true;
 }
 
 export function endDatasetTransition() {

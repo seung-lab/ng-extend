@@ -6,7 +6,7 @@
  * up with light like the Scout tag mode box, and pops into particles.
  * State lives in util/dataset_transition.ts so it survives the reload.
  */
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { datasetTransition, resumeDatasetTransition, endDatasetTransition } from '../util/dataset_transition';
 import { runPanelDraw } from '../util/holo_trace';
 import { DATASETS } from '../datasets';
@@ -34,7 +34,8 @@ const phase = ref<'loading' | 'zip' | null>(null);
  *  (the replay was the flash). */
 const elapsed = ref(0);
 const stepIdx = ref(0);
-const STEPS = ['Loading the volume', 'Fetching cells', 'Aligning the view', 'Almost there'];
+const DEFAULT_STEPS = ['Loading the volume', 'Fetching cells', 'Aligning the view', 'Almost there'];
+const STEPS = computed(() => datasetTransition.current?.steps?.length ? datasetTransition.current.steps : DEFAULT_STEPS);
 let timers: number[] = [];
 const clearTimers = () => { timers.forEach(t => clearTimeout(t)); timers = []; };
 
@@ -52,17 +53,21 @@ function play() {
   clearTimers();
   elapsed.value = Math.max(0, Date.now() - t.t0);
   phase.value = 'loading';
-  stepIdx.value = Math.min(STEPS.length - 1, Math.floor(elapsed.value / 650));
-  for (let i = stepIdx.value + 1; i < STEPS.length; i++) {
-    timers.push(window.setTimeout(() => { stepIdx.value = i; }, i * 650 - elapsed.value));
+  // A held card paces its steps slower, since it waits for real work.
+  const stepMs = t.hold ? 1400 : 650;
+  const nSteps = STEPS.value.length;
+  stepIdx.value = Math.min(nSteps - 1, Math.floor(elapsed.value / stepMs));
+  for (let i = stepIdx.value + 1; i < nSteps; i++) {
+    timers.push(window.setTimeout(() => { stepIdx.value = i; }, i * stepMs - elapsed.value));
   }
+  const maxMs = t.hold ? 25000 : MAX_MS;
   const tick = () => {
     const age = Date.now() - t.t0;
-    const ready = !datasetTransition.resumed || viewerReady();
+    const ready = t.hold ? datasetTransition.released : (!datasetTransition.resumed || viewerReady());
     // Signed out: the viewer cannot finish until they log in, so waiting for
     // it would park this card over the sign in box. Get out of the way.
     const loginShowing = !!document.querySelector('.nge-login-blocker');
-    if ((age >= MIN_MS && ready) || age >= MAX_MS || (loginShowing && age >= 600)) { zip(); return; }
+    if ((age >= MIN_MS && ready) || age >= maxMs || (loginShowing && age >= 600)) { zip(); return; }
     timers.push(window.setTimeout(tick, 150));
   };
   tick();
@@ -180,7 +185,7 @@ onBeforeUnmount(clearTimers);
          :class="{ 'nge-dst--zip': phase === 'zip', 'nge-dst--resumed': datasetTransition.resumed }"
          :style="{ '--dst-in': `-${elapsed}ms` }" aria-live="polite">
       <div ref="boxEl" class="nge-dst-box">
-        <div class="nge-dst-eyebrow"><span class="nge-dst-dot"></span>Now entering</div>
+        <div class="nge-dst-eyebrow"><span class="nge-dst-dot"></span>{{ datasetTransition.current.eyebrow || 'Now entering' }}</div>
         <div class="nge-dst-title">{{ datasetTransition.current.label }}</div>
         <Transition name="nge-dst-stats">
           <div v-if="mine" class="nge-dst-stats">
@@ -193,7 +198,7 @@ onBeforeUnmount(clearTimers);
             <span v-else class="nge-dst-stats-first">Your first visit here. Welcome, scientist!</span>
           </div>
         </Transition>
-        <div class="nge-dst-thumb" :class="{ 'nge-dst-thumb--empty': !datasetTransition.current.thumbnail }">
+        <div class="nge-dst-thumb" :class="{ 'nge-dst-thumb--empty': !datasetTransition.current.thumbnail, 'nge-dst-thumb--contain': datasetTransition.current.contain }">
           <img v-if="datasetTransition.current.thumbnail" :src="datasetTransition.current.thumbnail" alt="" />
           <span class="nge-dst-scan" aria-hidden="true"></span>
           <span class="nge-dst-grid" aria-hidden="true"></span>
@@ -202,7 +207,7 @@ onBeforeUnmount(clearTimers);
           <span class="nge-dst-step">{{ STEPS[stepIdx] }}</span>
           <span class="nge-dst-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         </div>
-        <div class="nge-dst-bar" aria-hidden="true"><span></span></div>
+        <div class="nge-dst-bar" :class="{ 'nge-dst-bar--hold': datasetTransition.current.hold }" aria-hidden="true"><span></span></div>
       </div>
     </div>
   </Teleport>
@@ -326,6 +331,15 @@ onBeforeUnmount(clearTimers);
   animation-delay: var(--dst-in, 0ms);
 }
 @keyframes nge-dst-fill { from { transform: scaleX(0.04); } to { transform: scaleX(1); } }
+/* A held card cannot know how long it will take: fill most of the way over
+   a few seconds, then creep, so it never sits full while still working. */
+.nge-dst-bar--hold span { animation: nge-dst-fill-hold 14s cubic-bezier(0.1, 0.7, 0.2, 1) both; }
+@keyframes nge-dst-fill-hold { 0% { transform: scaleX(0.04); } 25% { transform: scaleX(0.7); } 100% { transform: scaleX(0.96); } }
+/* A drawing, not a photo: show all of it, softly lit. */
+.nge-dst-thumb--contain {
+  background: radial-gradient(ellipse at 45% 55%, rgba(66, 213, 236, 0.16), #04070d 72%);
+}
+.nge-dst-thumb--contain img { object-fit: contain; padding: 10px 14px; box-sizing: border-box; }
 
 @media (prefers-reduced-motion: reduce) {
   .nge-dst-box, .nge-dst-thumb img, .nge-dst-scan, .nge-dst-dot, .nge-dst-dots i, .nge-dst-bar span { animation: none; }

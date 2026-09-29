@@ -7,7 +7,7 @@ import imgCutAfter from './images/cut-after.jpg';
 // Amy's cut with the points placed (2026-09-26): red along the axon, blue on the dendrite.
 import imgCutPoints from './images/cut-points-example.jpg';
 import { beginPractice, endPractice, ensureTool } from './practice';
-import { INFO_LAYER, MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, stopWatching, watchPractice } from './tutorial-3';
+import { INFO_LAYER, MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, movingToSandbox, stopWatching, watchPractice } from './tutorial-3';
 
 /**
  * Tutorial 5: Cut. Split off the Cut & Merge tutorial on 2026-09-27 (Amy).
@@ -46,7 +46,7 @@ In a moment you'll get the fused version of this very cell and make the cut your
       closeSidePanel();
       stopWatching();
       // Claim before loading any shared practice geometry.
-      await beginPractice('cut', 'preview');
+      await movingToSandbox('Cut', () => beginPractice('cut', 'preview'));
     },
   },
 
