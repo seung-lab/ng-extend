@@ -165,10 +165,34 @@ function copyId(id: string) {
 /** The active dataset's proofreading instructions, if it has any (MEC). */
 const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset.value).instructionsUrl || '');
 /** A view with one example of each cell type (MEC), loaded in place. */
-const datasetCellTypesState = computed(() => getDatasetCaveConfig(activeDataset.value).cellTypesState || null);
+const datasetCellTypesState = computed(() => {
+  const cfg = getDatasetCaveConfig(activeDataset.value);
+  return cfg.cellTypesUrl || cfg.cellTypesState || null;
+});
 function openCellTypes() {
   const st = datasetCellTypesState.value;
-  if (st) window.location.hash = '#!' + encodeURIComponent(JSON.stringify(st));
+  if (!st) return;
+  const viewer: any = (window as any)['viewer'];
+  const before = new Set(viewer?.layerManager?.managedLayers ?? []);
+  window.location.hash = '#!' + (typeof st === 'string' ? st : encodeURIComponent(JSON.stringify(st)));
+  // Once the view has replaced the current layers, open the segment layer's
+  // side panel on its Seg tab: the typed labels there are the key (Ames).
+  let tries = 0;
+  const openSegTab = () => {
+    const layers: any[] = viewer?.layerManager?.managedLayers ?? [];
+    const seg = layers.find(l => !before.has(l) && l.layer?.tabs?.options?.has?.('segments'));
+    if (seg) {
+      viewer.selectedLayer.layer = seg;
+      viewer.selectedLayer.visible = true;
+      // The side panel shows panels[0].selectedTab, not layer.tabs.
+      seg.layer.tabs.value = 'segments';
+      const panel = seg.layer.panels?.panels?.[0];
+      if (panel?.selectedTab) panel.selectedTab.value = 'segments';
+      return;
+    }
+    if (++tries < 60) setTimeout(openSegTab, 500);
+  };
+  setTimeout(openSegTab, 500);
 }
 
 async function loadCellsForActiveDataset() {

@@ -58,6 +58,9 @@ export interface DatasetCaveConfig {
   /** A view with one example of each cell type, opened from the Cell
    *  Library header (MEC). A full neuroglancer state. */
   cellTypesState?: Record<string, any>;
+  /** Same, as a saved-state link (the part after "#!"). Wins over
+   *  cellTypesState; the Seg tab of the segment layer opens once it loads. */
+  cellTypesUrl?: string;
 }
 
 export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
@@ -186,6 +189,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     // invalid_table_id for pni_mec and materialize 503. Log to Supabase (Ames).
     annotationLog:    'edit_log',
     cellTypesState:   MEC_CELL_TYPES_STATE,
+    // Ames's labelled view (2026-09-29).
+    cellTypesUrl:     'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5718150469386240',
     instructionsUrl:  'https://docs.google.com/spreadsheets/d/1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw/edit?gid=1005852930#gid=1005852930',
     // Root ids and camera lifted from the team proofreading state
     // (nglstate 6641601003126784), so they resolve in the pni_mec graph.
