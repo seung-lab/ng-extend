@@ -1,12 +1,26 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 
-import nurroLaser from '../../static/nurro/nurro-laser-teach.png';
+import nurroAtHome from '../../static/nurro/nurro-at-home.png';
+import nurroCapeCard from '../../static/nurro/nurro-cape-card.png';
+import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
+import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
+import nurroCelebrate3 from '../../static/nurro/nurro-celebrate3.png';
+import nurroConfettiCard from '../../static/nurro/nurro-confetti-card.png';
+import nurroConfetti from '../../static/nurro/nurro-confetti.png';
+import nurroDance from '../../static/nurro/nurro-dance.png';
+import nurroExperimentRecap from '../../static/nurro/nurro-experiment-recap.png';
+import nurroExperiment from '../../static/nurro/nurro-experiment.png';
 import nurroInspector from '../../static/nurro/nurro-inspector.png';
-import nurroConfetti from '../../static/nurro/nurro-confetti-card.png';
-import nurroPopcorn from '../../static/nurro/nurro-popcorn-card.png';
+import nurroLaserTeach from '../../static/nurro/nurro-laser-teach.png';
+import nurroMicroscope from '../../static/nurro/nurro-microscope.png';
 import nurroOriginal from '../../static/nurro/nurro-original.png';
-import nurroSuper from '../../static/nurro/nurro-super-v2.png';
+import nurroPopcornCard from '../../static/nurro/nurro-popcorn-card.png';
+import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
+import nurroSuccess from '../../static/nurro/nurro-success.png';
+import nurroSuperV2 from '../../static/nurro/nurro-super-v2.png';
+import nurroTrophy from '../../static/nurro/nurro-trophy.png';
+import nurroWheres from '../../static/nurro/nurro-wheres.png';
 
 const props = withDefaults(defineProps<{
   show: boolean;
@@ -52,9 +66,16 @@ const showScaleBar = ref(true);
 const wholeScreen = ref(props.mode === 'attach');
 /** Crop to the 3D panel only (Amy), for clean neuron renders. */
 const only3d = ref(false);
-/** Nurro in a corner of the picture, because why not (Amy). Cycles through
- *  the transparent Nurros in static/nurro; null means none. */
-const NURROS = [nurroLaser, nurroInspector, nurroConfetti, nurroPopcorn, nurroOriginal, nurroSuper];
+/** Nurro in a corner of the picture, because why not (Amy). Every
+ *  transparent Nurro in static/nurro, in a fresh random order each time the
+ *  dialog opens; "another" walks that shuffle, so none repeats until all
+ *  have shown (Amy 2026-09-29). */
+const NURROS_ALL = [nurroAtHome, nurroCapeCard, nurroCelebrate, nurroCelebrate2, nurroCelebrate3, nurroConfettiCard, nurroConfetti, nurroDance, nurroExperimentRecap, nurroExperiment, nurroInspector, nurroLaserTeach, nurroMicroscope, nurroOriginal, nurroPopcornCard, nurroPopcorn, nurroSuccess, nurroSuperV2, nurroTrophy, nurroWheres];
+const NURROS = (() => {
+  const a = NURROS_ALL.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+})();
 const nurroOn = ref(false);
 const nurroIndex = ref(0);
 const nurroImg = ref<HTMLImageElement | null>(null);
@@ -143,6 +164,13 @@ type Stroke = { color: string; size: number; points: { u: number; v: number }[] 
 const strokes = ref<Stroke[]>([]);
 const PEN_COLORS = ['#ff4d4d', '#ffd24d', '#5be3ff', '#ffffff'];
 const penColor = ref(PEN_COLORS[0]);
+/** Any colour, from the browser's picker (Amy 2026-09-29). */
+const customColor = ref('#b388ff');
+const customActive = computed(() => !PEN_COLORS.includes(penColor.value));
+function pickCustom(e: Event) {
+  customColor.value = (e.target as HTMLInputElement).value;
+  penColor.value = customColor.value;
+}
 const penSize = ref(3);
 let drawing = false;
 
@@ -759,6 +787,10 @@ async function download() {
 </script>
 
 <template>
+  <!-- Teleported to <body> so it always sits above the panel that opened it
+       (Cell Library help request, chat, Scout Tag); inside a panel it was
+       trapped under that panel's stacking layer (Amy 2026-09-29). -->
+  <Teleport to="body">
   <div v-if="show" class="nge-shotdlg-overlay" :style="dialogHidden ? 'visibility:hidden' : ''" @click.self="close">
     <div class="nge-shotdlg" role="dialog"
          :aria-label="props.mode === 'attach' ? 'Attach screenshot' : 'Save screenshot'">
@@ -781,6 +813,13 @@ async function download() {
                     :title="c"
                     :aria-label="`Pen color ${c}`"
                     :aria-pressed="penColor === c" />
+            <label class="nge-shotdlg-swatch nge-shotdlg-swatch--custom"
+                   :class="{ 'is-active': customActive }"
+                   :style="customActive ? { '--sw': penColor } : {}"
+                   title="Any colour">
+              <input type="color" :value="customColor" @input="pickCustom" @click="penColor = customColor"
+                     aria-label="Pick any pen colour" />
+            </label>
           </div>
 
           <span class="nge-shotdlg-sep" aria-hidden="true" />
@@ -911,6 +950,7 @@ async function download() {
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -936,7 +976,7 @@ async function download() {
   position: fixed;
   inset: 0;
   background: rgba(2, 6, 14, 0.62);
-  z-index: 10010;
+  z-index: 10040;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1096,6 +1136,24 @@ async function download() {
   transition: transform .12s, box-shadow .15s, border-color .15s;
 }
 .nge-shotdlg-swatch:hover { transform: scale(1.12); }
+/* The rainbow swatch opens the native colour picker; once a custom colour is
+   in use it shows that colour instead. */
+.nge-shotdlg-swatch--custom {
+  position: relative;
+  overflow: hidden;
+  background: conic-gradient(#ff4d4d, #ffd24d, #7dff7a, #5be3ff, #6a7bff, #d06bff, #ff4d4d);
+}
+.nge-shotdlg-swatch--custom.is-active { background: var(--sw); }
+.nge-shotdlg-swatch--custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}
 .nge-shotdlg-swatch.is-active {
   border-color: #ffffff;
   box-shadow:
