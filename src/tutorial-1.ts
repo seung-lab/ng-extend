@@ -136,7 +136,9 @@ The flexibility and big-picture thinking of the human mind enables humans to sol
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
     text: `
-Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them. The sandbox uses data from the MICrONS project. The cell behind this box is a pyramidal neuron from mouse visual cortex.`,
+Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them. The sandbox uses data from the MICrONS project. The cell behind this box is a pyramidal neuron from mouse visual cortex.
+
+**This is a spare copy of the data, made for learning. Nothing you do here can hurt the real data, so explore freely!**`,
     position: MIDDLE,
     image:
       imgSandboxExplosion,
@@ -255,9 +257,9 @@ It missed a branch. Let's see if we can find it.`,
   },
   //13 - gif
   {
-    text: `Move your cursor outside this box, then press COMMA and PERIOD to step through the EM slices. You can also hover your mouse over EM and scroll through images.
+    text: `Press COMMA and PERIOD to step through the EM slices. You can also hover your mouse over EM and scroll through images.
 
-Don't worry if you lose the neuron - the Next button in this section resets this view.`,
+Don't worry if you lose the neuron. The Next button in this section resets this view.`,
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
