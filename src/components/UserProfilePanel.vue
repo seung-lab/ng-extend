@@ -1675,44 +1675,37 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-modal :deep(.nge-overlay.modal.overlay-content) {
   overflow: visible !important;
 }
+/* ── Holographic edge glow: soft lights orbiting the frame ──
+   Painted as the panel's own background: the fill covers the padding box and
+   the orbiting conic shows only under the 1px border, so the light follows
+   the rounded corner by construction. It used to be a ::before ring cut out
+   with mask-composite; on GPU Chrome that drew seams across the corners and a
+   lit curve that didn't sit on the panel's curve as the light passed (Ames
+   2026-09-29, screen recording). Stop alphas are the old ones x 0.7, the
+   ring's former opacity. */
 .nge-profile-modal :deep(.nge-overlay) {
-  animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
-  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) !important;
-}
-
-/* ── Holographic edge glow — subtle orbiting light dots ── */
-.nge-profile-modal :deep(.nge-overlay)::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background: conic-gradient(
-    from var(--nge-holo-angle, 0deg),
-    transparent 0%,
-    rgba(74, 158, 255, 0.0) 10%,
-    rgba(74, 158, 255, 0.35) 14%,
-    rgba(0, 210, 255, 0.15) 18%,
-    transparent 22%,
-    transparent 35%,
-    rgba(160, 120, 255, 0.25) 39%,
-    rgba(120, 80, 220, 0.1) 43%,
-    transparent 47%,
-    transparent 60%,
-    rgba(0, 255, 200, 0.2) 64%,
-    rgba(74, 158, 255, 0.08) 68%,
-    transparent 72%,
-    transparent 85%,
-    rgba(74, 158, 255, 0.15) 89%,
-    transparent 93%
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: ngeHoloEdgeSpin 8s linear infinite;
-  pointer-events: none;
-  z-index: 1;
-  opacity: 0.7;
+  animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both, ngeHoloEdgeSpin 8s linear infinite;
+  background:
+    linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) padding-box,
+    conic-gradient(
+      from var(--nge-holo-angle, 0deg),
+      transparent 0%,
+      rgba(74, 158, 255, 0.0) 10%,
+      rgba(74, 158, 255, 0.245) 14%,
+      rgba(0, 210, 255, 0.105) 18%,
+      transparent 22%,
+      transparent 35%,
+      rgba(160, 120, 255, 0.175) 39%,
+      rgba(120, 80, 220, 0.07) 43%,
+      transparent 47%,
+      transparent 60%,
+      rgba(0, 255, 200, 0.14) 64%,
+      rgba(74, 158, 255, 0.056) 68%,
+      transparent 72%,
+      transparent 85%,
+      rgba(74, 158, 255, 0.105) 89%,
+      transparent 93%
+    ) border-box !important;
 }
 
 @property --nge-holo-angle {
