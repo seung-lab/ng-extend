@@ -6,7 +6,7 @@ import { functionUrl } from '../functions_base';
 // Cloud Function and runs the returned actions through the allow-list in
 // dispatch(). Styling mirrors ChatPanel.vue.
 
-import { ref, computed, nextTick, watch } from "vue";
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
 import { renderSafeMarkdown } from "../util/safe_markdown";
 import { buildAppContext, type UiState } from "../assistant/context";
 import { buildUiReference } from "../assistant/knowledge";
@@ -159,6 +159,14 @@ async function scrollToBottom() {
 watch(() => props.show, (v) => {
   if (v) nextTick(() => inputEl.value?.focus());
 });
+
+// Other panels ask on the player's behalf (a split error's "Ask the AI guide").
+function onAskGuide(e: Event) {
+  const text = (e as CustomEvent).detail?.text;
+  if (typeof text === 'string' && text.trim()) void nextTick(() => send(text));
+}
+onMounted(() => document.addEventListener('nge:ask-guide', onAskGuide));
+onBeforeUnmount(() => document.removeEventListener('nge:ask-guide', onAskGuide));
 
 async function send(text?: string) {
   const message = (text ?? input.value).trim();

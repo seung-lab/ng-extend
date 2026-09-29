@@ -434,6 +434,11 @@ function commandKeyHandler(e: KeyboardEvent) {
   }
 }
 onMounted(() => document.addEventListener('keydown', commandKeyHandler, true));
+// "Ask the AI guide" buttons elsewhere (split errors) open the dock; the dock
+// itself sends the question (it listens for the same event).
+const openGuideForQuestion = () => { showAssistant.value = true; };
+onMounted(() => document.addEventListener('nge:ask-guide', openGuideForQuestion));
+onUnmounted(() => document.removeEventListener('nge:ask-guide', openGuideForQuestion));
 onUnmounted(() => document.removeEventListener('keydown', commandKeyHandler, true));
 
 // ── EyeWire II Guide (AI assistant) ──────────────────────────────────────

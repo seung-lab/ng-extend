@@ -28,10 +28,17 @@ const hasMergeSegments = computed(() => store.mergeSegments.length > 0);
 const mergeReady = computed(() => store.mergeSegments.some(p => p.length >= 2));
 const cutReady = computed(() => store.redPointCount > 0 && store.bluePointCount > 0);
 
+/** Hand the error to the AI guide (Amy 2026-09-29): it opens and asks. */
+function askGuideAboutError() {
+  const err = store.resultText;
+  document.dispatchEvent(new CustomEvent('nge:ask-guide', { detail: {
+    text: `My ${isMulticut.value ? 'split' : 'edit'} failed with this error: "${err}". What does it mean, and what should I do?`,
+  } }));
+}
+
 const contextHint = computed(() => {
   if (store.statusMessage) return store.statusMessage;
-  // Show error text in hint area during inline error
-  if (hasInlineResult.value && resultIsError.value) return store.resultText;
+  // The error lives in the popup only; repeating it here doubled it (Amy 2026-09-29).
   if (isSubmitting.value) return 'Submitting...';
   if (isMulticut.value && !store.pendingClose) {
     if (totalPoints.value === 0) return 'Ctrl+Click on supervoxels to mark them';
@@ -205,8 +212,13 @@ function cancelTool() {
     <transition name="flash-pop">
       <div v-if="hasInlineResult" class="nge-smo-result-flash" :class="{ success: resultIsSuccess, error: resultIsError }">
         <span class="nge-smo-result-icon">{{ resultIsSuccess ? '✓' : '✗' }}</span>
-        <span class="nge-smo-result-text">{{ store.resultText }}</span>
-        <span v-if="resultIsError" class="nge-smo-result-retry">Press Enter to retry</span>
+        <div class="nge-smo-result-body">
+          <span class="nge-smo-result-text">{{ store.resultText }}</span>
+          <div v-if="resultIsError" class="nge-smo-result-actions">
+            <span class="nge-smo-result-retry">Press Enter to retry</span>
+            <button class="nge-smo-result-ask" @click.stop="askGuideAboutError">✦ Ask the AI guide what this means</button>
+          </div>
+        </div>
       </div>
     </transition>
   </Teleport>
@@ -710,8 +722,9 @@ function cancelTool() {
   letter-spacing: 0.4px;
   pointer-events: none;
   user-select: none;
-  white-space: nowrap;
-  overflow: hidden;
+  /* The whole error, wrapped, never cut off with an ellipsis (Amy 2026-09-29). */
+  white-space: normal;
+  max-width: min(640px, 92vw);
   backdrop-filter: blur(16px) saturate(1.3);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
 }
@@ -752,11 +765,26 @@ function cancelTool() {
   filter: drop-shadow(0 0 4px currentColor);
 }
 
+.nge-smo-result-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .nge-smo-result-text {
-  max-width: 420px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
+.nge-smo-result-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.nge-smo-result-ask {
+  pointer-events: auto;
+  background: rgba(120, 170, 255, 0.12);
+  border: 1px solid rgba(120, 170, 255, 0.45);
+  border-radius: 8px;
+  color: #cfe2ff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.nge-smo-result-ask:hover { background: rgba(120, 170, 255, 0.24); }
 
 .nge-smo-result-retry {
   font-size: 12px;

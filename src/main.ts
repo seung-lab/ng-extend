@@ -634,7 +634,7 @@ function observeSplitMergeTools() {
       lastStatusTime = Date.now();
 
       if (lower.includes('failed') || lower.includes('error')) {
-        store.showResult('error', cleanText, 6000);
+        store.showResult('error', cleanText, 12000);  // long enough to read, or ask the guide
         store.submitting = false;
       } else if (lower.includes('splitting') || lower.includes('finding split')) {
         // Neuroglancer shows "Splitting source from sink..." during processing —
