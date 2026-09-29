@@ -1,0 +1,47 @@
+name: Sheet Status Sync
+
+# Hourly: cells people claim or finish directly in a dataset's Google Sheet
+# stop showing as Available in EyeWire II (scripts/sync-sheet-cells.mjs
+# --statuses). Only tasks still Available change; EyeWire claims win. New
+# cells are still imported nightly by sheet-cells-sync.yml.
+#
+# Must also exist on main (with a [skip ci] commit) for the cron to fire.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report what would change without writing
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sheet-cells-sync
+  cancel-in-progress: false
+
+jobs:
+  statuses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Carry sheet progress onto Available tasks
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--statuses)
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          node scripts/sync-sheet-cells.mjs "${args[@]}"
