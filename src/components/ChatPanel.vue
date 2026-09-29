@@ -947,6 +947,12 @@ function toggleCollapse() {
    visible message is a tight, solid dark pill hugging its text, stacked with
    even gaps, a thin accent on the left, no timestamps, no ghost header. */
 .nge-chat-float--quiet .nge-chat-messages-inner { gap: 4px; }
+/* A pill that does not fit fades out at the top instead of being cut through
+   the middle of a line (Amy 2026-09-29). */
+.nge-chat-float--quiet .nge-chat-messages {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, rgba(0, 0, 0, 0.35) 18px, #000 48px);
+  mask-image: linear-gradient(to bottom, transparent 0, rgba(0, 0, 0, 0.35) 18px, #000 48px);
+}
 .nge-chat-float--quiet .nge-chat-msg.nge-chat-recent,
 .nge-chat-float--quiet .nge-chat-fresh {
   align-self: flex-start;

@@ -1013,6 +1013,19 @@ function selectInputContents(e: Event) {
 
 // ── Create help request (always-visible quick-add at top of the Help list) ──
 const newHelpSegId = ref('');
+/** Link to the requester's view (Amy 2026-09-29: the field is the view link,
+ *  not a segment ID). Filled from the current view when the form opens;
+ *  "Save link" refreshes it. The cell comes from the viewer selection. */
+const newHelpLink = ref('');
+const newHelpLinkMinting = ref(false);
+async function saveHelpLink() {
+  newHelpLinkMinting.value = true;
+  try {
+    const link = await mintShortStateLink();
+    if (link) { newHelpLink.value = link; newHelpError.value = ''; }
+    else newHelpError.value = 'Could not make a link of this view. Sign in, or paste one.';
+  } finally { newHelpLinkMinting.value = false; }
+}
 const newHelpIssue = ref('Unsure');
 const newHelpNote = ref('');
 const newHelpScreenshotUrl = ref('');
@@ -1033,8 +1046,8 @@ const helpFormOpen = ref(localStorage.getItem(HELP_FORM_KEY) === '1');
 function toggleHelpForm() {
   helpFormOpen.value = !helpFormOpen.value;
   try { localStorage.setItem(HELP_FORM_KEY, helpFormOpen.value ? '1' : '0'); } catch { /* ignore */ }
-  // Prefill from the current selection when opening, matching the old behaviour.
-  if (helpFormOpen.value && !newHelpSegId.value.trim()) newHelpSegId.value = getActiveSegId();
+  // Prefill the view link when opening.
+  if (helpFormOpen.value && !newHelpLink.value.trim()) void saveHelpLink();
 }
 /** Annotation layer attached to the INITIAL request (mirrors the reply form). */
 const newHelpAnnotationLayer = ref('');
@@ -1043,8 +1056,8 @@ const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branc
 // Pre-fill the segment ID from the current viewer selection when the Help tab
 // opens, so the common case is one click. The user can still edit/paste any ID.
 watch(() => filter.value, (f) => {
-  if (f === 'help' && !newHelpSegId.value.trim()) newHelpSegId.value = getActiveSegId();
-}, { immediate: true });
+  if (f === 'help' && helpFormOpen.value && !newHelpLink.value.trim()) void saveHelpLink();
+});
 
 function onHelpScreenshotAttached(payload: { url: string }) {
   newHelpScreenshotUrl.value = payload.url;
@@ -1081,19 +1094,24 @@ function getCurrentDatasetName(): string {
 }
 
 async function submitNewHelp() {
-  // Prefer a typed/pasted ID; fall back to the current viewer selection.
-  const segId = (newHelpSegId.value.trim() || getActiveSegId()).trim();
-  if (!/^\d{6,}$/.test(segId)) {
-    newHelpError.value = 'Enter a valid segment ID (or select a segment in the viewer).';
+  // The cell is whatever is selected in the viewer; the link is the view.
+  // Either one is enough to find the problem (Amy 2026-09-29).
+  const selected = (newHelpSegId.value.trim() || getActiveSegId()).trim();
+  const segId = /^\d{6,}$/.test(selected) ? selected : '';
+  const link = newHelpLink.value.trim();
+  if (link && !/^https:\/\/[^\s"'<>]+$/i.test(link)) {
+    newHelpError.value = 'The link must be a single https link.';
+    return;
+  }
+  if (!segId && !link) {
+    newHelpError.value = 'Select the cell in the viewer, or save a link to your view.';
     return;
   }
   newHelpError.value = '';
-  // Only attach the viewer position when the request is for the selected
-  // segment — a hand-typed ID isn't at the current crosshair.
-  const isSelected = segId === getActiveSegId();
   await helpStore.add({
     segId,
-    position: isSelected ? getViewerPosition() : [],
+    viewUrl: link || undefined,
+    position: segId ? getViewerPosition() : [],
     note: newHelpNote.value.trim(),
     issueType: newHelpIssue.value,
     dataset: getCurrentDatasetName(),
@@ -1104,6 +1122,7 @@ async function submitNewHelp() {
   });
   helpStore.refreshPending();
   newHelpSegId.value = '';
+  newHelpLink.value = '';
   newHelpNote.value = '';
   newHelpIssue.value = 'Unsure';
   newHelpScreenshotUrl.value = '';
@@ -1964,18 +1983,18 @@ const panelStyle = computed(() => ({
             </div>
             <div class="nge-cl-help-quickadd-row">
               <input
-                v-model="newHelpSegId"
+                v-model="newHelpLink"
                 class="nge-cl-help-segid-input"
-                placeholder="Segment ID"
-                inputmode="numeric"
+                placeholder="Link to your view (https://…)"
                 @keydown.stop @keyup.stop @keypress.stop
                 @input="newHelpError = ''"
               />
               <button
                 class="nge-cl-help-segid-use"
-                @click="newHelpSegId = getActiveSegId(); newHelpError = ''"
-                title="Use the segment currently selected in the viewer"
-              >Use selected</button>
+                :disabled="newHelpLinkMinting"
+                @click="saveHelpLink"
+                title="Save a link to exactly what you are looking at now"
+              >{{ newHelpLinkMinting ? 'Saving…' : 'Save link' }}</button>
               <select
                 v-model="newHelpIssue"
                 class="nge-cl-help-issue-select"
