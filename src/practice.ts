@@ -630,6 +630,17 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   session.phase = 'claiming';
   pausePracticeTools();
   const exclude = Object.values(session.held).map(ex => ex.id);
+  // Never hand out a cell registered wrong (Celia's Test cell holds segment
+  // ids where supervoxels belong, so nothing can tell when it is merged).
+  try {
+    const { data } = await supabase.from('tutorial_practice_examples')
+      .select('id,supervoxel_a,supervoxel_b').eq('enabled', true).eq('kind', kind);
+    for (const r of (data ?? []) as any[]) {
+      const bad = [r.supervoxel_a, r.supervoxel_b].some((sv: string) => sv && pcgLayer(sv) !== 1)
+        || (r.supervoxel_a && r.supervoxel_a === r.supervoxel_b);
+      if (bad && !exclude.includes(r.id)) exclude.push(r.id);
+    }
+  } catch { /* the claim still runs */ }
   let row: PracticeExample | null;
   try { row = await practiceAction('claim', { kind, exclude }); }
   catch (error: any) { console.warn('[practice] claim failed:', error.message); practiceUnavailable(); return null; }
