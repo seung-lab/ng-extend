@@ -942,11 +942,18 @@ function toggleCollapse() {
 .nge-chat-float--quiet .nge-chat-time-sep,
 .nge-chat-float--quiet .nge-chat-history-top { opacity: 0; transition: opacity 1.4s ease; }
 .nge-chat-float--quiet .nge-chat-msg:hover { background: none; }
-/* Softer than vanishing: the latest messages stay, dimmed, readable on EM. */
-.nge-chat-float--quiet .nge-chat-msg.nge-chat-recent:not(.nge-chat-fresh) {
-  opacity: 0.6;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.7);
+/* Softer than vanishing: the latest messages stay readable on EM. A shadow
+   alone lost to busy membranes (Amy 2026-09-28), so each visible line sits
+   on its own dark, slightly blurred strip; the rest of the panel stays clear. */
+.nge-chat-float--quiet .nge-chat-msg.nge-chat-recent,
+.nge-chat-float--quiet .nge-chat-fresh {
+  background: rgba(4, 8, 16, 0.62);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  border-radius: 6px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
+.nge-chat-float--quiet .nge-chat-msg.nge-chat-recent:not(.nge-chat-fresh) { opacity: 0.9; }
 .nge-chat-float--quiet .nge-chat-fresh { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.7); }
 .nge-chat-float--quiet .nge-chat-input-wrap {
   pointer-events: auto;
