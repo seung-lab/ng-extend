@@ -304,7 +304,10 @@ export class MultipleScaleBarTextures extends RefCounted {
 
     const {gl, scaleBarCopyHelper} = this;
 
-    let bottomPixelOffset = options.bottomPixelOffset * options.scaleFactor;
+    // EyeWire II (Amy 2026-09-29): bottom-RIGHT, not bottom-left. The chat
+    // panel and the coordinate chips live in the bottom-left corner and
+    // covered the bar. Raised a little to clear the 3D panel's "Sections" box.
+    let bottomPixelOffset = (options.bottomPixelOffset + 22) * options.scaleFactor;
     for (let barIndex = numScaleBars - 1; barIndex >= 0; --barIndex) {
       const scaleBar = scaleBars[barIndex];
       if (numScaleBars === 1) {
@@ -314,8 +317,8 @@ export class MultipleScaleBarTextures extends RefCounted {
       }
       scaleBar.update(options);
       gl.viewport(
-          options.leftPixelOffset * options.scaleFactor -
-              viewport.visibleLeftFraction * viewport.logicalWidth,
+          (1 - viewport.visibleLeftFraction) * viewport.logicalWidth -
+              options.leftPixelOffset * options.scaleFactor - scaleBar.width,
           bottomPixelOffset -
               (1 - (viewport.visibleTopFraction + viewport.visibleHeightFraction)) *
                   viewport.logicalHeight,
