@@ -5194,6 +5194,37 @@ export const useChatStore = defineStore('chat', () => {
     return { type: 'message', name: r.name, rank: 'bot', time: formatTime(at), dateTime: at,
       parts: [{ type: 'sender', text: r.name }, { type: 'text', text: r.text }], botLanguage: r.language };
   }
+  // ── Nurro's daily leaders (Ames 2026-09-29) ──
+  // Once a day, the first time you open chat, Nurro posts the last 24 hours'
+  // top editors and top cell completers (the leaderboard's 24H numbers,
+  // queried directly so a new player's big day isn't cut by the top 50 list).
+  // Local like the other bot lines: it isn't written to the database.
+  const DAILY_LEADERS_KEY = 'nge-chat-daily-leaders';
+  async function announceDailyLeaders() {
+    const today = new Date().toLocaleDateString('en-CA');       // local YYYY-MM-DD
+    try { if (localStorage.getItem(DAILY_LEADERS_KEY) === today) return; } catch { /* private mode */ }
+    try {
+      const top = (col: 'edits_24h' | 'completions_24h') => supabase.from('user_edit_counts')
+        .select(`display_name,${col}`).gt(col, 0).order(col, { ascending: false }).limit(3);
+      const [e, c] = await Promise.all([top('edits_24h'), top('completions_24h')]);
+      if (e.error && c.error) return;
+      const list = (rows: any[] | null, col: string) => (rows || []).map(r => `${r.display_name} (${r[col]})`).join(', ');
+      const parts: string[] = [];
+      if (e.data?.length) parts.push(`Most edits: ${list(e.data, 'edits_24h')}.`);
+      if (c.data?.length) parts.push(`Most cells completed: ${list(c.data, 'completions_24h')}.`);
+      const text = parts.length
+        ? `☀️ Today's leaders, last 24 hours. ${parts.join(' ')} Nice work, everyone!`
+        : `☀️ No edits in the last 24 hours yet. The top spot is wide open!`;
+      const at = new Date();
+      addTimeSeparatorIfNeeded(at);
+      chatMessages.value.push({ type: 'message', name: NURRO_NAME, rank: 'bot', time: formatTime(at), dateTime: at,
+        parts: [{ type: 'sender', text: NURRO_NAME }, { type: 'text', text }] });
+      try { localStorage.setItem(DAILY_LEADERS_KEY, today); } catch { /* private mode */ }
+    } catch (err) {
+      console.warn('[chat] daily leaders failed:', err);
+    }
+  }
+
   /** Nurro's "!online name": online now, else last chat message and last
    *  edit. Presence rows are deleted on leave, so they can't say "last seen". */
   async function answerOnline(handle: string) {
@@ -5409,6 +5440,7 @@ export const useChatStore = defineStore('chat', () => {
     connecting = true;
     // Show the recent conversation before we announce the join / go live.
     await loadRecentMessages();
+    void announceDailyLeaders();
 
     // Only database rows written by the verified backend reach the chat UI.
     // Public broadcast events are never treated as authenticated messages.
