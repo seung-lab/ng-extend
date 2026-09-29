@@ -23,6 +23,10 @@ const columns = {
   chat_messages: 'id,user_id,name,rank,text,created_at,dataset,notification_id',
   // Emoji reactions on chat messages. Public, like the messages themselves.
   chat_reactions: 'id,message_id,user_id,name,emoji,created_at',
+  // A player's own app settings (toolbar, mutes, dataset start views), so
+  // they follow the account across computers. Private: owner only, even for
+  // admins.
+  user_settings: 'user_id,settings,updated_at',
 };
 const writable = {
   users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date',
@@ -35,6 +39,7 @@ const writable = {
   site_issues: 'category,message,url,dataset,screenshot_url,console_log',
   chat_messages: 'text,dataset,notification_id',
   chat_reactions: 'message_id,emoji',
+  user_settings: 'settings,updated_at',
 };
 function authorizeData(input, ctx) {
   const {table} = input;
@@ -80,7 +85,7 @@ function authorizeData(input, ctx) {
       admin();
     } else if (table === 'site_issues' && !ctx.isAdmin) {
       scope('user_id.eq.'+own());
-    } else if (table === 'notification_reads') {
+    } else if (table === 'notification_reads' || table === 'user_settings') {
       scope('user_id.eq.'+own());
     } else if (table === 'notifications' && !ctx.isAdmin) {
       const targets = ['target_type.eq.all'];
@@ -125,8 +130,10 @@ function authorizeData(input, ctx) {
     if (method === 'DELETE') fail(403, 'Profile deletion is not supported here.');
     if (method !== 'POST') scope('id.eq.'+own());
     else if (!ctx.who?.email) fail(401, 'Verified identity required.');
-  } else if (table === 'working_links' || table === 'notification_reads') scope('user_id.eq.'+own());
+  } else if (table === 'working_links' || table === 'notification_reads' || table === 'user_settings') scope('user_id.eq.'+own());
+  if (table === 'user_settings' && method === 'DELETE') fail(405, 'Settings are replaced, not deleted.');
   const validConflict = (table === 'notification_reads' && query.get('on_conflict') === 'notification_id,user_id') ||
+    (table === 'user_settings' && query.get('on_conflict') === 'user_id') ||
     (table === 'chat_presence' && query.get('on_conflict') === 'user_id') ||
     (table === 'user_group_members' && ctx.isAdmin && query.get('on_conflict') === 'group_id,user_id');
   if (query.has('on_conflict') && !validConflict) fail(400, 'Unsupported conflict target');
@@ -147,7 +154,13 @@ function authorizeData(input, ctx) {
         if (field in row && (!Number.isSafeInteger(row[field]) || row[field]<0 || row[field]>1000000000)) fail(400,'Invalid counter');
       }
     }
-    if (['working_links','notification_reads'].includes(table)) row.user_id = own();
+    if (['working_links','notification_reads','user_settings'].includes(table)) row.user_id = own();
+    if (table === 'user_settings') {
+      const s = row.settings;
+      if (!s || typeof s !== 'object' || Array.isArray(s)) fail(400, 'Settings must be an object.');
+      if (JSON.stringify(s).length > 32 * 1024) fail(413, 'Settings are too large.');
+      row.updated_at = ctx.now;
+    }
     if (table === 'site_issues') {
       row.user_id=own(); row.user_name=me.display_name || 'Player';
       if (row.console_log != null && (typeof row.console_log !== 'string' || row.console_log.length > 40000)) fail(400, 'Console log too large.');

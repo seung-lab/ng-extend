@@ -4,7 +4,7 @@ import { taskAction } from './pilot_actions';
 import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
 import { secureWrite } from './secure_write';
-import {Ref, ref, reactive, computed} from 'vue';
+import {Ref, ref, reactive, computed, watch} from 'vue';
 import {defineStore} from 'pinia';
 
 import {Viewer} from 'neuroglancer/viewer';
@@ -917,9 +917,59 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   function save(partial: Partial<UserPreferences>) {
     Object.assign(prefs.value, partial);
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+    pushToAccount();
+  }
+
+  // ── Follow the account across computers ──────────────────────────────────
+  // These settings are also kept in Supabase user_settings (one private row
+  // per player, owner only, through ewCommunityData). Flag and bio are not
+  // here: they live on the public profile row. localStorage stays the fast
+  // local copy, so the app works before sign in and if Supabase is down.
+  const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway',
+    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews'];
+  const syncedPart = (src: any) => {
+    const out: Record<string, unknown> = {};
+    for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
+    return out;
+  };
+  let pulledFor = '';
+  let pushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function pushToAccount() {
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(async () => {
+      // Not before the account copy has been read: a fresh browser would
+      // otherwise overwrite the account's settings with its defaults.
+      if (!pulledFor) return;
+      try {
+        const { error } = await supabase.from('user_settings')
+          .upsert({ settings: syncedPart(prefs.value) }, { onConflict: 'user_id' });
+        if (error) console.warn('[prefs] could not save settings to your account:', error.message);
+      } catch (e) { console.warn('[prefs] could not save settings to your account:', e); }
+    }, 800);
+  }
+
+  async function pullFromAccount(userId: string) {
+    if (!userId || pulledFor === userId) return;
+    try {
+      const { data, error } = await supabase.from('user_settings').select('settings').maybeSingle();
+      if (error) { console.warn('[prefs] could not read your saved settings:', error.message); return; }
+      pulledFor = userId;
+      const remote = (data as any)?.settings;
+      if (remote && typeof remote === 'object') {
+        Object.assign(prefs.value, syncedPart(remote));
+        localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+      } else {
+        pushToAccount(); // first sign in since this shipped: keep this browser's choices
+      }
+    } catch (e) { console.warn('[prefs] could not read your saved settings:', e); }
   }
 
   load(); // hydrate from localStorage on store init
+  // Once signed in, the account's copy wins over this browser's.
+  // Deferred a tick: the backend store may itself read these prefs while it
+  // is being set up, and two stores creating each other would recurse.
+  setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) pullFromAccount(String(id)); }, { immediate: true }), 0);
   return { prefs, save };
 });
 

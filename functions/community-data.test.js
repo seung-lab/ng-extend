@@ -110,3 +110,16 @@ test('site issues can carry a console log, within a size limit',()=>{
  assert.throws(()=>plan('site_issues','POST','',{category:'bug',message:'m',console_log:'x'.repeat(40001)}),/too large/);
  assert.throws(()=>plan('site_issues','POST','',{category:'bug',message:'m',console_log:{a:1}}),/too large/);
 });
+test('user settings are owner only, bounded, and upsert on user_id',()=>{
+ const r=plan('user_settings','GET',`user_id=eq.${b}`);
+ assert.equal(r.query.get('and'),`(user_id.eq.${a})`);
+ assert.throws(()=>plan('user_settings','GET','',undefined,anon),/Sign in/);
+ const w=plan('user_settings','POST','on_conflict=user_id',{user_id:b,settings:{chatMuted:true},evil:1});
+ assert.equal(w.body.user_id,a);
+ assert.deepEqual(w.body.settings,{chatMuted:true});
+ assert.equal(w.body.evil,undefined);
+ assert.throws(()=>plan('user_settings','POST','on_conflict=user_id',{settings:'x'}),/object/);
+ assert.throws(()=>plan('user_settings','POST','on_conflict=user_id',{settings:{big:'x'.repeat(40000)}}),/too large/);
+ assert.throws(()=>plan('user_settings','DELETE',''),/replaced/);
+ assert.throws(()=>plan('user_settings','POST','on_conflict=id',{settings:{}}),/conflict/);
+});
