@@ -1872,7 +1872,7 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-tabgroup-head">
               <span class="nge-cl-tabgroup-label">Cells</span>
               <a v-if="datasetInstructionsUrl" class="nge-cl-howto" :href="datasetInstructionsUrl" target="_blank" rel="noopener"
-                 title="How to proofread cells in this dataset (opens in a new tab)">📘 Instructions ↗</a>
+                 title="How to proofread cells in this dataset (opens in a new tab)">instructions</a>
             </div>
             <div class="nge-cl-tabgroup-row">
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
@@ -3771,12 +3771,8 @@ select.nge-cl-response-input:hover {
 .nge-cl-tabgroup-label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--grp); opacity: 0.85; }
 .nge-cl-tabgroup-row { display: flex; gap: 4px; flex-wrap: wrap; }
 .nge-cl-tabgroup-head { display: flex; align-items: baseline; gap: 10px; }
-.nge-cl-howto {
-  font-size: 11.5px; font-weight: 600; color: #7ecaff; text-decoration: none;
-  padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(126, 202, 255, 0.35);
-  background: rgba(126, 202, 255, 0.08);
-}
-.nge-cl-howto:hover { color: #fff; border-color: rgba(126, 202, 255, 0.7); }
+.nge-cl-howto { font-size: 11px; color: #7ecaff; text-decoration: none; }
+.nge-cl-howto:hover { color: #b8e2ff; text-decoration: underline; }
 .nge-cl-tabgroup--cells { --grp: #42d5ec; }
 .nge-cl-tabgroup--community { --grp: #e6c760; }
 .nge-cl-tabgroup--mine { --grp: #c98bff; }
