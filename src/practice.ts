@@ -455,17 +455,25 @@ export async function joinWaitlist(kind: PracticeKind, onReady: (ex: PracticeExa
  */
 export async function practiceAvailability(kind: PracticeKind): Promise<{ registered: number; free: number; heldByOthers: number }> {
   const uid = userId();
-  const { data, error } = await supabase.from('tutorial_practice_examples')
-    .select('status,claimed_by,expires_at,last_error,updated_at').eq('enabled', true).eq('kind', kind);
-  if (error || !data) { console.warn('[practice] availability check failed:', error?.message); return { registered: 0, free: 0, heldByOthers: 0 }; }
+  const { data: all, error } = await supabase.from('tutorial_practice_examples')
+    .select('kind,status,claimed_by,expires_at,last_error,updated_at,supervoxel_a,supervoxel_b').eq('enabled', true);
+  if (error || !all) { console.warn('[practice] availability check failed:', error?.message); return { registered: 0, free: 0, heldByOthers: 0 }; }
   const now = Date.now();
   const live = (r: any) => r.status === 'in_use' && (!r.expires_at || Date.parse(r.expires_at) > now);
+  const data = all.filter((r: any) => r.kind === kind);
+  // Cells of the other tutorial on the same neuron: a reset of one undoes
+  // edits on the other, so someone in the Cut tutorial holds the Merge
+  // tutorial too, and the other way round (both use one neuron, 2026-09-29).
+  const pieces = new Set(data.flatMap((r: any) => [r.supervoxel_a, r.supervoxel_b]).filter(Boolean));
+  const neighbourHeld = all.filter((r: any) => r.kind !== kind && live(r) && r.claimed_by !== uid
+    && [r.supervoxel_a, r.supervoxel_b].some((sv: string) => sv && pieces.has(sv))).length;
   const usable = data.filter((r: any) => r.status === 'ready' || r.status === 'in_use' || r.status === 'resetting'
     // A reset still pending (the job runs every 10 minutes), not a failed one.
     || (r.status === 'needs_reset' && !r.last_error && Date.parse(r.updated_at) > now - 15 * 60 * 1000));
   const free = usable.filter((r: any) => r.status === 'ready' || (r.status === 'in_use' && (r.claimed_by === uid || !live(r)))).length;
-  const heldByOthers = usable.filter((r: any) => live(r) && r.claimed_by !== uid).length;
-  return { registered: usable.length, free, heldByOthers };
+  const heldByOthers = usable.filter((r: any) => live(r) && r.claimed_by !== uid).length + neighbourHeld;
+  // While the neighbour is held, nothing here counts as free.
+  return { registered: usable.length, free: neighbourHeld ? 0 : free, heldByOthers };
 }
 
 /** Cells a tutorial needs before it starts: both of its practice cells when
