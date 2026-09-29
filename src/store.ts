@@ -25,6 +25,7 @@ import scytheVtkUrl from '../static/tags/scythe.vtk';
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 import {Uint64} from "neuroglancer/util/uint64";
 import {setStatedColor} from "./widgets/widget_utils";
+import {mintShortStateLink} from "./util/state_link";
 
 declare const CONFIG: Config|undefined;
 declare const DEFAULT_SETTINGS: {  [key: string]: any }
@@ -1195,6 +1196,8 @@ export interface HelpRequest {
   resolvedByName?: string;
   /** Public URL of an attached screenshot (Firebase Storage). */
   screenshotUrl?: string;
+  /** Short link to the requester's view when they asked (Amy 2026-09-29). */
+  viewUrl?: string;
   /** Thread of replies from the help_responses child table. Each reply keeps its
    *  OWN url / annotation layer / screenshot, so links accumulate instead of
    *  overwriting (the legacy response_* columns overwrote on every reply). */
@@ -1245,6 +1248,7 @@ function rowToHelpRequest(row: any): HelpRequest {
     resolvedByName: row.resolved_by_name ?? undefined,
     screenshotUrl: row.screenshot_url ?? undefined,
     annotationLayer: row.annotation_layer ?? undefined,
+    viewUrl: row.view_url ?? undefined,
   };
 }
 
@@ -1407,7 +1411,9 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   /** Add a new help request to Supabase. */
   async function add(req: Omit<HelpRequest, 'id' | 'createdAt' | 'resolved'>) {
     const backend = useProofreadingBackendStore();
-    const row = {
+    // The requester's view, so helpers see exactly what they saw.
+    const viewUrl = req.viewUrl ?? await mintShortStateLink().catch(() => null) ?? undefined;
+    const row: Record<string, unknown> = {
       user_id: backend.userId || null,
       user_name: backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous',
       segment_id: req.segId,
@@ -1421,12 +1427,19 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       // Column added by supabase-help-responses-schema.sql.
       annotation_layer: req.annotationLayer || null,
     };
+    if (viewUrl) row.view_url = viewUrl;
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('help_requests')
       .insert(row)
       .select()
       .single();
+    // Before supabase-help-view-url.sql runs the column does not exist: send
+    // the request without the link rather than failing it.
+    if (error && row.view_url && /view_url|column/i.test(error.message)) {
+      delete row.view_url;
+      ({ data, error } = await supabase.from('help_requests').insert(row).select().single());
+    }
 
     if (error) {
       console.warn('[helpRequests] insert error:', error.message);

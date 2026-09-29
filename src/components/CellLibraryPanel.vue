@@ -2092,6 +2092,8 @@ const panelStyle = computed(() => ({
                         <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
                       </div>
                       <div v-if="req.note" class="nge-cl-help-note" :class="{ 'nge-cl-help-note--expanded': expandedNotes.has(req.id) }" @click="toggleNoteExpand(req.id)">{{ req.note }}</div>
+                      <a v-if="req.viewUrl" class="nge-cl-response-link" href="#" @click.prevent="openResponseUrl(req.viewUrl)"
+                         title="Load the view they were looking at">↗ Open their view</a>
                       <a v-if="req.screenshotUrl" :href="req.screenshotUrl" target="_blank" rel="noopener"
                          class="nge-cl-help-shot-thumb" :title="'Open full screenshot'">
                         <img :src="req.screenshotUrl" alt="Help screenshot" />
