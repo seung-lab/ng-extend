@@ -18,7 +18,7 @@
 import { useProofreadingBackendStore, useProofreadingQueueStore, type QueueItem, type ProofreadingTask } from '../store';
 import { getDatasetCaveConfig } from '../config';
 import { currentDatasetTag } from '../datasets';
-import { ancestorAmong } from '../widgets/pcg_service';
+import { ancestorAmong, getRootFromSupervoxel } from '../widgets/pcg_service';
 import { mintShortStateLink } from './state_link';
 import { syncCellToSheet } from '../sheet_sync';
 
@@ -30,6 +30,9 @@ export interface MenuCompletionPlan {
   task?: ProofreadingTask;
   dataset: string;
   segId: string;
+  /** MEC: the menu was opened on a cell's NUCLEUS (its own segment there).
+   *  This is the cell around it, which is what gets marked complete. */
+  cellRoot?: string;
 }
 
 function viewerPoint(): [number, number, number] {
@@ -89,6 +92,15 @@ async function planFromTasks(plan: MenuCompletionPlan) {
   await backend.loadTasks(plan.dataset);
   const tasks = backend.tasks.filter(t => t.segment_id && /^\d+$/.test(t.segment_id));
   let task = tasks.find(t => t.segment_id === plan.segId || t.final_segment_id === plan.segId);
+  // Crosshairs in the nucleus (Ames 2026-09-29): complete the cell around it,
+  // at its current root (the stored supervoxel follows it through edits).
+  const byNucleus = !task && tasks.find(t => t.final_nucleus_id === plan.segId);
+  if (byNucleus) {
+    task = byNucleus;
+    const root = byNucleus.supervoxel_id ? await getRootFromSupervoxel(String(byNucleus.supervoxel_id)).catch(() => null) : null;
+    plan.cellRoot = root || byNucleus.segment_id;
+    plan.segId = plan.cellRoot;
+  }
   if (!task && tasks.length) {
     const hit = await ancestorAmong(plan.segId, tasks.map(t => t.segment_id));
     if (hit) task = tasks.find(t => t.segment_id === hit);

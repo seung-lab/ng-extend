@@ -305,8 +305,9 @@ export class ButtonService {
         toggleBtn.disabled = false;
         return;
       }
+      // plan.cellRoot: opened on a MEC nucleus, so the cell around it is marked.
       const ok = await setCellComplete(
-          localServerURL, segmentIDString, willBeComplete, cachedStatus?.annotationId);
+          localServerURL, plan?.cellRoot ?? segmentIDString, willBeComplete, plan?.cellRoot ? undefined : cachedStatus?.annotationId);
       if (ok) {
         statusLine.textContent = willBeComplete ? '✓ Proofread' : '○ In Progress';
         toggleBtn.textContent = willBeComplete ? 'Unmark Proofread' : 'Mark as Proofread';

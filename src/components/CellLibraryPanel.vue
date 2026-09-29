@@ -162,6 +162,9 @@ function copyId(id: string) {
  *  cell with that dataset. Each dataset keeps its own sheet (config
  *  `cellLibrarySheetUrl`); we only (re)load when the active dataset's sheet
  *  isn't already the one in the queue. */
+/** The active dataset's proofreading instructions, if it has any (MEC). */
+const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset.value).instructionsUrl || '');
+
 async function loadCellsForActiveDataset() {
   const dsName = getCurrentDatasetName();
   activeDataset.value = dsName;
@@ -265,6 +268,7 @@ const cells = computed(() => {
         claimPoint: task ? taskClaimPoint(task) : null,
         startLink: item.startLink || '',
         svId: task?.supervoxel_id ?? null,
+        nucleusId: task?.final_nucleus_id ?? null,
       };
     });
 
@@ -287,6 +291,7 @@ const cells = computed(() => {
         claimPoint: taskClaimPoint(t),
         startLink: '',
         svId: t.supervoxel_id ?? null,
+        nucleusId: t.final_nucleus_id ?? null,
       }));
 
     return [...sheetCells, ...extraTasks];
@@ -309,6 +314,7 @@ const cells = computed(() => {
     claimPoint: taskClaimPoint(t),
     startLink: '',
     svId: t.supervoxel_id ?? null,
+    nucleusId: t.final_nucleus_id ?? null,
   }));
 });
 
@@ -443,19 +449,23 @@ async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
 async function switchToClaim(cell: CellRow) {
   // Already working on this claim: its layers are loaded, so just move the
   // camera. Reloading its saved view would drop anything done since the save.
-  if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords);
+  if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId);
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords);
+  if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId);
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
 }
 
 // ── Actions ──────────────────────────────────────────────────────────
-function jumpToCell(segId: string, coords: string) {
+function jumpToCell(segId: string, coords: string, nucleusId?: string | null) {
   const pos = parseCoords(coords);
   history.jumpToCell(segId, pos[0] || pos[1] || pos[2] ? pos : undefined);
   jumpedSegId.value = segId;
+  // MEC: the nucleus is its own segment; show it too so the soma isn't hollow.
+  if (nucleusId && nucleusId !== segId) setTimeout(() => {
+    try { currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments?.add(Uint64.parseString(nucleusId)); } catch { /* layer not ready */ }
+  }, 400);
 }
 
 function parseCoords(s: string): [number, number, number] {
@@ -626,6 +636,16 @@ async function runCrosshairCheck(cell: CellRow) {
     c.message = at.problem || 'Could not check the crosshairs.';
   } else {
     const expected = cell.svId ? await getRootFromSupervoxel(String(cell.svId)) : null;
+    // MEC: crosshairs in the nucleus (its own segment there) mean this cell.
+    // Record the cell around it, at its current root (Ames 2026-09-29).
+    if (cell.nucleusId && at.root === cell.nucleusId) {
+      const cellRoot = expected || cell.segId;
+      c.check = { ...at, root: cellRoot };
+      c.ok = true;
+      c.message = `The crosshairs are in this cell's nucleus. The cell around it (${shortId(cellRoot)}) is recorded as the Final SegID.`;
+      c.checking = false;
+      return;
+    }
     const known = [expected, cell.segId, cell.finalSegId].filter(Boolean) as string[];
     // Edits give the cell a new root id; its edit history still leads back to
     // the claim's Start SegID, so ask CAVE (Amy 2026-09-28).
@@ -1849,7 +1869,11 @@ const panelStyle = computed(() => ({
              yours (violet). AI and Completed live in the gear picker. -->
         <div class="nge-cl-filters nge-cl-filters--grouped">
           <div class="nge-cl-tabgroup nge-cl-tabgroup--cells">
-            <span class="nge-cl-tabgroup-label">Cells</span>
+            <div class="nge-cl-tabgroup-head">
+              <span class="nge-cl-tabgroup-label">Cells</span>
+              <a v-if="datasetInstructionsUrl" class="nge-cl-howto" :href="datasetInstructionsUrl" target="_blank" rel="noopener"
+                 title="How to proofread cells in this dataset (opens in a new tab)">📘 Instructions ↗</a>
+            </div>
             <div class="nge-cl-tabgroup-row">
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
                       title="Cells you have claimed, and cells you completed">
@@ -2640,7 +2664,7 @@ const panelStyle = computed(() => ({
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
                 :class="{ 'nge-cl-btn--jump-active': cell.segId === jumpedSegId }"
-                @click="isMyClaim(cell) ? switchToClaim(cell) : jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords)"
+                @click="isMyClaim(cell) ? switchToClaim(cell) : jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId)"
                 :title="cell.segId === jumpedSegId ? 'Currently viewing — jump again' : 'Jump to segment'"
               >↗</button>
 
@@ -3744,6 +3768,13 @@ select.nge-cl-response-input:hover {
 .nge-cl-tabgroup--cells { flex: 1 1 100%; }
 .nge-cl-tabgroup-label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--grp); opacity: 0.85; }
 .nge-cl-tabgroup-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.nge-cl-tabgroup-head { display: flex; align-items: baseline; gap: 10px; }
+.nge-cl-howto {
+  font-size: 11.5px; font-weight: 600; color: #7ecaff; text-decoration: none;
+  padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(126, 202, 255, 0.35);
+  background: rgba(126, 202, 255, 0.08);
+}
+.nge-cl-howto:hover { color: #fff; border-color: rgba(126, 202, 255, 0.7); }
 .nge-cl-tabgroup--cells { --grp: #42d5ec; }
 .nge-cl-tabgroup--community { --grp: #e6c760; }
 .nge-cl-tabgroup--mine { --grp: #c98bff; }

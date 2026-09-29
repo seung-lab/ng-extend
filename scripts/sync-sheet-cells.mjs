@@ -23,12 +23,14 @@
  *   SUPABASE_SERVICE_ROLE_KEY
  *
  * Usage:
- *   node scripts/sync-sheet-cells.mjs [--dry-run] [--dataset <name>] [--force]
+ *   node scripts/sync-sheet-cells.mjs [--dry-run] [--dataset <name>] [--force] [--refresh-nucleus]
  *
  * Flags:
  *   --dry-run   report what would be inserted, write nothing
  *   --dataset   only sync this dataset key
  *   --force     skip the "is it midnight in ET?" guard (for manual runs)
+ *   --refresh-nucleus  one-off for nucleus sheets (MEC): re-point tasks that
+ *               were imported as the nucleus to the cell around it
  */
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -45,6 +47,7 @@ const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : nu
 const dryRun = has('--dry-run');
 const force = has('--force');
 const onlyDataset = val('--dataset');
+const refreshNucleus = has('--refresh-nucleus');
 
 /**
  * Datasets that have a Cell Library sheet. Mirrors `cellLibrarySheetUrl` in
@@ -70,6 +73,10 @@ const SHEETS = [
     byPoint: {
       cloudpath: 'graphene://https://hc.himc-cave.com/segmentation/table/pni_mec',
       resolution: '16,16,45',
+      // The starting points sit inside nuclei, and MEC segments the nucleus
+      // separately from the cell body (Ames 2026-09-29). The task is the CELL
+      // around the nucleus; the nucleus is kept in final_nucleus_id.
+      nucleus: true,
     },
   },
 ];
@@ -199,9 +206,12 @@ async function existingPoints(dataset) {
 async function resolvePoints(byPoint, points) {
   const { spawnSync } = await import('node:child_process');
   const py = process.env.PYTHON || 'python3';
-  const r = spawnSync(py, [new URL('./resolve_points.py', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), byPoint.cloudpath, byPoint.resolution],
+  const args = [new URL('./resolve_points.py', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), byPoint.cloudpath, byPoint.resolution];
+  if (byPoint.nucleus) args.push('--nucleus');
+  const r = spawnSync(py, args,
     { input: JSON.stringify(points), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`resolve_points failed: ${(r.stderr || '').slice(-800)}`);
+  for (const line of (r.stderr || '').split('\n')) if (line.startsWith('[resolve]')) console.log(line);
   return JSON.parse(r.stdout);
 }
 
@@ -224,10 +234,12 @@ async function syncPointSheet(cfg) {
   fresh.forEach((c, i) => {
     const r = resolved[i];
     if (!r || r.root === '0') { empty++; console.log(`[cells] #${c.index} ${c.coords}: no cell at this point, skipped`); return; }
-    const notes = [c.index && `Sheet #${c.index}`, c.types.length && c.types.join(', '), c.ais && `AIS ${c.ais}`].filter(Boolean).join('. ');
+    const notes = [c.index && `Sheet #${c.index}`, c.types.length && c.types.join(', '), c.ais && `AIS ${c.ais}`,
+      cfg.byPoint.nucleus && !r.cell && 'Cell around the nucleus not found'].filter(Boolean).join('. ');
     toInsert.push({
       segment_id: r.root,
       supervoxel_id: r.sv,
+      final_nucleus_id: cfg.byPoint.nucleus ? (r.nucleus || null) : null,
       dataset: cfg.dataset,
       nucleus_coords: c.coords,
       claim_point_x: c.point[0], claim_point_y: c.point[1], claim_point_z: c.point[2],
@@ -244,6 +256,33 @@ async function syncPointSheet(cfg) {
   for (let i = 0; i < toInsert.length; i += 500) await insertTasks(toInsert.slice(i, i + 500));
   console.log(`[cells] inserted ${toInsert.length} new cell(s)`);
   return toInsert.length;
+}
+
+/** One-off: tasks imported as the nucleus itself get the cell around it. */
+async function refreshNucleusTasks(cfg) {
+  console.log(`\n[cells] === ${cfg.dataset}: re-point nucleus tasks to their cells ===`);
+  const url = `${SUPABASE_URL}/rest/v1/proofreading_tasks?select=id,segment_id,status,claim_point_x,claim_point_y,claim_point_z`
+    + `&dataset=eq.${encodeURIComponent(cfg.dataset)}&final_nucleus_id=is.null&claim_point_x=not.is.null&limit=5000`;
+  const res = await fetch(url, { headers: supabaseHeaders });
+  if (!res.ok) throw new Error(`read tasks ${res.status}: ${await res.text()}`);
+  const tasks = await res.json();
+  console.log(`[cells] tasks without a nucleus id: ${tasks.length}`);
+  if (!tasks.length) return 0;
+  const resolved = await resolvePoints(cfg.byPoint, tasks.map(t => [t.claim_point_x, t.claim_point_y, t.claim_point_z]));
+  let changed = 0, missed = 0;
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i], r = resolved[i];
+    if (!r || !r.cell) { missed++; console.log(`[cells] task ${t.id}: cell not found (${Math.round((r?.share || 0) * 100)}% of ring), left as is`); continue; }
+    const patch = { segment_id: r.cell, supervoxel_id: r.sv, final_nucleus_id: r.nucleus };
+    if (dryRun) { console.log(`[cells] DRY-RUN task ${t.id} (${t.status}): ${t.segment_id} -> cell ${r.cell}, nucleus ${r.nucleus}`); changed++; continue; }
+    const u = await fetch(`${SUPABASE_URL}/rest/v1/proofreading_tasks?id=eq.${t.id}`, {
+      method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch),
+    });
+    if (!u.ok) throw new Error(`update task ${t.id} ${u.status}: ${await u.text()}`);
+    changed++;
+  }
+  console.log(`[cells] ${dryRun ? 'would re-point' : 're-pointed'} ${changed} task(s); ${missed} left as is`);
+  return changed;
 }
 
 async function existingSegmentIds(dataset) {
@@ -325,7 +364,10 @@ async function syncSheet(cfg) {
   }
   let added = 0, failed = 0;
   for (const cfg of targets) {
-    try { added += await (cfg.byPoint ? syncPointSheet(cfg) : syncSheet(cfg)); }
+    try {
+      if (refreshNucleus) { if (cfg.byPoint?.nucleus) added += await refreshNucleusTasks(cfg); continue; }
+      added += await (cfg.byPoint ? syncPointSheet(cfg) : syncSheet(cfg));
+    }
     catch (e) { console.error(`[cells] ${cfg.dataset} failed:`, e.message); failed++; }
   }
   console.log(`\n[cells] done — ${added} added, ${failed} dataset(s) failed`);

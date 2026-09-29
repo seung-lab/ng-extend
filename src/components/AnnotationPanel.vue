@@ -147,11 +147,12 @@ async function toggleComplete() {
     savingComplete.value = false;
     return;
   }
+  // plan.cellRoot: this is a MEC nucleus, so the cell around it is marked.
   const ok = await setCellComplete(
     caveUrl.value,
-    activeSegId.value,
+    plan?.cellRoot ?? activeSegId.value,
     willBeComplete,
-    annotation.value.annotationId,
+    plan?.cellRoot ? undefined : annotation.value.annotationId,
   );
   if (ok) {
     annotStore.setAnnotation({

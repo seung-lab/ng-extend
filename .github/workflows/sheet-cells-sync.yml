@@ -13,6 +13,10 @@ on:
         description: Report new cells without writing
         type: boolean
         default: false
+      refresh_nucleus:
+        description: One-off, nucleus sheets (MEC) only - re-point tasks imported as the nucleus to the cell around it
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -21,7 +25,8 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A MEC run looks at a ring around each nucleus (~4 s a cell).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -36,7 +41,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install cloud-volume
-        run: pip install --quiet cloud-volume
+        run: pip install --quiet cloud-volume scipy
       - name: Import new cells without changing existing tasks
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -44,10 +49,12 @@ jobs:
           CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
           DATASET: ${{ inputs.dataset }}
           DRY_RUN: ${{ inputs.dry_run }}
+          REFRESH_NUCLEUS: ${{ inputs.refresh_nucleus }}
           EVENT: ${{ github.event_name }}
         run: |
           args=()
           if [ "$EVENT" = workflow_dispatch ]; then args+=(--force); fi
           if [ -n "$DATASET" ]; then args+=(--dataset "$DATASET"); fi
           if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          if [ "$REFRESH_NUCLEUS" = true ]; then args+=(--refresh-nucleus); fi
           node scripts/sync-sheet-cells.mjs "${args[@]}"
