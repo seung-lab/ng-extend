@@ -447,22 +447,32 @@ export async function joinWaitlist(kind: PracticeKind, onReady: (ex: PracticeExa
 
 /** How many cells of a kind exist, and how many could be claimed right now
  *  (ready, or held by this learner, or expired). Reads only. */
-export async function practiceAvailability(kind: PracticeKind): Promise<{ registered: number; free: number }> {
+/**
+ * How many cells of a kind can be used, are free, and are held by someone
+ * else right now. A cell whose reset failed (or that was never set up) does
+ * not count: it would block the tutorial for everyone while nobody is on it
+ * (Ames, 2026-09-29: "in use" with no one using it).
+ */
+export async function practiceAvailability(kind: PracticeKind): Promise<{ registered: number; free: number; heldByOthers: number }> {
   const uid = userId();
   const { data, error } = await supabase.from('tutorial_practice_examples')
-    .select('status,claimed_by,expires_at').eq('enabled', true).eq('kind', kind);
-  if (error || !data) { console.warn('[practice] availability check failed:', error?.message); return { registered: 0, free: 0 }; }
+    .select('status,claimed_by,expires_at,last_error,updated_at').eq('enabled', true).eq('kind', kind);
+  if (error || !data) { console.warn('[practice] availability check failed:', error?.message); return { registered: 0, free: 0, heldByOthers: 0 }; }
   const now = Date.now();
-  const free = data.filter((r: any) => r.status === 'ready'
-    || (r.status === 'in_use' && (r.claimed_by === uid || (r.expires_at && Date.parse(r.expires_at) < now)))).length;
-  return { registered: data.length, free };
+  const live = (r: any) => r.status === 'in_use' && (!r.expires_at || Date.parse(r.expires_at) > now);
+  const usable = data.filter((r: any) => r.status === 'ready' || r.status === 'in_use' || r.status === 'resetting'
+    // A reset still pending (the job runs every 10 minutes), not a failed one.
+    || (r.status === 'needs_reset' && !r.last_error && Date.parse(r.updated_at) > now - 15 * 60 * 1000));
+  const free = usable.filter((r: any) => r.status === 'ready' || (r.status === 'in_use' && (r.claimed_by === uid || !live(r)))).length;
+  const heldByOthers = usable.filter((r: any) => live(r) && r.claimed_by !== uid).length;
+  return { registered: usable.length, free, heldByOthers };
 }
 
 /** Cells a tutorial needs before it starts: both of its practice cells when
  *  two are registered, otherwise whatever exists. */
-export async function tutorialNeeds(kind: PracticeKind): Promise<{ needed: number; free: number; registered: number }> {
+export async function tutorialNeeds(kind: PracticeKind): Promise<{ needed: number; free: number; registered: number; heldByOthers: number }> {
   const a = await practiceAvailability(kind);
-  return { needed: Math.min(2, Math.max(1, a.registered)), free: a.free, registered: a.registered };
+  return { needed: Math.min(2, Math.max(1, a.registered)), free: a.free, registered: a.registered, heldByOthers: a.heldByOthers };
 }
 
 let tutorialWaitTimer: ReturnType<typeof setInterval> | null = null;
@@ -651,9 +661,22 @@ export async function resetPracticeExample(exampleId: string, sessionNonce?: str
   }
 }
 
+/** True while a tool (merge, cut) is switched on. */
+function toolActive(): boolean {
+  const viewer = getViewer();
+  try { if (viewer?.globalToolBinder?.activeTool_ || viewer?.toolBinder?.activeTool_) return true; } catch { /* DOM check */ }
+  return !!document.querySelector('.neuroglancer-tool-status');
+}
+
 async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
   if (session.shownId !== ex.id) {
+    // Loading a view rebuilds the layers, and a tool left on stays bound to
+    // the old one: it looks on but does nothing (Ames had to leave and
+    // re-enter merge mode at step 6). Switch it off here and back on after.
+    const wasOn = toolActive();
+    pausePracticeTools();
     await useLayersStore().loadState(ex.state_url);
+    if (wasOn) setTimeout(() => ensureTool(ex.kind === 'cut' ? 'multicut' : 'merge'), 1200);
     // restoreState applies asynchronously; give the layer a moment to exist.
     await new Promise(r => setTimeout(r, 800));
     session.shownId = ex.id;
