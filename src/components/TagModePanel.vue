@@ -20,7 +20,7 @@ import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
-import { runPanelTrace, runParticleBurst, runPanelDraw, runPanelZip, runBurstBuild, runPanelLap } from '../util/holo_trace';
+import { runPanelTrace, runParticleBurst, runPanelDraw, runBurstBuild, runPanelLap } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 import superScytheUrl from '../../static/tags/super-scythe.png';
@@ -120,27 +120,22 @@ function submit() {
   drop(pendingPos.value ?? crosshairPosition());
 }
 
-/** Closing zips the box up with light instead of vanishing it (Amy). */
+/** Closing (X) plays the Dataset Switcher's particle trace (Amy 2026-09-28:
+ *  "the particles there are SO GOOD"): a beam laps the border and breaks into
+ *  branching particles while the box fades out from under it. The trace is
+ *  drawn detached, over the page, so it finishes after the panel is gone. */
 let closing = false;
 function closeWithZip() {
   if (closing) { emit('hide'); return; }
+  const host = collapsed.value ? stripEl.value : (boxEl.value ?? wrapEl.value);
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (!host || reduce) { emit('hide'); return; }
   closing = true;
-  const b = boxEl.value;
-  if (b && wrapEl.value && !collapsed.value && (phase.value === 'form' || phase.value === 'form-out')) {
-    const total = runPanelDraw(wrapEl.value, 'up', frac => {
-      const bb = boxEl.value;
-      if (frac >= 1) { closing = false; emit('hide'); return; }
-      if (bb) bb.style.clipPath = `inset(0 0 ${(frac * 100).toFixed(2)}% 0)`;
-    });
-    if (!total) { closing = false; emit('hide'); }
-  } else if (stripEl.value || wrapEl.value) {
-    // Collapsed: run the light on the strip itself, the wrap is wider.
-    runPanelZip((stripEl.value ?? wrapEl.value)!, 'up');
-    setTimeout(() => { closing = false; emit('hide'); }, 330);
-  } else {
-    closing = false;
-    emit('hide');
-  }
+  runPanelTrace(host, 0, { detached: true });
+  const FADE = 700;
+  host.animate([{ opacity: 1, filter: 'blur(0)' }, { opacity: 0, filter: 'blur(2px)' }],
+    { duration: FADE, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' });
+  setTimeout(() => { closing = false; emit('hide'); }, FADE);
 }
 
 function copyCoords() {
@@ -312,7 +307,8 @@ function setCollapsed(v: boolean) {
         const targets = Array.from(strip.children)
           .filter(el => (el as HTMLElement).offsetWidth > 0)
           .map(el => el.getBoundingClientRect());
-        runParticleWrite(targets, to);
+        // The strip's own frame gathers light too, not just its buttons.
+        runParticleWrite(targets, to, [to]);
         strip.style.transition = 'opacity 0.42s ease 0.12s';
         strip.style.opacity = '1';
         const fade = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' });
@@ -335,8 +331,8 @@ function setCollapsed(v: boolean) {
  * staggered wave, glows briefly, and fades. Additive blue light, the UI's
  * one beam colour (LIGHT_RGB). Self-contained canvas, removed when done.
  */
-function runParticleWrite(targets: DOMRect[], origin: DOMRect) {
-  if (!targets.length) return;
+function runParticleWrite(targets: DOMRect[], origin: DOMRect, frames: DOMRect[] = []) {
+  if (!targets.length && !frames.length) return;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const cv = document.createElement('canvas');
   cv.width = Math.round(innerWidth * dpr);
@@ -364,9 +360,13 @@ function runParticleWrite(targets: DOMRect[], origin: DOMRect) {
   };
   type P = { x0: number; y0: number; cx: number; cy: number; x1: number; y1: number; delay: number; dur: number };
   const ps: P[] = [];
-  for (const r of targets) {
-    // Density follows perimeter, so a wide chip gets more light than a dot.
-    const n = Math.max(6, Math.min(22, Math.round((r.width + r.height) / 7)));
+  const isFrame = new Set(frames);
+  for (const r of [...frames, ...targets]) {
+    // Density follows perimeter, so a wide chip gets more light than a dot;
+    // a frame (the strip's outer edge) gets its own, larger budget.
+    const n = isFrame.has(r)
+      ? Math.max(24, Math.min(90, Math.round((r.width + r.height) / 6)))
+      : Math.max(6, Math.min(22, Math.round((r.width + r.height) / 7)));
     for (let i = 0; i < n; i++) {
       const [x1, y1] = onOutline(r, (i + Math.random() * 0.5) / n);
       const x0 = origin.left + Math.random() * origin.width;

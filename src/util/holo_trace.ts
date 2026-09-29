@@ -64,7 +64,9 @@ function hostRadius(host: HTMLElement, fallback: number): number {
   return fallback;
 }
 
-export function runPanelTrace(host: HTMLElement, PAD = 0): void {
+/** detached: draw on a fixed canvas over the page instead of inside the host,
+ *  so the trace outlives a panel that is closing (the Scout Tag X, 2026-09-28). */
+export function runPanelTrace(host: HTMLElement, PAD = 0, opts: { detached?: boolean } = {}): void {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   const rect = host.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
@@ -74,9 +76,15 @@ export function runPanelTrace(host: HTMLElement, PAD = 0): void {
   const N = 64, DUR = 1500, R = Math.max(2, hostRadius(host, 15) - 1);
 
   const cv = document.createElement('canvas');
-  cv.style.cssText = `position:absolute;inset:${-PAD}px;width:calc(100% + ${PAD * 2}px);height:calc(100% + ${PAD * 2}px);pointer-events:none;z-index:50;`;
+  if (opts.detached) {
+    cv.style.cssText = `position:fixed;left:${rect.left - PAD}px;top:${rect.top - PAD}px;` +
+      `width:${rect.width + PAD * 2}px;height:${rect.height + PAD * 2}px;pointer-events:none;z-index:100000;`;
+    document.body.appendChild(cv);
+  } else {
+    cv.style.cssText = `position:absolute;inset:${-PAD}px;width:calc(100% + ${PAD * 2}px);height:calc(100% + ${PAD * 2}px);pointer-events:none;z-index:50;`;
+    host.appendChild(cv);
+  }
   cv.setAttribute('aria-hidden', 'true');
-  host.appendChild(cv);
   const ctx = cv.getContext('2d');
   if (!ctx) { cv.remove(); return; }
 
