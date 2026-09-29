@@ -164,6 +164,12 @@ function copyId(id: string) {
  *  isn't already the one in the queue. */
 /** The active dataset's proofreading instructions, if it has any (MEC). */
 const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset.value).instructionsUrl || '');
+/** A view with one example of each cell type (MEC), loaded in place. */
+const datasetCellTypesState = computed(() => getDatasetCaveConfig(activeDataset.value).cellTypesState || null);
+function openCellTypes() {
+  const st = datasetCellTypesState.value;
+  if (st) window.location.hash = '#!' + encodeURIComponent(JSON.stringify(st));
+}
 
 async function loadCellsForActiveDataset() {
   const dsName = getCurrentDatasetName();
@@ -1892,6 +1898,8 @@ const panelStyle = computed(() => ({
               <span class="nge-cl-tabgroup-label">Cells</span>
               <a v-if="datasetInstructionsUrl" class="nge-cl-howto" :href="datasetInstructionsUrl" target="_blank" rel="noopener"
                  title="How to proofread cells in this dataset (opens in a new tab)">instructions</a>
+              <a v-if="datasetCellTypesState" class="nge-cl-howto" href="#" @click.prevent="openCellTypes"
+                 title="Open a view with one example of each cell type in this dataset">cell types</a>
             </div>
             <div class="nge-cl-tabgroup-row">
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"

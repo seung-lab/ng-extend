@@ -10,7 +10,8 @@ export type Config = {
 // Update the table names below once you have them from your CAVE admin.
 // caveServer is auto-detected from the middleauth layer URL in the viewer.
 // ─────────────────────────────────────────────────────────────────────────────
-// ─── Per-dataset CAVE table + datastack configuration ───────────────────────
+// ─── Per-dataset CAVE table + datastack configuration ───────────────────────
+import { MEC_CELL_TYPES_STATE } from './data/mec_cell_types_state';
 export interface DatasetCaveConfig {
   caveServer: string;
   datastack: string;
@@ -54,6 +55,9 @@ export interface DatasetCaveConfig {
   /** Proofreading instructions for this dataset, linked from the Cell
    *  Library header (MEC only for now, Ames 2026-09-29). */
   instructionsUrl?: string;
+  /** A view with one example of each cell type, opened from the Cell
+   *  Library header (MEC). A full neuroglancer state. */
+  cellTypesState?: Record<string, any>;
 }
 
 export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
@@ -181,6 +185,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     // Still true 2026-09-28: hc.himc-cave.com annotation returns 400
     // invalid_table_id for pni_mec and materialize 503. Log to Supabase (Ames).
     annotationLog:    'edit_log',
+    cellTypesState:   MEC_CELL_TYPES_STATE,
     instructionsUrl:  'https://docs.google.com/spreadsheets/d/1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw/edit?gid=1005852930#gid=1005852930',
     // Root ids and camera lifted from the team proofreading state
     // (nglstate 6641601003126784), so they resolve in the pni_mec graph.
