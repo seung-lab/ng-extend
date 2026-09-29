@@ -880,6 +880,9 @@ export interface UserPreferences {
   /** Mute chat: skip the green unread pip on the toolbar. Defaults
    *  to false (notifications on) when the key isn't set yet. */
   chatMuted?: boolean;
+  /** Fade chat when you click away from it (quiet mode). Defaults to true;
+   *  false keeps chat fully shown (Amy 2026-09-28). */
+  chatFadeAway?: boolean;
   /** Mute help requests: hide the pending count on the Second Opinion toolbar
    *  icon. Defaults to false (badge shown) when the key isn't set yet. */
   helpMuted?: boolean;

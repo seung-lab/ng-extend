@@ -7,7 +7,7 @@
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useChatStore, useProofreadingBackendStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI } from '../store';
+import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI } from '../store';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
@@ -144,9 +144,15 @@ function onDocPointerDown(e: PointerEvent) {
 }
 function onPanelFocusIn() { chatFocused.value = true; }
 document.addEventListener('pointerdown', onDocPointerDown, true);
-const isQuiet = computed(() => !chatFocused.value && !collapsed.value && !isResizing.value && !isDragging.value
+// Settings > "Fade chat when I click away" can switch quiet mode off.
+const isQuiet = computed(() => useUserPreferencesStore().prefs.chatFadeAway !== false
+  && !chatFocused.value && !collapsed.value && !isResizing.value && !isDragging.value
   && panelHeight.value > QUIET_H && !document.body.classList.contains('nge-mobile'));
 const shownHeight = computed(() => isQuiet.value ? QUIET_H : panelHeight.value);
+/** The last few messages stay faintly readable when chat fades (Amy
+ *  2026-09-28: vanishing TOTALLY was a bit much). */
+const RECENT_KEEP = 4;
+const recentMsgs = computed(() => new Set(chatMessages.value.filter(m => m.type === 'message').slice(-RECENT_KEEP)));
 
 // In quiet mode chat is invisible, like the original EyeWire: a message that
 // arrives pops up and fades out after FRESH_MS (Ames 2026-09-28).
@@ -728,7 +734,7 @@ function toggleCollapse() {
                      reader to go and look for it. -->
                 <div v-else-if="msg.type === 'message' && msg.notificationId"
                      class="nge-chat-msg nge-chat-announce"
-                     :class="{ 'nge-chat-fresh': isFresh(msg) }"
+                     :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg) }"
                      role="button"
                      tabindex="0"
                      @click="openAnnouncement(msg.notificationId)"
@@ -739,7 +745,7 @@ function toggleCollapse() {
                   <span class="nge-chat-announce-cta">Open →</span>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg) }">
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg) }">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
                   <button v-if="msg.rank === 'bot' && msg.name === 'Nurro'" class="nge-chat-msg-name nge-chat-nurro-name"
@@ -925,7 +931,7 @@ function toggleCollapse() {
 .nge-chat-float--quiet .nge-chat-fade,
 .nge-chat-float--quiet .nge-chat-new-banner,
 .nge-chat-float--quiet .nge-chat-share { display: none; }
-.nge-chat-float--quiet .nge-chat-strip { opacity: 0; }
+.nge-chat-float--quiet .nge-chat-strip { opacity: 0.4; }
 .nge-chat-float .nge-chat-strip,
 .nge-chat-float .nge-chat-msg,
 .nge-chat-float .nge-chat-sys,
@@ -936,6 +942,11 @@ function toggleCollapse() {
 .nge-chat-float--quiet .nge-chat-time-sep,
 .nge-chat-float--quiet .nge-chat-history-top { opacity: 0; transition: opacity 1.4s ease; }
 .nge-chat-float--quiet .nge-chat-msg:hover { background: none; }
+/* Softer than vanishing: the latest messages stay, dimmed, readable on EM. */
+.nge-chat-float--quiet .nge-chat-msg.nge-chat-recent:not(.nge-chat-fresh) {
+  opacity: 0.6;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.7);
+}
 .nge-chat-float--quiet .nge-chat-fresh { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.7); }
 .nge-chat-float--quiet .nge-chat-input-wrap {
   pointer-events: auto;

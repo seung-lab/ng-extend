@@ -25,6 +25,7 @@ const draftFlag = ref('');
 const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
 const draftChatMuted = ref(false);
+const draftChatFade = ref(true);
 const draftHelpMuted = ref(false);
 const saved      = ref(false);
 
@@ -32,6 +33,7 @@ onMounted(() => {
   draftFlag.value = prefsStore.prefs.flag;
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
+  draftChatFade.value = prefsStore.prefs.chatFadeAway !== false;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
   // Seed via the same resolver the toolbar uses, so the grid reflects exactly
   // what's in the top bar — including icons auto-injected into older prefs.
@@ -48,7 +50,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value,
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
@@ -257,6 +259,10 @@ const props = defineProps<{ embedded?: boolean }>();
           <label class="nge-settings-toggle">
             <input type="checkbox" v-model="draftChatMuted" />
             <span class="nge-settings-toggle-label">Mute chat unread badge</span>
+          </label>
+          <label class="nge-settings-toggle">
+            <input type="checkbox" v-model="draftChatFade" />
+            <span class="nge-settings-toggle-label">Fade chat when I click away</span>
           </label>
           <label class="nge-settings-toggle">
             <input type="checkbox" v-model="draftHelpMuted" />
