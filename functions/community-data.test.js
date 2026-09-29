@@ -104,3 +104,9 @@ test('chat reactions are your own, from the offered set, and removable only by y
  assert.equal(del.query.get('and'),`(user_id.eq.${a})`);
  assert.equal(plan('chat_reactions','GET','message_id=in.(1,2)',undefined,anon).table,'chat_reactions');
 });
+test('site issues can carry a console log, within a size limit',()=>{
+ const p=plan('site_issues','POST','',{category:'bug',message:'m',console_log:'10:00:00 WARN x'});
+ assert.equal(p.body.console_log,'10:00:00 WARN x'); assert.equal(p.body.user_id,a);
+ assert.throws(()=>plan('site_issues','POST','',{category:'bug',message:'m',console_log:'x'.repeat(40001)}),/too large/);
+ assert.throws(()=>plan('site_issues','POST','',{category:'bug',message:'m',console_log:{a:1}}),/too large/);
+});

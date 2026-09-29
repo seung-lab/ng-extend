@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { caveToken } from '../secure_write';
 import { functionUrl } from '../functions_base';
 /**
@@ -26,6 +27,9 @@ const message = ref('');
 const sending = ref(false);
 /** Attach a share link of the current view (on by default; Celia's ask). */
 const attachView = ref(true);
+// Recent console warnings and errors (util/console_buffer.ts), for the team.
+const attachConsole = ref(true);
+const consoleCount = ref(recentConsoleCount());
 const done = ref(false);
 const error = ref('');
 
@@ -82,7 +86,10 @@ async function submit() {
     // dataset/user to Slack, so the screenshot link rides in the message
     // text to reach #citsci_feedback. `screenshotUrl` is sent too, for when
     // the function learns to read it.
-    const slackText = shot ? `${text}\n\nScreenshot: ${shot}` : text;
+    const consoleLog = attachConsole.value && recentConsoleCount() ? recentConsoleText() : '';
+    let slackText = shot ? `${text}\n\nScreenshot: ${shot}` : text;
+    // The log itself stays in Admin Hub; Slack just says it's there.
+    if (consoleLog) slackText += `\n\nConsole: ${recentConsoleCount()} recent warnings/errors attached (Admin Hub > Triage)`;
     const res = await fetch(ISSUE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -112,6 +119,7 @@ async function submit() {
         user_name: backend.userName || null,
       };
       if (shot) row.screenshot_url = shot;
+      if (consoleLog) row.console_log = consoleLog;
       let { error: insErr } = await supabase.from('site_issues').insert(row);
       // Until supabase-site-issues-screenshot.sql runs, the column is
       // missing: PostgREST answers PGRST204 "Could not find the
@@ -121,6 +129,12 @@ async function submit() {
           (insErr.code === 'PGRST204' || /screenshot_url/.test(insErr.message || ''))) {
         delete row.screenshot_url;
         row.message = slackText;
+        ({ error: insErr } = await supabase.from('site_issues').insert(row));
+      }
+      // Until supabase-site-issues-console.sql runs, drop the log rather than the report.
+      if (insErr && 'console_log' in row &&
+          (insErr.code === 'PGRST204' || /console_log/.test(insErr.message || ''))) {
+        delete row.console_log;
         ({ error: insErr } = await supabase.from('site_issues').insert(row));
       }
       if (insErr) throw insErr;
@@ -340,6 +354,10 @@ onBeforeUnmount(() => {
         <label class="nge-fb-attach">
           <input type="checkbox" v-model="attachView" />
           <span>Attach my current view, a share link so the team sees exactly what I see</span>
+        </label>
+        <label class="nge-fb-attach">
+          <input type="checkbox" v-model="attachConsole" :disabled="!consoleCount" />
+          <span>Attach recent console messages<template v-if="consoleCount"> ({{ consoleCount }} recent warnings and errors, passwords and tokens removed)</template><template v-else> (none so far)</template></span>
         </label>
 
         <div class="nge-fb-shot-row">

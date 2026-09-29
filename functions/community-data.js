@@ -17,7 +17,7 @@ const columns = {
   // Who is in chat right now. Public: usernames are already public in chat.
   chat_presence: 'user_id,name,last_seen_at,joined_at',
   feedback_triage: 'id,source,source_id,source_excerpt,recommendation,rationale,proposed_message,spec,status,reviewed_by,reviewed_at,created_at,slack_channel,slack_ts,result_note,done_slack_ts,approver_slack_id,approver_note,decision_slack_ts,impl_state,impl_branch,impl_summary,impl_run_url,impl_attempts,impl_started_at,preview_url,feedback_log,last_reply_ts,last_nag_at,nag_count,tested_by,tested_at',
-  site_issues: 'id,category,message,url,dataset,user_id,user_name,created_at,screenshot_url',
+  site_issues: 'id,category,message,url,dataset,user_id,user_name,created_at,screenshot_url,console_log',
   user_groups: 'id,name,description,color,created_at,created_by',
   user_group_members: 'id,group_id,user_id,added_at,added_by',
   chat_messages: 'id,user_id,name,rank,text,created_at,dataset,notification_id',
@@ -32,7 +32,7 @@ const writable = {
   notification_reads: 'notification_id,dismissed,dismissed_at',
   user_groups: 'name,description,color',
   user_group_members: 'group_id,user_id',
-  site_issues: 'category,message,url,dataset,screenshot_url',
+  site_issues: 'category,message,url,dataset,screenshot_url,console_log',
   chat_messages: 'text,dataset,notification_id',
   chat_reactions: 'message_id,emoji',
 };
@@ -148,7 +148,10 @@ function authorizeData(input, ctx) {
       }
     }
     if (['working_links','notification_reads'].includes(table)) row.user_id = own();
-    if (table === 'site_issues') { row.user_id=own(); row.user_name=me.display_name || 'Player'; }
+    if (table === 'site_issues') {
+      row.user_id=own(); row.user_name=me.display_name || 'Player';
+      if (row.console_log != null && (typeof row.console_log !== 'string' || row.console_log.length > 40000)) fail(400, 'Console log too large.');
+    }
     if (table === 'chat_messages') {
       if (typeof row.text !== 'string' || !row.text.trim() || row.text.length > 5000) fail(400,'Message must contain 1–5000 characters.');
       if (row.notification_id != null && !ctx.isAdmin) fail(403,'Official announcements require an admin.');

@@ -1,5 +1,7 @@
 import {createApp, nextTick} from 'vue';
 import {createPinia} from 'pinia';
+import {installConsoleBuffer} from './util/console_buffer';
+installConsoleBuffer();
 import {installErrorReporting} from './util/error_reporting';
 import {installMobileMode, isMobileRef} from './util/mobile';
 

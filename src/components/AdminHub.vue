@@ -47,6 +47,17 @@ watch(adminSubTab,t=>{if(t==='pilot')loadPilot();});
 // gate: Amy or Celia approve, edit, or dismiss. Approving a 'message'
 // proposal sends it to the reporter as a notification; approving a spec just
 // marks it accepted for the work queue.
+// Console messages a player attached to "Submit an issue" (site_issues.console_log).
+const issueConsole = ref<Record<string, string | null>>({});
+const issueConsoleOpen = ref<Record<string, boolean>>({});
+async function toggleIssueConsole(row: { id: string; source_id: string }) {
+  if (issueConsole.value[row.id] === undefined) {
+    const { data } = await supabase.from('site_issues').select('console_log').eq('id', row.source_id).maybeSingle();
+    issueConsole.value = { ...issueConsole.value, [row.id]: (data as any)?.console_log ?? null };
+  }
+  issueConsoleOpen.value = { ...issueConsoleOpen.value, [row.id]: !issueConsoleOpen.value[row.id] };
+}
+
 interface TriageRow {
   id: string;
   source: string;
@@ -1393,6 +1404,12 @@ function practiceWhen(iso: string | null) {
             <a v-if="slackThreadUrl(row)" class="nge-triage-link" :href="slackThreadUrl(row) || undefined" target="_blank" rel="noopener">Slack thread</a>
           </div>
           <div v-if="row.source_excerpt" class="nge-triage-excerpt">"{{ row.source_excerpt }}"</div>
+          <div v-if="row.source === 'site_issue'" class="nge-triage-console">
+            <button class="nge-triage-console-btn" @click="toggleIssueConsole(row)">
+              {{ issueConsole[row.id] === undefined ? '🖥 Console messages' : issueConsoleOpen[row.id] ? '▾ Console messages' : '▸ Console messages' }}
+            </button>
+            <pre v-if="issueConsoleOpen[row.id]" class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
+          </div>
           <div v-if="row.rationale" class="nge-triage-rationale">{{ row.rationale }}</div>
           <textarea
             v-if="row.recommendation === 'message' && row.status === 'proposed'"
@@ -2008,6 +2025,17 @@ function practiceWhen(iso: string | null) {
 }
 .nge-triage-loop a { color: #8fd3ff; word-break: break-all; }
 .nge-triage-excerpt { font-size: 12px; color: rgba(255,255,255,0.75); }
+.nge-triage-console-btn {
+  background: none; border: 1px solid rgba(100,200,255,0.2); border-radius: 999px;
+  color: #9cc8ff; font-size: 11px; padding: 2px 9px; cursor: pointer;
+}
+.nge-triage-console-btn:hover { border-color: rgba(100,200,255,0.5); }
+.nge-triage-console-log {
+  margin: 6px 0 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+  padding: 7px 9px; font-size: 11px; line-height: 1.4; color: #c9d4e4;
+  font-family: 'JetBrains Mono', 'Consolas', monospace; user-select: text;
+}
 .nge-triage-rationale { font-size: 11.5px; color: rgba(255,255,255,0.5); line-height: 1.4; }
 .nge-triage-message {
   background: rgba(0,0,0,0.3); border: 1px solid rgba(100,200,255,0.2);
