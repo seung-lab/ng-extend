@@ -1822,8 +1822,8 @@ export const useIssueTagStore = defineStore('issueTags', () => {
    * Mirror the current dataset's OPEN tags into a local annotation layer so
    * they're visible in 2D and 3D.
    *
-   * The layer is CREATED once via the state-JSON route (one-time, when tag
-   * mode first opens); every later change mutates the layer's
+   * The layer is CREATED once with makeLayer (only this layer, never the
+   * full viewer state); every later change mutates the layer's
    * localAnnotations IN PLACE. The first version restored the whole viewer
    * state on every tag drop, which re-specced the graphene layer and made
    * the 3D segments blink out (Amy: "T+click makes the 3D seg go away").
@@ -1898,17 +1898,19 @@ export const useIssueTagStore = defineStore('issueTags', () => {
 
       if (!managed) {
         if (!points.length) return;
-        // One-time creation through the state route. Later updates never
-        // touch the full state again.
-        const state = viewer.state.toJSON();
-        state.layers = [...(state.layers ?? []), {
+        // Add only this layer, like the pin layer. The old one-time route
+        // restored the WHOLE viewer state, which re-specced every layer: on
+        // MEC (hc.himc-cave.com) re-creating the graphene layer failed in the
+        // middleauth credentials step ("reading 'generation'") and the view
+        // went black with every layer gone (Ames 2026-09-29).
+        const managed = makeLayer(viewer.layerSpecification, TAG_LAYER_NAME, {
           type: 'annotation',
-          name: TAG_LAYER_NAME,
+          source: 'local://annotations',
           annotations: points.map(p => ({ ...p, type: 'point' })),
           annotationColor: '#35b5ff',
           shader: TAG_SHADER,
-        }];
-        viewer.state.restoreState(state);
+        });
+        viewer.layerSpecification.add(managed);
         return;
       }
 

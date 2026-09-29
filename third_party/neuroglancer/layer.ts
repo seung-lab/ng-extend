@@ -1014,7 +1014,11 @@ export class LayerSelectedValues extends RefCounted {
   get<T extends UserLayer>(userLayer: T): T['selectionState']|undefined {
     this.update();
     const {selectionState} = userLayer;
-    if (selectionState.generation !== this.changed.count) return undefined;
+    // ng-extend: same half-initialized layer as in update() above. Reading
+    // .generation off it threw "Cannot read properties of undefined (reading
+    // 'generation')" on every render and blacked out the view (Ames, MEC scout
+    // tag, 2026-09-29).
+    if (selectionState === undefined || selectionState.generation !== this.changed.count) return undefined;
     return selectionState;
   }
 
