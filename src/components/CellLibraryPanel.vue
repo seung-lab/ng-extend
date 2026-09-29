@@ -192,6 +192,14 @@ function openCellTypes() {
       seg.layer.tabs.value = 'segments';
       const panel = seg.layer.panels?.panels?.[0];
       if (panel?.selectedTab) panel.selectedTab.value = 'segments';
+      // A showcase, not a work view (Ames): full-screen 3D, no axis lines or
+      // bounding box, and closer in on the cells.
+      try {
+        viewer.layout.restoreState('3d');
+        viewer.showAxisLines.value = false;
+        viewer.showDefaultAnnotations.value = false;
+        viewer.projectionScale.value = viewer.projectionScale.value * 0.6;
+      } catch { /* viewer settings unavailable: the view still loads */ }
       return;
     }
     if (++tries < 60) setTimeout(openSegTab, 500);
