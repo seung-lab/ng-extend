@@ -65,7 +65,9 @@
   #extensionBar {
     height: 34px;
   }
-  #extensionBar .nge-icon-btn {
+  #extensionBar .nge-icon-btn,
+  #extensionBar #hamburger > button,
+  #extensionBar #ngFarRight > .neuroglancer-icon {
     height: 30px;
   }
   .nge-ask-btn {

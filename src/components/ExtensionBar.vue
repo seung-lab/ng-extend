@@ -70,6 +70,20 @@ function startTutorial(id: number) {
   document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id } }));
 }
 
+// Burger bounce on click (Ames 2026-09-29). Restart the animation each time.
+document.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement | null)?.closest?.('#hamburger > button');
+  const svg = btn?.querySelector('svg.nge-burger');
+  if (!svg) return;
+  svg.classList.remove('nge-burger--bounce');
+  void (svg as unknown as HTMLElement).getBoundingClientRect();
+  svg.classList.add('nge-burger--bounce');
+}, true);
+document.addEventListener('animationend', (e) => {
+  const t = e.target as Element | null;
+  if (t?.classList?.contains('nge-burger--bounce') && e.animationName === 'nge-bb-hop') t.classList.remove('nge-burger--bounce');
+}, true);
+
 function closeHamburger() {
   dropdownStore.activeDropdowns['extension-bar-right'] = undefined;
 }
@@ -949,7 +963,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat' }">{{ icon.badge() }}</span></button>
     </div>
 
-    <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile" style="margin-left: 12px; margin-right: 14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="white" style="vertical-align:middle"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg></button>
+    <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile"><svg viewBox="2.6 1.6 10.8 13.2" fill="none" style="width:1em;height:1em;vertical-align:middle;color:#cfdcef"><circle cx="8" cy="5.4" r="2.9" stroke="currentColor" stroke-width="1.5"/><path d="M3.4 14c0-2.7 2.1-4.6 4.6-4.6s4.6 1.9 4.6 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
     <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost" title="Resources and tutorials">
       <template #buttonTitle><span v-html="RESOURCES_MENU_SVG"></span></template>
       <template #listItems>
@@ -1592,6 +1606,73 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   background: #4ad07a;
   color: #06170d;
   box-shadow: 0 0 8px rgba(74, 208, 122, 0.55);
+}
+
+/* ── Right end of the bar: profile, burger, ? and the layer panel toggle ──
+   These came from three places (our button, the dropdown, and neuroglancer's
+   own icons moved into #ngFarRight) and each looked different: a filled
+   profile glyph, a 13px burger, a 12px bold "?" in a 22x18 box, and NG's
+   grey "checked" square (Ames 2026-09-29). They now match the left row. */
+#extensionBar #profileBtn { margin-left: 12px; }
+#extensionBar #hamburger > button,
+#extensionBar #ngFarRight > .neuroglancer-icon {
+  font-size: 20px;
+  width: 34px;
+  height: 38px;
+  min-width: 34px;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none !important;
+  border: none;
+  border-radius: 4px;
+  color: #cfdcef;
+  opacity: 0.78;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
+  line-height: 1;
+}
+#extensionBar #ngFarRight > .neuroglancer-icon { font-weight: 600; font-family: 'Inter', 'Roboto', sans-serif; }
+@media (max-width: 1366px) {
+  #extensionBar #hamburger > button,
+  #extensionBar #ngFarRight > .neuroglancer-icon { height: 30px; }
+}
+#extensionBar #ngFarRight > .neuroglancer-icon svg { width: 0.95em; height: 0.95em; }
+#extensionBar #hamburger > button:hover,
+#extensionBar #ngFarRight > .neuroglancer-icon:hover {
+  opacity: 1;
+  background: rgba(100, 200, 255, 0.1) !important;
+  box-shadow: 0 0 0 1px rgba(100, 200, 255, 0.3), 0 2px 12px rgba(100, 200, 255, 0.18);
+  transform: translateY(-1px);
+}
+/* Open menu / panel showing: the same active underline as the left row. */
+#extensionBar #hamburger.open > button,
+#extensionBar #ngFarRight > .neuroglancer-icon[data-checked="true"] {
+  opacity: 1;
+  background: rgba(74, 158, 255, 0.12) !important;
+  box-shadow: 0 1px 0 0 #4a9eff;
+}
+
+/* Burger bounce: on click it hops and its layers pull apart, then stack. */
+.nge-burger [class^="nge-bb-"] { transform-box: fill-box; transform-origin: center; }
+.nge-burger.nge-burger--bounce { animation: nge-bb-hop 0.62s cubic-bezier(0.3, 1.5, 0.5, 1); }
+.nge-burger--bounce .nge-bb-top { animation: nge-bb-top 0.62s cubic-bezier(0.3, 1.5, 0.5, 1); }
+.nge-burger--bounce .nge-bb-lettuce { animation: nge-bb-lettuce 0.62s cubic-bezier(0.3, 1.5, 0.5, 1); }
+.nge-burger--bounce .nge-bb-patty { animation: nge-bb-patty 0.62s cubic-bezier(0.3, 1.5, 0.5, 1); }
+@keyframes nge-bb-hop {
+  0% { transform: translateY(0) scale(1, 1); }
+  18% { transform: translateY(1px) scale(1.08, 0.9); }
+  45% { transform: translateY(-4px) scale(0.97, 1.05); }
+  78% { transform: translateY(0) scale(1.04, 0.96); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes nge-bb-top { 0%, 18% { transform: translateY(0); } 45% { transform: translateY(-3.2px) rotate(-4deg); } 80%, 100% { transform: translateY(0); } }
+@keyframes nge-bb-lettuce { 0%, 18% { transform: translateY(0); } 45% { transform: translateY(-1.9px); } 80%, 100% { transform: translateY(0); } }
+@keyframes nge-bb-patty { 0%, 18% { transform: translateY(0); } 45% { transform: translateY(-0.9px); } 80%, 100% { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .nge-burger.nge-burger--bounce, .nge-burger--bounce [class^="nge-bb-"] { animation: none; }
 }
 
 /* The leaderboard just zipped into its button: a quick catch. */
