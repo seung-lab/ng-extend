@@ -60,7 +60,8 @@ const TAG_SVG         = `<svg viewBox="0.6 0.2 14.8 15.4" fill="none" style="${S
 
 /** Open book — the right-edge resources menu (tutorials, site tour, links),
  *  which used to be a hamburger that said nothing about what was inside. */
-export const RESOURCES_MENU_SVG = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M8 3.4C6.9 2.4 5.2 2 3.4 2.1c-.5 0-.9.4-.9.9v8.6c0 .5.4.9.9.9 1.8-.1 3.5.3 4.6 1.3 1.1-1 2.8-1.4 4.6-1.3.5 0 .9-.4.9-.9V3c0-.5-.4-.9-.9-.9C10.8 2 9.1 2.4 8 3.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 3.4v10.4" stroke="currentColor" stroke-width="1.4"/><path d="M4.6 5.6c.9 0 1.7.2 2.3.5M4.6 8c.9 0 1.7.2 2.3.5M9.1 6.1c.6-.3 1.4-.5 2.3-.5M9.1 8.5c.6-.3 1.4-.5 2.3-.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>`;
+// A burger, for the menu the tutorials call "the hamburger" (Ames, 2026-09-29).
+export const RESOURCES_MENU_SVG = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M2.4 7.2h11.2a5.6 4.6 0 0 0-11.2 0z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="6" cy="4.7" r=".55" fill="currentColor"/><circle cx="8.6" cy="3.9" r=".55" fill="currentColor"/><circle cx="10.3" cy="5.3" r=".55" fill="currentColor"/><path d="M2.2 9.1c.9-.8 1.9.8 2.9 0s1.9.8 2.9 0 1.9.8 2.9 0 1.9.8 2.9 0" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.8 10.9h10.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M2.4 12.6h11.2v.3a1.5 1.5 0 0 1-1.5 1.5H3.9a1.5 1.5 0 0 1-1.5-1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
 
 /** The scout-tag map pin, reused everywhere tag mode shows its face. */
 export function scoutPinSvg(color = ACCENT_SKY, extraStyle = ''): string {

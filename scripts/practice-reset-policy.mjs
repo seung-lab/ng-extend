@@ -64,3 +64,12 @@ export function remainingOperations(ops, details) {
   if(active.length>200)throw Error('Unexpectedly large active practice history; manual review required');
   return active;
 }
+
+// Tutorial 1's sandbox neuron has no database row: it is pinned by root ids
+// in config/intro-reset-fixtures.json, and only the intro sandbox table.
+export function validateIntroFixture(fx) {
+  if (fx?.pcg_server !== 'https://minnie.microns-daf.com' || fx?.pcg_table !== 'pinky_training6') throw new Error('Unapproved intro sandbox');
+  if (!Array.isArray(fx.roots) || !fx.roots.length || !fx.roots.every(r => /^\d{1,20}$/.test(r))) throw new Error('Invalid intro fixture roots');
+  if (!Number.isFinite(Date.parse(fx.baseline_at))) throw new Error('Invalid intro fixture baseline');
+  return `${fx.pcg_server}/segmentation/api/v1/table/${fx.pcg_table}`;
+}

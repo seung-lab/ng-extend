@@ -856,7 +856,8 @@ onUnmounted(() => {
     height: 3px;
     background: rgba(255, 255, 255, 0.08);
     border-radius: 2px;
-    margin-top: 8px;
+    /* Room between the buttons and the bar (Ames: "a tad higher"). */
+    margin-top: 16px;
     overflow: hidden;
 }
 

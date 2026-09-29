@@ -161,6 +161,13 @@ interface Layer {
 }
 
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let stateRewriter: ((state: any) => Promise<any>) | null = null;
+/** Let a tutorial rewrite every saved view before loadState applies it. */
+export function setStateRewriter(fn: ((state: any) => Promise<any>) | null) {
+  stateRewriter = fn;
+}
+
 export const useLayersStore = defineStore('layers', () => {
   const activeLayers: Set<string> = reactive(new Set());
 
@@ -599,6 +606,8 @@ export const useLayersStore = defineStore('layers', () => {
     return EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
   }
 
+  // A tutorial can rewrite a saved view before it loads (Tutorial 1 swaps
+  // in its neuron's current root id, see intro_roots.ts).
   async function loadState(url: string | Record<string, any>) {
     if (!viewer) return;
     try {
@@ -610,6 +619,9 @@ export const useLayersStore = defineStore('layers', () => {
         response = await cancellableFetchSpecialOk(credentialsProvider, fetchUrl, {}, responseJson);
       } else {
         response = JSON.parse(JSON.stringify(url));
+      }
+      if (stateRewriter) {
+        try { response = await stateRewriter(response); } catch (e) { console.warn('loadState: rewrite failed (non-fatal):', e); }
       }
       // Set layout first to avoid localPositionValid crashes during layout transitions
       // Mobile: curated views open fullscreen 3D like everything else.

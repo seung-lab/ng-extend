@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Resets only reviewed Pinky practice fixtures after the learner releases them.
 import fs from 'node:fs';
-import {validateResetExample,resetDue,operationsAfter,overlapsActive,remainingOperations} from './practice-reset-policy.mjs';
+import {validateResetExample,validateIntroFixture,resetDue,operationsAfter,overlapsActive,remainingOperations} from './practice-reset-policy.mjs';
 const manifest=JSON.parse(fs.readFileSync(new URL('../config/practice-reset-manifest.json',import.meta.url),'utf8'));
 const args=process.argv.slice(2),dryRun=args.includes('--dry-run');
 const onlyId=args.includes('--id') ? args[args.indexOf('--id')+1] : null;
@@ -89,4 +89,40 @@ async function main() {
  }
  if(failed)process.exitCode=2;
 }
-main().catch(e=>{console.error(e.message);process.exitCode=1;});
+// Tutorial 1's sandbox neuron: undo any edit made on it after its baseline,
+// so a learner who already knows how to merge cannot break the lesson.
+// The tutorial follows the neuron's new root id itself (src/intro_roots.ts).
+async function resetIntroFixtures() {
+ const fixtures=JSON.parse(fs.readFileSync(new URL('../config/intro-reset-fixtures.json',import.meta.url),'utf8'));
+ let failed=0;
+ for(const [name,fx] of Object.entries(fixtures)) {
+  if(onlyId)continue;
+  try {
+   const base=validateIntroFixture(fx);
+   const get=async p=>{const r=await fetch(base+p,{headers:{Authorization:`Bearer ${token}`},redirect:'error',signal:AbortSignal.timeout(20000)});if(!r.ok)throw Error('Intro CAVE request failed ('+r.status+') for '+p.split('?')[0]);return r.json();};
+   const ops=new Map();
+   for(const pinned of fx.roots) {
+    // Down to a supervoxel (old roots keep their children), then up to today's root.
+    let id=pinned;
+    for(let i=0;i<12&&Math.floor(Number(id)/2**56)>1;i++){const d=await get(`/node/${id}/children?int64_as_str=1`);const kids=(d.children_ids??d.children??[]).map(String);if(!kids.length)throw Error('No children for '+id);id=kids[0];}
+    const now=String((await get(`/node/${id}/root?int64_as_str=1`)).root_id);
+    if(!/^\d{1,20}$/.test(now))throw Error('Invalid CAVE root response');
+    const data=await get(`/root/${now}/tabular_change_log?filtered=false`);
+    for(const op of operationsAfter(data,now,fx.baseline_at))ops.set(op.operationId,op);
+   }
+   const ids=[...ops.keys()],details={};
+   for(let i=0;i<ids.length;i+=100)Object.assign(details,await get('/operation_details?int64_as_str=1&operation_ids='+encodeURIComponent(JSON.stringify(ids.slice(i,i+100)))));
+   const active=remainingOperations([...ops.values()],details);
+   console.log(`[intro] ${name}: ${active.length} edit(s) after the baseline`);
+   for(const op of active) {
+    if(dryRun){console.log('[intro] would undo '+op.operationId);continue;}
+    const r=await fetch(base+'/undo?int64_as_str=1',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({operation_id:op.operationId}),redirect:'error',signal:AbortSignal.timeout(20000)});
+    if(!r.ok)throw Error('Intro undo failed ('+r.status+') for operation '+op.operationId);
+    console.log('[intro] undid '+op.operationId);
+   }
+  } catch(e){failed++;console.error('[intro] '+name+': '+e.message);}
+ }
+ if(failed)process.exitCode=2;
+}
+
+main().then(resetIntroFixtures).catch(e=>{console.error(e.message);process.exitCode=1;});

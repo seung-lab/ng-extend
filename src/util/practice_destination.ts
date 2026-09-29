@@ -1,6 +1,8 @@
 // Tutorial credentials may reach only reviewed sandbox destinations.
 const SANDBOX_TABLES: Readonly<Record<string, readonly string[]>> = {
-  'https://minnie.microns-daf.com': ['pinky_nf_v2'],
+  // pinky_training6 is the intro tutorial's sandbox (Tutorial 1); the app
+  // only reads roots there, to follow its neuron after an edit.
+  'https://minnie.microns-daf.com': ['pinky_nf_v2', 'pinky_training6'],
   'https://prodv1.flywire-daf.com': ['fly_v26'],
 };
 
