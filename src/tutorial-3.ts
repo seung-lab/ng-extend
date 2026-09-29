@@ -155,11 +155,11 @@ function toggleStuckPanel() {
     row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to click', async () => {
       ensureTool('merge');
       const shown = await showWhereToClick();
-      if (!shown) { practiceStatus('No click hints for this cell yet. Ctrl+click anywhere on the yellow branch, then anywhere on the purple cell near it.'); return; }
+      if (!shown) { practiceStatus('No click hints for this cell yet. Ctrl+click anywhere on the yellow piece, then anywhere on the purple segment near it.'); return; }
       const placed = ex?.point_a && ex?.point_b ? placeMergeLine() : false;
       practiceStatus(placed
         ? 'Pyr marks the two spots and the merge line is already placed. Press Submit merge, or Enter.'
-        : 'Pyr marks the two spots: Ctrl+click the one on the yellow branch, then the one on the purple cell, then Submit merge.');
+        : 'Pyr marks the two spots: Ctrl+click the one on the yellow piece, then the one on the purple segment, then Submit merge.');
     }));
   }
   row.appendChild(smallButton('nge-practice-stuck-chat', 'Ask in chat', () => document.dispatchEvent(new CustomEvent('nge:open-chat'))));
@@ -191,6 +191,24 @@ function offerPlacePoints() {
  *  polling the graph until `wantMerged` matches, or the step changes.
  *  Success gets confetti once, and the black box note (Amy): a fresh mesh
  *  can render as a black box until the page is refreshed. */
+/**
+ * Which part of a neuron each practice cell is (Ames, 2026-09-29: the text
+ * said axon over a dendrite). The step text carries PART placeholders and
+ * labelPart() fills them from the cell actually on screen.
+ */
+const CELL_PART: Record<string, string> = {
+  'b231f4e7-e9f3-4214-941f-975b8b25a237': 'dendrite', // Branch cut in half
+  'a4bd2f76-67e9-4093-adc7-e670230d1577': 'axon',     // Axon missing a branch
+};
+const PART = '<span class="nge-practice-part">neuron</span>';
+
+export function labelPart() {
+  const ex = currentPractice().example;
+  if (!ex) return;
+  const part = CELL_PART[ex.id] ?? (/axon/i.test(ex.title ?? '') ? 'axon' : /dendrite/i.test(ex.title ?? '') ? 'dendrite' : 'neuron');
+  document.querySelectorAll('.nge-practice-part').forEach(el => { if (el.textContent !== part) el.textContent = part; });
+}
+
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
   const token = ++practiceWatch;
   helpWanted = true;
@@ -202,6 +220,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     if (p.phase === 'busy') { waitForCell(wantMerged ? 'merge_then_cut' : 'cut', wantMerged, waiting, finished); return; }
     if (p.phase === 'released') { return; }
     if (!p.example) { practiceStatus('Loading a practice cell…'); setTimeout(tick, 1000); return; }
+    labelPart();
     const merged = await piecesMerged();
     if (token !== practiceWatch) return;
     if (merged === wantMerged) {
@@ -233,6 +252,7 @@ function toolIsOn(): boolean {
 
 /** The success box after a practice edit: confetti, the black box note. */
 export function celebrateStep() {
+  setTimeout(labelPart, 50);
   stopWatching();
   helpWanted = false;
   document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
@@ -480,11 +500,17 @@ function yourTurn(id: number) {
   );
 }
 
-function showGateCard(id: number, kind: PracticeKind) {
+function showGateCard(id: number, kind: PracticeKind, inUse = true) {
   const name = TUTORIAL_NAME[id];
-  const { row, status } = gateCard('One learner at a time', `The ${name} tutorial is in use`, [
-    'Someone is practising on its cells right now. The cells go back to their starting state between people.',
-  ], "Get in line and we'll tell you when it's your turn.");
+  // Only say someone is practising when someone is: otherwise the cells are
+  // on their way back to their starting state.
+  const { row, status } = inUse
+    ? gateCard('One learner at a time', `The ${name} tutorial is in use`, [
+      'Someone is practising on its cells right now. The cells go back to their starting state between people.',
+    ], "Get in line and we'll tell you when it's your turn.")
+    : gateCard('Getting ready', `The ${name} tutorial is resetting`, [
+      'Nobody is using it, but its practice cells are going back to their starting state after the last learner.',
+    ], "Get in line and we'll open it as soon as they're ready.");
   const lineBtn = gateButton('Get in line', 'nge-gate-primary', () => {
     // Waiting is not a button: it shows the state, and OK takes over as the
     // way to get back to work while staying in line.
@@ -518,7 +544,7 @@ document.addEventListener('nge:tutorial-start', (async (e: CustomEvent) => {
   ]).catch(e => { console.warn('[tutorial] availability check failed:', e); return null; });
   if (!need) { removeGateCard(); openTutorial(id); return; }
   if (need.registered === 0 || need.free >= need.needed) { removeGateCard(); openTutorial(id); return; }
-  showGateCard(id, kind);
+  showGateCard(id, kind, need.heldByOthers > 0);
 }) as EventListener);
 
 export function startTutorialButton(id: number, label: string) {
@@ -598,13 +624,14 @@ This is an example. The yellow branch belongs to the purple cell, but the AI lef
     position: MIDDLE,
     width: "560px",
     image: imgMergeExample,
+    nextLabel: "Let's fix it!",
   },
 
   // 3: Activating merge, on the learner's own cell
   {
     title: "How to Merge",
     text: `
-Let's jump to an area that needs a merge. The purple cell behind this box has a yellow branch the AI left off it. It is yours to practice on until the end of this tutorial.
+Let's jump to an area that needs a merge. The purple ` + PART + ` behind this box is missing the yellow piece; the AI left it off. It is yours to practice on until the end of this tutorial.
 
 Press the **M** key to start the merge tool. The segmentation layer has to be selected for that. ` + INFO_LAYER + `
 
@@ -635,11 +662,11 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     text: `
 With merge mode on:
 
-1. **Ctrl+Click** the yellow branch.
-2. **Ctrl+Click** the purple cell, close to where the branch should join it.
+1. **Ctrl+Click** the yellow piece.
+2. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 3. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
-The server connects the two. You'll see "trying..." and then "done", and the branch turns purple.`,
+The server connects the two. You'll see "trying..." and then "done", and the piece turns purple.`,
     position: OVER_3D,
     width: "400px",
     onEnter: async () => {
@@ -656,7 +683,7 @@ The server connects the two. You'll see "trying..." and then "done", and the bra
   {
     title: "Merge success!",
     text: `
-You did it. The branch is part of the cell now, and the whole thing is purple.
+You did it. The piece is part of the ` + PART + ` now, and the whole thing is purple.
 
 ` + BLACK_BOX_NOTE + `
 
@@ -671,11 +698,11 @@ Ready for one more?`,
   {
     title: "Let's try another merge",
     text: `
-This time an axon is missing a branch. The purple axon behind this box lost the yellow piece; the AI left it as its own segment.
+Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` behind this box lost the yellow piece; the AI left it as its own segment.
 
 1. Press **M** if the merge tool is off.
 2. **Ctrl+Click** the yellow piece.
-3. **Ctrl+Click** the purple axon, close to where the piece should join it.
+3. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
 You'll see "trying..." and then "done", and the piece turns purple.`,
@@ -694,7 +721,7 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
   {
     title: "Merge success, again!",
     text: `
-Two for two. The piece is part of the axon now.
+Two for two. The piece is part of the ` + PART + ` now.
 
 A few things worth knowing:
 
