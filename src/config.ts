@@ -425,6 +425,8 @@ export const MEC_CELL_TYPES: string[] = [
   'Pyramidal Neuron',
   'Intermediate Stellate / Pyramidal',
   'Horizontal Cell (deep layers)',
+  'Bipolar Cell',
+  'Inhibitory Interneuron',
   'Basket Cell',
   'Chandelier Cell',
   'Other Interneuron',
