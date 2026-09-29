@@ -164,6 +164,10 @@ function copyId(id: string) {
  *  isn't already the one in the queue. */
 /** The active dataset's proofreading instructions, if it has any (MEC). */
 const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset.value).instructionsUrl || '');
+/** In-app how-to steps (Retina). When present, "instructions" opens these
+ *  here instead of an external page. */
+const datasetHowTo = computed(() => getDatasetCaveConfig(activeDataset.value).howToSteps || null);
+const showHowTo = ref(false);
 /** A view with one example of each cell type (MEC), loaded in place. */
 const datasetCellTypesState = computed(() => {
   const cfg = getDatasetCaveConfig(activeDataset.value);
@@ -1913,6 +1917,17 @@ const panelStyle = computed(() => ({
           </label>
         </div>
 
+        <!-- How to proofread this dataset's cells (Retina). -->
+        <div v-if="datasetHowTo && showHowTo" class="nge-cl-howto-panel">
+          <div class="nge-cl-howto-panel-head">
+            <span>How to map a cell</span>
+            <button class="nge-cl-howto-close" @click="showHowTo = false" title="Close">×</button>
+          </div>
+          <ol class="nge-cl-howto-steps">
+            <li v-for="(step, si) in datasetHowTo" :key="si" v-html="step"></li>
+          </ol>
+        </div>
+
         <!-- Filter tabs -->
         <!-- Tabs in three coloured groups: cells (cyan), community (gold),
              yours (violet). AI and Completed live in the gear picker. -->
@@ -1920,8 +1935,10 @@ const panelStyle = computed(() => ({
           <div class="nge-cl-tabgroup nge-cl-tabgroup--cells">
             <div class="nge-cl-tabgroup-head">
               <span class="nge-cl-tabgroup-label">Cells</span>
-              <span v-if="datasetInstructionsUrl || datasetCellTypesState" class="nge-cl-headlinks">
-              <a v-if="datasetInstructionsUrl" class="nge-cl-howto" :href="datasetInstructionsUrl" target="_blank" rel="noopener"
+              <span v-if="datasetHowTo || datasetInstructionsUrl || datasetCellTypesState" class="nge-cl-headlinks">
+              <a v-if="datasetHowTo" class="nge-cl-howto" :class="{ 'nge-cl-howto--open': showHowTo }" href="#" @click.prevent="showHowTo = !showHowTo"
+                 title="How to proofread cells in this dataset">instructions</a>
+              <a v-else-if="datasetInstructionsUrl" class="nge-cl-howto" :href="datasetInstructionsUrl" target="_blank" rel="noopener"
                  title="How to proofread cells in this dataset (opens in a new tab)">instructions</a>
               <a v-if="datasetCellTypesState" class="nge-cl-howto" href="#" @click.prevent="openCellTypes"
                  title="Open a view with one example of each cell type in this dataset">cell types</a>
@@ -3848,6 +3865,35 @@ select.nge-cl-response-input:hover {
 .nge-cl-howto:hover { color: #e6f7ff; text-shadow: 0 0 8px rgba(126, 202, 255, 0.75); }
 .nge-cl-howto:hover::before { background: currentColor; box-shadow: 0 0 6px rgba(126, 202, 255, 0.9); }
 .nge-cl-howto:hover::after { transform: scaleX(1); }
+.nge-cl-howto--open { color: #e6f7ff; }
+.nge-cl-howto--open::before { background: currentColor; }
+.nge-cl-howto-panel {
+  margin: 4px 12px 10px;
+  padding: 10px 12px 8px;
+  border-radius: 10px;
+  background: rgba(66, 213, 236, 0.06);
+  border: 1px solid rgba(66, 213, 236, 0.28);
+  animation: nge-cl-howto-in 0.2s ease-out both;
+}
+@keyframes nge-cl-howto-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.nge-cl-howto-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #7ee8ff; margin-bottom: 6px;
+}
+.nge-cl-howto-close {
+  background: none; border: none; color: #8aa; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px;
+}
+.nge-cl-howto-close:hover { color: #fff; }
+.nge-cl-howto-steps {
+  margin: 0; padding-left: 20px;
+  font-size: 12.5px; line-height: 1.5; color: #cfdcef;
+}
+.nge-cl-howto-steps li { margin: 3px 0; padding-left: 2px; }
+.nge-cl-howto-steps li::marker { color: #42d5ec; font-weight: 700; }
+.nge-cl-howto-steps :deep(b) { color: #fff; font-weight: 600; }
+.nge-cl-howto-steps :deep(a) { color: #7ecaff; }
+.nge-cl-howto-steps :deep(a:hover) { color: #fff; }
 .nge-cl-tabgroup--cells { --grp: #42d5ec; }
 .nge-cl-tabgroup--community { --grp: #e6c760; }
 .nge-cl-tabgroup--mine { --grp: #c98bff; }

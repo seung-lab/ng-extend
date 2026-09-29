@@ -12,6 +12,16 @@ export type Config = {
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── Per-dataset CAVE table + datastack configuration ───────────────────────
 import { MEC_CELL_TYPES_STATE } from './data/mec_cell_types_state';
+/** How to proofread a Retina cell (Ames's "Test BPs in Eyewire II Branch"
+ *  doc, 2026-09-29). Shown in the Cell Library under "instructions". */
+const RETINA_HOWTO: string[] = [
+  'Click <b>Available</b> and jump around until you find a cell you want.',
+  '<b>Claim</b> it. You can hold up to 8 cells at a time. Claiming loads that cell\'s annotation layers; the jump arrow on its own does not.',
+  'Start mapping! Add the annotations described in <a href="https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=508214135#gid=508214135" target="_blank" rel="noopener">the annotation guide</a>.',
+  'When the cell is done, <b>Complete</b> it here in the Cell Library, or with the &Delta; button next to its segment ID in the side panel. That records it in the spreadsheet and in our database.',
+  'Questions or problems? Use the <b>(!)</b> button in the top bar.',
+];
+
 export interface DatasetCaveConfig {
   caveServer: string;
   datastack: string;
@@ -55,6 +65,10 @@ export interface DatasetCaveConfig {
   /** Proofreading instructions for this dataset, linked from the Cell
    *  Library header (MEC only for now, Ames 2026-09-29). */
   instructionsUrl?: string;
+  /** Step-by-step how-to shown INSIDE the Cell Library when its header's
+   *  "instructions" is clicked (Retina, from Ames's tester doc 2026-09-29).
+   *  Trusted HTML written here in code: <b>, and <a> links open a new tab. */
+  howToSteps?: string[];
   /** A view with one example of each cell type, opened from the Cell
    *  Library header (MEC). A full neuroglancer state. */
   cellTypesState?: Record<string, any>;
@@ -85,6 +99,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     },
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
+    howToSteps:       RETINA_HOWTO,
   },
   // Alias — neuroglancer layer name used in the viewer
   eyewire_ii: {
@@ -102,6 +117,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     },
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
+    howToSteps:       RETINA_HOWTO,
   },
 
   // ── Pinky sandbox (dev / testing) ────────────────────────────────────────

@@ -5252,9 +5252,9 @@ export const useChatStore = defineStore('chat', () => {
   // queried directly so a new player's big day isn't cut by the top 50 list).
   // Local like the other bot lines: it isn't written to the database.
   const DAILY_LEADERS_KEY = 'nge-chat-daily-leaders';
-  async function announceDailyLeaders() {
+  async function announceDailyLeaders(force = false) {
     const today = new Date().toLocaleDateString('en-CA');       // local YYYY-MM-DD
-    try { if (localStorage.getItem(DAILY_LEADERS_KEY) === today) return; } catch { /* private mode */ }
+    try { if (!force && localStorage.getItem(DAILY_LEADERS_KEY) === today) return; } catch { /* private mode */ }
     try {
       const top = (col: 'edits_24h' | 'completions_24h') => supabase.from('user_edit_counts')
         .select(`display_name,${col}`).gt(col, 0).order(col, { ascending: false }).limit(3);
@@ -5507,6 +5507,8 @@ export const useChatStore = defineStore('chat', () => {
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
         parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null});
       // "!online name": Nurro looks the person up, then answers (live only).
+      // "!leaders" / "!today": Nurro posts the daily leaders card again.
+      if (row.notification_id == null && /^\s*!(leaders|today)\b/i.test(row.text || '')) void announceDailyLeaders(true);
       const target = row.notification_id == null ? onlineTarget(row.text || '') : null;
       if (target) void answerOnline(target);
       // nkem_test takes a beat to answer, like it used to.

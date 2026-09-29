@@ -93,7 +93,7 @@ export const NURRO_ANSWERS: Record<string, string> = {
   tags: 'Found something odd but not sure how to fix it? Press Shift+T for Tag Mode and tag a spot for another player to review.',
 };
 const ALIASES: Record<string, string> = { commands: 'help', split: 'cut', cell: 'cells', dataset: 'datasets', tag: 'tags', stat: 'stats', point: 'points' };
-const HELP = 'Try !about, !faq, !merge, !cut, !cells, !datasets, !stats, !points, !share, !tags, !online or !online @username. Or just say "for science!"';
+const HELP = 'Try !about, !faq, !merge, !cut, !cells, !datasets, !stats, !points, !share, !tags, !leaders, !online or !online @username. Or just say "for science!"';
 
 /** "!online celiad" / "!online @celiad": whose status to look up, or null. */
 export function onlineTarget(text: string): string | null {
@@ -139,6 +139,8 @@ export function botReply(seed: string, text: string, online: string[] | null): B
     const key = ALIASES[cmd] ?? cmd;
     if (key === 'science') return { name: BOT_NAME, ...forScienceReply(seed) };
     if (key === 'help') return { name: NURRO_NAME, text: HELP };
+    // The chat store answers these live with the daily leaders card.
+    if (key === 'leaders' || key === 'today') return null;
     if (key === 'online') {
       // "!online name" needs a lookup; the chat store answers it live.
       if (!online || onlineTarget(text)) return null;
