@@ -411,7 +411,7 @@ function ensureGateStyle() {
     @keyframes nge-gate-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
     #nge-tutorial-gate .nge-gate-title { margin: 6px 0 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
       color: #fff; text-shadow: 0 0 22px rgba(120, 190, 255, 0.35); }
-    #nge-tutorial-gate .nge-gate-art { display: block; width: 100%; height: auto; max-height: 190px; object-fit: contain;
+    #nge-tutorial-gate .nge-gate-art { display: block; width: 100%; height: auto; max-height: 250px; object-fit: contain;
       margin: 0 0 12px; border-radius: 10px; padding: 8px 10px; box-sizing: border-box;
       background: radial-gradient(ellipse at 45% 55%, rgba(66, 213, 236, 0.14), #04070d 72%);
       border: 1px solid rgba(255, 255, 255, 0.08); }
