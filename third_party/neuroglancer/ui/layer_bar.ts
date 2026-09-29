@@ -43,6 +43,7 @@ class LayerWidget extends RefCounted {
   valueElement = document.createElement('div');
   maxLength: number = 0;
   prevValueText: string = '';
+  private colorWatched = false;
 
   constructor(public layer: ManagedUserLayer, public panel: LayerBar) {
     super();
@@ -144,6 +145,22 @@ class LayerWidget extends RefCounted {
   update() {
     const {layer, element} = this;
     this.labelElementText.textContent = layer.name;
+    // ng-extend (Ames 2026-09-29): an annotation layer's tab carries its
+    // annotation colour, so the layer bar reads as a legend (MEC cell types).
+    const userLayer: any = layer.layer;
+    const color = userLayer && (userLayer.constructor as any).type === 'annotation'
+        ? userLayer.annotationDisplayState?.color : undefined;
+    if (color && !this.colorWatched) {
+      this.colorWatched = true;
+      this.registerDisposer(color.changed.add(() => this.update()));
+    }
+    if (color?.value) {
+      const [r, g, b] = Array.from(color.value as ArrayLike<number>).map(v => Math.round(v * 255));
+      element.style.setProperty('--nge-layer-color', `rgb(${r}, ${g}, ${b})`);
+      element.dataset.tinted = 'true';
+    } else {
+      delete element.dataset.tinted;
+    }
     element.dataset.visible = layer.visible.toString();
     element.dataset.selected = (layer === this.panel.selectedLayer.layer).toString();
     element.dataset.pick = layer.pickEnabled.toString();

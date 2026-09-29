@@ -137,6 +137,16 @@
   transition: border-color 0.15s, background 0.15s;
 }
 
+/* Annotation layers: a bar and a faint wash of the layer's colour
+   (layer_bar.ts sets --nge-layer-color), so the bar reads as a legend. */
+.neuroglancer-layer-item[data-tinted="true"] {
+  border-left: 3px solid var(--nge-layer-color) !important;
+  background: color-mix(in srgb, var(--nge-layer-color) 14%, rgba(255, 255, 255, 0.03)) !important;
+}
+.neuroglancer-layer-item[data-tinted="true"] .neuroglancer-layer-item-label {
+  color: color-mix(in srgb, var(--nge-layer-color) 45%, #ffffff);
+}
+
 .neuroglancer-layer-item-number {
   font-size: 10px;
   line-height: 1;
