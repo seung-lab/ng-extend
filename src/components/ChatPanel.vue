@@ -13,6 +13,8 @@ import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
 import nurroAvatar from '../../static/nurro/nurro-original.png';
 
+const DAILY_MEDALS = ['🥇', '🥈', '🥉'];
+
 /** Nurro's joke profile (NurroProfile.vue, opened by ExtensionBar). */
 function openNurroProfile() {
   document.dispatchEvent(new CustomEvent('nge:open-nurro-profile'));
@@ -745,6 +747,34 @@ function toggleCollapse() {
                   <span class="nge-chat-announce-cta">Open →</span>
                 </div>
 
+                <!-- Nurro's daily leaders, as a card (Ames 2026-09-29). -->
+                <div v-else-if="msg.type === 'message' && msg.daily" class="nge-chat-msg nge-chat-daily" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg) }">
+                  <div class="nge-chat-daily-head">
+                    <img :src="nurroAvatar" alt="" class="nge-chat-daily-nurro" />
+                    <span class="nge-chat-daily-title">Today's leaders</span>
+                    <span class="nge-chat-daily-sub">last 24 h</span>
+                  </div>
+                  <div v-if="msg.daily.edits.length || msg.daily.cells.length" class="nge-chat-daily-cols">
+                    <div v-if="msg.daily.edits.length" class="nge-chat-daily-col">
+                      <div class="nge-chat-daily-label">Most edits</div>
+                      <div v-for="(r, ri) in msg.daily.edits" :key="'e' + ri" class="nge-chat-daily-row">
+                        <span class="nge-chat-daily-medal">{{ DAILY_MEDALS[ri] }}</span>
+                        <span class="nge-chat-daily-name" role="button" @click="openUserProfile(r.name)" :title="'View ' + r.name + '\'s profile'">{{ r.name }}</span>
+                        <span class="nge-chat-daily-n">{{ r.n }}</span>
+                      </div>
+                    </div>
+                    <div v-if="msg.daily.cells.length" class="nge-chat-daily-col">
+                      <div class="nge-chat-daily-label">Most cells</div>
+                      <div v-for="(r, ri) in msg.daily.cells" :key="'c' + ri" class="nge-chat-daily-row">
+                        <span class="nge-chat-daily-medal">{{ DAILY_MEDALS[ri] }}</span>
+                        <span class="nge-chat-daily-name" role="button" @click="openUserProfile(r.name)" :title="'View ' + r.name + '\'s profile'">{{ r.name }}</span>
+                        <span class="nge-chat-daily-n">{{ r.n }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="nge-chat-daily-empty">No edits in the last 24 hours yet. The top spot is wide open!</div>
+                </div>
+
                 <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg) }">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
@@ -1411,6 +1441,59 @@ function toggleCollapse() {
   box-sizing: border-box;
 }
 .nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.3); }
+
+/* ── Nurro's daily leaders card ── */
+.nge-chat-daily {
+  margin: 6px 2px;
+  padding: 9px 10px 8px;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(245, 196, 80, 0.10), rgba(245, 196, 80, 0.02) 55%),
+    rgba(10, 14, 26, 0.85);
+  border: 1px solid rgba(245, 196, 80, 0.32);
+  box-shadow: 0 0 14px rgba(245, 196, 80, 0.08), inset 0 1px 0 rgba(255, 230, 170, 0.08);
+}
+.nge-chat-daily:hover { background:
+    linear-gradient(180deg, rgba(245, 196, 80, 0.13), rgba(245, 196, 80, 0.03) 55%),
+    rgba(10, 14, 26, 0.9); }
+.nge-chat-daily-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.nge-chat-daily-nurro { width: 20px; height: 20px; object-fit: contain; }
+.nge-chat-daily-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ffd27a;
+}
+.nge-chat-daily-sub { margin-left: auto; font-size: 10.5px; color: rgba(255, 220, 150, 0.55); }
+.nge-chat-daily-cols { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.nge-chat-daily-col { flex: 1 1 110px; min-width: 0; }
+.nge-chat-daily-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8fb4dc;
+  margin-bottom: 2px;
+}
+.nge-chat-daily-row { display: flex; align-items: center; gap: 5px; font-size: 13px; line-height: 1.55; }
+.nge-chat-daily-medal { font-size: 12px; width: 16px; text-align: center; flex-shrink: 0; }
+.nge-chat-daily-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e8eef8;
+  cursor: pointer;
+}
+.nge-chat-daily-name:hover { color: #fff; text-decoration: underline; }
+.nge-chat-daily-n {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffd27a;
+}
+.nge-chat-daily-empty { font-size: 12.5px; color: #c9d6e8; }
 
 /* ── Nurro ── */
 .nge-chat-nurro-name {

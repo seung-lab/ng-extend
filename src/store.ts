@@ -5019,6 +5019,8 @@ export interface ChatMessage {
   userId?: string | null;
   /** Set on nkem_test's replies: the language of its "for science". */
   botLanguage?: string;
+  /** Nurro's daily leaders card (the text part is the plain fallback). */
+  daily?: { edits: Array<{ name: string; n: number }>; cells: Array<{ name: string; n: number }> };
 }
 
 /**
@@ -5267,8 +5269,10 @@ export const useChatStore = defineStore('chat', () => {
         : `☀️ No edits in the last 24 hours yet. The top spot is wide open!`;
       const at = new Date();
       addTimeSeparatorIfNeeded(at);
+      const rows = (d: any[] | null, col: string) => (d || []).map(r => ({ name: String(r.display_name || 'Player'), n: Number(r[col]) || 0 }));
       chatMessages.value.push({ type: 'message', name: NURRO_NAME, rank: 'bot', time: formatTime(at), dateTime: at,
-        parts: [{ type: 'sender', text: NURRO_NAME }, { type: 'text', text }] });
+        parts: [{ type: 'sender', text: NURRO_NAME }, { type: 'text', text }],
+        daily: { edits: rows(e.data, 'edits_24h'), cells: rows(c.data, 'completions_24h') } });
       try { localStorage.setItem(DAILY_LEADERS_KEY, today); } catch { /* private mode */ }
     } catch (err) {
       console.warn('[chat] daily leaders failed:', err);
