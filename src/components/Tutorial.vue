@@ -141,6 +141,23 @@ watch(() => store.activeTutorial, (now, before) => {
 // to the success box).
 document.addEventListener('nge:tutorial-next', () => { if (activeStep.value) next(); });
 const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() - 1)); };
+// ── Resuming on page load (Nseraf 2026-09-29) ──
+// Progress follows the account, so a tutorial left partway used to restart
+// its current step on every visit, and each step loads its own view: Nseraf,
+// stuck at step 5 of Advanced Interface, was pulled to the Sandbox whenever he
+// opened Retina. A tutorial found partway at load now waits behind a small
+// Continue / Exit card and loads nothing until you choose. Starting a
+// tutorial from the menu (step 0) needs no prompt.
+const TUTORIAL_NAMES: Record<number, string> = { 1: 'Getting Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut' };
+const resumeDecided = ref(false);
+watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) => {
+    if (stepNow === 0) resumeDecided.value = true;       // a fresh start from the menu
+});
+const needsResumePrompt = computed(() => !resumeDecided.value && !!activeStep.value && activeStep.value.index > 0);
+const resumeName = computed(() => TUTORIAL_NAMES[store.activeTutorial] ?? 'the tutorial');
+function continueTutorial() { resumeDecided.value = true; }
+function exitFromPrompt() { resumeDecided.value = true; exitIntro(); }
+
 const exitIntro = () => {
     console.log('exiting intro!');
     // Leaving the merge or cut tutorial mid practice hands the cell back.
@@ -151,7 +168,17 @@ const exitIntro = () => {
 </script>
 
 <template>
-    <TutorialStep v-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
+    <div v-if="needsResumePrompt" class="nge-tut-resume" role="dialog" aria-label="Resume tutorial">
+        <div class="nge-tut-resume-text">
+            You're partway through <strong>{{ resumeName }}</strong>
+            <span class="nge-tut-resume-step">step {{ (activeStep?.index ?? 0) + 1 }} of {{ steps.length }}</span>
+        </div>
+        <div class="nge-tut-resume-actions">
+            <button class="nge-tut-resume-go" @click="continueTutorial">Continue</button>
+            <button class="nge-tut-resume-exit" @click="exitFromPrompt">Exit tutorial</button>
+        </div>
+    </div>
+    <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
         :last="activeStep.last" :stepIndex="activeStep.index" :totalSteps="steps.length"
         v-on:next="next"
         v-on:back="back" v-on:exitIntro="exitIntro" />
@@ -159,6 +186,42 @@ const exitIntro = () => {
 </template>
 
 <style scoped>
+.nge-tut-resume {
+    position: fixed;
+    left: 50%;
+    bottom: 64px;
+    transform: translateX(-50%);
+    z-index: 9500;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 14px 12px 18px;
+    border-radius: 12px;
+    background: rgba(8, 12, 24, 0.96);
+    border: 1px solid rgba(126, 202, 255, 0.35);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 18px rgba(74, 158, 255, 0.12);
+    color: #d6e4f5;
+    font-family: 'Inter', 'Roboto', sans-serif;
+    font-size: 14px;
+    animation: nge-tut-resume-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes nge-tut-resume-in { from { opacity: 0; translate: 0 12px; } to { opacity: 1; translate: 0 0; } }
+.nge-tut-resume strong { color: #fff; }
+.nge-tut-resume-step { margin-left: 6px; font-size: 12px; color: #8fa6c2; }
+.nge-tut-resume-actions { display: flex; gap: 8px; }
+.nge-tut-resume-actions button {
+    border-radius: 999px;
+    padding: 5px 14px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.nge-tut-resume-go { background: #4a9eff; border: 1px solid #4a9eff; color: #04121f; }
+.nge-tut-resume-go:hover { background: #7ecaff; }
+.nge-tut-resume-exit { background: transparent; border: 1px solid rgba(126, 202, 255, 0.35); color: #cfe0ff; }
+.nge-tut-resume-exit:hover { border-color: rgba(126, 202, 255, 0.8); color: #fff; }
+
 .introduction {
     z-index: 89;
     /* having this here solves a chrome transition bug */

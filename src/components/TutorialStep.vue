@@ -290,19 +290,31 @@ async function applyHighlight() {
     }
 }
 
+// A step must never vanish because its setup stalled (Nseraf 2026-09-29: the
+// Advanced Interface tutorial "cuts off abruptly after the press A popup").
+// Loading a step's saved view can wait forever on an expired middleauth
+// login, or on an animation frame in a background tab; a thrown error did the
+// same. Each setup stage gets a time limit and a catch, then the box shows
+// anyway while the view keeps loading behind it.
+const STEP_SETUP_MS = 8000;
+function settleWithin(p: Promise<unknown> | unknown, what: string): Promise<void> {
+    return Promise.race([
+        Promise.resolve(p).then(() => undefined, (e) => { console.warn(`[tutorial] ${what} failed:`, e); }),
+        new Promise<void>(r => setTimeout(() => { console.warn(`[tutorial] ${what} still running after ${STEP_SETUP_MS} ms; showing the step`); r(); }, STEP_SETUP_MS)),
+    ]);
+}
+
 onMounted(async () => {
     const startT = performance.now();
-    console.log("test propo", props.step.state);
     if (props.step.state) {
-        console.log('loading state');
-        await loadState(props.step.state);
+        await settleWithin(loadState(props.step.state), 'loading the step view');
     }
     if (props.step.clickAfterState) {
         const el = await waitForElement(props.step.clickAfterState);
         if (el) (el as HTMLElement).click();
     }
     if (props.step.onEnter) {
-        await props.step.onEnter();
+        await settleWithin(props.step.onEnter(), 'step setup');
     }
     console.log('updating position', performance.now() - startT);
     updateChipPosition();
