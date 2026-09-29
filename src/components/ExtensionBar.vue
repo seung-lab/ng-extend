@@ -64,6 +64,12 @@ async function syncFirstSession() {
   }
 }
 
+// Merge and Cut start through the practice-cell gate in tutorial-3.ts.
+// (Templates cannot reach `document`, so the dispatch lives here.)
+function startTutorial(id: number) {
+  document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id } }));
+}
+
 function closeHamburger() {
   dropdownStore.activeDropdowns['extension-bar-right'] = undefined;
 }
@@ -969,12 +975,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           <!-- Merge and Cut run on practice cells one learner at a time: the
                start goes through a gate (tutorial-3.ts) that offers a place in
                line when the cells are held. -->
-          <div class="logoutButton button nge-menu-item" @click="document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: 3 } })); closeHamburger()">
+          <div class="logoutButton button nge-menu-item" @click="startTutorial(3); closeHamburger()">
             <span class="nge-menu-num">3</span><span>Merge</span>
           </div>
         </li>
         <li>
-          <div class="logoutButton button nge-menu-item" @click="document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: 5 } })); closeHamburger()">
+          <div class="logoutButton button nge-menu-item" @click="startTutorial(5); closeHamburger()">
             <span class="nge-menu-num">4</span><span>Cut</span>
           </div>
         </li>

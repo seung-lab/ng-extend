@@ -396,7 +396,13 @@ document.addEventListener('nge:tutorial-start', (async (e: CustomEvent) => {
   if (!Number.isFinite(id)) return;
   const kind = PRACTICE_KIND[id];
   if (!kind) { openTutorial(id); return; }
-  const need = await tutorialNeeds(kind);
+  // If the availability check fails, open the tutorial anyway: its steps
+  // show the no-cell fallback rather than the menu doing nothing.
+  const need = await Promise.race([
+    tutorialNeeds(kind),
+    new Promise<null>(r => setTimeout(() => r(null), 4000)),
+  ]).catch(e => { console.warn('[tutorial] availability check failed:', e); return null; });
+  if (!need) { removeGateCard(); openTutorial(id); return; }
   if (need.registered === 0 || need.free >= need.needed) { removeGateCard(); openTutorial(id); return; }
   showGateCard(id, kind);
 }) as EventListener);
