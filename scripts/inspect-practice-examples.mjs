@@ -1,10 +1,13 @@
 // Read-only fixture discovery. All CAVE destinations and roots come from reviewed Git.
 import fs from 'node:fs';
 const manifest=JSON.parse(fs.readFileSync(new URL('../config/practice-reset-manifest.json',import.meta.url),'utf8'));
+// Cells under investigation, read only (never reset from here): the same
+// reviewed-Git rule, kept apart so the reset job does not pick them up.
+const inspectOnly=JSON.parse(fs.readFileSync(new URL('../config/practice-inspect-only.json',import.meta.url),'utf8'));
 const token=process.env.CAVE_SERVICE_TOKEN;
 if(!token) throw Error('CAVE_SERVICE_TOKEN is missing');
 const get=async(base,path)=>{const r=await fetch(base+path,{headers:{Authorization:`Bearer ${token}`},redirect:'error',signal:AbortSignal.timeout(20000)});if(!r.ok)throw Error(`CAVE read failed (${r.status})`);return r.json();};
-for(const [id,fixture] of Object.entries(manifest)) {
+for(const [id,fixture] of Object.entries({...manifest,...inspectOnly})) {
  if(fixture.pcg_server!=='https://minnie.microns-daf.com'||fixture.pcg_table!=='pinky_nf_v2')throw Error('Unapproved sandbox');
  const base=fixture.pcg_server+'/segmentation/api/v1/table/'+fixture.pcg_table;
  const descend=async(root)=>{let node=String(root);for(let i=0;i<12;i++){if(!/^\d{1,20}$/.test(node))throw Error('Invalid node');if(BigInt(node)>>56n===1n)return node;const data=await get(base,`/node/${node}/children?int64_as_str=1`);node=String((data.children_ids??data.children??[])[0]);}throw Error('No supervoxel found');};
@@ -21,5 +24,10 @@ for(const [id,fixture] of Object.entries(manifest)) {
   const describe=value=>({type:Array.isArray(value)?'array':typeof value,keys:value&&typeof value==='object'?Object.keys(value).slice(0,12):[],length:Array.isArray(value)?value.length:undefined});
   console.log(JSON.stringify({root,history:describe(log),children:Object.fromEntries(Object.entries(log).slice(0,6).map(([k,v])=>[k,describe(v)]))}));
   if(log.operation_id && log.timestamp) console.log(JSON.stringify({root,operations:Object.keys(log.operation_id).slice(-30).map(i=>({id:log.operation_id[i],timestamp:log.timestamp[i],is_merge:log.is_merge?.[i],before:log.before_root_ids?.[i],after:log.after_root_ids?.[i]}))}));
+  // How each recent operation is recorded, undo links included.
+  const t=log.operation_id?log:(log[root]??log);
+  if(t.operation_id){const ids=Object.keys(t.operation_id).slice(-30).map(i=>Number(t.operation_id[i]));
+   const details=await get(base,'/operation_details?int64_as_str=1&operation_ids='+encodeURIComponent(JSON.stringify(ids)));
+   console.log(JSON.stringify({root,details:Object.fromEntries(Object.entries(details).map(([k,v])=>[k,{status:v.operation_status,undo_of:v.undo_operation_id,redo_of:v.redo_operation_id,added:v.added_edges?.length,removed:v.removed_edges?.length,sources:v.source_ids??v.source_coords?.length,user:v.user}]))}));}
  }
 }

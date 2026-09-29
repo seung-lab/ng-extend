@@ -58,6 +58,10 @@ const force = has('--force');
 const onlyDataset = val('--dataset');
 const refreshNucleus = has('--refresh-nucleus');
 const statusesOnly = has('--statuses');
+// --retire-source <sheet id>: hide Available cells imported from a sheet the
+// game no longer uses (they become skipped, with a note; nothing is deleted,
+// and claimed or completed cells are left alone). Needs --dataset.
+const retireSource = val('--retire-source');
 
 /**
  * Datasets that have a Cell Library sheet. Mirrors `cellLibrarySheetUrl` in
@@ -465,7 +469,44 @@ async function syncStatuses(cfg) {
   return changed;
 }
 
+async function retireOldSource(dataset, sheetId) {
+  if (!/^[A-Za-z0-9_-]{6,}$/.test(sheetId || '')) throw new Error('--retire-source needs a sheet id');
+  const note = `Retired ${new Date().toISOString().slice(0, 10)}: imported from an old sheet (${sheetId.slice(0, 8)}) the game no longer uses.`;
+  const rows = [];
+  for (let offset = 0; ; offset += 1000) {
+    const url = `${SUPABASE_URL}/rest/v1/proofreading_tasks?select=id,notes&dataset=eq.${encodeURIComponent(dataset)}`
+      + `&status=eq.pending&assigned_to=is.null&source_sheet_url=like.*${sheetId}*&order=id&limit=1000&offset=${offset}`;
+    const res = await fetch(url, { headers: supabaseHeaders });
+    if (!res.ok) throw new Error(`read tasks ${res.status}: ${await res.text()}`);
+    const page = await res.json();
+    rows.push(...page);
+    if (page.length < 1000) break;
+  }
+  console.log(`[retire] ${dataset}: ${rows.length} Available cell(s) came from sheet ${sheetId}`);
+  if (dryRun || !rows.length) return 0;
+  let changed = 0;
+  const queue = [...rows];
+  async function worker() {
+    for (let t = queue.shift(); t; t = queue.shift()) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/proofreading_tasks?id=eq.${t.id}&status=eq.pending&assigned_to=is.null`, {
+        method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=representation' },
+        body: JSON.stringify({ status: 'skipped', notes: [t.notes, note].filter(Boolean).join(' ').slice(0, 2000), updated_at: new Date().toISOString() }),
+      });
+      if (!res.ok) throw new Error(`update task ${t.id} ${res.status}: ${await res.text()}`);
+      if ((await res.json()).length) changed++;
+    }
+  }
+  await Promise.all(Array.from({ length: 8 }, worker));
+  console.log(`[retire] hid ${changed} cell(s)`);
+  return changed;
+}
+
 (async () => {
+  if (retireSource) {
+    if (!onlyDataset) { console.error('--retire-source needs --dataset'); process.exit(1); }
+    await retireOldSource(onlyDataset, retireSource);
+    return;
+  }
   if (statusesOnly) {
     const targets = SHEETS.filter(s => !s.byPoint && (!onlyDataset || s.dataset === onlyDataset));
     let changed = 0, failed = 0;
