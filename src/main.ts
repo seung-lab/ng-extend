@@ -74,6 +74,27 @@ function mergeTopBars() {
   }
 }
 
+/* ── Hover readout sits beside the position chip (Amy 2026-09-29) ──
+   The orange mouse coordinates floated where the chat's bottom edge sits and
+   covered it. They now share the blue chip's line, just to its right, so the
+   chip's live right edge (it widens with the digits) is kept in a CSS var. */
+function trackPositionChipEdge() {
+  const root = document.documentElement;
+  let observed: Element | null = null;
+  const ro = new ResizeObserver(() => {
+    if (observed) root.style.setProperty('--nge-pos-chip-right', `${Math.round(observed.getBoundingClientRect().right)}px`);
+  });
+  const attach = () => {
+    const el = Array.from(document.querySelectorAll('.neuroglancer-position-widget'))
+      .find(e => !e.closest('.neuroglancer-layer-item')) ?? null;
+    if (el && el !== observed) { if (observed) ro.unobserve(observed); observed = el; ro.observe(el); }
+  };
+  attach();
+  // Cheap re-check: the chip can be rebuilt (dataset switch). A MutationObserver
+  // would fire on every mouse move, since the readout text changes constantly.
+  setInterval(attach, 2000);
+}
+
 /* ── Pyr Favicon ── */
 function injectNeuronFavicon() {
   const link = document.createElement('link');
@@ -90,6 +111,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // Before mount: components read isMobileRef during setup (chat default,
   // welcome sheet) and mobile.css keys off body.nge-mobile.
   installMobileMode();
+  trackPositionChipEdge();
   const pinia = createPinia();
   const app = createApp(App);
   // Installed before mount so a failure during initial render is captured.

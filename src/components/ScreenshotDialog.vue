@@ -63,7 +63,15 @@ const showScaleBar = ref(true);
 /** Capture the whole tab, panels included, instead of the viewer canvas
  *  (Amy: a bug report needs the windows that were open). Uses the browser's
  *  screen capture of this tab, so it asks once and takes one frame. */
-const wholeScreen = ref(props.mode === 'attach');
+// Remembered (Amy 2026-09-29): "Whole screen" makes the browser ask to share
+// the tab every time, and browsers never let a site save that permission.
+// Untick it once and screenshots capture the viewer only, with no popup.
+const WHOLE_SCREEN_KEY = 'nge_shot_whole_screen_v1';
+const wholeScreen = ref((() => {
+  try { const v = localStorage.getItem(WHOLE_SCREEN_KEY); if (v != null) return v === '1'; } catch { /* private mode */ }
+  return props.mode === 'attach';
+})());
+watch(wholeScreen, v => { try { localStorage.setItem(WHOLE_SCREEN_KEY, v ? '1' : '0'); } catch { /* private mode */ } });
 /** Crop to the 3D panel only (Amy), for clean neuron renders. */
 const only3d = ref(false);
 /** Nurro in a corner of the picture, because why not (Amy). Every

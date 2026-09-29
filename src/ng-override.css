@@ -85,10 +85,13 @@
    position:fixed frees it from the bar's layout, so the digit-count
    flutter can no longer reflow anything. Hidden while not hovering
    (neuroglancer clears its text, so :empty applies). */
+/* Same line as the position chip, to its right (Amy 2026-09-29): at bottom
+   38px it covered the chat panel's bottom edge. main.ts keeps
+   --nge-pos-chip-right on the chip's live right edge. */
 .neuroglancer-mouse-position-widget {
   position: fixed;
-  left: 10px;
-  bottom: 38px;
+  left: calc(var(--nge-pos-chip-right, 290px) + 8px);
+  bottom: 7px;
   z-index: 60;
   flex: none;
   max-width: 40vw;
