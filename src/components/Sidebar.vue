@@ -12,12 +12,12 @@
 import Vue from "vue";
 
 import { storeProxy } from "../state";
-import Leaderboard from "components/Leaderboard.vue";
+// import Leaderboard from "components/Leaderboard.vue";
 // import Chatbox from "components/Chatbox.vue";
 import GettingStarted from "components/GettingStarted.vue";
 
 export default Vue.extend({
-  components: { Leaderboard, /* Chatbox, */ GettingStarted },
+  components: { /* Leaderboard, */ /* Chatbox, */ GettingStarted },
   data: () => {
     return {
       appState: storeProxy,
