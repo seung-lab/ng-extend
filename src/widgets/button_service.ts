@@ -153,20 +153,37 @@ export class ButtonService {
       }
     }
 
+    // A typed cell shows its LABEL in the ID chip instead of the long root id
+    // (Ames 2026-09-29); the id stays in the tooltip and on the row's copy
+    // button. CSS draws data-nge-label over the chip (ng-override.css).
+    const idEl = row.querySelector('.neuroglancer-segment-list-entry-id') as HTMLElement|null;
+    const label = status?.cellType
+      ? (status.classificationSystem ? `${status.classificationSystem} - ${status.cellType}` : status.cellType)
+      : '';
+    if (idEl) {
+      const segId = (idEl.textContent || '').trim();
+      if (label) {
+        idEl.dataset.ngeLabel = label;
+        idEl.title = `${label}
+${segId}
+Use the copy button for the ID`;
+      } else {
+        delete idEl.dataset.ngeLabel;
+        idEl.removeAttribute('title');
+      }
+    }
+    row.classList.toggle('nge-seg-labelled', !!label);
+
     if (!status) {
       badge.className = 'nge-label-badge';
       badge.textContent = '';
       badge.title = '';
     } else if (status.cellType) {
-      // Show cell type label (with completion indicator prefix)
-      badge.className = status.isComplete
-        ? 'nge-label-badge nge-label-badge--complete'
-        : 'nge-label-badge nge-label-badge--annotated';
-      const displayType = status.classificationSystem
-        ? `${status.classificationSystem} - ${status.cellType}`
-        : status.cellType;
-      badge.textContent = displayType;
-      badge.title = status.isComplete ? `Complete: ${displayType}` : displayType;
+      // The label now lives in the chip: no second badge row. The pip still
+      // shows done (green) vs typed only (yellow).
+      badge.className = 'nge-label-badge';
+      badge.textContent = '';
+      badge.title = '';
     } else {
       // No cell type — the pip color is sufficient, no text needed
       badge.className = 'nge-label-badge';

@@ -648,6 +648,30 @@
   transition: box-shadow 0.15s, transform 0.15s;
 }
 
+.neuroglancer-segment-list-entry.nge-seg-labelled .neuroglancer-segment-list-entry-id {
+  /* Typed cells: the chip shows the label (button_service.ts sets
+     data-nge-label); the raw id text is kept but not drawn. */
+  font-size: 0 !important;
+  letter-spacing: 0 !important;
+  /* neuroglancer sizes the chip in ch of its own font (0 here): size to the label. */
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.neuroglancer-segment-list-entry.nge-seg-labelled .neuroglancer-segment-list-entry-id::after {
+  content: attr(data-nge-label);
+  font: 600 12px 'Inter', system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+/* ...and its copy button stays visible, since the id is no longer on show. */
+.neuroglancer-segment-list-entry.nge-seg-labelled .neuroglancer-segment-list-entry-copy {
+  visibility: visible !important;
+  display: inline-flex !important;
+}
+
 .neuroglancer-segment-list-entry:hover .neuroglancer-segment-list-entry-id {
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.28),
