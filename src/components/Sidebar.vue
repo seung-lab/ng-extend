@@ -4,7 +4,7 @@
     <getting-started />
     <!--<leaderboard />-->
     <div></div>
-    <chatbox />
+    <!-- <chatbox /> -->
   </div>
 </template>
 
@@ -13,11 +13,11 @@ import Vue from "vue";
 
 import { storeProxy } from "../state";
 import Leaderboard from "components/Leaderboard.vue";
-import Chatbox from "components/Chatbox.vue";
+// import Chatbox from "components/Chatbox.vue";
 import GettingStarted from "components/GettingStarted.vue";
 
 export default Vue.extend({
-  components: { Leaderboard, Chatbox, GettingStarted },
+  components: { Leaderboard, /* Chatbox, */ GettingStarted },
   data: () => {
     return {
       appState: storeProxy,
@@ -31,13 +31,13 @@ export default Vue.extend({
       this.visible = visible;
       (<HTMLElement>document.querySelector(".nge-sidebar")).classList.toggle("visible", visible);
       this.shiftStatusBars();
-      if (visible) {
-        const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
-        const scrollAtBottom = el.scrollTop + el.offsetHeight >= el.scrollHeight;
-        if (scrollAtBottom) {
-          this.appState.markLastMessageRead();
-        }
-      }
+      // if (visible) {
+      //   const el = <HTMLElement>document.querySelector('.nge-chatbox-scroll .simplebar-content-wrapper');
+      //   const scrollAtBottom = el.scrollTop + el.offsetHeight >= el.scrollHeight;
+      //   if (scrollAtBottom) {
+      //     this.appState.markLastMessageRead();
+      //   }
+      // }
     },
     setChatVisible(visible: boolean) {
       localStorage.setItem("chatVisible", visible.toString());
