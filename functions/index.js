@@ -1772,7 +1772,8 @@ exports.ewCommunityData = onRequest(
       const groups = me ? (await sb("user_group_members?user_id=eq."+me.id+"&select=group_id")).map(r=>r.group_id) : [];
       const context={...ctx,groups,now:new Date().toISOString()};
       const read=["GET","HEAD"].includes(String(input.method||"GET").toUpperCase());
-      if(!read && !(input.table==="users" && input.method==="POST")) requirePilot(context);
+      // Own settings are personal, not pilot data: any signed in player may save them.
+      if(!read && !(input.table==="users" && input.method==="POST") && input.table!=="user_settings") requirePilot(context);
       const plan=authorizePilotData(input,context)||authorizeData(input,context);
       if(plan.table==="special_badge_awards" && !isAdmin && plan.body) {
         const rows=Array.isArray(plan.body)?plan.body:[plan.body];
@@ -1793,7 +1794,7 @@ exports.ewCommunityData = onRequest(
       headers.Accept = input.accept === "application/vnd.pgrst.object+json" ? input.accept : "application/json";
       const preferences = ["return=representation"];
       if (String(input.prefer).includes("count=exact")) preferences.push("count=exact");
-      if (["notification_reads","user_group_members","chat_presence",...Object.keys(pilotConflicts)].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
+      if (["notification_reads","user_group_members","chat_presence","user_settings",...Object.keys(pilotConflicts)].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
       headers.Prefer = preferences.join(",");
       if (typeof input.range === "string" && /^\d+-\d+$/.test(input.range)) {
         const [from,to] = input.range.split("-").map(Number);
