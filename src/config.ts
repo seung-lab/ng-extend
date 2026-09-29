@@ -421,20 +421,20 @@ export const CORTEX_CELL_TYPES: string[] = [
 
 // Medial entorhinal cortex (pni_mec).
 export const MEC_CELL_TYPES: string[] = [
-  'Stellate Cell',
+  'Stellate',
   'Pyramidal Neuron',
   'Intermediate Stellate / Pyramidal',
-  'Horizontal Cell (deep layers)',
-  'Bipolar Cell',
+  'Horizontal (deep layers)',
+  'Bipolar',
   'Inhibitory Interneuron',
-  'Basket Cell',
-  'Chandelier Cell',
+  'Basket',
+  'Chandelier',
   'Other Interneuron',
   'Astrocyte',
   'Oligodendrocyte',
   'Oligodendrocyte Precursor (OPC)',
   'Microglia',
-  'Vascular Cell',
+  'Vascular',
   'Other',
   'Unknown / Unsure',
 ];
