@@ -1,3 +1,4 @@
+import { startViewHash } from './util/start_view';
 import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
 import { taskAction } from './pilot_actions';
 import { syncCellToSheet } from './sheet_sync';
@@ -464,14 +465,21 @@ export const useLayersStore = defineStore('layers', () => {
     })();
     const dsCfgEarly = targetSegName ? getDatasetCaveConfig(targetSegName) : undefined;
     const skipStateUrl = dsCfgEarly?.skipStateUrlIfTutorialActive && isUserInActiveTutorial();
-    if (dsCfgEarly?.defaultStateUrl && !skipStateUrl) {
+    // Settings > Switching datasets: the player's own start view wins, then
+    // "without starter cells" skips the curated view, else the curated view.
+    const startPrefs = useUserPreferencesStore().prefs;
+    const ownHash = targetSegName ? startViewHash(startPrefs.datasetStartViews?.[targetSegName]) : '';
+    const bareSwitch = !!startPrefs.datasetBareSwitch;
+    const curatedUrl = ownHash ? window.location.origin + window.location.pathname + ownHash
+      : bareSwitch ? '' : (dsCfgEarly?.defaultStateUrl || '');
+    if (curatedUrl && !skipStateUrl) {
       // Apply via hash-only navigation when same-origin (so dev server doesn't bounce
       // to production). Neuroglancer's hashchange handler picks up the new state URL
       // and fetches+applies it. If the configured URL is on a different origin, the
       // hash-only swap still works because the hash itself contains the full state URL.
-      const hashIdx = dsCfgEarly.defaultStateUrl.indexOf('#');
-      const hashPart = hashIdx >= 0 ? dsCfgEarly.defaultStateUrl.slice(hashIdx) : '';
-      console.info(`[layers] Loading curated view for ${targetSegName} → ${dsCfgEarly.defaultStateUrl}`);
+      const hashIdx = curatedUrl.indexOf('#');
+      const hashPart = hashIdx >= 0 ? curatedUrl.slice(hashIdx) : '';
+      console.info(`[layers] Loading ${ownHash ? 'your saved start view' : 'curated view'} for ${targetSegName}`);
       if (hashPart) {
         // Reload-loop guard: if the hash ALREADY points at the curated state,
         // reloading again cannot help. Without this, a curated state that
@@ -486,7 +494,7 @@ export const useLayersStore = defineStore('layers', () => {
         // Force a reload so all layers/state are re-initialized cleanly from the saved URL.
         window.location.reload();
       } else {
-        window.location.assign(dsCfgEarly.defaultStateUrl);
+        window.location.assign(curatedUrl);
       }
       return;
     }
@@ -542,7 +550,7 @@ export const useLayersStore = defineStore('layers', () => {
         if (position !== undefined) {
           viewer!.navigationState.position.value = position;
         }
-        if (!dsCfg.defaultSegments?.length) return;
+        if (bareSwitch || !dsCfg.defaultSegments?.length) return;
         try {
           const segLayer = segmentationLayer.layer as SegmentationUserLayer;
           const groupState = segLayer.displayState.segmentationGroupState.value;
@@ -884,6 +892,10 @@ export interface UserPreferences {
   /** Fade chat when you click away from it (quiet mode). Defaults to true;
    *  false keeps chat fully shown (Amy 2026-09-28). */
   chatFadeAway?: boolean;
+  /** Switch datasets without the curated view or starter cells (faster). */
+  datasetBareSwitch?: boolean;
+  /** Segmentation layer name -> the player's own share link to open there. */
+  datasetStartViews?: Record<string, string>;
   /** Mute help requests: hide the pending count on the Second Opinion toolbar
    *  icon. Defaults to false (badge shown) when the key isn't set yet. */
   helpMuted?: boolean;

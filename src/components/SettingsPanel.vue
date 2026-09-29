@@ -4,6 +4,8 @@ import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession} from '../store';
 import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+import { DATASETS, segLayerName } from '../datasets';
+import { startViewHash } from '../util/start_view';
 
 const prefsStore = useUserPreferencesStore();
 
@@ -29,12 +31,42 @@ const draftChatFade = ref(true);
 const draftHelpMuted = ref(false);
 const saved      = ref(false);
 
+// ── Switching datasets ─────────────────────────────────────────────────────
+const draftBareSwitch = ref(false);
+const draftStartViews = ref<Record<string, string>>({});
+const svDataset = ref(segLayerName(DATASETS[0]));
+const svLink = ref('');
+const svError = ref('');
+const labelFor = (seg: string) => DATASETS.find(d => segLayerName(d) === seg)?.label || seg;
+function pickStartViewDataset() {
+  svLink.value = draftStartViews.value[svDataset.value] || '';
+  svError.value = '';
+}
+function setStartView() {
+  const link = svLink.value.trim();
+  if (!startViewHash(link)) {
+    svError.value = 'That is not a share link we can open. Use Share in the top bar while in this dataset, then paste the link it copies.';
+    return;
+  }
+  draftStartViews.value = { ...draftStartViews.value, [svDataset.value]: link };
+  svError.value = '';
+}
+function clearStartView(seg: string) {
+  const next = { ...draftStartViews.value };
+  delete next[seg];
+  draftStartViews.value = next;
+  if (seg === svDataset.value) svLink.value = '';
+}
+
 onMounted(() => {
   draftFlag.value = prefsStore.prefs.flag;
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
   draftChatFade.value = prefsStore.prefs.chatFadeAway !== false;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
+  draftBareSwitch.value = !!prefsStore.prefs.datasetBareSwitch;
+  draftStartViews.value = { ...(prefsStore.prefs.datasetStartViews || {}) };
+  pickStartViewDataset();
   // Seed via the same resolver the toolbar uses, so the grid reflects exactly
   // what's in the top bar — including icons auto-injected into older prefs.
   draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
@@ -51,6 +83,7 @@ async function handleSave() {
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
     chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value,
+    datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
@@ -268,6 +301,34 @@ const props = defineProps<{ embedded?: boolean }>();
             <input type="checkbox" v-model="draftHelpMuted" />
             <span class="nge-settings-toggle-label">Mute help requests</span>
           </label>
+        </div>
+
+        <div class="nge-settings-section">
+          <label class="nge-settings-label">Switching datasets</label>
+          <p class="nge-settings-hint">What opens when you switch to a dataset.</p>
+          <label class="nge-settings-toggle">
+            <input type="checkbox" v-model="draftBareSwitch" />
+            <span class="nge-settings-toggle-label">Open datasets without the starter cells (loads faster)</span>
+          </label>
+          <p class="nge-settings-hint nge-sv-hint">Your own start view: pick a dataset and paste a share link made in it. It opens instead of the starter view whenever you switch there.</p>
+          <div class="nge-sv-row">
+            <select v-model="svDataset" class="nge-sv-select" @change="pickStartViewDataset">
+              <option v-for="ds in DATASETS" :key="ds.id" :value="segLayerName(ds)">{{ ds.label }}</option>
+            </select>
+          </div>
+          <div class="nge-sv-row">
+            <input v-model="svLink" class="nge-sv-input" type="url" placeholder="Paste a share link" @keydown.stop @keyup.stop />
+            <button class="nge-sv-btn" type="button" @click="setStartView">Use this view</button>
+          </div>
+          <p v-if="svError" class="nge-sv-error">{{ svError }}</p>
+          <ul v-if="Object.keys(draftStartViews).length" class="nge-sv-list">
+            <li v-for="(link, seg) in draftStartViews" :key="seg">
+              <span class="nge-sv-name">{{ labelFor(String(seg)) }}</span>
+              <span class="nge-sv-link" :title="link">{{ link }}</span>
+              <button class="nge-sv-clear" type="button" @click="clearStartView(String(seg))">Remove</button>
+            </li>
+          </ul>
+          <p class="nge-settings-hint">Click Save below to keep these.</p>
         </div>
 
         <div class="nge-settings-section">
@@ -890,6 +951,38 @@ const props = defineProps<{ embedded?: boolean }>();
   border-color: rgba(74, 158, 255, 0.55);
   color: #e0ecff;
 }
+
+/* Switching datasets: dataset picker, share link box, saved list */
+.nge-sv-hint { margin-top: 8px; }
+.nge-sv-row { display: flex; gap: 8px; margin-top: 6px; }
+.nge-sv-select, .nge-sv-input {
+  flex: 1; min-width: 0;
+  background: rgba(8, 14, 28, 0.7);
+  border: 1px solid rgba(74, 158, 255, 0.18);
+  border-radius: 6px;
+  color: rgba(220, 230, 245, 0.92);
+  font: inherit; font-size: 0.9em;
+  padding: 7px 9px;
+  color-scheme: dark;
+}
+.nge-sv-select option { background: #0b1424; color: rgba(220, 230, 245, 0.95); }
+.nge-sv-select:focus, .nge-sv-input:focus { outline: none; border-color: rgba(74, 158, 255, 0.55); }
+.nge-sv-btn, .nge-sv-clear {
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.35);
+  border-radius: 6px;
+  color: #cfe3ff;
+  font: inherit; font-size: 0.85em;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nge-sv-btn:hover, .nge-sv-clear:hover { background: rgba(74, 158, 255, 0.2); }
+.nge-sv-error { color: #ff9a8a; font-size: 0.85em; margin: 6px 0 0; }
+.nge-sv-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.nge-sv-list li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-size: 0.86em; }
+.nge-sv-name { color: #e6eefc; font-weight: 600; }
+.nge-sv-link { color: rgba(170, 190, 220, 0.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Notification mute toggle (Mute chat unread badge) */
 .nge-settings-toggle {
