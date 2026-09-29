@@ -150,7 +150,8 @@ export interface Step {
   position: NextToElementPostition | InsideElementPostition;
   modal?: boolean;
   noborder?: boolean;
-  state?: string;
+  /** A state-server link, or a state object loaded as is. */
+  state?: string | Record<string, any>;
   video?: string;
   image?: string;
   preloading?: boolean;

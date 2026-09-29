@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isNextToElementPostition, type Step } from '../store-pyr';
+import { isNextToElementPostition, useTutorialStore, type Step } from '../store-pyr';
 import { useLayersStore } from 'src/store';
 import { marked } from 'marked';
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue';
@@ -9,6 +9,11 @@ const layerStore = useLayersStore();
 const { loadState } = layerStore;
 
 const root = ref<HTMLElement | null>(null);
+
+// The intro tutorial's advance buttons teach the Enter shortcut (Ames,
+// 2026-09-29). Not in Merge or Cut, where Enter submits the edit.
+const tutorialStore = useTutorialStore();
+const nextTip = computed(() => tutorialStore.activeTutorial === 1 ? 'Protip: press Enter to advance' : undefined);
 
 
 const props = defineProps<{
@@ -458,8 +463,8 @@ onUnmounted(() => {
                     <div class="buttonContainer">
                         <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
                         <span class="stepCounter">{{ stepIndex + 1 }}/{{ totalSteps }}</span>
-                        <button v-if="computedStep.last" @click="launchConfetti(); $emit('next')" class="next">done</button>
-                        <button v-else @click="$emit('next')" class="next">{{ computedStep.nextLabel || 'next' }}</button>
+                        <button v-if="computedStep.last" @click="launchConfetti(); $emit('next')" class="next" :title="nextTip">done</button>
+                        <button v-else @click="$emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'next' }}</button>
                     </div>
                     <div class="progressBarContainer">
                         <div class="progressBar" :style="{ width: ((stepIndex + 1) / totalSteps * 100) + '%' }"></div>

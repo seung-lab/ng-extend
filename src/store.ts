@@ -599,11 +599,18 @@ export const useLayersStore = defineStore('layers', () => {
     return EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
   }
 
-  async function loadState(url: string) {
+  async function loadState(url: string | Record<string, any>) {
     if (!viewer) return;
     try {
-      const {url: fetchUrl, credentialsProvider} = parseSpecialUrl(url, defaultCredentialsManager);
-      const response = await cancellableFetchSpecialOk(credentialsProvider, fetchUrl, {}, responseJson);
+      // A state object (inline in a tutorial step) loads as is; a string is
+      // a state-server link to fetch.
+      let response: any;
+      if (typeof url === 'string') {
+        const {url: fetchUrl, credentialsProvider} = parseSpecialUrl(url, defaultCredentialsManager);
+        response = await cancellableFetchSpecialOk(credentialsProvider, fetchUrl, {}, responseJson);
+      } else {
+        response = JSON.parse(JSON.stringify(url));
+      }
       // Set layout first to avoid localPositionValid crashes during layout transitions
       // Mobile: curated views open fullscreen 3D like everything else.
       if (isMobileRef.value) response.layout = '3d';

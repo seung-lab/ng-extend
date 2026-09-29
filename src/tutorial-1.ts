@@ -86,6 +86,77 @@ const OVER_3D = {
   y: 0.15,
 };
 
+// Step 16 view, from Ames (2026-09-29): the cell with the dendrite the
+// defect disconnected, and no purple branch yet. Inline, not a state-server
+// link, so it needs no fetch.
+const STATE_DEFECT_VIEW = {
+  "dimensions": {
+    "x": [
+      4e-09,
+      "m"
+    ],
+    "y": [
+      4e-09,
+      "m"
+    ],
+    "z": [
+      4e-08,
+      "m"
+    ]
+  },
+  "position": [
+    77603.1875,
+    59828.70703125,
+    426.684326171875
+  ],
+  "crossSectionScale": 13.46721884640639,
+  "projectionOrientation": [
+    -0.003505238564684987,
+    -0.9830650687217712,
+    -0.12847700715065002,
+    -0.13063110411167145
+  ],
+  "projectionScale": 48392.34998080223,
+  "layers": [
+    {
+      "type": "image",
+      "source": "precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em",
+      "tab": "annotations",
+      "shader": "#uicontrol float black slider(min=0, max=1, default=0.0)\n#uicontrol float white slider(min=0, max=1, default=1.0)\nfloat rescale(float value) {\n  return (value - black) / (white - black);\n}\nvoid main() {\n  float val = toNormalized(getDataValue());\n  if (val < black) {\n    emitRGB(vec3(0,0,0));\n  } else if (val > white) {\n    emitRGB(vec3(1.0, 1.0, 1.0));\n  } else {\n    emitGrayscale(rescale(val));\n  }\n}\n",
+      "shaderControls": {
+        "black": 0.29
+      },
+      "name": "img"
+    },
+    {
+      "type": "segmentation",
+      "source": "graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_training6",
+      "tab": "segments",
+      "selectedAlpha": 0.3,
+      "segments": [
+        "!648518346354708544",
+        "!648518346355322263",
+        "!648518346353084129",
+        "!648518346356789312",
+        "648518346353862024"
+      ],
+      "segmentColors": {
+        "648518346353862024": "#2ec0ff"
+      },
+      "name": "pinky_training6"
+    }
+  ],
+  "showAxisLines": false,
+  "showSlices": false,
+  "gpuMemoryLimit": 2000000000,
+  "systemMemoryLimit": 3000000000,
+  "selectedLayer": {
+    "layer": "pinky_training6"
+  },
+  "layout": "3d",
+  "selection": {}
+};
+
 export const steps: Step[] = [
  // {
  //   html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
@@ -283,10 +354,9 @@ Don't worry if you lose the neuron. The Next button in this section resets this 
   {
     text: `The big black empty space is an imaging defect, which happens occasionally when you are snapping at the nanoscale. It caused the AI to make a mistake and disconnect a dendrite.`,
     position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408",
+    state: STATE_DEFECT_VIEW,
     onEnter: () => {
-      // Remove the erroneous purple segment
+      // Belt and braces: the purple branch must not show on this step.
       setTimeout(() => removeSegment('648518346356484078'), 1500);
     },
   },
