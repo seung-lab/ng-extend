@@ -175,6 +175,15 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!target || typeof target.closest !== 'function') return;
     if (target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) {
       e.stopPropagation();
+      return;
+    }
+    // Chat, and any text you've selected outside the viewer, get the normal
+    // menu too, so Copy works there (Ames 2026-09-29: "I need to be able to
+    // copy + paste in chat!"). Right-click on the viewer still navigates.
+    const inViewer = !!target.closest('.neuroglancer-rendered-data-panel, .neuroglancer-panel canvas');
+    const hasSelection = String(window.getSelection() || '').trim().length > 0;
+    if (!inViewer && (target.closest('.nge-chat-float') || hasSelection)) {
+      e.stopPropagation();
     }
   }, true);
 });
