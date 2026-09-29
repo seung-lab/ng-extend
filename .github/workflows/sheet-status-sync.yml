@@ -16,6 +16,14 @@ on:
         description: Report what would change without writing
         type: boolean
         default: false
+      retire_source:
+        description: One-off. Sheet id whose still Available cells should be hidden (e.g. the old retina sheet 1H9KV0-CDGAzd3nvM0Vp1iXun9okwkpe-7tHhpkJbfWc). Blank for the normal status sync.
+        type: string
+        default: ''
+      dataset:
+        description: Dataset for retire_source
+        type: string
+        default: stroeh_mouse_retina
 
 permissions:
   contents: read
@@ -41,7 +49,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DRY_RUN: ${{ inputs.dry_run }}
+          RETIRE: ${{ inputs.retire_source }}
+          DATASET: ${{ inputs.dataset }}
         run: |
-          args=(--statuses)
+          if [ -n "$RETIRE" ]; then args=(--retire-source "$RETIRE" --dataset "$DATASET"); else args=(--statuses); fi
           if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
           node scripts/sync-sheet-cells.mjs "${args[@]}"
