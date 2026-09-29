@@ -931,7 +931,7 @@ function toggleCollapse() {
 .nge-chat-float--quiet .nge-chat-fade,
 .nge-chat-float--quiet .nge-chat-new-banner,
 .nge-chat-float--quiet .nge-chat-share { display: none; }
-.nge-chat-float--quiet .nge-chat-strip { opacity: 0.4; }
+.nge-chat-float--quiet .nge-chat-strip { opacity: 0; }
 .nge-chat-float .nge-chat-strip,
 .nge-chat-float .nge-chat-msg,
 .nge-chat-float .nge-chat-sys,
@@ -942,19 +942,27 @@ function toggleCollapse() {
 .nge-chat-float--quiet .nge-chat-time-sep,
 .nge-chat-float--quiet .nge-chat-history-top { opacity: 0; transition: opacity 1.4s ease; }
 .nge-chat-float--quiet .nge-chat-msg:hover { background: none; }
-/* Softer than vanishing: the latest messages stay readable on EM. A shadow
-   alone lost to busy membranes (Amy 2026-09-28), so each visible line sits
-   on its own dark, slightly blurred strip; the rest of the panel stays clear. */
+/* Faded chat reads like subtitles (Amy 2026-09-29: "so ugly"). The blurred
+   strips turned bright EM into muddy grey slabs of uneven width; now each
+   visible message is a tight, solid dark pill hugging its text, stacked with
+   even gaps, a thin accent on the left, no timestamps, no ghost header. */
+.nge-chat-float--quiet .nge-chat-messages-inner { gap: 4px; }
 .nge-chat-float--quiet .nge-chat-msg.nge-chat-recent,
 .nge-chat-float--quiet .nge-chat-fresh {
-  background: rgba(4, 8, 16, 0.62);
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
-  border-radius: 6px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 3px 10px 4px 9px;
+  background: rgba(7, 11, 20, 0.84);
+  border-left: 2px solid rgba(91, 227, 255, 0.55);
+  border-radius: 4px 9px 9px 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  text-shadow: none;
 }
-.nge-chat-float--quiet .nge-chat-msg.nge-chat-recent:not(.nge-chat-fresh) { opacity: 0.9; }
-.nge-chat-float--quiet .nge-chat-fresh { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.7); }
+.nge-chat-float--quiet .nge-chat-msg.nge-chat-recent:not(.nge-chat-fresh) { opacity: 0.88; }
+.nge-chat-float--quiet .nge-chat-fresh { border-left-color: rgba(91, 227, 255, 0.95); }
+.nge-chat-float--quiet .nge-chat-msg-time { display: none; }
 .nge-chat-float--quiet .nge-chat-input-wrap {
   pointer-events: auto;
   background: transparent;
