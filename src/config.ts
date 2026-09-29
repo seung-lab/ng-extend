@@ -10,7 +10,7 @@ export type Config = {
 // Update the table names below once you have them from your CAVE admin.
 // caveServer is auto-detected from the middleauth layer URL in the viewer.
 // ─────────────────────────────────────────────────────────────────────────────
-// ─── Per-dataset CAVE table + datastack configuration ───────────────────────
+// ─── Per-dataset CAVE table + datastack configuration ───────────────────────
 import { MEC_CELL_TYPES_STATE } from './data/mec_cell_types_state';
 export interface DatasetCaveConfig {
   caveServer: string;
@@ -421,18 +421,20 @@ export const CORTEX_CELL_TYPES: string[] = [
 
 // Medial entorhinal cortex (pni_mec).
 export const MEC_CELL_TYPES: string[] = [
-  'Stellate Cell',
-  'Pyramidal Cell',
+  'Stellate',
+  'Pyramidal Neuron',
   'Intermediate Stellate / Pyramidal',
-  'Horizontal Cell (deep layers)',
-  'Basket Cell',
-  'Chandelier Cell',
+  'Horizontal (deep layers)',
+  'Bipolar',
+  'Inhibitory Interneuron',
+  'Basket',
+  'Chandelier',
   'Other Interneuron',
   'Astrocyte',
   'Oligodendrocyte',
   'Oligodendrocyte Precursor (OPC)',
   'Microglia',
-  'Vascular Cell',
+  'Vascular',
   'Other',
   'Unknown / Unsure',
 ];

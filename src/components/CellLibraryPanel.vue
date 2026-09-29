@@ -1896,10 +1896,12 @@ const panelStyle = computed(() => ({
           <div class="nge-cl-tabgroup nge-cl-tabgroup--cells">
             <div class="nge-cl-tabgroup-head">
               <span class="nge-cl-tabgroup-label">Cells</span>
+              <span v-if="datasetInstructionsUrl || datasetCellTypesState" class="nge-cl-headlinks">
               <a v-if="datasetInstructionsUrl" class="nge-cl-howto" :href="datasetInstructionsUrl" target="_blank" rel="noopener"
                  title="How to proofread cells in this dataset (opens in a new tab)">instructions</a>
               <a v-if="datasetCellTypesState" class="nge-cl-howto" href="#" @click.prevent="openCellTypes"
                  title="Open a view with one example of each cell type in this dataset">cell types</a>
+              </span>
             </div>
             <div class="nge-cl-tabgroup-row">
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
@@ -3797,9 +3799,31 @@ select.nge-cl-response-input:hover {
 .nge-cl-tabgroup--cells { flex: 1 1 100%; }
 .nge-cl-tabgroup-label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--grp); opacity: 0.85; }
 .nge-cl-tabgroup-row { display: flex; gap: 4px; flex-wrap: wrap; }
-.nge-cl-tabgroup-head { display: flex; align-items: baseline; gap: 10px; }
-.nge-cl-howto { font-size: 11px; color: #7ecaff; text-decoration: none; }
-.nge-cl-howto:hover { color: #b8e2ff; text-decoration: underline; }
+.nge-cl-tabgroup-head { display: flex; align-items: center; gap: 10px; }
+/* Dataset links (MEC): small HUD labels, a diamond marker each, a thin
+   divider between, glow and a sweeping underline on hover (Ames: "not very
+   scifi UI"; before that "just a little blue clickable word"). */
+.nge-cl-headlinks { margin-left: auto; display: flex; align-items: center; }
+.nge-cl-howto {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 0; font-size: 9.5px; font-weight: 600; letter-spacing: 0.16em;
+  text-transform: uppercase; color: rgba(126, 202, 255, 0.78); text-decoration: none;
+  transition: color 0.15s, text-shadow 0.15s;
+}
+.nge-cl-howto + .nge-cl-howto { margin-left: 11px; padding-left: 11px; border-left: 1px solid rgba(126, 202, 255, 0.22); }
+.nge-cl-howto::before {
+  content: ''; width: 5px; height: 5px; flex: none; transform: rotate(45deg);
+  border: 1px solid currentColor; transition: background 0.15s, box-shadow 0.15s;
+}
+.nge-cl-howto::after {
+  content: ''; position: absolute; left: 11px; right: 0; bottom: -2px; height: 1px;
+  background: linear-gradient(90deg, currentColor, transparent);
+  transform: scaleX(0); transform-origin: left; transition: transform 0.22s ease-out;
+}
+.nge-cl-howto + .nge-cl-howto::after { left: 22px; }
+.nge-cl-howto:hover { color: #e6f7ff; text-shadow: 0 0 8px rgba(126, 202, 255, 0.75); }
+.nge-cl-howto:hover::before { background: currentColor; box-shadow: 0 0 6px rgba(126, 202, 255, 0.9); }
+.nge-cl-howto:hover::after { transform: scaleX(1); }
 .nge-cl-tabgroup--cells { --grp: #42d5ec; }
 .nge-cl-tabgroup--community { --grp: #e6c760; }
 .nge-cl-tabgroup--mine { --grp: #c98bff; }

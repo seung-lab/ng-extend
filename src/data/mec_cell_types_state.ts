@@ -6,8 +6,8 @@
  *
  * All seven roots were current in pni_mec on 2026-09-29. Pyramidal, bipolar
  * and microglia also show their nucleus (a separate segment in MEC) in the
- * cell's colour. Each type has a one-point annotation layer, so the layer
- * bar reads as a legend. Shareable copy of the same view:
+ * cell's colour. The Seg tab of the segment layer's side panel is the key: each
+ * cell's type label (from the MEC log) shows in place of its ID there. Shareable copy of the same view:
  * #!middleauth+https://global.daf-apis.com/nglstate/api/v1/5321956363075584
  */
 export const MEC_CELL_TYPES_STATE: Record<string, any> = {
@@ -84,138 +84,14 @@ export const MEC_CELL_TYPES_STATE: Record<string, any> = {
       },
       "selectedAlpha": 0.35,
       "notSelectedAlpha": 0,
-      "objectAlpha": 1
-    },
-    {
-      "type": "annotation",
-      "name": "Stellate",
-      "source": "local://annotations",
-      "annotations": [
-        {
-          "type": "point",
-          "id": "t-stellate",
-          "point": [
-            142606,
-            130606,
-            5091
-          ],
-          "description": "Stellate (720575947520731264)"
-        }
-      ],
-      "annotationColor": "#67f5cb"
-    },
-    {
-      "type": "annotation",
-      "name": "Pyramidal",
-      "source": "local://annotations",
-      "annotations": [
-        {
-          "type": "point",
-          "id": "t-pyramidal",
-          "point": [
-            156431,
-            128281,
-            5398
-          ],
-          "description": "Pyramidal (720575947422955241)"
-        }
-      ],
-      "annotationColor": "#3e96f0"
-    },
-    {
-      "type": "annotation",
-      "name": "Inhibitory interneuron",
-      "source": "local://annotations",
-      "annotations": [
-        {
-          "type": "point",
-          "id": "t-inhibitory",
-          "point": [
-            118319,
-            131969,
-            4964
-          ],
-          "description": "Inhibitory interneuron (720575947567168828)"
-        }
-      ],
-      "annotationColor": "#ff5fb0"
-    },
-    {
-      "type": "annotation",
-      "name": "Bipolar",
-      "source": "local://annotations",
-      "annotations": [
-        {
-          "type": "point",
-          "id": "t-bipolar",
-          "point": [
-            190769,
-            140962,
-            5900
-          ],
-          "description": "Bipolar (720575947496304424)"
-        }
-      ],
-      "annotationColor": "#f5b84a"
-    },
-    {
-      "type": "annotation",
-      "name": "Astrocyte",
-      "source": "local://annotations",
-      "annotations": [
-        {
-          "type": "point",
-          "id": "t-astrocyte",
-          "point": [
-            158086,
-            133194,
-            4909
-          ],
-          "description": "Astrocyte (720575947505391325)"
-        }
-      ],
-      "annotationColor": "#b06fe0"
-    },
-    {
-      "type": "annotation",
-      "name": "Oligodendrocyte",
-      "source": "local://annotations",
-      "annotations": [
-        {
-          "type": "point",
-          "id": "t-oligodendrocyte",
-          "point": [
-            128137,
-            130562,
-            4213
-          ],
-          "description": "Oligodendrocyte (720575947480485108)"
-        }
-      ],
-      "annotationColor": "#3fd8ff"
-    },
-    {
-      "type": "annotation",
-      "name": "Microglia",
-      "source": "local://annotations",
-      "annotations": [
-        {
-          "type": "point",
-          "id": "t-microglia",
-          "point": [
-            131562,
-            128894,
-            8191
-          ],
-          "description": "Microglia (720575947495909088)"
-        }
-      ],
-      "annotationColor": "#e8823c"
+      "objectAlpha": 1,
+      "tab": "segments"
     }
   ],
   "selectedLayer": {
     "layer": "pni_mec",
-    "visible": false
+    "visible": true,
+    "size": 340
   },
   "showSlices": false
 };

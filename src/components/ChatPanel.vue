@@ -979,7 +979,18 @@ function toggleCollapse() {
   border-color: transparent;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
-.nge-chat-float--quiet .nge-chat-input::placeholder { color: rgba(200, 215, 235, 0.45); }
+/* The entry line stays findable (Amy 2026-09-29): a small dark pill with a
+   bright ">", in the same style as the message pills. */
+.nge-chat-float--quiet .nge-chat-input {
+  flex: 0 0 auto;
+  width: 46px;
+  background: rgba(7, 11, 20, 0.84);
+  border: none;
+  border-left: 2px solid rgba(91, 227, 255, 0.55);
+  border-radius: 4px 9px 9px 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.nge-chat-float--quiet .nge-chat-input::placeholder { color: rgba(210, 235, 255, 0.9); font-weight: 700; }
 
 /* ── Resize handles ── */
 .nge-chat-resize { position: absolute; z-index: 10; }
