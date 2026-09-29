@@ -581,6 +581,11 @@ function userId(): string | null {
  */
 export type PracticeView = 'start' | 'preview';
 
+/** Whether this learner holds a cell in the slot. */
+export function holdsSlot(slot: string): boolean {
+  return !!session.held[slot];
+}
+
 /** True once a practice view is on screen (no need to announce the move). */
 export function practiceShown(): boolean {
   return !!session.shownId;

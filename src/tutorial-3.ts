@@ -5,7 +5,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import imgMergeExample from './images/merge-example.jpg';
 import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
-import { beginPractice, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
+import { beginPractice, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
@@ -649,8 +649,10 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
         const first = await beginPractice('merge_then_cut', 'start', { slot: 'a' });
         if (first) {
           // The second cell is claimed now and shown at step 6.
-          const second = await beginPractice('merge_then_cut', 'start', { slot: 'b', show: false });
-          if (!second) await endPractice();
+          // With one merge cell registered there is no second: the learner
+          // keeps the first, and step 6 skips ahead (Ames scrapped the axon
+          // cell, 2026-09-29, it was on the same neuron as the dendrite).
+          await beginPractice('merge_then_cut', 'start', { slot: 'b', show: false });
         }
       });
     },
@@ -687,7 +689,7 @@ You did it. The piece is part of the ` + PART + ` now, and the whole thing is pu
 
 ` + BLACK_BOX_NOTE + `
 
-Ready for one more?`,
+Press next to keep going.`,
     position: OVER_3D,
     width: "420px",
     image: imgBravoNurro,
@@ -710,6 +712,9 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
     width: "420px",
     onEnter: async () => {
       closeSidePanel();
+      // Only one merge cell for now: never show the first again (Ames), go
+      // straight to the wrap up.
+      if (!holdsSlot('b')) { useTutorialStore().setTutorialStep(7); return; }
       watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       // The second merge cell, taken at How to Merge together with the first.
       await beginPractice('merge_then_cut', 'start', { slot: 'b' });
