@@ -81,3 +81,10 @@ summaries.
 - The Browser pane counts as a hidden tab: requestAnimationFrame never fires
   there, so neuroglancer will not redraw or open panels in it. Verify panel
   changes on a real screen (2026-09-26, from the tutorial audit).
+- A hover animation on a parent (transform/scale/rotate) carries through to
+  any child popup or tooltip absolutely positioned inside it, since CSS
+  transforms apply to the whole rendered box including descendants. Put the
+  animation on an inner wrapper around just the icon, not the element that
+  also contains the tooltip. Found in ExtensionBar.vue's `.nge-streak-chip`
+  flame hover, which was spinning the `.nge-streak-tip` card with it
+  (2026-09-30, streak tooltip fix).
