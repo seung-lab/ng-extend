@@ -55,7 +55,7 @@ the fallback if the model is unavailable (`TRIAGE_UNDERSTAND=off` forces them).
 | Live test | keep it | `good` | stays live, row closed |
 | | take it off | `revert` | the live site goes back; say what to change and Claude tries again |
 | | report a problem | `it broke the tag panel` | taken off the live site first, then back to Claude |
-| Anytime | stop everything (already fixed, duplicate, changed your mind) | `stop`, `cancel`, `close it`, or `stop: already fixed` as the whole reply | any running build is cancelled, nobody is tagged again, the row shows as dismissed in the Admin Hub (approve it there to restart). **Dismiss** in the Admin Hub does the same, at any stage before it goes live. Only an approver or the tester can stop. Not while it is on the live site as a test: `revert` first. Do not start it with @Amy's Claude, which is the Q&A bot |
+| Anytime | stop everything (already fixed, duplicate, changed your mind) | `stop`, `dismiss`, `cancel`, `close it`, or `stop: already fixed` as the whole reply | any running build is cancelled, nobody is tagged again, the row shows as dismissed in the Admin Hub (approve it there to restart). **Dismiss** in the Admin Hub does the same, at any stage before it goes live. Only an approver or the tester can stop. Not while it is on the live site as a test: `revert` first. Do not start it with @Amy's Claude, which is the Q&A bot |
 | | pass the testing on | `hand off to @Celia`, `can Celia check this` | that person becomes the tester and gets the reminders |
 | | just chat | `thanks, will test after lunch` | nothing changes, nothing rebuilds |
 | Something failed | try again | `retry` | the failed step runs again |

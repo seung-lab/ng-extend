@@ -622,7 +622,9 @@ const LIVE_URL = 'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r
  * an optional reason after a dash or colon), so a change request that merely
  * starts with "stop showing..." is never read as a stop.
  */
-const STOP_CMD = /^(?:stop|cancel|close)(?:\s+(?:this|it|work(?:ing)?(?:\s+on\s+(?:this|it))?))?\s*(?:$|[.!]+\s*$|[-:,]\s*(.*)$)/is;
+const STOP_CMD = /^(?:stop|cancel|close|dismiss(?:ed)?)(?:\s+(?:this|it|work(?:ing)?(?:\s+on\s+(?:this|it))?))?\s*(?:$|[.!]+\s*$|[-:,]\s*(.*)$)/is;
+// Slack bold/italic/code marks are not part of a command ("*dismiss*").
+const plainText = (t) => String(t || '').replace(/[*_~`]/g, '').replace(/\s+/g, ' ').trim();
 const STOP_RUNNING = ['implementing', 'answering', 'deploying', 'reverting'];
 
 /** Dismissed in the Admin Hub after work had started: stop the work too. */
@@ -666,9 +668,9 @@ async function stopRequests() {
     const tester = row.approver_slack_id || slackIdFor(row.reviewed_by);
     const since = Number(row.decision_slack_ts || row.slack_ts || 0);
     const m = (thread.messages ?? []).find(x => Number(x.ts) > since && !x.bot_id && x.subtype !== 'bot_message'
-      && (APPROVERS.includes(x.user) || x.user === tester) && STOP_CMD.test((x.text || '').trim()));
+      && (APPROVERS.includes(x.user) || x.user === tester) && STOP_CMD.test(plainText(x.text)));
     if (!m) continue;
-    const reason = ((m.text || '').trim().match(STOP_CMD)[1] || '').trim();
+    const reason = (plainText(m.text).match(STOP_CMD)[1] || '').trim();
     if (['live_test_queued', 'live_testing', 'revert_queued'].includes(row.impl_state)) {
       const last = [...(row.feedback_log || [])].reverse().find(e => e.role === 'preview');
       const p = await say(row, `🛑 <@${m.user}>, this is on the live site as a test, so it can't just stop. Reply *revert ${last?.sha?.slice(0, 12) || '<build ID>'}* to take it off, then *stop*.`);
