@@ -168,6 +168,8 @@ const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset
  *  here instead of an external page. */
 const datasetHowTo = computed(() => getDatasetCaveConfig(activeDataset.value).howToSteps || null);
 const showHowTo = ref(false);
+/** The dataset's source spreadsheet, linked from the instructions (Amy 2026-09-29). */
+const datasetSheetUrl = computed(() => getDatasetCaveConfig(activeDataset.value).cellLibrarySheetUrl || '');
 /** A view with one example of each cell type (MEC), loaded in place. */
 const datasetCellTypesState = computed(() => {
   const cfg = getDatasetCaveConfig(activeDataset.value);
@@ -1934,6 +1936,10 @@ const panelStyle = computed(() => ({
           <ol class="nge-cl-howto-steps">
             <li v-for="(step, si) in datasetHowTo" :key="si" v-html="step"></li>
           </ol>
+          <div v-if="datasetSheetUrl" class="nge-cl-howto-sheet">
+            📄 <a :href="datasetSheetUrl" target="_blank" rel="noopener">Open the original spreadsheet</a>
+            <span>every cell, its start link, and who has it</span>
+          </div>
         </div>
 
         <!-- Filter tabs -->
@@ -3898,6 +3904,14 @@ select.nge-cl-response-input:hover {
   font-size: 12.5px; line-height: 1.5; color: #cfdcef;
 }
 .nge-cl-howto-steps li { margin: 3px 0; padding-left: 2px; }
+.nge-cl-howto-sheet {
+  margin: 8px 0 0; padding-top: 8px;
+  border-top: 1px solid rgba(66, 213, 236, 0.18);
+  font-size: 12.5px; color: #9fb3cc;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+}
+.nge-cl-howto-sheet a { color: #6fd8f0; font-weight: 600; }
+.nge-cl-howto-sheet a:hover { color: #a8ecff; }
 .nge-cl-howto-steps li::marker { color: #42d5ec; font-weight: 700; }
 .nge-cl-howto-steps :deep(b) { color: #fff; font-weight: 600; }
 .nge-cl-howto-steps :deep(a) { color: #7ecaff; }
