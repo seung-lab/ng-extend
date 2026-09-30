@@ -32,8 +32,23 @@ const automaticFocusList = new AutomaticFocusList();
 
 const isTopLevel = window.top === window;
 
+// EyeWire II (Amy 2026-09-30: "I need to be able to highlight and c+p text"):
+// pressing on plain text blurs the viewer, and grabbing focus back right then
+// wiped the selection being made, so chat (or any panel) text could never be
+// selected and copied. Wait while a button is down, and leave a non-empty
+// selection alone; the next click elsewhere clears it and focus returns.
+let pointerIsDown = false;
+document.addEventListener('pointerdown', () => { pointerIsDown = true; }, true);
+document.addEventListener('pointerup', () => { pointerIsDown = false; maybeUpdateFocus(); }, true);
+document.addEventListener('pointercancel', () => { pointerIsDown = false; }, true);
+function hasTextSelection() {
+  const s = window.getSelection();
+  return !!s && s.rangeCount > 0 && !s.isCollapsed;
+}
+
 const maybeUpdateFocus = debounce(() => {
   if (!isTopLevel) return;
+  if (pointerIsDown || hasTextSelection()) return;
   const {activeElement} = document;
   if (activeElement === null || activeElement === document.body) {
     const node = LinkedListOperations.front<AutomaticallyFocusedElement>(<any>automaticFocusList);
