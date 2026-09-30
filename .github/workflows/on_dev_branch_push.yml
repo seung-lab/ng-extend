@@ -131,14 +131,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The 210 cap counts EVERY service in the seung-lab app, not just
+          # ours, so measure the whole app, but only ever delete brain-wire's
+          # own idle previews (other services belong to other projects).
+          gcloud app versions list --project=seung-lab --format='value(service)' > all.txt
+          app_total=$(grep -c . all.txt || true)
+          echo "seung-lab app has $app_total versions:"; sort all.txt | uniq -c | sort -rn | head -12
           gcloud app versions list --project=seung-lab --service=brain-wire \
             --format='value(id,traffic_split)' --sort-by='last_deployed_time' > versions.txt
           total=$(grep -c . versions.txt || true)
           echo "brain-wire has $total versions"
-          if [ "$total" -lt 190 ]; then exit 0; fi
+          if [ "$app_total" -lt 195 ]; then exit 0; fi
+          # Free up to 30 slots, and always keep brain-wire's 15 newest.
           awk -v me="$APP_VERSION" \
             '$1 != "" && ($2 + 0) == 0 && $1 != me && $1 !~ /^(eyewire-ii-community|master|main)$/ {print $1}' versions.txt \
-            | head -n $((total - 110)) > drop.txt
+            | head -n $(( total > 15 ? total - 15 : 0 )) | head -n 30 > drop.txt
           echo "Deleting the $(grep -c . drop.txt || true) oldest idle versions"
           xargs -r -n 20 gcloud app versions delete --project=seung-lab --service=brain-wire --quiet < drop.txt
       - uses: google-github-actions/deploy-appengine@a343979004148afb93c94c712b467e8e9f01b06b # v2

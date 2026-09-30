@@ -1,9 +1,1 @@
-{
-  "intro-sandbox-neuron": {
-    "note": "Tutorial 1's sandbox pyramidal neuron and the continuation branch the learner finds. Any edit on them after the baseline is undone (Ames, 2026-09-29).",
-    "pcg_server": "https://minnie.microns-daf.com",
-    "pcg_table": "pinky_training6",
-    "roots": ["648518346353862024", "648518346356484078"],
-    "baseline_at": "2026-09-29T14:03:21Z"
-  }
-}
+{}

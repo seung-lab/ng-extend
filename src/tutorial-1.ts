@@ -1,9 +1,8 @@
 import { Step, useTutorialStore } from "./store-pyr";
-import { setStateRewriter } from "./store";
-import { currentIntroRoot, remapIntroState } from "./intro_roots";
-
-// Saved views follow the neuron to its current root id after an edit.
-setStateRewriter(remapIntroState);
+// The saved views name this neuron by its OLD root ids on purpose: they
+// still show it as it was before the continuation was merged in (March
+// 2026) and edited since. Swapping in its current id showed that merge
+// (Ames, 2026-09-30), so the ids stay as they are.
 import imgMainBanner from './images/main-banner-vF.jpg';
 import imgSegmentation from './images/segmentation-tutorial.jpg';
 import imgSynapseWide from './images/synapse-wide.png';
@@ -396,7 +395,7 @@ Don't worry if you lose the neuron. The Next button in this section resets this 
     state: STATE_DEFECT_VIEW,
     onEnter: () => {
       // Belt and braces: the purple branch must not show on this step.
-      setTimeout(async () => removeSegment(await currentIntroRoot('648518346356484078')), 1500);
+      setTimeout(() => removeSegment('648518346356484078'), 1500);
     },
   },
   //18 -  middleauth+https://global.daf-apis.com/nglstate/api/v1/6543003020689408

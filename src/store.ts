@@ -616,7 +616,7 @@ export const useLayersStore = defineStore('layers', () => {
   }
 
   // A tutorial can rewrite a saved view before it loads (Tutorial 1 swaps
-  // in its neuron's current root id, see intro_roots.ts).
+  // in a view before it loads; none does today).
   async function loadState(url: string | Record<string, any>) {
     if (!viewer) return;
     try {

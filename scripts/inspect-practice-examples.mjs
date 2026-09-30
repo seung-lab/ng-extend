@@ -31,3 +31,19 @@ for(const [id,fixture] of Object.entries({...manifest,...inspectOnly})) {
    console.log(JSON.stringify({root,details:Object.fromEntries(Object.entries(details).map(([k,v])=>[k,{status:v.operation_status,undo_of:v.undo_operation_id,redo_of:v.redo_operation_id,added:v.added_edges?.length,removed:v.removed_edges?.length,sources:v.source_ids??v.source_coords?.length,user:v.user}]))}));}
  }
 }
+
+// Tutorial 1's neuron (config/intro-reset-fixtures.json): its pinned ids,
+// their roots today, and the recent history, read only.
+const intro=JSON.parse(fs.readFileSync(new URL('../config/intro-reset-fixtures.json',import.meta.url),'utf8'));
+for(const [name,fx] of Object.entries(intro)) {
+ if(fx.pcg_server!=='https://minnie.microns-daf.com'||fx.pcg_table!=='pinky_training6')throw Error('Unapproved intro sandbox');
+ const base=fx.pcg_server+'/segmentation/api/v1/table/'+fx.pcg_table;
+ const roots=[];
+ for(const pinned of fx.roots){let node=pinned;for(let i=0;i<12&&BigInt(node)>>56n!==1n;i++){const d=await get(base,`/node/${node}/children?int64_as_str=1`);node=String((d.children_ids??d.children??[])[0]);}
+  const now=String((await get(base,`/node/${node}/root?int64_as_str=1`)).root_id);roots.push({pinned,supervoxel:node,now});}
+ console.log(JSON.stringify({intro:name,roots}));
+ for(const root of new Set(roots.map(r=>r.now))){
+  const log=await get(base,`/root/${root}/tabular_change_log?filtered=false&int64_as_str=1`);const t=log.operation_id?log:(log[root]??log);
+  if(t.operation_id)console.log(JSON.stringify({intro:name,root,operations:Object.keys(t.operation_id).slice(-15).map(i=>({id:t.operation_id[i],timestamp:t.timestamp[i],is_merge:t.is_merge?.[i],user:t.user_id?.[i],before:t.before_root_ids?.[i],after:t.after_root_ids?.[i]}))}));
+ }
+}

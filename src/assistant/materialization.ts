@@ -18,18 +18,15 @@ const TTL_MS = 3 * 60 * 1000;
 let cache: { at: number; key: string; data: MaterializationInfo | null } | null = null;
 
 // The middleauth access token is stored per login under auth_token_v2_<url>.
+// CAVE's realm only: the first saved token may be the state server's
+// (global.brain-wire-test.org), which CAVE rejects with 401.
 function getCaveToken(): string | null {
   try {
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith("auth_token_v2_")) {
-        const d = JSON.parse(localStorage.getItem(key) || "{}");
-        if (d && d.accessToken) return d.accessToken;
-      }
-    }
+    const d = JSON.parse(localStorage.getItem("auth_token_v2_https://global.daf-apis.com/sticky_auth") || "{}");
+    return (d && d.accessToken) || null;
   } catch {
-    /* ignore */
+    return null;
   }
-  return null;
 }
 
 async function fetchJson(url: string, headers: Record<string, string>): Promise<any | null> {
