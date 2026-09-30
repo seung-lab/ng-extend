@@ -1768,11 +1768,36 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-neuron { 0%, 100% { transform: rotate(0); filter: drop-shadow(0 0 0 rgba(126, 232, 255, 0)); } 50% { transform: rotate(8deg); filter: drop-shadow(0 0 4px rgba(126, 232, 255, 0.8)); } }
 @keyframes nge-ti-fire { 0% { transform: scale(1); filter: none; } 30% { transform: scale(1.25); filter: brightness(2.2) drop-shadow(0 0 8px #7ee8ff); } 100% { transform: scale(1); filter: none; } }
 
-/* Batch Processor (cube): turns; click spins all the way round. */
-#extensionBar [data-icon-id="batch"]:hover svg { animation: nge-ti-turn 1.2s ease-in-out infinite; }
-#extensionBar [data-icon-id="batch"].nge-pop svg { animation: nge-ti-spin 0.6s cubic-bezier(0.5, 0, 0.3, 1); }
-@keyframes nge-ti-turn { 0%, 100% { transform: perspective(40px) rotateY(0); } 50% { transform: perspective(40px) rotateY(35deg); } }
-@keyframes nge-ti-spin { from { transform: perspective(40px) rotateY(0); } to { transform: perspective(40px) rotateY(360deg); } }
+/* Batch Processor: a real 3D cube (Amy 2026-09-29) that slowly turns, spins
+   faster on hover, and flips when clicked. */
+.nge-cube3d { display: inline-block; width: 1em; height: 1em; vertical-align: middle; perspective: 4em; }
+.nge-cube3d-inner {
+  display: block;  /* an inline span can't be 3D-transformed */
+  position: relative; width: 100%; height: 100%;
+  transform-style: preserve-3d;
+  animation: nge-cube-turn 9s linear infinite;
+}
+.nge-cube3d i {
+  position: absolute; left: 0.19em; top: 0.19em; width: 0.62em; height: 0.62em;
+  box-sizing: border-box;
+  border: 1.3px solid currentColor;
+  border-radius: 1px;
+  background: rgba(207, 220, 239, 0.07);
+}
+.nge-cube3d i:nth-child(1) { transform: translateZ(0.31em); }
+.nge-cube3d i:nth-child(2) { transform: rotateY(180deg) translateZ(0.31em); }
+.nge-cube3d i:nth-child(3) { transform: rotateY(90deg) translateZ(0.31em); }
+.nge-cube3d i:nth-child(4) { transform: rotateY(-90deg) translateZ(0.31em); }
+.nge-cube3d i:nth-child(5) { transform: rotateX(90deg) translateZ(0.31em); }
+.nge-cube3d i:nth-child(6) { transform: rotateX(-90deg) translateZ(0.31em); }
+@keyframes nge-cube-turn {
+  from { transform: rotateX(-22deg) rotateY(0deg); }
+  to   { transform: rotateX(-22deg) rotateY(360deg); }
+}
+#extensionBar [data-icon-id="batch"]:hover .nge-cube3d-inner { animation-duration: 2.2s; }
+#extensionBar [data-icon-id="batch"].nge-pop .nge-cube3d { animation: nge-cube-flip 0.6s cubic-bezier(0.5, 0, 0.3, 1); }
+@keyframes nge-cube-flip { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .nge-cube3d-inner { animation: none; transform: rotateX(-22deg) rotateY(35deg); } }
 
 /* Screenshot (camera): the lens glints; click is a shutter flash. */
 #extensionBar [data-icon-id="screenshot"]:hover svg > :nth-child(2) { animation: nge-ti-lens 0.9s ease-in-out infinite; }
