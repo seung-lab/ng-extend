@@ -1773,7 +1773,7 @@ exports.ewCommunityData = onRequest(
       const context={...ctx,groups,now:new Date().toISOString()};
       const read=["GET","HEAD"].includes(String(input.method||"GET").toUpperCase());
       // Own settings are personal, not pilot data: any signed in player may save them.
-      if(!read && !(input.table==="users" && input.method==="POST") && input.table!=="user_settings") requirePilot(context);
+      if(!read && !(input.table==="users" && input.method==="POST") && !["user_settings","client_errors"].includes(input.table)) requirePilot(context);
       const plan=authorizePilotData(input,context)||authorizeData(input,context);
       if(plan.table==="special_badge_awards" && !isAdmin && plan.body) {
         const rows=Array.isArray(plan.body)?plan.body:[plan.body];
@@ -1783,7 +1783,8 @@ exports.ewCommunityData = onRequest(
         }
       }
       if (plan.method !== "GET" && plan.method !== "HEAD") {
-        const quota = await rateLimit({ip:who.email}, true, "write:"+plan.table);
+        // Signed out callers (error reports) are limited by address instead.
+        const quota = await rateLimit(who ? {ip:who.email} : req, true, "write:"+plan.table);
         if (!quota.ok) throw ewErr(429,"Please wait before sending another change.");
       }
       if (plan.table === "chat_messages" && plan.body?.notification_id != null) {

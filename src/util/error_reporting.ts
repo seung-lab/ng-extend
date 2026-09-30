@@ -62,7 +62,7 @@ function context() {
 async function report(
   message: string,
   stack: string | undefined,
-  source: 'vue' | 'window' | 'promise',
+  source: 'vue' | 'window' | 'promise' | 'sheet_sync' | 'cave_write',
   component?: string,
 ) {
   try {
@@ -101,6 +101,15 @@ async function report(
  * Install global handlers. Call once during bootstrap, passing the Vue app so
  * component errors are captured too.
  */
+/**
+ * A write that did not land: a spreadsheet claim or completion, or a CAVE
+ * proofread mark or cell type. Players see their own error, but nobody else
+ * would; these rows are what scripts/health-watch.mjs counts to alert Slack.
+ */
+export function reportWriteFailure(kind: 'sheet_sync' | 'cave_write', message: string, detail?: string) {
+  void report(`${kind}: ${message}`.slice(0, 2000), detail, kind);
+}
+
 export function installErrorReporting(app?: { config: { errorHandler?: any } }) {
   if (installed) return;
   installed = true;

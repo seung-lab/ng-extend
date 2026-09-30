@@ -7,6 +7,7 @@
  * annotation tables, datastack, and aligned volume.
  */
 
+import { reportWriteFailure } from '../util/error_reporting';
 import {getDatasetCaveConfig, isRegisteredDataset, EYEWIRE_II_CAVE_CONFIG, type DatasetCaveConfig} from '../config';
 import {useProofreadingBackendStore, useCellHistoryStore, useUserStatsStore} from '../store';
 import {supabase} from '../supabase';
@@ -707,6 +708,7 @@ export async function setCellComplete(
       }
       const errText = await res.text().catch(() => '');
       console.error(`[lightbulb] CAVE POST failed (${res.status}):`, errText);
+      reportWriteFailure('cave_write', `proofread mark ${res.status} on ${getActiveDatasetConfig().cellStatusTable}`, errText.slice(0, 500));
     }
   } catch (e) {
     console.error('[lightbulb] setCellComplete — CAVE network error:', e);
@@ -866,6 +868,7 @@ export async function saveCellType(
     }
     const errText = await res.text().catch(() => '');
     console.error(`[lightbulb] CAVE POST failed (${res.status}):`, errText);
+    reportWriteFailure('cave_write', `cell type ${res.status} on ${getActiveDatasetConfig().cellTypeTable}`, errText.slice(0, 500));
   } catch (e) {
     console.error('[lightbulb] saveCellType — CAVE network error:', e);
   }

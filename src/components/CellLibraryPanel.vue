@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reportWriteFailure } from '../util/error_reporting';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
   useProofreadingBackendStore,
@@ -817,6 +818,7 @@ async function releaseCell(cell: typeof cells.value[0]) {
 function showSheetError(error: Error) {
   claimError.value = error.message;
   console.warn('[cellLibrary] Sheet sync:', error.message);
+  reportWriteFailure('sheet_sync', error.message || 'sheet write failed');
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
