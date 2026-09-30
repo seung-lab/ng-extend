@@ -1852,7 +1852,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-wave { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 50% { transform: rotate(10deg); } 75% { transform: rotate(-5deg); } }
 
 /* ? and the layer panel toggle (neuroglancer's icons). */
-#extensionBar #ngFarRight > .neuroglancer-icon:first-child:hover { animation: nge-ti-alert 0.5s ease-in-out; }
+/* One small tilt (Amy 2026-09-30: the four-swing wiggle was too much). */
+#extensionBar #ngFarRight > .neuroglancer-icon:first-child:hover { animation: nge-ti-tilt 0.45s ease-out; }
+@keyframes nge-ti-tilt { 0%, 100% { transform: translateY(-1px) rotate(0); } 45% { transform: translateY(-1px) rotate(-6deg); } }
 #extensionBar #ngFarRight > .neuroglancer-icon:first-child.nge-pop { animation: nge-ti-hop 0.55s cubic-bezier(0.3, 1.5, 0.5, 1); }
 #extensionBar #ngFarRight > .neuroglancer-icon:last-child:hover svg > :nth-child(odd) { animation: nge-ti-knob-a 0.9s ease-in-out infinite; }
 #extensionBar #ngFarRight > .neuroglancer-icon:last-child:hover svg > :nth-child(even) { animation: nge-ti-knob-b 0.9s ease-in-out infinite; }

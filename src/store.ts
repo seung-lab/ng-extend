@@ -892,6 +892,9 @@ export interface UserPreferences {
   /** Fade chat when you click away from it (quiet mode). Defaults to true;
    *  false keeps chat fully shown (Amy 2026-09-28). */
   chatFadeAway?: boolean;
+  /** Show neuroglancer's "?" controls button in the top bar. Off by default
+   *  (Amy 2026-09-30); the controls panel is still in the command palette. */
+  showNgControlsButton?: boolean;
   /** Switch datasets without the curated view or starter cells (faster). */
   datasetBareSwitch?: boolean;
   /** Segmentation layer name -> the player's own share link to open there. */

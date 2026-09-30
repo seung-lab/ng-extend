@@ -28,6 +28,7 @@ const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
 const draftChatMuted = ref(false);
 const draftChatFade = ref(true);
+const draftShowNgControls = ref(false);
 const draftHelpMuted = ref(false);
 const saved      = ref(false);
 
@@ -63,6 +64,7 @@ onMounted(() => {
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
   draftChatFade.value = prefsStore.prefs.chatFadeAway !== false;
+  draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
   draftBareSwitch.value = !!prefsStore.prefs.datasetBareSwitch;
   draftStartViews.value = { ...(prefsStore.prefs.datasetStartViews || {}) };
@@ -82,11 +84,13 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
+  // Show or hide the "?" controls button right away.
+  try { (window as any).viewer.uiConfiguration.showHelpButton.value = draftShowNgControls.value; } catch { /* no viewer yet */ }
   saved.value = true;
   setTimeout(() => { saved.value = false; }, 1800);
   // Flag and bio are also part of the PUBLIC profile: the profile panel and
@@ -313,6 +317,10 @@ const props = defineProps<{ embedded?: boolean }>();
               </button>
             </div>
             <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftShowNgControls" />
+              <span class="nge-settings-toggle-label">Show the neuroglancer controls button (?)</span>
+            </label>
           </div>
 
           <div class="nge-settings-section nge-set-card--notif">

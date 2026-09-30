@@ -76,3 +76,20 @@
   background-color: transparent;
   text-decoration: underline;
 }
+
+/* ── Search (Amy 2026-09-30) ── */
+.neuroglancer-help-search {
+  margin: 10px 12px 2px;
+  padding: 7px 10px;
+  width: calc(100% - 24px);
+  box-sizing: border-box;
+  background: rgba(8, 14, 26, 0.9);
+  border: 1px solid rgba(100, 180, 255, 0.35);
+  border-radius: 7px;
+  color: #dfe9ff;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.neuroglancer-help-search:focus { border-color: rgba(100, 200, 255, 0.75); box-shadow: 0 0 0 2px rgba(100, 200, 255, 0.15); }
+.neuroglancer-help-search::placeholder { color: rgba(170, 190, 215, 0.6); }

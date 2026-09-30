@@ -69,6 +69,32 @@ export class HelpPanelState {
 
 export class InputEventBindingHelpDialog extends SidePanel {
   scroll = document.createElement('div');
+  search = document.createElement('input');
+
+  /** Show only the entries matching the search; hide empty sections. */
+  private applyFilter() {
+    const q = this.search.value.trim().toLowerCase().replace(/[-_]+/g, ' ');
+    const words = q.split(/\s+/).filter(Boolean);
+    let header: HTMLElement | null = null;
+    let headerHits = 0;
+    const closeHeader = () => { if (header) header.style.display = (words.length && !headerHits) ? 'none' : ''; };
+    const kids = Array.from(this.scroll.children) as HTMLElement[];
+    for (let i = 0; i < kids.length; i++) {
+      const el = kids[i];
+      if (el.tagName === 'H2') { closeHeader(); header = el; headerHits = 0; continue; }
+      if (el.classList.contains('dt') && kids[i + 1]?.classList.contains('dd')) {
+        const dd = kids[i + 1];
+        const text = `${el.textContent} ${dd.textContent}`.toLowerCase().replace(/[-_]+/g, ' ');
+        const hit = words.every(w => text.includes(w));
+        el.style.display = dd.style.display = hit ? '' : 'none';
+        if (hit) headerHits++;
+        i++;
+        continue;
+      }
+      el.style.display = words.length ? 'none' : '';
+    }
+    closeHeader();
+  }
 
   constructor(
       sidePanelManager: SidePanelManager, state: HelpPanelState,
@@ -76,9 +102,21 @@ export class InputEventBindingHelpDialog extends SidePanel {
       private toolBinder: GlobalToolBinder) {
     super(sidePanelManager, state.location);
 
-    this.addTitleBar({title: 'Help'});
+    this.addTitleBar({title: 'Neuroglancer controls'});
     const body = document.createElement('div');
     body.classList.add('neuroglancer-help-body');
+
+    // EyeWire II (Amy 2026-09-30): search the controls. Matches the key or the
+    // action, with dashes read as spaces ("scale bar" finds toggle-scale-bar).
+    const search = this.search;
+    search.type = 'search';
+    search.placeholder = 'Search controls, e.g. scale bar';
+    search.className = 'neuroglancer-help-search';
+    search.addEventListener('input', () => this.applyFilter());
+    for (const ev of ['keydown', 'keyup', 'keypress']) {
+      search.addEventListener(ev, e => e.stopPropagation());
+    }
+    body.appendChild(search);
 
     const {scroll} = this;
     scroll.classList.add('neuroglancer-help-scroll-container');
@@ -203,5 +241,6 @@ export class InputEventBindingHelpDialog extends SidePanel {
     for (const list of uniqueMaps.values()) {
       addGroup(list.label, list.entries);
     }
+    this.applyFilter();
   }
 }

@@ -601,8 +601,9 @@ export class Viewer extends RefCounted implements ViewerState {
           this.registerDisposer(new CheckboxIcon(helpPanelState.location.watchableVisible, {
             text: '?',
             backgroundScheme: 'dark',
-            enableTitle: 'Show help panel',
-            disableTitle: 'Hide help panel'
+            // EyeWire II (Amy 2026-09-30): say what it is.
+            enableTitle: 'Show neuroglancer controls',
+            disableTitle: 'Hide neuroglancer controls'
           }));
       this.registerDisposer(new ElementVisibilityFromTrackableBoolean(
           this.uiControlVisibility.showHelpButton, button.element));

@@ -263,6 +263,11 @@ function autoSelectSegLayer(viewer: any, attempt = 0) {
 function setupViewer() {
   const viewer = (<any>window)['viewer'] = makeExtendViewer();
   setDefaultInputEventBindings(viewer.inputEventBindings);
+  // The "?" (neuroglancer controls) button is off unless Settings turns it on.
+  try {
+    const prefs = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}');
+    viewer.uiConfiguration.showHelpButton.value = prefs.showNgControlsButton === true;
+  } catch { viewer.uiConfiguration.showHelpButton.value = false; }
 
   // borrowed from setupDefaultViewer()
   const bindNonLayerSpecificTool = (obj: unknown, toolKey: string, desiredLayerType: UserLayerConstructor, desiredProvider?: string) => {
