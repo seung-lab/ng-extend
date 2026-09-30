@@ -110,6 +110,16 @@ function cancelTool() {
 
 <template>
   <Teleport to="body">
+    <!-- Fills the strip below the bar down to the true bottom edge (used to be
+         bare canvas). Kept under neuroglancer's #statusContainer so an
+         occasional status message still shows on top, see the style block. -->
+    <div v-if="isVisible" class="nge-smo-bottom-filler" :class="{
+      multicut: isMulticut && !isPendingClose,
+      merge: isMerge && !isPendingClose,
+      'bar-success': isPendingClose && resultIsSuccess,
+      'bar-error': isPendingClose && resultIsError,
+    }"></div>
+
     <transition name="overlay-slide">
       <div v-if="isVisible" class="nge-split-merge-overlay" :class="{
         multicut: isMulticut && !isPendingClose,
@@ -903,4 +913,92 @@ function cancelTool() {
 }
 /* Progress by the mode badge instead of the far right. */
 .nge-smo-loading-indicator--left { margin: 0 0 0 10px; order: 0; }
+
+/* ── Bottom filler: closes the gap under the bar ── */
+.nge-smo-bottom-filler {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  z-index: 9400;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.nge-smo-bottom-filler.multicut {
+  background: linear-gradient(
+    90deg,
+    rgba(180, 30, 30, 0.88) 0%,
+    rgba(20, 14, 40, 0.92) 40%,
+    rgba(20, 14, 40, 0.92) 60%,
+    rgba(30, 30, 180, 0.88) 100%
+  );
+}
+
+.nge-smo-bottom-filler.merge {
+  background: linear-gradient(
+    90deg,
+    rgba(15, 140, 80, 0.88) 0%,
+    rgba(20, 14, 40, 0.92) 30%,
+    rgba(20, 14, 40, 0.92) 100%
+  );
+}
+
+.nge-smo-bottom-filler.bar-success {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 180, 80, 0.92) 0%,
+    rgba(0, 200, 100, 0.88) 30%,
+    rgba(0, 180, 90, 0.90) 70%,
+    rgba(0, 200, 100, 0.88) 100%
+  );
+}
+
+.nge-smo-bottom-filler.bar-error {
+  background: linear-gradient(
+    90deg,
+    rgba(180, 30, 30, 0.92) 0%,
+    rgba(160, 20, 20, 0.90) 50%,
+    rgba(180, 30, 30, 0.92) 100%
+  );
+}
+
+/* Neuroglancer's own status bar (third_party/neuroglancer/status.ts,
+   status.css, id #statusContainer) only takes space while a message shows,
+   default z-index 100 on a plain grey bar. While cut or merge mode is open,
+   raise it above our bar and filler so a message is never covered, and
+   restyle it to match this UI instead of looking like a stray system alert
+   (approver: keep neuroglancer alerts, restyle them to match the cut/merge
+   UI). */
+:global(body.nge-tool-bar-open #statusContainer) {
+  z-index: 9700;
+  background-color: rgba(20, 14, 40, 0.94);
+  color: #e0e0e0;
+  font-family: 'Inter', 'Roboto', sans-serif;
+  font-size: 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+}
+
+:global(body.nge-tool-bar-open #statusContainer li) {
+  padding: 6px 20px;
+}
+
+:global(body.nge-tool-bar-open #statusContainer button) {
+  margin-left: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+:global(body.nge-tool-bar-open .neuroglancer-status-header) {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
 </style>

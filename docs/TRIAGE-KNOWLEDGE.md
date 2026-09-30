@@ -81,3 +81,9 @@ summaries.
 - The Browser pane counts as a hidden tab: requestAnimationFrame never fires
   there, so neuroglancer will not redraw or open panels in it. Verify panel
   changes on a real screen (2026-09-26, from the tutorial audit).
+- Neuroglancer's `#statusContainer` (third_party/neuroglancer/status.ts,
+  status.css) lives outside any Vue component's DOM (appended straight to
+  `#neuroglancer-container` by plain DOM calls), so a scoped `<style>` in a
+  .vue file can't reach it with an ordinary selector; use `:global(...)` in
+  the same scoped block instead of touching the third_party CSS file
+  (2026-09-30, split/merge bottom gap fix).
