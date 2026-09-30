@@ -26,7 +26,7 @@ ALTER TABLE public.proofreading_tasks ADD COLUMN IF NOT EXISTS working_link text
 
 CREATE OR REPLACE FUNCTION public.pilot_task_action(p_user uuid, p_action text, p_args jsonb DEFAULT '{}')
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE t public.proofreading_tasks%ROWTYPE; a public.task_assignments%ROWTYPE;
+DECLARE t public.proofreading_tasks%ROWTYPE; a public.task_assignments%ROWTYPE; lim integer;
   ds text := p_args->>'dataset'; seg text := p_args->>'segment_id';
   px double precision := (p_args->'point'->>0)::double precision;
   py double precision := (p_args->'point'->>1)::double precision;
@@ -56,9 +56,13 @@ BEGIN
       AND o.status IN ('assigned','in_progress') AND (o.segment_id=t.segment_id OR
       (o.claim_point_x=t.claim_point_x AND o.claim_point_y=t.claim_point_y AND o.claim_point_z=t.claim_point_z)))
       THEN RAISE EXCEPTION 'This cell is already claimed'; END IF;
+    -- Claim limit per dataset (Amy 2026-09-30): 10 on Retina, 8 elsewhere.
+    -- Must match claimLimitFor() in src/store.ts.
+    lim := CASE WHEN t.dataset = 'stroeh_mouse_retina' THEN 10 ELSE 8 END;
     IF t.assigned_to IS DISTINCT FROM p_user AND
-       (SELECT count(*) FROM public.proofreading_tasks WHERE assigned_to=p_user AND status IN ('assigned','in_progress')) >= 8
-      THEN RAISE EXCEPTION 'Max 8 claims reached'; END IF;
+       (SELECT count(*) FROM public.proofreading_tasks WHERE assigned_to=p_user AND dataset=t.dataset
+          AND status IN ('assigned','in_progress')) >= lim
+      THEN RAISE EXCEPTION 'Max % claims reached', lim; END IF;
     UPDATE public.proofreading_tasks SET status='assigned',assigned_to=p_user,updated_at=now() WHERE id=t.id RETURNING * INTO t;
     SELECT * INTO a FROM public.task_assignments WHERE task_id=t.id AND user_id=p_user AND status='active' ORDER BY id DESC LIMIT 1;
     IF NOT FOUND THEN

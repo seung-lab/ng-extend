@@ -545,7 +545,7 @@ export class ButtonService {
     if (claimInfo.claimed) {
       claimStatus.textContent = claimInfo.byMe ? '🔒 Claimed by you' : '🔒 Claimed by another player';
     } else {
-      const remaining = backend.MAX_CLAIMS - backend.myActiveClaimCount();
+      const remaining = backend.claimLimitFor() - backend.myActiveClaimCount();
       claimStatus.textContent = backend.userId
         ? `Available · ${remaining} claim${remaining !== 1 ? 's' : ''} left`
         : 'Log in to claim cells';
@@ -558,9 +558,9 @@ export class ButtonService {
         const claimBtn = document.createElement('button');
         claimBtn.classList.add('nge-lb-section-button', 'nge-lb-claim-btn');
         claimBtn.textContent = '🔒 Claim Cell';
-        if (backend.myActiveClaimCount() >= backend.MAX_CLAIMS) {
+        if (backend.myActiveClaimCount() >= backend.claimLimitFor()) {
           claimBtn.disabled = true;
-          claimBtn.textContent = `Max ${backend.MAX_CLAIMS} claims reached`;
+          claimBtn.textContent = `Max ${backend.claimLimitFor()} claims reached`;
         }
         claimBtn.addEventListener('click', async () => {
           claimBtn.disabled = true;

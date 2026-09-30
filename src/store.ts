@@ -4042,7 +4042,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     );
   }
 
-  /** How many active claims does the current user have? */
+  /** Claims allowed per dataset (Amy 2026-09-30): 10 on Retina, else 8.
+   *  Must match pilot_task_action in supabase-pilot-access.sql. */
+  const CLAIM_LIMITS: Record<string, number> = { stroeh_mouse_retina: 10 };
+  function claimLimitFor(dataset: string = currentDatasetTag()): number {
+    return CLAIM_LIMITS[canonicalDataset(dataset)] ?? MAX_CLAIMS;
+  }
+
+  /** How many active claims does the current user have in this dataset? */
   function myActiveClaimCount(): number {
     if (!userId.value) return 0;
     return tasks.value.filter(
@@ -4079,7 +4086,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  segment used to resolve current root after edits/splits. */
   async function claimCell(point: ClaimPoint, currentSegId?: string, supervoxelId?: string): Promise<{ok: boolean; reason?: string}> {
     if (!userId.value) return { ok: false, reason: 'Not logged in' };
-    if (myActiveClaimCount() >= MAX_CLAIMS) return { ok: false, reason: `Max ${MAX_CLAIMS} claims reached` };
+    if (myActiveClaimCount() >= claimLimitFor()) return { ok: false, reason: `Max ${claimLimitFor()} claims reached` };
 
     // Check if already claimed at this point
     const existing = isClaimedPoint(point);
@@ -4918,7 +4925,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Point-in-space claims
     claimCell, releaseCell, releaseBySegment, releaseTaskById, saveWorkingLink, loadMyActiveClaims, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
     refreshSegmentIds,
-    MAX_CLAIMS,
+    MAX_CLAIMS, claimLimitFor,
     // Admin Hub
     isAdmin, checkAdmin,
     // Notifications

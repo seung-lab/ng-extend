@@ -510,9 +510,9 @@ async function claimCell(cell: typeof cells.value[0]) {
 async function claimCellNow(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value) return;
   claimError.value = '';
-  // The limit counts claims in every dataset; `backend.tasks` has only this one.
-  const held = await backend.loadMyActiveClaims();
-  if (held.length >= backend.MAX_CLAIMS) { pendingClaim = cell; showClaimLimit(held); return; }
+  // The limit is per dataset (10 on Retina, 8 elsewhere).
+  const held = heldHere(await backend.loadMyActiveClaims());
+  if (held.length >= backend.claimLimitFor()) { pendingClaim = cell; showClaimLimit(held); return; }
   // Derive claim point: use cell's existing claim point, parse nucCoords, or use viewer position
   let point: ClaimPoint;
   if (cell.claimPoint) {
@@ -560,7 +560,48 @@ let pendingClaim: CellRow | null = null;
 function dismissClaimLimit() { claimLimit.value = null; pendingClaim = null; }
 function showClaimLimit(held: ProofreadingTask[]) {
   claimLimit.value = held.length ? held : null;
-  if (!held.length) claimError.value = `Max ${backend.MAX_CLAIMS} claims reached`;
+  if (!held.length) claimError.value = `Max ${backend.claimLimitFor()} claims reached`;
+}
+/** Your active claims in the dataset on screen (the limit is per dataset). */
+function heldHere(held: ProofreadingTask[]): ProofreadingTask[] {
+  const here = canonicalDataset(getCurrentDatasetName());
+  return held.filter(t => canonicalDataset((t as any).dataset) === here);
+}
+
+// ── Batch claim (Amy 2026-09-30): fill your claims in one click ─────────
+// Claims the next available cells from the list, top down, up to your limit
+// (10 on Retina). Each needs its own point: the sheet's soma coordinates.
+const batchClaiming = ref<{ done: number; total: number } | null>(null);
+const batchRoom = computed(() => Math.max(0, backend.claimLimitFor() - backend.myActiveClaimCount()));
+async function batchClaim() {
+  if (!isLoggedIn.value || batchClaiming.value) return;
+  const room = heldHere(await backend.loadMyActiveClaims());
+  const n = backend.claimLimitFor() - room.length;
+  if (n <= 0) { showClaimLimit(room); return; }
+  const picks = filteredCells.value.filter(c => {
+    if (c.status !== 'pending' || !c.segId) return false;
+    const p = c.claimPoint ?? parseCoords(c.somaCoords || c.nucCoords);
+    return !!(p[0] || p[1] || p[2]);
+  }).slice(0, n);
+  if (!picks.length) { claimError.value = 'No available cells with a starting point to claim.'; return; }
+  batchClaiming.value = { done: 0, total: picks.length };
+  let ok = 0, lastError = '';
+  for (const c of picks) {
+    const point = (c.claimPoint ?? parseCoords(c.somaCoords || c.nucCoords)) as ClaimPoint;
+    const r = c.taskId ? { ok: await backend.claimTask(c.taskId), reason: backend.error } : await backend.claimCell(point, c.segId);
+    if (r.ok) {
+      ok++;
+      syncCellToSheet('claim', c.segId, undefined, c.dataset).catch(showSheetError);
+    } else {
+      lastError = r.reason || 'Claim failed';
+      if (/max \d+ claims/i.test(lastError)) break;
+    }
+    batchClaiming.value = { done: batchClaiming.value!.done + 1, total: picks.length };
+  }
+  batchClaiming.value = null;
+  await backend.loadTasks();
+  filter.value = 'mine';
+  if (ok < picks.length) claimError.value = `Claimed ${ok} of ${picks.length}. ${lastError}`;
 }
 function heldLabel(t: ProofreadingTask): string {
   const row = queue.items.find(i => i.segId === t.segment_id);
@@ -575,8 +616,8 @@ async function releaseHeld(t: ProofreadingTask) {
   try { ok = await backend.releaseTaskById(t.id); } finally { releasing.delete(key); }
   if (ok && workingTaskId === t.id) setWorkingTask(null);
   if (!ok) { claimError.value = backend.error || 'Could not release this claim.'; return; }
-  const held = await backend.loadMyActiveClaims();
-  if (held.length >= backend.MAX_CLAIMS) { claimLimit.value = held; return; }
+  const held = heldHere(await backend.loadMyActiveClaims());
+  if (held.length >= backend.claimLimitFor()) { claimLimit.value = held; return; }
   claimLimit.value = null;
   const next = pendingClaim;
   pendingClaim = null;
@@ -1990,6 +2031,11 @@ const panelStyle = computed(() => ({
             class="nge-cl-search-input"
             @keydown.stop @keyup.stop @keypress.stop
           />
+          <button v-if="filter === 'available' && isLoggedIn && (batchRoom > 0 || batchClaiming)"
+                  class="nge-cl-btn nge-cl-batch-claim" :disabled="!!batchClaiming" @click="batchClaim"
+                  :title="`Claim the next ${batchRoom} available cells in this list (up to ${backend.claimLimitFor()} at a time)`">
+            <span v-if="batchClaiming" class="nge-cl-spin" />{{ batchClaiming ? `Claiming ${batchClaiming.done}/${batchClaiming.total}…` : `Claim ${batchRoom}` }}
+          </button>
         </div>
 
         <!-- Search on Links tab -->
@@ -3123,7 +3169,8 @@ const panelStyle = computed(() => ({
 .nge-cl-filters button:hover:not(.active) { color: #bbf; }
 
 /* Search */
-.nge-cl-search { padding: 6px 10px; }
+.nge-cl-search { padding: 6px 10px; display: flex; align-items: center; }
+.nge-cl-search .nge-cl-search-input { min-width: 0; }
 .nge-cl-search-input {
   width: 100%;
   padding: 6px 10px;
@@ -3331,6 +3378,15 @@ const panelStyle = computed(() => ({
   font-size: 0.68em;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
+.nge-cl-batch-claim {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  white-space: nowrap;
+  border-color: rgba(68, 170, 102, 0.45);
+  color: #6d9;
+  font-weight: 600;
+}
+.nge-cl-batch-claim:hover:not(:disabled) { background: rgba(68, 170, 102, 0.12); }
 /* Small spinner inside a busy button (Release). */
 .nge-cl-spin {
   display: inline-block;

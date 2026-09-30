@@ -36,6 +36,10 @@ test('PostgreSQL enforces membership, atomic claims, owner checks, limits and re
   for (let i=0;i<7;i++) await task(A,'claim_cell',{dataset:'pinky_nf_v2',segment_id:String(124+i),point:[2+i,2,3]});
   await assert.rejects(()=>task(A,'claim_cell',{dataset:'pinky_nf_v2',segment_id:'131',point:[9,2,3]}),/Max 8/);
   assert.equal((await db.query('SELECT count(*)::integer AS n FROM proofreading_tasks')).rows[0].n,8);
+  // The limit is per dataset (2026-09-30): 8 pinky claims do not block Retina,
+  // which allows 10.
+  for (let i=0;i<10;i++) await task(A,'claim_cell',{dataset:'stroeh_mouse_retina',segment_id:String(900+i),point:[50+i,5,5]});
+  await assert.rejects(()=>task(A,'claim_cell',{dataset:'stroeh_mouse_retina',segment_id:'911',point:[70,5,5]}),/Max 10/);
   await task(A,'release',{id:1}); await task(B,'claim',{id:1});
   // Each claim keeps its own saved view: owner only, https only (2026-09-28).
   await task(B,'save_link',{id:1,link:'https://spelunker.cave-explorer.org/#!middleauth+https://x.test/1'});

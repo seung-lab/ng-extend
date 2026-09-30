@@ -319,7 +319,7 @@ async function claimCell() {
     await backend.loadTasks();
     const task = backend.tasks.find(t => t.segment_id === item.segId && (!item.dataset || t.dataset === item.dataset));
     if (!task || task.assigned_to !== backend.userId || !['assigned','in_progress','completed'].includes(task.status)) {
-      if (backend.myActiveClaimCount() >= backend.MAX_CLAIMS) throw new Error(`Max ${backend.MAX_CLAIMS} claims reached`);
+      if (backend.myActiveClaimCount() >= backend.claimLimitFor()) throw new Error(`Max ${backend.claimLimitFor()} claims reached`);
       const result = task ? {ok: await backend.claimTask(task.id), reason: backend.error}
         : await backend.claimCell(coords.split(',').map(Number) as [number,number,number], item.segId);
       if (!result.ok) throw new Error(result.reason || 'Claim failed');
