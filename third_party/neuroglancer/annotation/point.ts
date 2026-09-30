@@ -26,9 +26,24 @@ import {ShaderBuilder, ShaderProgram} from 'neuroglancer/webgl/shader';
 import {defineVectorArrayVertexShaderInput} from 'neuroglancer/webgl/shader_lib';
 import {defineVertexId, VertexIdHelper} from 'neuroglancer/webgl/vertex_id';
 
+
+/**
+ * EyeWire II (Amy 2026-09-30, after the EyeWire "Annotation Resizer" addon):
+ * a local multiplier on point annotation size and border, set in Settings.
+ * Applied in this shader, so nothing global is patched and it is never saved
+ * into shared links. Read once at load; the Settings slider updates it live.
+ */
+export const ngePointScale = {value: (() => {
+  try {
+    const v = Number(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').annotationSize);
+    return Number.isFinite(v) && v >= 0.5 && v <= 5 ? v : 1;
+  } catch { return 1; }
+})()};
+
 class RenderHelper extends AnnotationRenderHelper {
   private defineShaderCommon(builder: ShaderBuilder) {
     const {rank} = this;
+    builder.addUniform('highp float', 'uNgePointScale');
     // Position of point in model coordinates.
     defineVectorArrayVertexShaderInput(
         builder, 'float', WebGL2RenderingContext.FLOAT, /*normalized=*/ false, 'VertexPosition',
@@ -61,6 +76,8 @@ if (clipCoefficient == 0.0) {
   return;
 }
 ${this.invokeUserMain}
+ng_markerDiameter *= uNgePointScale;
+ng_markerBorderWidth *= uNgePointScale;
 vColor.a *= clipCoefficient;
 vBorderColor.a *= clipCoefficient;
 ${this.setPartIndex(builder)};
@@ -138,6 +155,7 @@ emitAnnotation(vec4(color.rgb, color.a * ${this.getCrossSectionFadeFactor()}));
       shaderGetter: AnnotationShaderGetter, context: AnnotationRenderContext,
       callback: (shader: ShaderProgram) => void) {
     super.enable(shaderGetter, context, shader => {
+      this.gl.uniform1f(shader.uniform('uNgePointScale'), ngePointScale.value);
       const binder = shader.vertexShaderInputBinders['VertexPosition'];
       binder.enable(1);
       this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, context.buffer.buffer);

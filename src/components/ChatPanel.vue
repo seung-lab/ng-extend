@@ -444,7 +444,8 @@ function onShareShotAttached(payload: { url: string }) {
   void postView(payload.url);
 }
 
-// Links in messages: a shared view opens in place, and our own screenshots
+// Links in messages all open in a new tab (Ames 2026-09-30); a shared view
+// shows as an "Open view" chip, and our own screenshots
 // show as thumbnails instead of long storage URLs.
 const OWN_STORAGE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/';
 function isViewLink(u: string): boolean {
@@ -452,13 +453,6 @@ function isViewLink(u: string): boolean {
 }
 function isShotLink(u: string): boolean {
   return u.startsWith(OWN_STORAGE) && /\.(png|jpe?g|webp)$/i.test(u);
-}
-function openView(u: string) {
-  try {
-    const hash = new URL(u).hash;
-    if (window.location.hash === hash) window.dispatchEvent(new HashChangeEvent('hashchange'));
-    else window.location.hash = hash;
-  } catch { window.open(u, '_blank', 'noopener'); }
 }
 
 // ── Reactions (Ames 2026-09-28) ──
@@ -824,7 +818,8 @@ function toggleCollapse() {
                   <div v-else class="nge-chat-daily-empty">No edits in the last 24 hours yet. The top spot is wide open!</div>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg) }">
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private }"
+                     :title="msg.private ? 'Only you can see this' : undefined">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
                   <button v-if="msg.rank === 'bot' && msg.name === 'Nurro'" class="nge-chat-msg-name nge-chat-nurro-name"
@@ -835,8 +830,8 @@ function toggleCollapse() {
                         @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</span>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
-                    <button v-else-if="part.type === 'link' && isViewLink(part.text)" class="nge-chat-view-chip"
-                            @click="openView(part.text)" title="Open this view here">📍 Open view</button>
+                    <a v-else-if="part.type === 'link' && isViewLink(part.text)" class="nge-chat-view-chip" :href="part.text" target="_blank" rel="noopener"
+                            title="Open this view in a new tab">📍 Open view</a>
                     <a v-else-if="part.type === 'link' && isShotLink(part.text)" :href="part.text" target="_blank" rel="noopener"
                        class="nge-chat-shot" title="Open the screenshot full size"><img :src="part.text" alt="Screenshot" loading="lazy" /></a>
                     <a v-else-if="part.type === 'link'" :href="part.text" target="_blank" rel="noopener" class="nge-chat-link">{{ part.text }}</a>
@@ -1232,6 +1227,18 @@ function toggleCollapse() {
   font-size: 14.5px;
 }
 .nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
+/* Nurro commands and answers are yours alone (Amy 2026-09-30). */
+.nge-chat-private { border-left: 2px solid rgba(200, 164, 255, 0.5); padding-left: 6px; }
+.nge-chat-private::after {
+  content: 'only you';
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 10px;
+  color: #c8a4ff;
+  background: rgba(200, 164, 255, 0.12);
+  vertical-align: 1px;
+}
 .nge-chat-online {
   margin-left: 6px;
   font-size: 11px;
@@ -1737,6 +1744,7 @@ function toggleCollapse() {
   cursor: pointer;
 }
 .nge-chat-view-chip:hover { background: rgba(74, 158, 255, 0.25); color: #fff; }
+.nge-chat-view-chip { text-decoration: none; }
 .nge-chat-shot { display: block; margin: 4px 0 2px; }
 .nge-chat-shot img {
   display: block;
