@@ -96,7 +96,7 @@ body.nge-mobile .nge-cl-panel,
 body.nge-mobile .nge-bp-panel,
 body.nge-mobile .nge-notif-panel,
 body.nge-mobile .nge-quest-board,
-body.nge-mobile .nge-dataset-panel,
+/* .nge-dataset-panel left out: it is a full screen switcher (2026-09-30). */
 body.nge-mobile .nge-tag-panel,
 body.nge-mobile .nge-ann-panel,
 body.nge-mobile .nge-chat-float {

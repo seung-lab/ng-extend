@@ -41,12 +41,19 @@ export interface DatasetEntry {
   group?: string;
   /** This version's name in its group's list. */
   variantLabel?: string;
+  /** Switcher section (Ames 2026-09-30). Defaults to 'production'. */
+  section?: DatasetSection;
   layers: any[];
 }
 
+/** Dataset switcher sections: Sandbox and View Only on the left,
+ *  Production on the right. */
+export type DatasetSection = 'sandbox' | 'viewonly' | 'production';
+
 /** Switcher cards for grouped datasets. */
-export const DATASET_GROUPS: Record<string, { label: string; description: string; thumbnail?: string }> = {
+export const DATASET_GROUPS: Record<string, { label: string; description: string; thumbnail?: string; section?: DatasetSection }> = {
   microns: {
+    section: 'viewonly',
     label: 'MICrONS: Mouse Visual Cortex',
     description: '1 mm³ of mouse visual cortex (8×8×40 nm)',
     thumbnail: thumbMicrons,
@@ -62,6 +69,7 @@ export const SPECIES_ICONS: Record<DatasetEntry['species'], string> = {
 export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
+    section: 'production',
     caveDataset: 'stroeh-mouse-retina',
     thumbnail: thumbRetina,
     label: 'EyeWire II: Retina',
@@ -88,6 +96,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pinky_sandbox',
+    section: 'sandbox',
     caveDataset: 'pinky100',
     thumbnail: thumbMicrons,
     label: 'Pinky Sandbox',
@@ -207,6 +216,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'banc',
+    section: 'viewonly',
     caveDataset: 'BANC',
     thumbnail: thumbBanc,
     label: 'BANC: Fly Brain and Nerve Cord',
@@ -233,6 +243,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pni_mec',
+    section: 'production',
     caveDataset: 'HiMC',
     thumbnail: thumbMec,
     label: 'Medial Entorhinal Cortex',
