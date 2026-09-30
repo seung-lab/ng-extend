@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import {ref, onMounted, computed} from 'vue';
+import {ref, onMounted, onUnmounted, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession} from '../store';
 import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { DATASETS, segLayerName } from '../datasets';
 import { startViewHash } from '../util/start_view';
+import { ngePointScale } from 'neuroglancer/annotation/point';
 
 const prefsStore = useUserPreferencesStore();
 
@@ -30,6 +31,21 @@ const draftChatMuted = ref(false);
 const draftChatFade = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
+/** Point annotation size (after EyeWire's "Annotation Resizer" addon). Applied
+ *  live while you drag; kept when you save, put back if you close without. */
+const draftAnnotationSize = ref(1);
+const savedAnnotationSize = ref(1);
+function previewAnnotationSize() {
+  ngePointScale.value = draftAnnotationSize.value;
+  try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
+}
+onUnmounted(() => {
+  // Closed without saving: put the saved size back.
+  if (ngePointScale.value !== savedAnnotationSize.value) {
+    draftAnnotationSize.value = savedAnnotationSize.value;
+    previewAnnotationSize();
+  }
+});
 const draftHelpMuted = ref(false);
 const saved      = ref(false);
 
@@ -67,6 +83,7 @@ onMounted(() => {
   draftChatFade.value = prefsStore.prefs.chatFadeAway !== false;
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
+  draftAnnotationSize.value = savedAnnotationSize.value = ngePointScale.value;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
   draftBareSwitch.value = !!prefsStore.prefs.datasetBareSwitch;
   draftStartViews.value = { ...(prefsStore.prefs.datasetStartViews || {}) };
@@ -86,11 +103,12 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, annotationSize: draftAnnotationSize.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
+  savedAnnotationSize.value = draftAnnotationSize.value;
   // Show or hide the "?" controls button right away.
   try { (window as any).viewer.uiConfiguration.showHelpButton.value = draftShowNgControls.value; } catch { /* no viewer yet */ }
   saved.value = true;
@@ -319,6 +337,11 @@ const props = defineProps<{ embedded?: boolean }>();
               </button>
             </div>
             <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
+            <label class="nge-settings-slider">
+              <span class="nge-settings-toggle-label">Annotation point size</span>
+              <input type="range" min="1" max="4" step="0.5" v-model.number="draftAnnotationSize" @input="previewAnnotationSize" />
+              <span class="nge-settings-slider-val">{{ draftAnnotationSize }}×</span>
+            </label>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftKeepDisplay" />
               <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout) when jumping to cells</span>
@@ -1012,6 +1035,15 @@ const props = defineProps<{ embedded?: boolean }>();
 .nge-sv-link { color: rgba(170, 190, 220, 0.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Notification mute toggle (Mute chat unread badge) */
+.nge-settings-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.92em;
+}
+.nge-settings-slider input[type="range"] { flex: 1; max-width: 180px; accent-color: #35b5ff; }
+.nge-settings-slider-val { min-width: 2.4em; color: #9fdcff; font-weight: 600; }
 .nge-settings-toggle {
   display: inline-flex;
   align-items: center;

@@ -1780,6 +1780,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-glow { 0%, 100% { filter: none; } 40% { filter: drop-shadow(0 0 5px #ffe9a8) brightness(1.6); } }
 
 /* Cell Library (neuron): a slow sway with a glow; click fires it. */
+/* Cell Library: bold (a thicker-stroked neuron) and bright, with a soft glow. */
+.nge-cells-icon { filter: drop-shadow(0 0 3px rgba(79, 207, 255, 0.5)); }
+#extensionBar [data-icon-id="cells"] { opacity: 1; }
 #extensionBar [data-icon-id="cells"]:hover .nge-cells-icon { animation: nge-ti-neuron 1.2s ease-in-out infinite; }
 #extensionBar [data-icon-id="cells"].nge-pop .nge-cells-icon { animation: nge-ti-fire 0.6s ease-out; }
 @keyframes nge-ti-neuron { 0%, 100% { transform: rotate(0); filter: drop-shadow(0 0 0 rgba(126, 232, 255, 0)); } 50% { transform: rotate(8deg); filter: drop-shadow(0 0 4px rgba(126, 232, 255, 0.8)); } }

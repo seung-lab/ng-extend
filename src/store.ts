@@ -901,6 +901,8 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
+  /** Point annotation size multiplier, 1 to 4 (Amy 2026-09-30). Local only. */
+  annotationSize?: number;
   /** Switch datasets without the curated view or starter cells (faster). */
   datasetBareSwitch?: boolean;
   /** Segmentation layer name -> the player's own share link to open there. */

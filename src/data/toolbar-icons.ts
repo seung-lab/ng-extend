@@ -16,7 +16,8 @@
  * Action handlers live in ExtensionBar; this file is purely visual
  * metadata.
  */
-import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
+// The same neuron with thicker strokes, for the bolder toolbar icon (2026-09-30).
+import neuronIconBold from '../../static/badges/pyr/neuron-icon-bold.png';
 
 export interface ToolbarIconDef {
   id: string;
@@ -60,7 +61,9 @@ const HELP_SVG        = `<svg viewBox="1.4 1.4 13.4 13.4" fill="none" style="${S
 const ACCENT_SKY    = '#35b5ff';
 // Scout Tags (Amy 2026-09-30): green, a mint that stays distinct from Merge.
 const ACCENT_MINT   = '#3ddc97';
-const CELLS_ICON      = `<span class="nge-cells-icon" style="${S}display:inline-block;background:${ACCENT_SKY};-webkit-mask:url(${neuronIcon}) center/contain no-repeat;mask:url(${neuronIcon}) center/contain no-repeat" aria-hidden="true"></span>`;
+// Cell Library (Amy 2026-09-30): brighter and bolder than the sky accent.
+const CELLS_BLUE    = '#4fcfff';
+const CELLS_ICON      = `<span class="nge-cells-icon" style="${S}display:inline-block;background:${CELLS_BLUE};-webkit-mask:url(${neuronIconBold}) center/contain no-repeat;mask:url(${neuronIconBold}) center/contain no-repeat" aria-hidden="true"></span>`;
 const TAG_SVG         = `<svg viewBox="0.6 0.2 14.8 15.4" fill="none" style="${S}color:${ACCENT_MINT}"><path d="M8 1.6a4.3 4.3 0 0 1 4.3 4.3c0 3-4.3 7.5-4.3 7.5S3.7 8.9 3.7 5.9A4.3 4.3 0 0 1 8 1.6z" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="5.9" r="1.5" fill="currentColor"/><path d="M8 14.4v1M5.4 15h5.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 
 /** Open book — the right-edge resources menu (tutorials, site tour, links),
