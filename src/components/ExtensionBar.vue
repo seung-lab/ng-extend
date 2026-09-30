@@ -1863,6 +1863,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-knob-b { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.6px); } }
 
 /* 🔥 streak: the flame flickers on hover. */
+/* inline-block: transforms (the flicker) do nothing on a plain inline span. */
+.nge-streak-chip-flame { display: inline-block; }
 .nge-streak-chip:hover .nge-streak-chip-flame { animation: nge-ti-flame 0.5s ease-in-out infinite alternate; }
 @keyframes nge-ti-flame { from { transform: scale(1) rotate(-3deg); filter: brightness(1); } to { transform: scale(1.06) rotate(3deg); filter: brightness(1.25); } }
 
