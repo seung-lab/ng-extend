@@ -1,13 +1,1 @@
-{
-  "a4bd2f76-67e9-4093-adc7-e670230d1577": {
-    "note": "Axon missing a branch: its reset left the pieces joined (2026-09-29). Read only.",
-    "kind": "merge_then_cut",
-    "pcg_server": "https://minnie.microns-daf.com",
-    "pcg_table": "pinky_nf_v2",
-    "supervoxel_a": "",
-    "supervoxel_b": "",
-    "baseline_at": "2026-09-28T14:00:18.825411+00:00",
-    "root_a": "648518346351228233",
-    "root_b": "648518346351580589"
-  }
-}
+{}
