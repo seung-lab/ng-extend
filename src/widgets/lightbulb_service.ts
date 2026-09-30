@@ -13,6 +13,8 @@ import {supabase} from '../supabase';
 import {currentDatasetTag} from '../datasets';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
 import {parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
+import {cellAtCrosshair} from '../util/crosshair_cell';
+import {ancestorAmong} from './pcg_service';
 import nurroSuccess from '../../static/nurro/nurro-success.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
@@ -526,16 +528,50 @@ export async function getCellStatus(
  * If marking complete, creates a new annotation row.
  * If unmarking, deletes the existing annotation by ID.
  */
+/** Why the last completion was refused, in plain words ('' if it wasn't). */
+let lastCompletionProblem = '';
+export function getLastCompletionProblem(): string { return lastCompletionProblem; }
+
+/**
+ * A completion is saved at a POINT, and CAVE files it under whatever cell is
+ * at that point. Without a verified point we use the crosshairs, so they must
+ * be inside this cell (or a cell it became through edits): a July completion
+ * landed on segment 0 because the crosshairs were on empty space (Amy
+ * 2026-09-29). Returns '' when fine, else what to do.
+ */
+async function crosshairProblem(rootId: string, alsoAccept: string[] = []): Promise<string> {
+  const at = await cellAtCrosshair();
+  if (!at.root) return at.problem || 'Could not check the crosshairs.';
+  if (at.root === rootId || alsoAccept.includes(at.root)) return '';
+  const lineage = await ancestorAmong(at.root, [rootId, ...alsoAccept]);
+  if (lineage) return '';
+  if (lineage === undefined) return 'Could not check the crosshairs against this cell. Try again in a moment.';
+  const short = (id: string) => '…' + id.slice(-6);
+  return `The crosshairs are inside ${short(at.root)}, not this cell (${short(rootId)}). Move them into the cell, then mark it again.`;
+}
+
 export async function setCellComplete(
     caveServer: string, rootId: string, complete: boolean,
     existingAnnotationId?: number,
     pointOverride?: [number, number, number],
-    suppressCelebration?: boolean): Promise<boolean> {
+    suppressCelebration?: boolean,
+    /** Other segments the crosshairs may be on, e.g. a MEC nucleus when the
+     *  cell around it is what gets marked. */
+    alsoAcceptAtCrosshair: string[] = []): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const {cellStatusTable, alignedVolume} = dsCfg;
+  lastCompletionProblem = '';
   if (!caveServer) {
     console.warn('[lightbulb] No CAVE server — cannot save completion status.');
     return false;
+  }
+  if (complete && !pointOverride) {
+    const problem = await crosshairProblem(rootId, alsoAcceptAtCrosshair);
+    if (problem) {
+      lastCompletionProblem = problem;
+      console.warn('[lightbulb] completion refused:', problem);
+      return false;
+    }
   }
 
   const baseUrl = annotationBaseUrl(caveServer, cellStatusTable, alignedVolume);

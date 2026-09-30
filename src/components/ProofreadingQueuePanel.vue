@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useProofreadingQueueStore, useCellHistoryStore, useUserStatsStore, useProofreadingBackendStore } from '../store';
-import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
+import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
+import { StatusMessage } from 'neuroglancer/status';
 import { Uint64 } from 'neuroglancer/util/uint64';
 
 const queue = useProofreadingQueueStore();
@@ -355,7 +356,12 @@ async function markProofreadAndNext() {
   if (annotationInput.value.trim()) queue.setEdit(item.segId, 'annotation', annotationInput.value.trim());
 
   const caveServer = activeCaveServer();
-  await setCellComplete(caveServer, item.segId, true);
+  const ok = await setCellComplete(caveServer, item.segId, true);
+  if (!ok && getLastCompletionProblem()) {
+    // Refused (crosshairs not in the cell): stop here, keep the claim.
+    StatusMessage.showTemporaryMessage(getLastCompletionProblem(), 6000);
+    return;
+  }
 
   // Auto-release claim when marking complete
   const claimInfo = backend.isClaimedSegment(item.segId);

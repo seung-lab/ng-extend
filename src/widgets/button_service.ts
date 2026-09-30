@@ -5,7 +5,7 @@ import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion} from '../util/menu_complete';
-import {getCellStatus, setCellComplete, saveCellType, CellStatus} from './lightbulb_service';
+import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem} from './lightbulb_service';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
 import {getSelectedSupervoxelId} from './pcg_service';
 
@@ -325,7 +325,8 @@ export class ButtonService {
       }
       // plan.cellRoot: opened on a MEC nucleus, so the cell around it is marked.
       const ok = await setCellComplete(
-          localServerURL, plan?.cellRoot ?? segmentIDString, willBeComplete, plan?.cellRoot ? undefined : cachedStatus?.annotationId);
+          localServerURL, plan?.cellRoot ?? segmentIDString, willBeComplete, plan?.cellRoot ? undefined : cachedStatus?.annotationId,
+          undefined, undefined, plan?.cellRoot ? [segmentIDString] : []);
       if (ok) {
         statusLine.textContent = willBeComplete ? '✓ Proofread' : '○ In Progress';
         toggleBtn.textContent = willBeComplete ? 'Unmark Proofread' : 'Mark as Proofread';
@@ -351,8 +352,12 @@ export class ButtonService {
             document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'released' } }));
           }
         }
+      } else if (getLastCompletionProblem()) {
+        // Refused before saving (crosshairs not in the cell): say why.
+        statusLine.textContent = getLastCompletionProblem();
+        toggleBtn.textContent = 'Mark as Proofread';
       } else {
-        toggleBtn.textContent = !localServerURL ? 'No CAVE server configured' : 'Error — try again';
+        toggleBtn.textContent = !localServerURL ? 'No CAVE server configured' : 'Error, try again';
       }
       toggleBtn.disabled = false;
     });

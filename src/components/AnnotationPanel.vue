@@ -7,7 +7,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useHelpRequestStore } from '../store';
-import { getCellStatus, setCellComplete, saveCellType, CellStatus } from '../widgets/lightbulb_service';
+import { getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
 import { currentSegLayerName, currentCellTypes } from '../datasets';
 import { planMenuCompletion, finishMenuCompletion } from '../util/menu_complete';
@@ -153,7 +153,9 @@ async function toggleComplete() {
     plan?.cellRoot ?? activeSegId.value,
     willBeComplete,
     plan?.cellRoot ? undefined : annotation.value.annotationId,
+    undefined, undefined, plan?.cellRoot ? [activeSegId.value] : [],
   );
+  if (!ok && getLastCompletionProblem()) sheetNote.value = getLastCompletionProblem();
   if (ok) {
     annotStore.setAnnotation({
       ...annotation.value!,

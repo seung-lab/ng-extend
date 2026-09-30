@@ -14,7 +14,8 @@ import {
   useProofreadingQueueStore,
   CellHistoryEntry,
 } from '../store';
-import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
+import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
+import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 
 const emit = defineEmits({
@@ -570,7 +571,8 @@ async function markActiveSegmentComplete() {
   marking.value = true;
   try {
     const caveServer = annotStore.caveUrl || activeCaveServer();
-    await setCellComplete(caveServer, seg, true);
+    const ok = await setCellComplete(caveServer, seg, true);
+    if (!ok && getLastCompletionProblem()) StatusMessage.showTemporaryMessage(getLastCompletionProblem(), 6000);
   } catch (e) {
     console.warn('[cmdPalette] mark complete failed:', e);
   } finally {
