@@ -10,6 +10,7 @@
 // the command palette do."
 
 import { TOOLBAR_ICON_DEFS } from "../data/toolbar-icons";
+import { formatKeyStroke } from "neuroglancer/help/input_event_bindings";
 // @ts-ignore — JSON import (esbuild bundles it). This IS the keybind source file.
 import CUSTOM_KEYBINDS from "../../config/custom-keybinds.json";
 
@@ -83,6 +84,53 @@ function buildStaticReference(): string {
 }
 
 /**
+ * Neuroglancer's own controls (the "Neuroglancer controls" panel), read from
+ * the live viewer so the guide always knows what is actually bound (Amy
+ * 2026-09-30). Per-layer bindings (toggle-layer-1 ... 9) collapse to one line.
+ * Built once, the first time a viewer exists.
+ */
+let cachedNgControls: string | null = null;
+function buildNgControls(): string {
+  if (cachedNgControls !== null) return cachedNgControls;
+  const ib = (window as any).viewer?.inputEventBindings;
+  if (!ib) return '';
+  const groups: [string, any][] = [['Global', ib.global], ['2D cross-section view', ib.sliceView], ['3D view', ib.perspectiveView]];
+  const out: string[] = ['## Neuroglancer controls (keys and mouse)'];
+  for (const [label, map] of groups) {
+    if (!map) continue;
+    const entries = new Map<string, string>();
+    const seen = new Set<any>();
+    const walk = (m: any) => {
+      if (!m || seen.has(m)) return;
+      seen.add(m);
+      for (const parent of m.parents ?? []) walk(parent);
+      for (const [event, action] of m.bindings?.entries?.() ?? []) {
+        const key = String(event).substring(String(event).indexOf(':') + 1);
+        const name = typeof action === 'string' ? action : action?.action;
+        if (name) entries.set(key, String(name));
+      }
+    };
+    walk(map);
+    const lines: string[] = [];
+    const layerCollapsed = new Set<string>();
+    for (const [key, action] of entries) {
+      const m = action.match(/^(.*-layer)-(\d+)$/);
+      if (m) {
+        if (m[2] !== '1') continue;
+        const k = formatKeyStroke(key).replace(/\d/, 'N');
+        const line = `- ${k}: ${m[1]}-N (N = 1 to 9, the layer number)`;
+        if (!layerCollapsed.has(line)) { layerCollapsed.add(line); lines.push(line); }
+        continue;
+      }
+      lines.push(`- ${formatKeyStroke(key)}: ${action}`);
+    }
+    if (lines.length) out.push(`### ${label}`, ...lines);
+  }
+  cachedNgControls = out.length > 1 ? out.join("\n") : '';
+  return cachedNgControls;
+}
+
+/**
  * Assemble the live UI reference. `commands` (the command-palette catalog) is
  * optional — passed in from the CommandPalette component, since its list is
  * built with component-scoped closures.
@@ -106,5 +154,6 @@ export function buildUiReference(commands?: CommandMeta[]): string {
         .join("\n");
   }
 
-  return cachedStatic + cmdSection;
+  const ng = buildNgControls();
+  return cachedStatic + cmdSection + (ng ? "\n\n" + ng : '');
 }

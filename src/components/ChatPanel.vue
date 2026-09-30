@@ -257,6 +257,21 @@ watch(chatMessages, () => {
   }
 });
 
+// Follow new messages unless you have scrolled up to read (Amy 2026-09-30).
+// The list is bottom-anchored, but a panel resize (fading in and out, drag
+// resize) or an arrival mid-layout could leave it short of the newest line.
+function followNewest() {
+  if (isScrolledUp.value) return;
+  const snap = () => {
+    const el = scrollContainer.value;
+    if (el && !isScrolledUp.value) el.scrollTop = 0;
+  };
+  void nextTick(snap);
+  setTimeout(snap, 320);  // again after the 0.25 s height transition
+}
+watch(() => chatMessages.value.length, followNewest);
+watch(() => shownHeight.value, followNewest);
+
 // ── Leaderboard trophy mapping ──
 const trophyMap = computed(() => {
   const map: Record<string, string> = {};
