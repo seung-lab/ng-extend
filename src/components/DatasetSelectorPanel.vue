@@ -115,7 +115,10 @@ async function switchTo(ds: DatasetEntry) {
               <div class="nge-ds-card-desc">{{ DATASET_GROUPS[c.key].description }}</div>
             </div>
             <div v-if="groupActive(c)" class="nge-ds-badge">Active</div>
-            <span class="nge-ds-chevron" aria-hidden="true">▾</span>
+            <span class="nge-ds-versions">
+              {{ c.members.length }} versions
+              <svg class="nge-ds-chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
           </div>
           <div v-if="openGroup === c.key" class="nge-ds-variants">
             <div
@@ -239,13 +242,23 @@ async function switchTo(ds: DatasetEntry) {
 
 /* A group (MICrONS): one card that opens into a plain list of versions. */
 .nge-ds-group { display: flex; flex-direction: column; gap: 4px; }
-.nge-ds-group-card { padding-right: 30px; }
-.nge-ds-chevron {
-  position: absolute; right: 10px; bottom: 10px;
-  color: rgba(255, 255, 255, 0.5); font-size: 12px;
-  transition: transform 0.15s ease;
+.nge-ds-group-card { padding-right: 112px; }
+/* The open/close control: a clear pill, not a tiny glyph (Ames). */
+.nge-ds-versions {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  color: #9fdcff; background: rgba(100, 200, 255, 0.12);
+  border: 1px solid rgba(100, 200, 255, 0.4);
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
+.nge-ds-group-card:hover .nge-ds-versions { background: rgba(100, 200, 255, 0.2); border-color: rgba(100, 200, 255, 0.7); color: #d4f0ff; }
+.nge-ds-chevron { transition: transform 0.2s ease; }
 .nge-ds-group--open .nge-ds-chevron { transform: rotate(180deg); }
+/* The Active badge sits above the pill on a group card. */
+.nge-ds-group-card .nge-ds-badge { top: 8px; right: 10px; }
+.nge-ds-group-card:has(.nge-ds-badge) .nge-ds-versions { top: auto; bottom: 8px; transform: none; }
 .nge-ds-variants {
   display: flex; flex-direction: column; gap: 2px;
   margin-left: 14px; padding-left: 10px;
