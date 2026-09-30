@@ -15,6 +15,7 @@ import { MEC_CELL_TYPES_STATE } from './data/mec_cell_types_state';
 /** How to proofread a Retina cell (Ames's "Test BPs in Eyewire II Branch"
  *  doc, 2026-09-29). Shown in the Cell Library under "instructions". */
 const RETINA_HOWTO: string[] = [
+  'New here? Watch <a href="https://youtu.be/QNMfmlJIfWs" target="_blank" rel="noopener">Claiming and Completing a cell in Eyewire II</a>, a short video of the steps below.',
   'Click <b>Available</b> and jump around until you find a cell you want.',
   '<b>Claim</b> it. You can hold up to 8 cells at a time. Claiming loads that cell\'s annotation layers; the jump arrow on its own does not.',
   'Start mapping! Add the annotations described in <a href="https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=508214135#gid=508214135" target="_blank" rel="noopener">the annotation guide</a>.',
