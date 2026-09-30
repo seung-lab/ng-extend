@@ -20,6 +20,7 @@ import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import TagModePanel from "components/TagModePanel.vue";
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
+import { isShowcaseHash, showcaseOpened } from "../showcase";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
@@ -294,6 +295,8 @@ function maybeOpenLeaderboardOnArrival() {
     if (localStorage.getItem('nge-leaderboard-on-open') === '0') return;
     if (sessionStorage.getItem('nge-lb-greeted') === '1') return;
   } catch { return; }
+  // Not over a showcase view like MEC's cell types (Ames 2026-09-29).
+  if (isShowcaseHash() || showcaseOpened()) return;
   if (document.body.classList.contains('nge-mobile')) return;
   if (document.querySelector('.introductionStep, .nge-overlay-blocker')) return;
   try { sessionStorage.setItem('nge-lb-greeted', '1'); } catch { /* private mode */ }

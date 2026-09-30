@@ -12,6 +12,7 @@ import './widgets/render_tab_restyle.css';
 import './widgets/annotations_restyle.css';
 import './widgets/find_path_restyle.css';
 
+import {installShowcase} from './showcase';
 import App from 'components/App.vue';
 import {useIssueTagStore, useLayersStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';
 import {useStatsStore} from './store-pyr';
@@ -132,6 +133,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // const viewer = setupDefaultViewer();
   initializeWithViewer(viewer);
   loadVolumes(viewer);
+  installShowcase();
   nextTick(() => {
     mergeTopBars();
     liveNeuroglancerInjection();

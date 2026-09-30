@@ -33,6 +33,7 @@ const tagPinSvg = scoutPinSvg();
 import { runPanelTrace, flyPlusOne, runScytheSwing } from '../util/holo_trace';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
+import { applyShowcaseWhenLoaded } from '../showcase';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import ScreenshotDialog from './ScreenshotDialog.vue';
 
@@ -176,35 +177,16 @@ const datasetCellTypesState = computed(() => {
 function openCellTypes() {
   const st = datasetCellTypesState.value;
   if (!st) return;
+  if (typeof st === 'string') {
+    // A registered showcase link: src/showcase.ts sets the view up once it
+    // loads (3D only, Seg tab key, no leaderboard), on any route in.
+    window.location.hash = '#!' + st;
+    return;
+  }
   const viewer: any = (window as any)['viewer'];
   const before = new Set(viewer?.layerManager?.managedLayers ?? []);
-  window.location.hash = '#!' + (typeof st === 'string' ? st : encodeURIComponent(JSON.stringify(st)));
-  // Once the view has replaced the current layers, open the segment layer's
-  // side panel on its Seg tab: the typed labels there are the key (Ames).
-  let tries = 0;
-  const openSegTab = () => {
-    const layers: any[] = viewer?.layerManager?.managedLayers ?? [];
-    const seg = layers.find(l => !before.has(l) && l.layer?.tabs?.options?.has?.('segments'));
-    if (seg) {
-      viewer.selectedLayer.layer = seg;
-      viewer.selectedLayer.visible = true;
-      // The side panel shows panels[0].selectedTab, not layer.tabs.
-      seg.layer.tabs.value = 'segments';
-      const panel = seg.layer.panels?.panels?.[0];
-      if (panel?.selectedTab) panel.selectedTab.value = 'segments';
-      // A showcase, not a work view (Ames): full-screen 3D, no axis lines or
-      // bounding box, and closer in on the cells.
-      try {
-        viewer.layout.restoreState('3d');
-        viewer.showAxisLines.value = false;
-        viewer.showDefaultAnnotations.value = false;
-        viewer.projectionScale.value = viewer.projectionScale.value * 0.6;
-      } catch { /* viewer settings unavailable: the view still loads */ }
-      return;
-    }
-    if (++tries < 60) setTimeout(openSegTab, 500);
-  };
-  setTimeout(openSegTab, 500);
+  window.location.hash = '#!' + encodeURIComponent(JSON.stringify(st));
+  applyShowcaseWhenLoaded(before);
 }
 
 async function loadCellsForActiveDataset() {
