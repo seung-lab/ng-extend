@@ -114,35 +114,6 @@ export async function anySupervoxelOf(ex: Pick<PracticeExample, 'pcg_server' | '
   return id;
 }
 
-/**
- * Undo every edit made since `baselineIso` on the segments holding these
- * supervoxels (newest first, skipping undo pairs). No lease: for fixtures
- * with no database row, like Tutorial 1's neuron. Returns how many it undid.
- */
-export async function undoEditsSince(target: Pick<PracticeExample, 'pcg_server' | 'pcg_table'>, supervoxels: string[], baselineIso: string): Promise<number> {
-  const ex = target as PracticeExample;
-  const roots = new Set<string>();
-  for (const sv of supervoxels) {
-    const r = await rootOfSupervoxel(ex, sv);
-    if (r) roots.add(r);
-  }
-  const seen = new Set<number>();
-  const ops: LogOp[] = [];
-  for (const r of roots) for (const op of await opsSince(ex, r, baselineIso)) {
-    if (!seen.has(op.operationId)) { seen.add(op.operationId); ops.push(op); }
-  }
-  if (!ops.length) return 0;
-  if (ops.length > 200) throw Error('Unexpectedly large history; leaving it to the scheduled reset.');
-  const details: Record<string, any> = {};
-  const ids = ops.map(op => op.operationId);
-  const res = await fetch(`${pcgBase(ex)}/operation_details?int64_as_str=1&operation_ids=${encodeURIComponent(JSON.stringify(ids))}`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw Error(`operation_details ${res.status}`);
-  Object.assign(details, await res.json());
-  const active = remainingPracticeOperations(ops, details);
-  for (const op of active) await undoOp(ex, op.operationId);
-  return active.length;
-}
-
 /** Rows registered by root id alone get their supervoxels on first use. */
 export async function ensureSupervoxels(ex: PracticeExample): Promise<PracticeExample> {
   if (ex.supervoxel_a && ex.supervoxel_b) return ex;
