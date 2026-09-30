@@ -291,6 +291,21 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
   },
 
   // ── FlyWire (Drosophila FAFB) ───────────────────────────────────────────
+  // BANC, the fly brain and nerve cord (Bates et al., Nature 2026). Its own
+  // CAVE server (cave.fanc-fly.com), auth dataset BANC. Starts on a
+  // proofread cell from backbone_proofread (v898). The EyeWire status and
+  // cell type tables do not exist in this aligned volume yet: until they are
+  // created, Mark as Proofread and cell types cannot save here.
+  brain_and_nerve_cord: {
+    caveServer:       'https://cave.fanc-fly.com',
+    datastack:        'brain_and_nerve_cord',
+    alignedVolume:    'brain_and_nerve_cord',
+    cellStatusTable:  'eyewire_ii_cell_status_v2',
+    cellStatusSchema: 'bound_tag_user',
+    cellTypeTable:    'eyewire_ii_cell_type_v2',
+    cellTypeSchema:   'bound_tag_user',
+    defaultPosition:  [139823, 138471, 2627],
+  },
   fly_v26: {
     caveServer:       'https://global.daf-apis.com',
     datastack:        'flywire_fafb_sandbox',

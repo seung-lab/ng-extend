@@ -84,6 +84,13 @@
     "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
     "projectionScale": 2230.0
   },
+  "brain_and_nerve_cord": {
+    "dimensions": [4e-9, 4e-9, 4.5e-8],
+    "position": [139823.0, 138471.0, 2627.0],
+    "crossSectionScale": 8.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 60000.0
+  },
   "pni_mec": {
     "dimensions": [1.6e-8, 1.6e-8, 4.5e-8],
     "position": [158487, 128036, 5061],
