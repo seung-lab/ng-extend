@@ -35,8 +35,22 @@ export interface DatasetEntry {
   /** Left out of the dataset switcher and profile (still resolvable, so saved
    *  links and states that use it keep working). */
   hidden?: boolean;
+  /** Versions of one volume share a single switcher card that opens into a
+   *  plain list (Ames 2026-09-30: the three MICrONS entries). */
+  group?: string;
+  /** This version's name in its group's list. */
+  variantLabel?: string;
   layers: any[];
 }
+
+/** Switcher cards for grouped datasets. */
+export const DATASET_GROUPS: Record<string, { label: string; description: string; thumbnail?: string }> = {
+  microns: {
+    label: 'MICrONS: Mouse Visual Cortex',
+    description: '1 mm³ of mouse visual cortex (8×8×40 nm). Three versions: pick one.',
+    thumbnail: thumbMicrons,
+  },
+};
 
 /** Species icon shown next to dataset names (top bar, profile Datasets tab). */
 export const SPECIES_ICONS: Record<DatasetEntry['species'], string> = {
@@ -100,6 +114,8 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65',
+    group: 'microns',
+    variantLabel: 'Public release (v117)',
     caveDataset: 'microns_public',
     thumbnail: thumbMicrons,
     label: 'MICrONS Minnie65',
@@ -126,6 +142,8 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65_live',
+    group: 'microns',
+    variantLabel: 'Live public graph',
     caveDataset: 'microns_public',
     thumbnail: thumbMicrons,
     label: 'MICrONS Live',
@@ -158,6 +176,8 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'microns_proofread',
+    group: 'microns',
+    variantLabel: 'Proofreading (private graph, edits save)',
     caveDataset: 'minnie65',
     // Hidden for now (Ames 2026-09-28: "too many" datasets in the switcher).
     hidden: true,
