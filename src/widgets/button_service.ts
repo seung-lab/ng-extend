@@ -577,8 +577,6 @@ export class ButtonService {
             claimBtn.textContent = '✓ Claimed!';
             claimBtn.style.color = '#fa4';
             claimStatus.textContent = '🔒 Claimed by you';
-            // Set claim color (gold/amber)
-            this._setSegmentColor(segmentIDString, 1.0, 0.84, 0.0);  // golden #FFD700
             // Immediately update pip so it reflects claimed state without waiting for CAVE
             parent.classList.add('nge-lb-claimed');
             // Notify other UI (e.g. Brain Quest panel) about the status change
@@ -600,7 +598,6 @@ export class ButtonService {
           await backend.releaseBySegment(segmentIDString);
           releaseBtn.textContent = '✓ Released';
           claimStatus.textContent = 'Available';
-          this._resetSegmentColor(segmentIDString);
           parent.classList.remove('nge-lb-claimed');
           document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'released' } }));
         });

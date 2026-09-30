@@ -88,3 +88,10 @@ summaries.
   also contains the tooltip. Found in ExtensionBar.vue's `.nge-streak-chip`
   flame hover, which was spinning the `.nge-streak-tip` card with it
   (2026-09-30, streak tooltip fix).
+- The Claim Cell and Release Claim handlers in button_service.ts each called
+  `_setSegmentColor`/`_resetSegmentColor` as a pair to paint and unpaint the
+  3D segment on claim state changes. When told to stop recoloring on claim,
+  remove both calls, not just the claim one: leaving the release-side
+  `_resetSegmentColor` would still wipe any custom color the player set,
+  since it resets to the default hash color regardless of why it's called
+  (2026-09-30, claim color fix).
