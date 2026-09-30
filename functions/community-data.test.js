@@ -133,3 +133,14 @@ test('username and profile edits are personal; stats and other tables are not',(
  const p=plan('users','PATCH',`id=eq.${b}`,{username:'amy_r'});
  assert.equal(p.query.get('and'),`(id.eq.${a})`);
 });
+test('saved views: owner only, one per dataset, bounded',()=>{
+ const r=plan('user_views','GET',`user_id=eq.${b}&dataset=eq.pni_mec`);
+ assert.equal(r.query.get('and'),`(user_id.eq.${a})`);
+ assert.throws(()=>plan('user_views','GET','',undefined,anon),/Sign in/);
+ const w=plan('user_views','POST','on_conflict=user_id,dataset',{user_id:b,dataset:'pni_mec',state:{layers:[]}});
+ assert.equal(w.body.user_id,a); assert.deepEqual(w.body.state,{layers:[]});
+ assert.throws(()=>plan('user_views','POST','on_conflict=user_id,dataset',{dataset:'x y',state:{}}),/dataset/);
+ assert.throws(()=>plan('user_views','POST','on_conflict=user_id,dataset',{dataset:'d',state:[1]}),/viewer state/);
+ assert.throws(()=>plan('user_views','POST','on_conflict=user_id,dataset',{dataset:'d',state:{big:'x'.repeat(250000)}}),/too large/);
+ assert.throws(()=>plan('user_views','POST','on_conflict=id',{dataset:'d',state:{}}),/conflict/);
+});

@@ -6,6 +6,7 @@
  */
 // Dataset thumbnails (static/images/datasets). MICrONS art is Amy's pick for
 // every MICrONS volume, pinky included.
+import { offerViewRestoreAfterSwitch } from './util/view_autosave';
 import thumbMicrons from '../static/images/datasets/microns.jpg';
 import thumbMec from '../static/images/datasets/mec.jpg';
 // EyeWire II retina: e2_overview.png from eyewire.ai.
@@ -420,6 +421,8 @@ export function datasetSpeciesIcon(name: string | undefined | null): string {
 export async function switchToDataset(ds: DatasetEntry): Promise<boolean> {
   try {
     const layerStore = useLayersStore();
+    // Offer the player's autosaved view of the new dataset once it is up.
+    offerViewRestoreAfterSwitch();
     layerStore.selectLayers(ds.layers);
     const segName = segLayerName(ds);
     if (segName) localStorage.setItem('nge_dataset_preference', segName);

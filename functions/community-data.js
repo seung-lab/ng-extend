@@ -27,6 +27,8 @@ const columns = {
   // they follow the account across computers. Private: owner only, even for
   // admins.
   user_settings: 'user_id,settings,updated_at',
+  // A player's autosaved viewer state per dataset. Private: owner only.
+  user_views: 'user_id,dataset,state,updated_at',
 };
 const writable = {
   users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date',
@@ -40,6 +42,7 @@ const writable = {
   chat_messages: 'text,dataset,notification_id',
   chat_reactions: 'message_id,emoji',
   user_settings: 'settings,updated_at',
+  user_views: 'dataset,state,updated_at',
 };
 function authorizeData(input, ctx) {
   const {table} = input;
@@ -85,7 +88,7 @@ function authorizeData(input, ctx) {
       admin();
     } else if (table === 'site_issues' && !ctx.isAdmin) {
       scope('user_id.eq.'+own());
-    } else if (table === 'notification_reads' || table === 'user_settings') {
+    } else if (table === 'notification_reads' || table === 'user_settings' || table === 'user_views') {
       scope('user_id.eq.'+own());
     } else if (table === 'notifications' && !ctx.isAdmin) {
       const targets = ['target_type.eq.all'];
@@ -130,10 +133,11 @@ function authorizeData(input, ctx) {
     if (method === 'DELETE') fail(403, 'Profile deletion is not supported here.');
     if (method !== 'POST') scope('id.eq.'+own());
     else if (!ctx.who?.email) fail(401, 'Verified identity required.');
-  } else if (table === 'working_links' || table === 'notification_reads' || table === 'user_settings') scope('user_id.eq.'+own());
+  } else if (['working_links','notification_reads','user_settings','user_views'].includes(table)) scope('user_id.eq.'+own());
   if (table === 'user_settings' && method === 'DELETE') fail(405, 'Settings are replaced, not deleted.');
   const validConflict = (table === 'notification_reads' && query.get('on_conflict') === 'notification_id,user_id') ||
     (table === 'user_settings' && query.get('on_conflict') === 'user_id') ||
+    (table === 'user_views' && query.get('on_conflict') === 'user_id,dataset') ||
     (table === 'chat_presence' && query.get('on_conflict') === 'user_id') ||
     (table === 'user_group_members' && ctx.isAdmin && query.get('on_conflict') === 'group_id,user_id');
   if (query.has('on_conflict') && !validConflict) fail(400, 'Unsupported conflict target');
@@ -154,7 +158,14 @@ function authorizeData(input, ctx) {
         if (field in row && (!Number.isSafeInteger(row[field]) || row[field]<0 || row[field]>1000000000)) fail(400,'Invalid counter');
       }
     }
-    if (['working_links','notification_reads','user_settings'].includes(table)) row.user_id = own();
+    if (['working_links','notification_reads','user_settings','user_views'].includes(table)) row.user_id = own();
+    if (table === 'user_views') {
+      if (typeof row.dataset !== 'string' || !/^[A-Za-z0-9_.-]{1,100}$/.test(row.dataset)) fail(400, 'Invalid dataset.');
+      const st = row.state;
+      if (!st || typeof st !== 'object' || Array.isArray(st)) fail(400, 'A view must be a viewer state object.');
+      if (JSON.stringify(st).length > 240 * 1024) fail(413, 'This view is too large to autosave.');
+      row.updated_at = ctx.now;
+    }
     if (table === 'user_settings') {
       const s = row.settings;
       if (!s || typeof s !== 'object' || Array.isArray(s)) fail(400, 'Settings must be an object.');
