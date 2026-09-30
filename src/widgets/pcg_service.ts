@@ -11,24 +11,30 @@
 
 // ─── Auth token helper (same pattern as lightbulb_service.ts) ────────────────
 
+// Every CAVE server we use (minnie, hc.himc-cave, cave.fanc-fly) signs in
+// through global.daf-apis.com's sticky_auth, and tokens are stored under that
+// realm, not the API host. The old fallback took the FIRST saved token when
+// no key matched the API host, which for some players was the state server's
+// (global.brain-wire-test.org) token: CAVE answered 401 "invalid token" and
+// completing a claimed cell failed on the root lookup (st0ck53y 2026-09-30).
+const CAVE_STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
+
 function getAuthToken(server: string): string | null {
   const TOKEN_PREFIX = 'auth_token_v2_';
-  let fallback: string | null = null;
-
+  const read = (key: string): string | null => {
+    try { return JSON.parse(window.localStorage.getItem(key) || '{}').accessToken || null; } catch { return null; }
+  };
+  const sticky = read(TOKEN_PREFIX + CAVE_STICKY_AUTH_URL);
+  if (sticky) return sticky;
+  // A token saved for this very host, if one exists. Never another realm's.
   for (const key of Object.keys(window.localStorage)) {
     if (!key.startsWith(TOKEN_PREFIX)) continue;
     try {
       const data = JSON.parse(window.localStorage.getItem(key) || '{}');
-      if (!data.accessToken) continue;
-      try {
-        if (new URL(data.url).hostname === new URL(server).hostname) {
-          return data.accessToken;
-        }
-      } catch {}
-      fallback = fallback ?? data.accessToken;
+      if (data.accessToken && new URL(data.url).hostname === new URL(server).hostname) return data.accessToken;
     } catch {}
   }
-  return fallback;
+  return null;
 }
 
 function authHeaders(server: string): HeadersInit {
