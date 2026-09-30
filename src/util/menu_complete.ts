@@ -121,17 +121,25 @@ async function planFromTasks(plan: MenuCompletionPlan) {
   }
 }
 
+/** For a batch (Batch Processor): the point captured on each cell, and one
+ *  view link minted for the whole batch instead of one per cell. */
+export interface FinishOptions {
+  point?: [number, number, number];
+  link?: string | null;
+}
+
 /** Claim (if needed), complete the claim and write the sheet. Returns a short
  *  note for the menu, or throws with a plain-English message. */
-export async function finishMenuCompletion(plan: MenuCompletionPlan): Promise<string> {
+export async function finishMenuCompletion(plan: MenuCompletionPlan, opts: FinishOptions = {}): Promise<string> {
   if (!plan.row) return '';
   const backend = useProofreadingBackendStore();
   const row = plan.row;
   let task = plan.task;
+  const here = () => opts.point ?? viewerPoint();
 
   if (task?.status !== 'completed') {
     if (!task || task.assigned_to !== backend.userId) {
-      const point = parsePoint(row.somaCoords) ?? parsePoint(row.nucCoords) ?? viewerPoint();
+      const point = parsePoint(row.somaCoords) ?? parsePoint(row.nucCoords) ?? here();
       const claimed = task
         ? { ok: await backend.claimTask(task.id), reason: backend.error }
         : await backend.claimCell(point, row.segId);
@@ -140,10 +148,10 @@ export async function finishMenuCompletion(plan: MenuCompletionPlan): Promise<st
       task = backend.tasks.find(t => t.segment_id === row.segId);
       if (!task) throw new Error('Saved, but the Cell Library claim could not be found.');
     }
-    await backend.completeTask(task.id, plan.segId, viewerPoint().join(', '));
+    await backend.completeTask(task.id, plan.segId, here().join(', '));
   }
 
-  const link = await mintShortStateLink();
+  const link = opts.link !== undefined ? opts.link : await mintShortStateLink();
   await syncCellToSheet('complete', row.segId, undefined, plan.dataset, link || undefined);
   await backend.loadTasks(plan.dataset);
   return link

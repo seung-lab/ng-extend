@@ -10,6 +10,7 @@ import thumbMicrons from '../static/images/datasets/microns.jpg';
 import thumbMec from '../static/images/datasets/mec.jpg';
 // EyeWire II retina: e2_overview.png from eyewire.ai.
 import thumbRetina from '../static/images/datasets/retina.jpg';
+import thumbBanc from '../static/images/datasets/banc.jpg';
 import { useLayersStore } from './store';
 import { getDatasetCaveConfig, cellTypesForDataset } from './config';
 import { openSegPanel } from './widgets/widget_utils';
@@ -184,6 +185,32 @@ export const DATASETS: DatasetEntry[] = [
     ],
   },
   {
+    id: 'banc',
+    caveDataset: 'BANC',
+    thumbnail: thumbBanc,
+    label: 'BANC: Fly Brain and Nerve Cord',
+    shortLabel: 'BANC',
+    abbrev: 'BANC',
+    species: 'fly',
+    description: 'Whole fruit fly brain and nerve cord connectome (4×4×45 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://seunglab_lee_fly_cns_001_alignment/aligned/v0',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://cave.fanc-fly.com/segmentation/table/wclee_fly_cns_001',
+          subsources: { default: true, mesh: true, graph: true },
+          enableDefaultSubsources: true,
+        },
+        name: 'brain_and_nerve_cord',
+      },
+    ],
+  },
+  {
     id: 'pni_mec',
     caveDataset: 'HiMC',
     thumbnail: thumbMec,
@@ -309,6 +336,7 @@ export function canonicalDataset(name: string | undefined | null): string {
   if (n.startsWith('minnie3')) return 'minnie3_v1';
   if (n.startsWith('flywire') || n.includes('fly_v')) return 'flywire_fafb_sandbox';
   if (n.startsWith('pni_mec') || n === 'mec') return 'pni_mec';
+  if (n.startsWith('brain_and_nerve') || n === 'banc' || n.startsWith('wclee_fly_cns')) return 'brain_and_nerve_cord';
   return n;
 }
 
