@@ -222,156 +222,169 @@ const props = defineProps<{ embedded?: boolean }>();
 
       <!-- Settings content -->
       <div class="nge-settings-content">
-        <div class="nge-settings-section">
-          <label class="nge-settings-label">Country / Flag</label>
-          <p class="nge-settings-hint">Pick your country or the EyeWire logo.</p>
-          <div id="nge-settings-country-wrap" class="nge-settings-country-wrap" @click.stop>
-            <button class="nge-settings-country-btn" @click="showCountryList = !showCountryList">
-              <span class="nge-settings-country-flag-cell">
-                <img v-if="draftFlag === 'eyewire'" :src="pyrIcon" class="nge-settings-country-flag-img nge-settings-country-flag-img--logo" />
-                <img v-else-if="flagImgUrl(draftFlag)" :src="flagImgUrl(draftFlag)" class="nge-settings-country-flag-img" />
-                <span v-else class="nge-settings-country-flag-placeholder">🌐</span>
+        <!-- Three columns in the profile (Ames 2026-09-29: "larger, full profile
+             size, a cool layout, keep it scifi"). In the stand-alone window
+             the column wrappers are display: contents, so it stays one list. -->
+        <div class="nge-set-col nge-set-col--identity">
+          <div class="nge-set-col-head"><span class="nge-set-col-title">Identity</span><span class="nge-set-col-sub">who you are</span></div>
+          <!-- Username lives at the bottom and is deliberately NOT an always-live
+               text field: it's how everyone tags you, so changing it should be a
+               deliberate act. Show the current handle read-only; the actual edit
+               happens in the dedicated dialog (validation + availability check),
+               opened by the button. `force` bypasses the dialog's "ask once"
+               guards so it works when you already have a handle. -->
+          <div class="nge-settings-section nge-set-card--username">
+            <label class="nge-settings-label">Username</label>
+            <p class="nge-settings-hint">
+              How you appear in chat, and how others tag you. 3-20 characters, letters/numbers/underscore, no spaces.
+            </p>
+            <div class="nge-settings-username-display">
+              <span class="nge-settings-username-current" :class="{ 'nge-settings-username-current--empty': !backendStore.username }">
+                {{ backendStore.username ? '@' + backendStore.username : 'No username set yet' }}
               </span>
-              <span class="nge-settings-country-name">{{ selectedCountry?.name || 'Choose a country' }}</span>
-              <span class="nge-settings-country-caret">▾</span>
-            </button>
-            <div v-if="showCountryList" class="nge-settings-country-dropdown">
-              <input
-                v-model="countrySearch"
-                type="text"
-                class="nge-settings-country-search"
-                placeholder="Search country..."
-                autocomplete="off"
-                spellcheck="false"
-                @click.stop
-              />
-              <div class="nge-settings-country-list">
-                <button
-                  v-for="c in filteredCountries"
-                  :key="c.code"
-                  class="nge-settings-country-opt"
-                  :class="{ 'nge-settings-country-opt--active': draftFlag === c.code }"
-                  @click="selectCountry(c.code)"
-                >
-                  <span class="nge-settings-country-opt-flag">
-                    <img v-if="c.code === 'eyewire'" :src="pyrIcon" class="nge-settings-country-flag-img nge-settings-country-flag-img--logo" />
-                    <img v-else-if="flagImgUrl(c.code)" :src="flagImgUrl(c.code)" class="nge-settings-country-flag-img" />
-                  </span>
-                  <span class="nge-settings-country-opt-name">{{ c.name }}</span>
-                </button>
-                <div v-if="filteredCountries.length === 0" class="nge-settings-country-empty">No matches</div>
+              <button class="nge-settings-username-btn" @click="openUsernameDialog">
+                {{ backendStore.username ? 'Change username…' : 'Pick a username…' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="nge-settings-section nge-set-card--flag">
+            <label class="nge-settings-label">Country / Flag</label>
+            <p class="nge-settings-hint">Pick your country or the EyeWire logo.</p>
+            <div id="nge-settings-country-wrap" class="nge-settings-country-wrap" @click.stop>
+              <button class="nge-settings-country-btn" @click="showCountryList = !showCountryList">
+                <span class="nge-settings-country-flag-cell">
+                  <img v-if="draftFlag === 'eyewire'" :src="pyrIcon" class="nge-settings-country-flag-img nge-settings-country-flag-img--logo" />
+                  <img v-else-if="flagImgUrl(draftFlag)" :src="flagImgUrl(draftFlag)" class="nge-settings-country-flag-img" />
+                  <span v-else class="nge-settings-country-flag-placeholder">🌐</span>
+                </span>
+                <span class="nge-settings-country-name">{{ selectedCountry?.name || 'Choose a country' }}</span>
+                <span class="nge-settings-country-caret">▾</span>
+              </button>
+              <div v-if="showCountryList" class="nge-settings-country-dropdown">
+                <input
+                  v-model="countrySearch"
+                  type="text"
+                  class="nge-settings-country-search"
+                  placeholder="Search country..."
+                  autocomplete="off"
+                  spellcheck="false"
+                  @click.stop
+                />
+                <div class="nge-settings-country-list">
+                  <button
+                    v-for="c in filteredCountries"
+                    :key="c.code"
+                    class="nge-settings-country-opt"
+                    :class="{ 'nge-settings-country-opt--active': draftFlag === c.code }"
+                    @click="selectCountry(c.code)"
+                  >
+                    <span class="nge-settings-country-opt-flag">
+                      <img v-if="c.code === 'eyewire'" :src="pyrIcon" class="nge-settings-country-flag-img nge-settings-country-flag-img--logo" />
+                      <img v-else-if="flagImgUrl(c.code)" :src="flagImgUrl(c.code)" class="nge-settings-country-flag-img" />
+                    </span>
+                    <span class="nge-settings-country-opt-name">{{ c.name }}</span>
+                  </button>
+                  <div v-if="filteredCountries.length === 0" class="nge-settings-country-empty">No matches</div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div class="nge-settings-section">
-          <label class="nge-settings-label">Bio</label>
-          <p class="nge-settings-hint">Share a little about yourself with the community.</p>
-          <textarea v-model="draftBio" class="nge-settings-textarea" maxlength="280" rows="4" placeholder="e.g. PhD student at MIT. Loves connectomics and cold brew."></textarea>
-          <div class="nge-settings-charcount" :class="{ 'nge-settings-charcount--warn': draftBio.length > 250 }">{{ draftBio.length }} / 280</div>
-        </div>
-
-        <div class="nge-settings-section">
-          <label class="nge-settings-label">Toolbar Icons</label>
-          <p class="nge-settings-hint">Toggle which actions appear in your top bar.</p>
-          <div class="nge-settings-toolbar-grid">
-            <button v-for="opt in TOOLBAR_ICON_OPTIONS" :key="opt.id" class="nge-settings-toolbar-item" :class="{ 'nge-settings-toolbar-item--active': isToolbarIconEnabled(opt.id) }" @click="toggleToolbarIcon(opt.id)">
-              <span v-if="opt.svg" class="nge-settings-toolbar-emoji" v-html="opt.svg"></span>
-              <img v-else-if="opt.img" :src="opt.img" class="nge-settings-toolbar-icon-img" :alt="opt.label" />
-              <span v-else class="nge-settings-toolbar-emoji">{{ opt.emoji }}</span>
-              <span class="nge-settings-toolbar-label">{{ opt.label }}</span>
-            </button>
-          </div>
-          <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
-        </div>
-
-        <div class="nge-settings-section">
-          <label class="nge-settings-label">Notifications</label>
-          <p class="nge-settings-hint">Control the badges on your toolbar icons.</p>
-          <label class="nge-settings-toggle">
-            <input type="checkbox" v-model="draftChatMuted" />
-            <span class="nge-settings-toggle-label">Mute chat unread badge</span>
-          </label>
-          <label class="nge-settings-toggle">
-            <input type="checkbox" v-model="draftChatFade" />
-            <span class="nge-settings-toggle-label">Fade chat when I click away</span>
-          </label>
-          <label class="nge-settings-toggle">
-            <input type="checkbox" v-model="draftHelpMuted" />
-            <span class="nge-settings-toggle-label">Mute help requests</span>
-          </label>
-        </div>
-
-        <div class="nge-settings-section">
-          <label class="nge-settings-label">Switching datasets</label>
-          <p class="nge-settings-hint">What opens when you switch to a dataset.</p>
-          <label class="nge-settings-toggle">
-            <input type="checkbox" v-model="draftBareSwitch" />
-            <span class="nge-settings-toggle-label">Open datasets without the starter cells (loads faster)</span>
-          </label>
-          <p class="nge-settings-hint nge-sv-hint">Your own start view: pick a dataset and paste a share link made in it. It opens instead of the starter view whenever you switch there.</p>
-          <div class="nge-sv-row">
-            <select v-model="svDataset" class="nge-sv-select" @change="pickStartViewDataset">
-              <option v-for="ds in DATASETS" :key="ds.id" :value="segLayerName(ds)">{{ ds.label }}</option>
-            </select>
-          </div>
-          <div class="nge-sv-row">
-            <input v-model="svLink" class="nge-sv-input" type="url" placeholder="Paste a share link" @keydown.stop @keyup.stop />
-            <button class="nge-sv-btn" type="button" @click="setStartView">Use this view</button>
-          </div>
-          <p v-if="svError" class="nge-sv-error">{{ svError }}</p>
-          <ul v-if="Object.keys(draftStartViews).length" class="nge-sv-list">
-            <li v-for="(link, seg) in draftStartViews" :key="seg">
-              <span class="nge-sv-name">{{ labelFor(String(seg)) }}</span>
-              <span class="nge-sv-link" :title="link">{{ link }}</span>
-              <button class="nge-sv-clear" type="button" @click="clearStartView(String(seg))">Remove</button>
-            </li>
-          </ul>
-          <p class="nge-settings-hint">Click Save below to keep these.</p>
-        </div>
-
-        <div class="nge-settings-section">
-          <label class="nge-settings-label">Advanced</label>
-          <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
-            <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>
-            <button class="nge-settings-advanced-btn" @click="openJsonEditor">{} Edit JSON State</button>
-            <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
-            <button class="nge-settings-advanced-btn" @click="toggleSelectionDetails">◫ Selection Details</button>
+          <div class="nge-settings-section nge-set-card--bio">
+            <label class="nge-settings-label">Bio</label>
+            <p class="nge-settings-hint">Share a little about yourself with the community.</p>
+            <textarea v-model="draftBio" class="nge-settings-textarea" maxlength="280" rows="4" placeholder="e.g. PhD student at MIT. Loves connectomics and cold brew."></textarea>
+            <div class="nge-settings-charcount" :class="{ 'nge-settings-charcount--warn': draftBio.length > 250 }">{{ draftBio.length }} / 280</div>
           </div>
 
-          <!-- Logins management -->
-          <div v-if="loginStore.sessions.length > 0" style="margin-top: 10px;">
-            <p class="nge-settings-hint">Active logins:</p>
-            <div v-for="session in loginStore.sessions" :key="session.hostname" class="nge-settings-login-row">
-              <div class="nge-settings-login-info">
-                <span class="nge-settings-login-email">{{ session.email || 'Unknown' }}</span>
-                <span class="nge-settings-login-host">{{ session.hostname }}</span>
+        </div>
+        <div class="nge-set-col nge-set-col--topbar">
+          <div class="nge-set-col-head"><span class="nge-set-col-title">Top bar</span><span class="nge-set-col-sub">what you see</span></div>
+          <div class="nge-settings-section nge-set-card--toolbar">
+            <label class="nge-settings-label">Toolbar Icons</label>
+            <p class="nge-settings-hint">Toggle which actions appear in your top bar.</p>
+            <div class="nge-settings-toolbar-grid">
+              <button v-for="opt in TOOLBAR_ICON_OPTIONS" :key="opt.id" class="nge-settings-toolbar-item" :class="{ 'nge-settings-toolbar-item--active': isToolbarIconEnabled(opt.id) }" @click="toggleToolbarIcon(opt.id)">
+                <span v-if="opt.svg" class="nge-settings-toolbar-emoji" v-html="opt.svg"></span>
+                <img v-else-if="opt.img" :src="opt.img" class="nge-settings-toolbar-icon-img" :alt="opt.label" />
+                <span v-else class="nge-settings-toolbar-emoji">{{ opt.emoji }}</span>
+                <span class="nge-settings-toolbar-label">{{ opt.label }}</span>
+              </button>
+            </div>
+            <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
+          </div>
+
+          <div class="nge-settings-section nge-set-card--notif">
+            <label class="nge-settings-label">Notifications</label>
+            <p class="nge-settings-hint">Control the badges on your toolbar icons.</p>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftChatMuted" />
+              <span class="nge-settings-toggle-label">Mute chat unread badge</span>
+            </label>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftChatFade" />
+              <span class="nge-settings-toggle-label">Fade chat when I click away</span>
+            </label>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftHelpMuted" />
+              <span class="nge-settings-toggle-label">Mute help requests</span>
+            </label>
+          </div>
+
+        </div>
+        <div class="nge-set-col nge-set-col--viewer">
+          <div class="nge-set-col-head"><span class="nge-set-col-title">Viewer</span><span class="nge-set-col-sub">how it opens</span></div>
+          <div class="nge-settings-section nge-set-card--datasets">
+            <label class="nge-settings-label">Switching datasets</label>
+            <p class="nge-settings-hint">What opens when you switch to a dataset.</p>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftBareSwitch" />
+              <span class="nge-settings-toggle-label">Open datasets without the starter cells (loads faster)</span>
+            </label>
+            <p class="nge-settings-hint nge-sv-hint">Your own start view: pick a dataset and paste a share link made in it. It opens instead of the starter view whenever you switch there.</p>
+            <div class="nge-sv-row">
+              <select v-model="svDataset" class="nge-sv-select" @change="pickStartViewDataset">
+                <option v-for="ds in DATASETS" :key="ds.id" :value="segLayerName(ds)">{{ ds.label }}</option>
+              </select>
+            </div>
+            <div class="nge-sv-row">
+              <input v-model="svLink" class="nge-sv-input" type="url" placeholder="Paste a share link" @keydown.stop @keyup.stop />
+              <button class="nge-sv-btn" type="button" @click="setStartView">Use this view</button>
+            </div>
+            <p v-if="svError" class="nge-sv-error">{{ svError }}</p>
+            <ul v-if="Object.keys(draftStartViews).length" class="nge-sv-list">
+              <li v-for="(link, seg) in draftStartViews" :key="seg">
+                <span class="nge-sv-name">{{ labelFor(String(seg)) }}</span>
+                <span class="nge-sv-link" :title="link">{{ link }}</span>
+                <button class="nge-sv-clear" type="button" @click="clearStartView(String(seg))">Remove</button>
+              </li>
+            </ul>
+            <p class="nge-settings-hint">Click Save below to keep these.</p>
+          </div>
+
+          <div class="nge-settings-section nge-set-card--advanced">
+            <label class="nge-settings-label">Advanced</label>
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
+              <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>
+              <button class="nge-settings-advanced-btn" @click="openJsonEditor">{} Edit JSON State</button>
+              <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
+              <button class="nge-settings-advanced-btn" @click="toggleSelectionDetails">◫ Selection Details</button>
+            </div>
+
+            <!-- Logins management -->
+            <div v-if="loginStore.sessions.length > 0" style="margin-top: 10px;">
+              <p class="nge-settings-hint">Active logins:</p>
+              <div v-for="session in loginStore.sessions" :key="session.hostname" class="nge-settings-login-row">
+                <div class="nge-settings-login-info">
+                  <span class="nge-settings-login-email">{{ session.email || 'Unknown' }}</span>
+                  <span class="nge-settings-login-host">{{ session.hostname }}</span>
+                </div>
+                <button class="nge-settings-logout-btn" @click="logoutSession(session)">Logout</button>
               </div>
-              <button class="nge-settings-logout-btn" @click="logoutSession(session)">Logout</button>
             </div>
           </div>
-        </div>
 
-        <!-- Username lives at the bottom and is deliberately NOT an always-live
-             text field: it's how everyone tags you, so changing it should be a
-             deliberate act. Show the current handle read-only; the actual edit
-             happens in the dedicated dialog (validation + availability check),
-             opened by the button. `force` bypasses the dialog's "ask once"
-             guards so it works when you already have a handle. -->
-        <div class="nge-settings-section">
-          <label class="nge-settings-label">Username</label>
-          <p class="nge-settings-hint">
-            How you appear in chat, and how others tag you. 3-20 characters, letters/numbers/underscore, no spaces.
-          </p>
-          <div class="nge-settings-username-display">
-            <span class="nge-settings-username-current" :class="{ 'nge-settings-username-current--empty': !backendStore.username }">
-              {{ backendStore.username ? '@' + backendStore.username : 'No username set yet' }}
-            </span>
-            <button class="nge-settings-username-btn" @click="openUsernameDialog">
-              {{ backendStore.username ? 'Change username…' : 'Pick a username…' }}
-            </button>
-          </div>
         </div>
 
       </div>
@@ -1034,4 +1047,143 @@ const props = defineProps<{ embedded?: boolean }>();
   user-select: none;
 }
 
+
+/* ══ Settings in the profile: three sci-fi columns (Ames 2026-09-29) ════════
+   In the stand-alone window the column wrappers vanish (display: contents)
+   and everything below stays exactly as before. */
+.nge-set-col { display: contents; }
+.nge-set-col-head { display: none; }
+
+.nge-settings-shell--embedded .nge-settings-content {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.9fr) minmax(320px, 1.2fr) minmax(260px, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding: 18px 20px 14px;
+  counter-reset: nge-set-card;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(74, 158, 255, 0.07), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(126, 202, 255, 0.025) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(90deg, rgba(126, 202, 255, 0.025) 0 1px, transparent 1px 28px);
+}
+@media (max-width: 1000px) {
+  .nge-settings-shell--embedded .nge-settings-content { grid-template-columns: 1fr 1fr; }
+  .nge-settings-shell--embedded .nge-set-col--viewer { grid-column: 1 / -1; }
+}
+@media (max-width: 680px) {
+  .nge-settings-shell--embedded .nge-settings-content { grid-template-columns: 1fr; }
+}
+.nge-settings-shell--embedded .nge-set-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.nge-settings-shell--embedded .nge-set-col-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px 6px;
+  border-bottom: 1px solid rgba(126, 202, 255, 0.16);
+}
+.nge-settings-shell--embedded .nge-set-col-title {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #7ee8ff;
+  text-shadow: 0 0 10px rgba(126, 232, 255, 0.35);
+}
+.nge-settings-shell--embedded .nge-set-col-sub {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(160, 190, 225, 0.5);
+}
+
+/* Each setting is a holo panel with corner brackets and a numbered label. */
+.nge-settings-shell--embedded .nge-settings-section {
+  position: relative;
+  counter-increment: nge-set-card;
+  padding: 13px 14px 12px;
+  border-radius: 10px;
+  background: linear-gradient(160deg, rgba(14, 22, 40, 0.78), rgba(6, 10, 22, 0.7));
+  border: 1px solid rgba(74, 158, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.05), 0 6px 18px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.nge-settings-shell--embedded .nge-settings-section:hover {
+  border-color: rgba(74, 158, 255, 0.34);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.07), 0 0 18px rgba(74, 158, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+.nge-settings-shell--embedded .nge-settings-section::before,
+.nge-settings-shell--embedded .nge-settings-section::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  opacity: 0.8;
+}
+.nge-settings-shell--embedded .nge-settings-section::before {
+  top: -1px; left: -1px;
+  border-top: 2px solid #4a9eff; border-left: 2px solid #4a9eff;
+  border-top-left-radius: 10px;
+}
+.nge-settings-shell--embedded .nge-settings-section::after {
+  bottom: -1px; right: -1px;
+  border-bottom: 2px solid #4a9eff; border-right: 2px solid #4a9eff;
+  border-bottom-right-radius: 10px;
+}
+.nge-settings-shell--embedded .nge-settings-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
+  color: #cfe0ff;
+}
+.nge-settings-shell--embedded .nge-settings-label::before {
+  content: counter(nge-set-card, decimal-leading-zero);
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: #4a9eff;
+  padding: 1px 5px;
+  border: 1px solid rgba(74, 158, 255, 0.4);
+  border-radius: 3px;
+  background: rgba(74, 158, 255, 0.08);
+}
+.nge-settings-shell--embedded .nge-settings-hint { color: #7f93ad; }
+
+/* The toolbar picker gets the room it needs in the middle column. */
+.nge-settings-shell--embedded .nge-set-card--toolbar .nge-settings-toolbar-grid { gap: 7px; }
+
+/* Save rides along the bottom like a console command bar. */
+.nge-settings-shell--embedded .nge-settings-actions {
+  justify-content: flex-end;
+  align-items: center;
+  padding: 10px 20px 14px;
+  border-top: 1px solid rgba(126, 202, 255, 0.14);
+  background: linear-gradient(0deg, rgba(8, 14, 28, 0.95), rgba(8, 14, 28, 0.75));
+}
+.nge-settings-shell--embedded .nge-settings-actions::before {
+  content: 'Changes apply when you save';
+  margin-right: auto;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(160, 190, 225, 0.5);
+}
+.nge-settings-shell--embedded .nge-settings-save {
+  flex: 0 0 auto;
+  min-width: 190px;
+  padding: 9px 22px;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 11.5px;
+  box-shadow: 0 0 16px rgba(74, 158, 255, 0.18);
+}
 </style>

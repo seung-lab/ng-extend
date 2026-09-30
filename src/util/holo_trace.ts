@@ -64,11 +64,34 @@ function hostRadius(host: HTMLElement, fallback: number): number {
   return fallback;
 }
 
+/** CSS that lays a canvas over the host's BORDER box. An absolutely
+ *  positioned child starts inside the border, but every trace here measures
+ *  and draws in border-box pixels (getBoundingClientRect), so a plain
+ *  inset:0 canvas was squeezed 2px and its rounded ring sat off the real
+ *  border curve: the light cut a tighter corner than the box (Ames
+ *  2026-09-29, Cell Library and profile). Offsetting by the border makes
+ *  the ring concentric with the border at every corner. */
+function overBorderBox(host: HTMLElement, pad = 0): string {
+  const cs = getComputedStyle(host);
+  const bt = parseFloat(cs.borderTopWidth) || 0, bl = parseFloat(cs.borderLeftWidth) || 0;
+  const r = layoutRect(host);
+  return `position:absolute;left:${-(bl + pad)}px;top:${-(bt + pad)}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px;`;
+}
+
+/** The host's box at its real layout size. Traces start while a panel is
+ *  still scaling in, and getBoundingClientRect includes that transform, so
+ *  the ring was sized for a box a few percent too big and missed the real
+ *  corners. offsetWidth/Height ignore transforms; left/top stay on screen. */
+function layoutRect(host: HTMLElement): { left: number; top: number; width: number; height: number } {
+  const r = host.getBoundingClientRect();
+  return { left: r.left, top: r.top, width: host.offsetWidth || r.width, height: host.offsetHeight || r.height };
+}
+
 /** detached: draw on a fixed canvas over the page instead of inside the host,
  *  so the trace outlives a panel that is closing (the Scout Tag X, 2026-09-28). */
 export function runPanelTrace(host: HTMLElement, PAD = 0, opts: { detached?: boolean } = {}): void {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-  const rect = host.getBoundingClientRect();
+  const rect = layoutRect(host);
   if (!rect.width || !rect.height) return;
 
   // scifi-ui uses PAD 26 for overhang; panels with overflow hidden pass 0
@@ -81,7 +104,7 @@ export function runPanelTrace(host: HTMLElement, PAD = 0, opts: { detached?: boo
       `width:${rect.width + PAD * 2}px;height:${rect.height + PAD * 2}px;pointer-events:none;z-index:100000;`;
     document.body.appendChild(cv);
   } else {
-    cv.style.cssText = `position:absolute;inset:${-PAD}px;width:calc(100% + ${PAD * 2}px);height:calc(100% + ${PAD * 2}px);pointer-events:none;z-index:50;`;
+    cv.style.cssText = overBorderBox(host, PAD) + 'pointer-events:none;z-index:50;';
     host.appendChild(cv);
   }
   cv.setAttribute('aria-hidden', 'true');
@@ -217,12 +240,12 @@ export function runPanelTrace(host: HTMLElement, PAD = 0, opts: { detached?: boo
  */
 export function runPanelZip(host: HTMLElement, direction: 'up' | 'down' = 'up'): void {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-  const rect = host.getBoundingClientRect();
+  const rect = layoutRect(host);
   if (!rect.width || !rect.height) return;
   const DUR = 700, R = Math.max(2, hostRadius(host, 10) - 1);
 
   const cv = document.createElement('canvas');
-  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;';
+  cv.style.cssText = overBorderBox(host) + 'pointer-events:none;z-index:50;';
   cv.setAttribute('aria-hidden', 'true');
   host.appendChild(cv);
   const ctx = cv.getContext('2d');
@@ -308,12 +331,12 @@ export function runPanelDraw(
     host: HTMLElement, direction: 'up' | 'down' = 'down',
     onProgress?: (frac: number) => void): number {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
-  const rect = host.getBoundingClientRect();
+  const rect = layoutRect(host);
   if (!rect.width || !rect.height) return 0;
   const DUR = 620, HOLD = 120, FADE = 260, R = Math.max(2, hostRadius(host, 10) - 1);
 
   const cv = document.createElement('canvas');
-  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;' +
+  cv.style.cssText = overBorderBox(host) + 'pointer-events:none;z-index:50;' +
     `transition:opacity ${FADE}ms ease;`;
   cv.setAttribute('aria-hidden', 'true');
   host.appendChild(cv);
@@ -495,11 +518,11 @@ export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): vo
  */
 export function runPanelLap(host: HTMLElement, DUR = 520): number {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
-  const rect = host.getBoundingClientRect();
+  const rect = layoutRect(host);
   if (!rect.width || !rect.height) return 0;
   const R = Math.max(2, hostRadius(host, 12) - 1), FADE = 200;
   const cv = document.createElement('canvas');
-  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;';
+  cv.style.cssText = overBorderBox(host) + 'pointer-events:none;z-index:50;';
   cv.setAttribute('aria-hidden', 'true');
   host.appendChild(cv);
   const ctx = cv.getContext('2d');

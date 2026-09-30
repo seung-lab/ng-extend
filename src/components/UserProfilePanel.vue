@@ -1781,8 +1781,10 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   max-width: 90vw;
 }
 .nge-profile-shell--settings {
-  width: 520px;
-  max-width: 90vw;
+  /* Full profile size with three columns (Ames 2026-09-29). */
+  width: 1120px;
+  max-width: 94vw;
+  height: min(760px, calc(100vh - 32px));
 }
 .nge-profile-body--settings {
   flex-direction: column;
