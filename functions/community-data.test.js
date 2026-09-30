@@ -123,11 +123,3 @@ test('user settings are owner only, bounded, and upsert on user_id',()=>{
  assert.throws(()=>plan('user_settings','DELETE',''),/replaced/);
  assert.throws(()=>plan('user_settings','POST','on_conflict=id',{settings:{}}),/conflict/);
 });
-test('error reports: anyone may insert, fields bounded, identity from sign in, admins read',()=>{
- const w=plan('client_errors','POST','',{message:'sheet_sync: x',user_id:b,source:'sheet_sync',stack:'s'.repeat(9000),evil:1},anon);
- assert.equal(w.body.user_id,null); assert.equal(w.body.stack.length,8000); assert.equal(w.body.evil,undefined);
- assert.equal(plan('client_errors','POST','',{message:'m'}).body.user_id,a);
- assert.throws(()=>plan('client_errors','POST','',{source:'x'},anon),/message/);
- assert.throws(()=>plan('client_errors','GET','',undefined,user),/Admins only/);
- assert.throws(()=>plan('client_errors','DELETE','id=eq.1',undefined,user),/insert only/);
-});

@@ -27,9 +27,6 @@ const columns = {
   // they follow the account across computers. Private: owner only, even for
   // admins.
   user_settings: 'user_id,settings,updated_at',
-  // Browser error reports, including failed sheet and CAVE writes. Insert
-  // only; admins read them (scripts/health-watch.mjs uses the secret key).
-  client_errors: 'id,created_at,message,stack,source,component,url,dataset,user_id,user_agent,build',
 };
 const writable = {
   users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date',
@@ -43,7 +40,6 @@ const writable = {
   chat_messages: 'text,dataset,notification_id',
   chat_reactions: 'message_id,emoji',
   user_settings: 'settings,updated_at',
-  client_errors: 'message,stack,source,component,url,dataset,user_agent,build',
 };
 function authorizeData(input, ctx) {
   const {table} = input;
@@ -85,7 +81,7 @@ function authorizeData(input, ctx) {
     } else if (table === 'admins' && !ctx.isAdmin) {
       // Supports the existing maybeSingle admin-status check without exposing addresses.
       scope('id.is.null');
-    } else if (table === 'feedback_triage' || table === 'client_errors') {
+    } else if (table === 'feedback_triage') {
       admin();
     } else if (table === 'site_issues' && !ctx.isAdmin) {
       scope('user_id.eq.'+own());
@@ -108,7 +104,6 @@ function authorizeData(input, ctx) {
   }
   if (!Object.hasOwn(writable, table)) fail(403, 'Use the verified action for this change.');
   if (['user_groups','user_group_members'].includes(table)) admin();
-  else if (table === 'client_errors') { if (method !== 'POST') fail(405, 'Error reports are insert only.'); }
   else if (!(table === 'users' && method === 'POST' && ctx.who?.email)) own();
   if (table === 'site_issues' && method !== 'POST') admin();
   if (table === 'chat_messages' && method !== 'POST') {
@@ -160,13 +155,6 @@ function authorizeData(input, ctx) {
       }
     }
     if (['working_links','notification_reads','user_settings'].includes(table)) row.user_id = own();
-    if (table === 'client_errors') {
-      // Who reported comes from the verified sign in, never the body.
-      row.user_id = me && UUID.test(me.id) ? me.id : null;
-      const caps = {message:2000,stack:8000,source:40,component:200,url:500,dataset:100,user_agent:500,build:80};
-      for (const [k, n] of Object.entries(caps)) if (k in row) row[k] = row[k] == null ? null : String(row[k]).slice(0, n);
-      if (!row.message) fail(400, 'An error report needs a message.');
-    }
     if (table === 'user_settings') {
       const s = row.settings;
       if (!s || typeof s !== 'object' || Array.isArray(s)) fail(400, 'Settings must be an object.');
