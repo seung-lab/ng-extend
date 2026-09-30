@@ -78,7 +78,18 @@ function stopDrag() {
 // ── Resize state ──
 const panelWidth = ref(280);
 const panelHeight = ref(200);
+// Your size sticks (Ames 2026-09-30): read from your settings (this browser,
+// then your account once it loads), saved whenever a resize ends.
+function applySavedChatSize() {
+  const sz = useUserPreferencesStore().prefs.chatSize;
+  if (!sz || isResizing.value) return;
+  panelWidth.value = Math.max(200, Math.min(600, Math.round(sz.w), window.innerWidth - 16));
+  panelHeight.value = Math.max(120, Math.min(600, Math.round(sz.h), window.innerHeight - 80));
+}
 const isResizing = ref(false);
+applySavedChatSize();
+// The account copy can arrive after chat opens (a new computer): apply it then.
+watch(() => useUserPreferencesStore().prefs.chatSize, applySavedChatSize, { deep: true });
 let resizeStart = { mx: 0, my: 0, w: 0, h: 0, px: 0, py: 0 };
 let resizeAxis: 'corner' | 'top' | 'right' = 'corner';
 
@@ -130,6 +141,7 @@ function onResize(e: MouseEvent) {
 
 function stopResize() {
   isResizing.value = false;
+  useUserPreferencesStore().save({ chatSize: { w: panelWidth.value, h: panelHeight.value } });
   document.removeEventListener('mousemove', onResize);
   document.removeEventListener('mouseup', stopResize);
 }

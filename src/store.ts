@@ -892,6 +892,9 @@ export interface UserPreferences {
   /** Fade chat when you click away from it (quiet mode). Defaults to true;
    *  false keeps chat fully shown (Amy 2026-09-28). */
   chatFadeAway?: boolean;
+  /** Chat panel size in px, kept when you resize it (Ames 2026-09-30:
+   *  "I have to reset it every time!"). */
+  chatSize?: { w: number; h: number };
   /** Show neuroglancer's "?" controls button in the top bar. Off by default
    *  (Amy 2026-09-30); the controls panel is still in the command palette. */
   showNgControlsButton?: boolean;
@@ -928,7 +931,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // per player, owner only, through ewCommunityData). Flag and bio are not
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
-  const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway',
+  const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatSize',
     'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
