@@ -1,3 +1,4 @@
+import { startViewAutosave } from './util/view_autosave';
 import {createApp, nextTick} from 'vue';
 import {createPinia} from 'pinia';
 import {installConsoleBuffer} from './util/console_buffer';
@@ -14,7 +15,7 @@ import './widgets/find_path_restyle.css';
 
 import {installShowcase} from './showcase';
 import App from 'components/App.vue';
-import {useIssueTagStore, useLayersStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';
+import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';
 import {useStatsStore} from './store-pyr';
 import {exitGrapheneTool} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
@@ -339,6 +340,8 @@ function setupViewer() {
     hashBinding.parseError;
   }));
   hashBinding.updateFromUrlHash();
+  // Autosave the view to the player's account and offer it back (user_views).
+  startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
   viewer.registerDisposer(bindTitle(viewer.title));
 
   bindDefaultCopyHandler(viewer);

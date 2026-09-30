@@ -615,8 +615,8 @@ export const useLayersStore = defineStore('layers', () => {
     return EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
   }
 
-  // A tutorial can rewrite a saved view before it loads (Tutorial 1 swaps
-  // in a view before it loads; none does today).
+  // A tutorial can rewrite a saved view before it loads (setStateRewriter;
+  // none does today).
   async function loadState(url: string | Record<string, any>) {
     if (!viewer) return;
     try {

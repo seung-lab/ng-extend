@@ -136,7 +136,9 @@ jobs:
           # own idle previews (other services belong to other projects).
           gcloud app versions list --project=seung-lab --format='value(service)' > all.txt
           app_total=$(grep -c . all.txt || true)
-          echo "seung-lab app has $app_total versions:"; sort all.txt | uniq -c | sort -rn | head -12
+          # head closes the pipe early; under pipefail that SIGPIPE (exit 141)
+          # failed every deploy, so these listings may not fail the step.
+          echo "seung-lab app has $app_total versions:"; { sort all.txt | uniq -c | sort -rn | head -12; } || true
           gcloud app versions list --project=seung-lab --service=brain-wire \
             --format='value(id,traffic_split)' --sort-by='last_deployed_time' > versions.txt
           total=$(grep -c . versions.txt || true)
@@ -145,7 +147,7 @@ jobs:
           # Free up to 30 slots, and always keep brain-wire's 15 newest.
           awk -v me="$APP_VERSION" \
             '$1 != "" && ($2 + 0) == 0 && $1 != me && $1 !~ /^(eyewire-ii-community|master|main)$/ {print $1}' versions.txt \
-            | head -n $(( total > 15 ? total - 15 : 0 )) | head -n 30 > drop.txt
+            | head -n $(( total > 15 ? total - 15 : 0 )) | head -n 30 > drop.txt || true
           echo "Deleting the $(grep -c . drop.txt || true) oldest idle versions"
           xargs -r -n 20 gcloud app versions delete --project=seung-lab --service=brain-wire --quiet < drop.txt
       - uses: google-github-actions/deploy-appengine@a343979004148afb93c94c712b467e8e9f01b06b # v2
