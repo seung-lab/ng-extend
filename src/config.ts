@@ -31,11 +31,16 @@ export interface DatasetCaveConfig {
   /** Schema used for cellTypeTable. 'cell_type_local' has cell_type +
    *  classification_system fields; 'bound_tag' just has a single tag field;
    *  'bound_tag_user' is bound_tag + a server-injected user_id column. */
-  cellTypeSchema: 'cell_type_local' | 'bound_tag' | 'bound_tag_user';
+  cellTypeSchema: 'cell_type_local' | 'bound_tag' | 'bound_tag_user' | 'bound_double_tag_user';
   /** Schema used for cellStatusTable. Default is 'bound_tag'; use
    *  'bound_tag_user' once the table is migrated to the user-tracked variant
    *  (AnnotationEngine fills in user_id server-side from auth context). */
-  cellStatusSchema?: 'bound_tag' | 'bound_tag_user';
+  cellStatusSchema?: 'bound_tag' | 'bound_tag_user' | 'proofreading_boolstatus_user';
+  /** The dataset's own tables are shown but players cannot write them (the
+   *  table owner keeps write permission PRIVATE). The segment menu says so
+   *  instead of offering a Save that CAVE would refuse. */
+  cellStatusReadOnly?: boolean;
+  cellTypeReadOnly?: boolean;
 
   // Default-view fields (all optional — when present, applied on dataset switch
   // so a fresh user lands on a visible cell instead of an empty 3D pane).
@@ -294,16 +299,22 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
   // BANC, the fly brain and nerve cord (Bates et al., Nature 2026). Its own
   // CAVE server (cave.fanc-fly.com), auth dataset BANC. Starts on a
   // proofread cell from backbone_proofread (v898). The EyeWire status and
-  // cell type tables do not exist in this aligned volume yet: until they are
-  // created, Mark as Proofread and cell types cannot save here.
+  // cell type tables are BANC's own: backbone_proofread (proofread marks)
+  // and cell_info (primary class, identity and subtype labels). Both are
+  // owned by CAVE user 4741 with write permission PRIVATE (checked
+  // 2026-09-30), so the game shows them read only. When the owner opens
+  // backbone_proofread to the group, drop cellStatusReadOnly (Ames approved
+  // writing EyeWire completions there).
   brain_and_nerve_cord: {
     caveServer:       'https://cave.fanc-fly.com',
     datastack:        'brain_and_nerve_cord',
     alignedVolume:    'brain_and_nerve_cord',
-    cellStatusTable:  'eyewire_ii_cell_status_v2',
-    cellStatusSchema: 'bound_tag_user',
-    cellTypeTable:    'eyewire_ii_cell_type_v2',
-    cellTypeSchema:   'bound_tag_user',
+    cellStatusTable:  'backbone_proofread',
+    cellStatusSchema: 'proofreading_boolstatus_user',
+    cellStatusReadOnly: true,
+    cellTypeTable:    'cell_info',
+    cellTypeSchema:   'bound_double_tag_user',
+    cellTypeReadOnly: true,
     defaultPosition:  [139823, 138471, 2627],
   },
   fly_v26: {

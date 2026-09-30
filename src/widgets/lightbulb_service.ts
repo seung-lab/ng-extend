@@ -383,6 +383,25 @@ export async function caveFetch(url: string, init?: RequestInit): Promise<Respon
 }
 
 /**
+ * BANC cell_info: many rows per cell, tag = the label, tag2 = what kind of
+ * label ("primary class", "neuron identity", or the parent type a subtype
+ * belongs to, e.g. tag "T4a" under tag2 "T4 neuron"). Shown as the primary
+ * class plus the most specific type: an identity if there is one, else the
+ * deepest label in the hierarchy. Region and projection facts are left out.
+ */
+const BANC_FACT_KINDS = new Set(['soma region', 'anterior-posterior projection pattern', 'body part innervated',
+  'body side innervated', 'innervates leg']);
+function bancTypeLabel(rows: any[]): string {
+  const live = rows.filter(r => typeof r.tag === 'string' && r.tag && !BANC_FACT_KINDS.has(r.tag2));
+  const primary = live.find(r => r.tag2 === 'primary class')?.tag || '';
+  const identity = live.find(r => r.tag2 === 'neuron identity')?.tag || '';
+  const parents = new Set(live.map(r => r.tag2));
+  const deepest = live.filter(r => r.tag2 !== 'primary class' && r.tag2 !== 'neuron identity' && !parents.has(r.tag))
+    .map(r => r.tag)[0] || '';
+  return [...new Set([primary, identity || deepest].filter(Boolean))].join(' · ');
+}
+
+/**
  * Fetch the current completion + cell-type status for a root ID.
  * Uses materialization to find annotations at the current viewer position,
  * with localStorage fallback when CAVE is unavailable.
@@ -445,8 +464,11 @@ export async function getCellStatus(
     caveServer, datastack, cellStatusTable, rootId);
   if (completionRows.length > 0) caveAvailable = true;
   // Match both legacy bare 'complete' and new 'complete|by:<user>' encoding.
-  const completionHit = completionRows.find((a: any) =>
-    typeof a.tag === 'string' && (a.tag === 'complete' || a.tag.startsWith('complete' + USER_DELIMITER)));
+  const completionHit = dsCfg.cellStatusSchema === 'proofreading_boolstatus_user'
+    // BANC backbone_proofread: a row per proofread cell, proofread = true.
+    ? completionRows.find((a: any) => a.proofread === true || a.proofread === 't')
+    : completionRows.find((a: any) =>
+        typeof a.tag === 'string' && (a.tag === 'complete' || a.tag.startsWith('complete' + USER_DELIMITER)));
   if (completionHit) {
     status.isComplete = true;
     status.annotationId = completionHit.id;
@@ -464,7 +486,9 @@ export async function getCellStatus(
   const cellTypeRows = await queryAnnotationsForRootId(
     caveServer, datastack, cellTypeTable, rootId);
   if (cellTypeRows.length > 0) caveAvailable = true;
-  if (cellTypeRows.length > 0) {
+  if (cellTypeRows.length > 0 && cellTypeSchema === 'bound_double_tag_user') {
+    status.cellType = bancTypeLabel(cellTypeRows);
+  } else if (cellTypeRows.length > 0) {
     const latest = cellTypeRows[cellTypeRows.length - 1];
     if (cellTypeSchema === 'cell_type_local') {
       status.cellType = latest.cell_type || latest.tag;

@@ -6,6 +6,8 @@ import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion} from '../util/menu_complete';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem} from './lightbulb_service';
+import {getDatasetCaveConfig} from '../config';
+import {currentSegLayerName} from '../datasets';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
 import {getSelectedSupervoxelId} from './pcg_service';
 
@@ -300,6 +302,7 @@ export class ButtonService {
           statusLine.textContent = st?.isComplete ? '✓ Proofread' : '○ In Progress';
           if (!toggleBtn.disabled) toggleBtn.textContent = st?.isComplete ? 'Unmark Proofread' : 'Mark as Proofread';
           if (st?.cellType && !select.value) select.value = st.cellType;
+          if (typeLine) typeLine.textContent = st?.cellType || 'No type yet';
         }).catch(() => {
           if (statusLine.isConnected) statusLine.textContent = 'Could not load status. Reopen to retry.';
         });
@@ -309,6 +312,16 @@ export class ButtonService {
     const toggleBtn = document.createElement('button');
     toggleBtn.classList.add('nge-lb-section-button', 'nge-lb-toggle-btn');
     toggleBtn.textContent = cachedStatus?.isComplete ? 'Unmark Proofread' : 'Mark as Proofread';
+    // Datasets whose own tables players cannot write (BANC): show, never save.
+    const roCfg = getDatasetCaveConfig(currentSegLayerName());
+    if (roCfg.cellStatusReadOnly) {
+      toggleBtn.disabled = true;
+      toggleBtn.style.display = 'none';
+      const note = document.createElement('div');
+      note.classList.add('nge-lb-readonly-note');
+      note.textContent = `Shown from ${roCfg.cellStatusTable}. Marking cells here is not open to players yet.`;
+      completionSection.appendChild(note);
+    }
     toggleBtn.addEventListener('click', async () => {
       toggleBtn.disabled = true;
       toggleBtn.textContent = 'Saving…';
@@ -395,6 +408,18 @@ export class ButtonService {
       select.appendChild(opt);
     }
     cellTypeSection.appendChild(select);
+    let typeLine: HTMLDivElement | null = null;
+    if (roCfg.cellTypeReadOnly) {
+      select.style.display = 'none';
+      typeLine = document.createElement('div');
+      typeLine.classList.add('nge-lb-status-line');
+      typeLine.textContent = cachedStatus ? (cachedStatus.cellType || 'No type yet') : '… Loading';
+      cellTypeSection.appendChild(typeLine);
+      const note = document.createElement('div');
+      note.classList.add('nge-lb-readonly-note');
+      note.textContent = `From ${roCfg.cellTypeTable}, read only here.`;
+      cellTypeSection.appendChild(note);
+    }
 
     // Free-text input for unlisted types
     const freeText = document.createElement('input');
@@ -433,6 +458,7 @@ export class ButtonService {
       }
     });
     cellTypeSection.appendChild(saveTypeBtn);
+    if (roCfg.cellTypeReadOnly) { freeText.style.display = 'none'; saveTypeBtn.style.display = 'none'; }
 
     // ── Section 3: Segment Color ─────────────────────────────────────────
     const colorSection = document.createElement('div');
