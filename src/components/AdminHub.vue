@@ -138,7 +138,9 @@ const TRIAGE_LABELS: Record<TriageRow['recommendation'], string> = {
  *  Lines that don't match the Label: form render as plain rows, so older
  *  free-text specs still display. */
 function parseSpec(spec: string): { label: string | null; text: string }[] {
-  return spec.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+  // Older proposals ran every field together on one line: split before each label.
+  const split = spec.replace(/\s+(?=(Symptom|What|Where|Cause|Fix|Scope|Severity)\s*:)/g, '\n');
+  return split.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
     const m = line.match(/^(Symptom|What|Where|Cause|Fix|Scope|Severity)\s*:\s*(.*)$/i);
     return m ? { label: m[1], text: m[2] } : { label: null, text: line };
   });
