@@ -937,7 +937,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
          class="nge-streak-chip" tabindex="0" :aria-label="`Editing streak: ${stats.currentStreak} days`">
-      <span class="nge-streak-chip-flame">🔥 {{ stats.currentStreak }}</span>
+      <span class="nge-streak-chip-flame">🔥</span>&nbsp;<span class="nge-streak-chip-count">{{ stats.currentStreak }}</span>
       <!-- Styled hover card (Ames 2026-09-28: "what it be do"). -->
       <div class="nge-streak-tip" role="tooltip">
         <div class="nge-streak-tip-title">🔥 {{ stats.currentStreak }}-day editing streak</div>
@@ -949,11 +949,19 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#dfe6f2"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <line x1="12" y1="8" x2="12" y2="12.5"/>
-          <line x1="12" y1="16" x2="12" y2="16"/>
+        <!-- A bug (Amy 2026-09-30), whose legs scurry on hover and click. -->
+        <svg class="nge-bug" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#dfe6f2"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <g class="nge-bug-legs nge-bug-legs--l">
+            <path d="M8.2 11 L4.6 9"/><path d="M7.9 14.2 H3.9"/><path d="M8.2 17.2 L4.6 19.4"/>
+          </g>
+          <g class="nge-bug-legs nge-bug-legs--r">
+            <path d="M15.8 11 L19.4 9"/><path d="M16.1 14.2 H20.1"/><path d="M15.8 17.2 L19.4 19.4"/>
+          </g>
+          <path d="M10.4 6.2 L8.6 3.8 M13.6 6.2 L15.4 3.8"/>
+          <circle cx="12" cy="7.9" r="2.3"/>
+          <rect x="8" y="10.1" width="8" height="10.4" rx="4"/>
+          <path d="M12 10.8 V19.6"/>
         </svg>
       </button>
       <button
@@ -1687,9 +1695,17 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 /* Shared click ripple (bell ding, camera flash use their own). */
 @keyframes nge-ti-ring { from { opacity: 0.8; transform: scale(0.4); } to { opacity: 0; transform: scale(1.5); } }
 
-/* ! Submit an issue: hover jitters like an alert, click pops. */
-#extensionBar .nge-feedback-btn:hover svg { animation: nge-ti-alert 0.5s ease-in-out; }
+/* Bug (Submit an issue): the legs scurry on hover, faster with a pop on click. */
+#extensionBar .nge-feedback-btn .nge-bug-legs { transform-box: view-box; }
+#extensionBar .nge-feedback-btn .nge-bug-legs--l { transform-origin: 8px 14px; }
+#extensionBar .nge-feedback-btn .nge-bug-legs--r { transform-origin: 16px 14px; }
+#extensionBar .nge-feedback-btn:hover .nge-bug-legs--l { animation: nge-bug-leg-l 0.22s ease-in-out infinite alternate; }
+#extensionBar .nge-feedback-btn:hover .nge-bug-legs--r { animation: nge-bug-leg-r 0.22s ease-in-out infinite alternate; }
+#extensionBar .nge-feedback-btn.nge-pop .nge-bug-legs--l { animation: nge-bug-leg-l 0.1s ease-in-out 6 alternate; }
+#extensionBar .nge-feedback-btn.nge-pop .nge-bug-legs--r { animation: nge-bug-leg-r 0.1s ease-in-out 6 alternate; }
 #extensionBar .nge-feedback-btn.nge-pop svg { animation: nge-ti-pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes nge-bug-leg-l { from { transform: rotate(-14deg); } to { transform: rotate(12deg); } }
+@keyframes nge-bug-leg-r { from { transform: rotate(14deg); } to { transform: rotate(-12deg); } }
 @keyframes nge-ti-alert { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-12deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(3deg); } }
 @keyframes nge-ti-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
 
@@ -1864,8 +1880,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-knob-b { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.6px); } }
 
 /* 🔥 streak: the flame flickers on hover. */
-/* inline-block: transforms (the flicker) do nothing on a plain inline span. */
-.nge-streak-chip-flame { display: inline-block; }
+/* inline-block: transforms (the flicker) do nothing on a plain inline span.
+   Only the 🔥 flickers; the count and the tooltip stay still (Amy 2026-09-30). */
+.nge-streak-chip-flame { display: inline-block; transform-origin: 50% 90%; }
 .nge-streak-chip:hover .nge-streak-chip-flame { animation: nge-ti-flame 0.5s ease-in-out infinite alternate; }
 @keyframes nge-ti-flame { from { transform: scale(1) rotate(-3deg); filter: brightness(1); } to { transform: scale(1.06) rotate(3deg); filter: brightness(1.25); } }
 
