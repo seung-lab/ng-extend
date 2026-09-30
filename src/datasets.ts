@@ -47,7 +47,7 @@ export interface DatasetEntry {
 export const DATASET_GROUPS: Record<string, { label: string; description: string; thumbnail?: string }> = {
   microns: {
     label: 'MICrONS: Mouse Visual Cortex',
-    description: '1 mm³ of mouse visual cortex (8×8×40 nm). Three versions: pick one.',
+    description: '1 mm³ of mouse visual cortex (8×8×40 nm)',
     thumbnail: thumbMicrons,
   },
 };
