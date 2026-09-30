@@ -29,7 +29,7 @@ import {RenderLayerRole} from 'neuroglancer/renderlayer';
 import {SegmentationDisplayState} from 'neuroglancer/segmentation_display_state/frontend';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {TrackableBoolean, TrackableBooleanCheckbox} from 'neuroglancer/trackable_boolean';
-import {makeCachedLazyDerivedWatchableValue} from 'neuroglancer/trackable_value';
+import {makeCachedLazyDerivedWatchableValue, WatchableValue} from 'neuroglancer/trackable_value';
 import {AnnotationLayerView, MergedAnnotationStates, UserLayerWithAnnotationsMixin} from 'neuroglancer/ui/annotations';
 import {animationFrameDebounce} from 'neuroglancer/util/animation_frame_debounce';
 import {Borrowed, Owned, RefCounted} from 'neuroglancer/util/disposable';
@@ -315,6 +315,12 @@ class LinkedSegmentationLayersWidget extends RefCounted {
 }
 
 const Base = UserLayerWithAnnotationsMixin(UserLayer);
+
+/** Settings > "Show Source and Rendering tabs on annotation layers" (off). */
+function ngeShowAnnotationSetupTabs(): boolean {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').showAnnotationSetupTabs === true; } catch { return false; }
+}
+
 export class AnnotationUserLayer extends Base {
   localAnnotations: LocalAnnotationSource|undefined;
   private localAnnotationProperties: AnnotationPropertySpec[]|undefined;
@@ -339,9 +345,15 @@ export class AnnotationUserLayer extends Base {
         this.specificationChanged.dispatch);
     this.annotationCrossSectionRenderScaleTarget.changed.add(this.specificationChanged.dispatch);
     this.annotationProjectionRenderScaleTarget.changed.add(this.specificationChanged.dispatch);
+    // EyeWire II (Amy 2026-09-30): annotation layers open on Annotations with
+    // Source and Rendering tucked away; Settings can show them again.
+    // A real watchable: the side panel subscribes to its `changed` signal.
+    const setupTabsHidden = new WatchableValue<boolean>(!ngeShowAnnotationSetupTabs());
     this.tabs.add(
         'rendering',
-        {label: 'Rendering', order: -100, getter: () => new RenderingOptionsTab(this)});
+        {label: 'Rendering', order: -100, getter: () => new RenderingOptionsTab(this), hidden: setupTabsHidden});
+    const sourceTab = this.tabs.options.get('source');
+    if (sourceTab) sourceTab.hidden = setupTabsHidden;
     this.tabs.default = 'annotations';
   }
 

@@ -6,7 +6,7 @@ import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { DATASETS, segLayerName } from '../datasets';
 import { startViewHash } from '../util/start_view';
-import { ngePointScale } from 'neuroglancer/annotation/point';
+import { ngePointScale, ngePointGem } from 'neuroglancer/annotation/point';
 
 const prefsStore = useUserPreferencesStore();
 
@@ -35,6 +35,8 @@ const draftKeepDisplay = ref(true);
  *  live while you drag; kept when you save, put back if you close without. */
 const draftAnnotationSize = ref(1);
 const savedAnnotationSize = ref(1);
+const draftAnnotationGems = ref(true);
+const draftAnnotationSetupTabs = ref(false);
 function previewAnnotationSize() {
   ngePointScale.value = draftAnnotationSize.value;
   try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
@@ -84,6 +86,8 @@ onMounted(() => {
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftAnnotationSize.value = savedAnnotationSize.value = ngePointScale.value;
+  draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
+  draftAnnotationSetupTabs.value = prefsStore.prefs.showAnnotationSetupTabs === true;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
   draftBareSwitch.value = !!prefsStore.prefs.datasetBareSwitch;
   draftStartViews.value = { ...(prefsStore.prefs.datasetStartViews || {}) };
@@ -103,12 +107,14 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, annotationSize: draftAnnotationSize.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
   savedAnnotationSize.value = draftAnnotationSize.value;
+  ngePointGem.value = draftAnnotationGems.value;
+  try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
   // Show or hide the "?" controls button right away.
   try { (window as any).viewer.uiConfiguration.showHelpButton.value = draftShowNgControls.value; } catch { /* no viewer yet */ }
   saved.value = true;
@@ -341,6 +347,14 @@ const props = defineProps<{ embedded?: boolean }>();
               <span class="nge-settings-toggle-label">Annotation point size</span>
               <input type="range" min="1" max="4" step="0.5" v-model.number="draftAnnotationSize" @input="previewAnnotationSize" />
               <span class="nge-settings-slider-val">{{ draftAnnotationSize }}×</span>
+            </label>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftAnnotationGems" />
+              <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>
+            </label>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftAnnotationSetupTabs" />
+              <span class="nge-settings-toggle-label">Show Source and Rendering tabs on annotation layers</span>
             </label>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftKeepDisplay" />

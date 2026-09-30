@@ -40,10 +40,44 @@ export const ngePointScale = {value: (() => {
   } catch { return 1; }
 })()};
 
+
+/** Point annotations drawn as the Pyr gem in the 3D view (Amy 2026-09-30),
+ *  in the layer's own colour. On unless Settings turns it off. */
+export const ngePointGem = {value: (() => {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').annotationGems !== false; } catch { return true; }
+})()};
+
+// The Pyr gem, tip on the annotation point: an inverted pyramid with a light
+// top facet and a shaded right face. vCircleCoord.xy spans [-1, 1], y up; the
+// gem uses the upper half, so its tip sits exactly where the circle's centre was.
+const GEM_FRAGMENT_CODE = `
+bool ngeInGem(vec2 p) {
+  const float rim = 0.72;
+  const float halfWidth = 0.56;
+  if (p.y < 0.0 || p.y > 1.0) return false;
+  if (p.y <= rim) return abs(p.x) <= halfWidth * p.y / rim;
+  return abs(p.x) <= halfWidth * (1.0 - p.y) / (1.0 - rim);
+}
+vec4 getGemColor(vec4 interiorColor, vec4 borderColor) {
+  vec2 p = vCircleCoord.xy;
+  if (!ngeInGem(p)) discard;
+  // Border: whatever lies outside the gem shrunk towards its middle.
+  float borderFrac = clamp(1.0 - vCircleCoord.z, 0.0, 0.45);
+  vec2 c = vec2(0.0, 0.5);
+  bool inner = ngeInGem(c + (p - c) / max(1e-3, 1.0 - borderFrac));
+  vec3 rgb = interiorColor.rgb;
+  if (p.y > 0.72) rgb = mix(rgb, vec3(1.0), 0.45);   // top facet
+  else if (p.x > 0.0) rgb *= 0.72;                 // shaded right face
+  vec4 color = inner ? vec4(rgb, interiorColor.a) : borderColor;
+  return vec4(color.rgb, color.a * getCircleAlphaMultiplier());
+}
+`;
+
 class RenderHelper extends AnnotationRenderHelper {
   private defineShaderCommon(builder: ShaderBuilder) {
     const {rank} = this;
     builder.addUniform('highp float', 'uNgePointScale');
+    builder.addUniform('highp float', 'uNgeGem');
     // Position of point in model coordinates.
     defineVectorArrayVertexShaderInput(
         builder, 'float', WebGL2RenderingContext.FLOAT, /*normalized=*/ false, 'VertexPosition',
@@ -76,7 +110,7 @@ if (clipCoefficient == 0.0) {
   return;
 }
 ${this.invokeUserMain}
-ng_markerDiameter *= uNgePointScale;
+ng_markerDiameter *= uNgePointScale * (1.0 + 0.9 * uNgeGem);
 ng_markerBorderWidth *= uNgePointScale;
 vColor.a *= clipCoefficient;
 vBorderColor.a *= clipCoefficient;
@@ -93,8 +127,9 @@ ${this.setPartIndex(builder)};
 emitCircle(uModelViewProjection *
            vec4(projectModelVectorToSubspace(modelPosition), 1.0), ng_markerDiameter, ng_markerBorderWidth);
 `);
+        builder.addFragmentCode(GEM_FRAGMENT_CODE);
         builder.setFragmentMain(`
-vec4 color = getCircleColor(vColor, vBorderColor);
+vec4 color = uNgeGem > 0.5 ? getGemColor(vColor, vBorderColor) : getCircleColor(vColor, vBorderColor);
 emitAnnotation(color);
 `);
       });
@@ -156,6 +191,8 @@ emitAnnotation(vec4(color.rgb, color.a * ${this.getCrossSectionFadeFactor()}));
       callback: (shader: ShaderProgram) => void) {
     super.enable(shaderGetter, context, shader => {
       this.gl.uniform1f(shader.uniform('uNgePointScale'), ngePointScale.value);
+      // Gems only in the 3D view; 2D slices keep the precise centred dot.
+      this.gl.uniform1f(shader.uniform('uNgeGem'), ngePointGem.value && !this.targetIsSliceView ? 1 : 0);
       const binder = shader.vertexShaderInputBinders['VertexPosition'];
       binder.enable(1);
       this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, context.buffer.buffer);

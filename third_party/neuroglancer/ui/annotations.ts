@@ -20,6 +20,8 @@
 
 import './annotations.css';
 
+// @ts-ignore (image import, bundled by esbuild)
+import pyrIconUrl from '../../../static/badges/pyr/pyr-icon.png';
 import {Annotation, AnnotationId, AnnotationPropertySerializer, AnnotationReference, AnnotationSource, annotationToJson, AnnotationType, annotationTypeHandlers, AxisAlignedBoundingBox, Ellipsoid, formatNumericProperty, Line} from 'neuroglancer/annotation';
 import {AnnotationDisplayState, AnnotationLayerState} from 'neuroglancer/annotation/annotation_layer_state';
 import {MultiscaleAnnotationSource} from 'neuroglancer/annotation/frontend_source';
@@ -307,6 +309,14 @@ export class AnnotationLayerView extends Tab {
         this.layer.tool.value = new PlacePointTool(this.layer, {});
       },
     });
+    // EyeWire II (Amy 2026-09-30): the point tool is the Pyr gem, the same
+    // shape the 3D view now draws for point annotations.
+    pointButton.textContent = '';
+    const pyrImg = document.createElement('img');
+    pyrImg.src = pyrIconUrl;
+    pyrImg.alt = '';
+    pyrImg.className = 'nge-pyr-tool-icon';
+    pointButton.appendChild(pyrImg);
     mutableControls.appendChild(pointButton);
 
     const boundingBoxButton = makeIcon({
@@ -1597,6 +1607,7 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
     const element = document.createElement('div');
     element.classList.add('neuroglancer-annotation-list-entry');
     element.dataset.color = state.displayState.color.toString();
+    element.style.setProperty('--nge-ann-color', serializeColor(state.displayState.color.value));
     element.style.gridTemplateColumns = gridTemplate;
     const icon = document.createElement('div');
     icon.className = 'neuroglancer-annotation-icon';

@@ -239,6 +239,17 @@ class LayerSidePanel extends SidePanel {
           },
         },
         this.visibility);
+    // EyeWire II (Amy 2026-09-30): never open on a hidden tab (annotation
+    // layers hide Source and Rendering); fall back to the layer's default.
+    {
+      const id = panelState.selectedTab.value;
+      const spec = id === undefined ? undefined : layer.tabs.options.get(id);
+      if (spec?.hidden?.value) {
+        const fallback = [layer.tabs.default, ...panelState.tabs].find(
+            t => t !== undefined && t !== id && !layer.tabs.options.get(t)?.hidden?.value);
+        if (fallback !== undefined) panelState.selectedTab.value = fallback;
+      }
+    }
     this.tabView.element.style.flex = '1';
     this.tabView.element.classList.add('neuroglancer-layer-side-panel-tab-view');
     this.tabView.element.style.position = 'relative';

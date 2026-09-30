@@ -903,6 +903,10 @@ export interface UserPreferences {
   keepDisplayOnJump?: boolean;
   /** Point annotation size multiplier, 1 to 4 (Amy 2026-09-30). Local only. */
   annotationSize?: number;
+  /** Point annotations drawn as Pyr gems in 3D. Defaults to true. */
+  annotationGems?: boolean;
+  /** Show Source and Rendering tabs on annotation layers. Defaults to false. */
+  showAnnotationSetupTabs?: boolean;
   /** Switch datasets without the curated view or starter cells (faster). */
   datasetBareSwitch?: boolean;
   /** Segmentation layer name -> the player's own share link to open there. */
