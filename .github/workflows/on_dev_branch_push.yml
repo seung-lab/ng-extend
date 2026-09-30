@@ -122,6 +122,25 @@ jobs:
         with:
           workload_identity_provider: projects/483670036293/locations/global/workloadIdentityPools/neuroglancer-github/providers/github
           service_account: chris-apps-deploy@seung-lab.iam.gserviceaccount.com
+      # App Engine allows 210 versions per app, and every pushed branch and
+      # triage build adds one; at the cap every new preview is refused
+      # ("may not have more than 210 versions", Ames 2026-09-30). Near the cap,
+      # delete the oldest versions that serve no traffic, keeping about 110,
+      # and never the live branch, this deploy's version, or anything serving.
+      - name: Make room for this version (App Engine keeps at most 210)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud app versions list --project=seung-lab --service=brain-wire \
+            --format='value(id,traffic_split)' --sort-by='last_deployed_time' > versions.txt
+          total=$(grep -c . versions.txt || true)
+          echo "brain-wire has $total versions"
+          if [ "$total" -lt 190 ]; then exit 0; fi
+          awk -v me="$APP_VERSION" \
+            '$1 != "" && ($2 + 0) == 0 && $1 != me && $1 !~ /^(eyewire-ii-community|master|main)$/ {print $1}' versions.txt \
+            | head -n $((total - 110)) > drop.txt
+          echo "Deleting the $(grep -c . drop.txt || true) oldest idle versions"
+          xargs -r -n 20 gcloud app versions delete --project=seung-lab --service=brain-wire --quiet < drop.txt
       - uses: google-github-actions/deploy-appengine@a343979004148afb93c94c712b467e8e9f01b06b # v2
         with:
           version: ${{ env.APP_VERSION }}
