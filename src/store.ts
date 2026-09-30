@@ -5037,6 +5037,8 @@ export interface ChatMessage {
   botLanguage?: string;
   /** Nurro's daily leaders card (the text part is the plain fallback). */
   daily?: { edits: Array<{ name: string; n: number }>; cells: Array<{ name: string; n: number }> };
+  /** Only on this screen: your Nurro command and Nurro's answer (Amy 2026-09-30). */
+  private?: boolean;
 }
 
 /**
@@ -5332,6 +5334,8 @@ export const useChatStore = defineStore('chat', () => {
 
   function withBot(m: ChatMessage): ChatMessage[] {
     const r = botReplyTo(m);
+    // Nurro answers only your own commands; nkem_test's "for science" is for all.
+    if (r && r.name === NURRO_NAME && m.userId !== useProofreadingBackendStore().userId) return [m];
     return r ? [m, r] : [m];
   }
 
@@ -5524,12 +5528,15 @@ export const useChatStore = defineStore('chat', () => {
         parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null});
       // "!online name": Nurro looks the person up, then answers (live only).
       // "!leaders" / "!today": Nurro posts the daily leaders card again.
-      if (row.notification_id == null && /^\s*!(leaders|today)\b/i.test(row.text || '')) void announceDailyLeaders(true);
-      const target = row.notification_id == null ? onlineTarget(row.text || '') : null;
+      // Nurro answers privately (Amy 2026-09-30): only the asker's screen
+      // answers, and current clients never post their commands at all.
+      const mine = row.user_id === backend.userId;
+      if (mine && row.notification_id == null && /^\s*!(leaders|today)\b/i.test(row.text || '')) void announceDailyLeaders(true);
+      const target = mine && row.notification_id == null ? onlineTarget(row.text || '') : null;
       if (target) void answerOnline(target);
       // nkem_test takes a beat to answer, like it used to.
       const reply = botReplyTo(chatMessages.value[chatMessages.value.length - 1], true);
-      if (reply) setTimeout(() => { reply.dateTime = new Date(); reply.time = formatTime(reply.dateTime); chatMessages.value.push(reply); }, 900);
+      if (reply && (reply.name !== NURRO_NAME || mine)) setTimeout(() => { reply.dateTime = new Date(); reply.time = formatTime(reply.dateTime); chatMessages.value.push(reply); }, 900);
       if (row.user_id !== backend.userId) {
         // A direct @mention always gets through, even with chat muted.
         const mention = mentionsMe(row.text || '') && !onlineTarget(row.text || '');
@@ -5578,11 +5585,37 @@ export const useChatStore = defineStore('chat', () => {
     const backend = useProofreadingBackendStore();
     const name = backend.chatHandle;
     const rank = backend.isAdmin ? 'admin' : 'player';
+    // A Nurro command is answered on your screen only and never posted, so
+    // asking Nurro does not fill everyone's chat (Amy 2026-09-30). "!science"
+    // belongs to nkem_test's public joke and is still posted.
+    if (notificationId == null && /^\s*!([a-z]+)\b/i.test(text)) {
+      const probe = botReply('probe', text, []);
+      if (!probe || probe.name === NURRO_NAME) { askNurroPrivately(name, rank, text); return; }
+    }
     // Persist for history so the last messages show on next open (best-effort;
     // no-ops if the chat_messages table isn't present).
     supabase.from('chat_messages')
       .insert({ name, rank, text, dataset: currentDatasetName(), notification_id: notificationId })
       .then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); });
+  }
+
+  function askNurroPrivately(name: string, rank: string, text: string) {
+    const now = new Date();
+    addTimeSeparatorIfNeeded(now);
+    chatMessages.value.push({ type: 'message', name, rank, time: formatTime(now), dateTime: now,
+      parts: parseMessageParts(name, text), private: true });
+    if (/^\s*!(leaders|today)\b/i.test(text)) { void announceDailyLeaders(true); return; }
+    const target = onlineTarget(text);
+    if (target) { void answerOnline(target); return; }
+    const cutoff = Date.now() - ONLINE_MS;
+    const here = Object.values(online.value).filter(p => p.lastSeen >= cutoff).map(p => p.name);
+    const r = botReply(String(now.getTime()), text, here);
+    if (!r) return;
+    setTimeout(() => {
+      const at = new Date();
+      chatMessages.value.push({ type: 'message', name: r.name, rank: 'bot', time: formatTime(at), dateTime: at,
+        parts: [{ type: 'sender', text: r.name }, { type: 'text', text: r.text }], private: true });
+    }, 400);
   }
 
   function removeLocal(id: string | number) {

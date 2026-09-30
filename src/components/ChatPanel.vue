@@ -824,7 +824,8 @@ function toggleCollapse() {
                   <div v-else class="nge-chat-daily-empty">No edits in the last 24 hours yet. The top spot is wide open!</div>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg) }">
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private }"
+                     :title="msg.private ? 'Only you can see this' : undefined">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
                   <button v-if="msg.rank === 'bot' && msg.name === 'Nurro'" class="nge-chat-msg-name nge-chat-nurro-name"
@@ -1232,6 +1233,18 @@ function toggleCollapse() {
   font-size: 14.5px;
 }
 .nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
+/* Nurro commands and answers are yours alone (Amy 2026-09-30). */
+.nge-chat-private { border-left: 2px solid rgba(200, 164, 255, 0.5); padding-left: 6px; }
+.nge-chat-private::after {
+  content: 'only you';
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 10px;
+  color: #c8a4ff;
+  background: rgba(200, 164, 255, 0.12);
+  vertical-align: 1px;
+}
 .nge-chat-online {
   margin-left: 6px;
   font-size: 11px;
