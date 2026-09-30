@@ -471,6 +471,33 @@ async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
   const row = queue.items.find(i => i.segId === t.segment_id);
   return window.confirm(`Your work on ${row?.index || 'your current cell'} could not be saved. Switch anyway? Its unsaved annotations would be lost.`);
 }
+// ── Save view: keep this claim's annotations and layers on demand ──────────
+// The view is also saved when you switch to another claim, but a reload, a
+// dataset switch or opening a link would lose anything unsaved (Ames).
+const savingView = ref<number | null>(null);
+const savedViewAt = ref<Record<number, number>>({});
+const isWorkingClaim = (cell: CellRow) =>
+  !!cell.taskId && isMyClaim(cell) && (cell.taskId === workingTaskId || cell.segId === jumpedSegId.value);
+async function saveClaimView(cell: CellRow) {
+  if (!cell.taskId || savingView.value) return;
+  savingView.value = cell.taskId;
+  claimError.value = '';
+  try {
+    const link = await mintShortStateLink();
+    if (link && await backend.saveWorkingLink(cell.taskId, link)) {
+      setWorkingTask(cell.taskId);
+      savedViewAt.value = { ...savedViewAt.value, [cell.taskId]: Date.now() };
+      setTimeout(() => { const n = { ...savedViewAt.value }; delete n[cell.taskId!]; savedViewAt.value = n; }, 2500);
+    } else {
+      claimError.value = 'Could not save this view. Try again in a moment.';
+    }
+  } catch (e: any) {
+    claimError.value = e?.message || 'Could not save this view.';
+  } finally {
+    savingView.value = null;
+  }
+}
+
 /** Go to one of your claims with its own layers. */
 async function switchToClaim(cell: CellRow) {
   // Already working on this claim: its layers are loaded, so just move the
@@ -2790,6 +2817,15 @@ const panelStyle = computed(() => ({
               ><span v-if="claiming.has(cellKey(cell))" class="nge-cl-spin" />{{ claiming.has(cellKey(cell)) ? 'Claiming…' : 'Claim' }}</button>
 
               <button
+                v-if="isWorkingClaim(cell)"
+                class="nge-cl-btn nge-cl-btn--saveview"
+                :class="{ 'nge-cl-btn--saved': savedViewAt[cell.taskId] }"
+                :disabled="savingView === cell.taskId"
+                @click="saveClaimView(cell)"
+                title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
+              ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
+
+              <button
                 v-if="isMyClaim(cell)"
                 class="nge-cl-btn nge-cl-btn--release"
                 :disabled="releasing.has(releaseKey(cell))"
@@ -3384,6 +3420,14 @@ const panelStyle = computed(() => ({
   font-size: 0.68em;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
+.nge-cl-btn--saveview {
+  border-color: rgba(100, 200, 255, 0.3);
+  color: #8fd3ff;
+  font-size: 0.68em;
+  white-space: nowrap;
+}
+.nge-cl-btn--saveview:hover { background: rgba(100, 200, 255, 0.1); }
+.nge-cl-btn--saved { border-color: rgba(68, 200, 120, 0.5); color: #6d9; }
 .nge-cl-batch-claim {
   flex: 0 0 auto;
   margin-left: 8px;
