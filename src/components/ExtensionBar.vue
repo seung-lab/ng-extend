@@ -936,7 +936,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
          class="nge-streak-chip" tabindex="0" :aria-label="`Editing streak: ${stats.currentStreak} days`">
-      🔥 {{ stats.currentStreak }}
+      <span class="nge-streak-chip-flame">🔥 {{ stats.currentStreak }}</span>
       <!-- Styled hover card (Ames 2026-09-28: "what it be do"). -->
       <div class="nge-streak-tip" role="tooltip">
         <div class="nge-streak-tip-title">🔥 {{ stats.currentStreak }}-day editing streak</div>
@@ -1863,12 +1863,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-knob-b { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.6px); } }
 
 /* 🔥 streak: the flame flickers on hover. */
-.nge-streak-chip:hover { animation: nge-ti-flame 0.5s ease-in-out infinite alternate; }
+.nge-streak-chip:hover .nge-streak-chip-flame { animation: nge-ti-flame 0.5s ease-in-out infinite alternate; }
 @keyframes nge-ti-flame { from { transform: scale(1) rotate(-3deg); filter: brightness(1); } to { transform: scale(1.06) rotate(3deg); filter: brightness(1.25); } }
 
 @media (prefers-reduced-motion: reduce) {
   #extensionBar .nge-icon-btn *, #extensionBar .nge-icon-btn::before, #extensionBar .nge-icon-btn::after,
-  #extensionBar #ngFarRight *, #extensionBar #ngFarRight > .neuroglancer-icon, .nge-streak-chip { animation: none !important; }
+  #extensionBar #ngFarRight *, #extensionBar #ngFarRight > .neuroglancer-icon, .nge-streak-chip-flame { animation: none !important; }
 }
 
 /* Burger bounce: on click it hops and its layers pull apart, then stack. */
