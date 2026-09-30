@@ -4,8 +4,8 @@
  * Displays as a compact centred hologram panel with dataset cards.
  * Switching loads new neuroglancer layers + updates CAVE config automatically.
  */
-import { ref, onMounted } from 'vue';
-import { DATASETS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry } from '../datasets';
+import { ref, computed, onMounted } from 'vue';
+import { DATASETS, DATASET_GROUPS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry } from '../datasets';
 import { runPanelTrace } from '../util/holo_trace';
 import { startDatasetTransition } from '../util/dataset_transition';
 import { loadDatasetPermissions, datasetAccess } from '../util/dataset_access';
@@ -51,6 +51,32 @@ const viewTip = 'You can look around here, but your CAVE account cannot save edi
 
 const switching = ref(false);
 
+// ── Cards: single datasets, and one card per group (MICrONS) ──────────────
+type Card = { kind: 'one'; ds: DatasetEntry } | { kind: 'group'; key: string; members: DatasetEntry[] };
+const cards = computed<Card[]>(() => {
+  const out: Card[] = [];
+  const seen = new Set<string>();
+  for (const ds of DATASETS) {
+    if (ds.group && DATASET_GROUPS[ds.group]) {
+      if (seen.has(ds.group)) continue;
+      seen.add(ds.group);
+      // A group lists every version, including ones hidden as their own card.
+      out.push({ kind: 'group', key: ds.group, members: DATASETS.filter(d => d.group === ds.group) });
+    } else if (!ds.hidden || ds.id === currentDatasetId.value) {
+      out.push({ kind: 'one', ds });
+    }
+  }
+  return out;
+});
+const openGroup = ref<string | null>(null);
+const groupActive = (c: Card) => c.kind === 'group' && c.members.some(m => m.id === currentDatasetId.value);
+function toggleGroup(key: string) { openGroup.value = openGroup.value === key ? null : key; }
+onMounted(() => {
+  // Open the group you are in, so its current version is visible.
+  const here = DATASETS.find(d => d.id === currentDatasetId.value);
+  if (here?.group) openGroup.value = here.group;
+});
+
 async function switchTo(ds: DatasetEntry) {
   if (ds.id === currentDatasetId.value) return;
   if (accessOf(ds) === 'none') return;
@@ -74,8 +100,49 @@ async function switchTo(ds: DatasetEntry) {
         <button class="nge-ds-close" @click="emit('hide')">×</button>
       </div>
       <div class="nge-ds-list">
-        <div
-          v-for="ds in DATASETS.filter(d => !d.hidden || d.id === currentDatasetId)"
+        <template v-for="c in cards" :key="c.kind === 'group' ? 'g:' + c.key : c.ds.id">
+        <div v-if="c.kind === 'group'" class="nge-ds-group" :class="{ 'nge-ds-group--open': openGroup === c.key }">
+          <div
+            class="nge-ds-card nge-ds-group-card"
+            :class="{ 'nge-ds-active': groupActive(c) }"
+            role="button"
+            :aria-expanded="openGroup === c.key ? 'true' : 'false'"
+            @click="toggleGroup(c.key)"
+          >
+            <img v-if="DATASET_GROUPS[c.key].thumbnail" :src="DATASET_GROUPS[c.key].thumbnail" class="nge-ds-card-thumb" alt="" loading="lazy" />
+            <div class="nge-ds-card-text">
+              <div class="nge-ds-card-label">{{ DATASET_GROUPS[c.key].label }}</div>
+              <div class="nge-ds-card-desc">{{ DATASET_GROUPS[c.key].description }}</div>
+            </div>
+            <div v-if="groupActive(c)" class="nge-ds-badge">Active</div>
+            <span class="nge-ds-chevron" aria-hidden="true">▾</span>
+          </div>
+          <div v-if="openGroup === c.key" class="nge-ds-variants">
+            <div
+              v-for="ds in c.members"
+              :key="ds.id"
+              class="nge-ds-variant"
+              :class="{
+                'nge-ds-active': ds.id === currentDatasetId,
+                'nge-ds-switching': switching,
+                'nge-ds-locked': accessOf(ds) === 'none',
+              }"
+              :title="accessOf(ds) === 'none' ? lockedTip : accessOf(ds) === 'view' ? viewTip : undefined"
+              :aria-disabled="accessOf(ds) === 'none' ? 'true' : undefined"
+              @click="switchTo(ds)"
+            >
+              <div class="nge-ds-variant-text">
+                <div class="nge-ds-variant-label">{{ ds.variantLabel || ds.label }}</div>
+                <div class="nge-ds-card-desc">{{ ds.description }}</div>
+              </div>
+              <div v-if="ds.id === currentDatasetId" class="nge-ds-tag">Active</div>
+              <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-tag nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
+              <div v-else-if="accessOf(ds) === 'view'" class="nge-ds-tag nge-ds-badge--view">View only</div>
+            </div>
+          </div>
+        </div>
+        <template v-else><div
+          v-for="ds in [c.ds]"
           :key="ds.id"
           class="nge-ds-card"
           :class="{
@@ -95,7 +162,8 @@ async function switchTo(ds: DatasetEntry) {
           <div v-if="ds.id === currentDatasetId" class="nge-ds-badge">Active</div>
           <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-badge nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
           <div v-else-if="accessOf(ds) === 'view'" class="nge-ds-badge nge-ds-badge--view">View only</div>
-        </div>
+        </div></template>
+        </template>
       </div>
     </div>
   </Teleport>
@@ -164,6 +232,42 @@ async function switchTo(ds: DatasetEntry) {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+/* Never a sideways scrollbar: long names and descriptions wrap. */
+.nge-dataset-panel { overflow-x: hidden; }
+.nge-ds-card-text, .nge-ds-variant-text { min-width: 0; overflow-wrap: anywhere; }
+
+/* A group (MICrONS): one card that opens into a plain list of versions. */
+.nge-ds-group { display: flex; flex-direction: column; gap: 4px; }
+.nge-ds-group-card { padding-right: 30px; }
+.nge-ds-chevron {
+  position: absolute; right: 10px; bottom: 10px;
+  color: rgba(255, 255, 255, 0.5); font-size: 12px;
+  transition: transform 0.15s ease;
+}
+.nge-ds-group--open .nge-ds-chevron { transform: rotate(180deg); }
+.nge-ds-variants {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-left: 14px; padding-left: 10px;
+  border-left: 1px solid rgba(100, 200, 255, 0.25);
+}
+.nge-ds-variant {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 7px 10px; border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.nge-ds-variant:hover:not(.nge-ds-active):not(.nge-ds-locked) { background: rgba(100, 200, 255, 0.06); border-color: rgba(100, 200, 255, 0.2); }
+.nge-ds-variant.nge-ds-active { background: rgba(100, 200, 255, 0.1); border-color: rgba(100, 200, 255, 0.35); cursor: default; }
+.nge-ds-variant.nge-ds-locked { cursor: not-allowed; }
+.nge-ds-variant.nge-ds-locked .nge-ds-variant-text { opacity: 0.45; }
+.nge-ds-variant-text { flex: 1; }
+.nge-ds-variant-label { font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, 0.88); margin-bottom: 2px; }
+.nge-ds-tag {
+  flex-shrink: 0; font-size: 10px; font-weight: 600; white-space: nowrap;
+  color: #64c8ff; background: rgba(100, 200, 255, 0.12);
+  padding: 1px 6px; border-radius: 3px; margin-top: 1px;
 }
 
 .nge-ds-card {
