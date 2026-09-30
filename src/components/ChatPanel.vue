@@ -478,6 +478,28 @@ function closePopovers(e: MouseEvent) {
   const t = e.target as HTMLElement;
   if (!t.closest?.('.nge-chat-react-add')) pickerFor.value = null;
   if (!t.closest?.('.nge-chat-share')) shareMenuOpen.value = false;
+  if (!t.closest?.('.nge-chat-emoji')) emojiOpen.value = false;
+}
+
+// ── Emoji for writing messages (Amy 2026-09-30), not just reactions ──
+const CHAT_EMOJI = [
+  '😊', '😂', '😅', '🥳', '😍', '😎', '🤔', '😮', '😢', '🙏',
+  '👍', '👏', '🙌', '💪', '👀', '✨', '🔥', '💯', '🎉', '❤️',
+  '🧠', '🔬', '🧬', '⚡', '👁️', '🐭', '🪰', '🐟', '🦉', '🐙',
+  '🚀', '🌟', '🎯', '✅', '❌', '⚠️', '☕', '🍕', '🌈', '😴',
+];
+const emojiOpen = ref(false);
+function insertEmoji(emo: string) {
+  const el = inputEl.value;
+  const v = messageInput.value;
+  const at = el && el.selectionStart != null ? el.selectionStart : v.length;
+  const end = el && el.selectionEnd != null ? el.selectionEnd : at;
+  messageInput.value = v.slice(0, at) + emo + v.slice(end);
+  void nextTick(() => {
+    const pos = at + emo.length;
+    inputEl.value?.focus();
+    inputEl.value?.setSelectionRange(pos, pos);
+  });
 }
 document.addEventListener('mousedown', closePopovers);
 
@@ -931,6 +953,13 @@ function toggleCollapse() {
               autocomplete="off"
               :disabled="!isLoggedIn || !connected"
             />
+            <span class="nge-chat-emoji">
+              <button class="nge-chat-share-btn nge-chat-emoji-btn" :disabled="!isLoggedIn || !connected"
+                      @mousedown.prevent @click.stop="emojiOpen = !emojiOpen" title="Add an emoji">🙂</button>
+              <span v-if="emojiOpen" class="nge-chat-emoji-grid">
+                <button v-for="e in CHAT_EMOJI" :key="e" @mousedown.prevent @click.stop="insertEmoji(e)">{{ e }}</button>
+              </span>
+            </span>
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
@@ -987,7 +1016,8 @@ function toggleCollapse() {
 .nge-chat-float--quiet .nge-chat-react-add,
 .nge-chat-float--quiet .nge-chat-fade,
 .nge-chat-float--quiet .nge-chat-new-banner,
-.nge-chat-float--quiet .nge-chat-share { display: none; }
+.nge-chat-float--quiet .nge-chat-share,
+.nge-chat-float--quiet .nge-chat-emoji { display: none; }
 .nge-chat-float--quiet .nge-chat-strip { opacity: 0; }
 .nge-chat-float .nge-chat-strip,
 .nge-chat-float .nge-chat-msg,
@@ -1638,6 +1668,28 @@ function toggleCollapse() {
 }
 .nge-chat-share-btn:hover:not(:disabled) { border-color: rgba(74, 158, 255, 0.5); }
 .nge-chat-share-btn:disabled { opacity: 0.4; cursor: default; }
+.nge-chat-emoji { position: relative; flex: 0 0 auto; margin-left: 4px; }
+.nge-chat-emoji-grid {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  display: grid;
+  grid-template-columns: repeat(8, 30px);
+  gap: 2px;
+  padding: 6px;
+  background: rgba(10, 16, 30, 0.98);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  z-index: 6;
+}
+.nge-chat-emoji-grid button {
+  width: 30px; height: 30px;
+  border: none; border-radius: 6px;
+  background: none; cursor: pointer;
+  font-size: 18px; line-height: 1;
+}
+.nge-chat-emoji-grid button:hover { background: rgba(74, 158, 255, 0.18); }
 .nge-chat-share-menu {
   position: absolute;
   left: 0;
