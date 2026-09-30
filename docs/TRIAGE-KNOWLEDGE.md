@@ -81,3 +81,9 @@ summaries.
 - The Browser pane counts as a hidden tab: requestAnimationFrame never fires
   there, so neuroglancer will not redraw or open panels in it. Verify panel
   changes on a real screen (2026-09-26, from the tutorial audit).
+- The prior build's summary said the streak chip tooltip fix (ExtensionBar.vue,
+  `.nge-streak-chip:hover` animation moving to a child) had already landed, but
+  the checked-out code still had the animation on `.nge-streak-chip` itself
+  with `.nge-streak-tip` as a sibling child, so it still spun with the flame.
+  Do not trust a prior build's summary text as proof a fix is in the tree,
+  always re-check the actual file (2026-09-30).
