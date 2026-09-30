@@ -8,6 +8,8 @@ import { ref, computed, onMounted } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from '../widgets/widget_utils';
 import { setCellComplete, saveCellType, activeCaveServer, NURRO_IMAGES } from '../widgets/lightbulb_service';
+import { planMenuCompletion, finishMenuCompletion } from '../util/menu_complete';
+import { mintShortStateLink } from '../util/state_link';
 import { useProofreadingBackendStore, useUserStatsStore } from '../store';
 import { currentCellTypes } from '../datasets';
 
@@ -561,28 +563,60 @@ async function submitGuidedComplete(group: SegmentGroup) {
   const total = toSubmit.length;
   batchProgress.value = { groupId: group.id, action: 'complete', current: 0, total, errors: [] };
 
+  // Same pipeline as "Mark as Proofread" in the Delta menu (util/menu_complete):
+  // for a Cell Library cell (retina, sandbox, MEC) the task is claimed and
+  // completed and the sheet row is written, not just the CAVE mark. Without
+  // this, a batch left its cells Available in the game and blank in the sheet.
+  // One view link for the whole batch, minted on the first sheet cell.
+  let batchLink: string | null | undefined;
+  let sheetWritten = 0;
+  const reasons: string[] = [];
   for (let i = 0; i < total; i++) {
     batchProgress.value.current = i + 1;
     const segId = toSubmit[i];
     const pt = guide.value.points[segId];
+    // Plan first, so a cell someone else holds stops before CAVE is written.
+    let plan: Awaited<ReturnType<typeof planMenuCompletion>> | null = null;
+    try { plan = await planMenuCompletion(segId); }
+    catch (e) { console.warn('[batch] completion plan failed for', segId, e); }
+    if (plan?.blocked) {
+      batchProgress.value.errors.push(segId);
+      reasons.push(`${segId}: ${plan.blocked}`);
+      continue;
+    }
     // setCellComplete returns false on CAVE auth/network/HTTP failures without
     // throwing — must check the return value or silent failures slip through
     // (CAVE never receives the write, but localStorage is still set, so the
     // lightbulb mistakenly shows complete).
     // Pass suppressCelebration=true so the per-cell overlay doesn't pop N
     // times during a batch; we fire one batch celebration after the loop.
+    // plan.cellRoot: a MEC nucleus, so the cell around it is the one marked.
     let ok = false;
     try {
-      ok = await setCellComplete(caveServer, segId, true, undefined, pt, true);
+      ok = await setCellComplete(caveServer, plan?.cellRoot ?? segId, true, undefined, pt, true,
+        plan?.cellRoot ? [segId] : []);
     } catch (e) {
       console.error('[batch] setCellComplete threw for', segId, e);
     }
-    if (!ok) batchProgress.value.errors.push(segId);
+    if (!ok) { batchProgress.value.errors.push(segId); continue; }
+    if (plan?.row) {
+      try {
+        if (batchLink === undefined) batchLink = await mintShortStateLink().catch(() => null);
+        await finishMenuCompletion(plan, { point: pt as [number, number, number], link: batchLink });
+        sheetWritten++;
+      } catch (e: any) {
+        // CAVE is saved; the claim or sheet step is what failed.
+        reasons.push(`${segId}: ${e?.message || 'the Cell Library or sheet was not updated'}`);
+      }
+      document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segId, status: 'completed' } }));
+    }
   }
   const errCount = batchProgress.value.errors.length;
   const successCount = total - errCount;
   if (guide.value?.solo) restoreSoloSnapshot();
-  flash(`Completed ${successCount}/${total}${errCount ? ` (${errCount} failed)` : ''}`);
+  if (reasons.length) console.warn('[batch] completion notes:\n' + reasons.join('\n'));
+  flash(`Completed ${successCount}/${total}${sheetWritten ? `, ${sheetWritten} written to the sheet` : ''}`
+    + `${errCount ? ` (${errCount} failed)` : ''}${reasons.length ? `. ${reasons[0].replace(/^\d+: /, '')}` : ''}`);
   batchProgress.value = null;
   guide.value = null;
 
