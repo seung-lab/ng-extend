@@ -25,6 +25,7 @@ import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
 import { pendingCompleteRequest } from '../util/complete_claim';
+import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
@@ -632,7 +633,10 @@ function openStartLink(link?: string): boolean {
   try {
     const hash = new URL(link).hash;
     if (!hash.startsWith('#!')) return false;
+    // Keep your own opacity, layout and so on over the cell view's (Settings).
+    const snap = keepDisplayEnabled() ? snapshotDisplay() : null;
     window.location.hash = hash;
+    restoreDisplayAfterLoad(snap);
     return true;
   } catch { return false; }
 }
