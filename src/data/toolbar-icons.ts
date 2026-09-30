@@ -58,7 +58,10 @@ const CAMERA_SVG      = `<svg viewBox="0.6 1.4 14.8 13.2" fill="none" style="${S
 const HELP_SVG        = `<svg viewBox="1.4 1.4 13.4 13.4" fill="none" style="${S}color:${NEUTRAL_COLOR}"><circle cx="6.6" cy="6.6" r="3.8" stroke="currentColor" stroke-width="1.6"/><path d="M9.6 9.6l3.8 3.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 // Map-pin over a crosshair tick: drop a flag exactly here.
 const ACCENT_SKY    = '#35b5ff';
-const TAG_SVG         = `<svg viewBox="0.6 0.2 14.8 15.4" fill="none" style="${S}color:${ACCENT_SKY}"><path d="M8 1.6a4.3 4.3 0 0 1 4.3 4.3c0 3-4.3 7.5-4.3 7.5S3.7 8.9 3.7 5.9A4.3 4.3 0 0 1 8 1.6z" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="5.9" r="1.5" fill="currentColor"/><path d="M8 14.4v1M5.4 15h5.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+// Scout Tags (Amy 2026-09-30): green, a mint that stays distinct from Merge.
+const ACCENT_MINT   = '#3ddc97';
+const CELLS_ICON      = `<span class="nge-cells-icon" style="${S}display:inline-block;background:${ACCENT_SKY};-webkit-mask:url(${neuronIcon}) center/contain no-repeat;mask:url(${neuronIcon}) center/contain no-repeat" aria-hidden="true"></span>`;
+const TAG_SVG         = `<svg viewBox="0.6 0.2 14.8 15.4" fill="none" style="${S}color:${ACCENT_MINT}"><path d="M8 1.6a4.3 4.3 0 0 1 4.3 4.3c0 3-4.3 7.5-4.3 7.5S3.7 8.9 3.7 5.9A4.3 4.3 0 0 1 8 1.6z" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="5.9" r="1.5" fill="currentColor"/><path d="M8 14.4v1M5.4 15h5.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 
 /** Open book — the right-edge resources menu (tutorials, site tour, links),
  *  which used to be a hamburger that said nothing about what was inside. */
@@ -91,7 +94,8 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'recap',       emoji: '📊', svg: RECAP_SVG,       label: 'Your Week in Science' },
   { id: 'leaderboard', emoji: '🏆', svg: LEADERBOARD_SVG, label: 'Leaderboard' },
   { id: 'quest',       emoji: '🧠', svg: QUEST_SVG,       label: 'Brain Quest' },
-  { id: 'cells',       emoji: '🧬', img: neuronIcon,      label: 'Cell Library' },
+  // Blue (Amy 2026-09-30): the white neuron PNG used as a mask over sky blue.
+  { id: 'cells',       emoji: '🧬', svg: CELLS_ICON,      label: 'Cell Library' },
   { id: 'batch',       emoji: '📦', svg: BATCH_SVG,       label: 'Batch Processor' },
   { id: 'screenshot',  emoji: '📷', svg: CAMERA_SVG,      label: 'Take a screenshot' },
   { id: 'help',        emoji: '🔍', svg: HELP_SVG,        label: 'Second Opinion Requests' },
@@ -124,9 +128,10 @@ export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed', 'settings'];
 // the ⌘K "Profile Settings" command, and Profile > Settings all reach it).
 // 'layers' moved to the right side 2026-08-12 (Amy: "layer side panel should
 // be farther right") — see REPOSITION_TOOLBAR_ICONS for saved prefs.
+// Cell Library first (Amy 2026-09-30): the main way in, left of Split/Merge.
 export const DEFAULT_TOOLBAR_ORDER = [
-  'split', 'merge', 'findPath', 'recap', 'leaderboard',
-  'cells', 'batch', 'help', 'tags', 'layers', 'notif', 'chat',
+  'cells', 'split', 'merge', 'findPath', 'recap', 'leaderboard',
+  'batch', 'help', 'tags', 'layers', 'notif', 'chat',
 ];
 
 /**
@@ -151,8 +156,9 @@ const AUTO_INJECT_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: 
  * `toolbarIconsInjected` alongside the injected ids; once the user reorders
  * and saves after the move, the marker keeps us from ever moving it again.
  */
-const REPOSITION_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: string; marker: string }[] = [
+const REPOSITION_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: string; first?: boolean; marker: string }[] = [
   { id: 'layers', after: 'tags', beforeFallback: 'notif', marker: 'moved:layers:right:v1' },
+  { id: 'cells', first: true, marker: 'moved:cells:first:v1' },
 ];
 
 /**
@@ -193,7 +199,9 @@ export function resolveToolbarOrder(saved: string[], injected: string[] = []): s
     if (from < 0) continue;
     order.splice(from, 1);
     let at = order.length;
-    if (spec.after && order.indexOf(spec.after) >= 0) {
+    if (spec.first) {
+      at = 0;
+    } else if (spec.after && order.indexOf(spec.after) >= 0) {
       at = order.indexOf(spec.after) + 1;
     } else if (spec.beforeFallback && order.indexOf(spec.beforeFallback) >= 0) {
       at = order.indexOf(spec.beforeFallback);

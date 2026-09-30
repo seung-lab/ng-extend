@@ -82,6 +82,9 @@ async function switchTo(ds: DatasetEntry) {
   if (accessOf(ds) === 'none') return;
   // Close the switcher and play "Now entering" (it survives the reload a
   // curated dataset triggers). Let it paint before the switch blocks.
+  // Close the Cell Library first (Amy 2026-09-30): it belongs to the dataset
+  // being left, and reloading under it mid-switch showed the wrong cells.
+  document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
   startDatasetTransition(ds);
   emit('hide');
   await new Promise(r => setTimeout(r, 60));
@@ -115,8 +118,7 @@ async function switchTo(ds: DatasetEntry) {
               <div class="nge-ds-card-desc">{{ DATASET_GROUPS[c.key].description }}</div>
             </div>
             <div v-if="groupActive(c)" class="nge-ds-badge">Active</div>
-            <span class="nge-ds-versions">
-              {{ c.members.length }} versions
+            <span class="nge-ds-versions" :title="`${c.members.length} versions`" :aria-label="`${c.members.length} versions`">
               <svg class="nge-ds-chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
           </div>
@@ -242,13 +244,13 @@ async function switchTo(ds: DatasetEntry) {
 
 /* A group (MICrONS): one card that opens into a plain list of versions. */
 .nge-ds-group { display: flex; flex-direction: column; gap: 4px; }
-.nge-ds-group-card { padding-right: 112px; }
-/* The open/close control: a clear pill, not a tiny glyph (Ames). */
+.nge-ds-group-card { padding-right: 46px; }
+/* The open/close control: just the caret (Amy 2026-09-30: the "3 versions"
+   pill overlapped the description). The count is in its tooltip. */
 .nge-ds-versions {
   position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 9px; border-radius: 999px;
-  font-size: 11px; font-weight: 600; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border-radius: 999px;
   color: #9fdcff; background: rgba(100, 200, 255, 0.12);
   border: 1px solid rgba(100, 200, 255, 0.4);
   transition: background 0.15s ease, border-color 0.15s ease;

@@ -210,6 +210,7 @@ onMounted(() => {
 
   // Mobile post-login landing: LoginModal asks for the Cell Library so a
   // fresh login never stares at an empty forced-3D view.
+  document.addEventListener('nge:close-cell-library', () => { showCellLibrary.value = false; });
   document.addEventListener('nge:open-cell-library', (() => {
     cellLibraryInitialTab.value = undefined;
     showCellLibrary.value = true;
@@ -1763,8 +1764,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-glow { 0%, 100% { filter: none; } 40% { filter: drop-shadow(0 0 5px #ffe9a8) brightness(1.6); } }
 
 /* Cell Library (neuron): a slow sway with a glow; click fires it. */
-#extensionBar [data-icon-id="cells"]:hover img { animation: nge-ti-neuron 1.2s ease-in-out infinite; }
-#extensionBar [data-icon-id="cells"].nge-pop img { animation: nge-ti-fire 0.6s ease-out; }
+#extensionBar [data-icon-id="cells"]:hover .nge-cells-icon { animation: nge-ti-neuron 1.2s ease-in-out infinite; }
+#extensionBar [data-icon-id="cells"].nge-pop .nge-cells-icon { animation: nge-ti-fire 0.6s ease-out; }
 @keyframes nge-ti-neuron { 0%, 100% { transform: rotate(0); filter: drop-shadow(0 0 0 rgba(126, 232, 255, 0)); } 50% { transform: rotate(8deg); filter: drop-shadow(0 0 4px rgba(126, 232, 255, 0.8)); } }
 @keyframes nge-ti-fire { 0% { transform: scale(1); filter: none; } 30% { transform: scale(1.25); filter: brightness(2.2) drop-shadow(0 0 8px #7ee8ff); } 100% { transform: scale(1); filter: none; } }
 
