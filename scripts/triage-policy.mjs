@@ -1,7 +1,10 @@
 export const SHA=/^[0-9a-f]{40}$/;
 export const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function releaseCommand(text) {
- const m=String(text).trim().match(/^(good|ship to test|revert) ([a-f0-9]{12})[.!]?$/i);
+ // Slack formatting is not part of the command: a copied bold `*good abc...*`
+ // (the announcement shows it in bold) or `code` must still count (Ames 2026-09-30).
+ const plain=String(text).replace(/[*_~`]/g,'').replace(/\s+/g,' ').trim();
+ const m=plain.match(/^(good|ship to test|revert) ([a-f0-9]{12})[.!]?$/i);
  return m ? {mode:{good:'final','ship to test':'live_test',revert:'revert'}[m[1].toLowerCase()],shortSha:m[2].toLowerCase()} : null;
 }
 export function permittedPath(path) {

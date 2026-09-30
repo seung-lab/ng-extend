@@ -18,3 +18,8 @@ test('model artifacts cannot alter trusted workflow, server or authentication co
 test('pilot gateway and backend stay outside automated model publishing',()=>{
  for(const path of ['src/pilot_actions.ts','src/functions_base.ts','functions/index.js','supabase-pilot-access.sql']) assert.equal(permittedPath(path),false);
 });
+test('release commands survive Slack formatting',()=>{
+ for (const txt of ['*good b1f94285ae47*','`good b1f94285ae47`','_good b1f94285ae47_','good  b1f94285ae47','*good* b1f94285ae47']) assert.deepEqual(releaseCommand(txt),{mode:'final',shortSha:'b1f94285ae47'});
+ assert.equal(releaseCommand('*good*'),null);
+ assert.equal(releaseCommand('good b1f94285ae47 and also fix the color'),null);
+});
