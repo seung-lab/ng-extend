@@ -305,14 +305,48 @@ const REC_LABEL = {
   bug_fix_spec: 'Bug fix spec', new_feature: 'New feature',
 };
 
+const SPEC_LABELS = ['Symptom', 'What', 'Where', 'Cause', 'Fix', 'Scope', 'Severity'];
+
+/** "Symptom: ... Where: ..." (one per line, or run together on one line, as
+ *  older proposals were) -> [{label, text}]. */
+function specFields(spec) {
+  const split = String(spec || '').replace(new RegExp(`\\s+(?=(${SPEC_LABELS.join('|')})\\s*:)`, 'g'), '\n');
+  return split.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    const m = line.match(new RegExp(`^(${SPEC_LABELS.join('|')})\\s*:\\s*(.*)$`, 'i'));
+    return m ? { label: m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(), text: m[2] } : { label: null, text: line };
+  });
+}
+
+/** The first two sentences; the full note is in the Admin Hub. */
+function brief(text, sentences = 2) {
+  const parts = String(text || '').trim().split(/(?<=[.!?])\s+(?=[A-Z"'(])/);
+  return parts.length <= sentences ? parts.join(' ') : parts.slice(0, sentences).join(' ') + ' …';
+}
+
+function specText(spec) {
+  const fields = specFields(spec);
+  const out = [];
+  const tail = [];
+  for (const f of fields) {
+    if (f.label === 'Scope' || f.label === 'Severity') { tail.push(`${f.label}: *${f.text.replace(/[.\s]+$/, '')}*`); continue; }
+    const text = f.label === 'Where'
+      // Only things that look like paths go in code style; prose stays prose.
+      ? f.text.split(/,\s*/).map(p => p.trim()).map(p => /^[\w./-]+\.\w+(:\d+(-\d+)?)?$/.test(p) ? '`' + p + '`' : p).join(', ')
+      : f.text;
+    out.push(f.label ? `• *${f.label}:* ${text}` : `• ${text}`);
+  }
+  if (tail.length) out.push(tail.join('   ·   '));
+  return out.join('\n').slice(0, 2800);
+}
+
 function proposalText(row, footer) {
   return [
     `*Triage proposal: ${REC_LABEL[row.recommendation] ?? row.recommendation}*`,
     row.source_excerpt ? `> ${row.source_excerpt}` : null,
-    row.rationale ? `_${row.rationale}_` : null,
-    row.proposed_message ? `Proposed reply: "${row.proposed_message}"` : null,
-    row.spec ? '```' + row.spec.slice(0, 2500) + '```' : null,
-    footer,
+    row.rationale ? brief(row.rationale) : null,
+    row.proposed_message ? `*Proposed reply:* "${row.proposed_message}"` : null,
+    row.spec ? specText(row.spec) : null,
+    footer ? `\n${footer}` : null,
   ].filter(Boolean).join('\n');
 }
 

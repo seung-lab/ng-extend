@@ -195,4 +195,18 @@ function authorizeData(input, ctx) {
   query.set('select', select);
   return {table,method,query,body:Array.isArray(input.body) ? rows : rows[0]};
 }
-module.exports={authorizeData,PUBLIC_USER_COLUMNS};
+/**
+ * Editing your own profile identity (username, display name, flag, bio,
+ * avatar) is not pilot gameplay: any signed in player may do it. The pilot
+ * gate still covers everything else, including the client-reported stats on
+ * the same row. Ownership is enforced by authorizeData (id = own row).
+ */
+const PERSONAL_PROFILE_FIELDS = new Set(['username','display_name','flag','bio','favorite_badge','avatar_json',
+  'avatar_thumbnail_url','avatar_coins_spent','avatar_updated_at','updated_at']);
+function isPersonalProfileEdit(input) {
+  if (!input || input.table !== 'users' || String(input.method || '').toUpperCase() !== 'PATCH') return false;
+  const rows = Array.isArray(input.body) ? input.body : [input.body];
+  return rows.length === 1 && rows[0] && typeof rows[0] === 'object'
+    && Object.keys(rows[0]).length > 0 && Object.keys(rows[0]).every(k => PERSONAL_PROFILE_FIELDS.has(k));
+}
+module.exports={authorizeData,isPersonalProfileEdit,PUBLIC_USER_COLUMNS};

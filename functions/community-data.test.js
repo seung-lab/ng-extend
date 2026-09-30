@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {authorizeData,PUBLIC_USER_COLUMNS}=require('./community-data');
+const {authorizeData,isPersonalProfileEdit,PUBLIC_USER_COLUMNS}=require('./community-data');
 const a='11111111-1111-4111-8111-111111111111', b='22222222-2222-4222-8222-222222222222';
 const user={who:{email:'player@example.invalid',caveId:123},me:{id:a,display_name:'Player'},groups:[4],isAdmin:false,now:'2026-09-27T00:00:00.000Z'};
 const anon={groups:[],isAdmin:false,now:user.now};
@@ -122,4 +122,14 @@ test('user settings are owner only, bounded, and upsert on user_id',()=>{
  assert.throws(()=>plan('user_settings','POST','on_conflict=user_id',{settings:{big:'x'.repeat(40000)}}),/too large/);
  assert.throws(()=>plan('user_settings','DELETE',''),/replaced/);
  assert.throws(()=>plan('user_settings','POST','on_conflict=id',{settings:{}}),/conflict/);
+});
+test('username and profile edits are personal; stats and other tables are not',()=>{
+ assert.equal(isPersonalProfileEdit({table:'users',method:'PATCH',body:{username:'amy_r',updated_at:'x'}}),true);
+ assert.equal(isPersonalProfileEdit({table:'users',method:'PATCH',body:{flag:'🇺🇸',bio:'hi'}}),true);
+ assert.equal(isPersonalProfileEdit({table:'users',method:'PATCH',body:{username:'a',total_edits:999}}),false);
+ assert.equal(isPersonalProfileEdit({table:'users',method:'PATCH',body:{last_edit_at:'x'}}),false);
+ assert.equal(isPersonalProfileEdit({table:'chat_messages',method:'POST',body:{text:'x'}}),false);
+ assert.equal(isPersonalProfileEdit({table:'users',method:'PATCH',body:{}}),false);
+ const p=plan('users','PATCH',`id=eq.${b}`,{username:'amy_r'});
+ assert.equal(p.query.get('and'),`(id.eq.${a})`);
 });

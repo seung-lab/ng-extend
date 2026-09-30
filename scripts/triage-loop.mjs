@@ -355,10 +355,17 @@ Verify against the code before claiming a cause. Start the rationale with
 "Confirmed:", "Verified in code:" or "Code backed:" only when you actually
 read the code that proves it; otherwise say what is uncertain.
 
-Spec format, one field per line:
-  bug_fix_spec: Symptom: / Where: / Cause: / Fix: / Scope: (small|medium|large) / Severity: (low|medium|high)
-  new_feature:  What: / Where: / Fix: / Scope:
-Name real files, and line numbers only if you checked them.
+Keep it short: a busy person reads these on a phone.
+- rationale: at most 2 sentences, under 45 words in total. Say what you
+  found and why it matters. No file paths, line numbers, CSS selectors or
+  code here; those belong in the spec's Where line.
+- proposed_message: at most 3 short sentences.
+- spec: one field per line, separated by a newline character ("\\n"), each
+  line under 25 words, the whole spec under 110 words:
+    bug_fix_spec: Symptom: / Where: / Cause: / Fix: / Scope: (small|medium|large) / Severity: (low|medium|high)
+    new_feature:  What: / Where: / Fix: / Scope:
+  Where: lists file paths only, comma separated, with line numbers only if
+  you checked them. Never put two fields on the same line.
 
 Writing style for every field: plain sentences, no em or en dashes (use
 commas and periods), no marketing tone.
