@@ -1588,7 +1588,7 @@ exports.guideFeedback = onRequest(
 // browser never sees. Automation (GitHub Actions) keeps using its own
 // service key and does not come through here.
 // ════════════════════════════════════════════════════════════════════════
-const { authorizeData } = require("./community-data");
+const { authorizeData, isPersonalProfileEdit } = require("./community-data");
 const EW_SB = "https://javthknksdcrlhiaaptj.supabase.co/rest/v1/";
 const EW_ORIGINS = [/^https:\/\/([a-z0-9-]+-dot-)?brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/, /^http:\/\/localhost(:\d+)?$/];
 const ewIdentityCache = new Map(); // token -> { email, caveId, at }
@@ -1773,7 +1773,9 @@ exports.ewCommunityData = onRequest(
       const context={...ctx,groups,now:new Date().toISOString()};
       const read=["GET","HEAD"].includes(String(input.method||"GET").toUpperCase());
       // Own settings are personal, not pilot data: any signed in player may save them.
-      if(!read && !(input.table==="users" && input.method==="POST") && input.table!=="user_settings") requirePilot(context);
+      // Personal, not pilot data: creating your profile, your own settings, and
+      // your own username / name / flag / bio / avatar.
+      if(!read && !(input.table==="users" && input.method==="POST") && input.table!=="user_settings" && !isPersonalProfileEdit(input)) requirePilot(context);
       const plan=authorizePilotData(input,context)||authorizeData(input,context);
       if(plan.table==="special_badge_awards" && !isAdmin && plan.body) {
         const rows=Array.isArray(plan.body)?plan.body:[plan.body];
