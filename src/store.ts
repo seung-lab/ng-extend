@@ -5121,6 +5121,31 @@ function readMentionNotifyPref(): boolean {
  *  exactly these, so keep functions/community-data.js in step. */
 export const CHAT_REACTION_EMOJI = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
 
+/** Chat messages are capped at this many characters, not counting links
+ *  (a shared view's link and screenshot URL shouldn't get cut off). */
+export const CHAT_MESSAGE_MAX_LENGTH = 140;
+const CHAT_LINK_RE = /https?:\/\/\S+/g;
+
+/** Trims the non-link text of a chat message down to CHAT_MESSAGE_MAX_LENGTH,
+ *  leaving any http(s) links whole. Runs in sendMessage so the limit holds
+ *  even if the textarea's maxlength was bypassed. */
+function clampChatMessage(text: string): string {
+  CHAT_LINK_RE.lastIndex = 0;
+  let out = '';
+  let plainLen = 0;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = CHAT_LINK_RE.exec(text))) {
+    const plain = text.slice(lastIndex, match.index).slice(0, Math.max(0, CHAT_MESSAGE_MAX_LENGTH - plainLen));
+    out += plain;
+    plainLen += plain.length;
+    out += match[0];
+    lastIndex = CHAT_LINK_RE.lastIndex;
+  }
+  out += text.slice(lastIndex).slice(0, Math.max(0, CHAT_MESSAGE_MAX_LENGTH - plainLen));
+  return out;
+}
+
 export const useChatStore = defineStore('chat', () => {
   const chatMessages = ref<ChatMessage[]>([]);
   const connected = ref(false);
@@ -5578,10 +5603,11 @@ export const useChatStore = defineStore('chat', () => {
     const backend = useProofreadingBackendStore();
     const name = backend.chatHandle;
     const rank = backend.isAdmin ? 'admin' : 'player';
+    const trimmedText = clampChatMessage(text);
     // Persist for history so the last messages show on next open (best-effort;
     // no-ops if the chat_messages table isn't present).
     supabase.from('chat_messages')
-      .insert({ name, rank, text, dataset: currentDatasetName(), notification_id: notificationId })
+      .insert({ name, rank, text: trimmedText, dataset: currentDatasetName(), notification_id: notificationId })
       .then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); });
   }
 

@@ -7,7 +7,7 @@
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI } from '../store';
+import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI, CHAT_MESSAGE_MAX_LENGTH } from '../store';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
@@ -27,7 +27,7 @@ const { chatMessages, connected, unreadMessages } = storeToRefs(chatStore);
 const backendStore = useProofreadingBackendStore();
 
 const messageInput = ref('');
-const inputEl = ref<HTMLInputElement | null>(null);
+const inputEl = ref<HTMLTextAreaElement | null>(null);
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const isScrolledUp = ref(false);
 const collapsed = ref(false);
@@ -325,6 +325,20 @@ function send() {
   mentionQuery.value = null;
   inputEl.value?.focus();
 }
+
+/** Grows the input textarea to fit what's typed, up to a small max height,
+ *  then scrolls inside it. Runs on every change, not just typing, so
+ *  mention picks, emoji inserts and clearing on send all resize it too. */
+function autoGrowInput() {
+  const el = inputEl.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+watch(messageInput, () => nextTick(autoGrowInput));
+// Re-run after uncollapsing: the textarea is torn down while collapsed, so a
+// draft typed before collapsing renders at the default single-line height.
+watch(collapsed, (v) => { if (!v) nextTick(autoGrowInput); });
 
 // ── @ autocomplete (Ames 2026-09-28) ──
 // Typing "@" offers people: online now first, then recent speakers, then any
@@ -938,10 +952,12 @@ function toggleCollapse() {
                 <button @click="shareView(true)">📷 Share view + screenshot</button>
               </span>
             </span>
-            <input
+            <textarea
               ref="inputEl"
               v-model="messageInput"
               class="nge-chat-input"
+              rows="1"
+              :maxlength="CHAT_MESSAGE_MAX_LENGTH"
               :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : 'Message... (@ to mention)'"
               @keydown.stop="onInputKeydown"
               @keyup.stop
@@ -952,7 +968,7 @@ function toggleCollapse() {
               spellcheck="true"
               autocomplete="off"
               :disabled="!isLoggedIn || !connected"
-            />
+            ></textarea>
             <span class="nge-chat-emoji">
               <button class="nge-chat-share-btn nge-chat-emoji-btn" :disabled="!isLoggedIn || !connected"
                       @mousedown.prevent @click.stop="emojiOpen = !emojiOpen" title="Add an emoji">🙂</button>
@@ -1493,9 +1509,13 @@ function toggleCollapse() {
   color: #e0e4ec;
   font-size: 14.5px;
   font-family: inherit;
+  line-height: 1.35;
   outline: none;
   transition: border-color 0.12s;
   box-sizing: border-box;
+  resize: none;
+  max-height: 96px;
+  overflow-y: auto;
 }
 .nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.3); }
 
@@ -1653,7 +1673,7 @@ function toggleCollapse() {
 .nge-chat-mention-dot--on { background: #4ad07a; box-shadow: 0 0 6px rgba(74, 208, 122, 0.7); }
 
 /* ── Share my view ── */
-.nge-chat-input-row { display: flex; align-items: center; gap: 4px; }
+.nge-chat-input-row { display: flex; align-items: flex-end; gap: 4px; }
 .nge-chat-input-row .nge-chat-input { flex: 1; min-width: 0; }
 .nge-chat-share { position: relative; flex-shrink: 0; }
 .nge-chat-share-btn {

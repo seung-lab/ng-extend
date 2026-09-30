@@ -88,3 +88,9 @@ summaries.
   also contains the tooltip. Found in ExtensionBar.vue's `.nge-streak-chip`
   flame hover, which was spinning the `.nge-streak-tip` card with it
   (2026-09-30, streak tooltip fix).
+- Chat's "share my view" feature (postView in ChatPanel.vue) appends a link
+  (and maybe a screenshot URL) after whatever the user typed, so a character
+  cap on chat messages must exclude URLs or it truncates the link itself.
+  `clampChatMessage` in store.ts strips `https?:\/\/\S+` matches before
+  counting length, then trims only the surrounding text (2026-09-30, chat
+  box grow + character limit build, from the approver's "exclude links" note).
