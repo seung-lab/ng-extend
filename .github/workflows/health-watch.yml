@@ -1,0 +1,47 @@
+name: Health Watch
+
+# Hourly: are spreadsheet write-back, the CAVE tables and players' writes
+# working? Posts to Slack only when something breaks (once, repeated at most
+# every 6 hours) and once when it recovers. See scripts/health-watch.mjs.
+#
+# Must also exist on main (with a [skip ci] commit) for the cron to fire.
+
+on:
+  schedule:
+    - cron: '37 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print the result and any alert instead of posting
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Check and alert
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID || 'C0BG5CN71C3' }}
+          ALERT_SLACK_ID: U02FH1DRC
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node scripts/health-watch.mjs
