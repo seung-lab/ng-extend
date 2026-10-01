@@ -59,16 +59,27 @@ async function checkSheets() {
 async function checkCave() {
   const bad = [];
   let good = 0;
-  for (const ds of CAVE_TABLES) {
-    for (const t of ds.tables) {
-      try {
-        const r = await timed(`${ds.server}/annotation/api/v2/aligned_volume/${ds.vol}/table/${t}`, {
-          headers: { Authorization: `Bearer ${env.CAVE_SERVICE_TOKEN}` },
-        });
-        if (r.ok) good++; else bad.push(`${ds.label} ${t}: ${r.status}`);
-      } catch (e) { bad.push(`${ds.label} ${t}: ${e.message}`); }
-    }
+  // One slow answer is not an outage: the 2026-10-01 alert was a single 30 s
+  // timeout on MICrONS that was fine the next hour. Try three times, a
+  // minute apart, and only report a table that fails every time.
+  const once = async (ds, t) => {
+    try {
+      const r = await timed(`${ds.server}/annotation/api/v2/aligned_volume/${ds.vol}/table/${t}`, {
+        headers: { Authorization: `Bearer ${env.CAVE_SERVICE_TOKEN}` },
+      });
+      return r.ok ? null : String(r.status);
+    } catch (e) { return e.message; }
+  };
+  let todo = CAVE_TABLES.flatMap(ds => ds.tables.map(t => ({ ds, t, err: '' })));
+  const total = todo.length;
+  for (let attempt = 1; attempt <= 3 && todo.length; attempt++) {
+    if (attempt > 1) await new Promise(r => setTimeout(r, 60000));
+    const still = [];
+    for (const x of todo) { x.err = await once(x.ds, x.t); if (x.err) still.push(x); }
+    todo = still;
   }
+  good = total - todo.length;
+  for (const x of todo) bad.push(`${x.ds.label} ${x.t}: ${x.err} (3 tries)`);
   return bad.length ? { ok: false, detail: bad.join('; ') } : { ok: true, detail: `${good} table(s) answer` };
 }
 
@@ -122,8 +133,10 @@ async function lastHealthMessage() {
   const signature = failing.map(([n]) => n).sort().join('|');
 
   const last = await lastHealthMessage().catch(e => { console.warn(e.message); return null; });
-  const lastWasFailure = !!last && (last.text || '').includes('🚨');
   const lastSig = last?.text?.match(/\{sig:([^}]*)\}/)?.[1] ?? '';
+  // Slack hands the emoji back as :rotating_light:, so the 🚨 itself cannot
+  // be matched; an alert is a message with a non-empty signature.
+  const lastWasFailure = !!last && lastSig !== '';
   const lastAt = last ? Number(last.ts) * 1000 : 0;
 
   let text = null;
