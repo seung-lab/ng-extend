@@ -144,6 +144,43 @@ async function checkAnthropicKey() {
   } catch (e) { return { ok: true, detail: `not checked (${e.message})` }; }
 }
 
+/**
+ * Robot spend since the last top-up. The credit is prepaid from Ames's own
+ * card and she tops it up by hand (no auto-reload), so warn before it runs
+ * out. Anthropic does not let a normal key read the balance; each robot run
+ * logs its own total_cost_usd, so add those up since ANTHROPIC_TOPUP_AT and
+ * compare with ANTHROPIC_TOPUP_USD. An estimate: the Guide and Slack bot
+ * spend a little on the same balance and are not counted.
+ */
+async function robotSpend() {
+  const token = env.GITHUB_TOKEN;
+  const since = env.ANTHROPIC_TOPUP_AT, budget = Number(env.ANTHROPIC_TOPUP_USD || 0);
+  if (!token || !since || !budget) return null;
+  const gh = (path, raw) => timed(`https://api.github.com/repos/seung-lab/ng-extend/${path}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'eyewire-health-watch' },
+    redirect: 'follow',
+  }).then(r => { if (!r.ok) throw new Error(`GitHub ${r.status}`); return raw ? r.text() : r.json(); });
+  let spent = 0, runs = 0;
+  for (const wf of ['triage-propose.yml', 'triage-implement.yml']) {
+    for (let page = 1; page <= 5; page++) {
+      const j = await gh(`actions/workflows/${wf}/runs?status=completed&created=%3E%3D${encodeURIComponent(since)}&per_page=100&page=${page}`);
+      const list = j.workflow_runs || [];
+      for (const run of list) {
+        // A run that did no AI work finishes in seconds; skip it without fetching logs.
+        if (new Date(run.updated_at) - new Date(run.run_started_at || run.created_at) < 45000) continue;
+        const jobs = (await gh(`actions/runs/${run.id}/jobs`)).jobs || [];
+        const model = jobs.find(x => x.name === 'model' && x.conclusion !== 'skipped');
+        if (!model) continue;
+        const log = await gh(`actions/jobs/${model.id}/logs`, true).catch(() => '');
+        const costs = [...log.matchAll(/"total_cost_usd":\s*([0-9.]+)/g)].map(m => Number(m[1]));
+        if (costs.length) { spent += Math.max(...costs); runs++; }
+      }
+      if (list.length < 100) break;
+    }
+  }
+  return { spent, runs, budget, since };
+}
+
 async function checkPlayerFailures() {
   const since = new Date(Date.now() - 3600 * 1000).toISOString();
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -192,6 +229,29 @@ async function lastHealthMessage() {
     'Anthropic key': await checkAnthropicKey(),
   };
   for (const [name, r] of Object.entries(results)) console.log(`[health] ${r.ok ? 'OK  ' : 'FAIL'} ${name}: ${r.detail}`);
+  // Credit warning: its own message, once per threshold per top-up.
+  const spend = await robotSpend().catch(e => { console.warn('[health] spend not counted:', e.message); return null; });
+  if (spend) {
+    const pct = Math.round((spend.spent / spend.budget) * 100);
+    console.log(`[health] Robot spend since ${spend.since}: $${spend.spent.toFixed(2)} of $${spend.budget.toFixed(2)} (${pct}%) over ${spend.runs} run(s)`);
+    const level = pct >= 90 ? 90 : pct >= 75 ? 75 : 0;
+    if (level) {
+      const tag = `{credit:${level}:${spend.since}}`;
+      const history = await fetch(`https://slack.com/api/conversations.history?channel=${CHANNEL}&limit=200`, {
+        headers: { Authorization: `Bearer ${env.SLACK_BOT_TOKEN}` } }).then(r => r.json()).catch(() => ({}));
+      const already = (history.messages || []).some(m => m.bot_id && (m.text || '').includes(tag));
+      if (!already) {
+        const left = Math.max(0, spend.budget - spend.spent);
+        const text = `💳 <@${TAG}> the robot has used about *$${spend.spent.toFixed(2)} of your $${spend.budget.toFixed(2)}* Anthropic credit `
+          + `(${pct}%, ${spend.runs} runs since the last top-up), so roughly $${left.toFixed(2)} is left. `
+          + `${level >= 90 ? 'It will stop soon: ' : ''}top up at console.anthropic.com when you want it to keep going, then tell Claude the amount. `
+          + `This is an estimate; the Guide and Slack bot add a little. ${tag}`;
+        if (DRY) console.log('[health] DRY RUN, would post:\n' + text);
+        else { await slack('chat.postMessage', { channel: CHANNEL, text, unfurl_links: false }); console.log('[health] posted credit warning'); }
+      }
+    }
+  }
+
   const failing = Object.entries(results).filter(([, r]) => !r.ok);
   const signature = failing.map(([n]) => n).sort().join('|');
 
