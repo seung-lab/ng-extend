@@ -46,6 +46,7 @@
     "@supabase/supabase-js": "^2.98.0",
     "dompurify": "3.4.16",
     "marked": "^15.0.7",
+    "modern-screenshot": "^4.7.0",
     "neuroglancer": "github:seung-lab/neuroglancer#737a902c8740ff37500ba0f2f658beacbbdd7c5a",
     "pinia": "^2.0.32",
     "vue": "^3.2.47",

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {capturePage} from '../util/page_capture';
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 
 import nurroAtHome from '../../static/nurro/nurro-at-home.png';
@@ -118,6 +119,19 @@ const errorMsg = ref('');
 const dialogHidden = ref(false);
 
 async function captureWholeScreen(): Promise<HTMLCanvasElement> {
+  // First choice: the app draws the page itself, so the browser has nothing
+  // to ask (Ames 2026-10-01: "avoid the chrome permission every time").
+  dialogHidden.value = true;
+  document.body.classList.add('nge-shot-capturing');
+  try {
+    await new Promise(r => setTimeout(r, 60));
+    return await capturePage();
+  } catch (e) {
+    console.warn('[screenshot] drawing the page failed, asking the browser to capture the tab instead:', e);
+  } finally {
+    dialogHidden.value = false;
+    document.body.classList.remove('nge-shot-capturing');
+  }
   const md = navigator.mediaDevices as any;
   if (!md?.getDisplayMedia) throw new Error('This browser cannot capture the screen. Untick "Whole screen" to capture the viewer only.');
   // Hide this dialog so it is not in the picture, and the blurred pop-up that
@@ -943,7 +957,7 @@ async function download() {
                       @pointercancel="onPointerUp" />
               <div v-if="wholeScreen && !screenCap" class="nge-shotdlg-wait">
                 <b>Whole screen capture</b>
-                <span>Press Capture screen. Your browser will ask to share this tab, then the picture appears here, ready to draw on.</span>
+                <span>Press Capture screen. The picture appears here, ready to draw on.</span>
               </div>
               <div v-if="busy && screenCap" class="nge-shotdlg-wait nge-shotdlg-wait--busy">
                 <i class="nge-shotdlg-spin" aria-hidden="true" />
@@ -988,9 +1002,9 @@ async function download() {
         <section class="nge-shotdlg-sec">
           <h3 class="nge-shotdlg-sechead">Options</h3>
           <div class="nge-shotdlg-checks">
-            <label class="nge-shotdlg-check" title="Captures this tab as you see it, open panels included. The browser asks once which tab to share; pick this one.">
+            <label class="nge-shotdlg-check" title="A picture of the page as you see it, open panels included.">
               <input type="checkbox" v-model="wholeScreen" />
-              <span>Whole screen, with panels (the browser will ask to share this tab)</span>
+              <span>Whole screen, with panels</span>
             </label>
             <label class="nge-shotdlg-check" :class="{ 'is-off': wholeScreen }">
               <input type="checkbox" v-model="transparent" :disabled="wholeScreen" />
