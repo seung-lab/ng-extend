@@ -927,7 +927,7 @@ function toggleCollapse() {
           <div class="nge-chat-input-row">
             <span class="nge-chat-share">
               <button class="nge-chat-share-btn" :disabled="!isLoggedIn || !connected || sharing"
-                      @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat"><template v-if="sharing">…</template><svg v-else class="nge-chat-share-pin" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 14.5s4.5-4.2 4.5-8A4.5 4.5 0 0 0 3.5 6.5c0 3.8 4.5 8 4.5 8z"/><circle cx="8" cy="6.4" r="1.6"/></svg></button>
+                      @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat"><template v-if="sharing">…</template><svg v-else class="nge-chat-share-pin" viewBox="0 0 16 16" width="20" height="20" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M8 15.4S2.6 10.5 2.6 6.3a5.4 5.4 0 0 1 10.8 0C13.4 10.5 8 15.4 8 15.4zM8 8.4a2.1 2.1 0 1 0 0-4.2 2.1 2.1 0 0 0 0 4.2z"/></svg></button>
               <span v-if="shareMenuOpen" class="nge-chat-share-menu">
                 <button @click="shareView(false)">📍 Share my view</button>
                 <button @click="shareView(true)">📷 Share view + screenshot</button>

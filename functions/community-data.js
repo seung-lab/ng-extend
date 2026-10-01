@@ -7,7 +7,7 @@ const OWN_STORAGE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/
 // Chat reactions on offer; keep in step with CHAT_REACTION_EMOJI in src/store.ts.
 const REACTION_EMOJI = new Set(['👍', '❤️', '🔥', '😂', '🎉', '🧠']);
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
-const PUBLIC_USER_COLUMNS = 'id,display_name,flag,bio,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,created_at,updated_at,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,cave_user_id,username,last_edit_at,last_cave_sync_at,total_annotations';
+const PUBLIC_USER_COLUMNS = 'id,display_name,flag,bio,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,created_at,updated_at,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,cave_user_id,username,last_edit_at,last_cave_sync_at,total_annotations,favorite_badges';
 const columns = {
   users: PUBLIC_USER_COLUMNS+',middleauth_email',
   admins: 'id,user_id,email,created_at',
@@ -31,7 +31,7 @@ const columns = {
   user_views: 'user_id,dataset,state,updated_at',
 };
 const writable = {
-  users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,total_annotations',
+  users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,total_annotations,favorite_badges',
   working_links: 'title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,updated_at,screenshot_url',
   // Nothing from the client is kept: every field is set below from identity.
   chat_presence: 'last_seen_at',
@@ -154,6 +154,10 @@ function authorizeData(input, ctx) {
       else if ('cave_user_id' in value) row.cave_user_id = ctx.who.caveId || null;
       // Compatibility: own counters remain client-reported until CAVE-authoritative
       // reconciliation is available. They can never be written for another user.
+      if ('favorite_badges' in row) {
+        const f = row.favorite_badges;
+        if (!Array.isArray(f) || f.length > 5 || f.some(x => typeof x !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(x))) fail(400, 'Invalid favorites');
+      }
       for (const field of ['total_edits','total_merges','total_splits','cells_completed','current_streak','longest_streak','total_annotations']) {
         if (field in row && (!Number.isSafeInteger(row[field]) || row[field]<0 || row[field]>1000000000)) fail(400,'Invalid counter');
       }

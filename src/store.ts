@@ -4930,6 +4930,31 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch (e: any) {
       console.warn('[backend] loadFavoriteBadge error:', e.message);
     }
+    silverBadgeSlugs.value = await loadSilverBadges(userId.value);
+  }
+
+  // Silver favorites (Ames 2026-10-01): one gold favorite, plus a row of
+  // silver ones. users.favorite_badges, a JSON list of badge slugs. Read on
+  // its own so a profile still loads if the column is not there.
+  const MAX_SILVER_BADGES = 5;
+  const silverBadgeSlugs: Ref<string[]> = ref([]);
+  async function loadSilverBadges(id: string | null): Promise<string[]> {
+    if (!id) return [];
+    try {
+      const { data, error } = await supabase.from('users').select('favorite_badges').eq('id', id).single();
+      const list = (data as any)?.favorite_badges;
+      return !error && Array.isArray(list) ? list.filter((x: any) => typeof x === 'string').slice(0, MAX_SILVER_BADGES) : [];
+    } catch { return []; }
+  }
+  async function saveSilverBadges(list: string[]) {
+    silverBadgeSlugs.value = list.slice(0, MAX_SILVER_BADGES);
+    if (!userId.value) return;
+    try {
+      const { error } = await supabase.from('users').update({ favorite_badges: silverBadgeSlugs.value }).eq('id', userId.value);
+      if (error) console.warn('[backend] saveSilverBadges failed:', error.message);
+    } catch (e: any) {
+      console.warn('[backend] saveSilverBadges error:', e.message);
+    }
   }
 
   async function saveFavoriteBadge(slug: string) {
@@ -4979,6 +5004,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     uploadAdminImage, uploadAdminIcon, uploadHelpScreenshot, validateAdminImage, MAX_ADMIN_IMAGE_BYTES,
     // Favorite Badge
     favoriteBadgeSlug, loadFavoriteBadge, saveFavoriteBadge,
+    silverBadgeSlugs, loadSilverBadges, saveSilverBadges, MAX_SILVER_BADGES,
   };
 });
 

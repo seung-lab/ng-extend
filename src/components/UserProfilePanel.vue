@@ -49,6 +49,8 @@ const annotationsPlaced = computed(() => viewingOtherUser.value ? (otherAnnotati
 async function loadOtherUser() {
   if (viewingOtherUser.value && props.viewUserId) {
     otherUserProfile.value = await backendStore.loadUserProfile(props.viewUserId);
+    otherSilver.value = [];
+    void backendStore.loadSilverBadges(props.viewUserId).then(l => { otherSilver.value = l; });
     otherAnnotations.value = null;
     void loadAnnotationTotal(props.viewUserId).then(n => { otherAnnotations.value = n; });
   } else {
@@ -459,7 +461,8 @@ const latestEarnedBadge = computed(() => {
 
 // ── Favorite badge (persisted in localStorage) ────────────────────────────────
 /** Favorite badge slug — synced to Supabase via store. */
-const favoriteBadgeSlug = computed(() => backendStore.favoriteBadgeSlug);
+// Someone else's profile shows THEIR favorite, not yours.
+const favoriteBadgeSlug = computed(() => viewingOtherUser.value ? String(otherUserProfile.value?.favorite_badge || '') : backendStore.favoriteBadgeSlug);
 const favoriteBadge = computed<BadgeDefinition | null>(() => {
   if (favoriteBadgeSlug.value) {
     const found = BADGE_DEFINITIONS.find(b => b.slug === favoriteBadgeSlug.value);
@@ -493,6 +496,60 @@ function toggleFavoriteSpecialBadge(award: any) {
   const slug = award.badge?.slug || `special-${award.id}`;
   const newSlug = favoriteBadgeSlug.value === slug ? '' : slug;
   backendStore.saveFavoriteBadge(newSlug);
+}
+
+// ── Favorites row: one gold, then silver (Ames 2026-10-01) ──────────────────
+const specialSlug = (a: any): string => a?.badge?.slug || `special-${a?.id}`;
+const otherSilver = ref<string[]>([]);
+const silverSlugs = computed<string[]>(() => viewingOtherUser.value ? otherSilver.value : backendStore.silverBadgeSlugs);
+interface FavItem { slug: string; name: string; img: string; gold: boolean; def?: BadgeDefinition; award?: any }
+function favItem(slug: string, gold: boolean): FavItem | null {
+  const def = BADGE_DEFINITIONS.find(b => b.slug === slug);
+  if (def) return isBadgeEarned(def) ? { slug, name: def.name, img: getBadgeUrl(def.imageKey), gold, def } : null;
+  const award = profileSpecialBadges.value.find((a: any) => specialSlug(a) === slug);
+  const img = award?.badge?.thumbnail_url || award?.badge?.image_url;
+  return award && img ? { slug, name: award.badge?.name || 'Award', img, gold, award } : null;
+}
+const goldSlug = computed(() => favoriteBadge.value?.slug || (favoriteSpecialBadge.value ? specialSlug(favoriteSpecialBadge.value) : ''));
+const favoriteRow = computed<FavItem[]>(() => {
+  const out: (FavItem | null)[] = [];
+  if (goldSlug.value) out.push(favItem(goldSlug.value, true));
+  for (const sl of silverSlugs.value) if (sl !== goldSlug.value) out.push(favItem(sl, false));
+  return out.filter((x): x is FavItem => !!x);
+});
+const silverRow = computed(() => favoriteRow.value.filter(f => !f.gold));
+/** The badge the Trophy Case is showing large (same order as its template). */
+const featuredSlug = computed(() => {
+  if (selectedSpecialBadge.value) return specialSlug(selectedSpecialBadge.value);
+  if (favoriteSpecialBadge.value && !selectedBadge.value) return specialSlug(favoriteSpecialBadge.value);
+  return featuredBadge.value?.slug || '';
+});
+const featuredIsGold = computed(() => !!featuredSlug.value && featuredSlug.value === favoriteBadgeSlug.value);
+const featuredIsSilver = computed(() => silverSlugs.value.includes(featuredSlug.value));
+const silverFull = computed(() => silverSlugs.value.length >= backendStore.MAX_SILVER_BADGES);
+function toggleGoldFeatured() {
+  const sl = featuredSlug.value;
+  if (!sl) return;
+  if (featuredIsGold.value) { backendStore.saveFavoriteBadge(''); return; }
+  // Gold outranks silver: a badge holds one star.
+  if (featuredIsSilver.value) backendStore.saveSilverBadges(silverSlugs.value.filter(x => x !== sl));
+  backendStore.saveFavoriteBadge(sl);
+}
+function toggleSilverFeatured() {
+  const sl = featuredSlug.value;
+  if (!sl) return;
+  if (featuredIsSilver.value) { backendStore.saveSilverBadges(silverSlugs.value.filter(x => x !== sl)); return; }
+  if (silverFull.value) return;
+  if (featuredIsGold.value) backendStore.saveFavoriteBadge('');
+  backendStore.saveSilverBadges([...silverSlugs.value, sl]);
+}
+function openFavorite(item: FavItem) {
+  if (item.def) { selectedSpecialBadge.value = null; selectedBadge.value = item.def; }
+  else { selectedBadge.value = null; selectedSpecialBadge.value = item.award; }
+}
+function openFavoriteInCase(item: FavItem) {
+  openFavorite(item);
+  activeTab.value = 'trophyCase';
 }
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -1281,6 +1338,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
           </Transition>
 
+          <!-- Silver favorites, under the gold one -->
+          <div v-if="silverRow.length" class="nge-profile-silvers">
+            <button v-for="f in silverRow" :key="f.slug" class="nge-trophy-fav"
+                    :title="f.name + ', silver favorite'" @click="openFavoriteInCase(f)">
+              <img :src="f.img" :alt="f.name" />
+              <span class="nge-trophy-fav-star">★</span>
+            </button>
+          </div>
+
           <!-- Divider between badge and streak -->
           <div class="nge-profile-right-divider"></div>
 
@@ -1385,6 +1451,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       <!-- ── Trophy Case tab ─────────────────────────────────── -->
       <div v-else-if="activeTab === 'trophyCase'" class="nge-profile-body nge-profile-body--trophy">
         <div class="nge-trophy-scroll">
+          <div class="nge-trophy-side">
 
           <!-- ── Featured badge banner ── -->
           <div v-if="selectedSpecialBadge" class="nge-trophy-featured">
@@ -1483,6 +1550,32 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             >{{ favoriteBadgeSlug === featuredBadge.slug ? '★' : '☆' }}</button>
           </div>
 
+          <!-- Stars for the badge on show: one gold favorite, up to five silver -->
+          <div v-if="!viewingOtherUser && featuredSlug" class="nge-trophy-stars">
+            <button class="nge-trophy-starbtn nge-trophy-starbtn--gold" :class="{ 'is-on': featuredIsGold }"
+                    :title="featuredIsGold ? 'Remove the gold star' : 'Make this your one gold favorite, shown on your profile'"
+                    @click="toggleGoldFeatured">★ {{ featuredIsGold ? 'Gold favorite' : 'Make gold' }}</button>
+            <button class="nge-trophy-starbtn nge-trophy-starbtn--silver" :class="{ 'is-on': featuredIsSilver }"
+                    :disabled="!featuredIsSilver && silverFull"
+                    :title="featuredIsSilver ? 'Remove the silver star' : silverFull ? 'Five silver favorites is the limit. Remove one first.' : 'Add to your silver favorites'"
+                    @click="toggleSilverFeatured">★ {{ featuredIsSilver ? 'Silver favorite' : 'Add silver' }}</button>
+          </div>
+
+          <div v-if="favoriteRow.length || !viewingOtherUser" class="nge-trophy-favs">
+            <div class="nge-trophy-favs-label">Favorites</div>
+            <div v-if="favoriteRow.length" class="nge-trophy-favs-row">
+              <button v-for="f in favoriteRow" :key="f.slug" class="nge-trophy-fav"
+                      :class="{ 'nge-trophy-fav--gold': f.gold, 'is-shown': featuredSlug === f.slug }"
+                      :title="f.name + (f.gold ? ', gold favorite' : ', silver favorite')" @click="openFavorite(f)">
+                <img :src="f.img" :alt="f.name" />
+                <span class="nge-trophy-fav-star">★</span>
+              </button>
+            </div>
+            <div v-else class="nge-trophy-favs-empty">Pick a badge on the right, then star it.</div>
+          </div>
+          </div><!-- end side -->
+
+          <div class="nge-trophy-main">
           <!-- Exploration track (Cell Achievements first) -->
           <div class="nge-trophy-track">
             <div class="nge-trophy-track-label" style="color: #90fff2;">Cell Achievements
@@ -1496,6 +1589,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 :class="{
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                  'nge-trophy-badge--silver': silverSlugs.includes(badge.slug),
                 }"
                 @click="onBadgeClick(badge)"
               >
@@ -1520,6 +1614,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 :class="{
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                  'nge-trophy-badge--silver': silverSlugs.includes(badge.slug),
                 }"
                 @click="onBadgeClick(badge)"
               >
@@ -1539,7 +1634,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 v-for="award in profileSpecialBadges"
                 :key="award.id"
                 class="nge-trophy-badge"
-                :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id }"
+                :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id, 'nge-trophy-badge--favorited': favoriteBadgeSlug === specialSlug(award), 'nge-trophy-badge--silver': silverSlugs.includes(specialSlug(award)) }"
                 :title="specialBadgeTooltip(award)"
                 @click="onSpecialBadgeClick(award)"
               >
@@ -1550,6 +1645,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
+          </div><!-- end main -->
         </div>
       </div><!-- end Trophy Case -->
 
@@ -2728,6 +2824,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
    off its right edge (Amy's clipped Favorite Badge report, 2026-08-17). */
 .nge-profile-viz-badge-icon { width: 220px; height: 220px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
 .nge-profile-viz-badge-icon--large { width: 240px; height: 240px; max-width: 100%; }
+/* Sized to the window, so the silver favorites and the streak chart fit under it. */
+.nge-profile-viz-badge-icon, .nge-profile-viz-badge-icon--large { width: min(220px, 25vh); height: min(220px, 25vh); }
 .nge-profile-viz-panel { max-width: 100%; box-sizing: border-box; }
 .nge-profile-viz-badge-name,
 .nge-profile-viz-badge-desc { max-width: 100%; overflow-wrap: break-word; padding: 0 10px; box-sizing: border-box; }
@@ -3234,7 +3332,70 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-trophy-badge--favorited {
   box-shadow: 0 0 0 1.5px rgba(255, 215, 0, 0.35) inset;
 }
+.nge-trophy-badge--silver {
+  box-shadow: 0 0 0 1.5px rgba(200, 212, 228, 0.4) inset;
+}
 .nge-trophy-detail-close:hover { color: #f66; }
+
+/* ── Trophy Case, wide screens (Ames 2026-10-01): the badge on show sits on
+      the left with its name and description under it, the grids fill the
+      right, and the window takes the whole screen. ── */
+.nge-trophy-side, .nge-trophy-main { min-width: 0; }
+.nge-trophy-stars { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 4px 0 16px; position: relative; z-index: 2; }
+.nge-trophy-starbtn {
+  padding: 6px 12px; border-radius: 6px; font: inherit; font-size: 0.82em; font-weight: 600; letter-spacing: 0.04em;
+  background: rgba(10, 16, 30, 0.8); border: 1px solid rgba(140, 160, 190, 0.3); color: #8a97ab; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.nge-trophy-starbtn:disabled { opacity: 0.4; cursor: default; }
+.nge-trophy-starbtn--gold:hover:not(:disabled), .nge-trophy-starbtn--gold.is-on { color: #ffd54a; border-color: rgba(255, 213, 74, 0.6); }
+.nge-trophy-starbtn--gold.is-on { background: rgba(255, 213, 74, 0.12); }
+.nge-trophy-starbtn--silver:hover:not(:disabled), .nge-trophy-starbtn--silver.is-on { color: #dfe7f2; border-color: rgba(223, 231, 242, 0.6); }
+.nge-trophy-starbtn--silver.is-on { background: rgba(223, 231, 242, 0.1); }
+.nge-trophy-favs { position: relative; z-index: 2; text-align: center; }
+.nge-trophy-favs-label { font-size: 0.7em; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(120, 180, 255, 0.7); font-weight: 600; margin-bottom: 8px; }
+.nge-trophy-favs-row, .nge-profile-silvers { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.nge-profile-silvers { margin: 10px 20px 0; }
+.nge-trophy-favs-empty { font-size: 0.82em; color: #7d8aa0; }
+.nge-trophy-fav {
+  position: relative; width: 54px; height: 54px; padding: 5px; box-sizing: border-box; border-radius: 9px; cursor: pointer;
+  background: rgba(10, 16, 30, 0.75); border: 1px solid rgba(200, 212, 228, 0.35);
+  transition: transform 0.15s, border-color 0.15s;
+}
+.nge-trophy-fav img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.nge-trophy-fav:hover { transform: translateY(-2px); border-color: rgba(223, 231, 242, 0.8); }
+.nge-trophy-fav.is-shown { box-shadow: 0 0 12px rgba(120, 190, 255, 0.45); }
+.nge-trophy-fav-star { position: absolute; top: -7px; right: -6px; font-size: 14px; line-height: 1; color: #dfe7f2; text-shadow: 0 0 4px #000, 0 0 6px rgba(223, 231, 242, 0.6); }
+.nge-trophy-fav--gold { border-color: rgba(255, 213, 74, 0.6); }
+.nge-trophy-fav--gold .nge-trophy-fav-star { color: #ffd54a; text-shadow: 0 0 4px #000, 0 0 6px rgba(255, 213, 74, 0.7); }
+.nge-profile-silvers .nge-trophy-fav { width: 42px; height: 42px; padding: 4px; }
+
+@media (min-width: 901px) {
+  body:not(.nge-mobile) .nge-profile-shell--trophy { width: 97vw; max-width: none; height: 94vh; max-height: 94vh; }
+  body:not(.nge-mobile) .nge-profile-body--trophy > .nge-trophy-scroll {
+    display: grid; grid-template-columns: minmax(300px, 34%) minmax(0, 1fr);
+    overflow: hidden; padding: 0;
+  }
+  body:not(.nge-mobile) .nge-trophy-side {
+    --trophy-icon: min(300px, 24vw, 38vh);
+    overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
+    padding: 28px 22px 22px; border-right: 1px solid rgba(74, 158, 255, 0.1);
+  }
+  body:not(.nge-mobile) .nge-trophy-main {
+    overflow-y: auto; padding: 22px 26px 26px;
+    scrollbar-width: thin; scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
+  }
+  body:not(.nge-mobile) .nge-trophy-side .nge-trophy-featured {
+    flex-direction: column; align-items: center; text-align: center; gap: 22px; padding: 12px 0 0; margin-bottom: 10px;
+  }
+  body:not(.nge-mobile) .nge-trophy-side .nge-trophy-featured-icon { width: var(--trophy-icon); height: var(--trophy-icon); }
+  body:not(.nge-mobile) .nge-trophy-side .nge-trophy-featured-effects { left: 50%; top: calc(12px + var(--trophy-icon) / 2); }
+  body:not(.nge-mobile) .nge-trophy-side .nge-trophy-featured-info { flex: none; position: relative; z-index: 1; }
+  /* The stars live in the row under the badge here. */
+  body:not(.nge-mobile) .nge-trophy-side .nge-trophy-featured-star,
+  body:not(.nge-mobile) .nge-trophy-side .nge-trophy-featured-fav-label { display: none; }
+  body:not(.nge-mobile) .nge-trophy-main .nge-trophy-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+}
 
 /* ── Hero-style effects around featured badge ── */
 .nge-trophy-featured {

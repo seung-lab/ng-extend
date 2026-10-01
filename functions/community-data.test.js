@@ -150,3 +150,10 @@ test('a player can report their own annotations total, as a sane counter',()=>{
  assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{total_annotations:-1}),/Invalid counter/);
  assert.equal(plan('users','GET','select=total_annotations',undefined,anon).query.get('select'),'total_annotations');
 });
+test('silver favorites: a short list of badge slugs, nothing else',()=>{
+ const p=plan('users','PATCH',`id=eq.${a}`,{favorite_badges:['chisel','special-12']});
+ assert.equal(JSON.stringify(p.body??p.rows).includes('"favorite_badges":["chisel","special-12"]'),true);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{favorite_badges:'chisel'}),/Invalid favorites/);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{favorite_badges:['a','b','c','d','e','f']}),/Invalid favorites/);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{favorite_badges:['<script>']}),/Invalid favorites/);
+});
