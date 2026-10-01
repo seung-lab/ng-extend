@@ -3467,8 +3467,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       // and Retina has 2,300+ tasks, so new claims (the newest ids) were cut off
       // and never showed in My Cells (Amy 2026-09-28).
       const PAGE = 1000;
-      const all: ProofreadingTask[] = [];
-      for (let from = 0; ; from += PAGE) {
+      // Retina has 16,000+ tasks (17 pages, ~10 MB), and My Cells waited for
+      // all of them (Ames 2026-10-01: "my cells take a long time to load").
+      // On the first load of a dataset, show the player's own cells at once,
+      // then fetch the rest four pages at a time instead of one by one.
+      if (!statusFilter && dataset !== tasksSyncedDataset && userId.value) {
+        const { data: mine } = await supabase
+          .from('proofreading_tasks').select('*')
+          .eq('dataset', dataset).eq('assigned_to', userId.value)
+          .order('priority', { ascending: false })
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .limit(PAGE);
+        if (mine) tasks.value = mine as ProofreadingTask[];
+      }
+      const page = async (from: number) => {
         let query = supabase
           .from('proofreading_tasks')
           .select('*')
@@ -3480,8 +3493,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         if (statusFilter) query = query.eq('status', statusFilter);
         const { data, error: fetchErr } = await query;
         if (fetchErr) throw fetchErr;
-        all.push(...((data ?? []) as ProofreadingTask[]));
-        if (!data || data.length < PAGE || from > 50_000) break;
+        return (data ?? []) as ProofreadingTask[];
+      };
+      const all: ProofreadingTask[] = [];
+      const AT_ONCE = 4;
+      for (let from = 0; from <= 50_000; from += PAGE * AT_ONCE) {
+        const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE)));
+        for (const g of got) all.push(...g);
+        if (got.some(g => g.length < PAGE)) break;
       }
       tasks.value = all;
       if (!statusFilter) {

@@ -392,6 +392,14 @@ const filteredCells = computed(() => {
   return list;
 });
 
+// Draw the list a slice at a time: thousands of rows made the panel slow to
+// open and to switch tabs (Ames 2026-10-01). Counts and search still cover
+// every cell; only the drawing is capped.
+const ROWS_STEP = 200;
+const rowsShown = ref(ROWS_STEP);
+watch([filter, search], () => { rowsShown.value = ROWS_STEP; });
+const shownCells = computed(() => filteredCells.value.slice(0, rowsShown.value));
+
 const myClaimCount = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c)).length);
 
 const availableCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'pending').length);
@@ -1984,7 +1992,7 @@ const slimCell = computed<CellRow | null>(() => {
 });
 const slim = computed(() => slimCell.value !== null);
 /** The rows the cell list draws: one in the slim view. */
-const listCells = computed(() => (slimCell.value ? [slimCell.value] : filteredCells.value));
+const listCells = computed(() => (slimCell.value ? [slimCell.value] : shownCells.value));
 const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed'];
 /** The cell the caret shrinks to: the one on screen, else the claim being
  *  worked on, else your first claim. */
@@ -2897,7 +2905,7 @@ const panelStyle = computed(() => ({
 
         <!-- ═══ CELL TABS ═══ -->
         <!-- Loading -->
-        <div v-else-if="loading || backend.loading" class="nge-cl-loading">Loading cells...</div>
+        <div v-else-if="(loading || backend.loading) && cells.length === 0" class="nge-cl-loading">Loading cells...</div>
 
         <!-- Empty state -->
         <div v-else-if="cells.length === 0" class="nge-cl-empty">
@@ -2931,16 +2939,17 @@ const panelStyle = computed(() => ({
             {{ claimError }}
             <span class="nge-cl-error-dismiss">×</span>
           </div>
+          <div v-if="backend.loading && filter !== 'mine'" class="nge-cl-more"><span><span class="nge-cl-spin" /> Loading the rest of the cells...</span></div>
           <div v-if="filteredCells.length === 0 && filter === 'mine'" class="nge-cl-no-results">
             No claimed cells yet. Claim cells from the All or Available tabs!
           </div>
-          <div v-else-if="filteredCells.length === 0 && filter === 'available' && !search.trim()" class="nge-cl-no-results">
+          <div v-else-if="filteredCells.length === 0 && filter === 'available' && !search.trim() && !backend.loading" class="nge-cl-no-results">
             No available cells in <strong>{{ currentDatasetLabel }}</strong>.
             <template v-if="suggestedClaimDataset">
               <br />Switch to <strong>{{ suggestedClaimDataset }}</strong> to claim a cell.
             </template>
           </div>
-          <div v-else-if="filteredCells.length === 0" class="nge-cl-no-results">No matching cells</div>
+          <div v-else-if="filteredCells.length === 0 && !backend.loading" class="nge-cl-no-results">No matching cells</div>
 
           <button v-if="slim" class="nge-cl-slim-expand" title="Back to the full Cell Library (turns slim view off)" aria-label="Back to the full Cell Library" @click="expandAndStay">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -3061,6 +3070,10 @@ const panelStyle = computed(() => ({
             </div>
           </div>
           </template>
+          <div v-if="!slimCell && filteredCells.length > shownCells.length" class="nge-cl-more">
+            <span>Showing {{ shownCells.length.toLocaleString() }} of {{ filteredCells.length.toLocaleString() }}. Search finds any of them.</span>
+            <button class="nge-cl-btn" @click="rowsShown += ROWS_STEP">Show {{ Math.min(ROWS_STEP, filteredCells.length - shownCells.length) }} more</button>
+          </div>
         </div>
 
         <!-- Login prompt -->
@@ -3425,6 +3438,7 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-row:hover { background: rgba(74, 158, 255, 0.04); }
 .nge-cl-row--done { opacity: 0.65; }
+.nge-cl-more { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; font-size: 0.85em; color: rgba(204, 214, 235, 0.7); }
 .nge-cl-row--mine { background: rgba(74, 158, 255, 0.06); }
 /* The cell you last jumped to — stands out even in a long Available list. */
 .nge-cl-row--jumped {
