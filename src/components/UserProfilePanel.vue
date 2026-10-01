@@ -759,7 +759,21 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
-        <span class="nge-profile-topbar-label">◈ <span class="nge-profile-topbar-name">{{ profileUsername || profileName }}</span> · RESEARCHER PROFILE</span>
+        <span class="nge-profile-topbar-label">◈ RESEARCHER PROFILE
+          <!-- Which dataset the Overview's numbers belong to (Ames 2026-10-01:
+               up here, in the bar's own style, instead of a box in the column
+               and the username, which is already shown below). Clicking opens
+               the Datasets tab, where every dataset's totals sit side by side. -->
+          <button
+            v-if="activeTab === 'overview' && activeDatasetCanon"
+            class="nge-profile-topbar-scope"
+            :class="{ 'nge-profile-topbar-scope--fallback': !editsScoped }"
+            :title="editsScoped ? 'The numbers on this page are for this dataset only. Click to compare datasets.' : 'Per-dataset edits could not be loaded, so Edits shows all datasets.'"
+            @click="activeTab = 'datasets'"
+          ><span class="nge-profile-topbar-sep">·</span> {{ editsScoped ? 'Stats for' : 'Cells for' }}
+            <span class="nge-profile-topbar-scope-icon">{{ scopeDataset ? SPECIES_ICONS[scopeDataset.species] : '🧬' }}</span>
+            <span class="nge-profile-topbar-scope-name">{{ scopeLabel }}</span> ›</button>
+        </span>
         <button class="nge-profile-exit" @click="handleClose">×</button>
       </div>
 
@@ -870,22 +884,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </button>
             </template>
           </div>
-
-          <!-- Which dataset this column's numbers belong to. Clicking opens
-               the Datasets tab, where every dataset's totals sit side by side. -->
-          <button
-            v-if="activeDatasetCanon"
-            class="nge-profile-scope"
-            :class="{ 'nge-profile-scope--fallback': !editsScoped }"
-            :title="editsScoped ? 'Numbers below are for this dataset only. Click to compare datasets.' : 'Per-dataset edits could not be loaded, so Edits shows all datasets.'"
-            @click="activeTab = 'datasets'"
-          >
-            <span class="nge-profile-scope-icon">{{ scopeDataset ? SPECIES_ICONS[scopeDataset.species] : '🧬' }}</span>
-            <span class="nge-profile-scope-text">
-              <span class="nge-profile-scope-kicker">{{ editsScoped ? 'Stats for' : 'Edits across all datasets · cells for' }}</span>
-              <span class="nge-profile-scope-name">{{ scopeLabel }}</span>
-            </span>
-          </button>
 
           <!-- Edits stats -->
           <div class="nge-profile-section nge-profile-section--edits">
@@ -1948,15 +1946,26 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   text-transform: uppercase;
   font-weight: 600;
 }
-/* Whose profile this is, visible on every tab. */
-.nge-profile-topbar-name {
-  color: #f5d142;
-  text-transform: none;
-  letter-spacing: 0.06em;
-  font-size: 1.45em;
-  font-weight: 700;
-  vertical-align: -1px;
+/* Dataset scope, in the bar's own lettering. */
+.nge-profile-topbar-scope {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: color 0.15s;
 }
+.nge-profile-topbar-sep { margin: 0 0.5em; }
+.nge-profile-topbar-scope-icon { font-size: 1.5em; letter-spacing: 0; vertical-align: -1px; margin: 0 0.15em 0 0.3em; }
+.nge-profile-topbar-scope-name { color: #7ff0e0; border-bottom: 1px dotted rgba(127, 240, 224, 0.4); }
+.nge-profile-topbar-scope:hover { color: rgba(140, 195, 255, 0.95); }
+.nge-profile-topbar-scope:hover .nge-profile-topbar-scope-name { color: #fff; border-bottom-color: #fff; }
+.nge-profile-topbar-scope--fallback .nge-profile-topbar-scope-name { color: #f5a623; }
 
 .nge-profile-exit {
   background: none; border: none;
@@ -2803,44 +2812,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   font-weight: 500;
 }
 
-/* Dataset scope banner at the top of the Overview's left column. */
-.nge-profile-scope {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  margin: 2px 0 14px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: rgba(74, 158, 255, 0.07);
-  border: 1px solid rgba(74, 158, 255, 0.22);
-  color: #e0e8f5;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.nge-profile-scope:hover {
-  background: rgba(74, 158, 255, 0.13);
-  border-color: rgba(74, 158, 255, 0.4);
-}
-.nge-profile-scope--fallback { border-color: rgba(245, 166, 35, 0.35); }
-.nge-profile-scope-icon { font-size: 18px; line-height: 1; }
-.nge-profile-scope-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.nge-profile-scope-kicker {
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(120, 180, 255, 0.75);
-}
-.nge-profile-scope-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .nge-profile-career-note {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.45);
