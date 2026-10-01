@@ -112,6 +112,10 @@ export class AnnotationDisplayState extends RefCounted {
   /** This layer's point size as a multiple of the regular dot (layer JSON
    *  "pointSize"); the slider and number box in the Annotations tab. */
   ngeSize = new WatchableValue<number>(1);
+  /** Drawn over meshes in the 3D view instead of being hidden inside them
+   *  (layer JSON "onTop"): Highlight mode's strokes run through the middle
+   *  of a branch, where the mesh would cover them. */
+  ngeOnTop = new TrackableBoolean(false);
   // #edd040, EyeWire II's annotation yellow (Amy, 2026-09-28): readable on
   // grey EM and on every segment colour.
   color = new TrackableRGB(vec3.fromValues(0.929, 0.816, 0.251));

@@ -20,7 +20,7 @@ export const HIGHLIGHT_STYLES: HighlightStyle[] = [
 /** A wide stroke with no end dots: a highlighter line, not a measurement. */
 const STROKE_SHADER = 'void main() {\n' +
   '  setColor(vec4(defaultColor().rgb, 0.85));\n' +
-  '  setLineWidth(7.0);\n' +
+  '  setLineWidth(9.0);\n' +
   '  setEndpointMarkerSize(0.0);\n' +
   '}\n';
 
@@ -57,6 +57,7 @@ async function strokeSource(style: HighlightStyle): Promise<any> {
       annotations: [],
       annotationColor: style.color,
       shader: STROKE_SHADER,
+      onTop: true,
     });
     viewer.layerSpecification.add(managed);
   }
