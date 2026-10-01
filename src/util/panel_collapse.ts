@@ -83,11 +83,34 @@ export function morphIntoSlim(g: PanelGhost, target: HTMLElement, parts: Element
   }, D * 0.78);
 }
 
-/** Beam-draw `box` (already at its full size) from the top down. The beam
- *  runs on a frame laid over the panel, because the panel itself is clipped. */
+/** Call `then` once `el` has kept the same size and place for a few frames
+ *  (a list still filling in, a clamp still moving it), or after ~1.5 s. A
+ *  light drawn on a box that is still changing misses its border. */
+export function whenSettled(el: HTMLElement, then: () => void): void {
+  let last = '', same = 0, n = 0;
+  const tick = () => {
+    if (!el.isConnected) return;
+    const r = el.getBoundingClientRect();
+    const key = `${el.offsetWidth},${el.offsetHeight},${Math.round(r.left)},${Math.round(r.top)}`;
+    same = key === last ? same + 1 : 0;
+    last = key;
+    if (same >= 3 || ++n > 90) then();
+    else requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/** Beam-draw `box` from the top down, once it has settled at its full size.
+ *  The beam runs on a frame laid exactly over the panel's border (the panel
+ *  itself is clipped, so it cannot host the light) and follows the panel. */
 export function revealWithBeam(box: HTMLElement): void {
   // The caller may have clipped the box already (to hide it while it re-renders).
   if (reduced()) { box.style.clipPath = ''; return; }
+  box.style.clipPath = 'inset(0 0 100% 0)';
+  whenSettled(box, () => drawReveal(box));
+}
+
+function drawReveal(box: HTMLElement): void {
   const r = box.getBoundingClientRect();
   if (!r.width || !r.height) { box.style.clipPath = ''; return; }
   const frame = document.createElement('div');
@@ -95,14 +118,25 @@ export function revealWithBeam(box: HTMLElement): void {
     position: 'fixed', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`,
     borderRadius: getComputedStyle(box).borderRadius, pointerEvents: 'none', zIndex: '10020',
   } as Partial<CSSStyleDeclaration>);
+  // Border box, so the light sits on the panel's own border.
+  frame.style.boxSizing = 'border-box';
+  frame.style.border = `${getComputedStyle(box).borderTopWidth} solid transparent`;
   document.body.appendChild(frame);
-  box.style.clipPath = 'inset(0 0 100% 0)';
-  let finished = false;
+  let finished = false, gone = false;
+  // Stay on the panel if it moves (a drag, a clamp) while the light draws.
+  const follow = () => {
+    if (gone || !box.isConnected) return;
+    const b = box.getBoundingClientRect();
+    frame.style.left = `${b.left}px`;
+    frame.style.top = `${b.top}px`;
+    requestAnimationFrame(follow);
+  };
+  requestAnimationFrame(follow);
   const done = () => {
     if (finished) return;
     finished = true;
     box.style.clipPath = '';
-    setTimeout(() => frame.remove(), 500);
+    setTimeout(() => { gone = true; frame.remove(); }, 500);
   };
   const total = runPanelDraw(frame, 'down', frac => {
     if (frac >= 1) done();

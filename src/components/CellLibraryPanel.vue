@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reportWriteFailure } from '../util/error_reporting';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
+import { snapshotPanel, morphIntoSlim, revealWithBeam, whenSettled } from '../util/panel_collapse';
 import {
   useProofreadingBackendStore,
   useProofreadingQueueStore,
@@ -18,6 +18,7 @@ import {
   type HelpRequest,
   type WorkingLink,
   type ClaimPoint,
+  jumpAddsToView,
 } from '../store';
 import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
@@ -53,7 +54,13 @@ const tagStore = useIssueTagStore();
 // Particle trace on arrival (scifi-ui): the beam runs the panel boundary once.
 const panelEl = ref<HTMLElement | null>(null);
 onMounted(() => {
-  setTimeout(() => { if (panelEl.value) runPanelTrace(panelEl.value); }, 60);
+  // Trace the border the panel ends up with: wait until it has stopped
+  // growing (the list fills in after it opens), or the light misses the
+  // real edge (Ames 2026-10-01).
+  setTimeout(() => {
+    const el = panelEl.value;
+    if (el) whenSettled(el, () => { if (panelEl.value && !slim.value) runPanelTrace(panelEl.value); });
+  }, 60);
 });
 
 /** Resolve a tag: the orbital itself is the hero (Amy). It winds up around
@@ -518,6 +525,8 @@ async function switchToClaim(cell: CellRow) {
  *  keep = the target IS the claim being worked on, nothing is cleared.
  *  ok false = the save failed and the user chose to stay. */
 async function prepareJump(segId: string): Promise<{ ok: boolean; keep: boolean }> {
+  // Settings: jumps add to the view, so nothing is cleared or left behind.
+  if (jumpAddsToView()) return { ok: true, keep: true };
   const t = workingTaskId ? backend.tasks.find(x => x.id === workingTaskId) : null;
   if (t && String(t.segment_id) === segId) return { ok: true, keep: true };
   if (!(await leaveCurrentWork(null))) return { ok: false, keep: false };
@@ -1987,12 +1996,33 @@ function currentCell(): CellRow | null {
     ?? cs.find(c => c.segId === jumpedSegId.value)
     ?? null;
 }
+// Slim view is a mode the top bar caret turns on: while it is on, a jump
+// shrinks the library to that cell. The slim row's caret turns it off again,
+// so the library then stays open through jumps (Ames 2026-10-01).
+const SLIM_MODE_KEY = 'nge_cl_slim_mode';
+const slimMode = ref((() => { try { return localStorage.getItem(SLIM_MODE_KEY) === '1'; } catch { return false; } })());
+function setSlimMode(on: boolean) {
+  slimMode.value = on;
+  try { localStorage.setItem(SLIM_MODE_KEY, on ? '1' : '0'); } catch { /* private mode */ }
+}
 const slimHint = ref('');
+let slimHintTimer: ReturnType<typeof setTimeout> | undefined;
+function flashSlimHint(msg: string) {
+  slimHint.value = msg;
+  if (slimHintTimer) clearTimeout(slimHintTimer);
+  slimHintTimer = setTimeout(() => { slimHint.value = ''; }, 2600);
+}
 function collapseToCurrent() {
   const cell = currentCell();
-  if (cell) { void collapseTo(cell); return; }
-  slimHint.value = 'Jump to a cell first';
-  setTimeout(() => { slimHint.value = ''; }, 2200);
+  if (cell) { setSlimMode(true); void collapseTo(cell); return; }
+  // Nothing to shrink to yet: the caret just switches the mode.
+  setSlimMode(!slimMode.value);
+  flashSlimHint(slimMode.value ? 'Slim view on: jump to a cell' : 'Slim view off');
+}
+/** The slim row's caret: open up and stay open. */
+function expandAndStay() {
+  setSlimMode(false);
+  expandFull();
 }
 async function collapseTo(cell: CellRow) {
   if (slimSeg.value === cell.segId) return;
@@ -2024,6 +2054,8 @@ function expandFull() {
   slimSeg.value = null;
   void nextTick(() => {
     clampPanelPos();
+    // revealWithBeam waits for the panel to settle (the clamp above moves it
+    // on the next render), so the light lands on the real border.
     if (panelEl.value) revealWithBeam(panelEl.value);
   });
 }
@@ -2042,7 +2074,7 @@ async function onRowJump(cell: CellRow) {
     if (!left.ok) return;
     jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, left.keep);
   }
-  if (jumpedSegId.value === cell.segId) void collapseTo(cell);
+  if (slimMode.value && jumpedSegId.value === cell.segId) void collapseTo(cell);
 }
 /** The slim row is its own drag handle (there is no top bar to grab). */
 function onSlimMouseDown(e: MouseEvent) {
@@ -2072,7 +2104,9 @@ const panelStyle = computed(() => ({
             <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY
           </div>
           <span v-if="slimHint" class="nge-cl-slim-hint">{{ slimHint }}</span>
-          <button class="nge-cl-caret" title="Shrink to the current cell" aria-label="Shrink to the current cell" @mousedown.stop @click="collapseToCurrent">
+          <button class="nge-cl-caret" :class="{ 'nge-cl-caret--on': slimMode }"
+                  :title="slimMode ? 'Slim view is on: jumping to a cell shrinks the library to that cell. Click to shrink now.' : 'Slim view: shrink the library to the cell you are working on'"
+                  aria-label="Slim view" :aria-pressed="slimMode ? 'true' : 'false'" @mousedown.stop @click="collapseToCurrent">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <button class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
@@ -2521,7 +2555,7 @@ const panelStyle = computed(() => ({
                tag type, counted within the chosen scope. -->
           <!-- The old "Show tags on the map" switch is gone: tag layers exist
                only while Scout Tag mode is open (Amy 2026-09-28). -->
-          <div class="nge-cl-tags-hint" style="margin: 6px 0 8px;">
+          <div class="nge-cl-tags-hint" style="margin-top: 6px; margin-bottom: 8px;">
             Tags appear on the map while <b>Scout Tag mode</b> is open. Jump ↗ takes you to any tag.
           </div>
           <div class="nge-cl-tags-lanes">
@@ -2538,7 +2572,7 @@ const panelStyle = computed(() => ({
             <button :class="{ 'nge-cl-lane--active': tagLane === 'missing_branch' }" @click="tagLane = 'missing_branch'"><img :src="tracerIcon" class="nge-cl-lane-icon" alt="" /> For Tracers ({{ laneCount('missing_branch') }})</button>
           </div>
 
-          <div v-if="!laneFilteredTags.length" class="nge-cl-tags-hint" style="padding: 10px 4px;">
+          <div v-if="!laneFilteredTags.length" class="nge-cl-tags-hint" style="padding: 10px 0;">
             No open tags in this lane. The volume is momentarily unsuspicious.
           </div>
 
@@ -2890,7 +2924,7 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0" class="nge-cl-no-results">No matching cells</div>
 
-          <button v-if="slim" class="nge-cl-slim-expand" title="Back to the full Cell Library" aria-label="Back to the full Cell Library" @click="expandFull">
+          <button v-if="slim" class="nge-cl-slim-expand" title="Back to the full Cell Library (turns slim view off)" aria-label="Back to the full Cell Library" @click="expandAndStay">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
@@ -4780,11 +4814,32 @@ select.nge-cl-response-input:hover {
 .nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
-  padding: 2px 0 2px 34px;
+  padding: 4px 0 4px 46px;
 }
+/* The one row needs no "this is the one" marking: no green wash or rail
+   pressed against the caret, no "viewing" tag. */
+.nge-cl-panel--slim .nge-cl-row,
+.nge-cl-panel--slim .nge-cl-row:hover { background: none; box-shadow: none; padding-left: 4px; }
+.nge-cl-panel--slim .nge-cl-viewing { display: none; }
+/* Complete, in the slim view: part of the panel, not a box inside a box. */
+.nge-cl-panel--slim .nge-cl-list > .nge-cl-complete {
+  margin: 4px 0 -4px -46px; padding: 12px 16px 16px;
+  border: none; border-top: 1px solid rgba(74, 150, 224, 0.25); border-radius: 0;
+  background: rgba(10, 24, 44, 0.55);
+}
+.nge-cl-caret--on {
+  background: rgba(79, 207, 255, 0.26); border-color: #4fcfff; color: #e6f7ff;
+  box-shadow: 0 0 10px rgba(79, 207, 255, 0.4);
+}
+/* Tags and AI tabs: the hint, filter rows and Resolved toggle sat flush
+   against the panel edge (Ames 2026-10-01). */
+.nge-cl-list > .nge-cl-tags-hint,
+.nge-cl-list > .nge-cl-tags-lanes,
+.nge-cl-list > .nge-cl-help-resolved-toggle { margin-left: 14px; margin-right: 14px; }
+.nge-cl-list > .nge-cl-quest { margin-left: 10px; margin-right: 10px; }
 /* Banners (errors, the claim limit) and the Complete form still show: the
    slim panel grows to fit them. */
-.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand) { margin-left: -34px; cursor: default; }
+.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand) { margin-left: -46px; cursor: default; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
-.nge-cl-slim-expand { position: absolute; left: 8px; top: 14px; }
+.nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
 </style>

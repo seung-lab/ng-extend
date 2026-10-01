@@ -157,9 +157,10 @@ textarea.neuroglancer-annotation-details-description:focus {
    True End  ×"), matching the Share / Data pills. */
 .neuroglancer-annotation-tool-status-widget.nge-tool-pill {
   gap: 7px;
-  height: 26px;
-  padding: 0 4px 0 5px;
-  border-radius: 999px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 6px 0 10px;
+  border-radius: 14px;
   border: 1px solid rgba(245, 200, 80, 0.45);
   background: rgba(40, 32, 10, 0.72);
   box-shadow: 0 0 10px rgba(245, 190, 60, 0.15);
@@ -181,7 +182,10 @@ textarea.neuroglancer-annotation-details-description:focus {
 }
 .nge-tool-pill .neuroglancer-annotation-tool-status-widget-description {
   color: #ffe6a8 !important;
-  font: 500 12px 'Inter', 'Roboto', sans-serif;
+  /* The top bar's own lettering, same as Data and Share (Ames 2026-10-01). */
+  font: 500 11px 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 .nge-tool-pill-off {
   width: 18px;

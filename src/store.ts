@@ -902,6 +902,9 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
+  /** Jumping to a cell ADDS it to the view instead of replacing what is
+   *  shown. Defaults to false (replace). */
+  jumpAddsToView?: boolean;
   /** Point annotation size multiplier, 1 to 4 (Amy 2026-09-30). Local only. */
   annotationSize?: number;
   /** Point annotations drawn as Pyr gems in 3D. Defaults to true. */
@@ -918,6 +921,11 @@ export interface UserPreferences {
   /** Auto-show open scout tags on cells even when tag mode is closed.
    *  Defaults to true (ambient dots on); tag mode always shows them. */
   showScoutTags?: boolean;
+}
+
+/** Settings: "Jumping to a cell adds it to my view" (off = replace). */
+export function jumpAddsToView(): boolean {
+  try { return useUserPreferencesStore().prefs.jumpAddsToView === true; } catch { return false; }
 }
 
 export const useUserPreferencesStore = defineStore('userPrefs', () => {
@@ -1164,6 +1172,7 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
    *  add its cell, so a few jumps crowded the viewer with unrelated cells).
    *  `keep: true` adds it to what is already shown instead. */
   function jumpToCell(segId: string, positionOverride?: [number, number, number], opts: { keep?: boolean } = {}) {
+    const keep = opts.keep || jumpAddsToView();
     const entry = cells.value.find(c => c.segId === segId);
     const viewer: any = (window as any)['viewer'];
     if (!viewer) return;
@@ -1189,7 +1198,7 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
         const groupState = segLayer.layer.displayState?.segmentationGroupState?.value;
         if (groupState?.visibleSegments) {
           const seg = Uint64.parseString(segId);
-          if (!opts.keep && segId && segId !== '0') {
+          if (!keep && segId && segId !== '0') {
             const only = groupState.visibleSegments.size === 1 && groupState.visibleSegments.has(seg);
             if (!only) groupState.visibleSegments.clear();
           }
