@@ -122,6 +122,28 @@ async function checkRobotAi() {
   } catch (e) { return { ok: true, detail: `not checked (${e.message})` }; }
 }
 
+/**
+ * Ask Anthropic directly whether the robot's key works: a one token request,
+ * so the alert carries Anthropic's own reason (out of credit, invalid key,
+ * spend limit). The key itself is never printed.
+ */
+async function checkAnthropicKey() {
+  if (!env.ANTHROPIC_API_KEY) return { ok: true, detail: 'not checked (no key in this job)' };
+  try {
+    const r = await timed('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': env.ANTHROPIC_API_KEY.trim(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'ok' }] }),
+    });
+    if (r.ok) return { ok: true, detail: 'Anthropic accepts the key' };
+    const j = await r.json().catch(() => ({}));
+    const why = `${j?.error?.type || 'error'}: ${String(j?.error?.message || '').slice(0, 240)}`;
+    // Overload and rate limits pass on their own; only account or key problems alert.
+    if ([429, 500, 529].includes(r.status) && !/credit|billing|spend/i.test(why)) return { ok: true, detail: `Anthropic busy (${r.status}), not a key problem` };
+    return { ok: false, detail: `Anthropic refuses the robot's key (${r.status} ${why}). Fix at console.anthropic.com, then update ANTHROPIC_API_KEY in GitHub and Firebase if the key changed.` };
+  } catch (e) { return { ok: true, detail: `not checked (${e.message})` }; }
+}
+
 async function checkPlayerFailures() {
   const since = new Date(Date.now() - 3600 * 1000).toISOString();
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -167,6 +189,7 @@ async function lastHealthMessage() {
     'CAVE tables': await checkCave(),
     'Player write failures': await checkPlayerFailures(),
     'Robot AI step': await checkRobotAi(),
+    'Anthropic key': await checkAnthropicKey(),
   };
   for (const [name, r] of Object.entries(results)) console.log(`[health] ${r.ok ? 'OK  ' : 'FAIL'} ${name}: ${r.detail}`);
   const failing = Object.entries(results).filter(([, r]) => !r.ok);
