@@ -503,7 +503,7 @@ async function saveClaimView(cell: CellRow) {
 async function switchToClaim(cell: CellRow) {
   // Already working on this claim: its layers are loaded, so just move the
   // camera. Reloading its saved view would drop anything done since the save.
-  if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId);
+  if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true);
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
   if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId);
@@ -512,9 +512,22 @@ async function switchToClaim(cell: CellRow) {
 }
 
 // ── Actions ──────────────────────────────────────────────────────────
-function jumpToCell(segId: string, coords: string, nucleusId?: string | null) {
+/** A jump replaces what is on screen with the target cell, so first save
+ *  the claim being worked on (its extra segments and annotations) and stop
+ *  treating it as loaded: its ↗ then brings the saved view back.
+ *  keep = the target IS the claim being worked on, nothing is cleared.
+ *  ok false = the save failed and the user chose to stay. */
+async function prepareJump(segId: string): Promise<{ ok: boolean; keep: boolean }> {
+  const t = workingTaskId ? backend.tasks.find(x => x.id === workingTaskId) : null;
+  if (t && String(t.segment_id) === segId) return { ok: true, keep: true };
+  if (!(await leaveCurrentWork(null))) return { ok: false, keep: false };
+  setWorkingTask(null);
+  return { ok: true, keep: false };
+}
+/** keep: add the cell to the view instead of replacing it (your own working claim). */
+function jumpToCell(segId: string, coords: string, nucleusId?: string | null, keep = false) {
   const pos = parseCoords(coords);
-  history.jumpToCell(segId, pos[0] || pos[1] || pos[2] ? pos : undefined);
+  history.jumpToCell(segId, pos[0] || pos[1] || pos[2] ? pos : undefined, { keep });
   jumpedSegId.value = segId;
   // MEC: the nucleus is its own segment; show it too so the soma isn't hollow.
   if (nucleusId && nucleusId !== segId) setTimeout(() => {
@@ -1057,8 +1070,10 @@ async function confirmJump() {
     window.location.href = linkBeingOpened.url;
     return;
   }
+  const leftA = await prepareJump(req.segId);
+  if (!leftA.ok) { cancelJumpConfirm(); return; }
   activeHelpId.value = req.id;
-  history.jumpToCell(req.segId, req.position);
+  history.jumpToCell(req.segId, req.position, { keep: leftA.keep });
   cancelJumpConfirm();
 }
 
@@ -1339,8 +1354,10 @@ async function jumpToReq(req: HelpRequest) {
     flashJumpError(`Could not switch to ${datasetHeading(req.dataset)}.`);
     return;
   }
+  const left = await prepareJump(req.segId);
+  if (!left.ok) return;
   activeHelpId.value = req.id;
-  history.jumpToCell(req.segId, req.position);
+  history.jumpToCell(req.segId, req.position, { keep: left.keep });
 }
 
 /** The dataset header's "switch here" (Amy: the old "jump switches" tag
@@ -1394,7 +1411,9 @@ async function jumpToTag(tag: IssueTag) {
     return;
   }
   if (tag.segId) {
-    history.jumpToCell(tag.segId, tag.position as [number, number, number]);
+    const left = await prepareJump(tag.segId);
+    if (!left.ok) return;
+    history.jumpToCell(tag.segId, tag.position as [number, number, number], { keep: left.keep });
     zoomToTagLevel();
     return;
   }
@@ -2018,7 +2037,11 @@ watch(slimCell, (c) => { if (!c && slimSeg.value) expandFull(); });
 /** Jump from a cell row, then shrink to that row if the jump happened. */
 async function onRowJump(cell: CellRow) {
   if (isMyClaim(cell)) await switchToClaim(cell);
-  else jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId);
+  else {
+    const left = await prepareJump(cell.segId);
+    if (!left.ok) return;
+    jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, left.keep);
+  }
   if (jumpedSegId.value === cell.segId) void collapseTo(cell);
 }
 /** The slim row is its own drag handle (there is no top bar to grab). */

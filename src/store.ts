@@ -1159,8 +1159,11 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
   }
 
   /** Navigate the viewer to a cell and select it.
-   *  If `positionOverride` is given, jump there instead of the cell history position. */
-  function jumpToCell(segId: string, positionOverride?: [number, number, number]) {
+   *  If `positionOverride` is given, jump there instead of the cell history position.
+   *  The cell REPLACES what was on screen (Ames 2026-10-01: each jump used to
+   *  add its cell, so a few jumps crowded the viewer with unrelated cells).
+   *  `keep: true` adds it to what is already shown instead. */
+  function jumpToCell(segId: string, positionOverride?: [number, number, number], opts: { keep?: boolean } = {}) {
     const entry = cells.value.find(c => c.segId === segId);
     const viewer: any = (window as any)['viewer'];
     if (!viewer) return;
@@ -1186,6 +1189,10 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
         const groupState = segLayer.layer.displayState?.segmentationGroupState?.value;
         if (groupState?.visibleSegments) {
           const seg = Uint64.parseString(segId);
+          if (!opts.keep && segId && segId !== '0') {
+            const only = groupState.visibleSegments.size === 1 && groupState.visibleSegments.has(seg);
+            if (!only) groupState.visibleSegments.clear();
+          }
           if (!groupState.visibleSegments.has(seg)) {
             groupState.visibleSegments.add(seg);
           }
