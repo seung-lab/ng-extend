@@ -146,6 +146,46 @@ function parseSpec(spec: string): { label: string | null; text: string }[] {
   });
 }
 
+// ── Who submitted each report (site_issues, admins only via the gateway) ──
+const reporters = ref<Record<string, { name: string; category: string; at: string }>>({});
+async function loadReporters(rows: TriageRow[]) {
+  const ids = [...new Set(rows.filter(r => r.source === 'site_issue' && r.source_id && !reporters.value[r.source_id]).map(r => r.source_id))];
+  if (!ids.length) return;
+  try {
+    const { supabase } = await import('../supabase');
+    const { data } = await supabase.from('site_issues').select('id,user_name,category,created_at').in('id', ids);
+    const next = { ...reporters.value };
+    for (const i of (data ?? []) as any[]) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '' };
+    reporters.value = next;
+  } catch (e) { console.warn('[triage] could not load who submitted:', e); }
+}
+const reporterOf = (r: TriageRow) => (r.source === 'site_issue' ? reporters.value[r.source_id] : undefined);
+const shortDate = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+// ── Board: open work on top, finished and dismissed folded away ───────────
+// Slack and this tab write the same rows, so a dismiss, stop or "good" in a
+// Slack thread moves the card here too (after Refresh).
+type TriageGroupKey = 'decide' | 'progress' | 'done' | 'dismissed';
+const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, done: false, dismissed: false });
+function triageGroupOf(r: TriageRow): TriageGroupKey {
+  if (r.status === 'dismissed') return 'dismissed';
+  if (r.status === 'done' || r.impl_state === 'deployed') return 'done';
+  if (r.status === 'proposed') return 'decide';
+  return 'progress';
+}
+const triageGroups = computed(() => {
+  const defs: { key: TriageGroupKey; title: string; hint: string; closed: boolean }[] = [
+    { key: 'decide', title: 'Needs your decision', hint: 'Approve or dismiss', closed: false },
+    { key: 'progress', title: 'In progress', hint: 'Approved: building, testing or waiting', closed: false },
+    { key: 'done', title: 'Done', hint: 'Shipped or handled', closed: true },
+    { key: 'dismissed', title: 'Dismissed', hint: 'Stopped or turned down', closed: true },
+  ];
+  return defs.map(d => ({ ...d, rows: triageRows.value.filter(r => triageGroupOf(r) === d.key) }));
+});
+
 async function loadTriage() {
   triageLoading.value = true;
   triageError.value = '';
@@ -163,6 +203,7 @@ async function loadTriage() {
     const { data, error } = await q;
     if (error) throw error;
     triageRows.value = (data ?? []) as TriageRow[];
+    void loadReporters(triageRows.value);
     for (const r of triageRows.value) {
       if (triageEdits.value[r.id] === undefined) {
         triageEdits.value[r.id] = r.proposed_message ?? '';
@@ -396,6 +437,48 @@ const notifTitle = ref('');
 const notifBody = ref('');
 const notifTargetType = ref<'all' | 'group' | 'user'>('all');
 const notifTargetId = ref('');
+
+// ── Specific User: find a player by name or username, not by id (Ames) ────
+// notifTargetId still holds the user id; this is only how it gets chosen.
+interface PickedUser { id: string; display_name: string | null; username: string | null }
+const userQuery = ref('');
+const userMatches = ref<PickedUser[]>([]);
+const userPicked = ref<PickedUser | null>(null);
+const userSearching = ref(false);
+let userSearchTimer: ReturnType<typeof setTimeout> | null = null;
+const userLabel = (u: PickedUser) => [u.display_name || 'Unnamed player', u.username ? `@${u.username}` : ''].filter(Boolean).join('  ');
+function onUserQuery() {
+  if (userSearchTimer) clearTimeout(userSearchTimer);
+  // PostgREST filter syntax characters would break the query; names never need them.
+  const q = userQuery.value.trim().replace(/[,()*%\\]/g, ' ').trim();
+  if (q.length < 2) { userMatches.value = []; return; }
+  userSearchTimer = setTimeout(async () => {
+    userSearching.value = true;
+    try {
+      const { supabase } = await import('../supabase');
+      const { data } = await supabase.from('users').select('id,display_name,username')
+        .or(`display_name.ilike.*${q}*,username.ilike.*${q}*`).order('display_name').limit(8);
+      userMatches.value = (data ?? []) as PickedUser[];
+    } catch { userMatches.value = []; } finally { userSearching.value = false; }
+  }, 220);
+}
+function pickUser(u: PickedUser) {
+  userPicked.value = u;
+  notifTargetId.value = u.id;
+  userQuery.value = '';
+  userMatches.value = [];
+}
+function clearPickedUser() { userPicked.value = null; notifTargetId.value = ''; }
+// A draft or an edited notification restores only the id: look its name up.
+watch(notifTargetId, async id => {
+  if (!id) { userPicked.value = null; return; }
+  if (userPicked.value?.id === id || notifTargetType.value !== 'user') return;
+  try {
+    const { supabase } = await import('../supabase');
+    const { data } = await supabase.from('users').select('id,display_name,username').eq('id', id).limit(1);
+    userPicked.value = ((data ?? [])[0] as PickedUser) || { id, display_name: null, username: null };
+  } catch { userPicked.value = { id, display_name: null, username: null }; }
+});
 const notifPostToChat = ref(false);
 
 /**
@@ -1051,7 +1134,7 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'notifications' }" @click="adminSubTab = 'notifications'">Notifications</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'groups' }" @click="adminSubTab = 'groups'">Groups</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
-      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'triage' }" @click="adminSubTab = 'triage'">Triage</button>
+      <button class="nge-admin-subtab nge-admin-subtab--triage" :class="{ 'nge-admin-subtab--active': adminSubTab === 'triage' }" @click="adminSubTab = 'triage'">Triage</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'pilot' }" @click="adminSubTab = 'pilot'">Pilot testers</button>
     </div>
@@ -1093,7 +1176,23 @@ function practiceWhen(iso: string | null) {
             <option value="" disabled>Select group...</option>
             <option v-for="g in backend.groups" :key="g.id" :value="String(g.id)">{{ g.name }}</option>
           </select>
-          <input v-if="notifTargetType === 'user'" v-model="notifTargetId" class="nge-admin-input nge-admin-input--sm" placeholder="User ID" />
+          <div v-if="notifTargetType === 'user'" class="nge-user-pick">
+            <div v-if="userPicked" class="nge-user-picked">
+              <span class="nge-user-picked-name">{{ userLabel(userPicked) }}</span>
+              <button type="button" class="nge-user-picked-x" title="Choose someone else" @click="clearPickedUser">×</button>
+            </div>
+            <template v-else>
+              <input v-model="userQuery" class="nge-admin-input" placeholder="Name or username" autocomplete="off"
+                     @input="onUserQuery" @keydown.stop @keyup.stop />
+              <div v-if="userQuery.trim().length >= 2" class="nge-user-matches">
+                <button v-for="u in userMatches" :key="u.id" type="button" class="nge-user-match" @click="pickUser(u)">
+                  <span class="nge-user-match-name">{{ u.display_name || 'Unnamed player' }}</span>
+                  <span v-if="u.username" class="nge-user-match-handle">@{{ u.username }}</span>
+                </button>
+                <div v-if="!userMatches.length" class="nge-user-nomatch">{{ userSearching ? 'Searching…' : 'No player found with that name' }}</div>
+              </div>
+            </template>
+          </div>
         </div>
         <div class="nge-admin-row nge-admin-row--dates">
           <label class="nge-admin-date-label">
@@ -1397,13 +1496,30 @@ function practiceWhen(iso: string | null) {
           No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
         </div>
 
-        <div v-for="row in triageRows" :key="row.id" class="nge-triage-card">
+        <template v-for="g in triageGroups" :key="g.key">
+        <button
+          v-if="triageRows.length"
+          class="nge-triage-group"
+          :class="{ 'nge-triage-group--open': triageOpen[g.key], 'nge-triage-group--empty': !g.rows.length }"
+          :aria-expanded="triageOpen[g.key] ? 'true' : 'false'"
+          @click="triageOpen[g.key] = !triageOpen[g.key]"
+        >
+          <span class="nge-triage-group-caret" aria-hidden="true">▸</span>
+          <span class="nge-triage-group-title">{{ g.title }}</span>
+          <span class="nge-triage-group-count">{{ g.rows.length }}</span>
+          <span class="nge-triage-group-hint">{{ g.hint }}</span>
+        </button>
+        <template v-if="triageOpen[g.key]">
+        <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :class="{ 'nge-triage-card--closed': g.closed }">
           <div class="nge-triage-meta">
             <span class="nge-triage-rec" :class="`nge-triage-rec--${row.recommendation}`">{{ TRIAGE_LABELS[row.recommendation] }}</span>
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
             <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by.startsWith('slack:') ? 'in Slack' : row.reviewed_by }}</template></span>
             <span v-if="row.impl_state" class="nge-triage-impl" :class="`nge-triage-impl--${row.impl_state}`">{{ IMPL_LABELS[row.impl_state] }}</span>
             <a v-if="slackThreadUrl(row)" class="nge-triage-link" :href="slackThreadUrl(row) || undefined" target="_blank" rel="noopener">Slack thread</a>
+          </div>
+          <div v-if="reporterOf(row)" class="nge-triage-from">
+            From <strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · {{ shortDate(reporterOf(row)?.at || '') }}</template>
           </div>
           <div v-if="row.source_excerpt" class="nge-triage-excerpt">"{{ row.source_excerpt }}"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
@@ -1493,6 +1609,8 @@ function practiceWhen(iso: string | null) {
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
           </div>
         </div>
+        </template>
+        </template>
       </div>
     </div>
   </div>
@@ -1542,6 +1660,11 @@ function practiceWhen(iso: string | null) {
   border-bottom-color: #4a9eff;
 }
 
+/* Triage stands out in red (Ames): it is the tab that needs attention. */
+.nge-admin-subtab--triage,
+.nge-admin-subtab--triage:hover { color: #ff6b6b; }
+.nge-admin-subtab--triage.nge-admin-subtab--active { color: #ff8585; border-bottom-color: #ff6b6b; }
+
 .nge-admin-section { display: flex; flex-direction: column; gap: 16px; }
 
 .nge-admin-block { display: flex; flex-direction: column; gap: 6px; }
@@ -1573,6 +1696,31 @@ function practiceWhen(iso: string | null) {
 }
 .nge-admin-input:focus { border-color: rgba(74, 158, 255, 0.5); }
 .nge-admin-input--sm { max-width: 180px; }
+/* Specific User: search by name or username. */
+.nge-user-pick { position: relative; flex: 1; min-width: 180px; }
+.nge-user-pick .nge-admin-input { width: 100%; box-sizing: border-box; }
+.nge-user-matches {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5;
+  background: #0b1424; border: 1px solid rgba(74, 158, 255, 0.35); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); padding: 4px; max-height: 260px; overflow-y: auto;
+}
+.nge-user-match {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  background: transparent; border: none; border-radius: 5px;
+  padding: 7px 9px; color: #e0ecff; font: inherit; text-align: left; cursor: pointer;
+}
+.nge-user-match:hover { background: rgba(74, 158, 255, 0.14); }
+.nge-user-match-name { font-weight: 600; }
+.nge-user-match-handle { color: #8fb4dc; font-size: 0.88em; }
+.nge-user-nomatch { padding: 7px 9px; color: #8fa6c2; font-size: 0.9em; }
+.nge-user-picked {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(74, 158, 255, 0.12); border: 1px solid rgba(74, 158, 255, 0.4);
+  border-radius: 6px; padding: 7px 10px; color: #e0ecff; font-size: 0.92em;
+}
+.nge-user-picked-name { flex: 1; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.nge-user-picked-x { background: none; border: none; color: #a9c4e4; font-size: 1.2em; line-height: 1; cursor: pointer; padding: 0 2px; }
+.nge-user-picked-x:hover { color: #fff; }
 
 .nge-admin-textarea {
   background: rgba(255, 255, 255, 0.06);
@@ -1998,6 +2146,28 @@ function practiceWhen(iso: string | null) {
   display: flex; flex-direction: column; gap: 7px;
 }
 .nge-triage-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nge-triage-from { font-size: 0.86em; color: #9fb3cc; }
+.nge-triage-from strong { color: #e6eefc; font-weight: 600; }
+/* Section headers: open work first, finished and dismissed folded and grey. */
+.nge-triage-group {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px;
+  padding: 8px 12px; margin-top: 4px;
+  color: #e0ecff; font: inherit; text-align: left; cursor: pointer;
+}
+.nge-triage-group:hover { background: rgba(255, 255, 255, 0.06); }
+.nge-triage-group-caret { color: #8fa6c2; transition: transform 0.15s ease; display: inline-block; }
+.nge-triage-group--open .nge-triage-group-caret { transform: rotate(90deg); }
+.nge-triage-group-title { font-weight: 600; }
+.nge-triage-group-count {
+  font-size: 0.8em; font-weight: 700; padding: 0 7px; border-radius: 9px;
+  background: rgba(74, 158, 255, 0.18); color: #a9d3ff;
+}
+.nge-triage-group-hint { font-size: 0.8em; color: #7f93ad; margin-left: auto; }
+.nge-triage-group--empty { opacity: 0.55; }
+.nge-triage-card--closed { opacity: 0.62; }
+.nge-triage-card--closed:hover { opacity: 0.9; }
 .nge-triage-rec {
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em;
   padding: 1px 8px; border-radius: 9px; text-transform: uppercase;
