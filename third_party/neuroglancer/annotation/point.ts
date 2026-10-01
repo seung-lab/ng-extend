@@ -78,6 +78,7 @@ class RenderHelper extends AnnotationRenderHelper {
     const {rank} = this;
     builder.addUniform('highp float', 'uNgePointScale');
     builder.addUniform('highp float', 'uNgeGem');
+    builder.addUniform('highp float', 'uNgeBig');
     // Position of point in model coordinates.
     defineVectorArrayVertexShaderInput(
         builder, 'float', WebGL2RenderingContext.FLOAT, /*normalized=*/ false, 'VertexPosition',
@@ -110,7 +111,10 @@ if (clipCoefficient == 0.0) {
   return;
 }
 ${this.invokeUserMain}
-ng_markerDiameter *= uNgePointScale * (1.0 + 0.9 * uNgeGem);
+ng_markerDiameter *= uNgePointScale * uNgeBig;
+// The gem fills the upper half of its quad, so the quad is big: a gem about
+// 22 px tall at 1x (it read as a small dot at the dot's own size).
+if (uNgeGem > 0.5) ng_markerDiameter = max(ng_markerDiameter * 4.0, 44.0 * uNgePointScale);
 ng_markerBorderWidth *= uNgePointScale;
 vColor.a *= clipCoefficient;
 vBorderColor.a *= clipCoefficient;
@@ -192,7 +196,10 @@ emitAnnotation(vec4(color.rgb, color.a * ${this.getCrossSectionFadeFactor()}));
     super.enable(shaderGetter, context, shader => {
       this.gl.uniform1f(shader.uniform('uNgePointScale'), ngePointScale.value);
       // Gems only in the 3D view; 2D slices keep the precise centred dot.
-      this.gl.uniform1f(shader.uniform('uNgeGem'), ngePointGem.value && !this.targetIsSliceView ? 1 : 0);
+      const marker = context.annotationLayer.state.displayState.ngeMarker.value;
+      this.gl.uniform1f(shader.uniform('uNgeGem'), ngePointGem.value && marker === 'pyr' && !this.targetIsSliceView ? 1 : 0);
+      // The big dot: the regular dot 10x larger, in every view.
+      this.gl.uniform1f(shader.uniform('uNgeBig'), marker === 'big' ? 10 : 1);
       const binder = shader.vertexShaderInputBinders['VertexPosition'];
       binder.enable(1);
       this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, context.buffer.buffer);

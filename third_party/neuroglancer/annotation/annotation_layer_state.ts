@@ -106,6 +106,10 @@ export class AnnotationDisplayState extends RefCounted {
   fallbackShaderControls =
       new WatchableValue(getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)));
   shaderError = makeWatchableShaderError();
+  /** EyeWire II: how this layer draws its points (layer JSON "pointMarker").
+   *  'dot' the regular dot, 'big' the same dot 10x larger, 'pyr' a Pyr gem in
+   *  the 3D view. */
+  ngeMarker = new WatchableValue<'dot'|'big'|'pyr'>('dot');
   // #edd040, EyeWire II's annotation yellow (Amy, 2026-09-28): readable on
   // grey EM and on every segment colour.
   color = new TrackableRGB(vec3.fromValues(0.929, 0.816, 0.251));

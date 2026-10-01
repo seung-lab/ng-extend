@@ -306,18 +306,46 @@ export class AnnotationLayerView extends Tab {
       text: annotationTypeHandlers[AnnotationType.POINT].icon,
       title: 'Annotate point',
       onClick: () => {
+        displayState.ngeMarker.value = 'dot';
         this.layer.tool.value = new PlacePointTool(this.layer, {});
       },
     });
-    // EyeWire II (Amy 2026-09-30): the point tool is the Pyr gem, the same
-    // shape the 3D view now draws for point annotations.
-    pointButton.textContent = '';
+    mutableControls.appendChild(pointButton);
+    // EyeWire II (Amy 2026-10-01): the regular dot stays; the big dot (10x)
+    // and Pyr are their own buttons. All three place points, and each sets
+    // how THIS layer draws them (saved in the layer as "pointMarker").
+    const bigButton = makeIcon({
+      text: '●',
+      title: 'Annotate point, shown 10× larger',
+      onClick: () => {
+        displayState.ngeMarker.value = 'big';
+        this.layer.tool.value = new PlacePointTool(this.layer, {});
+      },
+    });
+    bigButton.classList.add('nge-big-dot-tool');
+    mutableControls.appendChild(bigButton);
+    const pyrButton = makeIcon({
+      title: 'Annotate point, shown as a Pyr gem in 3D',
+      onClick: () => {
+        displayState.ngeMarker.value = 'pyr';
+        this.layer.tool.value = new PlacePointTool(this.layer, {});
+      },
+    });
+    pyrButton.textContent = '';
     const pyrImg = document.createElement('img');
     pyrImg.src = pyrIconUrl;
     pyrImg.alt = '';
     pyrImg.className = 'nge-pyr-tool-icon';
-    pointButton.appendChild(pyrImg);
-    mutableControls.appendChild(pointButton);
+    pyrButton.appendChild(pyrImg);
+    mutableControls.appendChild(pyrButton);
+    const showMarker = () => {
+      const marker = displayState.ngeMarker.value;
+      pointButton.classList.toggle('nge-marker-on', marker === 'dot');
+      bigButton.classList.toggle('nge-marker-on', marker === 'big');
+      pyrButton.classList.toggle('nge-marker-on', marker === 'pyr');
+    };
+    this.registerDisposer(displayState.ngeMarker.changed.add(showMarker));
+    showMarker();
 
     const boundingBoxButton = makeIcon({
       text: annotationTypeHandlers[AnnotationType.AXIS_ALIGNED_BOUNDING_BOX].icon,

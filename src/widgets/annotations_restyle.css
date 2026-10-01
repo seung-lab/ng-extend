@@ -337,3 +337,14 @@ textarea.neuroglancer-annotation-details-description:focus {
   font-size: 11px !important;
   color: rgba(160, 185, 220, 0.8);
 }
+
+/* Dot or Pyr: the lit one is how this layer draws its points in 3D. */
+.neuroglancer-annotation-toolbox .neuroglancer-icon.nge-marker-on {
+  background: rgba(79, 207, 255, 0.2);
+  border-color: #4fcfff;
+  box-shadow: 0 0 10px rgba(79, 207, 255, 0.4);
+}
+/* Narrow panels: tools wrap instead of running off the right edge. */
+.neuroglancer-annotation-toolbox { flex-wrap: wrap; box-sizing: border-box; max-width: 100%; }
+.neuroglancer-annotation-toolbox > * { flex-wrap: wrap; row-gap: 6px; }
+.neuroglancer-annotation-toolbox .neuroglancer-icon.nge-big-dot-tool { font-size: 20px; line-height: 1; }
