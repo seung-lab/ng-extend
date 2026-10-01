@@ -86,31 +86,38 @@ async function topEditors(startISO, endISO, n = 10) {
     .map(([user_id, count]) => ({ user_id, count }));
 }
 
-/** Top N completers by cave_completions_mirror count, joined to users
- *  on cave_user_id. */
+/** Top N completers, counted from the app's own log (edit_log) exactly as
+ *  the leaderboard view does (supabase-leaderboard-completions-from-log.sql):
+ *  the CAVE mirror lagged up to two days and never saw MEC. One cell = one
+ *  distinct root id per player; a row with no id counts only when no
+ *  id-carrying completion by that player sits within two minutes of it. */
 async function topCompleters(startISO, endISO, n = 10) {
   const rows = await supabaseGet(
-    `cave_completions_mirror?select=cave_user_id` +
-    `&completed_at=gte.${encodeURIComponent(startISO)}` +
-    `&completed_at=lt.${encodeURIComponent(endISO)}` +
+    `edit_log?select=user_id,timestamp,metadata,success` +
+    `&timestamp=gte.${encodeURIComponent(startISO)}` +
+    `&timestamp=lt.${encodeURIComponent(endISO)}` +
+    `&operation=in.(complete_task,mark_complete)` +
     `&limit=200000`,
   );
-  const caveCounts = new Map();
-  for (const r of rows) {
-    if (r.cave_user_id == null) continue;
-    caveCounts.set(r.cave_user_id, (caveCounts.get(r.cave_user_id) ?? 0) + 1);
+  const ok = rows.filter(r => r.user_id && r.success !== false);
+  const idOf = r => r.metadata?.final_segment_id ?? r.metadata?.root_id ?? r.metadata?.segment_id ?? null;
+  const cells = new Map();                       // user_id -> Set of cell keys
+  for (const r of ok) {
+    let cell = idOf(r);
+    if (cell == null) {
+      const t = Date.parse(r.timestamp);
+      const paired = ok.some(d => d.user_id === r.user_id && idOf(d) != null &&
+        Math.abs(Date.parse(d.timestamp) - t) <= 120_000);
+      if (paired) continue;
+      cell = 'at:' + new Date(t).toISOString().slice(0, 16);
+    }
+    if (!cells.has(r.user_id)) cells.set(r.user_id, new Set());
+    cells.get(r.user_id).add(String(cell));
   }
-  if (caveCounts.size === 0) return [];
-  // Resolve cave_user_id → users.id
-  const caveIds = [...caveCounts.keys()].join(',');
-  const users = await supabaseGet(`users?select=id,cave_user_id&cave_user_id=in.(${caveIds})`);
-  const byCave = new Map(users.map(u => [u.cave_user_id, u.id]));
-  const out = [];
-  for (const [caveId, count] of caveCounts) {
-    const userId = byCave.get(caveId);
-    if (userId) out.push({ user_id: userId, count });
-  }
-  return out.sort((a, b) => b.count - a.count).slice(0, n);
+  return [...cells.entries()]
+    .map(([user_id, set]) => ({ user_id, count: set.size }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, n);
 }
 
 /** Resolve user_ids to display names. */
