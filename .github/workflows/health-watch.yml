@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  actions: read   # read the triage workflows' job results
 
 concurrency:
   group: health-watch
@@ -26,7 +27,7 @@ concurrency:
 jobs:
   watch:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -41,6 +42,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID || 'C0BG5CN71C3' }}
           ALERT_SLACK_ID: U02FH1DRC
           DRY_RUN: ${{ inputs.dry_run }}
