@@ -1011,7 +1011,30 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <div class="nge-profile-stat-label">Total</div>
                 <div class="nge-profile-stat-val"><RollUp :value="filteredCellHistory.length" /></div>
               </div>
-              <div class="nge-profile-stat-col nge-profile-stat-tile" v-if="playerAssists > 0" title="Cells where you helped answer another player's request">
+              <!-- Annotations sit with the editing numbers (Ames 2026-10-01); the
+                   count can run to many thousands, which this tile has room for. -->
+              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Points, lines and boxes you placed in annotation layers, on every dataset">
+                <div class="nge-profile-stat-label">Annotations</div>
+                <div class="nge-profile-stat-val" style="color: #7fd6ff;"><RollUp :value="annotationsPlaced" /></div>
+              </div>
+            </div>
+
+            <!-- Scout Report: tags placed and fixed -->
+            <div class="nge-profile-section-label" style="margin-top: 12px;">▌ Scout Report</div>
+            <div class="nge-profile-stat-row nge-profile-stat-row--scout" style="margin-bottom: 12px;">
+              <div class="nge-profile-stat-col" title="Tags you placed for others to fix">
+                <div class="nge-profile-stat-label">Tags Placed</div>
+                <div class="nge-profile-stat-val" style="color: #f5d142;"><RollUp :value="myTagsPlaced.length" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Tags of yours that someone fixed">
+                <div class="nge-profile-stat-label">Confirmed</div>
+                <div class="nge-profile-stat-val"><RollUp :value="myTagsFixed.length" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Tags you fixed for others">
+                <div class="nge-profile-stat-label">You Fixed</div>
+                <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Cells where you helped answer another player's request">
                 <div class="nge-profile-stat-label">Assists</div>
                 <div class="nge-profile-stat-val" style="color: #7f8;">{{ playerAssists }}</div>
               </div>
@@ -1058,27 +1081,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
             <div class="nge-cell-empty" v-else>
               <template v-if="activeDatasetCanon">No cells on {{ scopeDataset?.shortLabel || activeDatasetCanon }} yet. </template>Select segments and mark complete or set cell type to build your history.
-            </div>
-
-            <!-- Scout Report: tags placed and fixed -->
-            <div class="nge-profile-section-label" style="margin-top: 12px;">▌ Scout Report</div>
-            <div class="nge-profile-stat-row nge-profile-stat-row--scout">
-              <div class="nge-profile-stat-col" title="Tags you placed for others to fix">
-                <div class="nge-profile-stat-label">Tags Placed</div>
-                <div class="nge-profile-stat-val" style="color: #f5d142;"><RollUp :value="myTagsPlaced.length" /></div>
-              </div>
-              <div class="nge-profile-stat-col" title="Tags of yours that someone fixed">
-                <div class="nge-profile-stat-label">Confirmed</div>
-                <div class="nge-profile-stat-val"><RollUp :value="myTagsFixed.length" /></div>
-              </div>
-              <div class="nge-profile-stat-col" title="Tags you fixed for others">
-                <div class="nge-profile-stat-label">You Fixed</div>
-                <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
-              </div>
-              <div class="nge-profile-stat-col" title="Points, lines and boxes you placed in annotation layers, on every dataset">
-                <div class="nge-profile-stat-label">Annotations</div>
-                <div class="nge-profile-stat-val" style="color: #7fd6ff;"><RollUp :value="annotationsPlaced" /></div>
-              </div>
             </div>
           </div>
 
