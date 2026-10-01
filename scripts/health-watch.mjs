@@ -59,17 +59,89 @@ async function checkSheets() {
 async function checkCave() {
   const bad = [];
   let good = 0;
-  for (const ds of CAVE_TABLES) {
-    for (const t of ds.tables) {
-      try {
-        const r = await timed(`${ds.server}/annotation/api/v2/aligned_volume/${ds.vol}/table/${t}`, {
-          headers: { Authorization: `Bearer ${env.CAVE_SERVICE_TOKEN}` },
-        });
-        if (r.ok) good++; else bad.push(`${ds.label} ${t}: ${r.status}`);
-      } catch (e) { bad.push(`${ds.label} ${t}: ${e.message}`); }
-    }
+  // One slow answer is not an outage: the 2026-10-01 alert was a single 30 s
+  // timeout on MICrONS that was fine the next hour. Try three times, a
+  // minute apart, and only report a table that fails every time.
+  const once = async (ds, t) => {
+    try {
+      const r = await timed(`${ds.server}/annotation/api/v2/aligned_volume/${ds.vol}/table/${t}`, {
+        headers: { Authorization: `Bearer ${env.CAVE_SERVICE_TOKEN}` },
+      });
+      return r.ok ? null : String(r.status);
+    } catch (e) { return e.message; }
+  };
+  let todo = CAVE_TABLES.flatMap(ds => ds.tables.map(t => ({ ds, t, err: '' })));
+  const total = todo.length;
+  for (let attempt = 1; attempt <= 3 && todo.length; attempt++) {
+    if (attempt > 1) await new Promise(r => setTimeout(r, 60000));
+    const still = [];
+    for (const x of todo) { x.err = await once(x.ds, x.t); if (x.err) still.push(x); }
+    todo = still;
   }
+  good = total - todo.length;
+  for (const x of todo) bad.push(`${x.ds.label} ${x.t}: ${x.err} (3 tries)`);
   return bad.length ? { ok: false, detail: bad.join('; ') } : { ok: true, detail: `${good} table(s) answer` };
+}
+
+/**
+ * The robot's AI step (Claude in GitHub Actions). When the Anthropic key is
+ * out of credit, expired or revoked, the `model` job fails in under a second
+ * and every proposal and build dies quietly (Ames 2026-10-01). Failing: the
+ * model job failed in each of the last 3 runs that reached it, across the
+ * propose and implement workflows.
+ */
+async function checkRobotAi() {
+  const token = env.GITHUB_TOKEN;
+  if (!token) return { ok: true, detail: 'not checked (no GitHub token)' };
+  const gh = async (path) => {
+    const r = await timed(`https://api.github.com/repos/seung-lab/ng-extend/${path}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'eyewire-health-watch' },
+    });
+    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    return r.json();
+  };
+  try {
+    const runs = [];
+    for (const wf of ['triage-propose.yml', 'triage-implement.yml']) {
+      const j = await gh(`actions/workflows/${wf}/runs?status=completed&per_page=15`);
+      runs.push(...(j.workflow_runs || []));
+    }
+    runs.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const verdicts = [];
+    for (const run of runs) {
+      if (verdicts.length >= 3) break;
+      const jobs = (await gh(`actions/runs/${run.id}/jobs`)).jobs || [];
+      const model = jobs.find(j => j.name === 'model');
+      if (!model || model.conclusion === 'skipped') continue; // nothing to do that run
+      verdicts.push({ ok: model.conclusion === 'success', url: run.html_url, at: run.created_at });
+    }
+    if (verdicts.length < 3 || verdicts.some(v => v.ok)) return { ok: true, detail: `AI step fine in ${verdicts.filter(v => v.ok).length} of the last ${verdicts.length} runs` };
+    return { ok: false, detail: `Claude failed in the last 3 robot runs (latest ${verdicts[0].url}). `
+      + 'Usually the Anthropic account is out of credit or the key expired: check console.anthropic.com, Billing and API Keys, '
+      + 'then update the ANTHROPIC_API_KEY secret in GitHub if the key changed.' };
+  } catch (e) { return { ok: true, detail: `not checked (${e.message})` }; }
+}
+
+/**
+ * Ask Anthropic directly whether the robot's key works: a one token request,
+ * so the alert carries Anthropic's own reason (out of credit, invalid key,
+ * spend limit). The key itself is never printed.
+ */
+async function checkAnthropicKey() {
+  if (!env.ANTHROPIC_API_KEY) return { ok: true, detail: 'not checked (no key in this job)' };
+  try {
+    const r = await timed('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': env.ANTHROPIC_API_KEY.trim(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'ok' }] }),
+    });
+    if (r.ok) return { ok: true, detail: 'Anthropic accepts the key' };
+    const j = await r.json().catch(() => ({}));
+    const why = `${j?.error?.type || 'error'}: ${String(j?.error?.message || '').slice(0, 240)}`;
+    // Overload and rate limits pass on their own; only account or key problems alert.
+    if ([429, 500, 529].includes(r.status) && !/credit|billing|spend/i.test(why)) return { ok: true, detail: `Anthropic busy (${r.status}), not a key problem` };
+    return { ok: false, detail: `Anthropic refuses the robot's key (${r.status} ${why}). Fix at console.anthropic.com, then update ANTHROPIC_API_KEY in GitHub and Firebase if the key changed.` };
+  } catch (e) { return { ok: true, detail: `not checked (${e.message})` }; }
 }
 
 async function checkPlayerFailures() {
@@ -116,14 +188,18 @@ async function lastHealthMessage() {
     'Spreadsheet write-back': await checkSheets(),
     'CAVE tables': await checkCave(),
     'Player write failures': await checkPlayerFailures(),
+    'Robot AI step': await checkRobotAi(),
+    'Anthropic key': await checkAnthropicKey(),
   };
   for (const [name, r] of Object.entries(results)) console.log(`[health] ${r.ok ? 'OK  ' : 'FAIL'} ${name}: ${r.detail}`);
   const failing = Object.entries(results).filter(([, r]) => !r.ok);
   const signature = failing.map(([n]) => n).sort().join('|');
 
   const last = await lastHealthMessage().catch(e => { console.warn(e.message); return null; });
-  const lastWasFailure = !!last && (last.text || '').includes('🚨');
   const lastSig = last?.text?.match(/\{sig:([^}]*)\}/)?.[1] ?? '';
+  // Slack hands the emoji back as :rotating_light:, so the 🚨 itself cannot
+  // be matched; an alert is a message with a non-empty signature.
+  const lastWasFailure = !!last && lastSig !== '';
   const lastAt = last ? Number(last.ts) * 1000 : 0;
 
   let text = null;
