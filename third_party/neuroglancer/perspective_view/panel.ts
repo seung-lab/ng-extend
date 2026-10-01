@@ -575,6 +575,10 @@ export class PerspectivePanel extends RenderedDataPanel {
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isAnnotation) {
           const annotationRenderLayer = renderLayer as PerspectiveViewAnnotationLayer;
+          // EyeWire II: an "onTop" layer (Highlight mode strokes) is drawn
+          // over the meshes, not hidden inside the branch it runs through.
+          const onTop = annotationRenderLayer.base.state.displayState.ngeOnTop.value;
+          if (onTop) gl.disable(WebGL2RenderingContext.DEPTH_TEST);
           if (annotationRenderLayer.base.state.displayState.disablePicking.value) {
             disablePicking();
             annotationRenderLayer.draw(renderContext, attachment);
@@ -582,6 +586,7 @@ export class PerspectivePanel extends RenderedDataPanel {
           } else {
             annotationRenderLayer.draw(renderContext, attachment);
           }
+          if (onTop) gl.enable(WebGL2RenderingContext.DEPTH_TEST);
         }
       }
       gl.depthFunc(WebGL2RenderingContext.LESS);
