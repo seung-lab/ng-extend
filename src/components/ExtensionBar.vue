@@ -18,6 +18,7 @@ import { runSpotlight } from "../assistant/spotlight";
 import { showDefaultCell } from "../widgets/widget_utils";
 import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import TagModePanel from "components/TagModePanel.vue";
+import HighlightModePanel from "components/HighlightModePanel.vue";
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
@@ -322,6 +323,7 @@ const showCellLibrary = ref(false);
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const showTagMode = ref(false);
+const showHighlight = ref(false);
 const showFlightMode = ref(false);
 const konamiBuf: string[] = [];
 const showDatasetSelector = ref(false);
@@ -642,6 +644,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
   tags:        { action: () => { showTagMode.value = !showTagMode.value; } },
+  highlight:   { action: () => { showHighlight.value = !showHighlight.value; } },
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
@@ -679,6 +682,7 @@ const iconActiveState: Record<string, () => boolean> = {
   notif: () => showNotifications.value,
   chat: () => showChat.value,
   tags: () => showTagMode.value,
+  highlight: () => showHighlight.value,
   flight: () => showFlightMode.value,
   settings: () => showProfile.value && profileInitialTab.value === 'settings',
 };
@@ -801,6 +805,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
   <batch-processor-panel v-if="showBatchProcessor" @hide="showBatchProcessor = false" />
   <tag-mode-panel v-if="showTagMode" @hide="showTagMode = false" />
+  <highlight-mode-panel v-if="showHighlight" @hide="showHighlight = false" />
   <flight-mode v-if="showFlightMode" @hide="showFlightMode = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
