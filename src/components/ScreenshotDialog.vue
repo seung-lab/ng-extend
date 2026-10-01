@@ -624,6 +624,8 @@ async function refreshSource() {
 
 watch(() => props.show, async (open) => {
   if (open) {
+    // Stay out of sight until the whole-screen picture is taken (no flash).
+    if (wholeScreen.value) dialogHidden.value = true;
     await nextTick();
     const viewer: any = (window as any)['viewer'];
     if (typeof viewer?.showScaleBar?.value === 'boolean') {
@@ -636,8 +638,28 @@ watch(() => props.show, async (open) => {
     nurroImg.value = null;
     strokes.value = [];
     screenCap.value = null;
+    // Whole screen: take the picture straight away, while the click that
+    // opened this still counts as permission to ask. The dialog then shows
+    // once, with the real picture in it (Ames 2026-10-01: it used to show a
+    // preview without the panels, then come back a second time after the
+    // browser's prompt). If the prompt is dismissed, the dialog opens with a
+    // Capture screen button instead.
+    if (wholeScreen.value) {
+      busy.value = true;
+      try {
+        const shot = await captureWholeScreen();
+        screenCap.value = { canvas: shot, sw: shot.width, sh: shot.height, nmPerPx: null };
+      } catch (e: any) {
+        if (e?.name !== 'NotAllowedError') errorMsg.value = e?.message ?? String(e);
+      } finally {
+        busy.value = false;
+      }
+      await nextTick();
+    }
     layoutFrame();
+    const firstError = errorMsg.value;
     await refreshSource();
+    if (firstError) errorMsg.value = firstError;
   }
 });
 
@@ -923,6 +945,10 @@ async function download() {
                 <b>Whole screen capture</b>
                 <span>Press Capture screen. Your browser will ask to share this tab, then the picture appears here, ready to draw on.</span>
               </div>
+              <div v-if="busy && screenCap" class="nge-shotdlg-wait nge-shotdlg-wait--busy">
+                <i class="nge-shotdlg-spin" aria-hidden="true" />
+                <b>{{ props.mode === 'attach' ? 'Uploading' : 'Saving' }}</b>
+              </div>
               <span class="nge-shotdlg-scan" aria-hidden="true" />
             </div>
             <i class="nge-shotdlg-brk tl" aria-hidden="true" />
@@ -1033,6 +1059,13 @@ async function download() {
 }
 .nge-shotdlg-wait b { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: #7fd6ff; font-weight: 600; }
 .nge-shotdlg-wait span { max-width: 420px; }
+.nge-shotdlg-wait--busy { background: rgba(2, 8, 18, 0.72); z-index: 3; }
+.nge-shotdlg-spin {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid rgba(127, 214, 255, 0.2); border-top-color: #7fd6ff;
+  animation: nge-shotdlg-spin 0.8s linear infinite;
+}
+@keyframes nge-shotdlg-spin { to { transform: rotate(360deg); } }
 
 /* Styled after Amy's scifi-ui library (holopanel surface, holoframe corner
    brackets, holoscan single pass), with the values copied inline rather than
