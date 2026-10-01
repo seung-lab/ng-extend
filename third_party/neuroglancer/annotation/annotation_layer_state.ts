@@ -106,10 +106,12 @@ export class AnnotationDisplayState extends RefCounted {
   fallbackShaderControls =
       new WatchableValue(getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)));
   shaderError = makeWatchableShaderError();
-  /** EyeWire II: how this layer draws its points (layer JSON "pointMarker").
-   *  'dot' the regular dot, 'big' the same dot 10x larger, 'pyr' a Pyr gem in
-   *  the 3D view. */
-  ngeMarker = new WatchableValue<'dot'|'big'|'pyr'>('dot');
+  /** EyeWire II: how this layer draws its points (layer JSON "pointMarker"):
+   *  'dot' the regular dot, 'pyr' a Pyr gem in the 3D view. */
+  ngeMarker = new WatchableValue<'dot'|'pyr'>('dot');
+  /** This layer's point size as a multiple of the regular dot (layer JSON
+   *  "pointSize"); the slider and number box in the Annotations tab. */
+  ngeSize = new WatchableValue<number>(1);
   // #edd040, EyeWire II's annotation yellow (Amy, 2026-09-28): readable on
   // grey EM and on every segment colour.
   color = new TrackableRGB(vec3.fromValues(0.929, 0.816, 0.251));

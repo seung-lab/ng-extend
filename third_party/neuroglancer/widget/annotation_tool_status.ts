@@ -110,8 +110,19 @@ export class AnnotationToolStatusWidget extends RefCounted {
       if (tool instanceof LegacyTool) {
         element.classList.add('nge-tool-pill');
         const verb = tool.description.replace(/^annotate\s+/i, '');
-        descriptionElement.textContent = `Ctrl+click adds a ${verb} to ${managedLayer.name}`;
-        element.title = `The ${managedLayer.name} layer has its ${tool.description} tool on, so Ctrl+click places a ${verb} there. Press × to turn it off.`;
+        // Ames 2026-10-01: just the layer's colour and name; the how-to is
+        // the hover tooltip.
+        descriptionElement.textContent = managedLayer.name;
+        element.title = `Ctrl+click adds a ${verb} to ${managedLayer.name}. Press × to turn the tool off.`;
+        layerNumberElement.remove();
+        const layerColor = (toolContext as any).annotationDisplayState?.color?.toString?.();
+        // A name that already carries its own colour emoji needs no dot.
+        if (layerColor && !/\p{Extended_Pictographic}/u.test(managedLayer.name)) {
+          const dot = document.createElement('span');
+          dot.className = 'nge-tool-pill-dot';
+          dot.style.background = layerColor;
+          element.appendChild(dot);
+        }
         element.appendChild(descriptionElement);
         const off = document.createElement('button');
         off.className = 'nge-tool-pill-off';

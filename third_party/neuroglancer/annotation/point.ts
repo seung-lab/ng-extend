@@ -196,10 +196,11 @@ emitAnnotation(vec4(color.rgb, color.a * ${this.getCrossSectionFadeFactor()}));
     super.enable(shaderGetter, context, shader => {
       this.gl.uniform1f(shader.uniform('uNgePointScale'), ngePointScale.value);
       // Gems only in the 3D view; 2D slices keep the precise centred dot.
-      const marker = context.annotationLayer.state.displayState.ngeMarker.value;
+      const {ngeMarker, ngeSize} = context.annotationLayer.state.displayState;
+      const marker = ngeMarker.value;
       this.gl.uniform1f(shader.uniform('uNgeGem'), ngePointGem.value && marker === 'pyr' && !this.targetIsSliceView ? 1 : 0);
-      // The big dot: the regular dot 10x larger, in every view.
-      this.gl.uniform1f(shader.uniform('uNgeBig'), marker === 'big' ? 10 : 1);
+      // The layer's own point size (Annotations tab slider), in every view.
+      this.gl.uniform1f(shader.uniform('uNgeBig'), ngeSize.value);
       const binder = shader.vertexShaderInputBinders['VertexPosition'];
       binder.enable(1);
       this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, context.buffer.buffer);

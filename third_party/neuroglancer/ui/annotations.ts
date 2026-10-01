@@ -307,18 +307,22 @@ export class AnnotationLayerView extends Tab {
       title: 'Annotate point',
       onClick: () => {
         displayState.ngeMarker.value = 'dot';
+        displayState.ngeSize.value = 1;
         this.layer.tool.value = new PlacePointTool(this.layer, {});
       },
     });
     mutableControls.appendChild(pointButton);
-    // EyeWire II (Amy 2026-10-01): the regular dot stays; the big dot (10x)
-    // and Pyr are their own buttons. All three place points, and each sets
-    // how THIS layer draws them (saved in the layer as "pointMarker").
+    // EyeWire II (Amy 2026-10-01): the regular dot stays; the big dot and Pyr
+    // are their own buttons. All three place points, and each sets how THIS
+    // layer draws them (saved in the layer as "pointMarker" and "pointSize").
+    // The Size row below sets the exact size.
+    const BIG_SIZE = 5;
     const bigButton = makeIcon({
       text: '●',
-      title: 'Annotate point, shown 10× larger',
+      title: 'Annotate point, shown larger (set the size below)',
       onClick: () => {
-        displayState.ngeMarker.value = 'big';
+        displayState.ngeMarker.value = 'dot';
+        if (displayState.ngeSize.value <= 1) displayState.ngeSize.value = BIG_SIZE;
         this.layer.tool.value = new PlacePointTool(this.layer, {});
       },
     });
@@ -340,11 +344,13 @@ export class AnnotationLayerView extends Tab {
     mutableControls.appendChild(pyrButton);
     const showMarker = () => {
       const marker = displayState.ngeMarker.value;
-      pointButton.classList.toggle('nge-marker-on', marker === 'dot');
-      bigButton.classList.toggle('nge-marker-on', marker === 'big');
+      const size = displayState.ngeSize.value;
+      pointButton.classList.toggle('nge-marker-on', marker === 'dot' && size === 1);
+      bigButton.classList.toggle('nge-marker-on', marker === 'dot' && size !== 1);
       pyrButton.classList.toggle('nge-marker-on', marker === 'pyr');
     };
     this.registerDisposer(displayState.ngeMarker.changed.add(showMarker));
+    this.registerDisposer(displayState.ngeSize.changed.add(showMarker));
     showMarker();
 
     const boundingBoxButton = makeIcon({
@@ -375,6 +381,40 @@ export class AnnotationLayerView extends Tab {
     mutableControls.appendChild(ellipsoidButton);
     toolbox.appendChild(mutableControls);
     this.element.appendChild(toolbox);
+
+    // Point size for this layer: slide or type (Amy 2026-10-01).
+    const sizeRow = document.createElement('label');
+    sizeRow.className = 'nge-ann-size-row';
+    sizeRow.title = 'How big this layer draws its points, as a multiple of the regular dot';
+    const sizeLabel = document.createElement('span');
+    sizeLabel.textContent = 'Size';
+    const sizeSlider = document.createElement('input');
+    sizeSlider.type = 'range';
+    sizeSlider.min = '0.5'; sizeSlider.max = '10'; sizeSlider.step = '0.5';
+    const sizeNumber = document.createElement('input');
+    sizeNumber.type = 'number';
+    sizeNumber.min = '0.25'; sizeNumber.max = '20'; sizeNumber.step = '0.25';
+    const sizeUnit = document.createElement('span');
+    sizeUnit.textContent = '×';
+    const showSize = () => {
+      const v = displayState.ngeSize.value;
+      sizeSlider.value = String(v);
+      if (document.activeElement !== sizeNumber) sizeNumber.value = String(v);
+    };
+    const setSize = (raw: string) => {
+      const v = Number(raw);
+      if (!Number.isFinite(v) || v <= 0) return;
+      displayState.ngeSize.value = Math.max(0.25, Math.min(20, v));
+    };
+    sizeSlider.addEventListener('input', () => setSize(sizeSlider.value));
+    sizeNumber.addEventListener('input', () => setSize(sizeNumber.value));
+    sizeNumber.addEventListener('blur', showSize);
+    // Typing here must not reach the viewer's key bindings.
+    sizeNumber.addEventListener('keydown', e => e.stopPropagation());
+    this.registerDisposer(displayState.ngeSize.changed.add(showSize));
+    showSize();
+    sizeRow.append(sizeLabel, sizeSlider, sizeNumber, sizeUnit);
+    this.element.appendChild(sizeRow);
 
     this.element.appendChild(this.headerRow);
     const {virtualList} = this;

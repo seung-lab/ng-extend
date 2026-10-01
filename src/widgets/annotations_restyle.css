@@ -348,3 +348,22 @@ textarea.neuroglancer-annotation-details-description:focus {
 .neuroglancer-annotation-toolbox { flex-wrap: wrap; box-sizing: border-box; max-width: 100%; }
 .neuroglancer-annotation-toolbox > * { flex-wrap: wrap; row-gap: 6px; }
 .neuroglancer-annotation-toolbox .neuroglancer-icon.nge-big-dot-tool { font-size: 20px; line-height: 1; }
+.nge-tool-pill-dot { width: 10px; height: 10px; border-radius: 50%; margin-left: 4px; box-shadow: 0 0 6px rgba(255, 255, 255, 0.25); }
+.neuroglancer-annotation-tool-status-widget.nge-tool-pill { padding-left: 8px; }
+
+/* Point size: slide or type. */
+.nge-ann-size-row {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 6px; padding: 5px 10px;
+  border: 1px solid rgba(79, 207, 255, 0.18); border-radius: 10px;
+  background: rgba(8, 20, 40, 0.5);
+  font-size: 11px !important; color: rgba(160, 185, 220, 0.85);
+}
+.nge-ann-size-row input[type='range'] { flex: 1; min-width: 0; accent-color: #4fcfff; }
+.nge-ann-size-row input[type='number'] {
+  width: 52px; padding: 2px 4px; text-align: right;
+  font: 600 11px 'JetBrains Mono', 'Consolas', monospace;
+  color: #d4f0ff; background: rgba(79, 207, 255, 0.08);
+  border: 1px solid rgba(79, 207, 255, 0.3); border-radius: 6px;
+}
+.nge-ann-size-row input[type='number']:focus { outline: none; border-color: #4fcfff; box-shadow: 0 0 8px rgba(79, 207, 255, 0.35); }
