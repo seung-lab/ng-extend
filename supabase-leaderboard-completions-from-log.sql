@@ -16,7 +16,13 @@
 -- metadata.root_id / metadata.final_segment_id. One cell = one distinct id per
 -- player. A row with no id counts only if no id-carrying completion by the
 -- same player sits within two minutes of it (it is then its own cell, keyed
--- by the minute). Failed operations (success = false) never count.
+-- by the minute). Failed operations (success = false) never count. A cell
+-- whose newest event is 'unmark_complete' (marked, then un-marked) does not
+-- count; marked again later, it counts from that later time. Every dataset
+-- counts, MEC included (its completions are logged as 'mark_complete').
+--
+-- Also adds edit_log to the realtime publication, for the chat ticker
+-- ("amy completed a cell").
 --
 -- This is the LIVE definition (supabase-leaderboard-windows-schema.sql: edits
 -- from edit_log) with only the two completions columns changed. All-time
@@ -62,34 +68,52 @@ LEFT JOIN LATERAL (
 ) e7d ON true
 LEFT JOIN LATERAL (
   SELECT
-    COUNT(*) FILTER (WHERE first_at >= NOW() - INTERVAL '24 hours') AS c24,
-    COUNT(*) AS c7d
+    COUNT(*) FILTER (WHERE done_at >= NOW() - INTERVAL '24 hours') AS c24,
+    COUNT(*) FILTER (WHERE done_at >= NOW() - INTERVAL '7 days') AS c7d
   FROM (
-    SELECT cell, MIN(ts) AS first_at
+    -- when it was completed: the first completion, or, if it was un-marked
+    -- at some point, the first completion after the last un-mark
+    SELECT cell, MIN(ts) FILTER (WHERE last_unmark IS NULL OR ts > last_unmark) AS done_at
     FROM (
-      SELECT
-        l.timestamp AS ts,
-        COALESCE(
-          l.metadata->>'final_segment_id',
-          l.metadata->>'root_id',
-          l.metadata->>'segment_id',
-          CASE WHEN EXISTS (
-            SELECT 1 FROM edit_log d
-            WHERE d.user_id = l.user_id
-              AND d.operation IN ('complete_task', 'mark_complete')
-              AND d.success IS NOT FALSE
-              AND COALESCE(d.metadata->>'final_segment_id', d.metadata->>'root_id', d.metadata->>'segment_id') IS NOT NULL
-              AND d.timestamp BETWEEN l.timestamp - INTERVAL '2 minutes' AND l.timestamp + INTERVAL '2 minutes'
-          ) THEN NULL
-          ELSE 'at:' || to_char(date_trunc('minute', l.timestamp), 'YYYYMMDDHH24MI') END
-        ) AS cell
-      FROM edit_log l
-      WHERE l.user_id = u.id
-        AND l.operation IN ('complete_task', 'mark_complete')
-        AND l.success IS NOT FALSE
-        AND l.timestamp >= NOW() - INTERVAL '7 days'
-    ) x
-    WHERE cell IS NOT NULL
+      SELECT x.ts, x.cell,
+        (SELECT MAX(n.timestamp) FROM edit_log n
+         WHERE n.user_id = u.id AND n.operation = 'unmark_complete'
+           AND n.success IS NOT FALSE AND n.metadata->>'root_id' = x.cell) AS last_unmark
+      FROM (
+        SELECT
+          l.timestamp AS ts,
+          COALESCE(
+            l.metadata->>'final_segment_id',
+            l.metadata->>'root_id',
+            l.metadata->>'segment_id',
+            CASE WHEN EXISTS (
+              SELECT 1 FROM edit_log d
+              WHERE d.user_id = l.user_id
+                AND d.operation IN ('complete_task', 'mark_complete')
+                AND d.success IS NOT FALSE
+                AND COALESCE(d.metadata->>'final_segment_id', d.metadata->>'root_id', d.metadata->>'segment_id') IS NOT NULL
+                AND d.timestamp BETWEEN l.timestamp - INTERVAL '2 minutes' AND l.timestamp + INTERVAL '2 minutes'
+            ) THEN NULL
+            ELSE 'at:' || to_char(date_trunc('minute', l.timestamp), 'YYYYMMDDHH24MI') END
+          ) AS cell
+        FROM edit_log l
+        WHERE l.user_id = u.id
+          AND l.operation IN ('complete_task', 'mark_complete')
+          AND l.success IS NOT FALSE
+          AND l.timestamp >= NOW() - INTERVAL '7 days'
+      ) x
+      WHERE x.cell IS NOT NULL
+    ) z
     GROUP BY cell
   ) y
+  WHERE done_at IS NOT NULL
 ) c ON true;
+
+-- Chat ticker: let the app hear completions as they are logged.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables
+                 WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'edit_log') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE edit_log;
+  END IF;
+END $$;

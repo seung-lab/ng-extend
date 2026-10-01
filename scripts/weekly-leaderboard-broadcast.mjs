@@ -93,14 +93,22 @@ async function topEditors(startISO, endISO, n = 10) {
  *  id-carrying completion by that player sits within two minutes of it. */
 async function topCompleters(startISO, endISO, n = 10) {
   const rows = await supabaseGet(
-    `edit_log?select=user_id,timestamp,metadata,success` +
+    `edit_log?select=user_id,operation,timestamp,metadata,success` +
     `&timestamp=gte.${encodeURIComponent(startISO)}` +
     `&timestamp=lt.${encodeURIComponent(endISO)}` +
-    `&operation=in.(complete_task,mark_complete)` +
+    `&operation=in.(complete_task,mark_complete,unmark_complete)` +
     `&limit=200000`,
   );
-  const ok = rows.filter(r => r.user_id && r.success !== false);
   const idOf = r => r.metadata?.final_segment_id ?? r.metadata?.root_id ?? r.metadata?.segment_id ?? null;
+  const good = rows.filter(r => r.user_id && r.success !== false);
+  // A cell marked and then un-marked does not count; marked again after, it does.
+  const lastUnmark = new Map();                  // user_id|cell -> newest un-mark time
+  for (const r of good) {
+    if (r.operation !== 'unmark_complete' || r.metadata?.root_id == null) continue;
+    const k = r.user_id + '|' + r.metadata.root_id, t = Date.parse(r.timestamp);
+    if (!(lastUnmark.get(k) >= t)) lastUnmark.set(k, t);
+  }
+  const ok = good.filter(r => r.operation !== 'unmark_complete');
   const cells = new Map();                       // user_id -> Set of cell keys
   for (const r of ok) {
     let cell = idOf(r);
@@ -111,6 +119,7 @@ async function topCompleters(startISO, endISO, n = 10) {
       if (paired) continue;
       cell = 'at:' + new Date(t).toISOString().slice(0, 16);
     }
+    if (lastUnmark.get(r.user_id + '|' + cell) >= Date.parse(r.timestamp)) continue;
     if (!cells.has(r.user_id)) cells.set(r.user_id, new Set());
     cells.get(r.user_id).add(String(cell));
   }

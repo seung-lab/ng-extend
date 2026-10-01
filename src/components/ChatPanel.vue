@@ -767,10 +767,10 @@ function toggleCollapse() {
                   <span>{{ msg.time }}</span>
                 </div>
 
-                <div v-else-if="msg.type === 'join' || msg.type === 'leave' || msg.type === 'disconnected'"
+                <div v-else-if="msg.type === 'join' || msg.type === 'leave' || msg.type === 'disconnected' || msg.type === 'complete'"
                      class="nge-chat-sys"
                      :class="{ 'nge-chat-sys--warn': msg.type === 'disconnected', 'nge-chat-fresh': isFresh(msg) }">
-                  {{ msg.type === 'join' ? '→' : msg.type === 'leave' ? '←' : '⚠' }}
+                  {{ msg.type === 'join' ? '→' : msg.type === 'leave' ? '←' : msg.type === 'complete' ? '✓' : '⚠' }}
                   {{ msg.parts[0]?.text || '' }}
                 </div>
 

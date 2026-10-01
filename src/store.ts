@@ -5024,7 +5024,7 @@ export interface MessagePart {
 }
 
 export interface ChatMessage {
-  type: 'message' | 'join' | 'leave' | 'disconnected' | 'time';
+  type: 'message' | 'join' | 'leave' | 'disconnected' | 'time' | 'complete';
   name: string;
   rank: string;
   time?: string;
@@ -5181,6 +5181,35 @@ export const useChatStore = defineStore('chat', () => {
     addTimeSeparatorIfNeeded(now);
     chatMessages.value.push({ type, name, rank: '', time: formatTime(now), dateTime: now,
       parts: [{ type: 'text', text: `${name} ${type === 'join' ? 'joined' : 'left'} the chat` }] });
+  }
+
+  // Ticker: "amy completed a cell", a grey line like the join note (Ames
+  // 2026-10-01). One completion logs 'mark_complete' and/or 'complete_task'
+  // seconds apart, so the pair is folded into one line: same cell id, or, when
+  // one of the two rows carries no id, within ten seconds of the last line.
+  const tickerSeen: Record<string, { at: number; cell: string }[]> = {};
+  const tickerNames: Record<string, string> = {};
+  async function onCompletion(payload: any) {
+    const row = payload.new || {};
+    if (!row.user_id || row.success === false) return;
+    if (row.operation !== 'mark_complete' && row.operation !== 'complete_task') return;
+    const md = row.metadata || {};
+    const cell = String(md.final_segment_id || md.root_id || md.segment_id || '');
+    const now = Date.now();
+    const seen = (tickerSeen[row.user_id] = (tickerSeen[row.user_id] || []).filter(e => now - e.at < 10 * 60_000));
+    if (seen.some(e => (cell && e.cell === cell) || ((!cell || !e.cell) && now - e.at < 10_000))) return;
+    seen.push({ at: now, cell });
+    let name = online.value[row.user_id]?.name || tickerNames[row.user_id] || '';
+    if (!name) {
+      const { data } = await supabase.from('user_edit_counts').select('display_name').eq('id', row.user_id).limit(1);
+      name = (data as any[] | null)?.[0]?.display_name || '';
+      if (name) tickerNames[row.user_id] = name;
+    }
+    if (!name) return;
+    const at = new Date();
+    addTimeSeparatorIfNeeded(at);
+    chatMessages.value.push({ type: 'complete', name, rank: '', time: formatTime(at), dateTime: at,
+      parts: [{ type: 'text', text: `${name} completed a cell` }] });
   }
 
   async function heartbeat() {
@@ -5568,6 +5597,7 @@ export const useChatStore = defineStore('chat', () => {
       const r = payload.old as any;
       if (r?.message_id != null) removeReactionLocal(r.message_id, r.emoji, r.user_id);
     }).on('postgres_changes', {event:'*', schema:'public', table:'chat_presence'}, onPresence)
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'edit_log', filter:'operation=in.(mark_complete,complete_task)'}, onCompletion)
       .subscribe(status => {
         connected.value = status === 'SUBSCRIBED';
         if (status === 'SUBSCRIBED') {
