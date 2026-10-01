@@ -3,6 +3,8 @@ import { secureWrite } from '../secure_write';
 import {ref, computed, watch, onMounted, onUnmounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
+import {renderSafeMarkdown} from '../util/safe_markdown';
+import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
@@ -435,6 +437,57 @@ async function setImplState(row: TriageRow, next: ImplState) {
 // ── Notification form state ──
 const notifTitle = ref('');
 const notifBody = ref('');
+// ── Formatting (Ames 2026-10-01) ──────────────────────────────────────────
+// The body is Markdown, which the notification feed already renders. The
+// composer makes that usable: pasted formatted text keeps its bold, headings,
+// lists and links; a few buttons wrap the selection; a preview shows the
+// result as players will see it.
+const notifBodyEl = ref<HTMLTextAreaElement | null>(null);
+const notifPreview = computed(() => renderSafeMarkdown(notifBody.value, true));
+function replaceSelection(text: string, selectFrom?: number, selectTo?: number) {
+  const el = notifBodyEl.value;
+  if (!el) { notifBody.value += text; return; }
+  const a = el.selectionStart, b = el.selectionEnd;
+  notifBody.value = el.value.slice(0, a) + text + el.value.slice(b);
+  requestAnimationFrame(() => {
+    el.focus();
+    el.setSelectionRange(a + (selectFrom ?? text.length), a + (selectTo ?? text.length));
+  });
+}
+function onNotifPaste(e: ClipboardEvent) {
+  const html = e.clipboardData?.getData('text/html') || '';
+  if (!html || !htmlHasFormatting(html)) return;   // plain paste as usual
+  const md = htmlToMarkdown(html);
+  if (!md) return;
+  e.preventDefault();
+  replaceSelection(md);
+}
+/** Wrap the selection in a marker (bold, italic), or drop in a placeholder. */
+function fmtWrap(mark: string, placeholder: string) {
+  const el = notifBodyEl.value;
+  const sel = el ? el.value.slice(el.selectionStart, el.selectionEnd) : '';
+  const inner = sel || placeholder;
+  replaceSelection(`${mark}${inner}${mark}`, mark.length, mark.length + inner.length);
+}
+/** Start each selected line with a prefix (heading, bullet). */
+function fmtLines(prefix: string, placeholder: string) {
+  const el = notifBodyEl.value;
+  if (!el) return;
+  const v = el.value;
+  const a = v.lastIndexOf('\n', el.selectionStart - 1) + 1;
+  let b = v.indexOf('\n', el.selectionEnd);
+  if (b < 0) b = v.length;
+  const lines = (v.slice(a, b) || placeholder).split('\n')
+    .map(l => prefix + l.replace(/^(#{1,4}\s+|[-*]\s+)/, ''));
+  el.setSelectionRange(a, b);
+  replaceSelection(lines.join('\n'));
+}
+function fmtLink() {
+  const el = notifBodyEl.value;
+  const sel = el ? el.value.slice(el.selectionStart, el.selectionEnd) : '';
+  const text = sel || 'link text';
+  replaceSelection(`[${text}](https://)`, text.length + 3, text.length + 11);
+}
 const notifTargetType = ref<'all' | 'group' | 'user'>('all');
 const notifTargetId = ref('');
 
@@ -1165,7 +1218,19 @@ function practiceWhen(iso: string | null) {
           Editing an existing notification. Changes apply to everyone who can see it.
         </div>
         <input v-model="notifTitle" class="nge-admin-input" placeholder="Title" />
-        <textarea v-model="notifBody" class="nge-admin-textarea" rows="3" placeholder="Message body..."></textarea>
+        <div class="nge-admin-fmtbar" role="toolbar" aria-label="Formatting">
+          <button type="button" title="Bold" @click="fmtWrap('**', 'bold text')"><b>B</b></button>
+          <button type="button" title="Italic" @click="fmtWrap('*', 'italic text')"><i>I</i></button>
+          <button type="button" title="Heading" @click="fmtLines('## ', 'Heading')">H</button>
+          <button type="button" title="Bullet list" @click="fmtLines('- ', 'List item')">• List</button>
+          <button type="button" title="Link" @click="fmtLink">Link</button>
+          <span class="nge-admin-fmthint">Paste formatted text and it keeps its bold, headings, lists and links.</span>
+        </div>
+        <textarea ref="notifBodyEl" v-model="notifBody" class="nge-admin-textarea" rows="6" placeholder="Message body..." @paste="onNotifPaste"></textarea>
+        <div v-if="notifBody.trim()" class="nge-admin-fmtpreview">
+          <div class="nge-admin-fmtpreview-label">Preview</div>
+          <div class="nge-admin-fmtpreview-body" v-html="notifPreview"></div>
+        </div>
         <div class="nge-admin-row">
           <select v-model="notifTargetType" class="nge-admin-select">
             <option value="all">All Users</option>
@@ -1734,6 +1799,24 @@ function practiceWhen(iso: string | null) {
   outline: none;
 }
 .nge-admin-textarea:focus { border-color: rgba(74, 158, 255, 0.5); }
+.nge-admin-fmtbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.nge-admin-fmtbar button {
+  min-width: 30px; height: 26px; padding: 0 8px; border-radius: 6px; cursor: pointer;
+  font: 600 12px 'Inter', sans-serif; color: #cfe6ff;
+  background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(74, 158, 255, 0.3);
+}
+.nge-admin-fmtbar button:hover { background: rgba(74, 158, 255, 0.22); border-color: rgba(74, 158, 255, 0.6); }
+.nge-admin-fmthint { margin-left: 8px; font-size: 11px; color: rgba(200, 215, 240, 0.5); }
+.nge-admin-fmtpreview {
+  padding: 8px 12px 10px; border-radius: 6px;
+  background: rgba(8, 14, 28, 0.7); border: 1px dashed rgba(74, 158, 255, 0.28);
+}
+.nge-admin-fmtpreview-label { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(160, 185, 220, 0.6); margin-bottom: 4px; }
+.nge-admin-fmtpreview-body { font-size: 13px; line-height: 1.5; color: #dce6f5; max-height: 260px; overflow-y: auto; }
+.nge-admin-fmtpreview-body :deep(h2), .nge-admin-fmtpreview-body :deep(h3), .nge-admin-fmtpreview-body :deep(h4) { font-size: 14px; margin: 10px 0 4px; color: #9fdcff; }
+.nge-admin-fmtpreview-body :deep(p) { margin: 4px 0; }
+.nge-admin-fmtpreview-body :deep(ul), .nge-admin-fmtpreview-body :deep(ol) { margin: 4px 0; padding-left: 20px; }
+.nge-admin-fmtpreview-body :deep(a) { color: #7fd4ff; }
 
 .nge-admin-select {
   background: rgba(255, 255, 255, 0.06);
