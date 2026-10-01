@@ -1126,7 +1126,7 @@ function practiceWhen(iso: string | null) {
             {{ notifIconFile ? notifIconFile.name : 'Feed icon (optional)...' }}
           </label>
         </div>
-        <p class="nge-admin-hint">Images up to 8 MB (PNG, JPEG, WebP, GIF). The feed always loads the small icon, not the full image.</p>
+        <p class="nge-admin-hint">Images up to 3 MB (PNG, JPEG, WebP, GIF). The feed always loads the small icon, not the full image.</p>
         <div class="nge-admin-row">
           <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
             <span v-if="notifSent">✓ Saved!</span>

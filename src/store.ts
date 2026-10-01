@@ -4836,11 +4836,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * Upload limits for admin images.
    *
    * The feed renders the thumbnail for every card, so a heavy image is paid for
-   * on every open by every user. 8 MB is generous for a source image while
-   * still rejecting an accidental raw camera/screenshot dump; the feed itself
+   * on every open by every user, and the detail view loads the full image.
+   * 3 MB (Ames 2026-09-30, was 8) keeps those opens quick; the feed itself
    * always loads the small thumbnail, never the full file.
    */
-  const MAX_ADMIN_IMAGE_BYTES = 8 * 1024 * 1024;
+  const MAX_ADMIN_IMAGE_BYTES = 3 * 1024 * 1024;
   const ALLOWED_ADMIN_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
   /** Validate before upload. Returns an error string, or '' when acceptable. */
@@ -4850,7 +4850,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
     if (file.size > MAX_ADMIN_IMAGE_BYTES) {
       const mb = (file.size / (1024 * 1024)).toFixed(1);
-      return `Image is ${mb} MB — the limit is ${MAX_ADMIN_IMAGE_BYTES / (1024 * 1024)} MB. Please resize it.`;
+      return `Image is ${mb} MB. The limit is ${MAX_ADMIN_IMAGE_BYTES / (1024 * 1024)} MB, please resize it.`;
     }
     return '';
   }

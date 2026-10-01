@@ -1,6 +1,8 @@
 import { functionUrl } from './functions_base';
 export async function secureUpload(blob: Blob, kind: 'help' | 'notifications' | 'badges'): Promise<string> {
-  if (blob.size > 8 * 1024 * 1024) throw new Error('Images must be under 8 MB.');
+  // Notification and badge images 3 MB, player screenshots 8 MB (as the server).
+  const maxMB = kind === 'help' ? 8 : 3;
+  if (blob.size > maxMB * 1024 * 1024) throw new Error(`Images must be under ${maxMB} MB.`);
   let token: string | null = null;
   try { token = JSON.parse(localStorage.getItem('auth_token_v2_https://global.daf-apis.com/sticky_auth') || '{}').accessToken || null; } catch { /* no login */ }
   if (!token) throw new Error('Sign in to upload an image.');

@@ -1071,6 +1071,13 @@ function padRank(rank: number): string {
 }
 .nge-notif-detail-layout--has-image .nge-notif-detail-image {
   width: 320px;
+  /* The image stays put while the text scrolls past it (Ames 2026-09-30). */
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+}
+.nge-notif-detail-layout--has-image .nge-notif-detail-img {
+  max-height: min(600px, calc(100vh - 220px));
 }
 
 .nge-notif-detail-text {
@@ -1406,7 +1413,7 @@ function padRank(rank: number): string {
 @media (max-width: 560px) {
   .nge-notif-detail-scroll { padding: 16px 16px 20px; }
   .nge-notif-detail-layout--has-image { flex-direction: column; }
-  .nge-notif-detail-layout--has-image .nge-notif-detail-image { width: 100%; }
+  .nge-notif-detail-layout--has-image .nge-notif-detail-image { width: 100%; position: static; }
   .nge-champs-emblem { width: 46px; height: 46px; font-size: 22px; }
   .nge-champs-range { font-size: 1.05em; }
   .nge-champs-podium { gap: 6px; }

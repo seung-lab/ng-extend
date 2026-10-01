@@ -15,3 +15,9 @@ test('SVG, MIME lies, unsupported formats and oversized uploads are rejected',()
  assert.throws(()=>prepareUpload({...image,contentType:'text/html'},who,false),/format/);
  assert.throws(()=>prepareUpload({...image,data:Buffer.alloc(8*1024*1024+1).toString('base64')},who,false),/under 8/);
 });
+test('notification and badge images are capped at 3 MB; player screenshots at 8 MB',()=>{
+ const png=Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),Buffer.alloc(3*1024*1024)]).toString('base64');
+ assert.throws(()=>prepareUpload({...image,kind:'notifications',data:png},who,true),/under 3/);
+ assert.throws(()=>prepareUpload({...image,kind:'badges',data:png},who,true),/under 3/);
+ assert.equal(prepareUpload({...image,kind:'help',data:png},who,false).contentType,'image/png');
+});

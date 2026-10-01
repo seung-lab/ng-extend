@@ -6,7 +6,10 @@ function prepareUpload(input, who, isAdmin) {
  if(input.kind!=='help'&&!isAdmin)error(403,'Admins only.');
  if(typeof input.data!=='string'||input.data.length>12*1024*1024||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))error(400,'Invalid image data.');
  const bytes=Buffer.from(input.data,'base64');
- if(!bytes.length||bytes.length>8*1024*1024)error(413,'Images must be under 8 MB.');
+ // Notification and badge images: 3 MB (Ames 2026-09-30). Player screenshots
+ // keep 8 MB: a full-screen PNG on a large display can pass 3 MB.
+ const maxMB=input.kind==='help'?8:3;
+ if(!bytes.length||bytes.length>maxMB*1024*1024)error(413,`Images must be under ${maxMB} MB.`);
  const png=bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex'));
  const jpeg=bytes[0]===255&&bytes[1]===216&&bytes[2]===255;
  const gif=['GIF87a','GIF89a'].includes(bytes.toString('ascii',0,6));
