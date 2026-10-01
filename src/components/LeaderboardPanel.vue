@@ -228,8 +228,16 @@ function onPeekPointerDown(e: PointerEvent) {
   const panel = document.querySelector('#nge-lb-modal .nge-overlay');
   if (panel && !panel.contains(e.target as Node)) void close();
 }
-onMounted(() => { if (props.peek) document.addEventListener('pointerdown', onPeekPointerDown, true); });
-onUnmounted(() => document.removeEventListener('pointerdown', onPeekPointerDown, true));
+function onPeekKey(e: KeyboardEvent) { if (e.key === 'Escape') void close(); }
+onMounted(() => {
+  if (!props.peek) return;
+  document.addEventListener('pointerdown', onPeekPointerDown, true);
+  document.addEventListener('keydown', onPeekKey);
+});
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', onPeekPointerDown, true);
+  document.removeEventListener('keydown', onPeekKey);
+});
 </script>
 
 <template>

@@ -807,7 +807,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
-  <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek" @hide="showLeaderboard = false; leaderboardPeek = false" />
+  <!-- Always a peek on desktop (Ames 2026-09-30): no dim, the site stays usable, a click elsewhere puts it away. Phones keep the sheet. -->
+  <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek || !isMobileRef" @hide="showLeaderboard = false; leaderboardPeek = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
