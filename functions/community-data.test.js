@@ -144,3 +144,9 @@ test('saved views: owner only, one per dataset, bounded',()=>{
  assert.throws(()=>plan('user_views','POST','on_conflict=user_id,dataset',{dataset:'d',state:{big:'x'.repeat(250000)}}),/too large/);
  assert.throws(()=>plan('user_views','POST','on_conflict=id',{dataset:'d',state:{}}),/conflict/);
 });
+test('a player can report their own annotations total, as a sane counter',()=>{
+ const p=plan('users','PATCH',`id=eq.${a}`,{total_annotations:42});
+ assert.equal(JSON.stringify(p.body??p.rows).includes('"total_annotations":42'),true);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{total_annotations:-1}),/Invalid counter/);
+ assert.equal(plan('users','GET','select=total_annotations',undefined,anon).query.get('select'),'total_annotations');
+});

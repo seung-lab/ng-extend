@@ -1,3 +1,4 @@
+import {countAsOne} from '../util/annotation_counter';
 import {LayerTool, makeToolActivationStatusMessageWithHeader, registerTool, ToolActivation} from "neuroglancer/ui/tool";
 import {makeIcon} from "neuroglancer/widget/icon";
 import {EventActionMap} from "neuroglancer/util/mouse_bindings";
@@ -233,7 +234,8 @@ class FreeRotateCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
         const updateAnnotationElements = () => {
             removeChildren(annotationElements);
             const edges = rotatedCubeEdges(mousePosition.value, cubeSize.value, rotationAngle.value, scales);
-            for (const edge of edges) {
+            // Twelve edges, one cube: one annotation on the player's counter.
+            countAsOne(() => { for (const edge of edges) {
 
                 const line: Annotation = {
                     id: makeAnnotationId(),
@@ -243,7 +245,7 @@ class FreeRotateCubeAnnotationTool extends LayerTool<AnnotationUserLayer> {
                     properties: []
                 }
                 layer.localAnnotations?.add(line);
-            }
+            } });
         };
 
         activation.bindInputEventMap(FREE_ROTATE_CUBE_ANNOTATION_TOOL_EVENT_MAP);

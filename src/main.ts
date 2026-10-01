@@ -2,7 +2,9 @@ import { startViewAutosave } from './util/view_autosave';
 import {createApp, nextTick} from 'vue';
 import {createPinia} from 'pinia';
 import {installConsoleBuffer} from './util/console_buffer';
+import {installAnnotationCounter} from './util/annotation_counter';
 installConsoleBuffer();
+installAnnotationCounter();
 import {installErrorReporting} from './util/error_reporting';
 import {installMobileMode, isMobileRef} from './util/mobile';
 

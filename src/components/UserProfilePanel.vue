@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
+import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
@@ -41,10 +42,15 @@ const backendStore = useProofreadingBackendStore();
 // ── Viewing another user's profile ────────────────────────────────────────────
 const viewingOtherUser = computed(() => !!props.viewUserId && props.viewUserId !== backendStore.userId);
 const otherUserProfile = ref<any>(null);
+// Annotations placed: their total, or mine plus what this browser has yet to send.
+const otherAnnotations = ref<number | null>(null);
+const annotationsPlaced = computed(() => viewingOtherUser.value ? (otherAnnotations.value ?? 0) : sentAnnotations.value + pendingAnnotations.value);
 
 async function loadOtherUser() {
   if (viewingOtherUser.value && props.viewUserId) {
     otherUserProfile.value = await backendStore.loadUserProfile(props.viewUserId);
+    otherAnnotations.value = null;
+    void loadAnnotationTotal(props.viewUserId).then(n => { otherAnnotations.value = n; });
   } else {
     otherUserProfile.value = null;
     backendStore.loadUserStats();
@@ -915,6 +921,17 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                     {{ col.splits }}
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Annotations placed (tallied in the browser, sent about hourly) -->
+          <div v-if="annotationsPlaced > 0 || !viewingOtherUser" class="nge-profile-section nge-profile-section--annotations">
+            <div class="nge-profile-section-label">▌ Annotations</div>
+            <div class="nge-profile-stat-row">
+              <div class="nge-profile-stat-col" title="Points, lines and boxes placed in annotation layers">
+                <div class="nge-profile-stat-label">Placed</div>
+                <div class="nge-profile-stat-val"><RollUp :value="annotationsPlaced" /></div>
               </div>
             </div>
           </div>

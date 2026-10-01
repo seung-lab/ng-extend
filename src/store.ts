@@ -17,6 +17,7 @@ import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
 import {isMobileRef} from './util/mobile';
 import {currentDatasetTag, canonicalDataset, currentSegLayer} from './datasets';
 import {supabase} from './supabase';
+import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
@@ -2014,9 +2015,9 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       const src = userLayer?.localAnnotations;
       if (!src) return;
       src.clear();
-      for (const p of points) {
+      quietly(() => { for (const p of points) {
         src.add({ id: p.id, type: 0 /* AnnotationType.POINT */, point: Float32Array.from(p.point), properties: [], description: p.description }, true);
-      }
+      } });
     } catch (e) {
       console.warn('[issueTags] tag layer sync failed:', e);
     }
@@ -2112,9 +2113,9 @@ export const useIssueTagStore = defineStore('issueTags', () => {
       const src = (managed.layer as any)?.localAnnotations;
       if (!src) return;
       src.clear();
-      for (const p of points) {
+      quietly(() => { for (const p of points) {
         src.add({ id: p.id, type: 0 /* AnnotationType.POINT */, point: Float32Array.from(p.point), properties: [p.conf], description: p.description }, true);
-      }
+      } });
     } catch (e) {
       console.warn('[issueTags] AI layer sync failed:', e);
     }
@@ -3167,6 +3168,8 @@ export interface ActivityFeedItem {
 
 export const useProofreadingBackendStore = defineStore('proofreadingBackend', () => {
   const userId = ref<string | null>(null);
+  // The annotations counter follows whoever is signed in.
+  watch(userId, id => setAnnotationCounterUser(id, currentDatasetTag), { immediate: true });
   const userEmail = ref<string>('');
   const userName = ref<string>('');
   /**
