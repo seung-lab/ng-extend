@@ -81,12 +81,12 @@ const SECTIONS: Record<DatasetSection, { title: string; kicker: string; help: st
   viewonly: {
     title: 'View Only',
     kicker: 'Explore published connectomes',
-    help: 'Finished connectomes from other teams. Fly through them, look at cells, compare them with ours and share views, but edits are not saved here (unless your CAVE account has proofreading access for that dataset).',
+    help: 'Publicly available connectomes. Fly through them, look at cells, compare them with ours and share views, but edits are not saved here (unless your account has proofreading access for that dataset).',
   },
   production: {
     title: 'Production Data',
-    kicker: 'Live EyeWire II science',
-    help: 'The datasets the lab is proofreading right now. Every split, merge and completed cell goes into the real connectome and the spreadsheet the scientists use. Claim a cell in the Cell Library, work carefully, and ask for a second opinion when unsure.',
+    kicker: 'Live science',
+    help: 'Datasets actively undergoing proofreading. Every split, merge and completed cell goes into the real connectome. Claim a cell in the Cell Library, work carefully, and ask for a second opinion when unsure. Play carefully: this is really for science!',
   },
 };
 const COLUMNS: DatasetSection[][] = [['sandbox', 'viewonly'], ['production']];
@@ -249,8 +249,8 @@ async function switchTo(ds: DatasetEntry) {
 @keyframes nge-ds-fade { from { opacity: 0; } to { opacity: 1; } }
 .nge-dataset-panel {
   position: relative;
-  width: min(1480px, 100%);
-  height: 100%;
+  width: min(1240px, 100%);
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   background: rgba(6, 10, 20, 0.92);
