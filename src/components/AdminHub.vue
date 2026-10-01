@@ -1051,7 +1051,7 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'notifications' }" @click="adminSubTab = 'notifications'">Notifications</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'groups' }" @click="adminSubTab = 'groups'">Groups</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
-      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'triage' }" @click="adminSubTab = 'triage'">Triage</button>
+      <button class="nge-admin-subtab nge-admin-subtab--triage" :class="{ 'nge-admin-subtab--active': adminSubTab === 'triage' }" @click="adminSubTab = 'triage'">Triage</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'pilot' }" @click="adminSubTab = 'pilot'">Pilot testers</button>
     </div>
@@ -1541,6 +1541,11 @@ function practiceWhen(iso: string | null) {
   color: #e0ecff;
   border-bottom-color: #4a9eff;
 }
+
+/* Triage stands out in red (Ames): it is the tab that needs attention. */
+.nge-admin-subtab--triage,
+.nge-admin-subtab--triage:hover { color: #ff6b6b; }
+.nge-admin-subtab--triage.nge-admin-subtab--active { color: #ff8585; border-bottom-color: #ff6b6b; }
 
 .nge-admin-section { display: flex; flex-direction: column; gap: 16px; }
 
