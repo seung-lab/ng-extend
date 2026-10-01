@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {pendingAnnotations} from '../util/annotation_counter';
 import { computed, ref, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
@@ -55,7 +56,13 @@ const globalStats = ref<GlobalStats | null>(null);
 // log and CAVE both had 13). Count merges and splits from edit_log for the
 // same Monday to Sunday week the header shows, and the calendar month.
 // Falls back to the local tally if the log cannot be read.
-const serverCounts = ref<{ week: [number, number]; month: [number, number] } | null>(null);
+const serverCounts = ref<{ week: [number, number]; month: [number, number]; cells: number; annotations: number } | null>(null);
+// The week's three headline numbers sit side by side (Ames 2026-10-01: cells
+// completed is the same tier as edits, and annotations join them).
+// Annotations: what the log has for the week plus what this browser has
+// tallied and not sent yet.
+const cellsCompletedWeek = computed(() => serverCounts.value ? Math.max(serverCounts.value.cells, 0) : cellsCompleted.value.length);
+const annotationsWeek = computed(() => (serverCounts.value?.annotations ?? 0) + pendingAnnotations.value);
 const shown = computed(() => {
   const s = stats.value;
   const c = serverCounts.value;
@@ -78,13 +85,32 @@ onMounted(async () => {
     const since = weekStart < monthStart ? weekStart : monthStart;
     const { supabase } = await import('../supabase');
     const { data, error } = await supabase.from('edit_log')
-      .select('operation, timestamp, success')
+      .select('operation, timestamp, success, metadata')
       .eq('user_id', uid)
       .gte('timestamp', since.toISOString())
       .limit(20000);
     if (error || !data) return;
     const week: [number, number] = [0, 0];
     const month: [number, number] = [0, 0];
+    // Cells completed this week: one per cell, and a cell un-marked after
+    // its last completion does not count (the leaderboard's rule).
+    const done = new Map<string, number>(), undone = new Map<string, number>();
+    let annotations = 0;
+    for (const r of data as any[]) {
+      if (r.success === false) continue;
+      const t = new Date(r.timestamp);
+      if (t < weekStart) continue;
+      const md = r.metadata || {};
+      if (r.operation === 'annotate') annotations += Number(md.count) || 0;
+      else if (r.operation === 'mark_complete' || r.operation === 'complete_task') {
+        const id = String(md.final_segment_id || md.root_id || md.segment_id || '');
+        if (id) done.set(id, Math.max(done.get(id) || 0, t.getTime()));
+      } else if (r.operation === 'unmark_complete' && md.root_id) {
+        undone.set(String(md.root_id), Math.max(undone.get(String(md.root_id)) || 0, t.getTime()));
+      }
+    }
+    let cells = 0;
+    for (const [id, at] of done) if (!((undone.get(id) || 0) > at)) cells++;
     for (const r of data as any[]) {
       if (r.success === false) continue;
       const i = r.operation === 'merge' ? 0 : r.operation === 'split' ? 1 : -1;
@@ -93,7 +119,7 @@ onMounted(async () => {
       if (t >= weekStart) week[i]++;
       if (t >= monthStart) month[i]++;
     }
-    serverCounts.value = { week, month };
+    serverCounts.value = { week, month, cells, annotations };
   } catch { /* keep the local tally */ }
 });
 onMounted(async () => {
@@ -266,13 +292,25 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-hero-daterange">{{ weekRange }}</div>
         </div>
 
-        <!-- Big hero edit number -->
-        <div class="nge-recap-big-stat">
-          <div class="nge-recap-big-number">{{ shown.editsThisWeek.toLocaleString() }}</div>
-          <div class="nge-recap-big-label">edits this week</div>
-          <div class="nge-recap-big-sub">
-            {{ shown.mergesThisWeek.toLocaleString() }} merges
-            + {{ shown.splitsThisWeek.toLocaleString() }} splits
+        <!-- The week's headline numbers: edits, cells completed, annotations -->
+        <div class="nge-recap-big-stat nge-recap-trio">
+          <div class="nge-recap-trio-col">
+            <div class="nge-recap-big-number">{{ shown.editsThisWeek.toLocaleString() }}</div>
+            <div class="nge-recap-big-label">edits this week</div>
+            <div class="nge-recap-big-sub">
+              {{ shown.mergesThisWeek.toLocaleString() }} merges
+              + {{ shown.splitsThisWeek.toLocaleString() }} splits
+            </div>
+          </div>
+          <div class="nge-recap-trio-col">
+            <div class="nge-recap-big-number nge-recap-big-number--cells">{{ cellsCompletedWeek.toLocaleString() }}</div>
+            <div class="nge-recap-big-label">cell{{ cellsCompletedWeek === 1 ? '' : 's' }} completed</div>
+            <div class="nge-recap-big-sub">this week</div>
+          </div>
+          <div class="nge-recap-trio-col">
+            <div class="nge-recap-big-number nge-recap-big-number--ann">{{ annotationsWeek.toLocaleString() }}</div>
+            <div class="nge-recap-big-label">annotation{{ annotationsWeek === 1 ? '' : 's' }} placed</div>
+            <div class="nge-recap-big-sub">this week</div>
           </div>
         </div>
 
@@ -322,7 +360,7 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-section-label">Cell Activity</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num nge-recap-cells-complete">{{ cellsCompleted.length }}</div>
+              <div class="nge-recap-month-num nge-recap-cells-complete">{{ cellsCompletedWeek }}</div>
               <div class="nge-recap-month-key">completed</div>
             </div>
             <div class="nge-recap-month-cell">
@@ -336,7 +374,7 @@ function jumpToCell(segId: string) {
           </div>
           <div class="nge-recap-cell-list" v-if="cellsThisWeek.length > 0">
             <div
-              v-for="cell in cellsThisWeek.slice(0, 8)"
+              v-for="cell in cellsThisWeek.slice(0, props.embedded ? 3 : 8)"
               :key="cell.segId"
               class="nge-recap-cell-row"
               @click="jumpToCell(cell.segId)"
@@ -354,7 +392,7 @@ function jumpToCell(segId: string) {
         <!-- Scout and help activity this week -->
         <div class="nge-recap-section">
           <div class="nge-recap-section-label">Scout Report</div>
-          <div class="nge-recap-month-grid">
+          <div class="nge-recap-month-grid nge-recap-month-grid--scout">
             <div class="nge-recap-month-cell">
               <div class="nge-recap-month-num" style="color: #35b5ff;">{{ tagsPlacedThisWeek }}</div>
               <div class="nge-recap-month-key">tags placed</div>
@@ -492,9 +530,30 @@ function jumpToCell(segId: string) {
 .nge-recap-shell--embedded .nge-recap-content > .nge-recap-hero,
 .nge-recap-shell--embedded .nge-recap-content > .nge-recap-big-stat,
 .nge-recap-shell--embedded .nge-recap-content > .nge-recap-global { grid-column: 1 / -1; }
-.nge-recap-shell--embedded .nge-recap-hero { padding: 40px 16px 8px; margin-bottom: 4px; }
-.nge-recap-shell--embedded .nge-recap-big-stat { padding: 4px 0 16px; }
-.nge-recap-shell--embedded .nge-recap-section { margin-bottom: 14px; padding-bottom: 14px; }
+.nge-recap-shell--embedded .nge-recap-hero { padding: 16px 16px 2px; margin-bottom: 0; }
+.nge-recap-shell--embedded .nge-recap-big-stat { padding: 6px 0 12px; margin-bottom: 12px; }
+.nge-recap-shell--embedded .nge-recap-section { margin-bottom: 10px; padding-bottom: 10px; }
+/* Fits one screen without scrolling (Ames 2026-10-01): the four scout tiles
+   share one row, and the cell list is short. */
+.nge-recap-shell--embedded .nge-recap-month-grid--scout { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.nge-recap-shell--embedded .nge-recap-month-grid--scout .nge-recap-month-cell { padding: 10px 4px; }
+.nge-recap-shell--embedded .nge-recap-cell-list { margin-top: 6px; }
+.nge-recap-shell--embedded .nge-recap-cell-row { padding: 2px 8px; }
+.nge-recap-shell--embedded .nge-recap-global { margin-top: 2px; margin-bottom: 0; padding-bottom: 0; }
+.nge-recap-shell--embedded .nge-recap-content { padding-bottom: 14px; }
+/* Shorter windows: the cell list goes (My Cells has it) and spacing tightens. */
+@media (max-height: 860px) {
+  .nge-recap-shell--embedded .nge-recap-cell-list { display: none; }
+  .nge-recap-shell--embedded .nge-recap-hero { padding-top: 8px; }
+  .nge-recap-shell--embedded .nge-recap-big-number { font-size: 2.4em; }
+  .nge-recap-shell--embedded .nge-recap-big-stat { padding: 2px 0 8px; margin-bottom: 8px; }
+  .nge-recap-shell--embedded .nge-recap-section { margin-bottom: 8px; padding-bottom: 8px; }
+  .nge-recap-shell--embedded .nge-recap-month-cell { padding: 6px 8px; }
+  .nge-recap-shell--embedded .nge-recap-global-share { margin-top: 6px; }
+}
+.nge-recap-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.nge-recap-big-number--cells { text-shadow: 0 0 18px rgba(120, 255, 136, 0.4), 0 2px 10px rgba(0, 0, 0, 0.8); }
+.nge-recap-big-number--ann { text-shadow: 0 0 18px rgba(245, 209, 66, 0.4), 0 2px 10px rgba(0, 0, 0, 0.8); }
 @media (max-width: 900px) {
   .nge-recap-shell--embedded .nge-recap-content { grid-template-columns: minmax(0, 1fr); }
 }
