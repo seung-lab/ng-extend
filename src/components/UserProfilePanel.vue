@@ -141,9 +141,9 @@ const showFlagPicker = ref(false);
 const showAllBuilding    = ref(false);
 const showAllExploration = ref(false);
 const showAllSpecialModal = ref(false);
-const BADGE_PREVIEW_LIMIT = 8;  // 2 rows of 4
-const BADGE_PREVIEW_WITH_VIEWALL = 7;  // 7 badges + 1 "View All" tile = 8 slots
-const SPECIAL_PREVIEW_LIMIT = 8;
+const BADGE_PREVIEW_LIMIT = 5;  // one row of five (Ames 2026-10-01: no scrolling)
+const BADGE_PREVIEW_WITH_VIEWALL = 4; // four + the View all tile
+const SPECIAL_PREVIEW_LIMIT = 5;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
 const activeTab = ref<'overview' | 'trophyCase' | 'myCells' | 'datasets' | 'weekInScience' | 'adminHub' | 'settings'>('overview');
@@ -924,7 +924,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           </div>
 
           <!-- Annotations placed (tallied in the browser, sent about hourly) -->
-          <div v-if="annotationsPlaced > 0 || !viewingOtherUser" class="nge-profile-section nge-profile-section--annotations">
+          <div v-if="viewingOtherUser && annotationsPlaced > 0" class="nge-profile-section nge-profile-section--annotations">
             <div class="nge-profile-section-label">▌ Annotations</div>
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" title="Points, lines and boxes placed in annotation layers">
@@ -957,26 +957,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div class="nge-profile-stat-col nge-profile-stat-tile" v-if="playerAssists > 0" title="Cells where you helped answer another player's request">
                 <div class="nge-profile-stat-label">Assists</div>
                 <div class="nge-profile-stat-val" style="color: #7f8;">{{ playerAssists }}</div>
-              </div>
-            </div>
-
-            <!-- Scout Report: tags placed and fixed -->
-            <div class="nge-profile-section-label" style="margin-top: 14px;">▌ Scout Report</div>
-            <div class="nge-profile-stat-row">
-              <div class="nge-profile-stat-col">
-                <div class="nge-profile-stat-label">Tags Placed</div>
-                <div class="nge-profile-stat-val" style="color: #f5d142;"><RollUp :value="myTagsPlaced.length" /></div>
-                <div class="nge-profile-stat-sub">scouted</div>
-              </div>
-              <div class="nge-profile-stat-col">
-                <div class="nge-profile-stat-label">Confirmed</div>
-                <div class="nge-profile-stat-val"><RollUp :value="myTagsFixed.length" /></div>
-                <div class="nge-profile-stat-sub">of yours, fixed</div>
-              </div>
-              <div class="nge-profile-stat-col">
-                <div class="nge-profile-stat-label">You Fixed</div>
-                <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
-                <div class="nge-profile-stat-sub">scythe work</div>
               </div>
             </div>
 
@@ -1021,6 +1001,27 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
             <div class="nge-cell-empty" v-else>
               <template v-if="activeDatasetCanon">No cells on {{ scopeDataset?.shortLabel || activeDatasetCanon }} yet. </template>Select segments and mark complete or set cell type to build your history.
+            </div>
+
+            <!-- Scout Report: tags placed and fixed -->
+            <div class="nge-profile-section-label" style="margin-top: 12px;">▌ Scout Report</div>
+            <div class="nge-profile-stat-row nge-profile-stat-row--scout">
+              <div class="nge-profile-stat-col" title="Tags you placed for others to fix">
+                <div class="nge-profile-stat-label">Tags Placed</div>
+                <div class="nge-profile-stat-val" style="color: #f5d142;"><RollUp :value="myTagsPlaced.length" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Tags of yours that someone fixed">
+                <div class="nge-profile-stat-label">Confirmed</div>
+                <div class="nge-profile-stat-val"><RollUp :value="myTagsFixed.length" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Tags you fixed for others">
+                <div class="nge-profile-stat-label">You Fixed</div>
+                <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Points, lines and boxes you placed in annotation layers, on every dataset">
+                <div class="nge-profile-stat-label">Annotations</div>
+                <div class="nge-profile-stat-val" style="color: #7fd6ff;"><RollUp :value="annotationsPlaced" /></div>
+              </div>
             </div>
           </div>
 
@@ -2638,6 +2639,23 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   cursor: help;
   transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
+/* Compact (Ames 2026-10-01): label and number share a line, so the four
+   tiles take two short rows and the column fits without scrolling. */
+.nge-profile-stat-row--tiles { gap: 6px; }
+.nge-profile-stat-row--tiles .nge-profile-stat-tile {
+  flex: 1 1 calc(50% - 3px);
+  box-sizing: border-box;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px;
+}
+.nge-profile-stat-row--tiles .nge-profile-stat-label { margin: 0; }
+.nge-profile-stat-row--tiles .nge-profile-stat-val { margin: 0; font-size: 1.15em; }
+.nge-profile-stat-row--tiles .nge-profile-stat-val--hero { font-size: 1.3em; }
+.nge-profile-stat-row--scout .nge-profile-stat-label { white-space: nowrap; font-size: 0.62em; }
 .nge-profile-stat-tile:hover {
   background: rgba(74, 158, 255, 0.1);
   border-color: rgba(74, 158, 255, 0.35);
@@ -2819,7 +2837,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-cell-list-scroll {
-  max-height: 200px;
+  /* As tall as the window allows, so the column never needs its own scroll. */
+  max-height: max(52px, min(200px, calc(90vh - 580px)));
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
