@@ -65,9 +65,18 @@ function withoutOwnView(hashAtLoad: string): boolean {
   return i >= 0 && curated.slice(i) === hashAtLoad;
 }
 
+/** Settings: "Offer to pick up where I left off". On unless turned off. */
+function offerEnabled(): boolean {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').offerViewRestore !== false; } catch { return true; }
+}
+
 async function offerRestore(viewer: any) {
   const dataset = datasetKey();
   if (!dataset) return;
+  // Never on the Sandbox (practice data, nothing to pick up), and not when
+  // the player turned the offer off (Ames 2026-10-01).
+  if (!offerEnabled()) return;
+  if (findDatasetBySegName(currentSegLayerName())?.section === 'sandbox') return;
   const { data, error } = await supabase.from('user_views')
     .select('state,updated_at').eq('dataset', dataset).maybeSingle();
   if (error || !data?.state) return;
@@ -103,7 +112,12 @@ function showBar(dataset: string, updatedAt: string, onRestore: () => void) {
   bar.querySelector('.nge-vr-yes')!.addEventListener('click', () => { onRestore(); close(); });
   bar.querySelector('.nge-vr-no')!.addEventListener('click', close);
   document.body.appendChild(bar);
-  setTimeout(close, 30000);
+  // Gone by itself after a few seconds unless the pointer is on it (it was
+  // 30 s, long enough to feel stuck there).
+  const SHOW_MS = 8000;
+  let hide = setTimeout(close, SHOW_MS);
+  bar.addEventListener('mouseenter', () => { clearTimeout(hide); bar.classList.add('nge-view-restore--held'); });
+  bar.addEventListener('mouseleave', () => { bar.classList.remove('nge-view-restore--held'); hide = setTimeout(close, 3000); });
 }
 
 const CSS = `
@@ -111,7 +125,11 @@ const CSS = `
   display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px);
   padding: 8px 10px 8px 14px; border-radius: 8px; font: 13px/1.35 'Inter', system-ui, sans-serif;
   color: #dce6f5; background: rgba(8, 14, 28, 0.94); border: 1px solid rgba(100, 200, 255, 0.4);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); overflow: hidden; }
+.nge-view-restore::after { content: ''; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
+  background: rgba(127, 212, 255, 0.7); transform-origin: left; animation: nge-vr-count 8s linear forwards; }
+.nge-view-restore--held::after { animation: none; transform: scaleX(1); opacity: 0.35; }
+@keyframes nge-vr-count { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 .nge-view-restore .nge-vr-text { overflow-wrap: anywhere; }
 .nge-view-restore .nge-vr-yes { flex-shrink: 0; padding: 5px 12px; border-radius: 6px; cursor: pointer; font: inherit; font-weight: 600;
   color: #06121f; background: #7fd4ff; border: 0; }

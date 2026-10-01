@@ -2019,6 +2019,24 @@ function collapseToCurrent() {
   setSlimMode(!slimMode.value);
   flashSlimHint(slimMode.value ? 'Slim view on: jump to a cell' : 'Slim view off');
 }
+/** Your open claims in this dataset, in list order: what "next" steps through. */
+const myOpenClaims = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c) && c.status !== 'completed'));
+const slimClaimIndex = computed(() => myOpenClaims.value.findIndex(c => c.segId === slimSeg.value));
+/** Slim view: go to your next claimed cell without opening the library
+ *  (Ames 2026-10-01). switchToClaim saves the claim being left first. */
+const steppingClaim = ref(false);
+async function nextClaim() {
+  const mine = myOpenClaims.value;
+  if (steppingClaim.value || mine.length < 2 && slimClaimIndex.value === 0) return;
+  if (!mine.length) return;
+  const next = mine[(slimClaimIndex.value + 1) % mine.length];
+  steppingClaim.value = true;
+  try {
+    completing.value = null;
+    await switchToClaim(next);
+    if (jumpedSegId.value === next.segId) slimSeg.value = next.segId;
+  } finally { steppingClaim.value = false; }
+}
 /** The slim row's caret: open up and stay open. */
 function expandAndStay() {
   setSlimMode(false);
@@ -2926,6 +2944,11 @@ const panelStyle = computed(() => ({
 
           <button v-if="slim" class="nge-cl-slim-expand" title="Back to the full Cell Library (turns slim view off)" aria-label="Back to the full Cell Library" @click="expandAndStay">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button v-if="slim && myOpenClaims.length > (slimClaimIndex >= 0 ? 1 : 0)" class="nge-cl-slim-next" :disabled="steppingClaim"
+                  :title="slimClaimIndex >= 0 ? `Next claimed cell (this is ${slimClaimIndex + 1} of ${myOpenClaims.length})` : `Go to your claimed cells (${myOpenClaims.length})`"
+                  aria-label="Next claimed cell" @click="nextClaim">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
           <div
@@ -4794,7 +4817,7 @@ select.nge-cl-response-input:hover {
 }
 
 /* ── Slim view: one row, no top bar, no tabs (Ames 2026-10-01) ── */
-.nge-cl-caret, .nge-cl-slim-expand {
+.nge-cl-caret, .nge-cl-slim-expand, .nge-cl-slim-next {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; padding: 0; flex-shrink: 0;
   border-radius: 999px; cursor: pointer;
@@ -4802,7 +4825,7 @@ select.nge-cl-response-input:hover {
   border: 1px solid rgba(100, 200, 255, 0.4);
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.nge-cl-caret:hover, .nge-cl-slim-expand:hover {
+.nge-cl-caret:hover, .nge-cl-slim-expand:hover, .nge-cl-slim-next:hover {
   background: rgba(100, 200, 255, 0.22); border-color: rgba(100, 200, 255, 0.75); color: #d4f0ff;
   box-shadow: 0 0 10px rgba(79, 207, 255, 0.35);
 }
@@ -4839,7 +4862,13 @@ select.nge-cl-response-input:hover {
 .nge-cl-list > .nge-cl-quest { margin-left: 10px; margin-right: 10px; }
 /* Banners (errors, the claim limit) and the Complete form still show: the
    slim panel grows to fit them. */
-.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand) { margin-left: -46px; cursor: default; }
+.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -46px; cursor: default; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
 .nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
+/* Next claimed cell: beside the caret, and the row makes room for it. */
+.nge-cl-slim-next { position: absolute; left: 42px; top: 18px; }
+.nge-cl-slim-next:disabled { opacity: 0.45; cursor: default; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-left: 76px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -76px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-left: -76px; }
 </style>

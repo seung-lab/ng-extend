@@ -905,6 +905,8 @@ export interface UserPreferences {
   /** Jumping to a cell ADDS it to the view instead of replacing what is
    *  shown. Defaults to false (replace). */
   jumpAddsToView?: boolean;
+  /** Offer "Pick up where you left off?" when a dataset opens. Defaults to true. */
+  offerViewRestore?: boolean;
   /** Point annotation size multiplier, 1 to 4 (Amy 2026-09-30). Local only. */
   annotationSize?: number;
   /** Point annotations drawn as Pyr gems in 3D. Defaults to true. */

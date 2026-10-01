@@ -32,6 +32,7 @@ const draftChatFade = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftJumpAdds = ref(false);
+const draftOfferRestore = ref(true);
 /** Point annotation size (after EyeWire's "Annotation Resizer" addon). Applied
  *  live while you drag; kept when you save, put back if you close without. */
 const draftAnnotationSize = ref(1);
@@ -87,6 +88,7 @@ onMounted(() => {
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
+  draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
   draftAnnotationSize.value = savedAnnotationSize.value = ngePointScale.value;
   draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
   draftAnnotationSetupTabs.value = prefsStore.prefs.showAnnotationSetupTabs === true;
@@ -109,7 +111,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, jumpAddsToView: draftJumpAdds.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
   });
   // Apply the ambient tag layer change immediately.
@@ -365,6 +367,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Off: a jump shows only the cell you jumped to. On: each jump adds its cell to the ones already in your view.">
               <input type="checkbox" v-model="draftJumpAdds" />
               <span class="nge-settings-toggle-label">Jumping to a cell adds it to my view (off: it replaces my view)</span>
+            </label>
+            <label class="nge-settings-toggle" title="Your view is saved as you work. When a dataset opens, a small bar offers to bring it back. Never shown on the Sandbox.">
+              <input type="checkbox" v-model="draftOfferRestore" />
+              <span class="nge-settings-toggle-label">Offer to pick up where I left off when a dataset opens</span>
             </label>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftShowNgControls" />
