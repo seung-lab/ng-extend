@@ -67,6 +67,9 @@ const showScaleBar = ref(true);
 // the tab every time, and browsers never let a site save that permission.
 // Untick it once and screenshots capture the viewer only, with no popup.
 const WHOLE_SCREEN_KEY = 'nge_shot_whole_screen_v1';
+/** The captured tab, once taken (whole screen mode). */
+const screenCap = ref<SourceFrame | null>(null);
+function retake() { screenCap.value = null; strokes.value = []; refreshSource(); }
 const wholeScreen = ref((() => {
   try { const v = localStorage.getItem(WHOLE_SCREEN_KEY); if (v != null) return v === '1'; } catch { /* private mode */ }
   return props.mode === 'attach';
@@ -203,6 +206,12 @@ function previewDpr() {
 /** Aspect of the requested output, falling back to 16:9 while the width or
  *  height field is empty or invalid mid edit. */
 function outputAspect(): number {
+  // Whole screen: the picture is the tab, so the frame takes its shape.
+  if (wholeScreen.value) {
+    const c = screenCap.value;
+    const a = c ? c.sw / c.sh : window.innerWidth / Math.max(1, window.innerHeight);
+    if (a > 0 && isFinite(a)) return clamp(a, 0.1, 10);
+  }
   const w = Number(width.value);
   const h = Number(height.value);
   if (w > 0 && h > 0 && isFinite(w / h)) return clamp(w / h, 0.1, 10);
@@ -590,6 +599,15 @@ function clearMarkup() {
 
 async function refreshSource() {
   errorMsg.value = '';
+  // Whole screen: there is nothing to show until the tab has been captured.
+  // The viewer's own picture is NOT what gets attached, and it was showing
+  // here as a black box that looked broken (Ames 2026-10-01).
+  if (wholeScreen.value) {
+    sourceRef.value = screenCap.value;
+    await nextTick();
+    renderPreview();
+    return;
+  }
   const cap = captureSource({
     hideBoundingBox: hideBoundingBox.value,
     showScaleBar: showScaleBar.value,
@@ -617,9 +635,18 @@ watch(() => props.show, async (open) => {
     nurroOn.value = false;
     nurroImg.value = null;
     strokes.value = [];
+    screenCap.value = null;
     layoutFrame();
     await refreshSource();
   }
+});
+
+watch(wholeScreen, () => {
+  screenCap.value = null;
+  strokes.value = [];
+  if (!props.show) return;
+  layoutFrame();
+  refreshSource();
 });
 
 watch([hideBoundingBox, only3d], () => {
@@ -668,8 +695,25 @@ async function download() {
   if (wholeScreen.value) {
     busy.value = true;
     try {
-      const c = await captureWholeScreen();
-      drawNurro(c.getContext('2d')!, { x: 0, y: 0, w: c.width, h: c.height });
+      // Step one: take the picture and bring it back into the dialog, so it
+      // can be looked at and drawn on. Step two (the same button) sends it.
+      if (!screenCap.value) {
+        const shot = await captureWholeScreen();
+        screenCap.value = { canvas: shot, sw: shot.width, sh: shot.height, nmPerPx: null };
+        strokes.value = [];
+        await nextTick();
+        layoutFrame();
+        await refreshSource();
+        return;
+      }
+      const shot = screenCap.value.canvas;
+      const c = document.createElement('canvas');
+      c.width = shot.width;
+      c.height = shot.height;
+      const full = { x: 0, y: 0, w: c.width, h: c.height };
+      c.getContext('2d')!.drawImage(shot, 0, 0);
+      drawNurro(c.getContext('2d')!, full);
+      renderStrokes(c.getContext('2d')!, full);
       const blob: Blob = await new Promise((resolve, reject) => {
         c.toBlob(b => b ? resolve(b) : reject(new Error('toBlob returned null')), 'image/png');
       });
@@ -875,6 +919,10 @@ async function download() {
                       @pointermove="onPointerMove"
                       @pointerup="onPointerUp"
                       @pointercancel="onPointerUp" />
+              <div v-if="wholeScreen && !screenCap" class="nge-shotdlg-wait">
+                <b>Whole screen capture</b>
+                <span>Press Capture screen. Your browser will ask to share this tab, then the picture appears here, ready to draw on.</span>
+              </div>
               <span class="nge-shotdlg-scan" aria-hidden="true" />
             </div>
             <i class="nge-shotdlg-brk tl" aria-hidden="true" />
@@ -918,16 +966,16 @@ async function download() {
               <input type="checkbox" v-model="wholeScreen" />
               <span>Whole screen, with panels (the browser will ask to share this tab)</span>
             </label>
-            <label class="nge-shotdlg-check">
-              <input type="checkbox" v-model="transparent" />
+            <label class="nge-shotdlg-check" :class="{ 'is-off': wholeScreen }">
+              <input type="checkbox" v-model="transparent" :disabled="wholeScreen" />
               <span>Transparent background</span>
             </label>
-            <label class="nge-shotdlg-check">
-              <input type="checkbox" v-model="hideBoundingBox" />
+            <label class="nge-shotdlg-check" :class="{ 'is-off': wholeScreen }">
+              <input type="checkbox" v-model="hideBoundingBox" :disabled="wholeScreen" />
               <span>Hide volume edge / bounding box</span>
             </label>
-            <label class="nge-shotdlg-check">
-              <input type="checkbox" v-model="showScaleBar" />
+            <label class="nge-shotdlg-check" :class="{ 'is-off': wholeScreen }">
+              <input type="checkbox" v-model="showScaleBar" :disabled="wholeScreen" />
               <span>Show scale bar</span>
             </label>
             <label class="nge-shotdlg-check" :class="{ 'is-off': wholeScreen }" title="Crop to the 3D view">
@@ -950,9 +998,10 @@ async function download() {
         <div class="nge-shotdlg-actions">
           <button class="nge-shotdlg-primary" @click="download" :disabled="busy">
             {{ busy
-                ? (props.mode === 'attach' ? 'Uploading…' : 'Rendering…')
-                : (props.mode === 'attach' ? 'Attach' : 'Download') }}
+                ? (wholeScreen && !screenCap ? 'Capturing…' : props.mode === 'attach' ? 'Uploading…' : 'Rendering…')
+                : (wholeScreen && !screenCap ? 'Capture screen' : props.mode === 'attach' ? 'Attach' : 'Download') }}
           </button>
+          <button v-if="wholeScreen && screenCap" class="nge-shotdlg-cancel" @click="retake" :disabled="busy">Retake</button>
           <button class="nge-shotdlg-cancel" @click="close" :disabled="busy">Cancel</button>
         </div>
       </div>
@@ -976,6 +1025,14 @@ async function download() {
 }
 .nge-shotdlg-nurro-next:hover { background: rgba(245, 166, 35, 0.24); }
 .nge-shotdlg-check.is-off { opacity: 0.45; }
+.nge-shotdlg-wait {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 24px; text-align: center; pointer-events: none;
+  color: rgba(190, 215, 245, 0.8); font-size: 14px; line-height: 1.5;
+}
+.nge-shotdlg-wait b { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: #7fd6ff; font-weight: 600; }
+.nge-shotdlg-wait span { max-width: 420px; }
 
 /* Styled after Amy's scifi-ui library (holopanel surface, holoframe corner
    brackets, holoscan single pass), with the values copied inline rather than
