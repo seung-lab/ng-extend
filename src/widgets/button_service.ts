@@ -10,6 +10,7 @@ import {getDatasetCaveConfig} from '../config';
 import {currentSegLayerName} from '../datasets';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
 import {getSelectedSupervoxelId} from './pcg_service';
+import {startLinkForSegment, openStartLink} from '../util/start_link';
 
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
@@ -583,6 +584,22 @@ export class ButtonService {
             parent.classList.add('nge-lb-claimed');
             // Notify other UI (e.g. Brain Quest panel) about the status change
             document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'claimed' } }));
+            // A Cell Library cell: open its Start link too, so its annotation
+            // layers (Soma, True End, Can't Fix...) load, as claiming from the
+            // library does. Also mark it as the claim being worked on, so the
+            // library saves this view when you switch to another claim.
+            void (async () => {
+              const link = await startLinkForSegment(segmentIDString);
+              if (!link) return;
+              try {
+                await backend.loadTasks();
+                const mine = backend.tasks.find(t => t.assigned_to === backend.userId
+                  && (t.status === 'assigned' || t.status === 'in_progress')
+                  && (t.segment_id === segmentIDString || link === (t as any).start_link));
+                if (mine) localStorage.setItem('nge_cl_working_task', String(mine.id));
+              } catch { /* the view still opens */ }
+              openStartLink(link);
+            })();
           } else {
             claimBtn.textContent = result.reason || 'Claim failed';
             claimBtn.disabled = false;
