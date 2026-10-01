@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reportWriteFailure } from '../util/error_reporting';
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import {
   useProofreadingBackendStore,
   useProofreadingQueueStore,
@@ -778,6 +779,7 @@ async function submitComplete(cell: CellRow) {
       notes: c.notes.trim(),
     });
     completing.value = null;
+    if (slim.value) expandFull();
   } catch (e: any) {
     c.message = e?.message || 'Could not complete this cell.';
     c.ok = false;
@@ -880,6 +882,7 @@ async function releaseCell(cell: typeof cells.value[0]) {
     return;
   }
   if (completing.value?.key === cellKey(cell)) completing.value = null;
+  if (slimSeg.value === cell.segId) expandFull();
   if (cell.taskId && workingTaskId === cell.taskId) setWorkingTask(null);
   // Dispatch event so seg dot pips update
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
@@ -1939,11 +1942,97 @@ onMounted(() => requestAnimationFrame(clampPanelPos));
 window.addEventListener('resize', clampPanelPos);
 onBeforeUnmount(() => window.removeEventListener('resize', clampPanelPos));
 
+// ── Slim view (Ames 2026-10-01) ───────────────────────────────────────────
+// Jump to a cell and the library shrinks to that cell's one row, out of the
+// way of the work; the caret in the top bar does the same by hand. Complete
+// (or release) the cell, or press the row's caret, and the full panel beams
+// back. Same collapse and expand as the Scout tag panel.
+const slimSeg = ref<string | null>(null);
+const slimCell = computed<CellRow | null>(() => {
+  const seg = slimSeg.value;
+  if (!seg) return null;
+  const all = datasetScopedCells.value.filter(c => c.segId === seg);
+  return all.find(c => c.status !== 'completed') ?? all[0] ?? null;
+});
+const slim = computed(() => slimCell.value !== null);
+/** The rows the cell list draws: one in the slim view. */
+const listCells = computed(() => (slimCell.value ? [slimCell.value] : filteredCells.value));
+const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed'];
+/** The cell the caret shrinks to: the one on screen, else the claim being
+ *  worked on, else your first claim. */
+function currentCell(): CellRow | null {
+  const cs = datasetScopedCells.value;
+  return cs.find(c => c.segId === jumpedSegId.value && c.status !== 'completed')
+    ?? cs.find(c => c.taskId != null && c.taskId === workingTaskId)
+    ?? cs.find(c => isMyClaim(c) && c.status !== 'completed')
+    ?? cs.find(c => c.segId === jumpedSegId.value)
+    ?? null;
+}
+const slimHint = ref('');
+function collapseToCurrent() {
+  const cell = currentCell();
+  if (cell) { void collapseTo(cell); return; }
+  slimHint.value = 'Jump to a cell first';
+  setTimeout(() => { slimHint.value = ''; }, 2200);
+}
+async function collapseTo(cell: CellRow) {
+  if (slimSeg.value === cell.segId) return;
+  const el = panelEl.value;
+  // Already slim (jumping from the slim row itself): nothing to shrink.
+  const ghost = el && !slim.value ? snapshotPanel(el, '.nge-cl-list') : null;
+  if (!CELL_TABS.includes(filter.value)) filter.value = 'mine';
+  showTabSettings.value = false;
+  showHowTo.value = false;
+  slimSeg.value = cell.segId;
+  await nextTick();
+  clampPanelPos();
+  if (!ghost || !el) return;
+  if (!slim.value) { ghost.ghost.remove(); return; }
+  const row = el.querySelector('.nge-cl-row');
+  const parts = row ? [
+    ...Array.from(row.querySelectorAll('.nge-cl-row-left, .nge-cl-row-actions > *')),
+    ...Array.from(el.querySelectorAll('.nge-cl-slim-expand')),
+  ] : [];
+  morphIntoSlim(ghost, el, parts);
+}
+function expandFull() {
+  if (!slimSeg.value) return;
+  // Hide the slim row before the full list renders (a long list takes a
+  // moment), so the panel never flashes open ahead of the beam.
+  if (panelEl.value && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    panelEl.value.style.clipPath = 'inset(0 0 100% 0)';
+  }
+  slimSeg.value = null;
+  void nextTick(() => {
+    clampPanelPos();
+    if (panelEl.value) revealWithBeam(panelEl.value);
+  });
+}
+// The slim view grows with the Complete form (link, notes, crosshair check)
+// and with any error banner; keep the taller panel on screen.
+watch(() => [completing.value?.key, claimError.value, jumpError.value], () => {
+  if (slim.value) void nextTick(clampPanelPos);
+});
+// The cell left the list (released elsewhere, dataset switched): open up.
+watch(slimCell, (c) => { if (!c && slimSeg.value) expandFull(); });
+/** Jump from a cell row, then shrink to that row if the jump happened. */
+async function onRowJump(cell: CellRow) {
+  if (isMyClaim(cell)) await switchToClaim(cell);
+  else jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId);
+  if (jumpedSegId.value === cell.segId) void collapseTo(cell);
+}
+/** The slim row is its own drag handle (there is no top bar to grab). */
+function onSlimMouseDown(e: MouseEvent) {
+  if (!slim.value) return;
+  if ((e.target as HTMLElement).closest('button, input, textarea, a, select, .nge-cl-row-name, .nge-cl-complete')) return;
+  startDrag(e);
+}
+
 const panelStyle = computed(() => ({
   left: panelPos.value.x + 'px',
   top: panelPos.value.y + 'px',
   width: panelWidth.value + 'px',
-  ...(resizedHeight.value != null
+  ...(resizedHeight.value != null && !slim.value
     ? { height: resizedHeight.value + 'px', maxHeight: 'none' }
     : {}),
 }));
@@ -1952,13 +2041,17 @@ const panelStyle = computed(() => ({
 <template>
   <Teleport to="body">
     <Transition name="nge-cl" appear>
-      <div ref="panelEl" class="nge-cl-panel" :style="panelStyle">
+      <div ref="panelEl" class="nge-cl-panel" :class="{ 'nge-cl-panel--slim': slim }" :style="panelStyle" @mousedown="onSlimMouseDown">
 
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
           <div class="nge-cl-title">
             <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY
           </div>
+          <span v-if="slimHint" class="nge-cl-slim-hint">{{ slimHint }}</span>
+          <button class="nge-cl-caret" title="Shrink to the current cell" aria-label="Shrink to the current cell" @mousedown.stop @click="collapseToCurrent">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <button class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
           <button class="nge-cl-close" @mousedown.stop @click="emit('hide')">×</button>
         </div>
@@ -2774,7 +2867,10 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0" class="nge-cl-no-results">No matching cells</div>
 
-          <template v-for="cell in filteredCells" :key="cell.taskId ?? cell.segId">
+          <button v-if="slim" class="nge-cl-slim-expand" title="Back to the full Cell Library" aria-label="Back to the full Cell Library" @click="expandFull">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
           <div
             class="nge-cl-row"
             :class="{
@@ -2805,7 +2901,7 @@ const panelStyle = computed(() => ({
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
                 :class="{ 'nge-cl-btn--jump-active': cell.segId === jumpedSegId }"
-                @click="isMyClaim(cell) ? switchToClaim(cell) : jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId)"
+                @click="onRowJump(cell)"
                 :title="cell.segId === jumpedSegId ? 'Currently viewing — jump again' : 'Jump to segment'"
               >↗</button>
 
@@ -4639,4 +4735,33 @@ select.nge-cl-response-input:hover {
 .nge-cl-link-rename input {
   font-size: 0.95em;
 }
+
+/* ── Slim view: one row, no top bar, no tabs (Ames 2026-10-01) ── */
+.nge-cl-caret, .nge-cl-slim-expand {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; flex-shrink: 0;
+  border-radius: 999px; cursor: pointer;
+  color: #9fdcff; background: rgba(100, 200, 255, 0.12);
+  border: 1px solid rgba(100, 200, 255, 0.4);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.nge-cl-caret:hover, .nge-cl-slim-expand:hover {
+  background: rgba(100, 200, 255, 0.22); border-color: rgba(100, 200, 255, 0.75); color: #d4f0ff;
+  box-shadow: 0 0 10px rgba(79, 207, 255, 0.35);
+}
+.nge-cl-topbar .nge-cl-title { margin-right: auto; }
+.nge-cl-topbar .nge-cl-gear { margin-left: 0; }
+.nge-cl-caret { margin-right: 8px; }
+.nge-cl-slim-hint { margin-right: 8px; font-size: 11px; color: #ffd27a; }
+.nge-cl-panel--slim { max-height: calc(100vh - 64px); cursor: grab; }
+.nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
+.nge-cl-panel--slim .nge-cl-list {
+  flex: 0 1 auto; overflow-y: auto; position: relative;
+  padding: 2px 0 2px 34px;
+}
+/* Banners (errors, the claim limit) and the Complete form still show: the
+   slim panel grows to fit them. */
+.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand) { margin-left: -34px; cursor: default; }
+.nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
+.nge-cl-slim-expand { position: absolute; left: 8px; top: 14px; }
 </style>

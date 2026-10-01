@@ -20,7 +20,7 @@ import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
-import { runPanelTrace, runParticleBurst, runPanelDraw, runBurstBuild, runPanelLap } from '../util/holo_trace';
+import { runPanelTrace, runParticleBurst, runPanelDraw, runBurstBuild, runPanelLap, runParticleWrite } from '../util/holo_trace';
 
 const pinSvg = scoutPinSvg();
 import superScytheUrl from '../../static/tags/super-scythe.png';
@@ -323,99 +323,6 @@ function setCollapsed(v: boolean) {
   // Expand: no pop. The beam draws the frame AND acts as a mask, the box
   // content is revealed exactly as far down as the beam has travelled.
   revealFormWithBeam();
-}
-
-/**
- * Particles that "write" a set of targets: each flies from a random point in
- * `origin` along a curve to a point on a target's outline, arriving in a
- * staggered wave, glows briefly, and fades. Additive blue light, the UI's
- * one beam colour (LIGHT_RGB). Self-contained canvas, removed when done.
- */
-function runParticleWrite(targets: DOMRect[], origin: DOMRect, frames: DOMRect[] = []) {
-  if (!targets.length && !frames.length) return;
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const cv = document.createElement('canvas');
-  cv.width = Math.round(innerWidth * dpr);
-  cv.height = Math.round(innerHeight * dpr);
-  Object.assign(cv.style, {
-    position: 'fixed', inset: '0', width: '100vw', height: '100vh',
-    pointerEvents: 'none', zIndex: '10007',
-  } as Partial<CSSStyleDeclaration>);
-  document.body.appendChild(cv);
-  const ctx = cv.getContext('2d');
-  if (!ctx) { cv.remove(); return; }
-  ctx.scale(dpr, dpr);
-
-  /** A point on a rounded-rect outline, t in [0, 1). */
-  const onOutline = (r: DOMRect, t: number) => {
-    const per = 2 * (r.width + r.height);
-    let d = t * per;
-    if (d < r.width) return [r.left + d, r.top];
-    d -= r.width;
-    if (d < r.height) return [r.right, r.top + d];
-    d -= r.height;
-    if (d < r.width) return [r.right - d, r.bottom];
-    d -= r.width;
-    return [r.left, r.bottom - d];
-  };
-  type P = { x0: number; y0: number; cx: number; cy: number; x1: number; y1: number; delay: number; dur: number };
-  const ps: P[] = [];
-  const isFrame = new Set(frames);
-  for (const r of [...frames, ...targets]) {
-    // Density follows perimeter, so a wide chip gets more light than a dot;
-    // a frame (the strip's outer edge) gets its own, larger budget.
-    const n = isFrame.has(r)
-      ? Math.max(24, Math.min(90, Math.round((r.width + r.height) / 6)))
-      : Math.max(6, Math.min(22, Math.round((r.width + r.height) / 7)));
-    for (let i = 0; i < n; i++) {
-      const [x1, y1] = onOutline(r, (i + Math.random() * 0.5) / n);
-      const x0 = origin.left + Math.random() * origin.width;
-      const y0 = origin.top + origin.height * (0.5 + (Math.random() - 0.5) * 3);
-      ps.push({
-        x0, y0, x1, y1,
-        cx: (x0 + x1) / 2 + (Math.random() - 0.5) * 60,
-        cy: Math.min(y0, y1) - 12 - Math.random() * 28,
-        delay: ((r.left - origin.left) / Math.max(1, origin.width)) * 140 + Math.random() * 90,
-        dur: 300 + Math.random() * 160,
-      });
-    }
-  }
-  const HOLD = 180;
-  const end = Math.max(...ps.map(p => p.delay + p.dur)) + HOLD + 260;
-  const t0 = performance.now();
-  const ease = (t: number) => 1 - Math.pow(1 - t, 3);
-  const frame = (now: number) => {
-    const el = now - t0;
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
-    ctx.globalCompositeOperation = 'lighter';
-    for (const p of ps) {
-      const t = (el - p.delay) / p.dur;
-      if (t < 0) continue;
-      const k = ease(Math.min(1, t));
-      const x = (1 - k) * (1 - k) * p.x0 + 2 * (1 - k) * k * p.cx + k * k * p.x1;
-      const y = (1 - k) * (1 - k) * p.y0 + 2 * (1 - k) * k * p.cy + k * k * p.y1;
-      // In flight: bright head. Landed: glow, then fade over the tail.
-      const after = el - p.delay - p.dur;
-      const a = t < 1 ? 0.35 + 0.65 * k : Math.max(0, 1 - Math.max(0, after - HOLD) / 260);
-      if (a <= 0) continue;
-      const rad = t < 1 ? 1.4 : 1.8;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, rad * 4);
-      g.addColorStop(0, `rgba(${LIGHT_RGB},${a})`);
-      g.addColorStop(0.35, `rgba(${LIGHT_RGB},${a * 0.45})`);
-      g.addColorStop(1, `rgba(${LIGHT_RGB},0)`);
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(x, y, rad * 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = `rgba(235,248,255,${a})`;
-      ctx.beginPath();
-      ctx.arc(x, y, rad * 0.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    if (el < end) requestAnimationFrame(frame);
-    else cv.remove();
-  };
-  requestAnimationFrame(frame);
 }
 
 /** The beam-draw reveal of the form box, shared by expand-from-strip and
