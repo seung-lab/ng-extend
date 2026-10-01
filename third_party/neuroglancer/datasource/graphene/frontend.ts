@@ -2382,4 +2382,31 @@ registerLegacyTool(
     ANNOTATE_MERGE_LINE_TOOL_ID,
     (layer, options) => new MergeSegmentsPlaceLineTool(<SegmentationUserLayer>layer, options));
 
+// ── EyeWire II Highlight mode (src/util/highlight.ts) ─────────────────────
+// The same two things Find Path does, without its single source/target state:
+// what is under the cursor, and the path through a cell between two picks.
 
+/** The cell under the cursor on a graphene layer: its root and the position
+ *  in the layer's own coordinates. Undefined when the cursor is not on a
+ *  visible cell. */
+export function ngeGrapheneSelectionUnderMouse(
+    layer: SegmentationUserLayer, mouseState: MouseSelectionState): SegmentSelection|undefined {
+  const {segmentSelectionState: {value, baseValue}} = layer.displayState;
+  if (!value) return undefined;
+  if (!layer.displayState.segmentationGroupState.value.visibleSegments.has(value)) return undefined;
+  const point = getPoint(layer, mouseState);
+  if (point === undefined) return undefined;
+  return {rootId: value.clone(), segmentId: (baseValue ?? value).clone(), position: point};
+}
+
+/** The path through the cell between two picks, as points in NANOMETERS
+ *  (one per level 2 chunk along the way). */
+export async function ngeGrapheneFindPath(
+    layer: SegmentationUserLayer, a: SegmentSelection, b: SegmentSelection): Promise<number[][]> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const loadedSubsource = getGraphLoadedSubsource(layer)!;
+  const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
+  const centroids = await connection.graph.graphServer.findPath(a, b, false, toNm);
+  return centroids.map(pt => pt.map((v, i) => v * toNm[i]));
+}

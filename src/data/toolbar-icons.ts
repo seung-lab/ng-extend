@@ -41,6 +41,8 @@ const S = 'width:1em;height:1em;vertical-align:middle;';
 const SPLIT_SVG     = `<svg viewBox="-0.05 -0.3 16.1 16.1" fill="none" style="${S}color:${ACCENT_RED}"><path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="2.5" r="1.4" fill="currentColor"/><circle cx="4" cy="13" r="1.4" fill="currentColor"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/><path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 const MERGE_SVG     = `<svg viewBox="-0.05 -0.3 16.1 16.1" fill="none" style="${S}color:${ACCENT_GREEN}"><path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="4" cy="2.5" r="1.4" fill="currentColor"/><circle cx="12" cy="2.5" r="1.4" fill="currentColor"/><circle cx="8" cy="13" r="1.4" fill="currentColor"/><path d="M8 11v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 const FINDPATH_SVG  = `<svg viewBox="0.0 0.0 16.0 16.0" fill="none" style="${S}color:${ACCENT_PURPLE}"><circle cx="3" cy="13" r="1.6" fill="currentColor"/><circle cx="13" cy="3" r="1.6" fill="currentColor"/><path d="M5 12 Q7 9 8 8 Q9 7 11 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="1.4 1.8"/></svg>`;
+// Highlight mode (Ames 2026-10-01): a highlighter stroke laid along a branch.
+const HIGHLIGHT_SVG = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:#7CFFB2"><path d="M2.5 12.5c2.2-4.6 4.4-1.2 6-4.2s2.6-4 5-4.8" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" opacity="0.45"/><path d="M2.5 12.5c2.2-4.6 4.4-1.2 6-4.2s2.6-4 5-4.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
 // Side panel — the neuroglancer layer side panel toggle, brought into our
 // toolbar so it's reorderable and toggleable like every other icon (the native
 // button is hidden in ng-override.css). A window frame with the right column
@@ -93,6 +95,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)' },
   { id: 'merge',       emoji: '🔗', svg: MERGE_SVG,       label: 'Merge Mode (M)' },
   { id: 'findPath',    emoji: '🛤️', svg: FINDPATH_SVG,    label: 'Find Path (F)' },
+  { id: 'highlight',   emoji: '🖍️', svg: HIGHLIGHT_SVG,   label: 'Highlight Mode: mark what you have checked' },
   { id: 'layers',      emoji: '🗂️', svg: LAYERS_SVG,      label: 'Layer side panel' },
   { id: 'recap',       emoji: '📊', svg: RECAP_SVG,       label: 'Your Week in Science' },
   { id: 'leaderboard', emoji: '🏆', svg: LEADERBOARD_SVG, label: 'Leaderboard' },
@@ -133,7 +136,7 @@ export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed', 'settings'];
 // be farther right") — see REPOSITION_TOOLBAR_ICONS for saved prefs.
 // Cell Library first (Amy 2026-09-30): the main way in, left of Split/Merge.
 export const DEFAULT_TOOLBAR_ORDER = [
-  'cells', 'split', 'merge', 'findPath', 'recap', 'leaderboard',
+  'cells', 'split', 'merge', 'findPath', 'highlight', 'recap', 'leaderboard',
   'batch', 'help', 'tags', 'layers', 'notif', 'chat',
 ];
 
@@ -148,6 +151,7 @@ const AUTO_INJECT_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: 
   { id: 'notif',    beforeFallback: 'settings' },
   { id: 'chat',     beforeFallback: 'settings' },
   { id: 'findPath', after: 'merge' },
+  { id: 'highlight', after: 'findPath' },
   { id: 'layers',   after: 'tags', beforeFallback: 'notif' },
   { id: 'tags',     after: 'help', beforeFallback: 'notif' },
 ];
