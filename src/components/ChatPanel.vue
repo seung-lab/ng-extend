@@ -927,7 +927,7 @@ function toggleCollapse() {
           <div class="nge-chat-input-row">
             <span class="nge-chat-share">
               <button class="nge-chat-share-btn" :disabled="!isLoggedIn || !connected || sharing"
-                      @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat">{{ sharing ? '…' : '📍' }}</button>
+                      @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat"><template v-if="sharing">…</template><svg v-else class="nge-chat-share-pin" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 14.5s4.5-4.2 4.5-8A4.5 4.5 0 0 0 3.5 6.5c0 3.8 4.5 8 4.5 8z"/><circle cx="8" cy="6.4" r="1.6"/></svg></button>
               <span v-if="shareMenuOpen" class="nge-chat-share-menu">
                 <button @click="shareView(false)">📍 Share my view</button>
                 <button @click="shareView(true)">📷 Share view + screenshot</button>
@@ -1663,6 +1663,7 @@ function toggleCollapse() {
 .nge-chat-input-row { display: flex; align-items: center; gap: 4px; }
 .nge-chat-input-row .nge-chat-input { flex: 1; min-width: 0; }
 .nge-chat-share { position: relative; flex-shrink: 0; }
+.nge-chat-share-pin { display: block; margin: 0 auto; color: #fff; }
 .nge-chat-share-btn {
   width: 30px;
   height: 30px;
