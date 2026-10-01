@@ -44,6 +44,10 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Last top-up of the prepaid Anthropic credit (Ames tops up by hand).
+          # Update both when she adds credit; repo variables override.
+          ANTHROPIC_TOPUP_AT: ${{ vars.ANTHROPIC_TOPUP_AT || '2026-10-01T14:40:00Z' }}
+          ANTHROPIC_TOPUP_USD: ${{ vars.ANTHROPIC_TOPUP_USD || '19.95' }}
           SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID || 'C0BG5CN71C3' }}
           ALERT_SLACK_ID: U02FH1DRC
           DRY_RUN: ${{ inputs.dry_run }}
