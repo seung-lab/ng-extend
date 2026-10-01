@@ -4837,7 +4837,8 @@ select.nge-cl-response-input:hover {
 .nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
-  padding: 4px 0 4px 46px;
+  /* The caret keeps its place, top right, as in the full panel (Ames 2026-10-01). */
+  padding: 4px 46px 4px 10px;
 }
 /* The one row needs no "this is the one" marking: no green wash or rail
    pressed against the caret, no "viewing" tag. */
@@ -4846,7 +4847,7 @@ select.nge-cl-response-input:hover {
 .nge-cl-panel--slim .nge-cl-viewing { display: none; }
 /* Complete, in the slim view: part of the panel, not a box inside a box. */
 .nge-cl-panel--slim .nge-cl-list > .nge-cl-complete {
-  margin: 4px 0 -4px -46px; padding: 12px 16px 16px;
+  margin: 4px -46px -4px -10px; padding: 12px 16px 16px;
   border: none; border-top: 1px solid rgba(74, 150, 224, 0.25); border-radius: 0;
   background: rgba(10, 24, 44, 0.55);
 }
@@ -4862,13 +4863,13 @@ select.nge-cl-response-input:hover {
 .nge-cl-list > .nge-cl-quest { margin-left: 10px; margin-right: 10px; }
 /* Banners (errors, the claim limit) and the Complete form still show: the
    slim panel grows to fit them. */
-.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -46px; cursor: default; }
+.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -10px; margin-right: -46px; cursor: default; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
-.nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
-/* Next claimed cell: beside the caret, and the row makes room for it. */
-.nge-cl-slim-next { position: absolute; left: 42px; top: 18px; }
+.nge-cl-slim-expand { position: absolute; right: 12px; top: 18px; }
+/* Next claimed cell: at the left, and the row makes room for it. */
+.nge-cl-slim-next { position: absolute; left: 12px; top: 18px; }
 .nge-cl-slim-next:disabled { opacity: 0.45; cursor: default; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-left: 76px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -76px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-left: -76px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-left: 44px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -44px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-left: -44px; }
 </style>
