@@ -83,6 +83,45 @@ async function checkCave() {
   return bad.length ? { ok: false, detail: bad.join('; ') } : { ok: true, detail: `${good} table(s) answer` };
 }
 
+/**
+ * The robot's AI step (Claude in GitHub Actions). When the Anthropic key is
+ * out of credit, expired or revoked, the `model` job fails in under a second
+ * and every proposal and build dies quietly (Ames 2026-10-01). Failing: the
+ * model job failed in each of the last 3 runs that reached it, across the
+ * propose and implement workflows.
+ */
+async function checkRobotAi() {
+  const token = env.GITHUB_TOKEN;
+  if (!token) return { ok: true, detail: 'not checked (no GitHub token)' };
+  const gh = async (path) => {
+    const r = await timed(`https://api.github.com/repos/seung-lab/ng-extend/${path}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'eyewire-health-watch' },
+    });
+    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    return r.json();
+  };
+  try {
+    const runs = [];
+    for (const wf of ['triage-propose.yml', 'triage-implement.yml']) {
+      const j = await gh(`actions/workflows/${wf}/runs?status=completed&per_page=15`);
+      runs.push(...(j.workflow_runs || []));
+    }
+    runs.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const verdicts = [];
+    for (const run of runs) {
+      if (verdicts.length >= 3) break;
+      const jobs = (await gh(`actions/runs/${run.id}/jobs`)).jobs || [];
+      const model = jobs.find(j => j.name === 'model');
+      if (!model || model.conclusion === 'skipped') continue; // nothing to do that run
+      verdicts.push({ ok: model.conclusion === 'success', url: run.html_url, at: run.created_at });
+    }
+    if (verdicts.length < 3 || verdicts.some(v => v.ok)) return { ok: true, detail: `AI step fine in ${verdicts.filter(v => v.ok).length} of the last ${verdicts.length} runs` };
+    return { ok: false, detail: `Claude failed in the last 3 robot runs (latest ${verdicts[0].url}). `
+      + 'Usually the Anthropic account is out of credit or the key expired: check console.anthropic.com, Billing and API Keys, '
+      + 'then update the ANTHROPIC_API_KEY secret in GitHub if the key changed.' };
+  } catch (e) { return { ok: true, detail: `not checked (${e.message})` }; }
+}
+
 async function checkPlayerFailures() {
   const since = new Date(Date.now() - 3600 * 1000).toISOString();
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -127,6 +166,7 @@ async function lastHealthMessage() {
     'Spreadsheet write-back': await checkSheets(),
     'CAVE tables': await checkCave(),
     'Player write failures': await checkPlayerFailures(),
+    'Robot AI step': await checkRobotAi(),
   };
   for (const [name, r] of Object.entries(results)) console.log(`[health] ${r.ok ? 'OK  ' : 'FAIL'} ${name}: ${r.detail}`);
   const failing = Object.entries(results).filter(([, r]) => !r.ok);

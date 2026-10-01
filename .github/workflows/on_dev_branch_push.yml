@@ -140,10 +140,26 @@ jobs:
           # failed every deploy, so these listings may not fail the step.
           echo "seung-lab app has $app_total versions:"; { sort all.txt | uniq -c | sort -rn | head -12; } || true
           gcloud app versions list --project=seung-lab --service=brain-wire \
-            --format='value(id,traffic_split)' --sort-by='last_deployed_time' > versions.txt
+            --format='value(id,traffic_split,version.createTime)' --sort-by='last_deployed_time' > versions.txt
           total=$(grep -c . versions.txt || true)
           echo "brain-wire has $total versions"
+          # Test sites close after 24 hours (Ames 2026-10-01): every preview
+          # (triage builds and pushed branches) whose last deploy is over a day
+          # old and that serves no traffic is deleted. Pushing the branch, or a
+          # triage retry, brings it back. Never the live branch, master, main,
+          # this deploy's own version, or anything serving traffic. createTime
+          # is RFC 3339 UTC, so a plain string comparison orders it.
+          cutoff=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)
+          awk -v me="$APP_VERSION" -v cutoff="$cutoff" \
+            '$1 != "" && ($2 + 0) == 0 && $1 != me && $1 !~ /^(eyewire-ii-community|master|main)$/ && $3 != "" && substr($3, 1, 19) < cutoff {print $1}' versions.txt \
+            > stale.txt || true
+          echo "Closing $(grep -c . stale.txt || true) test site(s) older than 24 hours"
+          xargs -r -n 20 gcloud app versions delete --project=seung-lab --service=brain-wire --quiet < stale.txt || echo "::warning::some old test sites could not be deleted"
           if [ "$app_total" -lt 195 ]; then exit 0; fi
+          # Still near the cap: refresh the list and free more below.
+          gcloud app versions list --project=seung-lab --service=brain-wire \
+            --format='value(id,traffic_split)' --sort-by='last_deployed_time' > versions.txt
+          total=$(grep -c . versions.txt || true)
           # Free up to 30 slots, and always keep brain-wire's 15 newest.
           awk -v me="$APP_VERSION" \
             '$1 != "" && ($2 + 0) == 0 && $1 != me && $1 !~ /^(eyewire-ii-community|master|main)$/ {print $1}' versions.txt \
