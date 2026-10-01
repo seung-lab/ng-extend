@@ -437,6 +437,48 @@ const notifTitle = ref('');
 const notifBody = ref('');
 const notifTargetType = ref<'all' | 'group' | 'user'>('all');
 const notifTargetId = ref('');
+
+// ── Specific User: find a player by name or username, not by id (Ames) ────
+// notifTargetId still holds the user id; this is only how it gets chosen.
+interface PickedUser { id: string; display_name: string | null; username: string | null }
+const userQuery = ref('');
+const userMatches = ref<PickedUser[]>([]);
+const userPicked = ref<PickedUser | null>(null);
+const userSearching = ref(false);
+let userSearchTimer: ReturnType<typeof setTimeout> | null = null;
+const userLabel = (u: PickedUser) => [u.display_name || 'Unnamed player', u.username ? `@${u.username}` : ''].filter(Boolean).join('  ');
+function onUserQuery() {
+  if (userSearchTimer) clearTimeout(userSearchTimer);
+  // PostgREST filter syntax characters would break the query; names never need them.
+  const q = userQuery.value.trim().replace(/[,()*%\\]/g, ' ').trim();
+  if (q.length < 2) { userMatches.value = []; return; }
+  userSearchTimer = setTimeout(async () => {
+    userSearching.value = true;
+    try {
+      const { supabase } = await import('../supabase');
+      const { data } = await supabase.from('users').select('id,display_name,username')
+        .or(`display_name.ilike.*${q}*,username.ilike.*${q}*`).order('display_name').limit(8);
+      userMatches.value = (data ?? []) as PickedUser[];
+    } catch { userMatches.value = []; } finally { userSearching.value = false; }
+  }, 220);
+}
+function pickUser(u: PickedUser) {
+  userPicked.value = u;
+  notifTargetId.value = u.id;
+  userQuery.value = '';
+  userMatches.value = [];
+}
+function clearPickedUser() { userPicked.value = null; notifTargetId.value = ''; }
+// A draft or an edited notification restores only the id: look its name up.
+watch(notifTargetId, async id => {
+  if (!id) { userPicked.value = null; return; }
+  if (userPicked.value?.id === id || notifTargetType.value !== 'user') return;
+  try {
+    const { supabase } = await import('../supabase');
+    const { data } = await supabase.from('users').select('id,display_name,username').eq('id', id).limit(1);
+    userPicked.value = ((data ?? [])[0] as PickedUser) || { id, display_name: null, username: null };
+  } catch { userPicked.value = { id, display_name: null, username: null }; }
+});
 const notifPostToChat = ref(false);
 
 /**
@@ -1134,7 +1176,23 @@ function practiceWhen(iso: string | null) {
             <option value="" disabled>Select group...</option>
             <option v-for="g in backend.groups" :key="g.id" :value="String(g.id)">{{ g.name }}</option>
           </select>
-          <input v-if="notifTargetType === 'user'" v-model="notifTargetId" class="nge-admin-input nge-admin-input--sm" placeholder="User ID" />
+          <div v-if="notifTargetType === 'user'" class="nge-user-pick">
+            <div v-if="userPicked" class="nge-user-picked">
+              <span class="nge-user-picked-name">{{ userLabel(userPicked) }}</span>
+              <button type="button" class="nge-user-picked-x" title="Choose someone else" @click="clearPickedUser">×</button>
+            </div>
+            <template v-else>
+              <input v-model="userQuery" class="nge-admin-input" placeholder="Name or username" autocomplete="off"
+                     @input="onUserQuery" @keydown.stop @keyup.stop />
+              <div v-if="userQuery.trim().length >= 2" class="nge-user-matches">
+                <button v-for="u in userMatches" :key="u.id" type="button" class="nge-user-match" @click="pickUser(u)">
+                  <span class="nge-user-match-name">{{ u.display_name || 'Unnamed player' }}</span>
+                  <span v-if="u.username" class="nge-user-match-handle">@{{ u.username }}</span>
+                </button>
+                <div v-if="!userMatches.length" class="nge-user-nomatch">{{ userSearching ? 'Searching…' : 'No player found with that name' }}</div>
+              </div>
+            </template>
+          </div>
         </div>
         <div class="nge-admin-row nge-admin-row--dates">
           <label class="nge-admin-date-label">
@@ -1638,6 +1696,31 @@ function practiceWhen(iso: string | null) {
 }
 .nge-admin-input:focus { border-color: rgba(74, 158, 255, 0.5); }
 .nge-admin-input--sm { max-width: 180px; }
+/* Specific User: search by name or username. */
+.nge-user-pick { position: relative; flex: 1; min-width: 180px; }
+.nge-user-pick .nge-admin-input { width: 100%; box-sizing: border-box; }
+.nge-user-matches {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5;
+  background: #0b1424; border: 1px solid rgba(74, 158, 255, 0.35); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); padding: 4px; max-height: 260px; overflow-y: auto;
+}
+.nge-user-match {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  background: transparent; border: none; border-radius: 5px;
+  padding: 7px 9px; color: #e0ecff; font: inherit; text-align: left; cursor: pointer;
+}
+.nge-user-match:hover { background: rgba(74, 158, 255, 0.14); }
+.nge-user-match-name { font-weight: 600; }
+.nge-user-match-handle { color: #8fb4dc; font-size: 0.88em; }
+.nge-user-nomatch { padding: 7px 9px; color: #8fa6c2; font-size: 0.9em; }
+.nge-user-picked {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(74, 158, 255, 0.12); border: 1px solid rgba(74, 158, 255, 0.4);
+  border-radius: 6px; padding: 7px 10px; color: #e0ecff; font-size: 0.92em;
+}
+.nge-user-picked-name { flex: 1; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.nge-user-picked-x { background: none; border: none; color: #a9c4e4; font-size: 1.2em; line-height: 1; cursor: pointer; padding: 0 2px; }
+.nge-user-picked-x:hover { color: #fff; }
 
 .nge-admin-textarea {
   background: rgba(255, 255, 255, 0.06);
