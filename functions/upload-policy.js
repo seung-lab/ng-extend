@@ -1,9 +1,10 @@
 const crypto=require('node:crypto');
 const error=(status,message)=>{throw Object.assign(new Error(message),{status});};
-function prepareUpload(input, who, isAdmin) {
+function prepareUpload(input, who, isAdmin, isBlogAuthor) {
  if(!who)error(401,'Sign in first.');
- if(!['help','notifications','badges'].includes(input.kind))error(400,'Invalid upload kind.');
- if(input.kind!=='help'&&!isAdmin)error(403,'Admins only.');
+ if(!['help','notifications','badges','blog'].includes(input.kind))error(400,'Invalid upload kind.');
+ if(input.kind==='blog'){if(!isBlogAuthor)error(403,'Only blog authors can add images to posts.');}
+ else if(input.kind!=='help'&&!isAdmin)error(403,'Admins only.');
  if(typeof input.data!=='string'||input.data.length>12*1024*1024||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))error(400,'Invalid image data.');
  const bytes=Buffer.from(input.data,'base64');
  // Notification and badge images: 3 MB (Ames 2026-09-30). Player screenshots

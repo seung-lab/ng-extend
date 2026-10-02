@@ -1,5 +1,5 @@
 import { functionUrl } from './functions_base';
-export async function secureUpload(blob: Blob, kind: 'help' | 'notifications' | 'badges'): Promise<string> {
+export async function secureUpload(blob: Blob, kind: 'help' | 'notifications' | 'badges' | 'blog'): Promise<string> {
   // Notification and badge images 3 MB, player screenshots 8 MB (as the server).
   const maxMB = kind === 'help' ? 8 : 3;
   if (blob.size > maxMB * 1024 * 1024) throw new Error(`Images must be under ${maxMB} MB.`);

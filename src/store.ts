@@ -3340,6 +3340,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       }
       // Check admin status + load special badges + favorite badge after user is synced
       await checkAdmin();
+      void checkBlogAuthor();
       await loadMySpecialBadges();
       await loadMyBadgeAwards();
       await loadFavoriteBadge();
@@ -4264,6 +4265,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   const isAdmin = ref(false);
 
+  /** Listed in blog_authors: may write for connectome.quest/blog (the Blog
+   *  tab of your profile). The server enforces it; this only shows the tab. */
+  const isBlogAuthor = ref(false);
+  async function checkBlogAuthor() {
+    if (!userId.value) { isBlogAuthor.value = false; return; }
+    try {
+      const { data } = await supabase.from('blog_authors').select('user_id').eq('user_id', userId.value).maybeSingle();
+      isBlogAuthor.value = !!data;
+    } catch { isBlogAuthor.value = false; }
+  }
+
   async function checkAdmin() {
     if (!userEmail.value) { isAdmin.value = false; return; }
     const { data } = await supabase
@@ -5024,7 +5036,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     refreshSegmentIds,
     MAX_CLAIMS, claimLimitFor,
     // Admin Hub
-    isAdmin, checkAdmin,
+    isAdmin, checkAdmin, isBlogAuthor,
     // Notifications
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,

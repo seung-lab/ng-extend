@@ -4,6 +4,7 @@ import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
+import BlogEditor from 'components/BlogEditor.vue';
 import { startDatasetTransition } from '../util/dataset_transition';
 import { loadContribution, datasetTagVariants as sharedTagVariants } from '../util/dataset_contribution';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
@@ -148,7 +149,7 @@ const BADGE_PREVIEW_WITH_VIEWALL = 4; // four + the View all tile
 const SPECIAL_PREVIEW_LIMIT = 5;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
-const activeTab = ref<'overview' | 'trophyCase' | 'myCells' | 'datasets' | 'weekInScience' | 'adminHub' | 'settings'>('overview');
+const activeTab = ref<'overview' | 'trophyCase' | 'myCells' | 'datasets' | 'weekInScience' | 'adminHub' | 'blog' | 'settings'>('overview');
 
 function openWeekInScience() {
   activeTab.value = 'weekInScience';
@@ -877,6 +878,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           :class="{ 'nge-profile-tab--active': activeTab === 'adminHub' }"
           @click="activeTab = 'adminHub'"
         >🛠 Admin Hub</button>
+        <button
+          v-if="!viewingOtherUser && backendStore.isBlogAuthor"
+          class="nge-profile-tab"
+          :class="{ 'nge-profile-tab--active': activeTab === 'blog' }"
+          @click="activeTab = 'blog'"
+        >✍️ Blog</button>
       </div>
 
       <!-- ── Three-column body (Overview tab) ────────────────── -->
@@ -1713,6 +1720,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       <!-- ── Admin Hub tab ─────────────────────────────────────── -->
       <div v-if="activeTab === 'adminHub'" class="nge-profile-body nge-profile-body--admin">
         <AdminHub :initial-sub-tab="adminInitialSubTab" />
+      </div>
+
+      <!-- ── Blog tab (listed authors only) ────────────────────── -->
+      <div v-if="activeTab === 'blog'" class="nge-profile-body nge-profile-body--admin">
+        <BlogEditor />
       </div>
 
       <!-- ── Settings tab ──────────────────────────────────────── -->
