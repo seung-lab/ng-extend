@@ -46,4 +46,13 @@ export function installMobileMode() {
     (mq as any).addListener(apply);
   }
   apply();
+  // Belt and braces for iPhone Safari (see mobile.css): if the page is ever
+  // slid up anyway (the browser bar showing, the keyboard closing), put it
+  // back, so the top bar never ends up under the status bar.
+  const unslide = () => {
+    if (!isMobileRef.value) return;
+    if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+  };
+  window.addEventListener('scroll', unslide, { passive: true });
+  window.visualViewport?.addEventListener('resize', unslide);
 }

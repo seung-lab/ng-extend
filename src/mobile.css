@@ -24,6 +24,25 @@ body.nge-mobile {
   overscroll-behavior: none;
 }
 
+/* The page is exactly the visible screen and cannot be scrolled (Ames
+   2026-10-02). neuroglancer sizes html and body with 100vh, which on iPhone
+   Safari is the screen with the browser bar HIDDEN: taller than what is
+   showing. Safari then slid the whole page up when its bar appeared, the
+   top bar went under the clock and battery and could not be tapped. dvh is
+   the height actually visible, and a fixed body has nothing to scroll. */
+html:has(body.nge-mobile) {
+  height: 100dvh;
+  overflow: hidden;
+}
+body.nge-mobile {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 /* Double-tap zoom fights the viewer's tap interactions; pinch zoom is the
    viewer's own gesture. The viewport meta disables page zoom, touch-action
    keeps the browser from consuming gestures before neuroglancer sees them. */
