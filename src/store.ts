@@ -18,6 +18,7 @@ import {isMobileRef} from './util/mobile';
 import {currentDatasetTag, canonicalDataset, currentSegLayer} from './datasets';
 import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
+import {emitScriptEvent} from './script_api';
 import {getRootsFromSupervoxels} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
@@ -3519,6 +3520,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loading.value = false;
   }
 
+  /** Player scripts (window.eyewire) hear about claims, releases and completions. */
+  function tellScripts(event: 'claim' | 'release' | 'complete', taskId: number, finalSegId?: string) {
+    const t = tasks.value.find(x => x.id === taskId);
+    emitScriptEvent(event, { taskId, cellId: String(finalSegId || t?.final_segment_id || t?.segment_id || ''), dataset: t?.dataset || currentDatasetTag() });
+  }
+
   /** Claim a task — insert assignment, update task status, start heartbeat. */
   async function claimTask(taskId: number) {
     if (!userId.value) { error.value = 'Not logged in'; return false; }
@@ -3533,6 +3540,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
       activeTaskId.value = taskId;
       startHeartbeat();
+      tellScripts('claim', taskId);
 
       // Log to edit_log and the activity feed without holding the button.
       void Promise.resolve(logEdit({ operation: 'claim_task', task_id: taskId })).catch(() => {});
@@ -3554,6 +3562,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const taskId = activeTaskId.value;
     try {
       await taskAction('release', { id: taskId });
+      tellScripts('release', taskId);
 
       await logEdit({ operation: 'release_task', task_id: taskId });
 
@@ -3572,6 +3581,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (!userId.value) return;
     try {
       await taskAction('complete', { id: taskId, final_segment_id: finalSegId, soma_coords: somaCoords });
+      tellScripts('complete', taskId, finalSegId);
 
       await logEdit({
         operation: 'complete_task',
@@ -4156,6 +4166,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       const task = await taskAction('claim_cell', { dataset: currentDatasetTag(), segment_id: currentSegId, point, supervoxel_id: supervoxelId });
       activeTaskId.value = task.id;
       startHeartbeat();
+      emitScriptEvent('claim', { taskId: task.id, cellId: String(task.segment_id || currentSegId || ''), dataset: currentDatasetTag() });
       // The claim is made; logging and the activity feed need not hold the
       // button (Amy 2026-09-28: Claim felt slow). Only the task sync waits.
       void Promise.resolve(logEdit({ operation: 'claim_task', task_id: task.id })).catch(() => {});
