@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EyeWire II · Writing scripts</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --panel: #131a2e;
+    --border: #1f2a44;
+    --text: #e6edf7;
+    --muted: #8a9bbf;
+    --accent: #00aaff;
+    --accent-2: #4fd0ff;
+    --gold: #ffd700;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: radial-gradient(ellipse at top, #131a2e 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    font-size: 16px; line-height: 1.6;
+    min-height: 100vh;
+  }
+  header { padding: 28px 16px 20px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, rgba(0,170,255,0.04), transparent); }
+  header > div, main { max-width: 780px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 24px; font-weight: 600; }
+  h1 .accent { color: var(--accent); }
+  .subtitle { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  main { padding: 8px 16px 80px; }
+  h2 { font-size: 19px; margin: 40px 0 8px; color: var(--accent-2); font-weight: 600; }
+  p, li { color: var(--text); }
+  li { margin: 6px 0; }
+  a { color: var(--accent-2); }
+  code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.9em; background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  .warn { margin: 24px 0 0; padding: 14px 16px; border: 1px solid rgba(255, 215, 0, 0.45); border-radius: 8px; background: rgba(255, 215, 0, 0.06); }
+  .warn strong { color: var(--gold); }
+  .script { position: relative; margin: 12px 0 0; }
+  .script pre { margin: 0; padding: 14px 16px; overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; font: 13px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; color: #cfe0f7; }
+  .script button { position: absolute; top: 8px; right: 8px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: #0f1424; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+  .script button:hover { border-color: var(--accent); }
+  .script button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .muted { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<header><div>
+  <h1><span class="accent">EyeWire II</span> · Writing scripts</h1>
+  <div class="subtitle">Add your own buttons, shortcuts and readouts to the game, in your own browser.</div>
+</div></header>
+<main>
+
+<p>A script is a small piece of code that changes the game on your computer only. Nobody else sees it, and it does not need anyone's approval. Scripts run through a free browser extension called Tampermonkey, the same one players used on the original EyeWire.</p>
+
+<div class="warn">
+  <strong>Only install scripts you trust.</strong> A script runs as you. It can do anything you can do in the game, including editing cells with your sign in. Scripts you write yourself are fine. Read a script from someone else before you install it, or ask in chat whether others use it.
+</div>
+
+<h2>1. Install Tampermonkey</h2>
+<ol>
+  <li>Add Tampermonkey from the <a href="https://www.tampermonkey.net/" target="_blank" rel="noopener">Tampermonkey site</a>. It links to the right store for your browser.</li>
+  <li>In Chrome or Edge, open <code>chrome://extensions</code>, click <strong>Details</strong> on Tampermonkey, and switch on <strong>Allow User Scripts</strong>. On older versions the switch is <strong>Developer mode</strong>, at the top right of that page. Without it, scripts do nothing and give no error.</li>
+</ol>
+
+<h2>2. Add your first script</h2>
+<ol>
+  <li>Click the Tampermonkey icon, then <strong>Create a new script</strong>.</li>
+  <li>Delete everything in the editor and paste the script below.</li>
+  <li>Press Ctrl+S to save, then reload the game.</li>
+</ol>
+<p>A <strong>Layers?</strong> button appears at the bottom left. Click it to list the layers in your view.</p>
+<div class="script"><button type="button">Copy</button><pre>// ==UserScript==
+// @name         EyeWire II: list my layers
+// @match        https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/*
+// @grant        none
+// @run-at       document-idle
+// ==/UserScript==
+
+(function () {
+  'use strict';
+  // The game takes a few seconds to start, so wait for the viewer.
+  const wait = setInterval(() =&gt; {
+    if (!window.viewer) return;
+    clearInterval(wait);
+
+    const btn = document.createElement('button');
+    btn.textContent = 'Layers?';
+    btn.style.cssText = 'position:fixed;bottom:12px;left:12px;z-index:9999;padding:6px 10px;';
+    btn.onclick = () =&gt; {
+      const state = window.viewer.state.toJSON();
+      alert((state.layers || []).map(l =&gt; `${l.name} (${l.type})`).join('\n'));
+    };
+    document.body.appendChild(btn);
+  }, 1000);
+})();</pre></div>
+
+<h2>How a script is put together</h2>
+<ul>
+  <li><strong>The top block</strong> (between the <code>==UserScript==</code> lines) tells Tampermonkey where to run. <code>@match</code> is the game's address. If you play at a different address, add another <code>@match</code> line for it.</li>
+  <li><strong><code>@grant none</code></strong> runs the script inside the page. That is what lets it see the game. Leave it as is.</li>
+  <li><strong><code>window.viewer</code></strong> is the 3D viewer. <code>window.viewer.state.toJSON()</code> returns your whole view: layers, selected cells, position and annotations.</li>
+  <li><strong><code>window.viewer.state.changed.add(fn)</code></strong> calls your function every time the view changes.</li>
+</ul>
+
+<h2>Example: live position readout</h2>
+<p>Shows your current x, y, z at the bottom of the screen and updates as you move.</p>
+<div class="script"><button type="button">Copy</button><pre>// ==UserScript==
+// @name         EyeWire II: position readout
+// @match        https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/*
+// @grant        none
+// @run-at       document-idle
+// ==/UserScript==
+
+(function () {
+  'use strict';
+  const wait = setInterval(() =&gt; {
+    if (!window.viewer) return;
+    clearInterval(wait);
+
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;bottom:12px;left:12px;z-index:9999;padding:6px 10px;'
+      + 'border-radius:6px;background:rgba(8,14,28,.9);color:#dce6f5;font:12px monospace;';
+    document.body.appendChild(box);
+
+    const show = () =&gt; {
+      const p = window.viewer.state.toJSON().position || [];
+      box.textContent = p.map(n =&gt; Math.round(n)).join(', ');
+    };
+    show();
+    window.viewer.state.changed.add(show);
+  }, 1000);
+})();</pre></div>
+
+<h2>Example: copy your selected cell IDs</h2>
+<p>Press Shift+C to copy the IDs of every cell selected in your view. It does nothing while you are typing in a box.</p>
+<div class="script"><button type="button">Copy</button><pre>// ==UserScript==
+// @name         EyeWire II: copy selected cell IDs
+// @match        https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/*
+// @grant        none
+// @run-at       document-idle
+// ==/UserScript==
+
+(function () {
+  'use strict';
+  function selectedCells() {
+    const layers = window.viewer.state.toJSON().layers || [];
+    return layers.filter(l =&gt; l.type === 'segmentation')
+      .flatMap(l =&gt; l.segments || [])
+      .filter(id =&gt; !String(id).startsWith('!'));   // "!" marks a hidden cell
+  }
+
+  window.addEventListener('keydown', e =&gt; {
+    if (!window.viewer || !e.shiftKey || e.code !== 'KeyC') return;
+    if (e.target.closest('input, textarea, [contenteditable]')) return;
+    const ids = selectedCells();
+    navigator.clipboard.writeText(ids.join(', '));
+    console.log(`Copied ${ids.length} cell ID(s)`);
+  });
+})();</pre></div>
+
+<h2>Good to know</h2>
+<ul>
+  <li><strong>Scripts can break after an update.</strong> The game changes often. <code>window.viewer</code> and the view it returns are stable. Anything deeper may move.</li>
+  <li><strong>Nothing happens?</strong> Check that <strong>Allow User Scripts</strong> is on, that the script is enabled in Tampermonkey, and that the <code>@match</code> line is the address in your browser's address bar.</li>
+  <li><strong>See what went wrong.</strong> Press F12 and open the Console tab. Errors from your script show there.</li>
+  <li><strong>Made something useful?</strong> Share it in chat, and tell us with the feedback button if you would like it built into the game.</li>
+</ul>
+<p class="muted">Scripts are made by players and are not reviewed by the EyeWire team.</p>
+
+</main>
+<script>
+  for (const b of document.querySelectorAll('.script button')) {
+    b.addEventListener('click', async () => {
+      const text = b.parentElement.querySelector('pre').textContent;
+      try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; }
+      catch { b.textContent = 'Select and copy'; }
+      setTimeout(() => { b.textContent = 'Copy'; }, 1800);
+    });
+  }
+</script>
+</body>
+</html>
