@@ -6,7 +6,8 @@ import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
 // Amy's cut with the points placed (2026-09-26): red along the axon, blue on the dendrite.
 import imgCutPoints from './images/cut-points-example.jpg';
-import { beginPractice, endPractice, ensureTool } from './practice';
+import { beginPractice, endPractice, ensureTool, holdsSlot } from './practice';
+import { useTutorialStore } from './store-pyr';
 import { INFO_LAYER, MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, movingToSandbox, stopWatching, watchPractice } from './tutorial-3';
 
 /**
@@ -46,7 +47,12 @@ In a moment you'll get the fused version of this very cell and make the cut your
       closeSidePanel();
       stopWatching();
       // Claim before loading any shared practice geometry.
-      await movingToSandbox('Cut', () => beginPractice('cut', 'preview'));
+      await movingToSandbox('Cut', async () => {
+        const first = await beginPractice('cut', 'preview');
+        // A second cut cell, when one is registered, is taken now and shown
+        // at "Your Turn" (the Merge tutorial does the same).
+        if (first) await beginPractice('cut', 'start', { slot: 'b', show: false });
+      });
     },
   },
 
@@ -97,18 +103,23 @@ If the result isn't right, there is no undo key: rejoin the pieces with a <stron
 
   // 5: Red and blue groups
   {
-    title: "Red & Blue Points",
+    title: "You can also cut in 2D",
     text: `
-When the cut tool is active, the bar at the bottom shows which colour you're placing.
+The bar at the bottom shows which colour you're placing, and **G** switches between them.
 
-<strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> simply mark the **two sides** of where the cut should happen, one colour on each side of the boundary.
+**Ctrl+Click** places points on the 2D images too, not only on the 3D shape: <strong style="color:#ff5c5c">red</strong> inside one cell's outline, <strong style="color:#5c8cff">blue</strong> inside the other's. It helps when the join is hard to see in 3D.
 
-**Ctrl+Click** to place a point. Press **G** to switch between the <strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> groups.`,
+<span class="nge-cut-2d-next">We'll try that next.</span>`,
     position: OVER_2D,
     width: "420px",
     onEnter: () => {
       closeSidePanel();
       setTimeout(() => ensureTool('multicut'), 400);
+      // Only promise the 2D try when there is a second cell to try it on.
+      setTimeout(() => {
+        const el = document.querySelector('.nge-cut-2d-next');
+        if (el && !holdsSlot('b')) el.textContent = 'A second example to try it on is coming soon.';
+      }, 300);
     },
   },
 
@@ -130,7 +141,7 @@ For the best results:
   {
     title: "Your Turn: another one",
     text: `
-One more, on a different cell. Two pieces that belong to different neurons are fused here. Find the join and cut them apart.
+One more, on a different cell. Two pieces that belong to different neurons are fused here. Find the join and cut them apart. Try placing some of the points in 2D this time.
 
 1. Press **C** to activate the cut tool.
 2. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points on the piece that doesn't belong.
@@ -142,9 +153,11 @@ Press **next** once the box below says the cut landed.`,
     width: "400px",
     onEnter: async () => {
       closeSidePanel();
+      // Only one cut cell for now: never show the first again (it is already
+      // cut, so this box said "success" at once), go to the wrap up.
+      if (!holdsSlot('b')) { useTutorialStore().setTutorialStep(7); return; }
       watchPractice(false, 'Waiting for your cut: red on one side of the join, G, blue on the other, Submit cut.', 'Cut success! You did it again. The two pieces are separate now.');
-      // A second cut cell, held alongside the first; both go back at the
-      // end. With only one registered, the same cell is shown again.
+      // The second cut cell, taken at the start together with the first.
       await beginPractice('cut', 'start', { slot: 'b' });
       setTimeout(() => ensureTool('multicut'), 400);
     },
@@ -157,6 +170,8 @@ Press **next** once the box below says the cut landed.`,
 You now know the two most important proofreading operations in connectomics. Every merge reconnects a lost branch. Every cut untangles confused neurons.
 
 The cell you practised on is put back for the next person. Happy proofreading!
+
+**Coming soon:** a harder Cut tutorial, where you use **Find Path** to track down where two neurons were fused before cutting them apart.
 ` + cheatSheet([
       ['<strong style="color:#e06060">Cut</strong> tool', 'C'],
       ['<strong style="color:#60c060">Merge</strong> tool', 'M'],

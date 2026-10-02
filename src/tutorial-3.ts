@@ -11,6 +11,8 @@ import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
 import { beginPractice, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
+import { useSplitMergeOverlayStore } from './store';
+import { watch } from 'vue';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
 import { drawSearchLine } from './tutorial_pointer';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
@@ -214,8 +216,66 @@ export function labelPart() {
   document.querySelectorAll('.nge-practice-part').forEach(el => { if (el.textContent !== part) el.textContent = part; });
 }
 
+/**
+ * The last failed edit (Ames, 2026-10-02: "what is the error state if the
+ * cut doesn't work?"). The tool bar flashes the server's message for a few
+ * seconds; the tutorial box used to keep saying "waiting". It now repeats
+ * the reason and what to try, for half a minute.
+ */
+let lastEditError: { text: string; at: number } | null = null;
+let editErrorWatched = false;
+function watchEditErrors() {
+  if (editErrorWatched) return;
+  editErrorWatched = true;
+  const store = useSplitMergeOverlayStore();
+  watch(() => [store.resultFlash, store.resultText] as const, ([flash, text]) => {
+    if (flash === 'error') lastEditError = { text: String(text || 'the server refused it'), at: Date.now() };
+    else if (flash === 'success') lastEditError = null;
+  });
+}
+function recentEditError(): string | null {
+  return lastEditError && Date.now() - lastEditError.at < 30000 ? lastEditError.text : null;
+}
+
+/**
+ * For the harder Cut tutorial to come (Ames, 2026-10-02): a step that asks
+ * the learner to run Find Path between two points, to find where a merger
+ * starts. neuroglancer reports the search as plain status lines
+ * (find_path_status.ts restyles them); this reads the same lines.
+ * `advance` moves on once a path is found.
+ */
+export function watchFindPath(waiting: string, found: string, opts: { advance?: boolean } = {}) {
+  const token = ++practiceWatch;
+  helpWanted = true;
+  const state = (): 'working' | 'done' | 'error' | '' => {
+    for (const li of Array.from(document.querySelectorAll('#statusContainer li'))) {
+      const t = (li.textContent ?? '').trim();
+      if (t.includes('Path finding failed')) return 'error';
+      if (t.includes('Path found')) return 'done';
+      if (t.includes('Finding path between') || t.includes('Tracing path')) return 'working';
+    }
+    return document.body.classList.contains('nge-fp-busy') ? 'working' : '';
+  };
+  const tick = () => {
+    if (token !== practiceWatch) return;
+    const s = state();
+    if (s === 'done') {
+      if (opts.advance) { practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
+      practiceStatus(found, true);
+      return;
+    }
+    practiceStatus(s === 'working' ? 'Tracing the path…'
+      : s === 'error' ? 'That search did not find a path. Alt+click one point on each cell, on the same segment, and try again.'
+      : waiting);
+    setTimeout(tick, 700);
+  };
+  setTimeout(tick, 400);
+}
+
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
   const token = ++practiceWatch;
+  watchEditErrors();
+  lastEditError = null;
   helpWanted = true;
   let celebrated = false;
   const tick = async () => {
@@ -240,9 +300,15 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
       if (!celebrated) { celebrated = true; document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); }
       return;
     }
-    practiceStatus(waiting);
+    const failed = recentEditError();
+    practiceStatus(failed
+      ? `That ${wantMerged ? 'merge' : 'cut'} didn't go through. The server said: "${failed}". `
+        + (wantMerged
+          ? 'Ctrl+click once on each of the two pieces, then submit again.'
+          : 'Keep every point on the one fused segment, red on one side of the join and blue on the other, then submit again. Clear on the bar starts over.')
+      : waiting);
     if (wantMerged) offerPlacePoints();
-    setTimeout(tick, 3000);
+    setTimeout(tick, failed ? 1500 : 3000);
   };
   setTimeout(tick, 600);
 }
