@@ -4,8 +4,10 @@ import {createApp, nextTick} from 'vue';
 import {createPinia} from 'pinia';
 import {installConsoleBuffer} from './util/console_buffer';
 import {installAnnotationCounter} from './util/annotation_counter';
+import {installBottomBarWatch} from './util/bottom_bar';
 installConsoleBuffer();
 installAnnotationCounter();
+installBottomBarWatch();
 import {installErrorReporting} from './util/error_reporting';
 import {installMobileMode, isMobileRef} from './util/mobile';
 
