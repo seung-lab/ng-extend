@@ -1,4 +1,5 @@
 import { startViewAutosave } from './util/view_autosave';
+import { installScriptApi } from './script_api';
 import { startHighlightTint } from './util/highlight';
 import {createApp, nextTick} from 'vue';
 import {createPinia} from 'pinia';
@@ -33,6 +34,7 @@ import 'neuroglancer/sliceview/chunk_format_handlers';
 import './move_to_segment_patch';
 import './jump_to_list';
 import './split_screen_tip';
+import {installNoFourPanel} from './no_four_panel';
 import './find_path_status';
 import './drag_reorder';
 import {ButtonService} from "./widgets/button_service";
@@ -347,6 +349,21 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  installNoFourPanel(viewer);
+  // window.eyewire, the stable API for player scripts (static/scripts.html).
+  installScriptApi(viewer, {
+    user: () => {
+      const b = useProofreadingBackendStore();
+      return b.userId ? { id: b.userId, username: b.username || '' } : null;
+    },
+    myCells: () => {
+      const b = useProofreadingBackendStore();
+      if (!b.userId) return [];
+      return b.tasks.filter(t => t.assigned_to === b.userId).map(t => ({
+        taskId: t.id, cellId: String(t.final_segment_id || t.segment_id || ''), status: t.status, dataset: t.dataset,
+      }));
+    },
+  });
   startHighlightTint(viewer);
   viewer.registerDisposer(bindTitle(viewer.title));
 
