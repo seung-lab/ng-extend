@@ -35,7 +35,7 @@ import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore, useLayersStore} from '../store';
-import {currentSegLayerName, datasetDisplayName, datasetAbbrev, datasetSpeciesIcon} from '../datasets';
+import {currentSegLayerName, datasetDisplayName, datasetAbbrev, datasetSpeciesIcon, findDatasetBySegName, findDatasetByCanonical, canonicalDataset} from '../datasets';
 import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
@@ -261,6 +261,15 @@ const currentDatasetAbbrev = computed(() => {
   const a = datasetAbbrev(currentSegLayerName());
   return a ? `Data: ${a}` : 'Dataset';
 });
+/** Set when Highlight mode cannot work on the dataset on screen: the spray
+ *  can is greyed out and says why. */
+const highlightOff = computed(() => {
+  void layersStoreForLabel.activeLayers.size;
+  return findDatasetBySegName(currentSegLayerName())?.highlightOff
+    ?? findDatasetByCanonical(canonicalDataset(currentSegLayerName()))?.highlightOff ?? '';
+});
+// Switching to such a dataset with the box open closes it.
+watch(highlightOff, (off) => { if (off) showHighlight.value = false; });
 const currentDatasetIcon = computed(() => {
   void layersStoreForLabel.activeLayers.size;
   return datasetSpeciesIcon(currentSegLayerName());
@@ -653,7 +662,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
   tags:        { action: () => { showTagMode.value = !showTagMode.value; } },
-  highlight:   { action: () => { showHighlight.value = !showHighlight.value; sprayHighlightIcon(); } },
+  highlight:   { action: () => { if (highlightOff.value) return; showHighlight.value = !showHighlight.value; sprayHighlightIcon(); } },
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
@@ -988,10 +997,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           'nge-icon-btn--badge': icon.badge && icon.badge() > 0,
           'nge-icon-btn--mention': icon.id === 'chat' && chatMentionPending,
           'nge-icon-btn--active': isIconActive(icon.id),
+          'nge-icon-btn--off': icon.id === 'highlight' && !!highlightOff,
           'nge-icon-btn--dragging': dragId === icon.id,
           'nge-icon-btn--drag-over': dragOverId === icon.id && dragId !== icon.id,
         }"
-        :title="icon.label + ' — drag to reorder'"
+        :title="icon.id === 'highlight' && highlightOff ? highlightOff : icon.label + ' — drag to reorder'"
+        :aria-disabled="icon.id === 'highlight' && highlightOff ? 'true' : undefined"
         draggable="true"
         @dragstart="onIconDragStart($event, icon.id)"
         @dragend="onIconDragEnd"
@@ -1725,6 +1736,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
 
 /* Cut: the two lower ends pull apart; click snaps them wide and back. */
+/* A tool that cannot work on this dataset: grey, still, and it says why. */
+#extensionBar .nge-icon-btn.nge-icon-btn--off { opacity: 0.32; filter: grayscale(1); cursor: not-allowed; }
+#extensionBar .nge-icon-btn.nge-icon-btn--off * { animation: none !important; }
 /* Highlight mode's spray can: lid on at rest; it shakes up and down on
    hover; on click the lid pops off, five dots spray from the nozzle, and
    the lid drops back on. */

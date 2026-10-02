@@ -43,6 +43,10 @@ export interface DatasetEntry {
   variantLabel?: string;
   /** Switcher section (Ames 2026-09-30). Defaults to 'production'. */
   section?: DatasetSection;
+  /** Why Highlight mode is off here, if it is. MEC: its path server fails on
+   *  long stretches (502, taking the segmentation service down for a minute)
+   *  and it has no L2 cache, 2026-10-02. Remove the line when that is fixed. */
+  highlightOff?: string;
   layers: any[];
 }
 
@@ -244,6 +248,7 @@ export const DATASETS: DatasetEntry[] = [
   {
     id: 'pni_mec',
     section: 'production',
+    highlightOff: 'Highlight is not available on this dataset yet: its server cannot trace paths along a cell.',
     caveDataset: 'HiMC',
     thumbnail: thumbMec,
     label: 'Medial Entorhinal Cortex',
