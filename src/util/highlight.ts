@@ -111,12 +111,14 @@ export function clearStartMarker(removeLayer = false) {
 }
 
 /** Mark the stretch between two picks. Returns how many path points it has. */
-export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle): Promise<number> {
+export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stillWanted: () => boolean = () => true): Promise<number> {
   const viewer = viewerOf();
   const layer = currentSegLayer()?.layer;
   if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
   if (a.root !== b.root) throw new Error('Those two points are on different cells. Pick both on the same cell.');
   const nm = await ngeGrapheneFindPath(layer, a.selection, b.selection);
+  // The panel gave up waiting (timed out or cancelled): draw nothing late.
+  if (!stillWanted()) return 0;
   if (!nm || nm.length < 2) throw new Error('No path came back between those points. Try two points farther apart.');
   // Annotation layers live in the viewer's own coordinates.
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);

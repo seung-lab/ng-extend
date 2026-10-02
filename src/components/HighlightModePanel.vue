@@ -88,6 +88,10 @@ function refresh() { markCount.value = listHighlights().length; }
 const styleOf = () => HIGHLIGHT_STYLES.find(s => s.key === styleKey.value) ?? HIGHLIGHT_STYLES[0];
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
 
+const TRACE_LIMIT_MS = 60000;
+let stopTrace: (() => void) | null = null;
+function stopTracing() { stopTrace?.(); }
+
 async function place(x: number, y: number) {
   if (busy.value) return;
   const pick = pickUnderMouse();
@@ -103,12 +107,27 @@ async function place(x: number, y: number) {
   first.value = null;
   busy.value = true;
   say('Tracing the path…');
+  // The path request has no time limit of its own, so a server that never
+  // answers left the panel on "Tracing" for good (Krzysztof 2026-10-02).
+  // Give up after TRACE_LIMIT_MS, or when the player presses Stop.
+  let wanted = true;
+  let timer = 0;
+  const gaveUp = new Promise<never>((_, reject) => {
+    stopTrace = () => reject(new Error('Stopped. Nothing was marked.'));
+    timer = window.setTimeout(() => reject(new Error('The server took too long to trace that path. Nothing was marked. Try again, or pick two closer points.')), TRACE_LIMIT_MS);
+  });
   try {
-    const n = await addHighlight(a, pick, styleOf());
+    const n = await Promise.race([addHighlight(a, pick, styleOf(), () => wanted), gaveUp]);
     say(`Marked ${styleOf().label.toLowerCase()} (${n} points along the branch).`);
   } catch (e: any) {
-    say(e?.message || 'Could not mark that stretch.', true);
+    const text = String(e?.message || '');
+    say(/HTTP error 0|Network or CORS|Failed to fetch/i.test(text)
+      ? 'The server did not answer, so nothing was marked. Try again in a moment.'
+      : text || 'Could not mark that stretch.', true);
   } finally {
+    wanted = false;
+    stopTrace = null;
+    clearTimeout(timer);
     busy.value = false;
     clearStartMarker();
     refresh();
@@ -225,7 +244,9 @@ onBeforeUnmount(() => {
       <div class="nge-hl-actions">
         <button v-if="first" class="nge-hl-btn nge-hl-btn--main nge-hl-btn--armed" :disabled="busy" @click="cancelPick"
                 title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel this mark</button>
-        <span v-else class="nge-hl-step">{{ busy ? 'Tracing…' : 'Ctrl + click the start' }}</span>
+        <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--main" @click="stopTracing"
+                title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
+        <span v-else class="nge-hl-step">Ctrl + click the start</span>
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
         <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
       </div>
