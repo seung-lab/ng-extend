@@ -7,7 +7,7 @@
  */
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
-import { HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, type Pick } from '../util/highlight';
+import { HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, type Pick } from '../util/highlight';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -21,6 +21,12 @@ const markCount = ref(0);
 /** "Pick two points": the next clicks place points without holding H. */
 const armed = ref(false);
 const hHeld = ref(false);
+/** How far from the path the surface tint reaches, in micrometres. */
+const tintUm = ref(tintRadiusNm() / 1000);
+function onTintInput(e: Event) {
+  tintUm.value = Number((e.target as HTMLInputElement).value);
+  setTintRadiusNm(tintUm.value * 1000);
+}
 
 // The crosshair cursor follows the two ways of placing a point.
 watch([armed, hHeld], () => document.body.classList.toggle('nge-highlight-armed', armed.value || hHeld.value));
@@ -135,6 +141,7 @@ onBeforeUnmount(() => {
       </div>
       <p class="nge-hl-how">
         Mark a stretch of a cell you have checked. Hold <kbd>H</kbd> and click where it starts, then where it ends.
+        The surface of that stretch takes the color.
       </p>
       <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
         <button
@@ -150,6 +157,11 @@ onBeforeUnmount(() => {
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
         <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
       </div>
+      <label class="nge-hl-width" title="How far from the path the color reaches. Wider covers thick branches and spines; narrower keeps it off neighboring branches.">
+        <span>Tint width</span>
+        <input type="range" min="0.5" max="8" step="0.5" :value="tintUm" @input="onTintInput" />
+        <span class="nge-hl-width-val">{{ tintUm }} <span class="nge-hl-unit">µm</span></span>
+      </label>
       <div class="nge-hl-status">
         <span v-if="busy" class="nge-hl-spin"></span>
         <span v-if="message" :class="{ 'nge-hl-bad': messageBad }">{{ message }}</span>
@@ -199,6 +211,10 @@ onBeforeUnmount(() => {
 .nge-hl-btn--main { flex: 1; color: #06140c; background: #7cffb2; border-color: #7cffb2; }
 .nge-hl-btn--main:hover:not(:disabled) { background: #a5ffca; }
 .nge-hl-btn--armed { background: #ffd24d; border-color: #ffd24d; }
+.nge-hl-width { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11.5px; color: rgba(220, 230, 245, 0.72); }
+.nge-hl-width input { flex: 1; min-width: 0; accent-color: #7cffb2; }
+.nge-hl-width-val { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: #dce6f5; }
+.nge-hl-unit { text-transform: none; }
 .nge-hl-status { display: flex; align-items: center; gap: 6px; margin-top: 9px; min-height: 18px; font-size: 11.5px; color: #cfe0f5; }
 .nge-hl-dim { color: rgba(220, 230, 245, 0.45); }
 .nge-hl-bad { color: #ff9aa8; }

@@ -1,4 +1,5 @@
 import { startViewAutosave } from './util/view_autosave';
+import { startHighlightTint } from './util/highlight';
 import {createApp, nextTick} from 'vue';
 import {createPinia} from 'pinia';
 import {installConsoleBuffer} from './util/console_buffer';
@@ -344,6 +345,7 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  startHighlightTint(viewer);
   viewer.registerDisposer(bindTitle(viewer.title));
 
   bindDefaultCopyHandler(viewer);

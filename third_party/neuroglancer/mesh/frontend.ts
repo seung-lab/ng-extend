@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import {bindNgeMeshTint, getNgeMeshTint} from 'neuroglancer/mesh/nge_tint';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
 import {Chunk, ChunkManager, ChunkSource} from 'neuroglancer/chunk_manager/frontend';
 import {VisibleLayerInfo} from 'neuroglancer/layer';
@@ -158,6 +159,11 @@ highp vec3 getVertexPosition() {
   },
 };
 
+// EyeWire II Highlight mode: meshes near a marked path take its colour
+// (mesh/nge_tint.ts).
+const ngeTintSamplerSymbol = Symbol('ngeMeshTint');
+const ngeTintMat = mat4.create();
+
 export class MeshShaderManager {
   private tempLightVec = new Float32Array(4);
   private vertexPositionHandler = vertexPositionHandlers[this.vertexPositionFormat];
@@ -199,6 +205,17 @@ export class MeshShaderManager {
     mat3.invert(tempMat3, tempMat3);
     mat3.transpose(tempMat3, tempMat3);
     gl.uniformMatrix3fv(shader.uniform('uNormalMatrix'), false, tempMat3);
+    // Highlight tint: only when colour is drawn, and only if there are marks.
+    const tint = renderContext.emitColor ? getNgeMeshTint() : null;
+    const unit = shader.textureUnit(ngeTintSamplerSymbol);
+    if (tint !== null && bindNgeMeshTint(gl, unit)) {
+      gl.uniformMatrix4fv(
+          shader.uniform('uNgeTintMatrix'), false,
+          mat4.multiply(ngeTintMat, tint.gridFromGlobal, modelMat));
+      gl.uniform1f(shader.uniform('uNgeTintOn'), 1);
+    } else {
+      gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
+    }
   }
 
   drawFragmentHelper(
@@ -258,6 +275,9 @@ export class MeshShaderManager {
         builder.addUniform('highp mat3', 'uNormalMatrix');
         builder.addUniform('highp mat4', 'uModelViewProjection');
         builder.addUniform('highp uint', 'uPickID');
+        builder.addUniform('highp mat4', 'uNgeTintMatrix');
+        builder.addUniform('highp float', 'uNgeTintOn');
+        builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
         if (silhouetteRenderingEnabled) {
           builder.addUniform('highp float', 'uSilhouettePower');
         }
@@ -285,6 +305,15 @@ vec3 normal = normalize(uNormalMatrix * (normalMultiplier * origNormal));
 float absCosAngle = abs(dot(normal, uLightDirection.xyz));
 float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
+if (uNgeTintOn > 0.5) {
+  highp vec3 tintCoord = (uNgeTintMatrix * vec4(vertexPosition, 1.0)).xyz;
+  if (all(greaterThanEqual(tintCoord, vec3(0.0))) && all(lessThanEqual(tintCoord, vec3(1.0)))) {
+    highp vec4 tint = texture(uNgeTint, tintCoord);
+    if (tint.a > 0.02) {
+      vColor.rgb = mix(vColor.rgb, lightingFactor * (tint.rgb / tint.a), min(1.0, tint.a * 1.15));
+    }
+  }
+}
 `;
         if (silhouetteRenderingEnabled) {
           vertexMain += `
