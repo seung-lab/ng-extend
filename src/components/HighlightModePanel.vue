@@ -227,7 +227,6 @@ onBeforeUnmount(() => {
       </div>
       <div class="nge-hl-head" title="Drag to move" @mousedown="startDrag">
         <span class="nge-hl-title">Highlight</span>
-        <span class="nge-hl-test">test</span>
         <button class="nge-hl-close" aria-label="Close" @click="emit('hide')">×</button>
       </div>
       <p class="nge-hl-how">
@@ -288,7 +287,6 @@ onBeforeUnmount(() => {
 .nge-hl-loader-wrap--on { height: 28px; margin-bottom: 8px; }
 .nge-hl-loader { display: block; border-radius: 12px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(200, 164, 255, 0.25); box-sizing: border-box; }
 .nge-hl-title { font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #9dffc9; }
-.nge-hl-test { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; color: #ffd27a; background: rgba(255, 210, 122, 0.12); }
 .nge-hl-close { margin-left: auto; background: none; border: none; color: rgba(255, 255, 255, 0.55); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-hl-close:hover { color: #fff; }
 .nge-hl-how { margin: 8px 0 10px; font-size: 12px; line-height: 1.45; color: rgba(220, 230, 245, 0.72); }
