@@ -12,6 +12,7 @@ import { startDatasetTransition, releaseDatasetTransition } from './util/dataset
 import { beginPractice, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
+import { drawSearchLine } from './tutorial_pointer';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
 import { responseJson } from 'neuroglancer/util/http_request';
 import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/util/special_protocol_request';
@@ -336,13 +337,59 @@ document.addEventListener('nge:tutorial-layer-note', () => {
   if (!chip) return;
   if (!chip.querySelector('.nge-practice-layer-note')) {
     const note = notePanel('nge-practice-layer-note',
-      'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, the one named after the dataset, next to <b>img</b>. '
+      'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, named <b>3D segmentation</b>, next to <b>2D EM Images</b>. '
       + 'Press <kbd>2</kbd>, or right-click that chip, to select it. Tools like merge and cut only work on the selected layer.');
     chip.appendChild(note);
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
   }
   document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer'));
+  // And a search line from the (i) to the chip (Ames, 2026-10-02).
+  const info = document.querySelector('.introductionStepAnchor .nge-tut-info');
+  const target = segLayerChip();
+  if (info && target) {
+    const a = info.getBoundingClientRect(), b = target.getBoundingClientRect();
+    drawSearchLine({ x: a.left + a.width / 2, y: a.top + a.height / 2 }, { x: b.left + b.width / 2, y: b.bottom - 2 });
+  }
 });
+
+function segLayerChip(): HTMLElement | undefined {
+  const layers: any[] = getViewer()?.layerManager?.managedLayers ?? [];
+  const seg = layers.find(ml => (ml.layer?.constructor?.name ?? '').includes('Segmentation'));
+  const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
+  return (seg ? chips.find(c => (c.textContent ?? '').includes(seg.name)) : undefined) ?? chips[Math.max(0, layers.indexOf(seg))];
+}
+
+/**
+ * Friendlier layer names while the Merge or Cut tutorial is up (Ames,
+ * 2026-10-02): "2D EM Images" for img, "3D segmentation" for the dataset
+ * layer. Display only: the layers keep their real names, which the app uses
+ * to tell which dataset it is in. The real name stays in the chip's text
+ * (hidden), a data attribute carries the shown one.
+ */
+function friendlyLayerNames() {
+  const on = [3, 5].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
+  document.body.classList.toggle('nge-friendly-layers', on);
+  if (!on) return;
+  if (!document.getElementById('nge-friendly-layers-style')) {
+    const st = document.createElement('style');
+    st.id = 'nge-friendly-layers-style';
+    st.textContent = `
+      body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label] { font-size: 0 !important; }
+      body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after { content: attr(data-nge-label); font-size: 12px; }`;
+    document.head.appendChild(st);
+  }
+  const layers: any[] = getViewer()?.layerManager?.managedLayers ?? [];
+  const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
+  for (const ml of layers) {
+    const kind = ml.layer?.constructor?.name ?? '';
+    const name = kind.includes('Segmentation') ? '3D segmentation' : kind.includes('Image') ? '2D EM Images' : '';
+    const label = chips.find(c => (c.querySelector('.neuroglancer-layer-item-label')?.textContent ?? '') === ml.name)
+      ?.querySelector('.neuroglancer-layer-item-label') as HTMLElement | null | undefined;
+    if (!label) continue;
+    if (name) label.dataset.ngeLabel = name; else delete label.dataset.ngeLabel;
+  }
+}
+setInterval(() => { try { friendlyLayerNames(); } catch { /* store not ready yet */ } }, 1000);
 
 document.addEventListener('nge:tutorial-flash-seg-layer', () => {
   const viewer = getViewer();
@@ -668,7 +715,7 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     text: `
 With merge mode on:
 
-1. **Ctrl+Click** the yellow piece.
+1. **Ctrl+Click** the yellow piece. You can click in the 2D or the 3D view.
 2. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 3. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
@@ -707,7 +754,7 @@ Press next to keep going.`,
 Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` behind this box lost the yellow piece; the AI left it as its own segment.
 
 1. Press **M** if the merge tool is off.
-2. **Ctrl+Click** the yellow piece.
+2. **Ctrl+Click** the yellow piece, in 2D or 3D.
 3. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
