@@ -1,0 +1,11 @@
+{
+  "cut-candidate-2026-10-02": {
+    "note": "Ames's cut candidate. Fused view: nglstate 5701362046205952. Read only.",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "proofread_cell": [81037, 49251, 535],
+      "removed_fusion": [81135, 48974, 485]
+    }
+  }
+}

@@ -39,6 +39,13 @@ jobs:
         env:
           CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
         run: node scripts/inspect-practice-examples.mjs
+      - name: Look up the supervoxels under reviewed coordinates
+        if: inputs.inspect
+        env:
+          CAVE_SERVICE_TOKEN: ${{ secrets.CAVE_SERVICE_TOKEN }}
+        run: |
+          pip install --quiet cloud-volume
+          python scripts/inspect-practice-coords.py
       - name: Reset abandoned cells and verify their starting state
         if: '!inputs.inspect'
         env:
