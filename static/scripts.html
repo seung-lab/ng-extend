@@ -43,6 +43,10 @@
   .script button:hover { border-color: var(--accent); }
   .script button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .muted { color: var(--muted); font-size: 14px; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 12px 0; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -160,9 +164,133 @@
   });
 })();</pre></div>
 
+<h2>The eyewire API</h2>
+<p>The game gives scripts a small set of tools at <code>window.eyewire</code>. These are the parts we promise to keep working when the game updates. This is version 1.</p>
+<div class="tablewrap"><table>
+  <tr><th>Call</th><th>What it does</th></tr>
+  <tr><td><code>eyewire.cells.selected()</code></td><td>IDs of the cells selected in your view.</td></tr>
+  <tr><td><code>eyewire.cells.atCrosshair()</code></td><td>The cell under the crosshairs. Returns a promise of <code>{ position, supervoxel, root }</code>.</td></tr>
+  <tr><td><code>eyewire.cells.mine()</code></td><td>Your claimed and completed cells in this dataset.</td></tr>
+  <tr><td><code>eyewire.view.get()</code> / <code>.set(state)</code></td><td>Read or replace the whole view: layers, selected cells, position, annotations.</td></tr>
+  <tr><td><code>eyewire.view.position()</code> / <code>.goTo([x, y, z])</code></td><td>Read or move the crosshairs.</td></tr>
+  <tr><td><code>eyewire.dataset()</code></td><td>The dataset on screen: <code>{ id, label, layer }</code>.</td></tr>
+  <tr><td><code>eyewire.user()</code></td><td>Who is signed in: <code>{ id, username }</code>, or <code>null</code>.</td></tr>
+  <tr><td><code>eyewire.on(event, fn)</code></td><td>Run your function when something happens. Returns a function that stops listening.</td></tr>
+  <tr><td><code>eyewire.ui.addButton({ id, label, title, onClick })</code></td><td>Add a button to the top bar. Returns <code>{ el, remove }</code>.</td></tr>
+  <tr><td><code>eyewire.ui.addPanel({ id, title, open })</code></td><td>Add a side panel. Put your content in <code>el</code>. Returns <code>{ el, open, close, toggle, isOpen, remove }</code>.</td></tr>
+  <tr><td><code>eyewire.annotations.addLayer(name, { color })</code></td><td>Make (or reuse) an annotation layer. Returns <code>{ addPoint, addLine, list, removeAnnotation, remove }</code>.</td></tr>
+  <tr><td><code>eyewire.settings(name)</code></td><td>A place to save your script's settings in this browser: <code>{ get, set, all, clear }</code>.</td></tr>
+  <tr><td><code>eyewire.viewer</code></td><td>The viewer itself, for anything not covered here. This part can change.</td></tr>
+</table></div>
+<h2>Events</h2>
+<div class="tablewrap"><table>
+  <tr><th>Event</th><th>When</th><th>What your function gets</th></tr>
+  <tr><td><code>claim</code></td><td>You claim a cell.</td><td><code>{ taskId, cellId, dataset }</code></td></tr>
+  <tr><td><code>release</code></td><td>You release a claim.</td><td><code>{ taskId, cellId, dataset }</code></td></tr>
+  <tr><td><code>complete</code></td><td>You complete a cell.</td><td><code>{ taskId, cellId, dataset }</code></td></tr>
+  <tr><td><code>cellschange</code></td><td>The selected cells change.</td><td><code>{ selected, added, removed }</code></td></tr>
+  <tr><td><code>datasetchange</code></td><td>You switch datasets.</td><td><code>{ dataset }</code></td></tr>
+  <tr><td><code>viewchange</code></td><td>Anything in the view changes, such as moving.</td><td><code>{ position }</code></td></tr>
+</table></div>
+<p class="muted">Annotations your script adds are not counted in the Annotations number on your profile.</p>
+
+<h2>Example: a panel of your selected cells</h2>
+<p>Adds a <strong>Cells</strong> button to the top bar. It opens a side panel that lists your selected cell IDs and stays up to date.</p>
+<div class="script"><button type="button">Copy</button><pre>// ==UserScript==
+// @name         EyeWire II: selected cells panel
+// @match        https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/*
+// @grant        none
+// @run-at       document-idle
+// ==/UserScript==
+
+(function () {
+  'use strict';
+  // The game takes a few seconds to start, so wait for the API.
+  const wait = setInterval(() =&gt; {
+    if (!window.eyewire) return;
+    clearInterval(wait);
+    const ew = window.eyewire;
+
+    const panel = ew.ui.addPanel({ id: 'selected-cells', title: 'Selected cells', open: false });
+    const draw = () =&gt; {
+      const ids = ew.cells.selected();
+      panel.el.textContent = ids.length ? ids.join('\n') : 'No cells selected.';
+      panel.el.style.whiteSpace = 'pre';
+    };
+    draw();
+    ew.on('cellschange', draw);
+
+    ew.ui.addButton({ id: 'selected-cells', label: 'Cells', title: 'Show selected cell IDs', onClick: panel.toggle });
+  }, 1000);
+})();</pre></div>
+
+<h2>Example: count your completions</h2>
+<p>Shows how many cells you have completed on this computer. Click the button to reset it.</p>
+<div class="script"><button type="button">Copy</button><pre>// ==UserScript==
+// @name         EyeWire II: count my completions
+// @match        https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/*
+// @grant        none
+// @run-at       document-idle
+// ==/UserScript==
+
+(function () {
+  'use strict';
+  const wait = setInterval(() =&gt; {
+    if (!window.eyewire) return;
+    clearInterval(wait);
+    const ew = window.eyewire;
+    const saved = ew.settings('completion-counter');
+
+    const btn = ew.ui.addButton({
+      id: 'completion-counter',
+      label: 'Done: ' + saved.get('count', 0),
+      title: 'Cells you completed on this computer. Click to reset.',
+      onClick: () =&gt; { saved.set('count', 0); btn.el.textContent = 'Done: 0'; },
+    });
+
+    ew.on('complete', cell =&gt; {
+      const n = saved.get('count', 0) + 1;
+      saved.set('count', n);
+      btn.el.textContent = 'Done: ' + n;
+      console.log('Completed cell', cell.cellId, 'in', cell.dataset);
+    });
+  }, 1000);
+})();</pre></div>
+
+<h2>Example: mark where you are</h2>
+<p>Adds a <strong>Mark</strong> button that drops a gold point at the crosshairs, in its own layer.</p>
+<div class="script"><button type="button">Copy</button><pre>// ==UserScript==
+// @name         EyeWire II: mark where I am
+// @match        https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/*
+// @grant        none
+// @run-at       document-idle
+// ==/UserScript==
+
+(function () {
+  'use strict';
+  const wait = setInterval(() =&gt; {
+    if (!window.eyewire) return;
+    clearInterval(wait);
+    const ew = window.eyewire;
+
+    ew.ui.addButton({
+      id: 'mark-here',
+      label: 'Mark',
+      title: 'Drop a point at the crosshairs in a "My marks" layer',
+      onClick: () =&gt; {
+        const layer = ew.annotations.addLayer('My marks', { color: '#ffd700' });
+        layer.addPoint(ew.view.position(), 'marked ' + new Date().toLocaleTimeString());
+      },
+    });
+  }, 1000);
+})();</pre></div>
+
+<h2>Need something the API does not have?</h2>
+<p>Ask on the forum and we will add it. Until then, <code>eyewire.viewer</code> (the same as <code>window.viewer</code>) gives you the whole neuroglancer viewer.</p>
+
 <h2>Good to know</h2>
 <ul>
-  <li><strong>Scripts can break after an update.</strong> The game changes often. <code>window.viewer</code> and the view it returns are stable. Anything deeper may move.</li>
+  <li><strong>Scripts can break after an update.</strong> The game changes often. Everything in the eyewire API table is kept stable. Anything you reach through <code>window.viewer</code> may move.</li>
   <li><strong>Nothing happens?</strong> Check that <strong>Allow User Scripts</strong> is on, that the script is enabled in Tampermonkey, and that the <code>@match</code> line is the address in your browser's address bar.</li>
   <li><strong>See what went wrong.</strong> Press F12 and open the Console tab. Errors from your script show there.</li>
   <li><strong>Made something useful?</strong> Share it in chat, and tell us with the feedback button if you would like it built into the game.</li>
