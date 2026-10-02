@@ -446,9 +446,12 @@ onUnmounted(() => {
 <template>
     <div v-if="ready" ref="root" class="introductionStep" :class="{ hasVideo: computedStep.video !== undefined }">
         <div v-if="computedStep.modal" class="nge-overlay-blocker" @mousedown.stop.prevent></div>
+        <!-- Hidden until it has a position: while the step's target was
+             still being looked up, an empty box sat in the top left corner
+             (Ames, site tour box 4, 2026-10-02). -->
         <div class="ng-extend introductionStepAnchor chipBuildIn"
             :class="[computedStep.cssClass, { 'nge-no-arrow': !!step.highlight, 'nge-quick-anim': !computedStep.modal }]"
-            :style="{ left: computedStep.left, top: computedStep.top, transform: dragOffset.x || dragOffset.y ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined }">
+            :style="{ left: computedStep.left, top: computedStep.top, visibility: computedStep.left ? undefined : 'hidden', transform: dragOffset.x || dragOffset.y ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined }">
             <div class="arrow"></div>
 
             <div v-if="!inExitConfirm" class="chip"

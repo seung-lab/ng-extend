@@ -38,7 +38,10 @@ const ICON_CELLS       = `<img src="${neuronIcon}" alt="" style="width:22px;heig
  * what each button does, where to find each panel, and which
  * keyboard shortcuts make you faster.
  *
- * Run it from the hamburger menu → "Site Tour".
+ * Run it from the burger menu, "Site Tour".
+
+ * Toolbar steps target `[data-icon-id]`. An icon the learner has hidden is
+ * simply not found, and TutorialStep centres that box.
  */
 
 const MIDDLE = {
@@ -97,46 +100,6 @@ export const steps: Step[] = [
     highlight: true,
   },
 
-  // ── 3. Share button ──────────────────────────────────────────
-  {
-    title: "Share",
-    text: `Click **Share** to copy a link to your current view: same dataset, same camera, same selected segments.
-
-Drop it into chat, email, or the forum and the recipient lands exactly where you are.`,
-    position: { element: '[title="Share State"]', side: "bottom", offset: { x: 0, y: 14 } },
-    highlight: true,
-  },
-
-  // ── 4. Help / "?" button ─────────────────────────────────────
-  {
-    title: "Keyboard Shortcuts (?)",
-    text: `The **?** button opens neuroglancer's keybinding reference: every mouse and keyboard shortcut for navigation, tools, and layer controls.
-
-Different from **Ask** (Ctrl+K): the **?** is a *read-only cheat sheet*, Ask is an *action launcher*.`,
-    position: { element: '.neuroglancer-viewer-top-row > .neuroglancer-icon[title*="elp"]', side: "bottom", offset: { x: 0, y: 14 } },
-    highlight: true,
-  },
-
-  // ── 5. Dataset selector ──────────────────────────────────────
-  {
-    title: "Dataset Selector",
-    text: `Switch between brain datasets here: **Pinky**, **Minnie65**, **Stroeh mouse retina**, **FlyWire**, and more.
-
-Each dataset is a different volume of neural tissue with its own segments and tools.`,
-    position: { element: ".nge-dataset-btn", side: "bottom", offset: { x: 0, y: 14 } },
-    highlight: true,
-  },
-
-  // ── 6. Streak chip ───────────────────────────────────────────
-  {
-    title: "🔥 Your Streak",
-    text: `Every day you make at least one edit, your streak grows. Skip a day and it resets, so come back tomorrow!
-
-Your streak is shown next to your name on the leaderboard.`,
-    position: { element: ".nge-streak-chip", side: "bottom", offset: { x: 0, y: 14 } },
-    highlight: true,
-  },
-
   // ── 7. Command palette ───────────────────────────────────────
   {
     title: "Nurro, and the Command Bar",
@@ -151,6 +114,36 @@ Not a match? Ask a question in plain language instead and Nurro, your guide, ans
     highlight: true,
   },
 
+  // ── 5. Dataset selector ──────────────────────────────────────
+  {
+    title: "Dataset Selector",
+    text: `Switch between brain datasets here. The button shows the one you are in, such as **Sandbox** for practice.
+
+Each dataset is a different volume of neural tissue with its own cells. A short "Now entering" card plays while it loads.`,
+    position: { element: ".nge-dataset-btn", side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── 3. Share button ──────────────────────────────────────────
+  {
+    title: "Share",
+    text: `Click **Share** to copy a link to your current view: same dataset, same camera, same selected segments.
+
+Drop it into chat, email, or the forum and the recipient lands exactly where you are.`,
+    position: { element: '[title="Share State"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── 6. Streak chip ───────────────────────────────────────────
+  {
+    title: "🔥 Your Streak",
+    text: `Every day you make at least one edit, your streak grows. Skip a day and it resets, so come back tomorrow!
+
+Your streak is shown next to your name on the leaderboard.`,
+    position: { element: ".nge-streak-chip", side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
   // ── 6. Cut Mode ──────────────────────────────────────────────
   {
     title: "Cut Mode",
@@ -159,8 +152,8 @@ Not a match? Ask a question in plain language instead and Nurro, your guide, ans
 
 When two neurons are incorrectly merged into one segment, **Cut Mode** lets you separate them. Place red dots on one neuron, blue dots on the other, then submit.
 
-The Cut/Merge tutorial covers this in depth.`,
-    position: { element: '[title^="Cut Mode"]', side: "bottom", offset: { x: 0, y: 14 } },
+The **Cut** tutorial lets you practice on a real cell.`,
+    position: { element: '[data-icon-id="split"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -170,8 +163,8 @@ The Cut/Merge tutorial covers this in depth.`,
     titleIcon: ICON_MERGE,
     text: `**Shortcut: M**
 
-When pieces of the same neuron are split into multiple segments, **Merge Mode** stitches them back together. Click on each piece and the AI joins them into one root.`,
-    position: { element: '[title^="Merge Mode"]', side: "bottom", offset: { x: 0, y: 14 } },
+When pieces of the same neuron are split into multiple segments, **Merge Mode** stitches them back together. Ctrl+Click each piece, then **Submit merge**. The **Merge** tutorial lets you practice on a real cell.`,
+    position: { element: '[data-icon-id="merge"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -184,7 +177,15 @@ When pieces of the same neuron are split into multiple segments, **Merge Mode** 
 **Alt+click** two points on a neuron and Find Path traces the shortest route between them.
 
 Drop a point on the right cell and somewhere on the merged cell to find where it originated.`,
-    position: { element: '[title^="Find Path"]', side: "bottom", offset: { x: 0, y: 14 } },
+    position: { element: '[data-icon-id="findPath"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── Highlight Mode ───────────────────────────────────────────
+  {
+    title: "Highlight Mode",
+    text: `Keep track of what you have already checked. Turn on **Highlight Mode**, then **Ctrl+Click** two points on a cell: the stretch between them is marked with a highlighter stroke.`,
+    position: { element: '[data-icon-id="highlight"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -195,7 +196,7 @@ Drop a point on the right cell and somewhere on the merged cell to find where it
     text: `A weekly recap of your edits, completions, streak, plus a science fact or two.
 
 We're grateful for your contribution to shared scientific resources. Every edit brings us closer to mapping the brain!`,
-    position: { element: '[title^="Your Week in Science"]', side: "bottom", offset: { x: 0, y: 14 } },
+    position: { element: '[data-icon-id="recap"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -206,7 +207,15 @@ We're grateful for your contribution to shared scientific resources. Every edit 
     text: `See who's leading the community. Toggle between **All Time / Month / Week**, and switch the metric between **edits** and **cells completed**.
 
 Click any name to view profile.`,
-    position: { element: '[title^="Leaderboard"]', side: "bottom", offset: { x: 0, y: 14 } },
+    position: { element: '[data-icon-id="leaderboard"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── Brain Quest ──────────────────────────────────────────────
+  {
+    title: "Brain Quest",
+    text: `Work through a list of cells one by one. Load a quest sheet and Brain Quest tracks how many you have done, with three daily quests to aim for.`,
+    position: { element: '[data-icon-id="quest"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -214,15 +223,14 @@ Click any name to view profile.`,
   {
     title: "Cell Library",
     titleIcon: ICON_CELLS,
-    text: `The community workshop. Seven tabs:
+    text: `The community workshop. Its tabs come in three groups:
 
-- **My Cells**: claims + your completed
-- **All / Available / Claimed / Completed**: explore the full library
-- **Help**: open second-opinion requests
-- **Links**: your saved cells and references
+- **Cells**: browse the library, find an **Available** cell and **Claim** it
+- **Community**: help requests and tags from other players
+- **Yours**: your claims, completed cells, and saved links
 
-Claim up to 3 cells at a time. Mark them complete when done.`,
-    position: { element: '[title^="Cell Library"]', side: "bottom", offset: { x: 0, y: 14 } },
+How many cells you can hold at once depends on the dataset. Mark a cell **Complete** when it is done. Some datasets have an **instructions** link in the header.`,
+    position: { element: '[data-icon-id="cells"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -233,7 +241,15 @@ Claim up to 3 cells at a time. Mark them complete when done.`,
     text: `Apply actions to many cells at once: recolor, complete, annotate. Useful when you've built a list of cells of the same type.
 
 *Inspired by an extension originally built by citizen scientist KrzysztofKruk.*`,
-    position: { element: '[title^="Batch Processor"]', side: "bottom", offset: { x: 0, y: 14 } },
+    position: { element: '[data-icon-id="batch"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── Screenshot ───────────────────────────────────────────────
+  {
+    title: "Take a Screenshot",
+    text: `Save a picture of your view. Choose the size, a transparent background, or the 3D view only. You can even add a Nurro.`,
+    position: { element: '[data-icon-id="screenshot"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -244,7 +260,23 @@ Claim up to 3 cells at a time. Mark them complete when done.`,
     text: `Stuck on a tricky cell? Request Help.
 
 Other citizen scientists can jump straight to your view, leave a note, link an annotation layer with their suggestions, and help you out!`,
-    position: { element: '[title^="Second Opinion"]', side: "bottom", offset: { x: 0, y: 14 } },
+    position: { element: '[data-icon-id="help"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── Layer side panel ─────────────────────────────────────────
+  {
+    title: "Layer Side Panel",
+    text: `Opens and closes the side panel for the selected layer, where the segment list and layer controls live.`,
+    position: { element: '[data-icon-id="layers"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+  },
+
+  // ── Activity Feed ────────────────────────────────────────────
+  {
+    title: "Activity Feed",
+    text: `Live community proofreading activity: see what other players are working on right now.`,
+    position: { element: '[data-icon-id="feed"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -253,7 +285,7 @@ Other citizen scientists can jump straight to your view, leave a note, link an a
     title: "Notifications",
     titleIcon: ICON_NOTIF,
     text: `New achievements, help-request responses, weekly recaps, and admin announcements all land here.`,
-    position: { element: '[title^="Notifications"]', side: "bottom", offset: { x: 0, y: 14 } },
+    position: { element: '[data-icon-id="notif"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -266,7 +298,7 @@ Other citizen scientists can jump straight to your view, leave a note, link an a
 You can also share your saved Links in chat.
 
 Drag the panel anywhere on screen.`,
-    position: { element: '[title^="Chat"]', side: "bottom", offset: { x: 0, y: 14 } },
+    position: { element: '[data-icon-id="chat"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -274,8 +306,10 @@ Drag the panel anywhere on screen.`,
   {
     title: "Profile Settings",
     titleIcon: ICON_SETTINGS,
-    text: `Settings live inside your **profile** now: set your **flag emoji**, **bio**, **toolbar icons**, and (under **Advanced**) toggle viewer settings, edit raw JSON state, manage logged-in sessions, and more.`,
-    position: { element: "#profileBtn", side: "bottom", offset: { x: 0, y: 14 } },
+    text: `Settings live inside your **profile**: set your **flag emoji**, **bio**, and which **toolbar icons** you see. You can drag the icons in the bar to reorder them.
+
+Also here: the **annotation point size**, and a switch for the **?** button that shows neuroglancer's own controls.`,
+    position: { element: '[data-icon-id="settings"]', side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
   },
 
@@ -284,7 +318,7 @@ Drag the panel anywhere on screen.`,
     title: "Scout Tag Mode",
     text: `See something wrong that isn't your job right now? **Tag it.**
 
-Open **⚑ Tag Mode**, pick a type (✂️ Snip, 🧶 Hairball, 👯 Twins, 🗑 Debris, or 🌿 Extension), then **hold T and click** the spot in 2D or 3D. Scythes and Tracers jump to every open tag from **Cell Library, Tags** and fix them.
+Open **Tag Mode** (Shift+T), pick a type (✂️ Snip, 🧶 Hairball, 👯 Twins, 🗑 Debris, or 🌿 Extension), then **hold T and click** the spot in 2D or 3D. Scythes and Tracers jump to every open tag from **Cell Library, Tags** and fix them.
 
 You never have to fix what you find. Finding it is the contribution.`,
     position: { element: '[data-icon-id="tags"]', side: "bottom", offset: { x: 0, y: 14 } },
@@ -305,8 +339,10 @@ Click any user's name in chat or the leaderboard to open *their* profile.`,
 
   // ── 18. Hamburger menu ───────────────────────────────────────
   {
-    title: "📖 Tutorials & Help",
-    text: `Three numbered tutorials, **Basics** (navigation), **Advanced Interface** (every panel), and **Cut & Merge** (proofreading operations), plus links to the **Forum** and YouTube videos for each tool.`,
+    title: "🍔 Tutorials & Help",
+    text: `The burger menu holds this **Site Tour** and four tutorials: **Get Started** (navigation), **Advanced Interface** (every panel), **Merge** and **Cut** (practice on real cells, one learner at a time).
+
+Below them: the **Proofreading Guide** and the **Forum**.`,
     position: { element: "#hamburger", side: "left", offset: { x: -10, y: 0 } },
     highlight: true,
   },

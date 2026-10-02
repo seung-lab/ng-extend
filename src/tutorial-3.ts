@@ -624,7 +624,7 @@ A <strong style="color:#60c060">merge</strong> joins two separate segments that 
   {
     title: "What a merge fixes",
     text: `
-This is an example. The yellow branch belongs to the purple cell, but the AI left it as its own segment. You will fix it in a moment.`,
+This is an example. The yellow branch belongs to the purple cell, but the AI left it as its own segment. We will fix it in a moment.`,
     position: MIDDLE,
     width: "560px",
     image: imgMergeExample,
