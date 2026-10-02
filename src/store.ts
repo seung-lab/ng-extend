@@ -2336,6 +2336,13 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     }
   }
 
+  /** The layers this store draws from shared data (tags, AI candidates,
+   *  heat, proposed split), as opposed to a player's own markup. */
+  function isTagStoreLayer(name: string): boolean {
+    return [TAG_LAYER_NAME, PIN_LAYER_NAME, AI_LAYER_NAME, AI_CRYSTAL_LAYER_NAME, SPLIT_LAYER_NAME].includes(name)
+      || name.startsWith('🔥 AI heat …');
+  }
+
   async function load() {
     try {
       const { data, error } = await supabase
@@ -2441,7 +2448,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   return { tags, openTags, load, add, resolve, remove, syncTagLayer, setTagPreview, tagModeActive, setTagModeActive,
            aiLayerOn, setAiLayerOn, syncAiLayer,
            activeHeatRoots, heatLoadingRoot, toggleHeatLayer,
-           activeSplitTagId, toggleSplitOverlay, hideSplitOverlay };
+           activeSplitTagId, toggleSplitOverlay, hideSplitOverlay, isTagStoreLayer };
 });
 
 // ── Working Links ─────────────────────────────────────────────────────────
