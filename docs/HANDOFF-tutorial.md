@@ -147,3 +147,9 @@ one learner at a time, and put it back afterwards.
 - Related: connectome.quest had a separate "Learn how to map the brain"
   prototype tutorial embed that was removed on 2026-07-07 (restore from
   seunglabdata commit f15589a). Ask Amy before restoring it.
+
+## Merge tutorial, first popup image (2026-10-02)
+
+`src/images/merge-welcome.jpg` is a screenshot of this archived view. The gap between the blue and yellow pieces is a mesh that was still being built (the "black box"). When it fills in, retake the screenshot from the same view and replace the file:
+
+https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5762238107353088
