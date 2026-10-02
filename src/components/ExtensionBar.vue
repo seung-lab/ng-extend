@@ -324,6 +324,15 @@ const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const showTagMode = ref(false);
 const showHighlight = ref(false);
+/** The spray can sprays when clicked. */
+function sprayHighlightIcon() {
+  const btn = document.querySelector('#extensionBar [data-icon-id="highlight"]');
+  if (!btn) return;
+  btn.classList.remove('nge-spraying');
+  void (btn as HTMLElement).offsetWidth;   // restart the animation on a quick second click
+  btn.classList.add('nge-spraying');
+  setTimeout(() => btn.classList.remove('nge-spraying'), 750);
+}
 const showFlightMode = ref(false);
 const konamiBuf: string[] = [];
 const showDatasetSelector = ref(false);
@@ -644,7 +653,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
   tags:        { action: () => { showTagMode.value = !showTagMode.value; } },
-  highlight:   { action: () => { showHighlight.value = !showHighlight.value; } },
+  highlight:   { action: () => { showHighlight.value = !showHighlight.value; sprayHighlightIcon(); } },
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
@@ -1716,6 +1725,30 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
 
 /* Cut: the two lower ends pull apart; click snaps them wide and back. */
+/* Highlight mode's spray can: shakes on hover, sprays on click. */
+#extensionBar [data-icon-id="highlight"] .nge-can { transform-box: view-box; transform-origin: 8.8px 10.6px; }
+#extensionBar [data-icon-id="highlight"] .nge-can-spray { transform-box: view-box; transform-origin: 7.7px 4.2px; opacity: 0.55; }
+#extensionBar [data-icon-id="highlight"]:hover .nge-can { animation: nge-can-shake 0.28s ease-in-out infinite; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can { animation: nge-can-press 0.7s ease-out; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray { animation: nge-can-spray 0.7s ease-out; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(even) { animation: nge-can-mist 0.7s ease-out; }
+@keyframes nge-can-shake {
+  0%, 100% { transform: rotate(-9deg) translateY(0); }
+  25% { transform: rotate(7deg) translateY(-0.7px); }
+  50% { transform: rotate(-6deg) translateY(0.5px); }
+  75% { transform: rotate(9deg) translateY(-0.5px); }
+}
+@keyframes nge-can-press { 0%, 100% { transform: translateY(0); } 15%, 60% { transform: translateY(0.6px); } }
+@keyframes nge-can-spray {
+  0% { transform: scale(0.15); opacity: 0; }
+  20% { opacity: 1; }
+  70% { transform: scale(1.9); opacity: 0.9; }
+  100% { transform: scale(2.3); opacity: 0; }
+}
+@keyframes nge-can-mist { 0% { opacity: 0; } 35% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  #extensionBar [data-icon-id="highlight"] .nge-can, #extensionBar [data-icon-id="highlight"] .nge-can-spray { animation: none !important; }
+}
 #extensionBar [data-icon-id="split"]:hover svg > :nth-child(4) { animation: nge-ti-split-l 0.9s ease-in-out infinite; }
 #extensionBar [data-icon-id="split"]:hover svg > :nth-child(5) { animation: nge-ti-split-r 0.9s ease-in-out infinite; }
 #extensionBar [data-icon-id="split"].nge-pop svg { animation: nge-ti-snip 0.5s cubic-bezier(0.3, 1.6, 0.5, 1); }
