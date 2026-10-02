@@ -82,7 +82,8 @@ export function startLoader(cv: HTMLCanvasElement, l: Live, W = 190, H = 24) {
   const frame = (now: number) => {
     // Fade old trails rather than clearing, so paths linger then dissolve.
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = `rgba(0,0,0,${found ? 0.04 : 0.09})`;
+    // During the finish the jittered ghosts must die fast, or they pile into a blob.
+    ctx.fillStyle = `rgba(0,0,0,${ending ? 0.26 : found ? 0.04 : 0.09})`;
     ctx.fillRect(0, 0, W, H);
     ctx.globalCompositeOperation = 'source-over';
     if (!found && !reduce) {
@@ -103,6 +104,55 @@ export function startLoader(cv: HTMLCanvasElement, l: Live, W = 190, H = 24) {
       // A search that wandered too long starts over.
       if (!found && walkers[0].pts.length > 900) reset();
     }
+    if (found && ending) {
+      // The finish (Ames 2026-10-02: "a little extra voltage", a clear success
+      // state). The route strikes, then surges: it runs hot and flickers,
+      // throws sparks, turns from violet to success green, and the target
+      // answers with a ring. Then `done`.
+      const t = now - foundAt;
+      const STRIKE = 260, SURGE = 1150, END = 1500;
+      const k = Math.min(1, t / STRIKE);
+      const n = Math.max(2, Math.floor((found.length / 2) * k));
+      const g = Math.max(0, Math.min(1, (t - STRIKE) / 450));           // violet -> green
+      const fade = t > SURGE ? 1 - (t - SURGE) / (END - SURGE) : 1;
+      const rgb = `${Math.round(235 - 111 * g)},${Math.round(220 + 35 * g)},${Math.round(255 - 77 * g)}`;
+      const stroke = (jitter: number, width: number, alpha: number, blur: number) => {
+        ctx.strokeStyle = `rgba(${rgb},${alpha * fade})`;
+        ctx.lineWidth = width; ctx.shadowColor = `rgb(${rgb})`; ctx.shadowBlur = blur;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const x = found![i * 2] + (jitter ? (Math.random() - 0.5) * jitter : 0);
+          const y = found![i * 2 + 1] + (jitter ? (Math.random() - 0.5) * jitter : 0);
+          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        }
+        ctx.stroke(); ctx.shadowBlur = 0;
+      };
+      stroke(0, 1.8, 0.95, 10);
+      if (t > STRIKE && t < SURGE) {
+        // Voltage: jittered ghosts of the route, and sparks off it.
+        const flick = 0.35 + Math.random() * 0.5;
+        stroke(3.2, 1, flick, 6);
+        stroke(5, 0.7, flick * 0.6, 4);
+        for (let s = 0; s < 2; s++) {
+          const i = Math.floor(Math.random() * (found.length / 2));
+          const x = found[i * 2], y = found[i * 2 + 1], a = Math.random() * Math.PI * 2, len = 3 + Math.random() * 6;
+          ctx.strokeStyle = `rgba(255,255,255,${0.75 * fade})`; ctx.lineWidth = 0.8;
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len); ctx.stroke();
+        }
+      }
+      if (t > STRIKE) {
+        // The target answers: a ring opens out from it.
+        const r = Math.min(1, (t - STRIKE) / 520);
+        ctx.strokeStyle = `rgba(124,255,178,${(1 - r) * 0.9})`; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.arc(T.x, T.y, 3 + r * 10, 0, Math.PI * 2); ctx.stroke();
+      }
+      const lit = t > STRIKE ? '#7cffb2' : '#ff8fcf';
+      dot(S.x, S.y, '#7cffb2', 3);
+      dot(T.x, T.y, lit, t > STRIKE ? 3.6 : 3);
+      if (t > END) { const done = ending; ending = null; ctx.clearRect(0, 0, W, H); done(); return; }
+      l.raf = requestAnimationFrame(frame);
+      return;
+    }
     if (found) {
       // The winning route lights up, then the search restarts.
       const k = Math.min(1, (now - foundAt) / 350);
@@ -114,7 +164,6 @@ export function startLoader(cv: HTMLCanvasElement, l: Live, W = 190, H = 24) {
       ctx.stroke(); ctx.shadowBlur = 0;
       if (now - foundAt > 950) {
         ctx.clearRect(0, 0, W, H);
-        if (ending) { const done = ending; ending = null; done(); return; }
         reset();
       }
     }
@@ -126,7 +175,8 @@ export function startLoader(cv: HTMLCanvasElement, l: Live, W = 190, H = 24) {
   l.finish = (done) => {
     ending = done;
     if (reduce) { ending = null; done(); return; }
-    if (found) return;   // a route is already lighting up: let it play out
+    // A route already lighting up becomes the finish, from its first frame.
+    if (found) { foundAt = performance.now(); return; }
     // The explorer nearest the target wins; its route is carried the rest
     // of the way there and lit.
     let best = walkers[0];

@@ -73,18 +73,29 @@ watch(busy, (on) => document.body.classList.toggle('nge-hl-tracing', on), { flus
 const bandOn = ref(false);
 /** Set by place() when the trace succeeded: the search ends on the bolt. */
 let traceOk = false;
-const closeBand = () => { bandOn.value = false; stopLoader(); };
+/** The trace is done and the band is showing its finish. */
+const bandDone = ref(false);
+/** What the finish says ("43 points"); it lands in the footer when the band closes. */
+const doneStat = ref('');
+const closeBand = () => {
+  // The band's "Highlight complete" settles into the footer line as it closes.
+  if (bandDone.value) say('Highlight complete', false, doneStat.value);
+  bandDone.value = false;
+  bandOn.value = false;
+  stopLoader();
+};
 watch(busy, (on) => {
   if (traceTimer) { clearInterval(traceTimer); traceTimer = undefined; }
   if (!on) {
     // A finished trace always plays the winning route lighting up (Ames:
     // "it's too satisfying"). A failed or stopped one just closes.
-    if (traceOk && loaderLive?.finish) loaderLive.finish(closeBand);
-    else closeBand();
+    if (traceOk && loaderLive?.finish) { bandDone.value = true; loaderLive.finish(closeBand); }
+    else { if (traceOk) bandDone.value = true; closeBand(); }
     return;
   }
   stopLoader();
   traceOk = false;
+  bandDone.value = false;
   bandOn.value = true;
   traceSecs.value = 0;
   const t0 = Date.now();
@@ -177,8 +188,10 @@ async function place(x: number, y: number) {
   });
   try {
     const n = await Promise.race([addHighlight(a, pick, styleOf(), () => wanted), gaveUp]);
-    say('Highlight complete', false, `${n} points`);
+    // The band announces it first; closeBand() then writes the footer line.
+    doneStat.value = `${n} points`;
     traceOk = n > 0;
+    if (!traceOk) say('Highlight complete', false, doneStat.value);
   } catch (e: any) {
     const text = String(e?.message || '');
     say(/HTTP error 0|Network or CORS|Failed to fetch/i.test(text)
@@ -337,14 +350,14 @@ onBeforeUnmount(() => {
            count or two, quietly (Ames 2026-10-02). -->
       <div class="nge-hl-status">
         <span v-if="message" :class="{ 'nge-hl-bad': messageBad }">{{ message }}</span>
-        <span v-else-if="!busy" class="nge-hl-dim">{{ first ? 'Start placed. Ctrl + click the end.' : 'No point placed yet.' }}</span>
+        <span v-else-if="!busy && !bandOn" class="nge-hl-dim">{{ first ? 'Start placed. Ctrl + click the end.' : 'No point placed yet.' }}</span>
         <span v-if="stat && !busy" class="nge-hl-stat">{{ stat }}</span>
         <span class="nge-hl-count">{{ markCount }} {{ markCount === 1 ? 'mark' : 'marks' }}</span>
       </div>
       <!-- The path search, as the bottom edge of the box, its label beside it. -->
-      <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': bandOn }" :aria-hidden="bandOn ? 'false' : 'true'">
+      <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': bandOn, 'nge-hl-loader-wrap--done': bandDone }" :aria-hidden="bandOn ? 'false' : 'true'">
         <canvas v-if="bandOn" ref="loaderEl" class="nge-hl-loader"></canvas>
-        <span v-if="bandOn" class="nge-hl-loader-label"><template v-if="busy">Tracing path <b>{{ traceSecs }}s</b></template><template v-else>Path found</template></span>
+        <span v-if="bandOn" class="nge-hl-loader-label"><template v-if="!bandDone">Tracing path <b>{{ traceSecs }}s</b></template><template v-else>Highlight complete <b>{{ doneStat }}</b></template></span>
       </div>
     </div>
   </Teleport>
@@ -380,6 +393,17 @@ onBeforeUnmount(() => {
   transition: height 0.2s ease, margin 0.2s ease;
 }
 .nge-hl-loader-wrap--on { height: 38px; margin: 10px -14px -12px; border-top: 1px solid rgba(200, 164, 255, 0.28); }
+/* The finish: the band takes the success colour and pulses once with the surge. */
+.nge-hl-loader-wrap--done { border-top-color: rgba(124, 255, 178, 0.6); animation: nge-hl-done 1.5s ease-out both; }
+.nge-hl-loader-wrap--done .nge-hl-loader { border-color: rgba(124, 255, 178, 0.55); transition: border-color 0.4s ease; }
+.nge-hl-loader-wrap--done .nge-hl-loader-label { color: #9dffc9; text-shadow: 0 0 10px rgba(124, 255, 178, 0.55); }
+.nge-hl-loader-wrap--done .nge-hl-loader-label b { color: rgba(200, 235, 215, 0.75); }
+@keyframes nge-hl-done {
+  0% { background: rgba(20, 12, 36, 0.75); box-shadow: inset 0 0 0 rgba(124, 255, 178, 0); }
+  22% { background: rgba(18, 60, 40, 0.9); box-shadow: inset 0 0 26px rgba(124, 255, 178, 0.45); }
+  100% { background: rgba(10, 30, 22, 0.75); box-shadow: inset 0 0 10px rgba(124, 255, 178, 0.12); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-hl-loader-wrap--done { animation: none; } }
 .nge-hl-loader { display: block; flex-shrink: 0; border-radius: 13px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(200, 164, 255, 0.25); }
 .nge-hl-loader-label {
   font: 700 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #eadcff;
