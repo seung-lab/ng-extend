@@ -357,7 +357,7 @@ onBeforeUnmount(() => {
       <!-- The path search, as the bottom edge of the box, its label beside it. -->
       <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': bandOn, 'nge-hl-loader-wrap--done': bandDone }" :aria-hidden="bandOn ? 'false' : 'true'">
         <canvas v-if="bandOn" ref="loaderEl" class="nge-hl-loader"></canvas>
-        <span v-if="bandOn" class="nge-hl-loader-label"><template v-if="!bandDone">Tracing path <b>{{ traceSecs }}s</b></template><template v-else>Highlight complete <b>{{ doneStat }}</b></template></span>
+        <span v-if="bandOn" class="nge-hl-loader-label"><template v-if="!bandDone">Tracing path <b>{{ traceSecs }}s</b></template><template v-else>Highlight complete</template></span>
       </div>
     </div>
   </Teleport>
@@ -396,7 +396,8 @@ onBeforeUnmount(() => {
 /* The finish: the band takes the success colour and pulses once with the surge. */
 .nge-hl-loader-wrap--done { border-top-color: rgba(124, 255, 178, 0.6); animation: nge-hl-done 1.5s ease-out both; }
 .nge-hl-loader-wrap--done .nge-hl-loader { border-color: rgba(124, 255, 178, 0.55); transition: border-color 0.4s ease; }
-.nge-hl-loader-wrap--done .nge-hl-loader-label { color: #9dffc9; text-shadow: 0 0 10px rgba(124, 255, 178, 0.55); }
+/* Tighter tracking so it fits beside the canvas; the count goes to the footer. */
+.nge-hl-loader-wrap--done .nge-hl-loader-label { color: #9dffc9; letter-spacing: 0.08em; text-shadow: 0 0 10px rgba(124, 255, 178, 0.55); }
 .nge-hl-loader-wrap--done .nge-hl-loader-label b { color: rgba(200, 235, 215, 0.75); }
 @keyframes nge-hl-done {
   0% { background: rgba(20, 12, 36, 0.75); box-shadow: inset 0 0 0 rgba(124, 255, 178, 0); }
