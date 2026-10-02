@@ -395,6 +395,14 @@
   padding: 2px 6px !important;
   transition: border-color 0.15s, background 0.15s;
 }
+/* The dropdown's width is copied from this hidden twin, so the twin has to
+   carry the same padding, border and font, or the label is cut off
+   ("ann" read as "ani", Ames 2026-10-01). */
+.neuroglancer-layer-side-panel-type-measure {
+  font-size: 9pt !important;
+  padding: 2px 7px !important;
+  border: 1px solid transparent;
+}
 .neuroglancer-layer-side-panel-type:hover {
   border-color: rgba(74, 158, 255, 0.3) !important;
   background: rgba(74, 158, 255, 0.06) !important;
