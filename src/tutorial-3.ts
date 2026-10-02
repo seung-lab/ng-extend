@@ -1,5 +1,9 @@
 import { Step } from "./store-pyr";
-import imgSynapsesTutorial from './images/synapses-tutorial.jpg';
+// Two pieces of one dendrite the AI left apart (Ames, 2026-10-02). The gap
+// between them is a mesh still being built; when it fills in, retake the
+// screenshot from the archived view:
+// https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5762238107353088
+import imgMergeWelcome from './images/merge-welcome.jpg';
 import imgBravoNurro from './images/bravo-nurro.png';
 // Amy's merge example, 2026-09-26: the cut-in-half branch, cell purple, loose piece yellow.
 import imgMergeExample from './images/merge-example.jpg';
@@ -612,7 +616,7 @@ AI reconstructions of neurons are impressive, but they're not perfect. Sometimes
 A <strong style="color:#60c060">merge</strong> joins two separate segments that actually belong to the same neuron. Every merge you make reconnects a lost branch and improves the connectome, the wiring diagram of the brain.`,
     position: MIDDLE,
     width: "480px",
-    image: imgSynapsesTutorial,
+    image: imgMergeWelcome,
     nextLabel: "Let's learn!",
   },
 
