@@ -2402,11 +2402,14 @@ export function ngeGrapheneSelectionUnderMouse(
 /** The path through the cell between two picks, as points in NANOMETERS
  *  (one per level 2 chunk along the way). */
 export async function ngeGrapheneFindPath(
-    layer: SegmentationUserLayer, a: SegmentSelection, b: SegmentSelection): Promise<number[][]> {
+    layer: SegmentationUserLayer, a: SegmentSelection, b: SegmentSelection,
+    precise = true): Promise<number[][]> {
   const connection = layer.graphConnection.value;
   if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
   const loadedSubsource = getGraphLoadedSubsource(layer)!;
   const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
-  const centroids = await connection.graph.graphServer.findPath(a, b, false, toNm);
+  // Precise: points at the real middle of each piece of the branch. The
+  // quick mode returns chunk positions, a staircase beside the branch.
+  const centroids = await connection.graph.graphServer.findPath(a, b, precise, toNm);
   return centroids.map(pt => pt.map((v, i) => v * toNm[i]));
 }
