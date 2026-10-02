@@ -648,6 +648,13 @@ function startEdit(n: any) {
   // existing artwork unless a new file is picked.
   notifImageFile.value = null;
   notifIconFile.value = null;
+  // The form is far above the list (off screen on a phone): bring it into
+  // view, so it is plain that the pencil opened this notification for
+  // editing and that the button now says Save Changes (Ames 2026-10-02).
+  requestAnimationFrame(() => {
+    document.querySelector('.nge-admin-editing-banner')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    notifBodyEl.value?.focus({ preventScroll: true });
+  });
 }
 
 function cancelEdit() {
@@ -1265,7 +1272,7 @@ function practiceWhen(iso: string | null) {
           {{ editingId != null ? 'Editing Notification' : 'Send Notification' }}
         </label>
         <div v-if="editingId != null" class="nge-admin-editing-banner">
-          Editing an existing notification. Changes apply to everyone who can see it.
+          Editing "{{ notifTitle || 'this notification' }}". Press Save Changes below and it updates for everyone who can see it; no new notification is sent.
         </div>
         <input v-model="notifTitle" class="nge-admin-input" placeholder="Title" />
         <div class="nge-admin-fmtbar" role="toolbar" aria-label="Formatting">
@@ -1391,7 +1398,7 @@ function practiceWhen(iso: string | null) {
               <span v-if="n.post_to_chat"> · posts to chat</span>
             </span>
           </div>
-          <button class="nge-admin-edit-btn" @click="startEdit(n)" title="Edit">&#9998;</button>
+          <button class="nge-admin-edit-btn" @click="startEdit(n)" title="Edit this notification (changes it in place, sends nothing new)">&#9998; Edit</button>
           <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Cancel this scheduled notification">&times;</button>
         </div>
       </div>
@@ -1406,7 +1413,7 @@ function practiceWhen(iso: string | null) {
               <span v-if="n.expires_at"> · expires {{ formatEt(n.expires_at) }}</span>
             </span>
           </div>
-          <button class="nge-admin-edit-btn" @click="startEdit(n)" title="Edit">&#9998;</button>
+          <button class="nge-admin-edit-btn" @click="startEdit(n)" title="Edit this notification (changes it in place, sends nothing new)">&#9998; Edit</button>
           <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Delete">&times;</button>
         </div>
       </div>
@@ -2035,12 +2042,14 @@ function practiceWhen(iso: string | null) {
 }
 
 .nge-admin-edit-btn {
-  background: none;
-  border: none;
-  color: rgba(150, 175, 215, 0.75);
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.35);
+  border-radius: 6px;
+  color: #cfe6ff;
   cursor: pointer;
-  font-size: 0.95em;
-  padding: 0 6px;
+  font-size: 0.85em;
+  padding: 3px 8px;
+  white-space: nowrap;
 }
 .nge-admin-edit-btn:hover { color: #4a9eff; }
 
