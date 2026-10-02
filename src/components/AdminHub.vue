@@ -230,7 +230,9 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
   // note. Blank is fine, the update just goes noteless.
   let resultNote: string | null = null;
   if (status === 'done') {
-    resultNote = (window.prompt('One line for the Slack update (what shipped?)', '') || '').trim() || null;
+    const typed = window.prompt('One line for the Slack update (what was fixed?). Leave it blank to skip the note; Cancel leaves the card where it is.', '');
+    if (typed === null) return;
+    resultNote = typed.trim() || null;
   }
   triageActing.value = row.id;
   try {
@@ -1631,6 +1633,12 @@ function practiceWhen(iso: string | null) {
           ></textarea>
           <div class="nge-triage-claude">
             <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
+            <!-- Done, on every card that is not already done (Ames 2026-10-01:
+                 "a lot of the time I fix in Claude"), whatever state it is in:
+                 waiting for a decision, in progress, or dismissed. -->
+            <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id"
+                    title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
+                    @click="setTriageStatus(row, 'done')">✓ Done</button>
             <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
           </div>
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
@@ -1645,7 +1653,6 @@ function practiceWhen(iso: string | null) {
             <button v-if="isBuildable(row) && !row.impl_state" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Have Claude build it</button>
             <button v-if="row.impl_state === 'testing'" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'deploy_queued')">I tested it, good, deploy</button>
             <button v-if="row.impl_state === 'failed'" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, row.tested_by ? 'deploy_queued' : 'queued')">{{ row.tested_by ? 'Retry deploy' : 'Retry build' }}</button>
-            <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'done')">Mark done</button>
           </div>
 
           <!-- Optional note to the person who filed the report. Drafted from
@@ -2261,6 +2268,8 @@ function practiceWhen(iso: string | null) {
 .nge-triage-rec--new_feature  { background: rgba(160,255,160,0.12); color: #8e8; }
 .nge-triage-src { font-size: 11px; color: rgba(255,255,255,0.4); }
 .nge-triage-status { font-size: 11px; color: rgba(255,255,255,0.62); }
+.nge-triage-done-btn { color: #8fe6a2; border-color: rgba(143, 230, 162, 0.4); }
+.nge-triage-done-btn:hover:not(:disabled) { background: rgba(143, 230, 162, 0.12); border-color: rgba(143, 230, 162, 0.75); }
 .nge-triage-impl {
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
   background: rgba(100,200,255,0.12); color: #8fd3ff;
