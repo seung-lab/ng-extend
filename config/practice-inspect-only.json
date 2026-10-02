@@ -1,1 +1,13 @@
-{}
+{
+  "cut-candidate-2026-10-02": {
+    "note": "Ames's cut candidate (fused view nglstate 5701362046205952), currently cut. Read only.",
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "75084687256621992",
+    "supervoxel_b": "75084618470813266",
+    "baseline_at": "2026-10-02T00:00:00+00:00",
+    "root_a": "648518346351728501",
+    "root_b": "648518346356661111"
+  }
+}
