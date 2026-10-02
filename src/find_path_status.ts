@@ -19,7 +19,12 @@
 const UI_ATTR = 'data-nge-fp-ui';
 type Kind = 'working' | 'done' | 'error' | '';
 
-export interface Live { raf: number; timer: number; }
+export interface Live {
+  raf: number; timer: number;
+  /** End the search on its best moment: the nearest explorer's route reaches
+   *  the target and lights up, then `done` is called and the loader stops. */
+  finish?: (done: () => void) => void;
+}
 const live = new Map<HTMLElement, Live>();
 
 /** The line's own text, ignoring anything this module injected. */
@@ -63,6 +68,7 @@ export function startLoader(cv: HTMLCanvasElement, l: Live, W = 190, H = 24) {
   type Walker = { x: number; y: number; a: number; pts: number[] };
   let walkers: Walker[] = [];
   let found: number[] | null = null, foundAt = 0;
+  let ending: (() => void) | null = null;
   const reset = () => {
     walkers = Array.from({ length: 7 }, () => ({ x: S.x, y: S.y, a: (Math.random() - 0.5) * 2.4, pts: [S.x, S.y] }));
     found = null;
@@ -106,13 +112,36 @@ export function startLoader(cv: HTMLCanvasElement, l: Live, W = 190, H = 24) {
       const n = Math.floor((found.length / 2) * k);
       for (let i = 0; i < n; i++) i ? ctx.lineTo(found[i * 2], found[i * 2 + 1]) : ctx.moveTo(found[0], found[1]);
       ctx.stroke(); ctx.shadowBlur = 0;
-      if (now - foundAt > 950) { ctx.clearRect(0, 0, W, H); reset(); }
+      if (now - foundAt > 950) {
+        ctx.clearRect(0, 0, W, H);
+        if (ending) { const done = ending; ending = null; done(); return; }
+        reset();
+      }
     }
     dot(S.x, S.y, '#6fe0a0', 3);
     dot(T.x, T.y, '#ff8fcf', 3);
     l.raf = requestAnimationFrame(frame);
   };
   l.raf = requestAnimationFrame(frame);
+  l.finish = (done) => {
+    ending = done;
+    if (reduce) { ending = null; done(); return; }
+    if (found) return;   // a route is already lighting up: let it play out
+    // The explorer nearest the target wins; its route is carried the rest
+    // of the way there and lit.
+    let best = walkers[0];
+    for (const w of walkers) if (Math.hypot(T.x - w.x, T.y - w.y) < Math.hypot(T.x - best.x, T.y - best.y)) best = w;
+    const pts = best.pts.slice();
+    let x = best.x, y = best.y;
+    for (let i = 0; i < 400 && Math.hypot(T.x - x, T.y - y) > 3; i++) {
+      const a = Math.atan2(T.y - y, T.x - x) + (Math.random() - 0.5) * 1.1;
+      x += Math.cos(a) * 2.2; y = Math.max(2, Math.min(H - 2, y + Math.sin(a) * 2.2));
+      pts.push(x, y);
+    }
+    pts.push(T.x, T.y);
+    found = pts;
+    foundAt = performance.now();
+  };
 }
 
 function apply(li: HTMLElement, kind: Kind) {

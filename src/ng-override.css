@@ -963,3 +963,52 @@
   background-color: hsl(0 0% 10% / 1);
   border: 1px solid hsl(0 0% 18% / 1);
 }
+
+/* ── Bottom status messages (Ames 2026-10-02) ─────────────────────────────
+   neuroglancer's own notices ("At this zoom level, chunked graph
+   segmentation will not be loaded", merge and split progress, errors) came
+   as white text on a grey bar. Every plain line now reads like the rest of
+   the site. Tool bars (.neuroglancer-tool-status) and the Find Path lines
+   (.nge-fp-status) keep their own, richer styling. */
+#statusContainer {
+  background-color: transparent !important;
+  color: #dce9fb;
+  font: 500 12.5px/1.4 'Inter', 'Roboto', sans-serif !important;
+}
+#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status) {
+  position: relative;
+  box-sizing: border-box;
+  list-style: none;
+  padding: 7px 16px 7px 34px;
+  background: rgba(8, 14, 28, 0.94);
+  border-top: 1px solid rgba(79, 207, 255, 0.3);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  color: #dce9fb;
+  font: 500 12.5px/1.4 'Inter', 'Roboto', sans-serif;
+}
+#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status)::before {
+  content: '';
+  position: absolute; left: 16px; top: 13px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #4fcfff;
+  box-shadow: 0 0 8px rgba(79, 207, 255, 0.85);
+}
+#statusContainer .neuroglancer-status-header {
+  margin-right: 8px; padding: 1px 8px;
+  border: 1px solid rgba(79, 207, 255, 0.35); border-radius: 6px;
+  background: rgba(79, 207, 255, 0.1) !important;
+  color: #9fdcff;
+  font: 600 10.5px 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status) button {
+  margin-left: 8px; padding: 2px 10px;
+  border: 1px solid rgba(79, 207, 255, 0.4); border-radius: 6px;
+  background: rgba(79, 207, 255, 0.1);
+  color: #cfeaff; font: 600 11.5px 'Inter', sans-serif; cursor: pointer;
+}
+#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status) button:hover {
+  background: rgba(79, 207, 255, 0.22); border-color: rgba(79, 207, 255, 0.75);
+}
+#statusContainer li a { color: #7fd4ff; }

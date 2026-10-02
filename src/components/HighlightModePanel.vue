@@ -8,7 +8,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { startLoader, type Live } from '../find_path_status';
 import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, showStartMarker, clearStartMarker, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, showStartMarker, showEndMarker, clearStartMarker, type Pick, type HighlightStyle } from '../util/highlight';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -52,6 +52,8 @@ const first = ref<Pick | null>(null);
 const busy = ref(false);
 const message = ref('');
 const messageBad = ref(false);
+/** A small count shown after the message, e.g. "74 points". */
+const stat = ref('');
 const markCount = ref(0);
 const hHeld = ref(false);
 
@@ -67,10 +69,23 @@ let traceTimer: ReturnType<typeof setInterval> | undefined;
 // Set at once (not after the next render): Find Path's status line appears
 // as soon as the request starts, and it reads this to step aside.
 watch(busy, (on) => document.body.classList.toggle('nge-hl-tracing', on), { flush: 'sync' });
+/** The band stays open a moment past the trace, for the lightning. */
+const bandOn = ref(false);
+/** Set by place() when the trace succeeded: the search ends on the bolt. */
+let traceOk = false;
+const closeBand = () => { bandOn.value = false; stopLoader(); };
 watch(busy, (on) => {
-  stopLoader();
   if (traceTimer) { clearInterval(traceTimer); traceTimer = undefined; }
-  if (!on) return;
+  if (!on) {
+    // A finished trace always plays the winning route lighting up (Ames:
+    // "it's too satisfying"). A failed or stopped one just closes.
+    if (traceOk && loaderLive?.finish) loaderLive.finish(closeBand);
+    else closeBand();
+    return;
+  }
+  stopLoader();
+  traceOk = false;
+  bandOn.value = true;
   traceSecs.value = 0;
   const t0 = Date.now();
   traceTimer = setInterval(() => { traceSecs.value = Math.round((Date.now() - t0) / 1000); }, 1000);
@@ -78,8 +93,7 @@ watch(busy, (on) => {
     const cv = loaderEl.value;
     if (!cv || !busy.value) return;
     loaderLive = { raf: 0, timer: 0 };
-    // The full width of the box: the band is part of its top edge.
-    startLoader(cv, loaderLive, Math.max(120, Math.round(panelEl.value?.clientWidth ?? 318)), 30);
+    startLoader(cv, loaderLive, 136, 26);
   });
 }, { flush: 'post' });
 
@@ -127,7 +141,7 @@ function onTintInput(e: Event) {
 const ctrlHeld = ref(false);
 watch([ctrlHeld, hHeld], () => document.body.classList.toggle('nge-highlight-armed', ctrlHeld.value || hHeld.value));
 
-function say(text: string, bad = false) { message.value = text; messageBad.value = bad; }
+function say(text: string, bad = false, count = '') { message.value = text; messageBad.value = bad; stat.value = count; }
 function refresh() { markCount.value = listHighlights().length; }
 const styleOf = () => styles.value.find(s => s.key === styleKey.value) ?? styles.value[0];
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
@@ -149,8 +163,9 @@ async function place(x: number, y: number) {
   }
   const a = first.value;
   first.value = null;
+  try { showEndMarker(pick); } catch (e) { console.warn('[highlight] end marker failed:', e); }
   busy.value = true;
-  say('Tracing the path…');
+  say('');   // the band at the foot of the box says it is tracing
   // The path request has no time limit of its own, so a server that never
   // answers left the panel on "Tracing" for good (Krzysztof 2026-10-02).
   // Give up after TRACE_LIMIT_MS, or when the player presses Stop.
@@ -162,7 +177,8 @@ async function place(x: number, y: number) {
   });
   try {
     const n = await Promise.race([addHighlight(a, pick, styleOf(), () => wanted), gaveUp]);
-    say(`Marked ${styleOf().label.toLowerCase()} (${n} points along the branch).`);
+    say('Highlight complete', false, `${n} points`);
+    traceOk = n > 0;
   } catch (e: any) {
     const text = String(e?.message || '');
     say(/HTTP error 0|Network or CORS|Failed to fetch/i.test(text)
@@ -268,11 +284,6 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <div ref="panelEl" class="nge-hl-panel" :class="{ 'nge-hl-panel--placed': pos, 'nge-hl-panel--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Highlight mode">
-      <!-- The search, as the top edge of the box, above the title. -->
-      <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': busy }" :aria-hidden="busy ? 'false' : 'true'">
-        <canvas v-if="busy" ref="loaderEl" class="nge-hl-loader"></canvas>
-        <span v-if="busy" class="nge-hl-loader-label">Tracing path <b>{{ traceSecs }}s</b></span>
-      </div>
       <div class="nge-hl-head" title="Drag to move" @mousedown="startDrag">
         <span class="nge-hl-title">Highlight</span>
         <button class="nge-hl-close" aria-label="Close" @click="emit('hide')">×</button>
@@ -322,11 +333,18 @@ onBeforeUnmount(() => {
         <input type="range" min="0.5" max="8" step="0.5" :value="tintUm" @input="onTintInput" />
         <span class="nge-hl-width-val">{{ tintUm }} <span class="nge-hl-unit">µm</span></span>
       </label>
+      <!-- The foot of the box reads like a stats line: what just happened, a
+           count or two, quietly (Ames 2026-10-02). -->
       <div class="nge-hl-status">
-        <span v-if="busy" class="nge-hl-spin"></span>
         <span v-if="message" :class="{ 'nge-hl-bad': messageBad }">{{ message }}</span>
-        <span v-else class="nge-hl-dim">{{ first ? 'Start placed. Ctrl + click the end.' : 'No point placed yet.' }}</span>
+        <span v-else-if="!busy" class="nge-hl-dim">{{ first ? 'Start placed. Ctrl + click the end.' : 'No point placed yet.' }}</span>
+        <span v-if="stat && !busy" class="nge-hl-stat">{{ stat }}</span>
         <span class="nge-hl-count">{{ markCount }} {{ markCount === 1 ? 'mark' : 'marks' }}</span>
+      </div>
+      <!-- The path search, as the bottom edge of the box, its label beside it. -->
+      <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': bandOn }" :aria-hidden="bandOn ? 'false' : 'true'">
+        <canvas v-if="bandOn" ref="loaderEl" class="nge-hl-loader"></canvas>
+        <span v-if="bandOn" class="nge-hl-loader-label"><template v-if="busy">Tracing path <b>{{ traceSecs }}s</b></template><template v-else>Path found</template></span>
       </div>
     </div>
   </Teleport>
@@ -351,25 +369,23 @@ onBeforeUnmount(() => {
 .nge-hl-panel--dragging .nge-hl-head { cursor: grabbing; }
 /* Once dragged, it sits where it was put (no slide-in from the corner). */
 .nge-hl-panel--placed { animation: none; }
-/* A band across the very top of the box (it bleeds through the padding and
-   takes the box's top corners), open only while a path is being traced. */
+/* A band across the foot of the box (it bleeds through the padding and
+   takes the box's bottom corners), open only while a path is being traced:
+   the search on the left, "Tracing path" and the seconds beside it. */
 .nge-hl-loader-wrap {
-  position: relative; height: 0; overflow: hidden;
-  margin: -12px -14px 0; border-radius: 11px 11px 0 0;
+  display: flex; align-items: center; gap: 10px;
+  height: 0; overflow: hidden; padding: 0 14px;
+  margin: 0 -14px; border-radius: 0 0 11px 11px;
   background: rgba(20, 12, 36, 0.75);
   transition: height 0.2s ease, margin 0.2s ease;
 }
-.nge-hl-loader-wrap--on { height: 30px; margin-bottom: 10px; border-bottom: 1px solid rgba(200, 164, 255, 0.28); }
-/* Closed, it must not eat the box's top padding. */
-.nge-hl-loader-wrap:not(.nge-hl-loader-wrap--on) { margin: 0; }
-.nge-hl-loader { display: block; }
+.nge-hl-loader-wrap--on { height: 38px; margin: 10px -14px -12px; border-top: 1px solid rgba(200, 164, 255, 0.28); }
+.nge-hl-loader { display: block; flex-shrink: 0; border-radius: 13px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(200, 164, 255, 0.25); }
 .nge-hl-loader-label {
-  position: absolute; right: 26px; top: 50%; transform: translateY(-50%);
-  padding: 1px 7px; border-radius: 999px; background: rgba(10, 6, 20, 0.7);
-  font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #dcc8ff;
-  pointer-events: none;
+  font: 700 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #eadcff;
+  white-space: nowrap;
 }
-.nge-hl-loader-label b { color: #fff; font-weight: 700; text-transform: none; }
+.nge-hl-loader-label b { margin-left: 6px; color: #c8a4ff; font: 600 11px ui-monospace, 'Consolas', monospace; letter-spacing: 0; text-transform: none; }
 .nge-hl-title { font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #9dffc9; }
 .nge-hl-close { margin-left: auto; background: none; border: none; color: rgba(255, 255, 255, 0.55); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-hl-close:hover { color: #fff; }
@@ -410,10 +426,11 @@ onBeforeUnmount(() => {
 .nge-hl-width input { flex: 1; min-width: 0; accent-color: #7cffb2; }
 .nge-hl-width-val { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: #dce6f5; }
 .nge-hl-unit { text-transform: none; }
-.nge-hl-status { display: flex; align-items: center; gap: 6px; margin-top: 9px; min-height: 18px; font-size: 11.5px; color: #cfe0f5; }
-.nge-hl-dim { color: rgba(220, 230, 245, 0.45); }
+.nge-hl-status { display: flex; align-items: baseline; gap: 8px; margin-top: 10px; min-height: 18px; font-size: 11px; color: rgba(200, 212, 228, 0.62); }
+.nge-hl-dim { color: rgba(200, 212, 228, 0.42); }
+.nge-hl-stat { color: rgba(200, 212, 228, 0.4); font-variant-numeric: tabular-nums; }
 .nge-hl-bad { color: #ff9aa8; }
-.nge-hl-count { margin-left: auto; flex-shrink: 0; color: rgba(220, 230, 245, 0.55); font-variant-numeric: tabular-nums; }
+.nge-hl-count { margin-left: auto; flex-shrink: 0; color: rgba(200, 212, 228, 0.4); font-variant-numeric: tabular-nums; }
 .nge-hl-spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid rgba(124, 255, 178, 0.3); border-top-color: #7cffb2; animation: nge-hl-spin 0.7s linear infinite; }
 @keyframes nge-hl-spin { to { transform: rotate(360deg); } }
 </style>

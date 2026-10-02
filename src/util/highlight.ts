@@ -143,6 +143,7 @@ async function strokeSource(style: HighlightStyle): Promise<any> {
 // when the panel closes.
 const START_LAYER = 'Highlight start';
 const START_ID = 'hl-start';
+const END_ID = 'hl-end';
 
 export function showStartMarker(pick: Pick, style: HighlightStyle) {
   const viewer = viewerOf();
@@ -160,6 +161,19 @@ export function showStartMarker(pick: Pick, style: HighlightStyle) {
   try { managed.layer.annotationDisplayState.color.restoreState(style.color); } catch { /* keep its colour */ }
   src.clear();
   src.add({ id: START_ID, type: 0 /* POINT */, point: Float32Array.from(pick.global), properties: [], description: point.description }, true).dispose();
+}
+
+/** The second click gets its gem too, beside the first, while the path
+ *  between them is traced. Both go when the mark lands (or fails). */
+export function showEndMarker(pick: Pick) {
+  const src = managedLayer(START_LAYER)?.layer?.localAnnotations;
+  if (!src) return;
+  try {
+    const old = src.getReference(END_ID);
+    if (old.value) src.delete(old);
+    old.dispose();
+  } catch { /* none yet */ }
+  src.add({ id: END_ID, type: 0 /* POINT */, point: Float32Array.from(pick.global), properties: [], description: 'End of the stretch being marked' }, true).dispose();
 }
 
 /** Take the start point away; `removeLayer` when Highlight mode closes. */
