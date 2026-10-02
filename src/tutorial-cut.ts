@@ -72,17 +72,20 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
   // 4: Placing the points
   {
     title: "Place the points",
+    // The example picture is a thumbnail beside the text (Ames, 2026-10-02:
+    // full width made the box taller than the screen). Click opens it full size.
     text: `
+<a href="` + imgCutPoints + `" target="_blank" rel="noopener" title="Open full size in a new tab" style="float:right;width:150px;margin:2px 0 8px 14px;text-align:center;font-size:0.72em;line-height:1.3;color:#9fd0ff;text-decoration:none"><img src="` + imgCutPoints + `" alt="A good set of cut points" style="display:block;width:150px;height:auto;border-radius:6px;border:1px solid rgba(74,158,255,0.35);margin-bottom:4px">A good set of points. Click to enlarge.</a>
+
 The cut tool uses a <strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> point system, one colour on each side of where you want to cut.
 
 1. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points on the axon, the piece that doesn't belong, working back from the join.
 2. Press **G** to switch to <strong style="color:#5c8cff">blue</strong>, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the cell, just past the join.
 3. Press **Submit cut** on the bar at the bottom, or **Enter**. You'll see "splitting..." for a moment, then the axon comes away as its own segment.
 
-If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>. Here is what a good set of points looks like: <strong style="color:#ff5c5c">red</strong> along the piece to remove, <strong style="color:#5c8cff">blue</strong> on the cell just past the join.`,
+If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>.`,
     position: OVER_3D,
     width: "460px",
-    image: imgCutPoints,
     onEnter: async () => {
       closeSidePanel();
       watchPractice(false, 'Waiting for your cut: red on the axon, G, blue on the dendrite, Submit cut.', 'Cut success! You did it. The two pieces are separate now.');
