@@ -18,8 +18,6 @@ const busy = ref(false);
 const message = ref('');
 const messageBad = ref(false);
 const markCount = ref(0);
-/** "Pick two points": the next clicks place points without holding H. */
-const armed = ref(false);
 const hHeld = ref(false);
 /** How far from the path the surface tint reaches, in micrometres. */
 const tintUm = ref(tintRadiusNm() / 1000);
@@ -28,8 +26,9 @@ function onTintInput(e: Event) {
   setTintRadiusNm(tintUm.value * 1000);
 }
 
-// The crosshair cursor follows the two ways of placing a point.
-watch([armed, hHeld], () => document.body.classList.toggle('nge-highlight-armed', armed.value || hHeld.value));
+// The crosshair cursor shows while a click would place a point.
+const ctrlHeld = ref(false);
+watch([ctrlHeld, hHeld], () => document.body.classList.toggle('nge-highlight-armed', ctrlHeld.value || hHeld.value));
 
 function say(text: string, bad = false) { message.value = text; messageBad.value = bad; }
 function refresh() { markCount.value = listHighlights().length; }
@@ -53,7 +52,6 @@ async function place(x: number, y: number) {
   try {
     const n = await addHighlight(a, pick, styleOf());
     say(`Marked ${styleOf().label.toLowerCase()} (${n} points along the branch).`);
-    armed.value = false;
   } catch (e: any) {
     say(e?.message || 'Could not mark that stretch.', true);
   } finally {
@@ -67,40 +65,45 @@ function isTypingTarget(e: Event): boolean {
   return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
 }
 function onKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Control' || e.key === 'Meta') { ctrlHeld.value = true; return; }
   if (isTypingTarget(e) || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === 'h' || e.key === 'H') {
     e.stopImmediatePropagation();
     e.preventDefault();
     hHeld.value = true;
-    document.body.classList.add('nge-highlight-armed');
-  } else if (e.key === 'Escape' && (first.value || armed.value)) {
-    first.value = null;
-    armed.value = false;
-    say('Cancelled.');
+  } else if (e.key === 'Escape' && first.value) {
+    cancelPick();
   }
 }
 function onKeyUp(e: KeyboardEvent) {
+  if (e.key === 'Control' || e.key === 'Meta') { ctrlHeld.value = false; return; }
   if (e.key === 'h' || e.key === 'H') {
     if (!isTypingTarget(e)) e.stopImmediatePropagation();
     hHeld.value = false;
-    if (!armed.value) document.body.classList.remove('nge-highlight-armed');
   }
 }
-// Capture phase, like Scout Tag mode: neuroglancer handles mousedown itself.
+const onBlur = () => { ctrlHeld.value = false; hHeld.value = false; };
+const inViewer = (t: HTMLElement | null) =>
+  !t?.closest?.('.nge-hl-panel') && !!t?.closest?.('.neuroglancer-rendered-data-panel, .neuroglancer-panel');
+// Ctrl+click (Cmd+click on a Mac) or H+click places a point. A plain click
+// or drag is left alone, so the view can be turned and moved between the
+// two points (Ames 2026-10-01). Capture phase: neuroglancer handles
+// mousedown itself, and Ctrl+click is otherwise its "annotate" gesture.
 function onPointerCapture(e: PointerEvent) {
-  if ((!hHeld.value && !armed.value) || e.button !== 0) return;
-  const t = e.target as HTMLElement | null;
-  if (t?.closest?.('.nge-hl-panel')) return;
-  // Only clicks on the viewer place points; the rest of the UI works as usual.
-  if (!t?.closest?.('.neuroglancer-rendered-data-panel, .neuroglancer-panel')) return;
+  if (e.button !== 0 || !(e.ctrlKey || e.metaKey || hHeld.value)) return;
+  if (!inViewer(e.target as HTMLElement | null)) return;
   e.preventDefault();
   e.stopPropagation();
   void place(e.clientX, e.clientY);
 }
-function toggleArmed() {
-  armed.value = !armed.value;
-  document.body.classList.toggle('nge-highlight-armed', armed.value);
-  say(armed.value ? 'Click where the checked stretch starts.' : '');
+// On a Mac, Ctrl+click also asks for the context menu.
+function onContextMenu(e: MouseEvent) {
+  if (e.ctrlKey && inViewer(e.target as HTMLElement | null)) { e.preventDefault(); e.stopPropagation(); }
+}
+/** Drop the start point of the mark being made; finished marks are untouched. */
+function cancelPick() {
+  first.value = null;
+  say('Cancelled. Your finished marks are untouched.');
 }
 function undo() {
   if (first.value) { first.value = null; say('Start point cleared.'); return; }
@@ -122,11 +125,15 @@ onMounted(() => {
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);
   window.addEventListener('pointerdown', onPointerCapture, true);
+  window.addEventListener('contextmenu', onContextMenu, true);
+  window.addEventListener('blur', onBlur);
 });
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown, true);
   window.removeEventListener('keyup', onKeyUp, true);
   window.removeEventListener('pointerdown', onPointerCapture, true);
+  window.removeEventListener('contextmenu', onContextMenu, true);
+  window.removeEventListener('blur', onBlur);
   document.body.classList.remove('nge-highlight-armed');
 });
 </script>
@@ -140,8 +147,8 @@ onBeforeUnmount(() => {
         <button class="nge-hl-close" aria-label="Close" @click="emit('hide')">×</button>
       </div>
       <p class="nge-hl-how">
-        Mark a stretch of a cell you have checked. Hold <kbd>H</kbd> and click where it starts, then where it ends.
-        The surface of that stretch takes the color.
+        Mark a stretch of a cell you have checked: <kbd>Ctrl</kbd> + click where it starts, then where it ends.
+        Turn and move the view freely in between. The surface of that stretch takes the color.
       </p>
       <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
         <button
@@ -151,21 +158,21 @@ onBeforeUnmount(() => {
         ><span class="nge-hl-swatch"></span>{{ s.label }}</button>
       </div>
       <div class="nge-hl-actions">
-        <button class="nge-hl-btn nge-hl-btn--main" :class="{ 'nge-hl-btn--armed': armed }" :disabled="busy" @click="toggleArmed">
-          {{ armed ? (first ? 'Click the end…' : 'Click the start…') : 'Pick two points' }}
-        </button>
+        <button v-if="first" class="nge-hl-btn nge-hl-btn--main nge-hl-btn--armed" :disabled="busy" @click="cancelPick"
+                title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel this mark</button>
+        <span v-else class="nge-hl-step">{{ busy ? 'Tracing…' : 'Ctrl + click the start' }}</span>
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
         <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
       </div>
-      <label class="nge-hl-width" title="How far from the path the color reaches. Wider covers thick branches and spines; narrower keeps it off neighboring branches.">
-        <span>Tint width</span>
+      <label class="nge-hl-width" title="How far out from the middle of the branch the color reaches. Wider covers thick branches and their spines; narrower keeps the color off neighboring branches.">
+        <span>Color reach</span>
         <input type="range" min="0.5" max="8" step="0.5" :value="tintUm" @input="onTintInput" />
         <span class="nge-hl-width-val">{{ tintUm }} <span class="nge-hl-unit">µm</span></span>
       </label>
       <div class="nge-hl-status">
         <span v-if="busy" class="nge-hl-spin"></span>
         <span v-if="message" :class="{ 'nge-hl-bad': messageBad }">{{ message }}</span>
-        <span v-else class="nge-hl-dim">{{ first ? 'Start placed.' : 'No point placed yet.' }}</span>
+        <span v-else class="nge-hl-dim">{{ first ? 'Start placed. Ctrl + click the end.' : 'No point placed yet.' }}</span>
         <span class="nge-hl-count">{{ markCount }} {{ markCount === 1 ? 'mark' : 'marks' }}</span>
       </div>
     </div>
@@ -211,6 +218,7 @@ onBeforeUnmount(() => {
 .nge-hl-btn--main { flex: 1; color: #06140c; background: #7cffb2; border-color: #7cffb2; }
 .nge-hl-btn--main:hover:not(:disabled) { background: #a5ffca; }
 .nge-hl-btn--armed { background: #ffd24d; border-color: #ffd24d; }
+.nge-hl-step { flex: 1; align-self: center; font-size: 11.5px; color: #9dffc9; }
 .nge-hl-width { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11.5px; color: rgba(220, 230, 245, 0.72); }
 .nge-hl-width input { flex: 1; min-width: 0; accent-color: #7cffb2; }
 .nge-hl-width-val { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: #dce6f5; }

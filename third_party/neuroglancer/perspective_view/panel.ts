@@ -577,6 +577,7 @@ export class PerspectivePanel extends RenderedDataPanel {
           const annotationRenderLayer = renderLayer as PerspectiveViewAnnotationLayer;
           // EyeWire II: an "onTop" layer (Highlight mode strokes) is drawn
           // over the meshes, not hidden inside the branch it runs through.
+          if (annotationRenderLayer.base.state.displayState.ngeHideIn3d.value) continue;
           const onTop = annotationRenderLayer.base.state.displayState.ngeOnTop.value;
           if (onTop) gl.disable(WebGL2RenderingContext.DEPTH_TEST);
           if (annotationRenderLayer.base.state.displayState.disablePicking.value) {
