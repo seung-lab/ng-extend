@@ -1820,9 +1820,23 @@ function practiceWhen(iso: string | null) {
 }
 .nge-admin-fmtpreview-label { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(160, 185, 220, 0.6); margin-bottom: 4px; }
 .nge-admin-fmtpreview-body { font-size: 13px; line-height: 1.5; color: #dce6f5; max-height: 260px; overflow-y: auto; }
-.nge-admin-fmtpreview-body :deep(h2), .nge-admin-fmtpreview-body :deep(h3), .nge-admin-fmtpreview-body :deep(h4) { font-size: 14px; margin: 10px 0 4px; color: #9fdcff; }
-.nge-admin-fmtpreview-body :deep(p) { margin: 4px 0; }
-.nge-admin-fmtpreview-body :deep(ul), .nge-admin-fmtpreview-body :deep(ol) { margin: 4px 0; padding-left: 20px; }
+/* The preview looks like the notification players open (the feed's own
+   .nge-notif-detail-body rules). !important on the lists: a global rule,
+   #vueMain > * ul { list-style: none; padding: 0 }, outranks these and
+   stripped the bullets here, though not in the real notification. */
+.nge-admin-fmtpreview-body :deep(p) { margin: 0 0 0.7em; }
+.nge-admin-fmtpreview-body :deep(p:last-child) { margin-bottom: 0; }
+.nge-admin-fmtpreview-body :deep(strong) { color: #eef4fb; font-weight: 650; }
+.nge-admin-fmtpreview-body :deep(em) { font-style: normal; font-weight: 500; color: rgba(110, 220, 255, 0.9); }
+.nge-admin-fmtpreview-body :deep(ul),
+.nge-admin-fmtpreview-body :deep(ol) { margin: 0 0 0.7em !important; padding-left: 1.3em !important; }
+.nge-admin-fmtpreview-body :deep(ul) { list-style: disc outside !important; }
+.nge-admin-fmtpreview-body :deep(ol) { list-style: decimal outside !important; }
+.nge-admin-fmtpreview-body :deep(ul ul) { list-style: circle outside !important; margin-bottom: 0 !important; }
+.nge-admin-fmtpreview-body :deep(li) { display: list-item; margin: 0.15em 0; }
+.nge-admin-fmtpreview-body :deep(li::marker) { color: rgba(110, 220, 255, 0.7); }
+.nge-admin-fmtpreview-body :deep(h1), .nge-admin-fmtpreview-body :deep(h2),
+.nge-admin-fmtpreview-body :deep(h3), .nge-admin-fmtpreview-body :deep(h4) { font-size: 14px; margin: 10px 0 4px; color: #9fdcff; }
 .nge-admin-fmtpreview-body :deep(a) { color: #7fd4ff; }
 
 .nge-admin-select {
