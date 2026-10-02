@@ -59,6 +59,7 @@ async function strokeSource(style: HighlightStyle): Promise<any> {
       annotations: [],
       annotationColor: style.color,
       shader: STROKE_SHADER,
+      hideIn3d: true,
     });
     viewer.layerSpecification.add(managed);
   }
@@ -256,7 +257,10 @@ export function startHighlightTint(viewer: any) {
         src.changed.add(scheduleTint);
         // With the surface tinted, the stroke itself goes back inside the
         // branch in 3D; it still marks the path in the 2D views.
-        try { managed.layer.annotationDisplayState.ngeOnTop.value = false; } catch { /* */ }
+        try {
+          managed.layer.annotationDisplayState.ngeOnTop.value = false;
+          managed.layer.annotationDisplayState.ngeHideIn3d.value = true;
+        } catch { /* */ }
       }
     }
     scheduleTint();

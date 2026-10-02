@@ -351,6 +351,7 @@ export class AnnotationUserLayer extends Base {
     this.annotationDisplayState.ngeMarker.changed.add(markerChanged);
     this.annotationDisplayState.ngeSize.changed.add(markerChanged);
     this.annotationDisplayState.ngeOnTop.changed.add(markerChanged);
+    this.annotationDisplayState.ngeHideIn3d.changed.add(markerChanged);
     this.annotationProjectionRenderScaleTarget.changed.add(this.specificationChanged.dispatch);
     // EyeWire II (Amy 2026-09-30): annotation layers open on Annotations with
     // Source and Rendering tucked away; Settings can show them again.
@@ -381,6 +382,7 @@ export class AnnotationUserLayer extends Base {
         specification[IGNORE_NULL_SEGMENT_FILTER_JSON_KEY]);
     this.annotationDisplayState.shader.restoreState(specification[SHADER_JSON_KEY]);
     this.annotationDisplayState.ngeOnTop.value = specification['onTop'] === true;
+    this.annotationDisplayState.ngeHideIn3d.value = specification['hideIn3d'] === true;
     const marker = specification['pointMarker'];
     this.annotationDisplayState.ngeMarker.value = marker === 'pyr' ? 'pyr' : 'dot';
     // "big" was the first version's fixed 10x dot; it is a size now.
@@ -573,6 +575,7 @@ export class AnnotationUserLayer extends Base {
     const pointSize = this.annotationDisplayState.ngeSize.value;
     x['pointSize'] = pointSize === 1 ? undefined : pointSize;
     x['onTop'] = this.annotationDisplayState.ngeOnTop.value ? true : undefined;
+    x['hideIn3d'] = this.annotationDisplayState.ngeHideIn3d.value ? true : undefined;
     x[SHADER_CONTROLS_JSON_KEY] = this.annotationDisplayState.shaderControls.toJSON();
     Object.assign(x, this.linkedSegmentationLayers.toJSON());
     return x;

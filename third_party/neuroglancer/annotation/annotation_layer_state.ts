@@ -116,6 +116,10 @@ export class AnnotationDisplayState extends RefCounted {
    *  (layer JSON "onTop"): Highlight mode's strokes run through the middle
    *  of a branch, where the mesh would cover them. */
   ngeOnTop = new TrackableBoolean(false);
+  /** Not drawn in the 3D view at all (layer JSON "hideIn3d"): Highlight
+   *  mode's path is the record of a mark, but in 3D the tinted surface is
+   *  what the player looks at. The 2D views still show it. */
+  ngeHideIn3d = new TrackableBoolean(false);
   // #edd040, EyeWire II's annotation yellow (Amy, 2026-09-28): readable on
   // grey EM and on every segment colour.
   color = new TrackableRGB(vec3.fromValues(0.929, 0.816, 0.251));
