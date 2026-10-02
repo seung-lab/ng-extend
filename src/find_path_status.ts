@@ -119,6 +119,12 @@ function apply(li: HTMLElement, kind: Kind) {
   stop(li);
   li.classList.remove('nge-fp-status', 'nge-fp-status--working', 'nge-fp-status--done', 'nge-fp-status--error');
   li.dataset.ngeFp = kind;
+  // A path Highlight mode is tracing shows its progress in the Highlight
+  // box, not as a second line down here (which also lingered when the
+  // server never answered). Tagged once, so it stays hidden whatever the
+  // line turns into.
+  if (kind === 'working' && document.body.classList.contains('nge-hl-tracing')) li.dataset.ngeHl = '1';
+  if (li.dataset.ngeHl === '1') { li.style.display = 'none'; return; }
   if (!kind) return;
   li.classList.add('nge-fp-status', `nge-fp-status--${kind}`);
   if (kind === 'error') return;  // keep neuroglancer's error text as is, just styled

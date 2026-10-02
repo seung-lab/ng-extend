@@ -62,14 +62,24 @@ let loaderLive: Live | null = null;
 function stopLoader() {
   if (loaderLive) { cancelAnimationFrame(loaderLive.raf); loaderLive = null; }
 }
+const traceSecs = ref(0);
+let traceTimer: ReturnType<typeof setInterval> | undefined;
+// Set at once (not after the next render): Find Path's status line appears
+// as soon as the request starts, and it reads this to step aside.
+watch(busy, (on) => document.body.classList.toggle('nge-hl-tracing', on), { flush: 'sync' });
 watch(busy, (on) => {
   stopLoader();
+  if (traceTimer) { clearInterval(traceTimer); traceTimer = undefined; }
   if (!on) return;
+  traceSecs.value = 0;
+  const t0 = Date.now();
+  traceTimer = setInterval(() => { traceSecs.value = Math.round((Date.now() - t0) / 1000); }, 1000);
   requestAnimationFrame(() => {
     const cv = loaderEl.value;
     if (!cv || !busy.value) return;
     loaderLive = { raf: 0, timer: 0 };
-    startLoader(cv, loaderLive, Math.max(120, Math.round(cv.parentElement?.clientWidth ?? 290)), 26);
+    // The full width of the box: the band is part of its top edge.
+    startLoader(cv, loaderLive, Math.max(120, Math.round(panelEl.value?.clientWidth ?? 318)), 30);
   });
 }, { flush: 'post' });
 
@@ -248,6 +258,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', onBlur);
   window.removeEventListener('resize', clampPos);
   stopLoader();
+  if (traceTimer) clearInterval(traceTimer);
+  document.body.classList.remove('nge-hl-tracing');
   clearStartMarker(true);
   document.body.classList.remove('nge-highlight-armed');
 });
@@ -256,8 +268,10 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <div ref="panelEl" class="nge-hl-panel" :class="{ 'nge-hl-panel--placed': pos, 'nge-hl-panel--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Highlight mode">
-      <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': busy }" aria-hidden="true">
+      <!-- The search, as the top edge of the box, above the title. -->
+      <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': busy }" :aria-hidden="busy ? 'false' : 'true'">
         <canvas v-if="busy" ref="loaderEl" class="nge-hl-loader"></canvas>
+        <span v-if="busy" class="nge-hl-loader-label">Tracing path <b>{{ traceSecs }}s</b></span>
       </div>
       <div class="nge-hl-head" title="Drag to move" @mousedown="startDrag">
         <span class="nge-hl-title">Highlight</span>
@@ -337,9 +351,25 @@ onBeforeUnmount(() => {
 .nge-hl-panel--dragging .nge-hl-head { cursor: grabbing; }
 /* Once dragged, it sits where it was put (no slide-in from the corner). */
 .nge-hl-panel--placed { animation: none; }
-.nge-hl-loader-wrap { height: 0; overflow: hidden; transition: height 0.2s ease, margin 0.2s ease; }
-.nge-hl-loader-wrap--on { height: 28px; margin-bottom: 8px; }
-.nge-hl-loader { display: block; border-radius: 12px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(200, 164, 255, 0.25); box-sizing: border-box; }
+/* A band across the very top of the box (it bleeds through the padding and
+   takes the box's top corners), open only while a path is being traced. */
+.nge-hl-loader-wrap {
+  position: relative; height: 0; overflow: hidden;
+  margin: -12px -14px 0; border-radius: 11px 11px 0 0;
+  background: rgba(20, 12, 36, 0.75);
+  transition: height 0.2s ease, margin 0.2s ease;
+}
+.nge-hl-loader-wrap--on { height: 30px; margin-bottom: 10px; border-bottom: 1px solid rgba(200, 164, 255, 0.28); }
+/* Closed, it must not eat the box's top padding. */
+.nge-hl-loader-wrap:not(.nge-hl-loader-wrap--on) { margin: 0; }
+.nge-hl-loader { display: block; }
+.nge-hl-loader-label {
+  position: absolute; right: 26px; top: 50%; transform: translateY(-50%);
+  padding: 1px 7px; border-radius: 999px; background: rgba(10, 6, 20, 0.7);
+  font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #dcc8ff;
+  pointer-events: none;
+}
+.nge-hl-loader-label b { color: #fff; font-weight: 700; text-transform: none; }
 .nge-hl-title { font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #9dffc9; }
 .nge-hl-close { margin-left: auto; background: none; border: none; color: rgba(255, 255, 255, 0.55); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-hl-close:hover { color: #fff; }

@@ -1730,17 +1730,15 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
    the lid drops back on. */
 #extensionBar [data-icon-id="highlight"] .nge-can-all,
 #extensionBar [data-icon-id="highlight"] .nge-can-lid { transform-box: view-box; }
-#extensionBar [data-icon-id="highlight"] .nge-can-lid { transform-origin: 8px 3.6px; }
+#extensionBar [data-icon-id="highlight"] .nge-can-lid { transform-origin: 8px 3.4px; }
 #extensionBar [data-icon-id="highlight"] .nge-can-spray circle { opacity: 0; transform-box: fill-box; transform-origin: center; }
 #extensionBar [data-icon-id="highlight"]:hover .nge-can-all { animation: nge-can-shake 0.3s ease-in-out infinite; }
 #extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-all { animation: none; }
 #extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-lid { animation: nge-can-lid 0.95s ease-out; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle { animation: nge-can-spray 0.55s ease-out 0.16s both; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(1) { --sx: -5.4px; --sy: 0.2px; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(2) { --sx: -5.8px; --sy: -2.8px; animation-delay: 0.2s; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(3) { --sx: -5.4px; --sy: 3px; animation-delay: 0.24s; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(4) { --sx: -7.6px; --sy: -1.4px; animation-delay: 0.28s; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(5) { --sx: -7.2px; --sy: 1.8px; animation-delay: 0.32s; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle { animation: nge-can-spray 0.6s ease-out 0.16s both; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(1) { --sx: -5.6px; --sy: 0.3px; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(2) { --sx: -5.2px; --sy: -3.2px; animation-delay: 0.22s; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(3) { --sx: -4.8px; --sy: 3.6px; animation-delay: 0.28s; }
 @keyframes nge-can-shake {
   0%, 100% { transform: translateY(-1.3px); }
   50% { transform: translateY(1.3px); }
@@ -1749,15 +1747,16 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
    drops back on. */
 @keyframes nge-can-lid {
   0% { transform: translate(0, 0) rotate(0deg); }
-  16% { transform: translate(4px, -3.2px) rotate(48deg); }
-  74% { transform: translate(4px, -3.2px) rotate(48deg); }
+  16% { transform: translate(5.6px, -3px) rotate(52deg); }
+  74% { transform: translate(5.6px, -3px) rotate(52deg); }
   100% { transform: translate(0, 0) rotate(0deg); }
 }
 /* Each dot starts at the nozzle and flies out along its own direction. */
 @keyframes nge-can-spray {
-  0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
+  0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
   15% { opacity: 1; }
-  100% { transform: translate(var(--sx), var(--sy)) scale(1.5); opacity: 0; }
+  70% { opacity: 1; }
+  100% { transform: translate(var(--sx), var(--sy)) scale(1.35); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   #extensionBar [data-icon-id="highlight"] .nge-can-all, #extensionBar [data-icon-id="highlight"] .nge-can-lid,
