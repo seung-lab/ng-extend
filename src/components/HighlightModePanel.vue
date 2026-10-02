@@ -8,12 +8,46 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { startLoader, type Live } from '../find_path_status';
 import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
-import { HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, showStartMarker, clearStartMarker, type Pick } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, showStartMarker, clearStartMarker, type Pick, type HighlightStyle } from '../util/highlight';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
 
-const styleKey = ref(HIGHLIGHT_STYLES[0].key);
+// ── Colours: the built in three (any colour you like) and your own ────────
+const styles = ref<HighlightStyle[]>(highlightStyles());
+const styleKey = ref(styles.value[0].key);
+const adding = ref(false);
+const newName = ref('');
+const newColor = ref('#b388ff');
+const addError = ref('');
+const isCustom = (s: HighlightStyle) => s.key.startsWith('c_');
+function setColor(s: HighlightStyle, e: Event) {
+  const hex = (e.target as HTMLInputElement).value;
+  styles.value = styles.value.map(x => (x.key === s.key ? { ...x, color: hex } : x));
+  saveHighlightStyles(styles.value);
+  applyStyleColor({ ...s, color: hex });
+}
+function startAdding() {
+  adding.value = true;
+  addError.value = '';
+  newName.value = '';
+}
+function addStyle() {
+  const label = newName.value.trim().slice(0, 24);
+  if (!label) { addError.value = 'Give the color a name.'; return; }
+  if (highlightNameTaken(label, styles.value)) { addError.value = 'That name is already used by a layer or a color.'; return; }
+  const s: HighlightStyle = { key: `c_${Date.now().toString(36)}`, label, layer: label, color: newColor.value };
+  styles.value = [...styles.value, s];
+  saveHighlightStyles(styles.value);
+  styleKey.value = s.key;
+  adding.value = false;
+}
+/** Take one of your own colours off the list. Its marks stay in the view. */
+function removeStyle(s: HighlightStyle) {
+  styles.value = styles.value.filter(x => x.key !== s.key);
+  saveHighlightStyles(styles.value);
+  if (styleKey.value === s.key) styleKey.value = styles.value[0].key;
+}
 const first = ref<Pick | null>(null);
 const busy = ref(false);
 const message = ref('');
@@ -85,7 +119,7 @@ watch([ctrlHeld, hHeld], () => document.body.classList.toggle('nge-highlight-arm
 
 function say(text: string, bad = false) { message.value = text; messageBad.value = bad; }
 function refresh() { markCount.value = listHighlights().length; }
-const styleOf = () => HIGHLIGHT_STYLES.find(s => s.key === styleKey.value) ?? HIGHLIGHT_STYLES[0];
+const styleOf = () => styles.value.find(s => s.key === styleKey.value) ?? styles.value[0];
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
 
 const TRACE_LIMIT_MS = 60000;
@@ -234,11 +268,31 @@ onBeforeUnmount(() => {
         Turn and move the view freely in between. The surface of that stretch takes the color.
       </p>
       <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
-        <button
-          v-for="s in HIGHLIGHT_STYLES" :key="s.key" role="radio" :aria-checked="styleKey === s.key ? 'true' : 'false'"
+        <span
+          v-for="s in styles" :key="s.key" role="radio" tabindex="0" :aria-checked="styleKey === s.key ? 'true' : 'false'"
           class="nge-hl-style" :class="{ 'nge-hl-style--on': styleKey === s.key }" :style="{ '--hl': s.color }"
-          @click="styleKey = s.key"
-        ><span class="nge-hl-swatch"></span>{{ s.label }}</button>
+          @click="styleKey = s.key" @keydown.enter.prevent="styleKey = s.key" @keydown.space.prevent="styleKey = s.key"
+        >
+          <label class="nge-hl-swatch" :title="`Change the color of ${s.label}`" @click.stop>
+            <input type="color" :value="s.color" :aria-label="`Color of ${s.label}`" @input="setColor(s, $event)" />
+          </label>
+          {{ s.label }}
+          <button v-if="isCustom(s) && styleKey === s.key" class="nge-hl-style-x" type="button"
+                  :title="`Remove ${s.label} from your colors (marks already made stay)`" :aria-label="`Remove ${s.label}`"
+                  @click.stop="removeStyle(s)">×</button>
+        </span>
+        <button v-if="!adding && styles.length < MAX_HIGHLIGHT_STYLES" class="nge-hl-style nge-hl-style--add" type="button"
+                title="Add a color of your own" @click="startAdding">+ Add</button>
+      </div>
+      <div v-if="adding" class="nge-hl-add">
+        <label class="nge-hl-swatch nge-hl-swatch--big" :style="{ '--hl': newColor }" title="Pick the color">
+          <input type="color" v-model="newColor" aria-label="New color" />
+        </label>
+        <input v-model="newName" class="nge-hl-add-name" type="text" maxlength="24" placeholder="Name, e.g. Axon"
+               @keydown.stop @keydown.enter.prevent="addStyle" @keydown.esc.prevent="adding = false" />
+        <button class="nge-hl-btn" type="button" @click="addStyle">Add</button>
+        <button class="nge-hl-btn" type="button" @click="adding = false">Cancel</button>
+        <div v-if="addError" class="nge-hl-add-error">{{ addError }}</div>
       </div>
       <div class="nge-hl-actions">
         <button v-if="first" class="nge-hl-btn nge-hl-btn--main nge-hl-btn--armed" :disabled="busy" @click="cancelPick"
@@ -297,7 +351,20 @@ onBeforeUnmount(() => {
   font-size: 11.5px; color: #c9d6ea; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.14);
 }
 .nge-hl-style--on { color: #fff; border-color: var(--hl); background: color-mix(in srgb, var(--hl) 16%, transparent); box-shadow: 0 0 10px color-mix(in srgb, var(--hl) 35%, transparent); }
-.nge-hl-swatch { width: 14px; height: 5px; border-radius: 3px; background: var(--hl); box-shadow: 0 0 6px var(--hl); }
+.nge-hl-style { user-select: none; }
+/* The swatch is the color picker: click it to change the color. */
+.nge-hl-swatch { position: relative; display: inline-block; width: 14px; height: 10px; border-radius: 3px; background: var(--hl); box-shadow: 0 0 6px var(--hl); cursor: pointer; overflow: hidden; }
+.nge-hl-swatch:hover { outline: 1px solid rgba(255, 255, 255, 0.7); outline-offset: 1px; }
+.nge-hl-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; padding: 0; border: 0; }
+.nge-hl-swatch--big { width: 26px; height: 24px; border-radius: 6px; flex-shrink: 0; }
+.nge-hl-style-x { margin-left: 2px; padding: 0 2px; border: 0; background: none; color: rgba(255, 255, 255, 0.6); font-size: 13px; line-height: 1; cursor: pointer; }
+.nge-hl-style-x:hover { color: #ff9aa8; }
+.nge-hl-style--add { border-style: dashed; color: #9dffc9; }
+.nge-hl-style--add:hover { background: rgba(124, 255, 178, 0.1); border-color: rgba(124, 255, 178, 0.5); }
+.nge-hl-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; padding: 8px; border-radius: 8px; border: 1px dashed rgba(124, 255, 178, 0.3); background: rgba(124, 255, 178, 0.04); }
+.nge-hl-add-name { flex: 1; min-width: 90px; padding: 4px 8px; border-radius: 6px; font: 12px 'Inter', sans-serif; color: #e6f0ff; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.16); outline: none; }
+.nge-hl-add-name:focus { border-color: rgba(124, 255, 178, 0.6); }
+.nge-hl-add-error { flex-basis: 100%; font-size: 11px; color: #ff9aa8; }
 .nge-hl-actions { display: flex; gap: 6px; margin-top: 10px; }
 .nge-hl-btn {
   padding: 5px 10px; border-radius: 7px; cursor: pointer; font: 600 11.5px 'Inter', sans-serif;

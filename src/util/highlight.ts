@@ -9,15 +9,78 @@ import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
 import { currentSegLayer } from '../datasets';
+import { useUserPreferencesStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
 
 export interface HighlightStyle { key: string; label: string; layer: string; color: string; }
-export const HIGHLIGHT_STYLES: HighlightStyle[] = [
+export const DEFAULT_HIGHLIGHT_STYLES: HighlightStyle[] = [
   { key: 'checked', label: 'Checked', layer: 'Checked ✓', color: '#3dff9a' },
   { key: 'look', label: 'Needs a look', layer: 'Needs a look', color: '#ffd24d' },
   { key: 'problem', label: 'Problem', layer: 'Problem', color: '#ff5d73' },
 ];
+export const MAX_HIGHLIGHT_STYLES = 8;
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** The player's colours (Ames 2026-10-02): the three built in ones, in any
+ *  colour they chose, plus the ones they added. Saved in their preferences,
+ *  so they follow the account. A built in colour keeps its layer name; an
+ *  added one's layer is named after it. */
+export function highlightStyles(): HighlightStyle[] {
+  let saved: { key: string; label: string; color: string }[] = [];
+  try { saved = useUserPreferencesStore().prefs.highlightStyles ?? []; } catch { /* store not ready */ }
+  if (!Array.isArray(saved)) saved = [];
+  const colorOf = (key: string, fallback: string) => {
+    const c = saved.find(s => s?.key === key)?.color;
+    return c && HEX.test(c) ? c.toLowerCase() : fallback;
+  };
+  const out = DEFAULT_HIGHLIGHT_STYLES.map(d => ({ ...d, color: colorOf(d.key, d.color) }));
+  for (const s of saved) {
+    if (out.length >= MAX_HIGHLIGHT_STYLES) break;
+    if (!s || typeof s.key !== 'string' || !s.key.startsWith('c_')) continue;
+    const label = String(s.label || '').trim().slice(0, 24);
+    if (!label || !HEX.test(s.color) || out.some(o => o.key === s.key || o.layer === label)) continue;
+    out.push({ key: s.key, label, layer: label, color: s.color.toLowerCase() });
+  }
+  return out;
+}
+export function saveHighlightStyles(styles: HighlightStyle[]) {
+  useUserPreferencesStore().save({ highlightStyles: styles.map(({ key, label, color }) => ({ key, label, color })) });
+}
+/** Recolour a style's existing marks too: its layer takes the new colour and
+ *  the tint follows. */
+export function applyStyleColor(style: HighlightStyle) {
+  try { managedLayer(style.layer)?.layer?.annotationDisplayState?.color?.restoreState(style.color); } catch { /* layer not loaded */ }
+  scheduleTint();
+}
+/** A name an added colour may not take: its layer would collide. */
+export function highlightNameTaken(label: string, styles: HighlightStyle[]): boolean {
+  const n = label.trim().toLowerCase();
+  return !n || n === START_LAYER.toLowerCase()
+    || styles.some(s => s.label.toLowerCase() === n || s.layer.toLowerCase() === n)
+    || !!managedLayer(label.trim());
+}
+
+/** The highlight layers in the view, each with the style it is drawn in.
+ *  Found by what they hold (hl_ strokes), not by this player's colour list,
+ *  so a shared view's marks show in the colours they were made with. */
+function highlightLayers(): { managed: any; src: any; style: HighlightStyle }[] {
+  const styles = highlightStyles();
+  const out: { managed: any; src: any; style: HighlightStyle }[] = [];
+  for (const managed of viewerOf()?.layerManager?.managedLayers ?? []) {
+    if (managed.archived || managed.name === START_LAYER) continue;
+    const src = managed.layer?.localAnnotations;
+    if (!src) continue;
+    const mine = styles.find(s => s.layer === managed.name);
+    let holds = false;
+    for (const ann of src) { if (String(ann.id).startsWith(ID_PREFIX)) { holds = true; } break; }
+    if (!mine && !holds) continue;
+    let color = mine?.color ?? '#3dff9a';
+    try { const c = String(managed.layer.annotationDisplayState.color.toString()); if (HEX.test(c)) color = c.toLowerCase(); } catch { /* keep */ }
+    out.push({ managed, src, style: { key: mine?.key ?? `layer:${managed.name}`, label: mine?.label ?? managed.name, layer: managed.name, color } });
+  }
+  return out;
+}
 
 /** A wide stroke with no end dots: a highlighter line, not a measurement. */
 const STROKE_SHADER = 'void main() {\n' +
@@ -139,9 +202,7 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
  *  themselves (so marks restored from a saved view count too). */
 export function listHighlights(): { mark: string; style: HighlightStyle; ids: string[] }[] {
   const out = new Map<string, { mark: string; style: HighlightStyle; ids: string[] }>();
-  for (const style of HIGHLIGHT_STYLES) {
-    const src = managedLayer(style.layer)?.layer?.localAnnotations;
-    if (!src) continue;
+  for (const { src, style } of highlightLayers()) {
     for (const ann of src) {
       const id = String(ann.id);
       if (!id.startsWith(ID_PREFIX)) continue;
@@ -203,10 +264,8 @@ function buildTint(): NgeMeshTint | null {
   if (scalesNm.length < 3) return null;
   // Every stroke segment, in nanometres.
   const segs: { a: number[]; b: number[]; rgb: number[] }[] = [];
-  for (const style of HIGHLIGHT_STYLES) {
-    const managed = managedLayer(style.layer);
-    const src = managed?.layer?.localAnnotations;
-    if (!src || managed.visible === false) continue;
+  for (const { managed, src, style } of highlightLayers()) {
+    if (managed.visible === false) continue;
     const rgb = hexRgb(style.color);
     for (const ann of src) {
       if (ann.type !== LINE || !String(ann.id).startsWith(ID_PREFIX)) continue;
@@ -283,30 +342,39 @@ function scheduleTint() {
 /** Call once the viewer exists: keeps the mesh tint in step with the marks. */
 export function startHighlightTint(viewer: any) {
   const watched = new WeakSet<object>();
-  const names = new Set(HIGHLIGHT_STYLES.map(s => s.layer));
+  const styled = new WeakSet<object>();
   let retry: ReturnType<typeof setTimeout> | null = null;
+  let tries = 0;
   const scan = () => {
     let waiting = false;
+    // Every local annotation layer is watched (any of them may be, or
+    // become, a highlight layer); a rebuild with no marks costs nothing.
     for (const managed of viewer.layerManager.managedLayers) {
-      if (!names.has(managed.name)) continue;
+      if (managed.layer?.constructor?.type !== 'annotation') continue;
       const src = managed.layer?.localAnnotations;
       // A layer's annotations arrive a moment after the layer itself.
       if (!src) { waiting = true; continue; }
       if (!watched.has(src)) {
         watched.add(src);
         src.changed.add(scheduleTint);
-        // With the surface tinted, the stroke itself goes back inside the
-        // branch in 3D; it still marks the path in the 2D views.
-        try {
-          managed.layer.annotationDisplayState.ngeOnTop.value = false;
-          managed.layer.annotationDisplayState.ngeHideIn3d.value = true;
-        } catch { /* */ }
+        try { managed.layer.annotationDisplayState.color.changed.add(scheduleTint); } catch { /* */ }
       }
     }
+    for (const { managed, src } of highlightLayers()) {
+      if (styled.has(src)) continue;
+      styled.add(src);
+      // With the surface tinted, the stroke itself is not drawn in 3D; it
+      // still marks the path in the 2D views.
+      try {
+        managed.layer.annotationDisplayState.ngeOnTop.value = false;
+        managed.layer.annotationDisplayState.ngeHideIn3d.value = true;
+      } catch { /* */ }
+    }
     scheduleTint();
-    if (waiting && !retry) retry = setTimeout(() => { retry = null; scan(); }, 400);
+    // Not for ever: an annotation layer with a remote source never gets one.
+    if (waiting && !retry && tries < 25) { tries++; retry = setTimeout(() => { retry = null; scan(); }, 400); }
   };
-  viewer.layerManager.layersChanged.add(scan);
+  viewer.layerManager.layersChanged.add(() => { tries = 0; scan(); });
   viewer.coordinateSpace.changed.add(scheduleTint);
   scan();
 }
