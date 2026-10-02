@@ -333,14 +333,20 @@ const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const showTagMode = ref(false);
 const showHighlight = ref(false);
-/** The spray can sprays when clicked. */
+/** The spray can sprays when clicked. The class lives in the template's own
+ *  :class binding: the same click opens the Highlight box, which makes Vue
+ *  rewrite the button's class list, and a class added by hand was wiped
+ *  before the lid could move (Ames 2026-10-02). */
+const spraying = ref(false);
+let sprayTimer: ReturnType<typeof setTimeout> | undefined;
 function sprayHighlightIcon() {
-  const btn = document.querySelector('#extensionBar [data-icon-id="highlight"]');
-  if (!btn) return;
-  btn.classList.remove('nge-spraying');
-  void (btn as HTMLElement).offsetWidth;   // restart the animation on a quick second click
-  btn.classList.add('nge-spraying');
-  setTimeout(() => btn.classList.remove('nge-spraying'), 1000);
+  if (sprayTimer) clearTimeout(sprayTimer);
+  spraying.value = false;
+  // Off for one frame, so a quick second click plays it again from the start.
+  requestAnimationFrame(() => {
+    spraying.value = true;
+    sprayTimer = setTimeout(() => { spraying.value = false; }, 1000);
+  });
 }
 const showFlightMode = ref(false);
 const konamiBuf: string[] = [];
@@ -998,6 +1004,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           'nge-icon-btn--mention': icon.id === 'chat' && chatMentionPending,
           'nge-icon-btn--active': isIconActive(icon.id),
           'nge-icon-btn--off': icon.id === 'highlight' && !!highlightOff,
+          'nge-spraying': icon.id === 'highlight' && spraying,
           'nge-icon-btn--dragging': dragId === icon.id,
           'nge-icon-btn--drag-over': dragOverId === icon.id && dragId !== icon.id,
         }"
