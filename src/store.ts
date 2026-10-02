@@ -905,6 +905,9 @@ export interface UserPreferences {
   /** Jumping to a cell ADDS it to the view instead of replacing what is
    *  shown. Defaults to false (replace). */
   jumpAddsToView?: boolean;
+  /** Highlight mode's colours: the three built in ones (recoloured or not)
+   *  and any the player added. Unset = the defaults. */
+  highlightStyles?: { key: string; label: string; color: string }[];
   /** Offer "Pick up where you left off?" when a dataset opens. Defaults to true. */
   offerViewRestore?: boolean;
   /** Point annotation size multiplier, 1 to 4 (Amy 2026-09-30). Local only. */
