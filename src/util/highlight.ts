@@ -31,7 +31,7 @@ const LINE = 1; // AnnotationType.LINE
 
 const viewerOf = (): any => (window as any).viewer;
 
-export interface Pick { selection: SegmentSelection; root: string; }
+export interface Pick { selection: SegmentSelection; root: string; /** Viewer (global) coordinates of the click. */ global: number[]; }
 
 /** The cell under the cursor right now, or a reason there is none. */
 export function pickUnderMouse(): Pick | { error: string } {
@@ -42,7 +42,8 @@ export function pickUnderMouse(): Pick | { error: string } {
   let selection: SegmentSelection | undefined;
   try { selection = ngeGrapheneSelectionUnderMouse(layer, viewer.mouseState); } catch { /* not ready */ }
   if (!selection) return { error: 'Click on a cell that is showing in your view.' };
-  return { selection, root: selection.rootId.toString() };
+  const global = Array.from(viewer.mouseState.position as Float32Array).slice(0, 3);
+  return { selection, root: selection.rootId.toString(), global };
 }
 
 function managedLayer(name: string): any {
@@ -70,6 +71,43 @@ async function strokeSource(style: HighlightStyle): Promise<any> {
     await new Promise(r => setTimeout(r, 50));
   }
   throw new Error('The highlight layer did not load.');
+}
+
+// ── The start point, shown where it was placed ──────────────────────────
+// A Pyr gem in the 3D view (a dot in 2D), in the mark's colour, drawn over
+// the mesh so it stays in sight while the view is turned to find the end
+// point (Ames 2026-10-02). It lives in its own small layer, which goes away
+// when the panel closes.
+const START_LAYER = 'Highlight start';
+const START_ID = 'hl-start';
+
+export function showStartMarker(pick: Pick, style: HighlightStyle) {
+  const viewer = viewerOf();
+  const point = { type: 'point', id: START_ID, point: pick.global, description: 'Start of the stretch being marked' };
+  const managed = managedLayer(START_LAYER);
+  if (!managed) {
+    viewer.layerSpecification.add(makeLayer(viewer.layerSpecification, START_LAYER, {
+      type: 'annotation', source: 'local://annotations', annotations: [point],
+      annotationColor: style.color, pointMarker: 'pyr', pointSize: 1.5, onTop: true,
+    }));
+    return;
+  }
+  const src = managed.layer?.localAnnotations;
+  if (!src) return;
+  try { managed.layer.annotationDisplayState.color.restoreState(style.color); } catch { /* keep its colour */ }
+  src.clear();
+  src.add({ id: START_ID, type: 0 /* POINT */, point: Float32Array.from(pick.global), properties: [], description: point.description }, true).dispose();
+}
+
+/** Take the start point away; `removeLayer` when Highlight mode closes. */
+export function clearStartMarker(removeLayer = false) {
+  const managed = managedLayer(START_LAYER);
+  if (!managed) return;
+  if (removeLayer) {
+    try { viewerOf().layerManager.removeManagedLayer(managed); } catch { /* already gone */ }
+    return;
+  }
+  try { managed.layer?.localAnnotations?.clear(); } catch { /* not loaded yet */ }
 }
 
 /** Mark the stretch between two picks. Returns how many path points it has. */

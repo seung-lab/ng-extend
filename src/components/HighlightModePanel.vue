@@ -5,9 +5,10 @@
  * click): the stretch between them is marked with a highlighter stroke, so a
  * proofreader can see which branches they have already checked.
  */
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { startLoader, type Live } from '../find_path_status';
 import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
-import { HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, type Pick } from '../util/highlight';
+import { HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, showStartMarker, clearStartMarker, type Pick } from '../util/highlight';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -19,6 +20,58 @@ const message = ref('');
 const messageBad = ref(false);
 const markCount = ref(0);
 const hHeld = ref(false);
+
+// ── The path-search loader, across the top of the box while a path is traced
+// (the one Find Path shows in the status bar; Ames 2026-10-02).
+const loaderEl = ref<HTMLCanvasElement | null>(null);
+let loaderLive: Live | null = null;
+function stopLoader() {
+  if (loaderLive) { cancelAnimationFrame(loaderLive.raf); loaderLive = null; }
+}
+watch(busy, (on) => {
+  stopLoader();
+  if (!on) return;
+  requestAnimationFrame(() => {
+    const cv = loaderEl.value;
+    if (!cv || !busy.value) return;
+    loaderLive = { raf: 0, timer: 0 };
+    startLoader(cv, loaderLive, Math.max(120, Math.round(cv.parentElement?.clientWidth ?? 290)), 26);
+  });
+}, { flush: 'post' });
+
+// ── Drag the box by its header; it remembers where it was put ─────────────
+const POS_KEY = 'nge_highlight_panel_pos';
+const pos = ref<{ x: number; y: number } | null>((() => {
+  try { const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); return p && isFinite(p.x) && isFinite(p.y) ? p : null; } catch { return null; }
+})());
+const dragging = ref(false);
+const posStyle = computed(() => (pos.value ? { left: pos.value.x + 'px', top: pos.value.y + 'px', bottom: 'auto' } : {}));
+function clampPos() {
+  const el = panelEl.value;
+  if (!el || !pos.value) return;
+  const x = Math.max(8, Math.min(pos.value.x, window.innerWidth - el.offsetWidth - 8));
+  const y = Math.max(44, Math.min(pos.value.y, window.innerHeight - el.offsetHeight - 8));
+  if (x !== pos.value.x || y !== pos.value.y) pos.value = { x, y };
+}
+function startDrag(e: MouseEvent) {
+  if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
+  const el = panelEl.value;
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const dx = e.clientX - r.left, dy = e.clientY - r.top;
+  dragging.value = true;
+  e.preventDefault();
+  const move = (ev: MouseEvent) => { pos.value = { x: ev.clientX - dx, y: ev.clientY - dy }; clampPos(); };
+  const up = () => {
+    dragging.value = false;
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    try { if (pos.value) localStorage.setItem(POS_KEY, JSON.stringify(pos.value)); } catch { /* private mode */ }
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+
 /** How far from the path the surface tint reaches, in micrometres. */
 const tintUm = ref(tintRadiusNm() / 1000);
 function onTintInput(e: Event) {
@@ -42,6 +95,7 @@ async function place(x: number, y: number) {
   runParticleBurst(x, y, rgbOf(styleOf().color));
   if (!first.value) {
     first.value = pick;
+    try { showStartMarker(pick, styleOf()); } catch (e) { console.warn('[highlight] start marker failed:', e); }
     say('Start placed. Now click where the checked stretch ends.');
     return;
   }
@@ -56,6 +110,7 @@ async function place(x: number, y: number) {
     say(e?.message || 'Could not mark that stretch.', true);
   } finally {
     busy.value = false;
+    clearStartMarker();
     refresh();
   }
 }
@@ -103,10 +158,11 @@ function onContextMenu(e: MouseEvent) {
 /** Drop the start point of the mark being made; finished marks are untouched. */
 function cancelPick() {
   first.value = null;
+  clearStartMarker();
   say('Cancelled. Your finished marks are untouched.');
 }
 function undo() {
-  if (first.value) { first.value = null; say('Start point cleared.'); return; }
+  if (first.value) { first.value = null; clearStartMarker(); say('Start point cleared.'); return; }
   say(undoHighlight() ? 'Removed the last mark.' : 'Nothing to undo.');
   refresh();
 }
@@ -115,6 +171,7 @@ function clearAll() {
   if (!window.confirm(`Remove all ${markCount.value} highlight marks from this view?`)) return;
   clearHighlights();
   first.value = null;
+  clearStartMarker();
   say('All marks removed.');
   refresh();
 }
@@ -127,6 +184,8 @@ onMounted(() => {
   window.addEventListener('pointerdown', onPointerCapture, true);
   window.addEventListener('contextmenu', onContextMenu, true);
   window.addEventListener('blur', onBlur);
+  window.addEventListener('resize', clampPos);
+  requestAnimationFrame(clampPos);
 });
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown, true);
@@ -134,14 +193,20 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onPointerCapture, true);
   window.removeEventListener('contextmenu', onContextMenu, true);
   window.removeEventListener('blur', onBlur);
+  window.removeEventListener('resize', clampPos);
+  stopLoader();
+  clearStartMarker(true);
   document.body.classList.remove('nge-highlight-armed');
 });
 </script>
 
 <template>
   <Teleport to="body">
-    <div ref="panelEl" class="nge-hl-panel" role="dialog" aria-label="Highlight mode">
-      <div class="nge-hl-head">
+    <div ref="panelEl" class="nge-hl-panel" :class="{ 'nge-hl-panel--placed': pos, 'nge-hl-panel--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Highlight mode">
+      <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': busy }" aria-hidden="true">
+        <canvas v-if="busy" ref="loaderEl" class="nge-hl-loader"></canvas>
+      </div>
+      <div class="nge-hl-head" title="Drag to move" @mousedown="startDrag">
         <span class="nge-hl-title">Highlight</span>
         <span class="nge-hl-test">test</span>
         <button class="nge-hl-close" aria-label="Close" @click="emit('hide')">×</button>
@@ -194,7 +259,13 @@ onBeforeUnmount(() => {
 }
 @keyframes nge-hl-in { from { opacity: 0; transform: translateY(8px); filter: blur(6px); } to { opacity: 1; transform: none; filter: blur(0); } }
 @media (prefers-reduced-motion: reduce) { .nge-hl-panel { animation: none; } }
-.nge-hl-head { display: flex; align-items: center; gap: 8px; }
+.nge-hl-head { display: flex; align-items: center; gap: 8px; cursor: grab; user-select: none; }
+.nge-hl-panel--dragging .nge-hl-head { cursor: grabbing; }
+/* Once dragged, it sits where it was put (no slide-in from the corner). */
+.nge-hl-panel--placed { animation: none; }
+.nge-hl-loader-wrap { height: 0; overflow: hidden; transition: height 0.2s ease, margin 0.2s ease; }
+.nge-hl-loader-wrap--on { height: 28px; margin-bottom: 8px; }
+.nge-hl-loader { display: block; border-radius: 12px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(200, 164, 255, 0.25); box-sizing: border-box; }
 .nge-hl-title { font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #9dffc9; }
 .nge-hl-test { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; color: #ffd27a; background: rgba(255, 210, 122, 0.12); }
 .nge-hl-close { margin-left: auto; background: none; border: none; color: rgba(255, 255, 255, 0.55); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }

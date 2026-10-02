@@ -19,7 +19,7 @@
 const UI_ATTR = 'data-nge-fp-ui';
 type Kind = 'working' | 'done' | 'error' | '';
 
-interface Live { raf: number; timer: number; }
+export interface Live { raf: number; timer: number; }
 const live = new Map<HTMLElement, Live>();
 
 /** The line's own text, ignoring anything this module injected. */
@@ -50,9 +50,10 @@ function stop(li: HTMLElement) {
   li.querySelectorAll(`[${UI_ATTR}]`).forEach(e => e.remove());
 }
 
-/** Path-search loader: explorers on a biased random walk from S to T. */
-function startLoader(cv: HTMLCanvasElement, l: Live) {
-  const W = 190, H = 24, dpr = Math.min(2, window.devicePixelRatio || 1);
+/** Path-search loader: explorers on a biased random walk from S to T.
+ *  Exported for Highlight mode's panel, which traces paths the same way. */
+export function startLoader(cv: HTMLCanvasElement, l: Live, W = 190, H = 24) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
   cv.width = W * dpr; cv.height = H * dpr;
   cv.style.width = `${W}px`; cv.style.height = `${H}px`;
   const ctx = cv.getContext('2d');

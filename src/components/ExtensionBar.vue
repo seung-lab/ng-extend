@@ -1725,26 +1725,29 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
 
 /* Cut: the two lower ends pull apart; click snaps them wide and back. */
-/* Highlight mode's spray can: a small shake on hover; on click the three
-   dots spray out from the nozzle and fade. */
-#extensionBar [data-icon-id="highlight"] .nge-can { transform-box: view-box; transform-origin: 8.8px 10.6px; }
-#extensionBar [data-icon-id="highlight"] .nge-can-spray circle { opacity: 0.6; }
-#extensionBar [data-icon-id="highlight"]:hover .nge-can { animation: nge-can-shake 0.5s ease-in-out infinite; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can { animation: nge-can-press 0.6s ease-out; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle { animation: nge-can-spray 0.6s ease-out both; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(1) { --sx: -4.5px; --sy: -0.4px; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(2) { --sx: -5px; --sy: -2.6px; animation-delay: 0.05s; }
-#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(3) { --sx: -4.6px; --sy: 2.4px; animation-delay: 0.1s; }
+/* Highlight mode's spray can: a shake on hover; on click five dots spray
+   out from the nozzle and fade. */
+#extensionBar [data-icon-id="highlight"] .nge-can { transform-box: view-box; transform-origin: 9px 10.5px; }
+#extensionBar [data-icon-id="highlight"] .nge-can-spray circle { opacity: 0.6; transform-box: fill-box; transform-origin: center; }
+#extensionBar [data-icon-id="highlight"] .nge-can-spray circle:nth-child(n+4) { opacity: 0; }
+#extensionBar [data-icon-id="highlight"]:hover .nge-can { animation: nge-can-shake 0.36s ease-in-out infinite; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can { animation: nge-can-press 0.75s ease-out; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle { animation: nge-can-spray 0.75s ease-out both; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(1) { --sx: -6px; --sy: -0.4px; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(2) { --sx: -6.5px; --sy: -3.4px; animation-delay: 0.04s; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(3) { --sx: -6.2px; --sy: 3.2px; animation-delay: 0.08s; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(4) { --sx: -8.5px; --sy: -1.8px; animation-delay: 0.12s; }
+#extensionBar [data-icon-id="highlight"].nge-spraying .nge-can-spray circle:nth-child(5) { --sx: -8px; --sy: 1.6px; animation-delay: 0.16s; }
 @keyframes nge-can-shake {
-  0%, 100% { transform: rotate(-3deg); }
-  50% { transform: rotate(3deg); }
+  0%, 100% { transform: rotate(-6deg) translateY(0); }
+  50% { transform: rotate(6deg) translateY(-0.4px); }
 }
 @keyframes nge-can-press { 0%, 100% { transform: translateY(0); } 15%, 55% { transform: translateY(0.6px); } }
 /* Each dot starts at the nozzle and flies out along its own direction. */
 @keyframes nge-can-spray {
-  0% { transform: translate(1.6px, 0); opacity: 0; }
+  0% { transform: translate(1.6px, 0) scale(0.6); opacity: 0; }
   15% { opacity: 1; }
-  100% { transform: translate(var(--sx), var(--sy)); opacity: 0; }
+  100% { transform: translate(var(--sx), var(--sy)) scale(1.5); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   #extensionBar [data-icon-id="highlight"] .nge-can, #extensionBar [data-icon-id="highlight"] .nge-can-spray circle { animation: none !important; }
