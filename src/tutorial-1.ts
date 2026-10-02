@@ -1,4 +1,5 @@
 import { Step, useTutorialStore } from "./store-pyr";
+import { ngePointScale } from "neuroglancer/annotation/point";
 // The saved views name this neuron by its OLD root ids on purpose: they
 // still show it as it was before the continuation was merged in (March
 // 2026) and edited since. Swapping in its current id showed that merge
@@ -31,6 +32,32 @@ function setAnnotationColor(color: string) {
     }
   }
 }
+
+/**
+ * Bigger annotation points while a step that asks the learner to find one is
+ * up (Ames, 2026-10-02: the yellow hint was two tiny dots). Uses the same
+ * local multiplier as Settings' "Annotation point size", never below the
+ * learner's own, and puts theirs back when the step is left.
+ */
+const TUTORIAL_POINT_SCALE = 3;
+let pointScaleTimer: ReturnType<typeof setInterval> | null = null;
+function bigPoints() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const redraw = () => { try { getViewer()?.display?.scheduleRedraw(); } catch { /* no viewer */ } };
+  if (pointScaleTimer) clearInterval(pointScaleTimer);
+  else bigPoints.before = ngePointScale.value;
+  ngePointScale.value = Math.max(bigPoints.before, TUTORIAL_POINT_SCALE);
+  redraw();
+  pointScaleTimer = setInterval(() => {
+    if (store.activeTutorial === tutorial && store.getTutorialStep() === step) return;
+    clearInterval(pointScaleTimer!);
+    pointScaleTimer = null;
+    ngePointScale.value = bigPoints.before;
+    redraw();
+  }, 300);
+}
+bigPoints.before = 1;
 
 /** Remove a segment from the first segmentation layer.
  *  The visible set lives in segmentationGroupState in this neuroglancer;
@@ -327,7 +354,7 @@ Don't worry if you can't find it - the Next button will take you there.`,
       imgInspectorNurro,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
-    onEnter: () => { setAnnotationColor('#edd040'); },
+    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); },
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
@@ -341,7 +368,7 @@ It missed a branch. Let's see if we can find it.`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
     width: "200px",
-    onEnter: () => { setAnnotationColor('#edd040'); },
+    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); },
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
@@ -408,7 +435,7 @@ Hit next to reveal the answer.`,
     position: MIDDLE,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5250067188416512",
-    onEnter: advanceWhenSegmentAdded,
+    onEnter: () => { bigPoints(); advanceWhenSegmentAdded(); },
   },
   //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
   {
