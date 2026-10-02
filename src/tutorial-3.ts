@@ -236,7 +236,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
         document.dispatchEvent(new CustomEvent('nge:tutorial-next'));
         return;
       }
-      practiceStatus(finished + ' If a black box appears where the pieces meet, the new mesh is still being built: click the Pyr logo top left to refresh, your place here is saved.', true);
+      practiceStatus(finished + ' If a black box appears where the pieces meet, the new mesh is still being built.', true);
       if (!celebrated) { celebrated = true; document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); }
       return;
     }
@@ -263,7 +263,7 @@ export function celebrateStep() {
   document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
 }
 
-export const BLACK_BOX_NOTE = 'If a black box appears where the pieces meet, the new mesh is still being built: click the Pyr logo top left to refresh. Your place in the tutorial is saved.';
+export const BLACK_BOX_NOTE = 'If a black box appears where the pieces meet, the new mesh is still being built.';
 
 /** A step that only asks for the tool to be switched on: the status line
  *  flips when it is. No help button on such a step (Amy). */
