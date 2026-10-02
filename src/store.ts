@@ -913,6 +913,8 @@ export interface UserPreferences {
   annotationGems?: boolean;
   /** Show Source and Rendering tabs on annotation layers. Defaults to false. */
   showAnnotationSetupTabs?: boolean;
+  /** Show Source and Graph tabs on segmentation layers. Defaults to false. */
+  showSegSetupTabs?: boolean;
   /** Switch datasets without the curated view or starter cells (faster). */
   datasetBareSwitch?: boolean;
   /** Segmentation layer name -> the player's own share link to open there. */

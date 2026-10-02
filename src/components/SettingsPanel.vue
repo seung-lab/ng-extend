@@ -39,6 +39,7 @@ const draftAnnotationSize = ref(1);
 const savedAnnotationSize = ref(1);
 const draftAnnotationGems = ref(true);
 const draftAnnotationSetupTabs = ref(false);
+const draftSegSetupTabs = ref(false);
 function previewAnnotationSize() {
   ngePointScale.value = draftAnnotationSize.value;
   try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
@@ -92,6 +93,7 @@ onMounted(() => {
   draftAnnotationSize.value = savedAnnotationSize.value = ngePointScale.value;
   draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
   draftAnnotationSetupTabs.value = prefsStore.prefs.showAnnotationSetupTabs === true;
+  draftSegSetupTabs.value = prefsStore.prefs.showSegSetupTabs === true;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
   draftBareSwitch.value = !!prefsStore.prefs.datasetBareSwitch;
   draftStartViews.value = { ...(prefsStore.prefs.datasetStartViews || {}) };
@@ -111,7 +113,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
   });
   // Apply the ambient tag layer change immediately.
@@ -434,6 +436,10 @@ const props = defineProps<{ embedded?: boolean }>();
               <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
               <button class="nge-settings-advanced-btn" @click="toggleSelectionDetails">◫ Selection Details</button>
             </div>
+            <label class="nge-settings-toggle" style="margin-top: 10px;" title="Segmentation layers open on Seg. Turn this on to also see their Source and Graph tabs. Takes effect when the page reloads.">
+              <input type="checkbox" v-model="draftSegSetupTabs" />
+              <span class="nge-settings-toggle-label">Show Source and Graph tabs on segmentation layers</span>
+            </label>
 
             <!-- Logins management -->
             <div v-if="loginStore.sessions.length > 0" style="margin-top: 10px;">

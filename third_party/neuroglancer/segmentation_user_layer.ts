@@ -90,6 +90,12 @@ const ANCHOR_SEGMENT_JSON_KEY = 'anchorSegment';
 
 export const SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID = 'skeletonShaderControl';
 
+
+/** Settings > "Show Source and Graph tabs on segmentation layers" (off). */
+function ngeShowSegSetupTabs(): boolean {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').showSegSetupTabs === true; } catch { return false; }
+}
+
 export class SegmentationUserLayerGroupState extends RefCounted implements SegmentationGroupState {
   specificationChanged = new Signal();
   constructor(public layer: SegmentationUserLayer) {
@@ -464,12 +470,19 @@ export class SegmentationUserLayer extends Base {
         'rendering', {label: 'Render', order: -100, getter: () => new DisplayOptionsTab(this)});
     this.tabs.add(
         'segments', {label: 'Seg.', order: -50, getter: () => new SegmentDisplayTab(this)});
+    // EyeWire II (Ames 2026-10-02): a segmentation layer opens on Seg., with
+    // Source and Graph tucked away; Settings can show them again. (Split,
+    // Merge and Find Path are on the toolbar, not only in the Graph tab.)
+    const showSetupTabs = ngeShowSegSetupTabs();
     const hideGraphTab = this.registerDisposer(makeCachedDerivedWatchableValue(
-      x => x === undefined,
+      x => x === undefined || !showSetupTabs,
       [this.displayState.segmentationGroupState.value.graph]));
     this.tabs.add(
         'graph', {label: 'Graph', order: -25, getter: () => new SegmentationGraphSourceTab(this), hidden: hideGraphTab});
-    this.tabs.default = 'rendering';
+    const sourceTab = this.tabs.options.get('source');
+    // A real watchable: the side panel subscribes to its `changed` signal.
+    if (sourceTab) sourceTab.hidden = new WatchableValue<boolean>(!showSetupTabs);
+    this.tabs.default = 'segments';
   }
 
   get volumeOptions() {

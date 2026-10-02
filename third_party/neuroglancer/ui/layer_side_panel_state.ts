@@ -94,7 +94,12 @@ export class UserLayerSidePanelState extends RefCounted {
     const {selectedTab} = this;
     const selectedTabValue = selectedTab.value;
     if (selectedTabValue === undefined || !tabs.includes(selectedTabValue)) {
-      selectedTab.value = tabs[0];
+      // EyeWire II (Ames 2026-10-02): segmentation and annotation layers open
+      // on their own default tab (Seg., Annotations), not whichever sorts
+      // first (Source). Other layer types keep the stock behaviour.
+      const type = (this.layer.constructor as any).type;
+      const preferred = type === 'segmentation' || type === 'annotation' ? this.layer.tabs.default : undefined;
+      selectedTab.value = preferred !== undefined && tabs.includes(preferred) ? preferred : tabs[0];
     }
   }
 
