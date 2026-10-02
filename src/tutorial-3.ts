@@ -11,7 +11,10 @@ import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
 import { beginPractice, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
+import { useSplitMergeOverlayStore } from './store';
+import { watch } from 'vue';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
+import { drawSearchLine } from './tutorial_pointer';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
 import { responseJson } from 'neuroglancer/util/http_request';
 import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/util/special_protocol_request';
@@ -213,8 +216,66 @@ export function labelPart() {
   document.querySelectorAll('.nge-practice-part').forEach(el => { if (el.textContent !== part) el.textContent = part; });
 }
 
+/**
+ * The last failed edit (Ames, 2026-10-02: "what is the error state if the
+ * cut doesn't work?"). The tool bar flashes the server's message for a few
+ * seconds; the tutorial box used to keep saying "waiting". It now repeats
+ * the reason and what to try, for half a minute.
+ */
+let lastEditError: { text: string; at: number } | null = null;
+let editErrorWatched = false;
+function watchEditErrors() {
+  if (editErrorWatched) return;
+  editErrorWatched = true;
+  const store = useSplitMergeOverlayStore();
+  watch(() => [store.resultFlash, store.resultText] as const, ([flash, text]) => {
+    if (flash === 'error') lastEditError = { text: String(text || 'the server refused it'), at: Date.now() };
+    else if (flash === 'success') lastEditError = null;
+  });
+}
+function recentEditError(): string | null {
+  return lastEditError && Date.now() - lastEditError.at < 30000 ? lastEditError.text : null;
+}
+
+/**
+ * For the harder Cut tutorial to come (Ames, 2026-10-02): a step that asks
+ * the learner to run Find Path between two points, to find where a merger
+ * starts. neuroglancer reports the search as plain status lines
+ * (find_path_status.ts restyles them); this reads the same lines.
+ * `advance` moves on once a path is found.
+ */
+export function watchFindPath(waiting: string, found: string, opts: { advance?: boolean } = {}) {
+  const token = ++practiceWatch;
+  helpWanted = true;
+  const state = (): 'working' | 'done' | 'error' | '' => {
+    for (const li of Array.from(document.querySelectorAll('#statusContainer li'))) {
+      const t = (li.textContent ?? '').trim();
+      if (t.includes('Path finding failed')) return 'error';
+      if (t.includes('Path found')) return 'done';
+      if (t.includes('Finding path between') || t.includes('Tracing path')) return 'working';
+    }
+    return document.body.classList.contains('nge-fp-busy') ? 'working' : '';
+  };
+  const tick = () => {
+    if (token !== practiceWatch) return;
+    const s = state();
+    if (s === 'done') {
+      if (opts.advance) { practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
+      practiceStatus(found, true);
+      return;
+    }
+    practiceStatus(s === 'working' ? 'Tracing the path…'
+      : s === 'error' ? 'That search did not find a path. Alt+click one point on each cell, on the same segment, and try again.'
+      : waiting);
+    setTimeout(tick, 700);
+  };
+  setTimeout(tick, 400);
+}
+
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
   const token = ++practiceWatch;
+  watchEditErrors();
+  lastEditError = null;
   helpWanted = true;
   let celebrated = false;
   const tick = async () => {
@@ -235,13 +296,19 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
         document.dispatchEvent(new CustomEvent('nge:tutorial-next'));
         return;
       }
-      practiceStatus(finished + ' If a black box appears where the pieces meet, the new mesh is still being built: click the Pyr logo top left to refresh, your place here is saved.', true);
+      practiceStatus(finished + ' If a black box appears where the pieces meet, the new mesh is still being built.', true);
       if (!celebrated) { celebrated = true; document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); }
       return;
     }
-    practiceStatus(waiting);
+    const failed = recentEditError();
+    practiceStatus(failed
+      ? `That ${wantMerged ? 'merge' : 'cut'} didn't go through. The server said: "${failed}". `
+        + (wantMerged
+          ? 'Ctrl+click once on each of the two pieces, then submit again.'
+          : 'Keep every point on the one fused segment, red on one side of the join and blue on the other, then submit again. Clear on the bar starts over.')
+      : waiting);
     if (wantMerged) offerPlacePoints();
-    setTimeout(tick, 3000);
+    setTimeout(tick, failed ? 1500 : 3000);
   };
   setTimeout(tick, 600);
 }
@@ -262,7 +329,7 @@ export function celebrateStep() {
   document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
 }
 
-export const BLACK_BOX_NOTE = 'If a black box appears where the pieces meet, the new mesh is still being built: click the Pyr logo top left to refresh. Your place in the tutorial is saved.';
+export const BLACK_BOX_NOTE = 'If a black box appears where the pieces meet, the new mesh is still being built.';
 
 /** A step that only asks for the tool to be switched on: the status line
  *  flips when it is. No help button on such a step (Amy). */
@@ -336,13 +403,59 @@ document.addEventListener('nge:tutorial-layer-note', () => {
   if (!chip) return;
   if (!chip.querySelector('.nge-practice-layer-note')) {
     const note = notePanel('nge-practice-layer-note',
-      'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, the one named after the dataset, next to <b>img</b>. '
+      'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, named <b>3D segmentation</b>, next to <b>2D EM Images</b>. '
       + 'Press <kbd>2</kbd>, or right-click that chip, to select it. Tools like merge and cut only work on the selected layer.');
     chip.appendChild(note);
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
   }
   document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer'));
+  // And a search line from the (i) to the chip (Ames, 2026-10-02).
+  const info = document.querySelector('.introductionStepAnchor .nge-tut-info');
+  const target = segLayerChip();
+  if (info && target) {
+    const a = info.getBoundingClientRect(), b = target.getBoundingClientRect();
+    drawSearchLine({ x: a.left + a.width / 2, y: a.top + a.height / 2 }, { x: b.left + b.width / 2, y: b.bottom - 2 });
+  }
 });
+
+function segLayerChip(): HTMLElement | undefined {
+  const layers: any[] = getViewer()?.layerManager?.managedLayers ?? [];
+  const seg = layers.find(ml => (ml.layer?.constructor?.name ?? '').includes('Segmentation'));
+  const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
+  return (seg ? chips.find(c => (c.textContent ?? '').includes(seg.name)) : undefined) ?? chips[Math.max(0, layers.indexOf(seg))];
+}
+
+/**
+ * Friendlier layer names while the Merge or Cut tutorial is up (Ames,
+ * 2026-10-02): "2D EM Images" for img, "3D segmentation" for the dataset
+ * layer. Display only: the layers keep their real names, which the app uses
+ * to tell which dataset it is in. The real name stays in the chip's text
+ * (hidden), a data attribute carries the shown one.
+ */
+function friendlyLayerNames() {
+  const on = [3, 5].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
+  document.body.classList.toggle('nge-friendly-layers', on);
+  if (!on) return;
+  if (!document.getElementById('nge-friendly-layers-style')) {
+    const st = document.createElement('style');
+    st.id = 'nge-friendly-layers-style';
+    st.textContent = `
+      body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label] { font-size: 0 !important; }
+      body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after { content: attr(data-nge-label); font-size: 12px; }`;
+    document.head.appendChild(st);
+  }
+  const layers: any[] = getViewer()?.layerManager?.managedLayers ?? [];
+  const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
+  for (const ml of layers) {
+    const kind = ml.layer?.constructor?.name ?? '';
+    const name = kind.includes('Segmentation') ? '3D segmentation' : kind.includes('Image') ? '2D EM Images' : '';
+    const label = chips.find(c => (c.querySelector('.neuroglancer-layer-item-label')?.textContent ?? '') === ml.name)
+      ?.querySelector('.neuroglancer-layer-item-label') as HTMLElement | null | undefined;
+    if (!label) continue;
+    if (name) label.dataset.ngeLabel = name; else delete label.dataset.ngeLabel;
+  }
+}
+setInterval(() => { try { friendlyLayerNames(); } catch { /* store not ready yet */ } }, 1000);
 
 document.addEventListener('nge:tutorial-flash-seg-layer', () => {
   const viewer = getViewer();
@@ -624,7 +737,7 @@ A <strong style="color:#60c060">merge</strong> joins two separate segments that 
   {
     title: "What a merge fixes",
     text: `
-This is an example. The yellow branch belongs to the purple cell, but the AI left it as its own segment. You will fix it in a moment.`,
+This is an example. The yellow branch belongs to the purple cell, but the AI left it as its own segment. We will fix it in a moment.`,
     position: MIDDLE,
     width: "560px",
     image: imgMergeExample,
@@ -668,7 +781,7 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     text: `
 With merge mode on:
 
-1. **Ctrl+Click** the yellow piece.
+1. **Ctrl+Click** the yellow piece. You can click in the 2D or the 3D view.
 2. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 3. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
@@ -707,7 +820,7 @@ Press next to keep going.`,
 Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` behind this box lost the yellow piece; the AI left it as its own segment.
 
 1. Press **M** if the merge tool is off.
-2. **Ctrl+Click** the yellow piece.
+2. **Ctrl+Click** the yellow piece, in 2D or 3D.
 3. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 

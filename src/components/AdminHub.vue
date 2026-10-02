@@ -8,7 +8,7 @@ import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
-import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, type PracticeExample, type PracticeKind} from '../practice';
+import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxelOf, type PracticeExample, type PracticeKind} from '../practice';
 
 const backend = useProofreadingBackendStore();
 
@@ -1016,10 +1016,32 @@ const practicePicking = ref(false);
 function startPicking() {
   practicePicking.value = true;
   document.body.classList.add('nge-practice-picking');
+  window.addEventListener('keydown', onPickKey, true);
 }
 function stopPicking() {
   practicePicking.value = false;
   document.body.classList.remove('nge-practice-picking');
+  window.removeEventListener('keydown', onPickKey, true);
+}
+/** While picking, the A and B keys take the spot under the mouse (Ames,
+ *  2026-10-02: moving to a button changed what was hovered). Capture phase,
+ *  so the viewer's own bindings for those keys do not fire. */
+function onPickKey(e: KeyboardEvent) {
+  const t = e.target as HTMLElement | null;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const which = e.code === 'KeyA' ? 'a' : e.code === 'KeyB' ? 'b' : null;
+  if (!which) return;
+  e.preventDefault(); e.stopPropagation();
+  sampleHover();
+  usePracticeHover(which);
+}
+/** A pick as its coordinates: on a fused cell A and B share one segment id,
+ *  so the id says nothing about which side each is on. */
+function pickLabel(p: { sv: string; root: string; pos?: number[] } | null): string {
+  if (!p) return '…';
+  const at = p.pos ? p.pos.map(v => Math.round(v)).join(', ') : 'segment ' + p.root;
+  return p.sv ? at : at + ' (not exact, hover it in 2D)';
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -1035,7 +1057,12 @@ function sampleHover() {
       // merge points for me" in the tutorial.
       const p = viewer?.mouseState?.position;
       const pos = p && p.length >= 3 ? [p[0], p[1], p[2]].map((v: number) => Math.round(v * 100) / 100) : undefined;
-      if (sv && root && sv !== '0') { practiceHover.value = { sv, root, pos }; return; }
+      // Only the 2D view gives a supervoxel. Over the 3D shape the "base"
+      // value is the segment itself (ids carry their layer in the top byte,
+      // supervoxels are layer 1), and a cell registered with it could never
+      // be checked or reset (the "Test cell" of 2026-09-28).
+      const isSv = !!sv && sv !== '0' && Math.floor(Number(sv) / 2 ** 56) === 1;
+      if (root && root !== '0') { practiceHover.value = { sv: isSv ? sv : '', root, pos }; return; }
     }
   } catch { /* viewer not ready */ }
 }
@@ -1081,6 +1108,12 @@ async function registerPractice() {
   const a = practiceA.value, b = practiceB.value;
   if (!a || !b) { practiceError.value = 'Pick both pieces first.'; return; }
   if (a.sv && a.sv === b.sv) { practiceError.value = 'A and B are the same spot. Hover two different places.'; return; }
+  if (a.pos && b.pos && a.pos.join() === b.pos.join()) { practiceError.value = 'A and B are the same point. Hover two different places.'; return; }
+  // A cut example needs a spot on each side of the join, so both have to
+  // come from the 2D view. A merge example can be completed from its roots.
+  if (practiceKind.value === 'cut' && a.root === b.root && (!a.sv || !b.sv)) {
+    practiceError.value = 'For a cut example, hover each side of the join in the 2D view (the black and white images), not on the 3D shape.'; return;
+  }
   if (a.root === b.root && practiceKind.value === 'cut' && !a.sv) { practiceError.value = 'For a cut example typed in by id, give the two root ids as they are after the cut; the cell is then merged back and both pieces are known.'; return; }
   if (practiceKind.value === 'merge_then_cut' && a.root === b.root) { practiceError.value = 'A and B are on the same root. For a merge example, the piece must start disconnected.'; return; }
   if (practiceKind.value === 'cut' && a.root !== b.root) { practiceError.value = 'A and B are on different roots. For a cut example, hover two spots on the fused segment, one each side of the join.'; return; }
@@ -1088,6 +1121,21 @@ async function registerPractice() {
   if (!pcg) { practiceError.value = 'No graphene segmentation layer in the viewer.'; return; }
   practiceSaving.value = true;
   try {
+    // Pieces picked on the 3D shape or typed in by id: find a supervoxel in each.
+    const where = { pcg_server: pcg.server, pcg_table: pcg.table };
+    if (!a.sv) a.sv = await anySupervoxelOf(where, a.root);
+    if (!b.sv) b.sv = await anySupervoxelOf(where, b.root);
+    if (a.sv === b.sv) throw new Error('Could not tell the two pieces apart. Hover each one in the 2D view.');
+    // Cells on one neuron reset each other unless they share a starting
+    // point (2026-09-29), so say so before it is registered.
+    const rootsNow = new Set([await rootOfSupervoxel(where, a.sv), await rootOfSupervoxel(where, b.sv)].filter(Boolean));
+    for (const other of practiceRows.value) {
+      if (!other.enabled || other.pcg_table !== pcg.table || !other.supervoxel_a) continue;
+      const r = await rootOfSupervoxel(other, other.supervoxel_a);
+      if (r && rootsNow.has(r) && !window.confirm(`This is on the same neuron as "${other.title}". Cells on one neuron need one shared starting point, or their resets undo each other. Register anyway? (Then ask Claude to give them a shared starting point before anyone uses them.)`)) {
+        throw new Error('Not registered.');
+      }
+    }
     const link = await mintShortStateLink();
     if (!link) throw new Error('Could not save the current view as a state link.');
     const stateUrl = link.slice(link.indexOf('#!') + 2);
@@ -1479,9 +1527,9 @@ function practiceWhen(iso: string | null) {
     <div v-if="adminSubTab === 'practice'" class="nge-admin-section">
       <div class="nge-admin-block">
         <label class="nge-admin-label">Register a practice cell from the current view</label>
-        <p class="nge-admin-hint">Open the sandbox view learners should start from. Hover one piece in the viewer, come back and press A. Hover the other, press B. The view is saved as the start state.</p>
+        <p class="nge-admin-hint">Open the sandbox view learners should start from. Press "Pick A and B in the viewer", hover a spot in the 2D view (the black and white images) and press the A key, then hover the second spot and press the B key. The coordinates are what is recorded, and they stay valid after every cut and merge. The view is saved as the start state.</p>
         <div class="nge-admin-row">
-          <label class="nge-practice-kind"><input type="radio" value="cut" v-model="practiceKind" /> Cut example: A and B are wrongly fused, the learner cuts them apart (hover each side of the join)</label>
+          <label class="nge-practice-kind"><input type="radio" value="cut" v-model="practiceKind" /> Cut example: leave the cell fused. A and B are two spots on it, one on each side of where the cut should go</label>
           <label class="nge-practice-kind"><input type="radio" value="merge_then_cut" v-model="practiceKind" /> Merge example: B is wrongly disconnected from A, the learner merges it back</label>
         </div>
         <div class="nge-admin-row">
@@ -1491,16 +1539,15 @@ function practiceWhen(iso: string | null) {
         <Teleport to="body">
           <div v-if="practicePicking" class="nge-practice-picker">
             <span class="nge-practice-picker-label">Practice cell</span>
-            <span class="nge-practice-hover">Hovered: <code>{{ practiceHover ? practiceHover.root : 'move over a segment' }}</code></span>
-            <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('a')">Use as A</button>
-            <button class="nge-admin-action-btn" :disabled="!practiceHover" @click="usePracticeHover('b')">Use as B</button>
-            <span class="nge-practice-picks">A: <code>{{ practiceA ? practiceA.root : '…' }}</code> B: <code>{{ practiceB ? practiceB.root : '…' }}</code></span>
+            <span class="nge-practice-hover">Hovered: <code>{{ practiceHover ? practiceHover.root : 'move over a segment' }}</code><span v-if="practiceHover && !practiceHover.sv"> (hover it in 2D for the exact spot)</span></span>
+            <span class="nge-practice-hover">Hover a spot in 2D and press the <b>A</b> key. Hover the other side and press <b>B</b>.</span>
+            <span class="nge-practice-picks">A: <code>{{ pickLabel(practiceA) }}</code> B: <code>{{ pickLabel(practiceB) }}</code></span>
             <button class="nge-admin-primary-btn" @click="stopPicking">Back to Admin Hub</button>
           </div>
         </Teleport>
         <div class="nge-admin-row nge-practice-picks">
-          <span>A: <code>{{ practiceA ? practiceA.root : '…' }}</code></span>
-          <span>B: <code>{{ practiceB ? practiceB.root : '…' }}</code></span>
+          <span>A: <code>{{ pickLabel(practiceA) }}</code></span>
+          <span>B: <code>{{ pickLabel(practiceB) }}</code></span>
         </div>
         <div class="nge-admin-row">
           <span class="nge-admin-hint">Or type root ids:</span>

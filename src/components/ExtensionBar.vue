@@ -1021,7 +1021,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li class="nge-menu-heading" @click.stop>Tutorials</li>
         <li>
           <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 1; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">1</span><span>Getting Started</span>
+            <span class="nge-menu-num">1</span><span>Get Started</span>
           </div>
         </li>
         <li>
