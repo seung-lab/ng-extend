@@ -1015,7 +1015,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                    count can run to many thousands, which this tile has room for. -->
               <div class="nge-profile-stat-col nge-profile-stat-tile" title="Points, lines and boxes you placed in annotation layers, on every dataset">
                 <div class="nge-profile-stat-label">Annotations</div>
-                <div class="nge-profile-stat-val" style="color: #7fd6ff;"><RollUp :value="annotationsPlaced" /></div>
+                <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
               </div>
             </div>
 
@@ -1036,7 +1036,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </div>
               <div class="nge-profile-stat-col" title="Cells where you helped answer another player's request">
                 <div class="nge-profile-stat-label">Assists</div>
-                <div class="nge-profile-stat-val" style="color: #7f8;">{{ playerAssists }}</div>
+                <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
               </div>
             </div>
 
