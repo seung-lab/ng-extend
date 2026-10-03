@@ -27,6 +27,7 @@ import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
+import StreakChip from "components/StreakChip.vue";
 import UsernamePrompt from "components/UsernamePrompt.vue";
 import MobileWelcome from "components/MobileWelcome.vue";
 import MobileTour from "components/MobileTour.vue";
@@ -965,17 +966,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     </transition>
     <screenshot-dialog :show="showScreenshotDialog" @close="showScreenshotDialog = false" />
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
-    <div v-if="login.sessions.length > 0 && stats.currentStreak > 0"
-         class="nge-streak-chip" tabindex="0" :aria-label="`Editing streak: ${stats.currentStreak} days`">
-      <span class="nge-streak-chip-flame">🔥</span>&nbsp;<span class="nge-streak-chip-count">{{ stats.currentStreak }}</span>
-      <!-- Styled hover card (Ames 2026-09-28: "what it be do"). -->
-      <div class="nge-streak-tip" role="tooltip">
-        <div class="nge-streak-tip-title">🔥 {{ stats.currentStreak }}-day editing streak</div>
-        <div class="nge-streak-tip-body">You've made at least one edit {{ stats.currentStreak === 1 ? 'today' : `${stats.currentStreak} days in a row` }}. Edit tomorrow to keep the flame going.</div>
-        <div v-if="stats.longestStreak > stats.currentStreak" class="nge-streak-tip-best">Your best: {{ stats.longestStreak }} days</div>
-        <div v-else-if="stats.currentStreak > 1" class="nge-streak-tip-best">This is your best streak yet! 🏆</div>
-      </div>
-    </div>
+    <!-- 🔥 streak: its fire, its click and its card live in StreakChip.vue -->
+    <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">
@@ -1419,45 +1411,6 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 .nge-share-toast-leave-active { transition: opacity 0.32s ease-in, transform 0.32s ease-in; }
 .nge-share-toast-enter-from { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.94); }
 .nge-share-toast-leave-to   { opacity: 0; transform: translateX(-50%) translateY(-4px) scale(0.97); }
-
-.nge-streak-chip {
-  position: relative;
-  display: flex;
-  align-items: center;
-  height: 100%;
-  padding: 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #f5a623;
-  white-space: nowrap;
-  cursor: default;
-  user-select: none;
-}
-.nge-streak-tip {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  width: 230px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(10, 14, 26, 0.97);
-  border: 1px solid rgba(245, 166, 35, 0.4);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(245, 166, 35, 0.12);
-  color: #d8e2f0;
-  font-weight: 400;
-  font-size: 12.5px;
-  line-height: 1.45;
-  white-space: normal;
-  opacity: 0;
-  transform: translateY(-4px);
-  pointer-events: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  z-index: 10000;
-}
-.nge-streak-chip:hover .nge-streak-tip,
-.nge-streak-chip:focus-visible .nge-streak-tip { opacity: 1; transform: translateY(0); }
-.nge-streak-tip-title { font-weight: 700; font-size: 13px; color: #ffc46b; margin-bottom: 4px; }
-.nge-streak-tip-best { margin-top: 6px; font-size: 11.5px; color: #9fb3cc; }
 
 /* ── Dataset button: borderless to match the toolbar SVG icons.
    Same gentle hover wash as .nge-icon-btn. ── */
@@ -1955,16 +1908,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-knob-a { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1.6px); } }
 @keyframes nge-ti-knob-b { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.6px); } }
 
-/* 🔥 streak: the flame flickers on hover. */
-/* inline-block: transforms (the flicker) do nothing on a plain inline span.
-   Only the 🔥 flickers; the count and the tooltip stay still (Amy 2026-09-30). */
-.nge-streak-chip-flame { display: inline-block; transform-origin: 50% 90%; }
-.nge-streak-chip:hover .nge-streak-chip-flame { animation: nge-ti-flame 0.5s ease-in-out infinite alternate; }
-@keyframes nge-ti-flame { from { transform: scale(1) rotate(-3deg); filter: brightness(1); } to { transform: scale(1.06) rotate(3deg); filter: brightness(1.25); } }
-
 @media (prefers-reduced-motion: reduce) {
   #extensionBar .nge-icon-btn *, #extensionBar .nge-icon-btn::before, #extensionBar .nge-icon-btn::after,
-  #extensionBar #ngFarRight *, #extensionBar #ngFarRight > .neuroglancer-icon, .nge-streak-chip-flame { animation: none !important; }
+  #extensionBar #ngFarRight *, #extensionBar #ngFarRight > .neuroglancer-icon { animation: none !important; }
 }
 
 /* Burger bounce: on click it hops and its layers pull apart, then stack. */
