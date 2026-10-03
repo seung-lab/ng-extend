@@ -88,3 +88,10 @@ summaries.
   also contains the tooltip. Found in ExtensionBar.vue's `.nge-streak-chip`
   flame hover, which was spinning the `.nge-streak-tip` card with it
   (2026-09-30, streak tooltip fix).
+- Annotation layers the app draws from shared data (Scout tags and pins, AI
+  candidates, shards, heat, proposed split) are named in `useIssueTagStore`
+  and recognised by its `isTagStoreLayer(name)`; any other layer with
+  `localAnnotations` is the player's own (their points and boxes, highlight
+  strokes, script layers). `finishMenuCompletion` only runs for Cell Library
+  cells, so a CAVE only completion does not reach code placed there
+  (2026-10-02, clear markup on complete build, from reading the callers).

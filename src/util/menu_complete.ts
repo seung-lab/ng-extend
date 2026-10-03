@@ -15,7 +15,7 @@
  * else stops the whole completion instead of leaving CAVE and the sheet
  * disagreeing. finishMenuCompletion runs after CAVE succeeds.
  */
-import { useProofreadingBackendStore, useProofreadingQueueStore, type QueueItem, type ProofreadingTask } from '../store';
+import { useIssueTagStore, useProofreadingBackendStore, useProofreadingQueueStore, type QueueItem, type ProofreadingTask } from '../store';
 import { getDatasetCaveConfig } from '../config';
 import { currentDatasetTag } from '../datasets';
 import { ancestorAmong, getRootFromSupervoxel } from '../widgets/pcg_service';
@@ -121,11 +121,28 @@ async function planFromTasks(plan: MenuCompletionPlan) {
   }
 }
 
+/** Empty the player's own local annotation layers (points, lines, boxes,
+ *  highlights) once a cell is complete, since that markup does not apply to
+ *  the next cell. The layers stay; shared ones (Scout tags, AI candidates)
+ *  are left alone, as are layers whose annotations come from a server. */
+export function clearOwnAnnotations() {
+  const issueTags = useIssueTagStore();
+  for (const managed of (window as any)['viewer']?.layerManager?.managedLayers ?? []) {
+    if (managed.archived || issueTags.isTagStoreLayer(managed.name)) continue;
+    try { managed.layer?.localAnnotations?.clear(); } catch (e) {
+      console.warn('[menuComplete] could not clear', managed.name, e);
+    }
+  }
+}
+
 /** For a batch (Batch Processor): the point captured on each cell, and one
  *  view link minted for the whole batch instead of one per cell. */
 export interface FinishOptions {
   point?: [number, number, number];
   link?: string | null;
+  /** Leave the player's markup for the caller to clear (a batch clears it
+   *  once at the end, so a cell that fails keeps its points). */
+  keepMarkup?: boolean;
 }
 
 /** Claim (if needed), complete the claim and write the sheet. Returns a short
@@ -153,6 +170,8 @@ export async function finishMenuCompletion(plan: MenuCompletionPlan, opts: Finis
 
   const link = opts.link !== undefined ? opts.link : await mintShortStateLink();
   await syncCellToSheet('complete', row.segId, undefined, plan.dataset, link || undefined);
+  // After the Final Link has captured it: the markup belonged to this cell.
+  if (!opts.keepMarkup) clearOwnAnnotations();
   await backend.loadTasks(plan.dataset);
   return link
     ? `Written to the sheet${row.index ? ` (${row.index})` : ''}.`
