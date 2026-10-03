@@ -17,21 +17,43 @@ async function sb(path,body) {
 }
 async function row(){const r=(await sb('feedback_triage?id=eq.'+id+'&select=*'))[0];if(!r||r.status!=='approved')throw Error('Triage item is not approved');return r;}
 async function head(ref){return (await gh('git/ref/heads/'+ref)).object.sha;}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// Another deploy of the live site in progress (a push, or another release).
+// Preview builds go to their own versions and do not count.
+async function liveDeployBusy() {
+ const runs=await gh('actions/workflows/on_dev_branch_push.yml/runs?branch='+base+'&per_page=30');
+ return runs.workflow_runs.some(r=>r.status!=='completed'&&!/^Deploy triage-\d+-(build|answer)/.test(r.display_title||''));
+}
 async function deploy(sha,version) {
  if(!SHA.test(sha)||! /^(eyewire-ii-community|triage-[0-9a-f]{8})$/.test(version))throw Error('Invalid deployment target');
- const deploymentId='triage-'+env.GITHUB_RUN_ID+'-'+mode;
- await gh('actions/workflows/on_dev_branch_push.yml/dispatches',{ref:base,inputs:{source_ref:sha,version,deployment_id:deploymentId}});
+ // Wait for a deploy of the live site that is already running, so this one
+ // goes next instead of colliding with it (up to 30 minutes).
+ if(version===base)for(let i=0;i<90&&await liveDeployBusy();i++){if(!i)console.log('Another live deploy is running; waiting for it to finish.');await sleep(20000);}
+ // GitHub keeps one waiting run per deploy group and cancels the older one
+ // when another arrives, so a cancelled deploy is sent again (3 tries).
+ for(let attempt=1;attempt<=3;attempt++) {
+  const deploymentId='triage-'+env.GITHUB_RUN_ID+'-'+mode+(attempt>1?'-'+attempt:'');
+  await gh('actions/workflows/on_dev_branch_push.yml/dispatches',{ref:base,inputs:{source_ref:sha,version,deployment_id:deploymentId}});
+  const result=await waitForDeploy(sha,version,deploymentId);
+  if(result!=='cancelled')return;
+  console.log('Deploy '+deploymentId+' was cancelled by a newer deploy; sending it again.');
+  if(version===base)for(let i=0;i<90&&await liveDeployBusy();i++)await sleep(20000);
+ }
+ throw Error('Deploy was cancelled three times by other deploys');
+}
+async function waitForDeploy(sha,version,deploymentId) {
  // A GITHUB_TOKEN push does not trigger another workflow. Dispatch trusted YAML explicitly.
  for(let i=0;i<150;i++) {
-  await new Promise(r=>setTimeout(r,10000));
+  await sleep(10000);
   const runs=await gh('actions/workflows/on_dev_branch_push.yml/runs?event=workflow_dispatch&branch='+base+'&per_page=30');
   const run=runs.workflow_runs.find(r=>r.display_title==='Deploy '+deploymentId);
   if(!run||run.status!=='completed')continue;
+  if(run.conclusion==='cancelled')return 'cancelled';
   if(run.conclusion!=='success')throw Error('Build/deploy failed: '+run.html_url);
   const url=version===base?'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/':`https://${version}-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/`;
   const response=await fetch(url+'build-commit.txt?run='+env.GITHUB_RUN_ID,{redirect:'error',signal:AbortSignal.timeout(15000),cache:'no-store'});
   if(!response.ok||(await response.text()).trim()!==sha)throw Error('Deployed build does not match the expected commit');
-  return;
+  return 'ok';
  }
  throw Error('Build/deploy timed out');
 }
@@ -89,6 +111,9 @@ async function release() {
   await deploy(reverted.sha,base);out('merge_sha',reverted.sha);out('next','reverted');return;
  }
  if(await head(branch)!==sha)throw Error('Preview branch changed after approval');
+ if(baseNow===sha&&mode==='final') {
+  await deploy(sha,base);out('merge_sha',sha);out('next','deployed');return;
+ }
  if(baseNow!==preview.base_sha) {
   await sb('feedback_triage?id=eq.'+id,{impl_state:'changes_requested',tested_by:null,tested_at:null});
   out('next','stale');console.log('Base changed; rebuilding a new preview for approval.');return;

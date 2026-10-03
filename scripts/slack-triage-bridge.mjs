@@ -592,6 +592,11 @@ function ruleIntent(text, state) {
   const handoff = text.match(/^(?:hand\s*(?:it\s*)?off|reassign|pass)\b.*?<@([A-Z0-9]+)>/i);
   if (handoff && APPROVERS.includes(handoff[1])) return { intent: 'handoff', handoff_to: handoff[1] };
   if (state === 'needs_info') return { intent: 'answer', for_claude: text };
+  // After a failed deploy the tested preview is still there: the exact
+  // command releases it (checked against that preview below), anything
+  // else goes to Claude as before.
+  const failedRelease = state === 'failed' && releaseCommand(text);
+  if (failedRelease && failedRelease.mode !== 'revert') return { intent: { final: 'good', live_test: 'ship_to_test' }[failedRelease.mode], command: failedRelease };
   if (state === 'failed') return /^retry\b/i.test(text) ? { intent: 'retry' } : { intent: 'answer', for_claude: text };
   if (/^note\b\s*:?/i.test(text)) return { intent: 'note', for_claude: text.replace(/^note\b\s*:?\s*/i, '') };
   const command = releaseCommand(text);
