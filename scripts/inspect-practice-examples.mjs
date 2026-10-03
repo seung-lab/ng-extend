@@ -47,3 +47,13 @@ for(const [name,fx] of Object.entries(intro)) {
   if(t.operation_id)console.log(JSON.stringify({intro:name,root,operations:Object.keys(t.operation_id).slice(-15).map(i=>({id:t.operation_id[i],timestamp:t.timestamp[i],is_merge:t.is_merge?.[i],user:t.user_id?.[i],before:t.before_root_ids?.[i],after:t.after_root_ids?.[i]}))}));
  }
 }
+
+// The points people placed for a reviewed cut (red sources, blue sinks), read
+// only: config/practice-inspect-ops.json lists operation ids per table.
+const ops=JSON.parse(fs.readFileSync(new URL('../config/practice-inspect-ops.json',import.meta.url),'utf8'));
+for(const [table,ids] of Object.entries(ops)){
+ if(table!=='pinky_nf_v2')throw Error('Unapproved sandbox');
+ const base='https://minnie.microns-daf.com/segmentation/api/v1/table/'+table;
+ const d=await get(base,'/operation_details?int64_as_str=1&operation_ids='+encodeURIComponent(JSON.stringify(ids)));
+ for(const [id,v] of Object.entries(d))console.log(JSON.stringify({op:id,source_coords:v.source_coords,sink_coords:v.sink_coords,source_ids:v.source_ids,sink_ids:v.sink_ids}));
+}
