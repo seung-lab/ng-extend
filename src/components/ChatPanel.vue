@@ -734,7 +734,7 @@ function toggleCollapse() {
         <button class="nge-chat-strip-btn nge-chat-bell-btn" :class="{ 'nge-chat-bell-btn--on': chatStore.mentionNotify }"
                 @click.stop="chatStore.setMentionNotify(!chatStore.mentionNotify)"
                 :title="chatStore.mentionNotify ? 'Chat notifications are on: new messages notify you while EyeWire is in the background (click to turn off)' : 'Turn on browser notifications for new chat messages while EyeWire is in the background'">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
             <path d="M13.73 21a2 2 0 0 1-3.46 0" />
             <line v-if="!chatStore.mentionNotify" x1="3" y1="3" x2="21" y2="21" />
@@ -927,7 +927,7 @@ function toggleCollapse() {
           <div class="nge-chat-input-row">
             <span class="nge-chat-share">
               <button class="nge-chat-share-btn" :disabled="!isLoggedIn || !connected || sharing"
-                      @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat"><template v-if="sharing">…</template><svg v-else class="nge-chat-share-pin" viewBox="0 0 16 16" width="20" height="20" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M8 15.4S2.6 10.5 2.6 6.3a5.4 5.4 0 0 1 10.8 0C13.4 10.5 8 15.4 8 15.4zM8 8.4a2.1 2.1 0 1 0 0-4.2 2.1 2.1 0 0 0 0 4.2z"/></svg></button>
+                      @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat"><template v-if="sharing">…</template><svg v-else class="nge-chat-share-pin" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M8 15.4S2.6 10.5 2.6 6.3a5.4 5.4 0 0 1 10.8 0C13.4 10.5 8 15.4 8 15.4zM8 8.4a2.1 2.1 0 1 0 0-4.2 2.1 2.1 0 0 0 0 4.2z"/></svg></button>
               <span v-if="shareMenuOpen" class="nge-chat-share-menu">
                 <button @click="shareView(false)">📍 Share my view</button>
                 <button @click="shareView(true)">📷 Share view + screenshot</button>
@@ -1623,8 +1623,10 @@ function toggleCollapse() {
 .nge-chat-history-btn:disabled { opacity: 0.6; cursor: default; }
 
 /* ── Mention bell ── */
-.nge-chat-bell-btn { display: inline-flex; align-items: center; padding: 2px 4px; opacity: 0.5; }
-.nge-chat-bell-btn--on { opacity: 1; filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.55)); }
+/* Same quiet grey as the other header buttons (Ames 2026-10-02: too bright);
+   on is a touch lighter, never a white glow. */
+.nge-chat-bell-btn { display: inline-flex; align-items: center; padding: 2px 4px; }
+.nge-chat-bell-btn--on { color: #8797ad; }
 
 /* ── @ autocomplete ── */
 .nge-chat-input-wrap { position: relative; }
@@ -1664,7 +1666,9 @@ function toggleCollapse() {
 .nge-chat-input-row { display: flex; align-items: center; gap: 4px; }
 .nge-chat-input-row .nge-chat-input { flex: 1; min-width: 0; }
 .nge-chat-share { position: relative; flex-shrink: 0; }
-.nge-chat-share-pin { display: block; margin: 0 auto; color: #fff; }
+/* Dimmed to the input row's tone, and centred in its square (Ames 2026-10-02). */
+.nge-chat-share-pin { display: block; color: rgba(170, 190, 215, 0.75); transition: color 0.15s; }
+.nge-chat-share-btn:hover:not(:disabled) .nge-chat-share-pin { color: rgba(205, 222, 240, 0.95); }
 .nge-chat-share-btn {
   width: 30px;
   height: 30px;
@@ -1676,6 +1680,7 @@ function toggleCollapse() {
   line-height: 1;
 }
 .nge-chat-share-btn:hover:not(:disabled) { border-color: rgba(74, 158, 255, 0.5); }
+.nge-chat-share > .nge-chat-share-btn { display: flex; align-items: center; justify-content: center; padding: 0; }
 .nge-chat-share-btn:disabled { opacity: 0.4; cursor: default; }
 .nge-chat-emoji { position: relative; flex: 0 0 auto; margin-left: 4px; }
 .nge-chat-emoji-grid {
