@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useSplitMergeOverlayStore } from 'src/store';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 
@@ -10,6 +10,17 @@ const isVisible = computed(() => store.toolActive !== null || store.pendingClose
 // Other floating panels (the chat) sit on the same bottom edge; tell them
 // the bar is there (Amy: chat was hidden behind merge mode).
 watch(isVisible, v => document.body.classList.toggle('nge-tool-bar-open', v), { immediate: true });
+// ...and how tall it is, so the coordinates chip and chat stack above it.
+const barEl = ref<HTMLElement | null>(null);
+const barSize = new ResizeObserver(() => {
+  const h = barEl.value ? Math.round(barEl.value.getBoundingClientRect().height) : 0;
+  document.body.style.setProperty('--nge-tool-bar-h', h + 'px');
+});
+watch(barEl, (el, old) => {
+  if (old) barSize.unobserve(old);
+  if (el) barSize.observe(el);
+  else document.body.style.setProperty('--nge-tool-bar-h', '0px');
+});
 const isMulticut = computed(() => store.toolActive === 'multicut' || store.closingTool === 'multicut');
 const isMerge = computed(() => store.toolActive === 'merge' || store.closingTool === 'merge');
 const isRedActive = computed(() => store.activeGroup === 'red');
@@ -111,7 +122,7 @@ function cancelTool() {
 <template>
   <Teleport to="body">
     <transition name="overlay-slide">
-      <div v-if="isVisible" class="nge-split-merge-overlay" :class="{
+      <div v-if="isVisible" ref="barEl" class="nge-split-merge-overlay" :class="{
         multicut: isMulticut && !isPendingClose,
         merge: isMerge && !isPendingClose,
         submitting: isSubmitting,
@@ -227,7 +238,10 @@ function cancelTool() {
 <style scoped>
 .nge-split-merge-overlay {
   position: fixed;
-  bottom: 28px;  /* Above neuroglancer's status bar */
+  /* On the bottom edge (Krzysztof: a bare 28px strip showed under it), and
+     lifted above neuroglancer's status bar only while it shows a message. */
+  bottom: var(--nge-bottom-bar, 0px);
+  transition: bottom 0.2s ease;
   left: 0;
   right: 0;
   z-index: 9500;
@@ -539,7 +553,7 @@ function cancelTool() {
 /* ── Merge segment vertical panel (left side) ── */
 .nge-smo-merge-panel {
   position: fixed;
-  bottom: 84px;
+  bottom: calc(56px + var(--nge-bottom-bar, 0px));
   left: 12px;
   z-index: 9501;
   min-width: 200px;
@@ -707,7 +721,7 @@ function cancelTool() {
 
 .nge-smo-result-flash {
   position: fixed;
-  bottom: 72px;
+  bottom: calc(44px + var(--nge-bottom-bar, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 9600;

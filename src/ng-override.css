@@ -103,6 +103,12 @@
   line-height: 1.5;
   pointer-events: none;
 }
+/* The chips ride above whatever is on the bottom edge: neuroglancer's status
+   bar while it shows a message, and the cut and merge bar (Ames 2026-10-02). */
+.neuroglancer-position-widget { bottom: calc(6px + var(--nge-bottom-bar, 0px)); transition: bottom 0.2s ease; }
+.neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-bottom-bar, 0px)); }
+body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
+body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 .neuroglancer-mouse-position-widget:empty {
   display: none;
 }
