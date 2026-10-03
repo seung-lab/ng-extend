@@ -958,7 +958,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatSize',
-    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews'];
+    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews', 'highlightStyles'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
