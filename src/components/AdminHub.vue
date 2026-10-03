@@ -419,6 +419,20 @@ async function sendReporterUpdate(row: TriageRow) {
   }
 }
 
+/** Build ID of the preview waiting to go live: the tested preview, or one
+ *  whose deploy failed. Empty while nothing is ready to release. */
+function releaseBuildOf(row: TriageRow): string {
+  if (row.impl_state !== 'testing' && row.impl_state !== 'failed') return '';
+  const preview = [...(row.feedback_log || [])].reverse().find((e: any) => e.role === 'preview');
+  const sha = String((preview as any)?.sha || '');
+  return /^[0-9a-f]{40}$/.test(sha) ? sha.slice(0, 12) : '';
+}
+const copied = ref('');
+async function copyText(text: string) {
+  try { await navigator.clipboard.writeText(text); copied.value = text; setTimeout(() => { if (copied.value === text) copied.value = ''; }, 1500); }
+  catch { window.prompt('Copy this:', text); }
+}
+
 async function setImplState(row: TriageRow, next: ImplState) {
   if (triageActing.value) return;
   triageActing.value = row.id;
@@ -1705,8 +1719,20 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-else-if="row.status === 'approved'" class="nge-triage-actions">
             <button v-if="isBuildable(row) && !row.impl_state" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Have Claude build it</button>
-            <button v-if="row.impl_state === 'testing'" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'deploy_queued')">I tested it, good, deploy</button>
-            <button v-if="row.impl_state === 'failed'" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, row.tested_by ? 'deploy_queued' : 'queued')">{{ row.tested_by ? 'Retry deploy' : 'Retry build' }}</button>
+            <button v-if="row.impl_state === 'failed' && !releaseBuildOf(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Retry build</button>
+          </div>
+          <!-- Going live is approved in Slack only: the deploy checks the
+               tester's exact reply there before it touches the live site. -->
+          <div v-if="row.status === 'approved' && releaseBuildOf(row)" class="nge-triage-release">
+            <div class="nge-triage-release-why">To put this live, reply in its Slack thread with:</div>
+            <div class="nge-triage-release-row">
+              <code>good {{ releaseBuildOf(row) }}</code>
+              <button type="button" class="nge-admin-action-btn" @click="copyText('good ' + releaseBuildOf(row))">{{ copied === 'good ' + releaseBuildOf(row) ? 'Copied' : 'Copy' }}</button>
+            </div>
+            <div class="nge-triage-release-row">
+              <code>ship to test {{ releaseBuildOf(row) }}</code>
+              <button type="button" class="nge-admin-action-btn" @click="copyText('ship to test ' + releaseBuildOf(row))">{{ copied === 'ship to test ' + releaseBuildOf(row) ? 'Copied' : 'Copy' }}</button>
+            </div>
           </div>
 
           <!-- Optional note to the person who filed the report. Drafted from
@@ -2307,6 +2333,10 @@ function practiceWhen(iso: string | null) {
 }
 .nge-triage-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .nge-triage-from { font-size: 0.86em; color: #9fb3cc; }
+.nge-triage-release { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 6px; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(74, 158, 255, 0.25); }
+.nge-triage-release-why { font-size: 0.88em; color: #b9cbe2; }
+.nge-triage-release-row { display: flex; align-items: center; gap: 8px; }
+.nge-triage-release-row code { flex: 1; font-family: ui-monospace, Consolas, monospace; color: #e6eefc; background: rgba(0, 0, 0, 0.3); padding: 4px 8px; border-radius: 4px; user-select: all; }
 .nge-triage-from strong { color: #e6eefc; font-weight: 600; }
 /* Section headers: open work first, finished and dismissed folded and grey. */
 .nge-triage-group {
