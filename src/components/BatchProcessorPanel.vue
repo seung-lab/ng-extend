@@ -8,7 +8,7 @@ import { ref, computed, onMounted } from 'vue';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from '../widgets/widget_utils';
 import { setCellComplete, saveCellType, activeCaveServer, NURRO_IMAGES } from '../widgets/lightbulb_service';
-import { planMenuCompletion, finishMenuCompletion } from '../util/menu_complete';
+import { planMenuCompletion, finishMenuCompletion, clearOwnAnnotations } from '../util/menu_complete';
 import { mintShortStateLink } from '../util/state_link';
 import { useProofreadingBackendStore, useUserStatsStore } from '../store';
 import { currentCellTypes } from '../datasets';
@@ -602,7 +602,7 @@ async function submitGuidedComplete(group: SegmentGroup) {
     if (plan?.row) {
       try {
         if (batchLink === undefined) batchLink = await mintShortStateLink().catch(() => null);
-        await finishMenuCompletion(plan, { point: pt as [number, number, number], link: batchLink });
+        await finishMenuCompletion(plan, { point: pt as [number, number, number], link: batchLink, keepMarkup: true });
         sheetWritten++;
       } catch (e: any) {
         // CAVE is saved; the claim or sheet step is what failed.
@@ -613,6 +613,8 @@ async function submitGuidedComplete(group: SegmentGroup) {
   }
   const errCount = batchProgress.value.errors.length;
   const successCount = total - errCount;
+  // The markup belonged to these cells; keep it if any failed, to redo them.
+  if (sheetWritten && !errCount && !reasons.length) clearOwnAnnotations();
   if (guide.value?.solo) restoreSoloSnapshot();
   if (reasons.length) console.warn('[batch] completion notes:\n' + reasons.join('\n'));
   flash(`Completed ${successCount}/${total}${sheetWritten ? `, ${sheetWritten} written to the sheet` : ''}`

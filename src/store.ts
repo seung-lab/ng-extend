@@ -958,7 +958,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatSize',
-    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews'];
+    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews', 'highlightStyles'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -2336,6 +2336,13 @@ export const useIssueTagStore = defineStore('issueTags', () => {
     }
   }
 
+  /** The layers this store draws from shared data (tags, AI candidates,
+   *  heat, proposed split), as opposed to a player's own markup. */
+  function isTagStoreLayer(name: string): boolean {
+    return [TAG_LAYER_NAME, PIN_LAYER_NAME, AI_LAYER_NAME, AI_CRYSTAL_LAYER_NAME, SPLIT_LAYER_NAME].includes(name)
+      || name.startsWith('🔥 AI heat …');
+  }
+
   async function load() {
     try {
       const { data, error } = await supabase
@@ -2441,7 +2448,7 @@ export const useIssueTagStore = defineStore('issueTags', () => {
   return { tags, openTags, load, add, resolve, remove, syncTagLayer, setTagPreview, tagModeActive, setTagModeActive,
            aiLayerOn, setAiLayerOn, syncAiLayer,
            activeHeatRoots, heatLoadingRoot, toggleHeatLayer,
-           activeSplitTagId, toggleSplitOverlay, hideSplitOverlay };
+           activeSplitTagId, toggleSplitOverlay, hideSplitOverlay, isTagStoreLayer };
 });
 
 // ── Working Links ─────────────────────────────────────────────────────────
@@ -3333,6 +3340,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       }
       // Check admin status + load special badges + favorite badge after user is synced
       await checkAdmin();
+      void checkBlogAuthor();
       await loadMySpecialBadges();
       await loadMyBadgeAwards();
       await loadFavoriteBadge();
@@ -4257,6 +4265,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   const isAdmin = ref(false);
 
+  /** Listed in blog_authors: may write for connectome.quest/blog (the Blog
+   *  tab of your profile). The server enforces it; this only shows the tab. */
+  const isBlogAuthor = ref(false);
+  async function checkBlogAuthor() {
+    if (!userId.value) { isBlogAuthor.value = false; return; }
+    try {
+      const { data } = await supabase.from('blog_authors').select('user_id').eq('user_id', userId.value).maybeSingle();
+      isBlogAuthor.value = !!data;
+    } catch { isBlogAuthor.value = false; }
+  }
+
   async function checkAdmin() {
     if (!userEmail.value) { isAdmin.value = false; return; }
     const { data } = await supabase
@@ -5017,7 +5036,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     refreshSegmentIds,
     MAX_CLAIMS, claimLimitFor,
     // Admin Hub
-    isAdmin, checkAdmin,
+    isAdmin, checkAdmin, isBlogAuthor,
     // Notifications
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,

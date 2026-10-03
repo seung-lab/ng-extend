@@ -1771,11 +1771,13 @@ exports.ewCommunityData = onRequest(
       const ctx=await pilotContext(sb,who), {me,isAdmin}=ctx;
       const groups = me ? (await sb("user_group_members?user_id=eq."+me.id+"&select=group_id")).map(r=>r.group_id) : [];
       const context={...ctx,groups,now:new Date().toISOString()};
+      // The blog has its own short list of authors (blog_authors), separate from admins and the pilot.
+      if (input.table === "blog_posts" && me) context.isBlogAuthor = (await sb("blog_authors?user_id=eq."+me.id+"&select=user_id&limit=1")).length > 0;
       const read=["GET","HEAD"].includes(String(input.method||"GET").toUpperCase());
       // Own settings are personal, not pilot data: any signed in player may save them.
       // Personal, not pilot data: creating your profile, your own settings, and
       // your own username / name / flag / bio / avatar.
-      if(!read && !(input.table==="users" && input.method==="POST") && !["user_settings","user_views"].includes(input.table) && !isPersonalProfileEdit(input)) requirePilot(context);
+      if(!read && !(input.table==="users" && input.method==="POST") && !["user_settings","user_views","blog_posts"].includes(input.table) && !isPersonalProfileEdit(input)) requirePilot(context);
       const plan=authorizePilotData(input,context)||authorizeData(input,context);
       if(plan.table==="special_badge_awards" && !isAdmin && plan.body) {
         const rows=Array.isArray(plan.body)?plan.body:[plan.body];
@@ -1835,8 +1837,11 @@ exports.ewSecureUpload = onRequest(
    if(!who)throw ewErr(401,"Sign in first.");
    const key=ewServiceKey.value().trim(), sb=ewSb(key);
    const isAdmin=(await sb("admins?email=eq."+encodeURIComponent(who.email)+"&select=id&limit=1")).length>0;
-   requirePilot(await pilotContext(sb,who));
-   const upload=require("./upload-policy").prepareUpload(input,who,isAdmin);
+   const uploader=await pilotContext(sb,who);
+   // Blog images: listed authors only (they need not be pilot testers).
+   const isBlogAuthor=input.kind==="blog"&&!!uploader.me&&(await sb("blog_authors?user_id=eq."+uploader.me.id+"&select=user_id&limit=1")).length>0;
+   if(!isBlogAuthor)requirePilot(uploader);
+   const upload=require("./upload-policy").prepareUpload(input,who,isAdmin,isBlogAuthor);
    if(!(await rateLimit({ip:who.email},false,"upload")).ok)throw ewErr(429,"Please wait before uploading another image.");
    const url="https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/admin-uploads/"+upload.path;
    const r=await fetch(url,{method:"POST",headers:{apikey:key,...(key.startsWith("sb_")?{}:{Authorization:"Bearer "+key}),"Content-Type":upload.contentType,"x-upsert":"false"},body:upload.bytes,redirect:"error",signal:AbortSignal.timeout(30000)});

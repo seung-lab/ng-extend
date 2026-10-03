@@ -4,6 +4,8 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Screenshots only ever point at our own public storage (ewSecureUpload output).
 const OWN_STORAGE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/';
+// Blog covers may also be images that ship with the public site itself.
+const SITE_ASSETS = 'https://connectome.quest/assets/';
 // Chat reactions on offer; keep in step with CHAT_REACTION_EMOJI in src/store.ts.
 const REACTION_EMOJI = new Set(['👍', '❤️', '🔥', '😂', '🎉', '🧠']);
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
@@ -29,6 +31,11 @@ const columns = {
   user_settings: 'user_id,settings,updated_at',
   // A player's autosaved viewer state per dataset. Private: owner only.
   user_views: 'user_id,dataset,state,updated_at',
+  // The connectome.quest blog. Anyone reads published posts; only the people
+  // listed in blog_authors read drafts or write (ctx.isBlogAuthor).
+  blog_posts: 'id,slug,title,summary,body,cover_url,status,author_id,author_name,published_at,created_at,updated_at',
+  // Who may write for the blog. You can see your own row; admins see all.
+  blog_authors: 'user_id,added_at',
 };
 const writable = {
   users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,total_annotations,favorite_badges',
@@ -43,6 +50,7 @@ const writable = {
   chat_reactions: 'message_id,emoji',
   user_settings: 'settings,updated_at',
   user_views: 'dataset,state,updated_at',
+  blog_posts: 'slug,title,summary,body,cover_url,status,published_at',
 };
 function authorizeData(input, ctx) {
   const {table} = input;
@@ -95,6 +103,10 @@ function authorizeData(input, ctx) {
       if (me) targets.push(`and(target_type.eq.user,target_id.eq.${own()})`);
       if (groups.length) targets.push(`and(target_type.eq.group,target_id.in.(${groups.join(',')}))`);
       scope(`or(${targets.join(',')})`, 'send_at.lte.'+ctx.now, `or(expires_at.is.null,expires_at.gt.${ctx.now})`);
+    } else if (table === 'blog_posts' && !ctx.isBlogAuthor) {
+      scope('status.eq.published');
+    } else if (table === 'blog_authors' && !ctx.isAdmin) {
+      scope(me ? 'user_id.eq.'+own() : 'user_id.is.null');
     } else if (table === 'working_links' && !ctx.isAdmin) {
       const visible = ['is_public.eq.true'];
       if (me) visible.push('user_id.eq.'+own());
@@ -109,6 +121,10 @@ function authorizeData(input, ctx) {
   if (['user_groups','user_group_members'].includes(table)) admin();
   else if (!(table === 'users' && method === 'POST' && ctx.who?.email)) own();
   if (table === 'site_issues' && method !== 'POST') admin();
+  if (table === 'blog_posts') {
+    if (!ctx.isBlogAuthor) fail(403, 'Only blog authors can write posts.');
+    if (method !== 'POST' && !/^eq\.\d+$/.test(query.get('id') || '')) fail(400, 'A post id is required.');
+  }
   if (table === 'chat_messages' && method !== 'POST') {
     if (!query.has('id')) fail(400,'A message id is required.');
     // Anyone may delete a message they wrote; only admins delete others' or edit.
@@ -168,6 +184,29 @@ function authorizeData(input, ctx) {
       const st = row.state;
       if (!st || typeof st !== 'object' || Array.isArray(st)) fail(400, 'A view must be a viewer state object.');
       if (JSON.stringify(st).length > 240 * 1024) fail(413, 'This view is too large to autosave.');
+      row.updated_at = ctx.now;
+    }
+    if (table === 'blog_posts') {
+      const text = (k, max, required) => {
+        if (row[k] == null) { if (required && method === 'POST') fail(400, `A post needs a ${k}.`); return; }
+        if (typeof row[k] !== 'string' || row[k].length > max || (required && !row[k].trim())) fail(400, `Invalid ${k}.`);
+      };
+      text('title', 160, true); text('summary', 400, false); text('body', 100000, true); text('slug', 80, true);
+      if (row.slug != null && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(row.slug)) fail(400, 'The address may use lowercase letters, numbers and hyphens.');
+      if (row.cover_url != null && row.cover_url !== '' &&
+          (typeof row.cover_url !== 'string' || row.cover_url.length > 1024 ||
+           !(row.cover_url.startsWith(OWN_STORAGE) || row.cover_url.startsWith(SITE_ASSETS)))) {
+        fail(400, 'Images must be uploaded through EyeWire II.');
+      }
+      if (row.cover_url === '') row.cover_url = null;
+      if (row.status != null && !['draft', 'published'].includes(row.status)) fail(400, 'Invalid status.');
+      // Publishing stamps the time, unless the post already has an earlier one
+      // (editing a published post keeps its date). Never a future date.
+      if (row.status === 'published') {
+        const t = Date.parse(row.published_at);
+        row.published_at = Number.isFinite(t) && t <= Date.parse(ctx.now) ? new Date(t).toISOString() : ctx.now;
+      } else delete row.published_at;
+      if (method === 'POST') { row.author_id = own(); row.author_name = me.display_name || me.username || 'EyeWire team'; row.status = row.status || 'draft'; }
       row.updated_at = ctx.now;
     }
     if (table === 'user_settings') {

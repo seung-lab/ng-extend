@@ -21,5 +21,9 @@ for name, fx in cfg.items():
     for label, pt in fx["points"].items():
         x, y, z = [int(pt[i] * view[i] // int(cv.resolution[i])) for i in range(3)]
         sv = int(cv[x:x + 1, y:y + 1, z:z + 1][0, 0, 0, 0])
-        root = int(cv.get_roots([sv])[0]) if sv else 0
+        at = None
+        if fx.get("at"):
+            import datetime
+            at = datetime.datetime.fromisoformat(fx["at"].replace("Z", "+00:00"))
+        root = int(cv.get_roots([sv], timestamp=at)[0]) if sv else 0
         print(json.dumps({"coords": name, "point": label, "viewer_xyz": pt, "volume_xyz": [x, y, z], "supervoxel": str(sv), "root": str(root)}))
