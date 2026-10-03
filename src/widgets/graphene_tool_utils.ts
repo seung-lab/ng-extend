@@ -16,6 +16,16 @@
  * NG builds keep the legacy tool reference alive while the toolBinder still
  * holds an activation; only clearing both fully exits.
  */
+/** What kind of tool this is. The live site is minified, so class names are
+ *  single letters there and never contain "multicut" or "merge" (the Cancel
+ *  button did nothing, Ames 2026-10-03); the tool's own saved type survives. */
+function toolKind(tool: any): string {
+  let json = '';
+  try { const j = tool?.toJSON?.(); json = typeof j === 'string' ? j : JSON.stringify(j ?? ''); } catch { /* no saved form */ }
+  return `${tool?.constructor?.name || ''} ${json}`.toLowerCase();
+}
+const isGrapheneTool = (kind: string) => /multicut|merge|graphene|line/.test(kind);
+
 export function exitGrapheneTool() {
   const viewer = (window as any)['viewer'];
   if (!viewer) return;
@@ -26,8 +36,8 @@ export function exitGrapheneTool() {
   try {
     const layer = viewer.selectedLayer?.layer?.layer;
     if (layer && layer.tool && layer.tool.value !== undefined) {
-      const toolName = (layer.tool.value?.constructor?.name || '').toLowerCase();
-      if (toolName.includes('multicut') || toolName.includes('merge') || toolName.includes('graphene') || toolName.includes('line')) {
+      const toolName = toolKind(layer.tool.value);
+      if (isGrapheneTool(toolName)) {
         console.info('[graphene_tool_utils] Disposing tool via selectedLayer.tool.value =', toolName);
         layer.tool.value = undefined;
         didSomething = true;
@@ -45,8 +55,8 @@ export function exitGrapheneTool() {
       if (!userLayer || !userLayer.tool) continue;
       const tool = userLayer.tool.value;
       if (!tool) continue;
-      const name = (tool.constructor?.name || '').toLowerCase();
-      if (name.includes('multicut') || name.includes('merge') || name.includes('graphene') || name.includes('line')) {
+      const name = toolKind(tool);
+      if (isGrapheneTool(name)) {
         console.info('[graphene_tool_utils] Disposing tool on layer', ml.name, ':', name);
         userLayer.tool.value = undefined;
         didSomething = true;
@@ -60,7 +70,10 @@ export function exitGrapheneTool() {
   // covers the case where layer.tool.value is undefined but a toolBinder
   // activation is still keeping the overlay open.
   try {
-    const gtb = viewer.toolBinder || viewer.globalToolBinder;
+    // The GLOBAL binder holds the activation. viewer.toolBinder is the local
+    // one, which has neither activeTool_ nor deactivate_, and it used to be
+    // picked first, so this step never did anything.
+    const gtb = viewer.globalToolBinder || viewer.toolBinder?.globalBinder || viewer.toolBinder;
     if (gtb?.activeTool_) {
       console.info('[graphene_tool_utils] Cancelling activeTool_ via globalToolBinder');
       try { gtb.activeTool_.cancel?.(); } catch {}
