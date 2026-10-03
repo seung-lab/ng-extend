@@ -8,7 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 import imgCutPoints from './images/cut-points-example.jpg';
 import { beginPractice, endPractice, ensureTool, holdsSlot } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { INFO_LAYER, MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, movingToSandbox, stopWatching, watchPractice } from './tutorial-3';
+import { MIDDLE, OVER_2D, OVER_3D, beforeAfter, cheatSheet, closeSidePanel, movingToSandbox, stopWatching, watchPractice } from './tutorial-3';
 
 /**
  * Tutorial 5: Cut. Split off the Cut & Merge tutorial on 2026-09-27 (Amy).
@@ -62,7 +62,9 @@ In a moment you'll get the fused version of this very cell and make the cut your
     text: `
 Now the same cell as the AI left it: the axon and the dendrite are one purple segment. Your job is to separate them.
 
-Press the **C** key to start the cut tool. The segmentation layer has to be selected for that. ` + INFO_LAYER + `
+Press the **C** key to start the cut tool. The segmentation layer has to be selected for that.
+
+Stuck at any point? The **?** button shows where the points go.
 
 Once it's on, the cut bar appears at the bottom of the viewer with the red group active.`,
     position: OVER_3D,

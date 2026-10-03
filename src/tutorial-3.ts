@@ -144,6 +144,36 @@ function notePanel(cls: string, html: string): HTMLElement {
   return el;
 }
 
+/**
+ * Where the red and blue points go in each cut cell (Ames, 2026-10-02: "a
+ * tooltip that tells me where to place points if I am stuck"). These are the
+ * points used when the exercise was made (the server keeps them with the
+ * cut: red = sources, blue = sinks), in viewer voxels (4 x 4 x 40 nm). They
+ * sit on the surface, close to the right spots rather than exactly on them.
+ */
+const CUT_HINTS: Record<string, { red: number[][]; blue: number[][] }> = {
+  // Fused axon (op 1664)
+  'dbc61749-70b5-469e-acdc-89a897cd9270': {
+    red: [[62906, 42782, 1717], [62810, 42826, 1718]],
+    blue: [[62764, 42636, 1701], [62668, 42612, 1698]],
+  },
+  // Fusion on a proofread cell (op 1728)
+  '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': {
+    red: [[81668, 49056, 516], [82030, 49104, 529]],
+    blue: [[81516, 49232, 525], [81910, 49234, 521]],
+  },
+};
+const RED = '#ff5c5c', BLUE = '#5c8cff';
+
+function showWhereToCut(): boolean {
+  const ex = currentPractice().example;
+  const h = ex ? CUT_HINTS[ex.id] : undefined;
+  if (!h) return false;
+  const pts = [...h.red, ...h.blue];
+  return showPyrMarkers(pts, [...h.red.map(() => 'red'), ...h.blue.map(() => 'blue')], 60,
+    [...h.red.map(() => RED), ...h.blue.map(() => BLUE)]);
+}
+
 function toggleStuckPanel() {
   const chip = chipBody();
   if (!chip) return;
@@ -167,6 +197,14 @@ function toggleStuckPanel() {
       practiceStatus(placed
         ? 'Pyr marks the two spots and the merge line is already placed. Press Submit merge, or Enter.'
         : 'Pyr marks the two spots: Ctrl+click the one on the yellow piece, then the one on the purple segment, then Submit merge.');
+    }));
+  }
+  if (ex && ex.kind === 'cut') {
+    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to place points', () => {
+      ensureTool('multicut');
+      practiceStatus(showWhereToCut()
+        ? 'Pyr marks the spots: red points on the piece to remove, blue points on the cell. Ctrl+click near each, press G to switch colour, then Submit cut.'
+        : 'No point hints for this cell yet. Red goes on the piece that does not belong, blue on the cell just past the join.');
     }));
   }
   row.appendChild(smallButton('nge-practice-stuck-chat', 'Ask in chat', () => document.dispatchEvent(new CustomEvent('nge:open-chat'))));

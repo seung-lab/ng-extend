@@ -39,6 +39,8 @@ function ensureStyle() {
     .nge-pyr-pin { position: absolute; width: 44px; height: 54px; margin-left: -22px; margin-top: -54px; display: none; }
     .nge-pyr-pin img { width: 44px; height: 44px; display: block; filter: drop-shadow(0 0 6px rgba(237, 208, 64, 0.9)) drop-shadow(0 2px 4px rgba(0,0,0,0.8)); animation: nge-pyr-bob 1.1s ease-in-out infinite; }
     .nge-pyr-pin::after { content: ''; position: absolute; left: 50%; bottom: 0; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; border: 2px solid #edd040; box-shadow: 0 0 10px 3px rgba(237, 208, 64, 0.7); animation: nge-pyr-ring 1.1s ease-in-out infinite; }
+    .nge-pyr-pin--coloured img { filter: drop-shadow(0 0 7px var(--pin)) drop-shadow(0 2px 4px rgba(0,0,0,0.8)); }
+    .nge-pyr-pin--coloured::after { border-color: var(--pin); box-shadow: 0 0 10px 3px var(--pin); }
     .nge-pyr-pin span { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); white-space: nowrap; font: 600 11px/1 Inter, sans-serif; letter-spacing: 0.06em; color: #edd040; text-shadow: 0 1px 3px #000; }
     @keyframes nge-pyr-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
     @keyframes nge-pyr-ring { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.5; } }
@@ -129,7 +131,7 @@ function tick() {
  * Show Pyr pins at the given global points for `seconds` (0 keeps them until
  * hidePyrMarkers). Labels are optional, one per point.
  */
-export function showPyrMarkers(pts: number[][], labels: string[] = [], seconds = 45) {
+export function showPyrMarkers(pts: number[][], labels: string[] = [], seconds = 45, colors: string[] = []) {
   hidePyrMarkers();
   ensureStyle();
   points = pts.filter(p => Array.isArray(p) && p.length >= 3).map(p => [Number(p[0]), Number(p[1]), Number(p[2])]);
@@ -143,7 +145,12 @@ export function showPyrMarkers(pts: number[][], labels: string[] = [], seconds =
     img.src = pyrIcon;
     img.alt = '';
     pin.appendChild(img);
-    if (labels[i]) { const s = document.createElement('span'); s.textContent = labels[i]; pin.appendChild(s); }
+    if (labels[i]) { const s = document.createElement('span'); s.textContent = labels[i]; if (colors[i]) s.style.color = colors[i]; pin.appendChild(s); }
+    // A coloured pin (the cut tutorial's red and blue sides): glow and ring.
+    if (colors[i]) {
+      pin.style.setProperty('--pin', colors[i]);
+      pin.classList.add('nge-pyr-pin--coloured');
+    }
     container!.appendChild(pin);
     return pin;
   });
