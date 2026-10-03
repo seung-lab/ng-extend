@@ -79,3 +79,43 @@ test('MEC rows are found by Starting XYZ Coords; claim fills Date Started, compl
  // Retina's segment matching is unchanged.
  assert.equal(sourceFor({...mec,action:'claim'}).matchBy,'startcoords');
 });
+test('complete writes the chosen status, only from the sheet\'s own options',()=>{
+ const header=['Start SegID','Proofreader','Status','Date Complete','Final SegID','Final Link','Notes'];
+ const retina={...input,dataset:'stroeh_mouse_retina'}, rtask={...task,dataset:'stroeh_mouse_retina'};
+ const statusOf=(inp,row=['123','','','','','',''])=>{
+  const plan=planSheetUpdate([header,row],'Focused BCs','123',sheetValues(inp,me,rtask,'10/3/2026'));
+  return plan.data.find(x=>x.range.endsWith('!C2'))?.values[0][0];
+ };
+ // Exactly the four endings in the sheet's dropdown, spelled as it spells them.
+ for(const ok of ['Complete','Complete (cut off)','Not BC',"Can't Complete"]) assert.equal(statusOf({...retina,status:ok}),ok);
+ // No status sent (an older client, the menu's Mark as Proofread): plain Complete, as before.
+ assert.equal(statusOf(retina),'Complete');
+ assert.equal(statusOf({...retina,status:''}),'Complete');
+ // In-progress options, near misses, formulas and junk never reach the sheet.
+ for(const bad of ['WIP','Need Help','complete','Complete (cut-off)','Complete (cut off) ','Can\u2019t Complete','=HYPERLINK("https://x","y")','Done',' ',123,{},['Complete']])
+  assert.throws(()=>sheetValues({...retina,status:bad},me,rtask,'now'),/not one of this sheet/);
+ // A sheet with no list of its own takes plain Complete only.
+ assert.equal(sheetValues({...input,status:'Complete'},me,task,'now').find(f=>f[0][0]==='status')[1],'Complete');
+ assert.throws(()=>sheetValues({...input,status:'Complete (cut off)'},me,task,'now'),/not one of this sheet/);
+ assert.throws(()=>sheetValues({...input,dataset:'pni_mec',status:'Not BC'},me,{...task,dataset:'pni_mec'},'now'),/not one of this sheet/);
+});
+test('completing replaces an in-progress Status (WIP, Need Help), never a final one',()=>{
+ const header=['Start SegID','Proofreader','Status','Date Complete'];
+ const retina={...input,dataset:'stroeh_mouse_retina',status:'Complete (cut off)'}, rtask={...task,dataset:'stroeh_mouse_retina'};
+ const run=row=>{
+  const plan=planSheetUpdate([header,row],'Focused BCs','123',sheetValues(retina,me,rtask,'10/3/2026'));
+  return Object.fromEntries([...plan.data,...plan.userEnteredData].map(x=>[x.range.split('!')[1],x.values[0][0]]));
+ };
+ for(const wip of ['WIP','Need Help']) {
+  const out=run(['123','Someone Else',wip,'']);
+  assert.equal(out.C2,'Complete (cut off)');
+  // The row was not finished, so the completer becomes the Proofreader too.
+  assert.equal(out.B2,me.display_name||me.username);
+ }
+ // A row the lab already gave a final status keeps it, and keeps its Proofreader.
+ for(const final of ['Complete','Not BC',"Can't Complete",'Complete (cut off)']) {
+  const out=run(['123','Someone Else',final,'9/1/2026']);
+  assert.equal(out.C2,undefined);
+  assert.equal(out.B2,undefined);
+ }
+});

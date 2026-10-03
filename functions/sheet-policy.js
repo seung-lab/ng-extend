@@ -1,12 +1,21 @@
 'use strict';
 const SOURCES = Object.freeze({
-  stroeh_mouse_retina: {id:'10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w', gid:37544110},
+  // completeStatuses: the ways a cell can end, exactly as the sheet's Status
+  // dropdown spells them (read from the sheet 2026-10-03: WIP, Complete,
+  // Complete (cut off), Need Help, Not BC, Can't Complete; WIP and Need Help
+  // are not endings). The Complete form sends one of these; nothing else is
+  // ever written to Status. A source without the list writes plain Complete.
+  stroeh_mouse_retina: {id:'10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w', gid:37544110,
+    completeStatuses:['Complete','Complete (cut off)','Not BC',"Can't Complete"]},
   pinky_nf_v2: {id:'1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU', gid:0},
   // MEC (Ames 2026-09-28): no segment IDs in this sheet. Rows are found by
   // "Starting XYZ Coords", which the importer stores as the task's claim point.
   pni_mec: {id:'1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw', gid:869365415, matchBy:'startcoords'},
 });
 /** Header patterns for the column a row is matched on. */
+/** Status values that mean "still being worked on": completing the cell
+ *  replaces them. Any other existing Status is the sheet owner's and stays. */
+const UNFINISHED_STATUSES = ['WIP','Need Help'];
 const SEGMENT_HEADERS = ['startseg','segmentid','segment','segid'];
 const START_COORD_HEADERS = ['startingxyz','startingcoord','startcoord'];
 const fail = (status,message) => {throw Object.assign(new Error(message),{status});};
@@ -36,7 +45,14 @@ function sheetValues(input, me, task, now) {
     // A plain M/D/YYYY date is entered like a person typing it, so the sheet
     // stores a real date (9/28/2026), not an ISO timestamp as text.
     // "Date Complete" (retina) or "Date Ended" (MEC).
-    fields.push([['status'],'Complete'],[['datecomplete','completedtime','dateended'],now,isDate]);
+    // The status the proofreader chose (Nseraf 2026-09-30: most retina cells
+    // are "Complete (cut off)", and the form could only write "Complete").
+    // It must be one of this sheet's own options, character for character.
+    const allowed = SOURCES[input.dataset].completeStatuses || ['Complete'];
+    // Plain text only: String(['Complete']) is 'Complete', and a list must not pass as one.
+    const status = input.status == null || input.status === '' ? 'Complete' : input.status;
+    if (typeof status !== 'string' || !allowed.includes(status)) fail(400,'That status is not one of this sheet\'s options.');
+    fields.push([['status'],status,{replaceValues:UNFINISHED_STATUSES}],[['datecomplete','completedtime','dateended'],now,isDate]);
     if (task.final_segment_id && /^\d{1,20}$/.test(task.final_segment_id)) fields.push([['finalseg'],task.final_segment_id]);
     // The proofreader's view of the finished cell (Amy 2026-09-28): the
     // retina sheet's "Final Link" column. https only, no spaces or quotes;
@@ -90,14 +106,19 @@ function planSheetUpdate(grid, title, match, fields) {
   if(matches.length!==1) fail(409,matches.length ? `${what} appears more than once in the source sheet.` : `${what} is missing from the source sheet.`);
   const row=matches[0], data=[], userEnteredData=[];
   const statusCol=firstColumn(header,['status']);
-  const statusEmpty=statusCol<0 || !String(grid[row][statusCol]??'').trim();
+  // "Empty" for the Proofreader rule includes an in-progress Status: the cell is not finished yet.
+  const statusNow=statusCol<0 ? '' : String(grid[row][statusCol]??'').trim();
+  const statusEmpty=!statusNow || UNFINISHED_STATUSES.includes(statusNow);
   for(const [patterns,value,opts] of fields) {
     const col=firstColumn(header,patterns);
     if(col<0) continue;
     const existing=String(grid[row][col]??'').trim();
     // Preserve the sheet owner's existing data. Retrying a write is harmless.
     // Exception: the Proofreader on completion, while Status is still empty.
-    if(existing && !(opts?.replaceUntilStatus && statusEmpty && existing!==String(value))) continue;
+    // Exception: a Status that only says the cell was in progress.
+    const replaceable = (opts?.replaceUntilStatus && statusEmpty && existing!==String(value))
+      || (opts?.replaceValues?.includes(existing) && existing!==String(value));
+    if(existing && !replaceable) continue;
     let letters='',n=col;
     do {letters=String.fromCharCode(65+n%26)+letters; n=Math.floor(n/26)-1;} while(n>=0);
     (opts?.userEntered ? userEnteredData : data).push({range:`'${title.replace(/'/g,"''")}'!${letters}${row+1}`,values:[[String(value)]]});

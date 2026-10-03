@@ -22,7 +22,7 @@ import {
 } from '../store';
 import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
-import { syncCellToSheet } from '../sheet_sync';
+import { syncCellToSheet, completeStatusesFor } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
@@ -712,7 +712,7 @@ function getViewerPos(): ClaimPoint {
 // ── Complete: link + crosshairs-in-cell, then write (Amy 2026-09-28) ──────
 type CellRow = typeof cells.value[0];
 const completing = ref<{
-  key: string; link: string; notes: string; minting: boolean;
+  key: string; link: string; notes: string; status: string; minting: boolean;
   checking: boolean; ok: boolean; message: string; submitting: boolean;
   check: CrosshairCell | null;
 } | null>(null);
@@ -727,9 +727,34 @@ const chooseClaim = ref(false);
 function shortId(id: string) { return id.length > 10 ? '…' + id.slice(-6) : id; }
 function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((link || '').trim()); }
 
+// ── How the cell ended (Nseraf 2026-09-30) ─────────────────────────────────
+// Retina's sheet has four endings and the form could only write "Complete".
+// The proofreader picks one; the last pick is offered again next time, since
+// most cells in a session end the same way. A dataset with one ending shows
+// no choice.
+const STATUS_KEY = 'nge_cl_complete_status';
+function rememberedStatus(cell: CellRow): string {
+  const options = completeStatusesFor(cell.dataset);
+  if (!options.length) return '';
+  try {
+    const last = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}')[canonicalDataset(cell.dataset)];
+    if (options.some(o => o.value === last)) return last;
+  } catch { /* nothing remembered */ }
+  return '';   // first time: no default, the choice is the proofreader's
+}
+function rememberStatus(cell: CellRow, status: string) {
+  try {
+    const all = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}');
+    all[canonicalDataset(cell.dataset)] = status;
+    localStorage.setItem(STATUS_KEY, JSON.stringify(all));
+  } catch { /* private mode */ }
+}
+/** True when this cell's dataset asks for an ending and none is picked yet. */
+const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).length > 0 && !completing.value?.status;
+
 function openComplete(cell: CellRow) {
   chooseClaim.value = false;
-  completing.value = { key: cellKey(cell), link: '', notes: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null };
+  completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null };
   void runCrosshairCheck(cell);
   void useCurrentViewLink();  // prefilled with the current view; editable (Amy 2026-09-28)
 }
@@ -796,7 +821,7 @@ async function runCrosshairCheck(cell: CellRow) {
 
 async function submitComplete(cell: CellRow) {
   const c = completing.value;
-  if (!c || !linkLooksValid(c.link)) return;
+  if (!c || !linkLooksValid(c.link) || statusMissing(cell)) return;
   c.submitting = true;
   try {
     // The crosshairs may have moved since the check: check once more.
@@ -808,7 +833,9 @@ async function submitComplete(cell: CellRow) {
       coords: c.check.position.join(', '),
       link: c.link.trim(),
       notes: c.notes.trim(),
+      status: c.status || undefined,
     });
+    if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
     // Straight on to your next claim; with none left, the slim view opens up.
     if (!(await nextClaimAfter(cell, claimsBefore)) && slim.value) expandFull();
@@ -820,7 +847,7 @@ async function submitComplete(cell: CellRow) {
   }
 }
 
-async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string }) {
+async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string; status?: string }) {
   if (!isLoggedIn.value || !cell.taskId) return;
   // CAVE and the claim are independent, so write them at the same time (the
   // Complete button used to wait for one, then the other). The sheet waits for
@@ -829,7 +856,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Write completion to the source sheet, including the Final Link.
-  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes).catch(showSheetError);
+  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status).catch(showSheetError);
   const loggedViaCave = await cavePromise;
   if (!loggedViaCave) {
     // Log as mark_complete for stats (CAVE write didn't record it)
@@ -3049,6 +3076,17 @@ const panelStyle = computed(() => ({
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
             <div class="nge-cl-complete-title">Complete this cell</div>
+            <template v-if="completeStatusesFor(cell.dataset).length">
+              <label class="nge-cl-complete-label">How did it end?</label>
+              <div class="nge-cl-complete-statuses" role="radiogroup" aria-label="How did it end?">
+                <button
+                  v-for="o in completeStatusesFor(cell.dataset)" :key="o.value" type="button" role="radio"
+                  class="nge-cl-complete-status" :class="{ 'nge-cl-complete-status--on': completing.status === o.value }"
+                  :aria-checked="completing.status === o.value ? 'true' : 'false'" :title="o.hint"
+                  @click="completing.status = o.value"
+                >{{ o.value }}</button>
+              </div>
+            </template>
             <label class="nge-cl-complete-label">Link to your finished cell</label>
             <div class="nge-cl-complete-linkrow">
               <input
@@ -3081,7 +3119,8 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-complete-actions">
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
-                :disabled="completing.submitting || completing.checking || !completing.ok || !linkLooksValid(completing.link)"
+                :disabled="completing.submitting || completing.checking || !completing.ok || !linkLooksValid(completing.link) || statusMissing(cell)"
+                :title="statusMissing(cell) ? 'Pick how the cell ended first' : undefined"
                 @click="submitComplete(cell)"
               ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : 'Mark complete' }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
@@ -3602,6 +3641,18 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-complete-title { color: #8cf; font-weight: 600; font-size: 0.9em; letter-spacing: 0.03em; }
 .nge-cl-complete-label { color: #9ab; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+.nge-cl-complete-statuses { display: flex; flex-wrap: wrap; gap: 6px; }
+.nge-cl-complete-status {
+  padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  font: 500 0.82em Inter, system-ui, sans-serif; color: #b9c8e0;
+  background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.14);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.nge-cl-complete-status:hover { background: rgba(68, 170, 255, 0.1); border-color: rgba(68, 170, 255, 0.4); }
+.nge-cl-complete-status--on {
+  color: #fff; background: rgba(68, 170, 255, 0.2); border-color: #4af;
+  box-shadow: 0 0 10px rgba(68, 170, 255, 0.3);
+}
 .nge-cl-complete-linkrow { display: flex; gap: 6px; align-items: center; }
 .nge-cl-complete-linkrow .nge-cl-search-input { flex: 1; min-width: 0; }
 .nge-cl-complete-linkrow .nge-cl-btn { white-space: nowrap; }
