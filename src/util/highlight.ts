@@ -200,6 +200,23 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
   // Annotation layers live in the viewer's own coordinates.
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
   const pts = nm.map(p => Float32Array.from(p.map((v, i) => v / (scalesNm[i] || 1))));
+  // The server's path runs between the MIDDLES of the pieces that were
+  // clicked, so it stops short of the clicks themselves: a branch marked to
+  // its very tip kept an uncoloured end, and widening the reach to cover it
+  // spilled onto the rest of the cell (Ames, Nseraf 2026-10-03). The two
+  // clicks become the ends of the path. Each goes on the end it is nearer
+  // to, whichever way round the server returned the path.
+  const distNm = (p: ArrayLike<number>, q: ArrayLike<number>) =>
+    Math.hypot(...[0, 1, 2].map(i => (p[i] - q[i]) * (scalesNm[i] || 1)));
+  const ga = Float32Array.from(a.global), gb = Float32Array.from(b.global);
+  if (ga.length === 3 && gb.length === 3 && ga.every(Number.isFinite) && gb.every(Number.isFinite)) {
+    const first = pts[0], last = pts[pts.length - 1];
+    const straight = distNm(ga, first) + distNm(gb, last) <= distNm(ga, last) + distNm(gb, first);
+    const [head, tail] = straight ? [ga, gb] : [gb, ga];
+    // Skip an end that is already there (a click right on a piece's middle).
+    if (distNm(head, first) > 1) pts.unshift(head);
+    if (distNm(tail, last) > 1) pts.push(tail);
+  }
   const src = await strokeSource(style);
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
   for (let i = 0; i < pts.length - 1; i++) {
