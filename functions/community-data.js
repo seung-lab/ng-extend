@@ -4,6 +4,8 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Screenshots only ever point at our own public storage (ewSecureUpload output).
 const OWN_STORAGE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/';
+// Blog covers may also be images that ship with the public site itself.
+const SITE_ASSETS = 'https://connectome.quest/assets/';
 // Chat reactions on offer; keep in step with CHAT_REACTION_EMOJI in src/store.ts.
 const REACTION_EMOJI = new Set(['👍', '❤️', '🔥', '😂', '🎉', '🧠']);
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
@@ -192,7 +194,8 @@ function authorizeData(input, ctx) {
       text('title', 160, true); text('summary', 400, false); text('body', 100000, true); text('slug', 80, true);
       if (row.slug != null && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(row.slug)) fail(400, 'The address may use lowercase letters, numbers and hyphens.');
       if (row.cover_url != null && row.cover_url !== '' &&
-          (typeof row.cover_url !== 'string' || !row.cover_url.startsWith(OWN_STORAGE) || row.cover_url.length > 1024)) {
+          (typeof row.cover_url !== 'string' || row.cover_url.length > 1024 ||
+           !(row.cover_url.startsWith(OWN_STORAGE) || row.cover_url.startsWith(SITE_ASSETS)))) {
         fail(400, 'Images must be uploaded through EyeWire II.');
       }
       if (row.cover_url === '') row.cover_url = null;

@@ -180,5 +180,7 @@ test('blog: public reads published only; only listed authors write',()=>{
  assert.throws(()=>plan('blog_posts','POST','',{...post,title:''},author),/title/);
  assert.throws(()=>plan('blog_posts','POST','',{...post,body:'x'.repeat(100001)},author),/body/);
  assert.throws(()=>plan('blog_posts','POST','',{...post,cover_url:'https://evil.example/x.png'},author),/uploaded/);
+ assert.throws(()=>plan('blog_posts','POST','',{...post,cover_url:'https://connectome.quest.evil.example/assets/x.png'},author),/uploaded/);
+ assert.equal(plan('blog_posts','POST','',{...post,cover_url:'https://connectome.quest/assets/images/blog/x.webp'},author).body.cover_url,'https://connectome.quest/assets/images/blog/x.webp');
  assert.throws(()=>plan('blog_posts','POST','',{...post,status:'live'},author),/status/);
 });
