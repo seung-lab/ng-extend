@@ -55,5 +55,13 @@ for(const [table,ids] of Object.entries(ops)){
  if(table!=='pinky_nf_v2')throw Error('Unapproved sandbox');
  const base='https://minnie.microns-daf.com/segmentation/api/v1/table/'+table;
  const d=await get(base,'/operation_details?int64_as_str=1&operation_ids='+encodeURIComponent(JSON.stringify(ids)));
- for(const [id,v] of Object.entries(d))console.log(JSON.stringify({op:id,source_coords:v.source_coords,sink_coords:v.sink_coords,source_ids:v.source_ids,sink_ids:v.sink_ids}));
+ for(const [id,v] of Object.entries(d)){
+  console.log(JSON.stringify({op:id,source_coords:v.source_coords,sink_coords:v.sink_coords,source_ids:v.source_ids,sink_ids:v.sink_ids}));
+  // Which piece each side ended up on, a second after the cut.
+  const at=v.timestamp?Date.parse(String(v.timestamp).replace(' ','T')+(/[zZ]|[+-]\d\d:?\d\d$/.test(String(v.timestamp))?'':'Z'))/1000+1:null;
+  if(at&&v.source_ids?.length&&v.sink_ids?.length){
+   const r=async sv=>String((await get(base,`/node/${sv}/root?int64_as_str=1&timestamp=${at}`)).root_id);
+   console.log(JSON.stringify({op:id,source_root_after:await r(String(v.source_ids[0])),sink_root_after:await r(String(v.sink_ids[0]))}));
+  } else console.log(JSON.stringify({op:id,note:'no timestamp in details',keys:Object.keys(v)}));
+ }
 }
