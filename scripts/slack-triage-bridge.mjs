@@ -229,7 +229,10 @@ function fixedNote(row) {
 // Hub has the same composer. Every send is logged in feedback_log with role
 // 'reporter_update' (Admin Hub sends are echoed here). pollThreads and
 // collectNotes skip these commands so they are never read as tester replies.
-const REPORTER_CMD = /^(update\s+(the\s+)?(reporter|submitter)|draft\s+(an?\s+)?update|send\s+(the\s+)?update|update\s*:)/i;
+// "sender" too (Ames 2026-10-04).
+const REPORTER_CMD = /^(update\s+(the\s+)?(reporter|submitter|sender)|draft\s+(an?\s+)?update|send\s+(the\s+)?update|update\s*:)/i;
+// The list of replies that must be typed exactly, on the admin page.
+const REPLY_GUIDE = '<https://connectome.quest/admin/#exact-replies|Exact replies and what they do>';
 
 /** Draft for the submitter from the row's state. Never includes internal
  *  notes (approver_note is the reviewers' own comment). Mirrors
@@ -291,7 +294,7 @@ async function reporterUpdates() {
         continue;
       }
       const own = text.match(/^update\s*:\s*([\s\S]+)$/i);
-      if (/^(update\s+(the\s+)?(reporter|submitter)|draft\s+(an?\s+)?update)/i.test(text)) {
+      if (/^(update\s+(the\s+)?(reporter|submitter|sender)|draft\s+(an?\s+)?update)/i.test(text)) {
         const draft = draftReporterUpdate(row);
         log.push({ role: 'reporter_draft', ts: m.ts, user: m.user, text: draft });
         await say(row, `✉️ Draft update for the reporter:\n> ${draft}\nReply *send update* to send it as is, *update: your own words* to send your version, or just ignore this.`);
@@ -397,7 +400,7 @@ async function postProposals() {
   const rows = await res.json();
   for (const row of rows) {
     const where = await openThread(row,
-      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also reviewable in Admin Hub, Triage tab. Anytime, reply *update reporter* to draft a note to the person who reported it.`);
+      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also reviewable in Admin Hub, Triage tab. Anytime, reply *update sender* to draft a note to the person who reported it. ${REPLY_GUIDE}.`);
     console.log(`[bridge] posted proposal ${row.id} (${where})`);
     await notifyAdminsOfProposal(row);
   }
