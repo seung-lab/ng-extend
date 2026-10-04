@@ -802,6 +802,7 @@ async function submitComplete(cell: CellRow) {
     // The crosshairs may have moved since the check: check once more.
     await runCrosshairCheck(cell);
     if (!c.ok || !c.check?.root) return;
+    const claimsBefore = myOpenClaims.value;
     await completeCell(cell, {
       finalSegId: c.check.root,
       coords: c.check.position.join(', '),
@@ -809,7 +810,8 @@ async function submitComplete(cell: CellRow) {
       notes: c.notes.trim(),
     });
     completing.value = null;
-    if (slim.value) expandFull();
+    // Straight on to your next claim; with none left, the slim view opens up.
+    if (!(await nextClaimAfter(cell, claimsBefore)) && slim.value) expandFull();
   } catch (e: any) {
     c.message = e?.message || 'Could not complete this cell.';
     c.ok = false;
@@ -2037,12 +2039,28 @@ async function nextClaim() {
   const mine = myOpenClaims.value;
   if (steppingClaim.value || mine.length < 2 && slimClaimIndex.value === 0) return;
   if (!mine.length) return;
-  const next = mine[(slimClaimIndex.value + 1) % mine.length];
+  await stepToClaim(mine[(slimClaimIndex.value + 1) % mine.length]);
+}
+/** After a Complete: go to the claim that followed the finished one in
+ *  `before` (the list may not have dropped it yet). False = no claim left,
+ *  or the jump did not happen. The full view stays open. */
+async function nextClaimAfter(done: CellRow, before: CellRow[]): Promise<boolean> {
+  if (done.taskId == null) return false;  // completeCell wrote nothing
+  const at = before.findIndex(c => c.taskId === done.taskId);
+  const open = new Set(myOpenClaims.value.map(c => c.taskId));
+  const rest = before.filter(c => c.taskId !== done.taskId && open.has(c.taskId));
+  if (!rest.length) return false;
+  return stepToClaim(rest[Math.max(at, 0) % rest.length]);
+}
+async function stepToClaim(next: CellRow): Promise<boolean> {
+  if (steppingClaim.value) return false;
   steppingClaim.value = true;
   try {
     completing.value = null;
     await switchToClaim(next);
-    if (jumpedSegId.value === next.segId) slimSeg.value = next.segId;
+    const went = jumpedSegId.value === next.segId;
+    if (went && slim.value) slimSeg.value = next.segId;
+    return went;
   } finally { steppingClaim.value = false; }
 }
 /** The slim row's caret: open up and stay open. */

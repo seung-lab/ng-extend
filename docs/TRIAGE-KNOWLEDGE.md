@@ -95,3 +95,8 @@ summaries.
   strokes, script layers). `finishMenuCompletion` only runs for Cell Library
   cells, so a CAVE only completion does not reach code placed there
   (2026-10-02, clear markup on complete build, from reading the callers).
+- `backend.completeTask` does not touch `backend.tasks`; a completed claim
+  only leaves `myOpenClaims` once the background `loadTasks()` in
+  `completeCell` lands. Code that runs right after a Complete must skip the
+  finished claim itself, not trust the list (2026-10-04, auto next claim
+  build, from reading store.ts).
