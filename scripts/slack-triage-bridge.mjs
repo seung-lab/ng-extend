@@ -206,6 +206,22 @@ const quoteReport = row => {
   return t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}"` : 'Thanks for your report.';
 };
 
+/** What changed, in words for the player: the release note without the
+ *  tester credit, the commit link and Slack mentions. */
+const fixText = row => String(row.result_note || row.impl_summary || '')
+  .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/Details:\s*<?https?:\S+/gi, ' ')
+  .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
+  .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+
+/** The note a reporter gets once their fix is live (Ames 2026-10-04):
+ *  thanks, their own words back, what was built. Mirrors AdminHub.vue. */
+function fixedNote(row) {
+  const t = (row.source_excerpt || '').trim();
+  const q = t ? `Thank you for submitting: "${t.length > 200 ? t.slice(0, 197) + '...' : t}".` : 'Thank you for your report.';
+  const fix = fixText(row);
+  return `${q} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
+}
+
 // ── Optional update to the submitter (Amy 2026-09-25) ────────────────────
 // Any triage thread: an approver replies "update reporter" and gets a draft
 // written from the row's state; "send update" sends that draft, "update:
@@ -221,11 +237,7 @@ const REPORTER_CMD = /^(update\s+(the\s+)?(reporter|submitter)|draft\s+(an?\s+)?
 function draftReporterUpdate(row) {
   const t = (row.source_excerpt || '').trim();
   const q = t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}".` : 'Thanks for your report.';
-  const shipped = (row.result_note || '').replace(/<@[A-Z0-9]+>/g, 'a tester')
-    .replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1').trim();
-  if (row.status === 'done' || row.impl_state === 'deployed') {
-    return `${q} Good news: it's fixed and live now.${shipped ? ' ' + shipped : ''} Thank you for helping make EyeWire II better!`;
-  }
+  if (row.status === 'done' || row.impl_state === 'deployed') return fixedNote(row);
   if (row.status === 'dismissed') {
     return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
   }
@@ -955,9 +967,19 @@ async function announceDone() {
     const plain = note.replace(/<@[A-Z0-9]+>/g, 'a tester').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1');
     if (row.recommendation !== 'message' && row.recommendation !== 'nothing') {
       // The person who reported it: only them, never a broadcast.
-      const sent = await notifyReporter(row, '🎉 Fixed!',
-        `${quoteReport(row)} It's fixed and live now. ${plain} Thank you for helping make EyeWire II better!`, FIXED_IMAGE_URL);
-      if (sent) console.log(`[bridge] told the reporter of ${row.id}`);
+      const thanks = fixedNote(row);
+      const sent = await notifyReporter(row, '🎉 Fixed!', thanks, FIXED_IMAGE_URL);
+      if (sent) {
+        console.log(`[bridge] told the reporter of ${row.id}`);
+        // Show the approvers what the reporter was told, and how to add to it.
+        const at = new Date().toISOString();
+        const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
+        log.push({ role: 'reporter_update', via: 'auto', by: 'the robot', text: thanks, ts: posted.ts, at, sent: true, echoed: true });
+        await patchRow(row.id, { feedback_log: log }).catch(() => {});
+        await say(row, `✉️ Sent to the reporter:
+> ${thanks}
+To add something, reply *update: your own words* and I'll send that too.`).catch(() => {});
+      }
       // And every admin, so fixes are visible in the game, not just in Slack.
       const report = (row.source_excerpt || '').trim();
       for (const id of await adminUserIds()) {

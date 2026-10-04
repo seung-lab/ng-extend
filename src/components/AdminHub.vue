@@ -346,10 +346,14 @@ const reporterSending = ref<string | null>(null);
 function draftReporterUpdate(row: TriageRow): string {
   const t = (row.source_excerpt || '').trim();
   const q = t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}".` : 'Thanks for your report.';
-  const shipped = (row.result_note || '').replace(/<@[A-Z0-9]+>/g, 'a tester')
-    .replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1').trim();
   if (row.status === 'done' || row.impl_state === 'deployed') {
-    return `${q} Good news: it's fixed and live now.${shipped ? ' ' + shipped : ''} Thank you for helping make EyeWire II better!`;
+    // Same wording as the bridge's fixedNote: thanks, their words, what was built.
+    const fix = String(row.result_note || row.impl_summary || '')
+      .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/Details:\s*<?https?:\S+/gi, ' ')
+      .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
+      .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+    const thanks = t ? `Thank you for submitting: "${t.length > 200 ? t.slice(0, 197) + '...' : t}".` : 'Thank you for your report.';
+    return `${thanks} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
   }
   if (row.status === 'dismissed') {
     return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
