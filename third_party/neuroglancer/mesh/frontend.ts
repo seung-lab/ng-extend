@@ -213,6 +213,8 @@ export class MeshShaderManager {
           shader.uniform('uNgeTintMatrix'), false,
           mat4.multiply(ngeTintMat, tint.gridFromGlobal, modelMat));
       gl.uniform1f(shader.uniform('uNgeTintOn'), 1);
+      const glow = tint.glow;
+      gl.uniform4f(shader.uniform('uNgeTintGlow'), glow?.[0] ?? 0, glow?.[1] ?? 0, glow?.[2] ?? 0, glow ? 1 : 0);
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
     }
@@ -277,6 +279,7 @@ export class MeshShaderManager {
         builder.addUniform('highp uint', 'uPickID');
         builder.addUniform('highp mat4', 'uNgeTintMatrix');
         builder.addUniform('highp float', 'uNgeTintOn');
+        builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
         if (silhouetteRenderingEnabled) {
           builder.addUniform('highp float', 'uSilhouettePower');
@@ -310,7 +313,12 @@ if (uNgeTintOn > 0.5) {
   if (all(greaterThanEqual(tintCoord, vec3(0.0))) && all(lessThanEqual(tintCoord, vec3(1.0)))) {
     highp vec4 tint = texture(uNgeTint, tintCoord);
     if (tint.a > 0.02) {
-      vColor.rgb = mix(vColor.rgb, lightingFactor * (tint.rgb / tint.a), min(1.0, tint.a * 1.15));
+      highp vec3 tintRgb = tint.rgb / tint.a;
+      // The glowing colour keeps only a third of the shading and sits above
+      // full brightness, so it reads as lit from within.
+      highp float isGlow = uNgeTintGlow.a * step(distance(tintRgb, uNgeTintGlow.rgb), 0.06);
+      highp float tintLight = mix(lightingFactor, 0.95 + 0.35 * lightingFactor, isGlow);
+      vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
     }
   }
 }

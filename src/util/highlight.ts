@@ -237,8 +237,12 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
 // list, until the next mark, an undo of it, or the panel closing. It is not
 // saved: a reloaded or shared view has no "latest".
 let latestMark: string | null = null;
-/** How far the newest mark's colour is pulled toward white. */
-const LATEST_LIFT = 0.6;
+/** The newest mark keeps its own hue and GLOWS (the mesh shader draws its
+ *  colour bright and nearly unshaded). Pulling it toward white, the first
+ *  version, only washed it out (Ames 2026-10-05). The small lift is there so
+ *  the colour is its own: the shader finds the glowing mark by colour, and it
+ *  must not match an older mark in the same style. */
+const LATEST_LIFT = 0.12;
 function setLatestMark(mark: string | null) {
   if (latestMark === mark) return;
   latestMark = mark;
@@ -400,7 +404,9 @@ function buildTint(): NgeMeshTint | null {
   }
   // For checking from the console and in tests.
   (window as any).__ngeHighlightTint = { segments: segs.length, dims: [nx, ny, nz], cellNm: cell, radiusNm: r };
-  return { data, dims: [nx, ny, nz], gridFromGlobal: m };
+  const glowSeg = segs.find(s => s.latest);
+  const glow = glowSeg ? glowSeg.rgb.map(c => c / 255) as [number, number, number] : undefined;
+  return { data, dims: [nx, ny, nz], gridFromGlobal: m, glow };
 }
 
 let tintTimer: ReturnType<typeof setTimeout> | null = null;
