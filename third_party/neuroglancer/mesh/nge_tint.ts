@@ -17,6 +17,10 @@ export interface NgeMeshTint {
   dims: [number, number, number];
   /** Global (display) coordinates to texture coordinates in [0, 1]. */
   gridFromGlobal: mat4;
+  /** One colour in the map that GLOWS: drawn bright and nearly unshaded, so
+   *  it stands out by being bolder, not paler (Highlight mode's newest mark).
+   *  RGB in 0..1; it must be a colour no other mark in the map uses. */
+  glow?: [number, number, number];
 }
 
 let current: NgeMeshTint|null = null;
