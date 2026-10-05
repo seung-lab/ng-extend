@@ -3687,7 +3687,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         console.warn('[backend] logEdit skipped — no userId set (syncUser may not have run yet)');
         return;
       }
-      const row = {
+      const logRow = {
         task_id: entry.task_id ?? activeTaskId.value,
         operation: entry.operation,
         segment_before: entry.segment_before ?? null,
@@ -3699,14 +3699,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       };
       let result: any = null;
       try {
-        result = await secureWrite('activity.log', { row });
+        result = await secureWrite('activity.log', { row: logRow });
       } catch (e: any) {
         if (!/unknown action/i.test(e?.message ?? '')) {
           console.warn('[backend] activity not recorded:', e?.message);
           return;
         }
         // A server from before this change: the plain insert it expects.
-        supabase.from('edit_log').insert({ ...row, user_id: uid }).then(
+        supabase.from('edit_log').insert({ ...logRow, user_id: uid }).then(
           ({ error }) => { if (error) console.warn('[backend] edit_log insert failed:', error.message); },
           () => {},
         );
