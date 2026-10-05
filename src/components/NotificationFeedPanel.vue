@@ -123,6 +123,14 @@ function openDetail(notif: any) {
   // Triage alerts open the triage board on its own page, in a new tab
   // (Ames 2026-10-05), so the game stays where it is.
   if ((notif.title || '').startsWith('🗂')) {
+    // Open on THAT report (Ames 2026-10-05). The note quotes the report, so
+    // leave the quote for the board to find its card by. Through this
+    // browser's own storage, never the address.
+    try {
+      const quoted = String(notif.body || '').match(/^"([\s\S]*?)" Claude has a suggestion/)?.[1] || '';
+      const excerpt = quoted.replace(/\.\.\.$/, '').replace(/\s+/g, ' ').trim();
+      if (excerpt) window.localStorage.setItem('nge_triage_focus', JSON.stringify({ excerpt, at: Date.now() }));
+    } catch { /* the board still opens */ }
     window.open(`${window.location.origin}${window.location.pathname}?triage=board`, '_blank', 'noopener');
     emit('hide');
     return;

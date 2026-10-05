@@ -188,6 +188,34 @@ function keepSelectedInView() {
   void nextTick(() => document.querySelector(`[data-triage-id="${id}"]`)?.scrollIntoView({ block: 'nearest' }));
 }
 
+// Which report to open on, if any: "?report=<id>" (the Slack links), or the
+// quote a bell notification left a moment ago (NotificationFeedPanel).
+function takeTriageFocus(): { id?: string; excerpt?: string } | null {
+  try {
+    const id = new URLSearchParams(window.location.search).get('report') || '';
+    if (/^[0-9a-f-]{36}$/i.test(id)) return { id };
+    const raw = window.localStorage.getItem('nge_triage_focus');
+    if (raw) {
+      window.localStorage.removeItem('nge_triage_focus');
+      const f = JSON.parse(raw);
+      if (f?.excerpt && Date.now() - Number(f.at) < 2 * 60 * 1000) return { excerpt: String(f.excerpt) };
+    }
+  } catch { /* nothing to open on */ }
+  return null;
+}
+let triageFocus = takeTriageFocus();
+/** Select the card the focus names. A finished report older than five days
+ *  is not in the default list, so look once more with older ones shown. */
+function applyTriageFocus() {
+  if (!triageFocus) return;
+  const flat = (t: any) => String(t || '').replace(/\s+/g, ' ').trim();
+  const f = triageFocus;
+  const hit = triageRows.value.find(r => (f.id ? r.id === f.id : !!f.excerpt && flat(r.source_excerpt).startsWith(f.excerpt)));
+  if (hit) { triageSelected.value = hit.id; triageFocus = null; }
+  else if (!triageShowReviewed.value) triageShowReviewed.value = true;   // its watcher reloads
+  else triageFocus = null;
+}
+
 // Board view: the whole window, one column per section, cards compact until
 // you click one. "?triage=board" in the address opens straight into it, which
 // is what the "New tab" link uses.
@@ -233,6 +261,7 @@ async function loadTriage() {
     // Discarded reports are off the board unless you ask for older ones.
     triageRows.value = ((data ?? []) as TriageRow[]).filter(r => triageShowReviewed.value || !isDiscarded(r));
     void loadReporters(triageRows.value);
+    applyTriageFocus();
     keepSelectedInView();
     for (const r of triageRows.value) {
       if (triageEdits.value[r.id] === undefined) {

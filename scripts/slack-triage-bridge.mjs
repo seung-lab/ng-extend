@@ -415,7 +415,7 @@ async function postProposals() {
   const rows = await res.json();
   for (const row of rows) {
     const where = await openThread(row,
-      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also on the <${LIVE_URL}?triage=board|triage board>. Anytime, reply *update sender* to draft a note to the person who reported it. ${REPLY_GUIDE}.`);
+      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also on the <${LIVE_URL}?triage=board&report=${row.id}|triage board>. Anytime, reply *update sender* to draft a note to the person who reported it. ${REPLY_GUIDE}.`);
     console.log(`[bridge] posted proposal ${row.id} (${where})`);
     await notifyAdminsOfProposal(row);
   }
