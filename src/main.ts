@@ -21,6 +21,7 @@ import './widgets/find_path_restyle.css';
 
 import {installShowcase} from './showcase';
 import App from 'components/App.vue';
+import TriagePage from 'components/TriagePage.vue';
 import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';
 import {useStatsStore} from './store-pyr';
 import {exitGrapheneTool} from './widgets/graphene_tool_utils';
@@ -115,8 +116,21 @@ function injectNeuronFavicon() {
   document.title = 'EyeWire II — neuroglancer';
 }
 
+/** "?triage=board": the admin triage board on its own, without the game. */
+function isTriagePage(): boolean {
+  try { return new URLSearchParams(window.location.search).has('triage'); } catch { return false; }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   injectNeuronFavicon();
+  if (isTriagePage()) {
+    // No viewer, no layers, no data: just the board.
+    const page = createApp(TriagePage);
+    installErrorReporting(page);
+    page.use(createPinia());
+    page.mount('#app');
+    return;
+  }
   // Before mount: components read isMobileRef during setup (chat default,
   // welcome sheet) and mobile.css keys off body.nge-mobile.
   installMobileMode();

@@ -120,9 +120,10 @@ function openDetail(notif: any) {
     emit('hide');
     return;
   }
-  // Triage alerts jump straight to the review queue (Admin Hub > Triage).
+  // Triage alerts open the triage board on its own page, in a new tab
+  // (Ames 2026-10-05), so the game stays where it is.
   if ((notif.title || '').startsWith('🗂')) {
-    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'triage' } }));
+    window.open(`${window.location.origin}${window.location.pathname}?triage=board`, '_blank', 'noopener');
     emit('hide');
     return;
   }

@@ -12,7 +12,9 @@ import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxel
 
 const backend = useProofreadingBackendStore();
 
-const props = defineProps<{ initialSubTab?: string }>();
+// standalone: the triage board on its own page (TriagePage.vue), with no
+// game around it. Only the Triage tab, always as the board.
+const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
 const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot'>(
@@ -189,11 +191,10 @@ function keepSelectedInView() {
 // Board view: the whole window, one column per section, cards compact until
 // you click one. "?triage=board" in the address opens straight into it, which
 // is what the "New tab" link uses.
-const BOARD_PARAM = (() => { try { return new URLSearchParams(window.location.search).get('triage') === 'board'; } catch { return false; } })();
-const triageBoard = ref(BOARD_PARAM);
+const triageBoard = ref(!!props.standalone);
 const boardUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
 function onBoardKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && triageBoard.value && !(e.target as HTMLElement)?.closest?.('textarea, input')) triageBoard.value = false;
+  if (e.key === 'Escape' && triageBoard.value && !props.standalone && !(e.target as HTMLElement)?.closest?.('textarea, input')) triageBoard.value = false;
 }
 onMounted(() => document.addEventListener('keydown', onBoardKey));
 onUnmounted(() => document.removeEventListener('keydown', onBoardKey));
@@ -1284,7 +1285,7 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-confirm-x" @click="deleteDone = ''">×</button>
     </div>
     <!-- Sub-tabs -->
-    <div class="nge-admin-subtabs">
+    <div v-if="!standalone" class="nge-admin-subtabs">
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'notifications' }" @click="adminSubTab = 'notifications'">Notifications</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'groups' }" @click="adminSubTab = 'groups'">Groups</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
@@ -1641,13 +1642,13 @@ function practiceWhen(iso: string | null) {
     <div v-if="adminSubTab === 'triage'" class="nge-admin-section">
       <!-- Board view leaves the panel for the whole window. Teleported: the
            profile panel's backdrop filter would otherwise trap a fixed box. -->
-      <Teleport to="body" :disabled="!triageBoard">
+      <Teleport to="body" :disabled="!triageBoard || standalone">
       <div class="nge-admin-block" :class="{ 'nge-triage-board': triageBoard }">
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
-          <button class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
+          <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
-          <a v-if="!triageBoard" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the board in its own browser tab">↗ New tab</a>
+          <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
           <label class="nge-triage-toggle">
             <input type="checkbox" v-model="triageShowReviewed" />
             <span>Show older</span>

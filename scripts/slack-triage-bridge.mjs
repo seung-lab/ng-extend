@@ -415,7 +415,7 @@ async function postProposals() {
   const rows = await res.json();
   for (const row of rows) {
     const where = await openThread(row,
-      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also reviewable in Admin Hub, Triage tab. Anytime, reply *update sender* to draft a note to the person who reported it. ${REPLY_GUIDE}.`);
+      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also on the <${LIVE_URL}?triage=board|triage board>. Anytime, reply *update sender* to draft a note to the person who reported it. ${REPLY_GUIDE}.`);
     console.log(`[bridge] posted proposal ${row.id} (${where})`);
     await notifyAdminsOfProposal(row);
   }
@@ -427,7 +427,7 @@ async function postProposals() {
  *  its card is posted, so it never comes round again. */
 async function notifyAdminsOfProposal(row) {
   const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
-  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" Claude has a suggestion ready. Approve or dismiss it in Admin Hub, Triage tab, or in the Slack thread.`;
+  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" Claude has a suggestion ready. Approve or dismiss it on the triage board (click this note), or in the Slack thread.`;
   let sent = 0;
   for (const id of await adminUserIds()) {
     if (await notifyUser(id, '🗂️ Feedback triage: new suggestion', body)) sent++;
