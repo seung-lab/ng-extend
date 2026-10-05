@@ -156,6 +156,32 @@ function segLayer(dataset: string): any {
   return null;
 }
 
+/**
+ * showOnly, and again a little later: a saved view can finish loading after
+ * the first pass and bring its own extra segments back (Ames saw a stray
+ * green cell from a registered view, 2026-10-05). Stops if another cell has
+ * been shown since.
+ */
+function showOnlyAndKeep(ex: PracticeExample, rootIds: string[], colors: Array<[string, number]>) {
+  showOnly(ex.dataset, rootIds);
+  colorSegments(ex.dataset, colors);
+  for (const ms of [1500, 3500]) {
+    setTimeout(() => {
+      if (session.shownId !== ex.id) return;
+      const layer = segLayer(ex.dataset);
+      const set = layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+      if (!set) return;
+      const now = [...set].map((s: any) => s.toString());
+      // Only step in when something that does not belong is showing; an
+      // edit by the learner changes the ids and is theirs to keep.
+      if (now.some(id => !rootIds.includes(id)) && rootIds.every(id => now.includes(id))) {
+        showOnly(ex.dataset, rootIds);
+        colorSegments(ex.dataset, colors);
+      }
+    }, ms);
+  }
+}
+
 function showOnly(dataset: string, rootIds: string[]) {
   const layer = segLayer(dataset);
   const set = layer?.displayState?.segmentationGroupState?.value?.visibleSegments
@@ -560,6 +586,12 @@ function userId(): string | null {
  */
 export type PracticeView = 'start' | 'preview';
 
+/** Whether a cut cell has a finished cut to preview (its two roots from
+ *  after the cut). Cells registered fused do not. */
+export function hasCutPreview(ex: PracticeExample | null): boolean {
+  return !!ex && ex.kind === 'cut' && !!ex.root_a && ex.root_a !== ex.root_b;
+}
+
 /** Whether this learner holds a cell in the slot. */
 export function holdsSlot(slot: string): boolean {
   return !!session.held[slot];
@@ -703,18 +735,20 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
   const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
   session.rootA = a ?? ex.root_a;
   session.rootB = b ?? ex.root_b;
-  if (view === 'preview' && ex.kind === 'cut') {
+  // A preview needs the two roots from after a cut. A cell registered from
+  // its fused state has never been cut, so there is nothing finished to
+  // show: it gets the normal fused view (hasCutPreview tells the step).
+  if (view === 'preview' && ex.kind === 'cut' && ex.root_a !== ex.root_b) {
     // The finished cut: piece yellow, cell purple. Old roots still render.
-    showOnly(ex.dataset, [ex.root_b, ex.root_a]);
-    colorSegments(ex.dataset, [[ex.root_b, PURPLE], [ex.root_a, YELLOW]]);
+    showOnlyAndKeep(ex, [ex.root_b, ex.root_a], [[ex.root_b, PURPLE], [ex.root_a, YELLOW]]);
     return;
   }
-  showOnly(ex.dataset, session.rootA === session.rootB ? [session.rootA] : [session.rootA, session.rootB]);
   // Merge example: cell purple, loose piece yellow. Cut example: the fused
   // segment purple, so the piece cut off it stands out in its own colour.
-  colorSegments(ex.dataset, session.rootA === session.rootB
-    ? [[session.rootA, PURPLE]]
-    : [[session.rootA, PURPLE], [session.rootB, YELLOW]]);
+  showOnlyAndKeep(ex, session.rootA === session.rootB ? [session.rootA] : [session.rootA, session.rootB],
+    session.rootA === session.rootB
+      ? [[session.rootA, PURPLE]]
+      : [[session.rootA, PURPLE], [session.rootB, YELLOW]]);
 }
 
 /** True when the two pieces currently share a root. */

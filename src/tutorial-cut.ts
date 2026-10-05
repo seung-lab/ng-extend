@@ -6,9 +6,9 @@ import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
 // Amy's cut with the points placed (2026-09-26): red along the axon, blue on the dendrite.
 import imgCutPoints from './images/cut-points-example.jpg';
-import { beginPractice, endPractice, ensureTool, holdsSlot } from './practice';
+import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, getViewer, movingToSandbox, stopWatching, watchPractice } from './tutorial-3';
+import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, getViewer, movingToSandbox, stopWatching, watchPractice } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -66,6 +66,12 @@ In a moment you'll get the fused version of this very cell and make the cut your
         // The second cut cell is taken now and shown at "Your Turn" (the
         // Merge tutorial does the same).
         if (first) await beginPractice('cut', 'start', { slot: 'b', show: false, prefer: CUT_SECOND });
+        // The staged first cell has a finished cut to show. A stand-in cell
+        // (when that one is busy) may never have been cut: say so rather
+        // than call a fused cell a finished cut (Ames, 2026-10-05).
+        if (first && !hasCutPreview(first)) {
+          practiceStatus('This cell has not been cut before, so what you see is the fused version: two neurons as one purple segment. Press next and you will cut it.', true);
+        }
       });
     },
   },
