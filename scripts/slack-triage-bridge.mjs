@@ -115,14 +115,29 @@ const slack = async (method, payload) => {
   return json;
 };
 
+// Each check (stop, shipped, tester replies, reporter updates) reads the same
+// threads. Slack allows about 50 thread reads a minute, and the fourth check
+// pushed a pass over it (2026-10-05: 249 "ratelimited" in one run). One read
+// per thread per pass: this process is one pass, so a plain map is the cache.
+const threadCache = new Map();
 const slackGet = async (method, params) => {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`https://slack.com/api/${method}?${qs}`, {
-    headers: { Authorization: `Bearer ${SLACK_TOKEN}` },
-  });
-  const json = await res.json();
-  if (!json.ok) throw new Error(`${method}: ${json.error}`);
-  return json;
+  const key = method === 'conversations.replies' && !params.oldest ? qs : null;
+  if (key && threadCache.has(key)) return threadCache.get(key);
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`https://slack.com/api/${method}?${qs}`, {
+      headers: { Authorization: `Bearer ${SLACK_TOKEN}` },
+    });
+    const json = await res.json();
+    if (json.error === 'ratelimited' && attempt < 2) {
+      const wait = Math.min(Number(res.headers.get('retry-after')) || 2, 8);
+      await new Promise(r => setTimeout(r, wait * 1000));
+      continue;
+    }
+    if (!json.ok) throw new Error(`${method}: ${json.error}`);
+    if (key) threadCache.set(key, json);
+    return json;
+  }
 };
 
 const say = (row, text) => slack('chat.postMessage', {
@@ -736,7 +751,12 @@ async function stopRequests() {
 const SHIPPED_CMD = /^(?:shipped|fixed)\s*(?:$|[.!]+\s*$|[-:,]\s*(.*)$)/is;
 async function shippedRequests() {
   const recent = encodeURIComponent('"' + new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString() + '"');
-  const res = await sb(`feedback_triage?slack_ts=not.is.null&done_slack_ts=is.null&or=(status.in.(proposed,approved),and(status.eq.dismissed,reviewed_at.gte.${recent}))&select=*`);
+  // Open reports every pass (their threads are already read by the stop
+  // check). Recently dismissed ones cost extra reads, so only on the first
+  // pass of a run, about every ten minutes.
+  const firstPass = !process.env.BRIDGE_PASS || process.env.BRIDGE_PASS === '1';
+  const which = firstPass ? `or=(status.in.(proposed,approved),and(status.eq.dismissed,reviewed_at.gte.${recent}))` : 'status=in.(proposed,approved)';
+  const res = await sb(`feedback_triage?slack_ts=not.is.null&done_slack_ts=is.null&${which}&select=*`);
   if (!res.ok) { console.warn(`[bridge] shipped check skipped (${res.status})`); return 0; }
   let closed = 0;
   for (const row of await res.json()) {
