@@ -746,11 +746,13 @@ onUnmounted(() => {
     padding: 8px 8px 20px 8px;
 }
 
+/* Modal steps (the site tour's welcome and finale) used to drop the box's
+   padding for a full-bleed video that is long gone. Without it the title
+   sat on the drag handle and Back, the counter and the progress bar ran to
+   the edges (Ames, 2026-10-05). They keep the normal padding now, and
+   scroll like any other box on a short screen. */
 .chip.modal {
-    padding-top: 0;
-    padding-left: 0;
-    padding-right: 0;
-    overflow: hidden;
+    padding-top: 34px;
 }
 
 .chip .title {
