@@ -41,6 +41,38 @@ const CAVE_TABLES = [
   { label: 'BANC', server: 'https://cave.fanc-fly.com', vol: 'brain_and_nerve_cord', tables: ['backbone_proofread', 'cell_info'] },
 ];
 
+// The server each dataset's cells load from. When one is down the dataset
+// opens with no cells and no explanation (MEC answered 503 on 2026-10-05 and
+// nobody was told). Asked with no sign in, a healthy one answers with a
+// redirect to its login page or a 401; anything from 500 up, or no answer, is
+// down.
+const SEGMENTATION_SERVERS = [
+  { label: 'Retina', url: 'https://minnie.microns-daf.com/segmentation/table/stroeh_mouse_retina/info' },
+  { label: 'Sandbox', url: 'https://minnie.microns-daf.com/segmentation/table/pinky_nf_v2/info' },
+  { label: 'MICrONS', url: 'https://minnie.microns-daf.com/segmentation/table/minnie3_v1/info' },
+  { label: 'MEC', url: 'https://hc.himc-cave.com/segmentation/table/pni_mec/info' },
+  { label: 'BANC', url: 'https://cave.fanc-fly.com/segmentation/table/wclee_fly_cns_001/info' },
+];
+
+async function checkSegmentation() {
+  const once = async (x) => {
+    try {
+      const r = await timed(x.url, { redirect: 'manual' });
+      return r.status >= 500 ? String(r.status) : null;
+    } catch (e) { return e.message; }
+  };
+  let todo = SEGMENTATION_SERVERS.map(x => ({ ...x, err: '' }));
+  for (let attempt = 1; attempt <= 3 && todo.length; attempt++) {
+    if (attempt > 1) await new Promise(r => setTimeout(r, 60000));
+    const still = [];
+    for (const x of todo) { x.err = await once(x); if (x.err) still.push(x); }
+    todo = still;
+  }
+  return todo.length
+    ? { ok: false, detail: todo.map(x => `${x.label} cells cannot load: ${x.err} (3 tries)`).join('; ') }
+    : { ok: true, detail: `${SEGMENTATION_SERVERS.length} server(s) answer` };
+}
+
 async function timed(url, init = {}) {
   return fetch(url, { ...init, signal: AbortSignal.timeout(30000) });
 }
@@ -235,7 +267,7 @@ async function lastHealthMessage() {
 // can do about those, so they are only reported when the check before this
 // one failed too, which means it has been down for over an hour
 // (Ames 2026-10-04: "I get a lot of errors basically every day").
-const NEEDS_TWO = ['Spreadsheet write-back', 'CAVE tables'];
+const NEEDS_TWO = ['Spreadsheet write-back', 'CAVE tables', 'Segmentation servers'];
 /** The names that failed in the previous health run, from its log. Null when
  *  that cannot be read, and then nothing is held back. */
 async function previousFailures() {
@@ -262,6 +294,7 @@ async function previousFailures() {
   const results = {
     'Spreadsheet write-back': await checkSheets(),
     'CAVE tables': await checkCave(),
+    'Segmentation servers': await checkSegmentation(),
     'Player write failures': await checkPlayerFailures(),
     'Robot AI step': await checkRobotAi(),
     'Anthropic key': await checkAnthropicKey(),
