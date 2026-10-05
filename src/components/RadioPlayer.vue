@@ -17,6 +17,7 @@
  *   merge bar, and the 3D view's own "Sections" tick box.
  */
 import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
+import {useUserPreferencesStore} from '../store';
 
 interface Track { id: string; title: string; file: string; duration: number }
 
@@ -41,15 +42,21 @@ let queue: Track[] = [];          // songs still to come this lap
 let opened = false;               // the opener has played this visit
 let waitingForGesture = false;
 
+// The choice (on or off) and the volume are a player setting like any other:
+// kept in the preferences store, which saves them to the account, so they are
+// the same on the next visit and on another computer.
+const prefsStore = useUserPreferencesStore();
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 function loadPrefs() {
-  try {
-    const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
-    if (typeof p.volume === 'number') volume.value = Math.min(1, Math.max(0, p.volume));
-    return p.on === true;
-  } catch { return false; }
+  let p: any = prefsStore.prefs.radio;
+  if (!p) { try { p = JSON.parse(localStorage.getItem(PREF_KEY) || 'null'); } catch { p = null; } }   // the first build kept them here
+  if (p && typeof p.volume === 'number') volume.value = clamp01(p.volume);
+  return !!p && p.on === true;
 }
+let touched = false;              // the listener has used the control this visit
 function savePrefs() {
-  try { localStorage.setItem(PREF_KEY, JSON.stringify({ on: on.value, volume: volume.value })); } catch { /* private mode */ }
+  touched = true;
+  prefsStore.save({ radio: { on: on.value, volume: Math.round(volume.value * 100) / 100 } });
 }
 
 async function loadPlaylist(): Promise<boolean> {
@@ -132,6 +139,13 @@ async function turnOn() {
   if (!on.value) return;
   if (audio && current.value) await tryPlay(); else await playNext();
 }
+/** Resume a station that was left on, without counting as a new choice. */
+async function turnOnQuietly() {
+  on.value = true;
+  if (!(await loadPlaylist())) { on.value = false; return; }
+  if (!on.value) return;
+  if (audio && current.value) await tryPlay(); else await playNext();
+}
 function turnOff() {
   on.value = false; savePrefs();
   audio?.pause();
@@ -205,8 +219,14 @@ onMounted(() => {
   document.addEventListener('pointerdown', onDocDown, true);
   // Left on last time: pick the station back up (on the first click, if the
   // browser wants one before any sound).
-  if (wasOn) void turnOn();
+  if (wasOn) void turnOnQuietly();
 });
+// The wheel over the control turns the volume, as it does on a system mixer.
+function onWheel(e: WheelEvent) {
+  e.preventDefault();
+  volume.value = clamp01(Math.round((volume.value + (e.deltaY < 0 ? 0.05 : -0.05)) * 100) / 100);
+  savePrefs();
+}
 onUnmounted(() => {
   clearInterval(dockTimer);
   window.removeEventListener('resize', measureDock);
@@ -214,6 +234,15 @@ onUnmounted(() => {
   audio?.pause(); audio = null;
 });
 watch(volume, v => { if (audio) audio.volume = v; });
+// The account's copy arrives a moment after sign in. Until the listener
+// touches the control, it decides: the saved volume, and the station back on
+// if that is how it was left.
+watch(() => prefsStore.prefs.radio, r => {
+  if (!r || touched) return;
+  if (typeof r.volume === 'number') volume.value = clamp01(r.volume);
+  if (r.on && !on.value) void turnOnQuietly();
+  else if (!r.on && on.value) { on.value = false; audio?.pause(); }
+}, { deep: true });
 </script>
 
 <template>
@@ -221,7 +250,7 @@ watch(volume, v => { if (audio) audio.volume = v; });
     <div ref="rootEl" class="nge-radio" :class="{ 'nge-radio--on': on, 'nge-radio--playing': playing, 'nge-radio--open': expanded, 'holo-on': expanded }"
          :style="{ '--nge-radio-dock': dock + 'px' }"
          @pointerenter="hovering = true; expanded = true" @pointerleave="onLeave" @focusin="onFocusIn" @focusout="onFocusOut"
-         @keydown.esc="expanded = false">
+         @keydown.esc="expanded = false" @wheel="onWheel">
       <div class="nge-radio-tray" :aria-hidden="!expanded">
         <div class="nge-radio-now">
           <span class="nge-radio-kicker">EyeWire Radio</span>
@@ -234,7 +263,8 @@ watch(volume, v => { if (audio) audio.volume = v; });
           <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M3 3.4v9.2a.5.5 0 0 0 .8.4L10 8.4a.5.5 0 0 0 0-.8L3.800 3a.5.5 0 0 0-.8.4z"/><rect x="11.300" y="3" width="1.700" height="10" rx=".6"/></svg>
         </button>
         <input class="nge-radio-vol" type="range" min="0" max="1" step="0.01" :value="volume" :tabindex="expanded ? 0 : -1"
-               :style="{ '--v': Math.round(volume * 100) + '%' }" aria-label="Music volume" title="Volume" @input="onVolume" />
+               :style="{ '--v': Math.round(volume * 100) + '%' }" aria-label="Music volume" :title="`Volume ${Math.round(volume * 100)}%`" @input="onVolume" />
+        <span class="nge-radio-volnum" aria-hidden="true">{{ Math.round(volume * 100) }}</span>
       </div>
       <button class="nge-radio-main" :title="label" :aria-label="label" :aria-pressed="on" @click="toggle">
         <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -303,7 +333,7 @@ body.nge-mobile .nge-radio { display: none; }
   padding-left: 0;
   transition: max-width 0.28s cubic-bezier(.16, 1, .3, 1), opacity 0.18s ease, padding 0.28s ease;
 }
-.nge-radio--open .nge-radio-tray { max-width: 320px; opacity: 1; padding-left: 10px; }
+.nge-radio--open .nge-radio-tray { max-width: 350px; opacity: 1; padding-left: 10px; }
 .nge-radio-now { display: flex; flex-direction: column; min-width: 0; width: 132px; line-height: 1.15; margin-right: 4px; }
 .nge-radio-kicker { font: 600 8.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #4fcfff; white-space: nowrap; }
 .nge-radio-title { font-size: 12px; font-weight: 500; color: #dce9fb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -324,6 +354,7 @@ body.nge-mobile .nge-radio { display: none; }
 .nge-radio-vol::-moz-range-progress { height: 3px; border-radius: 2px; background: #4fcfff; }
 .nge-radio-vol::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; margin-top: -4px; border-radius: 50%; background: #dff3ff; border: 0; box-shadow: 0 0 6px rgba(79, 207, 255, 0.7); }
 .nge-radio-vol::-moz-range-thumb { width: 11px; height: 11px; border-radius: 50%; background: #dff3ff; border: 0; box-shadow: 0 0 6px rgba(79, 207, 255, 0.7); }
+.nge-radio-volnum { flex: none; width: 22px; margin-right: 2px; font: 500 10.5px ui-monospace, 'Cascadia Code', monospace; color: #8fa3bd; text-align: right; font-variant-numeric: tabular-nums; }
 .nge-radio-vol:focus-visible { outline: 1px solid rgba(79, 207, 255, 0.6); outline-offset: 3px; border-radius: 3px; }
 
 @media (prefers-reduced-motion: reduce) {
