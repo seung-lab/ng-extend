@@ -13,6 +13,7 @@ import { canonicalDataset } from './datasets';
 
 const TOUR_TUTORIAL: Record<string, number> = {
   pni_mec: 6,
+  stroeh_mouse_retina: 7,
 };
 
 const seenKey = (dataset: string) => `nge-dataset-tour-seen:${dataset}`;
