@@ -2969,7 +2969,7 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0 && !backend.loading" class="nge-cl-no-results">No matching cells</div>
 
-          <button v-if="slim" class="nge-cl-slim-expand" title="Back to the full Cell Library (turns slim view off)" aria-label="Back to the full Cell Library" @click="expandAndStay">
+          <button v-if="slim" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <button v-if="slim && myOpenClaims.length > (slimClaimIndex >= 0 ? 1 : 0)" class="nge-cl-slim-next" :disabled="steppingClaim"
@@ -4898,10 +4898,18 @@ select.nge-cl-response-input:hover {
 .nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -10px; margin-right: -46px; cursor: default; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
 .nge-cl-slim-expand { position: absolute; right: 12px; top: 18px; }
-/* Next claimed cell: at the left, and the row makes room for it. */
-.nge-cl-slim-next { position: absolute; left: 12px; top: 18px; }
+/* Next claimed cell: green, beside the Full view arrow at the right, and
+   the row makes room for both (Ames 2026-10-04). */
+.nge-cl-slim-next {
+  position: absolute; right: 42px; top: 18px;
+  color: #7ee2a8; background: rgba(61, 220, 132, 0.14); border-color: rgba(61, 220, 132, 0.5);
+}
+.nge-cl-slim-next:hover {
+  color: #d6ffe6; background: rgba(61, 220, 132, 0.26); border-color: rgba(61, 220, 132, 0.85);
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
+}
 .nge-cl-slim-next:disabled { opacity: 0.45; cursor: default; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-left: 44px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -44px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-left: -44px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 76px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-right: -76px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -76px; }
 </style>
