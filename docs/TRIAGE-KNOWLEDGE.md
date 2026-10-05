@@ -107,3 +107,9 @@ summaries.
   boot, so judge "what the page opened on" from `BOOT_HASH` in store.ts, not
   `window.location.hash` (2026-10-05, refresh keeps view build, from reading
   url_hash_binding.ts).
+- Chat length is capped by `CHAT_MAX_CHARS` (140) and counted with
+  `chatTextLength` in store.ts, which skips `https?://` links, so a native
+  `maxlength` cannot enforce it. `sendMessage` drops over limit text except
+  announcements (`notificationId` set), and "Share my view" appends long
+  links to the caption, which is why links must stay uncounted (2026-10-05,
+  chat limit build, approver note "140 characters, exclude links").

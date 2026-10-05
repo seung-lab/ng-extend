@@ -5255,6 +5255,13 @@ function parseMessageParts(name: string, text: string): MessagePart[] {
   return parts;
 }
 
+/** Chat messages are capped at 140 characters, and links don't count
+ *  toward it (Amy 2026-10-05), so a shared view link never eats the limit. */
+export const CHAT_MAX_CHARS = 140;
+export function chatTextLength(text: string): number {
+  return Array.from(text.replace(/https?:\/\/\S+/g, '').trim()).length;
+}
+
 function formatTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
@@ -5779,6 +5786,9 @@ export const useChatStore = defineStore('chat', () => {
     const backend = useProofreadingBackendStore();
     const name = backend.chatHandle;
     const rank = backend.isAdmin ? 'admin' : 'player';
+    // The box blocks long messages too; this holds the limit if it is bypassed.
+    // Announcements carry a notification title and are not capped.
+    if (notificationId == null && chatTextLength(text) > CHAT_MAX_CHARS) return;
     // A Nurro command is answered on your screen only and never posted, so
     // asking Nurro does not fill everyone's chat (Amy 2026-09-30). "!science"
     // belongs to nkem_test's public joke and is still posted.
