@@ -112,9 +112,22 @@ export function runPanelTrace(host: HTMLElement, PAD = 0, opts: { detached?: boo
   if (!ctx) { cv.remove(); return; }
 
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = rect.width + PAD * 2, h = rect.height + PAD * 2;
+  let w = rect.width + PAD * 2, h = rect.height + PAD * 2;
   cv.width = w * dpr; cv.height = h * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // The box can change size under the light: the profile widens when it
+  // opens on Week in Science, and grows again as its numbers load, so a ring
+  // measured once ran inside the real edge (Ames 2026-10-05). Follow the
+  // host every frame and re-fit the canvas when it moves.
+  function follow() {
+    if (opts.detached || !host.isConnected) return;
+    const nw = host.offsetWidth + PAD * 2, nh = host.offsetHeight + PAD * 2;
+    if (!host.offsetWidth || !host.offsetHeight || (nw === w && nh === h)) return;
+    w = nw; h = nh;
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    cv.width = w * dpr; cv.height = h * dpr;
+    ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 
   const ring = ringPoint;
 
@@ -155,6 +168,7 @@ export function runPanelTrace(host: HTMLElement, PAD = 0, opts: { detached?: boo
   function draw(now: number) {
     const k = (now - t0) / DUR;
     if (k >= 1) { stop(); return; }
+    follow();
 
     ctx!.globalCompositeOperation = 'destination-out';
     ctx!.fillStyle = 'rgba(0,0,0,0.22)';
