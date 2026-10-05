@@ -166,7 +166,12 @@ function authorizeData(input, ctx) {
     const row = Object.fromEntries(Object.entries(value).filter(([k]) => fields.has(k)));
     if (table === 'users') {
       if (typeof row.display_name === 'string' && /^(nurro|admin|administrator|moderator|staff)$/i.test(row.display_name.trim()) && !ctx.isAdmin) fail(400, 'That display name is reserved.');
-      if (method === 'POST') { row.middleauth_email = ctx.who.email; row.cave_user_id = ctx.who.caveId || null; }
+      if (method === 'POST') {
+        row.middleauth_email = ctx.who.email; row.cave_user_id = ctx.who.caveId || null;
+        // A new profile starts at zero. Creating one is open to any signed in
+        // person, so it must not be a way to arrive with a total.
+        for (const field of ['total_edits','total_merges','total_splits','cells_completed','current_streak','longest_streak','last_edit_date','total_annotations']) delete row[field];
+      }
       else if ('cave_user_id' in value) row.cave_user_id = ctx.who.caveId || null;
       // Compatibility: own counters remain client-reported until CAVE-authoritative
       // reconciliation is available. They can never be written for another user.

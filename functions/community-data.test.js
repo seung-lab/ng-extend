@@ -190,3 +190,7 @@ test('a chat reply may point at a message id and nothing else',()=>{
  assert.throws(()=>plan('chat_messages','POST','',{text:'yes!',reply_to:'not-an-id'}),/reply to/);
  assert.equal(plan('chat_messages','GET','select=id,text,reply_to',undefined,anon).query.get('select'),'id,text,reply_to');
 });
+test('a new profile can not arrive with totals',()=>{
+ const p=plan('users','POST','',{display_name:'New',total_edits:1000000000,cells_completed:5,current_streak:9,total_annotations:3});
+ assert.deepEqual(p.body,{display_name:'New',middleauth_email:'player@example.invalid',cave_user_id:123});
+});

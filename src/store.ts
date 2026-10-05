@@ -267,6 +267,77 @@ export const useLayersStore = defineStore('layers', () => {
       } catch { return null; }
     }
 
+    /** Count one split or merge: the local numbers at once, then the log. */
+    function countEdit(operation: 'merge' | 'split', log: Partial<EditLogEntry>) {
+      const statsStore = useUserStatsStore();
+      // One acknowledged operation is one edit
+      if (operation === 'merge') {
+        statsStore.setStats({
+          editsAllTime:   statsStore.stats.editsAllTime   + 1,
+          mergesAllTime:  statsStore.stats.mergesAllTime  + 1,
+          editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
+          mergesThisWeek: statsStore.stats.mergesThisWeek + 1,
+          editsThisMonth: statsStore.stats.editsThisMonth + 1,
+          mergesThisMonth:statsStore.stats.mergesThisMonth+ 1,
+          editsToday:     statsStore.stats.editsToday     + 1,
+          mergesToday:    statsStore.stats.mergesToday     + 1,
+        });
+      } else {
+        statsStore.setStats({
+          editsAllTime:   statsStore.stats.editsAllTime   + 1,
+          splitsAllTime:  statsStore.stats.splitsAllTime  + 1,
+          editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
+          splitsThisWeek: statsStore.stats.splitsThisWeek + 1,
+          editsThisMonth: statsStore.stats.editsThisMonth + 1,
+          splitsThisMonth:statsStore.stats.splitsThisMonth+ 1,
+          editsToday:     statsStore.stats.editsToday     + 1,
+          splitsToday:    statsStore.stats.splitsToday    + 1,
+        });
+      }
+
+      statsStore.logDailyEdit(operation);
+      statsStore.signalEdit(operation);
+      touchLastEditAt();
+      // NOTE: cellsSubmitted is deliberately NOT touched here. It used to
+      // be incremented every 5 edits "to animate the cell-dot canvas", but
+      // it's a real stat (the Exploration badge track and the profile's
+      // Cells number). It now comes only from CAVE completions
+      // (users.cells_completed via cave_completions_mirror).
+
+      // Report it; the server records and counts it
+      try {
+        const backendStore = useProofreadingBackendStore();
+        if (backendStore.userId) {
+          const viewer: any = (window as any)['viewer'];
+          const pos = viewer?.navigationState?.position?.value;
+          const coords = pos ? `${pos[0]}, ${pos[1]}, ${pos[2]}` : null;
+          backendStore.logEdit({ operation, coordinates: coords, ...log });
+          backendStore.postActivity(`${operation === 'merge' ? 'merged' : 'split'} segment`);
+        }
+      } catch { /* backend logging is non-critical */ }
+    }
+
+    // ── Edits the graph server acknowledged ─────────────────────────────
+    // Each split or merge the server accepts answers with its operation id
+    // (third_party/neuroglancer/datasource/graphene/frontend.ts). That answer
+    // IS the edit: counted once, at once, with the id the server can check.
+    // The visible-segment watcher below stays as the fallback for a graph
+    // source that does not go through that code; while acknowledgements are
+    // arriving it stands down, so nothing is counted twice. (It grouped
+    // everything inside three seconds into one edit, and could only guess
+    // that an edit had happened: leaderboard audit, 2026-10-05.)
+    let lastAckAt = 0;
+    const onGraphEdit = (ev: Event) => {
+      const d = (ev as CustomEvent).detail ?? {};
+      if (d.kind !== 'merge' && d.kind !== 'split') return;
+      lastAckAt = Date.now();
+      countEdit(d.kind, {
+        segment_after: Array.isArray(d.roots) && d.roots.length ? d.roots.join(',') : null,
+        metadata: { diff: 1, operation_id: d.operationId ?? null, graph: d.graph ?? null },
+      });
+    };
+    window.addEventListener('nge-graph-edit', onGraphEdit);
+
     // Signal fires (segId, wasAdded) — track the specific segments involved
     const handler = (changedId?: any, wasAdded?: boolean) => {
       const newCount = visibleSegs.size;
@@ -324,64 +395,20 @@ export const useLayersStore = defineStore('layers', () => {
         if (operation === 'merge' && net >= 0) return;
         if (operation === 'split' && net <= 0) return;
 
-        const statsStore = useUserStatsStore();
-        // Count as exactly 1 operation per debounce window
-        if (operation === 'merge') {
-          statsStore.setStats({
-            editsAllTime:   statsStore.stats.editsAllTime   + 1,
-            mergesAllTime:  statsStore.stats.mergesAllTime  + 1,
-            editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
-            mergesThisWeek: statsStore.stats.mergesThisWeek + 1,
-            editsThisMonth: statsStore.stats.editsThisMonth + 1,
-            mergesThisMonth:statsStore.stats.mergesThisMonth+ 1,
-            editsToday:     statsStore.stats.editsToday     + 1,
-            mergesToday:    statsStore.stats.mergesToday     + 1,
-          });
-        } else {
-          statsStore.setStats({
-            editsAllTime:   statsStore.stats.editsAllTime   + 1,
-            splitsAllTime:  statsStore.stats.splitsAllTime  + 1,
-            editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
-            splitsThisWeek: statsStore.stats.splitsThisWeek + 1,
-            editsThisMonth: statsStore.stats.editsThisMonth + 1,
-            splitsThisMonth:statsStore.stats.splitsThisMonth+ 1,
-            editsToday:     statsStore.stats.editsToday     + 1,
-            splitsToday:    statsStore.stats.splitsToday    + 1,
-          });
-        }
-
-        statsStore.logDailyEdit(operation);
-        statsStore.signalEdit(operation);
-        touchLastEditAt();
-        // NOTE: cellsSubmitted is deliberately NOT touched here. It used to
-        // be incremented every 5 edits "to animate the cell-dot canvas", but
-        // it's a real stat (the Exploration badge track and the profile's
-        // Cells number). It now comes only from CAVE completions
-        // (users.cells_completed via cave_completions_mirror).
-
-        // Log to Supabase with diff=1 (one operation per debounce)
-        try {
-          const backendStore = useProofreadingBackendStore();
-          if (backendStore.userId) {
-            const viewer: any = (window as any)['viewer'];
-            const pos = viewer?.navigationState?.position?.value;
-            const coords = pos ? `${pos[0]}, ${pos[1]}, ${pos[2]}` : null;
-            backendStore.logEdit({
-              operation,
-              segment_before: removedIds,
-              segment_after: addedIds,
-              coordinates: coords,
-              metadata: { net_segment_change: net, diff: 1 },
-            });
-            backendStore.postActivity(`${operation === 'merge' ? 'merged' : 'split'} segment`);
-          }
-        } catch { /* backend logging is non-critical */ }
+        // The graph server's own acknowledgement already counted this one.
+        if (Date.now() - lastAckAt < EDIT_DEBOUNCE_MS + 5000) return;
+        countEdit(operation, {
+          segment_before: removedIds,
+          segment_after: addedIds,
+          metadata: { net_segment_change: net, diff: 1 },
+        });
       }, EDIT_DEBOUNCE_MS);
     };
 
     visibleSegs.changed.add(handler);
     segEditCleanup = () => {
       visibleSegs.changed.remove(handler);
+      window.removeEventListener('nge-graph-edit', onGraphEdit);
       if (debounceTimer) clearTimeout(debounceTimer);
     };
   }
@@ -3640,17 +3667,28 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
 
   // ── Edit logging ──────────────────────────────────────────────────────
-  /** Log an edit operation to the audit trail + increment user stats + update streaks. */
+  /**
+   * Report one thing the player did. The SERVER records it and moves the
+   * counters (edits, cells, streak) in one step, and answers with the
+   * counters as they now stand; the browser never writes a total
+   * (leaderboard audit, 2026-10-05). A split or merge carries the graph
+   * server's operation id, which the server looks up before counting.
+   *
+   * Two older arrangements are still handled, so the app and the server can
+   * be updated in either order: a server from before this change (no
+   * 'activity.log' action), and a database without the counting function
+   * yet (the server answers counted: false). In both, the counters are
+   * updated from here as they always were.
+   */
   async function logEdit(entry: EditLogEntry) {
     try {
       const uid = entry.user_id ?? userId.value;
       if (!uid) {
         console.warn('[backend] logEdit skipped — no userId set (syncUser may not have run yet)');
+        return;
       }
-      // Fire audit trail insert (non-blocking)
-      supabase.from('edit_log').insert({
+      const row = {
         task_id: entry.task_id ?? activeTaskId.value,
-        user_id: uid,
         operation: entry.operation,
         segment_before: entry.segment_before ?? null,
         segment_after: entry.segment_after ?? null,
@@ -3658,15 +3696,45 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         metadata: entry.metadata ?? null,
         dataset: entry.dataset ?? currentDatasetTag(),
         success: entry.success ?? true,
-      }).then(
-        ({ error }) => { if (error) console.warn('[backend] edit_log insert failed:', error.message); },
-        () => {},
-      );
+      };
+      let result: any = null;
+      try {
+        result = await secureWrite('activity.log', { row });
+      } catch (e: any) {
+        if (!/unknown action/i.test(e?.message ?? '')) {
+          console.warn('[backend] activity not recorded:', e?.message);
+          return;
+        }
+        // A server from before this change: the plain insert it expects.
+        supabase.from('edit_log').insert({ ...row, user_id: uid }).then(
+          ({ error }) => { if (error) console.warn('[backend] edit_log insert failed:', error.message); },
+          () => {},
+        );
+      }
 
-      // Increment user stats in Supabase + calculate streak
       if (!userId.value || !(entry.success ?? true)) return;
       const op = entry.operation;
-      const diff = (entry.metadata as any)?.diff ?? 1;
+
+      if (result?.counted) {
+        // The server's numbers are the numbers.
+        useUserStatsStore().setStats({
+          editsAllTime: result.total_edits ?? 0,
+          mergesAllTime: result.total_merges ?? 0,
+          splitsAllTime: result.total_splits ?? 0,
+          cellsSubmitted: result.cells_completed ?? 0,
+          currentStreak: result.current_streak ?? 0,
+          longestStreak: result.longest_streak ?? 0,
+          ...(result.last_edit_date ? { lastEditDate: result.last_edit_date } : {}),
+        });
+        if (result.recorded) {
+          if ((result.current_streak ?? 0) !== (result.streak_before ?? 0)) sendStreakMilestone(result.current_streak).catch(() => {});
+          if ((result.edits_before ?? 0) < 3 && (result.total_edits ?? 0) >= 3) sendThirdEditThanks().catch(() => {});
+        }
+        return;
+      }
+
+      // ── Counting function not installed yet: as before ──
+      const diff = 1;
 
       // Single SELECT to get all stats we need
       const { data: row } = await supabase.from('users')
@@ -3987,6 +4055,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  (1 = first). The board shows the top 50 of a ranking; a player below
    *  that still sees their own row with this rank (Ames 2026-10-05). */
   const leaderboardMyRanks: Ref<Record<string, number>> = ref({});
+  /** What the board can show right now (leaderboard audit, 2026-10-05).
+   *  'ok': every ranking was read. 'alltime-only': the windowed view could
+   *  not be read, so only the saved all-time totals are known; the 24 hour
+   *  and 7 day boards say so instead of showing zeros. 'unavailable':
+   *  nothing could be read. */
+  const leaderboardState: Ref<'loading' | 'ok' | 'alltime-only' | 'unavailable'> = ref('loading');
+  /** When the numbers on the board were read (ms). */
+  const leaderboardAt: Ref<number> = ref(0);
 
   async function loadLeaderboard() {
     // Pull from the `user_edit_counts` view so we get distinct edits_24h,
@@ -4003,9 +4079,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       const me = userId.value;
       const [mine, ...results] = await Promise.all([
         me ? supabase.from('user_edit_counts').select(COLS).eq('id', me).maybeSingle() : Promise.resolve({ data: null, error: null } as any),
-        ...RANKINGS.map(col => supabase.from('user_edit_counts').select(COLS).order(col, { ascending: false }).limit(50)),
+        // Ties in a fixed order (by id), so the same 50 come back every time.
+        ...RANKINGS.map(col => supabase.from('user_edit_counts').select(COLS).order(col, { ascending: false }).order('id', { ascending: true }).limit(50)),
       ]);
-      const error = results[0].error;
+      // One ranking that could not be read is the board not being readable:
+      // merging the rest would quietly leave its players out.
+      const error = results.find(r => r.error)?.error ?? null;
       const data = error ? null : (() => {
         const byId = new Map<string, any>();
         for (const r of results) for (const u of (r.data ?? []) as any[]) if (!byId.has(u.id)) byId.set(u.id, u);
@@ -4025,6 +4104,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       }
       if (!error && data) {
         leaderboard.value = data;
+        leaderboardState.value = 'ok';
+        leaderboardAt.value = Date.now();
         return;
       }
       if (error) {
@@ -4033,27 +4114,34 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch (e: any) {
       console.warn('[backend] loadLeaderboard view error:', e.message);
     }
-    // Fallback path
+    // The windowed view could not be read. The saved all-time totals can
+    // still be shown, but the recent windows are NOT KNOWN: they are left
+    // null, never zero, and the board says so.
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('users')
         .select('id, display_name, flag, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak')
-        .order('total_edits', { ascending: false })
+        .order('total_edits', { ascending: false }).order('id', { ascending: true })
         .limit(50);
-      if (data) {
+      if (!error && data) {
         leaderboard.value = data.map((u: any) => ({
           ...u,
-          edits_24h: 0,
-          edits_week: 0,
+          edits_24h: null,
+          edits_week: null,
           edits_alltime: u.total_edits ?? 0,
-          completions_24h: 0,
-          completions_week: 0,
+          completions_24h: null,
+          completions_week: null,
           completions_alltime: u.cells_completed ?? 0,
         }));
+        leaderboardState.value = 'alltime-only';
+        leaderboardAt.value = Date.now();
+        return;
       }
     } catch (e: any) {
       console.warn('[backend] loadLeaderboard fallback error:', e.message);
     }
+    // Keep whatever was on the board; just say it could not be refreshed.
+    leaderboardState.value = 'unavailable';
   }
 
   // ── Weekly podium counts: how many times a user finished top-3 ──────
@@ -5094,7 +5182,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
-    leaderboard, leaderboardMyRanks,
+    leaderboard, leaderboardMyRanks, leaderboardState, leaderboardAt,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,

@@ -2,7 +2,7 @@
 import {ref, computed, onMounted, onUnmounted, type Ref} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
-import {DEMO_USERS, DemoUser} from '../data/demo-users';
+import {DemoUser} from '../data/demo-users';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {useUserPreferencesStore, useProofreadingBackendStore} from '../store';
@@ -29,8 +29,14 @@ function setMetric(m: Metric) {
 const selectedUser = ref<DemoUser | null>(null);
 const selectedBadgeId = ref<number | null>(null);
 
-// Load real leaderboard from Supabase on mount
-onMounted(() => { backendStore.loadLeaderboard(); });
+// Load the board when it opens, and again every minute while it stays open,
+// so the numbers do not go stale behind an open panel.
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  backendStore.loadLeaderboard();
+  refreshTimer = setInterval(() => { if (!document.hidden) backendStore.loadLeaderboard(); }, 60_000);
+});
+onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
 
 // Convert Supabase user rows to DemoUser shape for display.
 // `edits_*` and `completions_*` come from the `user_edit_counts` view;
@@ -70,8 +76,27 @@ const supabaseUsers = computed<DemoUser[]>(() => {
 
 const metricLabel = computed(() => metric.value === 'completions' ? 'Cells' : 'Edits');
 
-// Use Supabase users if available, otherwise fall back to demo data
-const userSource = computed(() => supabaseUsers.value.length > 0 ? supabaseUsers.value : DEMO_USERS);
+// Only real players, ever. With nothing to show the board says why (below);
+// it used to fill itself with made-up demo players (audit, 2026-10-05).
+const userSource = computed(() => supabaseUsers.value);
+
+/** Why there are no rows, or a note above the rows; '' when all is well. */
+const boardNote = computed(() => {
+  const st = backendStore.leaderboardState;
+  if (st === 'loading' && !supabaseUsers.value.length) return 'Loading the board';
+  if (st === 'unavailable') return supabaseUsers.value.length
+    ? 'The board could not be refreshed just now. These are the last numbers it read.'
+    : 'The board is not available right now. Please try again in a moment.';
+  if (st === 'alltime-only' && activeTab.value !== 'alltime')
+    return 'The 24 hour and 7 day counts are not available right now. All Time still is.';
+  if (st === 'ok' && !boardRows.value.length) return 'Nobody is on this board yet.';
+  return '';
+});
+/** No rows at all on the tab being shown. */
+const boardBlank = computed(() =>
+  !supabaseUsers.value.length || (backendStore.leaderboardState === 'alltime-only' && activeTab.value !== 'alltime'));
+const readAt = computed(() => backendStore.leaderboardAt
+  ? new Date(backendStore.leaderboardAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
 
 // Sort users by the active tab's edit metric.
 //   day → editsThisMonth field (now repurposed to hold edits_24h)
@@ -81,19 +106,22 @@ const rankedUsers = computed(() => {
   const key = activeTab.value === 'week' ? 'editsThisWeek'
             : activeTab.value === 'day'  ? 'editsThisMonth'
                                          : 'editsAllTime';
-  return [...userSource.value].sort((a, b) => b.stats[key] - a.stats[key]);
+  // Ties: the same order every time (by name, then id), never by chance.
+  return [...userSource.value].sort((a, b) => b.stats[key] - a.stats[key]
+    || a.name.localeCompare(b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 });
 
 // The board lists the top 50 of the ranking on screen. A player below that
 // still gets their own row at the foot, with their true place (Ames
 // 2026-10-05: "always add your own row with your true rank").
 const BOARD_SIZE = 50;
-const isYou = (user: DemoUser) => user.id === 'amy' || user.id === backendStore.userId;
+const isYou = (user: DemoUser) => user.id === backendStore.userId;
 const rankingColumn = computed(() => {
   const span = activeTab.value === 'week' ? 'week' : activeTab.value === 'day' ? '24h' : 'alltime';
   return `${metric.value === 'completions' ? 'completions' : 'edits'}_${span}`;
 });
 const boardRows = computed<{ user: DemoUser; rank: number; below: boolean }[]>(() => {
+  if (boardBlank.value) return [];
   const all = rankedUsers.value;
   const rows = all.slice(0, BOARD_SIZE).map((user, i) => ({ user, rank: i + 1, below: false }));
   const at = all.findIndex(isYou);
@@ -316,7 +344,8 @@ onUnmounted(() => {
         </div>
 
         <div class="nge-lb-content">
-          <table class="nge-lb-table">
+          <div v-if="boardNote" class="nge-lb-note" role="status">{{ boardNote }}</div>
+          <table v-if="boardRows.length" class="nge-lb-table">
             <thead>
               <tr>
                 <th class="nge-lb-th nge-lb-th--rank">#</th>
@@ -374,6 +403,7 @@ onUnmounted(() => {
         <label class="nge-lb-onopen">
           <input type="checkbox" :checked="showOnOpen" @change="onShowOnOpenChange" />
           Show when I open EyeWire II
+          <span v-if="readAt" class="nge-lb-readat" title="When these numbers were read. The board refreshes every minute while it is open.">Read at {{ readAt }}</span>
         </label>
       </template>
 
@@ -1026,6 +1056,12 @@ onUnmounted(() => {
 }
 
 .nge-lb-badge-none { color: #444; }
+.nge-lb-note {
+  margin: 14px 16px; padding: 10px 12px; border-radius: 8px;
+  font-size: 12.5px; line-height: 1.45; color: #cfe3ff;
+  background: rgba(120, 170, 255, 0.08); border: 1px solid rgba(120, 170, 255, 0.25);
+}
+.nge-lb-readat { margin-left: auto; font-size: 11px; color: #8a97ad; }
 
 /* ── Detail view ── */
 .nge-lb-detail {
