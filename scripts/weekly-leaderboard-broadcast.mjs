@@ -163,13 +163,17 @@ async function main() {
   // One broadcast per week. A second run never pings everyone again: it
   // leaves the saved one alone, or with UPDATE_BROADCAST=1 corrects its text
   // in place (same notification, no new bell).
-  const existing = await supabaseGet(`notifications?select=id,body&target_type=eq.all&title=eq.${encodeURIComponent(notification.title)}&order=send_at.desc&limit=1`);
+  // Found by when it was sent, not by its exact title: the wording of the
+  // title has changed before (an older copy used dashes).
+  const sentBefore = new Date(Date.parse(week.endISO) + 7 * 86400000).toISOString();
+  const existing = await supabaseGet(`notifications?select=id,title,body&target_type=eq.all&title=ilike.*Weekly%20Champions*` +
+    `&send_at=gte.${encodeURIComponent(week.endISO)}&send_at=lt.${encodeURIComponent(sentBefore)}&order=send_at.desc&limit=1`);
   if (existing.length) {
     if (process.env.UPDATE_BROADCAST !== '1') { console.log(`[broadcast] ${notification.title} is already posted, leaving it.`); return; }
-    if (existing[0].body === body) { console.log('[broadcast] Saved broadcast already matches, nothing to correct.'); return; }
-    if (DRY) { console.log('[broadcast] DRY RUN, would correct the saved broadcast to:\n' + body); return; }
+    if (existing[0].body === body && existing[0].title === notification.title) { console.log('[broadcast] Saved broadcast already matches, nothing to correct.'); return; }
+    if (DRY) { console.log(`[broadcast] DRY RUN, would correct the saved broadcast "${existing[0].title}" (${existing[0].id}) to "${notification.title}":\n` + body); return; }
     const res = await fetch(`${SUPABASE_URL}/rest/v1/notifications?id=eq.${existing[0].id}`, {
-      method: 'PATCH', headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify({ body }),
+      method: 'PATCH', headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify({ body, title: notification.title }),
     });
     if (!res.ok) throw new Error(`PATCH notifications: ${res.status} ${await res.text()}`);
     console.log(`[broadcast] Corrected the saved broadcast for ${week.label}`);
