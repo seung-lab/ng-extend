@@ -5722,6 +5722,38 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /** Realtime came back after a drop: fetch what was posted while it was
+   *  down, newer than the newest message shown, and fold it in by time. */
+  async function loadMissed() {
+    const shown = chatMessages.value.filter(m => m.type === 'message' && m.id != null);
+    if (!shown.length) { await loadRecentMessages(); return; }
+    let since = new Date(Math.max(...shown.map(m => m.dateTime.getTime()))).toISOString();
+    const known = new Set(shown.map(m => m.id));
+    const BASE = 'id, user_id, name, rank, text, created_at, dataset, notification_id';
+    const page = (cols: string) => supabase.from('chat_messages').select(cols)
+      .gt('created_at', since).order('created_at', { ascending: true }).limit(HISTORY_PAGE);
+    const missed: ChatMessage[] = [];
+    try {
+      // A long outage can span several pages; stop at ten so a stale tab
+      // doesn't pull the whole table.
+      for (let i = 0; i < 10; i++) {
+        let { data, error }: { data: any[] | null; error: any } = replyColumnOk ? await page(BASE + ', reply_to') as any : { data: null, error: true };
+        if (error || !data) ({ data, error } = await page(BASE) as any);
+        if (error || !data?.length) break;
+        // created_at is finer than a JS Date, so the newest shown row can come back.
+        missed.push(...data.filter((r: any) => !known.has(r.id)).flatMap((r: any) => withBot(rowToMessage(r))));
+        if (data.length < HISTORY_PAGE) break;
+        since = data[data.length - 1].created_at;
+      }
+    } catch (e) {
+      console.warn('[chat] loadMissed failed:', e);
+    }
+    if (!missed.length) return;
+    chatMessages.value = [...chatMessages.value, ...missed].sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
+    rebuildSeparators();
+    void loadReactions(missed.filter(m => m.id != null).map(m => String(m.id)));
+  }
+
   /** Re-derive the date separators after older messages are prepended. */
   function rebuildSeparators() {
     const out: ChatMessage[] = [];
@@ -5850,6 +5882,7 @@ export const useChatStore = defineStore('chat', () => {
     // Only database rows written by the verified backend reach the chat UI.
     // Public broadcast events are never treated as authenticated messages.
     channel = supabase.channel('eyewire-ii-chat-verified');
+    let subscribedOnce = false;
     channel.on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload => {
       const row = payload.new;
       if (!row.user_id) return;
@@ -5899,6 +5932,9 @@ export const useChatStore = defineStore('chat', () => {
       .subscribe(status => {
         connected.value = status === 'SUBSCRIBED';
         if (status === 'SUBSCRIBED') {
+          // A later SUBSCRIBED is a rejoin after a drop: backfill the gap.
+          if (subscribedOnce) void loadMissed();
+          subscribedOnce = true;
           // Say we're here (other open chats show the join), then who else is.
           void heartbeat().then(loadOnline);
           if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
