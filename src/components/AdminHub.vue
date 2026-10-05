@@ -1771,6 +1771,19 @@ function practiceWhen(iso: string | null) {
             placeholder="Comment (optional), saved with your decision"
             @keydown.stop @keyup.stop @keypress.stop
           ></textarea>
+          <!-- The decision first (Ames 2026-10-05), then the other tools. -->
+          <div v-if="row.status === 'proposed'" class="nge-triage-actions">
+            <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
+              {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
+            </button>
+            <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'dismissed')">
+              {{ triageNotes[row.id]?.trim() ? 'Dismiss with comment' : 'Dismiss' }}
+            </button>
+          </div>
+          <div v-else-if="row.status === 'approved'" class="nge-triage-actions">
+            <button v-if="isBuildable(row) && !row.impl_state" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Have Claude build it</button>
+            <button v-if="row.impl_state === 'failed' && !releaseBuildOf(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Retry build</button>
+          </div>
           <div class="nge-triage-claude">
             <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
             <!-- Done, on every card that is not already done (Ames 2026-10-01:
@@ -1788,18 +1801,6 @@ function practiceWhen(iso: string | null) {
                     title="Junk, a duplicate or a test: dismiss it and take it off the board. Still findable with Show older."
                     @click="setTriageStatus(row, 'dismissed', true)">🗑 Discard</button>
             <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
-          </div>
-          <div v-if="row.status === 'proposed'" class="nge-triage-actions">
-            <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
-              {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
-            </button>
-            <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'dismissed')">
-              {{ triageNotes[row.id]?.trim() ? 'Dismiss with comment' : 'Dismiss' }}
-            </button>
-          </div>
-          <div v-else-if="row.status === 'approved'" class="nge-triage-actions">
-            <button v-if="isBuildable(row) && !row.impl_state" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Have Claude build it</button>
-            <button v-if="row.impl_state === 'failed' && !releaseBuildOf(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Retry build</button>
           </div>
           <!-- Going live is approved in Slack only: the deploy checks the
                tester's exact reply there before it touches the live site. -->
