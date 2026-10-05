@@ -134,7 +134,9 @@ BEGIN
       AND (e.status='ready' OR (e.status='in_use' AND e.claimed_by=p_user AND e.expires_at>now()))
       AND NOT EXISTS(SELECT 1 FROM public.tutorial_practice_examples o WHERE o.id<>e.id AND o.enabled
         AND o.pcg_server=e.pcg_server AND o.pcg_table=e.pcg_table
-        AND (o.status='resetting' OR (o.status='in_use' AND (o.expires_at IS NULL OR o.expires_at>now())))
+        -- Another learner on the same neuron blocks the claim; this learner's
+        -- own other cell does not (a tutorial holds two cells of one neuron).
+        AND (o.status='resetting' OR (o.status='in_use' AND o.claimed_by IS DISTINCT FROM p_user AND (o.expires_at IS NULL OR o.expires_at>now())))
         AND ARRAY[nullif(o.supervoxel_a,''),nullif(o.supervoxel_b,'')] && ARRAY[nullif(e.supervoxel_a,''),nullif(e.supervoxel_b,'')])
       ORDER BY (e.claimed_by=p_user) DESC NULLS LAST,e.uses,e.created_at LIMIT 1 FOR UPDATE;
     IF NOT FOUND THEN RETURN NULL; END IF;
