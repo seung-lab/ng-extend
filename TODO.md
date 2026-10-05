@@ -56,3 +56,19 @@ showcase pinky cell in 3D, the Cell Library, chat, profile/badges, and
 the leaderboard. The desktop tutorials (store-pyr) drive viewer state
 the phone layout doesn't have, so this wants its own short flow — e.g.
 3–4 spotlight steps launched from the welcome sheet after first login.
+
+## Chat: private messages and groups (ideas, Ames 2026-10-05)
+
+Alongside replies (above), Ames named two more chat directions. Neither is
+built.
+
+- **Private messages.** One player to another. `chat_messages` is public
+  today (every signed in client subscribes to all of it), so PMs need their
+  own table with owner-only reads through the gateway, plus realtime that
+  only delivers to the two people. Nurro's "we don't have PMs" answers in
+  `src/chat_bot.ts` would change with it.
+- **Group channels** (Scouts, Mystics and so on, as in the original EyeWire).
+  A channel picker in the chat header; messages carry a channel; membership
+  could reuse `user_groups` / `user_group_members`, which already exist for
+  notification targeting and shared links. Open question: can anyone read a
+  group's channel, or only its members?
