@@ -3987,11 +3987,20 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // panel's three tabs). Falls back to the `users` table if the view
     // hasn't been deployed yet.
     try {
-      const { data, error } = await supabase
-        .from('user_edit_counts')
-        .select('id, display_name, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, edits_24h, edits_week, edits_alltime, completions_24h, completions_week, completions_alltime')
-        .order('total_edits', { ascending: false })
-        .limit(50);
+      // The board has six rankings (Edits or Cells, over 24 hours, 7 days or
+      // all time). Fetching only the top 50 by all-time edits left out anyone
+      // strong on Cells or in a recent window but lower on all-time edits
+      // (Ames 2026-10-05). Fetch the top 50 of EACH ranking and merge them.
+      const COLS = 'id, display_name, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, edits_24h, edits_week, edits_alltime, completions_24h, completions_week, completions_alltime';
+      const RANKINGS = ['total_edits', 'edits_week', 'edits_24h', 'cells_completed', 'completions_week', 'completions_24h'];
+      const results = await Promise.all(RANKINGS.map(col =>
+        supabase.from('user_edit_counts').select(COLS).order(col, { ascending: false }).limit(50)));
+      const error = results[0].error;
+      const data = error ? null : (() => {
+        const byId = new Map<string, any>();
+        for (const r of results) for (const u of (r.data ?? []) as any[]) if (!byId.has(u.id)) byId.set(u.id, u);
+        return [...byId.values()];
+      })();
       if (!error && data) {
         leaderboard.value = data;
         return;
