@@ -258,7 +258,7 @@ const isDiscarded = (r: TriageRow) => r.status === 'dismissed' && (r.result_note
 /** Too late to stop from here: it is on, or on its way to, the live site. */
 const isGoingLive = (r: TriageRow) => ['deploying', 'live_test_queued', 'live_testing', 'revert_queued', 'reverting'].includes(r.impl_state || '');
 
-async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done', discard = false) {
+async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done', discard = false, builtElsewhere = false) {
   if (triageActing.value) return;
   if (discard && !window.confirm('Discard this report? It is dismissed and taken off the board. Any build in progress is stopped. You can still find it with "Show older".')) return;
   // Shipping a change closes the loop in Slack: the bridge posts a change
@@ -308,6 +308,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
       // decision into the Slack thread and tags you as the tester.
       ...(status === 'approved' && isBuildable(row) ? { impl_state: 'queued' } : {}),
       ...(status === 'done' ? { result_note: resultNote } : {}),
+      ...(builtElsewhere ? { result_note: `Built independently, so the robot's work on it was dismissed by ${backend.userName || backend.userEmail || 'an admin'}.` } : {}),
       ...(discard ? { result_note: `${DISCARD_NOTE} in the Admin Hub by ${backend.userName || backend.userEmail || 'an admin'}.` } : {}),
       reviewed_by: backend.userName || backend.userEmail || 'admin',
       reviewed_at: new Date().toISOString(),
@@ -1760,8 +1761,8 @@ function practiceWhen(iso: string | null) {
             <!-- Dismiss at any stage after approval too (a failed or unwanted
                  build), and Discard for junk (Ames 2026-10-05). -->
             <button v-if="row.status === 'approved'" class="nge-admin-action-btn" :disabled="triageActing === row.id || isGoingLive(row)"
-                    :title="isGoingLive(row) ? 'It is on, or on its way to, the live site. Revert it in the Slack thread first.' : 'Stop work on this and move it to Dismissed. Any build in progress is cancelled.'"
-                    @click="setTriageStatus(row, 'dismissed')">{{ triageNotes[row.id]?.trim() ? 'Dismiss with comment' : 'Dismiss' }}</button>
+                    :title="isGoingLive(row) ? 'It is on, or on its way to, the live site. Revert it in the Slack thread first.' : 'It was built another way, so the robot is not needed. Stops its work, cancels any build in progress and moves the card to Dismissed.'"
+                    @click="setTriageStatus(row, 'dismissed', false, true)">Dismiss: built independently</button>
             <button v-if="triageGroupOf(row) !== 'done' && !isDiscarded(row)" class="nge-admin-action-btn nge-triage-discard-btn" :disabled="triageActing === row.id || isGoingLive(row)"
                     title="Junk, a duplicate or a test: dismiss it and take it off the board. Still findable with Show older."
                     @click="setTriageStatus(row, 'dismissed', true)">🗑 Discard</button>
