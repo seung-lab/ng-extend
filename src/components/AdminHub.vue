@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { secureWrite } from '../secure_write';
-import {ref, computed, watch, onMounted, onUnmounted} from 'vue';
+import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 import {renderSafeMarkdown} from '../util/safe_markdown';
@@ -172,6 +172,31 @@ const shortDate = (iso: string) => {
 // Slack thread moves the card here too (after Refresh).
 type TriageGroupKey = 'decide' | 'progress' | 'done' | 'dismissed';
 const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, done: false, dismissed: false });
+
+// The card you are working on stays marked, and stays in view when the list
+// reloads after an action (Ames 2026-10-05: sending an update reloaded the
+// list and scrolled the card away, so it looked like it had vanished).
+const triageSelected = ref<string | null>(null);
+function keepSelectedInView() {
+  const id = triageSelected.value;
+  if (!id) return;
+  const row = triageRows.value.find(r => r.id === id);
+  // An action can move the card into a folded section: open it.
+  if (row) triageOpen.value[triageGroupOf(row)] = true;
+  void nextTick(() => document.querySelector(`[data-triage-id="${id}"]`)?.scrollIntoView({ block: 'nearest' }));
+}
+
+// Board view: the whole window, one column per section, cards compact until
+// you click one. "?triage=board" in the address opens straight into it, which
+// is what the "New tab" link uses.
+const BOARD_PARAM = (() => { try { return new URLSearchParams(window.location.search).get('triage') === 'board'; } catch { return false; } })();
+const triageBoard = ref(BOARD_PARAM);
+const boardUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
+function onBoardKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && triageBoard.value && !(e.target as HTMLElement)?.closest?.('textarea, input')) triageBoard.value = false;
+}
+onMounted(() => document.addEventListener('keydown', onBoardKey));
+onUnmounted(() => document.removeEventListener('keydown', onBoardKey));
 function triageGroupOf(r: TriageRow): TriageGroupKey {
   if (r.status === 'dismissed') return 'dismissed';
   if (r.status === 'done' || r.impl_state === 'deployed') return 'done';
@@ -206,6 +231,7 @@ async function loadTriage() {
     if (error) throw error;
     triageRows.value = (data ?? []) as TriageRow[];
     void loadReporters(triageRows.value);
+    keepSelectedInView();
     for (const r of triageRows.value) {
       if (triageEdits.value[r.id] === undefined) {
         triageEdits.value[r.id] = r.proposed_message ?? '';
@@ -1613,9 +1639,15 @@ function practiceWhen(iso: string | null) {
 
     <!-- ═══ TRIAGE (agent proposals awaiting human review) ═══ -->
     <div v-if="adminSubTab === 'triage'" class="nge-admin-section">
-      <div class="nge-admin-block">
+      <!-- Board view leaves the panel for the whole window. Teleported: the
+           profile panel's backdrop filter would otherwise trap a fixed box. -->
+      <Teleport to="body" :disabled="!triageBoard">
+      <div class="nge-admin-block" :class="{ 'nge-triage-board': triageBoard }">
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
+          <button class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
+                  :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
+          <a v-if="!triageBoard" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the board in its own browser tab">↗ New tab</a>
           <label class="nge-triage-toggle">
             <input type="checkbox" v-model="triageShowReviewed" />
             <span>Show older</span>
@@ -1635,7 +1667,8 @@ function practiceWhen(iso: string | null) {
           No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
         </div>
 
-        <template v-for="g in triageGroups" :key="g.key">
+        <div class="nge-triage-cols">
+        <div v-for="g in triageGroups" :key="g.key" class="nge-triage-col" :class="`nge-triage-col--${g.key}`">
         <button
           v-if="triageRows.length"
           class="nge-triage-group"
@@ -1648,8 +1681,10 @@ function practiceWhen(iso: string | null) {
           <span class="nge-triage-group-count">{{ g.rows.length }}</span>
           <span class="nge-triage-group-hint">{{ g.hint }}</span>
         </button>
-        <template v-if="triageOpen[g.key]">
-        <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :class="{ 'nge-triage-card--closed': g.closed }">
+        <template v-if="triageBoard || triageOpen[g.key]">
+        <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :data-triage-id="row.id"
+             :class="{ 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id }"
+             @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span class="nge-triage-rec" :class="`nge-triage-rec--${row.recommendation}`">{{ TRIAGE_LABELS[row.recommendation] }}</span>
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
@@ -1765,9 +1800,12 @@ function practiceWhen(iso: string | null) {
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
           </div>
         </div>
+        <div v-if="triageBoard && !g.rows.length" class="nge-triage-col-empty">Nothing here</div>
         </template>
-        </template>
+        </div>
+        </div>
       </div>
+      </Teleport>
     </div>
   </div>
 </template>
@@ -2334,6 +2372,58 @@ function practiceWhen(iso: string | null) {
   border-radius: 8px;
   padding: 10px 12px;
   display: flex; flex-direction: column; gap: 7px;
+}
+/* The card you clicked: a bright rail and edge, so it is easy to find again. */
+.nge-triage-card { cursor: default; transition: border-color 0.15s, box-shadow 0.15s, background 0.15s; }
+.nge-triage-card--selected {
+  border-color: #4fcfff; background: rgba(79, 207, 255, 0.07);
+  box-shadow: inset 4px 0 0 #4fcfff, 0 0 0 1px rgba(79, 207, 255, 0.35), 0 0 18px rgba(79, 207, 255, 0.18);
+  opacity: 1 !important;
+}
+.nge-triage-cols, .nge-triage-col { display: flex; flex-direction: column; gap: 8px; }
+.nge-triage-newtab { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* ── Board view: the whole window, one column per section ── */
+.nge-triage-board {
+  position: fixed; inset: 0; z-index: 100000; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 18px;
+  background: #070b14; color: #dbe6f5;
+  font-family: 'Inter', 'Roboto', system-ui, sans-serif; font-size: 14px;
+}
+.nge-triage-board .nge-triage-head { flex: 0 0 auto; }
+.nge-triage-board .nge-admin-label { font-size: 1.25em; }
+.nge-triage-board .nge-admin-hint { max-width: 900px; }
+.nge-triage-board .nge-triage-cols {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
+}
+.nge-triage-board .nge-triage-col {
+  min-height: 0; overflow-y: auto; padding: 0 8px 10px;
+  border: 1px solid rgba(74, 158, 255, 0.16); border-radius: 10px; background: rgba(255, 255, 255, 0.02);
+  scrollbar-width: thin; scrollbar-color: rgba(74, 158, 255, 0.3) transparent;
+}
+.nge-triage-board .nge-triage-col--decide { border-top: 3px solid #ff8d8d; }
+.nge-triage-board .nge-triage-col--progress { border-top: 3px solid #4fcfff; }
+.nge-triage-board .nge-triage-col--done { border-top: 3px solid #5ee8a8; }
+.nge-triage-board .nge-triage-col--dismissed { border-top: 3px solid #7f93ad; }
+/* Column headers stay put and are not folds here. */
+.nge-triage-board .nge-triage-group {
+  position: sticky; top: 0; z-index: 2; margin: 0 -8px; width: calc(100% + 16px);
+  border: none; border-bottom: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0;
+  background: #0b1220; cursor: default; pointer-events: none; opacity: 1;
+}
+.nge-triage-board .nge-triage-group-caret, .nge-triage-board .nge-triage-group-hint { display: none; }
+.nge-triage-board .nge-triage-card { cursor: pointer; background: rgba(10, 18, 32, 0.9); }
+.nge-triage-board .nge-triage-card:hover { border-color: rgba(79, 207, 255, 0.45); }
+/* Compact until clicked: who, what they said, where it stands. */
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) > :not(.nge-triage-meta):not(.nge-triage-from):not(.nge-triage-excerpt) { display: none; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.nge-triage-board .nge-triage-card--selected { cursor: default; }
+.nge-triage-col-empty { padding: 14px 4px; color: #62738c; font-size: 0.9em; text-align: center; }
+@media (max-width: 1100px) {
+  .nge-triage-board .nge-triage-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
 }
 .nge-triage-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .nge-triage-from { font-size: 0.86em; color: #9fb3cc; }

@@ -223,6 +223,19 @@ onMounted(() => {
     showChat.value = true;
   }) as EventListener);
 
+  // "?triage=board" (the Admin Hub's "New tab" link): straight to the board.
+  try {
+    if (new URLSearchParams(window.location.search).get('triage') === 'board') {
+      let tries = 0;
+      const wait = setInterval(() => {
+        if (backendStore.isAdmin) {
+          clearInterval(wait);
+          document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'triage' } }));
+        } else if (++tries > 120) clearInterval(wait);
+      }, 500);
+    }
+  } catch { /* no address to read */ }
+
   document.addEventListener('nge:open-profile', ((e: CustomEvent) => {
     profileUserId.value = e.detail?.userId || null;
     // Optional deep-link tab ('triage' opens Admin Hub > Triage, etc.)
