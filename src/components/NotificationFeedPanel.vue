@@ -433,6 +433,8 @@ function padRank(rank: number): string {
                   </header>
                   <p v-if="champions.intro" class="nge-champs-intro">{{ champions.intro }}</p>
 
+                  <!-- Wide screens: the categories sit side by side (Ames 2026-10-05). -->
+                  <div class="nge-champs-columns">
                   <section
                     v-for="(section, si) in champions.sections"
                     :key="si + '-' + section.label"
@@ -483,6 +485,7 @@ function padRank(rank: number): string {
                       </ol>
                     </template>
                   </section>
+                  </div>
 
                   <p v-if="champions.outro" class="nge-champs-outro">{{ champions.outro }}</p>
                 </template>
@@ -1182,6 +1185,21 @@ function padRank(rank: number): string {
   line-height: 1.5;
 }
 
+/* Two columns on a wide window, one category each; the window widens to
+   hold them. Ranks four and below scroll inside their own column, so a top
+   twenty never pushes the podiums apart. */
+.nge-notif-detail--champions { width: 1140px; max-width: 94vw; max-height: 90vh; }
+.nge-champs-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 34px; align-items: start; }
+.nge-champs-columns > .nge-champs-section { margin-top: 4px; }
+/* Side by side, the lists take what height the window has left, so the
+   whole broadcast fits without the page itself scrolling. */
+@media (min-width: 901px) {
+  .nge-champs-columns .nge-champs-list { max-height: clamp(128px, calc(90vh - 590px), 300px); }
+}
+@media (max-width: 900px) {
+  .nge-champs-columns { grid-template-columns: minmax(0, 1fr); }
+  .nge-champs-columns > .nge-champs-section + .nge-champs-section { margin-top: 20px; }
+}
 .nge-champs-section { margin-top: 20px; }
 .nge-champs-section:first-of-type { margin-top: 4px; }
 .nge-champs-section-head {
@@ -1324,11 +1342,19 @@ function padRank(rank: number): string {
 .nge-champs-list {
   list-style: none;
   margin: 12px 0 0;
-  padding: 0;
+  padding: 0 4px 0 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* about five rows, then it scrolls */
+  max-height: min(214px, 28vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--nd-accent) / 0.35) transparent;
 }
+.nge-champs-list::-webkit-scrollbar { width: 4px; }
+.nge-champs-list::-webkit-scrollbar-thumb { background: rgb(var(--nd-accent) / 0.35); border-radius: 2px; }
+.nge-champs-row { flex: none; }
 .nge-champs-row {
   display: grid;
   grid-template-columns: 34px 1fr auto auto;

@@ -161,8 +161,9 @@ async function main() {
   console.log(`[broadcast] Computing leaderboard for ${week.label} (${week.startISO} → ${week.endISO})`);
 
   const [editorsRaw, completersRaw] = await Promise.all([
-    topEditors(week.startISO, week.endISO, 10),
-    topCompleters(week.startISO, week.endISO, 10),
+    // The top twenty of each: the podium takes three, the rest scroll.
+    topEditors(week.startISO, week.endISO, 20),
+    topCompleters(week.startISO, week.endISO, 20),
   ]);
 
   if (editorsRaw.length === 0 && completersRaw.length === 0) {
