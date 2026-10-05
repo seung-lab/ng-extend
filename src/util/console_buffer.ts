@@ -45,7 +45,14 @@ export function installConsoleBuffer() {
     const original = console[level].bind(console);
     console[level] = (...args: unknown[]) => { push(level, args); original(...args); };
   }
-  window.addEventListener('error', e => push('error', [e.error ?? e.message]));
+  // An error from a background worker arrives with a message but no Error
+  // object, so no stack ("Cannot read properties of undefined (reading
+  // 'has')", Ames 2026-10-04, could not be traced). Keep where it came from.
+  window.addEventListener('error', e => {
+    if (e.error) { push('error', [e.error]); return; }
+    const file = (e.filename || '').split('/').pop()?.split('?')[0] || '';
+    push('error', [file ? `${e.message} (${file}:${e.lineno}:${e.colno})` : e.message]);
+  });
   window.addEventListener('unhandledrejection', e => push('error', ['Unhandled promise rejection:', (e as PromiseRejectionEvent).reason]));
 }
 
