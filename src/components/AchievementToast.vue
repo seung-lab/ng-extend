@@ -17,6 +17,8 @@ import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
 import { datasetCellCount } from '../util/dataset_contribution';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+// Stand-in until the streak's own Nurro arrives (Ames is finding the image).
+import streakNurro from '../../static/nurro/nurro-dance.png';
 
 const statsStore = useUserStatsStore();
 const { stats } = storeToRefs(statsStore);
@@ -91,6 +93,43 @@ let streakSeenReal = false;
 
 const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
 
+// ── Streak milestone card (Ames 2026-10-04) ─────────────────────────────────
+// A milestone used to be a small corner toast. It is a moment: a card with
+// Nurro, the day count rolling up, and the ladder of milestones with the one
+// just reached lit. Shown once when the day's edit carries the streak over a
+// milestone; click anywhere, or 12 seconds, puts it away.
+const STREAK_LINES: Record<number, string> = {
+  7: 'A full week of mapping the brain, every single day. Congratulations!',
+  14: 'Two weeks straight. That is real dedication. Congratulations!',
+  30: 'A whole month without missing a day. Incredible work!',
+  60: 'Sixty days in a row. You are a force of nature!',
+  100: 'One hundred days. You are an EyeWire legend!',
+  200: 'Two hundred days of science, back to back. Astonishing!',
+  365: 'A full year, every single day. There are no words. Thank you!',
+};
+const streakCard = ref<{ days: number; next: number | null; line: string } | null>(null);
+const streakShown = ref(0);
+let streakCardTimer: ReturnType<typeof setTimeout> | undefined;
+let streakRollTimer: ReturnType<typeof setInterval> | undefined;
+function showStreakCard(days: number) {
+  const next = STREAK_MILESTONES.find(m => m > days) ?? null;
+  streakCard.value = { days, next, line: STREAK_LINES[days] || `${days} days in a row. Congratulations!` };
+  // The number rolls up over the last few days of the streak.
+  clearInterval(streakRollTimer);
+  streakShown.value = Math.max(0, days - 6);
+  streakRollTimer = setInterval(() => {
+    if (streakShown.value >= days) { clearInterval(streakRollTimer); return; }
+    streakShown.value += 1;
+  }, 130);
+  clearTimeout(streakCardTimer);
+  streakCardTimer = setTimeout(dismissStreakCard, 12000);
+}
+function dismissStreakCard() {
+  clearTimeout(streakCardTimer);
+  clearInterval(streakRollTimer);
+  streakCard.value = null;
+}
+
 // ── Idempotent badge awards ──────────────────────────────────────────────────
 // A badge must toast at most once, ever. Without a persistent record the
 // threshold-crossing watcher re-fires whenever cellsSubmitted/editsAllTime
@@ -126,6 +165,8 @@ onMounted(() => {
   // Welcome sparkle — calcium-imaging shimmer on extension open
   setTimeout(() => { confettiRef.value?.sparkle(2); }, 800);
 
+  // DEV: preview the streak milestone card → window.__testStreakCard(7)
+  (window as any).__testStreakCard = (days = 7) => { showStreakCard(days); fireConfetti('gold', days >= 30 ? 2 : 1); };
   // DEV: test hero badge from console → window.__testHeroBadge()
   (window as any).__testHeroBadge = () => {
     addToast({
@@ -213,17 +254,11 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
 watch(() => stats.value.currentStreak, (newStreak) => {
   if (!initialized) { prevStreak = newStreak; return; }
   if (!streakSeenReal && newStreak > 0) { streakSeenReal = true; prevStreak = newStreak; return; }
-  for (const m of STREAK_MILESTONES) {
-    if (prevStreak < m && newStreak >= m) {
-      addToast({
-        type: 'streak',
-        title: `${m}-Day Streak!`,
-        subtitle: `${m} days of continuous contribution.`,
-        icon: '🔥',
-        isImage: false,
-      });
-      fireConfetti('gold', m >= 30 ? 2 : 1);
-    }
+  // The highest milestone this edit carried the streak over.
+  const reached = STREAK_MILESTONES.filter(m => prevStreak < m && newStreak >= m).pop();
+  if (reached) {
+    showStreakCard(reached);
+    fireConfetti('gold', reached >= 30 ? 2 : 1);
   }
   prevStreak = newStreak;
 });
@@ -506,6 +541,41 @@ function playBatchChime() {
           </div>
           <div class="nge-hero-subtitle">{{ heroBadge.subtitle }}</div>
           <div class="nge-hero-hint">Click to view profile</div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Streak milestone card -->
+    <Transition name="nge-cell-celebrate">
+      <div v-if="streakCard" class="nge-streak-overlay" role="status" aria-live="polite" @click="dismissStreakCard">
+        <div class="nge-streak-card">
+          <span class="nge-streak-corner nge-streak-corner--tl" aria-hidden="true"></span>
+          <span class="nge-streak-corner nge-streak-corner--br" aria-hidden="true"></span>
+          <div class="nge-streak-embers" aria-hidden="true">
+            <span v-for="i in 14" :key="i" class="nge-streak-ember" :style="{ '--i': i }"></span>
+          </div>
+          <div class="nge-streak-kicker">Streak milestone</div>
+          <div class="nge-streak-hero">
+            <span class="nge-streak-halo" aria-hidden="true"></span>
+            <span class="nge-streak-halo nge-streak-halo--2" aria-hidden="true"></span>
+            <img :src="streakNurro" class="nge-streak-nurro" alt="Nurro celebrating" />
+          </div>
+          <div class="nge-streak-count">
+            <span class="nge-streak-flame" aria-hidden="true">🔥</span>
+            <span class="nge-streak-num">{{ streakShown }}</span>
+            <span class="nge-streak-unit">day streak</span>
+          </div>
+          <div class="nge-streak-line">{{ streakCard.line }}</div>
+          <ol class="nge-streak-ladder" aria-label="Streak milestones">
+            <li v-for="(m, i) in STREAK_MILESTONES" :key="m" class="nge-streak-rung"
+                :class="{ 'nge-streak-rung--lit': m <= streakCard.days, 'nge-streak-rung--now': m === streakCard.days }"
+                :style="{ '--i': i }">{{ m }}</li>
+          </ol>
+          <div class="nge-streak-next">
+            <template v-if="streakCard.next">Next milestone: {{ streakCard.next }} days. Edit tomorrow to keep the flame going.</template>
+            <template v-else>You have reached the top of the ladder. Keep the flame going!</template>
+          </div>
+          <div class="nge-streak-hint">Click to dismiss</div>
         </div>
       </div>
     </Transition>
@@ -1172,6 +1242,86 @@ function playBatchChime() {
 }
 
 /* ═══ Cell Completion Celebration ═══ */
+/* ── Streak milestone card: embers, gold and Nurro ── */
+.nge-streak-overlay {
+  position: fixed; inset: 0; z-index: 100000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 5, 0, 0.78); backdrop-filter: blur(8px); cursor: pointer;
+}
+.nge-streak-card {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px;
+  font-family: 'Inter', 'Roboto', system-ui, sans-serif;
+  width: min(440px, calc(100vw - 32px)); box-sizing: border-box; padding: 26px 30px 22px;
+  border-radius: 16px; border: 1px solid rgba(255, 184, 77, 0.5);
+  background:
+    radial-gradient(ellipse at 50% 28%, rgba(255, 150, 40, 0.2), transparent 62%),
+    linear-gradient(180deg, rgba(34, 20, 8, 0.97), rgba(14, 10, 12, 0.98));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6), 0 0 60px rgba(255, 140, 30, 0.22), inset 0 1px rgba(255, 220, 160, 0.18);
+  animation: nge-streak-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.nge-streak-corner { position: absolute; width: 18px; height: 18px; border-color: rgba(255, 210, 122, 0.9); filter: drop-shadow(0 0 5px rgba(255, 170, 60, 0.8)); }
+.nge-streak-corner--tl { left: 9px; top: 9px; border-left: 2px solid; border-top: 2px solid; border-top-left-radius: 7px; }
+.nge-streak-corner--br { right: 9px; bottom: 9px; border-right: 2px solid; border-bottom: 2px solid; border-bottom-right-radius: 7px; }
+.nge-streak-embers { position: absolute; inset: 0; pointer-events: none; }
+.nge-streak-ember {
+  position: absolute; bottom: -8px; left: calc(6% + var(--i) * 6.4%);
+  width: 4px; height: 4px; border-radius: 50%;
+  background: #ffc46b; box-shadow: 0 0 8px 2px rgba(255, 150, 40, 0.8); opacity: 0;
+  animation: nge-streak-ember calc(2.6s + var(--i) * 0.17s) ease-out calc(var(--i) * 0.23s) infinite;
+}
+.nge-streak-ember:nth-child(3n) { width: 3px; height: 3px; background: #ff9a3c; }
+.nge-streak-ember:nth-child(4n) { background: #ffe2a8; }
+.nge-streak-kicker {
+  position: relative; font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.26em; text-transform: uppercase; color: #ffb84d;
+  animation: nge-cell-fade-in 0.4s ease-out 0.2s both;
+}
+.nge-streak-hero { position: relative; width: 190px; height: 190px; display: flex; align-items: center; justify-content: center; }
+.nge-streak-halo {
+  position: absolute; inset: 8px; border-radius: 50%;
+  border: 1.5px dashed rgba(255, 196, 107, 0.6); animation: nge-streak-spin 18s linear infinite;
+}
+.nge-streak-halo--2 { inset: 22px; border: 1px solid rgba(255, 150, 40, 0.35); box-shadow: 0 0 40px rgba(255, 140, 30, 0.35), inset 0 0 30px rgba(255, 140, 30, 0.18); animation: none; }
+.nge-streak-nurro {
+  position: relative; width: 168px; height: 168px; object-fit: contain;
+  filter: drop-shadow(0 0 18px rgba(255, 160, 50, 0.55));
+  animation: nge-cell-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s both;
+}
+.nge-streak-count { position: relative; display: flex; align-items: baseline; justify-content: center; gap: 10px; animation: nge-cell-title-in 0.5s ease-out 0.35s both; }
+.nge-streak-flame { font-size: 30px; align-self: center; animation: nge-streak-flicker 1.4s ease-in-out infinite; }
+.nge-streak-num {
+  font-family: 'Orbitron', 'Rajdhani', 'Audiowide', monospace; font-size: 64px; font-weight: 800; line-height: 1;
+  color: #ffd27a; text-shadow: 0 0 22px rgba(255, 160, 50, 0.7), 0 2px 0 rgba(120, 60, 0, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+.nge-streak-unit { font-family: 'Orbitron', 'Rajdhani', monospace; font-size: 15px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #ffe9c4; }
+.nge-streak-line { position: relative; font-size: 15.5px; line-height: 1.45; color: #fff3df; max-width: 340px; animation: nge-cell-fade-in 0.4s ease-out 0.7s both; }
+.nge-streak-ladder { position: relative; display: flex; gap: 6px; list-style: none; margin: 6px 0 0; padding: 0; }
+.nge-streak-rung {
+  min-width: 34px; padding: 4px 6px; border-radius: 999px; box-sizing: border-box;
+  font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; font-weight: 700;
+  color: #7d6a55; border: 1px solid rgba(255, 184, 77, 0.2); background: rgba(255, 184, 77, 0.04);
+  animation: nge-cell-fade-in 0.3s ease-out calc(0.9s + var(--i) * 0.07s) both;
+}
+.nge-streak-rung--lit { color: #2a1602; background: #ffb84d; border-color: #ffd27a; }
+.nge-streak-rung--now { background: #ffd27a; box-shadow: 0 0 14px rgba(255, 190, 90, 0.9); animation: nge-cell-fade-in 0.3s ease-out calc(0.9s + var(--i) * 0.07s) both, nge-streak-now 1.3s ease-in-out 1.6s infinite; }
+.nge-streak-next { position: relative; font-size: 13px; color: #d9c3a3; animation: nge-cell-fade-in 0.4s ease-out 1.5s both; }
+.nge-streak-hint { position: relative; margin-top: 6px; font-size: 11px; letter-spacing: 0.1em; color: #8a7558; animation: nge-cell-fade-in 0.4s ease-out 1.8s both; }
+@keyframes nge-streak-in { from { opacity: 0; transform: scale(0.86) translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes nge-streak-ember {
+  0% { opacity: 0; transform: translate(0, 0) scale(1); }
+  12% { opacity: 0.95; }
+  100% { opacity: 0; transform: translate(calc((var(--i) - 7) * 3px), -330px) scale(0.4); }
+}
+@keyframes nge-streak-spin { to { transform: rotate(360deg); } }
+@keyframes nge-streak-flicker { 0%, 100% { transform: scale(1) rotate(-3deg); } 50% { transform: scale(1.14) rotate(3deg); } }
+@keyframes nge-streak-now { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+@media (prefers-reduced-motion: reduce) {
+  .nge-streak-card, .nge-streak-card * { animation: none !important; }
+  .nge-streak-ember { display: none; }
+}
+
 .nge-cell-overlay {
   position: fixed;
   inset: 0;
