@@ -95,6 +95,18 @@ body.nge-mobile #extensionBar #profileBtn {
   min-height: 40px;
 }
 
+/* The layer side panel is a desktop tool: on a phone its sliders button
+   gives way to the leaderboard (Ames 2026-10-05). */
+body.nge-mobile #extensionBar [title$="layer side panel"] {
+  display: none !important;
+}
+body.nge-mobile #extensionBar #mobileLeaderboardBtn {
+  margin: 0 6px 0 0 !important;
+  min-width: 40px;
+  min-height: 40px;
+  font-size: 20px;
+}
+
 body.nge-mobile #extensionBar .nge-ask-btn,
 body.nge-mobile #extensionBar .nge-dataset-btn {
   min-height: 36px;

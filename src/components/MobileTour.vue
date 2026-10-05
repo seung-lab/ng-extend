@@ -33,7 +33,7 @@ const STEPS_BASE: Step[] = [
     body: 'The community maps these circuits together. Ask anything — scientists and players are both here.' },
   { nav: 'tags', title: 'Tags',
     body: 'Drop a pin on anything that looks interesting or wrong. Tags are how findings get flagged.' },
-  { nav: 'alerts', title: 'Alerts',
+  { nav: 'alerts', title: 'Notifs',
     body: 'Badges you earn and replies to your tags land here.' },
   { nav: 'guide', title: 'Guide',
     body: 'Tap Guide any time to reopen the welcome page — and to log in when you want to trace neurons yourself.' },
