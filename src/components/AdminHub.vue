@@ -1172,10 +1172,44 @@ async function loadPractice() {
   practiceLoading.value = false;
 }
 
-function usePracticeHover(which: 'a' | 'b') {
-  if (!practiceHover.value) return;
-  if (which === 'a') practiceA.value = { ...practiceHover.value };
-  else practiceB.value = { ...practiceHover.value };
+/**
+ * What sits under the crosshair (Celia, 2026-10-05: the segment should come
+ * from the crosshair too, like the point). Reads the segmentation volume at
+ * the viewer's position, which gives the exact supervoxel there, whatever
+ * the mouse is over. Needs the 2D view open so that data is loaded.
+ */
+function crosshairPick(): { sv: string; pos: number[] } | null {
+  try {
+    const viewer = (window as any)['viewer'];
+    const p = viewer?.navigationState?.position?.value;
+    if (!p || p.length < 3) return null;
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      if (!ml.layer?.displayState?.segmentSelectionState) continue;
+      for (const rl of ml.layer.renderLayers ?? []) {
+        const v = rl.getValueAt?.(p);
+        const sv = v == null ? '' : String(Array.isArray(v) ? v[0] : v);
+        if (sv && sv !== '0' && Math.floor(Number(sv) / 2 ** 56) === 1) {
+          return { sv, pos: [p[0], p[1], p[2]].map((n: number) => Math.round(n * 100) / 100) };
+        }
+      }
+    }
+  } catch { /* viewer not ready */ }
+  return null;
+}
+
+async function usePracticeHover(which: 'a' | 'b') {
+  let pick = practiceHover.value ? { ...practiceHover.value } : null;
+  // The crosshair wins when the volume can be read there; the hovered
+  // segment is the fallback.
+  const cross = crosshairPick();
+  const pcg = getPcgInfo();
+  if (cross && pcg) {
+    const root = await rootOfSupervoxel({ pcg_server: pcg.server, pcg_table: pcg.table }, cross.sv);
+    if (root) pick = { sv: cross.sv, root, pos: cross.pos };
+  }
+  if (!pick) return;
+  if (which === 'a') practiceA.value = pick;
+  else practiceB.value = pick;
 }
 
 function practiceDataset(): string {
@@ -1626,7 +1660,7 @@ function practiceWhen(iso: string | null) {
           <div v-if="practicePicking" class="nge-practice-picker">
             <span class="nge-practice-picker-label">Practice cell</span>
             <span class="nge-practice-hover">Hovered: <code>{{ practiceHover ? practiceHover.root : 'move over a segment' }}</code><span v-if="practiceHover && !practiceHover.sv"> (hover it in 2D for the exact spot)</span></span>
-            <span class="nge-practice-hover">Put the crosshair on a spot in 2D, hover the cell and press the <b>A</b> key. Do the same on the other side and press <b>B</b>.</span>
+            <span class="nge-practice-hover">Put the crosshair on a spot in 2D (right-click there) and press the <b>A</b> key. Move it to the other side of the join and press <b>B</b>. The point and the segment both come from the crosshair.</span>
             <span class="nge-practice-picks">A: <code>{{ pickLabel(practiceA) }}</code> B: <code>{{ pickLabel(practiceB) }}</code></span>
             <button class="nge-admin-primary-btn" @click="stopPicking">Back to Admin Hub</button>
           </div>

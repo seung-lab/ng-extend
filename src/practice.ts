@@ -573,7 +573,7 @@ export function practiceShown(): boolean {
 /** Claim (or keep) a practice cell in a slot and show it. `show: false`
  *  only claims, for a slot the tutorial will show later (Merge step 3 takes
  *  both cells up front; loading the second view there cost seconds). */
-export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { slot?: string; show?: boolean; avoid?: string[] } = {}): Promise<PracticeExample | null> {
+export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { slot?: string; show?: boolean; avoid?: string[]; prefer?: string } = {}): Promise<PracticeExample | null> {
   const slot = opts.slot ?? 'a';
   const show = opts.show !== false;
   // Right after a reload the login is still settling; give it a few seconds
@@ -607,7 +607,13 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   // ids where supervoxels belong, so nothing can tell when it is merged).
   try {
     const { data } = await supabase.from('tutorial_practice_examples')
-      .select('id,supervoxel_a,supervoxel_b').eq('enabled', true).eq('kind', kind);
+      .select('id,status,supervoxel_a,supervoxel_b').eq('enabled', true).eq('kind', kind);
+    // `prefer`: a staged tutorial names the cell for this step. When that
+    // cell is free, every other one is excluded so the server hands it out;
+    // when it is not, the claim falls back to whatever is free.
+    const want = opts.prefer && !exclude.includes(opts.prefer)
+      ? ((data ?? []) as any[]).find(r => r.id === opts.prefer && r.status === 'ready') : null;
+    if (want) for (const r of (data ?? []) as any[]) if (r.id !== want.id && !exclude.includes(r.id)) exclude.push(r.id);
     for (const r of (data ?? []) as any[]) {
       const bad = [r.supervoxel_a, r.supervoxel_b].some((sv: string) => sv && pcgLayer(sv) !== 1)
         || (r.supervoxel_a && r.supervoxel_a === r.supervoxel_b);

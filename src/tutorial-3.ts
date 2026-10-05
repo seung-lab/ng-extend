@@ -160,13 +160,55 @@ const CUT_HINTS: Record<string, { red: number[][]; blue: number[][] }> = {
 };
 const RED = '#ff5c5c', BLUE = '#5c8cff';
 
-function showWhereToCut(): boolean {
+/**
+ * A saved view with the cut points already placed (Ames, 2026-10-05), per
+ * cell. The cut tool keeps its points in the layer state as
+ * multicut.sinks (red) and multicut.sources (blue), each with a position.
+ * Read with the learner's own login when they ask for help.
+ */
+const CUT_HINT_STATES: Record<string, string> = {
+  // Small branch merged to cell (Celia, 16:27), the 2D cut
+  '0482d846-0c16-4393-ab8a-0d1212b9520f': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5145051306917888',
+  // Fusion on a proofread cell (Ames), the 3D cut
+  '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5715664052420608',
+};
+
+async function cutPointsInState(stateUrl: string): Promise<{ red: number[][]; blue: number[][] } | null> {
+  try {
+    const { url, credentialsProvider } = parseSpecialUrl(stateUrl, defaultCredentialsManager);
+    const state: any = await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
+    const pos = (list: any): number[][] => (Array.isArray(list) ? list : [])
+      .map((x: any) => x?.position).filter((p: any) => Array.isArray(p) && p.length >= 3).map((p: any) => p.slice(0, 3).map(Number));
+    let found: { red: number[][]; blue: number[][] } | null = null;
+    // The multicut block sits somewhere under the segmentation layer; find it
+    // wherever this neuroglancer version put it.
+    const walk = (o: any, depth: number) => {
+      if (found || !o || typeof o !== 'object' || depth > 6) return;
+      if (o.multicut && (o.multicut.sinks || o.multicut.sources)) {
+        const red = pos(o.multicut.sinks), blue = pos(o.multicut.sources);
+        if (red.length || blue.length) { found = { red, blue }; return; }
+      }
+      for (const v of Array.isArray(o) ? o : Object.values(o)) walk(v, depth + 1);
+    };
+    walk(state, 0);
+    console.info('[tutorial] cut hint state:', found ? `${(found as any).red.length} red, ${(found as any).blue.length} blue` : 'no cut points in it');
+    return found;
+  } catch (e) {
+    console.warn('[tutorial] could not read cut hint points:', e);
+    return null;
+  }
+}
+
+async function showWhereToCut(): Promise<boolean> {
   const ex = currentPractice().example;
-  const h = ex ? CUT_HINTS[ex.id] : undefined;
+  if (!ex) return false;
+  const fromState = CUT_HINT_STATES[ex.id] ? await cutPointsInState(CUT_HINT_STATES[ex.id]) : null;
+  const h = fromState ?? CUT_HINTS[ex.id];
   if (!h) return false;
-  const pts = [...h.red, ...h.blue];
-  return showPyrMarkers(pts, [...h.red.map(() => 'red'), ...h.blue.map(() => 'blue')], 60,
-    [...h.red.map(() => RED), ...h.blue.map(() => BLUE)]);
+  // A handful of each is plenty to show the idea.
+  const red = h.red.slice(0, 4), blue = h.blue.slice(0, 4);
+  return showPyrMarkers([...red, ...blue], [...red.map(() => 'red'), ...blue.map(() => 'blue')], 60,
+    [...red.map(() => RED), ...blue.map(() => BLUE)]);
 }
 
 function toggleStuckPanel() {
@@ -195,10 +237,10 @@ function toggleStuckPanel() {
     }));
   }
   if (ex && ex.kind === 'cut') {
-    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to place points', () => {
+    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to place points', async () => {
       ensureTool('multicut');
-      practiceStatus(showWhereToCut()
-        ? 'Pyr marks the spots: red points on the piece to remove, blue points on the cell. Ctrl+click near each, press G to switch colour, then Submit cut.'
+      practiceStatus((await showWhereToCut())
+        ? 'Pyr marks the spots: red points on one side of the join, blue points on the other. Ctrl+click near each, press G to switch colour, then Submit cut.'
         : 'No point hints for this cell yet. Red goes on the piece that does not belong, blue on the cell just past the join.');
     }));
   }
