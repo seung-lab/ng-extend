@@ -119,3 +119,9 @@ summaries.
   pairs `point_a`/`point_b` with `supervoxel_a`/`supervoxel_b`, so a pick is
   only consistent if the crosshair sits on the hovered piece (2026-10-05,
   crosshair pick build, from reading practice.ts).
+- Chat history is read once in `connect()`; realtime only pushes live
+  inserts. Supabase rejoins a dropped channel by itself and fires
+  `SUBSCRIBED` again, so any repeat `SUBSCRIBED` is where gaps are backfilled
+  (`loadMissed`). `fetchPage` moves `oldestLoadedAt` and `hasMoreHistory`, so
+  do not reuse it for newer rows (2026-10-05, chat reconnect build, from
+  reading store.ts).
