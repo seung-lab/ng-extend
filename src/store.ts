@@ -454,7 +454,9 @@ export const useLayersStore = defineStore('layers', () => {
     } catch { return false; }
   }
 
-  async function selectLayers(layers: any[]) {
+  /** keepHash: load in place, never redirect to a curated or start view (the
+   *  boot fallback, when the address already holds the player's own view). */
+  async function selectLayers(layers: any[], opts: {keepHash?: boolean} = {}) {
     if (!viewer) return;
 
     // Detect the target dataset (by segmentation layer name) BEFORE restoring,
@@ -474,7 +476,7 @@ export const useLayersStore = defineStore('layers', () => {
     const bareSwitch = !!startPrefs.datasetBareSwitch;
     const curatedUrl = ownHash ? window.location.origin + window.location.pathname + ownHash
       : bareSwitch ? '' : (dsCfgEarly?.defaultStateUrl || '');
-    if (curatedUrl && !skipStateUrl) {
+    if (curatedUrl && !skipStateUrl && !opts.keepHash) {
       // Apply via hash-only navigation when same-origin (so dev server doesn't bounce
       // to production). Neuroglancer's hashchange handler picks up the new state URL
       // and fetches+applies it. If the configured URL is on a different origin, the
@@ -3709,6 +3711,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
       await supabase.from('users').update(updates).eq('id', userId.value);
 
+      // The day's edit carried the streak onto a milestone: a note in the
+      // bell, not a popup (Ames 2026-10-05). After the save, so the server
+      // sees the new streak when it checks.
+      if (updates.current_streak !== undefined && updates.current_streak !== (row.current_streak || 0)) {
+        sendStreakMilestone(updates.current_streak).catch(() => {});
+      }
+
       // Third edit: a thank you from Nurro, once, at the moment of crossing.
       if ((row.total_edits || 0) < 3 && (updates.total_edits || 0) >= 3) {
         sendThirdEditThanks().catch(() => {});
@@ -3728,6 +3737,33 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch (e: any) {
       console.warn('[backend] logEdit error:', e.message);
     }
+  }
+
+  /** A streak milestone, as a notification to yourself. The server allows
+   *  only these titles, only when the saved streak has reached the number,
+   *  and never the same one twice within six days. */
+  const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
+  const STREAK_LINES: Record<number, string> = {
+    7: 'A full week of mapping the brain, every single day. Congratulations!',
+    14: 'Two weeks straight. That is real dedication. Congratulations!',
+    30: 'A whole month without missing a day. Incredible work!',
+    60: 'Sixty days in a row. You are a force of nature!',
+    100: 'One hundred days. You are an EyeWire legend!',
+    200: 'Two hundred days of science, back to back. Astonishing!',
+    365: 'A full year, every single day. There are no words. Thank you!',
+  };
+  async function sendStreakMilestone(days: number) {
+    if (!STREAK_MILESTONES.includes(days) || !userId.value) return;
+    const next = STREAK_MILESTONES.find(m => m > days);
+    const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
+    await secureWrite('notification.self', {
+      title: `🔥 ${days}-Day Streak!`,
+      body: `${STREAK_LINES[days]} ${next ? `Next milestone: ${next} days. ` : ''}Edit tomorrow to keep the flame going.`,
+      // Stand-in art until the streak's own Nurro arrives.
+      image_url: `${art}/nurro-dance.png`,
+      thumbnail_url: `${art}/nurro-dance.png`,
+    });
+    loadNotifications().catch(() => {});
   }
 
   /** A personal "thank you, for science" notification after someone's third
@@ -3951,11 +3987,20 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // panel's three tabs). Falls back to the `users` table if the view
     // hasn't been deployed yet.
     try {
-      const { data, error } = await supabase
-        .from('user_edit_counts')
-        .select('id, display_name, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, edits_24h, edits_week, edits_alltime, completions_24h, completions_week, completions_alltime')
-        .order('total_edits', { ascending: false })
-        .limit(50);
+      // The board has six rankings (Edits or Cells, over 24 hours, 7 days or
+      // all time). Fetching only the top 50 by all-time edits left out anyone
+      // strong on Cells or in a recent window but lower on all-time edits
+      // (Ames 2026-10-05). Fetch the top 50 of EACH ranking and merge them.
+      const COLS = 'id, display_name, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, edits_24h, edits_week, edits_alltime, completions_24h, completions_week, completions_alltime';
+      const RANKINGS = ['total_edits', 'edits_week', 'edits_24h', 'cells_completed', 'completions_week', 'completions_24h'];
+      const results = await Promise.all(RANKINGS.map(col =>
+        supabase.from('user_edit_counts').select(COLS).order(col, { ascending: false }).limit(50)));
+      const error = results[0].error;
+      const data = error ? null : (() => {
+        const byId = new Map<string, any>();
+        for (const r of results) for (const u of (r.data ?? []) as any[]) if (!byId.has(u.id)) byId.set(u.id, u);
+        return [...byId.values()];
+      })();
       if (!error && data) {
         leaderboard.value = data;
         return;
@@ -5062,6 +5107,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   };
 });
 
+/** The address at page load, read before neuroglancer rewrites it with the
+ *  restored state (store.ts is imported before the viewer is made). */
+const BOOT_HASH = window.location.hash;
+
 export const useVolumesStore = defineStore('volumes', () => {
   const volumes: Ref<Volume[]> = ref([]);
 
@@ -5095,14 +5144,31 @@ export const useVolumesStore = defineStore('volumes', () => {
 
         // Auto-select default volume if no layers loaded yet
         const layerStore = useLayersStore();
-        if (layerStore.activeLayers.size === 0 || (layerStore.activeLayers.size === 1 && layerStore.activeLayers.has(''))) {
+        const layersEmpty = () => layerStore.activeLayers.size === 0 || (layerStore.activeLayers.size === 1 && layerStore.activeLayers.has(''));
+        // A state link in the address (#!https://...) is fetched after this
+        // list arrives, so layers are still empty here on a refresh. Wait for
+        // it, or the curated redirect below replaced the player's view.
+        if (layersEmpty() && /^#!([a-z][a-z\d+-.]*):\/\//.test(BOOT_HASH)) {
+          await new Promise<void>(resolve => {
+            const done = () => { clearTimeout(timer); stop(); resolve(); };
+            const timer = setTimeout(done, 20000);
+            const stop = watch(() => layerStore.activeLayers.size, () => { if (!layersEmpty()) done(); });
+          });
+        }
+        if (layersEmpty()) {
           if (CONFIG.volumes_default) {
             const volume = volumes.value.find(x => x.name === CONFIG.volumes_default?.name);
             if (volume) {
               const imageLayer = volume.image_layers.find(x => x.name === CONFIG.volumes_default?.image);
               const segmentationLayer = volume.segmentation_layers.find(x => x.name === CONFIG.volumes_default?.segmentation);
               if (imageLayer && segmentationLayer) {
-                layerStore.selectLayers([imageLayer, segmentationLayer]);
+                // The address held the player's own view (not empty, not the
+                // curated one) that has not loaded: show the volume in place
+                // rather than redirecting away from it.
+                const curated = getDatasetCaveConfig(segmentationLayer.name).defaultStateUrl || '';
+                const curatedHash = curated.includes('#') ? curated.slice(curated.indexOf('#')) : '';
+                const userHash = !!BOOT_HASH && BOOT_HASH !== '#' && BOOT_HASH !== '#!' && BOOT_HASH !== curatedHash;
+                layerStore.selectLayers([imageLayer, segmentationLayer], {keepHash: userHash});
               }
             }
           }
@@ -5196,6 +5262,13 @@ function parseMessageParts(name: string, text: string): MessagePart[] {
     }
   }
   return parts;
+}
+
+/** Chat messages are capped at 140 characters, and links don't count
+ *  toward it (Amy 2026-10-05), so a shared view link never eats the limit. */
+export const CHAT_MAX_CHARS = 140;
+export function chatTextLength(text: string): number {
+  return Array.from(text.replace(/https?:\/\/\S+/g, '').trim()).length;
 }
 
 function formatTime(d: Date): string {
@@ -5722,6 +5795,9 @@ export const useChatStore = defineStore('chat', () => {
     const backend = useProofreadingBackendStore();
     const name = backend.chatHandle;
     const rank = backend.isAdmin ? 'admin' : 'player';
+    // The box blocks long messages too; this holds the limit if it is bypassed.
+    // Announcements carry a notification title and are not capped.
+    if (notificationId == null && chatTextLength(text) > CHAT_MAX_CHARS) return;
     // A Nurro command is answered on your screen only and never posted, so
     // asking Nurro does not fill everyone's chat (Amy 2026-09-30). "!science"
     // belongs to nkem_test's public joke and is still posted.

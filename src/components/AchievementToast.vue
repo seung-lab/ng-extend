@@ -215,13 +215,8 @@ watch(() => stats.value.currentStreak, (newStreak) => {
   if (!streakSeenReal && newStreak > 0) { streakSeenReal = true; prevStreak = newStreak; return; }
   for (const m of STREAK_MILESTONES) {
     if (prevStreak < m && newStreak >= m) {
-      addToast({
-        type: 'streak',
-        title: `${m}-Day Streak!`,
-        subtitle: `${m} days of continuous contribution.`,
-        icon: '🔥',
-        isImage: false,
-      });
+      // The milestone itself arrives as a notification in the bell (sent by
+      // the store when the streak is saved); here, only the confetti.
       fireConfetti('gold', m >= 30 ? 2 : 1);
     }
   }

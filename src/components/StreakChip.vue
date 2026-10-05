@@ -32,6 +32,17 @@ const PIP_MAX = 14;
 const pipTotal = computed(() => Math.max(props.current, props.best, 1));
 const usePips = computed(() => pipTotal.value <= PIP_MAX);
 const isBest = computed(() => props.current >= props.best && props.current > 1);
+// Congratulations that grow with the streak (Ames 2026-10-04).
+const cheer = computed(() => {
+  const n = props.current;
+  const keep = 'Edit tomorrow to keep the flame going.';
+  if (n <= 1) return 'Nice work, you made an edit today! Come back tomorrow to start a streak.';
+  if (n === 2) return `Two days running, nice work! ${keep}`;
+  if (n < 7) return `Congrats, ${n} days in a row! You are on a roll. ${keep}`;
+  if (n < 14) return `Congrats, ${n} days in a row! A week and counting of mapping the brain. ${keep}`;
+  if (n < 30) return `Amazing, ${n} days in a row! That is real dedication. ${keep}`;
+  return `Incredible, ${n} days in a row! You are an EyeWire legend. ${keep}`;
+});
 const shownCount = ref(props.current);       // the title's number rolls up on open
 let rollRaf = 0;
 watch(open, v => {
@@ -250,8 +261,9 @@ onUnmounted(() => {
       <div v-else class="nge-streak-tip-bar nge-streak-tip-row" style="--i: 1" :title="`${current} of your best ${Math.max(current, best)} days`">
         <i :style="{ '--fill': Math.round(current / pipTotal * 100) + '%' }"></i>
       </div>
-      <div class="nge-streak-tip-body nge-streak-tip-row" style="--i: 2">You've made at least one edit {{ current === 1 ? 'today' : `${current} days in a row` }}. Edit tomorrow to keep the flame going.</div>
+      <div class="nge-streak-tip-body nge-streak-tip-row" style="--i: 2">{{ cheer }}</div>
       <div v-if="best > current" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 3">Your best: {{ best }} days</div>
+      <div v-else-if="current > 1" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 3">🏆 Your best streak yet!</div>
       <div v-else-if="current > 1" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 3">This is your best streak yet! 🏆</div>
     </div>
   </div>

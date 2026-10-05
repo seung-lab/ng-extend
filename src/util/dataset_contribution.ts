@@ -33,6 +33,35 @@ async function caveIdFor(uid: string): Promise<number | null> {
 }
 
 /**
+ * Cells completed on a dataset according to the app's own log (edit_log),
+ * by the leaderboard's rule: one cell per distinct root id, not counted when
+ * its newest event is an un-mark. The CAVE mirror only fills from CAVE's
+ * materialized snapshots, which never include the EyeWire table on MICrONS
+ * and do not exist for MEC, so those datasets always showed 0 cells
+ * (Ames 2026-10-04). Null when the log cannot be read.
+ */
+async function loggedCompletions(uid: string, tags: string[]): Promise<number | null> {
+  try {
+    const { supabase } = await import('../supabase');
+    const { data, error } = await supabase.from('edit_log')
+      .select('operation,metadata,segment_after,success,created_at')
+      .eq('user_id', uid).in('dataset', tags)
+      .in('operation', ['complete_task', 'mark_complete', 'unmark_complete'])
+      .order('created_at', { ascending: true }).limit(5000);
+    if (error || !data) return null;
+    const done = new Map<string, boolean>();
+    for (const r of data as any[]) {
+      if (r.success === false) continue;
+      const id = String(r.metadata?.root_id ?? r.metadata?.final_segment_id ?? r.segment_after ?? '');
+      // No id: its own cell, keyed by the minute (the leaderboard's rule).
+      const key = id || `t:${String(r.created_at).slice(0, 16)}`;
+      done.set(key, r.operation !== 'unmark_complete');
+    }
+    return [...done.values()].filter(Boolean).length;
+  } catch { return null; }
+}
+
+/**
  * Cells you have completed on the dataset on screen, for the completion
  * celebration (Amy 2026-09-28). The mirror syncs from CAVE every 30 minutes,
  * so a cell completed just now may not be in it yet: count it when missing.
@@ -51,8 +80,11 @@ export async function datasetCellCount(uid: string, segId?: string): Promise<{ l
       .in('dataset', tags).eq('segment_id', segId).limit(1).then((r: any) => (r.data?.length ?? 0) > 0)
       : Promise.resolve(true),
   ]);
-  if (count == null) return null;
-  return { label: ds.shortLabel || ds.label, count: count + (mirrored ? 0 : 1) };
+  const logged = await loggedCompletions(uid, tags);
+  if (count == null && logged == null) return null;
+  // The mirror holds older history, the log holds what CAVE's snapshots miss:
+  // whichever knows of more cells is right.
+  return { label: ds.shortLabel || ds.label, count: Math.max((count ?? 0) + (count != null && !mirrored ? 1 : 0), logged ?? 0) };
 }
 
 export async function loadContribution(ds: DatasetEntry, uid: string): Promise<DatasetContribution> {
@@ -67,7 +99,7 @@ export async function loadContribution(ds: DatasetEntry, uid: string): Promise<D
   }
   const caveId = caveIdCache.caveId;
   const tags = datasetTagVariants(ds);
-  const [edits, completions, helpRequests] = await Promise.all([
+  const [edits, mirrored, helpRequests, logged] = await Promise.all([
     supabase.from('edit_log').select('id', { count: 'exact', head: true })
       .eq('user_id', uid).in('dataset', tags).then((r: any) => r.count ?? 0),
     caveId == null ? Promise.resolve(0) :
@@ -75,6 +107,7 @@ export async function loadContribution(ds: DatasetEntry, uid: string): Promise<D
         .eq('cave_user_id', caveId).in('dataset', tags).then((r: any) => r.count ?? 0),
     supabase.from('help_requests').select('id', { count: 'exact', head: true })
       .eq('user_id', uid).in('dataset', tags).then((r: any) => r.count ?? 0),
+    loggedCompletions(uid, tags),
   ]);
-  return { edits, completions, helpRequests };
+  return { edits, completions: Math.max(mirrored, logged ?? 0), helpRequests };
 }

@@ -79,23 +79,44 @@ function apply(snap: Snapshot, layers: any[]) {
   }
 }
 
-/** Once the new view's layers exist, put the snapshot back (twice: some
- *  settings arrive a beat after the layer does). Gives up after 15 s. */
+/** When the new view lands, put the snapshot back (twice: some settings
+ *  arrive a beat after the layer does).
+ *
+ *  This used to poll for the new layers and give up after 15 s. A saved view
+ *  is fetched from the state server, and when that took longer the cell
+ *  opened with the link's own layout, often 3D only, and the player's 2D
+ *  panels never came back (Ames 2026-10-04: "Lost 2D after jumping to
+ *  claimed cell"). Now it waits for the load itself: neuroglancer applies a
+ *  link by calling viewer.state.restoreState, so watch that call. */
+const LOAD_LIMIT_MS = 120000;
 export function restoreDisplayAfterLoad(snap: Snapshot | null) {
   if (!snap) return;
   const viewer: any = (window as any).viewer;
-  const t0 = performance.now();
-  const tick = () => {
+  const state: any = viewer?.state;
+  if (!state?.restoreState) return;
+  // Phones already wrap restoreState on the instance (store.ts): put back
+  // exactly what was there rather than deleting it.
+  const hadOwn = Object.prototype.hasOwnProperty.call(state, 'restoreState');
+  const previous = state.restoreState;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    if (state.restoreState !== watching) return;      // someone wrapped after us: leave theirs
+    if (hadOwn) state.restoreState = previous; else delete state.restoreState;
+  };
+  const watching = function (this: any, obj: unknown) {
+    previous.call(state, obj);
+    if (done) return;
     const fresh = viewer.layerManager.managedLayers.filter((ml: any) =>
       !snap.before.has(ml) && !ml.archived && ml.layer && LAYER_KEYS[layerType(ml)]);
-    if (fresh.length) {
-      apply(snap, fresh);
-      setTimeout(() => apply(snap, fresh), 700);
-      return;
-    }
-    if (performance.now() - t0 < 15000) setTimeout(tick, 150);
+    if (!fresh.length) return;                        // not the view we are waiting for
+    finish();
+    apply(snap, fresh);
+    setTimeout(() => apply(snap, fresh), 700);
   };
-  setTimeout(tick, 150);
+  state.restoreState = watching;
+  setTimeout(finish, LOAD_LIMIT_MS);
 }
 
 export function keepDisplayEnabled(): boolean {

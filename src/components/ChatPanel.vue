@@ -7,7 +7,7 @@
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI } from '../store';
+import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI, CHAT_MAX_CHARS, chatTextLength } from '../store';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
@@ -27,7 +27,7 @@ const { chatMessages, connected, unreadMessages } = storeToRefs(chatStore);
 const backendStore = useProofreadingBackendStore();
 
 const messageInput = ref('');
-const inputEl = ref<HTMLInputElement | null>(null);
+const inputEl = ref<HTMLTextAreaElement | null>(null);
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const isScrolledUp = ref(false);
 const collapsed = ref(false);
@@ -316,10 +316,27 @@ function msgTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
+// ── Message length ──
+// Links don't count toward the limit, so a plain maxlength can't hold it; the
+// counter shows near the limit and sending waits until the text fits.
+const messageLength = computed(() => chatTextLength(messageInput.value));
+const messageTooLong = computed(() => messageLength.value > CHAT_MAX_CHARS);
+const showLengthCount = computed(() => messageLength.value > CHAT_MAX_CHARS - 20);
+
+// The box grows with the message up to its CSS max-height, then scrolls.
+function fitInputHeight() {
+  const el = inputEl.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+}
+watch(messageInput, () => nextTick(fitInputHeight));
+watch(isQuiet, () => nextTick(fitInputHeight));
+
 // ── Send message ──
 function send() {
   const text = messageInput.value.trim();
-  if (!text) return;
+  if (!text || messageTooLong.value) return;
   chatStore.sendMessage(text);
   messageInput.value = '';
   mentionQuery.value = null;
@@ -410,6 +427,9 @@ function onInputKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault();
     send();
+  } else if (e.key === 'Enter') {
+    // The box wraps long text but messages stay one line, so no newlines.
+    e.preventDefault();
   }
 }
 
@@ -422,6 +442,7 @@ const shareError = ref('');
 const showShareShot = ref(false);
 
 async function postView(shotUrl: string | null) {
+  if (messageTooLong.value) { shareError.value = `Messages can be up to ${CHAT_MAX_CHARS} characters. Shorten it and share again.`; return; }
   sharing.value = true;
   shareError.value = '';
   try {
@@ -933,10 +954,12 @@ function toggleCollapse() {
                 <button @click="shareView(true)">📷 Share view + screenshot</button>
               </span>
             </span>
-            <input
+            <textarea
               ref="inputEl"
               v-model="messageInput"
               class="nge-chat-input"
+              :class="{ 'nge-chat-input--over': messageTooLong }"
+              rows="1"
               :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : 'Message... (@ to mention)'"
               @keydown.stop="onInputKeydown"
               @keyup.stop
@@ -947,7 +970,9 @@ function toggleCollapse() {
               spellcheck="true"
               autocomplete="off"
               :disabled="!isLoggedIn || !connected"
-            />
+            ></textarea>
+            <span v-if="showLengthCount" class="nge-chat-count" :class="{ 'nge-chat-count--over': messageTooLong }"
+                  :title="`Up to ${CHAT_MAX_CHARS} characters, links don't count`">{{ CHAT_MAX_CHARS - messageLength }}</span>
             <span class="nge-chat-emoji">
               <button class="nge-chat-share-btn nge-chat-emoji-btn" :disabled="!isLoggedIn || !connected"
                       @mousedown.prevent @click.stop="emojiOpen = !emojiOpen" title="Add an emoji">🙂</button>
@@ -1073,7 +1098,15 @@ function toggleCollapse() {
   border-radius: 4px 9px 9px 4px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
+/* A draft left in the box stays one line in the pill; it grows again on focus. */
+.nge-chat-float--quiet .nge-chat-input { max-height: 31px; overflow: hidden; white-space: nowrap; }
 .nge-chat-float--quiet .nge-chat-input::placeholder { color: rgba(210, 235, 255, 0.9); font-weight: 700; }
+/* One left edge for the message pills, the ">" line and the coordinate
+   chip under them (Ames 2026-10-04): they sat at 17, 13 and 8 px. The panel's
+   own inset only makes sense while its box is drawn. */
+.nge-chat-float--quiet { margin-left: -1px; }
+.nge-chat-float--quiet .nge-chat-messages { padding-left: 0; }
+.nge-chat-float--quiet .nge-chat-input-wrap { padding-left: 0; }
 
 /* ── Resize handles ── */
 .nge-chat-resize { position: absolute; z-index: 10; }
@@ -1504,8 +1537,21 @@ function toggleCollapse() {
   outline: none;
   transition: border-color 0.12s;
   box-sizing: border-box;
+  display: block;
+  resize: none;
+  line-height: 1.35;
+  max-height: 96px;  /* about five lines, then it scrolls */
+  overflow-y: auto;
+  /* No scrollbar (Ames 2026-10-05): the box grows to fit, so a bar with its
+     arrows only got in the way. Past five lines it still scrolls, by wheel,
+     arrow keys or the caret. */
+  scrollbar-width: none;
 }
+.nge-chat-input::-webkit-scrollbar { display: none; }
 .nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.3); }
+.nge-chat-input--over, .nge-chat-input--over:focus { border-color: rgba(255, 110, 110, 0.55); }
+.nge-chat-count { flex-shrink: 0; font-size: 12px; font-weight: 600; color: #8797ad; font-variant-numeric: tabular-nums; }
+.nge-chat-count--over { color: #ff8a8a; }
 
 /* ── Nurro's daily leaders card ── */
 .nge-chat-daily {
@@ -1663,7 +1709,7 @@ function toggleCollapse() {
 .nge-chat-mention-dot--on { background: #4ad07a; box-shadow: 0 0 6px rgba(74, 208, 122, 0.7); }
 
 /* ── Share my view ── */
-.nge-chat-input-row { display: flex; align-items: center; gap: 4px; }
+.nge-chat-input-row { display: flex; align-items: flex-end; gap: 4px; }
 .nge-chat-input-row .nge-chat-input { flex: 1; min-width: 0; }
 .nge-chat-share { position: relative; flex-shrink: 0; }
 /* Dimmed to the input row's tone, and centred in its square (Ames 2026-10-02). */

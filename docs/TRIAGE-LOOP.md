@@ -1,8 +1,55 @@
 # The triage loop: from a user report to a tested, live fix
 
-Set up 25 September 2026. Every automated step runs on Amy's Princeton
-Claude subscription (amylr@princeton.edu) through the
-`CLAUDE_CODE_OAUTH_TOKEN` repo secret.
+Set up 25 September 2026. Since 1 October 2026 every automated step runs on
+Amy's own Anthropic API key (the `ANTHROPIC_API_KEY` repo secret, prepaid
+credit). Moving it back to the Princeton Claude subscription
+(amylr@princeton.edu, `CLAUDE_CODE_OAUTH_TOKEN`) is on the to do list.
+
+## Exact replies
+
+These are the replies the robot only understands when they are typed exactly
+(capitals, bold and a full stop at the end do not matter). Reply in the
+report's Slack thread, as the whole message unless it says otherwise. The
+build ID is the 12 characters in the preview announcement; the Admin Hub card
+shows the same commands with a Copy button.
+
+| Reply | When | What it does |
+|---|---|---|
+| `approve` | a suggestion is waiting | Accepts it and Claude starts building. Words after it are kept as your note for Claude: `approve, use gold`. `approved` and `accept` work too. |
+| `dismiss` | a suggestion is waiting | Turns it down. Nothing is built. |
+| `good <build ID>` | a preview is up | Puts that exact build on the live site. A bare `good`, `looks good` or `lgtm` is only saved as a note and deploys nothing. |
+| `ship to test <build ID>` | a preview is up | Puts it on the live site as a test, for things only the live site can show. |
+| `good <build ID>` | it is live as a test | Keeps it live and closes the report. |
+| `revert <build ID>` | it is live as a test | Takes it off the live site. |
+| `change: your words` | a preview is up, a step failed, or it is live as a test | Sends your words to Claude and starts a new build. This is the only way to ask for a change: it costs a Claude run, so nothing else starts one. |
+| `rebuild` | a preview is up | Builds again with everything said in the thread. |
+| `retry` | a step failed | Runs the failed step again. After a failed deploy, `good <build ID>` also works. |
+| `note: your words` | a preview is up | Saved for Claude's next attempt. Nothing is rebuilt. |
+| `shipped` | anytime | Closes a report that was fixed by hand, outside the robot: marks it done, cancels any running build, posts "Change shipped" and sends the reporter their thank you. Say what was built after a colon: `shipped: annotations now clear on complete`. Works on a report dismissed in the last 4 days too. |
+| `stop` | anytime, except while live as a test | Ends all work on the report and stops the reminders. `cancel`, `close` and `dismiss` do the same. A reason can follow a colon: `stop: already fixed`. |
+| `hand off @name` | a preview or question is waiting | Makes that approver the tester. Start the message with `hand off`, `reassign` or `pass`. |
+| `update sender` | anytime | Drafts a note to the person who sent the report. `update reporter` and `update submitter` are the same. Nothing is sent yet. |
+| `send update` | after a draft | Sends the draft to them as an in-game notification. |
+| `update: your words` | anytime | Sends your own words to them. |
+
+Anything else is not a command. A reply that ends with a question mark is
+answered by Claude without a rebuild. Every other reply is **saved as a note
+and nothing is rebuilt**, so "thanks, will test later" costs nothing. To ask
+for a change, start the reply with `change:`.
+
+**Deploying from the triage board.** A card with a tested preview has a
+**Deploy to the live site** button (and **Live test**), which does the same
+as replying `good <build ID>` in Slack. The server checks that you are an
+admin and signs the approval for that exact build; the deploy step verifies
+the signature before it touches the live site. Keeping or reverting a live
+test is still done in the Slack thread.
+
+**When the live site changed after your preview was built.** You do not
+test again. When you reply `good <build ID>`, the robot puts the approved
+change onto the current live code as it is (the same files, the same
+contents, no Claude run) and deploys once. Only when the live code changed
+one of the very files your fix touches does it rebuild and ask you to test
+the new preview.
 
 ## What happens
 
@@ -25,7 +72,7 @@ Claude subscription (amylr@princeton.edu) through the
 5. **Test.** The bot posts the preview in the thread and tags the person who
    approved it. **That person must test it**, and is tagged every 10 minutes
    until they reply (see below).
-6. **Shipped.** When the tester says it is good, it is merged into
+6. **Shipped.** When the tester replies `good <build ID>`, it is merged into
    `eyewire-ii-community` and deployed live. The thread gets "Change
    shipped" with a link to the change. In the game, the person who reported
    it and every admin get a "🎉 Fixed!" notification (confetti Nurro, mint and
@@ -34,11 +81,10 @@ Claude subscription (amylr@princeton.edu) through the
 
 ## Talking to the robot
 
-Everything happens in the report's Slack thread. **Just reply in your own
-words**: each reply is read in the context of the whole thread by a small
-Claude model (Haiku, on the Princeton subscription), which works out what you
-mean and answers like a person. The keywords below always work too, and are
-the fallback if the model is unavailable (`TRIAGE_UNDERSTAND=off` forces them).
+Everything happens in the report's Slack thread. Replies are read by fixed
+rules, not by a model: the commands in **Exact replies** above must be typed
+exactly, a reply ending in a question mark is a question, and anything else
+is taken as a change request for Claude.
 
 | When | You want to | Say something like | What happens |
 |---|---|---|---|
@@ -46,20 +92,21 @@ the fallback if the model is unavailable (`TRIAGE_UNDERSTAND=off` forces them).
 | | turn it down | `dismiss` | nothing is built |
 | Claude is building | add details | `also check it on the MEC dataset` | saved as a note, never lost; the preview message lists any that came too late for that build |
 | Claude asked a question | answer it | `gold, not lemon yellow` | Claude carries on with your answer |
-| Preview is up | ship it | `good`, `looks good`, `lgtm` | merged and deployed live |
+| Preview is up | ship it | `good <build ID>` | merged and deployed live. A bare `good` is only a note |
 | | ask about it | `where do I click to see it?` | Claude answers from what it built; nothing is rebuilt |
-| | ask for changes | `works, but the yellow is too bright` | Claude fixes it and posts a new preview |
+| | ask for changes | `change: the yellow is too bright` | Claude fixes it and posts a new preview |
 | | add details without a rebuild | `note: Celia prefers amber` | saved for Claude's next attempt |
 | | build again now | `rebuild` | a new build with everything in the thread |
-| | test on the live site | `ship to test` | goes live for a real-data test (sync jobs, Cloud Functions, what other users see) |
-| Live test | keep it | `good` | stays live, row closed |
-| | take it off | `revert` | the live site goes back; say what to change and Claude tries again |
-| | report a problem | `it broke the tag panel` | taken off the live site first, then back to Claude |
+| | test on the live site | `ship to test <build ID>` | goes live for a real-data test (sync jobs, Cloud Functions, what other users see) |
+| Live test | keep it | `good <build ID>` | stays live, row closed |
+| | take it off | `revert <build ID>` | the live site goes back; reply `change: ...` and Claude tries again |
+| | report a problem | `change: it broke the tag panel` | recorded; reply `revert <build ID>` to take it off the live site, then Claude builds the correction |
 | Anytime | stop everything (already fixed, duplicate, changed your mind) | `stop`, `dismiss`, `cancel`, `close it`, or `stop: already fixed` as the whole reply | any running build is cancelled, nobody is tagged again, the row shows as dismissed in the Admin Hub (approve it there to restart). **Dismiss** in the Admin Hub does the same, at any stage before it goes live. Only an approver or the tester can stop. Not while it is on the live site as a test: `revert` first. Do not start it with @Amy's Claude, which is the Q&A bot |
-| | pass the testing on | `hand off to @Celia`, `can Celia check this` | that person becomes the tester and gets the reminders |
-| | just chat | `thanks, will test after lunch` | nothing changes, nothing rebuilds |
+| | pass the testing on | `hand off to @Celia` | that person becomes the tester and gets the reminders |
+| | leave a remark | `note: will test after lunch` | saved, nothing rebuilds. Without `note:` it would be read as a change request |
+| | tell the person who reported it | `update sender`, then `send update` or `update: your words` | they get an in-game notification |
 | Something failed | try again | `retry` | the failed step runs again |
-| | correct it | `it's in ExtensionBar.vue, not the settings panel` | Claude tries again with that |
+| | correct it | `change: it's in ExtensionBar.vue, not the settings panel` | Claude tries again with that |
 
 Comments from other people in the thread are passed to Claude as background,
 but only the tester moves a fix forward (an approver can also answer Claude,

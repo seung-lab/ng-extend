@@ -136,7 +136,7 @@ This is a snapshot, not a standing truth. If someone says it is fixed, believe t
 
 **YOU HAVE TOOLS.** When asked about ng-extend code, use fetch_ng_extend_file; pass repo="amyleesterling" if a file looks like it is missing recent work, because Amy's fork is often ahead of seung-lab. When asked about CAVE status, use check_cave_health with the right dataset argument (pni_mec for MEC, it is on a different server). Know its limit: it proves reachability and CORS only. It cannot see whether a table exists, whether an aligned volume is registered, or whether materialization runs, because CAVE checks auth first and you have no CAVE token. If someone asks you to confirm MEC's tables, say plainly that you cannot check that and a signed-in human has to. Prefer tool calls over guessing. If asked something outside this context, say so honestly. Route CAVE issues to #shared_cave_seunglab — don't name individuals.
 
-**The feedback triage loop (#citsci_feedback), live since 2026-09-25.** User reports get a triage proposal in their Slack thread. An approver (Amy or Celia) replies approve or dismiss, in the thread or in Admin Hub > Triage; both show the same list. An approved fix is built by Claude in GitHub Actions (seung-lab/ng-extend, workflow "Triage Implement", on Amy's Princeton Claude subscription) on branch triage/<first 8 of the row id>, which deploys a preview at https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/ using the real data. The approver is the tester and is tagged every 10 minutes until they reply: good (deploys live), ship to test (goes live for a real-data test, then good or revert), a question ending in ? (Claude answers), anything else (Claude fixes it, new preview), or hand off to @someone. Claude can also stop and ask a question; the tester's answer sends it back to work. When anyone asks where a fix or Claude's work is, call get_triage_status (with the thread's ts if you are in a triage thread) and answer from the row: its state, preview link, run link, and who it is waiting on. Approvals from before 2026-09-25 were never built by anything unless the row says otherwise. You cannot approve, test, or deploy anything yourself; only people can, by replying in the thread. Mentions of you are skipped by the loop, so they never count as a tester's verdict.`;
+**The feedback triage loop (#citsci_feedback), live since 2026-09-25.** User reports get a triage proposal in their Slack thread. An approver (Amy or Celia) replies approve or dismiss, in the thread or in Admin Hub > Triage; both show the same list. An approved fix is built by Claude in GitHub Actions (seung-lab/ng-extend, workflow "Triage Implement", on Amy's Princeton Claude subscription) on branch triage/<first 8 of the row id>, which deploys a preview at https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/ using the real data. The approver is the tester and is tagged every 10 minutes until they reply with an exact command: good <build ID> (deploys live; the 12 character build ID is in the preview announcement, and a bare good deploys nothing), ship to test <build ID> (goes live for a real-data test, then good <build ID> or revert <build ID>), a question ending in ? (Claude answers), note: words (saved, no rebuild), anything else (Claude fixes it, new preview), or hand off @someone. Reply update sender to draft a note to the person who reported it, then send update. The full list of exact replies is at https://connectome.quest/admin/#exact-replies. Claude can also stop and ask a question; the tester's answer sends it back to work. When anyone asks where a fix or Claude's work is, call get_triage_status (with the thread's ts if you are in a triage thread) and answer from the row: its state, preview link, run link, and who it is waiting on. Approvals from before 2026-09-25 were never built by anything unless the row says otherwise. You cannot approve, test, or deploy anything yourself; only people can, by replying in the thread. Mentions of you are skipped by the loop, so they never count as a tester's verdict.`;
 
 async function verifySlackSignature(req, signingSecret) {
   const timestamp = req.header("X-Slack-Request-Timestamp");
@@ -420,7 +420,7 @@ const TRIAGE_STATE_WORDS = {
   queued: "approved, waiting for Claude to start (the bridge checks every 10 minutes)",
   implementing: "Claude is building it right now in GitHub Actions",
   needs_info: "Claude asked a question in the thread and is waiting for the tester's answer",
-  testing: "the fix is on a preview site; the tester has to reply good, ship to test, a question, or what's wrong",
+  testing: "the fix is on a preview site; the tester has to reply good <build ID>, ship to test <build ID>, a question, or change: what to fix (any other reply is only saved as a note, so nothing rebuilds by accident)",
   changes_requested: "the tester sent it back; Claude is about to rebuild",
   answer_queued: "the tester asked a question; Claude is about to answer",
   answering: "Claude is answering the tester's question",
@@ -428,7 +428,7 @@ const TRIAGE_STATE_WORDS = {
   deploying: "deploying to the live community site",
   deployed: "live",
   live_test_queued: "going live so the tester can test on real data",
-  live_testing: "live for a real-data test; the tester has to reply good (keep) or revert",
+  live_testing: "live for a real-data test; the tester has to reply good <build ID> (keep) or revert <build ID>",
   revert_queued: "being taken off the live site",
   reverting: "being taken off the live site",
   failed: "a run failed or Claude refused; Amy was tagged; reply retry or a correction in the thread",
@@ -887,6 +887,7 @@ PROOFREADING HOW-TOs
 TROUBLESHOOTING FAQ
 - "My edits aren't showing" / "why don't I see my changes": their proofreading IS saved — reassure them first. The 3D meshes update live, but materialized queries (cell tables and some views) use the latest materialized snapshot, which lags live edits. If appContext.materialization is present, be SPECIFIC: the newest materialized version is {latestVersion}, timestamped {timestamp} (~{ageMinutes} minutes old); any edit made after that appears at the next materialization run, not immediately. If it's not present, give the general explanation.
 - "Why is my segment gray": the mesh may still be loading, or it isn't in the visible set. Offer goToSegment.
+- "Black gaps / empty spots / missing pieces in the 3D cell after a cut or merge": the edit IS saved; reassure them first. After an edit the server rebuilds the 3D mesh for the changed part of the cell, and the gap fills in by itself when that finishes, usually within a minute or two. The FIRST edit on a dataset that nobody has edited for a while takes noticeably longer, because the meshing system has to wake up first (the Sandbox is the usual case); later edits are quicker. If a gap is still there after several minutes, reload the page. The 2D view is never affected, so they can keep working.
 - Login / CAVE auth issues: they must be logged in for edits to save; point them to settings or the login flow.
 
 CONTEXT
@@ -1639,7 +1640,7 @@ const EW_SELF_TITLES = ["📊 Your Week in Science", "💙 Thank you, for scienc
 const ewErr = (status, msg) => Object.assign(new Error(msg), { status });
 
 exports.ewSecureWrite = onRequest(
-  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
+  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({error:"Input too large"});
@@ -1698,6 +1699,35 @@ exports.ewSecureWrite = onRequest(
           out = { deleted: Number(args.id) };
           break;
         }
+        // Deploy from the Admin Hub (Ames 2026-10-05). The deploy workflow
+        // trusts nothing in the row by itself, so the approval is signed
+        // here, after the admin's sign-in was checked, with a key only this
+        // function and that workflow hold. It names the exact commit of the
+        // preview, the same as "good <build ID>" in Slack. Must match
+        // hubApprovalSignature in scripts/triage-policy.mjs.
+        case "triage.release": {
+          needAdmin();
+          if (!/^[0-9a-f-]{36}$/i.test(String(args.id))) throw ewErr(400, "bad id");
+          const mode = args.mode === "live_test" ? "live_test" : args.mode === "final" ? "final" : null;
+          if (!mode) throw ewErr(400, "bad mode");
+          const row = (await sb(`feedback_triage?id=eq.${args.id}&select=*`))[0];
+          if (!row || row.status !== "approved") throw ewErr(409, "This report is not approved");
+          if (!["testing", "failed"].includes(row.impl_state)) throw ewErr(409, "There is no tested preview waiting to go live");
+          const log = Array.isArray(row.feedback_log) ? row.feedback_log : [];
+          const preview = [...log].reverse().find(e => e.role === "preview");
+          if (!preview || !/^[0-9a-f]{40}$/.test(preview.sha || "")) throw ewErr(409, "No preview build to release");
+          if (String(args.shortSha || "").toLowerCase() !== preview.sha.slice(0, 12)) throw ewErr(409, "The preview changed. Refresh and test the new one");
+          const key = slackBotToken.value().trim();
+          const ts = (Date.now() / 1000).toFixed(6), by = who.email;
+          const hmac = text => crypto.createHmac("sha256", key).update(text).digest("hex");
+          const approval = { role: "release_approval", via: "admin_hub", sha: preview.sha, mode, ts, by,
+            sig: hmac([row.id, preview.sha, mode, ts, by].join("|")), keycheck: hmac("eyewire-hub-key-check").slice(0, 8) };
+          out = (await sb(`feedback_triage?id=eq.${row.id}`, { method: "PATCH", body: JSON.stringify({
+            feedback_log: [...log, approval], impl_state: mode === "final" ? "deploy_queued" : "live_test_queued",
+            tested_by: me?.display_name || by, tested_at: new Date().toISOString() }) }))[0];
+          await wakeWorkflow("slack-triage-bridge.yml", "admin hub release");
+          break;
+        }
         case "triage.update": {
           needAdmin();
           if (!/^[0-9a-f-]{36}$/i.test(String(args.id))) throw ewErr(400, "bad id");
@@ -1712,7 +1742,14 @@ exports.ewSecureWrite = onRequest(
           if (!me) throw ewErr(403, "no EyeWire II profile");
           const title = String(args.title || "");
           const okTitle = EW_SELF_TITLES.includes(title) || (title.startsWith("🏆 New Achievement: ") && title.length <= 120);
-          if (!okTitle) throw ewErr(400, "not an allowed self notification");
+          // "🔥 14-Day Streak!": only the real milestones, and only when the
+          // caller's saved streak has reached it (Ames 2026-10-05).
+          const streakHit = title.match(/^🔥 (7|14|30|60|100|200|365)-Day Streak!$/);
+          if (streakHit) {
+            const saved = await sb(`users?id=eq.${me.id}&select=current_streak&limit=1`);
+            if ((saved[0]?.current_streak || 0) < Number(streakHit[1])) throw ewErr(400, "not yet");
+          }
+          if (!okTitle && !streakHit) throw ewErr(400, "not an allowed self notification");
           if (title.startsWith("💙") && (me.total_edits || 0) < 3) throw ewErr(400, "not yet");
           const since = new Date(Date.now() - 6 * 864e5).toISOString();
           const dup = await sb(`notifications?target_type=eq.user&target_id=eq.${me.id}&title=eq.${encodeURIComponent(title)}&created_at=gte.${since}&select=id`);

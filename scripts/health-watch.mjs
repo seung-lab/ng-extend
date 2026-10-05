@@ -46,6 +46,15 @@ async function timed(url, init = {}) {
 }
 
 async function checkSheets() {
+  let last = { ok: false, detail: 'not checked' };
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt > 1) await new Promise(r => setTimeout(r, 60000));
+    last = await checkSheetsOnce();
+    if (last.ok) return last;
+  }
+  return { ...last, detail: `${last.detail} (3 tries)` };
+}
+async function checkSheetsOnce() {
   try {
     const r = await timed(`${FUNCTIONS}/ewSheetSync`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'health' }),
@@ -220,6 +229,35 @@ async function lastHealthMessage() {
   return (j.messages || []).find(m => m.bot_id && (m.text || '').includes(MARK)) || null;
 }
 
+// Services other people run (Google Sheets, the CAVE servers) blip for a
+// few minutes most days: MICrONS CAVE times out around 08:50 UTC and is back
+// by the next check, and the sheet answers 503 now and then. Nothing Ames
+// can do about those, so they are only reported when the check before this
+// one failed too, which means it has been down for over an hour
+// (Ames 2026-10-04: "I get a lot of errors basically every day").
+const NEEDS_TWO = ['Spreadsheet write-back', 'CAVE tables'];
+/** The names that failed in the previous health run, from its log. Null when
+ *  that cannot be read, and then nothing is held back. */
+async function previousFailures() {
+  const token = env.GITHUB_TOKEN;
+  if (!token) return null;
+  const gh = (path, raw) => timed(`https://api.github.com/repos/seung-lab/ng-extend/${path}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'eyewire-health-watch' },
+    redirect: 'follow',
+  }).then(r => { if (!r.ok) throw new Error(`GitHub ${r.status}`); return raw ? r.text() : r.json(); });
+  try {
+    const runs = (await gh('actions/workflows/health-watch.yml/runs?status=completed&per_page=5')).workflow_runs || [];
+    const prev = runs.find(r => String(r.id) !== String(env.GITHUB_RUN_ID));
+    if (!prev) return null;
+    // Older than three hours is not "the check before": treat as unknown.
+    if (Date.now() - new Date(prev.created_at).getTime() > 3 * 3600 * 1000) return null;
+    const job = ((await gh(`actions/runs/${prev.id}/jobs`)).jobs || [])[0];
+    if (!job) return null;
+    const log = await gh(`actions/jobs/${job.id}/logs`, true);
+    return [...log.matchAll(/\[health\] (?:FAIL|WAIT) ([^:\n]+):/g)].map(m => m[1].trim());
+  } catch (e) { console.warn('[health] previous run not read:', e.message); return null; }
+}
+
 (async () => {
   const results = {
     'Spreadsheet write-back': await checkSheets(),
@@ -228,7 +266,12 @@ async function lastHealthMessage() {
     'Robot AI step': await checkRobotAi(),
     'Anthropic key': await checkAnthropicKey(),
   };
-  for (const [name, r] of Object.entries(results)) console.log(`[health] ${r.ok ? 'OK  ' : 'FAIL'} ${name}: ${r.detail}`);
+  const before = Object.entries(results).some(([n, r]) => !r.ok && NEEDS_TWO.includes(n)) ? await previousFailures() : null;
+  for (const [name, r] of Object.entries(results)) {
+    // First failure of an outside service: note it (WAIT) and say nothing yet.
+    r.held = !r.ok && NEEDS_TWO.includes(name) && Array.isArray(before) && !before.includes(name);
+    console.log(`[health] ${r.ok ? 'OK  ' : r.held ? 'WAIT' : 'FAIL'} ${name}: ${r.detail}${r.held ? ' (first time; reported if the next check fails too)' : ''}`);
+  }
   // Credit warning: its own message, once per threshold per top-up.
   const spend = await robotSpend().catch(e => { console.warn('[health] spend not counted:', e.message); return null; });
   if (spend) {
@@ -252,7 +295,7 @@ async function lastHealthMessage() {
     }
   }
 
-  const failing = Object.entries(results).filter(([, r]) => !r.ok);
+  const failing = Object.entries(results).filter(([, r]) => !r.ok && !r.held);
   const signature = failing.map(([n]) => n).sort().join('|');
 
   const last = await lastHealthMessage().catch(e => { console.warn(e.message); return null; });

@@ -115,14 +115,29 @@ const slack = async (method, payload) => {
   return json;
 };
 
+// Each check (stop, shipped, tester replies, reporter updates) reads the same
+// threads. Slack allows about 50 thread reads a minute, and the fourth check
+// pushed a pass over it (2026-10-05: 249 "ratelimited" in one run). One read
+// per thread per pass: this process is one pass, so a plain map is the cache.
+const threadCache = new Map();
 const slackGet = async (method, params) => {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`https://slack.com/api/${method}?${qs}`, {
-    headers: { Authorization: `Bearer ${SLACK_TOKEN}` },
-  });
-  const json = await res.json();
-  if (!json.ok) throw new Error(`${method}: ${json.error}`);
-  return json;
+  const key = method === 'conversations.replies' && !params.oldest ? qs : null;
+  if (key && threadCache.has(key)) return threadCache.get(key);
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`https://slack.com/api/${method}?${qs}`, {
+      headers: { Authorization: `Bearer ${SLACK_TOKEN}` },
+    });
+    const json = await res.json();
+    if (json.error === 'ratelimited' && attempt < 2) {
+      const wait = Math.min(Number(res.headers.get('retry-after')) || 2, 8);
+      await new Promise(r => setTimeout(r, wait * 1000));
+      continue;
+    }
+    if (!json.ok) throw new Error(`${method}: ${json.error}`);
+    if (key) threadCache.set(key, json);
+    return json;
+  }
 };
 
 const say = (row, text) => slack('chat.postMessage', {
@@ -206,6 +221,22 @@ const quoteReport = row => {
   return t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}"` : 'Thanks for your report.';
 };
 
+/** What changed, in words for the player: the release note without the
+ *  tester credit, the commit link and Slack mentions. */
+const fixText = row => String(row.result_note || row.impl_summary || '')
+  .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/Details:\s*<?https?:\S+/gi, ' ')
+  .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
+  .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+
+/** The note a reporter gets once their fix is live (Ames 2026-10-04):
+ *  thanks, their own words back, what was built. Mirrors AdminHub.vue. */
+function fixedNote(row) {
+  const t = (row.source_excerpt || '').trim();
+  const q = t ? `Thank you for submitting: "${t.length > 200 ? t.slice(0, 197) + '...' : t}".` : 'Thank you for your report.';
+  const fix = fixText(row);
+  return `${q} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
+}
+
 // ── Optional update to the submitter (Amy 2026-09-25) ────────────────────
 // Any triage thread: an approver replies "update reporter" and gets a draft
 // written from the row's state; "send update" sends that draft, "update:
@@ -213,7 +244,10 @@ const quoteReport = row => {
 // Hub has the same composer. Every send is logged in feedback_log with role
 // 'reporter_update' (Admin Hub sends are echoed here). pollThreads and
 // collectNotes skip these commands so they are never read as tester replies.
-const REPORTER_CMD = /^(update\s+(the\s+)?(reporter|submitter)|draft\s+(an?\s+)?update|send\s+(the\s+)?update|update\s*:)/i;
+// "sender" too (Ames 2026-10-04).
+const REPORTER_CMD = /^(update\s+(the\s+)?(reporter|submitter|sender)|draft\s+(an?\s+)?update|send\s+(the\s+)?update|update\s*:)/i;
+// The list of replies that must be typed exactly, on the admin page.
+const REPLY_GUIDE = '<https://connectome.quest/admin/#exact-replies|Exact replies and what they do>';
 
 /** Draft for the submitter from the row's state. Never includes internal
  *  notes (approver_note is the reviewers' own comment). Mirrors
@@ -221,11 +255,7 @@ const REPORTER_CMD = /^(update\s+(the\s+)?(reporter|submitter)|draft\s+(an?\s+)?
 function draftReporterUpdate(row) {
   const t = (row.source_excerpt || '').trim();
   const q = t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}".` : 'Thanks for your report.';
-  const shipped = (row.result_note || '').replace(/<@[A-Z0-9]+>/g, 'a tester')
-    .replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1').trim();
-  if (row.status === 'done' || row.impl_state === 'deployed') {
-    return `${q} Good news: it's fixed and live now.${shipped ? ' ' + shipped : ''} Thank you for helping make EyeWire II better!`;
-  }
+  if (row.status === 'done' || row.impl_state === 'deployed') return fixedNote(row);
   if (row.status === 'dismissed') {
     return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
   }
@@ -279,7 +309,7 @@ async function reporterUpdates() {
         continue;
       }
       const own = text.match(/^update\s*:\s*([\s\S]+)$/i);
-      if (/^(update\s+(the\s+)?(reporter|submitter)|draft\s+(an?\s+)?update)/i.test(text)) {
+      if (/^(update\s+(the\s+)?(reporter|submitter|sender)|draft\s+(an?\s+)?update)/i.test(text)) {
         const draft = draftReporterUpdate(row);
         log.push({ role: 'reporter_draft', ts: m.ts, user: m.user, text: draft });
         await say(row, `✉️ Draft update for the reporter:\n> ${draft}\nReply *send update* to send it as is, *update: your own words* to send your version, or just ignore this.`);
@@ -385,7 +415,7 @@ async function postProposals() {
   const rows = await res.json();
   for (const row of rows) {
     const where = await openThread(row,
-      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also reviewable in Admin Hub, Triage tab. Anytime, reply *update reporter* to draft a note to the person who reported it.`);
+      `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also on the <${LIVE_URL}?triage=board|triage board>. Anytime, reply *update sender* to draft a note to the person who reported it. ${REPLY_GUIDE}.`);
     console.log(`[bridge] posted proposal ${row.id} (${where})`);
     await notifyAdminsOfProposal(row);
   }
@@ -397,7 +427,7 @@ async function postProposals() {
  *  its card is posted, so it never comes round again. */
 async function notifyAdminsOfProposal(row) {
   const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
-  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" Claude has a suggestion ready. Approve or dismiss it in Admin Hub, Triage tab, or in the Slack thread.`;
+  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" Claude has a suggestion ready. Approve or dismiss it on the triage board (click this note), or in the Slack thread.`;
   let sent = 0;
   for (const id of await adminUserIds()) {
     if (await notifyUser(id, '🗂️ Feedback triage: new suggestion', body)) sent++;
@@ -597,17 +627,25 @@ function ruleIntent(text, state) {
   // else goes to Claude as before.
   const failedRelease = state === 'failed' && releaseCommand(text);
   if (failedRelease && failedRelease.mode !== 'revert') return { intent: { final: 'good', live_test: 'ship_to_test' }[failedRelease.mode], command: failedRelease };
-  if (state === 'failed') return /^retry\b/i.test(text) ? { intent: 'retry' } : { intent: 'answer', for_claude: text };
+  // A rebuild costs real money (Ames 2026-10-04), so only an explicit
+  // "change: ..." sends words to Claude. Anything else is kept as a note.
+  const change = text.match(/^(?:change|fix|changes)\s*:\s*([\s\S]+)$/i);
+  const NOTE_HINT = '📝 Saved as a note; nothing is rebuilding. To ask Claude for a change, start your reply with *change:*';
+  if (state === 'failed') {
+    if (/^retry\b/i.test(text)) return { intent: 'retry' };
+    return change ? { intent: 'answer', for_claude: change[1].trim() } : { intent: 'note', for_claude: text, reply: `${NOTE_HINT} (or reply *retry* to run the failed step again).` };
+  }
   if (/^note\b\s*:?/i.test(text)) return { intent: 'note', for_claude: text.replace(/^note\b\s*:?\s*/i, '') };
   const command = releaseCommand(text);
   if (command && ((state === 'testing' && command.mode !== 'revert') || (state === 'live_testing' && command.mode !== 'live_test'))) return {intent: {final:'good',live_test:'ship_to_test',revert:'revert'}[command.mode], command};
   // Free-form text never authorizes production deployment.
-  if (/^(good|looks good|lgtm)\b/i.test(text)) return { intent: 'note', for_claude: text };
+  if (/^(good|looks good|lgtm)\b/i.test(text)) return { intent: 'note', for_claude: text, reply: 'Glad it looks good. That alone deploys nothing: to put it live, reply with the exact *good <build ID>* from the preview announcement.' };
   if (state === 'testing' && /^rebuild\W*$/i.test(text)) return { intent: 'rebuild' };
   if (/^(ship to test|test (it )?live|test on live)\b/i.test(text)) return { intent: 'note', for_claude: text };
   if (/\?\s*$/.test(text)) return { intent: 'question', for_claude: text };
   if (/^revert\W*$/i.test(text)) return { intent: 'note', for_claude: text };
-  return { intent: 'change', for_claude: text };
+  if (change) return { intent: 'change', for_claude: change[1].trim() };
+  return { intent: 'note', for_claude: text, reply: `${NOTE_HINT}.` };
 }
 
 /**
@@ -701,6 +739,52 @@ async function stopRequests() {
     stopped++;
   }
   return stopped;
+}
+/**
+ * "shipped" in a thread closes a report that was fixed outside the robot
+ * (by hand, or by another session): the row is marked done, any running
+ * build is cancelled, and the done sweep posts "Change shipped" and sends
+ * the reporter their thank-you. "shipped: what changed" says what was built.
+ * Also works on a report dismissed in the last few days, since that is how a
+ * hand fix usually got closed before this existed (Ames 2026-10-04).
+ */
+const SHIPPED_CMD = /^(?:shipped|fixed)\s*(?:$|[.!]+\s*$|[-:,]\s*(.*)$)/is;
+async function shippedRequests() {
+  const recent = encodeURIComponent('"' + new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString() + '"');
+  // Open reports every pass (their threads are already read by the stop
+  // check). Recently dismissed ones cost extra reads, so only on the first
+  // pass of a run, about every ten minutes.
+  const firstPass = !process.env.BRIDGE_PASS || process.env.BRIDGE_PASS === '1';
+  const which = firstPass ? `or=(status.in.(proposed,approved),and(status.eq.dismissed,reviewed_at.gte.${recent}))` : 'status=in.(proposed,approved)';
+  const res = await sb(`feedback_triage?slack_ts=not.is.null&done_slack_ts=is.null&${which}&select=*`);
+  if (!res.ok) { console.warn(`[bridge] shipped check skipped (${res.status})`); return 0; }
+  let closed = 0;
+  for (const row of await res.json()) {
+    if (row.impl_state === 'deploying' || row.impl_state === 'deployed') continue;
+    let thread;
+    try { thread = await slackGet('conversations.replies', { channel: CHANNEL, ts: row.slack_ts, limit: 200 }); }
+    catch (e) { continue; }
+    const since = Number(row.decision_slack_ts || row.slack_ts || 0);
+    const m = (thread.messages ?? []).find(x => Number(x.ts) > since && !x.bot_id && x.subtype !== 'bot_message'
+      && APPROVERS.includes(x.user) && SHIPPED_CMD.test(plainText(x.text)));
+    if (!m) continue;
+    const what = (plainText(m.text).match(SHIPPED_CMD)[1] || '').trim().replace(/[.\s]+$/, '')
+      || String(row.impl_summary || '').split('\n')[0].trim().replace(/[.\s]+$/, '') || 'Fixed by the team';
+    const cancelled = await cancelRun(row);
+    const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
+    log.push({ user: m.user, text: m.text, ts: m.ts, role: 'shipped_by_hand' });
+    const now = new Date().toISOString();
+    await patchRow(row.id, {
+      status: 'done', impl_state: 'deployed', tested_by: `slack:${m.user}`, tested_at: now,
+      reviewed_by: row.reviewed_by || `slack:${m.user}`, reviewed_at: row.reviewed_at || now,
+      // "(tested ...)" is dropped from the reporter's note by fixText.
+      result_note: `${what}. (tested and shipped by hand, confirmed by <@${m.user}>).`,
+      feedback_log: log, last_reply_ts: m.ts, decision_slack_ts: m.ts,
+    });
+    console.log(`[bridge] ${row.id} marked shipped by ${m.user}${cancelled ? ' (run cancelled)' : ''}`);
+    closed++;
+  }
+  return closed;
 }
 const WAITING = ['testing', 'live_testing', 'needs_info', 'failed'];
 
@@ -822,7 +906,7 @@ async function pollThreads() {
           break;
         case 'revert':
           next = 'revert_queued';
-          reply = `${reply ? reply + ' ' : ''}Taking it off the live site now. Then tell me here what to change, or dismiss it in the Admin Hub.`;
+          reply = `${reply ? reply + ' ' : ''}Taking it off the live site now. Then reply *change: what to fix* for a new build, or dismiss it in the Admin Hub.`;
           break;
         case 'change':
         default:
@@ -849,8 +933,8 @@ async function pollThreads() {
       const text = state === 'needs_info'
         ? `⏰ <@${tester}> reminder ${n}: Claude is waiting on your answer to its question above. Just reply here in your own words (or ask someone else to take it).`
         : state === 'live_testing'
-          ? `⏰ <@${tester}> reminder ${n}: this is live for your test at ${LIVE_URL}. Use the exact *good <build ID>* or *revert <build ID>* command from the preview announcement, or describe a problem.`
-          : `⏰ <@${tester}> reminder ${n}: please test ${row.preview_url || 'the preview'}. Use the exact *good <build ID>* or *ship to test <build ID>* command from its announcement, ask a question, or describe a problem.`;
+          ? `⏰ <@${tester}> reminder ${n}: this is live for your test at ${LIVE_URL}. Use the exact *good <build ID>* or *revert <build ID>* command from the preview announcement, or reply *change: what is wrong*.`
+          : `⏰ <@${tester}> reminder ${n}: please test ${row.preview_url || 'the preview'}. Use the exact *good <build ID>* or *ship to test <build ID>* command from its announcement, ask a question, or reply *change: what to fix*.`;
       const posted = await say(row, text);
       await patchRow(row.id, { last_nag_at: new Date().toISOString(), nag_count: n, last_reply_ts: posted.ts });
       nagged++;
@@ -955,9 +1039,19 @@ async function announceDone() {
     const plain = note.replace(/<@[A-Z0-9]+>/g, 'a tester').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1');
     if (row.recommendation !== 'message' && row.recommendation !== 'nothing') {
       // The person who reported it: only them, never a broadcast.
-      const sent = await notifyReporter(row, '🎉 Fixed!',
-        `${quoteReport(row)} It's fixed and live now. ${plain} Thank you for helping make EyeWire II better!`, FIXED_IMAGE_URL);
-      if (sent) console.log(`[bridge] told the reporter of ${row.id}`);
+      const thanks = fixedNote(row);
+      const sent = await notifyReporter(row, '🎉 Fixed!', thanks, FIXED_IMAGE_URL);
+      if (sent) {
+        console.log(`[bridge] told the reporter of ${row.id}`);
+        // Show the approvers what the reporter was told, and how to add to it.
+        const at = new Date().toISOString();
+        const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
+        log.push({ role: 'reporter_update', via: 'auto', by: 'the robot', text: thanks, ts: posted.ts, at, sent: true, echoed: true });
+        await patchRow(row.id, { feedback_log: log }).catch(() => {});
+        await say(row, `✉️ Sent to the reporter:
+> ${thanks}
+To add something, reply *update: your own words* and I'll send that too.`).catch(() => {});
+      }
       // And every admin, so fixes are visible in the game, not just in Slack.
       const report = (row.source_excerpt || '').trim();
       for (const id of await adminUserIds()) {
@@ -988,6 +1082,7 @@ let LOOP = false;
   }
   const posted = await postProposals();
   const halted = COLS ? await stopRequests().catch(e => { console.warn('[bridge] stop check failed:', e.message); return 0; }) : 0;
+  if (COLS) await shippedRequests().catch(e => console.warn('[bridge] shipped check failed:', e.message));
   const acted = await readApprovals();
   let echoed = 0, started = 0, nagged = 0;
   if (COLS) echoed = await echoAppDecisions();

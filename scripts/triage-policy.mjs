@@ -1,3 +1,4 @@
+import {createHmac,timingSafeEqual} from 'node:crypto';
 export const SHA=/^[0-9a-f]{40}$/;
 export const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function releaseCommand(text) {
@@ -27,6 +28,26 @@ export function validateResult(result) {
  }
  if(bytes>2*1024*1024)throw Error('Change exceeds automatic triage size limit');
  return result;
+}
+// An approval given in the Admin Hub (Ames 2026-10-05). There is no Slack
+// message behind it, so it is proven another way: the server function that
+// recorded it checked the admin's sign-in, then signed the row, the exact
+// commit, the mode, the time and who it was with a key only it and this
+// workflow hold. Anything that merely wrote the row cannot produce that.
+export function hubApprovalSignature(key,{rowId,sha,mode,ts,by}) {
+ return createHmac('sha256',String(key).trim()).update([rowId,sha,mode,ts,by].join('|')).digest('hex');
+}
+export const hubKeyCheck=key=>createHmac('sha256',String(key).trim()).update('eyewire-hub-key-check').digest('hex').slice(0,8);
+export function approvedHubRelease(row,approval,preview,mode,key) {
+ if(!preview||!SHA.test(preview.sha)||!SHA.test(preview.base_sha))throw Error('No verified preview commit');
+ if(!key)throw Error('Cannot verify the Admin Hub approval');
+ if(!['final','live_test'].includes(mode)||approval.mode!==mode||approval.sha!==preview.sha)throw Error('Approval must name the exact preview commit');
+ if(typeof approval.by!=='string'||!approval.by||! /^[0-9a-f]{64}$/.test(approval.sig||''))throw Error('Admin Hub approval is not signed');
+ if(approval.keycheck&&approval.keycheck!==hubKeyCheck(key))throw Error('The Admin Hub and GitHub hold different Slack bot tokens, so the approval cannot be checked. Use the Slack command instead');
+ const want=Buffer.from(hubApprovalSignature(key,{rowId:row.id,sha:approval.sha,mode,ts:String(approval.ts),by:approval.by}),'hex');
+ if(!timingSafeEqual(want,Buffer.from(approval.sig,'hex')))throw Error('Admin Hub approval signature does not match');
+ if(!(Number(approval.ts)>Number(preview.ts)))throw Error('Approval predates the preview');
+ return preview.sha;
 }
 export function approvedRelease(row,message,preview,mode,approvers) {
  const command=releaseCommand(message?.text);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { caveToken } from '../secure_write';
+import { reportFeedbackFailure } from '../util/error_reporting';
 import { functionUrl } from '../functions_base';
 /**
  * FeedbackModal.vue
@@ -8,7 +9,7 @@ import { functionUrl } from '../functions_base';
  * anywhere in the app. Posts to the `submitIssue` Cloud Function which relays
  * to Slack (#citsci_feedback) and keeps a Firestore record. No auth required.
  */
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { useProofreadingBackendStore } from '../store';
@@ -32,6 +33,24 @@ const attachConsole = ref(true);
 const consoleCount = ref(recentConsoleCount());
 const done = ref(false);
 const error = ref('');
+
+// While it sends, the form gives way to a signal travelling down an axon and
+// the real steps of the submit, ticked off as each one finishes (Ames
+// 2026-10-04). Nothing here is timed for show: stage follows submit().
+type Stage = 'view' | 'send' | 'file';
+const stage = ref<Stage>('send');
+const sendSteps = computed(() => [
+  ...(attachView.value ? [{ key: 'view' as Stage, label: 'Saving your view' }] : []),
+  { key: 'send' as Stage, label: 'Sending it to the team' },
+  { key: 'file' as Stage, label: 'Filing it for triage' },
+]);
+const stepState = (key: Stage) => {
+  const order = sendSteps.value.map(x => x.key);
+  const at = order.indexOf(stage.value), i = order.indexOf(key);
+  return i < at ? 'done' : i === at ? 'now' : 'next';
+};
+const sentWith = ref<{ k: string; v: string }[]>([]);
+const stillMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // Screenshot attachment. Reuses the help request flow unchanged:
 // ScreenshotDialog in `attach` mode captures the viewer, lets the user
@@ -73,7 +92,9 @@ async function submit() {
     // Mint a short saved-state link instead; if that fails (no auth, state
     // server down), send the bare page URL plus the position so the report
     // still locates the spot without a broken link.
+    stage.value = attachView.value ? 'view' : 'send';
     const shortLink = attachView.value ? await mintShortStateLink() : null;
+    stage.value = 'send';
     let pageUrl = shortLink;
     if (!pageUrl) {
       const v: any = (window as any)['viewer'];
@@ -90,24 +111,41 @@ async function submit() {
     let slackText = shot ? `${text}\n\nScreenshot: ${shot}` : text;
     // The log itself stays in Admin Hub; Slack just says it's there.
     if (consoleLog) slackText += `\n\nConsole: ${recentConsoleCount()} recent warnings/errors attached (Admin Hub > Triage)`;
-    const res = await fetch(ISSUE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: caveToken(),
-        message: slackText,
-        category: category.value,
-        url: pageUrl,
-        dataset: currentDataset(),
-        user: backend.userName || '',
-        screenshotUrl: shot || undefined,
-      }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // A report must never be lost to a failed relay (Ames 2026-10-02: "Could
+    // not submit", with no reason and nothing saved). If the Slack relay
+    // fails, remember why, still save the report below, and only show an
+    // error, with the real reason, if that fails too.
+    let relayFailure = '';
+    try {
+      const res = await fetch(ISSUE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: caveToken(),
+          message: slackText,
+          category: category.value,
+          url: pageUrl,
+          dataset: currentDataset(),
+          user: backend.userName || '',
+          screenshotUrl: shot || undefined,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({} as any));
+        relayFailure = res.status === 429 ? 'Too many reports in a short time. Wait a minute and try again.'
+          : res.status === 401 ? 'Your sign in has expired. Reload the page and sign in again.'
+          : `${j?.error || 'The report server refused it'} (${res.status})`;
+      }
+    } catch (e: any) {
+      relayFailure = e?.name === 'TimeoutError' ? 'The report server did not answer.' : `Could not reach the report server (${e?.message || 'network error'}).`;
+    }
+    if (relayFailure) reportFeedbackFailure(relayFailure, pageUrl || '');
 
     // Mirror into Supabase so the triage agent can read reports (the Cloud
     // Function's Slack/Firestore relay stays the human-facing feed).
     // Best-effort: a failure here must not surface as a failed submit.
+    stage.value = 'file';
     try {
       const { supabase } = await import('../supabase');
       const row: Record<string, any> = {
@@ -138,13 +176,21 @@ async function submit() {
         ({ error: insErr } = await supabase.from('site_issues').insert(row));
       }
       if (insErr) throw insErr;
-    } catch (e) {
+    } catch (e: any) {
       console.warn('[feedback] Supabase mirror failed:', e);
+      // Saved nowhere: tell the player why instead of pretending.
+      if (relayFailure) throw new Error(relayFailure);
     }
+    sentWith.value = [
+      { k: 'Type', v: category.value },
+      { k: 'View', v: shortLink ? 'attached' : 'position only' },
+      { k: 'Console', v: consoleLog ? `${recentConsoleCount()} lines` : 'none' },
+      { k: 'Screenshot', v: shot ? 'attached' : 'none' },
+    ];
     done.value = true;
-    setTimeout(() => emit('hide'), 1600);
+    setTimeout(() => emit('hide'), 4200);
   } catch (e: any) {
-    error.value = 'Could not submit. Please try again.';
+    error.value = `Could not submit. ${e?.message || 'Please try again.'}`;
     console.warn('[feedback] submit failed:', e);
   } finally {
     sending.value = false;
@@ -247,6 +293,7 @@ onMounted(() => {
   // it never distracts from typing; it returns for the success state.
   // fieldAlpha eases toward fieldTarget; at 0 the canvas is wiped (traces
   // included) and the rAF loop parks itself until woken.
+  let surge = 1;          // particle speed multiplier; jumps when the report lands
   let fieldAlpha = 1;
   let fieldTarget = 1;
   let parked = false;
@@ -256,6 +303,7 @@ onMounted(() => {
   const frame = () => {
     t += 0.0016;
     fieldAlpha += (fieldTarget - fieldAlpha) * 0.035;
+    surge += (1 - surge) * 0.03;
     if (fieldTarget === 0 && fieldAlpha < 0.01) {
       ctx.clearRect(0, 0, w, h); // traces vanish with the motes
       parked = true;
@@ -271,8 +319,8 @@ onMounted(() => {
 
     for (const p of particles) {
       const angle = noise(p.x * SCALE, p.y * SCALE + t) * Math.PI * 4;
-      p.x += Math.cos(angle) * p.speed;
-      p.y += Math.sin(angle) * p.speed;
+      p.x += Math.cos(angle) * p.speed * surge;
+      p.y += Math.sin(angle) * p.speed * surge;
       p.life -= 1;
       if (p.life <= 0 || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
         p.x = Math.random() * w; p.y = Math.random() * h;
@@ -291,9 +339,10 @@ onMounted(() => {
   };
   fxRaf = requestAnimationFrame(frame);
 
-  // Encore on the success state: wake the field back up behind the ✓.
-  watch(done, isDone => {
-    if (!isDone) return;
+  // Encore while sending and on the success state: wake the field back up.
+  watch([done, sending], ([isDone, isSending]) => {
+    if (!isDone && !isSending) return;
+    if (isDone) surge = 9;
     clearTimeout(fadeTimer);
     fieldTarget = 1;
     if (parked) {
@@ -329,7 +378,35 @@ onBeforeUnmount(() => {
         />
       </Teleport>
 
-      <div v-if="!done" class="nge-fb-body">
+      <div v-if="sending && !done" class="nge-fb-sending" role="status" aria-live="polite">
+        <svg class="nge-fb-axon" viewBox="0 0 360 92" aria-hidden="true">
+          <!-- dendrites and soma, where the report starts -->
+          <path class="nge-fb-axon-twig" d="M30 46 L8 24 M30 46 L6 50 M30 46 L12 72 M30 46 L26 14 M30 46 L30 80"/>
+          <circle class="nge-fb-axon-soma" cx="30" cy="46" r="9"/>
+          <!-- the axon, and the terminal at the team's end -->
+          <path id="nge-fb-axon-path" class="nge-fb-axon-line" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
+          <path class="nge-fb-axon-flow" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
+          <path class="nge-fb-axon-twig" d="M322 46 L346 30 M322 46 L350 48 M322 46 L344 66"/>
+          <circle class="nge-fb-axon-bouton" cx="346" cy="30" r="3"/>
+          <circle class="nge-fb-axon-bouton" cx="350" cy="48" r="3"/>
+          <circle class="nge-fb-axon-bouton" cx="344" cy="66" r="3"/>
+          <template v-if="!stillMotion">
+            <circle v-for="n in 3" :key="n" class="nge-fb-axon-spike" r="4.2">
+              <animateMotion dur="1.5s" :begin="`${(n - 1) * 0.5}s`" repeatCount="indefinite"
+                             path="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
+            </circle>
+          </template>
+        </svg>
+        <div class="nge-fb-sending-title">Sending your report</div>
+        <ul class="nge-fb-steps">
+          <li v-for="st in sendSteps" :key="st.key" class="nge-fb-step" :class="`nge-fb-step--${stepState(st.key)}`">
+            <span class="nge-fb-step-mark" aria-hidden="true">{{ stepState(st.key) === 'done' ? '✓' : '' }}</span>
+            <span>{{ st.label }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div v-else-if="!done" class="nge-fb-body">
         <div class="nge-fb-title">Submit an issue</div>
         <div class="nge-fb-hint">Found a bug or have an idea? Tell us, it goes straight to the team.</div>
 
@@ -394,10 +471,41 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-else class="nge-fb-done holoscan holo-on">
+      <div v-else class="nge-fb-done holoscan holo-on" role="status" aria-live="polite" @click="emit('hide')">
         <span class="holoscan-line" aria-hidden="true"></span>
-        <div class="nge-fb-done-icon">✓</div>
-        <div class="nge-fb-done-text">Thanks, your report was sent.</div>
+        <span class="nge-fb-corner nge-fb-corner--tl" aria-hidden="true"></span>
+        <span class="nge-fb-corner nge-fb-corner--br" aria-hidden="true"></span>
+        <!-- The same neuron, now lit end to end: the signal arrived. -->
+        <svg class="nge-fb-axon nge-fb-axon--arrived" viewBox="0 0 360 92" aria-hidden="true">
+          <path class="nge-fb-axon-twig" d="M30 46 L8 24 M30 46 L6 50 M30 46 L12 72 M30 46 L26 14 M30 46 L30 80"/>
+          <circle class="nge-fb-axon-soma" cx="30" cy="46" r="9"/>
+          <path class="nge-fb-axon-line" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
+          <path class="nge-fb-axon-lit" pathLength="100" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
+          <path class="nge-fb-axon-twig nge-fb-axon-twig--lit" d="M322 46 L346 30 M322 46 L350 48 M322 46 L344 66"/>
+          <g v-for="(b, i) in [[346, 30], [350, 48], [344, 66]]" :key="i" :style="{ '--d': `${0.62 + i * 0.09}s` }">
+            <circle class="nge-fb-release" :cx="b[0]" :cy="b[1]" r="3"/>
+            <circle class="nge-fb-release nge-fb-release--2" :cx="b[0]" :cy="b[1]" r="3"/>
+            <circle class="nge-fb-axon-bouton nge-fb-axon-bouton--lit" :cx="b[0]" :cy="b[1]" r="3.4"/>
+          </g>
+        </svg>
+        <div class="nge-fb-seal" aria-hidden="true">
+          <svg viewBox="0 0 96 96">
+            <circle class="nge-fb-seal-ticks" cx="48" cy="48" r="44"/>
+            <circle class="nge-fb-seal-arc" cx="48" cy="48" r="37"/>
+            <circle class="nge-fb-seal-ring" cx="48" cy="48" r="29" pathLength="100"/>
+            <path class="nge-fb-seal-check" pathLength="100" d="M34 49.5 44 59 63 38.5"/>
+          </svg>
+          <span class="nge-fb-seal-wave"></span>
+          <span class="nge-fb-seal-wave nge-fb-seal-wave--2"></span>
+        </div>
+        <div class="nge-fb-done-kicker">Signal received</div>
+        <div class="nge-fb-done-text">Thank you! Your report reached the team.</div>
+        <div class="nge-fb-done-next">We'll look into it!</div>
+        <dl class="nge-fb-readout">
+          <div v-for="(x, i) in sentWith" :key="x.k" class="nge-fb-readout-cell" :style="{ '--i': i }">
+            <dt>{{ x.k }}</dt><dd>{{ x.v }}</dd>
+          </div>
+        </dl>
       </div>
     </div>
   </modal-overlay>
@@ -563,17 +671,146 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .nge-fb-cancel:hover { color: #ccd; border-color: rgba(255, 255, 255, 0.25); }
+/* ── Sending: a signal on its way down an axon, and the real steps ── */
+.nge-fb-sending {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding: 22px 12px 18px; min-width: 320px;
+}
+.nge-fb-axon { width: 100%; max-width: 360px; height: auto; overflow: visible; }
+.nge-fb-axon-twig { fill: none; stroke: rgba(120, 160, 255, 0.45); stroke-width: 1.6; stroke-linecap: round; }
+.nge-fb-axon-soma {
+  fill: rgba(120, 150, 255, 0.28); stroke: rgba(150, 180, 255, 0.9); stroke-width: 1.6;
+  transform-origin: 30px 46px; animation: nge-fb-soma 1.5s ease-in-out infinite;
+}
+.nge-fb-axon-line { fill: none; stroke: rgba(120, 160, 255, 0.28); stroke-width: 2.4; stroke-linecap: round; }
+.nge-fb-axon-flow {
+  fill: none; stroke: rgba(126, 224, 255, 0.55); stroke-width: 2.4; stroke-linecap: round;
+  stroke-dasharray: 3 15; animation: nge-fb-flow 0.9s linear infinite;
+}
+.nge-fb-axon-spike { fill: #dff6ff; filter: drop-shadow(0 0 6px rgba(126, 224, 255, 0.95)); }
+.nge-fb-axon-bouton {
+  fill: rgba(52, 230, 168, 0.25); stroke: rgba(52, 230, 168, 0.9); stroke-width: 1.4;
+  animation: nge-fb-bouton 1.5s ease-in-out infinite;
+}
+.nge-fb-axon-bouton:nth-of-type(3) { animation-delay: 0.15s; }
+.nge-fb-axon-bouton:nth-of-type(4) { animation-delay: 0.3s; }
+@keyframes nge-fb-flow { to { stroke-dashoffset: -18; } }
+@keyframes nge-fb-soma { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.22); } 30% { transform: scale(1); } }
+@keyframes nge-fb-bouton { 0%, 70%, 100% { fill: rgba(52, 230, 168, 0.2); } 85% { fill: rgba(52, 230, 168, 0.95); } }
+.nge-fb-sending-title { font-size: 1.05em; font-weight: 700; color: #eef; }
+.nge-fb-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; align-self: center; }
+.nge-fb-step { display: flex; align-items: center; gap: 9px; font-size: 0.86em; color: #6f7c96; transition: color 0.2s; }
+.nge-fb-step-mark {
+  width: 16px; height: 16px; flex-shrink: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #06231a;
+  border: 1.5px solid rgba(120, 140, 180, 0.4);
+}
+.nge-fb-step--now { color: #e6eeff; }
+.nge-fb-step--now .nge-fb-step-mark {
+  border-color: #7ee0ff; box-shadow: 0 0 8px rgba(126, 224, 255, 0.7);
+  animation: nge-fb-step-now 1s ease-in-out infinite;
+}
+.nge-fb-step--done { color: #9fb3cc; }
+.nge-fb-step--done .nge-fb-step-mark { background: #34e6a8; border-color: #34e6a8; }
+@keyframes nge-fb-step-now { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) {
+  .nge-fb-axon-soma, .nge-fb-axon-flow, .nge-fb-axon-bouton, .nge-fb-step--now .nge-fb-step-mark { animation: none; }
+}
 .nge-fb-done {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 30px 24px;
-  min-width: 300px;
+  gap: 8px;
+  padding: 18px 20px 20px;
+  min-width: 340px;
+  cursor: pointer;
   /* Host requirements for the scan pass (scifi-ui scan-pass.css). */
   position: relative;
   overflow: hidden;
   border-radius: 8px;
+}
+/* Instrument corners, as on the scifi-ui hologram tank. */
+.nge-fb-corner { position: absolute; width: 16px; height: 16px; border-color: rgba(126, 240, 200, 0.85); filter: drop-shadow(0 0 5px rgba(52, 230, 168, 0.7)); animation: nge-fb-rise 0.4s ease-out 0.15s both; }
+.nge-fb-corner--tl { left: 4px; top: 4px; border-left: 2px solid; border-top: 2px solid; border-top-left-radius: 6px; }
+.nge-fb-corner--br { right: 4px; bottom: 4px; border-right: 2px solid; border-bottom: 2px solid; border-bottom-right-radius: 6px; }
+
+/* The axon lights up along its length, then the terminals release. */
+.nge-fb-axon--arrived .nge-fb-axon-soma { animation: none; fill: rgba(52, 230, 168, 0.3); stroke: rgba(126, 240, 200, 0.95); }
+.nge-fb-axon-lit {
+  fill: none; stroke: #7ef0c8; stroke-width: 2.6; stroke-linecap: round;
+  filter: drop-shadow(0 0 5px rgba(52, 230, 168, 0.9));
+  stroke-dasharray: 100; stroke-dashoffset: 100;
+  animation: nge-fb-light 0.6s cubic-bezier(.3, .7, .2, 1) 0.05s forwards;
+}
+.nge-fb-axon-twig--lit { stroke: rgba(126, 240, 200, 0.9); opacity: 0; animation: nge-fb-rise 0.2s ease-out 0.58s forwards; }
+.nge-fb-axon--arrived .nge-fb-axon-bouton--lit {
+  animation: none; fill: #7ef0c8; stroke: #d8fff0; stroke-width: 1.2; opacity: 0;
+  filter: drop-shadow(0 0 6px rgba(52, 230, 168, 1));
+  transform-box: fill-box; transform-origin: center;
+  animation: nge-fb-pop 0.45s cubic-bezier(.34, 1.56, .64, 1) var(--d, 0.62s) forwards;
+}
+.nge-fb-release {
+  fill: none; stroke: rgba(126, 240, 200, 0.9); stroke-width: 1.4; opacity: 0;
+  transform-box: fill-box; transform-origin: center;
+  animation: nge-fb-ripple 1.1s ease-out var(--d, 0.62s) forwards;
+}
+.nge-fb-release--2 { animation-duration: 1.5s; stroke: rgba(126, 224, 255, 0.7); }
+@keyframes nge-fb-light { to { stroke-dashoffset: 0; } }
+@keyframes nge-fb-pop { 0% { opacity: 0; transform: scale(0.2); } 60% { opacity: 1; transform: scale(1.5); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes nge-fb-ripple { 0% { opacity: 0.95; transform: scale(1); } 100% { opacity: 0; transform: scale(6.5); } }
+@keyframes nge-fb-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* The seal: tick ring, a turning arc, and a check that draws itself. */
+.nge-fb-seal { position: relative; width: 96px; height: 96px; margin: 2px 0 4px; }
+.nge-fb-seal svg { width: 100%; height: 100%; overflow: visible; }
+.nge-fb-seal-ticks {
+  fill: none; stroke: rgba(126, 224, 255, 0.5); stroke-width: 4; stroke-dasharray: 1 8.87;
+  transform-origin: 48px 48px; animation: nge-fb-spin 24s linear infinite, nge-fb-rise 0.4s ease-out 0.5s both;
+}
+.nge-fb-seal-arc {
+  fill: none; stroke: rgba(52, 230, 168, 0.75); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 46 28 12 147;
+  transform-origin: 48px 48px; animation: nge-fb-spin 5s linear infinite reverse, nge-fb-rise 0.4s ease-out 0.6s both;
+}
+.nge-fb-seal-ring {
+  fill: rgba(0, 220, 120, 0.1); stroke: #34e6a8; stroke-width: 2; stroke-linecap: round;
+  stroke-dasharray: 100; stroke-dashoffset: 100; transform-origin: 48px 48px; transform: rotate(-90deg);
+  filter: drop-shadow(0 0 6px rgba(52, 230, 168, 0.7));
+  animation: nge-fb-light 0.55s ease-out 0.7s forwards;
+}
+.nge-fb-seal-check {
+  fill: none; stroke: #c8ffe9; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 100; stroke-dashoffset: 100;
+  filter: drop-shadow(0 0 6px rgba(52, 230, 168, 0.95));
+  animation: nge-fb-light 0.4s cubic-bezier(.5, 0, .2, 1) 1.1s forwards;
+}
+.nge-fb-seal-wave {
+  position: absolute; inset: 19px; border-radius: 50%; border: 1.5px solid rgba(52, 230, 168, 0.8);
+  opacity: 0; animation: nge-fb-wave 1.2s ease-out 1.25s forwards;
+}
+.nge-fb-seal-wave--2 { animation-delay: 1.45s; border-color: rgba(126, 224, 255, 0.6); }
+@keyframes nge-fb-spin { to { rotate: 360deg; } }
+@keyframes nge-fb-wave { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(2.7); } }
+
+.nge-fb-done-kicker {
+  font-family: 'Consolas', 'Monaco', monospace; font-size: 0.72em; font-weight: 700;
+  letter-spacing: 0.22em; text-transform: uppercase; color: #34e6a8;
+  animation: nge-fb-rise 0.4s ease-out 1.2s both;
+}
+.nge-fb-done-text { color: #f0f6ff; font-size: 1.08em; font-weight: 700; animation: nge-fb-rise 0.4s ease-out 1.3s both; }
+.nge-fb-done-next { color: #a9bbd3; font-size: 0.84em; text-align: center; max-width: 300px; animation: nge-fb-rise 0.4s ease-out 1.45s both; }
+/* What went with it, as a data readout. */
+.nge-fb-readout { display: grid; grid-template-columns: repeat(4, auto); gap: 6px; margin: 10px 0 0; }
+.nge-fb-readout-cell {
+  display: flex; flex-direction: column; gap: 2px; padding: 5px 9px; min-width: 62px;
+  border: 1px solid rgba(74, 150, 224, 0.3); border-radius: 6px; background: rgba(8, 16, 30, 0.6);
+  animation: nge-fb-rise 0.35s ease-out calc(1.6s + var(--i, 0) * 0.08s) both;
+}
+.nge-fb-readout dt { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.62em; letter-spacing: 0.14em; text-transform: uppercase; color: #6f8bb0; }
+.nge-fb-readout dd { margin: 0; font-size: 0.8em; font-weight: 600; color: #dcebff; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .nge-fb-done *, .nge-fb-done *::before { animation-duration: 0.01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+  .nge-fb-release, .nge-fb-seal-wave { display: none; }
 }
 
 /* ── Scan pass on the success state ──
@@ -601,17 +838,4 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .holoscan.holo-on > .holoscan-line { animation: none; opacity: 0; }
 }
-.nge-fb-done-icon {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(0, 220, 120, 0.15);
-  border: 1px solid rgba(0, 220, 120, 0.5);
-  color: #34e6a8;
-  font-size: 1.4em;
-}
-.nge-fb-done-text { color: #cde; font-size: 0.9em; }
 </style>

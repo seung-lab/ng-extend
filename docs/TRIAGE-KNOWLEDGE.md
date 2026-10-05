@@ -95,3 +95,21 @@ summaries.
   strokes, script layers). `finishMenuCompletion` only runs for Cell Library
   cells, so a CAVE only completion does not reach code placed there
   (2026-10-02, clear markup on complete build, from reading the callers).
+- `backend.completeTask` does not touch `backend.tasks`; a completed claim
+  only leaves `myOpenClaims` once the background `loadTasks()` in
+  `completeCell` lands. Code that runs right after a Complete must skip the
+  finished claim itself, not trust the list (2026-10-04, auto next claim
+  build, from reading store.ts).
+- An inline `#!{...}` hash restores layers synchronously in
+  `hashBinding.updateFromUrlHash()`, but a state link hash (`#!https://...`,
+  `#!middleauth+...`) is fetched async, so boot code that checks
+  `activeLayers` sees it empty. Neuroglancer also rewrites the hash soon after
+  boot, so judge "what the page opened on" from `BOOT_HASH` in store.ts, not
+  `window.location.hash` (2026-10-05, refresh keeps view build, from reading
+  url_hash_binding.ts).
+- Chat length is capped by `CHAT_MAX_CHARS` (140) and counted with
+  `chatTextLength` in store.ts, which skips `https?://` links, so a native
+  `maxlength` cannot enforce it. `sendMessage` drops over limit text except
+  announcements (`notificationId` set), and "Share my view" appends long
+  links to the caption, which is why links must stay uncounted (2026-10-05,
+  chat limit build, approver note "140 characters, exclude links").

@@ -827,6 +827,7 @@ async function submitComplete(cell: CellRow) {
     // The crosshairs may have moved since the check: check once more.
     await runCrosshairCheck(cell);
     if (!c.ok || !c.check?.root) return;
+    const claimsBefore = myOpenClaims.value;
     await completeCell(cell, {
       finalSegId: c.check.root,
       coords: c.check.position.join(', '),
@@ -836,7 +837,8 @@ async function submitComplete(cell: CellRow) {
     });
     if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
-    if (slim.value) expandFull();
+    // Straight on to your next claim; with none left, the slim view opens up.
+    if (!(await nextClaimAfter(cell, claimsBefore)) && slim.value) expandFull();
   } catch (e: any) {
     c.message = e?.message || 'Could not complete this cell.';
     c.ok = false;
@@ -2064,12 +2066,28 @@ async function nextClaim() {
   const mine = myOpenClaims.value;
   if (steppingClaim.value || mine.length < 2 && slimClaimIndex.value === 0) return;
   if (!mine.length) return;
-  const next = mine[(slimClaimIndex.value + 1) % mine.length];
+  await stepToClaim(mine[(slimClaimIndex.value + 1) % mine.length]);
+}
+/** After a Complete: go to the claim that followed the finished one in
+ *  `before` (the list may not have dropped it yet). False = no claim left,
+ *  or the jump did not happen. The full view stays open. */
+async function nextClaimAfter(done: CellRow, before: CellRow[]): Promise<boolean> {
+  if (done.taskId == null) return false;  // completeCell wrote nothing
+  const at = before.findIndex(c => c.taskId === done.taskId);
+  const open = new Set(myOpenClaims.value.map(c => c.taskId));
+  const rest = before.filter(c => c.taskId !== done.taskId && open.has(c.taskId));
+  if (!rest.length) return false;
+  return stepToClaim(rest[Math.max(at, 0) % rest.length]);
+}
+async function stepToClaim(next: CellRow): Promise<boolean> {
+  if (steppingClaim.value) return false;
   steppingClaim.value = true;
   try {
     completing.value = null;
     await switchToClaim(next);
-    if (jumpedSegId.value === next.segId) slimSeg.value = next.segId;
+    const went = jumpedSegId.value === next.segId;
+    if (went && slim.value) slimSeg.value = next.segId;
+    return went;
   } finally { steppingClaim.value = false; }
 }
 /** The slim row's caret: open up and stay open. */
@@ -2978,7 +2996,7 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0 && !backend.loading" class="nge-cl-no-results">No matching cells</div>
 
-          <button v-if="slim" class="nge-cl-slim-expand" title="Back to the full Cell Library (turns slim view off)" aria-label="Back to the full Cell Library" @click="expandAndStay">
+          <button v-if="slim" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <button v-if="slim && myOpenClaims.length > (slimClaimIndex >= 0 ? 1 : 0)" class="nge-cl-slim-next" :disabled="steppingClaim"
@@ -3658,13 +3676,11 @@ const panelStyle = computed(() => ({
 .nge-cl-btn--release {
   border-color: rgba(255, 170, 68, 0.2);
   color: #a86;
-  font-size: 0.68em;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
 .nge-cl-btn--saveview {
   border-color: rgba(100, 200, 255, 0.3);
   color: #8fd3ff;
-  font-size: 0.68em;
   white-space: nowrap;
 }
 .nge-cl-btn--saveview:hover { background: rgba(100, 200, 255, 0.1); }
@@ -4931,10 +4947,18 @@ select.nge-cl-response-input:hover {
 .nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -10px; margin-right: -46px; cursor: default; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
 .nge-cl-slim-expand { position: absolute; right: 12px; top: 18px; }
-/* Next claimed cell: at the left, and the row makes room for it. */
-.nge-cl-slim-next { position: absolute; left: 12px; top: 18px; }
+/* Next claimed cell: green, beside the Full view arrow at the right, and
+   the row makes room for both (Ames 2026-10-04). */
+.nge-cl-slim-next {
+  position: absolute; right: 42px; top: 18px;
+  color: #7ee2a8; background: rgba(61, 220, 132, 0.14); border-color: rgba(61, 220, 132, 0.5);
+}
+.nge-cl-slim-next:hover {
+  color: #d6ffe6; background: rgba(61, 220, 132, 0.26); border-color: rgba(61, 220, 132, 0.85);
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
+}
 .nge-cl-slim-next:disabled { opacity: 0.45; cursor: default; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-left: 44px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -44px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-left: -44px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 76px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-right: -76px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -76px; }
 </style>

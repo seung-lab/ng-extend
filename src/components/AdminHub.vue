@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { secureWrite } from '../secure_write';
-import {ref, computed, watch, onMounted, onUnmounted} from 'vue';
+import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 import {renderSafeMarkdown} from '../util/safe_markdown';
@@ -12,7 +12,9 @@ import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxel
 
 const backend = useProofreadingBackendStore();
 
-const props = defineProps<{ initialSubTab?: string }>();
+// standalone: the triage board on its own page (TriagePage.vue), with no
+// game around it. Only the Triage tab, always as the board.
+const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
 const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot'>(
@@ -172,6 +174,30 @@ const shortDate = (iso: string) => {
 // Slack thread moves the card here too (after Refresh).
 type TriageGroupKey = 'decide' | 'progress' | 'done' | 'dismissed';
 const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, done: false, dismissed: false });
+
+// The card you are working on stays marked, and stays in view when the list
+// reloads after an action (Ames 2026-10-05: sending an update reloaded the
+// list and scrolled the card away, so it looked like it had vanished).
+const triageSelected = ref<string | null>(null);
+function keepSelectedInView() {
+  const id = triageSelected.value;
+  if (!id) return;
+  const row = triageRows.value.find(r => r.id === id);
+  // An action can move the card into a folded section: open it.
+  if (row) triageOpen.value[triageGroupOf(row)] = true;
+  void nextTick(() => document.querySelector(`[data-triage-id="${id}"]`)?.scrollIntoView({ block: 'nearest' }));
+}
+
+// Board view: the whole window, one column per section, cards compact until
+// you click one. "?triage=board" in the address opens straight into it, which
+// is what the "New tab" link uses.
+const triageBoard = ref(!!props.standalone);
+const boardUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
+function onBoardKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && triageBoard.value && !props.standalone && !(e.target as HTMLElement)?.closest?.('textarea, input')) triageBoard.value = false;
+}
+onMounted(() => document.addEventListener('keydown', onBoardKey));
+onUnmounted(() => document.removeEventListener('keydown', onBoardKey));
 function triageGroupOf(r: TriageRow): TriageGroupKey {
   if (r.status === 'dismissed') return 'dismissed';
   if (r.status === 'done' || r.impl_state === 'deployed') return 'done';
@@ -204,8 +230,10 @@ async function loadTriage() {
     }
     const { data, error } = await q;
     if (error) throw error;
-    triageRows.value = (data ?? []) as TriageRow[];
+    // Discarded reports are off the board unless you ask for older ones.
+    triageRows.value = ((data ?? []) as TriageRow[]).filter(r => triageShowReviewed.value || !isDiscarded(r));
     void loadReporters(triageRows.value);
+    keepSelectedInView();
     for (const r of triageRows.value) {
       if (triageEdits.value[r.id] === undefined) {
         triageEdits.value[r.id] = r.proposed_message ?? '';
@@ -223,8 +251,16 @@ async function loadTriage() {
 watch(adminSubTab, t => { if (t === 'triage') loadTriage(); }, { immediate: true });
 watch(triageShowReviewed, () => loadTriage());
 
-async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done') {
+/** Discarded: dismissed, and off the board for good (junk, a duplicate, a
+ *  test). It stays in the table and shows again under "Show older". */
+const DISCARD_NOTE = 'Discarded';
+const isDiscarded = (r: TriageRow) => r.status === 'dismissed' && (r.result_note || '').startsWith(DISCARD_NOTE);
+/** Too late to stop from here: it is on, or on its way to, the live site. */
+const isGoingLive = (r: TriageRow) => ['deploying', 'live_test_queued', 'live_testing', 'revert_queued', 'reverting'].includes(r.impl_state || '');
+
+async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done', discard = false, builtElsewhere = false) {
   if (triageActing.value) return;
+  if (discard && !window.confirm('Discard this report? It is dismissed and taken off the board. Any build in progress is stopped. You can still find it with "Show older".')) return;
   // Shipping a change closes the loop in Slack: the bridge posts a change
   // update into the original thread and tags the approvers, carrying this
   // note. Blank is fine, the update just goes noteless.
@@ -272,6 +308,8 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
       // decision into the Slack thread and tags you as the tester.
       ...(status === 'approved' && isBuildable(row) ? { impl_state: 'queued' } : {}),
       ...(status === 'done' ? { result_note: resultNote } : {}),
+      ...(builtElsewhere ? { result_note: `Built independently, so the robot's work on it was dismissed by ${backend.userName || backend.userEmail || 'an admin'}.` } : {}),
+      ...(discard ? { result_note: `${DISCARD_NOTE} in the Admin Hub by ${backend.userName || backend.userEmail || 'an admin'}.` } : {}),
       reviewed_by: backend.userName || backend.userEmail || 'admin',
       reviewed_at: new Date().toISOString(),
     };
@@ -346,10 +384,14 @@ const reporterSending = ref<string | null>(null);
 function draftReporterUpdate(row: TriageRow): string {
   const t = (row.source_excerpt || '').trim();
   const q = t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}".` : 'Thanks for your report.';
-  const shipped = (row.result_note || '').replace(/<@[A-Z0-9]+>/g, 'a tester')
-    .replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1').trim();
   if (row.status === 'done' || row.impl_state === 'deployed') {
-    return `${q} Good news: it's fixed and live now.${shipped ? ' ' + shipped : ''} Thank you for helping make EyeWire II better!`;
+    // Same wording as the bridge's fixedNote: thanks, their words, what was built.
+    const fix = String(row.result_note || row.impl_summary || '')
+      .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/Details:\s*<?https?:\S+/gi, ' ')
+      .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
+      .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+    const thanks = t ? `Thank you for submitting: "${t.length > 200 ? t.slice(0, 197) + '...' : t}".` : 'Thank you for your report.';
+    return `${thanks} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
   }
   if (row.status === 'dismissed') {
     return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
@@ -431,6 +473,27 @@ const copied = ref('');
 async function copyText(text: string) {
   try { await navigator.clipboard.writeText(text); copied.value = text; setTimeout(() => { if (copied.value === text) copied.value = ''; }, 1500); }
   catch { window.prompt('Copy this:', text); }
+}
+
+/** Deploy from the card: the server checks you are an admin and signs an
+ *  approval for this exact build, which the deploy workflow verifies. */
+async function releaseFromHub(row: TriageRow, mode: 'final' | 'live_test') {
+  if (triageActing.value) return;
+  const build = releaseBuildOf(row);
+  const ask = mode === 'final'
+    ? `Put build ${build} on the live site for everyone?`
+    : `Put build ${build} on the live site as a test? You then keep it or revert it in the Slack thread.`;
+  if (!build || !window.confirm(ask)) return;
+  triageActing.value = row.id;
+  triageError.value = '';
+  try {
+    await secureWrite('triage.release', { id: row.id, shortSha: build, mode });
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = `Could not start the deploy: ${e?.message ?? String(e)}`;
+  } finally {
+    triageActing.value = null;
+  }
 }
 
 async function setImplState(row: TriageRow, next: ImplState) {
@@ -1254,7 +1317,7 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-confirm-x" @click="deleteDone = ''">×</button>
     </div>
     <!-- Sub-tabs -->
-    <div class="nge-admin-subtabs">
+    <div v-if="!standalone" class="nge-admin-subtabs">
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'notifications' }" @click="adminSubTab = 'notifications'">Notifications</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'groups' }" @click="adminSubTab = 'groups'">Groups</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
@@ -1609,9 +1672,15 @@ function practiceWhen(iso: string | null) {
 
     <!-- ═══ TRIAGE (agent proposals awaiting human review) ═══ -->
     <div v-if="adminSubTab === 'triage'" class="nge-admin-section">
-      <div class="nge-admin-block">
+      <!-- Board view leaves the panel for the whole window. Teleported: the
+           profile panel's backdrop filter would otherwise trap a fixed box. -->
+      <Teleport to="body" :disabled="!triageBoard || standalone">
+      <div class="nge-admin-block" :class="{ 'nge-triage-board': triageBoard }">
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
+          <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
+                  :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
+          <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
           <label class="nge-triage-toggle">
             <input type="checkbox" v-model="triageShowReviewed" />
             <span>Show older</span>
@@ -1631,7 +1700,8 @@ function practiceWhen(iso: string | null) {
           No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
         </div>
 
-        <template v-for="g in triageGroups" :key="g.key">
+        <div class="nge-triage-cols">
+        <div v-for="g in triageGroups" :key="g.key" class="nge-triage-col" :class="`nge-triage-col--${g.key}`">
         <button
           v-if="triageRows.length"
           class="nge-triage-group"
@@ -1644,8 +1714,10 @@ function practiceWhen(iso: string | null) {
           <span class="nge-triage-group-count">{{ g.rows.length }}</span>
           <span class="nge-triage-group-hint">{{ g.hint }}</span>
         </button>
-        <template v-if="triageOpen[g.key]">
-        <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :class="{ 'nge-triage-card--closed': g.closed }">
+        <template v-if="triageBoard || triageOpen[g.key]">
+        <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :data-triage-id="row.id"
+             :class="{ 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id }"
+             @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span class="nge-triage-rec" :class="`nge-triage-rec--${row.recommendation}`">{{ TRIAGE_LABELS[row.recommendation] }}</span>
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
@@ -1699,16 +1771,7 @@ function practiceWhen(iso: string | null) {
             placeholder="Comment (optional), saved with your decision"
             @keydown.stop @keyup.stop @keypress.stop
           ></textarea>
-          <div class="nge-triage-claude">
-            <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
-            <!-- Done, on every card that is not already done (Ames 2026-10-01:
-                 "a lot of the time I fix in Claude"), whatever state it is in:
-                 waiting for a decision, in progress, or dismissed. -->
-            <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id"
-                    title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
-                    @click="setTriageStatus(row, 'done')">✓ Done</button>
-            <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
-          </div>
+          <!-- The decision first (Ames 2026-10-05), then the other tools. -->
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
             <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
               {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
@@ -1721,10 +1784,35 @@ function practiceWhen(iso: string | null) {
             <button v-if="isBuildable(row) && !row.impl_state" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Have Claude build it</button>
             <button v-if="row.impl_state === 'failed' && !releaseBuildOf(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setImplState(row, 'queued')">Retry build</button>
           </div>
+          <div class="nge-triage-claude">
+            <button class="nge-admin-action-btn" @click="openInClaude(row)" title="Copies a full briefing and opens a new Claude chat with it. Paste the briefing into Claude Code to change the code.">Work on it with Claude</button>
+            <!-- Done, on every card that is not already done (Ames 2026-10-01:
+                 "a lot of the time I fix in Claude"), whatever state it is in:
+                 waiting for a decision, in progress, or dismissed. -->
+            <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id"
+                    title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
+                    @click="setTriageStatus(row, 'done')">✓ Done</button>
+            <!-- Dismiss at any stage after approval too (a failed or unwanted
+                 build), and Discard for junk (Ames 2026-10-05). -->
+            <button v-if="row.status === 'approved'" class="nge-admin-action-btn" :disabled="triageActing === row.id || isGoingLive(row)"
+                    :title="isGoingLive(row) ? 'It is on, or on its way to, the live site. Revert it in the Slack thread first.' : 'It was built another way, so the robot is not needed. Stops its work, cancels any build in progress and moves the card to Dismissed.'"
+                    @click="setTriageStatus(row, 'dismissed', false, true)">Dismiss: built independently</button>
+            <button v-if="triageGroupOf(row) !== 'done' && !isDiscarded(row)" class="nge-admin-action-btn nge-triage-discard-btn" :disabled="triageActing === row.id || isGoingLive(row)"
+                    title="Junk, a duplicate or a test: dismiss it and take it off the board. Still findable with Show older."
+                    @click="setTriageStatus(row, 'dismissed', true)">🗑 Discard</button>
+            <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
+          </div>
           <!-- Going live is approved in Slack only: the deploy checks the
                tester's exact reply there before it touches the live site. -->
           <div v-if="row.status === 'approved' && releaseBuildOf(row)" class="nge-triage-release">
-            <div class="nge-triage-release-why">To put this live, reply in its Slack thread with:</div>
+            <div class="nge-triage-release-why">Tested it? Put this exact build live from here:</div>
+            <div class="nge-triage-actions">
+              <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="releaseFromHub(row, 'final')"
+                      title="Deploys this build to the live community site. The same as replying good with the build ID in Slack.">🚀 Deploy to the live site</button>
+              <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="releaseFromHub(row, 'live_test')"
+                      title="Puts it on the live site as a test, for things only the live site can show. Keep or revert it in the Slack thread.">Live test</button>
+            </div>
+            <div class="nge-triage-release-why">Or reply in its Slack thread with:</div>
             <div class="nge-triage-release-row">
               <code>good {{ releaseBuildOf(row) }}</code>
               <button type="button" class="nge-admin-action-btn" @click="copyText('good ' + releaseBuildOf(row))">{{ copied === 'good ' + releaseBuildOf(row) ? 'Copied' : 'Copy' }}</button>
@@ -1761,9 +1849,12 @@ function practiceWhen(iso: string | null) {
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
           </div>
         </div>
+        <div v-if="triageBoard && !g.rows.length" class="nge-triage-col-empty">Nothing here</div>
         </template>
-        </template>
+        </div>
+        </div>
       </div>
+      </Teleport>
     </div>
   </div>
 </template>
@@ -2331,6 +2422,61 @@ function practiceWhen(iso: string | null) {
   padding: 10px 12px;
   display: flex; flex-direction: column; gap: 7px;
 }
+/* The card you clicked: a bright rail and edge, so it is easy to find again. */
+.nge-triage-card { cursor: default; transition: border-color 0.15s, box-shadow 0.15s, background 0.15s; }
+.nge-triage-card--selected {
+  border-color: #4fcfff; background: rgba(79, 207, 255, 0.07);
+  box-shadow: inset 4px 0 0 #4fcfff, 0 0 0 1px rgba(79, 207, 255, 0.35), 0 0 18px rgba(79, 207, 255, 0.18);
+  opacity: 1 !important;
+}
+.nge-triage-cols, .nge-triage-col { display: flex; flex-direction: column; gap: 8px; }
+.nge-triage-newtab { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* ── Board view: the whole window, one column per section ── */
+.nge-triage-board {
+  position: fixed; inset: 0; z-index: 100000; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 18px;
+  background: #070b14; color: #dbe6f5;
+  font-family: 'Inter', 'Roboto', system-ui, sans-serif; font-size: 14px;
+}
+.nge-triage-board .nge-triage-head { flex: 0 0 auto; }
+.nge-triage-board .nge-admin-label { font-size: 1.25em; }
+.nge-triage-board .nge-admin-hint { max-width: 900px; }
+.nge-triage-board .nge-triage-cols {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
+}
+.nge-triage-board .nge-triage-col {
+  min-height: 0; overflow-y: auto; padding: 0 8px 10px;
+  border: 1px solid rgba(74, 158, 255, 0.16); border-radius: 10px; background: rgba(255, 255, 255, 0.02);
+  scrollbar-width: thin; scrollbar-color: rgba(74, 158, 255, 0.3) transparent;
+}
+.nge-triage-board .nge-triage-col--decide { border-top: 3px solid #ff8d8d; }
+.nge-triage-board .nge-triage-col--progress { border-top: 3px solid #4fcfff; }
+.nge-triage-board .nge-triage-col--done { border-top: 3px solid #5ee8a8; }
+.nge-triage-board .nge-triage-col--dismissed { border-top: 3px solid #7f93ad; }
+/* Column headers stay put and are not folds here. */
+.nge-triage-board .nge-triage-group {
+  position: sticky; top: 0; z-index: 2; margin: 0 -8px; width: calc(100% + 16px);
+  border: none; border-bottom: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0;
+  background: #0b1220; cursor: default; pointer-events: none; opacity: 1;
+}
+.nge-triage-board .nge-triage-group-caret, .nge-triage-board .nge-triage-group-hint { display: none; }
+.nge-triage-board .nge-triage-card { cursor: pointer; background: rgba(10, 18, 32, 0.9); }
+.nge-triage-board .nge-triage-card:hover { border-color: rgba(79, 207, 255, 0.45); }
+/* Compact until clicked: who, what they said, where it stands. */
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) > :not(.nge-triage-meta):not(.nge-triage-from):not(.nge-triage-excerpt) { display: none; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.nge-triage-board .nge-triage-card--selected { cursor: default; }
+.nge-triage-col-empty { padding: 14px 4px; color: #62738c; font-size: 0.9em; text-align: center; }
+@media (max-width: 1100px) {
+  .nge-triage-board .nge-triage-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
+}
+.nge-triage-discard-btn { color: #d79a9a; border-color: rgba(255, 120, 120, 0.3); }
+.nge-triage-discard-btn:hover:not(:disabled) { background: rgba(255, 90, 90, 0.12); color: #ffb3b3; }
+.nge-triage-claude { flex-wrap: wrap; }
 .nge-triage-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .nge-triage-from { font-size: 0.86em; color: #9fb3cc; }
 .nge-triage-release { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 6px; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(74, 158, 255, 0.25); }

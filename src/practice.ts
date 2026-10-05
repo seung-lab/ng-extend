@@ -620,7 +620,10 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   // practice step never shows the previous step's cell again (Amy).
   console.info(`[practice] claim ${kind} slot ${slot} excluding [${exclude.join(', ')}] returned`, row ? `${row.id} (${row.title})` : 'nothing');
   if (row && exclude.includes(row.id)) row = null;
-  if (!row) { session.phase = 'busy'; return null; }
+  // A second cell that could not be had (show: false) must not mark the
+  // session busy: the first cell is on screen and usable (Ames saw "every
+  // practice cell is in use" over her own loaded cell, 2026-10-05).
+  if (!row) { if (show) session.phase = 'busy'; else if (session.example) session.phase = kind === 'cut' ? 'cut' : 'merge'; return null; }
   session.held[slot] = row;
   if (!show) {
     // Claimed, not shown: the step's own cell stays on screen.
