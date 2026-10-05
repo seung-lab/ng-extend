@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * EyeWire Radio (Ames 2026-10-05): music while you proofread.
+ * EyeWire Radio (Ames 2026-10-05): music while you play.
  *
  * A small control in the bottom right, where mute and volume traditionally
  * live. The speaker turns the station on and off; hovering (or focusing) it
@@ -180,7 +180,7 @@ function setMediaSession(t: Track) {
 const level = computed(() => !on.value ? 'off' : volume.value === 0 ? 'zero' : volume.value < 0.5 ? 'low' : 'high');
 const label = computed(() => on.value
   ? `EyeWire Radio is on${current.value ? `: ${current.value.title}` : ''}. Click to turn the music off.`
-  : 'EyeWire Radio: click for music while you work');
+  : 'EyeWire Radio: click for music while you play');
 
 // ── Keeping clear of the rest of the bottom right ──────────────────────────
 // Anything docked against the right edge and reaching the bottom (a layer
@@ -254,7 +254,7 @@ watch(() => prefsStore.prefs.radio, r => {
       <div class="nge-radio-tray" :aria-hidden="!expanded">
         <div class="nge-radio-now">
           <span class="nge-radio-kicker">EyeWire Radio</span>
-          <span class="nge-radio-title" :title="current?.title">{{ loadError ? 'The station is off the air' : current ? current.title : 'Music while you work' }}</span>
+          <span class="nge-radio-title" :title="current?.title">{{ loadError ? 'The station is off the air' : current ? current.title : 'Music while you play' }}</span>
         </div>
         <button class="nge-radio-btn" :tabindex="expanded ? 0 : -1" title="Start this song again" aria-label="Start this song again" @click="restart">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.2 8a4.8 4.8 0 1 0 1.5-3.5"/><path d="M3 2.6v2.7h2.7"/></svg>
