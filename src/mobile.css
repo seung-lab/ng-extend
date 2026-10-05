@@ -95,6 +95,18 @@ body.nge-mobile #extensionBar #profileBtn {
   min-height: 40px;
 }
 
+/* The layer side panel is a desktop tool: on a phone its sliders button
+   gives way to the leaderboard (Ames 2026-10-05). */
+body.nge-mobile #extensionBar [title$="layer side panel"] {
+  display: none !important;
+}
+body.nge-mobile #extensionBar #mobileLeaderboardBtn {
+  margin: 0 6px 0 0 !important;
+  min-width: 40px;
+  min-height: 40px;
+  font-size: 20px;
+}
+
 body.nge-mobile #extensionBar .nge-ask-btn,
 body.nge-mobile #extensionBar .nge-dataset-btn {
   min-height: 36px;
@@ -138,6 +150,48 @@ body.nge-mobile .nge-chat-float {
   box-sizing: border-box;
   overflow-y: auto;
   z-index: 950 !important;
+}
+
+/* ── Chat on a phone (Ames 2026-10-05) ────────────────────────────────────
+   Chat is a conversation, not a peek: it takes the screen from under the top
+   bars down to the bottom nav. The sheet itself never scrolls (only the
+   messages do), so the message box is always its last row. The arrow in its
+   header still folds it away to get back to the cell. */
+body.nge-mobile .nge-chat-float:not(.nge-chat-float--collapsed) {
+  height: calc(100dvh - 56px - env(safe-area-inset-bottom) - 124px - env(safe-area-inset-top)) !important;
+  max-height: none !important;
+  overflow: hidden !important;
+}
+/* Solid on a phone: the sheet covers the viewer, and text over a moving
+   3D view is hard to read at arm's length. */
+body.nge-mobile .nge-chat-float:not(.nge-chat-float--collapsed):not(.nge-chat-float--quiet) {
+  background: #060a14 !important;
+}
+body.nge-mobile .nge-chat-float--collapsed {
+  height: auto !important;
+  overflow: hidden !important;
+}
+/* Typing: the keyboard covers the bottom of the page. Fit the sheet to the
+   part of the screen that is still visible (util/mobile.ts measures it), so
+   the message box rests on the keyboard with the conversation above it. */
+body.nge-mobile.nge-kb-chat .nge-chat-float:not(.nge-chat-float--collapsed) {
+  top: var(--nge-vv-top, 0px) !important;
+  bottom: auto !important;
+  height: var(--nge-vv-h, 50dvh) !important;
+  border-radius: 0 !important;
+  border-top: none !important;
+  z-index: 9600 !important;
+  padding-top: env(safe-area-inset-top);
+}
+body.nge-mobile.nge-kb-chat .nge-mobile-nav {
+  display: none !important;
+}
+/* Room to read and to tap: a little more air in the message box row. */
+body.nge-mobile .nge-chat-float .nge-chat-input-wrap {
+  padding-bottom: 6px;
+}
+body.nge-mobile .nge-chat-float .nge-chat-input {
+  min-height: 40px;
 }
 
 /* Modal overlays (Profile, Leaderboard, Settings, Recap, Feedback): go

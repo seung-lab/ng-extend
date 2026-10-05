@@ -20,7 +20,7 @@ export function caveToken(): string | null {
 export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
   | 'triage.update' | 'triage.release'
-  | 'pilot.task' | 'pilot.practice' | 'pilot.status'
+  | 'pilot.task' | 'pilot.practice' | 'pilot.status' | 'activity.log'
   | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost';
 
 /** Returns the row (or result) the function wrote; throws with a readable message. */

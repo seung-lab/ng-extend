@@ -10,12 +10,26 @@ on:
         description: 'Optional: backfill a specific week (YYYY-MM-DD, must be a Monday). Leave blank for previous week.'
         required: false
         default: ''
+      update_broadcast:
+        description: 'Correct the text of the already posted Weekly Champions broadcast in place (no new notification).'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Print what would change and write nothing.'
+        type: boolean
+        default: false
 
 jobs:
   snapshot:
     runs-on: ubuntu-latest
     steps:
+      # A scheduled run starts from the default branch, whose copy of these
+      # scripts is old (it still counted cells from the CAVE mirror, which
+      # credited Annkri with 5 cells instead of 9 on 2026-10-05). The scripts
+      # that count live on the game's branch.
       - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
 
       - uses: actions/setup-node@v4
         with:
@@ -25,13 +39,18 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/weekly-winners-snapshot.mjs ${{ inputs.week_start }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          WEEK_START: ${{ inputs.week_start }}
+        run: node scripts/weekly-winners-snapshot.mjs $WEEK_START
 
       - name: Broadcast top-10 weekly champions notification
         # Skip the broadcast on backfill runs (week_start input set) so we
         # don't ping every user for a week they already lived through.
+        # The script never posts a second broadcast for the same week.
         if: ${{ inputs.week_start == '' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          UPDATE_BROADCAST: ${{ inputs.update_broadcast && '1' || '' }}
         run: node scripts/weekly-leaderboard-broadcast.mjs

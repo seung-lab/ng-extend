@@ -1107,8 +1107,9 @@ function stopPicking() {
   document.body.classList.remove('nge-practice-picking');
   window.removeEventListener('keydown', onPickKey, true);
 }
-/** While picking, the A and B keys take the spot under the mouse (Ames,
- *  2026-10-02: moving to a button changed what was hovered). Capture phase,
+/** While picking, the A and B keys take the segment under the mouse and the
+ *  crosshair position (Ames, 2026-10-02: moving to a button changed what was
+ *  hovered). Capture phase,
  *  so the viewer's own bindings for those keys do not fire. */
 function onPickKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;
@@ -1137,9 +1138,10 @@ function sampleHover() {
       if (!sel?.hasSelectedSegment) continue;
       const sv = sel.baseSelectedSegment?.toString?.();
       const root = sel.selectedSegment?.toString?.();
-      // The mouse position too: it becomes the merge point for "place the
-      // merge points for me" in the tutorial.
-      const p = viewer?.mouseState?.position;
+      // The crosshair position, not the mouse: it becomes the merge point for
+      // "place the merge points for me" in the tutorial, and the crosshair
+      // can be set exactly without holding the mouse still.
+      const p = viewer?.navigationState?.position?.value;
       const pos = p && p.length >= 3 ? [p[0], p[1], p[2]].map((v: number) => Math.round(v * 100) / 100) : undefined;
       // Only the 2D view gives a supervoxel. Over the 3D shape the "base"
       // value is the segment itself (ids carry their layer in the top byte,
@@ -1170,10 +1172,44 @@ async function loadPractice() {
   practiceLoading.value = false;
 }
 
-function usePracticeHover(which: 'a' | 'b') {
-  if (!practiceHover.value) return;
-  if (which === 'a') practiceA.value = { ...practiceHover.value };
-  else practiceB.value = { ...practiceHover.value };
+/**
+ * What sits under the crosshair (Celia, 2026-10-05: the segment should come
+ * from the crosshair too, like the point). Reads the segmentation volume at
+ * the viewer's position, which gives the exact supervoxel there, whatever
+ * the mouse is over. Needs the 2D view open so that data is loaded.
+ */
+function crosshairPick(): { sv: string; pos: number[] } | null {
+  try {
+    const viewer = (window as any)['viewer'];
+    const p = viewer?.navigationState?.position?.value;
+    if (!p || p.length < 3) return null;
+    for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+      if (!ml.layer?.displayState?.segmentSelectionState) continue;
+      for (const rl of ml.layer.renderLayers ?? []) {
+        const v = rl.getValueAt?.(p);
+        const sv = v == null ? '' : String(Array.isArray(v) ? v[0] : v);
+        if (sv && sv !== '0' && Math.floor(Number(sv) / 2 ** 56) === 1) {
+          return { sv, pos: [p[0], p[1], p[2]].map((n: number) => Math.round(n * 100) / 100) };
+        }
+      }
+    }
+  } catch { /* viewer not ready */ }
+  return null;
+}
+
+async function usePracticeHover(which: 'a' | 'b') {
+  let pick = practiceHover.value ? { ...practiceHover.value } : null;
+  // The crosshair wins when the volume can be read there; the hovered
+  // segment is the fallback.
+  const cross = crosshairPick();
+  const pcg = getPcgInfo();
+  if (cross && pcg) {
+    const root = await rootOfSupervoxel({ pcg_server: pcg.server, pcg_table: pcg.table }, cross.sv);
+    if (root) pick = { sv: cross.sv, root, pos: cross.pos };
+  }
+  if (!pick) return;
+  if (which === 'a') practiceA.value = pick;
+  else practiceB.value = pick;
 }
 
 function practiceDataset(): string {
@@ -1611,7 +1647,7 @@ function practiceWhen(iso: string | null) {
     <div v-if="adminSubTab === 'practice'" class="nge-admin-section">
       <div class="nge-admin-block">
         <label class="nge-admin-label">Register a practice cell from the current view</label>
-        <p class="nge-admin-hint">Open the sandbox view learners should start from. Press "Pick A and B in the viewer", hover a spot in the 2D view (the black and white images) and press the A key, then hover the second spot and press the B key. The coordinates are what is recorded, and they stay valid after every cut and merge. The view is saved as the start state.</p>
+        <p class="nge-admin-hint">Open the sandbox view learners should start from. Press "Pick A and B in the viewer", put the crosshair on a spot in the 2D view (the black and white images), hover the cell and press the A key, then do the same for the second spot and press the B key. The crosshair coordinates are what is recorded, and they stay valid after every cut and merge. The view is saved as the start state.</p>
         <div class="nge-admin-row">
           <label class="nge-practice-kind"><input type="radio" value="cut" v-model="practiceKind" /> Cut example: leave the cell fused. A and B are two spots on it, one on each side of where the cut should go</label>
           <label class="nge-practice-kind"><input type="radio" value="merge_then_cut" v-model="practiceKind" /> Merge example: B is wrongly disconnected from A, the learner merges it back</label>
@@ -1624,7 +1660,7 @@ function practiceWhen(iso: string | null) {
           <div v-if="practicePicking" class="nge-practice-picker">
             <span class="nge-practice-picker-label">Practice cell</span>
             <span class="nge-practice-hover">Hovered: <code>{{ practiceHover ? practiceHover.root : 'move over a segment' }}</code><span v-if="practiceHover && !practiceHover.sv"> (hover it in 2D for the exact spot)</span></span>
-            <span class="nge-practice-hover">Hover a spot in 2D and press the <b>A</b> key. Hover the other side and press <b>B</b>.</span>
+            <span class="nge-practice-hover">Put the crosshair on a spot in 2D (right-click there) and press the <b>A</b> key. Move it to the other side of the join and press <b>B</b>. The point and the segment both come from the crosshair.</span>
             <span class="nge-practice-picks">A: <code>{{ pickLabel(practiceA) }}</code> B: <code>{{ pickLabel(practiceB) }}</code></span>
             <button class="nge-admin-primary-btn" @click="stopPicking">Back to Admin Hub</button>
           </div>

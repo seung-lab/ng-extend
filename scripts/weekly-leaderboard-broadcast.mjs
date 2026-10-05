@@ -13,8 +13,12 @@
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/weekly-leaderboard-broadcast.mjs
  */
 
+import { topCompleters } from './weekly-completions.mjs';
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const DRY = process.env.DRY_RUN === '1';
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -86,48 +90,7 @@ async function topEditors(startISO, endISO, n = 10) {
     .map(([user_id, count]) => ({ user_id, count }));
 }
 
-/** Top N completers, counted from the app's own log (edit_log) exactly as
- *  the leaderboard view does (supabase-leaderboard-completions-from-log.sql):
- *  the CAVE mirror lagged up to two days and never saw MEC. One cell = one
- *  distinct root id per player; a row with no id counts only when no
- *  id-carrying completion by that player sits within two minutes of it. */
-async function topCompleters(startISO, endISO, n = 10) {
-  const rows = await supabaseGet(
-    `edit_log?select=user_id,operation,timestamp,metadata,success` +
-    `&timestamp=gte.${encodeURIComponent(startISO)}` +
-    `&timestamp=lt.${encodeURIComponent(endISO)}` +
-    `&operation=in.(complete_task,mark_complete,unmark_complete)` +
-    `&limit=200000`,
-  );
-  const idOf = r => r.metadata?.final_segment_id ?? r.metadata?.root_id ?? r.metadata?.segment_id ?? null;
-  const good = rows.filter(r => r.user_id && r.success !== false);
-  // A cell marked and then un-marked does not count; marked again after, it does.
-  const lastUnmark = new Map();                  // user_id|cell -> newest un-mark time
-  for (const r of good) {
-    if (r.operation !== 'unmark_complete' || r.metadata?.root_id == null) continue;
-    const k = r.user_id + '|' + r.metadata.root_id, t = Date.parse(r.timestamp);
-    if (!(lastUnmark.get(k) >= t)) lastUnmark.set(k, t);
-  }
-  const ok = good.filter(r => r.operation !== 'unmark_complete');
-  const cells = new Map();                       // user_id -> Set of cell keys
-  for (const r of ok) {
-    let cell = idOf(r);
-    if (cell == null) {
-      const t = Date.parse(r.timestamp);
-      const paired = ok.some(d => d.user_id === r.user_id && idOf(d) != null &&
-        Math.abs(Date.parse(d.timestamp) - t) <= 120_000);
-      if (paired) continue;
-      cell = 'at:' + new Date(t).toISOString().slice(0, 16);
-    }
-    if (lastUnmark.get(r.user_id + '|' + cell) >= Date.parse(r.timestamp)) continue;
-    if (!cells.has(r.user_id)) cells.set(r.user_id, new Set());
-    cells.get(r.user_id).add(String(cell));
-  }
-  return [...cells.entries()]
-    .map(([user_id, set]) => ({ user_id, count: set.size }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, n);
-}
+// Top completers: scripts/weekly-completions.mjs, shared with the saved podium.
 
 /** Resolve user_ids to display names. */
 async function resolveNames(userIds) {
@@ -163,7 +126,7 @@ async function main() {
   const [editorsRaw, completersRaw] = await Promise.all([
     // The top twenty of each: the podium takes three, the rest scroll.
     topEditors(week.startISO, week.endISO, 20),
-    topCompleters(week.startISO, week.endISO, 20),
+    topCompleters(supabaseGet, week.startISO, week.endISO, 20),
   ]);
 
   if (editorsRaw.length === 0 && completersRaw.length === 0) {
@@ -197,6 +160,26 @@ async function main() {
     post_to_chat: false,
   };
 
+  // One broadcast per week. A second run never pings everyone again: it
+  // leaves the saved one alone, or with UPDATE_BROADCAST=1 corrects its text
+  // in place (same notification, no new bell).
+  // Found by when it was sent, not by its exact title: the wording of the
+  // title has changed before (an older copy used dashes).
+  const sentBefore = new Date(Date.parse(week.endISO) + 7 * 86400000).toISOString();
+  const existing = await supabaseGet(`notifications?select=id,title,body&target_type=eq.all&title=ilike.*Weekly%20Champions*` +
+    `&send_at=gte.${encodeURIComponent(week.endISO)}&send_at=lt.${encodeURIComponent(sentBefore)}&order=send_at.desc&limit=1`);
+  if (existing.length) {
+    if (process.env.UPDATE_BROADCAST !== '1') { console.log(`[broadcast] ${notification.title} is already posted, leaving it.`); return; }
+    if (existing[0].body === body && existing[0].title === notification.title) { console.log('[broadcast] Saved broadcast already matches, nothing to correct.'); return; }
+    if (DRY) { console.log(`[broadcast] DRY RUN, would correct the saved broadcast "${existing[0].title}" (${existing[0].id}) to "${notification.title}":\n` + body); return; }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/notifications?id=eq.${existing[0].id}`, {
+      method: 'PATCH', headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify({ body, title: notification.title }),
+    });
+    if (!res.ok) throw new Error(`PATCH notifications: ${res.status} ${await res.text()}`);
+    console.log(`[broadcast] Corrected the saved broadcast for ${week.label}`);
+    return;
+  }
+  if (DRY) { console.log('[broadcast] DRY RUN, would post:\n' + body); return; }
   await supabasePost('notifications', notification);
   console.log(`[broadcast] Posted weekly champions notification for ${week.label}`);
   console.log(`  ${editorsRaw.length} top editors, ${completersRaw.length} top completers`);

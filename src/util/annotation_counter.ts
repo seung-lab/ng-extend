@@ -16,6 +16,7 @@
 import {AnnotationSource, LocalAnnotationSource} from 'neuroglancer/annotation';
 import {ref} from 'vue';
 import {supabase} from '../supabase';
+import {secureWrite} from '../secure_write';
 
 const FLUSH_MS = 60 * 60 * 1000;
 const GESTURE_MS = 3000;
@@ -83,15 +84,31 @@ export async function flushAnnotations(): Promise<void> {
   flushing = true;
   try {
     const uid = userId;
+    // The server adds the tally to the total itself (at most 500 a time);
+    // the browser never writes the total (leaderboard audit, 2026-10-05).
+    const send = Math.min(n, 500);
+    let logged = false;
+    try {
+      const r: any = await secureWrite('activity.log', { row: { operation: 'annotate', metadata: { count: send }, dataset: getDataset(), success: true } });
+      if (r?.counted) {
+        writePending(Math.max(0, readPending() - send));
+        if (typeof r.total_annotations === 'number') sentAnnotations.value = r.total_annotations;
+        return;
+      }
+      logged = true;   // recorded, but the database does not count yet
+    } catch (e: any) {
+      if (!/unknown action/i.test(e?.message ?? '')) return;   // kept for next time
+    }
+    // A server or database from before that change: as it always was.
     const { data: row, error: readErr } = await supabase.from('users').select('total_annotations').eq('id', uid).single();
     if (readErr || !row) return;                      // column not there yet, or offline
-    const total = (Number((row as any).total_annotations) || 0) + n;
+    const total = (Number((row as any).total_annotations) || 0) + send;
     const { error } = await supabase.from('users').update({ total_annotations: total }).eq('id', uid);
     if (error) return;
     // Sent: take exactly what was sent off the tally (more may have been placed meanwhile).
-    writePending(Math.max(0, readPending() - n));
+    writePending(Math.max(0, readPending() - send));
     sentAnnotations.value = total;
-    supabase.from('edit_log').insert({ user_id: uid, operation: 'annotate', metadata: { count: n }, dataset: getDataset(), success: true })
+    if (!logged) supabase.from('edit_log').insert({ user_id: uid, operation: 'annotate', metadata: { count: send }, dataset: getDataset(), success: true })
       .then(({ error: e }) => { if (e) console.warn('[annotations] log row failed:', e.message); }, () => {});
   } catch (e: any) {
     console.warn('[annotations] send failed, kept for next time:', e?.message);

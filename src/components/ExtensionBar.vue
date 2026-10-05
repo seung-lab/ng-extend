@@ -622,7 +622,7 @@ interface ToolbarIcon {
 // ../data/toolbar-icons so SettingsPanel can render the exact same
 // set in its customization grid. Here we only attach the action
 // handlers and (where relevant) badge counters.
-import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected, RESOURCES_MENU_SVG } from '../data/toolbar-icons';
+import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected, RESOURCES_MENU_SVG, LEADERBOARD_SVG } from '../data/toolbar-icons';
 
 // ── Layers: the neuroglancer layer-list panel, driven from our toolbar ──
 // The native top-row toggle is hidden in ng-override.css; this icon replaces it
@@ -1016,6 +1016,11 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     </div>
 
     <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile"><svg viewBox="2.6 1.6 10.8 13.2" fill="none" style="width:1em;height:1em;vertical-align:middle;color:#cfdcef"><circle cx="8" cy="5.4" r="2.9" stroke="currentColor" stroke-width="1.5"/><path d="M3.4 14c0-2.7 2.1-4.6 4.6-4.6s4.6 1.9 4.6 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+    <!-- Phones: the leaderboard, where the layer side panel's sliders used to
+         sit (Ames 2026-10-05). The side panel is a desktop tool; on a phone
+         its button is hidden (mobile.css). -->
+    <button v-if="isMobileRef" class="nge-icon-btn" id="mobileLeaderboardBtn" title="Leaderboard" aria-label="Leaderboard"
+            @click="mobileOpenPanel('leaderboard')"><span v-html="LEADERBOARD_SVG"></span></button>
     <dropdown-list dropdown-group="extension-bar-right" id="hamburger" class="rightMost" title="Resources and tutorials">
       <template #buttonTitle><span v-html="RESOURCES_MENU_SVG"></span></template>
       <template #listItems>
@@ -1109,7 +1114,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     </button>
     <button :class="{ 'nge-mnav--active': showNotifications }" data-mnav="alerts" @click="showNotifications = !showNotifications">
       <span class="nge-mnav-icon">🔔</span>
-      <span class="nge-mnav-label">Alerts</span>
+      <span class="nge-mnav-label">Notifs</span>
       <span v-if="backendStore.unreadNotificationCount > 0" class="nge-mnav-badge">{{ backendStore.unreadNotificationCount }}</span>
     </button>
     <button :class="{ 'nge-mnav--active': showMobileWelcome }" data-mnav="guide" @click="showMobileWelcome = true">

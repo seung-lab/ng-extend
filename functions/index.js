@@ -10,6 +10,7 @@ const db = admin.firestore();
 const ewServiceKey = defineSecret("EW_SUPABASE_SERVICE_KEY");
 const {pilotContext, requirePilot} = require("./pilot-access");
 const {authorizePilotData, conflicts:pilotConflicts} = require("./pilot-data");
+const {recordActivity, serverCounts, stripCounters} = require("./activity");
 
 // Reference docs for the Slack bot — uploaded to Anthropic Files via
 // scripts/upload-bot-docs.js. JSON shape: {"<filename>": "<file_id>"}.
@@ -1633,6 +1634,22 @@ function ewSb(key) {
   };
 }
 
+// Activity log (leaderboard audit 2026-10-05): the server checks a reported
+// event, records it once and moves the counters. See activity.js.
+function ewRpc(key) {
+  return async (name, args) => {
+    const r = await fetch(EW_SB + "rpc/" + name, { method: "POST", redirect: "error", signal: AbortSignal.timeout(15000),
+      headers: { apikey: key, ...(key.startsWith("sb_") ? {} : { Authorization: `Bearer ${key}` }), "Content-Type": "application/json" },
+      body: JSON.stringify(args) });
+    let body = null; try { body = JSON.parse(await r.text()); } catch (e) { /* empty or not JSON */ }
+    return { status: r.status, body };
+  };
+}
+const ewRecordActivity = (key, sb, ctx, who, token, value) => recordActivity({
+  rpc: ewRpc(key), who, me: ctx.me, token, value,
+  insertLegacy: row => sb("edit_log", { method: "POST", body: JSON.stringify(row) }),
+});
+
 const EW_NOTIF_FIELDS = ["title", "body", "image_url", "thumbnail_url", "target_type", "target_id", "send_at", "expires_at", "post_to_chat", "chat_posted_at"];
 const EW_TRIAGE_FIELDS = ["status", "proposed_message", "approver_note", "impl_state", "reviewed_by", "reviewed_at", "result_note", "tested_by", "tested_at", "feedback_log", "approver_slack_id"];
 const ewPick = (obj, keys) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => keys.includes(k)));
@@ -1672,6 +1689,13 @@ exports.ewSecureWrite = onRequest(
       const needAdmin = () => { if (!isAdmin) throw ewErr(403, "Admins only"); };
       let out = null;
       switch (action) {
+        // One thing a player did (an edit, a completion, a claim). Returns
+        // the counters as the server now holds them, or {counted:false}
+        // while the database function is not installed yet.
+        case "activity.log": {
+          out = await ewRecordActivity(ewServiceKey.value().trim(), sb, ctx, who, token, args.row);
+          break;
+        }
         case "pilot.task":
         case "pilot.practice": {
           const allowed = action === "pilot.task" ? ["claim","claim_cell","release","complete","heartbeat","save_link"] : ["claim","heartbeat","begin_reset","check_reset","finish_reset"];
@@ -1826,6 +1850,21 @@ exports.ewCommunityData = onRequest(
       if (plan.method !== "GET" && plan.method !== "HEAD") {
         const quota = await rateLimit({ip:who.email}, true, "write:"+plan.table);
         if (!quota.ok) throw ewErr(429,"Please wait before sending another change.");
+      }
+      // Counted activity is recorded by the server, never written as a number
+      // by the browser. Once the database function is installed: log rows go
+      // through it (this route is how app versions from before the change
+      // still report), and counters are dropped from profile writes.
+      if ((plan.table === "edit_log" || plan.table === "users") && ["POST","PATCH"].includes(plan.method) && plan.body != null && await serverCounts(ewRpc(key))) {
+        const rows = Array.isArray(plan.body) ? plan.body : [plan.body];
+        if (plan.table === "edit_log") {
+          if (rows.length > 20) throw ewErr(400, "Invalid row count");
+          const out = [];
+          for (const row of rows) out.push(await ewRecordActivity(key, sb, context, who, input.token, row));
+          return res.json({status:201,headers:{"Content-Type":"application/json"},body:JSON.stringify(out)});
+        }
+        rows.forEach(stripCounters);
+        if (rows.some(row => !Object.keys(row).length)) return res.json({status:200,headers:{"Content-Type":"application/json"},body:"[]"});
       }
       if (plan.table === "chat_messages" && plan.body?.notification_id != null) {
         const notices=await sb("notifications?id=eq."+Number(plan.body.notification_id)+"&target_type=eq.all&select=id&limit=1");

@@ -1413,6 +1413,26 @@ async function withErrorMessageHTTP(promise: Promise<Response>, options: {
 
 export const GRAPH_SERVER_NOT_SPECIFIED = Symbol('Graph Server Not Specified.');
 
+
+/**
+ * EyeWire II: tell the app that the graph server has acknowledged a split or
+ * a merge, with the operation id it gave it. The app counts edits from these
+ * (one acknowledged operation is one edit) instead of inferring them from the
+ * visible segments changing, and the server can look the id up.
+ */
+function ngeGraphEdit(kind: 'merge'|'split', graph: string, jsonResp: any) {
+  try {
+    const id = jsonResp?.['operation_id'];
+    window.dispatchEvent(new CustomEvent('nge-graph-edit', {
+      detail: {
+        kind,
+        graph,
+        operationId: id == null ? null : String(id),
+        roots: Array.isArray(jsonResp?.['new_root_ids']) ? jsonResp['new_root_ids'].map(String) : [],
+      }
+    }));
+  } catch { /* counting is never worth breaking an edit for */ }
+}
 class GrapheneGraphServerInterface {
   constructor(
       private url: string, private credentialsProvider: SpecialProtocolCredentialsProvider) {}
@@ -1460,6 +1480,7 @@ class GrapheneGraphServerInterface {
     try {
       const response = await promise;
       const jsonResp = await response.json();
+      ngeGraphEdit('merge', url, jsonResp);
       return Uint64.parseString(jsonResp['new_root_ids'][0]);
     } catch (e) {
       if (e instanceof HttpError) {
@@ -1500,6 +1521,7 @@ class GrapheneGraphServerInterface {
       errorPrefix: 'Split failed: '
     });
     const jsonResp = await response.json();
+    ngeGraphEdit('split', url, jsonResp);
     const final: Uint64[] = new Array(jsonResp['new_root_ids'].length);
     for (let i = 0; i < final.length; ++i) {
       final[i] = Uint64.parseString(jsonResp['new_root_ids'][i]);

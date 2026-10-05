@@ -19,7 +19,7 @@ for name, fx in cfg.items():
     # pinky); the stored volume can be coarser (8 x 8 x 40), so convert.
     view = fx.get("view_resolution", [4, 4, 40])
     for label, pt in fx["points"].items():
-        x, y, z = [int(pt[i] * view[i] // int(cv.resolution[i])) for i in range(3)]
+        x, y, z = [int(float(pt[i]) * view[i] // int(cv.resolution[i])) for i in range(3)]
         sv = int(cv[x:x + 1, y:y + 1, z:z + 1][0, 0, 0, 0])
         at = None
         if fx.get("at"):

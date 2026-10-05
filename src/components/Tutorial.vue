@@ -53,7 +53,8 @@ const BADGE_KEYS: Record<number, { key: string; title: string; image: string }> 
     1: { key: 'nge-badge-citizen-scientist', title: 'Citizen Scientist', image: badgeCitizenScientist },
     2: { key: 'nge-badge-advanced-operator', title: 'Advanced Operator', image: badgeClearanceLevel2 },
     3: { key: 'nge-badge-merge-master', title: 'Merge Master', image: badgeMerge },
-    5: { key: 'nge-badge-cut-master', title: 'Cut Master', image: badgeCut },
+    // The first rung (Ames, 2026-10-05): harder cut tutorials lead up to Cut Master.
+    5: { key: 'nge-badge-kindergarten-cut', title: 'Kindergarten Cut', image: badgeCut },
 };
 
 async function awardBadgeIfNew(tutorialNum: number) {

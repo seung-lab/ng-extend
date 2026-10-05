@@ -152,11 +152,6 @@ function notePanel(cls: string, html: string): HTMLElement {
  * sit on the surface, close to the right spots rather than exactly on them.
  */
 const CUT_HINTS: Record<string, { red: number[][]; blue: number[][] }> = {
-  // Fused axon (op 1664)
-  'dbc61749-70b5-469e-acdc-89a897cd9270': {
-    red: [[62906, 42782, 1717], [62810, 42826, 1718]],
-    blue: [[62764, 42636, 1701], [62668, 42612, 1698]],
-  },
   // Fusion on a proofread cell (op 1728)
   '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': {
     red: [[81668, 49056, 516], [82030, 49104, 529]],
@@ -165,13 +160,55 @@ const CUT_HINTS: Record<string, { red: number[][]; blue: number[][] }> = {
 };
 const RED = '#ff5c5c', BLUE = '#5c8cff';
 
-function showWhereToCut(): boolean {
+/**
+ * A saved view with the cut points already placed (Ames, 2026-10-05), per
+ * cell. The cut tool keeps its points in the layer state as
+ * multicut.sinks (red) and multicut.sources (blue), each with a position.
+ * Read with the learner's own login when they ask for help.
+ */
+const CUT_HINT_STATES: Record<string, string> = {
+  // Small branch merged to cell (Celia, 16:27), the 2D cut
+  '0482d846-0c16-4393-ab8a-0d1212b9520f': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5145051306917888',
+  // Fusion on a proofread cell (Ames), the 3D cut
+  '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5715664052420608',
+};
+
+async function cutPointsInState(stateUrl: string): Promise<{ red: number[][]; blue: number[][] } | null> {
+  try {
+    const { url, credentialsProvider } = parseSpecialUrl(stateUrl, defaultCredentialsManager);
+    const state: any = await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
+    const pos = (list: any): number[][] => (Array.isArray(list) ? list : [])
+      .map((x: any) => x?.position).filter((p: any) => Array.isArray(p) && p.length >= 3).map((p: any) => p.slice(0, 3).map(Number));
+    let found: { red: number[][]; blue: number[][] } | null = null;
+    // The multicut block sits somewhere under the segmentation layer; find it
+    // wherever this neuroglancer version put it.
+    const walk = (o: any, depth: number) => {
+      if (found || !o || typeof o !== 'object' || depth > 6) return;
+      if (o.multicut && (o.multicut.sinks || o.multicut.sources)) {
+        const red = pos(o.multicut.sinks), blue = pos(o.multicut.sources);
+        if (red.length || blue.length) { found = { red, blue }; return; }
+      }
+      for (const v of Array.isArray(o) ? o : Object.values(o)) walk(v, depth + 1);
+    };
+    walk(state, 0);
+    console.info('[tutorial] cut hint state:', found ? `${(found as any).red.length} red, ${(found as any).blue.length} blue` : 'no cut points in it');
+    return found;
+  } catch (e) {
+    console.warn('[tutorial] could not read cut hint points:', e);
+    return null;
+  }
+}
+
+async function showWhereToCut(): Promise<boolean> {
   const ex = currentPractice().example;
-  const h = ex ? CUT_HINTS[ex.id] : undefined;
+  if (!ex) return false;
+  const fromState = CUT_HINT_STATES[ex.id] ? await cutPointsInState(CUT_HINT_STATES[ex.id]) : null;
+  const h = fromState ?? CUT_HINTS[ex.id];
   if (!h) return false;
-  const pts = [...h.red, ...h.blue];
-  return showPyrMarkers(pts, [...h.red.map(() => 'red'), ...h.blue.map(() => 'blue')], 60,
-    [...h.red.map(() => RED), ...h.blue.map(() => BLUE)]);
+  // A handful of each is plenty to show the idea.
+  const red = h.red.slice(0, 4), blue = h.blue.slice(0, 4);
+  return showPyrMarkers([...red, ...blue], [...red.map(() => 'red'), ...blue.map(() => 'blue')], 60,
+    [...red.map(() => RED), ...blue.map(() => BLUE)]);
 }
 
 function toggleStuckPanel() {
@@ -200,10 +237,10 @@ function toggleStuckPanel() {
     }));
   }
   if (ex && ex.kind === 'cut') {
-    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to place points', () => {
+    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to place points', async () => {
       ensureTool('multicut');
-      practiceStatus(showWhereToCut()
-        ? 'Pyr marks the spots: red points on the piece to remove, blue points on the cell. Ctrl+click near each, press G to switch colour, then Submit cut.'
+      practiceStatus((await showWhereToCut())
+        ? 'Pyr marks the spots: red points on one side of the join, blue points on the other. Ctrl+click near each, press G to switch colour, then Submit cut.'
         : 'No point hints for this cell yet. Red goes on the piece that does not belong, blue on the cell just past the join.');
     }));
   }
@@ -241,6 +278,8 @@ function offerPlacePoints() {
  * said axon over a dendrite). The step text carries PART placeholders and
  * labelPart() fills them from the cell actually on screen.
  */
+/** The Merge tutorial's second cell: Axon missing a branch. */
+const MERGE_SECOND = 'a4bd2f76-67e9-4093-adc7-e670230d1577';
 const CELL_PART: Record<string, string> = {
   'b231f4e7-e9f3-4214-941f-975b8b25a237': 'dendrite', // Branch cut in half
   'a4bd2f76-67e9-4093-adc7-e670230d1577': 'axon',     // Axon missing a branch
@@ -801,7 +840,11 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
       // The whole tutorial runs on both merge cells (Amy): take both now, so
       // a learner never starts on one and finds the other held.
       await movingToSandbox('Merge', async () => {
-        const first = await beginPractice('merge_then_cut', 'start', { slot: 'a' });
+        // The two merges are on one neuron and come in a set order (Ames,
+        // 2026-10-05): the dendrite first, then the axon. If the dendrite
+        // cannot be had, take whatever is free.
+        const first = await beginPractice('merge_then_cut', 'start', { slot: 'a', avoid: [MERGE_SECOND] })
+          ?? await beginPractice('merge_then_cut', 'start', { slot: 'a' });
         if (first) {
           // The second cell is claimed now and shown at step 6.
           // With one merge cell registered there is no second: the learner

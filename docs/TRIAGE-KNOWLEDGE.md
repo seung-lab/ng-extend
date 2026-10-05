@@ -113,3 +113,9 @@ summaries.
   announcements (`notificationId` set), and "Share my view" appends long
   links to the caption, which is why links must stay uncounted (2026-10-05,
   chat limit build, approver note "140 characters, exclude links").
+- Practice cell picks (`sampleHover` in AdminHub.vue) take the segment and
+  supervoxel from the mouse hover but the point from the crosshair
+  (`viewer.navigationState.position.value`). `placeMergeLine` in practice.ts
+  pairs `point_a`/`point_b` with `supervoxel_a`/`supervoxel_b`, so a pick is
+  only consistent if the crosshair sits on the hovered piece (2026-10-05,
+  crosshair pick build, from reading practice.ts).
