@@ -461,7 +461,11 @@ onUnmounted(() => {
                 <span class="corner corner-tr"></span>
                 <span class="corner corner-bl"></span>
                 <span class="corner corner-br"></span>
-                <div class="nge-chip-drag" title="Drag anywhere on this box to move it">⠿ drag</div>
+                <span class="nge-chip-scan" aria-hidden="true"></span>
+                <div class="nge-chip-drag" title="Drag anywhere on this box to move it">
+                    <span class="nge-chip-grip" aria-hidden="true">⠿</span>
+                    <span class="nge-chip-readout">{{ String(stepIndex + 1).padStart(2, '0') }} / {{ String(totalSteps).padStart(2, '0') }}</span>
+                </div>
                 <button class="exit" @click="inExitConfirm = true">×</button>
                 <div class="title" v-if="computedStep.title">
                   <span v-if="computedStep.titleIcon" class="title-icon" v-html="computedStep.titleIcon"></span>
@@ -481,8 +485,8 @@ onUnmounted(() => {
                         <button v-if="computedStep.last" @click="launchConfetti(); $emit('next')" class="next" :title="nextTip">done</button>
                         <button v-else @click="$emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'next' }}</button>
                     </div>
-                    <div class="progressBarContainer">
-                        <div class="progressBar" :style="{ width: ((stepIndex + 1) / totalSteps * 100) + '%' }"></div>
+                    <div class="progressBarContainer nge-chip-rail" :aria-label="`Step ${stepIndex + 1} of ${totalSteps}`">
+                        <i v-for="n in totalSteps" :key="n" :class="{ on: n <= stepIndex + 1, now: n === stepIndex + 1 }"></i>
                     </div>
                 </div>
             </div>
@@ -976,6 +980,225 @@ onUnmounted(() => {
 .introductionStepAnchor.nge-quick-anim {
     animation: chipFadeIn 0.18s ease-out both;
 }
+
+/* ══ Instrument restyle (Ames 2026-10-05: "sleek, like something made 100
+   years in the future") ══════════════════════════════════════════════════
+   Built from the scifi-ui set rather than invented: the holopanel surface
+   (dark gradient, lit top hairline, inset rim, materialise entrance), one
+   scan pass on arrival that never loops, a mono step readout, and a
+   segmented rail that reports the real step. These rules sit last so they
+   win over the older ones above at equal weight. */
+.chip {
+    color: rgba(226, 238, 251, 0.88);
+    padding: 46px 28px 20px;
+    border-radius: 12px;
+    justify-items: stretch;
+    font-size: 15px;
+    line-height: 1.55;
+    font-weight: 400;
+    grid-row-gap: 14px;
+    border: 1px solid rgba(74, 150, 224, 0.36);
+    /* Flat from 70% down, so the sticky footer (same colour) has no seam. */
+    background: linear-gradient(180deg, rgba(14, 21, 36, 0.97) 0%, rgba(6, 10, 19, 0.98) 70%);
+    backdrop-filter: blur(14px) saturate(1.2);
+    box-shadow:
+        0 18px 50px rgba(0, 0, 0, 0.55),
+        0 0 60px rgba(74, 150, 224, 0.10),
+        inset 0 1px 0 rgba(196, 228, 255, 0.10);
+}
+/* The lit hairline along the top edge. */
+.chip::before {
+    content: '';
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 0;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(196, 228, 255, 0.95) 50%, transparent);
+    box-shadow: 0 0 12px rgba(178, 216, 248, 0.6);
+    z-index: 3;
+}
+.corner { border-color: rgba(126, 224, 255, 0.7) !important; }
+.corner::before, .corner::after { border-color: rgba(126, 224, 255, 0.28) !important; }
+
+/* Entrance: the panel materialises out of an overbright blur. Opacity and
+   filter only, because the anchor's transform belongs to dragging. */
+.chipBuildIn,
+.introductionStepAnchor.nge-quick-anim {
+    animation: nge-chip-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes nge-chip-in {
+    0%   { opacity: 0; filter: blur(10px) brightness(2.4); }
+    60%  { opacity: 1; filter: blur(0) brightness(1.15); }
+    100% { opacity: 1; filter: none; }
+}
+/* One scan line on arrival. It passes once: a band that loops is a status
+   light. Moves by `top`, not transform, so it adds no scroll height. */
+.nge-chip-scan {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -9%;
+    height: 9%;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(180deg, transparent, rgba(126, 224, 255, 0.14), transparent);
+    animation: nge-chip-scan 1500ms cubic-bezier(0.22, 0.9, 0.28, 1) 260ms 1 both;
+}
+@keyframes nge-chip-scan {
+    0%   { top: -9%; opacity: 0; }
+    12%  { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { top: 91%; opacity: 0; }
+}
+
+/* Header strip: grip and a mono step readout. */
+.nge-chip-drag {
+    top: 15px;
+    left: 28px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: rgba(126, 224, 255, 0.62);
+}
+.nge-chip-grip { font-size: 11px; letter-spacing: 0; opacity: 0.7; }
+.nge-chip-readout {
+    font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+}
+.ng-extend .chip .stepCounter { display: none; }
+.ng-extend .chip button.exit {
+    top: 8px;
+    right: 8px;
+    margin: 0;
+    width: 26px;
+    height: 26px;
+    line-height: 24px;
+    font-size: 20px;
+    border-radius: 4px;
+    color: rgba(226, 238, 251, 0.7);
+    opacity: 1;
+    transition: background 0.2s, color 0.2s;
+}
+.ng-extend .chip button.exit:hover { background: rgba(196, 228, 255, 0.14); color: #fff; }
+
+/* Title: a HUD label with a diamond marker and a hairline that fades out. */
+.chip .title {
+    justify-content: flex-start;
+    gap: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    line-height: 1.3;
+    color: #eef8ff;
+    text-shadow: 0 0 14px rgba(126, 224, 255, 0.35);
+    padding-bottom: 12px;
+    border-bottom: 1px solid transparent;
+    border-image: linear-gradient(90deg, rgba(126, 224, 255, 0.7), rgba(126, 224, 255, 0.10) 62%, transparent) 1;
+}
+.chip .title::before {
+    content: '';
+    flex: none;
+    width: 6px;
+    height: 6px;
+    margin-right: 12px;
+    transform: rotate(45deg);
+    background: #7ee0ff;
+    box-shadow: 0 0 8px rgba(126, 224, 255, 0.9);
+}
+.title-icon { margin-right: 10px; }
+/* Frames that run their media edge to edge keep the title clear of the strip. */
+.chip.modal .title { margin: 46px 28px 0; }
+.hasVideo .chip:not(.exitConfirm) .title { margin: 38px 20px 0; }
+.chip.modal .html { padding: 0 22px; }
+.ng-extend .chip.modal .nge-chip-foot { box-sizing: border-box; padding-left: 28px; padding-right: 28px; }
+
+.chip .html :deep(p) { margin: 0 0 0.7em; }
+.chip .html :deep(p:last-child) { margin-bottom: 0; }
+.chip .html :deep(strong) { color: #ffffff; font-weight: 600; }
+
+/* Footer: Back on the left, the action on the right, segmented rail below. */
+.ng-extend .chip .nge-chip-foot { background: rgb(6, 10, 19); padding-top: 8px; }
+.ng-extend .chip .nge-chip-foot::before { background: linear-gradient(to bottom, rgba(6, 10, 19, 0), rgb(6, 10, 19)); }
+.ng-extend .chip .buttonContainer {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+}
+.ng-extend .chip.exitConfirm .buttonContainer { gap: 10px; justify-content: center; }
+.ng-extend .chip button.next {
+    margin-left: auto;
+    border-radius: 3px;
+    border: 1px solid rgba(126, 224, 255, 0.55);
+    padding: 7px 16px 7px 18px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    line-height: 1.2;
+    color: #eaf9ff;
+    background: linear-gradient(180deg, rgba(126, 224, 255, 0.17), rgba(126, 224, 255, 0.05));
+    box-shadow: inset 0 0 12px rgba(126, 224, 255, 0.10);
+    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.ng-extend .chip button.next::after {
+    content: '\203A';
+    display: inline-block;
+    margin-left: 10px;
+    font-size: 15px;
+    line-height: 0.8;
+    letter-spacing: 0;
+    transition: transform 0.2s ease-out;
+}
+.ng-extend .chip button.next:hover {
+    background: linear-gradient(180deg, rgba(126, 224, 255, 0.30), rgba(126, 224, 255, 0.12));
+    border-color: rgba(190, 240, 255, 0.95);
+    box-shadow: inset 0 0 12px rgba(126, 224, 255, 0.18), 0 0 18px rgba(126, 224, 255, 0.35);
+}
+.ng-extend .chip button.next:hover::after { transform: translateX(3px); }
+.ng-extend .chip.exitConfirm button.next { margin-left: 0; }
+.ng-extend .chip.exitConfirm button.next::after { content: none; }
+.ng-extend .chip button.back {
+    position: static;
+    font-style: normal;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    padding: 7px 0;
+    color: rgba(196, 228, 255, 0.85);
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+.ng-extend .chip button.back::before { content: '\2039'; margin-right: 8px; font-size: 15px; line-height: 0.8; letter-spacing: 0; }
+.ng-extend .chip button.back:hover { background: none; opacity: 1; }
+.ng-extend .chip .nge-chip-rail {
+    display: flex;
+    gap: 3px;
+    height: 3px;
+    margin-top: 14px;
+    background: none;
+    border-radius: 0;
+    overflow: visible;
+}
+.nge-chip-rail i {
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: 1px;
+    background: rgba(196, 228, 255, 0.12);
+    transition: background 0.4s, box-shadow 0.4s;
+}
+.nge-chip-rail i.on { background: rgba(126, 224, 255, 0.7); }
+.nge-chip-rail i.now { background: #c4f3ff; box-shadow: 0 0 8px rgba(126, 224, 255, 0.95); }
+
+@media (prefers-reduced-motion: reduce) {
+    .chipBuildIn, .introductionStepAnchor.nge-quick-anim { animation: none; }
+    .nge-chip-scan { animation: none; }
+}
 </style>
 
 <style>
@@ -1041,7 +1264,8 @@ onUnmounted(() => {
     font-size: 15px;
     color: #dfeeff;
 }
-.nge-tour-welcome-body p { margin: 0; }
+/* Weighted to beat the box's own paragraph spacing: the gap above does it. */
+.chip .html .nge-tour-welcome-body p { margin: 0; }
 
 /* Final step (Option B): hero render + gratitude. The boxes-of-CTAs
    layout was busy and the toolbar already covers Cell Library / ⌘K /
