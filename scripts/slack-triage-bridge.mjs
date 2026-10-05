@@ -1040,7 +1040,15 @@ async function announceDone() {
     if (row.recommendation !== 'message' && row.recommendation !== 'nothing') {
       // The person who reported it: only them, never a broadcast.
       const thanks = fixedNote(row);
-      const sent = await notifyReporter(row, '🎉 Fixed!', thanks, FIXED_IMAGE_URL);
+      // One note per fix (Ames 2026-10-05: a reporter got "An update on your
+      // report" and "Fixed!" minutes apart, saying the same thing). If an
+      // approver already wrote to them by hand in the last 12 hours, that
+      // note stands and the automatic one is not sent.
+      const recentByHand = (row.feedback_log || []).some(e => e.role === 'reporter_update' && e.sent !== false && e.via !== 'auto'
+        && Date.now() - new Date(e.at || 0).getTime() < 12 * 3600 * 1000);
+      const reporterId = await reporterUserId(row);
+      const sent = recentByHand ? false : await notifyReporter(row, '🎉 Fixed!', thanks, FIXED_IMAGE_URL);
+      if (recentByHand) console.log(`[bridge] ${row.id}: reporter already updated by hand, no automatic Fixed note`);
       if (sent) {
         console.log(`[bridge] told the reporter of ${row.id}`);
         // Show the approvers what the reporter was told, and how to add to it.
@@ -1055,6 +1063,9 @@ To add something, reply *update: your own words* and I'll send that too.`).catch
       // And every admin, so fixes are visible in the game, not just in Slack.
       const report = (row.source_excerpt || '').trim();
       for (const id of await adminUserIds()) {
+        // An admin who reported it has the reporter's note (or their own
+        // hand-written one) already: not a second card for the same fix.
+        if (id === reporterId) continue;
         await notifyUser(id, '🎉 Fixed!',
           `"${report.length > 90 ? report.slice(0, 87) + '...' : report}" is fixed and live. ${plain}`, ADMIN_FIXED_IMAGE_URL);
       }
