@@ -861,7 +861,7 @@ function padRank(rank: number): string {
   --nd-dim: 170 184 204;
   position: relative;
   isolation: isolate;
-  width: 740px;
+  width: 920px;
   max-width: 90vw;
   max-height: 80vh;
   background:
@@ -1105,7 +1105,9 @@ function padRank(rank: number): string {
 .nge-notif-detail-body :deep(.nge-notif-link) {
   color: rgb(var(--nd-cyan));
   text-decoration: none;
-  word-break: break-all;
+  /* Wrap a long link only where it must: break-all split links mid word. */
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 .nge-notif-detail-body :deep(.nge-notif-link:hover) {
   text-decoration: underline;
@@ -1124,7 +1126,7 @@ function padRank(rank: number): string {
   flex-shrink: 0;
 }
 .nge-notif-detail-layout--has-image .nge-notif-detail-image {
-  width: 320px;
+  width: 440px;
   /* The image stays put while the text scrolls past it (Ames 2026-09-30). */
   position: sticky;
   top: 0;
@@ -1492,10 +1494,13 @@ function padRank(rank: number): string {
   color: rgb(var(--nd-dim));
 }
 
-@media (max-width: 560px) {
-  .nge-notif-detail-scroll { padding: 16px 16px 20px; }
+/* Narrow windows and phones: the image on top, full width. */
+@media (max-width: 760px) {
   .nge-notif-detail-layout--has-image { flex-direction: column; }
   .nge-notif-detail-layout--has-image .nge-notif-detail-image { width: 100%; position: static; }
+}
+@media (max-width: 560px) {
+  .nge-notif-detail-scroll { padding: 16px 16px 20px; }
   .nge-champs-emblem { width: 46px; height: 46px; font-size: 22px; }
   .nge-champs-range { font-size: 1.05em; }
   .nge-champs-podium { gap: 6px; }
