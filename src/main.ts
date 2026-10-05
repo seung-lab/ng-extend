@@ -1,4 +1,5 @@
 import { startViewAutosave } from './util/view_autosave';
+import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { installScriptApi } from './script_api';
 import { startHighlightTint } from './util/highlight';
 import {createApp, nextTick} from 'vue';
@@ -365,6 +366,7 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  startSegmentationServerWatch(viewer);
   installNoFourPanel(viewer);
   // window.eyewire, the stable API for player scripts (static/scripts.html).
   installScriptApi(viewer, {
