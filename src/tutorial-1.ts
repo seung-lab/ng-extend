@@ -413,6 +413,12 @@ Don't worry if you lose the neuron. The Next button in this section resets this 
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
+    onEnter: () => {
+      const viewer = getViewer();
+      if (!viewer) return;
+      // Turn on axis lines (keyboard shortcut A)
+      viewer.showAxisLines.value = true;
+    },
   },
 
   //17 - position center of page - ensure location is  middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288

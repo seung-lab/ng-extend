@@ -107,3 +107,8 @@ summaries.
   boot, so judge "what the page opened on" from `BOOT_HASH` in store.ts, not
   `window.location.hash` (2026-10-05, refresh keeps view build, from reading
   url_hash_binding.ts).
+- Tutorial step `state` links replace the whole viewer state, so a setting an
+  earlier step turned on (like `viewer.showAxisLines`) is lost when the next
+  step loads its own state. Re-apply it in that step's `onEnter`, which
+  `TutorialStep.vue` runs after the state has loaded (2026-10-05, step 15
+  axis lines build, from reading TutorialStep.vue).
