@@ -5,7 +5,8 @@
  * click): the stretch between them is marked with a highlighter stroke, so a
  * proofreader can see which branches they have already checked.
  */
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import { startLoader, type Live } from '../find_path_status';
 import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
 import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
@@ -107,6 +108,42 @@ watch(busy, (on) => {
     startLoader(cv, loaderLive, 136, 26);
   });
 }, { flush: 'post' });
+
+// ── Slim view (Ames 2026-10-05), like the Scout Tag strip and the slim Cell
+// Library: one row with the colours as dots, what to do next, Undo and the
+// count, so the box is out of the way while marking. The caret in the header
+// shrinks it; the caret on the strip opens it again. Remembered.
+const SLIM_KEY = 'nge_highlight_slim';
+const slim = ref((() => { try { return localStorage.getItem(SLIM_KEY) === '1'; } catch { return false; } })());
+async function setSlim(v: boolean) {
+  if (slim.value === v) return;
+  const el = panelEl.value;
+  const reduce = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  try { localStorage.setItem(SLIM_KEY, v ? '1' : '0'); } catch { /* private mode */ }
+  if (v) {
+    // The box shrinks into the strip, and particles write the strip's parts.
+    const ghost = el ? snapshotPanel(el) : null;
+    adding.value = false;
+    slim.value = true;
+    await nextTick();
+    clampPos();
+    if (ghost && el) morphIntoSlim(ghost, el, Array.from(el.querySelectorAll('.nge-hl-slim > *')));
+    return;
+  }
+  // Hidden until the beam draws it, so the full box never flashes in first.
+  if (el && !reduce) el.style.clipPath = 'inset(0 0 100% 0)';
+  slim.value = false;
+  await nextTick();
+  clampPos();
+  if (el) revealWithBeam(el);
+}
+/** The one line the strip has room for. */
+const slimStep = computed(() => {
+  if (messageBad.value && message.value) return message.value;
+  if (first.value) return 'Now the end';
+  if (message.value === 'Highlight complete') return stat.value ? `Done, ${stat.value}` : 'Done';
+  return 'Ctrl + click';
+});
 
 // ── Drag the box by its header; it remembers where it was put ─────────────
 const POS_KEY = 'nge_highlight_panel_pos';
@@ -297,9 +334,35 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div ref="panelEl" class="nge-hl-panel" :class="{ 'nge-hl-panel--placed': pos, 'nge-hl-panel--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Highlight mode">
+    <div ref="panelEl" class="nge-hl-panel" :class="{ 'nge-hl-panel--placed': pos, 'nge-hl-panel--dragging': dragging, 'nge-hl-panel--slim': slim }" :style="posStyle" role="dialog" aria-label="Highlight mode">
+      <!-- Slim: one row. Drag it by any empty part. -->
+      <div v-if="slim" class="nge-hl-slim" title="Drag to move" @mousedown="startDrag">
+        <button class="nge-hl-caret" type="button" title="Open the full Highlight box" aria-label="Open the full Highlight box" @click="setSlim(false)">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="nge-hl-dots" role="radiogroup" aria-label="Mark as">
+          <button
+            v-for="s in styles" :key="s.key" type="button" role="radio" class="nge-hl-dot"
+            :class="{ 'nge-hl-dot--on': styleKey === s.key }" :style="{ '--hl': s.color }"
+            :aria-checked="styleKey === s.key ? 'true' : 'false'" :title="s.label" :aria-label="s.label"
+            @click="styleKey = s.key"
+          ></button>
+        </span>
+        <button v-if="first" class="nge-hl-btn nge-hl-btn--sm nge-hl-btn--armed" type="button" :disabled="busy" @click="cancelPick"
+                title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel</button>
+        <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--sm" type="button" @click="stopTracing"
+                title="Stop waiting for this path. Nothing is marked.">Stop</button>
+        <span class="nge-hl-slim-step" :class="{ 'nge-hl-bad': messageBad }" :title="slimStep">{{ busy ? 'Tracing' : slimStep }}</span>
+        <button class="nge-hl-btn nge-hl-btn--sm" type="button" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
+        <span class="nge-hl-count" :title="`${markCount} ${markCount === 1 ? 'mark' : 'marks'}`">{{ markCount }}</span>
+        <button class="nge-hl-close" type="button" aria-label="Close" @click="emit('hide')">×</button>
+      </div>
+      <template v-else>
       <div class="nge-hl-head" title="Drag to move" @mousedown="startDrag">
         <span class="nge-hl-title">Highlight</span>
+        <button class="nge-hl-caret" type="button" title="Shrink to a slim strip" aria-label="Shrink to a slim strip" @mousedown.stop @click="setSlim(true)">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <button class="nge-hl-close" aria-label="Close" @click="emit('hide')">×</button>
       </div>
       <p class="nge-hl-how">
@@ -355,6 +418,7 @@ onBeforeUnmount(() => {
         <span v-if="stat && !busy" class="nge-hl-stat">{{ stat }}</span>
         <span class="nge-hl-count">{{ markCount }} {{ markCount === 1 ? 'mark' : 'marks' }}</span>
       </div>
+      </template>
       <!-- The path search, as the bottom edge of the box, its label beside it. -->
       <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': bandOn, 'nge-hl-loader-wrap--done': bandDone }" :aria-hidden="bandOn ? 'false' : 'true'">
         <canvas v-if="bandOn" ref="loaderEl" class="nge-hl-loader"></canvas>
@@ -413,6 +477,40 @@ onBeforeUnmount(() => {
 }
 .nge-hl-loader-label b { margin-left: 6px; color: #c8a4ff; font: 600 11px ui-monospace, 'Consolas', monospace; letter-spacing: 0; text-transform: none; }
 .nge-hl-title { font: 600 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #9dffc9; }
+/* ── Slim view ── */
+.nge-hl-caret {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 22px; height: 22px; padding: 0; border-radius: 999px; cursor: pointer;
+  color: #9dffc9; background: rgba(124, 255, 178, 0.1); border: 1px solid rgba(124, 255, 178, 0.4);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.nge-hl-caret:hover { background: rgba(124, 255, 178, 0.22); border-color: rgba(124, 255, 178, 0.75); box-shadow: 0 0 10px rgba(124, 255, 178, 0.35); }
+.nge-hl-head .nge-hl-caret { margin-left: auto; }
+.nge-hl-head .nge-hl-caret + .nge-hl-close { margin-left: 4px; }
+.nge-hl-panel--slim { width: auto; min-width: 0; padding: 7px 10px; }
+.nge-hl-slim { display: flex; align-items: center; gap: 8px; cursor: grab; user-select: none; }
+.nge-hl-panel--dragging .nge-hl-slim { cursor: grabbing; }
+.nge-hl-dots { display: inline-flex; align-items: center; gap: 5px; }
+.nge-hl-dot {
+  width: 16px; height: 16px; padding: 0; border-radius: 50%; cursor: pointer;
+  background: var(--hl); border: 2px solid rgba(6, 10, 20, 0.95);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+  transition: box-shadow 0.12s ease, transform 0.12s ease;
+}
+.nge-hl-dot:hover { transform: scale(1.12); }
+.nge-hl-dot--on { box-shadow: 0 0 0 2px var(--hl), 0 0 10px var(--hl); }
+.nge-hl-btn--sm { padding: 3px 8px; font-size: 11px; }
+.nge-hl-slim-step {
+  max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11.5px; color: #9dffc9;
+}
+.nge-hl-slim-step.nge-hl-bad { color: #ff9aa8; }
+.nge-hl-slim .nge-hl-count { margin-left: 2px; }
+.nge-hl-slim .nge-hl-close { margin-left: 0; }
+/* The search band keeps to the slim box's own padding, and the box is wide
+   enough for it while it shows. */
+.nge-hl-panel--slim .nge-hl-loader-wrap { margin: 0 -10px; padding: 0 10px; }
+.nge-hl-panel--slim .nge-hl-loader-wrap--on { margin: 7px -10px -7px; min-width: 268px; }
 .nge-hl-close { margin-left: auto; background: none; border: none; color: rgba(255, 255, 255, 0.55); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-hl-close:hover { color: #fff; }
 .nge-hl-how { margin: 8px 0 10px; font-size: 12px; line-height: 1.45; color: rgba(220, 230, 245, 0.72); }
