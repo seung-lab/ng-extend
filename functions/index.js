@@ -1640,7 +1640,7 @@ const EW_SELF_TITLES = ["📊 Your Week in Science", "💙 Thank you, for scienc
 const ewErr = (status, msg) => Object.assign(new Error(msg), { status });
 
 exports.ewSecureWrite = onRequest(
-  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
+  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({error:"Input too large"});
@@ -1697,6 +1697,35 @@ exports.ewSecureWrite = onRequest(
           needAdmin();
           await sb(`notifications?id=eq.${Number(args.id)}`, { method: "DELETE" });
           out = { deleted: Number(args.id) };
+          break;
+        }
+        // Deploy from the Admin Hub (Ames 2026-10-05). The deploy workflow
+        // trusts nothing in the row by itself, so the approval is signed
+        // here, after the admin's sign-in was checked, with a key only this
+        // function and that workflow hold. It names the exact commit of the
+        // preview, the same as "good <build ID>" in Slack. Must match
+        // hubApprovalSignature in scripts/triage-policy.mjs.
+        case "triage.release": {
+          needAdmin();
+          if (!/^[0-9a-f-]{36}$/i.test(String(args.id))) throw ewErr(400, "bad id");
+          const mode = args.mode === "live_test" ? "live_test" : args.mode === "final" ? "final" : null;
+          if (!mode) throw ewErr(400, "bad mode");
+          const row = (await sb(`feedback_triage?id=eq.${args.id}&select=*`))[0];
+          if (!row || row.status !== "approved") throw ewErr(409, "This report is not approved");
+          if (!["testing", "failed"].includes(row.impl_state)) throw ewErr(409, "There is no tested preview waiting to go live");
+          const log = Array.isArray(row.feedback_log) ? row.feedback_log : [];
+          const preview = [...log].reverse().find(e => e.role === "preview");
+          if (!preview || !/^[0-9a-f]{40}$/.test(preview.sha || "")) throw ewErr(409, "No preview build to release");
+          if (String(args.shortSha || "").toLowerCase() !== preview.sha.slice(0, 12)) throw ewErr(409, "The preview changed. Refresh and test the new one");
+          const key = slackBotToken.value().trim();
+          const ts = (Date.now() / 1000).toFixed(6), by = who.email;
+          const hmac = text => crypto.createHmac("sha256", key).update(text).digest("hex");
+          const approval = { role: "release_approval", via: "admin_hub", sha: preview.sha, mode, ts, by,
+            sig: hmac([row.id, preview.sha, mode, ts, by].join("|")), keycheck: hmac("eyewire-hub-key-check").slice(0, 8) };
+          out = (await sb(`feedback_triage?id=eq.${row.id}`, { method: "PATCH", body: JSON.stringify({
+            feedback_log: [...log, approval], impl_state: mode === "final" ? "deploy_queued" : "live_test_queued",
+            tested_by: me?.display_name || by, tested_at: new Date().toISOString() }) }))[0];
+          await wakeWorkflow("slack-triage-bridge.yml", "admin hub release");
           break;
         }
         case "triage.update": {

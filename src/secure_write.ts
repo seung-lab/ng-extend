@@ -19,7 +19,7 @@ export function caveToken(): string | null {
 
 export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
-  | 'triage.update'
+  | 'triage.update' | 'triage.release'
   | 'pilot.task' | 'pilot.practice' | 'pilot.status'
   | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost';
 

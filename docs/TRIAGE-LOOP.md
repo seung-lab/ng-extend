@@ -37,6 +37,13 @@ answered by Claude without a rebuild. Every other reply is **saved as a note
 and nothing is rebuilt**, so "thanks, will test later" costs nothing. To ask
 for a change, start the reply with `change:`.
 
+**Deploying from the triage board.** A card with a tested preview has a
+**Deploy to the live site** button (and **Live test**), which does the same
+as replying `good <build ID>` in Slack. The server checks that you are an
+admin and signs the approval for that exact build; the deploy step verifies
+the signature before it touches the live site. Keeping or reverting a live
+test is still done in the Slack thread.
+
 **When the live site changed after your preview was built.** You do not
 test again. When you reply `good <build ID>`, the robot puts the approved
 change onto the current live code as it is (the same files, the same

@@ -1,6 +1,6 @@
 // Trusted coordinator. Never imports, executes or checks out model-produced code.
 import fs from 'node:fs';
-import {SHA,UUID,validateResult,approvedRelease,permittedPath} from './triage-policy.mjs';
+import {SHA,UUID,validateResult,approvedRelease,approvedHubRelease,permittedPath} from './triage-policy.mjs';
 import {replayOnto} from './triage-replay.mjs';
 const env=process.env,repo='seung-lab/ng-extend',base='eyewire-ii-community';
 const id=env.ROW_ID;
@@ -100,7 +100,11 @@ async function release() {
  const response=await fetch('https://slack.com/api/conversations.replies?'+params,{headers:{Authorization:'Bearer '+env.SLACK_BOT_TOKEN},redirect:'error',signal:AbortSignal.timeout(20000)});
  const thread=await response.json();if(!thread.ok)throw Error('Cannot independently verify Slack approval');
  const message=thread.messages.find(m=>m.ts===approval.ts),posted=thread.messages.find(m=>m.ts===preview?.ts);
- const sha=approvedRelease(current,message,preview,mode,(env.APPROVER_SLACK_IDS||'').split(','));
+ // Two proofs are accepted: the tester's own Slack reply, re-read here, or a
+ // signed approval from the Admin Hub.
+ const sha=approval.via==='admin_hub'
+  ?approvedHubRelease(current,approval,preview,mode,env.SLACK_BOT_TOKEN)
+  :approvedRelease(current,message,preview,mode,(env.APPROVER_SLACK_IDS||'').split(','));
  if(!posted?.bot_id||!posted.text.includes('Build: `'+sha+'`'))throw Error('Preview announcement does not match the build');
  const baseNow=await head(base);
  // When the approved commit was replayed onto a newer live branch (below),

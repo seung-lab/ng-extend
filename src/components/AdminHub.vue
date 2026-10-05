@@ -475,6 +475,27 @@ async function copyText(text: string) {
   catch { window.prompt('Copy this:', text); }
 }
 
+/** Deploy from the card: the server checks you are an admin and signs an
+ *  approval for this exact build, which the deploy workflow verifies. */
+async function releaseFromHub(row: TriageRow, mode: 'final' | 'live_test') {
+  if (triageActing.value) return;
+  const build = releaseBuildOf(row);
+  const ask = mode === 'final'
+    ? `Put build ${build} on the live site for everyone?`
+    : `Put build ${build} on the live site as a test? You then keep it or revert it in the Slack thread.`;
+  if (!build || !window.confirm(ask)) return;
+  triageActing.value = row.id;
+  triageError.value = '';
+  try {
+    await secureWrite('triage.release', { id: row.id, shortSha: build, mode });
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = `Could not start the deploy: ${e?.message ?? String(e)}`;
+  } finally {
+    triageActing.value = null;
+  }
+}
+
 async function setImplState(row: TriageRow, next: ImplState) {
   if (triageActing.value) return;
   triageActing.value = row.id;
@@ -1783,7 +1804,14 @@ function practiceWhen(iso: string | null) {
           <!-- Going live is approved in Slack only: the deploy checks the
                tester's exact reply there before it touches the live site. -->
           <div v-if="row.status === 'approved' && releaseBuildOf(row)" class="nge-triage-release">
-            <div class="nge-triage-release-why">To put this live, reply in its Slack thread with:</div>
+            <div class="nge-triage-release-why">Tested it? Put this exact build live from here:</div>
+            <div class="nge-triage-actions">
+              <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="releaseFromHub(row, 'final')"
+                      title="Deploys this build to the live community site. The same as replying good with the build ID in Slack.">🚀 Deploy to the live site</button>
+              <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="releaseFromHub(row, 'live_test')"
+                      title="Puts it on the live site as a test, for things only the live site can show. Keep or revert it in the Slack thread.">Live test</button>
+            </div>
+            <div class="nge-triage-release-why">Or reply in its Slack thread with:</div>
             <div class="nge-triage-release-row">
               <code>good {{ releaseBuildOf(row) }}</code>
               <button type="button" class="nge-admin-action-btn" @click="copyText('good ' + releaseBuildOf(row))">{{ copied === 'good ' + releaseBuildOf(row) ? 'Copied' : 'Copy' }}</button>
