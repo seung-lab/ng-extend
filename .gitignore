@@ -10,3 +10,6 @@ src/images/scythe_hero.png
 
 # Local Firebase deploy diagnostics
 firebase-debug*.log
+
+# EyeWire Radio: encoded tracks are built from the master WAVs (scripts/build-radio.mjs), not committed
+hosting/radio/*.m4a
