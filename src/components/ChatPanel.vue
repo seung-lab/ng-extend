@@ -333,11 +333,44 @@ function fitInputHeight() {
 watch(messageInput, () => nextTick(fitInputHeight));
 watch(isQuiet, () => nextTick(fitInputHeight));
 
+// ── Replies (Ames 2026-10-05) ──
+// Reply to a message: yours quotes it, the quote scrolls back to the
+// original, and its author is pinged the way an @mention pings.
+const replyingTo = ref<ChatMessage | null>(null);
+function startReply(msg: ChatMessage) {
+  replyingTo.value = msg;
+  nextTick(() => inputEl.value?.focus());
+}
+/** The words of a message, without its links, cut short for a quote. */
+function excerptOf(msg: ChatMessage | null | undefined, max = 70): string {
+  if (!msg) return '';
+  const text = msg.parts.filter(p => p.type !== 'sender' && p.type !== 'link').map(p => p.text).join('').replace(/\s+/g, ' ').trim();
+  const out = text || (msg.parts.some(p => p.type === 'link') ? 'a link' : '');
+  return Array.from(out).length > max ? Array.from(out).slice(0, max).join('').trimEnd() + '…' : out;
+}
+/** The message a reply points at, if it is among the loaded ones. */
+function repliedMsg(msg: ChatMessage): ChatMessage | null {
+  if (!msg.replyTo) return null;
+  return chatMessages.value.find(m => m.id === msg.replyTo) || null;
+}
+const flashedMsgId = ref<string | null>(null);
+let flashTimer = 0;
+function goToMessage(id: string | null | undefined) {
+  if (!id) return;
+  const el = document.querySelector<HTMLElement>(`.nge-chat-float [data-msg-id="${CSS.escape(String(id))}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  flashedMsgId.value = String(id);
+  clearTimeout(flashTimer);
+  flashTimer = window.setTimeout(() => { flashedMsgId.value = null; }, 1600);
+}
+
 // ── Send message ──
 function send() {
   const text = messageInput.value.trim();
   if (!text || messageTooLong.value) return;
-  chatStore.sendMessage(text);
+  chatStore.sendMessage(text, null, replyingTo.value?.id != null ? String(replyingTo.value.id) : null);
+  replyingTo.value = null;
   messageInput.value = '';
   mentionQuery.value = null;
   inputEl.value?.focus();
@@ -839,8 +872,15 @@ function toggleCollapse() {
                   <div v-else class="nge-chat-daily-empty">No edits in the last 24 hours yet. The top spot is wide open!</div>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private }"
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id) }"
+                     :data-msg-id="msg.id != null ? String(msg.id) : undefined"
                      :title="msg.private ? 'Only you can see this' : undefined">
+                  <!-- A reply: the message it answers, quoted above it. -->
+                  <button v-if="msg.replyTo && repliedMsg(msg)" class="nge-chat-quote" @click.stop="goToMessage(msg.replyTo)"
+                          title="Go to the message this replies to">
+                    <span class="nge-chat-quote-arrow" aria-hidden="true">↩</span><span class="nge-chat-quote-name">{{ shortName(repliedMsg(msg)?.name || '') }}</span><span class="nge-chat-quote-text">{{ excerptOf(repliedMsg(msg)) }}</span>
+                  </button>
+                  <span v-else-if="msg.replyTo" class="nge-chat-quote nge-chat-quote--gone"><span class="nge-chat-quote-arrow" aria-hidden="true">↩</span><span class="nge-chat-quote-text">an earlier message</span></span>
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
                   <button v-if="msg.rank === 'bot' && msg.name === 'Nurro'" class="nge-chat-msg-name nge-chat-nurro-name"
@@ -889,6 +929,7 @@ function toggleCollapse() {
                           @click.stop="deleteChatMessage(msg)">🗑</button>
                   <template v-if="msg.id != null && isLoggedIn">
                     <span class="nge-chat-react-add">
+                      <button v-if="msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-reply-btn" @click.stop="startReply(msg)" title="Reply">↩</button>
                       <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                               @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
                       <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
@@ -937,6 +978,11 @@ function toggleCollapse() {
 
         <!-- Input -->
         <div class="nge-chat-input-wrap">
+          <div v-if="replyingTo" class="nge-chat-replying">
+            <span class="nge-chat-quote-arrow" aria-hidden="true">↩</span>
+            <span class="nge-chat-replying-text">Replying to <b>{{ shortName(replyingTo.name) }}</b><span class="nge-chat-quote-text">{{ excerptOf(replyingTo, 48) }}</span></span>
+            <button class="nge-chat-replying-x" @click="replyingTo = null" title="Cancel the reply" aria-label="Cancel the reply">×</button>
+          </div>
           <div v-if="mentionOptions.length" class="nge-chat-mention-menu" role="listbox">
             <button v-for="(o, oi) in mentionOptions" :key="o.handle" class="nge-chat-mention-opt"
                     :class="{ 'nge-chat-mention-opt--active': oi === mentionIndex }" role="option"
@@ -1807,9 +1853,36 @@ function toggleCollapse() {
   border: 1px solid rgba(74, 158, 255, 0.25);
 }
 
+/* ── Replies ── */
+.nge-chat-quote {
+  display: flex; align-items: baseline; gap: 5px; width: 100%; min-width: 0;
+  margin: 0 0 1px; padding: 1px 6px 1px 7px; box-sizing: border-box;
+  background: rgba(74, 158, 255, 0.06); border: 0; border-left: 2px solid rgba(74, 158, 255, 0.45); border-radius: 0 4px 4px 0;
+  font: inherit; font-size: 0.86em; color: #8fa3bd; text-align: left; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+button.nge-chat-quote:hover { background: rgba(74, 158, 255, 0.13); border-left-color: #4a9eff; }
+.nge-chat-quote--gone { cursor: default; opacity: 0.7; }
+.nge-chat-quote-arrow { flex: none; color: #6fb1ff; }
+.nge-chat-quote-name { flex: none; font-weight: 600; color: #b8c9de; }
+.nge-chat-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nge-chat-msg--flash { animation: nge-chat-msg-flash 1.6s ease-out; border-radius: 4px; }
+@keyframes nge-chat-msg-flash { 0% { background: rgba(74, 158, 255, 0.28); box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.55); } 100% { background: transparent; box-shadow: 0 0 0 1px transparent; } }
+.nge-chat-replying {
+  display: flex; align-items: center; gap: 6px; margin: 0 0 4px; padding: 3px 6px 3px 8px;
+  background: rgba(74, 158, 255, 0.08); border-left: 2px solid #4a9eff; border-radius: 0 4px 4px 0;
+  font-size: 12px; color: #9fb3cc;
+}
+.nge-chat-replying-text { flex: 1; min-width: 0; display: flex; gap: 6px; overflow: hidden; white-space: nowrap; }
+.nge-chat-replying-text b { color: #dbe7f5; font-weight: 600; }
+.nge-chat-replying-x { flex: none; background: none; border: 0; color: #8fa3bd; font-size: 15px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.nge-chat-replying-x:hover { color: #fff; }
+.nge-chat-float--quiet .nge-chat-replying { display: none; }
+
 /* ── Reactions ── */
 .nge-chat-msg { position: relative; }
-.nge-chat-react-add { position: absolute; top: 1px; right: 2px; }
+.nge-chat-react-add { position: absolute; top: 1px; right: 2px; display: flex; gap: 3px; }
+.nge-chat-reply-btn { font-size: 12px; }
 .nge-chat-react-plus {
   opacity: 0;
   background: rgba(20, 26, 44, 0.95);

@@ -22,7 +22,7 @@ const columns = {
   site_issues: 'id,category,message,url,dataset,user_id,user_name,created_at,screenshot_url,console_log',
   user_groups: 'id,name,description,color,created_at,created_by',
   user_group_members: 'id,group_id,user_id,added_at,added_by',
-  chat_messages: 'id,user_id,name,rank,text,created_at,dataset,notification_id',
+  chat_messages: 'id,user_id,name,rank,text,created_at,dataset,notification_id,reply_to',
   // Emoji reactions on chat messages. Public, like the messages themselves.
   chat_reactions: 'id,message_id,user_id,name,emoji,created_at',
   // A player's own app settings (toolbar, mutes, dataset start views), so
@@ -46,7 +46,7 @@ const writable = {
   user_groups: 'name,description,color',
   user_group_members: 'group_id,user_id',
   site_issues: 'category,message,url,dataset,screenshot_url,console_log',
-  chat_messages: 'text,dataset,notification_id',
+  chat_messages: 'text,dataset,notification_id,reply_to',
   chat_reactions: 'message_id,emoji',
   user_settings: 'settings,updated_at',
   user_views: 'dataset,state,updated_at',
@@ -222,6 +222,7 @@ function authorizeData(input, ctx) {
     if (table === 'chat_messages') {
       if (typeof row.text !== 'string' || !row.text.trim() || row.text.length > 5000) fail(400,'Message must contain 1–5000 characters.');
       if (row.notification_id != null && !ctx.isAdmin) fail(403,'Official announcements require an admin.');
+      if (row.reply_to != null && (typeof row.reply_to !== 'string' || !UUID.test(row.reply_to))) fail(400,'Unknown message to reply to.');
       row.name=me.username || me.display_name || 'Player'; row.rank=ctx.isAdmin?'admin':'player'; row.user_id=own();
       row.dataset=typeof row.dataset==='string'?row.dataset.slice(0,128):null;
     }

@@ -1,6 +1,6 @@
 # To-do
 
-## Chat: reply to a message (parked, Ames 2026-09-28)
+## Chat: reply to a message (BUILT 2026-10-05; needs supabase-chat-replies.sql, then the ewCommunityData function, then the app)
 
 Click a message to reply: the reply quotes it (name plus a short excerpt,
 clickable to scroll back to the original) and pings the original author the

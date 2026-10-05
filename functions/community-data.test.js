@@ -184,3 +184,9 @@ test('blog: public reads published only; only listed authors write',()=>{
  assert.equal(plan('blog_posts','POST','',{...post,cover_url:'https://connectome.quest/assets/images/blog/x.webp'},author).body.cover_url,'https://connectome.quest/assets/images/blog/x.webp');
  assert.throws(()=>plan('blog_posts','POST','',{...post,status:'live'},author),/status/);
 });
+test('a chat reply may point at a message id and nothing else',()=>{
+ const p=plan('chat_messages','POST','',{text:'yes!',reply_to:b});
+ assert.equal(JSON.stringify(p.body??p.rows).includes(`"reply_to":"${b}"`),true);
+ assert.throws(()=>plan('chat_messages','POST','',{text:'yes!',reply_to:'not-an-id'}),/reply to/);
+ assert.equal(plan('chat_messages','GET','select=id,text,reply_to',undefined,anon).query.get('select'),'id,text,reply_to');
+});
