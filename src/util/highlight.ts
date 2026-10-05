@@ -226,8 +226,41 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
       relatedSegments: undefined,
     }, true).dispose();
   }
+  setLatestMark(mark);
   return pts.length;
 }
+
+// ── The newest mark stands out (Annkri 2026-10-04) ──────────────────────
+// "Another colour on the latest highlight you made, might make it easier to
+// catch mistakes, if you clicked too far apart." The mark made last in this
+// session is drawn lighter than the rest, on the cell and in the annotation
+// list, until the next mark, an undo of it, or the panel closing. It is not
+// saved: a reloaded or shared view has no "latest".
+let latestMark: string | null = null;
+/** How far the newest mark's colour is pulled toward white. */
+const LATEST_LIFT = 0.6;
+function setLatestMark(mark: string | null) {
+  if (latestMark === mark) return;
+  latestMark = mark;
+  let style = document.getElementById('nge-hl-latest') as HTMLStyleElement | null;
+  if (!mark) { style?.remove(); scheduleTint(); return; }
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'nge-hl-latest';
+    document.head.appendChild(style);
+  }
+  // Mark ids are hl_ plus base 36 digits, so they are safe inside a selector.
+  const rows = `.neuroglancer-annotation-list-entry[data-nge-id^="${mark}_"]`;
+  style.textContent =
+    `${rows} { background: rgba(255, 255, 255, 0.09) !important; box-shadow: inset 3px 0 0 #fff !important; }\n` +
+    `${rows} .neuroglancer-annotation-icon { color: #fff !important; text-shadow: 0 0 6px #fff !important; }\n` +
+    '';
+  scheduleTint();
+}
+// For checking from the console and in tests (like __ngeHighlightTint).
+(window as any).__ngeHighlightSetLatest = setLatestMark;
+/** Forget the newest mark (the Highlight panel closing). */
+export function clearLatestHighlight() { setLatestMark(null); }
 
 /** Every mark in the view, oldest first, read back from the layers
  *  themselves (so marks restored from a saved view count too). */
@@ -260,11 +293,13 @@ export function undoHighlight(): boolean {
   const last = marks[marks.length - 1];
   if (!last) return false;
   removeIds(last.style, last.ids);
+  if (last.mark === latestMark) setLatestMark(null);
   return true;
 }
 
 export function clearHighlights() {
   for (const m of listHighlights()) removeIds(m.style, m.ids);
+  setLatestMark(null);
 }
 
 // ── Surface tint (stage 3, the geometric way) ────────────────────────────
@@ -294,15 +329,19 @@ function buildTint(): NgeMeshTint | null {
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).slice(0, 3).map(x => x / 1e-9);
   if (scalesNm.length < 3) return null;
   // Every stroke segment, in nanometres.
-  const segs: { a: number[]; b: number[]; rgb: number[] }[] = [];
+  const segs: { a: number[]; b: number[]; rgb: number[]; latest?: boolean }[] = [];
   for (const { managed, src, style } of highlightLayers()) {
     if (managed.visible === false) continue;
     const rgb = hexRgb(style.color);
+    // The newest mark, lifted toward white so it reads apart from older ones.
+    const rgbLatest = rgb.map(c => Math.round(c + (255 - c) * LATEST_LIFT));
+    const latestPrefix = latestMark ? `${latestMark}_` : null;
     for (const ann of src) {
       if (ann.type !== LINE || !String(ann.id).startsWith(ID_PREFIX)) continue;
+      const isLatest = latestPrefix !== null && String(ann.id).startsWith(latestPrefix);
       segs.push({
         a: [0, 1, 2].map(i => ann.pointA[i] * scalesNm[i]),
-        b: [0, 1, 2].map(i => ann.pointB[i] * scalesNm[i]), rgb,
+        b: [0, 1, 2].map(i => ann.pointB[i] * scalesNm[i]), rgb: isLatest ? rgbLatest : rgb, latest: isLatest,
       });
     }
   }
@@ -320,6 +359,9 @@ function buildTint(): NgeMeshTint | null {
   const [nx, ny, nz] = dims;
   const data = new Uint8Array(nx * ny * nz * 4);
   const soft = Math.max(cell, r * 0.3);   // feathered edge
+  // The newest mark is painted last, so where it overlaps an older mark its
+  // lighter colour is the one that shows.
+  segs.sort((x, y) => Number(!!x.latest) - Number(!!y.latest));
   for (const s of segs) {
     const { a, b, rgb } = s;
     const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
@@ -340,7 +382,8 @@ function buildTint(): NgeMeshTint | null {
           if (dist >= r) continue;
           const alpha = Math.min(1, (r - dist) / soft);
           const A = Math.round(alpha * 255);
-          if (A <= data[o + 3]) continue;   // the strongest mark wins a cell
+          // The strongest mark wins a cell; the newest wins a tie.
+          if (s.latest ? A < data[o + 3] : A <= data[o + 3]) continue;
           data[o] = Math.round(rgb[0] * alpha);
           data[o + 1] = Math.round(rgb[1] * alpha);
           data[o + 2] = Math.round(rgb[2] * alpha);

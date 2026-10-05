@@ -1675,6 +1675,8 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
     const element = document.createElement('div');
     element.classList.add('neuroglancer-annotation-list-entry');
     element.dataset.color = state.displayState.color.toString();
+    // EyeWire II: Highlight mode styles the rows of its newest mark by id.
+    element.dataset.ngeId = String(annotation.id);
     element.style.setProperty('--nge-ann-color', serializeColor(state.displayState.color.value));
     element.style.gridTemplateColumns = gridTemplate;
     const icon = document.createElement('div');

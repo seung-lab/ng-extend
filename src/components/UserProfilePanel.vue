@@ -954,7 +954,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
           <!-- Edits stats -->
           <div class="nge-profile-section nge-profile-section--edits">
-            <div class="nge-profile-section-label">▌ Edits</div>
+            <!-- Ames 2026-10-05: these count edits made in the game only.
+                 A player with months of earlier work elsewhere read a small
+                 number here as their work having gone missing. -->
+            <div class="nge-profile-section-label"
+                 title="Splits and merges you made in EyeWire II on this dataset. Edits made in other tools, or before you joined EyeWire II, are not counted.">▌ Edits in EyeWire II</div>
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" v-for="(col, i) in [
                 {label:'Today',    val:overviewEdits.today.edits, merges:overviewEdits.today.merges, splits:overviewEdits.today.splits},

@@ -8,7 +8,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { startLoader, type Live } from '../find_path_status';
 import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, showStartMarker, showEndMarker, clearStartMarker, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -290,6 +290,7 @@ onBeforeUnmount(() => {
   if (traceTimer) clearInterval(traceTimer);
   document.body.classList.remove('nge-hl-tracing');
   clearStartMarker(true);
+  clearLatestHighlight();
   document.body.classList.remove('nge-highlight-armed');
 });
 </script>
