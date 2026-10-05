@@ -1855,7 +1855,7 @@ exports.ewCommunityData = onRequest(
       // by the browser. Once the database function is installed: log rows go
       // through it (this route is how app versions from before the change
       // still report), and counters are dropped from profile writes.
-      if ((plan.table === "edit_log" || plan.table === "users") && plan.method !== "DELETE" && await serverCounts(ewRpc(key))) {
+      if ((plan.table === "edit_log" || plan.table === "users") && ["POST","PATCH"].includes(plan.method) && plan.body != null && await serverCounts(ewRpc(key))) {
         const rows = Array.isArray(plan.body) ? plan.body : [plan.body];
         if (plan.table === "edit_log") {
           if (rows.length > 20) throw ewErr(400, "Invalid row count");
