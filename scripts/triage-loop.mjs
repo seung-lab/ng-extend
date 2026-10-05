@@ -234,7 +234,7 @@ async function ready() {
       ? `📝 Notes added while Claude was building are NOT in this preview:\n${lateNotes.map(n => `> ${n.text.slice(0, 200)}`).join('\n')}\nReply *rebuild* to include them, or test it as is.`
       : null,
     `Build: \`${env.COMMIT_SHA}\``,
-    `After testing, reply exactly *good ${env.COMMIT_SHA.slice(0,12)}* to deploy, or *ship to test ${env.COMMIT_SHA.slice(0,12)}* for a live test. A question ending in *?* asks for help; *note: ...* saves context; describe a problem to request changes.`,
+    `After testing, reply exactly *good ${env.COMMIT_SHA.slice(0,12)}* to deploy, or *ship to test ${env.COMMIT_SHA.slice(0,12)}* for a live test. A question ending in *?* asks for help; *note: ...* saves context; *change: ...* asks Claude for a fix. Any other reply is only saved as a note. <https://connectome.quest/admin/#exact-replies|All replies>`,
   ].filter(Boolean).join('\n'));
   await patchRow(row.id, {
     impl_state: 'testing', preview_url: url, impl_summary: summaryFirstLine() || null,
@@ -308,7 +308,7 @@ async function deployed() {
 /** Merged live so the tester can try it on real data; they still decide. */
 async function live() {
   const row = await getRow(env.ROW_ID);
-  const ts = await say(row, `🧪 It's live for your real-data test: ${LIVE_URL}\n${tag(testerOf(row))} reply *good* to keep it, *revert* (or what's wrong) to undo it, or ask a question. I'll tag you every 10 minutes until you do.`);
+  const ts = await say(row, `🧪 It's live for your real-data test: ${LIVE_URL}\n${tag(testerOf(row))} reply *good* to keep it, *revert* to undo it, *change: what is wrong* to record a problem, or ask a question. I'll tag you every 10 minutes until you do.`);
   await patchRow(row.id, {
     impl_state: 'live_testing', last_nag_at: new Date().toISOString(), nag_count: 0,
     ...(env.MERGE_SHA ? { impl_run_url: `https://github.com/seung-lab/ng-extend/commit/${env.MERGE_SHA}` } : {}),
@@ -324,7 +324,7 @@ async function reverted() {
   const back = log.some(e => e.fix_after_revert && Number(e.ts) > Number(preview?.ts || 0));
   const ts = await say(row, back
     ? `↩️ Reverted: the live site is back to how it was. Claude is working on your note now; a new preview will follow here.`
-    : `↩️ Reverted: the live site is back to how it was. ${tag(testerOf(row))} reply here with what to change and Claude will try again, or dismiss it in the Admin Hub.`);
+    : `↩️ Reverted: the live site is back to how it was. ${tag(testerOf(row))} reply *change: what to fix* and Claude will try again, or dismiss it in the Admin Hub.`);
   await patchRow(row.id, { impl_state: back ? 'changes_requested' : 'failed', ...(ts ? { last_reply_ts: ts } : {}) });
 }
 

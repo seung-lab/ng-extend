@@ -420,7 +420,7 @@ const TRIAGE_STATE_WORDS = {
   queued: "approved, waiting for Claude to start (the bridge checks every 10 minutes)",
   implementing: "Claude is building it right now in GitHub Actions",
   needs_info: "Claude asked a question in the thread and is waiting for the tester's answer",
-  testing: "the fix is on a preview site; the tester has to reply good <build ID>, ship to test <build ID>, a question, or what's wrong",
+  testing: "the fix is on a preview site; the tester has to reply good <build ID>, ship to test <build ID>, a question, or change: what to fix (any other reply is only saved as a note, so nothing rebuilds by accident)",
   changes_requested: "the tester sent it back; Claude is about to rebuild",
   answer_queued: "the tester asked a question; Claude is about to answer",
   answering: "Claude is answering the tester's question",

@@ -612,17 +612,25 @@ function ruleIntent(text, state) {
   // else goes to Claude as before.
   const failedRelease = state === 'failed' && releaseCommand(text);
   if (failedRelease && failedRelease.mode !== 'revert') return { intent: { final: 'good', live_test: 'ship_to_test' }[failedRelease.mode], command: failedRelease };
-  if (state === 'failed') return /^retry\b/i.test(text) ? { intent: 'retry' } : { intent: 'answer', for_claude: text };
+  // A rebuild costs real money (Ames 2026-10-04), so only an explicit
+  // "change: ..." sends words to Claude. Anything else is kept as a note.
+  const change = text.match(/^(?:change|fix|changes)\s*:\s*([\s\S]+)$/i);
+  const NOTE_HINT = '📝 Saved as a note; nothing is rebuilding. To ask Claude for a change, start your reply with *change:*';
+  if (state === 'failed') {
+    if (/^retry\b/i.test(text)) return { intent: 'retry' };
+    return change ? { intent: 'answer', for_claude: change[1].trim() } : { intent: 'note', for_claude: text, reply: `${NOTE_HINT} (or reply *retry* to run the failed step again).` };
+  }
   if (/^note\b\s*:?/i.test(text)) return { intent: 'note', for_claude: text.replace(/^note\b\s*:?\s*/i, '') };
   const command = releaseCommand(text);
   if (command && ((state === 'testing' && command.mode !== 'revert') || (state === 'live_testing' && command.mode !== 'live_test'))) return {intent: {final:'good',live_test:'ship_to_test',revert:'revert'}[command.mode], command};
   // Free-form text never authorizes production deployment.
-  if (/^(good|looks good|lgtm)\b/i.test(text)) return { intent: 'note', for_claude: text };
+  if (/^(good|looks good|lgtm)\b/i.test(text)) return { intent: 'note', for_claude: text, reply: 'Glad it looks good. That alone deploys nothing: to put it live, reply with the exact *good <build ID>* from the preview announcement.' };
   if (state === 'testing' && /^rebuild\W*$/i.test(text)) return { intent: 'rebuild' };
   if (/^(ship to test|test (it )?live|test on live)\b/i.test(text)) return { intent: 'note', for_claude: text };
   if (/\?\s*$/.test(text)) return { intent: 'question', for_claude: text };
   if (/^revert\W*$/i.test(text)) return { intent: 'note', for_claude: text };
-  return { intent: 'change', for_claude: text };
+  if (change) return { intent: 'change', for_claude: change[1].trim() };
+  return { intent: 'note', for_claude: text, reply: `${NOTE_HINT}.` };
 }
 
 /**
@@ -716,6 +724,47 @@ async function stopRequests() {
     stopped++;
   }
   return stopped;
+}
+/**
+ * "shipped" in a thread closes a report that was fixed outside the robot
+ * (by hand, or by another session): the row is marked done, any running
+ * build is cancelled, and the done sweep posts "Change shipped" and sends
+ * the reporter their thank-you. "shipped: what changed" says what was built.
+ * Also works on a report dismissed in the last few days, since that is how a
+ * hand fix usually got closed before this existed (Ames 2026-10-04).
+ */
+const SHIPPED_CMD = /^(?:shipped|fixed)\s*(?:$|[.!]+\s*$|[-:,]\s*(.*)$)/is;
+async function shippedRequests() {
+  const recent = encodeURIComponent('"' + new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString() + '"');
+  const res = await sb(`feedback_triage?slack_ts=not.is.null&done_slack_ts=is.null&or=(status.in.(proposed,approved),and(status.eq.dismissed,reviewed_at.gte.${recent}))&select=*`);
+  if (!res.ok) { console.warn(`[bridge] shipped check skipped (${res.status})`); return 0; }
+  let closed = 0;
+  for (const row of await res.json()) {
+    if (row.impl_state === 'deploying' || row.impl_state === 'deployed') continue;
+    let thread;
+    try { thread = await slackGet('conversations.replies', { channel: CHANNEL, ts: row.slack_ts, limit: 200 }); }
+    catch (e) { continue; }
+    const since = Number(row.decision_slack_ts || row.slack_ts || 0);
+    const m = (thread.messages ?? []).find(x => Number(x.ts) > since && !x.bot_id && x.subtype !== 'bot_message'
+      && APPROVERS.includes(x.user) && SHIPPED_CMD.test(plainText(x.text)));
+    if (!m) continue;
+    const what = (plainText(m.text).match(SHIPPED_CMD)[1] || '').trim().replace(/[.\s]+$/, '')
+      || String(row.impl_summary || '').split('\n')[0].trim().replace(/[.\s]+$/, '') || 'Fixed by the team';
+    const cancelled = await cancelRun(row);
+    const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
+    log.push({ user: m.user, text: m.text, ts: m.ts, role: 'shipped_by_hand' });
+    const now = new Date().toISOString();
+    await patchRow(row.id, {
+      status: 'done', impl_state: 'deployed', tested_by: `slack:${m.user}`, tested_at: now,
+      reviewed_by: row.reviewed_by || `slack:${m.user}`, reviewed_at: row.reviewed_at || now,
+      // "(tested ...)" is dropped from the reporter's note by fixText.
+      result_note: `${what}. (tested and shipped by hand, confirmed by <@${m.user}>).`,
+      feedback_log: log, last_reply_ts: m.ts, decision_slack_ts: m.ts,
+    });
+    console.log(`[bridge] ${row.id} marked shipped by ${m.user}${cancelled ? ' (run cancelled)' : ''}`);
+    closed++;
+  }
+  return closed;
 }
 const WAITING = ['testing', 'live_testing', 'needs_info', 'failed'];
 
@@ -837,7 +886,7 @@ async function pollThreads() {
           break;
         case 'revert':
           next = 'revert_queued';
-          reply = `${reply ? reply + ' ' : ''}Taking it off the live site now. Then tell me here what to change, or dismiss it in the Admin Hub.`;
+          reply = `${reply ? reply + ' ' : ''}Taking it off the live site now. Then reply *change: what to fix* for a new build, or dismiss it in the Admin Hub.`;
           break;
         case 'change':
         default:
@@ -864,8 +913,8 @@ async function pollThreads() {
       const text = state === 'needs_info'
         ? `⏰ <@${tester}> reminder ${n}: Claude is waiting on your answer to its question above. Just reply here in your own words (or ask someone else to take it).`
         : state === 'live_testing'
-          ? `⏰ <@${tester}> reminder ${n}: this is live for your test at ${LIVE_URL}. Use the exact *good <build ID>* or *revert <build ID>* command from the preview announcement, or describe a problem.`
-          : `⏰ <@${tester}> reminder ${n}: please test ${row.preview_url || 'the preview'}. Use the exact *good <build ID>* or *ship to test <build ID>* command from its announcement, ask a question, or describe a problem.`;
+          ? `⏰ <@${tester}> reminder ${n}: this is live for your test at ${LIVE_URL}. Use the exact *good <build ID>* or *revert <build ID>* command from the preview announcement, or reply *change: what is wrong*.`
+          : `⏰ <@${tester}> reminder ${n}: please test ${row.preview_url || 'the preview'}. Use the exact *good <build ID>* or *ship to test <build ID>* command from its announcement, ask a question, or reply *change: what to fix*.`;
       const posted = await say(row, text);
       await patchRow(row.id, { last_nag_at: new Date().toISOString(), nag_count: n, last_reply_ts: posted.ts });
       nagged++;
@@ -1013,6 +1062,7 @@ let LOOP = false;
   }
   const posted = await postProposals();
   const halted = COLS ? await stopRequests().catch(e => { console.warn('[bridge] stop check failed:', e.message); return 0; }) : 0;
+  if (COLS) await shippedRequests().catch(e => console.warn('[bridge] shipped check failed:', e.message));
   const acted = await readApprovals();
   let echoed = 0, started = 0, nagged = 0;
   if (COLS) echoed = await echoAppDecisions();

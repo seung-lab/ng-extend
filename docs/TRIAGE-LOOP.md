@@ -1,8 +1,9 @@
 # The triage loop: from a user report to a tested, live fix
 
-Set up 25 September 2026. Every automated step runs on Amy's Princeton
-Claude subscription (amylr@princeton.edu) through the
-`CLAUDE_CODE_OAUTH_TOKEN` repo secret.
+Set up 25 September 2026. Since 1 October 2026 every automated step runs on
+Amy's own Anthropic API key (the `ANTHROPIC_API_KEY` repo secret, prepaid
+credit). Moving it back to the Princeton Claude subscription
+(amylr@princeton.edu, `CLAUDE_CODE_OAUTH_TOKEN`) is on the to do list.
 
 ## Exact replies
 
@@ -20,19 +21,28 @@ shows the same commands with a Copy button.
 | `ship to test <build ID>` | a preview is up | Puts it on the live site as a test, for things only the live site can show. |
 | `good <build ID>` | it is live as a test | Keeps it live and closes the report. |
 | `revert <build ID>` | it is live as a test | Takes it off the live site. |
+| `change: your words` | a preview is up, a step failed, or it is live as a test | Sends your words to Claude and starts a new build. This is the only way to ask for a change: it costs a Claude run, so nothing else starts one. |
 | `rebuild` | a preview is up | Builds again with everything said in the thread. |
 | `retry` | a step failed | Runs the failed step again. After a failed deploy, `good <build ID>` also works. |
 | `note: your words` | a preview is up | Saved for Claude's next attempt. Nothing is rebuilt. |
+| `shipped` | anytime | Closes a report that was fixed by hand, outside the robot: marks it done, cancels any running build, posts "Change shipped" and sends the reporter their thank you. Say what was built after a colon: `shipped: annotations now clear on complete`. Works on a report dismissed in the last 4 days too. |
 | `stop` | anytime, except while live as a test | Ends all work on the report and stops the reminders. `cancel`, `close` and `dismiss` do the same. A reason can follow a colon: `stop: already fixed`. |
 | `hand off @name` | a preview or question is waiting | Makes that approver the tester. Start the message with `hand off`, `reassign` or `pass`. |
 | `update sender` | anytime | Drafts a note to the person who sent the report. `update reporter` and `update submitter` are the same. Nothing is sent yet. |
 | `send update` | after a draft | Sends the draft to them as an in-game notification. |
 | `update: your words` | anytime | Sends your own words to them. |
 
-Anything else is not a command. While a preview is up, a reply that ends
-with a question mark is answered by Claude without a rebuild, and any other
-reply is read as a change request and **starts a new build**. So to leave a
-remark without rebuilding, start it with `note:`.
+Anything else is not a command. A reply that ends with a question mark is
+answered by Claude without a rebuild. Every other reply is **saved as a note
+and nothing is rebuilt**, so "thanks, will test later" costs nothing. To ask
+for a change, start the reply with `change:`.
+
+**When the live site changed after your preview was built.** You do not
+test again. When you reply `good <build ID>`, the robot puts the approved
+change onto the current live code as it is (the same files, the same
+contents, no Claude run) and deploys once. Only when the live code changed
+one of the very files your fix touches does it rebuild and ask you to test
+the new preview.
 
 ## What happens
 
@@ -77,19 +87,19 @@ is taken as a change request for Claude.
 | Claude asked a question | answer it | `gold, not lemon yellow` | Claude carries on with your answer |
 | Preview is up | ship it | `good <build ID>` | merged and deployed live. A bare `good` is only a note |
 | | ask about it | `where do I click to see it?` | Claude answers from what it built; nothing is rebuilt |
-| | ask for changes | `works, but the yellow is too bright` | Claude fixes it and posts a new preview |
+| | ask for changes | `change: the yellow is too bright` | Claude fixes it and posts a new preview |
 | | add details without a rebuild | `note: Celia prefers amber` | saved for Claude's next attempt |
 | | build again now | `rebuild` | a new build with everything in the thread |
 | | test on the live site | `ship to test <build ID>` | goes live for a real-data test (sync jobs, Cloud Functions, what other users see) |
 | Live test | keep it | `good <build ID>` | stays live, row closed |
-| | take it off | `revert <build ID>` | the live site goes back; say what to change and Claude tries again |
-| | report a problem | `it broke the tag panel` | taken off the live site first, then back to Claude |
+| | take it off | `revert <build ID>` | the live site goes back; reply `change: ...` and Claude tries again |
+| | report a problem | `change: it broke the tag panel` | recorded; reply `revert <build ID>` to take it off the live site, then Claude builds the correction |
 | Anytime | stop everything (already fixed, duplicate, changed your mind) | `stop`, `dismiss`, `cancel`, `close it`, or `stop: already fixed` as the whole reply | any running build is cancelled, nobody is tagged again, the row shows as dismissed in the Admin Hub (approve it there to restart). **Dismiss** in the Admin Hub does the same, at any stage before it goes live. Only an approver or the tester can stop. Not while it is on the live site as a test: `revert` first. Do not start it with @Amy's Claude, which is the Q&A bot |
 | | pass the testing on | `hand off to @Celia` | that person becomes the tester and gets the reminders |
 | | leave a remark | `note: will test after lunch` | saved, nothing rebuilds. Without `note:` it would be read as a change request |
 | | tell the person who reported it | `update sender`, then `send update` or `update: your words` | they get an in-game notification |
 | Something failed | try again | `retry` | the failed step runs again |
-| | correct it | `it's in ExtensionBar.vue, not the settings panel` | Claude tries again with that |
+| | correct it | `change: it's in ExtensionBar.vue, not the settings panel` | Claude tries again with that |
 
 Comments from other people in the thread are passed to Claude as background,
 but only the tester moves a fix forward (an approver can also answer Claude,

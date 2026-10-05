@@ -1,6 +1,7 @@
 // Trusted coordinator. Never imports, executes or checks out model-produced code.
 import fs from 'node:fs';
 import {SHA,UUID,validateResult,approvedRelease,permittedPath} from './triage-policy.mjs';
+import {replayOnto} from './triage-replay.mjs';
 const env=process.env,repo='seung-lab/ng-extend',base='eyewire-ii-community';
 const id=env.ROW_ID;
 if(!UUID.test(id||''))throw Error('Invalid triage row UUID');
@@ -102,24 +103,40 @@ async function release() {
  const sha=approvedRelease(current,message,preview,mode,(env.APPROVER_SLACK_IDS||'').split(','));
  if(!posted?.bot_id||!posted.text.includes('Build: `'+sha+'`'))throw Error('Preview announcement does not match the build');
  const baseNow=await head(base);
+ // When the approved commit was replayed onto a newer live branch (below),
+ // that replayed commit is what is live.
+ const replay=[...log].reverse().find(e=>e.role==='replayed'&&e.of===sha&&SHA.test(e.sha)&&SHA.test(e.base_sha));
  if(mode==='revert') {
   // Do not undo unrelated releases made after this live test.
-  if(baseNow!==sha)throw Error('Live site changed after this test; a reviewed revert is required');
-  const old=await gh('git/commits/'+preview.base_sha);
-  const reverted=await gh('git/commits',{message:'Revert triage '+id.slice(0,8)+' after tester request',tree:old.tree.sha,parents:[sha]});
+  const liveSha=replay?replay.sha:sha;
+  if(baseNow!==liveSha)throw Error('Live site changed after this test; a reviewed revert is required');
+  const old=await gh('git/commits/'+(replay?replay.base_sha:preview.base_sha));
+  const reverted=await gh('git/commits',{message:'Revert triage '+id.slice(0,8)+' after tester request',tree:old.tree.sha,parents:[liveSha]});
   await gh('git/refs/heads/'+base,{sha:reverted.sha,force:false},'PATCH');
   await deploy(reverted.sha,base);out('merge_sha',reverted.sha);out('next','reverted');return;
  }
  if(await head(branch)!==sha)throw Error('Preview branch changed after approval');
- if(baseNow===sha&&mode==='final') {
-  await deploy(sha,base);out('merge_sha',sha);out('next','deployed');return;
- }
- if(baseNow!==preview.base_sha) {
-  await sb('feedback_triage?id=eq.'+id,{impl_state:'changes_requested',tested_by:null,tested_at:null});
-  out('next','stale');console.log('Base changed; rebuilding a new preview for approval.');return;
+ // Merged on an earlier try whose deploy then failed: deploy, do not rebuild.
+ if(mode==='final'&&(baseNow===sha||(replay&&baseNow===replay.sha))) {
+  await deploy(baseNow,base);out('merge_sha',baseNow);out('next','deployed');return;
  }
  const comparison=await gh('compare/'+preview.base_sha+'...'+sha);
- if(comparison.total_commits!==1||comparison.files.some(f=>!permittedPath(f.filename)))throw Error('Candidate changes exceed automatic triage scope');
+ if(comparison.total_commits!==1||comparison.files.some(f=>!permittedPath(f.filename)||(f.previous_filename&&!permittedPath(f.previous_filename))))throw Error('Candidate changes exceed automatic triage scope');
+ if(baseNow!==preview.base_sha) {
+  // The live branch moved after the preview was built. Replay the approved
+  // change onto it when that is safe (triage-replay.mjs): no model run, no
+  // second preview, no second test. A real overlap goes back for a rebuild
+  // and a fresh approval.
+  const replayed=await replayOnto(gh,{sha,baseOld:preview.base_sha,baseNow,comparison});
+  if(!replayed) {
+   await sb('feedback_triage?id=eq.'+id,{impl_state:'changes_requested',tested_by:null,tested_at:null});
+   out('next','stale');console.log('The live branch changed the same files; rebuilding a new preview for approval.');return;
+  }
+  await sb('feedback_triage?id=eq.'+id,{feedback_log:[...log,{role:'replayed',of:sha,sha:replayed.sha,base_sha:baseNow,ts:String(Date.now()/1000)}]});
+  await gh('git/refs/heads/'+base,{sha:replayed.sha,force:false},'PATCH');
+  console.log('The live branch had moved; replayed the approved change onto it without a rebuild.');
+  await deploy(replayed.sha,base);out('merge_sha',replayed.sha);out('next',mode==='live_test'?'live':'deployed');return;
+ }
  await gh('git/refs/heads/'+base,{sha,force:false},'PATCH');
  await deploy(sha,base);out('merge_sha',sha);out('next',mode==='live_test'?'live':'deployed');
 }
