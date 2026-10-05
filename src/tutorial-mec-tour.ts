@@ -16,6 +16,7 @@ import { Step } from "./store-pyr";
 import { useLayersStore } from "./store";
 import { CAVE_CONFIGS_BY_DATASET } from "./config";
 import { setStatedColor } from "./widgets/widget_utils";
+import mecHero from "../static/images/datasets/mec-welcome.jpg";
 import { MEC_CELL_TYPES_STATE } from "./data/mec_cell_types_state";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -179,12 +180,19 @@ They merge easily with their neighbours in the segmentation, so a clean one is a
 export const steps: Step[] = [
   {
     title: "Welcome to MEC",
-    text: `This is the **medial entorhinal cortex**, the part of the brain that holds its map of space.
-
-Before you start mapping, meet the cells you will find here. There are seven, one at a time. Drag to rotate each one and scroll to zoom.`,
+    // Hero on top, copy below, the same frame as the Site Tour welcome.
+    html: `
+<div class="nge-tour-welcome">
+  <div class="nge-tour-welcome-hero">
+    <img src="${mecHero}" alt="The MEC volume" />
+  </div>
+  <div class="nge-tour-welcome-body">
+    <p>This is the <strong>medial entorhinal cortex</strong>, the part of the brain that holds its map of space.</p>
+    <p>Before you start mapping, meet the seven kinds of cell you will find here, one at a time. Drag to rotate each one and scroll to zoom.</p>
+  </div>
+</div>`,
     position: MIDDLE,
-    modal: true,
-    width: "460px",
+    width: "480px",
     nextLabel: "Meet the cells",
     onEnter: ensureStage,
   },
