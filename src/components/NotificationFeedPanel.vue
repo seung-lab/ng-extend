@@ -144,6 +144,39 @@ function closeDetail() {
   openNotif.value = null;
 }
 
+// Weekly Champions: a name opens that player's profile (Ames 2026-10-05).
+// The broadcast carries names only, so they are matched to players here,
+// once, when a champions broadcast is opened. A name two players share, or
+// one that has since changed, simply is not a link.
+const championIds = ref<Record<string, string>>({});
+let championIdsLoaded = false;
+async function loadChampionIds() {
+  if (championIdsLoaded) return;
+  championIdsLoaded = true;
+  try {
+    const { supabase } = await import('../supabase');
+    const { data, error } = await supabase.from('user_edit_counts').select('id, display_name').limit(10000);
+    if (error || !data) { championIdsLoaded = false; return; }
+    const seen: Record<string, string | null> = {};
+    for (const r of data as any[]) {
+      const k = String(r.display_name || '').trim().toLowerCase();
+      if (!k) continue;
+      seen[k] = k in seen ? null : String(r.id);
+    }
+    const out: Record<string, string> = {};
+    for (const k in seen) if (seen[k]) out[k] = seen[k] as string;
+    championIds.value = out;
+  } catch { championIdsLoaded = false; }
+}
+const championId = (name: string) => championIds.value[String(name || '').trim().toLowerCase()] || '';
+function openChampion(name: string) {
+  const userId = championId(name);
+  if (!userId) return;
+  closeDetail();
+  emit('hide');
+  document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId } }));
+}
+
 function isHelpNotification(notif: any): boolean {
   return notif?.title?.includes('help request') || notif?.title?.includes('Response to your');
 }
@@ -286,6 +319,7 @@ function parseChampions(notif: any): ChampionsView | null {
 
 const champions = computed<ChampionsView | null>(() =>
   openNotif.value ? parseChampions(openNotif.value) : null);
+watch(champions, c => { if (c) void loadChampionIds(); });
 
 /** Podium order: silver, gold, bronze, so gold stands in the middle. */
 function podiumOrder(entries: ChampEntry[]): ChampEntry[] {
@@ -462,7 +496,10 @@ function padRank(rank: number): string {
                           class="nge-champs-step"
                           :class="'nge-champs-step--' + champTier(entry.rank)"
                         >
-                          <div class="nge-champs-card">
+                          <div class="nge-champs-card" :class="{ 'nge-champs-link': championId(entry.name) }"
+                               :role="championId(entry.name) ? 'button' : undefined" :tabindex="championId(entry.name) ? 0 : undefined"
+                               :title="championId(entry.name) ? `Open ${entry.name}'s profile` : undefined"
+                               @click="openChampion(entry.name)" @keydown.enter="openChampion(entry.name)">
                             <span class="nge-champs-medal" aria-hidden="true">{{ champMedal(entry.rank) }}</span>
                             <span class="nge-champs-name">{{ entry.name }}</span>
                             <span class="nge-champs-num">{{ entry.count }}</span>
@@ -476,6 +513,10 @@ function padRank(rank: number): string {
                           v-for="(entry, ei) in section.entries.slice(3)"
                           :key="ei + '-' + entry.name"
                           class="nge-champs-row"
+                          :class="{ 'nge-champs-link': championId(entry.name) }"
+                          :role="championId(entry.name) ? 'button' : undefined" :tabindex="championId(entry.name) ? 0 : undefined"
+                          :title="championId(entry.name) ? `Open ${entry.name}'s profile` : undefined"
+                          @click="openChampion(entry.name)" @keydown.enter="openChampion(entry.name)"
                         >
                           <span class="nge-champs-row-rank">{{ padRank(entry.rank) }}</span>
                           <span class="nge-champs-row-name">{{ entry.name }}</span>
@@ -1287,6 +1328,11 @@ function padRank(rank: number): string {
   filter: drop-shadow(0 0 8px rgb(var(--tier) / 0.45));
 }
 .nge-champs-step--gold .nge-champs-medal { font-size: 2em; }
+/* A name that is a player: the whole card or row opens their profile. */
+.nge-champs-link { cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease; }
+.nge-champs-card.nge-champs-link:hover, .nge-champs-card.nge-champs-link:focus-visible { transform: translateY(-2px); border-color: rgb(var(--tier) / 0.75); outline: none; }
+.nge-champs-row.nge-champs-link:hover, .nge-champs-row.nge-champs-link:focus-visible { background: rgb(var(--nd-accent) / 0.13); border-color: rgb(var(--nd-accent) / 0.4); outline: none; }
+.nge-champs-link:hover .nge-champs-name, .nge-champs-link:hover .nge-champs-row-name { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgb(var(--nd-cyan) / 0.6); }
 .nge-champs-name {
   max-width: 100%;
   font-size: 0.88em;
