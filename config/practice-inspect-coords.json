@@ -1,24 +1,154 @@
 {
-  "fused-axon-cut-1664": {
-    "note": "Which side of op 1664 is the axon. Points are in volume voxels (8 x 8 x 40).",
+  "c04eed2c-4204-4b3d-a25d-2f7aa880c1aa": {
+    "note": "Small branch merger on cell",
     "pcg_server": "https://minnie.microns-daf.com",
     "pcg_table": "pinky_nf_v2",
-    "view_resolution": [
-      8,
-      8,
-      40
-    ],
-    "at": "2026-09-27T00:53:00Z",
     "points": {
-      "red_first": [
-        31453,
-        21391,
-        1717
+      "a": [
+        90377.65,
+        66329.37,
+        531.5
       ],
-      "blue_first": [
-        31382,
-        21318,
-        1701
+      "b": [
+        90606.37,
+        66854.62,
+        489.29
+      ]
+    }
+  },
+  "0482d846-0c16-4393-ab8a-0d1212b9520f": {
+    "note": "Small branch merged to cell",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "a": [
+        86762.84,
+        72775.27,
+        1196.5
+      ],
+      "b": [
+        86838.41,
+        73509.31,
+        1194.5
+      ]
+    }
+  },
+  "814be870-9149-4474-876f-195e0af0bd08": {
+    "note": "Small branch merged to cell",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "a": [
+        73389.4,
+        63601.84,
+        926.46
+      ],
+      "b": [
+        74097.08,
+        64595.2,
+        949.2
+      ]
+    }
+  },
+  "4bec2d28-8776-403b-81c1-6415bcb0b1e2": {
+    "note": "Small branch merged to cell",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "a": [
+        59065.08,
+        37628.1,
+        1368.02
+      ],
+      "b": [
+        58999.02,
+        37267.97,
+        1265.81
+      ]
+    }
+  },
+  "d21d83a9-4fce-49b1-a02f-5c339c8217e2": {
+    "note": "Two fused cells, good example to try Find Path to find error",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "a": [
+        82161.2,
+        47287.99,
+        474.58
+      ],
+      "b": [
+        81454.89,
+        47770.79,
+        434.52
+      ]
+    }
+  },
+  "fad7c50e-eaa3-4217-984e-07e1eaae7ca8": {
+    "note": "Branch merger, medium difficulty due to smooth branches of root cell. There may be multiple mergers at this location",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "a": [
+        82093.7,
+        47024.99,
+        219.5
+      ],
+      "b": [
+        82301.28,
+        47122.32,
+        244.01
+      ]
+    }
+  },
+  "88f7ee79-9fc2-4b5f-a7c3-f951893f0b3e": {
+    "note": "Testing update",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "a": [
+        92482.15,
+        66641.15,
+        1871.93
+      ],
+      "b": [
+        92395.73,
+        66705.48,
+        1922.5
+      ]
+    }
+  },
+  "a7df6a51-057b-400e-9f7c-dd31866d51c7": {
+    "note": "X merger",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "a": [
+        82951.38,
+        53780.57,
+        1759.35
+      ],
+      "b": [
+        81808.73,
+        54633.48,
+        1862.5
+      ]
+    }
+  },
+  "b5590226-b414-4352-aa25-b1d25ee43035": {
+    "note": "Small branch merged onto cell",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "a": [
+        75664.59,
+        66961.44,
+        37.63
+      ],
+      "b": [
+        76202.95,
+        66885.77,
+        52.5
       ]
     }
   }
