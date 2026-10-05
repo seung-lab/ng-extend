@@ -3625,13 +3625,11 @@ const panelStyle = computed(() => ({
 .nge-cl-btn--release {
   border-color: rgba(255, 170, 68, 0.2);
   color: #a86;
-  font-size: 0.68em;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
 .nge-cl-btn--saveview {
   border-color: rgba(100, 200, 255, 0.3);
   color: #8fd3ff;
-  font-size: 0.68em;
   white-space: nowrap;
 }
 .nge-cl-btn--saveview:hover { background: rgba(100, 200, 255, 0.1); }

@@ -8,7 +8,7 @@ import { functionUrl } from '../functions_base';
  * anywhere in the app. Posts to the `submitIssue` Cloud Function which relays
  * to Slack (#citsci_feedback) and keeps a Firestore record. No auth required.
  */
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { useProofreadingBackendStore } from '../store';
@@ -32,6 +32,23 @@ const attachConsole = ref(true);
 const consoleCount = ref(recentConsoleCount());
 const done = ref(false);
 const error = ref('');
+
+// While it sends, the form gives way to a signal travelling down an axon and
+// the real steps of the submit, ticked off as each one finishes (Ames
+// 2026-10-04). Nothing here is timed for show: stage follows submit().
+type Stage = 'view' | 'send' | 'file';
+const stage = ref<Stage>('send');
+const sendSteps = computed(() => [
+  ...(attachView.value ? [{ key: 'view' as Stage, label: 'Saving your view' }] : []),
+  { key: 'send' as Stage, label: 'Sending it to the team' },
+  { key: 'file' as Stage, label: 'Filing it for triage' },
+]);
+const stepState = (key: Stage) => {
+  const order = sendSteps.value.map(x => x.key);
+  const at = order.indexOf(stage.value), i = order.indexOf(key);
+  return i < at ? 'done' : i === at ? 'now' : 'next';
+};
+const stillMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // Screenshot attachment. Reuses the help request flow unchanged:
 // ScreenshotDialog in `attach` mode captures the viewer, lets the user
@@ -73,7 +90,9 @@ async function submit() {
     // Mint a short saved-state link instead; if that fails (no auth, state
     // server down), send the bare page URL plus the position so the report
     // still locates the spot without a broken link.
+    stage.value = attachView.value ? 'view' : 'send';
     const shortLink = attachView.value ? await mintShortStateLink() : null;
+    stage.value = 'send';
     let pageUrl = shortLink;
     if (!pageUrl) {
       const v: any = (window as any)['viewer'];
@@ -108,6 +127,7 @@ async function submit() {
     // Mirror into Supabase so the triage agent can read reports (the Cloud
     // Function's Slack/Firestore relay stays the human-facing feed).
     // Best-effort: a failure here must not surface as a failed submit.
+    stage.value = 'file';
     try {
       const { supabase } = await import('../supabase');
       const row: Record<string, any> = {
@@ -291,9 +311,9 @@ onMounted(() => {
   };
   fxRaf = requestAnimationFrame(frame);
 
-  // Encore on the success state: wake the field back up behind the ✓.
-  watch(done, isDone => {
-    if (!isDone) return;
+  // Encore while sending and on the success state: wake the field back up.
+  watch([done, sending], ([isDone, isSending]) => {
+    if (!isDone && !isSending) return;
     clearTimeout(fadeTimer);
     fieldTarget = 1;
     if (parked) {
@@ -329,7 +349,35 @@ onBeforeUnmount(() => {
         />
       </Teleport>
 
-      <div v-if="!done" class="nge-fb-body">
+      <div v-if="sending && !done" class="nge-fb-sending" role="status" aria-live="polite">
+        <svg class="nge-fb-axon" viewBox="0 0 360 92" aria-hidden="true">
+          <!-- dendrites and soma, where the report starts -->
+          <path class="nge-fb-axon-twig" d="M30 46 L8 24 M30 46 L6 50 M30 46 L12 72 M30 46 L26 14 M30 46 L30 80"/>
+          <circle class="nge-fb-axon-soma" cx="30" cy="46" r="9"/>
+          <!-- the axon, and the terminal at the team's end -->
+          <path id="nge-fb-axon-path" class="nge-fb-axon-line" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
+          <path class="nge-fb-axon-flow" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
+          <path class="nge-fb-axon-twig" d="M322 46 L346 30 M322 46 L350 48 M322 46 L344 66"/>
+          <circle class="nge-fb-axon-bouton" cx="346" cy="30" r="3"/>
+          <circle class="nge-fb-axon-bouton" cx="350" cy="48" r="3"/>
+          <circle class="nge-fb-axon-bouton" cx="344" cy="66" r="3"/>
+          <template v-if="!stillMotion">
+            <circle v-for="n in 3" :key="n" class="nge-fb-axon-spike" r="4.2">
+              <animateMotion dur="1.5s" :begin="`${(n - 1) * 0.5}s`" repeatCount="indefinite"
+                             path="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
+            </circle>
+          </template>
+        </svg>
+        <div class="nge-fb-sending-title">Sending your report</div>
+        <ul class="nge-fb-steps">
+          <li v-for="st in sendSteps" :key="st.key" class="nge-fb-step" :class="`nge-fb-step--${stepState(st.key)}`">
+            <span class="nge-fb-step-mark" aria-hidden="true">{{ stepState(st.key) === 'done' ? '✓' : '' }}</span>
+            <span>{{ st.label }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div v-else-if="!done" class="nge-fb-body">
         <div class="nge-fb-title">Submit an issue</div>
         <div class="nge-fb-hint">Found a bug or have an idea? Tell us, it goes straight to the team.</div>
 
@@ -563,6 +611,52 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .nge-fb-cancel:hover { color: #ccd; border-color: rgba(255, 255, 255, 0.25); }
+/* ── Sending: a signal on its way down an axon, and the real steps ── */
+.nge-fb-sending {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding: 22px 12px 18px; min-width: 320px;
+}
+.nge-fb-axon { width: 100%; max-width: 360px; height: auto; overflow: visible; }
+.nge-fb-axon-twig { fill: none; stroke: rgba(120, 160, 255, 0.45); stroke-width: 1.6; stroke-linecap: round; }
+.nge-fb-axon-soma {
+  fill: rgba(120, 150, 255, 0.28); stroke: rgba(150, 180, 255, 0.9); stroke-width: 1.6;
+  transform-origin: 30px 46px; animation: nge-fb-soma 1.5s ease-in-out infinite;
+}
+.nge-fb-axon-line { fill: none; stroke: rgba(120, 160, 255, 0.28); stroke-width: 2.4; stroke-linecap: round; }
+.nge-fb-axon-flow {
+  fill: none; stroke: rgba(126, 224, 255, 0.55); stroke-width: 2.4; stroke-linecap: round;
+  stroke-dasharray: 3 15; animation: nge-fb-flow 0.9s linear infinite;
+}
+.nge-fb-axon-spike { fill: #dff6ff; filter: drop-shadow(0 0 6px rgba(126, 224, 255, 0.95)); }
+.nge-fb-axon-bouton {
+  fill: rgba(52, 230, 168, 0.25); stroke: rgba(52, 230, 168, 0.9); stroke-width: 1.4;
+  animation: nge-fb-bouton 1.5s ease-in-out infinite;
+}
+.nge-fb-axon-bouton:nth-of-type(3) { animation-delay: 0.15s; }
+.nge-fb-axon-bouton:nth-of-type(4) { animation-delay: 0.3s; }
+@keyframes nge-fb-flow { to { stroke-dashoffset: -18; } }
+@keyframes nge-fb-soma { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.22); } 30% { transform: scale(1); } }
+@keyframes nge-fb-bouton { 0%, 70%, 100% { fill: rgba(52, 230, 168, 0.2); } 85% { fill: rgba(52, 230, 168, 0.95); } }
+.nge-fb-sending-title { font-size: 1.05em; font-weight: 700; color: #eef; }
+.nge-fb-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; align-self: center; }
+.nge-fb-step { display: flex; align-items: center; gap: 9px; font-size: 0.86em; color: #6f7c96; transition: color 0.2s; }
+.nge-fb-step-mark {
+  width: 16px; height: 16px; flex-shrink: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #06231a;
+  border: 1.5px solid rgba(120, 140, 180, 0.4);
+}
+.nge-fb-step--now { color: #e6eeff; }
+.nge-fb-step--now .nge-fb-step-mark {
+  border-color: #7ee0ff; box-shadow: 0 0 8px rgba(126, 224, 255, 0.7);
+  animation: nge-fb-step-now 1s ease-in-out infinite;
+}
+.nge-fb-step--done { color: #9fb3cc; }
+.nge-fb-step--done .nge-fb-step-mark { background: #34e6a8; border-color: #34e6a8; }
+@keyframes nge-fb-step-now { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) {
+  .nge-fb-axon-soma, .nge-fb-axon-flow, .nge-fb-axon-bouton, .nge-fb-step--now .nge-fb-step-mark { animation: none; }
+}
 .nge-fb-done {
   display: flex;
   flex-direction: column;
