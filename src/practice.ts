@@ -573,7 +573,7 @@ export function practiceShown(): boolean {
 /** Claim (or keep) a practice cell in a slot and show it. `show: false`
  *  only claims, for a slot the tutorial will show later (Merge step 3 takes
  *  both cells up front; loading the second view there cost seconds). */
-export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { slot?: string; show?: boolean } = {}): Promise<PracticeExample | null> {
+export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { slot?: string; show?: boolean; avoid?: string[] } = {}): Promise<PracticeExample | null> {
   const slot = opts.slot ?? 'a';
   const show = opts.show !== false;
   // Right after a reload the login is still settling; give it a few seconds
@@ -600,7 +600,9 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   if (Object.values(session.held).some(ex => ex.kind !== kind)) await endPractice();
   session.phase = 'claiming';
   pausePracticeTools();
-  const exclude = Object.values(session.held).map(ex => ex.id);
+  // `avoid`: cells this step would rather not get (a tutorial that wants
+  // its cells in a set order asks for the first while avoiding the second).
+  const exclude = [...Object.values(session.held).map(ex => ex.id), ...(opts.avoid ?? [])];
   // Never hand out a cell registered wrong (Celia's Test cell holds segment
   // ids where supervoxels belong, so nothing can tell when it is merged).
   try {

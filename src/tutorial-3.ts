@@ -152,11 +152,6 @@ function notePanel(cls: string, html: string): HTMLElement {
  * sit on the surface, close to the right spots rather than exactly on them.
  */
 const CUT_HINTS: Record<string, { red: number[][]; blue: number[][] }> = {
-  // Fused axon (op 1664)
-  'dbc61749-70b5-469e-acdc-89a897cd9270': {
-    red: [[62906, 42782, 1717], [62810, 42826, 1718]],
-    blue: [[62764, 42636, 1701], [62668, 42612, 1698]],
-  },
   // Fusion on a proofread cell (op 1728)
   '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': {
     red: [[81668, 49056, 516], [82030, 49104, 529]],
@@ -241,6 +236,8 @@ function offerPlacePoints() {
  * said axon over a dendrite). The step text carries PART placeholders and
  * labelPart() fills them from the cell actually on screen.
  */
+/** The Merge tutorial's second cell: Axon missing a branch. */
+const MERGE_SECOND = 'a4bd2f76-67e9-4093-adc7-e670230d1577';
 const CELL_PART: Record<string, string> = {
   'b231f4e7-e9f3-4214-941f-975b8b25a237': 'dendrite', // Branch cut in half
   'a4bd2f76-67e9-4093-adc7-e670230d1577': 'axon',     // Axon missing a branch
@@ -801,7 +798,11 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
       // The whole tutorial runs on both merge cells (Amy): take both now, so
       // a learner never starts on one and finds the other held.
       await movingToSandbox('Merge', async () => {
-        const first = await beginPractice('merge_then_cut', 'start', { slot: 'a' });
+        // The two merges are on one neuron and come in a set order (Ames,
+        // 2026-10-05): the dendrite first, then the axon. If the dendrite
+        // cannot be had, take whatever is free.
+        const first = await beginPractice('merge_then_cut', 'start', { slot: 'a', avoid: [MERGE_SECOND] })
+          ?? await beginPractice('merge_then_cut', 'start', { slot: 'a' });
         if (first) {
           // The second cell is claimed now and shown at step 6.
           // With one merge cell registered there is no second: the learner

@@ -38,7 +38,7 @@ If you see a segment with a branch that clearly belongs to a *different* cell, t
   {
     title: "What a cut fixes",
     text: `
-Behind this box is a finished cut: the yellow axon had been fused to the purple dendrite, and someone cut it off.
+Behind this box is a finished cut: the yellow piece had been fused to the purple cell, and someone cut it off.
 
 In a moment you'll get the fused version of this very cell and make the cut yourself. It is yours alone until you finish.`,
     position: OVER_3D,
@@ -60,7 +60,7 @@ In a moment you'll get the fused version of this very cell and make the cut your
   {
     title: "How to Cut",
     text: `
-Now the same cell as the AI left it: the axon and the dendrite are one purple segment. Your job is to separate them.
+Now the same cell as the AI left it: the two are one purple segment. Your job is to separate them.
 
 Press the **C** key to start the cut tool. The segmentation layer has to be selected for that.
 
@@ -87,16 +87,16 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
 
 The cut tool uses a <strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> point system, one colour on each side of where you want to cut.
 
-1. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points on the axon, the piece that doesn't belong, working back from the join.
+1. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points on the piece that doesn't belong, working back from the join.
 2. Press **G** to switch to <strong style="color:#5c8cff">blue</strong>, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the cell, just past the join.
-3. Press **Submit cut** on the bar at the bottom, or **Enter**. You'll see "splitting..." for a moment, then the axon comes away as its own segment.
+3. Press **Submit cut** on the bar at the bottom, or **Enter**. You'll see "splitting..." for a moment, then the piece comes away as its own segment.
 
 If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>.`,
     position: OVER_3D,
     width: "460px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(false, 'Waiting for your cut: red on the axon, G, blue on the dendrite, Submit cut.', 'Cut success! You did it. The two pieces are separate now.');
+      watchPractice(false, 'Waiting for your cut: red on the piece to remove, G, blue on the cell, Submit cut.', 'Cut success! You did it. The two pieces are separate now.');
       await beginPractice('cut', 'start');
       // The previous step said "press C"; turn the tool on if they didn't.
       setTimeout(() => ensureTool('multicut'), 400);
