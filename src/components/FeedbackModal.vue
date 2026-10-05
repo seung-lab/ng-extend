@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { caveToken } from '../secure_write';
+import { reportFeedbackFailure } from '../util/error_reporting';
 import { functionUrl } from '../functions_base';
 /**
  * FeedbackModal.vue
@@ -110,20 +111,36 @@ async function submit() {
     let slackText = shot ? `${text}\n\nScreenshot: ${shot}` : text;
     // The log itself stays in Admin Hub; Slack just says it's there.
     if (consoleLog) slackText += `\n\nConsole: ${recentConsoleCount()} recent warnings/errors attached (Admin Hub > Triage)`;
-    const res = await fetch(ISSUE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: caveToken(),
-        message: slackText,
-        category: category.value,
-        url: pageUrl,
-        dataset: currentDataset(),
-        user: backend.userName || '',
-        screenshotUrl: shot || undefined,
-      }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // A report must never be lost to a failed relay (Ames 2026-10-02: "Could
+    // not submit", with no reason and nothing saved). If the Slack relay
+    // fails, remember why, still save the report below, and only show an
+    // error, with the real reason, if that fails too.
+    let relayFailure = '';
+    try {
+      const res = await fetch(ISSUE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: caveToken(),
+          message: slackText,
+          category: category.value,
+          url: pageUrl,
+          dataset: currentDataset(),
+          user: backend.userName || '',
+          screenshotUrl: shot || undefined,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({} as any));
+        relayFailure = res.status === 429 ? 'Too many reports in a short time. Wait a minute and try again.'
+          : res.status === 401 ? 'Your sign in has expired. Reload the page and sign in again.'
+          : `${j?.error || 'The report server refused it'} (${res.status})`;
+      }
+    } catch (e: any) {
+      relayFailure = e?.name === 'TimeoutError' ? 'The report server did not answer.' : `Could not reach the report server (${e?.message || 'network error'}).`;
+    }
+    if (relayFailure) reportFeedbackFailure(relayFailure, pageUrl || '');
 
     // Mirror into Supabase so the triage agent can read reports (the Cloud
     // Function's Slack/Firestore relay stays the human-facing feed).
@@ -159,8 +176,10 @@ async function submit() {
         ({ error: insErr } = await supabase.from('site_issues').insert(row));
       }
       if (insErr) throw insErr;
-    } catch (e) {
+    } catch (e: any) {
       console.warn('[feedback] Supabase mirror failed:', e);
+      // Saved nowhere: tell the player why instead of pretending.
+      if (relayFailure) throw new Error(relayFailure);
     }
     sentWith.value = [
       { k: 'Type', v: category.value },
@@ -171,7 +190,7 @@ async function submit() {
     done.value = true;
     setTimeout(() => emit('hide'), 4200);
   } catch (e: any) {
-    error.value = 'Could not submit. Please try again.';
+    error.value = `Could not submit. ${e?.message || 'Please try again.'}`;
     console.warn('[feedback] submit failed:', e);
   } finally {
     sending.value = false;

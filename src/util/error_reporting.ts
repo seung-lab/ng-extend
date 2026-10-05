@@ -110,6 +110,11 @@ export function reportWriteFailure(kind: 'sheet_sync' | 'cave_write', message: s
   void report(`${kind}: ${message}`.slice(0, 2000), detail, kind);
 }
 
+/** "Submit an issue" could not reach the team: say why, so it can be fixed. */
+export function reportFeedbackFailure(message: string, detail?: string) {
+  void report(`feedback_submit: ${message}`.slice(0, 2000), detail, 'window');
+}
+
 export function installErrorReporting(app?: { config: { errorHandler?: any } }) {
   if (installed) return;
   installed = true;
