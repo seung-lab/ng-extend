@@ -21,8 +21,9 @@ Only edits made in the game are counted, never a player's wider CAVE history.
 | Reader | How |
 |---|---|
 | Board, 24 hours and 7 days | `user_edit_counts` view |
-| Saved weekly podium | `snapshot_weekly_winners` calls `ew_weekly_ranking` |
-| Weekly announcement | `weekly-leaderboard-broadcast.mjs` calls `ew_weekly_ranking` |
+| Saved weekly podium, Cells | `weekly-completions.mjs` calls `ew_weekly_ranking` |
+| Saved weekly podium, Edits | `snapshot_weekly_winners` calls `ew_weekly_ranking` |
+| Weekly announcement, Cells | `weekly-completions.mjs` calls `ew_weekly_ranking` |
 | All time counter | `ew_log_activity` moves it by the change in the view |
 | Profile, per dataset | `src/util/completion_rule.ts`, the same rule in the app |
 
@@ -57,9 +58,12 @@ first. Then the lower user id. The same answer every time.
 ## What changed, by audit finding
 
 1. **Weekly awards read an old source.** The Monday job runs from `main`,
-   whose script still read the CAVE mirror. Fix: `main`'s workflow checks out
-   `eyewire-ii-community` (branch `claude/leaderboard-main-workflow`), and the
-   podium and announcement both call `ew_weekly_ranking`.
+   whose script still read the CAVE mirror. Fixed on 2026-10-05 in `c8133dd`
+   and `main` `e8b6d47` (another session): the workflow checks out
+   `eyewire-ii-community`, and the podium and the announcement share
+   `scripts/weekly-completions.mjs`. Added here: that shared count asks the
+   database's rule first, so the week is decided by the same rule as the
+   board, with the same ties.
 2. **Players could write their own totals.** Fix: once the SQL is installed
    the server drops counter fields from profile writes and moves the counters
    itself. New profiles never start with a total.
@@ -112,7 +116,6 @@ Each step is safe by itself and can be undone by not doing the next one.
    changes no existing row. Within five minutes the server notices the new
    function and starts recording and counting itself. From then on a browser
    can no longer write a total.
-4. **`main` workflow** so Monday's job runs the current script.
 
 After step 3, check: `node scripts/leaderboard-compare.mjs` should print no
 board differences, and an edit in the game should add a row to `edit_log`
@@ -120,10 +123,11 @@ with `op_key` set and `metadata.verified` true.
 
 ## Still open, on purpose
 
-- **Past podiums are not corrected.** `snapshot_weekly_winners` never
-  overwrites a saved week. Correcting the three weeks above (and the
-  2026-09-28 announcement, which gave Annkri 5 cells where the log has 9) is
-  a decision for Ames, then a small reviewed SQL statement per week.
+- **Past podiums are corrected only on request.** Nothing in the SQL
+  rewrites a saved week. The Weekly Winners Snapshot workflow can: run it
+  with `week_start` set (and `dry_run` first to see what would change, and
+  `update_broadcast` to correct the posted announcement's text in place).
+  The three weeks above are the ones that differ.
 - **Unverified edits still count.** An edit is recorded as unverified when it
   can not be checked: an app version from before this change, a graph server
   we do not ask (MEC, whose server is fragile), or no answer. They are marked

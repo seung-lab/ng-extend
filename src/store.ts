@@ -222,6 +222,78 @@ export const useLayersStore = defineStore('layers', () => {
     } catch { /* beacon only */ }
   }
 
+  /** Count one split or merge: the local numbers at once, then the log. */
+  function countEdit(operation: 'merge' | 'split', log: Partial<EditLogEntry>) {
+    const statsStore = useUserStatsStore();
+    // One acknowledged operation is one edit
+    if (operation === 'merge') {
+      statsStore.setStats({
+        editsAllTime:   statsStore.stats.editsAllTime   + 1,
+        mergesAllTime:  statsStore.stats.mergesAllTime  + 1,
+        editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
+        mergesThisWeek: statsStore.stats.mergesThisWeek + 1,
+        editsThisMonth: statsStore.stats.editsThisMonth + 1,
+        mergesThisMonth:statsStore.stats.mergesThisMonth+ 1,
+        editsToday:     statsStore.stats.editsToday     + 1,
+        mergesToday:    statsStore.stats.mergesToday     + 1,
+      });
+    } else {
+      statsStore.setStats({
+        editsAllTime:   statsStore.stats.editsAllTime   + 1,
+        splitsAllTime:  statsStore.stats.splitsAllTime  + 1,
+        editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
+        splitsThisWeek: statsStore.stats.splitsThisWeek + 1,
+        editsThisMonth: statsStore.stats.editsThisMonth + 1,
+        splitsThisMonth:statsStore.stats.splitsThisMonth+ 1,
+        editsToday:     statsStore.stats.editsToday     + 1,
+        splitsToday:    statsStore.stats.splitsToday    + 1,
+      });
+    }
+
+    statsStore.logDailyEdit(operation);
+    statsStore.signalEdit(operation);
+    touchLastEditAt();
+    // NOTE: cellsSubmitted is deliberately NOT touched here. It used to
+    // be incremented every 5 edits "to animate the cell-dot canvas", but
+    // it's a real stat (the Exploration badge track and the profile's
+    // Cells number). It now comes only from CAVE completions
+    // (users.cells_completed via cave_completions_mirror).
+
+    // Report it; the server records and counts it
+    try {
+      const backendStore = useProofreadingBackendStore();
+      if (backendStore.userId) {
+        const viewer: any = (window as any)['viewer'];
+        const pos = viewer?.navigationState?.position?.value;
+        const coords = pos ? `${pos[0]}, ${pos[1]}, ${pos[2]}` : null;
+        backendStore.logEdit({ operation, coordinates: coords, ...log });
+        backendStore.postActivity(`${operation === 'merge' ? 'merged' : 'split'} segment`);
+      }
+    } catch { /* backend logging is non-critical */ }
+  }
+
+  // ── Edits the graph server acknowledged ─────────────────────────────
+  // Each split or merge the server accepts answers with its operation id
+  // (third_party/neuroglancer/datasource/graphene/frontend.ts). That answer
+  // IS the edit: counted once, at once, with the id the server can check.
+  // The visible-segment watcher below stays as the fallback for a graph
+  // source that does not go through that code; while acknowledgements are
+  // arriving it stands down, so nothing is counted twice. (It grouped
+  // everything inside three seconds into one edit, and could only guess
+  // that an edit had happened: leaderboard audit, 2026-10-05.)
+  let lastAckAt = 0;
+  const onGraphEdit = (ev: Event) => {
+    const d = (ev as CustomEvent).detail ?? {};
+    if (d.kind !== 'merge' && d.kind !== 'split') return;
+    lastAckAt = Date.now();
+    countEdit(d.kind, {
+      segment_after: Array.isArray(d.roots) && d.roots.length ? d.roots.join(',') : null,
+      metadata: { diff: 1, operation_id: d.operationId ?? null, graph: d.graph ?? null },
+    });
+  };
+  // Listened to for the life of the page, whatever layers are loaded.
+  window.addEventListener('nge-graph-edit', onGraphEdit);
+
   function watchSegmentEdits() {
     if (!viewer) return;
 
@@ -266,77 +338,6 @@ export const useLayersStore = defineStore('layers', () => {
         return smo.toolActive ?? smo.closingTool ?? null;
       } catch { return null; }
     }
-
-    /** Count one split or merge: the local numbers at once, then the log. */
-    function countEdit(operation: 'merge' | 'split', log: Partial<EditLogEntry>) {
-      const statsStore = useUserStatsStore();
-      // One acknowledged operation is one edit
-      if (operation === 'merge') {
-        statsStore.setStats({
-          editsAllTime:   statsStore.stats.editsAllTime   + 1,
-          mergesAllTime:  statsStore.stats.mergesAllTime  + 1,
-          editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
-          mergesThisWeek: statsStore.stats.mergesThisWeek + 1,
-          editsThisMonth: statsStore.stats.editsThisMonth + 1,
-          mergesThisMonth:statsStore.stats.mergesThisMonth+ 1,
-          editsToday:     statsStore.stats.editsToday     + 1,
-          mergesToday:    statsStore.stats.mergesToday     + 1,
-        });
-      } else {
-        statsStore.setStats({
-          editsAllTime:   statsStore.stats.editsAllTime   + 1,
-          splitsAllTime:  statsStore.stats.splitsAllTime  + 1,
-          editsThisWeek:  statsStore.stats.editsThisWeek  + 1,
-          splitsThisWeek: statsStore.stats.splitsThisWeek + 1,
-          editsThisMonth: statsStore.stats.editsThisMonth + 1,
-          splitsThisMonth:statsStore.stats.splitsThisMonth+ 1,
-          editsToday:     statsStore.stats.editsToday     + 1,
-          splitsToday:    statsStore.stats.splitsToday    + 1,
-        });
-      }
-
-      statsStore.logDailyEdit(operation);
-      statsStore.signalEdit(operation);
-      touchLastEditAt();
-      // NOTE: cellsSubmitted is deliberately NOT touched here. It used to
-      // be incremented every 5 edits "to animate the cell-dot canvas", but
-      // it's a real stat (the Exploration badge track and the profile's
-      // Cells number). It now comes only from CAVE completions
-      // (users.cells_completed via cave_completions_mirror).
-
-      // Report it; the server records and counts it
-      try {
-        const backendStore = useProofreadingBackendStore();
-        if (backendStore.userId) {
-          const viewer: any = (window as any)['viewer'];
-          const pos = viewer?.navigationState?.position?.value;
-          const coords = pos ? `${pos[0]}, ${pos[1]}, ${pos[2]}` : null;
-          backendStore.logEdit({ operation, coordinates: coords, ...log });
-          backendStore.postActivity(`${operation === 'merge' ? 'merged' : 'split'} segment`);
-        }
-      } catch { /* backend logging is non-critical */ }
-    }
-
-    // ── Edits the graph server acknowledged ─────────────────────────────
-    // Each split or merge the server accepts answers with its operation id
-    // (third_party/neuroglancer/datasource/graphene/frontend.ts). That answer
-    // IS the edit: counted once, at once, with the id the server can check.
-    // The visible-segment watcher below stays as the fallback for a graph
-    // source that does not go through that code; while acknowledgements are
-    // arriving it stands down, so nothing is counted twice. (It grouped
-    // everything inside three seconds into one edit, and could only guess
-    // that an edit had happened: leaderboard audit, 2026-10-05.)
-    let lastAckAt = 0;
-    const onGraphEdit = (ev: Event) => {
-      const d = (ev as CustomEvent).detail ?? {};
-      if (d.kind !== 'merge' && d.kind !== 'split') return;
-      lastAckAt = Date.now();
-      countEdit(d.kind, {
-        segment_after: Array.isArray(d.roots) && d.roots.length ? d.roots.join(',') : null,
-        metadata: { diff: 1, operation_id: d.operationId ?? null, graph: d.graph ?? null },
-      });
-    };
-    window.addEventListener('nge-graph-edit', onGraphEdit);
 
     // Signal fires (segId, wasAdded) — track the specific segments involved
     const handler = (changedId?: any, wasAdded?: boolean) => {
@@ -408,7 +409,6 @@ export const useLayersStore = defineStore('layers', () => {
     visibleSegs.changed.add(handler);
     segEditCleanup = () => {
       visibleSegs.changed.remove(handler);
-      window.removeEventListener('nge-graph-edit', onGraphEdit);
       if (debounceTimer) clearTimeout(debounceTimer);
     };
   }

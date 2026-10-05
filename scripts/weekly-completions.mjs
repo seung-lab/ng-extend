@@ -65,6 +65,18 @@ export function countCompletions(rows) {
 
 /** Top N completers of [startISO, endISO). get(path) reads the Supabase REST API. */
 export async function topCompleters(get, startISO, endISO, n = 10) {
+  // The database's own rule, when it is installed (ew_weekly_ranking in
+  // supabase-leaderboard-accuracy.sql): the rule the board's view reads, so
+  // the week's count is decided in one place. It also looks at a player's
+  // whole history, which the rows of one week can not: a cell first completed
+  // last month and marked again this week is not a new cell. Until that SQL
+  // is run, the count below is used, as before.
+  try {
+    const ranked = await get(`rpc/ew_weekly_ranking?p_week_start=${startISO.slice(0, 10)}&p_metric=completions&p_limit=${n}`);
+    if (Array.isArray(ranked)) return ranked.map(r => ({ user_id: r.user_id, count: r.count }));
+  } catch (e) {
+    if (!/\b404\b/.test(String(e?.message))) throw e;
+  }
   const rows = await get(
     `edit_log?select=user_id,operation,timestamp,metadata,success` +
     `&timestamp=gte.${encodeURIComponent(startISO)}` +
