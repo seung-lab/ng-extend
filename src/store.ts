@@ -454,7 +454,9 @@ export const useLayersStore = defineStore('layers', () => {
     } catch { return false; }
   }
 
-  async function selectLayers(layers: any[]) {
+  /** keepHash: load in place, never redirect to a curated or start view (the
+   *  boot fallback, when the address already holds the player's own view). */
+  async function selectLayers(layers: any[], opts: {keepHash?: boolean} = {}) {
     if (!viewer) return;
 
     // Detect the target dataset (by segmentation layer name) BEFORE restoring,
@@ -474,7 +476,7 @@ export const useLayersStore = defineStore('layers', () => {
     const bareSwitch = !!startPrefs.datasetBareSwitch;
     const curatedUrl = ownHash ? window.location.origin + window.location.pathname + ownHash
       : bareSwitch ? '' : (dsCfgEarly?.defaultStateUrl || '');
-    if (curatedUrl && !skipStateUrl) {
+    if (curatedUrl && !skipStateUrl && !opts.keepHash) {
       // Apply via hash-only navigation when same-origin (so dev server doesn't bounce
       // to production). Neuroglancer's hashchange handler picks up the new state URL
       // and fetches+applies it. If the configured URL is on a different origin, the
@@ -5096,6 +5098,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   };
 });
 
+/** The address at page load, read before neuroglancer rewrites it with the
+ *  restored state (store.ts is imported before the viewer is made). */
+const BOOT_HASH = window.location.hash;
+
 export const useVolumesStore = defineStore('volumes', () => {
   const volumes: Ref<Volume[]> = ref([]);
 
@@ -5129,14 +5135,31 @@ export const useVolumesStore = defineStore('volumes', () => {
 
         // Auto-select default volume if no layers loaded yet
         const layerStore = useLayersStore();
-        if (layerStore.activeLayers.size === 0 || (layerStore.activeLayers.size === 1 && layerStore.activeLayers.has(''))) {
+        const layersEmpty = () => layerStore.activeLayers.size === 0 || (layerStore.activeLayers.size === 1 && layerStore.activeLayers.has(''));
+        // A state link in the address (#!https://...) is fetched after this
+        // list arrives, so layers are still empty here on a refresh. Wait for
+        // it, or the curated redirect below replaced the player's view.
+        if (layersEmpty() && /^#!([a-z][a-z\d+-.]*):\/\//.test(BOOT_HASH)) {
+          await new Promise<void>(resolve => {
+            const done = () => { clearTimeout(timer); stop(); resolve(); };
+            const timer = setTimeout(done, 20000);
+            const stop = watch(() => layerStore.activeLayers.size, () => { if (!layersEmpty()) done(); });
+          });
+        }
+        if (layersEmpty()) {
           if (CONFIG.volumes_default) {
             const volume = volumes.value.find(x => x.name === CONFIG.volumes_default?.name);
             if (volume) {
               const imageLayer = volume.image_layers.find(x => x.name === CONFIG.volumes_default?.image);
               const segmentationLayer = volume.segmentation_layers.find(x => x.name === CONFIG.volumes_default?.segmentation);
               if (imageLayer && segmentationLayer) {
-                layerStore.selectLayers([imageLayer, segmentationLayer]);
+                // The address held the player's own view (not empty, not the
+                // curated one) that has not loaded: show the volume in place
+                // rather than redirecting away from it.
+                const curated = getDatasetCaveConfig(segmentationLayer.name).defaultStateUrl || '';
+                const curatedHash = curated.includes('#') ? curated.slice(curated.indexOf('#')) : '';
+                const userHash = !!BOOT_HASH && BOOT_HASH !== '#' && BOOT_HASH !== '#!' && BOOT_HASH !== curatedHash;
+                layerStore.selectLayers([imageLayer, segmentationLayer], {keepHash: userHash});
               }
             }
           }

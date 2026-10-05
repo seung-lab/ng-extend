@@ -100,3 +100,10 @@ summaries.
   `completeCell` lands. Code that runs right after a Complete must skip the
   finished claim itself, not trust the list (2026-10-04, auto next claim
   build, from reading store.ts).
+- An inline `#!{...}` hash restores layers synchronously in
+  `hashBinding.updateFromUrlHash()`, but a state link hash (`#!https://...`,
+  `#!middleauth+...`) is fetched async, so boot code that checks
+  `activeLayers` sees it empty. Neuroglancer also rewrites the hash soon after
+  boot, so judge "what the page opened on" from `BOOT_HASH` in store.ts, not
+  `window.location.hash` (2026-10-05, refresh keeps view build, from reading
+  url_hash_binding.ts).
