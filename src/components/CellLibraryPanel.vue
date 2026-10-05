@@ -38,6 +38,7 @@ import { runPanelTrace, flyPlusOne, runScytheSwing } from '../util/holo_trace';
 import tracerIcon from '../../static/tags/tracer-icon.png';
 import neuronIcon from '../../static/badges/pyr/neuron-icon-white.png';
 import { applyShowcaseWhenLoaded } from '../showcase';
+import { datasetHasTour, startDatasetTour } from '../dataset_tour';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import ScreenshotDialog from './ScreenshotDialog.vue';
 
@@ -184,6 +185,8 @@ const datasetCellTypesState = computed(() => {
   const cfg = getDatasetCaveConfig(activeDataset.value);
   return cfg.cellTypesUrl || cfg.cellTypesState || null;
 });
+/** The dataset has a guided tour of its cell types (MEC), replayable here. */
+const datasetTour = computed(() => datasetHasTour(activeDataset.value));
 function openCellTypes() {
   const st = datasetCellTypesState.value;
   if (!st) return;
@@ -2220,7 +2223,9 @@ const panelStyle = computed(() => ({
           <div class="nge-cl-tabgroup nge-cl-tabgroup--cells">
             <div class="nge-cl-tabgroup-head">
               <span class="nge-cl-tabgroup-label">Cells</span>
-              <span v-if="datasetHowTo || datasetInstructionsUrl || datasetCellTypesState" class="nge-cl-headlinks">
+              <span v-if="datasetHowTo || datasetInstructionsUrl || datasetCellTypesState || datasetTour" class="nge-cl-headlinks">
+              <a v-if="datasetTour" class="nge-cl-howto" href="#" @click.prevent="startDatasetTour(activeDataset)"
+                 title="Replay the guided tour of this dataset's cell types">tour</a>
               <a v-if="datasetHowTo" class="nge-cl-howto" :class="{ 'nge-cl-howto--open': showHowTo }" href="#" @click.prevent="showHowTo = !showHowTo"
                  title="How to proofread cells in this dataset">instructions</a>
               <a v-else-if="datasetInstructionsUrl" class="nge-cl-howto" :href="datasetInstructionsUrl" target="_blank" rel="noopener"

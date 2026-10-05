@@ -214,8 +214,8 @@ onMounted(() => {
   // Mobile post-login landing: LoginModal asks for the Cell Library so a
   // fresh login never stares at an empty forced-3D view.
   document.addEventListener('nge:close-cell-library', () => { showCellLibrary.value = false; });
-  document.addEventListener('nge:open-cell-library', (() => {
-    cellLibraryInitialTab.value = undefined;
+  document.addEventListener('nge:open-cell-library', ((e: CustomEvent) => {
+    cellLibraryInitialTab.value = e.detail?.tab;
     showCellLibrary.value = true;
   }) as EventListener);
 

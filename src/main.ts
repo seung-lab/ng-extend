@@ -20,6 +20,7 @@ import './widgets/annotations_restyle.css';
 import './widgets/find_path_restyle.css';
 
 import {installShowcase} from './showcase';
+import {runPendingDatasetTour} from './dataset_tour';
 import App from 'components/App.vue';
 import TriagePage from 'components/TriagePage.vue';
 import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';
@@ -156,6 +157,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initializeWithViewer(viewer);
   loadVolumes(viewer);
   installShowcase();
+  runPendingDatasetTour();
   nextTick(() => {
     mergeTopBars();
     liveNeuroglancerInjection();

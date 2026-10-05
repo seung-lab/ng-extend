@@ -8,6 +8,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { DATASETS, DATASET_GROUPS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry, type DatasetSection } from '../datasets';
 import { runPanelTrace } from '../util/holo_trace';
 import { startDatasetTransition } from '../util/dataset_transition';
+import { queueDatasetTour, runPendingDatasetTour } from '../dataset_tour';
 import { loadDatasetPermissions, datasetAccess } from '../util/dataset_access';
 
 const emit = defineEmits({ hide: null });
@@ -115,11 +116,13 @@ async function switchTo(ds: DatasetEntry) {
   // being left, and reloading under it mid-switch showed the wrong cells.
   document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
   startDatasetTransition(ds);
+  // First visit to a dataset with a guided tour (MEC): play it on arrival.
+  queueDatasetTour(ds.id);
   emit('hide');
   await new Promise(r => setTimeout(r, 60));
   switching.value = true;
   const ok = await switchToDataset(ds);
-  if (ok) currentDatasetId.value = ds.id;
+  if (ok) { currentDatasetId.value = ds.id; runPendingDatasetTour(); }
   switching.value = false;
 }
 </script>
