@@ -16,6 +16,13 @@
       "bytes": 2647728
     },
     {
+      "id": "bouton-bubbles",
+      "title": "Bouton Bubbles",
+      "file": "bouton-bubbles.932890b0.m4a",
+      "duration": 173,
+      "bytes": 2835581
+    },
+    {
       "id": "curious-discovery",
       "title": "Curious Discovery",
       "file": "curious-discovery.38025b7c.m4a",
@@ -49,6 +56,13 @@
       "file": "hidden-treasures.086e7f37.m4a",
       "duration": 208,
       "bytes": 3386678
+    },
+    {
+      "id": "mec-mountaintop",
+      "title": "MEC Mountaintop",
+      "file": "mec-mountaintop.db19b9ab.m4a",
+      "duration": 164,
+      "bytes": 2672971
     },
     {
       "id": "magical-discovery",
