@@ -342,7 +342,7 @@ function padRank(rank: number): string {
         v-for="notif in backend.notifications"
         :key="notif.id"
         class="nge-notif-card"
-        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙'), 'nge-notif-card--recap': (notif.title || '').startsWith('✨') }"
+        :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--streak': (notif.title || '').startsWith('🔥'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙'), 'nge-notif-card--recap': (notif.title || '').startsWith('✨') }"
         @click="openDetail(notif)"
       >
         <div class="nge-notif-card-row">
@@ -627,6 +627,15 @@ function padRank(rank: number): string {
 }
 .nge-notif-card--fixed .nge-notif-card-title {
   color: #ffd35a;
+  font-weight: 700;
+}
+/* Streak milestones (title starts with 🔥): ember orange and gold. */
+.nge-notif-card--streak {
+  border-left: 3px solid #ff9a3c;
+  background: linear-gradient(90deg, rgba(255, 154, 60, 0.16), rgba(255, 211, 90, 0.05));
+}
+.nge-notif-card--streak .nge-notif-card-title {
+  color: #ffc46b;
   font-weight: 700;
 }
 /* Weekly recap cards (title starts with ✨): science cyan and violet. */

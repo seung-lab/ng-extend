@@ -481,7 +481,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="nge-fb-done-kicker">Signal received</div>
         <div class="nge-fb-done-text">Thank you! Your report reached the team.</div>
-        <div class="nge-fb-done-next">You will get a note in your notifications when it is fixed.</div>
+        <div class="nge-fb-done-next">We'll look into it!</div>
         <dl class="nge-fb-readout">
           <div v-for="(x, i) in sentWith" :key="x.k" class="nge-fb-readout-cell" :style="{ '--i': i }">
             <dt>{{ x.k }}</dt><dd>{{ x.v }}</dd>

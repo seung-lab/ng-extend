@@ -3709,6 +3709,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
       await supabase.from('users').update(updates).eq('id', userId.value);
 
+      // The day's edit carried the streak onto a milestone: a note in the
+      // bell, not a popup (Ames 2026-10-05). After the save, so the server
+      // sees the new streak when it checks.
+      if (updates.current_streak !== undefined && updates.current_streak !== (row.current_streak || 0)) {
+        sendStreakMilestone(updates.current_streak).catch(() => {});
+      }
+
       // Third edit: a thank you from Nurro, once, at the moment of crossing.
       if ((row.total_edits || 0) < 3 && (updates.total_edits || 0) >= 3) {
         sendThirdEditThanks().catch(() => {});
@@ -3728,6 +3735,33 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch (e: any) {
       console.warn('[backend] logEdit error:', e.message);
     }
+  }
+
+  /** A streak milestone, as a notification to yourself. The server allows
+   *  only these titles, only when the saved streak has reached the number,
+   *  and never the same one twice within six days. */
+  const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
+  const STREAK_LINES: Record<number, string> = {
+    7: 'A full week of mapping the brain, every single day. Congratulations!',
+    14: 'Two weeks straight. That is real dedication. Congratulations!',
+    30: 'A whole month without missing a day. Incredible work!',
+    60: 'Sixty days in a row. You are a force of nature!',
+    100: 'One hundred days. You are an EyeWire legend!',
+    200: 'Two hundred days of science, back to back. Astonishing!',
+    365: 'A full year, every single day. There are no words. Thank you!',
+  };
+  async function sendStreakMilestone(days: number) {
+    if (!STREAK_MILESTONES.includes(days) || !userId.value) return;
+    const next = STREAK_MILESTONES.find(m => m > days);
+    const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
+    await secureWrite('notification.self', {
+      title: `🔥 ${days}-Day Streak!`,
+      body: `${STREAK_LINES[days]} ${next ? `Next milestone: ${next} days. ` : ''}Edit tomorrow to keep the flame going.`,
+      // Stand-in art until the streak's own Nurro arrives.
+      image_url: `${art}/nurro-dance.png`,
+      thumbnail_url: `${art}/nurro-dance.png`,
+    });
+    loadNotifications().catch(() => {});
   }
 
   /** A personal "thank you, for science" notification after someone's third

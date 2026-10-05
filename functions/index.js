@@ -1712,7 +1712,14 @@ exports.ewSecureWrite = onRequest(
           if (!me) throw ewErr(403, "no EyeWire II profile");
           const title = String(args.title || "");
           const okTitle = EW_SELF_TITLES.includes(title) || (title.startsWith("🏆 New Achievement: ") && title.length <= 120);
-          if (!okTitle) throw ewErr(400, "not an allowed self notification");
+          // "🔥 14-Day Streak!": only the real milestones, and only when the
+          // caller's saved streak has reached it (Ames 2026-10-05).
+          const streakHit = title.match(/^🔥 (7|14|30|60|100|200|365)-Day Streak!$/);
+          if (streakHit) {
+            const saved = await sb(`users?id=eq.${me.id}&select=current_streak&limit=1`);
+            if ((saved[0]?.current_streak || 0) < Number(streakHit[1])) throw ewErr(400, "not yet");
+          }
+          if (!okTitle && !streakHit) throw ewErr(400, "not an allowed self notification");
           if (title.startsWith("💙") && (me.total_edits || 0) < 3) throw ewErr(400, "not yet");
           const since = new Date(Date.now() - 6 * 864e5).toISOString();
           const dup = await sb(`notifications?target_type=eq.user&target_id=eq.${me.id}&title=eq.${encodeURIComponent(title)}&created_at=gte.${since}&select=id`);
