@@ -9,11 +9,39 @@
       "bytes": 2722901
     },
     {
+      "id": "ambient-afternoon",
+      "title": "Ambient Afternoon",
+      "file": "ambient-afternoon.41530b82.m4a",
+      "duration": 163,
+      "bytes": 2647728
+    },
+    {
+      "id": "curious-motifs",
+      "title": "Curious Motifs",
+      "file": "curious-motifs.afc51eb7.m4a",
+      "duration": 88,
+      "bytes": 1424354
+    },
+    {
+      "id": "curious-pulse",
+      "title": "Curious Pulse",
+      "file": "curious-pulse.d83c286e.m4a",
+      "duration": 151,
+      "bytes": 2460004
+    },
+    {
       "id": "gentle-puzzle",
       "title": "Gentle Puzzle",
       "file": "gentle-puzzle.af204335.m4a",
       "duration": 179,
       "bytes": 2919492
+    },
+    {
+      "id": "hidden-treasures",
+      "title": "Hidden Treasures",
+      "file": "hidden-treasures.086e7f37.m4a",
+      "duration": 208,
+      "bytes": 3386678
     },
     {
       "id": "quiet-discovery-ii",

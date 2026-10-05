@@ -899,6 +899,9 @@ export interface UserPreferences {
   /** Chat panel size in px, kept when you resize it (Ames 2026-09-30:
    *  "I have to reset it every time!"). */
   chatSize?: { w: number; h: number };
+  /** EyeWire Radio: whether the music is on, and how loud (0 to 1). Follows
+   *  the account, so it is the same on every computer (Ames 2026-10-05). */
+  radio?: { on: boolean; volume: number };
   /** Show neuroglancer's "?" controls button in the top bar. Off by default
    *  (Amy 2026-09-30); the controls panel is still in the command palette. */
   showNgControlsButton?: boolean;
@@ -959,7 +962,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // per player, owner only, through ewCommunityData). Flag and bio are not
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
-  const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatSize',
+  const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatSize', 'radio',
     'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews', 'highlightStyles'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
