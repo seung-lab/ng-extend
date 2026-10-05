@@ -5230,6 +5230,8 @@ export interface ChatMessage {
   userId?: string | null;
   /** Set on nkem_test's replies: the language of its "for science". */
   botLanguage?: string;
+  /** The message this one replies to (chat_messages.reply_to), if any. */
+  replyTo?: string | null;
   /** Nurro's daily leaders card (the text part is the plain fallback). */
   daily?: { edits: Array<{ name: string; n: number }>; cells: Array<{ name: string; n: number }> };
   /** Only on this screen: your Nurro command and Nurro's answer (Amy 2026-09-30). */
@@ -5476,10 +5478,13 @@ export const useChatStore = defineStore('chat', () => {
       notificationId: r.notification_id ?? null,
       id: r.id ?? null,
       userId: r.user_id ?? null,
+      replyTo: r.reply_to ?? null,
     };
   }
 
   const HISTORY_PAGE = 30;
+  /** False once a read with reply_to has been refused (column not there yet). */
+  let replyColumnOk = true;
 
   /** nkem_test answers "for science" (src/chat_bot.ts). Local only. */
   /** nkem_test ("for science") and Nurro ("!" commands), src/chat_bot.ts.
@@ -5571,13 +5576,20 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function fetchPage(before: string | null) {
-    let q = supabase
-      .from('chat_messages')
-      .select('id, user_id, name, rank, text, created_at, dataset, notification_id')
-      .order('created_at', { ascending: false })
-      .limit(HISTORY_PAGE);
-    if (before) q = q.lt('created_at', before);
-    const { data, error } = await q;
+    // reply_to arrived with replies (Ames 2026-10-05). Until its column and
+    // the gateway know it, the read falls back to the old shape, so chat
+    // never goes blank over a missing migration.
+    const page = (cols: string) => {
+      let q = supabase.from('chat_messages').select(cols).order('created_at', { ascending: false }).limit(HISTORY_PAGE);
+      if (before) q = q.lt('created_at', before);
+      return q;
+    };
+    const BASE = 'id, user_id, name, rank, text, created_at, dataset, notification_id';
+    let { data, error }: { data: any[] | null; error: any } = replyColumnOk ? await page(BASE + ', reply_to') as any : { data: null, error: true };
+    if (error || !data) {
+      if (replyColumnOk) replyColumnOk = false;
+      ({ data, error } = await page(BASE) as any);
+    }
     if (error || !data) return null;
     if (data.length < HISTORY_PAGE) hasMoreHistory.value = false;
     if (data.length) oldestLoadedAt = data[data.length - 1].created_at;
@@ -5756,7 +5768,7 @@ export const useChatStore = defineStore('chat', () => {
       const date = new Date(row.created_at);
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
-        parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null});
+        parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null, replyTo:row.reply_to ?? null});
       // "!online name": Nurro looks the person up, then answers (live only).
       // "!leaders" / "!today": Nurro posts the daily leaders card again.
       // Nurro answers privately (Amy 2026-09-30): only the asker's screen
@@ -5770,7 +5782,9 @@ export const useChatStore = defineStore('chat', () => {
       if (reply && (reply.name !== NURRO_NAME || mine)) setTimeout(() => { reply.dateTime = new Date(); reply.time = formatTime(reply.dateTime); chatMessages.value.push(reply); }, 900);
       if (row.user_id !== backend.userId) {
         // A direct @mention always gets through, even with chat muted.
-        const mention = mentionsMe(row.text || '') && !onlineTarget(row.text || '');
+        // A reply to one of your messages reaches you like an @mention does.
+        const repliedToMe = !!row.reply_to && chatMessages.value.some(m => m.id === row.reply_to && m.userId === backend.userId);
+        const mention = repliedToMe || (mentionsMe(row.text || '') && !onlineTarget(row.text || ''));
         if (mention) {
           mentionPing.value++; lastMentionFrom.value = row.name || '';
           alertMentionAway(row.name || 'Someone', row.text || '', true);
@@ -5812,7 +5826,7 @@ export const useChatStore = defineStore('chat', () => {
    *   the message as a link that opens that exact notification instead of
    *   telling people to go and find it.
    */
-  function sendMessage(text: string, notificationId: number | null = null) {
+  function sendMessage(text: string, notificationId: number | null = null, replyTo: string | null = null) {
     if (!channel || !connected.value) return;
     const backend = useProofreadingBackendStore();
     const name = backend.chatHandle;
@@ -5829,9 +5843,15 @@ export const useChatStore = defineStore('chat', () => {
     }
     // Persist for history so the last messages show on next open (best-effort;
     // no-ops if the chat_messages table isn't present).
-    supabase.from('chat_messages')
-      .insert({ name, rank, text, dataset: currentDatasetName(), notification_id: notificationId })
-      .then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); });
+    const row: Record<string, any> = { name, rank, text, dataset: currentDatasetName(), notification_id: notificationId };
+    const post = (r: Record<string, any>) => supabase.from('chat_messages').insert(r);
+    if (!replyTo) { post(row).then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); }); return; }
+    // A reply the database cannot hold yet is still sent, as a plain message.
+    post({ ...row, reply_to: replyTo }).then(({ error }) => {
+      if (!error) return;
+      console.warn('[chat] reply link not stored, sent as a plain message:', error.message);
+      post(row).then(({ error: e2 }) => { if (e2) console.warn('[chat] persist failed:', e2.message); });
+    });
   }
 
   function askNurroPrivately(name: string, rank: string, text: string) {
