@@ -1542,7 +1542,12 @@ function toggleCollapse() {
   line-height: 1.35;
   max-height: 96px;  /* about five lines, then it scrolls */
   overflow-y: auto;
+  /* No scrollbar (Ames 2026-10-05): the box grows to fit, so a bar with its
+     arrows only got in the way. Past five lines it still scrolls, by wheel,
+     arrow keys or the caret. */
+  scrollbar-width: none;
 }
+.nge-chat-input::-webkit-scrollbar { display: none; }
 .nge-chat-input:focus { border-color: rgba(74, 158, 255, 0.3); }
 .nge-chat-input--over, .nge-chat-input--over:focus { border-color: rgba(255, 110, 110, 0.55); }
 .nge-chat-count { flex-shrink: 0; font-size: 12px; font-weight: 600; color: #8797ad; font-variant-numeric: tabular-nums; }
