@@ -32,6 +32,28 @@ import {VirtualList} from 'neuroglancer/widget/virtual_list';
       return origUpdateView.call(this);
     };
     console.log('[nge-patch] VirtualList.updateView installed');
+    // updateView measures each row right after rendering it, before our
+    // MutationObserver (main.ts) adds the lightbulb, jump button and badge.
+    // The row then grows, the list undercounts its height and the last rows
+    // can't be scrolled to. main.ts calls this once a row's injection is done
+    // to record the row's real height and rerun the layout.
+    proto.remeasureItem = function(this: any, element: HTMLElement) {
+      if (!element.isConnected) return;
+      const index = this.renderedItems.indexOf(element);
+      if (index < 0) return;
+      const {sizes} = this;
+      const newSize = element.getBoundingClientRect().height;
+      const existingSize = sizes.itemSize[index];
+      if (existingSize === newSize) return;
+      if (existingSize !== undefined) {
+        sizes.totalKnownSize -= existingSize;
+        --sizes.numItemsInTotalKnownSize;
+      }
+      sizes.itemSize[index] = newSize;
+      sizes.totalKnownSize += newSize;
+      ++sizes.numItemsInTotalKnownSize;
+      this.debouncedUpdateView();
+    };
   } else {
     console.warn('[nge-patch] VirtualList.prototype.updateView not found — is the import path right?');
   }
