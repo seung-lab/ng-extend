@@ -230,7 +230,8 @@ async function loadTriage() {
     }
     const { data, error } = await q;
     if (error) throw error;
-    triageRows.value = (data ?? []) as TriageRow[];
+    // Discarded reports are off the board unless you ask for older ones.
+    triageRows.value = ((data ?? []) as TriageRow[]).filter(r => triageShowReviewed.value || !isDiscarded(r));
     void loadReporters(triageRows.value);
     keepSelectedInView();
     for (const r of triageRows.value) {
@@ -250,8 +251,16 @@ async function loadTriage() {
 watch(adminSubTab, t => { if (t === 'triage') loadTriage(); }, { immediate: true });
 watch(triageShowReviewed, () => loadTriage());
 
-async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done') {
+/** Discarded: dismissed, and off the board for good (junk, a duplicate, a
+ *  test). It stays in the table and shows again under "Show older". */
+const DISCARD_NOTE = 'Discarded';
+const isDiscarded = (r: TriageRow) => r.status === 'dismissed' && (r.result_note || '').startsWith(DISCARD_NOTE);
+/** Too late to stop from here: it is on, or on its way to, the live site. */
+const isGoingLive = (r: TriageRow) => ['deploying', 'live_test_queued', 'live_testing', 'revert_queued', 'reverting'].includes(r.impl_state || '');
+
+async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done', discard = false) {
   if (triageActing.value) return;
+  if (discard && !window.confirm('Discard this report? It is dismissed and taken off the board. Any build in progress is stopped. You can still find it with "Show older".')) return;
   // Shipping a change closes the loop in Slack: the bridge posts a change
   // update into the original thread and tags the approvers, carrying this
   // note. Blank is fine, the update just goes noteless.
@@ -299,6 +308,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
       // decision into the Slack thread and tags you as the tester.
       ...(status === 'approved' && isBuildable(row) ? { impl_state: 'queued' } : {}),
       ...(status === 'done' ? { result_note: resultNote } : {}),
+      ...(discard ? { result_note: `${DISCARD_NOTE} in the Admin Hub by ${backend.userName || backend.userEmail || 'an admin'}.` } : {}),
       reviewed_by: backend.userName || backend.userEmail || 'admin',
       reviewed_at: new Date().toISOString(),
     };
@@ -1747,6 +1757,14 @@ function practiceWhen(iso: string | null) {
             <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id"
                     title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
                     @click="setTriageStatus(row, 'done')">✓ Done</button>
+            <!-- Dismiss at any stage after approval too (a failed or unwanted
+                 build), and Discard for junk (Ames 2026-10-05). -->
+            <button v-if="row.status === 'approved'" class="nge-admin-action-btn" :disabled="triageActing === row.id || isGoingLive(row)"
+                    :title="isGoingLive(row) ? 'It is on, or on its way to, the live site. Revert it in the Slack thread first.' : 'Stop work on this and move it to Dismissed. Any build in progress is cancelled.'"
+                    @click="setTriageStatus(row, 'dismissed')">{{ triageNotes[row.id]?.trim() ? 'Dismiss with comment' : 'Dismiss' }}</button>
+            <button v-if="triageGroupOf(row) !== 'done' && !isDiscarded(row)" class="nge-admin-action-btn nge-triage-discard-btn" :disabled="triageActing === row.id || isGoingLive(row)"
+                    title="Junk, a duplicate or a test: dismiss it and take it off the board. Still findable with Show older."
+                    @click="setTriageStatus(row, 'dismissed', true)">🗑 Discard</button>
             <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
           </div>
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
@@ -2426,6 +2444,9 @@ function practiceWhen(iso: string | null) {
 @media (max-width: 1100px) {
   .nge-triage-board .nge-triage-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
 }
+.nge-triage-discard-btn { color: #d79a9a; border-color: rgba(255, 120, 120, 0.3); }
+.nge-triage-discard-btn:hover:not(:disabled) { background: rgba(255, 90, 90, 0.12); color: #ffb3b3; }
+.nge-triage-claude { flex-wrap: wrap; }
 .nge-triage-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .nge-triage-from { font-size: 0.86em; color: #9fb3cc; }
 .nge-triage-release { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 6px; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(74, 158, 255, 0.25); }
