@@ -1074,6 +1074,12 @@ function toggleCollapse() {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 .nge-chat-float--quiet .nge-chat-input::placeholder { color: rgba(210, 235, 255, 0.9); font-weight: 700; }
+/* One left edge for the message pills, the ">" line and the coordinate
+   chip under them (Ames 2026-10-04): they sat at 17, 13 and 8 px. The panel's
+   own inset only makes sense while its box is drawn. */
+.nge-chat-float--quiet { margin-left: -1px; }
+.nge-chat-float--quiet .nge-chat-messages { padding-left: 0; }
+.nge-chat-float--quiet .nge-chat-input-wrap { padding-left: 0; }
 
 /* ── Resize handles ── */
 .nge-chat-resize { position: absolute; z-index: 10; }
