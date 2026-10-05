@@ -5286,9 +5286,9 @@ function parseMessageParts(name: string, text: string): MessagePart[] {
   return parts;
 }
 
-/** Chat messages are capped at 140 characters, and links don't count
+/** Chat messages are capped at 280 characters (Ames 2026-10-05, up from 140), and links don't count
  *  toward it (Amy 2026-10-05), so a shared view link never eats the limit. */
-export const CHAT_MAX_CHARS = 140;
+export const CHAT_MAX_CHARS = 280;
 export function chatTextLength(text: string): number {
   return Array.from(text.replace(/https?:\/\/\S+/g, '').trim()).length;
 }
