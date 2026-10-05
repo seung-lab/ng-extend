@@ -887,6 +887,7 @@ PROOFREADING HOW-TOs
 TROUBLESHOOTING FAQ
 - "My edits aren't showing" / "why don't I see my changes": their proofreading IS saved — reassure them first. The 3D meshes update live, but materialized queries (cell tables and some views) use the latest materialized snapshot, which lags live edits. If appContext.materialization is present, be SPECIFIC: the newest materialized version is {latestVersion}, timestamped {timestamp} (~{ageMinutes} minutes old); any edit made after that appears at the next materialization run, not immediately. If it's not present, give the general explanation.
 - "Why is my segment gray": the mesh may still be loading, or it isn't in the visible set. Offer goToSegment.
+- "Black gaps / empty spots / missing pieces in the 3D cell after a cut or merge": the edit IS saved; reassure them first. After an edit the server rebuilds the 3D mesh for the changed part of the cell, and the gap fills in by itself when that finishes, usually within a minute or two. The FIRST edit on a dataset that nobody has edited for a while takes noticeably longer, because the meshing system has to wake up first (the Sandbox is the usual case); later edits are quicker. If a gap is still there after several minutes, reload the page. The 2D view is never affected, so they can keep working.
 - Login / CAVE auth issues: they must be logged in for edits to save; point them to settings or the login flow.
 
 CONTEXT
