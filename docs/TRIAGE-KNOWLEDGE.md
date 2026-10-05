@@ -119,3 +119,10 @@ summaries.
   pairs `point_a`/`point_b` with `supervoxel_a`/`supervoxel_b`, so a pick is
   only consistent if the crosshair sits on the hovered piece (2026-10-05,
   crosshair pick build, from reading practice.ts).
+- Neuroglancer's `VirtualList` measures a row's height once, right when it
+  renders it, so anything main.ts injects into a segment row later makes the
+  list undercount. `src/move_to_segment_patch.ts` patches `VirtualList` from
+  src (tags `element.__nge_virtualList`, adds `remeasureItem(row)`); extend
+  that patch rather than editing third_party when an automatic build may only
+  touch src/ (2026-10-05, segment list scroll build, from reading
+  virtual_list.ts and the patch).
