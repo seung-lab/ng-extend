@@ -16,6 +16,13 @@
       "bytes": 2647728
     },
     {
+      "id": "curious-discovery",
+      "title": "Curious Discovery",
+      "file": "curious-discovery.38025b7c.m4a",
+      "duration": 182,
+      "bytes": 2967457
+    },
+    {
       "id": "curious-motifs",
       "title": "Curious Motifs",
       "file": "curious-motifs.afc51eb7.m4a",
@@ -63,6 +70,13 @@
       "file": "quiet-discovery.7f20c342.m4a",
       "duration": 173,
       "bytes": 2816360
+    },
+    {
+      "id": "treetop-twilight",
+      "title": "Treetop Twilight",
+      "file": "treetop-twilight.340da070.m4a",
+      "duration": 177,
+      "bytes": 2908644
     }
   ]
 }
