@@ -3,6 +3,7 @@ import {pendingAnnotations} from '../util/annotation_counter';
 import { computed, ref, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
+import RollUp from 'components/RollUp.vue';
 // Banner: 980 reconstructed cells (static/images/recap, original alongside).
 // Full CA3 render at 2400x1867 (Amy 2026-09-28): the old 1500x500 strip was
 // stretched ~1.6x to fill the panel and looked pixelated.
@@ -295,7 +296,7 @@ function jumpToCell(segId: string) {
         <!-- The week's headline numbers: edits, cells completed, annotations -->
         <div class="nge-recap-big-stat nge-recap-trio">
           <div class="nge-recap-trio-col">
-            <div class="nge-recap-big-number">{{ shown.editsThisWeek.toLocaleString() }}</div>
+            <div class="nge-recap-big-number"><RollUp :value="shown.editsThisWeek" /></div>
             <div class="nge-recap-big-label">edits this week</div>
             <div class="nge-recap-big-sub">
               {{ shown.mergesThisWeek.toLocaleString() }} merges
@@ -303,12 +304,12 @@ function jumpToCell(segId: string) {
             </div>
           </div>
           <div class="nge-recap-trio-col">
-            <div class="nge-recap-big-number nge-recap-big-number--cells">{{ cellsCompletedWeek.toLocaleString() }}</div>
+            <div class="nge-recap-big-number nge-recap-big-number--cells"><RollUp :value="cellsCompletedWeek" /></div>
             <div class="nge-recap-big-label">cell{{ cellsCompletedWeek === 1 ? '' : 's' }} completed</div>
             <div class="nge-recap-big-sub">this week</div>
           </div>
           <div class="nge-recap-trio-col">
-            <div class="nge-recap-big-number nge-recap-big-number--ann">{{ annotationsWeek.toLocaleString() }}</div>
+            <div class="nge-recap-big-number nge-recap-big-number--ann"><RollUp :value="annotationsWeek" /></div>
             <div class="nge-recap-big-label">annotation{{ annotationsWeek === 1 ? '' : 's' }} placed</div>
             <div class="nge-recap-big-sub">this week</div>
           </div>
@@ -321,14 +322,14 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-streak-row">
             <div class="nge-recap-streak-current">
               <span class="nge-recap-flame">🔥</span>
-              <span class="nge-recap-streak-num">{{ stats.currentStreak }}</span>
+              <span class="nge-recap-streak-num"><RollUp :value="stats.currentStreak" /></span>
               <span class="nge-recap-streak-unit">
                 day{{ stats.currentStreak === 1 ? '' : 's' }} in a row
               </span>
             </div>
             <div class="nge-recap-streak-record" v-if="stats.longestStreak > 0">
               <span class="nge-recap-streak-record-label">Personal best:</span>
-              <span class="nge-recap-streak-record-num">{{ stats.longestStreak }}</span>
+              <span class="nge-recap-streak-record-num"><RollUp :value="stats.longestStreak" /></span>
               <span class="nge-recap-streak-unit">
                 day{{ stats.longestStreak === 1 ? '' : 's' }}
               </span>
@@ -341,15 +342,15 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-section-label">{{ monthLabel }}</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ shown.editsThisMonth.toLocaleString() }}</div>
+              <div class="nge-recap-month-num"><RollUp :value="shown.editsThisMonth" /></div>
               <div class="nge-recap-month-key">total edits</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ shown.mergesThisMonth.toLocaleString() }}</div>
+              <div class="nge-recap-month-num"><RollUp :value="shown.mergesThisMonth" /></div>
               <div class="nge-recap-month-key">merges</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ shown.splitsThisMonth.toLocaleString() }}</div>
+              <div class="nge-recap-month-num"><RollUp :value="shown.splitsThisMonth" /></div>
               <div class="nge-recap-month-key">splits</div>
             </div>
           </div>
@@ -360,15 +361,15 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-section-label">Cell Activity</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num nge-recap-cells-complete">{{ cellsCompletedWeek }}</div>
+              <div class="nge-recap-month-num nge-recap-cells-complete"><RollUp :value="cellsCompletedWeek" /></div>
               <div class="nge-recap-month-key">completed</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num nge-recap-cells-id">{{ cellsIdentified.length }}</div>
+              <div class="nge-recap-month-num nge-recap-cells-id"><RollUp :value="cellsIdentified.length" /></div>
               <div class="nge-recap-month-key">identified</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ cellsThisWeek.length }}</div>
+              <div class="nge-recap-month-num"><RollUp :value="cellsThisWeek.length" /></div>
               <div class="nge-recap-month-key">touched</div>
             </div>
           </div>
@@ -394,19 +395,19 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-section-label">Scout Report</div>
           <div class="nge-recap-month-grid nge-recap-month-grid--scout">
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num" style="color: #35b5ff;">{{ tagsPlacedThisWeek }}</div>
+              <div class="nge-recap-month-num" style="color: #35b5ff;"><RollUp :value="tagsPlacedThisWeek" /></div>
               <div class="nge-recap-month-key">tags placed</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num" style="color: #9d9;">{{ tagsFixedThisWeek }}</div>
+              <div class="nge-recap-month-num" style="color: #9d9;"><RollUp :value="tagsFixedThisWeek" /></div>
               <div class="nge-recap-month-key">tags you fixed</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ helpAskedThisWeek }}</div>
+              <div class="nge-recap-month-num"><RollUp :value="helpAskedThisWeek" /></div>
               <div class="nge-recap-month-key">help asked</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num" style="color: #7f8;">{{ helpAnsweredThisWeek }}</div>
+              <div class="nge-recap-month-num" style="color: #7f8;"><RollUp :value="helpAnsweredThisWeek" /></div>
               <div class="nge-recap-month-key">help answered</div>
             </div>
           </div>
@@ -457,20 +458,20 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-global-sub">Everyone in EyeWire II, last 7 days</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num" style="color: #42d5ec;">{{ globalStats.editsWeek.toLocaleString() }}</div>
+              <div class="nge-recap-month-num" style="color: #42d5ec;"><RollUp :value="globalStats.editsWeek" /></div>
               <div class="nge-recap-month-key">edits</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num" style="color: #c98bff;">{{ globalStats.activeWeek.toLocaleString() }}</div>
+              <div class="nge-recap-month-num" style="color: #c98bff;"><RollUp :value="globalStats.activeWeek" /></div>
               <div class="nge-recap-month-key">scientists editing</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num" style="color: #7f8;">{{ globalStats.cellsWeek.toLocaleString() }}</div>
+              <div class="nge-recap-month-num" style="color: #7f8;"><RollUp :value="globalStats.cellsWeek" /></div>
               <div class="nge-recap-month-key">cells completed</div>
             </div>
           </div>
           <div class="nge-recap-global-share" v-if="globalStats.mineWeek > 0 && globalStats.editsWeek > 0">
-            You made <strong>{{ globalStats.mineWeek.toLocaleString() }}</strong> of them,
+            You made <strong><RollUp :value="globalStats.mineWeek" /></strong> of them,
             <strong>{{ Math.round(globalStats.mineWeek / globalStats.editsWeek * 100) }}%</strong> of the community's edits.
           </div>
           </div>
@@ -478,15 +479,15 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-global-sub">All time</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ globalStats.editsAll.toLocaleString() }}</div>
+              <div class="nge-recap-month-num"><RollUp :value="globalStats.editsAll" /></div>
               <div class="nge-recap-month-key">edits</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ globalStats.cellsAll.toLocaleString() }}</div>
+              <div class="nge-recap-month-num"><RollUp :value="globalStats.cellsAll" /></div>
               <div class="nge-recap-month-key">cells completed</div>
             </div>
             <div class="nge-recap-month-cell">
-              <div class="nge-recap-month-num">{{ globalStats.scientists.toLocaleString() }}</div>
+              <div class="nge-recap-month-num"><RollUp :value="globalStats.scientists" /></div>
               <div class="nge-recap-month-key">citizen scientists</div>
             </div>
           </div>

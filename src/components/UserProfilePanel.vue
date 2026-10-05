@@ -10,6 +10,9 @@ import { loadContribution, datasetTagVariants as sharedTagVariants } from '../ut
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
+import {getToolbarIconDef} from '../data/toolbar-icons';
+// The same drawing the top bar uses for Week in Science (Ames 2026-10-05).
+const recapIconSvg = getToolbarIconDef('recap')?.svg || '';
 import MyCellsTab from 'components/MyCellsTab.vue';
 import { runPanelTrace } from '../util/holo_trace';
 import { isMobileRef } from '../util/mobile';
@@ -865,7 +868,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': true }"
           @click="openWeekInScience()"
-        >📊 My Week in Science</button>
+        ><span class="nge-profile-tab-svg" v-html="recapIconSvg"></span> My Week in Science</button>
         <button
           v-if="!viewingOtherUser"
           class="nge-profile-tab"
@@ -3087,6 +3090,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   transition: color 0.15s, border-color 0.15s;
   letter-spacing: 0.02em;
 }
+.nge-profile-tab-svg { display: inline-block; font-size: 1.25em; line-height: 1; vertical-align: -0.16em; margin-right: 2px; }
+.nge-profile-tab-svg :deep(svg) { color: currentColor !important; }
 .nge-profile-tab:hover {
   color: rgba(200, 220, 255, 0.8);
 }
