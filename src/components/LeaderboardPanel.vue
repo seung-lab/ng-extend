@@ -84,6 +84,28 @@ const rankedUsers = computed(() => {
   return [...userSource.value].sort((a, b) => b.stats[key] - a.stats[key]);
 });
 
+// The board lists the top 50 of the ranking on screen. A player below that
+// still gets their own row at the foot, with their true place (Ames
+// 2026-10-05: "always add your own row with your true rank").
+const BOARD_SIZE = 50;
+const isYou = (user: DemoUser) => user.id === 'amy' || user.id === backendStore.userId;
+const rankingColumn = computed(() => {
+  const span = activeTab.value === 'week' ? 'week' : activeTab.value === 'day' ? '24h' : 'alltime';
+  return `${metric.value === 'completions' ? 'completions' : 'edits'}_${span}`;
+});
+const boardRows = computed<{ user: DemoUser; rank: number; below: boolean }[]>(() => {
+  const all = rankedUsers.value;
+  const rows = all.slice(0, BOARD_SIZE).map((user, i) => ({ user, rank: i + 1, below: false }));
+  const at = all.findIndex(isYou);
+  if (at >= BOARD_SIZE) {
+    // The loaded list only holds the top of each ranking, so the true place
+    // comes from the server's count of players ahead.
+    const rank = Math.max(backendStore.leaderboardMyRanks[rankingColumn.value] ?? 0, at + 1);
+    rows.push({ user: all[at], rank, below: true });
+  }
+  return rows;
+});
+
 function editCountForTab(user: DemoUser): number {
   if (activeTab.value === 'week') return user.stats.editsThisWeek;
   if (activeTab.value === 'day')  return user.stats.editsThisMonth;
@@ -305,15 +327,16 @@ onUnmounted(() => {
             </thead>
             <tbody>
               <tr
-                v-for="(user, idx) in rankedUsers"
+                v-for="{ user, rank, below } in boardRows"
                 :key="user.id"
                 class="nge-lb-row"
-                :class="{ 'nge-lb-row--you': user.id === 'amy' || user.id === backendStore.userId }"
+                :class="{ 'nge-lb-row--you': isYou(user), 'nge-lb-row--below': below }"
+                :title="below ? `You are ${rank.toLocaleString()} on this board. The top ${BOARD_SIZE} are shown above.` : undefined"
                 @click="selectUser(user)"
               >
                 <td class="nge-lb-td nge-lb-td--rank">
-                  <span v-if="RANK_MEDAL[idx + 1]">{{ RANK_MEDAL[idx + 1] }}</span>
-                  <span v-else class="nge-lb-rank-num">{{ idx + 1 }}</span>
+                  <span v-if="RANK_MEDAL[rank]">{{ RANK_MEDAL[rank] }}</span>
+                  <span v-else class="nge-lb-rank-num">{{ rank.toLocaleString() }}</span>
                 </td>
                 <td class="nge-lb-td">
                   <!-- Use live prefs flag for the logged-in user's row -->
@@ -325,7 +348,7 @@ onUnmounted(() => {
                        :src="flagImgUrl(userFlag(user))" />
                   <span v-else class="nge-lb-flag-fallback">🌐</span>
                   <span class="nge-lb-name nge-lb-name--clickable" @click.stop="openFullProfile(user.id)" title="View profile">{{ user.name }}</span>
-                  <span v-if="user.id === 'amy' || user.id === backendStore.userId" class="nge-lb-you-tag">you</span>
+                  <span v-if="isYou(user)" class="nge-lb-you-tag">you</span>
                   <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak"
                         :title="`${user.stats.currentStreak}-day streak`">
                     🔥{{ user.stats.currentStreak }}
@@ -909,6 +932,9 @@ onUnmounted(() => {
 .nge-lb-row:hover              { background: rgba(255, 255, 255, 0.04); }
 .nge-lb-row--you               { background: rgba(74, 158, 255, 0.06); }
 .nge-lb-row--you:hover         { background: rgba(74, 158, 255, 0.11); }
+/* Your own row when you are below the top 50: set apart from the list above,
+   and pinned to the foot of the list so it shows without scrolling. */
+.nge-lb-row--below > td        { border-top: 1px dashed rgba(120, 180, 255, 0.45); position: sticky; bottom: 0; z-index: 1; background: #0d1830; }
 
 .nge-lb-td {
   padding: 8px 10px;

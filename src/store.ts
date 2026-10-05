@@ -3980,6 +3980,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   // ── Leaderboard: top users from Supabase ────────────────────────────
   const leaderboard: Ref<any[]> = ref([]);
+  /** The signed in player's true place in each ranking, by view column
+   *  (1 = first). The board shows the top 50 of a ranking; a player below
+   *  that still sees their own row with this rank (Ames 2026-10-05). */
+  const leaderboardMyRanks: Ref<Record<string, number>> = ref({});
 
   async function loadLeaderboard() {
     // Pull from the `user_edit_counts` view so we get distinct edits_24h,
@@ -3992,15 +3996,30 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       // strong on Cells or in a recent window but lower on all-time edits
       // (Ames 2026-10-05). Fetch the top 50 of EACH ranking and merge them.
       const COLS = 'id, display_name, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, edits_24h, edits_week, edits_alltime, completions_24h, completions_week, completions_alltime';
-      const RANKINGS = ['total_edits', 'edits_week', 'edits_24h', 'cells_completed', 'completions_week', 'completions_24h'];
-      const results = await Promise.all(RANKINGS.map(col =>
-        supabase.from('user_edit_counts').select(COLS).order(col, { ascending: false }).limit(50)));
+      const RANKINGS = ['edits_alltime', 'edits_week', 'edits_24h', 'completions_alltime', 'completions_week', 'completions_24h'];
+      const me = userId.value;
+      const [mine, ...results] = await Promise.all([
+        me ? supabase.from('user_edit_counts').select(COLS).eq('id', me).maybeSingle() : Promise.resolve({ data: null, error: null } as any),
+        ...RANKINGS.map(col => supabase.from('user_edit_counts').select(COLS).order(col, { ascending: false }).limit(50)),
+      ]);
       const error = results[0].error;
       const data = error ? null : (() => {
         const byId = new Map<string, any>();
         for (const r of results) for (const u of (r.data ?? []) as any[]) if (!byId.has(u.id)) byId.set(u.id, u);
+        if (mine?.data && !byId.has(mine.data.id)) byId.set(mine.data.id, mine.data);
         return [...byId.values()];
       })();
+      // My place in each ranking: one more than the number of players ahead.
+      if (!error && mine?.data) {
+        const row: any = mine.data;
+        void Promise.all(RANKINGS.map(col =>
+          supabase.from('user_edit_counts').select('id', { count: 'exact', head: true }).gt(col, row[col] ?? 0)))
+          .then(counts => {
+            const ranks: Record<string, number> = {};
+            counts.forEach((c: any, i) => { if (!c.error && typeof c.count === 'number') ranks[RANKINGS[i]] = c.count + 1; });
+            leaderboardMyRanks.value = ranks;
+          }, () => {});
+      }
       if (!error && data) {
         leaderboard.value = data;
         return;
@@ -5072,7 +5091,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
-    leaderboard,
+    leaderboard, leaderboardMyRanks,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
