@@ -28,6 +28,7 @@ import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
+import RadioPlayer from "components/RadioPlayer.vue";
 import UsernamePrompt from "components/UsernamePrompt.vue";
 import MobileWelcome from "components/MobileWelcome.vue";
 import MobileTour from "components/MobileTour.vue";
@@ -967,6 +968,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <screenshot-dialog :show="showScreenshotDialog" @close="showScreenshotDialog = false" />
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <!-- 🔥 streak: its fire, its click and its card live in StreakChip.vue -->
+    <!-- EyeWire Radio: bottom right, teleported to the body -->
+    <RadioPlayer v-if="login.sessions.length > 0" />
     <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
