@@ -94,7 +94,7 @@ would change and every saved podium that differs from the new rule.
 Result on 2026-10-05 15:27 UTC (34 players, 1,749 log rows, 19 saved podiums):
 
 - Board: no player's number changes.
-- Saved podiums: three Cells podiums differ. Nothing rewrites them.
+- Saved podiums: three Cells podiums differed. The SQL rewrites none of them.
   - 2026-09-28: saved Amy 12, Celia D 5, Andrearwen 5. Rule: Amy 12,
     Annkri 9, Celia D 5 (Andrearwen 5, fourth on the tie).
   - 2026-07-13: saved Krzysztof Kruk 1, Nseraf 1. Rule: Krzysztof Kruk 2,
@@ -127,7 +127,8 @@ with `op_key` set and `metadata.verified` true.
   rewrites a saved week. The Weekly Winners Snapshot workflow can: run it
   with `week_start` set (and `dry_run` first to see what would change, and
   `update_broadcast` to correct the posted announcement's text in place).
-  The three weeks above are the ones that differ.
+  The week of 2026-09-28 was corrected this way on 2026-10-05; the other two
+  weeks above still differ.
 - **Unverified edits still count.** An edit is recorded as unverified when it
   can not be checked: an app version from before this change, a graph server
   we do not ask (MEC, whose server is fragile), or no answer. They are marked
