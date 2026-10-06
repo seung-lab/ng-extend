@@ -12,7 +12,9 @@ import thumbMec from '../static/images/datasets/mec.jpg';
 // EyeWire II retina: e2_overview.png from eyewire.ai.
 import thumbRetina from '../static/images/datasets/retina.jpg';
 import thumbBanc from '../static/images/datasets/banc.jpg';
-import { useLayersStore } from './store';
+// FlyWire: the 50 largest neurons render (Ames 2026-10-06).
+import thumbFlywire from '../static/images/datasets/flywire.jpg';
+import { useLayersStore, useUserPreferencesStore } from './store';
 import { getDatasetCaveConfig, cellTypesForDataset } from './config';
 import { openSegPanel } from './widgets/widget_utils';
 
@@ -24,7 +26,7 @@ export interface DatasetEntry {
   /** Shortest name, for the top bar's "Data:" button. */
   abbrev: string;
   /** Organism the volume comes from; drives the species icon. */
-  species: 'mouse' | 'fly';
+  species: 'mouse' | 'fly' | 'human';
   description: string;
   /** Small 16:9 image for dataset cards (profile Datasets tab). Falls back
    *  to the species icon when unset. */
@@ -36,6 +38,13 @@ export interface DatasetEntry {
   /** Left out of the dataset switcher and profile (still resolvable, so saved
    *  links and states that use it keep working). */
   hidden?: boolean;
+  /** Off until the player turns it on in their profile's Datasets tab
+   *  ("More datasets", Ames 2026-10-06). See isDatasetShown. */
+  optional?: boolean;
+  /** Published segmentation files with no CAVE behind them (H01, the Janelia
+   *  FlyEM volumes): look, colour and share only. No proofreading, claims or
+   *  completions, and its CAVE config has an empty server. */
+  exploreOnly?: boolean;
   /** Versions of one volume share a single switcher card that opens into a
    *  plain list (Ames 2026-09-30: the three MICrONS entries). */
   group?: string;
@@ -68,7 +77,17 @@ export const DATASET_GROUPS: Record<string, { label: string; description: string
 export const SPECIES_ICONS: Record<DatasetEntry['species'], string> = {
   mouse: '🐭',
   fly: '🪰',
+  human: '🧠',
 };
+
+/** Shown in the switcher and the profile: not hidden, and if optional, turned
+ *  on by this player (prefs.extraDatasets, which follows the account). */
+export function isDatasetShown(ds: DatasetEntry): boolean {
+  if (ds.hidden) return false;
+  if (!ds.optional) return true;
+  try { return (useUserPreferencesStore().prefs.extraDatasets || []).includes(ds.id); }
+  catch { return false; }
+}
 
 export const DATASETS: DatasetEntry[] = [
   {
@@ -246,6 +265,125 @@ export const DATASETS: DatasetEntry[] = [
     ],
   },
   {
+    id: 'flywire',
+    section: 'viewonly',
+    caveDataset: 'flywire_public',
+    thumbnail: thumbFlywire,
+    label: 'FlyWire: Fruit Fly Brain',
+    shortLabel: 'FlyWire',
+    abbrev: 'FlyWire',
+    species: 'fly',
+    description: 'Whole adult fruit fly brain connectome, FAFB public release (4×4×40 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://flywire_em/aligned/v1',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://prod.flywire-daf.com/segmentation/table/flywire_public',
+          subsources: { default: true, mesh: true, graph: true },
+          enableDefaultSubsources: true,
+        },
+        name: 'flywire_public',
+      },
+    ],
+  },
+  {
+    id: 'h01',
+    section: 'viewonly',
+    optional: true,
+    exploreOnly: true,
+    label: 'H01: Human Cortex',
+    shortLabel: 'H01',
+    abbrev: 'H01',
+    species: 'human',
+    description: 'A cubic millimetre of human temporal cortex, Google and Lichtman Lab (8×8×33 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://h01-release/data/20210601/4nm_raw',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: 'precomputed://gs://h01-release/data/20210601/c3',
+        name: 'h01_c3',
+      },
+    ],
+  },
+  {
+    id: 'manc',
+    section: 'viewonly',
+    optional: true,
+    exploreOnly: true,
+    label: 'MANC: Male Fly Nerve Cord',
+    shortLabel: 'MANC',
+    abbrev: 'MANC',
+    species: 'fly',
+    description: 'Male adult fruit fly ventral nerve cord, Janelia FlyEM v1.2 (8 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://flyem-vnc-2-26-213dba213ef26e094c16c860ae7f4be0/v3_emdata_clahe_xy/jpeg',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: 'precomputed://gs://manc-seg-v1p2/manc-seg-v1.2',
+        name: 'manc_v1_2',
+      },
+    ],
+  },
+  {
+    id: 'mcns',
+    section: 'viewonly',
+    optional: true,
+    exploreOnly: true,
+    label: 'MCNS: Male Fly Brain and Nerve Cord',
+    shortLabel: 'MCNS',
+    abbrev: 'MCNS',
+    species: 'fly',
+    description: 'Male adult fruit fly central nervous system, Janelia FlyEM v1.0 (8 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://flyem-male-cns/em/em-clahe-jpeg',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: 'precomputed://gs://flyem-male-cns/v1.0/segmentation',
+        name: 'malecns_v1_0',
+      },
+    ],
+  },
+  {
+    id: 'maol',
+    section: 'viewonly',
+    optional: true,
+    exploreOnly: true,
+    label: 'MAOL: Male Fly Optic Lobe',
+    shortLabel: 'MAOL',
+    abbrev: 'MAOL',
+    species: 'fly',
+    description: 'Male adult fruit fly optic lobe, Janelia FlyEM v1.1 (8 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://flyem-optic-lobe/grayscale-clahe-jpeg',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: 'precomputed://gs://flyem-optic-lobe/v1.1/segmentation',
+        name: 'optic_lobe_v1_1',
+      },
+    ],
+  },
+  {
     id: 'pni_mec',
     section: 'production',
     highlightOff: 'Highlight is not available on this dataset yet: its server cannot trace paths along a cell.',
@@ -371,7 +509,15 @@ export function canonicalDataset(name: string | undefined | null): string {
   // Private MICrONS graph: its root ids are not the public ones, so it keeps
   // its own key rather than sharing minnie65_public's rows.
   if (n.startsWith('minnie3')) return 'minnie3_v1';
+  // The public release graph is its own dataset: its root ids are frozen at
+  // v783 and are not the sandbox's.
+  if (n === 'flywire_public' || n.startsWith('flywire_fafb_public')) return 'flywire_fafb_public';
   if (n.startsWith('flywire') || n.includes('fly_v')) return 'flywire_fafb_sandbox';
+  // Explore only volumes (published files, no CAVE).
+  if (n.startsWith('h01')) return 'h01_c3';
+  if (n.startsWith('manc')) return 'manc_v1_2';
+  if (n.startsWith('malecns')) return 'malecns_v1_0';
+  if (n.startsWith('optic_lobe')) return 'optic_lobe_v1_1';
   if (n.startsWith('pni_mec') || n === 'mec') return 'pni_mec';
   if (n.startsWith('brain_and_nerve') || n === 'banc' || n.startsWith('wclee_fly_cns')) return 'brain_and_nerve_cord';
   return n;

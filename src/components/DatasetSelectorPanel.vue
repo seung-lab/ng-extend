@@ -5,7 +5,7 @@
  * Switching loads new neuroglancer layers + updates CAVE config automatically.
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { DATASETS, DATASET_GROUPS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry, type DatasetSection } from '../datasets';
+import { DATASETS, DATASET_GROUPS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry, type DatasetSection, isDatasetShown } from '../datasets';
 import { runPanelTrace } from '../util/holo_trace';
 import { startDatasetTransition } from '../util/dataset_transition';
 import { queueDatasetTour, runPendingDatasetTour } from '../dataset_tour';
@@ -63,7 +63,7 @@ const cards = computed<Card[]>(() => {
       seen.add(ds.group);
       // A group lists every version, including ones hidden as their own card.
       out.push({ kind: 'group', key: ds.group, members: DATASETS.filter(d => d.group === ds.group) });
-    } else if (!ds.hidden || ds.id === currentDatasetId.value) {
+    } else if (isDatasetShown(ds) || ds.id === currentDatasetId.value) {
       out.push({ kind: 'one', ds });
     }
   }

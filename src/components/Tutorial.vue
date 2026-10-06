@@ -13,6 +13,7 @@ import { steps as steps4 } from '../site-tour';
 import { steps as steps5 } from '../tutorial-cut';
 import { steps as steps6 } from '../tutorial-mec-tour';
 import { steps as steps7 } from '../tutorial-retina-tour';
+import { steps as steps8 } from '../tutorial-flywire-tour';
 import { endPractice } from '../practice';
 import { practiceEarned } from '../tutorial-3';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
@@ -25,7 +26,7 @@ import badgeCut from '../../static/nurro/nurro-super-v2.png';
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8 };
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {
@@ -35,6 +36,7 @@ const currentStep = computed(() => {
     if (store.activeTutorial === 5) return store.tutorialStep5;
     if (store.activeTutorial === 6) return store.tutorialStep6;
     if (store.activeTutorial === 7) return store.tutorialStep7;
+    if (store.activeTutorial === 8) return store.tutorialStep8;
     return store.tutorialStep4;
 });
 
@@ -161,7 +163,7 @@ const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() -
 // opened Retina. A tutorial found partway at load now waits behind a small
 // Continue / Exit card and loads nothing until you choose. Starting a
 // tutorial from the menu (step 0) needs no prompt.
-const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina' };
+const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain' };
 const resumeDecided = ref(false);
 watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) => {
     if (stepNow === 0) resumeDecided.value = true;       // a fresh start from the menu

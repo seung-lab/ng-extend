@@ -14,6 +14,7 @@ import { canonicalDataset } from './datasets';
 const TOUR_TUTORIAL: Record<string, number> = {
   pni_mec: 6,
   stroeh_mouse_retina: 7,
+  flywire_fafb_public: 8,
 };
 
 const seenKey = (dataset: string) => `nge-dataset-tour-seen:${dataset}`;

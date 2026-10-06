@@ -205,6 +205,11 @@ export const useTutorialStore = defineStore("tutorial", () => {
     parseInt(localStorage.getItem(`nge-tutorial-7-step`) ?? "-1")
   );
 
+  // Tutorial 8, the FlyWire dataset tour (src/tutorial-flywire-tour.ts). Local only.
+  const tutorialStep8: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-8-step`) ?? "-1")
+  );
+
   // Track whether we've already hydrated for the current user so we don't
   // clobber locally-advanced progress on every re-render.
   const hydratedForUserId: Ref<string | null> = ref(null);
@@ -217,6 +222,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 5) return tutorialStep5.value;
     if (activeTutorial.value === 6) return tutorialStep6.value;
     if (activeTutorial.value === 7) return tutorialStep7.value;
+    if (activeTutorial.value === 8) return tutorialStep8.value;
     return tutorialStep4.value;
   }
 
@@ -227,6 +233,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     else if (activeTutorial.value === 5) tutorialStep5.value = val;
     else if (activeTutorial.value === 6) tutorialStep6.value = val;
     else if (activeTutorial.value === 7) tutorialStep7.value = val;
+    else if (activeTutorial.value === 8) tutorialStep8.value = val;
     else tutorialStep4.value = val;
   }
 
@@ -321,6 +328,9 @@ export const useTutorialStore = defineStore("tutorial", () => {
   watch(tutorialStep7, () => {
     localStorage.setItem(`nge-tutorial-7-step`, `${tutorialStep7.value}`);
   });
+  watch(tutorialStep8, () => {
+    localStorage.setItem(`nge-tutorial-8-step`, `${tutorialStep8.value}`);
+  });
   watch(activeTutorial, () => {
     localStorage.setItem(`nge-active-tutorial`, `${activeTutorial.value}`);
     scheduleSync();
@@ -354,6 +364,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep5,
     tutorialStep6,
     tutorialStep7,
+    tutorialStep8,
     hydrateFromSupabase,
   };
 });

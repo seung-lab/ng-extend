@@ -468,6 +468,9 @@ export async function getCellStatus(
   const completionHit = dsCfg.cellStatusSchema === 'proofreading_boolstatus_user'
     // BANC backbone_proofread: a row per proofread cell, proofread = true.
     ? completionRows.find((a: any) => a.proofread === true || a.proofread === 't')
+    : dsCfg.cellStatusSchema === 'representative_point'
+    // FlyWire proofread_neurons: a row for the cell means it is proofread.
+    ? completionRows[0]
     : completionRows.find((a: any) =>
         typeof a.tag === 'string' && (a.tag === 'complete' || a.tag.startsWith('complete' + USER_DELIMITER)));
   if (completionHit) {

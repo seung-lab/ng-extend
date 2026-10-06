@@ -960,6 +960,8 @@ export interface UserPreferences {
   showAnnotationSetupTabs?: boolean;
   /** Show Source and Graph tabs on segmentation layers. Defaults to false. */
   showSegSetupTabs?: boolean;
+  /** Optional datasets this player turned on (DatasetEntry.id, e.g. 'h01'). */
+  extraDatasets?: string[];
   /** Switch datasets without the curated view or starter cells (faster). */
   datasetBareSwitch?: boolean;
   /** Segmentation layer name -> the player's own share link to open there. */
@@ -999,7 +1001,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews', 'highlightStyles'];
+    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];

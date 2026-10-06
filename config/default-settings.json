@@ -1,4 +1,39 @@
 {
+  "flywire_public": {
+    "dimensions": [4e-9, 4e-9, 4e-8],
+    "position": [131000.0, 55000.0, 3500.0],
+    "crossSectionScale": 8.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 260000.0
+  },
+  "h01_c3": {
+    "dimensions": [8e-9, 8e-9, 3.3e-8],
+    "position": [257946.0, 178200.0, 2646.0],
+    "crossSectionScale": 8.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 300000.0
+  },
+  "manc_v1_2": {
+    "dimensions": [8e-9, 8e-9, 8e-9],
+    "position": [21472.0, 28032.0, 41152.0],
+    "crossSectionScale": 4.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 70000.0
+  },
+  "malecns_v1_0": {
+    "dimensions": [8e-9, 8e-9, 8e-9],
+    "position": [47044.0, 39158.0, 67288.0],
+    "crossSectionScale": 4.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 110000.0
+  },
+  "optic_lobe_v1_1": {
+    "dimensions": [8e-9, 8e-9, 8e-9],
+    "position": [18432.0, 27648.0, 22528.0],
+    "crossSectionScale": 4.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 50000.0
+  },
   "stroeh_mouse_retina": {
     "dimensions": [1.6e-8, 1.6e-8, 4e-8],
     "position": [32653, 23923, 583],

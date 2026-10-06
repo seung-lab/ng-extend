@@ -36,7 +36,7 @@ export interface DatasetCaveConfig {
   /** Schema used for cellStatusTable. Default is 'bound_tag'; use
    *  'bound_tag_user' once the table is migrated to the user-tracked variant
    *  (AnnotationEngine fills in user_id server-side from auth context). */
-  cellStatusSchema?: 'bound_tag' | 'bound_tag_user' | 'proofreading_boolstatus_user';
+  cellStatusSchema?: 'bound_tag' | 'bound_tag_user' | 'proofreading_boolstatus_user' | 'representative_point';
   /** The dataset's own tables are shown but players cannot write them (the
    *  table owner keeps write permission PRIVATE). The segment menu says so
    *  instead of offering a Save that CAVE would refuse. */
@@ -318,6 +318,39 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeReadOnly: true,
     defaultPosition:  [139823, 138471, 2627],
   },
+  // FlyWire public release (frozen at materialization v783), on FlyWire's own
+  // CAVE server. Auth dataset flywire_public: view for everyone, edit for
+  // nobody. proofread_neurons has one row per proofread neuron (schema
+  // representative_point, so a row means proofread); neuron_information_v2
+  // carries the community labels. Both are shown read only. Starts on three
+  // of the tour's cells (src/tutorial-flywire-tour.ts): a Kenyon cell, an
+  // LC10 and the giant fiber.
+  flywire_public: {
+    caveServer:       'https://prod.flywire-daf.com',
+    datastack:        'flywire_fafb_public',
+    alignedVolume:    'fafb_seung_alignment_v0',
+    cellStatusTable:  'proofread_neurons',
+    cellStatusSchema: 'representative_point',
+    cellStatusReadOnly: true,
+    cellTypeTable:    'neuron_information_v2',
+    cellTypeSchema:   'bound_tag_user',
+    cellTypeReadOnly: true,
+    defaultSegments:  ['720575940625290003', '720575940633190169', '720575940632499757'],
+    segmentColors:    {
+      '720575940625290003': '#ff6fb5',
+      '720575940633190169': '#7ef0c2',
+      '720575940632499757': '#ff8a4a',
+    },
+    defaultPosition:  [131000, 55000, 3500],
+  },
+  // Explore only volumes: published segmentation files, no CAVE. Registered
+  // with an EMPTY server on purpose. An unregistered layer name falls back
+  // to the retina's config and would address the wrong volume; these say
+  // plainly that there is nothing to read or write.
+  h01_c3:           { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true },
+  manc_v1_2:        { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true },
+  malecns_v1_0:     { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true },
+  optic_lobe_v1_1:  { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true },
   fly_v26: {
     caveServer:       'https://global.daf-apis.com',
     datastack:        'flywire_fafb_sandbox',

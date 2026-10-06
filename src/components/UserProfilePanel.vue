@@ -23,7 +23,7 @@ import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistor
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
-import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset} from '../datasets';
+import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
@@ -47,6 +47,15 @@ const backendStore = useProofreadingBackendStore();
 
 // ── Viewing another user's profile ────────────────────────────────────────────
 const viewingOtherUser = computed(() => !!props.viewUserId && props.viewUserId !== backendStore.userId);
+
+// ── More datasets: optional volumes this player turned on ───────────────────
+const extraOn = (id: string) => (prefsStore.prefs.extraDatasets || []).includes(id);
+function toggleExtra(id: string, ev: Event) {
+  const on = (ev.target as HTMLInputElement).checked;
+  const set = new Set(prefsStore.prefs.extraDatasets || []);
+  if (on) set.add(id); else set.delete(id);
+  prefsStore.save({ extraDatasets: [...set] });  // saved to the account too
+}
 const otherUserProfile = ref<any>(null);
 // ── Days track: total days shown up, the streaks, and the milestone ladder ──
 const otherDays = ref<number | null>(null);
@@ -1765,7 +1774,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         </div>
         <div class="nge-ds-tab-grid">
           <div
-            v-for="ds in DATASETS.filter(d => !d.hidden)"
+            v-for="ds in DATASETS.filter(isDatasetShown)"
             :key="ds.id"
             class="nge-ds-tab-card"
             :class="{
@@ -1796,6 +1805,21 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- More datasets (Ames 2026-10-06): optional, explore only volumes
+           each player can add to their own switcher. -->
+      <div v-if="activeTab === 'datasets' && !viewingOtherUser" class="nge-profile-body nge-ds-more">
+        <div class="nge-ds-more-title">More datasets</div>
+        <div class="nge-ds-more-intro">Turn on extra datasets to add them to your dataset switcher. These are for exploring: you can look around, colour cells and share views, but there is nothing to proofread or claim in them.</div>
+        <label v-for="ds in DATASETS.filter(d => d.optional && !d.hidden)" :key="ds.id" class="nge-ds-more-row">
+          <input type="checkbox" :checked="extraOn(ds.id)" @change="toggleExtra(ds.id, $event)" />
+          <span class="nge-ds-more-icon">{{ SPECIES_ICONS[ds.species] }}</span>
+          <span class="nge-ds-more-text">
+            <span class="nge-ds-more-label">{{ ds.label }}</span>
+            <span class="nge-ds-more-desc">{{ ds.description }}</span>
+          </span>
+        </label>
       </div>
 
       <!-- ── Dataset Stats tab ─────────────────────────────────── -->
@@ -2027,6 +2051,18 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   padding: 18px 22px 26px;
   gap: 12px;
 }
+/* More datasets: one toggle row per optional volume */
+.nge-ds-more { padding-top: 4px; }
+.nge-ds-more-title { font-size: 0.78em; letter-spacing: 0.12em; text-transform: uppercase; color: #8fb8e8; font-weight: 700; margin-bottom: 4px; }
+.nge-ds-more-intro { font-size: 0.86em; color: #9fb0c8; line-height: 1.45; margin-bottom: 10px; }
+.nge-ds-more-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
+.nge-ds-more-row:hover { border-color: rgba(100, 200, 255, 0.25); background: rgba(100, 200, 255, 0.04); }
+.nge-ds-more-row input { width: 16px; height: 16px; accent-color: #4a9eff; cursor: pointer; flex: none; }
+.nge-ds-more-icon { font-size: 1.2em; flex: none; }
+.nge-ds-more-text { display: flex; flex-direction: column; min-width: 0; }
+.nge-ds-more-label { color: #e6eefc; font-weight: 600; font-size: 0.92em; }
+.nge-ds-more-desc { color: rgba(255, 255, 255, 0.5); font-size: 0.82em; line-height: 1.35; }
+
 .nge-ds-tab-intro {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.55);
