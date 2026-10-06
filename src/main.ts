@@ -1,5 +1,6 @@
 import { startViewAutosave } from './util/view_autosave';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
+import { startImageLoadingHint } from './util/image_loading_hint';
 import { installScriptApi } from './script_api';
 import { startHighlightTint } from './util/highlight';
 import {createApp, nextTick} from 'vue';
@@ -368,6 +369,7 @@ function setupViewer() {
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
   startSegmentationServerWatch(viewer);
+  startImageLoadingHint(viewer);
   installNoFourPanel(viewer);
   // window.eyewire, the stable API for player scripts (static/scripts.html).
   installScriptApi(viewer, {
