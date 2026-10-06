@@ -83,9 +83,23 @@ jobs:
           while :; do
             pass=$((pass + 1))
             BRIDGE_PASS=$pass node scripts/slack-triage-bridge.mjs || echo "::warning::bridge pass $pass failed"
-            count=$(GITHUB_OUTPUT= node scripts/triage-loop.mjs pending 2>/dev/null | sed -n 's/^count=//p')
+            pending=$(GITHUB_OUTPUT= node scripts/triage-loop.mjs pending 2>/dev/null)
+            count=$(printf '%s\n' "$pending" | sed -n 's/^count=//p')
+            newest=$(printf '%s\n' "$pending" | sed -n 's/^newest=//p')
             if [ "${count:-0}" != "0" ]; then
-              recent=$(gh run list -R "$GITHUB_REPOSITORY" -w triage-propose.yml -L 1 --json status,createdAt                 -q '.[] | select(.status != "completed" or ((now - (.createdAt | fromdateiso8601)) < 600)) | .status')
+              # Hold back only when a run is already going, or when the last
+              # one started AFTER the newest waiting report arrived and less
+              # than 10 minutes ago (it had its chance; do not loop on a
+              # failure). A run that started before the report came in could
+              # not have seen it, so it must not delay this one (2026-10-06:
+              # a report waited 8 minutes behind an empty scheduled run).
+              last=$(gh run list -R "$GITHUB_REPOSITORY" -w triage-propose.yml -L 1 --json status,createdAt -q '.[] | "\(.status) \(.createdAt | fromdateiso8601)"')
+              status=${last%% *}; started=${last##* }
+              arrived=$(date -u -d "${newest:-1970-01-01}" +%s 2>/dev/null || echo 0)
+              recent=""
+              if [ -n "$status" ] && [ "$status" != "completed" ]; then recent=running
+              elif [ -n "$started" ] && [ $(( $(date -u +%s) - started )) -lt 600 ] && [ "$started" -gt $(( arrived + 5 )) ]; then recent=tried
+              fi
               if [ -z "$recent" ]; then
                 echo "[bridge] $count new report(s): starting Triage Propose"
                 gh workflow run triage-propose.yml -R "$GITHUB_REPOSITORY" --ref main || echo "::warning::could not start Triage Propose"
