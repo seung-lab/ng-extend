@@ -265,7 +265,8 @@ export const DATASETS: DatasetEntry[] = [
     ],
   },
   {
-    id: 'flywire',
+    // Same as its layer name, so a lookup by id finds the CAVE config.
+    id: 'flywire_public',
     section: 'viewonly',
     caveDataset: 'flywire_public',
     thumbnail: thumbFlywire,
