@@ -2,6 +2,9 @@
    Imported here, at global scope, so top-bar labels have it from first
    paint instead of only after the profile has been opened once. */
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&display=swap');
+/* A clearer D and h, drawn from Orbitron itself (scripts/build-orbitron-alternates.py).
+   After the import on purpose: a later face wins for the letters it covers. */
+@import './orbitron_alternates.css';
 
 :root {
   /* The top bar's background. Was hsl(230 0% 14%): hue 230 with ZERO
