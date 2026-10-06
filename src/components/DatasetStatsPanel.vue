@@ -23,7 +23,14 @@ const emit = defineEmits({ hide: null });
 /** Peek (desktop): no dim, the site stays usable, a click elsewhere puts it away.
  *  Embedded: the profile's Dataset Stats tab. No window of its own, and the
  *  parts sit side by side across the profile's width. */
-const props = defineProps<{ peek?: boolean; embedded?: boolean }>();
+const props = defineProps<{ peek?: boolean; embedded?: boolean; person?: StatsPerson | null }>();
+/**
+ * Whose part the amber strip shows. In someone else's profile it is that
+ * person, not the reader (a player opened Ames's profile and saw their own
+ * numbers under her name, 2026-10-06). Left out, it is the signed-in player.
+ * Passed as null while the other person is still loading: no strip yet.
+ */
+interface StatsPerson { id: string; names: string[]; label: string; }
 const backend = useProofreadingBackendStore();
 
 type Phase = 'loading' | 'ready' | 'unavailable';
@@ -33,11 +40,16 @@ const active = ref<DatasetEntry | null>(null);
 const stats = ref<DatasetStats | null>(null);
 const reading = ref(false);
 let ticket = 0;
+const who = computed<{ id: string | null; names: string[] } | null>(() => (props.person === undefined
+  ? { id: backend.userId, names: [backend.userName, backend.username] }
+  : props.person));
+/** "Your part", or "Ames's part" in her profile. */
+const partTitle = computed(() => (props.person ? `${props.person.label}'s part` : 'Your part'));
 
 async function read(ds: DatasetEntry) {
   const mine = ++ticket;
   reading.value = true;
-  const s = await loadDatasetStats(ds, { id: backend.userId, names: [backend.userName, backend.username] });
+  const s = await loadDatasetStats(ds, who.value ?? undefined);
   if (mine !== ticket) return;          // a newer dataset was picked meanwhile
   stats.value = s;
   reading.value = false;
@@ -62,8 +74,9 @@ onMounted(async () => {
   pick(list.find(ds => statsKey(ds) === here) ?? list[0]);
 });
 
-// Signing in while the panel is open: read again so "Your part" appears.
-watch(() => backend.userId, () => { if (active.value) void read(active.value); });
+// Signing in while the panel is open, or the profile moving to another
+// person: read again so the strip is theirs.
+watch(() => [who.value?.id, (who.value?.names ?? []).join('|')], () => { if (active.value) void read(active.value); });
 
 // ── Progress: the figure and the bar come from the same three numbers ────
 const progress = computed(() => stats.value?.progress ?? null);
@@ -335,7 +348,7 @@ onUnmounted(() => {
 
           <!-- ── Your part ── -->
           <section v-if="mine" class="nge-dsp-section nge-dsp-section--mine nge-dsp-s-mine">
-            <div class="nge-dsp-label nge-dsp-label--amber">▌ Your part</div>
+            <div class="nge-dsp-label nge-dsp-label--amber">▌ {{ partTitle }}</div>
             <div class="nge-dsp-mine">
               <div class="nge-dsp-mine-row">
                 <span class="nge-dsp-mine-key">Cells completed</span>
@@ -362,7 +375,7 @@ onUnmounted(() => {
                 </template>
               </div>
             </div>
-            <div class="nge-dsp-foot">Cells are the ones under your name in the cell list.</div>
+            <div class="nge-dsp-foot">Cells are the ones under {{ props.person ? 'their' : 'your' }} name in the cell list.</div>
           </section>
         </template>
       </div>

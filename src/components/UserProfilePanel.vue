@@ -325,6 +325,16 @@ async function loadDatasetStats() {
 watch(activeTab, tab => { if (tab === 'datasets') loadDatasetStats(); });
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
+/** Whose part the Dataset Stats strip shows: the person whose profile this
+ *  is. Undefined on your own profile (the panel uses the signed-in player);
+ *  null while someone else's profile is still loading, so no strip is shown
+ *  rather than the reader's own numbers. */
+const datasetStatsPerson = computed(() => {
+  if (!viewingOtherUser.value) return undefined;
+  const p = otherUserProfile.value;
+  if (!p || !props.viewUserId) return null;
+  return { id: props.viewUserId, names: [p.display_name || '', p.username || ''], label: p.display_name || p.username || 'This player' };
+});
 /** The whole dataset's numbers: the Dataset Stats tab here, or on a phone
  *  the narrow panel (ExtensionBar listens, closes the profile and opens it). */
 function openDatasetProgress() {
@@ -1790,7 +1800,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
       <!-- ── Dataset Stats tab ─────────────────────────────────── -->
       <div v-if="activeTab === 'datasetStats'" class="nge-profile-body nge-profile-body--dstats">
-        <DatasetStatsPanel embedded />
+        <DatasetStatsPanel embedded :person="datasetStatsPerson" />
       </div>
 
       <!-- ── Week in Science tab ───────────────────────────────── -->
