@@ -52,7 +52,7 @@ If you see a segment with a branch that clearly belongs to a *different* cell, t
   {
     title: "What a cut fixes",
     text: `
-Behind this box is a finished cut: the yellow piece had been fused to the purple cell, and someone cut it off.
+The yellow piece was incorrectly fused by AI to the purple branch. A citizen scientist like yourself corrected it by cutting it off.
 
 In a moment you'll get the fused version of this very cell and make the cut yourself. It is yours alone until you finish.`,
     position: OVER_3D,
