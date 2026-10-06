@@ -8,7 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 import imgCutPoints from './images/cut-points-example.jpg';
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, movingToSandbox, stopWatching, watchPractice, watchTool } from './tutorial-3';
+import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchPractice, watchTool } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -117,7 +117,7 @@ The cut tool uses a <strong style="color:#ff5c5c">red</strong> and <strong style
 
 If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>.
 
-Stuck? The **?** button shows where the points go.`,
+The red and blue gems on the cell show where the points go.`,
     position: OVER_3D,
     width: "460px",
     onEnter: async () => {
@@ -126,6 +126,9 @@ Stuck? The **?** button shows where the points go.`,
       await beginPractice('cut', 'start');
       // The previous step said "press C"; turn the tool on if they didn't.
       setTimeout(() => ensureTool('multicut'), 400);
+      // The first cut starts with the red and blue hint gems showing (Ames,
+      // 2026-10-06); the second one leaves them to the "?" button.
+      setTimeout(() => { showWhereToCut(); }, 1400);
     },
   },
 

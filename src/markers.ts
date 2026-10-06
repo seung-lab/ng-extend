@@ -12,6 +12,7 @@
  * canonical voxel factor, so z on a 4x4x40 nm volume is multiplied by 10.
  */
 import pyrIcon from './images/pyr-icon.png';
+import { makeLayer } from 'neuroglancer/layer';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function getViewer(): any {
@@ -151,7 +152,57 @@ export function showPyrMarkers(pts: number[][], labels: string[] = [], seconds =
   return true;
 }
 
+/**
+ * Gem markers: real points in the viewer, drawn as Pyr gems in 3D and dots
+ * in 2D, in their own small annotation layers (the way Highlight Mode shows
+ * its start point, util/highlight.ts). Unlike the pins above, which are
+ * pictures laid over the panel, these are part of the scene: a neuron in
+ * front hides them (Ames, 2026-10-06), and they show on the 2D images too.
+ * One layer per group, named for what it is, removed by hidePyrMarkers.
+ */
+const GEM_LAYERS = new Set<string>();
+
+function managedLayer(name: string): any {
+  return getViewer()?.layerManager?.managedLayers?.find((l: any) => l.name === name && !l.archived);
+}
+
+export function showGemMarkers(groups: Array<{ name: string; color: string; points: number[][] }>): boolean {
+  const viewer = getViewer();
+  if (!viewer?.layerSpecification) return false;
+  hideGemMarkers();
+  let shown = false;
+  for (const g of groups) {
+    const pts = g.points.filter(p => Array.isArray(p) && p.length >= 3);
+    if (!pts.length) continue;
+    try {
+      viewer.layerSpecification.add(makeLayer(viewer.layerSpecification, g.name, {
+        type: 'annotation', source: 'local://annotations',
+        annotations: pts.map((p, i) => ({ type: 'point', id: `${g.name}-${i}`, point: [p[0], p[1], p[2]] })),
+        annotationColor: g.color, pointMarker: 'pyr', pointSize: 1.4,
+        // Not pickable: a Ctrl+click on a gem must reach the cell under it,
+        // or the learner's own cut point would not land.
+        pick: false,
+      }));
+      GEM_LAYERS.add(g.name);
+      shown = true;
+    } catch (e) {
+      console.warn('[markers] could not add the hint layer', g.name, e);
+    }
+  }
+  return shown;
+}
+
+export function hideGemMarkers() {
+  const viewer = getViewer();
+  for (const name of GEM_LAYERS) {
+    const managed = managedLayer(name);
+    if (managed) { try { viewer.layerManager.removeManagedLayer(managed); } catch (e) { /* already gone */ } }
+  }
+  GEM_LAYERS.clear();
+}
+
 export function hidePyrMarkers() {
+  hideGemMarkers();
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }

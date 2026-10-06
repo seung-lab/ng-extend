@@ -13,7 +13,7 @@ import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPracti
 import { useTutorialStore } from './store-pyr';
 import { useSplitMergeOverlayStore } from './store';
 import { watch } from 'vue';
-import { hidePyrMarkers, showPyrMarkers } from './markers';
+import { hidePyrMarkers, showGemMarkers, showPyrMarkers } from './markers';
 import { drawSearchLine } from './tutorial_pointer';
 import { canonicalDataset, currentSegLayerName } from './datasets';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
@@ -260,11 +260,26 @@ async function cutHintFor(ex: any): Promise<{ hint: CutHint | null; trusted: boo
   return out;
 }
 
-async function showWhereToCut(): Promise<boolean> {
+/** Drop points far from the rest: a saved view can carry a stray one (Ames
+ *  found a red point 12 micrometres from the others, 2026-10-06). */
+function withoutStrays(h: CutHint): CutHint {
+  const all = [...h.red, ...h.blue];
+  if (all.length < 3) return h;
+  const median = (vals: number[]) => { const v = [...vals].sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
+  const mid = [0, 1, 2].map(i => median(all.map(p => p[i])));
+  const limit = Math.max(3000, 3 * median(all.map(p => nmApart(p, mid))));
+  const keep = (pts: number[][]) => pts.filter(p => nmApart(p, mid) <= limit);
+  return { red: keep(h.red), blue: keep(h.blue) };
+}
+
+/** The red and blue hint points for the cell on screen. Exported so the
+ *  first cut can start with them showing. */
+export async function showWhereToCut(): Promise<boolean> {
   const ex = currentPractice().example;
   if (!ex) return false;
-  const { hint: h, trusted } = await cutHintFor(ex);
-  if (!h) return false;
+  const { hint, trusted } = await cutHintFor(ex);
+  if (!hint) return false;
+  const h = withoutStrays(hint);
   // A handful of each is plenty to show the idea.
   const red = h.red.slice(0, 4), blue = h.blue.slice(0, 4);
   if (!red.length && !blue.length) return false;
@@ -276,8 +291,12 @@ async function showWhereToCut(): Promise<boolean> {
       if (pos) pos.value = Float32Array.from(centroid([...red, ...blue]));
     } catch (e) { /* the pins still show */ }
   }
-  // Red and blue Pyr pins, no labels: the colour says which is which.
-  return showPyrMarkers([...red, ...blue], [], 60, [...red.map(() => RED), ...blue.map(() => BLUE)]);
+  // Red and blue Pyr gems in the scene itself, so neurons in front hide
+  // them. If the layers cannot be added, the flat pins still show.
+  return showGemMarkers([
+    { name: 'Red points go here', color: RED, points: red },
+    { name: 'Blue points go here', color: BLUE, points: blue },
+  ]) || showPyrMarkers([...red, ...blue], [], 60, [...red.map(() => RED), ...blue.map(() => BLUE)]);
 }
 
 function toggleStuckPanel() {
@@ -309,7 +328,7 @@ function toggleStuckPanel() {
     row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to place points', async () => {
       ensureTool('multicut');
       practiceStatus((await showWhereToCut())
-        ? 'Pyr marks the spots: red points on one side of the join, blue points on the other. Ctrl+click near each, press G to switch colour, then Submit cut.'
+        ? 'The red and blue gems mark the spots: red points on one side of the join, blue on the other. Ctrl+click near each, press G to switch colour, then Submit cut.'
         : 'No point hints for this cell yet. Red goes on the piece that does not belong, blue on the cell just past the join.');
     }));
   }
