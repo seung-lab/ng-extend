@@ -403,6 +403,7 @@ export function finishPracticeTutorial(what: 'merge' | 'cut'): boolean {
 }
 
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
+  pointAtNext(false);
   const token = ++practiceWatch;
   watchEditErrors();
   lastEditError = null;
@@ -445,7 +446,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
-export function stopWatching() { practiceWatch++; leaveWaitlist(); hidePyrMarkers(); helpWanted = true; }
+export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); helpWanted = true; }
 
 function toolIsOn(): boolean {
   const viewer = getViewer();
@@ -465,15 +466,33 @@ export const BLACK_BOX_NOTE = 'If a black box appears where the pieces meet, the
 
 /** A step that only asks for the tool to be switched on: the status line
  *  flips when it is. No help button on such a step (Amy). */
+/**
+ * "Now press Next": once a step's one job is done (the tool is on), the
+ * status line pops and the Next button pulses until it is pressed (Ames,
+ * 2026-10-06). The class goes through the document, not Vue, on purpose: the
+ * button has no :class binding to wipe it, and it is cleared whenever a
+ * watch starts or stops.
+ */
+function pointAtNext(on: boolean) {
+  document.querySelectorAll('.introductionStepAnchor .chip button.next').forEach(b => b.classList.toggle('nge-next-ready', on));
+  document.querySelectorAll('.introductionStepAnchor .nge-practice-status').forEach(s => s.classList.toggle('nge-status-pop', on));
+}
+
+// Pressing Next (or Back) ends the pulse, whatever the next step does.
+document.addEventListener('click', e => {
+  if ((e.target as HTMLElement | null)?.closest?.('.introductionStepAnchor .chip button')) pointAtNext(false);
+}, true);
+
 export function watchTool(waiting: string, finished: string) {
   const token = ++practiceWatch;
   helpWanted = false;
+  pointAtNext(false);
   const tick = () => {
     if (token !== practiceWatch) return;
     const p = currentPractice();
     if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); return; }
     if (p.phase === 'busy') { practiceStatus('Every practice cell is in use right now. Read along and press next.'); return; }
-    if (toolIsOn()) { practiceStatus(finished, true); return; }
+    if (toolIsOn()) { practiceStatus(finished, true); pointAtNext(true); return; }
     practiceStatus(waiting);
     setTimeout(tick, 700);
   };
