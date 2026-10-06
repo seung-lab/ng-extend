@@ -619,7 +619,8 @@ export class AnnotationLayerView extends Tab {
         addDimension(localCoordinateSpace, localDim);
       }
       headerRow.appendChild(deletePlaceholder);
-      gridTemplate += ` [delete] 2ch`;
+      // EyeWire II: room for the jump button beside the delete button.
+      gridTemplate += ` [delete] 36px`;
       this.gridTemplate = gridTemplate;
       headerRow.style.gridTemplateColumns = gridTemplate;
       this.prevCoordinateSpaceGeneration = this.curCoordinateSpaceGeneration;
@@ -1706,6 +1707,24 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
     icon.textContent = annotationTypeHandlers[annotation.type].icon;
     element.appendChild(icon);
 
+    // EyeWire II (Ames 2026-10-06: "how do I jump to annotations? We should
+    // have a jump button"): every row carries a jump button, shown on hover
+    // beside the delete button. It does what a right click on the row always
+    // did, which nobody could have guessed.
+    const rowActions = document.createElement('div');
+    rowActions.className = 'nge-ann-row-actions';
+    const jumpButton = makeMoveToButton({
+      title: 'Jump to this annotation',
+      onClick: () => {
+        element.dispatchEvent(new CustomEvent('action:move-to-annotation'));
+      },
+    });
+    jumpButton.classList.add('nge-ann-row-jump');
+    jumpButton.addEventListener('mousedown', event => event.stopPropagation());
+    jumpButton.addEventListener('click', event => event.stopPropagation());
+    rowActions.appendChild(jumpButton);
+    element.appendChild(rowActions);
+
     let deleteButton: HTMLElement|undefined;
 
     const maybeAddDeleteButton = () => {
@@ -1725,7 +1744,7 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
         },
       });
       deleteButton.classList.add('neuroglancer-annotation-list-entry-delete');
-      element.appendChild(deleteButton);
+      rowActions.appendChild(deleteButton);
     };
 
     const columnWidths: number[] = [];
@@ -1770,9 +1789,7 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
       element.appendChild(description);
     }
     icon.style.gridRow = `span ${numRows}`;
-    if (deleteButton !== undefined) {
-      deleteButton.style.gridRow = `span ${numRows}`;
-    }
+    rowActions.style.gridRow = `span ${numRows}`;
     element.addEventListener('mouseenter', () => {
       layer.selectAnnotation(state, annotation.id, false);
     });

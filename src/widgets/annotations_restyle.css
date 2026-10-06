@@ -324,6 +324,22 @@ textarea.neuroglancer-annotation-details-description:focus {
   font-size: 11px;
   color: rgba(170, 200, 235, 0.7);
 }
+/* Row actions: jump to the annotation, and delete it. Shown on the row you
+   are pointing at, and kept on the selected one. */
+.nge-ann-row-actions {
+  grid-column: delete;
+  align-self: start;
+  display: flex; align-items: center; justify-content: flex-end; gap: 2px;
+  visibility: hidden;
+}
+.neuroglancer-annotation-list-entry:hover > .nge-ann-row-actions,
+.neuroglancer-annotation-list-entry.neuroglancer-annotation-selected > .nge-ann-row-actions { visibility: visible; }
+.nge-ann-row-actions > .neuroglancer-annotation-list-entry-delete { visibility: inherit; margin-left: 0; }
+/* small enough that the pair fits where the delete button alone used to */
+.nge-ann-row-actions > .neuroglancer-icon { box-sizing: border-box; width: 16px; min-width: 16px; height: 16px; min-height: 16px; padding: 0; margin: 0; font-size: 12px; line-height: 16px; }
+.nge-ann-row-actions > .neuroglancer-icon > svg { width: 13px; height: 13px; }
+.nge-ann-row-jump { opacity: 0.75; color: #7ee0ff; }
+.nge-ann-row-jump:hover { opacity: 1; color: #e6f7ff; background-color: rgba(74, 158, 255, 0.2) !important; border-radius: 4px; }
 .neuroglancer-annotation-list-entry-delete { opacity: 0.6; }
 .neuroglancer-annotation-list-entry-delete:hover { opacity: 1; color: #ff7a8a; }
 .neuroglancer-annotation-hover {
@@ -371,3 +387,80 @@ textarea.neuroglancer-annotation-details-description:focus {
   border: 1px solid rgba(79, 207, 255, 0.3); border-radius: 6px;
 }
 .nge-ann-size-row input[type='number']:focus { outline: none; border-color: #4fcfff; box-shadow: 0 0 8px rgba(79, 207, 255, 0.35); }
+
+/* ── Selection panel in the site's style (Ames 2026-10-06: "the selection box
+      there isn't styled like the rest of the site") ───────────────────────
+   Stock neuroglancer: a grey #222 bar for the layer name, yellow axis
+   letters, system fonts. Now the panel's title is the HUD face, the layer
+   name is a kicker on a lit hairline, and the coordinates are the same mono
+   readout as the annotation list above it. */
+.neuroglancer-selection-details .neuroglancer-side-panel-titlebar {
+  font: 600 11px 'Orbitron', 'Inter', sans-serif !important;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9fdcff;
+  padding: 7px 10px !important;
+  border-top: 1px solid rgba(79, 207, 255, 0.22);
+  border-bottom: 1px solid rgba(79, 207, 255, 0.14);
+}
+.neuroglancer-selection-details .neuroglancer-side-panel-titlebar .neuroglancer-icon { background: transparent; }
+.neuroglancer-selection-details-body {
+  padding: 6px 8px 8px;
+  background: linear-gradient(180deg, rgba(8, 14, 28, 0.6), rgba(4, 8, 18, 0.3));
+  font: 12px/1.45 'Inter', 'Roboto', sans-serif;
+  color: #cfdcef;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(79, 207, 255, 0.3) transparent;
+}
+.neuroglancer-selection-details-layer {
+  margin: 4px 0 8px;
+  border: 1px solid rgba(79, 207, 255, 0.16) !important;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(6, 12, 24, 0.7);
+  box-shadow: inset 0 1px 0 rgba(196, 228, 255, 0.07);
+}
+.neuroglancer-selection-details-layer-title {
+  padding: 5px 9px;
+  background: rgba(79, 207, 255, 0.07) !important;
+  border-bottom: 1px solid rgba(79, 207, 255, 0.14);
+  font: 600 10.5px 'Orbitron', 'Inter', sans-serif !important;
+  letter-spacing: 0.1em;
+  color: #b9e6ff;
+  transition: background 0.15s, color 0.15s;
+}
+.neuroglancer-selection-details-layer-title:hover { background: rgba(79, 207, 255, 0.15) !important; color: #ffffff; }
+.neuroglancer-selection-details-layer-body { padding: 6px 8px 8px !important; gap: 5px; }
+.neuroglancer-selection-details-position,
+.neuroglancer-selected-annotation-details-position-grid {
+  font: 11px 'JetBrains Mono', 'Consolas', monospace !important;
+  color: rgba(214, 232, 250, 0.92);
+  align-items: center;
+}
+.neuroglancer-selection-details-position-dimension-name { color: #4fcfff !important; }
+.neuroglancer-selection-details .neuroglancer-icon { border-radius: 4px; }
+.neuroglancer-selection-details .neuroglancer-icon > svg { stroke: rgba(160, 200, 240, 0.9); }
+.neuroglancer-selection-details .neuroglancer-icon:hover { background-color: rgba(74, 158, 255, 0.2) !important; }
+.neuroglancer-selection-details .neuroglancer-icon:hover > svg { stroke: #ffffff; }
+.neuroglancer-selection-details textarea,
+.neuroglancer-selection-details input[type="text"] {
+  box-sizing: border-box; width: 100%;
+  background: rgba(2, 6, 14, 0.75) !important;
+  border: 1px solid rgba(79, 207, 255, 0.22) !important;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #e3eefb !important;
+  font: 12px/1.4 'Inter', 'Roboto', sans-serif !important;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.neuroglancer-selection-details textarea:focus,
+.neuroglancer-selection-details input[type="text"]:focus { border-color: rgba(126, 224, 255, 0.75) !important; box-shadow: 0 0 0 2px rgba(79, 207, 255, 0.14); }
+.neuroglancer-selection-details textarea::placeholder { color: rgba(150, 175, 205, 0.6); }
+.neuroglancer-selection-details .neuroglancer-related-segment-list-title {
+  background: transparent !important;
+  font: 600 10px 'JetBrains Mono', 'Consolas', monospace;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: rgba(159, 220, 255, 0.75);
+}
+.neuroglancer-selection-details .neuroglancer-annotation-property-label { color: rgba(159, 200, 235, 0.7); }
