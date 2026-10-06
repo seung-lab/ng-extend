@@ -228,6 +228,11 @@ async function updateChipPosition() {
     if (step.text) {
         html = await marked.parse(step.text);
     }
+    // Links to other sites open in a new tab (Ames 2026-10-06), so following
+    // one never takes the player out of the tour or the game.
+    if (html) {
+        html = html.replace(/<a\s+(?![^>]*\btarget=)([^>]*href="https?:[^>]*)>/gi, '<a target="_blank" rel="noopener" $1>');
+    }
 
     computedStep.value = {
         first: props.first,
