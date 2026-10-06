@@ -280,14 +280,14 @@ function withoutStrays(h: CutHint): CutHint {
 
 /** The red and blue hint points for the cell on screen. Exported so the
  *  first cut can start with them showing. */
-export async function showWhereToCut(): Promise<boolean> {
+export async function showWhereToCut(perColour = 4): Promise<boolean> {
   const ex = currentPractice().example;
   if (!ex) return false;
   const { hint, trusted } = await cutHintFor(ex);
   if (!hint) return false;
   const h = withoutStrays(hint);
   // A handful of each is plenty to show the idea.
-  const red = h.red.slice(0, 4), blue = h.blue.slice(0, 4);
+  const red = h.red.slice(0, perColour), blue = h.blue.slice(0, perColour);
   if (!red.length && !blue.length) return false;
   // Bring the view to the spot, so the 2D images show the section the points
   // are in. Only for points checked against the cell.
@@ -1048,9 +1048,12 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
       // Only one merge cell for now: never show the first again (Ames), go
       // straight to the wrap up.
       if (!holdsSlot('b')) { useTutorialStore().setTutorialStep(7); return; }
-      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       // The second merge cell, taken at How to Merge together with the first.
+      // The watch starts only once it is the cell on screen: started before,
+      // it saw the first cell, already merged, and skipped this box.
+      stopWatching();
       await beginPractice('merge_then_cut', 'start', { slot: 'b' });
+      watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       setTimeout(() => ensureTool('merge'), 400);
     },
   },

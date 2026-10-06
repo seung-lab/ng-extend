@@ -18,6 +18,15 @@ const OVER_3D = {
   y: 0.15,
 };
 
+/** Glow on the coordinates box (bottom left) for a while. */
+function glowCoordinates() {
+  const el = Array.from(document.querySelectorAll('.neuroglancer-position-widget'))
+    .find(e => !e.closest('.neuroglancer-layer-item')) as HTMLElement | undefined;
+  if (!el) return;
+  el.classList.add('nge-tour-target');
+  setTimeout(() => el.classList.remove('nge-tour-target'), 20000);
+}
+
 export const steps: Step[] = [
  /*  {
     html: `<iframe style="margin-bottom: -4px;" width='640' height='360'
@@ -98,13 +107,14 @@ These lines converge at the point we are centered on and represent the volume's 
     text: `
 Let's explore a bit! But before we do, we'd like to be able to easily return to the soma in case we get lost. 
 
-Click here to COPY our current location.`,
+Click the copy icon in the glowing coordinates box, bottom left, to COPY our current location.`,
     width: "500px",
-    position: {
-      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div.neuroglancer-icon",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
+    position: { element: "body", x: 0.24, y: 0.66 },
+    // The coordinates box now sits in the bottom left corner. Anchored to it
+    // with side "bottom", this box opened below the screen and the tutorial
+    // seemed to quit (Ames, 2026-10-06). It sits just above the corner now,
+    // and the coordinates box glows.
+    onEnter: glowCoordinates,
      state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
@@ -113,13 +123,10 @@ Click here to COPY our current location.`,
     text: `
 One of our collaborators would like us to check out a precise location on this cell. 
 
-The X coordinate for our new location is 456789. <strong>Click onto this number and type it in</strong>. Press "Enter" to jump to the new location.`,
+The X coordinate for our new location is 456789. <strong>Click the x number in the coordinates box, bottom left, and type it in</strong>. Press "Enter" to jump to the new location.`,
     width: "500px",
-    position: {
-      element: "#insertNGTopBar > div > div.neuroglancer-position-widget > div:nth-child(1) > div:nth-child(1) > input",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
+    position: { element: "body", x: 0.24, y: 0.66 },
+    onEnter: glowCoordinates,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },

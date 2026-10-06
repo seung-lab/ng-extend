@@ -114,8 +114,8 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
 
 The cut tool uses a <strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> point system, one colour on each side of where you want to cut.
 
-1. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points on the piece that doesn't belong, working back from the join.
-2. Press **G** to switch to <strong style="color:#5c8cff">blue</strong>, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the cell, just past the join.
+1. **Ctrl+Click** a <strong style="color:#ff5c5c">red</strong> point on the piece that doesn't belong, by the red gem.
+2. Press **G** to switch to <strong style="color:#5c8cff">blue</strong>, then **Ctrl+Click** a <strong style="color:#5c8cff">blue</strong> point on the cell, by the blue gem. Tricky cuts can need a few points of each.
 3. Press **Submit cut** on the bar at the bottom, or **Enter**. You'll see "splitting..." for a moment, then the piece comes away as its own segment.
 
 If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>.
@@ -131,7 +131,7 @@ The red and blue gems on the cell show where the points go.`,
       setTimeout(() => ensureTool('multicut'), 400);
       // The first cut starts with the red and blue hint gems showing (Ames,
       // 2026-10-06); the second one leaves them to the "?" button.
-      setTimeout(() => { showWhereToCut(); }, 1400);
+      setTimeout(() => { showWhereToCut(1); }, 1400);
     },
   },
 
@@ -199,9 +199,13 @@ The red and blue dots on the images show where the points go.`,
       // No second cut cell: never show the first again (it is already cut),
       // go to the wrap up.
       if (!holdsSlot('b')) { useTutorialStore().setTutorialStep(7); return; }
-      watchPractice(false, 'Waiting for your cut: red on one side of the join, G, blue on the other, Submit cut.', '', { advance: true });
-      // The second cut cell, taken at the start together with the first.
+      // The second cut cell, taken at the start together with the first. The
+      // watch starts only once it is the cell on screen: started before, it
+      // saw the first cell, already cut, and jumped straight to "done" while
+      // this cell was still loading (Ames, 2026-10-06).
+      stopWatching();
       await beginPractice('cut', 'start', { slot: 'b' });
+      watchPractice(false, 'Waiting for your cut: red on one side of the join, G, blue on the other, Submit cut.', '', { advance: true });
       setTimeout(() => { show2D(); showSections(); }, 900);
       setTimeout(() => ensureTool('multicut'), 1400);
       // The example points show from the start here too (Ames): in 2D they
