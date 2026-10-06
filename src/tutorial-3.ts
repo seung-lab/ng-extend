@@ -754,7 +754,7 @@ export function beforeAfter(before: string, beforeCaption: string, after: string
   const fig = (src: string, cap: string) =>
     `<figure style="margin:0;flex:1 1 0;min-width:0">`
     + `<a href="${src}" target="_blank" rel="noopener" title="Open in a new tab">`
-    + `<img src="${src}" alt="${cap}" style="display:block;width:100%;height:auto;border-radius:4px;border:1px solid rgba(74,158,255,0.25)">`
+    + `<img src="${src}" alt="${cap}" style="display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;border-radius:4px;border:1px solid rgba(74,158,255,0.25)">`
     + `</a>`
     + `<figcaption style="margin-top:6px;font-size:0.85em;line-height:1.35;color:#9fd0ff">${cap}`
     + ` <a href="${src}" target="_blank" rel="noopener" style="color:#7ecaff;white-space:nowrap">open in new tab ↗</a></figcaption>`
@@ -939,22 +939,23 @@ A few things worth knowing:
   // 8: Done, and on to cuts
   {
     title: "Merge: done!",
+    // Kept short, like "Cut: done!" (the box was 860px tall, more than a
+    // laptop screen): small Nurro, the button on its own line, the key list
+    // one click away.
     text: `
+<img src="` + imgBravoNurro + `" alt="" style="display:block;width:120px;height:auto;margin:0 auto 10px">
+
 You know how to merge. Every merge reconnects a lost branch, and there are thousands waiting.
 
 Next up is the other half of proofreading: a <strong style="color:#e06060">cut</strong> separates two neurons the AI fused together.
-` + startTutorialButton(5, 'Start the Cut tutorial') + `
 
-Or press done and explore. The cell you practised on is put back for the next person.
-` + cheatSheet([
-      ['<strong style="color:#60c060">Merge</strong> tool', 'M'],
-      ['Place a point', 'Ctrl+Click'],
-      ['Submit', 'Enter'],
-      ['Fix a bad merge', 'Cut it apart'],
-    ]),
+<div style="text-align:center">` + startTutorialButton(5, 'Start the Cut tutorial') + `</div>
+
+Or press done and explore. The cells you practised on are put back for the next person.
+
+<a href="` + CHEAT_SHEET_URL + `" target="_blank" rel="noopener" style="color:#7ecaff">Open the cheat sheet in a new tab ↗</a>`,
     position: MIDDLE,
-    width: "480px",
-    image: imgBravoNurro,
+    width: "460px",
     onEnter: () => {
       stopWatching();
       // Whatever state the practice cell is in, put it back for the next person.

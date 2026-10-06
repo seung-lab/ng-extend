@@ -750,11 +750,13 @@ onUnmounted(() => {
     padding: 8px 8px 20px 8px;
 }
 
+/* Modal steps (the site tour's welcome and finale) used to drop the box's
+   padding for a full-bleed video that is long gone. Without it the title
+   sat on the drag handle and Back, the counter and the progress bar ran to
+   the edges (Ames, 2026-10-05). They keep the normal padding now, and
+   scroll like any other box on a short screen. */
 .chip.modal {
-    padding-top: 0;
-    padding-left: 0;
-    padding-right: 0;
-    overflow: hidden;
+    padding-top: 34px;
 }
 
 .chip .title {
@@ -1113,11 +1115,9 @@ onUnmounted(() => {
     box-shadow: 0 0 8px rgba(126, 224, 255, 0.9);
 }
 .title-icon { margin-right: 10px; }
-/* Frames that run their media edge to edge keep the title clear of the strip. */
-.chip.modal .title { margin: 46px 28px 0; }
+/* Wide hero boxes and video boxes keep the title clear of the header strip. */
+.chip.modal { padding-top: 46px; }
 .hasVideo .chip:not(.exitConfirm) .title { margin: 38px 20px 0; }
-.chip.modal .html { padding: 0 22px; }
-.ng-extend .chip.modal .nge-chip-foot { box-sizing: border-box; padding-left: 28px; padding-right: 28px; }
 
 .chip .html :deep(p) { margin: 0 0 0.7em; }
 .chip .html :deep(p:last-child) { margin-bottom: 0; }

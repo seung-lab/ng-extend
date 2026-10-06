@@ -1,4 +1,5 @@
 import { startViewAutosave } from './util/view_autosave';
+import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { installScriptApi } from './script_api';
 import { startHighlightTint } from './util/highlight';
 import {createApp, nextTick} from 'vue';
@@ -365,6 +366,7 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  startSegmentationServerWatch(viewer);
   installNoFourPanel(viewer);
   // window.eyewire, the stable API for player scripts (static/scripts.html).
   installScriptApi(viewer, {
@@ -455,6 +457,18 @@ function observeSegmentSelect(targetNode: Element) {
     return getCaveServerUrl();
   };
 
+  // Tells the row's virtual list its real height after we add our buttons
+  // (remeasureItem in move_to_segment_patch.ts).
+  const remeasureListRow = (row: HTMLElement) => {
+    for (let el = row.parentElement; el; el = el.parentElement) {
+      const vl = (el as any).__nge_virtualList;
+      if (vl) {
+        vl.remeasureItem?.(row);
+        return;
+      }
+    }
+  };
+
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {
       let buttonList: Element|HTMLElement[] = [];
@@ -469,8 +483,10 @@ function observeSegmentSelect(targetNode: Element) {
           // Track this as the active segment for the annotation panel
           useSegmentAnnotationStore().setActiveSegId(segmentIDString, localServerURL);
 
+          let injected = false;
           let button = item.querySelector('.nge-segment-button.menu');
           if (button == null) {
+            injected = true;
             const viewer: ExtendViewer = (<any>window)['viewer'];
             const layerName = viewer.selectedLayer.layer?.name || 'default';
             const dataset = (typeof DATASETS !== 'undefined' && DATASETS) ? (DATASETS[layerName] ?? '') : '';
@@ -485,6 +501,7 @@ function observeSegmentSelect(targetNode: Element) {
 
           // Jump-to-segment button (centers view + blooms the segment)
           if (!item.querySelector('.nge-jump-btn')) {
+            injected = true;
             const jumpBtn = buttonService.createJumpButton(segmentIDString);
             // Place jump button just before the lightbulb (delta) button so the
             // row reads: chip … jump … delta.
@@ -500,6 +517,8 @@ function observeSegmentSelect(targetNode: Element) {
           if (nameLabel) nameLabel.remove();
           const idSpan = item.querySelector('.neuroglancer-segment-list-entry-id') as HTMLElement | null;
           if (idSpan) idSpan.classList.remove('nge-id-collapsed');
+
+          if (injected) remeasureListRow(item as HTMLElement);
         }
       })
     }
