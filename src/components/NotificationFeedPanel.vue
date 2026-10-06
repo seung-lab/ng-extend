@@ -103,10 +103,14 @@ const showFeedTabs = computed(() => backend.isAdmin && triageNotes.value.length 
 const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications : feedTab.value === 'triage' ? triageNotes.value : mainNotes.value);
 const unreadIn = (list: { id: number }[]) => list.filter(n => !isRead(n.id)).length;
 watch(showFeedTabs, on => { if (!on) feedTab.value = 'main'; });
+watch(feedTab, () => { confirmDeleteAll.value = false; });   // the question was about the other tab
 
+// With the two admin tabs showing, "Delete all" clears the tab you are on
+// (Ames 2026-10-06: "dismiss just the triage notifs"), never the other one.
 async function doDeleteAll() {
   confirmDeleteAll.value = false;
-  await backend.dismissAllNotifications();
+  if (showFeedTabs.value) await backend.dismissAllNotifications(shownNotes.value.map(n => n.id));
+  else await backend.dismissAllNotifications();
 }
 
 function relativeTime(iso: string): string {
@@ -379,11 +383,11 @@ function padRank(rank: number): string {
              unread pip, this clears the feed. Only hides them for THIS user —
              the underlying notification rows are untouched. -->
         <button
-          v-if="backend.notifications.length > 0"
+          v-if="shownNotes.length > 0"
           class="nge-notif-delete-all"
           @click="confirmDeleteAll = true"
-          title="Delete all notifications (only affects your feed)"
-        >Delete all</button>
+          :title="showFeedTabs ? (feedTab === 'triage' ? 'Delete every triage notification (only affects your feed)' : 'Delete every notification on this tab; triage is kept (only affects your feed)') : 'Delete all notifications (only affects your feed)'"
+        >{{ showFeedTabs && feedTab === 'triage' ? 'Delete triage' : 'Delete all' }}</button>
         <button class="nge-notif-close" @click.stop="emit('hide')">×</button>
       </div>
     </div>
@@ -391,8 +395,8 @@ function padRank(rank: number): string {
     <!-- Deleting the whole feed is irreversible, so make it a deliberate two
          step action rather than a single click next to the close button. -->
     <div v-if="confirmDeleteAll" class="nge-notif-confirm">
-      <span>Delete all {{ backend.notifications.length }} notifications?</span>
-      <button class="nge-notif-confirm-yes" @click="doDeleteAll">Delete all</button>
+      <span>Delete {{ shownNotes.length === 1 ? 'this' : 'all ' + shownNotes.length }} {{ showFeedTabs && feedTab === 'triage' ? 'triage ' : '' }}{{ shownNotes.length === 1 ? 'notification' : 'notifications' }}?</span>
+      <button class="nge-notif-confirm-yes" @click="doDeleteAll">Delete</button>
       <button class="nge-notif-confirm-no" @click="confirmDeleteAll = false">Cancel</button>
     </div>
 
