@@ -399,12 +399,10 @@ function padRank(rank: number): string {
               <span v-if="!isRead(notif.id)" class="nge-notif-unread-dot"></span>
               <div class="nge-notif-card-title">{{ cleanCopy(notif.title) }}</div>
               <span class="nge-notif-time">{{ relativeTime(notif.send_at) }}</span>
-              <button
-                v-if="backend.isAdmin"
-                class="nge-notif-delete"
-                @click.stop="backend.deleteNotification(notif.id)"
-                title="Delete notification (admin)"
-              >🗑</button>
+              <!-- No admin delete here (Ames 2026-10-06): one stray click in the
+                   bell removed a broadcast for every player, for good. Deleting a
+                   notification for everyone lives in the Admin Hub only. The x
+                   below hides it from your own feed and nobody else's. -->
               <button
                 class="nge-notif-dismiss"
                 @click.stop="backend.dismissNotification(notif.id)"
