@@ -1,1 +1,87 @@
-{}
+{
+  "sandbox-1": {
+    "note": "Celia merger example 1 (stay = a, to be cut = b)",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "stay": [
+        93955,
+        70273,
+        632
+      ],
+      "cut": [
+        93575,
+        70459,
+        586
+      ]
+    }
+  },
+  "sandbox-2": {
+    "note": "Celia merger example 2 (stay = a, to be cut = b)",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "stay": [
+        102695,
+        60248,
+        2124
+      ],
+      "cut": [
+        102663,
+        60226,
+        2132
+      ]
+    }
+  },
+  "sandbox-3": {
+    "note": "Celia merger example 3 (stay = a, to be cut = b)",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "stay": [
+        82100,
+        52458,
+        268
+      ],
+      "cut": [
+        81857,
+        52443,
+        268
+      ]
+    }
+  },
+  "sandbox-4": {
+    "note": "Celia merger example 4 (stay = a, to be cut = b)",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "stay": [
+        93479,
+        65050,
+        2019
+      ],
+      "cut": [
+        93577,
+        65283,
+        2010
+      ]
+    }
+  },
+  "sandbox-5": {
+    "note": "Celia merger example 5 (stay = a, to be cut = b)",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": {
+      "stay": [
+        78288,
+        42174,
+        378
+      ],
+      "cut": [
+        78162,
+        42046,
+        378
+      ]
+    }
+  }
+}
