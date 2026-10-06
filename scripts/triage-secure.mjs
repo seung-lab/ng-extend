@@ -145,5 +145,22 @@ async function release() {
  await deploy(sha,base);out('merge_sha',sha);out('next',mode==='live_test'?'live':'deployed');
 }
 const command=process.argv[2];
-try {if(command==='plan')await plan();else if(command==='publish')await publish();else if(command==='release')await release();else throw Error('Unknown command');}
+// GitHub refuses to move the live branch (422) when someone pushed to it
+// between this run reading its head and moving it. On 2026-10-06 a push
+// landed four seconds before the move and an approved fix was reported as a
+// failed deploy. Nothing has been changed at that point, so start the release
+// again: it re-reads the head, re-checks the approval and replays onto the new
+// head, exactly as if it had started a moment later.
+const raced=e=>/^GitHub git\/refs\/heads\/\S+ failed \(422\)$/.test(String(e?.message));
+async function releaseWithRetry() {
+ for(let attempt=1;;attempt++) {
+  try {return await release();}
+  catch(e) {
+   if(attempt>=3||!raced(e))throw e;
+   console.log('The live branch moved while releasing (try '+attempt+' of 3); starting again on its new head.');
+   await new Promise(r=>setTimeout(r,4000*attempt));
+  }
+ }
+}
+try {if(command==='plan')await plan();else if(command==='publish')await publish();else if(command==='release')await releaseWithRetry();else throw Error('Unknown command');}
 catch(e){console.error('[triage] '+e.message);process.exitCode=1;}
