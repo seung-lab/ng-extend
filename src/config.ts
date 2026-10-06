@@ -42,6 +42,9 @@ export interface DatasetCaveConfig {
    *  instead of offering a Save that CAVE would refuse. */
   cellStatusReadOnly?: boolean;
   cellTypeReadOnly?: boolean;
+  /** Published files with no CAVE at all (H01, the Janelia FlyEM volumes):
+   *  nothing to read or write, so no server may be assumed for it. */
+  exploreOnly?: boolean;
 
   // Default-view fields (all optional — when present, applied on dataset switch
   // so a fresh user lands on a visible cell instead of an empty 3D pane).
@@ -347,10 +350,10 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
   // with an EMPTY server on purpose. An unregistered layer name falls back
   // to the retina's config and would address the wrong volume; these say
   // plainly that there is nothing to read or write.
-  h01_c3:           { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true },
-  manc_v1_2:        { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true },
-  malecns_v1_0:     { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true },
-  optic_lobe_v1_1:  { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true },
+  h01_c3:           { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true },
+  manc_v1_2:        { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true },
+  malecns_v1_0:     { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true },
+  optic_lobe_v1_1:  { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true },
   // The same configs under each dataset's switcher id: some callers look a
   // dataset up by id rather than by layer name (switchToDataset does), and
   // these ids are too short for the substring match (MIN_SUBSTRING_MATCH).

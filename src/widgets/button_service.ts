@@ -695,7 +695,22 @@ export class ButtonService {
     });
     helpSection.appendChild(helpBtn);
 
-    menu.append(br(), completionSection, br(), cellTypeSection, br(), colorSection, br(), claimSection, br(), helpSection, br());
+    if (roCfg.exploreOnly) {
+      // Published files, no CAVE: nothing to proofread, label, claim or ask
+      // about here. Say so, and keep the one thing that works: colour.
+      const exploreSection = document.createElement('div');
+      exploreSection.classList.add('nge-lb-section');
+      const exploreTitle = document.createElement('div');
+      exploreTitle.classList.add('nge-lb-section-title');
+      exploreTitle.textContent = 'Explore only';
+      const exploreNote = document.createElement('div');
+      exploreNote.classList.add('nge-lb-readonly-note');
+      exploreNote.textContent = 'This dataset is here to look around. There is nothing to proofread, label or claim in it.';
+      exploreSection.append(exploreTitle, exploreNote);
+      menu.append(br(), exploreSection, br(), colorSection, br());
+    } else {
+      menu.append(br(), completionSection, br(), cellTypeSection, br(), colorSection, br(), claimSection, br(), helpSection, br());
+    }
     return contextMenu;
   }
 

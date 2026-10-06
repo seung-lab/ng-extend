@@ -258,7 +258,7 @@ function autoSelectSegLayer(viewer: any, attempt = 0) {
       const segLayer = viewer.layerManager.managedLayers.find(
         (l: any) => {
           const typeName = l.layer?.constructor?.name ?? '';
-          if (typeName.includes('Segmentation')) return true;
+          if (typeName.includes('Segmentation') || l.layer?.type === 'segmentation') return true;
           const url = l.layer?.dataSources?.[0]?.spec?.url ?? '';
           return url.includes('graphene') || url.includes('segmentation');
         },

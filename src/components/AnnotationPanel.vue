@@ -34,7 +34,7 @@ function getCurrentDataset(): string {
     for (const ml of viewer?.layerManager?.managedLayers ?? []) {
       // Check layer type name (works even if dataSources haven't loaded)
       const typeName = ml.layer?.constructor?.name ?? '';
-      if (typeName.includes('Segmentation')) return ml.name ?? '';
+      if (typeName.includes('Segmentation') || ml.layer?.type === 'segmentation') return ml.name ?? '';
       // Fallback: check URL
       const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
       if (url.includes('graphene') || url.includes('segmentation')) return ml.name ?? '';

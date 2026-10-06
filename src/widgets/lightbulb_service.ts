@@ -268,7 +268,7 @@ function getCurrentDataset(): string {
     for (const ml of viewer?.layerManager?.managedLayers ?? []) {
       // Check layer type name (works even if dataSources haven't loaded)
       const typeName = ml.layer?.constructor?.name ?? '';
-      if (typeName.includes('Segmentation')) return ml.name ?? '';
+      if (typeName.includes('Segmentation') || ml.layer?.type === 'segmentation') return ml.name ?? '';
       // Fallback: check URL
       const url = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
       if (url.includes('graphene') || url.includes('segmentation')) return ml.name ?? '';
@@ -343,7 +343,10 @@ export function activeCaveServer(): string {
       }
     }
   } catch {}
-  return getActiveDatasetConfig().caveServer || EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
+  const cfg = getActiveDatasetConfig();
+  // An explore only volume has no CAVE: never borrow another dataset's server.
+  if (cfg.exploreOnly) return '';
+  return cfg.caveServer || EYEWIRE_II_CAVE_CONFIG.caveServerOverride;
 }
 
 // ─── CAVE Annotation API v2 helpers ─────────────────────────────────────────
