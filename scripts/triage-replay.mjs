@@ -3,16 +3,69 @@
 // most days, and a rebuild costs a Claude run, a second preview and a second
 // test). Only Git objects are created here; the caller moves the branch.
 //
-// Safe cases only:
-//  - nothing that moved touches a file the change touches: the same files
-//    with the same contents go onto the new branch;
-//  - the one shared file is the robot's own notes (every build appends a
-//    line there): the approved lines are appended to the current notes.
-// Any other overlap returns null and the caller asks for a rebuild.
+// What it will do:
+//  - a file only the approved change touched goes onto the new branch with
+//    the same contents;
+//  - a file both sides edited is merged line by line, as git would, and only
+//    when they changed different lines that do not touch (store.ts changes
+//    most days: without this nearly every approval was rebuilt and tested
+//    twice, 2026-10-06);
+//  - the robot's own notes, where every build appends a line, have the
+//    approved lines appended.
+// Both sides changing the same lines, a rename, a deletion on one side, or
+// anything else returns null, and the caller asks for a rebuild.
 import {permittedPath} from './triage-policy.mjs';
 
 export const KNOWLEDGE='docs/TRIAGE-KNOWLEDGE.md';
 const BLOB=/^[0-9a-f]{40}$/;
+
+/**
+ * Where two versions of a text differ, as runs of lines: [aStart, aEnd) in a
+ * became [bStart, bEnd) in b. Common start and end are skipped first, then a
+ * longest-common-subsequence over what is left. Null when that middle is too
+ * big to compare (the caller then does not merge).
+ */
+export function lineHunks(a,b) {
+ let s=0;while(s<a.length&&s<b.length&&a[s]===b[s])s++;
+ let ea=a.length,eb=b.length;while(ea>s&&eb>s&&a[ea-1]===b[eb-1]){ea--;eb--;}
+ const n=ea-s,m=eb-s;
+ if(n===0&&m===0)return [];
+ if(n*m>16e6)return null;
+ const w=m+1,t=new Uint16Array((n+1)*w);
+ for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)
+  t[i*w+j]=a[s+i]===b[s+j]?t[(i+1)*w+j+1]+1:Math.max(t[(i+1)*w+j],t[i*w+j+1]);
+ const out=[];let i=0,j=0,open=null;
+ const close=()=>{if(open){out.push(open);open=null;}};
+ while(i<n||j<m) {
+  if(i<n&&j<m&&a[s+i]===b[s+j]){close();i++;j++;continue;}
+  if(!open)open={aStart:s+i,aEnd:s+i,bStart:s+j,bEnd:s+j};
+  if(j<m&&(i===n||t[i*w+j+1]>=t[(i+1)*w+j])){j++;open.bEnd=s+j;}
+  else{i++;open.aEnd=s+i;}
+ }
+ close();return out;
+}
+
+/**
+ * Three-way merge of one text file, the way git does it and no bolder:
+ * `ours` and `theirs` both started from `base`; the result is `theirs` with
+ * ours' changes applied. Null (no merge) when the two sides changed the same
+ * lines or lines that touch, or when the comparison is too big. Lines keep
+ * their own endings, so nothing but the changed lines differs.
+ */
+export function merge3(base,ours,theirs) {
+ if(typeof base!=='string'||typeof ours!=='string'||typeof theirs!=='string')return null;
+ if(ours===base)return theirs;
+ if(theirs===base||ours===theirs)return ours;
+ const B=base.split('\n'),O=ours.split('\n'),T=theirs.split('\n');
+ const ho=lineHunks(B,O),ht=lineHunks(B,T);
+ if(!ho||!ht)return null;
+ for(const o of ho)for(const t of ht)if(!(o.aEnd<t.aStart||t.aEnd<o.aStart))return null;
+ const all=[...ho.map(h=>({...h,from:O})),...ht.map(h=>({...h,from:T}))].sort((x,y)=>x.aStart-y.aStart||x.aEnd-y.aEnd);
+ const out=[];let at=0;
+ for(const h of all){out.push(...B.slice(at,h.aStart),...h.from.slice(h.bStart,h.bEnd));at=h.aEnd;}
+ out.push(...B.slice(at));
+ return out.join('\n');
+}
 
 /** The approved text appended to the notes, or null when the approved edit
  *  was anything other than adding lines at the end. */
@@ -36,16 +89,26 @@ export async function replayOnto(gh,{sha,baseOld,baseNow,comparison,note=''}) {
  const files=comparison.files;
  if(files.some(f=>f.previous_filename))return null;           // renames: not replayed
  const touched=new Set(files.map(f=>f.filename));
- const overlap=[...new Set(moved.files.flatMap(f=>[f.filename,f.previous_filename]).filter(p=>p&&touched.has(p)))];
- if(overlap.some(p=>p!==KNOWLEDGE))return null;
+ const overlap=new Set(moved.files.flatMap(f=>[f.filename,f.previous_filename]).filter(p=>p&&touched.has(p)));
+ // A shared file is merged only when both sides merely edited it.
+ if(moved.files.some(f=>(overlap.has(f.filename)||overlap.has(f.previous_filename))&&f.status!=='modified'))return null;
+ // One file as text at a commit (the contents API leaves large files empty).
+ const text=async(path,ref)=>{
+  const c=await gh('contents/'+path+'?ref='+ref);
+  const b64=c.content||(await gh('git/blobs/'+c.sha)).content;
+  return Buffer.from(b64,'base64').toString('utf8');
+ };
  const tree=[];
  for(const f of files) {
   if(!permittedPath(f.filename))return null;
-  if(f.filename===KNOWLEDGE&&overlap.length) {
-   if(f.status!=='modified')return null;
-   const text=async ref=>Buffer.from((await gh('contents/'+KNOWLEDGE+'?ref='+ref)).content,'base64').toString('utf8');
-   const merged=appendedNotes(await text(baseOld),await text(sha),await text(baseNow));
-   if(merged===null)return null;
+  if(overlap.has(f.filename)) {
+   if(f.status!=='modified'||! /\.(?:ts|vue|css|scss|html|json|md|svg)$/.test(f.filename))return null;   // text only
+   const [before,approved,current]=[await text(f.filename,baseOld),await text(f.filename,sha),await text(f.filename,baseNow)];
+   // The notes file: every build appends at the end, which a line merge
+   // calls a conflict, so its lines are appended instead. Any other file:
+   // a plain three-way merge, refused if both sides touched the same lines.
+   const merged=f.filename===KNOWLEDGE?appendedNotes(before,approved,current):merge3(before,approved,current);
+   if(merged===null||merged.includes('\u0000'))return null;
    const blob=await gh('git/blobs',{content:Buffer.from(merged,'utf8').toString('base64'),encoding:'base64'});
    tree.push({path:f.filename,mode:'100644',type:'blob',sha:blob.sha});
    continue;
