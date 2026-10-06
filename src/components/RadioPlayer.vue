@@ -95,7 +95,8 @@ function ensureAudio(): HTMLAudioElement {
   audio.addEventListener('ended', () => { void playNext(); });
   audio.addEventListener('playing', () => { playing.value = true; });
   audio.addEventListener('pause', () => { playing.value = false; });
-  audio.addEventListener('timeupdate', () => { progress.value = audio && audio.duration ? audio.currentTime / audio.duration : 0; });
+  audio.addEventListener('timeupdate', () => { progress.value = audio && audio.duration ? audio.currentTime / audio.duration : 0; saveSpot(); });
+  audio.addEventListener('pause', () => saveSpot(true));
   // A song that will not load is skipped, but not in a tight loop.
   let errors = 0;
   audio.addEventListener('error', () => { if (on.value && ++errors <= tracks.value.length) setTimeout(() => { void playNext(); }, 800); });
@@ -103,15 +104,66 @@ function ensureAudio(): HTMLAudioElement {
   return audio;
 }
 
+// ── Where the station is: the song, how far into it, and what is still to
+//    come this lap. Kept so a page refresh carries on from the same spot
+//    instead of starting the opener and the lap again (Ames 2026-10-06).
+//    A visit hours later is a new session and opens with the opener. ────────
+const SPOT_KEY = 'nge_radio_spot_v1';
+const SPOT_MAX_AGE = 4 * 3600 * 1000;
+let lastSpotSave = 0;
+function saveSpot(force = false) {
+  if (!current.value || !audio) return;
+  const now = Date.now();
+  if (!force && now - lastSpotSave < 2000) return;
+  lastSpotSave = now;
+  try {
+    localStorage.setItem(SPOT_KEY, JSON.stringify({ id: current.value.id, t: Math.round(audio.currentTime * 10) / 10, queue: queue.map(q => q.id), at: now }));
+  } catch { /* private mode */ }
+}
+function readSpot(): { track: Track; t: number; queue: Track[] } | null {
+  try {
+    const sp = JSON.parse(localStorage.getItem(SPOT_KEY) || 'null');
+    if (!sp || Date.now() - sp.at > SPOT_MAX_AGE) return null;
+    const byId = (id: string) => tracks.value.find(x => x.id === id);
+    const track = byId(sp.id);
+    if (!track) return null;
+    return { track, t: Math.max(0, Number(sp.t) || 0), queue: (sp.queue || []).map(byId).filter(Boolean) as Track[] };
+  } catch { return null; }
+}
+
+function load(t: Track, at = 0) {
+  const a = ensureAudio();
+  current.value = t;
+  progress.value = t.duration ? Math.min(1, at / t.duration) : 0;
+  a.src = BASE + t.file;
+  if (at > 0) {
+    // the position can only be set once the browser knows the song's length
+    const seek = () => { try { if (at < (a.duration || Infinity) - 2) a.currentTime = at; } catch { /* start from the top */ } };
+    a.addEventListener('loadedmetadata', seek, { once: true });
+  }
+  setMediaSession(t);
+}
+
 async function playNext() {
   const t = nextTrack();
   if (!t) return;
-  const a = ensureAudio();
-  current.value = t;
-  progress.value = 0;
-  a.src = BASE + t.file;
-  setMediaSession(t);
+  load(t);
+  saveSpot(true);
   await tryPlay();
+}
+
+/** The first song of this page load: where the station was, if it was
+ *  playing recently, otherwise the next song as usual. */
+async function startStation() {
+  const sp = readSpot();
+  if (sp) {
+    opened = true;
+    queue = sp.queue;
+    load(sp.track, sp.t);
+    await tryPlay();
+    return;
+  }
+  await playNext();
 }
 
 async function tryPlay() {
@@ -137,14 +189,14 @@ async function turnOn() {
   on.value = true; savePrefs();
   if (!(await loadPlaylist())) { on.value = false; return; }
   if (!on.value) return;
-  if (audio && current.value) await tryPlay(); else await playNext();
+  if (audio && current.value) await tryPlay(); else await startStation();
 }
 /** Resume a station that was left on, without counting as a new choice. */
 async function turnOnQuietly() {
   on.value = true;
   if (!(await loadPlaylist())) { on.value = false; return; }
   if (!on.value) return;
-  if (audio && current.value) await tryPlay(); else await playNext();
+  if (audio && current.value) await tryPlay(); else await startStation();
 }
 function turnOff() {
   on.value = false; savePrefs();
@@ -155,6 +207,7 @@ function skip() { if (!on.value) { void turnOn(); return; } void playNext(); }
 function restart() {
   if (!audio || !current.value) { void turnOn(); return; }
   audio.currentTime = 0;
+  saveSpot(true);
   if (on.value) void tryPlay();
 }
 function onVolume(e: Event) {
@@ -217,6 +270,7 @@ onMounted(() => {
   dockTimer = window.setInterval(measureDock, 350);
   window.addEventListener('resize', measureDock);
   document.addEventListener('pointerdown', onDocDown, true);
+  window.addEventListener('pagehide', onPageHide);
   // Left on last time: pick the station back up (on the first click, if the
   // browser wants one before any sound).
   if (wasOn) void turnOnQuietly();
@@ -227,7 +281,9 @@ function onWheel(e: WheelEvent) {
   volume.value = clamp01(Math.round((volume.value + (e.deltaY < 0 ? 0.05 : -0.05)) * 100) / 100);
   savePrefs();
 }
+function onPageHide() { saveSpot(true); }
 onUnmounted(() => {
+  window.removeEventListener('pagehide', onPageHide);
   clearInterval(dockTimer);
   window.removeEventListener('resize', measureDock);
   document.removeEventListener('pointerdown', onDocDown, true);
