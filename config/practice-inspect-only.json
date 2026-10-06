@@ -1,13 +1,1 @@
-{
-  "second-cut-2026-10-06": {
-    "note": "Ames's 2D cut demo: yellow axon (a) fused to the blue dendrite (b). Cut view nglstate 4811882640703488. Read only.",
-    "kind": "cut",
-    "pcg_server": "https://minnie.microns-daf.com",
-    "pcg_table": "pinky_nf_v2",
-    "supervoxel_a": "",
-    "supervoxel_b": "",
-    "baseline_at": "2026-10-06T00:00:00+00:00",
-    "root_a": "648518346351857854",
-    "root_b": "648518346353232062"
-  }
-}
+{}

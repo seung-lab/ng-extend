@@ -6,6 +6,9 @@ import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
 // Amy's cut with the points placed (2026-09-26): red along the axon, blue on the dendrite.
 import imgCutPoints from './images/cut-points-example.jpg';
+// The second cut's cell, fused and after the cut (Ames, 2026-10-06).
+import imgCut2Before from './images/cut2-before.jpg';
+import imgCut2After from './images/cut2-after.jpg';
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchPractice, watchTool } from './tutorial-3';
@@ -17,7 +20,7 @@ import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_
  * step is skipped.
  */
 const CUT_FIRST = '02c5adcc-23c8-4003-83cd-cd9df7a65ce0';  // Fusion on a proofread cell (3D)
-const CUT_SECOND = '0482d846-0c16-4393-ab8a-0d1212b9520f'; // Small branch merged to cell (2D)
+const CUT_SECOND = '0813e168-d4e6-4baa-91b7-c9846b9fc6f4'; // Axon fused to a dendrite (Ames, 2026-10-06), the 2D cut
 
 /** "Sections" on: the 2D slice drawn inside the 3D view, which shows where
  *  the 2D images sit on the cell. */
@@ -155,7 +158,11 @@ Scroll through the 2D images to the cross-section where the two cells touch, and
 
 Keep every point on the one fused segment. Points on a neighbour make the server refuse the cut.
 
-<span class="nge-cut-2d-next">Press next to try it on a new cell.</span>`,
+<span class="nge-cut-2d-next">Press next to try it on a new cell, this one:</span>
+`
+    + beforeAfter(
+        imgCut2Before, 'Now: one segment.',
+        imgCut2After, 'After your cut: the axon (yellow) is its own segment.'),
     position: OVER_2D,
     width: "440px",
     onEnter: () => {
@@ -184,7 +191,7 @@ Find where they touch and cut them apart, placing the points in the 2D images on
 3. Press **G**, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the other side of the join.
 4. Press **Submit cut** on the bar at the bottom, or **Enter**.
 
-Stuck? The **?** button shows where the points go.`,
+The red and blue dots on the images show where the points go.`,
     position: OVER_3D,
     width: "420px",
     onEnter: async () => {
@@ -197,6 +204,9 @@ Stuck? The **?** button shows where the points go.`,
       await beginPractice('cut', 'start', { slot: 'b' });
       setTimeout(() => { show2D(); showSections(); }, 900);
       setTimeout(() => ensureTool('multicut'), 1400);
+      // The example points show from the start here too (Ames): in 2D they
+      // are dots on the images, which is where this cut is made.
+      setTimeout(() => { showWhereToCut(); }, 1900);
     },
   },
 

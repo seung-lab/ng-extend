@@ -173,8 +173,10 @@ const RED = '#ff5c5c', BLUE = '#5c8cff';
  * Read with the learner's own login when they ask for help.
  */
 const CUT_HINT_STATES: Record<string, string> = {
-  // Small branch merged to cell (Celia, 16:27), the 2D cut
+  // Small branch merged to cell (Celia, 16:27)
   '0482d846-0c16-4393-ab8a-0d1212b9520f': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5145051306917888',
+  // Axon fused to a dendrite (Ames, 2026-10-06), the 2D cut
+  '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5695110385762304',
   // Fusion on a proofread cell (Ames), the 3D cut
   '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5715664052420608',
 };
