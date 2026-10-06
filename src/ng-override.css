@@ -318,24 +318,35 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   letter-spacing: 0.05em;
 }
 .neuroglancer-layer-item:hover .neuroglancer-layer-item-label { color: #d6e4f6; }
-/* the trace: a line along the top edge that ends in a solder point. It is
-   drawn out when the tab becomes the selected one (Ames 2026-10-06: at the
-   top, not the foot). */
+/* The selected tab's top edge is a circuit trace, not a solid line (Ames
+   2026-10-06, after her own chip drawings): the line runs in from the left,
+   ends on a pad, leaves a small gap the way a trace does at a component,
+   picks up again on a second pad, and carries on across to the diagonal.
+   It is drawn out when the tab becomes the selected one. The pads are rings:
+   light round a dark centre. --tab-pad is where along the edge they sit. */
 .neuroglancer-layer-item::after {
+  --tab-pad: 44%;
+  --trace: #c9f3ff;
+  --trace-glow: rgba(126, 224, 255, 0.6);
   content: '';
   position: absolute; z-index: 1; pointer-events: none;
-  left: 7px; top: 0; height: 5px; width: 0;
+  left: 5px; top: 0; height: 6px; width: 0;
   background:
-    radial-gradient(circle at calc(100% - 2.5px) 2px, #e6f9ff 0 1.5px, rgba(126, 224, 255, 0.6) 2.1px, transparent 2.6px),
-    linear-gradient(90deg, rgba(126, 224, 255, 0), #c9f3ff 30%) 0 1.5px / calc(100% - 3px) 1.5px no-repeat;
+    /* first pad, then the gap, then the second pad */
+    radial-gradient(circle at calc(var(--tab-pad) - 4px) 2.5px, #0b1830 0 0.8px, var(--trace) 1.2px 2px, var(--trace-glow) 2.3px, transparent 2.8px),
+    radial-gradient(circle at calc(var(--tab-pad) + 5px) 2.5px, #0b1830 0 0.8px, var(--trace) 1.2px 2px, var(--trace-glow) 2.3px, transparent 2.8px),
+    /* the line up to the first pad */
+    linear-gradient(var(--trace), var(--trace)) 0 1.8px / calc(var(--tab-pad) - 6.4px) 1.4px no-repeat,
+    /* and on from the second pad to the diagonal */
+    linear-gradient(var(--trace), var(--trace)) calc(var(--tab-pad) + 7.4px) 1.8px / 100% 1.4px no-repeat;
   opacity: 0;
-  transition: width 0.42s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  transition: width 0.46s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
 }
-.neuroglancer-layer-item[data-selected=true]::after { width: 52%; opacity: 1; }
+/* it runs the whole top edge, from the left chamfer to the long diagonal */
+.neuroglancer-layer-item[data-selected=true]::after { width: calc(100% - 15px); opacity: 1; }
 .neuroglancer-layer-item[data-tinted="true"]::after {
-  background:
-    radial-gradient(circle at calc(100% - 2.5px) 2px, #ffffff 0 1.5px, color-mix(in srgb, var(--nge-layer-color) 70%, transparent) 2.1px, transparent 2.6px),
-    linear-gradient(90deg, transparent, color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff) 30%) 0 1.5px / calc(100% - 3px) 1.5px no-repeat;
+  --trace: color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff);
+  --trace-glow: color-mix(in srgb, var(--nge-layer-color) 65%, transparent);
 }
 @media (prefers-reduced-motion: reduce) { .neuroglancer-layer-item::after { transition: none; } }
 /* selected: lit */
@@ -345,6 +356,9 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   background: linear-gradient(180deg, #b4f0ff 0%, #6fc4ff 34%, rgba(74, 158, 255, 0) 96%) !important;
 }
 .neuroglancer-layer-item[data-selected=true]::before {
+  /* reaches the very top, so the trace above is the only top edge */
+  inset: 0 1px 1px 1px;
+  clip-path: polygon(4px 0, calc(100% - 9px) 0, 100% 10px, 100% 100%, 6.4px 100%, 0 calc(100% - 6.4px), 0 5.2px);
   background: linear-gradient(180deg, #1c3a66, #0d1d3a 70%);
 }
 .neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #f2f8ff; }
