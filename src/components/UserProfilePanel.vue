@@ -459,7 +459,7 @@ function getBadgeUrl(imageKey: string): string {
 /** Get the player's current count for a given track. */
 function statForTrack(track: BadgeTrack): number {
   const s = profileStats.value;
-  if (track === 'loyalty') return Math.max(s.longestStreak ?? 0, s.currentStreak ?? 0);
+  if (track === 'loyalty') return totalDays.value;
   return track === 'building'
     ? (s.editsAllTime ?? 0)
     : (s.cellsSubmitted ?? 0);
@@ -668,13 +668,14 @@ const nextBuildingAchievement = computed(() =>
 const nextExplorationAchievement = computed(() =>
   nextForTrack(EXPLORATION_BADGES, profileStats.value.cellsSubmitted ?? 0)
 );
-// Loyalty counts toward the next achievement from the streak running now.
+// Loyalty counts total days toward the next achievement.
 const nextLoyaltyAchievement = computed(() => {
   const next = earnedLoyaltyBadges.value.next;
   if (!next) return null;
-  const cur = Math.min(profileStats.value.currentStreak ?? 0, next.threshold - 1);
+  const prev = earnedLoyaltyBadges.value.earned[0]?.threshold ?? 0;
+  const cur = Math.min(totalDays.value, next.threshold - 1);
   const remaining = next.threshold - cur;
-  return { name: next.name, threshold: next.threshold, remaining, pct: Math.round(cur / next.threshold * 100) };
+  return { name: next.name, threshold: next.threshold, remaining, pct: Math.round((cur - prev) / Math.max(1, next.threshold - prev) * 100) };
 });
 
 // ── Overview scope: the dataset on screen ──────────────────────────────────
@@ -1329,13 +1330,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Loyalty Achievements: days in a row (Ames 2026-10-06) -->
+          <!-- Loyalty Achievements: total days, not in a row (Ames 2026-10-06) -->
           <div class="nge-profile-badges-divider"></div>
           <div class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-section-label" style="color: #c9a8ff;">▌ Loyalty Achievements</div>
             <div class="nge-profile-countdown-inline" v-if="nextLoyaltyAchievement">
               <div class="nge-profile-countdown-row">
-                <div class="nge-profile-countdown-remaining">{{ nextLoyaltyAchievement.remaining }} more {{ nextLoyaltyAchievement.remaining === 1 ? 'day' : 'days' }} in a row to go</div>
+                <div class="nge-profile-countdown-remaining">{{ nextLoyaltyAchievement.remaining }} {{ nextLoyaltyAchievement.remaining === 1 ? 'day' : 'days' }} to go</div>
               </div>
               <div class="nge-profile-countdown-track">
                 <div class="nge-profile-countdown-fill nge-profile-countdown-fill--loyalty" :style="{ width: nextLoyaltyAchievement.pct + '%' }"></div>
@@ -1358,7 +1359,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div
                 v-if="earnedLoyaltyBadges.next && earnedLoyaltyBadges.earned.length < 4"
                 class="nge-profile-badge nge-profile-badge--locked"
-                :title="`Next: ${earnedLoyaltyBadges.next.threshold} days in a row`"
+                :title="`Next: day ${earnedLoyaltyBadges.next.threshold}`"
               >
                 <div class="nge-profile-badge-img">
                   <div class="nge-profile-badge-mystery">
@@ -1820,7 +1821,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-desc" :title="badge.description">{{ badge.description }}</div>
-                <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days in a row</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days</div>
               </div>
             </div>
           </div>

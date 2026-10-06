@@ -247,23 +247,24 @@ export const EXPLORATION_BADGES: BadgeDefinition[] = [
 ];
 
 /**
- * Loyalty (Ames 2026-10-06): earned by days in a row, on the player's own
- * calendar. The threshold is a streak length, checked against the player's
- * best streak, so an achievement stays earned after the streak ends.
+ * Loyalty (Ames 2026-10-06): earned by TOTAL days at EyeWire II. The days do
+ * not have to be in a row (Ames: "they don't have to be 'in a row'"), so a
+ * holiday or a sick week never costs anyone an achievement. The threshold is
+ * a number of days, checked against users.total_days.
  * Art: github.com/amyleesterling/badges/tree/main/loyalty. Written by hand
  * (the two tracks above are generated); ids 201 and up.
  */
 const loyalty = (n: number, days: number, slug: string, code: string, name: string, description: string): BadgeDefinition =>
   ({ id: 200 + n, track: 'loyalty', sequence: n, slug, code, name, description, imageKey: `loyalty/${slug}`, threshold: days, editThreshold: days });
 export const LOYALTY_BADGES: BadgeDefinition[] = [
-  loyalty(1,  2, 'second-spark',   'SS', 'Second Spark',   'You came back. Two days in a row, and the spark has caught.'),
-  loyalty(2,  3, 'third-light',    'TL', 'Third Light',    'Three days in a row. The light is holding steady.'),
-  loyalty(3,  5, 'growing-signal', 'GS', 'Growing Signal', 'Five days in a row. Your signal is getting stronger.'),
-  loyalty(4,  7, 'first-orbit',    'FO', 'First Orbit',    'A full week without missing a day. One orbit complete.'),
-  loyalty(5, 14, 'double-orbit',   'DO', 'Double Orbit',   'Two weeks in a row. Twice around, and still going.'),
-  loyalty(6, 21, 'steady-signal',  'ST', 'Steady Signal',  'Three weeks in a row. The lab can count on you.'),
-  loyalty(7, 28, 'constellation',  'CO', 'Constellation',  'Four weeks in a row. Your days have joined into a constellation.'),
-  loyalty(8, 30, 'one-month',      'OM', 'One Month',      'Thirty days in a row. A whole month of showing up for science.'),
+  loyalty(1,  2, 'second-spark',   'SS', 'Second Spark',   'Day 2 at EyeWire II! You came back, and we are so glad you did.'),
+  loyalty(2,  3, 'third-light',    'TL', 'Third Light',    'Three days of science! You are on a roll.'),
+  loyalty(3,  5, 'growing-signal', 'GS', 'Growing Signal', 'Five days at EyeWire II! Science is becoming a habit.'),
+  loyalty(4,  7, 'first-orbit',    'FO', 'First Orbit',    'Seven days of mapping the brain! That is a whole week of science.'),
+  loyalty(5, 14, 'double-orbit',   'DO', 'Double Orbit',   'Fourteen days at EyeWire II! Two weeks of discoveries.'),
+  loyalty(6, 21, 'steady-signal',  'ST', 'Steady Signal',  'Twenty one days! The whole lab is cheering for you.'),
+  loyalty(7, 28, 'constellation',  'CO', 'Constellation',  'Twenty eight days! You are a star of EyeWire II.'),
+  loyalty(8, 30, 'one-month',      'OM', 'One Month',      'Thirty days at EyeWire II! A whole month of showing up for science. You are a legend.'),
 ];
 
 /** Every achievement: building, then exploration, then loyalty. */
@@ -275,7 +276,7 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
 
 /** What a track's threshold counts, for "N <unit>" labels. */
 export function unitForTrack(track: BadgeTrack, n = 2): string {
-  return track === 'building' ? 'edits' : track === 'loyalty' ? (n === 1 ? 'day in a row' : 'days in a row') : 'cells completed';
+  return track === 'building' ? 'edits' : track === 'loyalty' ? (n === 1 ? 'day' : 'days') : 'cells completed';
 }
 
 /** Helper: get badges for a specific track. */
@@ -284,6 +285,6 @@ export function badgesForTrack(track: BadgeTrack): BadgeDefinition[] {
 }
 
 /** Helper: get the stat key to check for a given track. */
-export function statKeyForTrack(track: BadgeTrack): 'editsAllTime' | 'cellsSubmitted' | 'longestStreak' {
-  return track === 'building' ? 'editsAllTime' : track === 'loyalty' ? 'longestStreak' : 'cellsSubmitted';
+export function statKeyForTrack(track: BadgeTrack): 'editsAllTime' | 'cellsSubmitted' | 'totalDays' {
+  return track === 'building' ? 'editsAllTime' : track === 'loyalty' ? 'totalDays' : 'cellsSubmitted';
 }

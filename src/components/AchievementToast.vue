@@ -218,18 +218,30 @@ watch(() => stats.value.currentStreak, (newStreak) => {
   // by the largest milestone passed.
   const passed = streakMilestonesBetween(prevStreak, newStreak);
   if (passed.length) fireConfetti('gold', passed[passed.length - 1] >= 30 ? 2 : 1);
-  // Loyalty achievements: one for each streak length just reached. Only the
-  // highest gets the toast, so a recount never stacks several at once.
-  const won = LOYALTY_BADGES.filter(b => prevStreak < b.threshold && newStreak >= b.threshold
+  prevStreak = newStreak;
+});
+
+// ── Loyalty achievements ────────────────────────────────────────────────
+// Earned by total days. The store knows the exact moment the count moves
+// (celebrateDays: yesterday's total and today's), so it says so, and the
+// achievement for each total just reached is saved. Only the highest gets
+// the card, so two reached at once never stack.
+function onLoyaltyDays(e: Event) {
+  const d = (e as CustomEvent).detail || {};
+  const before = Number(d.before), now = Number(d.now);
+  if (!Number.isFinite(before) || !Number.isFinite(now) || now <= before) return;
+  const won = LOYALTY_BADGES.filter(b => before < b.threshold && now >= b.threshold
     && claimBadgeOnce(`l:${b.id}`) && !backend.myBadgeAwards.has(`loyalty:${b.id}`));
   for (const b of won) backend.recordBadgeAward('loyalty', b.id);
   const top = won[won.length - 1];
-  if (top) {
-    const imgUrl = BADGE_IMAGE_MAP[top.imageKey] ?? '';
-    addToast({ type: 'badge', title: top.name, subtitle: top.description, icon: imgUrl || '🏅', isImage: !!imgUrl });
-  }
-  prevStreak = newStreak;
-});
+  if (!top) return;
+  const imgUrl = BADGE_IMAGE_MAP[top.imageKey] ?? '';
+  addToast({ type: 'badge', title: top.name, subtitle: top.description, icon: imgUrl || '🏅', isImage: !!imgUrl });
+  fireConfetti('gold', 1.5);
+}
+document.addEventListener('nge:loyalty-days', onLoyaltyDays);
+// The day may have been counted before this component existed.
+{ const early = (window as any).__ngeLoyaltyDays; if (early) { (window as any).__ngeLoyaltyDays = null; setTimeout(() => onLoyaltyDays(new CustomEvent('nge:loyalty-days', { detail: early })), 3000); } }
 
 // ── Daily Quest completion celebration ──────────────────────────────────
 let prevDailyDone = -1; // -1 = not yet initialized

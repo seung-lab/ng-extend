@@ -3850,6 +3850,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    */
   function celebrateDays(before: unknown, now: unknown, recounted: boolean) {
     if (recounted || typeof before !== 'number' || typeof now !== 'number' || now <= before) return;
+    // Loyalty achievements listen for this (AchievementToast.vue); the note is
+    // kept for a listener that is not mounted yet.
+    try {
+      (window as any).__ngeLoyaltyDays = { before, now };
+      document.dispatchEvent(new CustomEvent('nge:loyalty-days', { detail: { before, now } }));
+    } catch { /* no document */ }
     const reached = dayMilestonesReached(before, now);
     const days = reached[reached.length - 1];
     if (!days || !userId.value) return;

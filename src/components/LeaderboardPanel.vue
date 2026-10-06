@@ -252,7 +252,7 @@ function editCountForTab(user: DemoUser): number {
 // Badges helpers
 function isBadgeEarnedByUser(badge: BadgeDefinition, user: DemoUser): boolean {
   if (badge.threshold === 0) return false;
-  const stat = badge.track === 'building' ? user.stats.editsAllTime : badge.track === 'loyalty' ? (user.stats.longestStreak || 0) : user.stats.cellsSubmitted;
+  const stat = badge.track === 'building' ? user.stats.editsAllTime : badge.track === 'loyalty' ? 0 /* total days is not on the board */ : user.stats.cellsSubmitted;
   return stat >= badge.threshold;
 }
 
