@@ -14,6 +14,13 @@ import thumbRetina from '../static/images/datasets/retina.jpg';
 import thumbBanc from '../static/images/datasets/banc.jpg';
 // FlyWire: the 50 largest neurons render (Ames 2026-10-06).
 import thumbFlywire from '../static/images/datasets/flywire.jpg';
+// Explore only volumes: rendered in this viewer from each volume's own data
+// (H01: Google's gallery set of layer 2 interneurons; the FlyEM volumes:
+// their largest named neurons), 2026-10-06.
+import thumbH01 from '../static/images/datasets/h01.jpg';
+import thumbManc from '../static/images/datasets/manc.jpg';
+import thumbMcns from '../static/images/datasets/mcns.jpg';
+import thumbMaol from '../static/images/datasets/maol.jpg';
 import { useLayersStore, useUserPreferencesStore } from './store';
 import { datasetAccess } from './util/dataset_access';
 import { getDatasetCaveConfig, cellTypesForDataset } from './config';
@@ -338,6 +345,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'h01',
+    thumbnail: thumbH01,
     section: 'viewonly',
     optional: true,
     exploreOnly: true,
@@ -361,6 +369,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'manc',
+    thumbnail: thumbManc,
     section: 'viewonly',
     optional: true,
     exploreOnly: true,
@@ -384,6 +393,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'mcns',
+    thumbnail: thumbMcns,
     section: 'viewonly',
     optional: true,
     exploreOnly: true,
@@ -407,6 +417,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'maol',
+    thumbnail: thumbMaol,
     section: 'viewonly',
     optional: true,
     exploreOnly: true,

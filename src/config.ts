@@ -366,10 +366,18 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
   // with an EMPTY server on purpose. An unregistered layer name falls back
   // to the retina's config and would address the wrong volume; these say
   // plainly that there is nothing to read or write.
-  h01_c3:           { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true },
-  manc_v1_2:        { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true },
-  malecns_v1_0:     { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true },
-  optic_lobe_v1_1:  { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true },
+  // Starter cells so the 3D view is not empty: for H01, layer 2 interneurons
+  // from Google's own gallery state; for the FlyEM volumes, neurons named in
+  // each volume's own segment properties (the giant fibers DNp01 in MANC and
+  // the male CNS, the HS cells in the optic lobe).
+  h01_c3:           { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true,
+    defaultSegments: ['1100054524', '1115430292', '12237931142', '1333290325', '1538274151', '1539076840', '1594648509', '1638188509'] },
+  manc_v1_2:        { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true,
+    defaultSegments: ['10000', '10002'] },
+  malecns_v1_0:     { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true,
+    defaultSegments: ['10001', '10010'] },
+  optic_lobe_v1_1:  { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true,
+    defaultSegments: ['10015', '10016', '10023'] },
   // The same configs under each dataset's switcher id: some callers look a
   // dataset up by id rather than by layer name (switchToDataset does), and
   // these ids are too short for the substring match (MIN_SUBSTRING_MATCH).
