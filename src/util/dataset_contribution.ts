@@ -9,6 +9,18 @@ import { completedCells, datasetKey, type CompletedCell, type CompletionLogRow }
 
 export interface DatasetContribution { edits: number; completions: number; helpRequests: number; }
 
+/**
+ * Datasets whose work happens in the game, so edits and help requests there
+ * are the player's whole record. Everywhere else (BANC, FlyWire, MICrONS...)
+ * most of a player's work was done in other tools, and "0 edits" beside
+ * 1,939 cells reads as wrong (Ames 2026-10-06): those cards lead with cells
+ * proofread and show edits or help requests only when there are some.
+ */
+const GAME_NATIVE = new Set(['stroeh_mouse_retina', 'pni_mec', 'pinky_sandbox']);
+export function showsAllStats(ds: DatasetEntry): boolean {
+  return GAME_NATIVE.has(ds.id);
+}
+
 /** Every name a dataset has been logged under. */
 export function datasetTagVariants(ds: DatasetEntry): string[] {
   const canon = canonicalDataset(segLayerName(ds));

@@ -11,17 +11,20 @@ import { datasetTransition, resumeDatasetTransition, endDatasetTransition } from
 import { runPanelDraw } from '../util/holo_trace';
 import { DATASETS } from '../datasets';
 import { useProofreadingBackendStore } from '../store';
-import { loadContribution, type DatasetContribution } from '../util/dataset_contribution';
+import { loadContribution, showsAllStats, type DatasetContribution } from '../util/dataset_contribution';
 
 // Your own numbers for the dataset you are entering, from the same helper the
 // profile's Datasets tab uses. After a reload the sign in restores a moment
 // later, so wait briefly for the user id.
 const backend = useProofreadingBackendStore();
 const mine = ref<DatasetContribution | null>(null);
+// False on datasets worked mostly in other tools: cells lead, zeros are left out.
+const mineAll = ref(true);
 async function loadMine(id: string) {
   mine.value = null;
   const ds = DATASETS.find(d => d.id === id);
   if (!ds) return;
+  mineAll.value = showsAllStats(ds);
   for (let i = 0; i < 20 && !backend.userId; i++) await new Promise(r => setTimeout(r, 150));
   if (!backend.userId || datasetTransition.current?.id !== id) return;
   try { mine.value = await loadContribution(ds, backend.userId); } catch { /* stats are a bonus */ }
@@ -191,8 +194,8 @@ onBeforeUnmount(clearTimers);
           <div v-if="mine" class="nge-dst-stats">
             <template v-if="mine.edits || mine.completions || mine.helpRequests">
               <span class="nge-dst-stats-label">Your work here</span>
-              <span class="nge-dst-stat"><b>{{ mine.edits.toLocaleString() }}</b> edit{{ mine.edits === 1 ? '' : 's' }}</span>
-              <span class="nge-dst-stat"><b>{{ mine.completions.toLocaleString() }}</b> cell{{ mine.completions === 1 ? '' : 's' }} proofread</span>
+              <span v-if="mineAll || mine.edits" class="nge-dst-stat"><b>{{ mine.edits.toLocaleString() }}</b> edit{{ mine.edits === 1 ? '' : 's' }}</span>
+              <span class="nge-dst-stat" :class="{ 'nge-dst-stat--cells': mine.completions }"><b>{{ mine.completions.toLocaleString() }}</b> cell{{ mine.completions === 1 ? '' : 's' }} proofread</span>
               <span v-if="mine.helpRequests" class="nge-dst-stat"><b>{{ mine.helpRequests.toLocaleString() }}</b> help request{{ mine.helpRequests === 1 ? '' : 's' }}</span>
             </template>
             <span v-else class="nge-dst-stats-first">Your first visit here. Welcome, scientist!</span>
@@ -271,6 +274,8 @@ onBeforeUnmount(clearTimers);
 }
 .nge-dst-stats-label { font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; color: rgba(201, 139, 255, 0.95); }
 .nge-dst-stat b { color: #fff; font-weight: 700; font-size: 15px; margin-right: 2px; }
+.nge-dst-stat--cells { color: #fff; font-weight: 600; }
+.nge-dst-stat--cells b { color: #5fe3f5; font-weight: 800; font-size: 17px; }
 .nge-dst-stats-first { color: #ffd35a; font-weight: 600; }
 .nge-dst-stats-enter-active { transition: opacity 0.35s ease, transform 0.35s ease; }
 .nge-dst-stats-enter-from { opacity: 0; transform: translateY(4px); }

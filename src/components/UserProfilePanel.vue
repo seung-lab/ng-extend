@@ -7,7 +7,7 @@ import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
 import BlogEditor from 'components/BlogEditor.vue';
 import { startDatasetTransition } from '../util/dataset_transition';
-import { loadContribution, datasetTagVariants as sharedTagVariants } from '../util/dataset_contribution';
+import { loadContribution, showsAllStats, datasetTagVariants as sharedTagVariants } from '../util/dataset_contribution';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
@@ -1892,9 +1892,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-ds-tab-desc">{{ ds.description }}</div>
             <div class="nge-ds-tab-stats">
               <template v-if="datasetContribution(ds)">
-                <span class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.edits ?? 0).toLocaleString() }}</b> edits</span>
-                <span class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.completions ?? 0).toLocaleString() }}</b> cells proofread</span>
-                <span class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.helpRequests ?? 0).toLocaleString() }}</b> help requests</span>
+                <span v-if="showsAllStats(ds) || datasetContribution(ds)?.edits" class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.edits ?? 0).toLocaleString() }}</b> edits</span>
+                <span class="nge-ds-tab-stat" :class="{ 'nge-ds-tab-stat--cells': datasetContribution(ds)?.completions }"><b>{{ (datasetContribution(ds)?.completions ?? 0).toLocaleString() }}</b> cells proofread</span>
+                <span v-if="showsAllStats(ds) || datasetContribution(ds)?.helpRequests" class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.helpRequests ?? 0).toLocaleString() }}</b> help requests</span>
                 <span v-if="!hasContributed(ds)" class="nge-ds-tab-stat nge-ds-tab-stat--none">no contributions yet</span>
               </template>
               <span v-else class="nge-ds-tab-stat nge-ds-tab-stat--none">…</span>
@@ -2279,6 +2279,21 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-ds-tab-stat b {
   color: rgba(255, 255, 255, 0.92);
   font-weight: 600;
+}
+/* Cells proofread is the headline of a card once there are some. */
+.nge-ds-tab-stats { align-items: baseline; }
+.nge-ds-tab-stat--cells {
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(66, 213, 236, 0.12);
+  border: 1px solid rgba(66, 213, 236, 0.35);
+}
+.nge-ds-tab-stat--cells b {
+  color: #5fe3f5;
+  font-weight: 800;
+  font-size: 14px;
 }
 .nge-ds-tab-stat--none {
   color: rgba(255, 255, 255, 0.3);
