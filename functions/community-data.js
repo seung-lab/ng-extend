@@ -9,7 +9,7 @@ const SITE_ASSETS = 'https://connectome.quest/assets/';
 // Chat reactions on offer; keep in step with CHAT_REACTION_EMOJI in src/store.ts.
 const REACTION_EMOJI = new Set(['👍', '❤️', '🔥', '😂', '🎉', '🧠']);
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
-const PUBLIC_USER_COLUMNS = 'id,display_name,flag,bio,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,created_at,updated_at,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,cave_user_id,username,last_edit_at,last_cave_sync_at,total_annotations,favorite_badges';
+const PUBLIC_USER_COLUMNS = 'id,display_name,flag,bio,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,created_at,updated_at,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,cave_user_id,username,last_edit_at,last_cave_sync_at,total_annotations,favorite_badges,total_days';
 const columns = {
   users: PUBLIC_USER_COLUMNS+',middleauth_email',
   admins: 'id,user_id,email,created_at',
