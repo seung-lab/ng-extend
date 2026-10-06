@@ -1,5 +1,8 @@
 import { Step, useTutorialStore } from "./store-pyr";
 import { ngePointScale } from "neuroglancer/annotation/point";
+import { defaultCredentialsManager } from "neuroglancer/credentials_provider/default_manager";
+import { responseJson } from "neuroglancer/util/http_request";
+import { cancellableFetchSpecialOk, parseSpecialUrl } from "neuroglancer/util/special_protocol_request";
 // The saved views name this neuron by its OLD root ids on purpose: they
 // still show it as it was before the continuation was merged in (March
 // 2026) and edited since. Swapping in its current id showed that merge
@@ -58,6 +61,43 @@ function bigPoints() {
   }, 300);
 }
 bigPoints.before = 1;
+
+/**
+ * Leave one annotation on screen: the one the lesson is about. The saved
+ * views carry two (reviewer, 2026-10-06), and two yellow dots read as two
+ * things to find. `targetState` is the view that zooms in on the right one;
+ * the annotation nearest its centre is kept and the rest are removed from
+ * this session's copy of the view (the saved view is not changed).
+ */
+async function keepOneAnnotation(targetState: string) {
+  try {
+    const { url, credentialsProvider } = parseSpecialUrl(targetState, defaultCredentialsManager);
+    const state: any = await cancellableFetchSpecialOk(credentialsProvider, url, {}, responseJson);
+    const c: number[] = (state?.position ?? state?.navigation?.pose?.position?.voxelCoordinates ?? []).map(Number);
+    if (c.length < 3) return;
+    await new Promise(r => setTimeout(r, 1500)); // the step's own view has to finish loading
+    const found: Array<{ src: any; id: string; d: number }> = [];
+    for (const ml of getViewer()?.layerManager?.managedLayers ?? []) {
+      if ((ml.layer?.constructor as any)?.type !== 'annotation') continue;
+      const src = ml.layer.localAnnotations;
+      if (!src) continue;
+      for (const a of src) {
+        const p = (a as any).point;
+        if (!p || p.length < 3) continue;
+        found.push({ src, id: (a as any).id, d: Math.hypot((p[0] - c[0]) * 4, (p[1] - c[1]) * 4, (p[2] - c[2]) * 40) });
+      }
+    }
+    if (found.length < 2) return;
+    found.sort((x, y) => x.d - y.d);
+    for (const f of found.slice(1)) {
+      const ref = f.src.getReference(f.id);
+      try { f.src.delete(ref); } finally { ref.dispose(); }
+    }
+  } catch (e) {
+    console.warn('[tutorial] could not thin the annotations:', e);
+  }
+}
+const STATE_AT_ANNOTATION = 'middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760';
 
 /** Remove a segment from the first segmentation layer.
  *  The visible set lives in segmentationGroupState in this neuroglancer;
@@ -233,9 +273,9 @@ export const steps: Step[] = [
  // },
   //1 -- full screen 3D - button option to skip to keyboard commands - state middleauth+https://global.daf-apis.com/nglstate/api/v1/6173054938906624
   {
-    title: `Welcome!`,
+    title: `Welcome to Pyr!`,
     text: `
-We’re a community  of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
+Pyr is a community of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
 
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
     image:
@@ -293,7 +333,7 @@ This box won't go away when you click outside it.`,
   },
   //7 - gif reuse 3D CNTRL+SCROLL
   {
-    text: `CNTRL+SCROLL to zoom in and out.`,
+    text: `CTRL+SCROLL to zoom in and out.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
@@ -324,7 +364,7 @@ This box won't go away when you click outside it.`,
   },
   //8a - right click
   {
-    text: `Right click on the neuron to center view at any point.`,
+    text: `Right click on the neuron to re-center your view.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
@@ -353,7 +393,7 @@ Don't worry if you can't find it - the Next button will take you there.`,
       imgInspectorNurro,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
-    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); },
+    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); keepOneAnnotation(STATE_AT_ANNOTATION); },
   },
   //9 - new NG state middleauth+https://global.daf-apis.com/nglstate/api/v1/4893758698029056
   {
@@ -367,7 +407,7 @@ It missed a branch. Let's see if we can find it.`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
     width: "200px",
-    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); },
+    onEnter: () => { setAnnotationColor('#edd040'); bigPoints(); keepOneAnnotation(STATE_AT_ANNOTATION); },
   },
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
@@ -385,11 +425,8 @@ It missed a branch. Let's see if we can find it.`,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
   },
-  //12a - split screen tip
-  {
-    text: `You're now in split screen view: EM on the left, 3D on the right. If you ever end up in 4 panel view, look for the ◫ button to get back to split screen.`,
-    position: OVER_2D,
-  },
+  // (The "if you end up in 4 panel view" tip lived here. The app no longer
+  // offers a 4 panel view, see no_four_panel.ts, so the step is gone.)
   //13 - gif
   {
     text: `Press COMMA and PERIOD to step through the EM slices. You can also hover your mouse over EM and scroll through images.
@@ -417,8 +454,10 @@ Don't worry if you lose the neuron. The Next button in this section resets this 
   //17 - position center of page - ensure location is  middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
   {
     text: `The big black empty space is an imaging defect, which happens occasionally when you are snapping at the nanoscale. It caused the AI to make a mistake and disconnect a dendrite.`,
-    position: MIDDLE,
-    state: STATE_DEFECT_VIEW,
+    // Split screen, so the black void shows in the EM images on the left
+    // (reviewer, 2026-10-06); the box sits over the 3D side.
+    position: OVER_3D,
+    state: { ...STATE_DEFECT_VIEW, layout: 'xy-3d' },
     onEnter: () => {
       // Belt and braces: the purple branch must not show on this step.
       setTimeout(() => removeSegment('648518346356484078'), 1500);
@@ -528,11 +567,10 @@ Hit next to reveal the answer.`,
     },
   },
   {
-    text: `Researchers: take the **Self-guided training** when you are ready to learn more and gain access to the production dataset! LINK
+    // Links open a new tab, so the learner is not taken away from the app.
+    text: `Citizen scientists: <a href="https://blog.eyewire.org/how-to-access-the-eyewire-ii-dataset/" target="_blank" rel="noopener">Unlock access</a> to start mapping neurons in Eyewire II!
 
-Citizen scientists: [Unlock access](https://blog.eyewire.org/how-to-access-the-eyewire-ii-dataset/) to start mapping neurons in Eyewire II!
-
-Email support at eyewire.ai with any questions.
+Questions? Email <a href="mailto:support@eyewire.org">support@eyewire.org</a>.
 
 
 Thanks for being a part of the neuroscience community. For Science!`,

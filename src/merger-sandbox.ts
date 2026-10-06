@@ -13,6 +13,7 @@ import { Step, useTutorialStore } from './store-pyr';
 import imgBravoNurro from './images/bravo-nurro.png';
 import { beginPractice, endPractice, ensureTool } from './practice';
 import { SANDBOX_CELLS } from './practice_pools';
+import { show2D, showSections } from './tutorial-cut';
 import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, finishPracticeTutorial, movingToSandbox, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
 
 export const SANDBOX_TUTORIAL = 9;
@@ -89,7 +90,10 @@ This cell is yours until you finish, and goes back to its merged state afterward
       // Watch only once the cell is held: with nothing held, the watch
       // would queue for the Cut tutorial's cells.
       watchPractice(false, 'Waiting for your cut: red on one neuron, G, blue on the other, Submit cut.', '', { advance: true });
-      setTimeout(() => ensureTool('multicut'), 600);
+      // Split view with Sections on: the merged views were saved 3D only,
+      // and finding where two neurons touch needs the 2D images (Ames).
+      setTimeout(() => { show2D(); showSections(); }, 500);
+      setTimeout(() => ensureTool('multicut'), 1100);
     },
   } as Step,
 

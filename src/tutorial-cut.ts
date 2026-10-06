@@ -24,12 +24,12 @@ const CUT_SECOND = '0813e168-d4e6-4baa-91b7-c9846b9fc6f4'; // Axon fused to a de
 
 /** "Sections" on: the 2D slice drawn inside the 3D view, which shows where
  *  the 2D images sit on the cell. */
-function showSections() {
+export function showSections() {
   try { const v = getViewer()?.showPerspectiveSliceViews; if (v && !v.value) v.value = true; } catch (e) { /* */ }
 }
 
 /** Split view, so the 2D images are on screen for the 2D cut. */
-function show2D() {
+export function show2D() {
   try { getViewer()?.layout?.restoreState('xy-3d'); } catch (e) { console.warn('[tutorial] could not open the 2D view:', e); }
 }
 
