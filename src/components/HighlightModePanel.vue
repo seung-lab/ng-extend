@@ -273,16 +273,26 @@ const inViewer = (t: HTMLElement | null) =>
 // or drag is left alone, so the view can be turned and moved between the
 // two points (Ames 2026-10-01). Capture phase: neuroglancer handles
 // mousedown itself, and Ctrl+click is otherwise its "annotate" gesture.
+// Merge, Cut and Find Path place their own points with Ctrl+click. With one
+// of them open, that click is theirs: this box took it, so merging and
+// cutting did nothing while Highlight was open (annkri 2026-10-06). H+click
+// still places a highlight point, so both can be used side by side.
+const editToolOpen = () => !!document.querySelector('.graphene-tool-status');
+let toldAboutH = false;
 function onPointerCapture(e: PointerEvent) {
   if (e.button !== 0 || !(e.ctrlKey || e.metaKey || hHeld.value)) return;
   if (!inViewer(e.target as HTMLElement | null)) return;
+  if (!hHeld.value && editToolOpen()) {
+    if (!toldAboutH) { toldAboutH = true; say('Merge or Cut is open, so Ctrl+click goes to it. Hold H and click to highlight.'); }
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   void place(e.clientX, e.clientY);
 }
 // On a Mac, Ctrl+click also asks for the context menu.
 function onContextMenu(e: MouseEvent) {
-  if (e.ctrlKey && inViewer(e.target as HTMLElement | null)) { e.preventDefault(); e.stopPropagation(); }
+  if (e.ctrlKey && !editToolOpen() && inViewer(e.target as HTMLElement | null)) { e.preventDefault(); e.stopPropagation(); }
 }
 /** Drop the start point of the mark being made; finished marks are untouched. */
 function cancelPick() {
