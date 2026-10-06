@@ -554,11 +554,28 @@ async function prepareJump(segId: string): Promise<{ ok: boolean; keep: boolean 
 function jumpToCell(segId: string, coords: string, nucleusId?: string | null, keep = false, showSeg?: string | null) {
   const pos = parseCoords(coords);
   history.jumpToCell(showSeg || segId, pos[0] || pos[1] || pos[2] ? pos : undefined, { keep });
+  if (!showSeg && (pos[0] || pos[1] || pos[2])) void settleClaimAfterJump(segId, pos);
   jumpedSegId.value = segId;
   // MEC: the nucleus is its own segment; show it too so the soma isn't hollow.
   if (nucleusId && nucleusId !== segId) setTimeout(() => {
     try { currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments?.add(Uint64.parseString(nucleusId)); } catch { /* layer not ready */ }
   }, 400);
+}
+
+/** One of my claims was opened by its listed ID because its current ID was
+ *  not known (splits left several pieces). The viewer is now on its nucleus:
+ *  read what is there, and if the cell has a newer ID, show that instead. */
+async function settleClaimAfterJump(segId: string, pos: [number, number, number]) {
+  const cell = cells.value.find(c => c.segId === segId);
+  if (!cell?.taskId || !isMyClaim(cell) || cell.status === 'completed') return;
+  const root = await backend.anchorClaimAt(cell.taskId, pos).catch(() => null);
+  if (!root || root === segId || jumpedSegId.value !== segId) return;
+  try {
+    const visible = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!visible) return;
+    visible.delete(Uint64.parseString(segId));
+    visible.add(Uint64.parseString(root));
+  } catch { /* layer went away */ }
 }
 
 function parseCoords(s: string): [number, number, number] {

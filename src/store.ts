@@ -19,7 +19,7 @@ import {currentDatasetTag, canonicalDataset, currentSegLayer} from './datasets';
 import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
 import {emitScriptEvent} from './script_api';
-import {getRootsFromSupervoxels} from './widgets/pcg_service';
+import {getRootsFromSupervoxels, getRootFromSupervoxel, latestDescendants} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
 import pinVtkUrl from '../static/tags/pin.vtk';
@@ -4260,21 +4260,84 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // A merge or split gives the cell a new segment ID, but the claim kept
   // showing, and jumping to, the ID it was listed under (Celia's report of
   // 2026-08-13). task.segment_id stays as it is: it is how a claim is matched
-  // to its row in the cell list. The current ID is kept beside it, by task,
-  // from the claim's supervoxel (the one fixed point of a cell that edits
-  // never change), and refreshed after every edit the graph server accepts.
+  // to its row in the cell list. The current ID is kept beside it, by task.
+  //
+  // How it is found: a claim made from the Delta menu carries a supervoxel
+  // (a fixed point of the cell that edits never change) and its root is
+  // simply looked up. A claim made from the Cell Library has none, so its
+  // edit history is followed forward from the listed ID. When splits left
+  // more than one live piece, the history alone cannot say which piece is the
+  // cell: that is settled the first time you jump to the cell, by reading the
+  // volume at its nucleus (anchorClaimAt), and remembered in this browser.
   const liveRoots = ref<Record<number, string>>({});
-  async function refreshLiveRoots(): Promise<void> {
-    const mine = tasks.value.filter(t => t.supervoxel_id && t.assigned_to === userId.value
-      && (t.status === 'assigned' || t.status === 'in_progress'));
-    if (!mine.length) return;
-    const resolved = await getRootsFromSupervoxels(mine.map(t => t.supervoxel_id!));
-    const next = { ...liveRoots.value };
-    for (const t of mine) {
-      const root = resolved.get(t.supervoxel_id!);
-      if (root) next[t.id] = root;
+  const ANCHOR_KEY = 'nge_claim_anchors_v1';
+  const anchors: Record<string, string> = (() => {
+    try { return JSON.parse(localStorage.getItem(ANCHOR_KEY) || '{}') || {}; } catch { return {}; }
+  })();
+  const anchorOf = (t: ProofreadingTask): string | null => t.supervoxel_id || anchors[String(t.id)] || null;
+  const myActiveClaims = () => tasks.value.filter(t => t.assigned_to === userId.value
+    && (t.status === 'assigned' || t.status === 'in_progress'));
+
+  /** The claim's current root, or null when it cannot be decided yet. */
+  async function resolveLive(t: ProofreadingTask): Promise<string | null> {
+    const sv = anchorOf(t);
+    if (sv) {
+      const root = await getRootFromSupervoxel(sv);
+      if (root) return root;
     }
+    const ends = await latestDescendants(String(t.segment_id));
+    if (!ends) return liveRoots.value[t.id] ?? null;      // lookup failed: keep what we had
+    if (ends.length === 1) return ends[0];
+    const known = liveRoots.value[t.id];
+    return known && ends.includes(known) ? known : null;  // several pieces, no anchor yet
+  }
+  async function refreshLiveRoots(): Promise<void> {
+    const mine = myActiveClaims();
+    if (!mine.length) return;
+    const found = await Promise.all(mine.map(t => resolveLive(t).catch(() => null)));
+    const next = { ...liveRoots.value };
+    mine.forEach((t, i) => { if (found[i]) next[t.id] = found[i]!; else delete next[t.id]; });
     liveRoots.value = next;
+  }
+  /** The supervoxel the loaded segmentation holds at a point, if any. */
+  function supervoxelAt(point: [number, number, number]): string | null {
+    try {
+      const v: any = (window as any)['viewer'];
+      const p = Float32Array.from(point);
+      for (const ml of v?.layerManager?.managedLayers ?? []) {
+        if (ml.archived || !ml.layer?.displayState?.segmentSelectionState) continue;
+        for (const rl of ml.layer.renderLayers ?? []) {
+          const got = rl.getValueAt?.(p);
+          const sv = got == null ? '' : String(Array.isArray(got) ? got[0] : got);
+          if (sv && sv !== '0' && Math.floor(Number(sv) / 2 ** 56) === 1) return sv;
+        }
+      }
+    } catch { /* viewer not ready */ }
+    return null;
+  }
+  /**
+   * Called after a jump puts the viewer on one of my claims: read the volume
+   * at the cell's nucleus and, when that spot really is this claim's cell (its
+   * listed ID or a later version of it), remember it as the claim's anchor.
+   * Returns the cell's current root, or null when nothing could be read.
+   */
+  async function anchorClaimAt(taskId: number, point: [number, number, number]): Promise<string | null> {
+    const t = tasks.value.find(x => x.id === taskId);
+    if (!t) return null;
+    if (anchorOf(t)) return liveRoots.value[taskId] ?? null;
+    let sv: string | null = null;
+    for (let i = 0; i < 12 && !(sv = supervoxelAt(point)); i++) await new Promise(r => setTimeout(r, 500));
+    if (!sv) return null;
+    const root = await getRootFromSupervoxel(sv);
+    if (!root) return null;
+    if (root !== String(t.segment_id)) {
+      const ends = await latestDescendants(String(t.segment_id));
+      if (!ends || !ends.includes(root)) return null;   // that spot is some other cell
+    }
+    anchors[String(taskId)] = sv;
+    try { localStorage.setItem(ANCHOR_KEY, JSON.stringify(anchors)); } catch { /* remembered for this visit only */ }
+    liveRoots.value = { ...liveRoots.value, [taskId]: root };
+    return root;
   }
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('nge-graph-edit', () => {
@@ -5216,7 +5279,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Point-in-space claims
     claimCell, releaseCell, releaseBySegment, releaseTaskById, saveWorkingLink, loadMyActiveClaims, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
     refreshSegmentIds,
-    liveRoots, refreshLiveRoots,
+    liveRoots, refreshLiveRoots, anchorClaimAt,
     MAX_CLAIMS, claimLimitFor,
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor,

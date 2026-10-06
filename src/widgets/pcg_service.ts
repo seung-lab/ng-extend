@@ -383,6 +383,46 @@ export async function ancestorAmong(root: string, candidates: string[]): Promise
 
 
 /**
+ * The current version(s) of a root: follow its edit history FORWARD to the
+ * roots nothing has replaced yet. One id when the cell was only merged into
+ * or trimmed and this lineage has a single live end; several when splits
+ * left more than one piece alive (the caller decides which piece is the
+ * cell). [root] itself when it was never edited. Null when the lookup failed.
+ *
+ * Same endpoint as ancestorAmong: asked about an old root, lineage_graph
+ * returns what it became as well as where it came from (checked against
+ * stroeh_mouse_retina on 2026-10-05: every end it reported was is_latest).
+ * Ids are read as TEXT.
+ */
+export async function latestDescendants(root: string): Promise<string[] | null> {
+  if (!/^\d+$/.test(root)) return null;
+  const pcg = getPcgInfo();
+  if (!pcg) return null;
+  try {
+    const res = await fetch(
+      `${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${root}/lineage_graph`,
+      { headers: authHeaders(pcg.server) });
+    if (!res.ok) { console.warn(`[pcg] lineage_graph ${res.status}`); return null; }
+    const body = await res.text();
+    const next = new Map<string, string[]>();
+    for (const m of body.matchAll(/"source"\s*:\s*"?(\d+)"?\s*,\s*"target"\s*:\s*"?(\d+)/g)) {
+      (next.get(m[1]) ?? next.set(m[1], []).get(m[1])!).push(m[2]);
+    }
+    const ends: string[] = [], seen = new Set<string>([root]), todo = [root];
+    while (todo.length) {
+      const n = todo.pop()!;
+      const kids = next.get(n) ?? [];
+      if (!kids.length) ends.push(n);
+      for (const k of kids) if (!seen.has(k)) { seen.add(k); todo.push(k); }
+    }
+    return ends;
+  } catch (e) {
+    console.warn('[pcg] lineage_graph network error:', e);
+    return null;
+  }
+}
+
+/**
  * Check which root IDs are still current (not superseded by edits).
  *
  * Endpoint: GET /segmentation/api/v1/table/{table}/is_latest_roots?root_ids=...
