@@ -369,7 +369,7 @@ onUnmounted(() => {
                   <span v-if="hasList && progress" class="nge-dsp-mine-share">{{ shareText(mine.cells, progress.total) }} of the dataset</span>
                 </template>
               </div>
-              <div class="nge-dsp-mine-row">
+              <div v-if="hasList || !outsideCells || mine.edits" class="nge-dsp-mine-row">
                 <span class="nge-dsp-mine-key">Edits</span>
                 <span v-if="mine.edits === null" class="nge-dsp-mine-na">not available</span>
                 <template v-else>
@@ -377,7 +377,7 @@ onUnmounted(() => {
                   <span v-if="work && work.edits > 0" class="nge-dsp-mine-share">{{ shareText(mine.edits, work.edits) }} of all edits here</span>
                 </template>
               </div>
-              <div class="nge-dsp-mine-row">
+              <div v-if="hasList || !outsideCells || mine.annotations" class="nge-dsp-mine-row">
                 <span class="nge-dsp-mine-key">Annotations</span>
                 <span v-if="mine.annotations === null" class="nge-dsp-mine-na">not available</span>
                 <template v-else>
