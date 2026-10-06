@@ -60,11 +60,7 @@ test('line merge: separate edits combine, the same or touching lines do not',()=
  const mid=big.slice();mid.splice(3137,0,'added in the middle');mid[3189]='changed in the middle';
  const want=mid.slice();want.splice(6175,0,'added near the bottom');want[18]='changed near the top';
  assert.equal(lineHunks(big,far).length,2);
- assert.equal(merge3(big.join('
-'),mid.join('
-'),far.join('
-')),want.join('
-'));
+ assert.equal(merge3(big.join('\n'),mid.join('\n'),far.join('\n')),want.join('\n'));
 });
 
 test('a shared source file: merged when the edits are apart, rebuilt when they collide',async()=>{
