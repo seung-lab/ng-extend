@@ -152,6 +152,7 @@ async function resolveClaimPoints() {
   resolving.value = true;
   try {
     await backend.refreshSegmentIds();
+    await backend.refreshLiveRoots();
   } catch (e) {
     console.warn('[cellLibrary] point-based resolution failed:', e);
   }
@@ -306,6 +307,8 @@ const cells = computed(() => {
         startLink: item.startLink || '',
         svId: task?.supervoxel_id ?? null,
         nucleusId: task?.final_nucleus_id ?? null,
+        // The cell's ID after your edits, when it differs from the listed one.
+        liveSegId: (task && backend.liveRoots[task.id] && backend.liveRoots[task.id] !== item.segId) ? backend.liveRoots[task.id] : null as string | null,
       };
     });
 
@@ -329,6 +332,7 @@ const cells = computed(() => {
         startLink: '',
         svId: t.supervoxel_id ?? null,
         nucleusId: t.final_nucleus_id ?? null,
+        liveSegId: null as string | null,
       }));
 
     return [...sheetCells, ...extraTasks];
@@ -521,10 +525,10 @@ async function saveClaimView(cell: CellRow) {
 async function switchToClaim(cell: CellRow) {
   // Already working on this claim: its layers are loaded, so just move the
   // camera. Reloading its saved view would drop anything done since the save.
-  if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true);
+  if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId);
+  if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
 }
@@ -545,9 +549,11 @@ async function prepareJump(segId: string): Promise<{ ok: boolean; keep: boolean 
   return { ok: true, keep: false };
 }
 /** keep: add the cell to the view instead of replacing it (your own working claim). */
-function jumpToCell(segId: string, coords: string, nucleusId?: string | null, keep = false) {
+/** showSeg: the cell's current ID after edits. The row is still known by
+ *  segId (its listed ID), so "viewing" and the slim view keep working. */
+function jumpToCell(segId: string, coords: string, nucleusId?: string | null, keep = false, showSeg?: string | null) {
   const pos = parseCoords(coords);
-  history.jumpToCell(segId, pos[0] || pos[1] || pos[2] ? pos : undefined, { keep });
+  history.jumpToCell(showSeg || segId, pos[0] || pos[1] || pos[2] ? pos : undefined, { keep });
   jumpedSegId.value = segId;
   // MEC: the nucleus is its own segment; show it too so the soma isn't hollow.
   if (nucleusId && nucleusId !== segId) setTimeout(() => {
@@ -2146,7 +2152,7 @@ async function onRowJump(cell: CellRow) {
   else {
     const left = await prepareJump(cell.segId);
     if (!left.ok) return;
-    jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, left.keep);
+    jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, left.keep, cell.liveSegId);
   }
   if (slimMode.value && jumpedSegId.value === cell.segId) void collapseTo(cell);
 }
@@ -3023,7 +3029,7 @@ const panelStyle = computed(() => ({
               <span class="nge-cl-pip" :class="statusClass(cell.status)"></span>
               <div class="nge-cl-row-info">
                 <div class="nge-cl-row-name" @click="copyId(cell.segId)" :title="'Click to copy ' + cell.segId">
-                  {{ history.getNickname(cell.segId) || cell.segId }}
+                  <span :title="cell.liveSegId ? `Updated after edits. Listed as ${cell.segId}` : undefined">{{ history.getNickname(cell.segId) || cell.liveSegId || cell.segId }}</span>
                   <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
                 </div>
                 <div class="nge-cl-row-meta">
