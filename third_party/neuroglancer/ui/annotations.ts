@@ -416,6 +416,24 @@ export class AnnotationLayerView extends Tab {
     sizeRow.append(sizeLabel, sizeSlider, sizeNumber, sizeUnit);
     this.element.appendChild(sizeRow);
 
+    // EyeWire II: a point placed in the 2D view sits in the middle of the
+    // branch, so in 3D the cell's own surface hid it (annkri 2026-10-04:
+    // "annotation points, not visible in 3d"). This draws the layer over the
+    // cells instead. Saved in the layer as "onTop", like Highlight's strokes.
+    const topRow = document.createElement('label');
+    topRow.className = 'nge-ann-size-row nge-ann-top-row';
+    topRow.title = 'Draw this layer over the cells in the 3D view, so annotations inside a branch can be seen';
+    const topBox = document.createElement('input');
+    topBox.type = 'checkbox';
+    const topLabel = document.createElement('span');
+    topLabel.textContent = 'Show through cells in 3D';
+    const showTop = () => { topBox.checked = displayState.ngeOnTop.value; };
+    topBox.addEventListener('change', () => { displayState.ngeOnTop.value = topBox.checked; });
+    this.registerDisposer(displayState.ngeOnTop.changed.add(showTop));
+    showTop();
+    topRow.append(topBox, topLabel);
+    this.element.appendChild(topRow);
+
     this.element.appendChild(this.headerRow);
     const {virtualList} = this;
     virtualList.element.classList.add('neuroglancer-annotation-list');
@@ -816,6 +834,9 @@ function armNewAnnotationLayer(managedLayer: any, triesLeft = 20) {
   }
   displayState.ngeMarker.value = 'dot';
   displayState.ngeSize.value = NEW_LAYER_POINT_SIZE;
+  // A layer the player has just made shows through the cells in 3D, so its
+  // points are not lost inside the branch they mark.
+  displayState.ngeOnTop.value = true;
   userLayer.tool.value = new PlacePointTool(userLayer, {});
 }
 document.addEventListener('nge:new-annotation-layer', (event: Event) => {

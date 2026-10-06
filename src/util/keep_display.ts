@@ -43,10 +43,40 @@ const LAYER_KEYS: Record<string, [string, Getter][]> = {
 // fell back to the small default on every new cell. The size a player set on a
 // layer is carried to the layer of the same name in the next cell, and kept in
 // the browser so the first cell of a session gets it too.
+// "Show through cells in 3D" (the layer's onTop) is carried the same way.
 const SIZES_KEY = 'nge-annotation-point-sizes';
+const ON_TOP_KEY = 'nge-annotation-on-top';
 type Sizes = Record<string, number>;
-const annotationSize = (ml: any): any =>
-  ml?.layer?.constructor?.type === 'annotation' ? ml.layer.annotationDisplayState?.ngeSize : undefined;
+const annotationState = (ml: any): any =>
+  ml?.layer?.constructor?.type === 'annotation' ? ml.layer.annotationDisplayState : undefined;
+const annotationSize = (ml: any): any => annotationState(ml)?.ngeSize;
+function storedOnTop(): Record<string, boolean> {
+  try { const v = JSON.parse(localStorage.getItem(ON_TOP_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+}
+function currentOnTop(viewer: any): Record<string, boolean> {
+  const now: Record<string, boolean> = {};
+  for (const ml of viewer.layerManager.managedLayers) {
+    const onTop = annotationState(ml)?.ngeOnTop;
+    if (ml.archived || !onTop || !ml.name) continue;
+    now[ml.name] = !!onTop.value;
+  }
+  const all = { ...storedOnTop(), ...now };
+  try {
+    const names = Object.keys(all);
+    for (const name of names.slice(0, Math.max(0, names.length - 80))) delete all[name];
+    localStorage.setItem(ON_TOP_KEY, JSON.stringify(all));
+  } catch { /* private mode */ }
+  return all;
+}
+function applyOnTop(want: Record<string, boolean>, before: Set<unknown>) {
+  const viewer: any = (window as any).viewer;
+  for (const ml of viewer.layerManager.managedLayers) {
+    if (before.has(ml) || ml.archived) continue;
+    const onTop = annotationState(ml)?.ngeOnTop;
+    if (!onTop || typeof want[ml.name] !== 'boolean' || onTop.value === want[ml.name]) continue;
+    try { onTop.value = want[ml.name]; } catch { /* skip */ }
+  }
+}
 function storedSizes(): Sizes {
   try { const v = JSON.parse(localStorage.getItem(SIZES_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
 }
@@ -80,6 +110,7 @@ function applySizes(sizes: Sizes, before: Set<unknown>) {
 
 interface Snapshot {
   sizes: Sizes;
+  onTop: Record<string, boolean>;
   viewer: Record<string, unknown>;
   layers: Record<string, Record<string, unknown>>;  // by layer type
   before: Set<unknown>;                             // managed layers before the load
@@ -90,7 +121,7 @@ const layerType = (ml: any): string => ml?.layer?.constructor?.type ?? '';
 export function snapshotDisplay(): Snapshot | null {
   const viewer: any = (window as any).viewer;
   if (!viewer) return null;
-  const snap: Snapshot = { sizes: currentSizes(viewer), viewer: {}, layers: {}, before: new Set(viewer.layerManager.managedLayers) };
+  const snap: Snapshot = { sizes: currentSizes(viewer), onTop: currentOnTop(viewer), viewer: {}, layers: {}, before: new Set(viewer.layerManager.managedLayers) };
   for (const [key, get] of VIEWER_KEYS) {
     try { const t = get(viewer); if (t?.toJSON) snap.viewer[key] = t.toJSON(); } catch { /* skip */ }
   }
@@ -121,6 +152,7 @@ function apply(snap: Snapshot, layers: any[]) {
     }
   }
   applySizes(snap.sizes, snap.before);
+  applyOnTop(snap.onTop, snap.before);
 }
 
 /** When the new view lands, put the snapshot back (twice: some settings
