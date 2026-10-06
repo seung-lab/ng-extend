@@ -253,40 +253,43 @@ export const EXPLORATION_BADGES: BadgeDefinition[] = [
  * a number of days, checked against users.total_days. A day is one with
  * real work in it, an edit or a completed cell (supabase-days-need-action.sql):
  * signing in alone earns nothing, so a bot can not collect these.
+ * Each is NAMED FOR WHAT ITS ART SHOWS, like Chisel or Sundial (Ames 2026-10-06:
+ * "the names should be related to what the item is"). The slug is the art
+ * file's name and the saved key; it is not shown and does not change.
  * Art: github.com/amyleesterling/badges/tree/main/loyalty. Written by hand
  * (the two tracks above are generated); ids 201 and up.
  */
 const loyalty = (n: number, days: number, slug: string, code: string, name: string, description: string): BadgeDefinition =>
   ({ id: 200 + n, track: 'loyalty', sequence: n, slug, code, name, description, imageKey: `loyalty/${slug}`, threshold: days, editThreshold: days });
 export const LOYALTY_BADGES: BadgeDefinition[] = [
-  loyalty(1,  2, 'second-spark',   'SS', 'Second Spark',   "Day 2! We're glad you came back :)"),
-  loyalty(2,  3, 'third-light',    'TL', 'Third Light',    'Three days of science! You are on a roll.'),
-  loyalty(3,  5, 'growing-signal', 'GS', 'Growing Signal', 'Five days for science!'),
-  loyalty(4,  7, 'first-orbit',    'FO', 'First Orbit',    'Seven days of mapping the brain! That is a whole week of science.'),
-  loyalty(5, 14, 'double-orbit',   'DO', 'Double Orbit',   'Fourteen days at EyeWire II! Two weeks of discoveries.'),
-  loyalty(6, 21, 'steady-signal',  'ST', 'Steady Signal',  'Three cheers for three weeks of citizen science!'),
-  loyalty(7, 28, 'constellation',  'CO', 'Constellation',  "We're fourtunate that you have been helping to advance neuroscience for 4 weeks!"),
-  loyalty(8, 30, 'one-month',      'OM', 'One Month',      'Thirty days at EyeWire II! A whole month of showing up for science!'),
+  loyalty(1,  2, 'second-spark',   'SS', 'Crystal Star',   "Day 2! We're glad you came back :)"),
+  loyalty(2,  3, 'third-light',    'TL', 'Three Star Jewel',    'Three days of science! You are on a roll.'),
+  loyalty(3,  5, 'growing-signal', 'GS', 'Starry Orb', 'Five days for science!'),
+  loyalty(4,  7, 'first-orbit',    'FO', 'Ringed Star',    'Seven days of mapping the brain! That is a whole week of science.'),
+  loyalty(5, 14, 'double-orbit',   'DO', 'Twin Orbit Star',   'Fourteen days at EyeWire II! Two weeks of discoveries.'),
+  loyalty(6, 21, 'steady-signal',  'ST', 'Star Cluster',  'Three cheers for three weeks of citizen science!'),
+  loyalty(7, 28, 'constellation',  'CO', 'Star Jewel',  "We're fourtunate that you have been helping to advance neuroscience for 4 weeks!"),
+  loyalty(8, 30, 'one-month',      'OM', 'Starburst',      'Thirty days at EyeWire II! A whole month of showing up for science!'),
   // Added 2026-10-06 with the second set of art. The first line is Ames's own;
   // the rest are first drafts, to be reviewed (she asked for a text review).
-  loyalty(9,   40, 'golden-orbit',        'GO', 'Golden Orbit',        'Forty days at EyeWire II! A whole month of showing up for science. You are becoming a legend.'),
-  loyalty(10,  50, 'celestial-compass',   'CC', 'Celestial Compass',   'Fifty days of science! You always find your way back.'),
-  loyalty(11,  60, 'deep-orbit',          'DP', 'Deep Orbit',          'Sixty days at EyeWire II! Two months of discoveries.'),
-  loyalty(12,  70, 'star-weaver',         'SW', 'Star Weaver',         'Seventy days of science! Thank you for weaving your days into the map of the brain.'),
-  loyalty(13,  80, 'amethyst-crown',      'AC', 'Amethyst Crown',      'Eighty days at EyeWire II! That is royal dedication.'),
-  loyalty(14,  90, 'radiant-return',      'RR', 'Radiant Return',      'Ninety days of science! Three months of coming back, and we are glad every time.'),
-  loyalty(15, 100, 'century-star',        'CS', 'Century Star',        'One hundred days at EyeWire II! Thank you for every single one.'),
-  loyalty(16, 125, 'celestial-bloom',     'CB', 'Celestial Bloom',     '125 days of science! Your dedication keeps growing.'),
-  loyalty(17, 150, 'constellation-crown', 'CN', 'Constellation Crown', '150 days at EyeWire II! You are a guiding light for this community.'),
-  loyalty(18, 175, 'astral-engine',       'AE', 'Astral Engine',       '175 days of science! You help power this whole project.'),
-  loyalty(19, 200, 'twin-century',        'TC', 'Twin Century',        'Two hundred days at EyeWire II! Double the century, double the cheers.'),
-  loyalty(20, 225, 'nebula-heart',        'NH', 'Nebula Heart',        '225 days of science! You are at the heart of EyeWire II.'),
-  loyalty(21, 250, 'gilded-galaxy',       'GG', 'Gilded Galaxy',       '250 days at EyeWire II! That is a galaxy of good work.'),
-  loyalty(22, 275, 'astral-crown',        'AS', 'Astral Crown',        '275 days of science! Few have come this far.'),
-  loyalty(23, 300, 'three-hundred-suns',  'TS', 'Three Hundred Suns',  'Three hundred days at EyeWire II! Three hundred sunrises of science.'),
-  loyalty(24, 325, 'everstar',            'EV', 'Everstar',            '325 days of science! Your star never fades.'),
-  loyalty(25, 350, 'yearward',            'YW', 'Yearward',            '350 days at EyeWire II! A full year is in sight.'),
-  loyalty(26, 365, 'the-constant',        'TH', 'The Constant',        '365 days at EyeWire II! A whole year of science. You are a legend.'),
+  loyalty(9,   40, 'golden-orbit',        'GO', 'Orbit Gem',        'Forty days at EyeWire II! A whole month of showing up for science. You are becoming a legend.'),
+  loyalty(10,  50, 'celestial-compass',   'CC', 'Compass Star',   'Fifty days of science! You always find your way back.'),
+  loyalty(11,  60, 'deep-orbit',          'DP', 'Orbit Crystal',          'Sixty days at EyeWire II! Two months of discoveries.'),
+  loyalty(12,  70, 'star-weaver',         'SW', 'Star Web',         'Seventy days of science! Thank you for weaving your days into the map of the brain.'),
+  loyalty(13,  80, 'amethyst-crown',      'AC', 'Star Crown',      'Eighty days at EyeWire II! That is royal dedication.'),
+  loyalty(14,  90, 'radiant-return',      'RR', 'Halo Star',      'Ninety days of science! Three months of coming back, and we are glad every time.'),
+  loyalty(15, 100, 'century-star',        'CS', 'Star Medallion',        'One hundred days at EyeWire II! Thank you for every single one.'),
+  loyalty(16, 125, 'celestial-bloom',     'CB', 'Crystal Flower',     '125 days of science! Your dedication keeps growing.'),
+  loyalty(17, 150, 'constellation-crown', 'CN', 'Star Crest', '150 days at EyeWire II! You are a guiding light for this community.'),
+  loyalty(18, 175, 'astral-engine',       'AE', 'Star Sphere',       '175 days of science! You help power this whole project.'),
+  loyalty(19, 200, 'twin-century',        'TC', 'Twin Stars',        'Two hundred days at EyeWire II! Double the century, double the cheers.'),
+  loyalty(20, 225, 'nebula-heart',        'NH', 'Crystal Heart',        '225 days of science! You are at the heart of EyeWire II.'),
+  loyalty(21, 250, 'gilded-galaxy',       'GG', 'Spiral Galaxy',       '250 days at EyeWire II! That is a galaxy of good work.'),
+  loyalty(22, 275, 'astral-crown',        'AS', 'Crystal Crown',        '275 days of science! Few have come this far.'),
+  loyalty(23, 300, 'three-hundred-suns',  'TS', 'Crystal Sun',  'Three hundred days at EyeWire II! Three hundred sunrises of science.'),
+  loyalty(24, 325, 'everstar',            'EV', 'Star Knot',            '325 days of science! Your star never fades.'),
+  loyalty(25, 350, 'yearward',            'YW', 'Orbiting Star',            '350 days at EyeWire II! A full year is in sight.'),
+  loyalty(26, 365, 'the-constant',        'TH', 'Radiant Star',        '365 days at EyeWire II! A whole year of science. You are a legend.'),
 ];
 
 /** Every achievement: building, then exploration, then loyalty. */
