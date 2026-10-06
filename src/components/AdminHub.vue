@@ -2,6 +2,7 @@
 import { secureWrite } from '../secure_write';
 import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
+import GrowingNeuron from 'components/GrowingNeuron.vue';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 import {renderSafeMarkdown} from '../util/safe_markdown';
 import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
@@ -661,6 +662,19 @@ const notifExpiresAt = ref('');
 const notifImageFile = ref<File | null>(null);
 const notifIconFile = ref<File | null>(null);
 const notifSending = ref(false);
+// What the send is doing right now (Ames 2026-10-06: "add a loading indicator
+// to sending"). The steps are the real ones, in order, fixed when Send is
+// pressed: an image or icon is only listed if one was chosen.
+type NotifStep = 'image' | 'icon' | 'save' | 'list';
+const notifSteps = ref<{ key: NotifStep; label: string }[]>([]);
+const notifSendStage = ref<NotifStep>('save');
+const notifStepsDone = computed(() => Math.max(0, notifSteps.value.findIndex(x => x.key === notifSendStage.value)));
+const notifSeed = ref(1);
+function notifStepState(key: NotifStep): 'done' | 'now' | 'todo' {
+  const order = notifSteps.value.map(x => x.key);
+  const i = order.indexOf(key), now = order.indexOf(notifSendStage.value);
+  return i < now ? 'done' : i === now ? 'now' : 'todo';
+}
 const notifSent = ref(false);
 const notifError = ref('');
 /** Post-send confirmation describing exactly what happened. */
@@ -828,12 +842,22 @@ watch([notifTitle, notifBody, notifTargetType, notifTargetId,
 
 async function sendNotification() {
   if (!notifTitle.value.trim() || !notifBody.value.trim()) return;
+  const editing = editingId.value != null;
+  notifSteps.value = [
+    ...(notifImageFile.value ? [{ key: 'image' as NotifStep, label: 'Uploading the image' }] : []),
+    ...(notifIconFile.value ? [{ key: 'icon' as NotifStep, label: 'Uploading the feed icon' }] : []),
+    { key: 'save' as NotifStep, label: editing ? 'Saving your changes' : isScheduledForLater.value ? 'Scheduling the notification' : 'Sending the notification' },
+    { key: 'list' as NotifStep, label: 'Refreshing the list' },
+  ];
+  notifSendStage.value = notifSteps.value[0].key;
+  notifSeed.value = (Date.now() % 100000) + 1;
   notifSending.value = true;
   notifError.value = '';
   try {
     let imageUrl: string | undefined;
     let thumbnailUrl: string | undefined;
     if (notifImageFile.value) {
+      notifSendStage.value = 'image';
       const urls = await backend.uploadAdminImage(notifImageFile.value, 'notifications');
       imageUrl = urls.fullUrl;
       thumbnailUrl = urls.thumbUrl;
@@ -841,8 +865,10 @@ async function sendNotification() {
     // An explicitly-supplied icon wins over the thumbnail auto-cropped from the
     // hero image — that crop often reads badly at feed size.
     if (notifIconFile.value) {
+      notifSendStage.value = 'icon';
       thumbnailUrl = await backend.uploadAdminIcon(notifIconFile.value);
     }
+    notifSendStage.value = 'save';
 
     // ── Editing an existing notification ──
     if (editingId.value != null) {
@@ -860,9 +886,10 @@ async function sendNotification() {
       });
       notifConfirm.value = `Updated “${notifTitle.value.trim()}”.`;
       cancelEdit();
+      notifSendStage.value = 'list';
+      await backend.loadAdminNotifications();
       notifSent.value = true;
       setTimeout(() => { notifSent.value = false; }, 2000);
-      await backend.loadAdminNotifications();
       return;
     }
 
@@ -902,10 +929,11 @@ async function sendNotification() {
     notifSendAt.value = '';
     notifExpiresAt.value = '';
     clearDraft();
+    // Refresh the admin list so a newly-scheduled notification appears in it.
+    notifSendStage.value = 'list';
+    await backend.loadAdminNotifications();
     notifSent.value = true;
     setTimeout(() => { notifSent.value = false; }, 2000);
-    // Refresh the admin list so a newly-scheduled notification appears in it.
-    await backend.loadAdminNotifications();
   } catch (e: any) {
     notifError.value = e.message || 'Failed to send notification';
     console.error('[admin] sendNotification failed:', e);
@@ -1496,11 +1524,21 @@ function practiceWhen(iso: string | null) {
         <div class="nge-admin-row">
           <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
             <span v-if="notifSent">✓ Saved!</span>
-            <span v-else-if="notifSending">Saving...</span>
+            <span v-else-if="notifSending">{{ notifSteps.find(x => x.key === notifSendStage)?.label || 'Sending' }}…</span>
             <span v-else-if="editingId != null">Save Changes</span>
             <span v-else>Send Notification</span>
           </button>
           <button v-if="editingId != null" class="nge-admin-cancel-btn" @click="cancelEdit">Cancel edit</button>
+        </div>
+        <!-- While it sends: a neuron that grows a part for each real step. -->
+        <div v-if="notifSending" class="nge-admin-sending" role="status" aria-live="polite">
+          <GrowingNeuron :stage="notifStepsDone" :stages="notifSteps.length" :seed="notifSeed" />
+          <ul class="nge-admin-steps">
+            <li v-for="st in notifSteps" :key="st.key" class="nge-admin-step" :class="`nge-admin-step--${notifStepState(st.key)}`">
+              <span class="nge-admin-step-mark" aria-hidden="true">{{ notifStepState(st.key) === 'done' ? '✓' : '' }}</span>
+              <span>{{ st.label }}</span>
+            </li>
+          </ul>
         </div>
         <div v-if="notifError" class="nge-admin-error">⚠ {{ notifError }}</div>
         <!-- Explicit confirmation of what actually happened, including the
@@ -2727,6 +2765,31 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); color: #cde; font-size: 0.9em;
 }
 .nge-practice-picker-label { font-size: 0.75em; letter-spacing: 0.12em; text-transform: uppercase; color: #9fd0ff; }
+
+/* Sending a notification: the same stepped wait as Submit an issue. */
+.nge-admin-sending {
+  display: flex; align-items: center; gap: 18px;
+  margin: 10px 0 4px; padding: 12px 16px;
+  border: 1px solid rgba(126, 224, 255, 0.2); border-radius: 10px;
+  background: rgba(8, 14, 28, 0.6);
+}
+.nge-admin-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.nge-admin-step { display: flex; align-items: center; gap: 9px; font-size: 0.86em; color: #6f7c96; transition: color 0.2s; }
+.nge-admin-step-mark {
+  width: 16px; height: 16px; flex-shrink: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #06231a;
+  border: 1.5px solid rgba(120, 140, 180, 0.4);
+}
+.nge-admin-step--now { color: #e6eeff; }
+.nge-admin-step--now .nge-admin-step-mark {
+  border-color: #7ee0ff; box-shadow: 0 0 8px rgba(126, 224, 255, 0.7);
+  animation: nge-admin-step-now 1s ease-in-out infinite;
+}
+.nge-admin-step--done { color: #9fb3cc; }
+.nge-admin-step--done .nge-admin-step-mark { background: #34e6a8; border-color: #34e6a8; }
+@keyframes nge-admin-step-now { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) { .nge-admin-step--now .nge-admin-step-mark { animation: none; } }
 </style>
 
 <style>
