@@ -1012,3 +1012,31 @@
   background: rgba(79, 207, 255, 0.22); border-color: rgba(79, 207, 255, 0.75);
 }
 #statusContainer li a { color: #7fd4ff; }
+
+/* Cut and merge mode: neuroglancer's own tool line showed under our Cut
+   and Merge bar as a grey strip of raw key names ("control+mousedown0 ->
+   set-anchor, keyg -> swap-group, enter -> submit"), with the coordinates
+   chip sitting on top of the text (Ames 2026-10-06). The bar already carries
+   those controls, so the strip becomes a plain dark footer the height of the
+   gap under the bar, and its contents are hidden. They stay in the page,
+   because the bar reads its state from them and presses their buttons. */
+#statusContainer li.neuroglancer-tool-status:has(.graphene-multicut),
+#statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments) {
+  display: block !important;
+  box-sizing: border-box;
+  height: 28px !important;
+  max-height: 28px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  list-style: none;
+  background: rgba(8, 14, 28, 0.96) !important;
+  border-top: 1px solid rgba(120, 180, 255, 0.12);
+  color: transparent !important;
+}
+/* The coordinates sit in that footer, so they ride above it. */
+body.nge-tool-bar-open .neuroglancer-position-widget,
+body.nge-tool-bar-open .neuroglancer-mouse-position-widget { z-index: 101; }
+#statusContainer li.neuroglancer-tool-status:has(.graphene-multicut) > *,
+#statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments) > * {
+  visibility: hidden !important;
+}
