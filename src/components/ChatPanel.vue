@@ -334,13 +334,25 @@ function shortName(name: string): string {
 }
 
 // ── Rank-based name colors ──
+// A name's colour says what its owner can do (Ames 2026-10-06): sky blue
+// with production access, green without, gold for admins. A message saved
+// before this carries 'player', which says nothing either way, so it takes
+// whatever that player's newest message says, and blue until one does:
+// nobody is shown as lacking access on a guess.
 function rankColor(rank: string): string {
   switch (rank) {
     case 'admin': return '#E6C760';
-    case 'eyewirer': return '#0292AE';
-    case 'researcher': return '#0FB18B';
-    default: return '#8899aa';
+    case 'explorer': return '#5fd38d';
+    default: return '#7cc8ff';
   }
+}
+const knownRank = computed(() => {
+  const by: Record<string, string> = {};
+  for (const m of chatMessages.value) if (m.type === 'message' && (m.rank === 'eyewirer' || m.rank === 'explorer')) by[m.name] = m.rank;
+  return by;
+});
+function nameColor(msg: { name: string; rank: string }): string {
+  return rankColor(msg.rank === 'admin' ? 'admin' : knownRank.value[msg.name] || msg.rank);
 }
 
 function msgTime(d: Date): string {
@@ -920,7 +932,7 @@ function toggleCollapse() {
                           @click="openNurroProfile" title="Nurro's profile"><img :src="nurroAvatar" alt="" />Nurro<span class="nge-chat-bot-tag nge-chat-nurro-tag">guide</span></button>
                   <span v-else-if="msg.rank === 'bot'" class="nge-chat-msg-name nge-chat-bot-name"
                         :title="'nkem_test: the original EyeWire chat bot, by @nkem (2013). Say \'for science\' and it answers.'">nkem_test<span class="nge-chat-bot-tag">bot</span></span>
-                  <span v-else class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: rankColor(msg.rank) }"
+                  <span v-else class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: nameColor(msg) }"
                         @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</span>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>

@@ -89,6 +89,9 @@ test('saved-link screenshots must be our own uploads',()=>{
 test('chat cannot forge a staff role, sender or official notice',()=>{
  const p=plan('chat_messages','POST','',{text:'hello',name:'Admin',rank:'admin',user_id:b});
  assert.equal(p.body.user_id,a);assert.equal(p.body.rank,'player');assert.equal(p.body.name,'Player');
+ // The rank says whether the sender has production access, as the server found it.
+ const chatAs=production=>authorizeData({table:'chat_messages',method:'POST',query:'',body:{text:'hello',rank:'eyewirer'}},{...user,production}).body.rank;
+ assert.deepEqual([chatAs(true),chatAs(false),chatAs(null),chatAs(undefined)],['eyewirer','explorer','player','player']);
  assert.throws(()=>plan('chat_messages','POST','',{text:'hello',notification_id:1}),/admin/);
  assert.throws(()=>plan('chat_messages','POST','',{text:'hello'},anon),/Sign in/);
 });

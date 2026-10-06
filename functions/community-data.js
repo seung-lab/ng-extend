@@ -231,7 +231,9 @@ function authorizeData(input, ctx) {
       if (typeof row.text !== 'string' || !row.text.trim() || row.text.length > 5000) fail(400,'Message must contain 1–5000 characters.');
       if (row.notification_id != null && !ctx.isAdmin) fail(403,'Official announcements require an admin.');
       if (row.reply_to != null && (typeof row.reply_to !== 'string' || !UUID.test(row.reply_to))) fail(400,'Unknown message to reply to.');
-      row.name=me.username || me.display_name || 'Player'; row.rank=ctx.isAdmin?'admin':'player'; row.user_id=own();
+      row.name=me.username || me.display_name || 'Player'; // The rank is the server's: 'admin'; 'eyewirer' with production access;
+      // 'explorer' when CAVE says there is none; 'player' when it is not known.
+      row.rank=ctx.isAdmin?'admin':ctx.production===true?'eyewirer':ctx.production===false?'explorer':'player'; row.user_id=own();
       row.dataset=typeof row.dataset==='string'?row.dataset.slice(0,128):null;
     }
     if (table === 'working_links' && row.shared_group_id != null && !ctx.isAdmin && !groups.includes(String(row.shared_group_id))) fail(403, 'You are not a member of that group.');

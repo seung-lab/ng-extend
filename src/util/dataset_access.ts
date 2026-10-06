@@ -64,3 +64,11 @@ export function datasetAccess(caveDataset?: string): DatasetAccess {
   if (list.includes('view')) return 'view';
   return 'none';
 }
+
+/** May the signed in player EDIT any of these CAVE datasets? true or false
+ *  once CAVE has answered, null while it is not known. */
+export function editsAny(caveDatasets: (string | undefined)[]): boolean | null {
+  const known = caveDatasets.map(ds => datasetAccess(ds)).filter(a => a !== 'unknown');
+  if (!known.length) return null;
+  return known.includes('edit');
+}

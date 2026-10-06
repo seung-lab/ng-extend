@@ -16,7 +16,8 @@ import {responseJson} from 'neuroglancer/util/http_request';
 
 import {Config, EYEWIRE_II_CAVE_CONFIG, getDatasetCaveConfig} from './config';
 import {isMobileRef} from './util/mobile';
-import {currentDatasetTag, canonicalDataset, currentSegLayer} from './datasets';
+import {currentDatasetTag, canonicalDataset, currentSegLayer, DATASETS} from './datasets';
+import {editsAny} from './util/dataset_access';
 import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
 import {isStreakMilestone, nextStreakMilestone, streakLine} from './util/streak_milestones';
@@ -6172,7 +6173,10 @@ export const useChatStore = defineStore('chat', () => {
     if (!channel || !connected.value) return;
     const backend = useProofreadingBackendStore();
     const name = backend.chatHandle;
-    const rank = backend.isAdmin ? 'admin' : 'player';
+    // 'eyewirer' with production access, 'explorer' without, 'player' while
+    // it is not known. The saved message gets the server's own answer.
+    const production = editsAny(DATASETS.filter(d => d.section === 'production').map(d => d.caveDataset));
+    const rank = backend.isAdmin ? 'admin' : production === true ? 'eyewirer' : production === false ? 'explorer' : 'player';
     // The box blocks long messages too; this holds the limit if it is bypassed.
     // Announcements carry a notification title and are not capped.
     if (notificationId == null && chatTextLength(text) > CHAT_MAX_CHARS) return;

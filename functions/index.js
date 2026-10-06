@@ -1601,6 +1601,30 @@ const EW_SB = "https://javthknksdcrlhiaaptj.supabase.co/rest/v1/";
 const EW_ORIGINS = [/^https:\/\/([a-z0-9-]+-dot-)?brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/, /^http:\/\/localhost(:\d+)?$/];
 const ewIdentityCache = new Map(); // token -> { email, caveId, at }
 
+// Production access, for the colour of a name in chat (Ames 2026-10-06):
+// may this player EDIT one of the production datasets? CAVE answers, with
+// the player's own sign in. true or false when CAVE answered, null when it
+// could not be asked (nobody is marked as lacking access on a failed lookup).
+// Keep the list in step with the 'production' section of src/datasets.ts.
+const EW_PRODUCTION_CAVE_DATASETS = ["stroeh-mouse-retina", "HiMC", "fafb"];
+const ewProductionCache = new Map(); // token -> { value, at }
+async function ewHasProduction(token) {
+  if (!token || typeof token !== "string" || token.length > 4096) return null;
+  const hit = ewProductionCache.get(token);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
+  try {
+    const r = await fetch("https://global.daf-apis.com/auth/api/v1/user/cache", { headers: { Authorization: `Bearer ${token}` }, redirect: "error", signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return null;
+    const me = await r.json();
+    const sets = [me && me.permissions_v2, me && me.permissions_v2_ignore_tos].filter(x => x && typeof x === "object");
+    if (!sets.length) return null;
+    const value = EW_PRODUCTION_CAVE_DATASETS.some(ds => sets.some(set => Array.isArray(set[ds]) && set[ds].includes("edit")));
+    ewProductionCache.set(token, { value, at: Date.now() });
+    if (ewProductionCache.size > 500) ewProductionCache.delete(ewProductionCache.keys().next().value);
+    return value;
+  } catch (e) { return null; }
+}
+
 async function ewVerify(token) {
   if (!token || typeof token !== "string" || token.length > 4096) return null;
   const hit = ewIdentityCache.get(token);
@@ -1882,6 +1906,8 @@ exports.ewCommunityData = onRequest(
       // The blog has its own short list of authors (blog_authors), separate from admins and the pilot.
       if (input.table === "blog_posts" && me) context.isBlogAuthor = (await sb("blog_authors?user_id=eq."+me.id+"&select=user_id&limit=1")).length > 0;
       const read=["GET","HEAD"].includes(String(input.method||"GET").toUpperCase());
+      // A chat message carries whether its sender has production access.
+      if (!read && input.table === "chat_messages" && !isAdmin) context.production = await ewHasProduction(input.token);
       // Own settings are personal, not pilot data: any signed in player may save them.
       // Personal, not pilot data: creating your profile, your own settings, and
       // your own username / name / flag / bio / avatar.
