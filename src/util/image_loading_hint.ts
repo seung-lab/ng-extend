@@ -46,12 +46,14 @@ function slicePanel(viewer: any): HTMLElement | null {
 }
 
 const CSS = `
-.nge-img-loading { position: fixed; z-index: 40; display: flex; align-items: center; gap: 8px; pointer-events: none;
-  padding: 4px 12px 4px 4px; border-radius: 999px; font: 12px/1.3 'Inter', system-ui, sans-serif; color: #dce6f5;
+/* A card, not a pill: the cell is drawn large (Ames 2026-10-06: "the neuron is
+   too cool to be so small") with the words beneath it. */
+.nge-img-loading { position: fixed; z-index: 40; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none;
+  padding: 10px 18px 12px; border-radius: 14px; font: 600 13px/1.3 'Inter', system-ui, sans-serif; color: #dce6f5; text-align: center;
   background: rgba(8, 14, 28, 0.86); border: 1px solid rgba(100, 200, 255, 0.3); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
   opacity: 0; transform: translate(-50%, 6px); transition: opacity 0.25s ease, transform 0.25s ease; }
 .nge-img-loading--on { opacity: 1; transform: translate(-50%, 0); }
-.nge-img-loading .nge-il-count { color: rgba(220, 230, 245, 0.65); font-variant-numeric: tabular-nums; }
+.nge-img-loading .nge-il-count { color: rgba(220, 230, 245, 0.65); font-weight: 400; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .nge-img-loading { transition: none; } }
 `;
 
@@ -82,7 +84,10 @@ export function startImageLoadingHint(viewer: any) {
       el.setAttribute('role', 'status');
       el.innerHTML = `<span class="nge-il-cell"></span><span class="nge-il-text">Loading the image</span><span class="nge-il-count"></span>`;
       document.body.appendChild(el);
-      app = createApp(GrowingCell, { size: 38, named: false });
+      // as large as the panel comfortably allows: 150px, less in a small panel
+      const pb = slicePanel(viewer)?.getBoundingClientRect();
+      const size = Math.round(Math.max(72, Math.min(150, (pb?.width ?? 400) * 0.4, (pb?.height ?? 400) * 0.4)));
+      app = createApp(GrowingCell, { size, named: false });
       app.mount(el.querySelector('.nge-il-cell')!);
       if (!place()) { hide(true); return; }
       requestAnimationFrame(() => el?.classList.add('nge-img-loading--on'));
