@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref, computed, onMounted, onUnmounted, type Ref} from 'vue';
+import {ref, computed, onMounted, onUnmounted, watch, nextTick, type Ref} from 'vue';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {DemoUser} from '../data/demo-users';
@@ -28,6 +28,67 @@ function setMetric(m: Metric) {
 }
 const selectedUser = ref<DemoUser | null>(null);
 const selectedBadgeId = ref<number | null>(null);
+
+// ── Load-in (Ames 2026-10-06: "make the leaderboard load in cooler") ──────
+// After experimental-ui's arrival model: every row lands on its own damped
+// spring, the stagger carries a slice of the golden angle so a batch never
+// reads as one mechanical sweep, and each landing ends on a glint. The scores
+// count up while the rows arrive, and a thin meter under each name draws out
+// to that player's share of the leader's score. It runs when the board first
+// has rows, and (faster) when the window or the metric changes. The minute
+// refresh never replays it.
+const contentEl = ref<HTMLElement | null>(null);
+/** 0 to 1 while the scores count up; 1 at rest. */
+const rollK = ref(1);
+let arriveRaf = 0;
+function arrive(fast = false) {
+  cancelAnimationFrame(arriveRaf);
+  const rows = Array.from(contentEl.value?.querySelectorAll<HTMLElement>('tbody > tr.nge-lb-row') || []);
+  if (!rows.length) return;
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    rows.forEach(r => { r.style.setProperty('--in', '1'); r.classList.add('is-landed'); });
+    rollK.value = 1;
+    return;
+  }
+  const GOLDEN = 0.381966;
+  const t0 = performance.now(), lead = fast ? 50 : 300, step = fast ? 20 : 46, jitter = fast ? 36 : 96;
+  const items = rows.map((el, i) => ({
+    el, x: 0, v: 0, last: 0, done: false,
+    // rows far down the list are off screen: they do not hold the others up
+    start: t0 + lead + Math.min(i, 13) * step + ((i * GOLDEN) % 1) * jitter,
+  }));
+  rows.forEach(r => { r.style.setProperty('--in', '0'); r.classList.remove('is-landed'); });
+  rollK.value = 0;
+  const ROLL = fast ? 620 : 1250, rollStart = t0 + lead + 60;
+  const tick = (now: number) => {
+    let busy = false;
+    for (const it of items) {
+      if (it.done) continue;
+      busy = true;
+      if (now < it.start) continue;
+      if (!it.last) it.last = now;
+      const dt = Math.min((now - it.last) / 1000, 1 / 30);
+      it.last = now;
+      const h = dt / 3;
+      for (let k = 0; k < 3; k++) {                 // a spring a little short of critical: one small overshoot
+        const a = -230 * (it.x - 1) - 21 * it.v;
+        it.v += a * h; it.x += it.v * h;
+      }
+      it.el.style.setProperty('--in', Math.max(0, Math.min(1.06, it.x)).toFixed(3));
+      if (Math.abs(it.x - 1) < 0.003 && Math.abs(it.v) < 0.02) {
+        it.el.style.setProperty('--in', '1');
+        it.done = true;
+        it.el.classList.add('is-landed');
+      }
+    }
+    const q = Math.min(1, Math.max(0, (now - rollStart) / ROLL));
+    rollK.value = q >= 1 ? 1 : 1 - Math.pow(1 - q, 3);
+    if (q < 1) busy = true;
+    if (busy) arriveRaf = requestAnimationFrame(tick);
+  };
+  arriveRaf = requestAnimationFrame(tick);
+}
+onUnmounted(() => cancelAnimationFrame(arriveRaf));
 
 // Load the board when it opens, and again every minute while it stays open,
 // so the numbers do not go stale behind an open panel.
@@ -133,6 +194,20 @@ const boardRows = computed<{ user: DemoUser; rank: number; below: boolean }[]>((
   }
   return rows;
 });
+
+// The board's first rows, then every change of window or metric, and coming
+// back from a player's card.
+let arrivedOnce = false;
+watch(() => boardRows.value.length > 0, has => {
+  if (!has || arrivedOnce) return;
+  arrivedOnce = true;
+  nextTick(() => arrive(false));
+}, { immediate: true, flush: 'post' });
+watch([activeTab, metric], () => { if (arrivedOnce) nextTick(() => arrive(true)); }, { flush: 'post' });
+watch(selectedUser, u => { if (!u && arrivedOnce) nextTick(() => arrive(true)); }, { flush: 'post' });
+/** The leader's score on the board in view, for the meters. */
+const topCount = computed(() => boardRows.value.reduce((m, r) => Math.max(m, editCountForTab(r.user)), 0));
+const shareOf = (user: DemoUser) => topCount.value > 0 ? Math.min(1, editCountForTab(user) / topCount.value) : 0;
 
 function editCountForTab(user: DemoUser): number {
   if (activeTab.value === 'week') return user.stats.editsThisWeek;
@@ -293,6 +368,7 @@ onUnmounted(() => {
 <template>
   <modal-overlay id="nge-lb-modal" class="nge-lb-modal" :class="{ 'nge-lb-modal--peek': props.peek }" @hide="close">
     <div class="nge-lb-shell">
+      <span class="nge-lb-scan" aria-hidden="true"></span>
 
       <!-- ── LIST VIEW ─────────────────────────────────── -->
       <template v-if="!selectedUser">
@@ -343,7 +419,7 @@ onUnmounted(() => {
           >Cells</button>
         </div>
 
-        <div class="nge-lb-content">
+        <div ref="contentEl" class="nge-lb-content">
           <div v-if="boardNote" class="nge-lb-note" role="status">{{ boardNote }}</div>
           <table v-if="boardRows.length" class="nge-lb-table">
             <thead>
@@ -364,10 +440,12 @@ onUnmounted(() => {
                 @click="selectUser(user)"
               >
                 <td class="nge-lb-td nge-lb-td--rank">
-                  <span v-if="RANK_MEDAL[rank]">{{ RANK_MEDAL[rank] }}</span>
+                  <span v-if="RANK_MEDAL[rank]" class="nge-lb-medal">{{ RANK_MEDAL[rank] }}</span>
                   <span v-else class="nge-lb-rank-num">{{ rank.toLocaleString() }}</span>
                 </td>
-                <td class="nge-lb-td">
+                <td class="nge-lb-td nge-lb-td--name">
+                  <!-- This player's share of the leader's score, drawn as the row lands. -->
+                  <i class="nge-lb-meter" aria-hidden="true" :style="{ '--share': shareOf(user) }"></i>
                   <!-- Use live prefs flag for the logged-in user's row -->
                   <img v-if="isEyewireFlag(userFlag(user))"
                        class="nge-lb-flag-img nge-lb-flag-img--logo"
@@ -384,7 +462,7 @@ onUnmounted(() => {
                   </span>
                 </td>
                 <td class="nge-lb-td nge-lb-td--num">
-                  {{ editCountForTab(user).toLocaleString() }}
+                  {{ Math.round(editCountForTab(user) * rollK).toLocaleString() }}
                 </td>
                 <td class="nge-lb-td nge-lb-td--badge">
                   <img
@@ -991,6 +1069,65 @@ onUnmounted(() => {
 .nge-lb-row {
   cursor: pointer;
   transition: background 0.12s;
+  /* the arrival: --in is driven by the row's spring (see arrive()) */
+  --in: 1;
+  opacity: min(1, var(--in));
+  translate: calc((1 - var(--in)) * 30px) 0;
+}
+/* the landing ends on a glint: the rank lights up once, a medal pops */
+.nge-lb-row.is-landed .nge-lb-td--rank { animation: nge-lb-glint 520ms ease-out 1; }
+@keyframes nge-lb-glint {
+  35% { text-shadow: 0 0 12px rgba(178, 216, 248, 0.95); filter: brightness(1.7); }
+}
+.nge-lb-medal { display: inline-block; }
+.nge-lb-row.is-landed .nge-lb-medal { animation: nge-lb-medal 560ms cubic-bezier(0.2, 1.7, 0.4, 1) 1; }
+@keyframes nge-lb-medal { 0% { transform: none; } 32% { transform: scale(1.5) rotate(-12deg); } 100% { transform: none; } }
+/* share of the leader's score: a hairline under the name, drawn out as the row arrives */
+.nge-lb-td--name { position: relative; }
+.nge-lb-meter {
+  position: absolute; left: 10px; right: 10px; bottom: -1px; height: 1px; pointer-events: none;
+  background: rgba(120, 180, 255, 0.07);
+}
+.nge-lb-meter::after {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: calc(var(--share) * min(1, var(--in)) * 100%);
+  background: linear-gradient(90deg, rgba(74, 158, 255, 0.15), rgba(126, 224, 255, 0.85));
+  box-shadow: 0 0 6px rgba(126, 224, 255, 0.5);
+}
+.nge-lb-row--you .nge-lb-meter::after { background: linear-gradient(90deg, rgba(245, 196, 80, 0.2), rgba(255, 216, 122, 0.95)); box-shadow: 0 0 6px rgba(245, 196, 80, 0.55); }
+
+/* ── The rest of the load-in: each piece arrives once, in order ── */
+.nge-lb-shell { position: relative; }
+/* one scan band down the whole board */
+.nge-lb-scan {
+  position: absolute; left: 0; right: 0; top: -9%; height: 9%; z-index: 3; pointer-events: none; opacity: 0;
+  background: linear-gradient(180deg, transparent, rgba(126, 224, 255, 0.13), transparent);
+  animation: nge-lb-scan 1500ms cubic-bezier(0.22, 0.9, 0.28, 1) 300ms 1 both;
+}
+@keyframes nge-lb-scan { 0% { top: -9%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+/* the trophy drops in on a spring curve, out of an overbright blur */
+.nge-lb-hero-img-wrap { animation: nge-lb-trophy-in 760ms cubic-bezier(0.2, 1.45, 0.35, 1) 90ms both; }
+@keyframes nge-lb-trophy-in {
+  0%   { opacity: 0; transform: translateY(22px) scale(0.5); filter: blur(8px) brightness(3); }
+  55%  { opacity: 1; filter: blur(0) brightness(1.5); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+/* the title opens from its centre, the rules draw outward, the tagline tightens into place */
+.nge-lb-title-treat { animation: nge-lb-title-open 620ms cubic-bezier(0.16, 1, 0.3, 1) 240ms both; }
+@keyframes nge-lb-title-open { 0% { clip-path: inset(0 50% 0 50%); opacity: 0; } 30% { opacity: 1; } 100% { clip-path: inset(-20px -20px -20px -20px); opacity: 1; } }
+.nge-lb-title-rule { animation: nge-lb-rule 700ms cubic-bezier(0.16, 1, 0.3, 1) 200ms both; }
+@keyframes nge-lb-rule { 0% { transform: scaleX(0); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.nge-lb-title-sub { animation: nge-lb-sub 700ms cubic-bezier(0.16, 1, 0.3, 1) 420ms both; }
+@keyframes nge-lb-sub { 0% { opacity: 0; letter-spacing: 0.95em; } 100% { opacity: 1; } }
+.nge-lb-tabs { animation: nge-lb-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) 480ms both; }
+.nge-lb-metric-toggle { animation: nge-lb-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) 560ms both; }
+.nge-lb-table thead { animation: nge-lb-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) 620ms both; }
+@keyframes nge-lb-rise { 0% { opacity: 0; translate: 0 8px; } 100% { opacity: 1; translate: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .nge-lb-scan { display: none; }
+  .nge-lb-hero-img-wrap, .nge-lb-title-treat, .nge-lb-title-rule, .nge-lb-title-sub, .nge-lb-tabs, .nge-lb-metric-toggle, .nge-lb-table thead,
+  .nge-lb-row.is-landed .nge-lb-td--rank, .nge-lb-row.is-landed .nge-lb-medal { animation: none; }
 }
 
 .nge-lb-row:hover              { background: rgba(255, 255, 255, 0.04); }
