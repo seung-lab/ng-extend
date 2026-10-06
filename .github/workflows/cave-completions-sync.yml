@@ -7,10 +7,12 @@ name: CAVE Completions Sync
 
 on:
   schedule:
-    # Every 30 minutes. CAVE materialization runs less often (~daily on
-    # stroeh) so most runs will be no-ops, but the cadence keeps fresh
-    # post-materialization completions in the leaderboard within minutes.
-    - cron: '*/30 * * * *'
+    # Once a night, 05:00 UTC (Ames: do not stress the CAVE servers). The sync
+    # reads CAVE's latest published snapshot, which changes about every other
+    # day, so the old 30 minute schedule re-read unchanged data 47 times in 48.
+    # This file on main is the one GitHub schedules; it was still on 30 minutes
+    # after the game branch's copy had moved to nightly.
+    - cron: '0 5 * * *'
   workflow_dispatch:
     inputs:
       datastack:
@@ -26,7 +28,11 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      # The maintained script lives on the game branch; main's copy is old.
       - uses: actions/checkout@v7
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
