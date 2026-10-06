@@ -101,6 +101,10 @@ document.addEventListener('animationend', (e) => {
   if (t?.classList?.contains('nge-burger--bounce') && e.animationName === 'nge-bb-hop') t.classList.remove('nge-burger--bounce');
 }, true);
 
+// Merger Sandbox examples (src/merger-sandbox.ts).
+import { SANDBOX_CELLS } from '../practice_pools';
+import { startSandbox, sandboxDone } from '../merger-sandbox';
+
 function closeHamburger() {
   dropdownStore.activeDropdowns['extension-bar-right'] = undefined;
 }
@@ -1081,6 +1085,15 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li>
           <div class="logoutButton button nge-menu-item" @click="startTutorial(5); closeHamburger()">
             <span class="nge-menu-num">4</span><span>Cut</span>
+          </div>
+        </li>
+        <!-- Standalone cut exercises (Ames, 2026-10-06): each opens on its
+             merged view and is done when its two points are on different
+             segments. A tick marks the ones this browser has finished. -->
+        <li class="nge-menu-heading" @click.stop>Merger Sandbox</li>
+        <li v-for="(c, i) in SANDBOX_CELLS" :key="c.id">
+          <div class="logoutButton button nge-menu-item" @click="startSandbox(i); closeHamburger()">
+            <span class="nge-menu-num">{{ sandboxDone.includes(c.id) ? '✓' : i + 1 }}</span><span>{{ c.title }}</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Learn more</li>

@@ -1,4 +1,5 @@
 import { practiceAction } from './pilot_actions';
+import { SANDBOX_IDS } from './practice_pools';
 /**
  * practice.ts — resettable practice cells for the Cut & Merge tutorial.
  *
@@ -451,10 +452,13 @@ export async function joinWaitlist(kind: PracticeKind, onReady: (ex: PracticeExa
  * not count: it would block the tutorial for everyone while nobody is on it
  * (Ames, 2026-09-29: "in use" with no one using it).
  */
-export async function practiceAvailability(kind: PracticeKind): Promise<{ registered: number; free: number; heldByOthers: number }> {
+export async function practiceAvailability(kind: PracticeKind, only?: string): Promise<{ registered: number; free: number; heldByOthers: number }> {
   const uid = userId();
-  const { data: all, error } = await supabase.from('tutorial_practice_examples')
-    .select('kind,status,claimed_by,expires_at,last_error,updated_at,supervoxel_a,supervoxel_b').eq('enabled', true);
+  const { data: everything, error } = await supabase.from('tutorial_practice_examples')
+    .select('id,kind,status,claimed_by,expires_at,last_error,updated_at,supervoxel_a,supervoxel_b').eq('enabled', true);
+  // Two pools (practice_pools.ts): a Merger Sandbox example is its own
+  // one-cell pool (`only`); the tutorials draw on everything else.
+  const all = everything?.filter((r: any) => only ? r.id === only : !SANDBOX_IDS.includes(r.id));
   if (error || !all) { console.warn('[practice] availability check failed:', error?.message); return { registered: 0, free: 0, heldByOthers: 0 }; }
   const now = Date.now();
   const live = (r: any) => r.status === 'in_use' && (!r.expires_at || Date.parse(r.expires_at) > now);
@@ -614,7 +618,7 @@ export function practiceShown(): boolean {
 /** Claim (or keep) a practice cell in a slot and show it. `show: false`
  *  only claims, for a slot the tutorial will show later (Merge step 3 takes
  *  both cells up front; loading the second view there cost seconds). */
-export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { slot?: string; show?: boolean; avoid?: string[]; prefer?: string } = {}): Promise<PracticeExample | null> {
+export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view: PracticeView = 'start', opts: { slot?: string; show?: boolean; avoid?: string[]; prefer?: string; only?: string } = {}): Promise<PracticeExample | null> {
   const slot = opts.slot ?? 'a';
   const show = opts.show !== false;
   // Right after a reload the login is still settling; give it a few seconds
@@ -645,12 +649,14 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   // this tutorial. The gate at the start checks the same thing; this covers
   // a learner who got past it (a resumed tutorial, or two starts at once).
   if (!Object.keys(session.held).length) {
-    const a = await practiceAvailability(kind);
+    const a = await practiceAvailability(kind, opts.only);
     if (a.heldByOthers > 0) { session.phase = 'busy'; return null; }
   }
   // `avoid`: cells this step would rather not get (a tutorial that wants
   // its cells in a set order asks for the first while avoiding the second).
-  const exclude = [...Object.values(session.held).map(ex => ex.id), ...(opts.avoid ?? [])];
+  // A tutorial never draws on a Merger Sandbox cell; a sandbox example
+  // (`only`) takes its own cell or nothing.
+  const exclude = [...Object.values(session.held).map(ex => ex.id), ...(opts.avoid ?? []), ...(opts.only ? [] : SANDBOX_IDS)];
   // Never hand out a cell registered wrong (Celia's Test cell holds segment
   // ids where supervoxels belong, so nothing can tell when it is merged).
   try {
@@ -659,6 +665,11 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
     // `prefer`: a staged tutorial names the cell for this step. When that
     // cell is free, every other one is excluded so the server hands it out;
     // when it is not, the claim falls back to whatever is free.
+    if (opts.only) {
+      const mine = ((data ?? []) as any[]).find(r => r.id === opts.only);
+      if (!mine || mine.status !== 'ready') { session.phase = 'busy'; return null; }
+      for (const r of (data ?? []) as any[]) if (r.id !== opts.only && !exclude.includes(r.id)) exclude.push(r.id);
+    }
     const want = opts.prefer && !exclude.includes(opts.prefer)
       ? ((data ?? []) as any[]).find(r => r.id === opts.prefer && r.status === 'ready') : null;
     if (want) for (const r of (data ?? []) as any[]) if (r.id !== want.id && !exclude.includes(r.id)) exclude.push(r.id);
@@ -667,7 +678,10 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
         || (r.supervoxel_a && r.supervoxel_a === r.supervoxel_b);
       if (bad && !exclude.includes(r.id)) exclude.push(r.id);
     }
-  } catch { /* the claim still runs */ }
+  } catch {
+    // Without the list, a sandbox claim could be handed some other cell.
+    if (opts.only) { session.phase = 'busy'; return null; }
+  }
   let row: PracticeExample | null;
   try { row = await practiceAction('claim', { kind, exclude }); }
   catch (error: any) { console.warn('[practice] claim failed:', error.message); practiceUnavailable(); return null; }

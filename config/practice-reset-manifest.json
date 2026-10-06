@@ -68,5 +68,55 @@
     "baseline_at": "2026-10-06T14:45:00+00:00",
     "root_a": "648518346351857854",
     "root_b": "648518346353232062"
+  },
+  "da3819dc-84b0-43df-a77c-55e46049a124": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "76000855320789331",
+    "supervoxel_b": "76000855320939666",
+    "baseline_at": "2026-10-06T16:00:00+00:00",
+    "root_a": "648518346351857077",
+    "root_b": "648518346351581101"
+  },
+  "0816c738-189d-4a7c-8fd7-1a6f2ae02c3e": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "76563118884779287",
+    "supervoxel_b": "76563118884754542",
+    "baseline_at": "2026-10-06T16:00:00+00:00",
+    "root_a": "648518346350134420",
+    "root_b": "648518346351690318"
+  },
+  "66069c79-0014-438a-a52a-484d6ece8ecb": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "75155261958545260",
+    "supervoxel_b": "75155261958511742",
+    "baseline_at": "2026-10-06T16:00:00+00:00",
+    "root_a": "648518346352910120",
+    "root_b": "648518346352910120"
+  },
+  "844165a8-5b97-40b0-afba-42125d343dcf": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "76000512461733396",
+    "supervoxel_b": "75930143717531419",
+    "baseline_at": "2026-10-06T16:00:00+00:00",
+    "root_a": "648518346352711821",
+    "root_b": "648518346351728757"
+  },
+  "f11ad22b-8043-4223-9b7e-264eb5d6d0a3": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "74873099854092049",
+    "supervoxel_b": "74943468598158118",
+    "baseline_at": "2026-10-06T16:00:00+00:00",
+    "root_a": "648518346351593708",
+    "root_b": "648518346356157002"
   }
 }

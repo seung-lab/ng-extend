@@ -210,6 +210,10 @@ export const useTutorialStore = defineStore("tutorial", () => {
     parseInt(localStorage.getItem(`nge-tutorial-8-step`) ?? "-1")
   );
 
+  // Tutorial 9, the Merger Sandbox (src/merger-sandbox.ts): one short
+  // exercise at a time, never resumed, so it is not stored.
+  const tutorialStep9: Ref<number> = ref(-1);
+
   // Track whether we've already hydrated for the current user so we don't
   // clobber locally-advanced progress on every re-render.
   const hydratedForUserId: Ref<string | null> = ref(null);
@@ -223,6 +227,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 6) return tutorialStep6.value;
     if (activeTutorial.value === 7) return tutorialStep7.value;
     if (activeTutorial.value === 8) return tutorialStep8.value;
+    if (activeTutorial.value === 9) return tutorialStep9.value;
     return tutorialStep4.value;
   }
 
@@ -234,6 +239,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     else if (activeTutorial.value === 6) tutorialStep6.value = val;
     else if (activeTutorial.value === 7) tutorialStep7.value = val;
     else if (activeTutorial.value === 8) tutorialStep8.value = val;
+    else if (activeTutorial.value === 9) tutorialStep9.value = val;
     else tutorialStep4.value = val;
   }
 
@@ -365,6 +371,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep6,
     tutorialStep7,
     tutorialStep8,
+    tutorialStep9,
     hydrateFromSupabase,
   };
 });

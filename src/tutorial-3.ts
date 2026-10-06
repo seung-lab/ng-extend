@@ -11,6 +11,7 @@ import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
 import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
+import { SANDBOX_CELLS } from './practice_pools';
 import { useSplitMergeOverlayStore } from './store';
 import { watch } from 'vue';
 import { hidePyrMarkers, showGemMarkers, showPyrMarkers } from './markers';
@@ -180,6 +181,9 @@ const CUT_HINT_STATES: Record<string, string> = {
   // Fusion on a proofread cell (Ames), the 3D cut
   '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5715664052420608',
 };
+
+// Each Merger Sandbox example carries its own view with example points.
+for (const c of SANDBOX_CELLS) CUT_HINT_STATES[c.id] = c.hintState;
 
 async function cutPointsInState(stateUrl: string): Promise<{ red: number[][]; blue: number[][] } | null> {
   try {
@@ -447,7 +451,7 @@ export function watchFindPath(waiting: string, found: string, opts: { advance?: 
  */
 const practiceAsked = new Set<string>();
 const practiceLanded = new Set<string>();
-function resetPracticeLog() { practiceAsked.clear(); practiceLanded.clear(); }
+export function resetPracticeLog() { practiceAsked.clear(); practiceLanded.clear(); }
 /** How many practice edits were asked for and how many landed. */
 export function practiceScore(): { asked: number; landed: number } {
   return { asked: practiceAsked.size, landed: [...practiceAsked].filter(id => practiceLanded.has(id)).length };
