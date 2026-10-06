@@ -141,7 +141,10 @@ async function switchTo(ds: DatasetEntry) {
             <span class="nge-ds-title">Switch Dataset</span>
             <span class="nge-ds-sub">Choose where to work. Production data is live science.</span>
           </div>
-          <button class="nge-ds-stats-link" @click="openDatasetStats">Dataset stats →</button>
+          <button class="nge-ds-stats-link" @click="openDatasetStats" title="What has been done on each dataset so far">
+            <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true"><path d="M2 11.5V7M6.5 11.5V2.5M11 11.5V5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>
+            Dataset stats<span class="nge-ds-stats-arrow" aria-hidden="true">›</span>
+          </button>
           <button class="nge-ds-close" aria-label="Close" @click="emit('hide')">×</button>
         </div>
         <div class="nge-ds-columns">
@@ -372,19 +375,39 @@ async function switchTo(ds: DatasetEntry) {
   letter-spacing: 0.08em;
 }
 
+/* The way to Dataset Stats, in the dialog's own voice (Ames 2026-10-06:
+   "needs better style"): an angular chip in the title's lettering, with a
+   small bar chart and a chevron that leans forward on hover. */
 .nge-ds-stats-link {
   margin-left: auto;
-  margin-right: 10px;
+  margin-right: 12px;
+  display: inline-flex; align-items: center; gap: 8px;
   white-space: nowrap;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: rgb(126, 224, 255);
-  background: rgba(126, 224, 255, 0.06);
-  border: 1px solid rgba(126, 224, 255, 0.28);
-  border-radius: 6px;
+  height: 30px;
+  padding: 0 14px 0 12px;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+  color: #9fe6ff;
+  background: #7ee0ff;                      /* the 1px edge, shown round the fill below */
+  border: 0;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  position: relative; isolation: isolate;
   cursor: pointer;
+  opacity: 0.86;
+  transition: opacity 0.16s ease, color 0.16s ease;
 }
-.nge-ds-stats-link:hover { background: rgba(126, 224, 255, 0.14); color: #fff; }
+.nge-ds-stats-link::before {
+  content: ''; position: absolute; inset: 1px; z-index: -1;
+  background: linear-gradient(180deg, #12233f, #0a1428);
+  clip-path: polygon(6.4px 0, 100% 0, 100% calc(100% - 6.4px), calc(100% - 6.4px) 100%, 0 100%, 0 6.4px);
+  transition: background 0.16s ease;
+}
+.nge-ds-stats-link svg { flex: none; }
+.nge-ds-stats-arrow { display: inline-block; transition: transform 0.18s ease; }
+.nge-ds-stats-link:hover, .nge-ds-stats-link:focus-visible { opacity: 1; color: #ffffff; outline: none; }
+.nge-ds-stats-link:hover::before, .nge-ds-stats-link:focus-visible::before { background: linear-gradient(180deg, #1a3a66, #0d1d3a); }
+.nge-ds-stats-link:hover .nge-ds-stats-arrow { transform: translateX(3px); }
+@media (prefers-reduced-motion: reduce) { .nge-ds-stats-link, .nge-ds-stats-arrow { transition: none; } }
 .nge-ds-close {
   background: none;
   border: none;
