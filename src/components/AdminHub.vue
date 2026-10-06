@@ -2768,12 +2768,15 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 
 /* Sending a notification: the same stepped wait as Submit an issue. */
 .nge-admin-sending {
-  display: flex; align-items: center; gap: 18px;
-  margin: 10px 0 4px; padding: 12px 16px;
+  /* the neuron gets the whole width of the chip (Ames 2026-10-06: "too cool
+     to be so small"); the steps sit in a row beneath it */
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  margin: 12px 0 6px; padding: 20px 20px 16px;
   border: 1px solid rgba(126, 224, 255, 0.2); border-radius: 10px;
   background: rgba(8, 14, 28, 0.6);
 }
-.nge-admin-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.nge-admin-sending .nge-growing-neuron { width: 100%; max-width: 640px; }
+.nge-admin-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-flow: row wrap; justify-content: center; gap: 8px 22px; }
 .nge-admin-step { display: flex; align-items: center; gap: 9px; font-size: 0.86em; color: #6f7c96; transition: color 0.2s; }
 .nge-admin-step-mark {
   width: 16px; height: 16px; flex-shrink: 0; border-radius: 50%;
