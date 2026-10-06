@@ -1054,13 +1054,21 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Annotations placed (tallied in the browser, sent about hourly) -->
-          <div v-if="viewingOtherUser && annotationsPlaced > 0" class="nge-profile-section nge-profile-section--annotations">
-            <div class="nge-profile-section-label">▌ Annotations</div>
-            <div class="nge-profile-stat-row">
-              <div class="nge-profile-stat-col" title="Points, lines and boxes placed in annotation layers">
-                <div class="nge-profile-stat-label">Placed</div>
-                <div class="nge-profile-stat-val"><RollUp :value="annotationsPlaced" /></div>
+          <!-- Someone else's profile: their cells and annotations (Ames
+               2026-10-06: it showed edits and annotations but no cells). Your
+               own profile has the fuller Cells block below, built from your
+               cell history; for another player the totals come from their
+               account, so they cover every dataset. -->
+          <div v-if="viewingOtherUser" class="nge-profile-section nge-profile-section--cells">
+            <div class="nge-profile-section-label">▌ Cells</div>
+            <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
+              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Cells this player has completed, on every dataset">
+                <div class="nge-profile-stat-label">Completed</div>
+                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="profileStats.cellsSubmitted ?? 0" /></div>
+              </div>
+              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Points, lines and boxes this player has placed in annotation layers, on every dataset">
+                <div class="nge-profile-stat-label">Annotations</div>
+                <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
               </div>
             </div>
           </div>
