@@ -21,28 +21,47 @@ const BLOB=/^[0-9a-f]{40}$/;
 
 /**
  * Where two versions of a text differ, as runs of lines: [aStart, aEnd) in a
- * became [bStart, bEnd) in b. Common start and end are skipped first, then a
- * longest-common-subsequence over what is left. Null when that middle is too
- * big to compare (the caller then does not merge).
+ * became [bStart, bEnd) in b. Myers' shortest-edit algorithm, whose cost
+ * grows with how MUCH differs, not with how far apart the differences are
+ * (the first version here compared everything between the first and last
+ * change, and gave up on store.ts when one edit was at line 19 and another
+ * at line 6,175: 2026-10-06). Null when more than 3,000 lines differ.
  */
 export function lineHunks(a,b) {
  let s=0;while(s<a.length&&s<b.length&&a[s]===b[s])s++;
  let ea=a.length,eb=b.length;while(ea>s&&eb>s&&a[ea-1]===b[eb-1]){ea--;eb--;}
  const n=ea-s,m=eb-s;
  if(n===0&&m===0)return [];
- if(n*m>16e6)return null;
- const w=m+1,t=new Uint16Array((n+1)*w);
- for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)
-  t[i*w+j]=a[s+i]===b[s+j]?t[(i+1)*w+j+1]+1:Math.max(t[(i+1)*w+j],t[i*w+j+1]);
- const out=[];let i=0,j=0,open=null;
- const close=()=>{if(open){out.push(open);open=null;}};
- while(i<n||j<m) {
-  if(i<n&&j<m&&a[s+i]===b[s+j]){close();i++;j++;continue;}
-  if(!open)open={aStart:s+i,aEnd:s+i,bStart:s+j,bEnd:s+j};
-  if(j<m&&(i===n||t[i*w+j+1]>=t[(i+1)*w+j])){j++;open.bEnd=s+j;}
-  else{i++;open.aEnd=s+i;}
+ const cap=Math.min(n+m,3000),off=cap+1,v=new Int32Array(2*cap+3),trace=[];
+ let D=-1;
+ search:for(let d=0;d<=cap;d++) {
+  trace.push(v.slice());
+  for(let k=-d;k<=d;k+=2) {
+   let x=(k===-d||(k!==d&&v[off+k-1]<v[off+k+1]))?v[off+k+1]:v[off+k-1]+1,y=x-k;
+   while(x<n&&y<m&&a[s+x]===b[s+y]){x++;y++;}
+   v[off+k]=x;
+   if(x>=n&&y>=m){D=d;break search;}
+  }
  }
- close();return out;
+ if(D<0)return null;
+ // Walk back through the saved rounds to mark which lines were removed from
+ // a and which were added in b.
+ const gone=new Uint8Array(n),added=new Uint8Array(m);
+ for(let d=D,x=n,y=m;d>0;d--) {
+  const prev=trace[d],k=x-y;
+  const pk=(k===-d||(k!==d&&prev[off+k-1]<prev[off+k+1]))?k+1:k-1;
+  const px=prev[off+pk],py=px-pk;
+  if(pk===k+1)added[py]=1;else gone[px]=1;
+  x=px;y=py;
+ }
+ const out=[];let open=null;
+ for(let i=0,j=0;i<n||j<m;) {
+  if(i<n&&gone[i]){open??={aStart:s+i,aEnd:s+i,bStart:s+j,bEnd:s+j};i++;open.aEnd=s+i;}
+  else if(j<m&&added[j]){open??={aStart:s+i,aEnd:s+i,bStart:s+j,bEnd:s+j};j++;open.bEnd=s+j;}
+  else{if(open){out.push(open);open=null;}i++;j++;}
+ }
+ if(open)out.push(open);
+ return out;
 }
 
 /**

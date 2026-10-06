@@ -53,6 +53,18 @@ test('line merge: separate edits combine, the same or touching lines do not',()=
  // Line endings are kept exactly: only the changed line differs.
  assert.equal(merge3('a\r\nb\r\nc\r\nd\r\n','a\r\nB\r\nc\r\nd\r\n','a\r\nb\r\nc\r\nD\r\n'),'a\r\nB\r\nc\r\nD\r\n');
  assert.deepEqual(lineHunks(['a','b','c'],['a','x','c']),[{aStart:1,aEnd:2,bStart:1,bEnd:2}]);
+ // Edits thousands of lines apart are still two small changes (the first
+ // comparison gave up on exactly this: store.ts, lines 19 and 6,175).
+ const big=Array.from({length:7000},(_,i)=>'line '+i);
+ const far=big.slice();far[18]='changed near the top';far.splice(6174,0,'added near the bottom');
+ const mid=big.slice();mid.splice(3137,0,'added in the middle');mid[3189]='changed in the middle';
+ const want=mid.slice();want.splice(6175,0,'added near the bottom');want[18]='changed near the top';
+ assert.equal(lineHunks(big,far).length,2);
+ assert.equal(merge3(big.join('
+'),mid.join('
+'),far.join('
+')),want.join('
+'));
 });
 
 test('a shared source file: merged when the edits are apart, rebuilt when they collide',async()=>{
