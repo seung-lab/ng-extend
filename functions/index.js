@@ -1698,6 +1698,12 @@ exports.ewSecureWrite = onRequest(
         }
         case "pilot.task":
         case "pilot.practice": {
+          // A claim's soma anchor has its own small function
+          // (supabase-claim-anchor.sql), set once by the claim's owner.
+          if (action === "pilot.task" && args.operation === "set_anchor") {
+            out = await sb("rpc/pilot_task_set_anchor", { method: "POST", body: JSON.stringify({ p_user: me.id, p_args: args.args || {} }) });
+            break;
+          }
           const allowed = action === "pilot.task" ? ["claim","claim_cell","release","complete","heartbeat","save_link"] : ["claim","heartbeat","begin_reset","check_reset","finish_reset"];
           if(!allowed.includes(args.operation)) throw ewErr(400,"Unknown pilot action");
           const payload={p_user:me.id,p_action:args.operation,p_args:args.args||{}};

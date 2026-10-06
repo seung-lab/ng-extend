@@ -529,6 +529,7 @@ async function switchToClaim(cell: CellRow) {
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
   if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+  else void backend.anchorClaimAt(cell.taskId).catch(() => null);
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
 }
@@ -635,6 +636,8 @@ async function claimCellNow(cell: typeof cells.value[0]) {
     openStartLink(cell.startLink);
     if (claimed) setWorkingTask(claimed.id);
   }
+  // Give the claim its soma anchor as soon as that part of the volume loads.
+  if (claimed) void backend.anchorClaimAt(claimed.id).catch(() => null);
 }
 
 // ── Claim limit: name every claim you hold, in any dataset, with Release ──

@@ -4294,6 +4294,16 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   async function refreshLiveRoots(): Promise<void> {
     const mine = myActiveClaims();
     if (!mine.length) return;
+    // A claim still without an anchor gets one whenever its soma happens to
+    // be loaded (one look, no waiting); one kept only in this browser is
+    // sent to the server.
+    for (const t of mine) {
+      if (t.supervoxel_id) continue;
+      if (anchors[String(t.id)]) { void saveAnchor(t, anchors[String(t.id)]); continue; }
+      const at = claimPointOf(t);
+      const sv = at && supervoxelAt(at);
+      if (sv) await anchorWith(t, sv).catch(() => null);
+    }
     const found = await Promise.all(mine.map(t => resolveLive(t).catch(() => null)));
     const next = { ...liveRoots.value };
     mine.forEach((t, i) => { if (found[i]) next[t.id] = found[i]!; else delete next[t.id]; });
@@ -4315,29 +4325,57 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch { /* viewer not ready */ }
     return null;
   }
-  /**
-   * Called after a jump puts the viewer on one of my claims: read the volume
-   * at the cell's nucleus and, when that spot really is this claim's cell (its
-   * listed ID or a later version of it), remember it as the claim's anchor.
-   * Returns the cell's current root, or null when nothing could be read.
-   */
-  async function anchorClaimAt(taskId: number, point: [number, number, number]): Promise<string | null> {
-    const t = tasks.value.find(x => x.id === taskId);
-    if (!t) return null;
-    if (anchorOf(t)) return liveRoots.value[taskId] ?? null;
-    let sv: string | null = null;
-    for (let i = 0; i < 12 && !(sv = supervoxelAt(point)); i++) await new Promise(r => setTimeout(r, 500));
-    if (!sv) return null;
+  /** The claim point: for a Cell Library claim, the nucleus coordinates of
+   *  its row in the cell list, so a spot in the soma. */
+  function claimPointOf(t: ProofreadingTask): [number, number, number] | null {
+    const p = [t.claim_point_x, t.claim_point_y, t.claim_point_z];
+    return p.every(n => typeof n === 'number' && Number.isFinite(n)) && p.some(n => n !== 0) ? p as [number, number, number] : null;
+  }
+  /** Keep the anchor with the claim on the server, so it is there in every
+   *  browser and every session (large cells take many). Tried once a visit. */
+  const anchorSent = new Set<number>();
+  async function saveAnchor(t: ProofreadingTask, sv: string): Promise<void> {
+    if (t.supervoxel_id || anchorSent.has(t.id)) return;
+    anchorSent.add(t.id);
+    try {
+      await taskAction('set_anchor', { id: t.id, supervoxel_id: sv });
+      t.supervoxel_id = sv;
+    } catch (e: any) {
+      // Before supabase-claim-anchor.sql is run this fails; this browser's copy still works.
+      console.warn('[backend] anchor not saved on the server:', e?.message);
+    }
+  }
+  /** Accept a supervoxel as this claim's anchor only when it really is this
+   *  claim's cell: its listed ID, or a later version of it. Returns the
+   *  cell's current root. */
+  async function anchorWith(t: ProofreadingTask, sv: string): Promise<string | null> {
     const root = await getRootFromSupervoxel(sv);
     if (!root) return null;
     if (root !== String(t.segment_id)) {
       const ends = await latestDescendants(String(t.segment_id));
       if (!ends || !ends.includes(root)) return null;   // that spot is some other cell
     }
-    anchors[String(taskId)] = sv;
+    anchors[String(t.id)] = sv;
     try { localStorage.setItem(ANCHOR_KEY, JSON.stringify(anchors)); } catch { /* remembered for this visit only */ }
-    liveRoots.value = { ...liveRoots.value, [taskId]: root };
+    liveRoots.value = { ...liveRoots.value, [t.id]: root };
+    void saveAnchor(t, sv);
     return root;
+  }
+  /**
+   * Give one of my claims its anchor: wait a few seconds for the volume at
+   * its soma to load (after a claim, or a jump to the cell) and read it.
+   * point defaults to the claim point. Returns the cell's current root, or
+   * null when nothing could be read (it is tried again on later visits).
+   */
+  async function anchorClaimAt(taskId: number, point?: [number, number, number]): Promise<string | null> {
+    const t = tasks.value.find(x => x.id === taskId);
+    if (!t) return null;
+    if (anchorOf(t)) return liveRoots.value[taskId] ?? null;
+    const at = point ?? claimPointOf(t);
+    if (!at) return null;
+    let sv: string | null = null;
+    for (let i = 0; i < 14 && !(sv = supervoxelAt(at)); i++) await new Promise(r => setTimeout(r, 500));
+    return sv ? anchorWith(t, sv) : null;
   }
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('nge-graph-edit', () => {
