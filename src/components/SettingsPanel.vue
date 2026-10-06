@@ -362,11 +362,14 @@ const props = defineProps<{ embedded?: boolean }>();
               </button>
             </div>
             <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
-            <label class="nge-settings-slider">
-              <span class="nge-settings-toggle-label">Annotation point size</span>
-              <input type="range" min="1" max="4" step="0.5" v-model.number="draftAnnotationSize" @input="previewAnnotationSize" />
-              <span class="nge-settings-slider-val">{{ draftAnnotationSize }}×</span>
-            </label>
+          </div>
+
+          <!-- How the game behaves, in a card of its own (Ames 2026-10-06).
+               Annotation point size is not here: it is set on the annotation
+               layer itself. -->
+          <div class="nge-settings-section nge-set-card--ui">
+            <label class="nge-settings-label">User Interface</label>
+            <p class="nge-settings-hint">How layers, jumps and annotations behave.</p>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftAnnotationGems" />
               <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>
