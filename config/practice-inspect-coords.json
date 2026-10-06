@@ -1,1 +1,8 @@
-{}
+{
+  "second-cut-2026-10-06": {
+    "note": "The one coordinate Ames gave for both pieces.",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": { "given": [86418, 59244, 814] }
+  }
+}
