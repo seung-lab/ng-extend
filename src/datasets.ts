@@ -65,6 +65,10 @@ export interface DatasetEntry {
   group?: string;
   /** This version's name in its group's list. */
   variantLabel?: string;
+  /** The dataset's own published size, for scale beside what EyeWire II
+   *  players did there (Dataset Stats). A fixed figure from a named release,
+   *  not a live count: update it when a new release is published. */
+  published?: { cells: number; source: string; url: string };
   /** Switcher section (Ames 2026-09-30). Defaults to 'production'. */
   section?: DatasetSection;
   /** Why Highlight mode is off here, if it is. MEC: its path server fails on
@@ -259,6 +263,8 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'banc',
+    // Codex, BANC v888 (Ames 2026-10-06).
+    published: { cells: 158_262, source: 'Codex, BANC v888', url: 'https://codex.flywire.ai/?dataset=banc' },
     section: 'viewonly',
     caveDataset: 'BANC',
     thumbnail: thumbBanc,

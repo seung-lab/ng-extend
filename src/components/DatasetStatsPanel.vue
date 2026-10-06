@@ -231,6 +231,10 @@ onUnmounted(() => {
               <div class="nge-dsp-big-sub">
                 cell{{ outsideCells === 1 ? '' : 's' }} proofread by EyeWire II players
               </div>
+              <div v-if="active?.published" class="nge-dsp-scale">
+                The whole dataset has <strong>{{ active.published.cells.toLocaleString() }}</strong> proofread cells
+                (<a :href="active.published.url" target="_blank" rel="noopener">{{ active.published.source }}</a>).
+              </div>
               <div class="nge-dsp-foot">From this dataset's own records, read once a night. The work was done outside the game, so it does not count toward Achievements or the leaderboard.</div>
             </template>
             <div v-else-if="!hasList" class="nge-dsp-empty">This dataset has no cell list yet, so there is no total to measure against.</div>
@@ -517,6 +521,10 @@ onUnmounted(() => {
 }
 .nge-dsp-big-sub { margin: 6px 0 12px; text-align: center; font-size: 0.95em; color: #c9d6e3; }
 .nge-dsp-big-sub strong { color: #f2f6fb; }
+.nge-dsp-scale { margin: -4px 0 10px; text-align: center; font-size: 0.86em; line-height: 1.45; color: #b4c3d6; }
+.nge-dsp-scale strong { color: #f2f6fb; }
+.nge-dsp-scale a { color: #7ee0ff; text-decoration: none; }
+.nge-dsp-scale a:hover { text-decoration: underline; }
 
 .nge-dsp-track {
   display: flex; height: 8px; border-radius: 4px; overflow: hidden;
