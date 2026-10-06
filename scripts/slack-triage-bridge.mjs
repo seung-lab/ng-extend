@@ -388,14 +388,39 @@ function proposalText(row, footer) {
   ].filter(Boolean).join('\n');
 }
 
-/** Try to find the original report message in recent history to thread under. */
-async function findReportTs(excerpt) {
-  if (!excerpt) return null;
+/**
+ * Find the report's own Slack message, to thread the proposal under it.
+ * The proposal's excerpt is written by the model and is not always the
+ * report's exact words, and Slack escapes & < > in what it stores, so a plain
+ * text search missed and the proposal landed loose in the channel
+ * (2026-10-06). Now: look at the "New site issue submitted" posts from the
+ * minutes around when the report was saved, and take the one whose letters
+ * and digits contain the start of the report's; failing that, the one posted
+ * closest to it in time (within three minutes).
+ */
+const lettersOnly = t => String(t || '').toLowerCase()
+  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/[^a-z0-9]+/g, '');
+async function findReportTs(row) {
   try {
-    const needle = excerpt.slice(0, 60).toLowerCase();
-    const hist = await slackGet('conversations.history', { channel: CHANNEL, limit: 100 });
-    for (const m of hist.messages ?? []) {
-      if ((m.text || '').toLowerCase().includes(needle)) return m.thread_ts || m.ts;
+    let issue = null;
+    if (row.source === 'site_issue' && row.source_id) {
+      const r = await sb(`site_issues?id=eq.${row.source_id}&select=message,created_at`);
+      issue = r.ok ? (await r.json())[0] ?? null : null;
+    }
+    const at = issue?.created_at ? new Date(issue.created_at).getTime() / 1000 : 0;
+    const hist = await slackGet('conversations.history', at
+      ? { channel: CHANNEL, oldest: String(at - 600), latest: String(at + 900), limit: 200 }
+      : { channel: CHANNEL, limit: 100 });
+    const posts = (hist.messages ?? []).filter(m => /New site issue submitted/i.test(m.text || ''));
+    for (const text of [issue?.message, row.source_excerpt]) {
+      const needle = lettersOnly(text).slice(0, 40);
+      if (needle.length < 8) continue;
+      const hit = posts.find(m => lettersOnly(m.text).includes(needle));
+      if (hit) return hit.thread_ts || hit.ts;
+    }
+    if (at) {
+      const near = posts.map(m => ({ m, gap: Math.abs(Number(m.ts) - at) })).sort((a, b) => a.gap - b.gap)[0];
+      if (near && near.gap <= 180) return near.m.thread_ts || near.m.ts;
     }
   } catch (e) { console.warn('[bridge] history search failed:', e.message); }
   return null;
@@ -403,7 +428,7 @@ async function findReportTs(excerpt) {
 
 /** Post a card for a row and store the THREAD ROOT ts on it. */
 async function openThread(row, footer) {
-  const threadTs = await findReportTs(row.source_excerpt);
+  const threadTs = await findReportTs(row);
   const posted = await slack('chat.postMessage', {
     channel: CHANNEL, text: proposalText(row, footer),
     ...(threadTs ? { thread_ts: threadTs } : {}),
