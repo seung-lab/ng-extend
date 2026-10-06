@@ -134,17 +134,22 @@ export const steps: Step[] = makeCellTour({
     title: "Welcome to FlyWire",
     hero: flywireHero,
     heroAlt: "The 50 largest neurons of the FlyWire fruit fly brain connectome",
-    heroWhole: true,
+    // Fills the frame: shown whole, the render's navy backdrop made a box
+    // inside the card.
     paragraphs: [
       'This is the whole brain of an adult <strong>fruit fly</strong>: about 140,000 neurons, every one mapped by the FlyWire community of scientists and citizen scientists.',
       'FlyWire sorts its neurons into nine big groups called superclasses. Meet one neuron from each, one at a time. Drag to rotate and scroll to zoom.',
+      // Ames 2026-10-06: the paper collection on the first card.
+      'Published in <strong>Nature</strong>, 2024. <a href="https://www.nature.com/collections/hgcfafejia" target="_blank" rel="noopener">Read the FlyWire papers</a>.',
     ],
   },
   finale: {
     title: "All together",
     text: `Here is one neuron from each superclass in the same brain, seen from the front.
 
-This is the public release of FlyWire, so it is here to **explore**: click any cell to load it, and open its Δ menu to see its type. Nothing you do here changes the data.`,
+This is the public release of FlyWire, so it is here to **explore**: click any cell to load it, and open its Δ menu to see its type. Nothing you do here changes the data.
+
+Want the full story? Take Nature's [immersive tour of the fly brain](https://www.nature.com/immersive/d42859-024-00053-4/index.html).`,
     view: VIEW_TOP,
   },
 });
