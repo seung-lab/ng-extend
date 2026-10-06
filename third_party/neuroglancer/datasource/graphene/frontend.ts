@@ -2148,6 +2148,12 @@ const MAX_MERGE_COUNT = 10;
 
 const MERGE_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
+  // EyeWire II: merge places its own points. Without this, ctrl+click ran the
+  // viewer's general "annotate" action, which uses whichever layer is
+  // selected: entering merge straight from an annotation layer dropped an
+  // annotation point instead of picking a segment (andrearwen 2026-10-06).
+  // The cut tool has always bound its own click the same way.
+  'at:shift?+control+mousedown0': {action: 'place-merge-point'},
 });
 
 class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
@@ -2167,6 +2173,10 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
     header.textContent = 'Merge segments';
     body.classList.add('graphene-tool-status', 'graphene-merge-segments');
     activation.bindInputEventMap(MERGE_SEGMENTS_INPUT_EVENT_MAP);
+    activation.bindAction('place-merge-point', event => {
+      event.stopPropagation();
+      lineTool.trigger(this.mouseState);
+    });
     const submitAction = async () => {
       if (merges.value.filter(x => x.locked).length) return;
       submitIcon.classList.toggle('disabled', true);
