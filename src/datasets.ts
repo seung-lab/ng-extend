@@ -15,6 +15,7 @@ import thumbBanc from '../static/images/datasets/banc.jpg';
 // FlyWire: the 50 largest neurons render (Ames 2026-10-06).
 import thumbFlywire from '../static/images/datasets/flywire.jpg';
 import { useLayersStore, useUserPreferencesStore } from './store';
+import { datasetAccess } from './util/dataset_access';
 import { getDatasetCaveConfig, cellTypesForDataset } from './config';
 import { openSegPanel } from './widgets/widget_utils';
 
@@ -38,6 +39,13 @@ export interface DatasetEntry {
   /** Left out of the dataset switcher and profile (still resolvable, so saved
    *  links and states that use it keep working). */
   hidden?: boolean;
+  /** Shown only to players whose CAVE account can EDIT caveDataset (Ames
+   *  2026-10-06: "I have edit ability in FAFB but it shows in view only").
+   *  Everyone else never sees the card. */
+  needsEdit?: boolean;
+  /** Id of the entry this one replaces when it is shown: an editor sees the
+   *  editable graph instead of the public copy, not both. */
+  supersedes?: string;
   /** Off until the player turns it on in their profile's Datasets tab
    *  ("More datasets", Ames 2026-10-06). See isDatasetShown. */
   optional?: boolean;
@@ -84,6 +92,11 @@ export const SPECIES_ICONS: Record<DatasetEntry['species'], string> = {
  *  on by this player (prefs.extraDatasets, which follows the account). */
 export function isDatasetShown(ds: DatasetEntry): boolean {
   if (ds.hidden) return false;
+  // By credentials: the editable graph for those who can edit it, and in
+  // that case not its public copy as well.
+  if (ds.needsEdit) return datasetAccess(ds.caveDataset) === 'edit';
+  const editable = DATASETS.find(d => d.supersedes === ds.id);
+  if (editable && isDatasetShown(editable)) return false;
   if (!ds.optional) return true;
   try { return (useUserPreferencesStore().prefs.extraDatasets || []).includes(ds.id); }
   catch { return false; }
@@ -289,6 +302,37 @@ export const DATASETS: DatasetEntry[] = [
           enableDefaultSubsources: true,
         },
         name: 'flywire_public',
+      },
+    ],
+  },
+  {
+    // The live FlyWire graph (fly_v31), for accounts with FAFB edit access
+    // only. Edits made here are real FlyWire edits. Id = layer name.
+    id: 'flywire_fafb_production',
+    section: 'production',
+    caveDataset: 'fafb',
+    needsEdit: true,
+    supersedes: 'flywire_public',
+    thumbnail: thumbFlywire,
+    label: 'FlyWire: Fruit Fly Brain',
+    shortLabel: 'FlyWire',
+    abbrev: 'FlyWire',
+    species: 'fly',
+    description: 'Whole adult fruit fly brain, the live FlyWire graph: your edits here change FlyWire (4×4×40 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://flywire_em/aligned/v1',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://prod.flywire-daf.com/segmentation/table/fly_v31',
+          subsources: { default: true, mesh: true, graph: true },
+          enableDefaultSubsources: true,
+        },
+        name: 'flywire_fafb_production',
       },
     ],
   },
@@ -513,6 +557,8 @@ export function canonicalDataset(name: string | undefined | null): string {
   // The public release graph is its own dataset: its root ids are frozen at
   // v783 and are not the sandbox's.
   if (n === 'flywire_public' || n.startsWith('flywire_fafb_public')) return 'flywire_fafb_public';
+  // The live graph: its roots keep changing, so it is not the public release.
+  if (n.startsWith('flywire_fafb_production') || n === 'fly_v31') return 'flywire_fafb_production';
   if (n.startsWith('flywire') || n.includes('fly_v')) return 'flywire_fafb_sandbox';
   // Explore only volumes (published files, no CAVE).
   if (n.startsWith('h01')) return 'h01_c3';

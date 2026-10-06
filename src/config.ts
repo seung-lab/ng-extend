@@ -346,6 +346,22 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     },
     defaultPosition:  [131000, 55000, 3500],
   },
+  // FlyWire's live graph (fly_v31), shown only to accounts with FAFB edit
+  // access (DatasetEntry.needsEdit). Merges and splits go to FlyWire itself.
+  // FlyWire's own annotation tables are shown read only: the game does not
+  // write proofread marks or labels into them.
+  flywire_fafb_production: {
+    caveServer:       'https://prod.flywire-daf.com',
+    datastack:        'flywire_fafb_production',
+    alignedVolume:    'fafb_seung_alignment_v0',
+    cellStatusTable:  'proofread_neurons',
+    cellStatusSchema: 'representative_point',
+    cellStatusReadOnly: true,
+    cellTypeTable:    'neuron_information_v2',
+    cellTypeSchema:   'bound_tag_user',
+    cellTypeReadOnly: true,
+    defaultPosition:  [131000, 55000, 3500],
+  },
   // Explore only volumes: published segmentation files, no CAVE. Registered
   // with an EMPTY server on purpose. An unregistered layer name falls back
   // to the retina's config and would address the wrong volume; these say

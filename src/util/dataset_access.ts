@@ -54,6 +54,9 @@ export function loadDatasetPermissions(): Promise<void> {
 }
 
 export function datasetAccess(caveDataset?: string): DatasetAccess {
+  // Whoever asks first (switcher, profile) starts the lookup; the answer is
+  // reactive, so the cards update when it arrives.
+  if (!permissions.value && !inflight && caveToken()) void loadDatasetPermissions();
   const p = permissions.value;
   if (!caveDataset || !p) return 'unknown';
   const list = p[caveDataset] || [];

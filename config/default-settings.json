@@ -6,6 +6,13 @@
     "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
     "projectionScale": 260000.0
   },
+  "flywire_fafb_production": {
+    "dimensions": [4e-9, 4e-9, 4e-8],
+    "position": [131000.0, 55000.0, 3500.0],
+    "crossSectionScale": 8.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 260000.0
+  },
   "h01_c3": {
     "dimensions": [8e-9, 8e-9, 3.3e-8],
     "position": [257946.0, 178200.0, 2646.0],

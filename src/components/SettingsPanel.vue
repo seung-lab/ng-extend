@@ -57,6 +57,15 @@ const saved      = ref(false);
 
 // ── Switching datasets ─────────────────────────────────────────────────────
 const draftBareSwitch = ref(false);
+/** Optional datasets shown in the dataset selector (same choice as the
+ *  profile's Datasets tab). */
+const draftExtra = ref<string[]>([]);
+const OPTIONAL_DATASETS = DATASETS.filter(d => d.optional && !d.hidden);
+function toggleDraftExtra(id: string, ev: Event) {
+  const set = new Set(draftExtra.value);
+  if ((ev.target as HTMLInputElement).checked) set.add(id); else set.delete(id);
+  draftExtra.value = [...set];
+}
 const draftStartViews = ref<Record<string, string>>({});
 const svDataset = ref(segLayerName(DATASETS[0]));
 const svLink = ref('');
@@ -98,6 +107,7 @@ onMounted(() => {
   draftSegSetupTabs.value = prefsStore.prefs.showSegSetupTabs === true;
   draftHelpMuted.value = !!prefsStore.prefs.helpMuted;
   draftBareSwitch.value = !!prefsStore.prefs.datasetBareSwitch;
+  draftExtra.value = [...(prefsStore.prefs.extraDatasets || [])];
   draftStartViews.value = { ...(prefsStore.prefs.datasetStartViews || {}) };
   pickStartViewDataset();
   // Seed via the same resolver the toolbar uses, so the grid reflects exactly
@@ -117,6 +127,7 @@ async function handleSave() {
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
     chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, classicLayerClicks: draftClassicLayers.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
+    extraDatasets: draftExtra.value,
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
@@ -413,7 +424,12 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftBareSwitch" />
               <span class="nge-settings-toggle-label">Open datasets without the starter cells (loads faster)</span>
             </label>
-            <p class="nge-settings-hint nge-sv-hint">Your own start view: pick a dataset and paste a share link made in it. It opens instead of the starter view whenever you switch there.</p>
+            <p class="nge-settings-hint nge-sv-hint">Show in the dataset selector: extra datasets to explore. There is nothing to proofread or claim in them.</p>
+          <label v-for="ds in OPTIONAL_DATASETS" :key="ds.id" class="nge-settings-toggle nge-sv-extra">
+            <input type="checkbox" :checked="draftExtra.includes(ds.id)" @change="toggleDraftExtra(ds.id, $event)" />
+            <span class="nge-settings-toggle-label">{{ ds.label }}</span>
+          </label>
+          <p class="nge-settings-hint nge-sv-hint">Your own start view: pick a dataset and paste a share link made in it. It opens instead of the starter view whenever you switch there.</p>
             <div class="nge-sv-row">
               <select v-model="svDataset" class="nge-sv-select" @change="pickStartViewDataset">
                 <option v-for="ds in DATASETS" :key="ds.id" :value="segLayerName(ds)">{{ ds.label }}</option>
@@ -1041,6 +1057,7 @@ const props = defineProps<{ embedded?: boolean }>();
 }
 
 /* Switching datasets: dataset picker, share link box, saved list */
+.nge-sv-extra { display: flex; }
 .nge-sv-hint { margin-top: 8px; }
 .nge-sv-row { display: flex; gap: 8px; margin-top: 6px; }
 .nge-sv-select, .nge-sv-input {

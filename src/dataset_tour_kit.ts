@@ -66,8 +66,10 @@ export interface TourMore {
 export interface CellTourSpec {
   /** For console messages. */
   name: string;
-  /** Text found in the segmentation layer's source, e.g. 'pni_mec'. */
-  layerMatch: string;
+  /** Text found in the segmentation layer's source, e.g. 'pni_mec'. Several
+   *  when the tour plays on more than one graph of the same volume (FlyWire's
+   *  public release and its live graph). */
+  layerMatch: string | string[];
   /** Micrometres per voxel. */
   voxelUm: number[];
   /** The view the tour plays on: image and segmentation layers, camera. */
@@ -103,7 +105,7 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
     const layers: any[] = viewer()?.layerManager?.managedLayers ?? [];
     return layers.find(l => {
       const url = l.layer?.dataSources?.[0]?.spec?.url ?? '';
-      return url.includes('graphene://') && url.includes(spec.layerMatch);
+      return url.includes('graphene://') && (Array.isArray(spec.layerMatch) ? spec.layerMatch : [spec.layerMatch]).some(m => url.includes(m));
     });
   }
 
@@ -132,7 +134,15 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
     document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
     const layers: any[] = v.layerManager?.managedLayers ?? [];
     const backdropMissing = !!spec.backdropLayer && !layers.some(l => l.name === spec.backdropLayer);
-    if (!segLayer() || backdropMissing) {
+    if (segLayer() && backdropMissing) {
+      // The dataset is already on screen: keep its layers, add the outline.
+      try {
+        const st = v.state.toJSON();
+        const backdrop = spec.stage.layers.find((l: any) => l.name === spec.backdropLayer);
+        if (backdrop) { st.layers = [...(st.layers || []), JSON.parse(JSON.stringify(backdrop))]; v.state.restoreState(st); }
+        for (let i = 0; i < 40 && !segLayer()?.layer?.displayState; i++) await new Promise(r => setTimeout(r, 200));
+      } catch (e) { console.warn(tag, 'could not add the outline:', e); }
+    } else if (!segLayer()) {
       await useLayersStore().loadState(baseState());
       for (let i = 0; i < 40 && !segLayer()?.layer?.displayState; i++) {
         await new Promise(r => setTimeout(r, 200));

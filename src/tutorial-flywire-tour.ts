@@ -146,7 +146,8 @@ This one is in the **pars intercerebralis** at the top of the brain, home of the
 
 export const steps: Step[] = makeCellTour({
   name: 'flywire',
-  layerMatch: 'flywire_public',
+  // The public release, or the live graph for players who can edit FlyWire.
+  layerMatch: ['flywire_public', 'fly_v31'],
   // FlyWire voxels are 4 x 4 x 40 nm.
   voxelUm: [0.004, 0.004, 0.040],
   backdropLayer: 'brain_outline',

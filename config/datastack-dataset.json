@@ -9,5 +9,6 @@
   "pni_mec": "pni_mec",
   "minnie3_v1": "minnie65_phase3_v1",
   "brain_and_nerve_cord": "brain_and_nerve_cord",
-  "flywire_public": "flywire_fafb_public"
+  "flywire_public": "flywire_fafb_public",
+  "flywire_fafb_production": "flywire_fafb_production"
 }
