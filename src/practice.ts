@@ -470,8 +470,11 @@ export async function practiceAvailability(kind: PracticeKind): Promise<{ regist
     || (r.status === 'needs_reset' && !r.last_error && Date.parse(r.updated_at) > now - 15 * 60 * 1000));
   const free = usable.filter((r: any) => r.status === 'ready' || (r.status === 'in_use' && (r.claimed_by === uid || !live(r)))).length;
   const heldByOthers = usable.filter((r: any) => live(r) && r.claimed_by !== uid).length + neighbourHeld;
-  // While the neighbour is held, nothing here counts as free.
-  return { registered: usable.length, free: neighbourHeld ? 0 : free, heldByOthers };
+  // One learner at a time per tutorial (Ames, 2026-10-06): while anyone
+  // else holds a cell of this kind, or a neighbouring one, nothing counts as
+  // free, however many spare cells are in the pool. The pool is for
+  // stand-ins when a staged cell is being reset, not for a second learner.
+  return { registered: usable.length, free: heldByOthers ? 0 : free, heldByOthers };
 }
 
 /** Cells a tutorial needs before it starts: both of its practice cells when
@@ -638,6 +641,13 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   if (Object.values(session.held).some(ex => ex.kind !== kind)) await endPractice();
   session.phase = 'claiming';
   pausePracticeTools();
+  // One learner at a time: a first claim is refused while someone else is in
+  // this tutorial. The gate at the start checks the same thing; this covers
+  // a learner who got past it (a resumed tutorial, or two starts at once).
+  if (!Object.keys(session.held).length) {
+    const a = await practiceAvailability(kind);
+    if (a.heldByOthers > 0) { session.phase = 'busy'; return null; }
+  }
   // `avoid`: cells this step would rather not get (a tutorial that wants
   // its cells in a set order asks for the first while avoiding the second).
   const exclude = [...Object.values(session.held).map(ex => ex.id), ...(opts.avoid ?? [])];
