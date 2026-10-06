@@ -4062,7 +4062,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       const r: any = await secureWrite('activity.visit', { tz });
       if (!r || typeof r.current_streak !== 'number') return;   // SQL not installed yet
       if (userId.value !== uid) return;
-      visitStreak = { currentStreak: r.current_streak, longestStreak: r.longest_streak ?? 0, lastEditDate: r.last_edit_date || day,
+      visitStreak = { currentStreak: r.current_streak, longestStreak: r.longest_streak ?? 0, lastEditDate: r.last_edit_date || '',
         ...(typeof r.total_days === 'number' ? { totalDays: r.total_days } : {}) };
       useUserStatsStore().setStats(visitStreak);
       try { localStorage.setItem(VISIT_KEY, key); } catch { /* */ }

@@ -250,21 +250,23 @@ export const EXPLORATION_BADGES: BadgeDefinition[] = [
  * Loyalty (Ames 2026-10-06): earned by TOTAL days at EyeWire II. The days do
  * not have to be in a row (Ames: "they don't have to be 'in a row'"), so a
  * holiday or a sick week never costs anyone an achievement. The threshold is
- * a number of days, checked against users.total_days.
+ * a number of days, checked against users.total_days. A day is one with
+ * real work in it, an edit or a completed cell (supabase-days-need-action.sql):
+ * signing in alone earns nothing, so a bot can not collect these.
  * Art: github.com/amyleesterling/badges/tree/main/loyalty. Written by hand
  * (the two tracks above are generated); ids 201 and up.
  */
 const loyalty = (n: number, days: number, slug: string, code: string, name: string, description: string): BadgeDefinition =>
   ({ id: 200 + n, track: 'loyalty', sequence: n, slug, code, name, description, imageKey: `loyalty/${slug}`, threshold: days, editThreshold: days });
 export const LOYALTY_BADGES: BadgeDefinition[] = [
-  loyalty(1,  2, 'second-spark',   'SS', 'Second Spark',   'Day 2 at EyeWire II! You came back, and we are so glad you did.'),
+  loyalty(1,  2, 'second-spark',   'SS', 'Second Spark',   "Day 2! We're glad you came back :)"),
   loyalty(2,  3, 'third-light',    'TL', 'Third Light',    'Three days of science! You are on a roll.'),
-  loyalty(3,  5, 'growing-signal', 'GS', 'Growing Signal', 'Five days at EyeWire II! Science is becoming a habit.'),
+  loyalty(3,  5, 'growing-signal', 'GS', 'Growing Signal', 'Five days for science!'),
   loyalty(4,  7, 'first-orbit',    'FO', 'First Orbit',    'Seven days of mapping the brain! That is a whole week of science.'),
   loyalty(5, 14, 'double-orbit',   'DO', 'Double Orbit',   'Fourteen days at EyeWire II! Two weeks of discoveries.'),
-  loyalty(6, 21, 'steady-signal',  'ST', 'Steady Signal',  'Twenty one days! The whole lab is cheering for you.'),
-  loyalty(7, 28, 'constellation',  'CO', 'Constellation',  'Twenty eight days! You are a star of EyeWire II.'),
-  loyalty(8, 30, 'one-month',      'OM', 'One Month',      'Thirty days at EyeWire II! A whole month of showing up for science. You are a legend.'),
+  loyalty(6, 21, 'steady-signal',  'ST', 'Steady Signal',  'Three cheers for three weeks of citizen science!'),
+  loyalty(7, 28, 'constellation',  'CO', 'Constellation',  "We're fourtunate that you have been helping to advance neuroscience for 4 weeks!"),
+  loyalty(8, 30, 'one-month',      'OM', 'One Month',      'Thirty days at EyeWire II! A whole month of showing up for science!'),
 ];
 
 /** Every achievement: building, then exploration, then loyalty. */

@@ -1380,7 +1380,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </div>
             </div>
             <div v-if="earnedLoyaltyBadges.earned.length === 0" class="nge-profile-badges-empty">
-              Come back tomorrow to earn your first Loyalty achievement!
+              Make an edit on two different days to earn your first Loyalty achievement!
             </div>
           </div>
 
