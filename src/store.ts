@@ -19,6 +19,7 @@ import {isMobileRef} from './util/mobile';
 import {currentDatasetTag, canonicalDataset, currentSegLayer} from './datasets';
 import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
+import {isStreakMilestone, nextStreakMilestone, streakLine} from './util/streak_milestones';
 import {emitScriptEvent} from './script_api';
 import {getRootsFromSupervoxels, getRootFromSupervoxel, latestDescendants} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
@@ -939,6 +940,10 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
+  /** Classic layer tabs: left click hides or shows a layer, right click
+   *  selects it (neuroglancer's own way). Defaults to false: left click
+   *  selects, right click hides (Ames 2026-10-06). */
+  classicLayerClicks?: boolean;
   /** Jumping to a cell ADDS it to the view instead of replacing what is
    *  shown. Defaults to false (replace). */
   jumpAddsToView?: boolean;
@@ -3819,23 +3824,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** A streak milestone, as a notification to yourself. The server allows
    *  only these titles, only when the saved streak has reached the number,
    *  and never the same one twice within six days. */
-  const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
-  const STREAK_LINES: Record<number, string> = {
-    7: 'A full week of mapping the brain, every single day. Congratulations!',
-    14: 'Two weeks straight. That is real dedication. Congratulations!',
-    30: 'A whole month without missing a day. Incredible work!',
-    60: 'Sixty days in a row. You are a force of nature!',
-    100: 'One hundred days. You are an EyeWire legend!',
-    200: 'Two hundred days of science, back to back. Astonishing!',
-    365: 'A full year, every single day. There are no words. Thank you!',
-  };
   async function sendStreakMilestone(days: number) {
-    if (!STREAK_MILESTONES.includes(days) || !userId.value) return;
-    const next = STREAK_MILESTONES.find(m => m > days);
+    if (!isStreakMilestone(days) || !userId.value) return;
+    const next = nextStreakMilestone(days);
     const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
     await secureWrite('notification.self', {
       title: `🔥 ${days}-Day Streak!`,
-      body: `${STREAK_LINES[days]} ${next ? `Next milestone: ${next} days. ` : ''}Come back tomorrow to keep the flame going.`,
+      body: `${streakLine(days)} Next milestone: ${next} days. Come back tomorrow to keep the flame going.`,
       // Stand-in art until the streak's own Nurro arrives.
       image_url: `${art}/nurro-dance.png`,
       thumbnail_url: `${art}/nurro-dance.png`,

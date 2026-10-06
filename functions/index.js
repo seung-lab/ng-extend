@@ -1661,6 +1661,13 @@ const EW_TRIAGE_FIELDS = ["status", "proposed_message", "approver_note", "impl_s
 const ewPick = (obj, keys) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => keys.includes(k)));
 const EW_SELF_TITLES = ["📊 Your Week in Science", "💙 Thank you, for science!", "Your practice cell is ready"];
 const ewErr = (status, msg) => Object.assign(new Error(msg), { status });
+// Keep in step with src/util/streak_milestones.ts.
+const ewIsStreakMilestone = (d) => {
+  if (!Number.isInteger(d) || d < 2) return false;
+  if (d <= 30) return [2, 3, 5, 7, 14, 21, 28, 30].includes(d);
+  if (d <= 100) return d % 10 === 0;
+  return d % 25 === 0 || d % 365 === 0;
+};
 
 exports.ewSecureWrite = onRequest(
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
@@ -1794,7 +1801,10 @@ exports.ewSecureWrite = onRequest(
           const okTitle = EW_SELF_TITLES.includes(title) || (title.startsWith("🏆 New Achievement: ") && title.length <= 120);
           // "🔥 14-Day Streak!": only the real milestones, and only when the
           // caller's saved streak has reached it (Ames 2026-10-05).
-          const streakHit = title.match(/^🔥 (7|14|30|60|100|200|365)-Day Streak!$/);
+          // The schedule is src/util/streak_milestones.ts (Ames 2026-10-06): 2, 3,
+          // 5, 7, 14, 21, 28, 30, every 10 to 100, then every 25, and each year.
+          const streakDays = title.match(/^🔥 (\d{1,5})-Day Streak!$/);
+          const streakHit = streakDays && ewIsStreakMilestone(Number(streakDays[1])) ? streakDays : null;
           if (streakHit) {
             const saved = await sb(`users?id=eq.${me.id}&select=current_streak&limit=1`);
             if ((saved[0]?.current_streak || 0) < Number(streakHit[1])) throw ewErr(400, "not yet");

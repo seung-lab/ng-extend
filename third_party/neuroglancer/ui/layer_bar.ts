@@ -33,6 +33,16 @@ import {makeIcon} from 'neuroglancer/widget/icon';
 import {PositionWidget} from 'neuroglancer/widget/position_widget';
 
 
+/** EyeWire II: the "Classic layer tabs" setting (profile > Settings), read
+ *  from the saved preferences each time so a change applies at once. */
+function classicLayerClicks(): boolean {
+  try {
+    return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true;
+  } catch {
+    return false;
+  }
+}
+
 class LayerWidget extends RefCounted {
   element = document.createElement('div');
   layerNumberElement = document.createElement('div');
@@ -121,19 +131,28 @@ class LayerWidget extends RefCounted {
     // a plain click. Left click activates the layer (opens its side panel);
     // right click toggles it on and off. Ctrl+click still toggles, alt+click
     // still flips spatial selection.
+    // Settings > "Classic layer tabs" (Ames 2026-10-06, for the gamemasters
+    // who know neuroglancer's own way round) flips the two back: left click
+    // hides or shows the layer, right click selects it.
+    const select = () => {
+      panel.selectedLayer.layer = layer;
+      panel.selectedLayer.visible = true;
+    };
+    const toggle = () => layer.setVisible(!layer.visible);
     element.addEventListener('click', (event: MouseEvent) => {
       if (event.ctrlKey || event.metaKey) {
-        layer.setVisible(!layer.visible);
+        toggle();
       } else if (event.altKey) {
         layer.pickEnabled = !layer.pickEnabled;
+      } else if (classicLayerClicks()) {
+        toggle();
       } else {
-        panel.selectedLayer.layer = layer;
-        panel.selectedLayer.visible = true;
+        select();
       }
     });
 
     element.addEventListener('contextmenu', (event: MouseEvent) => {
-      layer.setVisible(!layer.visible);
+      if (classicLayerClicks()) select(); else toggle();
       event.stopPropagation();
       event.preventDefault();
     });
@@ -164,7 +183,9 @@ class LayerWidget extends RefCounted {
     element.dataset.visible = layer.visible.toString();
     element.dataset.selected = (layer === this.panel.selectedLayer.layer).toString();
     element.dataset.pick = layer.pickEnabled.toString();
-    element.title = 'Left click to activate, right click to toggle on/off';
+    element.title = classicLayerClicks()
+        ? 'Left click to toggle on/off, right click to activate'
+        : 'Left click to activate, right click to toggle on/off';
   }
 
   disposed() {

@@ -4,7 +4,7 @@
  * Celebrates milestones with animated toast notifications.
  * Watches the stats store and triggers toasts for:
  *  - Badge unlocks (edit thresholds crossed)
- *  - Streak milestones (7d, 14d, 30d, 60d, 100d)
+ *  - Streak milestones (src/util/streak_milestones.ts)
  *
  * Cell-completion milestone toasts (10/25/50…) were removed — those moments
  * are now covered by the proper exploration-badge hero popup.
@@ -14,6 +14,7 @@ import { storeToRefs } from 'pinia';
 import { useUserStatsStore, useProofreadingQueueStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
+import { streakMilestonesBetween } from '../util/streak_milestones';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
 import { datasetCellCount } from '../util/dataset_contribution';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
@@ -89,7 +90,6 @@ let editsSeenReal = false;
 let cellsSeenReal = false;
 let streakSeenReal = false;
 
-const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
 
 // ── Idempotent badge awards ──────────────────────────────────────────────────
 // A badge must toast at most once, ever. Without a persistent record the
@@ -213,13 +213,11 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
 watch(() => stats.value.currentStreak, (newStreak) => {
   if (!initialized) { prevStreak = newStreak; return; }
   if (!streakSeenReal && newStreak > 0) { streakSeenReal = true; prevStreak = newStreak; return; }
-  for (const m of STREAK_MILESTONES) {
-    if (prevStreak < m && newStreak >= m) {
-      // The milestone itself arrives as a notification in the bell (sent by
-      // the store when the streak is saved); here, only the confetti.
-      fireConfetti('gold', m >= 30 ? 2 : 1);
-    }
-  }
+  // The milestone itself arrives as a notification in the bell (sent by the
+  // store when the streak is saved); here, only the confetti, once, sized
+  // by the largest milestone passed.
+  const passed = streakMilestonesBetween(prevStreak, newStreak);
+  if (passed.length) fireConfetti('gold', passed[passed.length - 1] >= 30 ? 2 : 1);
   prevStreak = newStreak;
 });
 

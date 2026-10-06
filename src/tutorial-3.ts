@@ -705,7 +705,8 @@ function friendlyLayerNames() {
       const chip = label.closest('.neuroglancer-layer-item') as HTMLElement | null;
       if (chip) {
         // Keep neuroglancer's own hint (how to switch the layer on and off) under ours.
-        if (chip.dataset.ngeOwnTip === undefined) chip.dataset.ngeOwnTip = chip.title || '';
+        // (re-read whenever neuroglancer rewrites it, e.g. the Classic layer tabs setting)
+        if (!chip.title.startsWith(FRIENDLY_TIPS[name])) chip.dataset.ngeOwnTip = chip.title || '';
         const tip = FRIENDLY_TIPS[name] + (chip.dataset.ngeOwnTip ? String.fromCharCode(10) + chip.dataset.ngeOwnTip : '');
         if (chip.title !== tip) chip.title = tip;
       }
