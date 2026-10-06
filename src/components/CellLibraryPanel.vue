@@ -28,7 +28,7 @@ import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -1960,8 +1960,26 @@ function toggleTab(key: string) {
   try { localStorage.setItem(CL_TABS_KEY, JSON.stringify(visibleTabs.value)); } catch {}
 }
 function tabShown(key: string): boolean {
+  if (viewOnlyDataset.value) return key === 'links';
   return visibleTabs.value.includes(key) || filter.value === (key as any);
 }
+
+// A View Only dataset has no cells to claim, no help queue and no scout
+// tags, so its library is the player's own saved links and nothing else
+// (Ames 2026-10-06). Whatever asks for another tab lands on My Links.
+const viewOnlyDataset = computed(() => {
+  const raw = activeDataset.value;
+  if (!raw) return false;
+  const entry = findDatasetBySegName(raw)
+    || DATASETS.find(d => canonicalDataset(segLayerName(d)) === canonicalDataset(raw));
+  if (!entry) return false;
+  const section = entry.section || (entry.group ? DATASET_GROUPS[entry.group]?.section : undefined);
+  return section === 'viewonly';
+});
+watch([viewOnlyDataset, filter], () => {
+  if (viewOnlyDataset.value && filter.value !== 'links') filter.value = 'links';
+  if (viewOnlyDataset.value) showTabSettings.value = false;
+}, { immediate: true });
 
 // ── Resize ───────────────────────────────────────────────────────────
 const MIN_PANEL_W = 340;
@@ -2209,7 +2227,7 @@ const panelStyle = computed(() => ({
                   aria-label="Slim view" :aria-pressed="slimMode ? 'true' : 'false'" @mousedown.stop @click="collapseToCurrent">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <button class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
+          <button v-if="!viewOnlyDataset" class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
           <button class="nge-cl-close" @mousedown.stop @click="emit('hide')">×</button>
         </div>
 
@@ -2246,7 +2264,7 @@ const panelStyle = computed(() => ({
         <!-- Tabs in three coloured groups: cells (cyan), community (gold),
              yours (violet). AI and Completed live in the gear picker. -->
         <div class="nge-cl-filters nge-cl-filters--grouped">
-          <div class="nge-cl-tabgroup nge-cl-tabgroup--cells">
+          <div v-if="!viewOnlyDataset" class="nge-cl-tabgroup nge-cl-tabgroup--cells">
             <div class="nge-cl-tabgroup-head">
               <span class="nge-cl-tabgroup-label">Cells</span>
               <span v-if="datasetHowTo || datasetInstructionsUrl || datasetCellTypesState || datasetTour" class="nge-cl-headlinks">
@@ -2298,7 +2316,14 @@ const panelStyle = computed(() => ({
             </div>
           </div>
           <div class="nge-cl-tabgroup nge-cl-tabgroup--mine" v-if="tabShown('links')">
-            <span class="nge-cl-tabgroup-label">Yours</span>
+            <div class="nge-cl-tabgroup-head">
+              <span class="nge-cl-tabgroup-label">Yours</span>
+              <!-- the tour link lives with the cell tabs; here they are gone -->
+              <span v-if="viewOnlyDataset && datasetTour" class="nge-cl-headlinks">
+                <a class="nge-cl-howto" href="#" @click.prevent="startDatasetTour(activeDataset)"
+                   title="Replay the guided tour of this dataset's cell types">tour</a>
+              </span>
+            </div>
             <div class="nge-cl-tabgroup-row">
               <button :class="{ active: filter === 'links', 'nge-cl-links-tab': true }" @click="filter = 'links'"
                       title="Links you saved">
