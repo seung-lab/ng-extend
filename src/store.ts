@@ -5018,12 +5018,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * `notifications` row (that stays admin-only) — it only hides them for this
    * user, so one person clearing their feed never affects anyone else's.
    */
-  async function dismissAllNotifications() {
+  async function dismissAllNotifications(only?: number[]) {
     if (!userId.value) return;
-    const visible = notifications.value.slice();
+    // `only`: just these ids (one tab of the feed); otherwise the whole feed.
+    const pick = only ? new Set(only) : null;
+    const visible = notifications.value.filter(n => !pick || pick.has(n.id));
     if (!visible.length) return;
     for (const n of visible) notificationDismissals.value.add(n.id);
-    notifications.value = [];
+    notifications.value = pick ? notifications.value.filter(n => !pick.has(n.id)) : [];
     const rows = visible.map(n => ({
       notification_id: n.id,
       user_id: userId.value,
@@ -5552,6 +5554,8 @@ export interface ChatMessage {
   notificationId?: number | null;
   /** chat_messages row id (a uuid), for deletion and reactions. */
   id?: string | number | null;
+  /** A 'complete' line: how many cells it stands for (a run by one player). */
+  count?: number;
   /** Verified sender (chat_messages.user_id), so authors can delete their own. */
   userId?: string | null;
   /** Set on nkem_test's replies: the language of its "for science". */
@@ -5730,10 +5734,96 @@ export const useChatStore = defineStore('chat', () => {
       if (name) tickerNames[row.user_id] = name;
     }
     if (!name) return;
-    const at = new Date();
+    pushCompletion(name, new Date());
+  }
+
+  const completionText = (name: string, n: number) => n === 1 ? `${name} completed a cell` : `${name} completed ${n.toLocaleString()} cells`;
+  /** One more completion for `name`. A run by one player with nothing said in
+   *  between is ONE line that counts up ("Nseraf completed 240 cells"), so a
+   *  batch of hundreds does not push the conversation out of the chat. */
+  function pushCompletion(name: string, at: Date) {
+    const list = chatMessages.value;
+    const last = list[list.length - 1];
+    if (last && last.type === 'complete' && last.name === name
+        && last.dateTime.toDateString() === at.toDateString()) {
+      const n = (last.count || 1) + 1;
+      list[list.length - 1] = { ...last, count: n, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, n) }] };
+      return;
+    }
     addTimeSeparatorIfNeeded(at);
-    chatMessages.value.push({ type: 'complete', name, rank: '', time: formatTime(at), dateTime: at,
-      parts: [{ type: 'text', text: `${name} completed a cell` }] });
+    list.push({ type: 'complete', name, rank: '', count: 1, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, 1) }] });
+  }
+
+  /** The completion lines are made from the activity log as it happens, so a
+   *  refresh used to lose every one of them (Ames 2026-10-06: "after refresh
+   *  they went away"). On load, the same lines are rebuilt from the log for
+   *  the stretch of time the loaded chat covers, and woven in by time. */
+  async function loadCompletionLines(sinceIso: string) {
+    try {
+      const PAGE = 1000, MAX_PAGES = 5;
+      const rows: any[] = [];
+      let truncated = false;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const { data, error } = await supabase.from('edit_log')
+          .select('user_id,operation,timestamp,metadata,success')
+          .in('operation', ['mark_complete', 'complete_task'])
+          .gte('timestamp', sinceIso)
+          .order('timestamp', { ascending: false })
+          .range(page * PAGE, page * PAGE + PAGE - 1);
+        if (error || !data) return;
+        rows.push(...(data as any[]));
+        if (data.length < PAGE) break;
+        if (page === MAX_PAGES - 1) truncated = true;
+      }
+      rows.reverse();                                        // chronological
+      // The same folding as the live ticker: one completion logs up to two rows.
+      const seenBy: Record<string, { at: number; cell: string }[]> = {};
+      const events: { user: string; at: Date }[] = [];
+      for (const r of rows) {
+        if (!r.user_id || r.success === false) continue;
+        const md = r.metadata || {};
+        const cell = String(md.final_segment_id || md.root_id || md.segment_id || '');
+        const t = new Date(r.timestamp).getTime();
+        const seen = (seenBy[r.user_id] = (seenBy[r.user_id] || []).filter(e => t - e.at < 10 * 60_000));
+        if (seen.some(e => (cell && e.cell === cell) || ((!cell || !e.cell) && t - e.at < 10_000))) continue;
+        seen.push({ at: t, cell });
+        events.push({ user: r.user_id, at: new Date(t) });
+      }
+      if (!events.length) return;
+      const ids = [...new Set(events.map(e => e.user))].filter(id => !tickerNames[id] && !online.value[id]);
+      for (let i = 0; i < ids.length; i += 100) {
+        const { data } = await supabase.from('user_edit_counts').select('id,display_name').in('id', ids.slice(i, i + 100));
+        for (const u of (data as any[] | null) || []) if (u.display_name) tickerNames[u.id] = u.display_name;
+      }
+      // Weave into the loaded chat by time. Lines already there (made live
+      // while this was loading) are dropped first so nothing is counted twice.
+      const base = chatMessages.value.filter(m => m.type !== 'time' && m.type !== 'complete');
+      const timeline: { at: number; msg?: ChatMessage; name?: string }[] = base.map(m => ({ at: m.dateTime.getTime(), msg: m }));
+      for (const e of events) {
+        const name = online.value[e.user]?.name || tickerNames[e.user];
+        if (name) timeline.push({ at: e.at.getTime(), name });
+      }
+      timeline.sort((a, b) => a.at - b.at);
+      const out: ChatMessage[] = [];
+      for (const item of timeline) {
+        if (item.msg) { out.push(item.msg); continue; }
+        const at = new Date(item.at), name = item.name!;
+        const last = out[out.length - 1];
+        if (last && last.type === 'complete' && last.name === name && last.dateTime.toDateString() === at.toDateString()) {
+          const n = (last.count || 1) + 1;
+          out[out.length - 1] = { ...last, count: n, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, n) }] };
+        } else {
+          out.push({ type: 'complete', name, rank: '', count: 1, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, 1) }] });
+        }
+      }
+      // More completions than could be read: the oldest run would be a part
+      // count, so it is left out rather than shown short.
+      if (truncated) { const i = out.findIndex(m => m.type === 'complete'); if (i >= 0) out.splice(i, 1); }
+      chatMessages.value = out;
+      rebuildSeparators();
+    } catch (e) {
+      console.warn('[chat] loadCompletionLines failed:', e);
+    }
   }
 
   async function heartbeat() {
@@ -5934,6 +6024,9 @@ export const useChatStore = defineStore('chat', () => {
         chatMessages.value.push(...withBot(rowToMessage(r)));
       }
       void loadReactions(rows.map((r: any) => String(r.id)).filter((id: string) => id && id !== 'null'));
+      // The cells completed over the same stretch of time, at most two days back.
+      const oldest = rows.length ? new Date(rows[0].created_at).getTime() : Date.now() - 6 * 3600_000;
+      void loadCompletionLines(new Date(Math.max(oldest, Date.now() - 48 * 3600_000)).toISOString());
     } catch (e) {
       console.warn('[chat] loadRecentMessages failed:', e);
     }
