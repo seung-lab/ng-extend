@@ -449,7 +449,9 @@ export const useLayersStore = defineStore('layers', () => {
         }
         origRestore(obj);
       };
-    } else {
+    } else if (!BOOT_HASH.includes('layout')) {
+      // The hash was already restored in setupViewer, so a refresh keeps the
+      // layout the page was on instead of resetting to split 2D/3D.
       viewer.layout.restoreState('xy-3d');
     }
 

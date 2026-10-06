@@ -132,3 +132,8 @@ summaries.
   that patch rather than editing third_party when an automatic build may only
   touch src/ (2026-10-05, segment list scroll build, from reading
   virtual_list.ts and the patch).
+- Boot order in main.ts: `setupViewer()` runs `hashBinding.updateFromUrlHash()`
+  before `initializeWithViewer()`, so anything `initializeWithViewer` sets
+  (like layout) overwrites what the URL just restored unless it checks
+  `BOOT_HASH` first (2026-10-06, layout after refresh build, from reading
+  main.ts and store.ts).
