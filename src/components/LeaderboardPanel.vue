@@ -605,7 +605,41 @@ onUnmounted(() => {
   user-select: none;
   flex-shrink: 0;
 }
-.nge-lb-onopen input { accent-color: #f5c450; cursor: pointer; }
+/* The site's own tick box, in the leaderboard's gold (Ames 2026-10-06: the
+   browser's yellow square was not proper style). Same build as the one in
+   the screenshot dialog. */
+.nge-lb-onopen input {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1px solid rgba(245, 196, 80, 0.5);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.nge-lb-onopen input:checked {
+  background: rgba(245, 196, 80, 0.18);
+  border-color: rgba(245, 196, 80, 0.9);
+  box-shadow: 0 0 8px rgba(245, 196, 80, 0.3);
+}
+.nge-lb-onopen input:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #ffd87a;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.nge-lb-onopen:hover input { border-color: rgba(245, 196, 80, 0.85); }
+.nge-lb-onopen input:focus-visible { outline: 2px solid rgb(178 216 248); outline-offset: 2px; }
 .nge-lb-onopen:hover { color: #cfe0ff; }
 
 .nge-lb-shell {
