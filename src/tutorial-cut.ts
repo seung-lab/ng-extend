@@ -19,6 +19,12 @@ import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_
 const CUT_FIRST = '02c5adcc-23c8-4003-83cd-cd9df7a65ce0';  // Fusion on a proofread cell (3D)
 const CUT_SECOND = '0482d846-0c16-4393-ab8a-0d1212b9520f'; // Small branch merged to cell (2D)
 
+/** "Sections" on: the 2D slice drawn inside the 3D view, which shows where
+ *  the 2D images sit on the cell. */
+function showSections() {
+  try { const v = getViewer()?.showPerspectiveSliceViews; if (v && !v.value) v.value = true; } catch (e) { /* */ }
+}
+
 /** Split view, so the 2D images are on screen for the 2D cut. */
 function show2D() {
   try { getViewer()?.layout?.restoreState('xy-3d'); } catch (e) { console.warn('[tutorial] could not open the 2D view:', e); }
@@ -142,8 +148,9 @@ You did it. The piece that didn't belong is its own segment now.
     text: `
 **Ctrl+Click** places points on the 2D images too, not only on the 3D shape: <strong style="color:#ff5c5c">red</strong> inside one cell's outline, <strong style="color:#5c8cff">blue</strong> inside the other's. It helps when the join is hard to see in 3D.
 
-- Scroll through the 2D images to the cross-section where the two cells touch, and place points **near the join**.
-- Keep every point on the one fused segment. Points on a neighbour make the server refuse the cut.
+Scroll through the 2D images to the cross-section where the two cells touch, and place points **near the cut point**.
+
+Keep every point on the one fused segment. Points on a neighbour make the server refuse the cut.
 
 <span class="nge-cut-2d-next">Press next to try it on a new cell.</span>`,
     position: OVER_2D,
@@ -151,6 +158,8 @@ You did it. The piece that didn't belong is its own segment now.
     onEnter: () => {
       closeSidePanel();
       stopWatching();
+      // This box is about the 2D images, so put them on screen.
+      show2D();
       // Only promise the 2D try when there is a second cell to try it on.
       setTimeout(() => {
         const el = document.querySelector('.nge-cut-2d-next');
@@ -163,7 +172,9 @@ You did it. The piece that didn't belong is its own segment now.
   {
     title: "Your Turn: cut in 2D",
     text: `
-A new cell, with the 2D images open on the left. Two pieces that belong to different neurons are fused here. Find the join and cut them apart, placing the points in 2D.
+A new cell, again with an axon (the thin branch) fused onto a dendrite (the thicker branch with all the little blobs coming out of it). Fun fact: each one of those blobs is the receiving half of a synapse!
+
+Find where they touch and cut them apart, placing the points in the 2D images on the left.
 
 1. Press **C** if the cut tool is off.
 2. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points inside the piece that doesn't belong.
@@ -181,7 +192,7 @@ Stuck? The **?** button shows where the points go.`,
       watchPractice(false, 'Waiting for your cut: red on one side of the join, G, blue on the other, Submit cut.', '', { advance: true });
       // The second cut cell, taken at the start together with the first.
       await beginPractice('cut', 'start', { slot: 'b' });
-      setTimeout(show2D, 900);
+      setTimeout(() => { show2D(); showSections(); }, 900);
       setTimeout(() => ensureTool('multicut'), 1400);
     },
   },

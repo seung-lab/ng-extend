@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useSplitMergeOverlayStore } from 'src/store';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 
@@ -13,6 +13,17 @@ watch(isVisible, v => document.body.classList.toggle('nge-tool-bar-open', v), { 
 const isMulticut = computed(() => store.toolActive === 'multicut' || store.closingTool === 'multicut');
 const isMerge = computed(() => store.toolActive === 'merge' || store.closingTool === 'merge');
 const isRedActive = computed(() => store.activeGroup === 'red');
+// A short pulse on the colour pills each time the active colour changes, so
+// pressing G visibly does something there (Ames, 2026-10-06).
+const groupPulse = ref(false);
+let groupPulseTimer: ReturnType<typeof setTimeout> | null = null;
+watch(() => store.activeGroup, (now, before) => {
+  if (!before || now === before) return;
+  groupPulse.value = false;
+  requestAnimationFrame(() => { groupPulse.value = true; });
+  if (groupPulseTimer) clearTimeout(groupPulseTimer);
+  groupPulseTimer = setTimeout(() => { groupPulse.value = false; }, 1800);
+});
 const isBlueActive = computed(() => store.activeGroup === 'blue');
 const totalPoints = computed(() => store.redPointCount + store.bluePointCount);
 
@@ -113,6 +124,8 @@ function cancelTool() {
     <transition name="overlay-slide">
       <div v-if="isVisible" class="nge-split-merge-overlay" :class="{
         multicut: isMulticut && !isPendingClose,
+        'group-red': isMulticut && !isPendingClose && isRedActive,
+        'group-blue': isMulticut && !isPendingClose && isBlueActive,
         merge: isMerge && !isPendingClose,
         submitting: isSubmitting,
         'bar-success': isPendingClose && resultIsSuccess,
@@ -138,7 +151,7 @@ function cancelTool() {
             CUT MODE
           </div>
 
-          <div class="nge-smo-groups">
+          <div class="nge-smo-groups" :class="{ 'nge-smo-groups--pulse': groupPulse }">
             <div class="nge-smo-group red" :class="{ active: isRedActive }"
                  @click="!isRedActive && swapGroup()" :title="isRedActive ? 'Red group (active)' : 'Click to switch to Red'">
               <span class="nge-smo-group-dot red-dot"></span>
@@ -152,13 +165,15 @@ function cancelTool() {
               <span class="nge-smo-group-label">BLUE</span>
               <span class="nge-smo-group-count">{{ store.bluePointCount }} pt{{ store.bluePointCount !== 1 ? 's' : '' }}</span>
             </div>
+            <!-- The swap key sits with the colours it swaps (it used to be
+                 far right, among Submit and Cancel). -->
+            <span class="nge-smo-key-hint nge-smo-swap-hint" @click="swapGroup()" title="Switch between red and blue"><kbd>G</kbd> Swap</span>
           </div>
 
           <div class="nge-smo-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>
 
           <div class="nge-smo-actions" v-if="!isSubmitting">
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
-            <span class="nge-smo-key-hint"><kbd>G</kbd> Swap</span>
             <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': cutReady }" @click="submitTool('multicut')" title="Submit the cut (or press Enter)">Submit cut</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd>Esc</kbd> Cancel</button>
           </div>
@@ -373,6 +388,33 @@ function cancelTool() {
 }
 
 /* Group indicators */
+/* Which colour is being placed, at a glance: the whole bar takes the active
+   colour (it used to be red on the left and blue on the right whatever the
+   state), the active pill grows, the other one fades back. */
+.nge-split-merge-overlay.multicut.group-red {
+  background: linear-gradient(90deg, rgba(190, 28, 28, 0.92) 0%, rgba(96, 16, 22, 0.92) 45%, rgba(24, 12, 20, 0.94) 100%);
+  border-top: 2px solid rgba(255, 70, 70, 0.85);
+}
+.nge-split-merge-overlay.multicut.group-blue {
+  background: linear-gradient(90deg, rgba(34, 48, 200, 0.92) 0%, rgba(20, 26, 110, 0.92) 45%, rgba(12, 14, 34, 0.94) 100%);
+  border-top: 2px solid rgba(90, 120, 255, 0.9);
+}
+.nge-split-merge-overlay.multicut { transition: background 0.35s ease, border-color 0.35s ease; }
+.nge-smo-group.active { transform: scale(1.08); }
+.nge-smo-group.active .nge-smo-group-label { font-size: 13px; color: #fff; }
+.nge-smo-group.active .nge-smo-group-count { color: #fff; }
+.nge-smo-group:not(.active) { opacity: 0.38; }
+.nge-smo-swap-hint { margin: 0 0 0 4px; cursor: pointer; pointer-events: auto; opacity: 0.9; }
+.nge-smo-groups--pulse .nge-smo-group.active { animation: nge-smo-group-pulse 0.6s ease-out 3; }
+.nge-smo-groups--pulse .nge-smo-swap-hint kbd { animation: nge-smo-group-pulse 0.6s ease-out 3; }
+@keyframes nge-smo-group-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.75); }
+  100% { box-shadow: 0 0 0 14px rgba(255, 255, 255, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nge-smo-groups--pulse .nge-smo-group.active, .nge-smo-groups--pulse .nge-smo-swap-hint kbd { animation: none; }
+}
+
 .nge-smo-groups {
   display: flex;
   align-items: center;

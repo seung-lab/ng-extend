@@ -287,7 +287,8 @@ export function ensureTool(tool: 'merge' | 'multicut', attempt = 0) {
   // loading, so keep trying for a few seconds until the tool bar is up.
   if (attempt < 8) setTimeout(() => ensureTool(tool, attempt + 1), 700);
   try {
-    const seg = viewer.layerManager?.managedLayers?.find((x: any) => x.layer?.constructor?.name?.includes('Segmentation'));
+    // By the class's static type: class names are renamed in production.
+    const seg = viewer.layerManager?.managedLayers?.find((x: any) => (x.layer?.constructor as any)?.type === 'segmentation');
     if (seg) { viewer.selectedLayer.layer = seg; viewer.selectedLayer.visible = true; }
   } catch { /* non-critical */ }
   const key = tool === 'multicut' ? 'c' : 'm';

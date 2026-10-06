@@ -26,8 +26,8 @@ function setAnnotationColor(color: string) {
   const layers = viewer.layerManager && viewer.layerManager.managedLayers;
   if (!layers) return;
   for (const ml of layers) {
-    const name = ml.layer && ml.layer.constructor && ml.layer.constructor.name;
-    if (name && (name as string).indexOf('Annotation') >= 0) {
+    // The class's static type: class names are renamed in production.
+    if ((ml.layer?.constructor as any)?.type === 'annotation') {
       try { ml.layer.annotationColor.value = color; } catch (e) { /* */ }
     }
   }
@@ -70,8 +70,7 @@ function removeSegment(segId: string) {
   if (!layers) return;
   for (const ml of layers) {
     const layer = ml.layer;
-    const name = layer && layer.constructor && layer.constructor.name;
-    if (name && (name as string).indexOf('Segmentation') >= 0) {
+    if ((layer?.constructor as any)?.type === 'segmentation') {
       const rootSegs = layer.displayState?.segmentationGroupState?.value?.visibleSegments
         ?? layer.displayState?.rootSegments;
       if (rootSegs) {
@@ -308,8 +307,8 @@ This box won't go away when you click outside it.`,
         const layers = viewer.layerManager && viewer.layerManager.managedLayers;
         if (layers) {
           for (let i = layers.length - 1; i >= 0; i--) {
-            const n = layers[i].layer && layers[i].layer.constructor && layers[i].layer.constructor.name;
-            if (n && (n as string).indexOf('Annotation') >= 0) {
+            // The class's static type: class names are renamed in production.
+            if ((layers[i].layer?.constructor as any)?.type === 'annotation') {
               layers[i].setVisible(false);
               try { viewer.layerManager.removeManagedLayer(layers[i]); } catch (e) { /* */ }
             }

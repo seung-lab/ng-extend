@@ -21,7 +21,10 @@ function getViewer(): any {
 function perspectivePanel(): any {
   const viewer = getViewer();
   const panels: any[] = viewer?.display?.panels ? [...viewer.display.panels] : [];
-  return panels.find(p => p.projectionParameters && p.element) ?? null;
+  // Slice panels have no projectionParameters; prefer the one that owns the
+  // "show slices" control in case that ever changes.
+  return panels.find(p => p.projectionParameters && p.element?.querySelector?.('.perspective-panel-show-slice-views'))
+    ?? panels.find(p => p.projectionParameters && p.element) ?? null;
 }
 
 let container: HTMLElement | null = null;
@@ -48,13 +51,19 @@ function ensureStyle() {
   document.head.appendChild(st);
 }
 
-/** Which transform turns a global voxel position into the panel's world
- *  space. Neuroglancer's convention is voxels times the canonical voxel
- *  factors, but rather than trust that, try the plausible ones and keep the
- *  one that projects the viewer's own centre position to the panel centre. */
-type Convention = 'scaled' | 'plain' | 'scaled-rel' | 'plain-rel';
-let convention: Convention | null = null;
-
+/**
+ * Viewer voxels go into the panel's view-projection matrix as they are.
+ * neuroglancer builds that matrix with the camera at the position in voxel
+ * coordinates and the per-axis scaling folded in (navigation_state.ts,
+ * DisplayPose.toMat4), so nothing is multiplied here.
+ *
+ * This used to guess between conventions by seeing which one put the
+ * camera's own position at the centre of the panel. Every point on the line
+ * of sight does that, so the guess picked "z times 10", and each pin landed
+ * off the panel and was parked in the top left corner (Ames, 2026-10-06;
+ * also why "Show me where to click" never showed on the Merge tutorial).
+ * Checked against the live app: the position projects to (0, 0) as is.
+ */
 function project(m: Float32Array, x: number, y: number, z: number): [number, number, number] {
   const cx = m[0] * x + m[4] * y + m[8] * z + m[12];
   const cy = m[1] * x + m[5] * y + m[9] * z + m[13];
@@ -62,41 +71,8 @@ function project(m: Float32Array, x: number, y: number, z: number): [number, num
   return [cx / cw, cy / cw, cw];
 }
 
-function toWorld(pt: number[], pp: any): [number, number, number] {
-  const f: ArrayLike<number> = pp.displayDimensionRenderInfo?.canonicalVoxelFactors ?? [1, 1, 1];
-  const gp: ArrayLike<number> = pp.globalPosition ?? [0, 0, 0];
-  const rel = convention === 'scaled-rel' || convention === 'plain-rel';
-  const scaled = convention === 'scaled' || convention === 'scaled-rel' || convention === null;
-  const p = [0, 1, 2].map(i => ((pt[i] ?? 0) - (rel ? (gp[i] ?? 0) : 0)) * (scaled ? (f[i] ?? 1) : 1));
-  return [p[0], p[1], p[2]];
-}
-
-function calibrate(pp: any) {
-  if (convention) return;
-  const gp: ArrayLike<number> = pp.globalPosition ?? [];
-  if (gp.length < 3) return;
-  const m: Float32Array = pp.viewProjectionMat;
-  const f: ArrayLike<number> = pp.displayDimensionRenderInfo?.canonicalVoxelFactors ?? [1, 1, 1];
-  const tries: Array<[Convention, [number, number, number]]> = [
-    ['scaled', [gp[0] * f[0], gp[1] * f[1], gp[2] * f[2]]],
-    ['plain', [gp[0], gp[1], gp[2]]],
-    ['scaled-rel', [0, 0, 0]],
-    ['plain-rel', [0, 0, 0]],
-  ];
-  let best: Convention | null = null, bestErr = Infinity;
-  for (const [name, w] of tries) {
-    const [nx, ny, cw] = project(m, w[0], w[1], w[2]);
-    if (!(cw > 0)) continue;
-    const err = Math.hypot(nx, ny);
-    if (err < bestErr) { bestErr = err; best = name; }
-  }
-  if (best && bestErr < 0.05) {
-    convention = best;
-    console.info(`[markers] world convention: ${best} (centre error ${bestErr.toFixed(4)})`);
-  } else {
-    console.warn('[markers] could not calibrate the projection; using scaled voxels', bestErr);
-    convention = 'scaled';
-  }
+function toWorld(pt: number[]): [number, number, number] {
+  return [pt[0] ?? 0, pt[1] ?? 0, pt[2] ?? 0];
 }
 
 function tick() {
@@ -108,13 +84,12 @@ function tick() {
     if (getComputedStyle(panel.element).position === 'static') panel.element.style.position = 'relative';
   }
   const pp = panel.projectionParameters.value;
-  calibrate(pp);
   const m: Float32Array = pp.viewProjectionMat;
   const w = panel.element.clientWidth, h = panel.element.clientHeight;
   points.forEach((pt, i) => {
     const pin = pins[i];
     if (!pin || !w || !h) return;
-    const [x, y, z] = toWorld(pt, pp);
+    const [x, y, z] = toWorld(pt);
     const [nx, ny, cw] = project(m, x, y, z);
     if (!(cw > 0)) { pin.style.display = 'none'; return; }
     // Off the panel: pin to the nearest edge so the learner knows which way.
@@ -160,7 +135,6 @@ export function showPyrMarkers(pts: number[][], labels: string[] = [], seconds =
 }
 
 export function hidePyrMarkers() {
-  convention = null;
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }

@@ -130,7 +130,7 @@ export function practiceStatus(text: string, done = false) {
     help.title = 'Stuck? Ways to get help';
     help.classList.remove('nge-hud-btn--sm');
     help.classList.add('nge-hud-btn--round');
-    help.style.cssText = 'float:right;margin:10px 0 0;';
+    help.style.cssText = 'float:right;margin:10px 0 0;position:relative;z-index:3;';
     chip.appendChild(help);
   }
   help.style.display = (done || !helpWanted) ? 'none' : '';
@@ -212,6 +212,14 @@ async function showWhereToCut(): Promise<boolean> {
   if (!h) return false;
   // A handful of each is plenty to show the idea.
   const red = h.red.slice(0, 4), blue = h.blue.slice(0, 4);
+  // Bring the view to the spot, so the 2D images show the section the
+  // points are in (the 2D cut) and the pins are on screen in 3D.
+  try {
+    const all = [...red, ...blue];
+    const mid = [0, 1, 2].map(i => all.reduce((s, p) => s + p[i], 0) / all.length);
+    const pos = getViewer()?.navigationState?.position;
+    if (pos && all.length) pos.value = Float32Array.from(mid);
+  } catch (e) { /* the pins still show */ }
   return showPyrMarkers([...red, ...blue], [...red.map(() => 'red'), ...blue.map(() => 'blue')], 60,
     [...red.map(() => RED), ...blue.map(() => BLUE)]);
 }
@@ -223,7 +231,7 @@ function toggleStuckPanel() {
   if (existing) { existing.remove(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); return; }
   const panel = notePanel('nge-practice-stuck',
     '<div class="nge-hud-panel-title">Stuck? Three ways out.</div>'
-    + '<div class="nge-hud-panel-row">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer. Press <kbd>2</kbd> or right-click it to select it.</div>'
+    + '<div class="nge-hud-panel-row">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer named <b>3D segmentation</b>. Right-click it to select it.</div>'
     + '<div class="nge-hud-panel-row">2. Ask people in the community chat. Someone is usually around.</div>'
     + '<div class="nge-hud-panel-row">3. Ask Nurro, the AI guide. It knows this tutorial and the tools.</div>');
   const row = document.createElement('div');
@@ -484,7 +492,7 @@ document.addEventListener('nge:tutorial-layer-note', () => {
   if (!chip.querySelector('.nge-practice-layer-note')) {
     const note = notePanel('nge-practice-layer-note',
       'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, named <b>3D segmentation</b>, next to <b>2D EM Images</b>. '
-      + 'Press <kbd>2</kbd>, or right-click that chip, to select it. Tools like merge and cut only work on the selected layer.');
+      + 'Right-click that chip to select it. Tools like merge and cut only work on the selected layer.');
     chip.appendChild(note);
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
   }
@@ -498,9 +506,20 @@ document.addEventListener('nge:tutorial-layer-note', () => {
   }
 });
 
+/**
+ * 'segmentation', 'image' or 'annotation'. Read from the layer class's static
+ * `type`: the production build renames classes (the segmentation layer's is
+ * "Yr" there), so matching constructor.name against "Segmentation" found
+ * nothing and every caller fell back to the first chip, the 2D images
+ * (Ames, 2026-10-06: "Show me the layer" flashed the wrong one).
+ */
+export function layerKind(ml: any): string {
+  return String((ml?.layer?.constructor as any)?.type ?? '');
+}
+
 function segLayerChip(): HTMLElement | undefined {
   const layers: any[] = getViewer()?.layerManager?.managedLayers ?? [];
-  const seg = layers.find(ml => (ml.layer?.constructor?.name ?? '').includes('Segmentation'));
+  const seg = layers.find(ml => layerKind(ml) === 'segmentation');
   const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
   return (seg ? chips.find(c => (c.textContent ?? '').includes(seg.name)) : undefined) ?? chips[Math.max(0, layers.indexOf(seg))];
 }
@@ -530,8 +549,8 @@ function friendlyLayerNames() {
   const layers: any[] = getViewer()?.layerManager?.managedLayers ?? [];
   const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
   for (const ml of layers) {
-    const kind = ml.layer?.constructor?.name ?? '';
-    const name = kind.includes('Segmentation') ? '3D segmentation' : kind.includes('Image') ? '2D EM Images' : '';
+    const kind = layerKind(ml);
+    const name = kind === 'segmentation' ? '3D segmentation' : kind === 'image' ? '2D EM Images' : '';
     const label = chips.find(c => (c.querySelector('.neuroglancer-layer-item-label')?.textContent ?? '') === ml.name)
       ?.querySelector('.neuroglancer-layer-item-label') as HTMLElement | null | undefined;
     if (!label) continue;
@@ -541,13 +560,7 @@ function friendlyLayerNames() {
 setInterval(() => { try { friendlyLayerNames(); } catch { /* store not ready yet */ } }, 1000);
 
 document.addEventListener('nge:tutorial-flash-seg-layer', () => {
-  const viewer = getViewer();
-  const layers: any[] = viewer?.layerManager?.managedLayers ?? [];
-  const seg = layers.find(ml => (ml.layer?.constructor?.name ?? '').includes('Segmentation'));
-  const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
-  // Match the chip by its label; fall back to the layer's index.
-  let chip = seg ? chips.find(c => (c.textContent ?? '').includes(seg.name)) : undefined;
-  if (!chip) chip = chips[Math.max(0, layers.indexOf(seg))];
+  const chip = segLayerChip();
   if (!chip) { console.warn('[tutorial] no layer chip to flash'); return; }
   // The layer bar clips box shadows, so flash the chip itself: background,
   // colour and a little scale, which stay inside the bar.
