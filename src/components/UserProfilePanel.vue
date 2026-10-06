@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
 import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
-import {dayLadderAround, nextDayMilestone, lastDayMilestone} from '../util/day_milestones';
+import {nextDayMilestone, lastDayMilestone} from '../util/day_milestones';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
@@ -62,7 +62,6 @@ const otherDays = ref<number | null>(null);
 const totalDays = computed(() => viewingOtherUser.value ? (otherDays.value ?? 0) : (stats.value.totalDays || 0));
 const dayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.value?.current_streak || 0) : (stats.value.currentStreak || 0));
 const bestDayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.value?.longest_streak || 0) : (stats.value.longestStreak || 0));
-const dayLadder = computed(() => dayLadderAround(totalDays.value));
 const nextDay = computed(() => nextDayMilestone(totalDays.value));
 /** How far from the last step to the next one, 0 to 1. */
 const dayProgress = computed(() => {
@@ -1066,7 +1065,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- Days: total days shown up (never resets), the streaks, and the
                ladder of milestones (Ames 2026-10-06). -->
           <div v-if="totalDays > 0" class="nge-profile-section nge-profile-section--days">
-            <div class="nge-profile-section-label">▌ Days</div>
+            <div class="nge-profile-section-label">▌ Days as a citizen scientist</div>
             <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
               <div class="nge-profile-stat-col nge-profile-stat-tile" title="Every day you have shown up, ever. This never resets.">
                 <div class="nge-profile-stat-label">Total days</div>
@@ -1082,10 +1081,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </div>
             </div>
             <div class="nge-days-ladder" :title="`Next milestone: day ${nextDay}`">
-              <div class="nge-days-steps">
-                <span v-for="step in dayLadder" :key="step.days" class="nge-days-step"
-                      :class="{ 'nge-days-step--reached': step.reached, 'nge-days-step--big': step.big }">{{ step.days.toLocaleString() }}</span>
-              </div>
+              <!-- the row of milestone pills is gone (Ames 2026-10-06: "unnecessary"); the bar and the count say it -->
               <div class="nge-days-bar"><div class="nge-days-bar-fill" :style="{ width: (dayProgress * 100) + '%' }"></div></div>
               <div class="nge-days-next">{{ (nextDay - totalDays).toLocaleString() }} {{ nextDay - totalDays === 1 ? 'day' : 'days' }} to day {{ nextDay.toLocaleString() }}</div>
             </div>
