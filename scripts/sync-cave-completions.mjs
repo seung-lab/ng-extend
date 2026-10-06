@@ -78,6 +78,21 @@ const DATASTACKS = [
     datastack:       'pinky_sandbox',
     cellStatusTable: 'eyewire_ii_cell_status_v2',
   },
+  // BANC (Ames 2026-10-06, so players' BANC proofreading shows in their
+  // per dataset stats; Nseraf has 1,996 marks there). BANC's own table,
+  // backbone_proofread: one row per proofread cell, proofread = true, with
+  // the proofreader's CAVE user id (schema proofreading_boolstatus_user).
+  // It holds about 226,000 rows, nearly all by people who are not EyeWire II
+  // players, so `playersOnly` asks CAVE only for rows by CAVE ids that
+  // belong to players: a handful of small requests a night, not the table.
+  {
+    dataset:         'brain_and_nerve_cord',
+    caveServer:      'https://cave.fanc-fly.com',
+    datastack:       'brain_and_nerve_cord',
+    cellStatusTable: 'backbone_proofread',
+    schema:          'boolstatus',
+    playersOnly:     true,
+  },
   // minnie65: the table is created on minnie65_sandbox (aligned_volume
   // minnie65_phase3, shared with minnie65_public) and the app writes
   // completions there — BUT minnie65_sandbox has no materialization running
@@ -135,11 +150,26 @@ async function getLatestVersion(caveServer, datastack) {
   return Math.max(...versions);
 }
 
-async function fetchPage(caveServer, datastack, version, table, offset) {
+/** CAVE user ids of EyeWire II players (users.cave_user_id). */
+async function playerCaveIds() {
+  const ids = new Set();
+  for (let offset = 0; ; offset += 1000) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/users?select=cave_user_id&cave_user_id=not.is.null&order=cave_user_id&limit=1000&offset=${offset}`,
+      { headers: supabaseHeaders });
+    if (!res.ok) throw new Error(`players read failed: ${res.status} ${await res.text()}`);
+    const rows = await res.json();
+    for (const r of rows) ids.add(Number(r.cave_user_id));
+    if (rows.length < 1000) break;
+  }
+  return [...ids];
+}
+
+async function fetchPage(caveServer, datastack, version, table, offset, userIds) {
   // Use the frozen-version /query endpoint so we get a stable snapshot.
   // Live queries can change mid-pagination; frozen does not.
   const url = `${caveServer}/materialize/api/v3/datastack/${datastack}/version/${version}/table/${table}/query?return_pyarrow=false`;
-  const body = { limit: PAGE_SIZE, offset };
+  const body = { limit: PAGE_SIZE, offset,
+    ...(userIds ? { filter_in_dict: { [table]: { user_id: userIds } } } : {}) };
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -224,11 +254,22 @@ async function syncDatastack(cfg) {
   //     pt_supervoxel_id, tag, user_id }
   // For a 'complete' row the tag matches /^complete($|\|)/.
   // user_id is the per-row CAVE user (bound_tag_user schema).
+  // playersOnly: ask for the players' rows in chunks of 200 CAVE ids.
+  let chunks = [null];
+  if (cfg.playersOnly) {
+    const ids = await playerCaveIds();
+    chunks = [];
+    for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+    console.log(`[sync] ${cfg.dataset}: asking CAVE about ${ids.length} player(s) only`);
+    if (!chunks.length) { console.log(`[sync] ${cfg.dataset}: no players with a CAVE id yet`); return; }
+  }
+  for (const userIds of chunks) {
+  offset = 0;
   while (true) {
     let rows;
     try {
       rows = await fetchPage(
-        cfg.caveServer, cfg.datastack, version, cfg.cellStatusTable, offset);
+        cfg.caveServer, cfg.datastack, version, cfg.cellStatusTable, offset, userIds);
     } catch (e) {
       // A freshly-created table isn't part of the current materialized
       // version until the next materialization run. Treat "table not found
@@ -246,9 +287,14 @@ async function syncDatastack(cfg) {
 
     const toUpsert = [];
     for (const r of rows) {
-      const tag = String(r.tag ?? '');
-      // Match both bare 'complete' and the legacy 'complete|by:<user>' suffix.
-      if (!(tag === 'complete' || tag.startsWith('complete|by:') || tag.startsWith('complete|'))) continue;
+      if (cfg.schema === 'boolstatus') {
+        // BANC backbone_proofread: the row counts when proofread is true.
+        if (!(r.proofread === true || r.proofread === 't')) continue;
+      } else {
+        const tag = String(r.tag ?? '');
+        // Match both bare 'complete' and the legacy 'complete|by:<user>' suffix.
+        if (!(tag === 'complete' || tag.startsWith('complete|by:') || tag.startsWith('complete|'))) continue;
+      }
       const caveUserId = r.user_id;
       const segId = r.pt_root_id;
       // Without a user_id we can't attribute the completion — skip it.
@@ -275,6 +321,7 @@ async function syncDatastack(cfg) {
 
     if (rows.length < PAGE_SIZE) break;  // last page
     offset += PAGE_SIZE;
+  }
   }
 
   // The loop only ends here after the last page, so the read is complete.
