@@ -267,6 +267,26 @@ export const LOYALTY_BADGES: BadgeDefinition[] = [
   loyalty(6, 21, 'steady-signal',  'ST', 'Steady Signal',  'Three cheers for three weeks of citizen science!'),
   loyalty(7, 28, 'constellation',  'CO', 'Constellation',  "We're fourtunate that you have been helping to advance neuroscience for 4 weeks!"),
   loyalty(8, 30, 'one-month',      'OM', 'One Month',      'Thirty days at EyeWire II! A whole month of showing up for science!'),
+  // Added 2026-10-06 with the second set of art. The first line is Ames's own;
+  // the rest are first drafts, to be reviewed (she asked for a text review).
+  loyalty(9,   40, 'golden-orbit',        'GO', 'Golden Orbit',        'Forty days at EyeWire II! A whole month of showing up for science. You are becoming a legend.'),
+  loyalty(10,  50, 'celestial-compass',   'CC', 'Celestial Compass',   'Fifty days of science! You always find your way back.'),
+  loyalty(11,  60, 'deep-orbit',          'DP', 'Deep Orbit',          'Sixty days at EyeWire II! Two months of discoveries.'),
+  loyalty(12,  70, 'star-weaver',         'SW', 'Star Weaver',         'Seventy days of science! Thank you for weaving your days into the map of the brain.'),
+  loyalty(13,  80, 'amethyst-crown',      'AC', 'Amethyst Crown',      'Eighty days at EyeWire II! That is royal dedication.'),
+  loyalty(14,  90, 'radiant-return',      'RR', 'Radiant Return',      'Ninety days of science! Three months of coming back, and we are glad every time.'),
+  loyalty(15, 100, 'century-star',        'CS', 'Century Star',        'One hundred days at EyeWire II! Thank you for every single one.'),
+  loyalty(16, 125, 'celestial-bloom',     'CB', 'Celestial Bloom',     '125 days of science! Your dedication keeps growing.'),
+  loyalty(17, 150, 'constellation-crown', 'CN', 'Constellation Crown', '150 days at EyeWire II! You are a guiding light for this community.'),
+  loyalty(18, 175, 'astral-engine',       'AE', 'Astral Engine',       '175 days of science! You help power this whole project.'),
+  loyalty(19, 200, 'twin-century',        'TC', 'Twin Century',        'Two hundred days at EyeWire II! Double the century, double the cheers.'),
+  loyalty(20, 225, 'nebula-heart',        'NH', 'Nebula Heart',        '225 days of science! You are at the heart of EyeWire II.'),
+  loyalty(21, 250, 'gilded-galaxy',       'GG', 'Gilded Galaxy',       '250 days at EyeWire II! That is a galaxy of good work.'),
+  loyalty(22, 275, 'astral-crown',        'AS', 'Astral Crown',        '275 days of science! Few have come this far.'),
+  loyalty(23, 300, 'three-hundred-suns',  'TS', 'Three Hundred Suns',  'Three hundred days at EyeWire II! Three hundred sunrises of science.'),
+  loyalty(24, 325, 'everstar',            'EV', 'Everstar',            '325 days of science! Your star never fades.'),
+  loyalty(25, 350, 'yearward',            'YW', 'Yearward',            '350 days at EyeWire II! A full year is in sight.'),
+  loyalty(26, 365, 'the-constant',        'TH', 'The Constant',        '365 days at EyeWire II! A whole year of science. You are a legend.'),
 ];
 
 /** Every achievement: building, then exploration, then loyalty. */
@@ -278,7 +298,7 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
 
 /** What a track's threshold counts, for "N <unit>" labels. */
 export function unitForTrack(track: BadgeTrack, n = 2): string {
-  return track === 'building' ? 'edits' : track === 'loyalty' ? (n === 1 ? 'day' : 'days') : 'cells completed';
+  return track === 'building' ? 'edits' : track === 'loyalty' ? (n === 1 ? 'day of science' : 'days of science') : 'cells completed';
 }
 
 /** Helper: get badges for a specific track. */

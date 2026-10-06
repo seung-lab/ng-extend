@@ -630,6 +630,8 @@ const showSpecialViewAll = computed(() => profileSpecialBadges.value.length > SP
 
 // ── Tooltip helpers for badges ───────────────────────────────────────────────
 function badgeTooltip(badge: BadgeDefinition): string {
+  // Loyalty (Ames 2026-10-06): "Earned for n days of science", on its own line.
+  if (badge.track === 'loyalty') return `${badge.name}\nEarned for ${badge.threshold.toLocaleString()} ${unitForTrack('loyalty', badge.threshold)}`;
   return `${badge.name} — Earned for ${badge.threshold.toLocaleString()} ${unitForTrack(badge.track, badge.threshold)}`;
 }
 function specialBadgeTooltip(award: any): string {
@@ -1349,7 +1351,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div
                 v-if="earnedLoyaltyBadges.next && earnedLoyaltyBadges.earned.length < 4"
                 class="nge-profile-badge nge-profile-badge--locked"
-                :title="`Next: day ${earnedLoyaltyBadges.next.threshold}`"
+                :title="`Next: ${earnedLoyaltyBadges.next.threshold} days of science`"
               >
                 <div class="nge-profile-badge-img">
                   <div class="nge-profile-badge-mystery">
@@ -1811,7 +1813,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-desc" :title="badge.description">{{ badge.description }}</div>
-                <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days of science</div>
               </div>
             </div>
           </div>
