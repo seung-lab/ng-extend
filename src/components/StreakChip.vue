@@ -35,8 +35,10 @@ const isBest = computed(() => props.current >= props.best && props.current > 1);
 // Congratulations that grow with the streak (Ames 2026-10-04).
 const cheer = computed(() => {
   const n = props.current;
-  const keep = 'Edit tomorrow to keep the flame going.';
-  if (n <= 1) return 'Nice work, you made an edit today! Come back tomorrow to start a streak.';
+  // Opening the game counts as a day (Ames 2026-10-06), so the ask is to
+  // come back, not to edit.
+  const keep = 'Come back tomorrow to keep the flame going.';
+  if (n <= 1) return 'Good to see you today! Come back tomorrow to start a streak.';
   if (n === 2) return `Two days running, nice work! ${keep}`;
   if (n < 7) return `Congrats, ${n} days in a row! You are on a roll. ${keep}`;
   if (n < 14) return `Congrats, ${n} days in a row! A week and counting of mapping the brain. ${keep}`;
@@ -253,7 +255,7 @@ onUnmounted(() => {
       <span class="nge-streak-tip-scan" aria-hidden="true"></span>
       <i class="nge-streak-tip-brk tl" aria-hidden="true"></i><i class="nge-streak-tip-brk tr" aria-hidden="true"></i>
       <i class="nge-streak-tip-brk bl" aria-hidden="true"></i><i class="nge-streak-tip-brk br" aria-hidden="true"></i>
-      <div class="nge-streak-tip-title nge-streak-tip-row" style="--i: 0">🔥 <span class="nge-streak-tip-num">{{ shownCount }}</span>-day editing streak</div>
+      <div class="nge-streak-tip-title nge-streak-tip-row" style="--i: 0">🔥 <span class="nge-streak-tip-num">{{ shownCount }}</span>-day streak</div>
       <div v-if="usePips" class="nge-streak-tip-pips nge-streak-tip-row" style="--i: 1"
            :title="isBest ? 'Your best streak yet' : `${current} of your best ${best} days`">
         <i v-for="n in pipTotal" :key="n" class="nge-streak-tip-pip" :class="{ 'is-lit': n <= current, 'is-head': n === current }" :style="{ '--n': n }"></i>

@@ -243,8 +243,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_editlog_op_key
 --                     completed cells under rule 2 (so mark + complete_task of
 --                     one cell is +1, a repeat mark is 0, an un-mark is -1)
 --   annotate          total_annotations + metadata.count (1 to 500 per row)
---   streak            consecutive UTC days with any logged activity
+--   streak            consecutive days with any logged activity, in the
+--                     player's own time zone once it is known (users.tz,
+--                     supabase-streak-local-days.sql); UTC until then
 -- A duplicate op_key changes nothing and says so.
+-- The player's time zone, for the streak's day (supabase-streak-local-days.sql).
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS tz TEXT;
 CREATE OR REPLACE FUNCTION public.ew_log_activity(p_user UUID, p_row JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
@@ -265,6 +269,9 @@ DECLARE
 BEGIN
   SELECT * INTO u FROM public.users WHERE id = p_user FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'unknown player'; END IF;
+  -- The player's own day, not UTC's (which ends at 8 pm in New York).
+  today := (NOW() AT TIME ZONE COALESCE(
+    (SELECT z.name FROM pg_catalog.pg_timezone_names z WHERE z.name = u.tz), 'UTC'))::DATE;
 
   IF ok AND is_cell THEN
     SELECT COUNT(*) INTO cells0 FROM public.ew_cell_completions WHERE user_id = p_user;
@@ -301,7 +308,8 @@ BEGIN
     END IF;
 
     -- Annotations never moved the streak; everything else a player does, does.
-    IF op <> 'annotate' AND u.last_edit_date IS DISTINCT FROM today THEN
+    -- Only ever forwards: a change of time zone can not reset a streak.
+    IF op <> 'annotate' AND (u.last_edit_date IS NULL OR today > u.last_edit_date) THEN
       streak := CASE WHEN u.last_edit_date = today - 1 THEN streak + 1 ELSE 1 END;
       longest := GREATEST(longest, streak);
     END IF;
@@ -314,7 +322,8 @@ BEGIN
       total_annotations = COALESCE(total_annotations, 0) + d_ann,
       current_streak    = streak,
       longest_streak    = longest,
-      last_edit_date    = CASE WHEN op = 'annotate' THEN last_edit_date ELSE today END,
+      last_edit_date    = CASE WHEN op = 'annotate' THEN last_edit_date
+                               ELSE GREATEST(COALESCE(last_edit_date, today), today) END,
       updated_at        = NOW()
     WHERE id = p_user;
   END IF;
