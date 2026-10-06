@@ -2151,7 +2151,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* More datasets: one toggle row per optional volume */
 /* A block, not the profile body's row: as a row its title, intro and
    toggles sat side by side in thin columns. */
-.nge-ds-more { display: block; flex: none; padding: 4px 22px 20px; max-height: 38vh; overflow-y: auto; }
+.nge-profile-body.nge-ds-more { display: block; flex: none; padding: 4px 22px 20px; max-height: 38vh; overflow-y: auto; }
 .nge-ds-more-title { font-size: 0.78em; letter-spacing: 0.12em; text-transform: uppercase; color: #8fb8e8; font-weight: 700; margin-bottom: 4px; }
 .nge-ds-more-intro { font-size: 0.86em; color: #9fb0c8; line-height: 1.45; margin-bottom: 10px; }
 .nge-ds-more-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
