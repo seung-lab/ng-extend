@@ -15,6 +15,7 @@ import { useSplitMergeOverlayStore } from './store';
 import { watch } from 'vue';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
 import { drawSearchLine } from './tutorial_pointer';
+import { canonicalDataset, currentSegLayerName } from './datasets';
 import { defaultCredentialsManager } from 'neuroglancer/credentials_provider/default_manager';
 import { responseJson } from 'neuroglancer/util/http_request';
 import { cancellableFetchSpecialOk, parseSpecialUrl } from 'neuroglancer/util/special_protocol_request';
@@ -491,7 +492,7 @@ document.addEventListener('nge:tutorial-layer-note', () => {
   if (!chip) return;
   if (!chip.querySelector('.nge-practice-layer-note')) {
     const note = notePanel('nge-practice-layer-note',
-      'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, named <b>3D segmentation</b>, next to <b>2D EM Images</b>. '
+      'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, named <b>3D segmentation</b>, next to <b>2D EM</b>. '
       + 'Right-click that chip to select it. Tools like merge and cut only work on the selected layer.');
     chip.appendChild(note);
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
@@ -525,19 +526,27 @@ function segLayerChip(): HTMLElement | undefined {
 }
 
 /**
- * Friendlier layer names while the Merge or Cut tutorial is up (Ames,
- * 2026-10-02): "2D EM Images" for img, "3D segmentation" for the dataset
- * layer. Display only: the layers keep their real names, which the app uses
- * to tell which dataset it is in. The real name stays in the chip's text
- * (hidden), a data attribute carries the shown one.
+ * Friendlier layer names on the Sandbox, and while the Merge or Cut tutorial
+ * is up (Ames, 2026-10-02 and 2026-10-06): "2D EM" for img, with the tooltip
+ * "Electron Microscope Images", and "3D segmentation" in place of
+ * pinky_nf_v2. Display only: the layers keep their real names, which the app
+ * uses to tell which dataset it is in. The real name stays in the chip's
+ * text (hidden), a data attribute carries the shown one.
  */
+const FRIENDLY_TIPS: Record<string, string> = {
+  '2D EM': 'Electron Microscope Images',
+  '3D segmentation': 'The 3D reconstruction of every cell in the images',
+};
 function friendlyLayerNames() {
-  const on = [3, 5].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
+  const inTutorial = [3, 5].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
+  const onSandbox = canonicalDataset(currentSegLayerName()) === 'pinky_nf_v2';
+  const on = inTutorial || onSandbox;
   document.body.classList.toggle('nge-friendly-layers', on);
   if (!on) return;
   // A practice view that loads after the step opened brings the Selection
-  // panel back; keep it shut while the Merge or Cut tutorial is up.
-  closeSelectionPanel();
+  // panel back; keep it shut while the Merge or Cut tutorial is up (only
+  // then: the Sandbox on its own leaves the panel alone).
+  if (inTutorial) closeSelectionPanel();
   if (!document.getElementById('nge-friendly-layers-style')) {
     const st = document.createElement('style');
     st.id = 'nge-friendly-layers-style';
@@ -550,11 +559,21 @@ function friendlyLayerNames() {
   const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
   for (const ml of layers) {
     const kind = layerKind(ml);
-    const name = kind === 'segmentation' ? '3D segmentation' : kind === 'image' ? '2D EM Images' : '';
+    const name = kind === 'segmentation' ? '3D segmentation' : kind === 'image' ? '2D EM' : '';
     const label = chips.find(c => (c.querySelector('.neuroglancer-layer-item-label')?.textContent ?? '') === ml.name)
       ?.querySelector('.neuroglancer-layer-item-label') as HTMLElement | null | undefined;
     if (!label) continue;
-    if (name) label.dataset.ngeLabel = name; else delete label.dataset.ngeLabel;
+    if (name) {
+      label.dataset.ngeLabel = name;
+      // The tooltip sits on the whole chip, so it shows wherever you hover it.
+      const chip = label.closest('.neuroglancer-layer-item') as HTMLElement | null;
+      if (chip) {
+        // Keep neuroglancer's own hint (how to switch the layer on and off) under ours.
+        if (chip.dataset.ngeOwnTip === undefined) chip.dataset.ngeOwnTip = chip.title || '';
+        const tip = FRIENDLY_TIPS[name] + (chip.dataset.ngeOwnTip ? String.fromCharCode(10) + chip.dataset.ngeOwnTip : '');
+        if (chip.title !== tip) chip.title = tip;
+      }
+    } else delete label.dataset.ngeLabel;
   }
 }
 setInterval(() => { try { friendlyLayerNames(); } catch { /* store not ready yet */ } }, 1000);
