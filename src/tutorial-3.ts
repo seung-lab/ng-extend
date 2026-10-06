@@ -205,24 +205,79 @@ async function cutPointsInState(stateUrl: string): Promise<{ red: number[][]; bl
   }
 }
 
+type CutHint = { red: number[][]; blue: number[][] };
+const centroid = (pts: number[][]) => [0, 1, 2].map(i => pts.reduce((a, p) => a + p[i], 0) / Math.max(1, pts.length));
+/** Distance in nanometres between two viewer positions (4 x 4 x 40 nm voxels). */
+const nmApart = (a: number[], b: number[]) => Math.hypot((a[0] - b[0]) * 4, (a[1] - b[1]) * 4, (a[2] - b[2]) * 40);
+const scaled = (h: CutHint, f: number[]): CutHint => ({
+  red: h.red.map(p => p.map((v, i) => v * f[i])), blue: h.blue.map(p => p.map((v, i) => v * f[i])),
+});
+
+/**
+ * The hint points for a cut cell, checked against the cell itself.
+ *
+ * A saved view's cut points were taken on trust at first, and sent the view
+ * somewhere the cell is not (Ames, 2026-10-06): either the points are stored
+ * in another unit than the viewer's, or a view was filed under the wrong
+ * cell. So every candidate (each saved view, in each plausible unit) is
+ * measured against where the cell is known to be, its registered A and B
+ * points, and only one that lands within a few micrometres is used. Failing
+ * that, the points recorded with the original cut; failing that, nothing.
+ */
+const cutHintCache = new Map<string, { hint: CutHint | null; trusted: boolean }>();
+async function cutHintFor(ex: any): Promise<{ hint: CutHint | null; trusted: boolean }> {
+  const hit = cutHintCache.get(ex.id);
+  if (hit) return hit;
+  let anchor: number[] | null = null;
+  try { if (ex.point_a && ex.point_b) anchor = centroid([JSON.parse(ex.point_a), JSON.parse(ex.point_b)].map((p: any) => p.slice(0, 3).map(Number))); } catch { anchor = null; }
+  const recorded = CUT_HINTS[ex.id] ?? null;
+  if (!anchor && recorded) anchor = centroid([...recorded.red, ...recorded.blue]);
+  let out: { hint: CutHint | null; trusted: boolean } = { hint: recorded, trusted: !!recorded };
+  const urls = [CUT_HINT_STATES[ex.id], ...Object.values(CUT_HINT_STATES).filter(u => u !== CUT_HINT_STATES[ex.id])].filter(Boolean);
+  if (anchor) {
+    let best: { hint: CutHint; nm: number; note: string } | null = null;
+    for (const url of urls) {
+      const raw = await cutPointsInState(url);
+      if (!raw) continue;
+      // Viewer voxels; coarser 8 nm voxels; finer 2 nm; nanometres.
+      for (const f of [[1, 1, 1], [2, 2, 1], [0.5, 0.5, 1], [0.25, 0.25, 0.025]]) {
+        const h = scaled(raw, f);
+        const nm = nmApart(centroid([...h.red, ...h.blue]), anchor);
+        if (!best || nm < best.nm) best = { hint: h, nm, note: `${url.split('/').pop()} x[${f.join(',')}]` };
+      }
+    }
+    if (best && best.nm < 4000) {
+      console.info(`[tutorial] cut hints for ${ex.id}: ${best.note}, ${Math.round(best.nm)} nm from the cell`);
+      out = { hint: best.hint, trusted: true };
+    } else {
+      console.warn(`[tutorial] no saved view's cut points land on ${ex.id}`, best ? `(closest ${best.note}, ${Math.round(best.nm)} nm away)` : '', recorded ? 'using the points recorded with the cut' : 'no hints');
+    }
+  } else if (CUT_HINT_STATES[ex.id]) {
+    // Nothing to check against: show the points, but never move the view.
+    out = { hint: await cutPointsInState(CUT_HINT_STATES[ex.id]), trusted: false };
+  }
+  cutHintCache.set(ex.id, out);
+  return out;
+}
+
 async function showWhereToCut(): Promise<boolean> {
   const ex = currentPractice().example;
   if (!ex) return false;
-  const fromState = CUT_HINT_STATES[ex.id] ? await cutPointsInState(CUT_HINT_STATES[ex.id]) : null;
-  const h = fromState ?? CUT_HINTS[ex.id];
+  const { hint: h, trusted } = await cutHintFor(ex);
   if (!h) return false;
   // A handful of each is plenty to show the idea.
   const red = h.red.slice(0, 4), blue = h.blue.slice(0, 4);
-  // Bring the view to the spot, so the 2D images show the section the
-  // points are in (the 2D cut) and the pins are on screen in 3D.
-  try {
-    const all = [...red, ...blue];
-    const mid = [0, 1, 2].map(i => all.reduce((s, p) => s + p[i], 0) / all.length);
-    const pos = getViewer()?.navigationState?.position;
-    if (pos && all.length) pos.value = Float32Array.from(mid);
-  } catch (e) { /* the pins still show */ }
-  return showPyrMarkers([...red, ...blue], [...red.map(() => 'red'), ...blue.map(() => 'blue')], 60,
-    [...red.map(() => RED), ...blue.map(() => BLUE)]);
+  if (!red.length && !blue.length) return false;
+  // Bring the view to the spot, so the 2D images show the section the points
+  // are in. Only for points checked against the cell.
+  if (trusted) {
+    try {
+      const pos = getViewer()?.navigationState?.position;
+      if (pos) pos.value = Float32Array.from(centroid([...red, ...blue]));
+    } catch (e) { /* the pins still show */ }
+  }
+  // Red and blue Pyr pins, no labels: the colour says which is which.
+  return showPyrMarkers([...red, ...blue], [], 60, [...red.map(() => RED), ...blue.map(() => BLUE)]);
 }
 
 function toggleStuckPanel() {

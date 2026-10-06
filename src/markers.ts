@@ -42,8 +42,17 @@ function ensureStyle() {
     .nge-pyr-pin { position: absolute; width: 44px; height: 54px; margin-left: -22px; margin-top: -54px; display: none; }
     .nge-pyr-pin img { width: 44px; height: 44px; display: block; filter: drop-shadow(0 0 6px rgba(237, 208, 64, 0.9)) drop-shadow(0 2px 4px rgba(0,0,0,0.8)); animation: nge-pyr-bob 1.1s ease-in-out infinite; }
     .nge-pyr-pin::after { content: ''; position: absolute; left: 50%; bottom: 0; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; border: 2px solid #edd040; box-shadow: 0 0 10px 3px rgba(237, 208, 64, 0.7); animation: nge-pyr-ring 1.1s ease-in-out infinite; }
-    .nge-pyr-pin--coloured img { filter: drop-shadow(0 0 7px var(--pin)) drop-shadow(0 2px 4px rgba(0,0,0,0.8)); }
-    .nge-pyr-pin--coloured::after { border-color: var(--pin); box-shadow: 0 0 10px 3px var(--pin); }
+    /* Coloured pins (the cut tutorial's red and blue sides): the Pyr icon
+       itself in that colour, smaller, and still (Ames: a cluster of bobbing,
+       pulsing pins was too much). The icon is cyan, so it is drawn in grey
+       and washed with the colour through a mask of its own shape, which
+       keeps the facets' shading (turning the hue gave pink and olive). */
+    .nge-pyr-pin--coloured { width: 30px; height: 38px; margin-left: -15px; margin-top: -38px; }
+    .nge-pyr-gem { position: relative; display: block; width: 30px; height: 30px; isolation: isolate; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.9)); }
+    .nge-pyr-pin--coloured .nge-pyr-gem img { width: 30px; height: 30px; animation: none; filter: grayscale(1) brightness(1.25) contrast(1.05); }
+    .nge-pyr-gem i { position: absolute; inset: 0; background: var(--pin); mix-blend-mode: multiply;
+      -webkit-mask: var(--pin-icon) center / contain no-repeat; mask: var(--pin-icon) center / contain no-repeat; }
+    .nge-pyr-pin--coloured::after { width: 8px; height: 8px; margin-left: -4px; border-width: 0; background: var(--pin); box-shadow: 0 0 6px 1px var(--pin); animation: none; }
     .nge-pyr-pin span { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); white-space: nowrap; font: 600 11px/1 Inter, sans-serif; letter-spacing: 0.06em; color: #edd040; text-shadow: 0 1px 3px #000; }
     @keyframes nge-pyr-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
     @keyframes nge-pyr-ring { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.5; } }
@@ -124,6 +133,14 @@ export function showPyrMarkers(pts: number[][], labels: string[] = [], seconds =
     // A coloured pin (the cut tutorial's red and blue sides): glow and ring.
     if (colors[i]) {
       pin.style.setProperty('--pin', colors[i]);
+      pin.style.setProperty('--pin-icon', `url("${pyrIcon}")`);
+      // Wrap the icon so the colour wash can sit exactly over it.
+      // A div: the label rule above targets every span in a pin.
+      const gem = document.createElement('div');
+      gem.className = 'nge-pyr-gem';
+      pin.insertBefore(gem, img);
+      gem.appendChild(img);
+      gem.appendChild(document.createElement('i'));
       pin.classList.add('nge-pyr-pin--coloured');
     }
     container!.appendChild(pin);
