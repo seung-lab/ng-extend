@@ -9,7 +9,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import imgMergeExample from './images/merge-example.jpg';
 import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
-import { beginPractice, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
+import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { useSplitMergeOverlayStore } from './store';
 import { watch } from 'vue';
@@ -362,6 +362,45 @@ export function watchFindPath(waiting: string, found: string, opts: { advance?: 
   setTimeout(tick, 400);
 }
 
+/**
+ * Which practice edits this run of a tutorial asked for, and which landed
+ * (Ames, 2026-10-06: Next walked her to "Cut: done!" and the achievement
+ * without making a cut). A cell counts as asked for once its practice step
+ * is up, and as done once the viewer confirms the edit.
+ */
+const practiceAsked = new Set<string>();
+const practiceLanded = new Set<string>();
+function resetPracticeLog() { practiceAsked.clear(); practiceLanded.clear(); }
+/** How many practice edits were asked for and how many landed. */
+export function practiceScore(): { asked: number; landed: number } {
+  return { asked: practiceAsked.size, landed: [...practiceAsked].filter(id => practiceLanded.has(id)).length };
+}
+/** True when every practice edit of this run landed (and there was one). */
+export function practiceEarned(): boolean {
+  const s = practiceScore();
+  return s.asked > 0 && s.landed >= s.asked;
+}
+/**
+ * For a tutorial's last box: when edits were skipped, say so in place of
+ * the congratulations (the element with class `nge-done-lead`) and return
+ * false, so the caller holds the confetti.
+ */
+export function finishPracticeTutorial(what: 'merge' | 'cut'): boolean {
+  // Every cell held counts, including one whose box was skipped before it
+  // loaded. Call this before the cells are handed back.
+  for (const id of heldPracticeIds()) practiceAsked.add(id);
+  if (practiceEarned()) return true;
+  const s = practiceScore();
+  setTimeout(() => {
+    const lead = document.querySelector('.nge-done-lead');
+    if (!lead) return;
+    lead.textContent = s.asked === 0
+      ? `You read through the tutorial without a practice cell, so there was no ${what} to make. Run it again when the cells are free to earn the achievement.`
+      : `You made ${s.landed} of the ${s.asked} practice ${what}${s.asked === 1 ? '' : 's'}. Press back to try the rest, or run the tutorial again: making them yourself is how it sticks, and it earns the achievement.`;
+  }, 80);
+  return false;
+}
+
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
   const token = ++practiceWatch;
   watchEditErrors();
@@ -376,9 +415,11 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     if (p.phase === 'released') { return; }
     if (!p.example) { practiceStatus('Loading a practice cell…'); setTimeout(tick, 1000); return; }
     labelPart();
+    practiceAsked.add(p.example.id);
     const merged = await piecesMerged();
     if (token !== practiceWatch) return;
     if (merged === wantMerged) {
+      practiceLanded.add(p.example.id);
       hidePyrMarkers();
       if (opts.advance) {
         // The next step is the success box; it celebrates.
@@ -585,6 +626,7 @@ document.addEventListener('nge:tutorial-flash-seg-layer', () => {
 // when the cells are held the learner gets a "get in line" card instead
 // (Amy), and a notification when it is their turn.
 function openTutorial(id: number) {
+  resetPracticeLog();
   const store = useTutorialStore();
   store.activeTutorial = id;
   store.setTutorialStep(0);
@@ -915,7 +957,7 @@ A few things worth knowing:
     text: `
 <img src="` + imgBravoNurro + `" alt="" style="display:block;width:120px;height:auto;margin:0 auto 10px">
 
-You know how to merge. Every merge reconnects a lost branch, and there are thousands waiting.
+<span class="nge-done-lead">You know how to merge. Every merge reconnects a lost branch, and there are thousands waiting.</span>
 
 Next up is the other half of proofreading: a <strong style="color:#e06060">cut</strong> separates two neurons the AI fused together.
 
@@ -928,6 +970,7 @@ Or press done and explore. The cells you practised on are put back for the next 
     width: "460px",
     onEnter: () => {
       stopWatching();
+      finishPracticeTutorial('merge');
       // Whatever state the practice cell is in, put it back for the next person.
       endPractice();
     },

@@ -593,6 +593,11 @@ export function hasCutPreview(ex: PracticeExample | null): boolean {
   return !!ex && ex.kind === 'cut' && !!ex.root_a && ex.root_a !== ex.root_b;
 }
 
+/** The cells this learner holds right now. */
+export function heldPracticeIds(): string[] {
+  return Object.values(session.held).map(ex => ex.id);
+}
+
 /** Whether this learner holds a cell in the slot. */
 export function holdsSlot(slot: string): boolean {
   return !!session.held[slot];

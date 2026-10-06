@@ -8,7 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 import imgCutPoints from './images/cut-points-example.jpg';
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, getViewer, movingToSandbox, stopWatching, watchPractice, watchTool } from './tutorial-3';
+import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, movingToSandbox, stopWatching, watchPractice, watchTool } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -204,7 +204,7 @@ Stuck? The **?** button shows where the points go.`,
     text: `
 <img src="` + imgBravoNurro + `" alt="" style="display:block;width:120px;height:auto;margin:0 auto 10px">
 
-You now know the two most important proofreading operations: every <strong style="color:#60c060">merge</strong> reconnects a lost branch, every <strong style="color:#e06060">cut</strong> untangles confused neurons.
+<span class="nge-done-lead">You now know the two most important proofreading operations: every <strong style="color:#60c060">merge</strong> reconnects a lost branch, every <strong style="color:#e06060">cut</strong> untangles confused neurons.</span>
 
 The cells you practised on are put back for the next person. Happy proofreading!
 
@@ -215,7 +215,8 @@ The cells you practised on are put back for the next person. Happy proofreading!
     width: "460px",
     onEnter: () => {
       stopWatching();
-      document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
+      // Confetti only for cuts actually made.
+      if (finishPracticeTutorial('cut')) document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
       endPractice();
     },
   },

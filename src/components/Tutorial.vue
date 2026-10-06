@@ -14,6 +14,7 @@ import { steps as steps5 } from '../tutorial-cut';
 import { steps as steps6 } from '../tutorial-mec-tour';
 import { steps as steps7 } from '../tutorial-retina-tour';
 import { endPractice } from '../practice';
+import { practiceEarned } from '../tutorial-3';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 // Badge art for the merge and cut tutorials is not drawn yet (Amy, 2026-09-28);
@@ -62,6 +63,9 @@ const BADGE_KEYS: Record<number, { key: string; title: string; image: string }> 
 async function awardBadgeIfNew(tutorialNum: number) {
     const badge = BADGE_KEYS[tutorialNum];
     if (!badge) return;
+    // Merge and Cut are earned by making the practice edits, not by
+    // pressing Next through the boxes (Ames, 2026-10-06).
+    if ((tutorialNum === 3 || tutorialNum === 5) && !practiceEarned()) return;
     const backend = useProofreadingBackendStore();
 
     // The localStorage flag gates the CELEBRATION only (once per browser). It must
@@ -74,7 +78,7 @@ async function awardBadgeIfNew(tutorialNum: number) {
         // Trigger the fancy hero celebration in AchievementToast via the store
         backend.pendingBadgeCelebration = {
             title: `🏆 New Achievement: ${badge.title}`,
-            body: `You earned the "${badge.title}" badge! — Completed Tutorial ${tutorialNum}`,
+            body: `You earned the "${badge.title}" achievement by completing the ${TUTORIAL_NAMES[tutorialNum] ?? ''} tutorial.`,
             imageUrl: badge.image,
         };
     }
@@ -108,7 +112,7 @@ async function awardBadgeIfNew(tutorialNum: number) {
         if (!alreadyAwarded) {
             await backend.createSelfNotification({
                 title: `🏆 New Achievement: ${badge.title}`,
-                body: `You completed Tutorial ${tutorialNum} and earned the "${badge.title}" badge! Congratulations!`,
+                body: `You completed the ${TUTORIAL_NAMES[tutorialNum] ?? ''} tutorial and earned the "${badge.title}" achievement. Congratulations!`,
                 image_url: badge.image,
                 thumbnail_url: badge.image,
             });
