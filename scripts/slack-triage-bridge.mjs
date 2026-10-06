@@ -792,7 +792,10 @@ async function stopRequests() {
  * Also works on a report dismissed in the last few days, since that is how a
  * hand fix usually got closed before this existed (Ames 2026-10-04).
  */
-const SHIPPED_CMD = /^(?:shipped|fixed)\s*(?:$|[.!]+\s*$|[-:,]\s*(.*)$)/is;
+// "done", "completed" and "built" too (Ames 2026-10-06: built by me in
+// Claude). Those three are everyday words, so they count only alone or with
+// a colon ("done: what was built"), never as the start of a sentence.
+const SHIPPED_CMD = /^(?:(?:shipped|fixed)\s*(?:$|[.!]+\s*$|[-:,]\s*(.*)$)|(?:done|completed?|built)\s*(?:$|[.!]+\s*$|:\s*(.*)$))/is;
 async function shippedRequests() {
   const recent = encodeURIComponent('"' + new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString() + '"');
   // Open reports every pass (their threads are already read by the stop
@@ -812,7 +815,8 @@ async function shippedRequests() {
     const m = (thread.messages ?? []).find(x => Number(x.ts) > since && !x.bot_id && x.subtype !== 'bot_message'
       && APPROVERS.includes(x.user) && SHIPPED_CMD.test(plainText(x.text)));
     if (!m) continue;
-    const what = (plainText(m.text).match(SHIPPED_CMD)[1] || '').trim().replace(/[.\s]+$/, '')
+    const said = plainText(m.text).match(SHIPPED_CMD);
+    const what = (said[1] || said[2] || '').trim().replace(/[.\s]+$/, '')
       || [String(row.impl_summary || '').split('\n')[0].trim().replace(/[.\s]+$/, '')].find(x => x && !NOT_A_FIX.test(x)) || '';
     const cancelled = await cancelRun(row);
     const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];

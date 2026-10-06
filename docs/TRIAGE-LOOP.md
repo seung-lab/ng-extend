@@ -25,8 +25,8 @@ shows the same commands with a Copy button.
 | `rebuild` | a preview is up | Builds again with everything said in the thread. |
 | `retry` | a step failed | Runs the failed step again. After a failed deploy, `good <build ID>` also works. |
 | `note: your words` | a preview is up | Saved for Claude's next attempt. Nothing is rebuilt. |
-| `shipped` | anytime | Closes a report that was fixed by hand, outside the robot: marks it done, cancels any running build, posts "Change shipped" and sends the reporter their thank you. Say what was built after a colon: `shipped: annotations now clear on complete`. Works on a report dismissed in the last 4 days too. With no description, the reporter's note only says that a fix was built and deployed. |
-| `stop` | anytime, except while live as a test | Ends all work on the report and stops the reminders. `cancel`, `close` and `dismiss` do the same. A reason can follow a colon: `stop: already fixed`. |
+| `done` | anytime | **Fixed outside the robot** (by you in Claude, or by hand). Marks the report done, cancels any running build, posts "Change shipped" and sends the reporter their thank you. Say what was built after a colon: `done: annotations now clear on complete`. `shipped`, `completed`, `built` and `fixed` do the same. Works on a report dismissed in the last 4 days too. With no description, the reporter's note only says that a fix was built and deployed. In the Admin Hub this is the **✓ Done** button. |
+| `stop` | anytime, except while live as a test | **Not doing it.** Ends all work on the report and stops the reminders; the reporter is not told. `cancel`, `close` and `dismiss` do the same. A reason can follow a colon: `dismiss: duplicate`. In the Admin Hub this is **Dismiss**, or **Discard** for junk. |
 | `hand off @name` | a preview or question is waiting | Makes that approver the tester. Start the message with `hand off`, `reassign` or `pass`. |
 | `update sender` | anytime | Drafts a note to the person who sent the report. `update reporter` and `update submitter` are the same. Nothing is sent yet. |
 | `send update` | after a draft | Sends the draft to them as an in-game notification. |
