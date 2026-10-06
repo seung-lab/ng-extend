@@ -12,6 +12,7 @@
  */
 import { DATASETS, canonicalDataset, segLayerName, type DatasetEntry } from '../datasets';
 import { datasetKey } from './completion_rule';
+import { datasetTagVariants, loadContribution } from './dataset_contribution';
 
 export interface DatasetProgress {
   done: number; claimed: number; waiting: number;
@@ -38,6 +39,10 @@ export interface DatasetStats {
   types: DatasetType[] | null;
   work: DatasetWork | null;
   mine: MyPart | null;
+  /** For a dataset with no cell list in the game (BANC): cells its own
+   *  records credit to EyeWire II players, from the nightly CAVE copy
+   *  (cave_completions_mirror). Null when there is a cell list, or unread. */
+  outsideCells: number | null;
   readAt: number;
 }
 
@@ -137,7 +142,24 @@ export async function loadDatasetStats(ds: DatasetEntry, me?: { id: string | nul
     };
   }
 
-  return { key, progress, weeks, types, work: workAll, mine, readAt: Date.now() };
+  // No cell list in the game: the dataset's own records are the only count
+  // of cells there is (Ames 2026-10-06, BANC showed 0 beside 1,939 on the
+  // Datasets tab). The person's number is the Datasets tab's number, from
+  // the same helper.
+  let outsideCells: number | null = null;
+  if (progress && progress.total === 0) {
+    try {
+      const { supabase } = await import('../supabase');
+      const { count, error } = await supabase.from('cave_completions_mirror')
+        .select('segment_id', { count: 'exact', head: true }).in('dataset', datasetTagVariants(ds));
+      if (!error && count != null) outsideCells = count;
+    } catch { /* stays unread */ }
+    if (mine && me?.id) {
+      try { mine.cells = (await loadContribution(ds, me.id)).completions; } catch { mine.cells = null; }
+    }
+  }
+
+  return { key, progress, weeks, types, work: workAll, mine, outsideCells, readAt: Date.now() };
 }
 
 /**

@@ -81,6 +81,8 @@ watch(() => [who.value?.id, (who.value?.names ?? []).join('|')], () => { if (act
 // ── Progress: the figure and the bar come from the same three numbers ────
 const progress = computed(() => stats.value?.progress ?? null);
 const hasList = computed(() => !!progress.value && progress.value.total > 0);
+/** Cells from the dataset's own records, when the game has no cell list for it. */
+const outsideCells = computed(() => (hasList.value ? 0 : stats.value?.outsideCells ?? 0));
 const share = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : 0);
 const pctDone = computed(() => (progress.value ? share(progress.value.done, progress.value.total) : 0));
 const pctClaimed = computed(() => (progress.value ? share(progress.value.claimed, progress.value.total) : 0));
@@ -222,6 +224,15 @@ onUnmounted(() => {
           <section class="nge-dsp-section nge-dsp-s-prog">
             <div class="nge-dsp-label">▌ Cells completed</div>
             <div v-if="!progress" class="nge-dsp-na">Not available right now.</div>
+            <template v-else-if="!hasList && outsideCells > 0">
+              <div class="nge-dsp-big">
+                <span class="nge-dsp-big-num"><RollUp :value="outsideCells" /></span>
+              </div>
+              <div class="nge-dsp-big-sub">
+                cell{{ outsideCells === 1 ? '' : 's' }} proofread by EyeWire II players
+              </div>
+              <div class="nge-dsp-foot">From this dataset's own records, read once a night. The work was done outside the game, so it does not count toward Achievements or the leaderboard.</div>
+            </template>
             <div v-else-if="!hasList" class="nge-dsp-empty">This dataset has no cell list yet, so there is no total to measure against.</div>
             <template v-else>
               <!-- The headline is the count, not a percentage (Ames 2026-10-06). -->
@@ -258,7 +269,7 @@ onUnmounted(() => {
           </section>
 
           <!-- ── Cells per week ── -->
-          <section v-if="hasList || (stats.weeks && stats.weeks.length)" class="nge-dsp-section nge-dsp-s-week">
+          <section v-if="hasList || (!outsideCells && stats.weeks && stats.weeks.length)" class="nge-dsp-section nge-dsp-s-week">
             <div class="nge-dsp-label">▌ Cells per week</div>
             <div v-if="!stats.weeks" class="nge-dsp-na">Not available right now.</div>
             <div v-else-if="!hasCellWeeks" class="nge-dsp-empty">
@@ -375,7 +386,8 @@ onUnmounted(() => {
                 </template>
               </div>
             </div>
-            <div class="nge-dsp-foot">Cells are the ones under {{ props.person ? 'their' : 'your' }} name in the cell list.</div>
+            <div v-if="hasList" class="nge-dsp-foot">Cells are the ones under {{ props.person ? 'their' : 'your' }} name in the cell list.</div>
+            <div v-else-if="outsideCells" class="nge-dsp-foot">Cells are the ones this dataset's own records credit to {{ props.person ? 'them' : 'you' }}.</div>
           </section>
         </template>
       </div>
