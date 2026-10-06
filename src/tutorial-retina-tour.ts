@@ -14,7 +14,7 @@
  */
 import { Step } from "./store-pyr";
 import { makeCellTour, VIEW_SIDE, VIEW_TOP, type TourCell } from "./dataset_tour_kit";
-import retinaHero from "../static/images/datasets/retina.jpg";
+import retinaHero from "../static/images/datasets/retina-welcome.jpg";
 
 const CELLS: TourCell[] = [
   {
@@ -83,7 +83,8 @@ export const steps: Step[] = makeCellTour({
   welcome: {
     title: "Welcome to the Retina",
     hero: retinaHero,
-    heroAlt: "The EyeWire II retina",
+    heroAlt: "EyeWire II: 10,000 cells mapped by citizen scientists",
+    heroWhole: true,
     paragraphs: [
       'This is a piece of mouse <strong>retina</strong>, the thin sheet of neural tissue at the back of the eye that turns light into signals for the brain.',
       'Before you start mapping, meet the four main kinds of cell you will find here, one at a time. Drag to rotate each one and scroll to zoom.',

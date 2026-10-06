@@ -52,7 +52,11 @@ export interface CellTourSpec {
   /** The view the tour plays on: image and segmentation layers, camera. */
   stage: Record<string, any>;
   cells: TourCell[];
-  welcome: { title: string; hero: string; heroAlt: string; paragraphs: string[]; nextLabel?: string };
+  welcome: {
+    title: string; hero: string; heroAlt: string; paragraphs: string[]; nextLabel?: string;
+    /** Show the whole hero image uncropped (a square card), not a wide band. */
+    heroWhole?: boolean;
+  };
   finale: {
     title: string;
     text: string;
@@ -162,7 +166,7 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
       // Hero on top, copy below, the same frame as the Site Tour welcome.
       html: `
 <div class="nge-tour-welcome">
-  <div class="nge-tour-welcome-hero">
+  <div class="nge-tour-welcome-hero${spec.welcome.heroWhole ? ' nge-tour-welcome-hero--whole' : ''}">
     <img src="${spec.welcome.hero}" alt="${spec.welcome.heroAlt}" />
   </div>
   <div class="nge-tour-welcome-body">

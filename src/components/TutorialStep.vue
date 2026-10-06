@@ -1255,6 +1255,13 @@ onUnmounted(() => {
     object-fit: cover;
     object-position: center;
 }
+/* A square card shown whole (the Retina tour's welcome): it shrinks on a
+   short window instead of being cropped to a band. */
+.chip .html .nge-tour-welcome-hero--whole img {
+    object-fit: contain;
+    max-height: max(180px, min(436px, calc(100vh - 430px)));
+    background: #03040a;
+}
 .nge-tour-welcome-body {
     display: flex;
     flex-direction: column;
