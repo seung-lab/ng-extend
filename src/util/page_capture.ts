@@ -9,7 +9,9 @@
  */
 import {domToCanvas} from 'modern-screenshot';
 
-const MARK = 'data-nge-capture-skip';
+/** An element carrying this attribute is left out of the picture. */
+export const CAPTURE_SKIP = 'data-nge-capture-skip';
+const MARK = CAPTURE_SKIP;
 
 /** The viewer's WebGL picture as a plain canvas. WebGL throws its picture
  *  away after showing it, so it is redrawn and copied in the same breath. */

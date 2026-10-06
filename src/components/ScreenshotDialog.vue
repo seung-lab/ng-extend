@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import {capturePage} from '../util/page_capture';
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
+import {capturePage, CAPTURE_SKIP} from '../util/page_capture';
+import { ref, computed, watch, nextTick, onBeforeUnmount, createApp } from 'vue';
 import GrowingCell from 'components/GrowingCell.vue';
 
 import nurroAtHome from '../../static/nurro/nurro-at-home.png';
@@ -119,17 +119,35 @@ const busy = ref(false);
 const errorMsg = ref('');
 const dialogHidden = ref(false);
 
+// While the page is being drawn the dialog is hidden, so for a second or
+// two nothing said a capture was under way (Ames 2026-10-06, Bug Report).
+// A small sign with the growing cell sits in the middle of the screen; it is
+// marked to be left out of the picture itself.
+function showCaptureSign(): () => void {
+  const el = document.createElement('div');
+  el.className = 'nge-shot-sign';
+  el.setAttribute(CAPTURE_SKIP, '');
+  el.setAttribute('role', 'status');
+  el.innerHTML = '<span class="nge-shot-sign-cell"></span><b>Capturing your screen</b>';
+  document.body.appendChild(el);
+  const app = createApp(GrowingCell, { size: 120, named: false });
+  app.mount(el.querySelector('.nge-shot-sign-cell')!);
+  return () => { try { app.unmount(); } catch { /* already gone */ } el.remove(); };
+}
+
 async function captureWholeScreen(): Promise<HTMLCanvasElement> {
   // First choice: the app draws the page itself, so the browser has nothing
   // to ask (Ames 2026-10-01: "avoid the chrome permission every time").
   dialogHidden.value = true;
   document.body.classList.add('nge-shot-capturing');
+  const hideSign = showCaptureSign();
   try {
     await new Promise(r => setTimeout(r, 60));
     return await capturePage();
   } catch (e) {
     console.warn('[screenshot] drawing the page failed, asking the browser to capture the tab instead:', e);
   } finally {
+    hideSign();
     dialogHidden.value = false;
     document.body.classList.remove('nge-shot-capturing');
   }
@@ -1682,6 +1700,14 @@ async function download() {
 <style>
 /* While the whole-screen capture runs: modal pop-ups and their blurred
    backdrops step aside, windows stay. */
+.nge-shot-sign {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2147483000;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+  padding: 14px 26px 16px; border-radius: 14px;
+  font: 600 14px/1.3 'Inter', system-ui, sans-serif; color: #dce6f5;
+  background: rgba(8, 14, 28, 0.9); border: 1px solid rgba(100, 200, 255, 0.35);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+}
 body.nge-shot-capturing .nge-overlay-blocker,
 body.nge-shot-capturing .nge-shotdlg-overlay {
   visibility: hidden !important;
