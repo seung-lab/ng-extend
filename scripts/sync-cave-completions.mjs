@@ -123,7 +123,11 @@ const DATASTACKS = [
   // },
 ];
 
-const PAGE_SIZE = 5000;
+// One request should hold a whole answer. CAVE's limit/offset paging has no
+// stable order: on BANC (2026-10-06) 5,000 row pages returned 274 rows twice
+// and skipped 274 others. A single request of 14,738 rows took one second.
+// If an answer ever fills this, the run fails loudly instead of paging.
+const PAGE_SIZE = 200000;
 const flags = new Set(process.argv.slice(2));
 const dryRun = flags.has('--dry-run');
 const onlyArgIdx = process.argv.indexOf('--datastack');
@@ -254,12 +258,13 @@ async function syncDatastack(cfg) {
   //     pt_supervoxel_id, tag, user_id }
   // For a 'complete' row the tag matches /^complete($|\|)/.
   // user_id is the per-row CAVE user (bound_tag_user schema).
-  // playersOnly: ask for the players' rows in chunks of 200 CAVE ids.
+  // playersOnly: ask for each player's rows, one player per request.
   let chunks = [null];
   if (cfg.playersOnly) {
     const ids = await playerCaveIds();
     chunks = [];
-    for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+    // One player per request, so each answer is complete (see PAGE_SIZE).
+    for (const id of ids) chunks.push([id]);
     console.log(`[sync] ${cfg.dataset}: asking CAVE about ${ids.length} player(s) only`);
     if (!chunks.length) { console.log(`[sync] ${cfg.dataset}: no players with a CAVE id yet`); return; }
   }
@@ -319,8 +324,8 @@ async function syncDatastack(cfg) {
     await upsertBatch(toUpsert);
     totalWritten += toUpsert.length;
 
-    if (rows.length < PAGE_SIZE) break;  // last page
-    offset += PAGE_SIZE;
+    if (rows.length < PAGE_SIZE) break;  // the whole answer
+    throw new Error(`${cfg.dataset}: an answer filled ${PAGE_SIZE} rows; paging is not reliable on CAVE, split the request instead`);
   }
   }
 
