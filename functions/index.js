@@ -107,6 +107,10 @@ This is a snapshot, not a standing truth. If someone says it is fixed, believe t
 
 **MEC shipped on 2026-09-22 and is live.** It is in the EyeWire II dataset switcher now (build 2e22c4b on eyewire-ii-community). Citizen scientists can view it and proofread it, split and merge, today. Mark Complete, cell typing and the leaderboard error out, for the CAVE reason above. Caveat worth repeating to anyone on a phone: the mobile build, eyewire-ii-mobile, does NOT contain MEC, so connectome.quest/play sends phones to a build without it. Use a computer.
 
+**MEC in the app, snapshot 2026-10-05 (newer than the paragraphs above; where they disagree, this wins, and a human who corrects you wins over both).** The Cell Library lists about 200 MEC cells imported from the team's Google Sheet by starting coordinate. Claim and Complete work: because the MEC CAVE annotation tables still do not exist, completions and cell type labels are recorded in the app's own Supabase log (edit_log) and written back to the sheet (date started, date ended, final link), not to CAVE. In MEC the nucleus is a separate segment from the cell, so a task points at the cell around its nucleus. The Cell Library header on MEC has three small links: "tour", "instructions" (the team's sheet tab) and "cell types" (a 3D view with one labelled example of each type).
+
+**Dataset tours, added 2026-10-05.** MEC and the Retina each have a guided "Meet the cells" tour in the app: one example cell at a time, 3D only, with a short description, then all of them together and a pointer to the Cell Library. MEC: stellate, pyramidal, bipolar, inhibitory interneuron, astrocyte, oligodendrocyte, microglia. Retina: ganglion, amacrine (a starburst), bipolar, Müller glia. It plays the first time someone picks the dataset in the switcher and replays from the "tour" link at the top of the Cell Library. Code: src/dataset_tour.ts, src/dataset_tour_kit.ts, src/tutorial-mec-tour.ts, src/tutorial-retina-tour.ts. Standing rule from Amy: every new dataset ships with a tour.
+
 **Public pages**: connectome.quest/mec is the dataset page, connectome.quest/mec/volume is the imaged block to scale with two real reconstructed cells and scale bars. Old /mec.html and /mec-volume.html redirect.
 
 **"Meet an MEC neuron" went live on connectome.quest/mec on 2026-09-23** (verified from the live page, not just the commit). Seven real reconstructions from this block, one each of stellate, pyramidal, inhibitory interneuron, astrocyte, oligodendrocyte, microglia and bipolar, with a render per card and an optional interactive gallery that loads spinnable meshes on click. Every type on it is PRESUMED: called from nucleus size, then checked against the cell's layer, never confirmed by a human looking at the shape. Say that plainly if anyone asks, and point them at the segment ids and soma coordinates published on the page (also /assets/mec/gallery/proofread.csv and cells.json) so they can check the calls themselves. Do not describe these as validated cell types.
@@ -835,13 +839,14 @@ const GUIDE_TOOLS = [
   },
   {
     name: "startTutorial",
-    description: "Launch a guided walkthrough: 1-3 are the proofreading tutorials, " +
-      "4 is the general Site Tour of the interface. Use when the user asks for a " +
-      "tour, a walkthrough, or 'show me around'.",
+    description: "Launch a guided walkthrough: 1 Get Started, 2 Advanced Interface, 3 Merge, " +
+      "5 Cut, and 4 is the general Site Tour of the interface. Use when the user asks for a " +
+      "tour, a walkthrough, or 'show me around'. Dataset tours (meet the cell types) are " +
+      "not started from here: point the user at the 'tour' link in the Cell Library.",
     input_schema: {
       type: "object",
       properties: {
-        id: { type: "integer", enum: [1, 2, 3, 4], description: "1-3 tutorials, 4 = Site Tour." },
+        id: { type: "integer", enum: [1, 2, 3, 4, 5], description: "1 Get Started, 2 Advanced Interface, 3 Merge, 5 Cut, 4 = Site Tour." },
         step: { type: "integer", description: "Optional starting step (default 0)." },
       },
       required: ["id"],
@@ -878,7 +883,8 @@ THE UI (what your tools map to)
 - Command palette (openCommandPalette): Ctrl+K, the searchable list of everything the app can do. If unsure which panel/action fits, open it with a query.
 - goToSegment: jump the camera to a segment by its root id and make it visible.
 - spotlight: for "where is X / how do I find the X button" questions, glow the actual control so the user can SEE it — pointing beats describing. Known targets: pyrLogo, shareButton, datasetButton, askButton, commandPalette, profileButton, splitTool, mergeTool, findPathTool, leaderboard, cellLibrary, batchProcessor, secondOpinion (request a second opinion), activityFeed, notifications, chat, settings, weeklyRecap, brainQuest. Prefer spotlight over openPanel when the user asks WHERE something is (show them the button); use openPanel when they just want to GET there. You can add a short note. If a control isn't in the target list, explain in words instead.
-- startTutorial: launch a walkthrough when asked for a tour or "show me around" — 1-3 are proofreading tutorials, 4 is the general Site Tour.
+- startTutorial: launch a walkthrough when asked for a tour or "show me around" — 1 Get Started, 2 Advanced Interface, 3 Merge, 5 Cut, 4 is the general Site Tour.
+- Dataset tours ("Meet the cells", added 2026-10-05): MEC and Retina each have a short guided tour of their cell types, one example cell at a time in 3D with a one or two sentence description, ending with all of them together. MEC shows stellate, pyramidal, bipolar, inhibitory interneuron, astrocyte, oligodendrocyte and microglia; Retina shows ganglion, amacrine (a starburst), bipolar and Müller glia. A tour plays by itself the first time someone picks that dataset in the dataset switcher, and can be replayed any time from the small "tour" link at the top of the Cell Library, next to "instructions" (and "cell types" on MEC). You cannot start a dataset tour yourself: open the Cell Library (openPanel cellLibrary) and tell the user to click "tour". When someone asks what kinds of cells a dataset has, or how to tell them apart, suggest the tour.
 
 PROOFREADING HOW-TOs
 - Merge vs split: if a neuron is broken into pieces, MERGE them. If two different neurons are stuck together, SPLIT (multicut) them. When unsure, look before you edit.

@@ -12,6 +12,7 @@ import { functionUrl } from '../functions_base';
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
+import GrowingNeuron from 'components/GrowingNeuron.vue';
 import { useProofreadingBackendStore } from '../store';
 import { mintShortStateLink } from '../util/state_link';
 
@@ -34,9 +35,11 @@ const consoleCount = ref(recentConsoleCount());
 const done = ref(false);
 const error = ref('');
 
-// While it sends, the form gives way to a signal travelling down an axon and
-// the real steps of the submit, ticked off as each one finishes (Ames
-// 2026-10-04). Nothing here is timed for show: stage follows submit().
+// While it sends, the form gives way to a neuron that grows as the report
+// goes (GrowingNeuron: dendrites, axon, terminals, one part for each real
+// step of the submit) and the steps themselves, ticked off as each finishes
+// (Ames 2026-10-04; the growing cell 2026-10-06). Nothing here is timed for
+// show: stage follows submit().
 type Stage = 'view' | 'send' | 'file';
 const stage = ref<Stage>('send');
 const sendSteps = computed(() => [
@@ -49,8 +52,12 @@ const stepState = (key: Stage) => {
   const at = order.indexOf(stage.value), i = order.indexOf(key);
   return i < at ? 'done' : i === at ? 'now' : 'next';
 };
+/** Steps finished so far, which is how far the neuron has grown. */
+const stepsDone = computed(() => Math.max(0, sendSteps.value.map(x => x.key).indexOf(stage.value)));
+/** One cell for each report: the cell that grew while it sent is the one
+ *  that lights up when it arrives. */
+const neuronSeed = ref(1);
 const sentWith = ref<{ k: string; v: string }[]>([]);
-const stillMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // Screenshot attachment. Reuses the help request flow unchanged:
 // ScreenshotDialog in `attach` mode captures the viewer, lets the user
@@ -84,6 +91,7 @@ async function submit() {
     return;
   }
   sending.value = true;
+  neuronSeed.value = Math.floor(Math.random() * 1e9);
   error.value = '';
   try {
     // NEVER send window.location.href: the hash carries the full viewer
@@ -379,24 +387,7 @@ onBeforeUnmount(() => {
       </Teleport>
 
       <div v-if="sending && !done" class="nge-fb-sending" role="status" aria-live="polite">
-        <svg class="nge-fb-axon" viewBox="0 0 360 92" aria-hidden="true">
-          <!-- dendrites and soma, where the report starts -->
-          <path class="nge-fb-axon-twig" d="M30 46 L8 24 M30 46 L6 50 M30 46 L12 72 M30 46 L26 14 M30 46 L30 80"/>
-          <circle class="nge-fb-axon-soma" cx="30" cy="46" r="9"/>
-          <!-- the axon, and the terminal at the team's end -->
-          <path id="nge-fb-axon-path" class="nge-fb-axon-line" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
-          <path class="nge-fb-axon-flow" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
-          <path class="nge-fb-axon-twig" d="M322 46 L346 30 M322 46 L350 48 M322 46 L344 66"/>
-          <circle class="nge-fb-axon-bouton" cx="346" cy="30" r="3"/>
-          <circle class="nge-fb-axon-bouton" cx="350" cy="48" r="3"/>
-          <circle class="nge-fb-axon-bouton" cx="344" cy="66" r="3"/>
-          <template v-if="!stillMotion">
-            <circle v-for="n in 3" :key="n" class="nge-fb-axon-spike" r="4.2">
-              <animateMotion dur="1.5s" :begin="`${(n - 1) * 0.5}s`" repeatCount="indefinite"
-                             path="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
-            </circle>
-          </template>
-        </svg>
+        <GrowingNeuron :stage="stepsDone" :stages="sendSteps.length" :seed="neuronSeed" />
         <div class="nge-fb-sending-title">Sending your report</div>
         <ul class="nge-fb-steps">
           <li v-for="st in sendSteps" :key="st.key" class="nge-fb-step" :class="`nge-fb-step--${stepState(st.key)}`">
@@ -476,18 +467,7 @@ onBeforeUnmount(() => {
         <span class="nge-fb-corner nge-fb-corner--tl" aria-hidden="true"></span>
         <span class="nge-fb-corner nge-fb-corner--br" aria-hidden="true"></span>
         <!-- The same neuron, now lit end to end: the signal arrived. -->
-        <svg class="nge-fb-axon nge-fb-axon--arrived" viewBox="0 0 360 92" aria-hidden="true">
-          <path class="nge-fb-axon-twig" d="M30 46 L8 24 M30 46 L6 50 M30 46 L12 72 M30 46 L26 14 M30 46 L30 80"/>
-          <circle class="nge-fb-axon-soma" cx="30" cy="46" r="9"/>
-          <path class="nge-fb-axon-line" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
-          <path class="nge-fb-axon-lit" pathLength="100" d="M39 46 C 96 6, 132 86, 190 46 S 284 14, 322 46"/>
-          <path class="nge-fb-axon-twig nge-fb-axon-twig--lit" d="M322 46 L346 30 M322 46 L350 48 M322 46 L344 66"/>
-          <g v-for="(b, i) in [[346, 30], [350, 48], [344, 66]]" :key="i" :style="{ '--d': `${0.62 + i * 0.09}s` }">
-            <circle class="nge-fb-release" :cx="b[0]" :cy="b[1]" r="3"/>
-            <circle class="nge-fb-release nge-fb-release--2" :cx="b[0]" :cy="b[1]" r="3"/>
-            <circle class="nge-fb-axon-bouton nge-fb-axon-bouton--lit" :cx="b[0]" :cy="b[1]" r="3.4"/>
-          </g>
-        </svg>
+        <GrowingNeuron arrived :seed="neuronSeed" />
         <div class="nge-fb-seal" aria-hidden="true">
           <svg viewBox="0 0 96 96">
             <circle class="nge-fb-seal-ticks" cx="48" cy="48" r="44"/>
@@ -671,32 +651,11 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .nge-fb-cancel:hover { color: #ccd; border-color: rgba(255, 255, 255, 0.25); }
-/* ── Sending: a signal on its way down an axon, and the real steps ── */
+/* ── Sending: a neuron that grows as the report goes, and the real steps ── */
 .nge-fb-sending {
   display: flex; flex-direction: column; align-items: center;
   gap: 12px; padding: 22px 12px 18px; min-width: 320px;
 }
-.nge-fb-axon { width: 100%; max-width: 360px; height: auto; overflow: visible; }
-.nge-fb-axon-twig { fill: none; stroke: rgba(120, 160, 255, 0.45); stroke-width: 1.6; stroke-linecap: round; }
-.nge-fb-axon-soma {
-  fill: rgba(120, 150, 255, 0.28); stroke: rgba(150, 180, 255, 0.9); stroke-width: 1.6;
-  transform-origin: 30px 46px; animation: nge-fb-soma 1.5s ease-in-out infinite;
-}
-.nge-fb-axon-line { fill: none; stroke: rgba(120, 160, 255, 0.28); stroke-width: 2.4; stroke-linecap: round; }
-.nge-fb-axon-flow {
-  fill: none; stroke: rgba(126, 224, 255, 0.55); stroke-width: 2.4; stroke-linecap: round;
-  stroke-dasharray: 3 15; animation: nge-fb-flow 0.9s linear infinite;
-}
-.nge-fb-axon-spike { fill: #dff6ff; filter: drop-shadow(0 0 6px rgba(126, 224, 255, 0.95)); }
-.nge-fb-axon-bouton {
-  fill: rgba(52, 230, 168, 0.25); stroke: rgba(52, 230, 168, 0.9); stroke-width: 1.4;
-  animation: nge-fb-bouton 1.5s ease-in-out infinite;
-}
-.nge-fb-axon-bouton:nth-of-type(3) { animation-delay: 0.15s; }
-.nge-fb-axon-bouton:nth-of-type(4) { animation-delay: 0.3s; }
-@keyframes nge-fb-flow { to { stroke-dashoffset: -18; } }
-@keyframes nge-fb-soma { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.22); } 30% { transform: scale(1); } }
-@keyframes nge-fb-bouton { 0%, 70%, 100% { fill: rgba(52, 230, 168, 0.2); } 85% { fill: rgba(52, 230, 168, 0.95); } }
 .nge-fb-sending-title { font-size: 1.05em; font-weight: 700; color: #eef; }
 .nge-fb-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; align-self: center; }
 .nge-fb-step { display: flex; align-items: center; gap: 9px; font-size: 0.86em; color: #6f7c96; transition: color 0.2s; }
@@ -715,7 +674,7 @@ onBeforeUnmount(() => {
 .nge-fb-step--done .nge-fb-step-mark { background: #34e6a8; border-color: #34e6a8; }
 @keyframes nge-fb-step-now { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
 @media (prefers-reduced-motion: reduce) {
-  .nge-fb-axon-soma, .nge-fb-axon-flow, .nge-fb-axon-bouton, .nge-fb-step--now .nge-fb-step-mark { animation: none; }
+  .nge-fb-step--now .nge-fb-step-mark { animation: none; }
 }
 .nge-fb-done {
   display: flex;
@@ -735,30 +694,7 @@ onBeforeUnmount(() => {
 .nge-fb-corner--tl { left: 4px; top: 4px; border-left: 2px solid; border-top: 2px solid; border-top-left-radius: 6px; }
 .nge-fb-corner--br { right: 4px; bottom: 4px; border-right: 2px solid; border-bottom: 2px solid; border-bottom-right-radius: 6px; }
 
-/* The axon lights up along its length, then the terminals release. */
-.nge-fb-axon--arrived .nge-fb-axon-soma { animation: none; fill: rgba(52, 230, 168, 0.3); stroke: rgba(126, 240, 200, 0.95); }
-.nge-fb-axon-lit {
-  fill: none; stroke: #7ef0c8; stroke-width: 2.6; stroke-linecap: round;
-  filter: drop-shadow(0 0 5px rgba(52, 230, 168, 0.9));
-  stroke-dasharray: 100; stroke-dashoffset: 100;
-  animation: nge-fb-light 0.6s cubic-bezier(.3, .7, .2, 1) 0.05s forwards;
-}
-.nge-fb-axon-twig--lit { stroke: rgba(126, 240, 200, 0.9); opacity: 0; animation: nge-fb-rise 0.2s ease-out 0.58s forwards; }
-.nge-fb-axon--arrived .nge-fb-axon-bouton--lit {
-  animation: none; fill: #7ef0c8; stroke: #d8fff0; stroke-width: 1.2; opacity: 0;
-  filter: drop-shadow(0 0 6px rgba(52, 230, 168, 1));
-  transform-box: fill-box; transform-origin: center;
-  animation: nge-fb-pop 0.45s cubic-bezier(.34, 1.56, .64, 1) var(--d, 0.62s) forwards;
-}
-.nge-fb-release {
-  fill: none; stroke: rgba(126, 240, 200, 0.9); stroke-width: 1.4; opacity: 0;
-  transform-box: fill-box; transform-origin: center;
-  animation: nge-fb-ripple 1.1s ease-out var(--d, 0.62s) forwards;
-}
-.nge-fb-release--2 { animation-duration: 1.5s; stroke: rgba(126, 224, 255, 0.7); }
 @keyframes nge-fb-light { to { stroke-dashoffset: 0; } }
-@keyframes nge-fb-pop { 0% { opacity: 0; transform: scale(0.2); } 60% { opacity: 1; transform: scale(1.5); } 100% { opacity: 1; transform: scale(1); } }
-@keyframes nge-fb-ripple { 0% { opacity: 0.95; transform: scale(1); } 100% { opacity: 0; transform: scale(6.5); } }
 @keyframes nge-fb-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* The seal: tick ring, a turning arc, and a check that draws itself. */
@@ -810,7 +746,7 @@ onBeforeUnmount(() => {
 .nge-fb-readout dd { margin: 0; font-size: 0.8em; font-weight: 600; color: #dcebff; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) {
   .nge-fb-done *, .nge-fb-done *::before { animation-duration: 0.01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
-  .nge-fb-release, .nge-fb-seal-wave { display: none; }
+  .nge-fb-seal-wave { display: none; }
 }
 
 /* ── Scan pass on the success state ──
