@@ -233,44 +233,60 @@
   color: rgba(74, 158, 255, 0.7) !important;
 }
 
-/* ── Layer bar in the site's own style (Ames 2026-10-06: "layers still look a
-      lot worse in style than the rest of the site") ─────────────────────────
-   The chips were flat grey boxes under a top bar of rounded, lit pills. Now
-   they are the same family as the AI and Dataset pills: a pill outline in
-   the site blue, the top bar's lettering, a round index badge, and a
-   selected state that is lit instead of merely outlined. Kept as one block
-   after the older rules, so it layers over them. */
+/* ── Layer bar in the site's own style (Ames 2026-10-06) ───────────────────
+   "Layers still look a lot worse in style than the rest of the site", then:
+   "a little more rectangular/angular ... reminiscent of folder tabs ... a
+   circuit motif inspired edge that is asymmetrical with diagonals".
+
+   So each layer is a tab cut like a circuit board part: a long diagonal on
+   the top right (the folder tab), a short one top left, a third on the
+   bottom left, and one corner left square, so no two corners match. The
+   outline is the tab's own background showing round a slightly smaller fill
+   (::before), because a clipped box cannot carry a border. The selected tab
+   is lit and grows a trace along its foot that ends in a solder point.
+   Kept as one block after the older rules, so it layers over them. */
 .neuroglancer-layer-panel {
-  padding: 5px 8px !important;
-  gap: 6px;
+  padding: 6px 8px 0 !important;
+  gap: 5px;
   min-height: 36px;
+  align-items: flex-end !important;
   background: linear-gradient(180deg, rgba(7, 12, 26, 0.95), rgba(4, 8, 18, 0.9)) !important;
-  border-bottom: 1px solid rgba(74, 158, 255, 0.1) !important;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.22) !important;
 }
 .neuroglancer-layer-item {
+  --tab-edge: rgba(74, 158, 255, 0.34);
+  --tab-fill: #0a1326;
+  --tab-cut: polygon(6px 0, calc(100% - 13px) 0, 100% 13px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 6px);
   position: relative;
-  height: 26px;
+  height: 27px;
   gap: 7px;
-  padding: 0 12px 0 5px !important;
-  border-radius: 13px !important;
-  border: 1px solid rgba(74, 158, 255, 0.24) !important;
-  background: rgba(74, 158, 255, 0.05) !important;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  padding: 0 20px 0 9px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--tab-edge) !important;
+  clip-path: var(--tab-cut);
+  transition: background 0.15s;
 }
-.neuroglancer-layer-item:hover {
-  border-color: rgba(74, 158, 255, 0.5) !important;
-  background: rgba(74, 158, 255, 0.1) !important;
+.neuroglancer-layer-item::before {
+  content: '';
+  position: absolute; inset: 1px; z-index: 0; pointer-events: none;
+  background: var(--tab-fill);
+  clip-path: polygon(5.6px 0, calc(100% - 12.4px) 0, 100% 12.4px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 5.6px);
+  transition: background 0.15s;
 }
-/* the index: a round badge, in the HUD face */
+.neuroglancer-layer-item > * { position: relative; z-index: 1; }
+.neuroglancer-layer-item:hover { --tab-edge: rgba(111, 196, 255, 0.7); --tab-fill: #0e1b36; background: var(--tab-edge) !important; }
+/* the index: a small chip with one corner cut, in the HUD face */
 .neuroglancer-layer-item-number {
   flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; padding: 0 !important; box-sizing: border-box;
-  border-radius: 50% !important;
+  width: 15px; height: 15px; padding: 0 !important; box-sizing: border-box;
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%);
   font: 600 9px/1 'Orbitron', 'Inter', sans-serif;
-  background: rgba(74, 158, 255, 0.16) !important;
-  color: rgba(160, 205, 255, 0.9) !important;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  background: rgba(74, 158, 255, 0.2) !important;
+  color: rgba(170, 212, 255, 0.95) !important;
+  transition: background 0.15s, color 0.15s;
 }
 /* the name: the top bar's lettering, quiet until its layer is the selected one */
 .neuroglancer-layer-item-label {
@@ -284,20 +300,21 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   letter-spacing: 0.05em;
 }
 .neuroglancer-layer-item:hover .neuroglancer-layer-item-label { color: #d6e4f6; }
-/* selected: lit from above, like a pill that is switched on */
+/* selected: lit, with a trace along the foot that ends in a solder point */
 .neuroglancer-layer-item[data-selected=true],
 .neuroglancer-layer-item[data-selected=true]:hover {
-  border-color: rgba(126, 224, 255, 0.75) !important;
-  background: linear-gradient(180deg, rgba(74, 158, 255, 0.24), rgba(74, 158, 255, 0.08)) !important;
-  box-shadow: inset 0 1px 0 rgba(196, 228, 255, 0.28), 0 0 12px rgba(74, 158, 255, 0.24);
+  --tab-edge: #7ee0ff;
+  background: linear-gradient(180deg, #a8ecff, #4a9eff) !important;
 }
-.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #eef6ff; }
-.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-number {
-  background: #6fc4ff !important; color: #04101f !important;
-  box-shadow: 0 0 8px rgba(111, 196, 255, 0.7);
+.neuroglancer-layer-item[data-selected=true]::before {
+  background:
+    radial-gradient(circle at calc(9px + 46%) calc(100% - 2px), #dff7ff 0 1.6px, rgba(126, 224, 255, 0.55) 2.2px, transparent 3.4px),
+    linear-gradient(90deg, rgba(126, 224, 255, 0.95), rgba(126, 224, 255, 0.95)) 9px calc(100% - 1.5px) / 46% 1px no-repeat,
+    linear-gradient(180deg, #1c3a66, #0d1d3a 70%);
 }
-/* a layer that answers clicks: no more box inside the box, the name simply
-   carries a small lit dot */
+.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #f2f8ff; }
+.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-number { background: #7ee0ff !important; color: #04101f !important; }
+/* a layer that answers clicks: no box inside the box, the name carries a small lit point */
 .neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label {
   background: transparent !important;
   padding: 0 !important;
@@ -305,39 +322,37 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
 }
 .neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label::before {
   content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 6px; vertical-align: 2px;
-  border-radius: 50%; background: #7ee0ff; box-shadow: 0 0 6px rgba(126, 224, 255, 0.85);
+  background: #7ee0ff; box-shadow: 0 0 6px rgba(126, 224, 255, 0.85);
+  transform: rotate(45deg);
 }
-/* a layer switched off: dimmed, dashed, its name struck through */
-.neuroglancer-layer-item[data-visible=false] {
-  border-style: dashed !important;
-  background: transparent !important;
-  opacity: 0.6;
-}
-/* annotation layers: the badge carries the layer's colour, so the bar still
-   reads as a legend, without a square bar on a round pill */
+/* a layer switched off: dimmed, its name struck through */
+.neuroglancer-layer-item[data-visible=false] { opacity: 0.5; --tab-fill: #070c18; }
+/* annotation layers: the edge and the index carry the layer's colour, so the bar still reads as a legend */
 .neuroglancer-layer-item[data-tinted="true"] {
-  border-left: 1px solid color-mix(in srgb, var(--nge-layer-color) 55%, rgba(74, 158, 255, 0.24)) !important;
-  border-color: color-mix(in srgb, var(--nge-layer-color) 55%, rgba(74, 158, 255, 0.24)) !important;
-  background: color-mix(in srgb, var(--nge-layer-color) 9%, rgba(74, 158, 255, 0.04)) !important;
+  --tab-edge: color-mix(in srgb, var(--nge-layer-color) 70%, rgba(74, 158, 255, 0.3));
+  --tab-fill: color-mix(in srgb, var(--nge-layer-color) 11%, #0a1326);
+  border-left: 0 !important;
+  background: var(--tab-edge) !important;
 }
-.neuroglancer-layer-item[data-tinted="true"] .neuroglancer-layer-item-number {
-  background: var(--nge-layer-color) !important; color: #05080f !important;
-  box-shadow: 0 0 7px color-mix(in srgb, var(--nge-layer-color) 70%, transparent);
+.neuroglancer-layer-item[data-tinted="true"] .neuroglancer-layer-item-number { background: var(--nge-layer-color) !important; color: #05080f !important; }
+.neuroglancer-layer-item[data-tinted="true"][data-selected=true] { background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff), var(--nge-layer-color)) !important; }
+.neuroglancer-layer-item[data-tinted="true"][data-selected=true]::before {
+  background:
+    radial-gradient(circle at calc(9px + 46%) calc(100% - 2px), #ffffff 0 1.6px, color-mix(in srgb, var(--nge-layer-color) 60%, transparent) 2.2px, transparent 3.4px),
+    linear-gradient(90deg, var(--nge-layer-color), var(--nge-layer-color)) 9px calc(100% - 1.5px) / 46% 1px no-repeat,
+    linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 30%, #101c34), color-mix(in srgb, var(--nge-layer-color) 12%, #0a1326) 70%);
 }
-/* add a layer: the same pill, round */
+/* add a layer: the same cut, small */
 .neuroglancer-layer-add-button {
-  width: 26px !important; height: 26px !important;
-  border-radius: 50% !important;
-  border: 1px solid rgba(74, 158, 255, 0.24) !important;
-  background: rgba(74, 158, 255, 0.05) !important;
-  color: rgba(160, 205, 255, 0.75) !important;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  width: 26px !important; height: 27px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  clip-path: polygon(5px 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%, 0 5px);
+  background: rgba(74, 158, 255, 0.16) !important;
+  color: rgba(170, 212, 255, 0.85) !important;
+  transition: background 0.15s, color 0.15s;
 }
-.neuroglancer-layer-add-button:hover {
-  border-color: rgba(126, 224, 255, 0.7) !important;
-  background: rgba(74, 158, 255, 0.14) !important;
-  color: #e6f3ff !important;
-}
+.neuroglancer-layer-add-button:hover { background: rgba(111, 196, 255, 0.4) !important; color: #ffffff !important; }
 
 /* ── Hide neuroglancer settings gear + JSON editor + layer-list toggle ── */
 /* Settings and JSON are moved into our Settings panel. The layer-list toggle is
