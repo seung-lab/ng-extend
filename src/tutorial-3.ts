@@ -619,7 +619,7 @@ export async function movingToSandbox<T>(tutorial: string, work: () => Promise<T
 
 // The gate card's looks live in src/tutorial_kit.css, with the rest of the
 // tutorial pieces: the same surface, title and buttons as a tutorial box.
-function ensureGateStyle() { /* styled by tutorial_kit.css */ }
+
 
 function gateButton(label: string, cls: string, onClick: () => void) {
   const b = document.createElement('button');
@@ -632,7 +632,6 @@ function gateButton(label: string, cls: string, onClick: () => void) {
 
 function gateCard(eyebrow: string, title: string, paragraphs: string[], status: string) {
   removeGateCard();
-  ensureGateStyle();
   const card = document.createElement('div');
   card.id = 'nge-tutorial-gate';
   card.setAttribute('role', 'dialog');
