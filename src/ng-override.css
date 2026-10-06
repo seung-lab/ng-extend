@@ -187,6 +187,27 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
 }
 .neuroglancer-layer-item:hover .neuroglancer-icon { opacity: 0.8; }
 .neuroglancer-layer-item .neuroglancer-icon:hover { opacity: 1; }
+/* The two tab buttons (close, bin) are line glyphs like the rest of the bar
+   (Ames 2026-10-06: the bin was a solid red block). No filled box: the
+   glyph itself lights, cyan for close, red for the bin, on a faint tint. */
+.neuroglancer-layer-item .neuroglancer-layer-item-button-container { gap: 2px; }
+.neuroglancer-layer-item .neuroglancer-layer-item-button-container .neuroglancer-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 0 !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important;
+  background: transparent !important; border: 0 !important; border-radius: 4px !important;
+  color: #9fb3cc; cursor: pointer;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.neuroglancer-layer-item .neuroglancer-layer-item-button-container .neuroglancer-icon > svg {
+  width: 12px !important; height: 12px !important;
+  fill: none !important; stroke: currentColor !important; stroke-width: 2px;
+}
+.neuroglancer-layer-item .neuroglancer-layer-item-button-container .neuroglancer-icon:hover {
+  color: #7ee0ff; background: rgba(126, 224, 255, 0.14) !important;
+}
+.neuroglancer-layer-item .neuroglancer-layer-item-button-container .neuroglancer-icon:last-child:hover {
+  color: #ff8f8f; background: rgba(255, 110, 110, 0.16) !important;
+}
 
 /* The per-chip value readout (orange numbers while hovering the viewer)
    duplicated the seg panel and gave every chip a different width. */

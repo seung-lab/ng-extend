@@ -19,7 +19,7 @@ import './layer_list_panel.css';
 import svg_controls_alt from 'ikonate/icons/controls-alt.svg';
 import svg_eye_crossed from 'ikonate/icons/eye-crossed.svg';
 import svg_eye from 'ikonate/icons/eye.svg';
-import {deleteLayer, LayerManager, ManagedUserLayer, TopLevelLayerListSpecification} from 'neuroglancer/layer';
+import {LayerManager, ManagedUserLayer, TopLevelLayerListSpecification} from 'neuroglancer/layer';
 import {TrackableBooleanCheckbox} from 'neuroglancer/trackable_boolean';
 import {DropLayers, registerLayerBarDragLeaveHandler, registerLayerBarDropHandlers, registerLayerDragHandlers} from 'neuroglancer/ui/layer_drag_and_drop';
 import {LayerNameWidget} from 'neuroglancer/ui/layer_side_panel';
@@ -31,6 +31,7 @@ import {updateChildren} from 'neuroglancer/util/dom';
 import {emptyToUndefined} from 'neuroglancer/util/json';
 import {Trackable} from 'neuroglancer/util/trackable';
 import {makeDeleteButton} from 'neuroglancer/widget/delete_button';
+import {deleteLayerFromUi} from 'neuroglancer/ui/layer_delete_confirm';
 import {makeIcon} from 'neuroglancer/widget/icon';
 
 import {CheckboxIcon} from '../widget/checkbox_icon';
@@ -151,7 +152,7 @@ class LayerListItem extends RefCounted {
     const deleteButton = makeDeleteButton({
       title: 'Delete layer',
       onClick: () => {
-        deleteLayer(this.layer);
+        void deleteLayerFromUi(this.layer);
       }
     });
     deleteButton.classList.add('neuroglancer-layer-list-panel-item-delete');

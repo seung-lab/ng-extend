@@ -18,7 +18,7 @@ import 'neuroglancer/noselect.css';
 import './layer_bar.css';
 
 import svg_plus from 'ikonate/icons/plus.svg';
-import {addNewLayer, deleteLayer, makeLayer, ManagedUserLayer} from 'neuroglancer/layer';
+import {addNewLayer, makeLayer, ManagedUserLayer} from 'neuroglancer/layer';
 import {LayerGroupViewer} from 'neuroglancer/layer_group_viewer';
 import {NavigationLinkType} from 'neuroglancer/navigation_state';
 import {WatchableValueInterface} from 'neuroglancer/trackable_value';
@@ -29,6 +29,7 @@ import {removeFromParent} from 'neuroglancer/util/dom';
 import {preventDrag} from 'neuroglancer/util/drag_and_drop';
 import {makeCloseButton} from 'neuroglancer/widget/close_button';
 import {makeDeleteButton} from 'neuroglancer/widget/delete_button';
+import {deleteLayerFromUi} from 'neuroglancer/ui/layer_delete_confirm';
 import {makeIcon} from 'neuroglancer/widget/icon';
 import {PositionWidget} from 'neuroglancer/widget/position_widget';
 
@@ -104,7 +105,7 @@ class LayerWidget extends RefCounted {
     const deleteElement = makeDeleteButton();
     deleteElement.title = 'Delete this layer';
     deleteElement.addEventListener('click', (event: MouseEvent) => {
-      deleteLayer(this.layer);
+      void deleteLayerFromUi(this.layer);
       event.stopPropagation();
     });
     element.appendChild(layerNumberElement);

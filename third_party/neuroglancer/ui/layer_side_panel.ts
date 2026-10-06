@@ -21,7 +21,7 @@
 import 'neuroglancer/ui/layer_side_panel.css';
 
 import svg_cursor from 'ikonate/icons/cursor.svg';
-import {changeLayerName, changeLayerType, deleteLayer, layerTypes, ManagedUserLayer, SelectedLayerState, UserLayer} from 'neuroglancer/layer';
+import {changeLayerName, changeLayerType, layerTypes, ManagedUserLayer, SelectedLayerState, UserLayer} from 'neuroglancer/layer';
 import {ElementVisibilityFromTrackableBoolean} from 'neuroglancer/trackable_boolean';
 import {CachedWatchableValue, observeWatchable} from 'neuroglancer/trackable_value';
 import {LAYER_SIDE_PANEL_DEFAULT_LOCATION, UserLayerSidePanelState} from 'neuroglancer/ui//layer_side_panel_state';
@@ -32,6 +32,7 @@ import {KeyboardEventBinder, registerActionListener} from 'neuroglancer/util/key
 import {EventActionMap} from 'neuroglancer/util/mouse_bindings';
 import {CheckboxIcon} from 'neuroglancer/widget/checkbox_icon';
 import {makeDeleteButton} from 'neuroglancer/widget/delete_button';
+import {deleteLayerFromUi} from 'neuroglancer/ui/layer_delete_confirm';
 import {TabView} from 'neuroglancer/widget/tab_view';
 
 const layerNameInputEventMap = EventActionMap.fromObject({
@@ -185,7 +186,7 @@ class LayerSidePanel extends SidePanel {
     titleBar.appendChild(makeDeleteButton({
       title: 'Delete layer',
       onClick: () => {
-        deleteLayer(this.layer.managedLayer);
+        void deleteLayerFromUi(this.layer.managedLayer);
       }
     }));
     this.tabView = new TabView(
