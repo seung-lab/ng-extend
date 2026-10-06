@@ -3829,7 +3829,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
     await secureWrite('notification.self', {
       title: `🔥 ${days}-Day Streak!`,
-      body: `${STREAK_LINES[days]} ${next ? `Next milestone: ${next} days. ` : ''}Edit tomorrow to keep the flame going.`,
+      body: `${STREAK_LINES[days]} ${next ? `Next milestone: ${next} days. ` : ''}Come back tomorrow to keep the flame going.`,
       // Stand-in art until the streak's own Nurro arrives.
       image_url: `${art}/nurro-dance.png`,
       thumbnail_url: `${art}/nurro-dance.png`,
@@ -3995,6 +3995,44 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loading.value = false;
   }
 
+  // ── A visit counts as a day of the streak (Ames 2026-10-06) ──────────
+  // Once per local day, the server is told the player opened the game and in
+  // which time zone; it moves the streak on the player's own calendar
+  // (supabase-streak-local-days.sql). Days used to be UTC days, which end at
+  // 8 pm in New York, so an evening session broke or skipped a day.
+  const VISIT_KEY = 'nge-streak-visit';
+  let visitStreak: { currentStreak: number; longestStreak: number; lastEditDate: string } | null = null;
+  let visiting = false;
+  async function recordVisit() {
+    const uid = userId.value;
+    if (!uid || visiting) return;
+    let tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* very old browser */ }
+    const now = new Date();
+    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const key = `${uid}|${day}|${tz}`;
+    try { if (localStorage.getItem(VISIT_KEY) === key) return; } catch { /* private mode: ask each time */ }
+    visiting = true;
+    try {
+      const r: any = await secureWrite('activity.visit', { tz });
+      if (!r || typeof r.current_streak !== 'number') return;   // SQL not installed yet
+      if (userId.value !== uid) return;
+      visitStreak = { currentStreak: r.current_streak, longestStreak: r.longest_streak ?? 0, lastEditDate: r.last_edit_date || day };
+      useUserStatsStore().setStats(visitStreak);
+      try { localStorage.setItem(VISIT_KEY, key); } catch { /* */ }
+      // A recount of old days is a correction, not a day earned just now.
+      if (!r.recounted && r.current_streak !== (r.streak_before ?? 0)) sendStreakMilestone(r.current_streak).catch(() => {});
+    } catch (e: any) {
+      console.warn('[backend] visit not counted:', e?.message);
+    } finally {
+      visiting = false;
+    }
+  }
+  watch(userId, id => { visitStreak = null; if (id) void recordVisit(); }, { immediate: true });
+  // A tab left open overnight: the next day counts when the player returns to it.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) void recordVisit(); });
+  setInterval(() => { if (!document.hidden) void recordVisit(); }, 10 * 60 * 1000);
+
   // ── Load user stats from Supabase → local store ──────────────────────
   /** Hydrate local stats store from Supabase users table. Call after login. */
   async function loadUserStats() {
@@ -4016,6 +4054,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           longestStreak: data.longest_streak || 0,
           lastEditDate: data.last_edit_date || '',
         });
+        // Today's visit may have been counted while this read was on its way.
+        if (visitStreak) statsStore.setStats(visitStreak);
         console.info('[backend] Loaded user stats from Supabase');
       }
     } catch (e: any) {

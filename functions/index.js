@@ -1702,6 +1702,20 @@ exports.ewSecureWrite = onRequest(
           out = await ewRecordActivity(ewServiceKey.value().trim(), sb, ctx, who, token, args.row);
           break;
         }
+        // Opening the game counts as a day of the player's streak, in their
+        // own time zone (supabase-streak-local-days.sql). Nothing is logged:
+        // a visit is not an edit and never reaches the leaderboard.
+        case "activity.visit": {
+          const tz = typeof args.tz === "string" && /^[A-Za-z0-9_+\-\/]{1,64}$/.test(args.tz) ? args.tz : null;
+          try {
+            out = await sb("rpc/ew_touch_streak", { method: "POST", body: JSON.stringify({ p_user: me.id, p_tz: tz }) });
+          } catch (e) {
+            // Until the SQL is run the function is missing: say so plainly.
+            if (/PGRST202|ew_touch_streak|404/.test(String(e && e.message))) { out = { counted: false }; break; }
+            throw e;
+          }
+          break;
+        }
         case "pilot.task":
         case "pilot.practice": {
           // A claim's soma anchor has its own small function
