@@ -416,7 +416,7 @@ function draftReporterUpdate(row: TriageRow): string {
   if (row.status === 'done' || row.impl_state === 'deployed') {
     // Same wording as the bridge's fixedNote: thanks, their words, what was built.
     const fix = String(row.result_note || row.impl_summary || '')
-      .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/Details:\s*<?https?:\S+/gi, ' ')
+      .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/\bDetails:\s*<?https?:\S+/gi, ' ')
       .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
       .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
     const thanks = t ? `Thank you for submitting: "${t.length > 200 ? t.slice(0, 197) + '...' : t}".` : 'Thank you for your report.';

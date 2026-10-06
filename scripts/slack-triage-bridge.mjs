@@ -224,7 +224,7 @@ const quoteReport = row => {
 /** What changed, in words for the player: the release note without the
  *  tester credit, the commit link and Slack mentions. */
 const fixText = row => String(row.result_note || row.impl_summary || '')
-  .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/Details:\s*<?https?:\S+/gi, ' ')
+  .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/\bDetails:\s*<?https?:\S+/gi, ' ')
   .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
   .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
 
