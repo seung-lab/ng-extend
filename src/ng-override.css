@@ -252,9 +252,9 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
    is lit and grows a trace along its foot that ends in a solder point.
    Kept as one block after the older rules, so it layers over them. */
 .neuroglancer-layer-panel {
-  /* compact (Ames 2026-10-06: "layers are too tall"): the tabs are 22px and
-     the bar adds 2px above them, nothing below */
-  padding: 2px 8px 0 !important;
+  /* compact (Ames 2026-10-06: "layers are too tall"): the tabs' shapes are
+     22px; their 3px of headroom is the only space above them */
+  padding: 0 8px 0 !important;
   gap: 4px;
   min-height: 0 !important;
   align-items: flex-end !important;
@@ -264,11 +264,13 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
 .neuroglancer-layer-item {
   --tab-edge: rgba(74, 158, 255, 0.34);
   --tab-fill: #0a1326;
-  --tab-cut: polygon(5px 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 7px 100%, 0 calc(100% - 7px), 0 5px);
+  /* 3px of headroom above the shape: the selected tab's two pads sit ON its
+     top edge, half above it, and need somewhere to be */
+  --tab-cut: polygon(5px 3px, calc(100% - 10px) 3px, 100% 13px, 100% 100%, 7px 100%, 0 calc(100% - 7px), 0 8px);
   position: relative;
-  height: 22px;
+  height: 25px;
   gap: 6px;
-  padding: 0 16px 0 8px !important;
+  padding: 3px 16px 0 8px !important;
   border: 0 !important;
   border-radius: 0 !important;
   /* the edge light runs across the top and down the sides, and fades out
@@ -279,7 +281,7 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
 }
 .neuroglancer-layer-item::before {
   content: '';
-  position: absolute; inset: 1px; z-index: 0; pointer-events: none;
+  position: absolute; inset: 4px 1px 1px 1px; z-index: 0; pointer-events: none;
   background: var(--tab-fill);
   clip-path: polygon(4.6px 0, calc(100% - 9.4px) 0, 100% 9.4px, 100% 100%, 6.4px 100%, 0 calc(100% - 6.4px), 0 4.6px);
   transition: background 0.15s;
@@ -318,37 +320,6 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   letter-spacing: 0.05em;
 }
 .neuroglancer-layer-item:hover .neuroglancer-layer-item-label { color: #d6e4f6; }
-/* The selected tab's top edge is a circuit trace, not a solid line (Ames
-   2026-10-06, after her own chip drawings): the line runs in from the left,
-   ends on a pad, leaves a small gap the way a trace does at a component,
-   picks up again on a second pad, and carries on across to the diagonal.
-   It is drawn out when the tab becomes the selected one. The pads are rings:
-   light round a dark centre. --tab-pad is where along the edge they sit. */
-.neuroglancer-layer-item::after {
-  --tab-pad: 44%;
-  --trace: #c9f3ff;
-  --trace-glow: rgba(126, 224, 255, 0.6);
-  content: '';
-  position: absolute; z-index: 1; pointer-events: none;
-  left: 5px; top: 0; height: 6px; width: 0;
-  background:
-    /* first pad, then the gap, then the second pad */
-    radial-gradient(circle at calc(var(--tab-pad) - 4px) 2.5px, #0b1830 0 0.8px, var(--trace) 1.2px 2px, var(--trace-glow) 2.3px, transparent 2.8px),
-    radial-gradient(circle at calc(var(--tab-pad) + 5px) 2.5px, #0b1830 0 0.8px, var(--trace) 1.2px 2px, var(--trace-glow) 2.3px, transparent 2.8px),
-    /* the line up to the first pad */
-    linear-gradient(var(--trace), var(--trace)) 0 1.8px / calc(var(--tab-pad) - 6.4px) 1.4px no-repeat,
-    /* and on from the second pad to the diagonal */
-    linear-gradient(var(--trace), var(--trace)) calc(var(--tab-pad) + 7.4px) 1.8px / 100% 1.4px no-repeat;
-  opacity: 0;
-  transition: width 0.46s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
-}
-/* it runs the whole top edge, from the left chamfer to the long diagonal */
-.neuroglancer-layer-item[data-selected=true]::after { width: calc(100% - 15px); opacity: 1; }
-.neuroglancer-layer-item[data-tinted="true"]::after {
-  --trace: color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff);
-  --trace-glow: color-mix(in srgb, var(--nge-layer-color) 65%, transparent);
-}
-@media (prefers-reduced-motion: reduce) { .neuroglancer-layer-item::after { transition: none; } }
 /* selected: lit */
 .neuroglancer-layer-item[data-selected=true],
 .neuroglancer-layer-item[data-selected=true]:hover {
@@ -356,8 +327,8 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   background: linear-gradient(180deg, #b4f0ff 0%, #6fc4ff 34%, rgba(74, 158, 255, 0) 96%) !important;
 }
 .neuroglancer-layer-item[data-selected=true]::before {
-  /* reaches the very top, so the trace above is the only top edge */
-  inset: 0 1px 1px 1px;
+  /* reaches the shape's very top, so the trace is the only top edge */
+  inset: 3px 1px 1px 1px;
   clip-path: polygon(4px 0, calc(100% - 9px) 0, 100% 10px, 100% 100%, 6.4px 100%, 0 calc(100% - 6.4px), 0 5.2px);
   background: linear-gradient(180deg, #1c3a66, #0d1d3a 70%);
 }
@@ -387,6 +358,72 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true] { background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff) 0%, var(--nge-layer-color) 34%, transparent 96%) !important; }
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true]::before {
   background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 30%, #101c34), color-mix(in srgb, var(--nge-layer-color) 12%, #0a1326) 70%);
+}
+/* ── The selected tab's edge is a circuit trace (Ames 2026-10-06, after her
+      own chip drawings) ────────────────────────────────────────────────────
+   When a tab is selected its light is drawn on: it climbs both sides from
+   the foot, turns the corners, and runs inward along the top edge from
+   either side. The two runs do not join. Each ends on a pad, and the pads
+   sit either side of a small gap, three quarters of the way across, the way
+   a trace breaks at a component. The line IS the tab's top edge (no second
+   line inside it), and there is nothing between the pads.
+
+   --tab-rise  0 to 1: how far up the sides the light has climbed
+   --tab-run   0 to 1: how far the two top runs have travelled
+   --tab-pads  0 to 1: the pads arriving
+   All three rest at 1, so a tab that is simply selected shows the lot. */
+@property --tab-rise { syntax: '<number>'; inherits: false; initial-value: 1; }
+@property --tab-run  { syntax: '<number>'; inherits: false; initial-value: 1; }
+@property --tab-pads { syntax: '<number>'; inherits: false; initial-value: 1; }
+
+/* the side light never paints the 3px of headroom; :not(#a):not(#b) only
+   lifts this above the tab rules that set `background` with !important */
+.neuroglancer-layer-item:not(#a):not(#b) {
+  background-repeat: no-repeat !important;
+  background-position: left bottom !important;
+  background-size: 100% calc((100% - 3px) * var(--tab-rise)) !important;
+}
+.neuroglancer-layer-item[data-selected=true] {
+  /* where the pads sit, measured along the top edge (5px in, 10px short) */
+  --tab-pad-x: calc(5px + (100% - 15px) * 0.75);
+  /* the shape, with a small step up around the pads so they are not cut off */
+  clip-path: polygon(
+    5px 3px, calc(var(--tab-pad-x) - 8px) 3px, calc(var(--tab-pad-x) - 8px) 0,
+    calc(var(--tab-pad-x) + 8px) 0, calc(var(--tab-pad-x) + 8px) 3px,
+    calc(100% - 10px) 3px, 100% 13px, 100% 100%, 7px 100%, 0 calc(100% - 7px), 0 8px);
+  animation: nge-tab-rise 560ms cubic-bezier(0.3, 0, 0.2, 1) 1 both;
+}
+@keyframes nge-tab-rise { 0% { --tab-rise: 0; } 42%, 100% { --tab-rise: 1; } }
+.neuroglancer-layer-item::after {
+  --trace: #c9f3ff;
+  content: '';
+  position: absolute; z-index: 1; pointer-events: none;
+  left: 5px; right: 10px; top: 0; height: 7px;
+  opacity: 0;
+}
+.neuroglancer-layer-item[data-selected=true]::after {
+  --pad: color-mix(in srgb, var(--trace) calc(var(--tab-pads) * 100%), transparent);
+  --hole: color-mix(in srgb, #10233f calc(var(--tab-pads) * 100%), transparent);
+  opacity: 1;
+  background:
+    /* the two pads: a ring of light round a dark centre, 9px apart, centred on the edge */
+    radial-gradient(circle at calc(75% - 4.5px) 3.7px, var(--hole) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
+    radial-gradient(circle at calc(75% + 4.5px) 3.7px, var(--hole) 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
+    /* the run in from the left, up to the first pad */
+    linear-gradient(var(--trace), var(--trace)) left 0 top 3px / calc((75% - 6.8px) * var(--tab-run)) 1.4px no-repeat,
+    /* the run in from the right, up to the second pad */
+    linear-gradient(var(--trace), var(--trace)) right 0 top 3px / calc((25% - 6.8px) * var(--tab-run)) 1.4px no-repeat;
+  animation: nge-tab-run 560ms cubic-bezier(0.3, 0, 0.2, 1) 1 both;
+}
+@keyframes nge-tab-run {
+  0%, 42% { --tab-run: 0; --tab-pads: 0; }
+  88%     { --tab-run: 1; --tab-pads: 0; }
+  100%    { --tab-run: 1; --tab-pads: 1; }
+}
+.neuroglancer-layer-item[data-tinted="true"]::after { --trace: color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff); }
+@media (prefers-reduced-motion: reduce) {
+  .neuroglancer-layer-item[data-selected=true],
+  .neuroglancer-layer-item[data-selected=true]::after { animation: none; }
 }
 /* add a layer: the same cut, small */
 .neuroglancer-layer-add-button {
