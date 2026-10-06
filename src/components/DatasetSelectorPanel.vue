@@ -93,6 +93,11 @@ const SECTIONS: Record<DatasetSection, { title: string; kicker: string; help: st
 const COLUMNS: DatasetSection[][] = [['sandbox', 'viewonly'], ['production']];
 const cardsIn = (s: DatasetSection) => cards.value.filter(c => sectionOf(c) === s);
 const helpOpen = ref<DatasetSection | null>(null);
+/** The dataset's numbers live in DatasetStatsPanel; ExtensionBar listens,
+ *  closes this panel and opens that one. */
+function openDatasetStats() {
+  document.dispatchEvent(new CustomEvent('nge:open-dataset-stats'));
+}
 function toggleHelp(s: DatasetSection) { helpOpen.value = helpOpen.value === s ? null : s; }
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') { e.stopPropagation(); emit('hide'); } }
 onMounted(() => window.addEventListener('keydown', onKey, true));
@@ -136,6 +141,7 @@ async function switchTo(ds: DatasetEntry) {
             <span class="nge-ds-title">Switch Dataset</span>
             <span class="nge-ds-sub">Choose where to work. Production data is live science.</span>
           </div>
+          <button class="nge-ds-stats-link" @click="openDatasetStats">Dataset stats →</button>
           <button class="nge-ds-close" aria-label="Close" @click="emit('hide')">×</button>
         </div>
         <div class="nge-ds-columns">
@@ -366,6 +372,19 @@ async function switchTo(ds: DatasetEntry) {
   letter-spacing: 0.08em;
 }
 
+.nge-ds-stats-link {
+  margin-left: auto;
+  margin-right: 10px;
+  white-space: nowrap;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: rgb(126, 224, 255);
+  background: rgba(126, 224, 255, 0.06);
+  border: 1px solid rgba(126, 224, 255, 0.28);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nge-ds-stats-link:hover { background: rgba(126, 224, 255, 0.14); color: #fff; }
 .nge-ds-close {
   background: none;
   border: none;

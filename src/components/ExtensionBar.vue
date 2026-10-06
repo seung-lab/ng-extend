@@ -317,10 +317,24 @@ function maybeOpenLeaderboardOnArrival() {
   leaderboardPeek.value = true;
   showLeaderboard.value = true;
 }
-// Dataset Progress: the whole dataset's progress. Opened from the toolbar,
-// or from the profile's Datasets tab (the way in on a phone).
+// Dataset Stats: what has been done on a dataset. It is a tab of the profile
+// (toolbar icon, Switch Dataset panel, command list). This is the narrow
+// panel: the leaderboard's link, and every way in on a phone.
 const showDatasetStats = ref(false);
-document.addEventListener('nge:open-dataset-stats', () => { showProfile.value = false; showDatasetStats.value = true; });
+/** Its home is the profile's Dataset Stats tab. Phones have no room for
+ *  that, so they get the narrow panel. */
+function openDatasetStatsHome() {
+  if (isMobileRef.value) { showDatasetStats.value = true; return; }
+  profileUserId.value = null;
+  profileInitialTab.value = 'datasetStats';
+  showProfile.value = true;
+}
+// detail.panel asks for the narrow panel itself (the leaderboard's link).
+document.addEventListener('nge:open-dataset-stats', (e) => {
+  showLeaderboard.value = false; leaderboardPeek.value = false; showDatasetSelector.value = false;
+  if ((e as CustomEvent).detail?.panel) { showProfile.value = false; showDatasetStats.value = true; }
+  else openDatasetStatsHome();
+});
 const showSettings = ref(false);
 const showQueue = ref(false);
 const showFeed = ref(false);
@@ -667,7 +681,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   layers:      { action: () => toggleLayerListPanel() },
   recap:       { action: () => { openWeekRecap(); } },
   leaderboard: { action: () => { showLeaderboard.value = true; } },
-  datasetStats: { action: () => { showDatasetStats.value = !showDatasetStats.value; } },
+  datasetStats: { action: () => { if (showDatasetStats.value) showDatasetStats.value = false; else openDatasetStatsHome(); } },
   quest:       { action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
   cells:       { action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
   batch:       { action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
@@ -707,7 +721,7 @@ const iconActiveState: Record<string, () => boolean> = {
   layers: () => layerPanelOpen.value,
   recap: () => showProfile.value && profileInitialTab.value === 'weekInScience',
   leaderboard: () => showLeaderboard.value,
-  datasetStats: () => showDatasetStats.value,
+  datasetStats: () => showDatasetStats.value || (showProfile.value && profileInitialTab.value === 'datasetStats'),
   quest: () => showQueue.value,
   cells: () => showCellLibrary.value,
   batch: () => showBatchProcessor.value,
@@ -831,6 +845,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     @open-cells="showCellLibrary = true"
     @open-feed="showFeed = true"
     @open-dataset-selector="showDatasetSelector = true"
+    @open-dataset-stats="openDatasetStatsHome()"
   />
   <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
   <!-- Help requests now live in Cell Library's Help tab -->

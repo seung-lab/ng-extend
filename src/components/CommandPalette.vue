@@ -22,6 +22,7 @@ const emit = defineEmits({
   'open-profile': null,
   'open-recap': null,
   'open-leaderboard': null,
+  'open-dataset-stats': null,
   'open-settings': null,
   'open-help': null,
   'open-queue': null,
@@ -119,6 +120,14 @@ function buildActions(): PaletteItem[] {
     icon: '🏆',
     shortcut: 'Ctrl+Shift+L',
     action: () => emit('open-leaderboard'),
+  });
+  items.push({
+    id: 'open-dataset-stats',
+    label: 'Open Dataset Stats',
+    description: 'Cells finished, by week and by type, for each dataset',
+    category: 'navigate',
+    icon: '🧭',
+    action: () => emit('open-dataset-stats'),
   });
   items.push({
     id: 'open-recap',

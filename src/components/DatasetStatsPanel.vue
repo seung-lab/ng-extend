@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Dataset Progress: how far along one dataset is as a whole, with a short
+ * Dataset Stats: what has been done on one dataset as a whole, with a short
  * strip for the signed-in player's part in it. Not a second profile: the
  * profile is about a person, this is about the dataset.
  *
@@ -20,8 +20,10 @@ import { datasetsWithStats, loadDatasetStats, statsKey, weeklySeries, type Datas
 import { useProofreadingBackendStore } from '../store';
 
 const emit = defineEmits({ hide: null });
-/** Peek (desktop): no dim, the site stays usable, a click elsewhere puts it away. */
-const props = defineProps<{ peek?: boolean }>();
+/** Peek (desktop): no dim, the site stays usable, a click elsewhere puts it away.
+ *  Embedded: the profile's Dataset Stats tab. No window of its own, and the
+ *  parts sit side by side across the profile's width. */
+const props = defineProps<{ peek?: boolean; embedded?: boolean }>();
 const backend = useProofreadingBackendStore();
 
 type Phase = 'loading' | 'ready' | 'unavailable';
@@ -69,12 +71,6 @@ const hasList = computed(() => !!progress.value && progress.value.total > 0);
 const share = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : 0);
 const pctDone = computed(() => (progress.value ? share(progress.value.done, progress.value.total) : 0));
 const pctClaimed = computed(() => (progress.value ? share(progress.value.claimed, progress.value.total) : 0));
-/** One decimal, and never "100.0" until every cell is done. */
-function pctText(p: number): string {
-  if (p >= 100) return '100';
-  if (p > 99.9) return '99.9';
-  return p.toFixed(1);
-}
 /** A share of something small enough to round to nothing still happened. */
 function shareText(part: number, whole: number): string {
   if (!(whole > 0) || !(part > 0)) return '0%';
@@ -155,6 +151,7 @@ function onPeekPointerDown(e: PointerEvent) {
 }
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') emit('hide'); }
 onMounted(() => {
+  if (props.embedded) return;        // the profile owns Escape and its own close
   document.addEventListener('keydown', onKey);
   if (props.peek) document.addEventListener('pointerdown', onPeekPointerDown, true);
 });
@@ -166,17 +163,22 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <modal-overlay id="nge-dsp-modal" class="nge-dsp-modal" :class="{ 'nge-dsp-modal--peek': props.peek }" @hide="emit('hide')">
-    <div class="nge-dsp-shell">
-      <div class="nge-dsp-topbar">
+  <component
+    :is="props.embedded ? 'div' : ModalOverlay"
+    :id="props.embedded ? undefined : 'nge-dsp-modal'"
+    :class="props.embedded ? 'nge-dsp-embedded' : ['nge-dsp-modal', { 'nge-dsp-modal--peek': props.peek }]"
+    @hide="emit('hide')"
+  >
+    <div class="nge-dsp-shell" :class="{ 'nge-dsp-shell--wide': props.embedded }">
+      <div v-if="!props.embedded" class="nge-dsp-topbar">
         <button class="nge-dsp-exit" aria-label="Close" @click="emit('hide')">×</button>
       </div>
 
-      <div class="nge-dsp-hero">
+      <div v-if="!props.embedded" class="nge-dsp-hero">
         <div class="nge-dsp-hero-grid"></div>
         <div class="nge-dsp-title-rule"></div>
-        <h2 class="nge-dsp-title">Dataset Progress</h2>
-        <div class="nge-dsp-title-sub">{{ active ? active.label : 'How far along each dataset is' }}</div>
+        <h2 class="nge-dsp-title">Dataset Stats</h2>
+        <div class="nge-dsp-title-sub">{{ active ? active.label : 'What has been done on each dataset' }}</div>
         <div class="nge-dsp-title-rule"></div>
       </div>
 
@@ -188,6 +190,7 @@ onUnmounted(() => {
         >{{ ds.shortLabel }}</button>
       </div>
 
+      <div v-if="props.embedded && active" class="nge-dsp-wide-title">{{ active.label }}</div>
       <div class="nge-dsp-content">
         <!-- Whole panel states -->
         <div v-if="phase === 'loading' || (phase === 'ready' && active && !stats)" class="nge-dsp-loading" role="status">
@@ -195,7 +198,7 @@ onUnmounted(() => {
           <div class="nge-dsp-loading-text">Reading the dataset</div>
         </div>
         <div v-else-if="phase === 'unavailable'" class="nge-dsp-note" role="status">
-          Dataset progress is not available right now. Nothing is shown rather than a guess.
+          Dataset stats are not available right now. Nothing is shown rather than a guess.
         </div>
         <div v-else-if="!datasets.length" class="nge-dsp-note" role="status">
           No dataset has a cell list or logged work yet.
@@ -203,27 +206,28 @@ onUnmounted(() => {
 
         <template v-else-if="stats">
           <!-- ── Progress ── -->
-          <section class="nge-dsp-section">
-            <div class="nge-dsp-label">▌ Cells finished</div>
+          <section class="nge-dsp-section nge-dsp-s-prog">
+            <div class="nge-dsp-label">▌ Cells completed</div>
             <div v-if="!progress" class="nge-dsp-na">Not available right now.</div>
             <div v-else-if="!hasList" class="nge-dsp-empty">This dataset has no cell list yet, so there is no total to measure against.</div>
             <template v-else>
+              <!-- The headline is the count, not a percentage (Ames 2026-10-06). -->
               <div class="nge-dsp-big">
-                <span class="nge-dsp-big-num">{{ pctText(pctDone) }}<span class="nge-dsp-big-unit">%</span></span>
+                <span class="nge-dsp-big-num"><RollUp :value="progress.done" /></span>
               </div>
               <div class="nge-dsp-big-sub">
-                <strong><RollUp :value="progress.done" /></strong> of
-                <strong>{{ progress.total.toLocaleString() }}</strong> cells
+                cell{{ progress.done === 1 ? '' : 's' }} completed, of
+                <strong>{{ progress.total.toLocaleString() }}</strong> in the cell list
               </div>
               <div class="nge-dsp-track" role="img"
-                   :aria-label="`${progress.done.toLocaleString()} finished, ${progress.claimed.toLocaleString()} claimed, ${progress.waiting.toLocaleString()} waiting`">
+                   :aria-label="`${progress.done.toLocaleString()} completed, ${progress.claimed.toLocaleString()} claimed, ${progress.waiting.toLocaleString()} waiting`">
                 <div class="nge-dsp-fill nge-dsp-fill--done" :style="{ width: pctDone + '%' }"></div>
                 <div class="nge-dsp-fill nge-dsp-fill--claimed" :style="{ width: pctClaimed + '%' }"></div>
               </div>
               <div class="nge-dsp-trio">
                 <div class="nge-dsp-tile">
                   <div class="nge-dsp-tile-num nge-dsp-c-done">{{ progress.done.toLocaleString() }}</div>
-                  <div class="nge-dsp-tile-key">finished</div>
+                  <div class="nge-dsp-tile-key">completed</div>
                 </div>
                 <div class="nge-dsp-tile">
                   <div class="nge-dsp-tile-num nge-dsp-c-claimed">{{ progress.claimed.toLocaleString() }}</div>
@@ -241,7 +245,7 @@ onUnmounted(() => {
           </section>
 
           <!-- ── Cells per week ── -->
-          <section v-if="hasList || (stats.weeks && stats.weeks.length)" class="nge-dsp-section">
+          <section v-if="hasList || (stats.weeks && stats.weeks.length)" class="nge-dsp-section nge-dsp-s-week">
             <div class="nge-dsp-label">▌ Cells per week</div>
             <div v-if="!stats.weeks" class="nge-dsp-na">Not available right now.</div>
             <div v-else-if="!hasCellWeeks" class="nge-dsp-empty">
@@ -260,7 +264,7 @@ onUnmounted(() => {
                 <rect v-for="b in bars" :key="b.weekStart" class="nge-dsp-bar"
                       :class="{ 'nge-dsp-bar--on': shownWeek && shownWeek.weekStart === b.weekStart }"
                       :x="b.x" :y="b.y" :width="b.w" :height="b.h" :style="{ animationDelay: Math.min(b.i * 14, 600) + 'ms' }" />
-                <path v-if="runningPath" class="nge-dsp-run" :d="runningPath" pathLength="1" />
+                <path v-if="runningPath" class="nge-dsp-run" :d="runningPath" />
               </svg>
               <div class="nge-dsp-axis">
                 <span>{{ shortDate(series[0].weekStart) }}</span>
@@ -278,7 +282,7 @@ onUnmounted(() => {
           </section>
 
           <!-- ── By cell type ── -->
-          <section v-if="hasList && (!stats.types || hasTypes)" class="nge-dsp-section">
+          <section v-if="hasList && (!stats.types || hasTypes)" class="nge-dsp-section nge-dsp-s-types">
             <div class="nge-dsp-label">▌ By predicted cell type</div>
             <div v-if="!stats.types" class="nge-dsp-na">Not available right now.</div>
             <div v-else class="nge-dsp-types">
@@ -295,7 +299,7 @@ onUnmounted(() => {
           </section>
 
           <!-- ── Work in the game ── -->
-          <section class="nge-dsp-section">
+          <section class="nge-dsp-section nge-dsp-s-work">
             <div class="nge-dsp-label">▌ Work in EyeWire II</div>
             <div v-if="!work" class="nge-dsp-na">Not available right now.</div>
             <div v-else-if="nothingHere" class="nge-dsp-empty">No edits have been logged on this dataset yet.</div>
@@ -330,11 +334,11 @@ onUnmounted(() => {
           </section>
 
           <!-- ── Your part ── -->
-          <section v-if="mine" class="nge-dsp-section nge-dsp-section--mine">
+          <section v-if="mine" class="nge-dsp-section nge-dsp-section--mine nge-dsp-s-mine">
             <div class="nge-dsp-label nge-dsp-label--amber">▌ Your part</div>
             <div class="nge-dsp-mine">
               <div class="nge-dsp-mine-row">
-                <span class="nge-dsp-mine-key">Cells finished</span>
+                <span class="nge-dsp-mine-key">Cells completed</span>
                 <span v-if="mine.cells === null" class="nge-dsp-mine-na">not available</span>
                 <template v-else>
                   <span class="nge-dsp-mine-num">{{ mine.cells.toLocaleString() }}</span>
@@ -365,7 +369,7 @@ onUnmounted(() => {
 
       <div v-if="readAt" class="nge-dsp-readat" :class="{ 'nge-dsp-readat--busy': reading }">Read at {{ readAt }}</div>
     </div>
-  </modal-overlay>
+  </component>
 </template>
 
 <style scoped>
@@ -486,7 +490,6 @@ onUnmounted(() => {
   font-size: 3.2em; font-weight: 800; color: #fff; line-height: 1; letter-spacing: -0.02em;
   text-shadow: 0 0 18px rgba(120, 190, 255, 0.45), 0 2px 10px rgba(0, 0, 0, 0.8);
 }
-.nge-dsp-big-unit { font-size: 0.45em; font-weight: 700; margin-left: 2px; color: rgba(170, 205, 255, 0.85); }
 .nge-dsp-big-sub { margin: 6px 0 12px; text-align: center; font-size: 0.95em; color: #c9d6e3; }
 .nge-dsp-big-sub strong { color: #f2f6fb; }
 
@@ -535,10 +538,12 @@ onUnmounted(() => {
 .nge-dsp-run {
   fill: none; stroke: #ffd08a; stroke-width: 1.25; vector-effect: non-scaling-stroke;
   stroke-linejoin: round; stroke-linecap: round; opacity: 0.9; pointer-events: none;
-  stroke-dasharray: 1; stroke-dashoffset: 1;
-  animation: ngeDsDraw 1.1s ease-out 0.25s forwards;
+  /* Fades in after the bars. Not a dash draw: the chart is stretched to
+     its box and the stroke is not, so a dash length measured on one is
+     wrong on the other and the line stopped short in the wide layout. */
+  animation: ngeDsFade 0.7s ease-out 0.45s both;
 }
-@keyframes ngeDsDraw { to { stroke-dashoffset: 0; } }
+@keyframes ngeDsFade { from { opacity: 0; } to { opacity: 0.9; } }
 .nge-dsp-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.68em; color: #8fa0b6; }
 .nge-dsp-legend, .nge-dsp-splitkey { display: flex; gap: 14px; margin-top: 6px; font-size: 0.72em; color: #b4c3d6; }
 .nge-dsp-key { display: inline-block; margin-right: 5px; vertical-align: middle; }
@@ -580,11 +585,37 @@ onUnmounted(() => {
 }
 .nge-dsp-readat--busy { opacity: 0.5; }
 
+/* ── Embedded in the profile: the same parts, side by side ── */
+.nge-dsp-embedded { display: block; width: 100%; font-size: 0.9em; }
+.nge-dsp-shell--wide { width: 100%; height: auto; }
+.nge-dsp-shell--wide .nge-dsp-tabs { justify-content: flex-start; padding: 16px 22px 4px; }
+.nge-dsp-wide-title { padding: 6px 22px 0; font-size: 0.86em; letter-spacing: 0.04em; color: rgba(170, 205, 255, 0.8); }
+.nge-dsp-shell--wide .nge-dsp-content {
+  overflow: visible; padding: 14px 22px 8px;
+  display: grid; gap: 14px; align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr);
+  grid-template-areas: "prog week types" "mine work types";
+}
+.nge-dsp-shell--wide .nge-dsp-loading,
+.nge-dsp-shell--wide .nge-dsp-note { grid-column: 1 / -1; }
+.nge-dsp-shell--wide .nge-dsp-section {
+  margin: 0; padding: 14px 16px; border-radius: 8px;
+  border: 1px solid rgba(74, 158, 255, 0.14); background: rgba(74, 158, 255, 0.04);
+}
+.nge-dsp-shell--wide .nge-dsp-section--mine { border-color: rgba(255, 195, 110, 0.22); background: rgba(255, 195, 110, 0.04); }
+.nge-dsp-shell--wide .nge-dsp-s-prog { grid-area: prog; }
+.nge-dsp-shell--wide .nge-dsp-s-week { grid-area: week; }
+.nge-dsp-shell--wide .nge-dsp-s-types { grid-area: types; }
+.nge-dsp-shell--wide .nge-dsp-s-work { grid-area: work; }
+.nge-dsp-shell--wide .nge-dsp-s-mine { grid-area: mine; }
+.nge-dsp-shell--wide .nge-dsp-chart { height: 150px; }
+.nge-dsp-shell--wide .nge-dsp-readat { border-top: none; padding: 0 22px 14px; }
+
 /* Nothing moves for a reader who asked for stillness: the page is drawn
    in its finished state. */
 @media (prefers-reduced-motion: reduce) {
   .nge-dsp-modal :deep(.nge-overlay), .nge-dsp-fill, .nge-dsp-type-fill, .nge-dsp-bar { animation: none; }
-  .nge-dsp-run { animation: none; stroke-dashoffset: 0; }
+  .nge-dsp-run { animation: none; }
 }
 </style>
 

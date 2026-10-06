@@ -324,6 +324,12 @@ async function close() {
   emit('hide');
 }
 
+/** The dataset's own numbers live in DatasetStatsPanel; ExtensionBar
+ *  listens, puts this panel away and opens that one. */
+function openDatasetStats() {
+  document.dispatchEvent(new CustomEvent('nge:open-dataset-stats', { detail: { panel: true } }));
+}
+
 const RANK_MEDAL: Record<number, string> = {1: '🥇', 2: '🥈', 3: '🥉'};
 
 /** Convert flag emoji to a CDN image URL (cross-platform, Windows compat). */
@@ -478,6 +484,7 @@ onUnmounted(() => {
             </tbody>
           </table>
         </div>
+        <button class="nge-lb-dataset-stats" @click="openDatasetStats">Dataset stats: what has been done so far →</button>
         <label class="nge-lb-onopen">
           <input type="checkbox" :checked="showOnOpen" @change="onShowOnOpenChange" />
           Show when I open EyeWire II
@@ -671,6 +678,19 @@ onUnmounted(() => {
 /* (scanline keyframe removed — using ModalOverlay holographic effects) */
 
 /* ── Shell — fills the full sidebar height ── */
+.nge-lb-dataset-stats {
+  flex-shrink: 0;
+  margin: 8px 14px 0;
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: rgb(126, 224, 255);
+  background: rgba(126, 224, 255, 0.06);
+  border: 1px solid rgba(126, 224, 255, 0.28);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nge-lb-dataset-stats:hover { background: rgba(126, 224, 255, 0.14); color: #fff; }
 .nge-lb-onopen {
   display: flex;
   align-items: center;

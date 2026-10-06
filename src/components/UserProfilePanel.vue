@@ -8,6 +8,7 @@ import BlogEditor from 'components/BlogEditor.vue';
 import { startDatasetTransition } from '../util/dataset_transition';
 import { loadContribution, datasetTagVariants as sharedTagVariants } from '../util/dataset_contribution';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
+import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
 import {getToolbarIconDef} from '../data/toolbar-icons';
@@ -152,7 +153,7 @@ const BADGE_PREVIEW_WITH_VIEWALL = 4; // four + the View all tile
 const SPECIAL_PREVIEW_LIMIT = 5;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
-const activeTab = ref<'overview' | 'trophyCase' | 'myCells' | 'datasets' | 'weekInScience' | 'adminHub' | 'blog' | 'settings'>('overview');
+const activeTab = ref<'overview' | 'trophyCase' | 'myCells' | 'datasets' | 'datasetStats' | 'weekInScience' | 'adminHub' | 'blog' | 'settings'>('overview');
 
 function openWeekInScience() {
   activeTab.value = 'weekInScience';
@@ -248,6 +249,8 @@ onMounted(() => {
     openWeekInScience();
   } else if (props.initialTab === 'datasets') {
     activeTab.value = 'datasets';
+  } else if (props.initialTab === 'datasetStats') {
+    activeTab.value = 'datasetStats';
   } else if (props.initialTab === 'settings' && !viewingOtherUser.value) {
     activeTab.value = 'settings';
   } else if (props.initialTab === 'triage' && !viewingOtherUser.value) {
@@ -307,10 +310,11 @@ async function loadDatasetStats() {
 watch(activeTab, tab => { if (tab === 'datasets') loadDatasetStats(); });
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
-/** The whole dataset's progress lives in its own panel (DatasetStatsPanel).
- *  ExtensionBar listens, closes the profile and opens it. */
+/** The whole dataset's numbers: the Dataset Stats tab here, or on a phone
+ *  the narrow panel (ExtensionBar listens, closes the profile and opens it). */
 function openDatasetProgress() {
-  document.dispatchEvent(new CustomEvent('nge:open-dataset-stats'));
+  if (!isMobileRef.value) { activeTab.value = 'datasetStats'; return; }
+  document.dispatchEvent(new CustomEvent('nge:open-dataset-stats', { detail: { panel: true } }));
 }
 async function switchProfileDataset(ds: DatasetEntry) {
   const canon = canonicalDataset(segLayerName(ds));
@@ -821,7 +825,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
     :class="{ 'nge-profile-closing': closing }"
     @hide="handleClose"
   >
-    <div ref="shellEl" class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets', 'nge-profile-shell--settings': activeTab === 'settings' }">
+    <div ref="shellEl" class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets', 'nge-profile-shell--dstats': activeTab === 'datasetStats', 'nge-profile-shell--settings': activeTab === 'settings' }">
 
       <!-- ── Topbar ─────────────────────────────────────────── -->
       <div class="nge-profile-topbar">
@@ -865,6 +869,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           :class="{ 'nge-profile-tab--active': activeTab === 'datasets' }"
           @click="activeTab = 'datasets'"
         >🧬 Datasets</button>
+        <!-- The whole dataset, not this person (Ames 2026-10-06). Phones use
+             the narrow panel instead, from the Datasets tab or the leaderboard. -->
+        <button
+          v-if="!isMobileRef"
+          class="nge-profile-tab"
+          :class="{ 'nge-profile-tab--active': activeTab === 'datasetStats' }"
+          @click="activeTab = 'datasetStats'"
+        >📊 Dataset Stats</button>
         <!-- Hidden by default (Amy 2026-08-11): the tab button only appears
              while you're ON it, i.e. arrived via the toolbar Week icon or a
              recap notification deep-link. -->
@@ -1686,7 +1698,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           {{ viewingOtherUser ? `${profileName}'s contributions across datasets.` : 'Your contributions across datasets.' }}
           Click one to switch your viewer to it.
         </div>
-        <button class="nge-ds-tab-progress" @click="openDatasetProgress">Dataset progress: how far along each dataset is →</button>
+        <button class="nge-ds-tab-progress" @click="openDatasetProgress">Dataset stats: what has been done on each dataset →</button>
         <div v-if="datasetStatsLoading && !Object.keys(datasetStats).length" class="nge-ds-tab-loading">
           Counting edits…
         </div>
@@ -1723,6 +1735,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- ── Dataset Stats tab ─────────────────────────────────── -->
+      <div v-if="activeTab === 'datasetStats'" class="nge-profile-body nge-profile-body--dstats">
+        <DatasetStatsPanel embedded />
       </div>
 
       <!-- ── Week in Science tab ───────────────────────────────── -->
@@ -1914,6 +1931,17 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   /* Wide enough for the recap's three columns to fit without scrolling. */
   width: 1180px;
   max-width: 94vw;
+}
+.nge-profile-shell--dstats {
+  /* Wide enough for the three columns of dataset stats. */
+  width: 1180px;
+  max-width: 94vw;
+}
+.nge-profile-body--dstats {
+  display: block;
+  padding: 0;
+  max-height: calc(90vh - 100px);
+  overflow-y: auto;
 }
 .nge-profile-shell--datasets {
   width: 640px;
