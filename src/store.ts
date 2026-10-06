@@ -4256,6 +4256,33 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
+  // ── What each of my claims is NOW ─────────────────────────────────────
+  // A merge or split gives the cell a new segment ID, but the claim kept
+  // showing, and jumping to, the ID it was listed under (Celia's report of
+  // 2026-08-13). task.segment_id stays as it is: it is how a claim is matched
+  // to its row in the cell list. The current ID is kept beside it, by task,
+  // from the claim's supervoxel (the one fixed point of a cell that edits
+  // never change), and refreshed after every edit the graph server accepts.
+  const liveRoots = ref<Record<number, string>>({});
+  async function refreshLiveRoots(): Promise<void> {
+    const mine = tasks.value.filter(t => t.supervoxel_id && t.assigned_to === userId.value
+      && (t.status === 'assigned' || t.status === 'in_progress'));
+    if (!mine.length) return;
+    const resolved = await getRootsFromSupervoxels(mine.map(t => t.supervoxel_id!));
+    const next = { ...liveRoots.value };
+    for (const t of mine) {
+      const root = resolved.get(t.supervoxel_id!);
+      if (root) next[t.id] = root;
+    }
+    liveRoots.value = next;
+  }
+  let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
+  window.addEventListener('nge-graph-edit', () => {
+    // A burst of edits is one lookup, shortly after the last of them.
+    if (liveRootTimer) clearTimeout(liveRootTimer);
+    liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); }, 1500);
+  });
+
   function _findTaskByPoint(point: ClaimPoint): ProofreadingTask | undefined {
     return tasks.value.find(
       t => t.claim_point_x === point[0] && t.claim_point_y === point[1] && t.claim_point_z === point[2],
@@ -5189,6 +5216,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Point-in-space claims
     claimCell, releaseCell, releaseBySegment, releaseTaskById, saveWorkingLink, loadMyActiveClaims, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
     refreshSegmentIds,
+    liveRoots, refreshLiveRoots,
     MAX_CLAIMS, claimLimitFor,
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor,
