@@ -282,7 +282,21 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
   clip-path: polygon(5.6px 0, calc(100% - 12.4px) 0, 100% 12.4px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 5.6px);
   transition: background 0.15s;
 }
-.neuroglancer-layer-item > * { position: relative; z-index: 1; }
+/* everything inside sits above the fill, EXCEPT the two loading lines:
+   they are meant to float along the tab's foot, and lifting them into the
+   row turned them into a stray grey bar that squeezed the name onto two
+   lines (Ames 2026-10-06). */
+.neuroglancer-layer-item > :not(.neuroglancer-layer-item-visible-progress):not(.neuroglancer-layer-item-prefetch-progress) { position: relative; z-index: 1; }
+.neuroglancer-layer-item-visible-progress,
+.neuroglancer-layer-item-prefetch-progress {
+  position: absolute !important; z-index: 1;
+  left: 9px !important; bottom: 1px !important; top: auto !important;
+  height: 1px !important; max-width: calc(100% - 9px);
+  pointer-events: none;
+}
+.neuroglancer-layer-item-visible-progress { background: rgba(126, 224, 255, 0.75) !important; }
+.neuroglancer-layer-item-prefetch-progress { background: rgba(126, 224, 255, 0.3) !important; }
+.neuroglancer-layer-item-label { white-space: nowrap; }
 .neuroglancer-layer-item:hover { --tab-edge: rgba(111, 196, 255, 0.7); --tab-fill: #0e1b36; background: linear-gradient(180deg, var(--tab-edge) 0%, var(--tab-edge) 38%, transparent 96%) !important; }
 /* the index: a small chip with one corner cut, in the HUD face */
 .neuroglancer-layer-item-number {
@@ -308,17 +322,34 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   letter-spacing: 0.05em;
 }
 .neuroglancer-layer-item:hover .neuroglancer-layer-item-label { color: #d6e4f6; }
-/* selected: lit, with a trace along the foot that ends in a solder point */
+/* the trace: a line along the top edge that ends in a solder point. It is
+   drawn out when the tab becomes the selected one (Ames 2026-10-06: at the
+   top, not the foot). */
+.neuroglancer-layer-item::after {
+  content: '';
+  position: absolute; z-index: 1; pointer-events: none;
+  left: 8px; top: 0; height: 5px; width: 0;
+  background:
+    radial-gradient(circle at calc(100% - 2.5px) 2px, #e6f9ff 0 1.5px, rgba(126, 224, 255, 0.6) 2.1px, transparent 2.6px),
+    linear-gradient(90deg, rgba(126, 224, 255, 0), #c9f3ff 30%) 0 1.5px / calc(100% - 3px) 1.5px no-repeat;
+  opacity: 0;
+  transition: width 0.42s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+}
+.neuroglancer-layer-item[data-selected=true]::after { width: 52%; opacity: 1; }
+.neuroglancer-layer-item[data-tinted="true"]::after {
+  background:
+    radial-gradient(circle at calc(100% - 2.5px) 2px, #ffffff 0 1.5px, color-mix(in srgb, var(--nge-layer-color) 70%, transparent) 2.1px, transparent 2.6px),
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff) 30%) 0 1.5px / calc(100% - 3px) 1.5px no-repeat;
+}
+@media (prefers-reduced-motion: reduce) { .neuroglancer-layer-item::after { transition: none; } }
+/* selected: lit */
 .neuroglancer-layer-item[data-selected=true],
 .neuroglancer-layer-item[data-selected=true]:hover {
   --tab-edge: #7ee0ff;
   background: linear-gradient(180deg, #b4f0ff 0%, #6fc4ff 34%, rgba(74, 158, 255, 0) 96%) !important;
 }
 .neuroglancer-layer-item[data-selected=true]::before {
-  background:
-    radial-gradient(circle at calc(9px + 46%) calc(100% - 2px), #dff7ff 0 1.6px, rgba(126, 224, 255, 0.55) 2.2px, transparent 3.4px),
-    linear-gradient(90deg, rgba(126, 224, 255, 0.95), rgba(126, 224, 255, 0.95)) 9px calc(100% - 1.5px) / 46% 1px no-repeat,
-    linear-gradient(180deg, #1c3a66, #0d1d3a 70%);
+  background: linear-gradient(180deg, #1c3a66, #0d1d3a 70%);
 }
 .neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #f2f8ff; }
 .neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-number { background: #7ee0ff !important; color: #04101f !important; }
@@ -345,10 +376,7 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
 .neuroglancer-layer-item[data-tinted="true"] .neuroglancer-layer-item-number { background: var(--nge-layer-color) !important; color: #05080f !important; }
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true] { background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff) 0%, var(--nge-layer-color) 34%, transparent 96%) !important; }
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true]::before {
-  background:
-    radial-gradient(circle at calc(9px + 46%) calc(100% - 2px), #ffffff 0 1.6px, color-mix(in srgb, var(--nge-layer-color) 60%, transparent) 2.2px, transparent 3.4px),
-    linear-gradient(90deg, var(--nge-layer-color), var(--nge-layer-color)) 9px calc(100% - 1.5px) / 46% 1px no-repeat,
-    linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 30%, #101c34), color-mix(in srgb, var(--nge-layer-color) 12%, #0a1326) 70%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 30%, #101c34), color-mix(in srgb, var(--nge-layer-color) 12%, #0a1326) 70%);
 }
 /* add a layer: the same cut, small */
 .neuroglancer-layer-add-button {
