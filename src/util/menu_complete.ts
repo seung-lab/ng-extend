@@ -143,6 +143,17 @@ export interface FinishOptions {
   /** Leave the player's markup for the caller to clear (a batch clears it
    *  once at the end, so a cell that fails keeps its points). */
   keepMarkup?: boolean;
+  /** How the cell ended and the player's notes, as the Cell Library's own
+   *  Complete form collects them (completion_details.ts). Written to the
+   *  sheet's Status and Notes columns. */
+  status?: string;
+  notes?: string;
+}
+
+/** True when completing this plan writes the Cell Library sheet for the first
+ *  time, so the ending and notes should be asked for before it goes ahead. */
+export function needsCompletionDetails(plan: MenuCompletionPlan | null): boolean {
+  return !!plan?.row && !plan.blocked && plan.task?.status !== 'completed';
 }
 
 /** Claim (if needed), complete the claim and write the sheet. Returns a short
@@ -169,7 +180,7 @@ export async function finishMenuCompletion(plan: MenuCompletionPlan, opts: Finis
   }
 
   const link = opts.link !== undefined ? opts.link : await mintShortStateLink();
-  await syncCellToSheet('complete', row.segId, undefined, plan.dataset, link || undefined);
+  await syncCellToSheet('complete', row.segId, undefined, plan.dataset, link || undefined, opts.notes, opts.status);
   // After the Final Link has captured it: the markup belonged to this cell.
   if (!opts.keepMarkup) clearOwnAnnotations();
   await backend.loadTasks(plan.dataset);

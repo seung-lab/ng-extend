@@ -10,7 +10,8 @@ import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useH
 import { getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
 import { currentSegLayerName, currentCellTypes } from '../datasets';
-import { planMenuCompletion, finishMenuCompletion } from '../util/menu_complete';
+import { planMenuCompletion, finishMenuCompletion, needsCompletionDetails } from '../util/menu_complete';
+import { askCompletionDetails, type CompletionDetails } from '../util/completion_details';
 
 const annotStore = useSegmentAnnotationStore();
 const statsStore = useUserStatsStore();
@@ -147,6 +148,14 @@ async function toggleComplete() {
     savingComplete.value = false;
     return;
   }
+  // A Cell Library cell: ask how it ended and for notes, as the Cell Library's
+  // own form does, before anything is written. Cancel leaves it untouched.
+  let details: CompletionDetails = {};
+  if (plan && needsCompletionDetails(plan)) {
+    const asked = await askCompletionDetails(plan.dataset, plan.row?.index || '');
+    if (!asked) { savingComplete.value = false; return; }
+    details = asked;
+  }
   // plan.cellRoot: this is a MEC nucleus, so the cell around it is marked.
   const ok = await setCellComplete(
     caveUrl.value,
@@ -183,7 +192,7 @@ async function toggleComplete() {
     flash();
     if (plan?.row) {
       sheetNote.value = 'Writing to the sheet…';
-      try { sheetNote.value = await finishMenuCompletion(plan); }
+      try { sheetNote.value = await finishMenuCompletion(plan, details); }
       catch (e: any) { sheetNote.value = e?.message || 'The sheet could not be updated.'; }
     }
   }

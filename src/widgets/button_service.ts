@@ -4,7 +4,8 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
-import {planMenuCompletion, finishMenuCompletion} from '../util/menu_complete';
+import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails} from '../util/menu_complete';
+import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem} from './lightbulb_service';
 import {getDatasetCaveConfig} from '../config';
 import {currentSegLayerName} from '../datasets';
@@ -337,6 +338,19 @@ export class ButtonService {
         toggleBtn.disabled = false;
         return;
       }
+      // A Cell Library cell: ask how it ended and for notes, as the Cell
+      // Library's own form does, before anything is written (annkri
+      // 2026-10-06). Cancel leaves the cell untouched.
+      let details: CompletionDetails = {};
+      if (plan && needsCompletionDetails(plan)) {
+        const asked = await askCompletionDetails(plan.dataset, plan.row?.index || '');
+        if (!asked) {
+          toggleBtn.textContent = 'Mark as Proofread';
+          toggleBtn.disabled = false;
+          return;
+        }
+        details = asked;
+      }
       // plan.cellRoot: opened on a MEC nucleus, so the cell around it is marked.
       const ok = await setCellComplete(
           localServerURL, plan?.cellRoot ?? segmentIDString, willBeComplete, plan?.cellRoot ? undefined : cachedStatus?.annotationId,
@@ -350,7 +364,7 @@ export class ButtonService {
         if (plan?.row) {
           statusLine.textContent = '✓ Proofread. Writing to the sheet…';
           try {
-            statusLine.textContent = '✓ Proofread. ' + await finishMenuCompletion(plan);
+            statusLine.textContent = '✓ Proofread. ' + await finishMenuCompletion(plan, details);
           } catch (e: any) {
             statusLine.textContent = '✓ Proofread. ' + (e?.message || 'The sheet could not be updated.');
           }
