@@ -3,7 +3,7 @@ import {ref, computed, onMounted, onUnmounted, watch, nextTick, type Ref} from '
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {DemoUser} from '../data/demo-users';
-import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition} from '../widgets/badge_definitions';
+import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, unitForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {useUserPreferencesStore, useProofreadingBackendStore} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
@@ -252,7 +252,7 @@ function editCountForTab(user: DemoUser): number {
 // Badges helpers
 function isBadgeEarnedByUser(badge: BadgeDefinition, user: DemoUser): boolean {
   if (badge.threshold === 0) return false;
-  const stat = badge.track === 'building' ? user.stats.editsAllTime : user.stats.cellsSubmitted;
+  const stat = badge.track === 'building' ? user.stats.editsAllTime : badge.track === 'loyalty' ? (user.stats.longestStreak || 0) : user.stats.cellsSubmitted;
   return stat >= badge.threshold;
 }
 
@@ -269,7 +269,7 @@ function getBadgeUrl(imageKey: string): string {
 // Top earned badge for the leaderboard row (highest threshold from either track)
 function topBadge(user: DemoUser) {
   return BADGE_DEFINITIONS
-    .filter(b => b.threshold > 0 && isBadgeEarnedByUser(b, user))
+    .filter(b => b.threshold > 0 && b.track !== 'loyalty' && isBadgeEarnedByUser(b, user))
     .sort((a, b) => b.threshold - a.threshold)[0] ?? null;
 }
 
@@ -638,7 +638,7 @@ onUnmounted(() => {
                 <div class="nge-lb-detail-badge-card-name">{{ selectedBadgeDef()?.name }}</div>
                 <div class="nge-lb-detail-badge-card-desc">{{ selectedBadgeDef()?.description }}</div>
                 <div class="nge-lb-detail-badge-card-thresh">
-                  Unlocked at {{ selectedBadgeDef()?.threshold.toLocaleString() }} {{ selectedBadgeDef()?.track === 'building' ? 'edits' : 'cells completed' }}
+                  Unlocked at {{ selectedBadgeDef()?.threshold.toLocaleString() }} {{ unitForTrack(selectedBadgeDef()?.track || 'building') }}
                 </div>
               </div>
               <button class="nge-lb-detail-badge-card-close" @click.stop="selectedBadgeId = null">×</button>

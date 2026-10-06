@@ -9,7 +9,7 @@
  * Auto-generated from pyr manifest. Do not edit manually.
  */
 
-export type BadgeTrack = 'building' | 'exploration';
+export type BadgeTrack = 'building' | 'exploration' | 'loyalty';
 
 export interface BadgeDefinition {
   /** Unique badge ID: building badges 1–100, exploration badges 101–200. */
@@ -246,18 +246,44 @@ export const EXPLORATION_BADGES: BadgeDefinition[] = [
   { id: 200, track: 'exploration', sequence: 100, slug: 'interstellar-probe', code: 'IP', name: 'Interstellar Probe', description: 'Interstellar Probe marks autonomous exploration beyond direct human reach.', imageKey: 'exploration/interstellar-probe', threshold: 50_000, editThreshold: 50_000 },
 ];
 
-/** All 200 badges, building first then exploration. */
+/**
+ * Loyalty (Ames 2026-10-06): earned by days in a row, on the player's own
+ * calendar. The threshold is a streak length, checked against the player's
+ * best streak, so an achievement stays earned after the streak ends.
+ * Art: github.com/amyleesterling/badges/tree/main/loyalty. Written by hand
+ * (the two tracks above are generated); ids 201 and up.
+ */
+const loyalty = (n: number, days: number, slug: string, code: string, name: string, description: string): BadgeDefinition =>
+  ({ id: 200 + n, track: 'loyalty', sequence: n, slug, code, name, description, imageKey: `loyalty/${slug}`, threshold: days, editThreshold: days });
+export const LOYALTY_BADGES: BadgeDefinition[] = [
+  loyalty(1,  2, 'second-spark',   'SS', 'Second Spark',   'You came back. Two days in a row, and the spark has caught.'),
+  loyalty(2,  3, 'third-light',    'TL', 'Third Light',    'Three days in a row. The light is holding steady.'),
+  loyalty(3,  5, 'growing-signal', 'GS', 'Growing Signal', 'Five days in a row. Your signal is getting stronger.'),
+  loyalty(4,  7, 'first-orbit',    'FO', 'First Orbit',    'A full week without missing a day. One orbit complete.'),
+  loyalty(5, 14, 'double-orbit',   'DO', 'Double Orbit',   'Two weeks in a row. Twice around, and still going.'),
+  loyalty(6, 21, 'steady-signal',  'ST', 'Steady Signal',  'Three weeks in a row. The lab can count on you.'),
+  loyalty(7, 28, 'constellation',  'CO', 'Constellation',  'Four weeks in a row. Your days have joined into a constellation.'),
+  loyalty(8, 30, 'one-month',      'OM', 'One Month',      'Thirty days in a row. A whole month of showing up for science.'),
+];
+
+/** Every achievement: building, then exploration, then loyalty. */
 export const BADGE_DEFINITIONS: BadgeDefinition[] = [
   ...BUILDING_BADGES,
   ...EXPLORATION_BADGES,
+  ...LOYALTY_BADGES,
 ];
+
+/** What a track's threshold counts, for "N <unit>" labels. */
+export function unitForTrack(track: BadgeTrack, n = 2): string {
+  return track === 'building' ? 'edits' : track === 'loyalty' ? (n === 1 ? 'day in a row' : 'days in a row') : 'cells completed';
+}
 
 /** Helper: get badges for a specific track. */
 export function badgesForTrack(track: BadgeTrack): BadgeDefinition[] {
-  return track === 'building' ? BUILDING_BADGES : EXPLORATION_BADGES;
+  return track === 'building' ? BUILDING_BADGES : track === 'loyalty' ? LOYALTY_BADGES : EXPLORATION_BADGES;
 }
 
 /** Helper: get the stat key to check for a given track. */
-export function statKeyForTrack(track: BadgeTrack): 'editsAllTime' | 'cellsSubmitted' {
-  return track === 'building' ? 'editsAllTime' : 'cellsSubmitted';
+export function statKeyForTrack(track: BadgeTrack): 'editsAllTime' | 'cellsSubmitted' | 'longestStreak' {
+  return track === 'building' ? 'editsAllTime' : track === 'loyalty' ? 'longestStreak' : 'cellsSubmitted';
 }

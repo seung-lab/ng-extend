@@ -20,7 +20,7 @@ import { runPanelTrace } from '../util/holo_trace';
 import { isMobileRef } from '../util/mobile';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
-import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack} from '../widgets/badge_definitions';
+import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
@@ -459,6 +459,7 @@ function getBadgeUrl(imageKey: string): string {
 /** Get the player's current count for a given track. */
 function statForTrack(track: BadgeTrack): number {
   const s = profileStats.value;
+  if (track === 'loyalty') return Math.max(s.longestStreak ?? 0, s.currentStreak ?? 0);
   return track === 'building'
     ? (s.editsAllTime ?? 0)
     : (s.cellsSubmitted ?? 0);
@@ -499,9 +500,18 @@ const earnedExplorationBadges = computed(() => {
   return { earned, next: nextLocked ?? null };
 });
 
-/** Most recently earned badge (highest threshold among earned). */
+// Loyalty: every achievement earned, newest first, and the next one to reach.
+const earnedLoyaltyBadges = computed(() => {
+  const earned = LOYALTY_BADGES.filter(b => isBadgeEarned(b)).reverse();
+  const nextLocked = LOYALTY_BADGES.find(b => !isBadgeEarned(b));
+  return { earned, next: nextLocked ?? null };
+});
+
+/** Most recently earned badge (highest threshold among earned). Loyalty is
+ *  left out: its thresholds are days, not edits or cells, so they do not
+ *  compare. */
 const latestEarnedBadge = computed(() => {
-  const allEarned = BADGE_DEFINITIONS.filter(b => isBadgeEarned(b));
+  const allEarned = BADGE_DEFINITIONS.filter(b => b.track !== 'loyalty' && isBadgeEarned(b));
   if (allEarned.length === 0) return null;
   return allEarned.reduce((a, b) => a.threshold > b.threshold ? a : b);
 });
@@ -626,8 +636,7 @@ const showSpecialViewAll = computed(() => profileSpecialBadges.value.length > SP
 
 // ── Tooltip helpers for badges ───────────────────────────────────────────────
 function badgeTooltip(badge: BadgeDefinition): string {
-  const noun = badge.track === 'building' ? 'edits' : 'cells completed';
-  return `${badge.name} — Earned for ${badge.threshold.toLocaleString()} ${noun}`;
+  return `${badge.name} — Earned for ${badge.threshold.toLocaleString()} ${unitForTrack(badge.track, badge.threshold)}`;
 }
 function specialBadgeTooltip(award: any): string {
   const name = award.badge?.name || 'Award';
@@ -639,7 +648,7 @@ function specialBadgeTooltip(award: any): string {
 
 /** Label for the threshold in badge detail. */
 function thresholdLabel(badge: BadgeDefinition): string {
-  return badge.track === 'building' ? 'edits' : 'cells completed';
+  return unitForTrack(badge.track, badge.threshold);
 }
 
 // ── Per-track achievement countdowns ─────────────────────────────────────────
@@ -659,6 +668,14 @@ const nextBuildingAchievement = computed(() =>
 const nextExplorationAchievement = computed(() =>
   nextForTrack(EXPLORATION_BADGES, profileStats.value.cellsSubmitted ?? 0)
 );
+// Loyalty counts toward the next achievement from the streak running now.
+const nextLoyaltyAchievement = computed(() => {
+  const next = earnedLoyaltyBadges.value.next;
+  if (!next) return null;
+  const cur = Math.min(profileStats.value.currentStreak ?? 0, next.threshold - 1);
+  const remaining = next.threshold - cur;
+  return { name: next.name, threshold: next.threshold, remaining, pct: Math.round(cur / next.threshold * 100) };
+});
 
 // ── Overview scope: the dataset on screen ──────────────────────────────────
 // The Overview's left column (Edits, Cells, Scout Report, Recent Cells) is
@@ -1312,6 +1329,60 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
+          <!-- Loyalty Achievements: days in a row (Ames 2026-10-06) -->
+          <div class="nge-profile-badges-divider"></div>
+          <div class="nge-profile-section nge-profile-section--badges">
+            <div class="nge-profile-section-label" style="color: #c9a8ff;">▌ Loyalty Achievements</div>
+            <div class="nge-profile-countdown-inline" v-if="nextLoyaltyAchievement">
+              <div class="nge-profile-countdown-row">
+                <div class="nge-profile-countdown-remaining">{{ nextLoyaltyAchievement.remaining }} more {{ nextLoyaltyAchievement.remaining === 1 ? 'day' : 'days' }} in a row to go</div>
+              </div>
+              <div class="nge-profile-countdown-track">
+                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--loyalty" :style="{ width: nextLoyaltyAchievement.pct + '%' }"></div>
+              </div>
+            </div>
+            <div class="nge-profile-badges-grid">
+              <div
+                v-for="badge in earnedLoyaltyBadges.earned.slice(0, 4)"
+                :key="badge.id"
+                class="nge-profile-badge nge-profile-badge--loyalty"
+                :class="{ 'nge-profile-badge--selected': selectedBadge?.id === badge.id }"
+                :title="badgeTooltip(badge)"
+                @click="onBadgeClick(badge)"
+              >
+                <div class="nge-profile-badge-img">
+                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                </div>
+                <div class="nge-profile-badge-name">{{ badge.name }}</div>
+              </div>
+              <div
+                v-if="earnedLoyaltyBadges.next && earnedLoyaltyBadges.earned.length < 4"
+                class="nge-profile-badge nge-profile-badge--locked"
+                :title="`Next: ${earnedLoyaltyBadges.next.threshold} days in a row`"
+              >
+                <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-mystery">
+                    <span class="nge-profile-badge-mystery-q">?</span>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="earnedLoyaltyBadges.earned.length >= 4"
+                class="nge-profile-badge nge-profile-badge--viewall"
+                title="View all achievements in Trophy Case"
+                @click="activeTab = 'trophyCase'"
+              >
+                <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-viewall-icon">→</div>
+                </div>
+                <div class="nge-profile-badge-name">View all</div>
+              </div>
+            </div>
+            <div v-if="earnedLoyaltyBadges.earned.length === 0" class="nge-profile-badges-empty">
+              Come back tomorrow to earn your first Loyalty achievement!
+            </div>
+          </div>
+
           <!-- Special Awards (admin-awarded badges) -->
           <template v-if="profileSpecialBadges.length > 0">
             <div class="nge-profile-badges-divider"></div>
@@ -1725,6 +1796,31 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-desc" :title="badge.description">{{ badge.description }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loyalty track -->
+          <div v-if="earnedLoyaltyBadges.earned.length > 0" class="nge-trophy-track">
+            <div class="nge-trophy-track-label" style="color: #c9a8ff;">Loyalty Achievements
+              <span class="nge-trophy-track-count">{{ earnedLoyaltyBadges.earned.length }} earned</span>
+            </div>
+            <div class="nge-trophy-grid">
+              <div
+                v-for="badge in earnedLoyaltyBadges.earned"
+                :key="badge.id"
+                class="nge-trophy-badge nge-trophy-badge--loyalty"
+                :class="{
+                  'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                  'nge-trophy-badge--silver': silverSlugs.includes(badge.slug),
+                }"
+                @click="onBadgeClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-desc" :title="badge.description">{{ badge.description }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days in a row</div>
               </div>
             </div>
           </div>
@@ -2489,6 +2585,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-countdown-inline { margin-bottom: 10px; }
 .nge-profile-countdown-fill--building { background: linear-gradient(90deg, #ffd08a, #f5a623); }
 .nge-profile-countdown-fill--exploration { background: linear-gradient(90deg, #90fff2, #4ae5d5); }
+.nge-profile-countdown-fill--loyalty { background: linear-gradient(90deg, #c9a8ff, #f0c869); }
 
 /* ── Stat row ── */
 /* Days track: the stretch of the milestone ladder around today. */

@@ -12,7 +12,7 @@
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useUserStatsStore, useProofreadingQueueStore, useProofreadingBackendStore } from '../store';
-import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
+import { BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { streakMilestonesBetween } from '../util/streak_milestones';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
@@ -218,6 +218,16 @@ watch(() => stats.value.currentStreak, (newStreak) => {
   // by the largest milestone passed.
   const passed = streakMilestonesBetween(prevStreak, newStreak);
   if (passed.length) fireConfetti('gold', passed[passed.length - 1] >= 30 ? 2 : 1);
+  // Loyalty achievements: one for each streak length just reached. Only the
+  // highest gets the toast, so a recount never stacks several at once.
+  const won = LOYALTY_BADGES.filter(b => prevStreak < b.threshold && newStreak >= b.threshold
+    && claimBadgeOnce(`l:${b.id}`) && !backend.myBadgeAwards.has(`loyalty:${b.id}`));
+  for (const b of won) backend.recordBadgeAward('loyalty', b.id);
+  const top = won[won.length - 1];
+  if (top) {
+    const imgUrl = BADGE_IMAGE_MAP[top.imageKey] ?? '';
+    addToast({ type: 'badge', title: top.name, subtitle: top.description, icon: imgUrl || '🏅', isImage: !!imgUrl });
+  }
   prevStreak = newStreak;
 });
 
