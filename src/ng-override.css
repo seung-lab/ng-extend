@@ -233,6 +233,112 @@
   color: rgba(74, 158, 255, 0.7) !important;
 }
 
+/* ── Layer bar in the site's own style (Ames 2026-10-06: "layers still look a
+      lot worse in style than the rest of the site") ─────────────────────────
+   The chips were flat grey boxes under a top bar of rounded, lit pills. Now
+   they are the same family as the AI and Dataset pills: a pill outline in
+   the site blue, the top bar's lettering, a round index badge, and a
+   selected state that is lit instead of merely outlined. Kept as one block
+   after the older rules, so it layers over them. */
+.neuroglancer-layer-panel {
+  padding: 5px 8px !important;
+  gap: 6px;
+  min-height: 36px;
+  background: linear-gradient(180deg, rgba(7, 12, 26, 0.95), rgba(4, 8, 18, 0.9)) !important;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.1) !important;
+}
+.neuroglancer-layer-item {
+  position: relative;
+  height: 26px;
+  gap: 7px;
+  padding: 0 12px 0 5px !important;
+  border-radius: 13px !important;
+  border: 1px solid rgba(74, 158, 255, 0.24) !important;
+  background: rgba(74, 158, 255, 0.05) !important;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.neuroglancer-layer-item:hover {
+  border-color: rgba(74, 158, 255, 0.5) !important;
+  background: rgba(74, 158, 255, 0.1) !important;
+}
+/* the index: a round badge, in the HUD face */
+.neuroglancer-layer-item-number {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0 !important; box-sizing: border-box;
+  border-radius: 50% !important;
+  font: 600 9px/1 'Orbitron', 'Inter', sans-serif;
+  background: rgba(74, 158, 255, 0.16) !important;
+  color: rgba(160, 205, 255, 0.9) !important;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+/* the name: the top bar's lettering, quiet until its layer is the selected one */
+.neuroglancer-layer-item-label {
+  font: 500 11px/1 'Orbitron', 'Inter', sans-serif !important;
+  letter-spacing: 0.05em;
+  color: #9db1cb;
+  transition: color 0.15s;
+}
+body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
+  font: 500 11px/1 'Orbitron', 'Inter', sans-serif !important;
+  letter-spacing: 0.05em;
+}
+.neuroglancer-layer-item:hover .neuroglancer-layer-item-label { color: #d6e4f6; }
+/* selected: lit from above, like a pill that is switched on */
+.neuroglancer-layer-item[data-selected=true],
+.neuroglancer-layer-item[data-selected=true]:hover {
+  border-color: rgba(126, 224, 255, 0.75) !important;
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.24), rgba(74, 158, 255, 0.08)) !important;
+  box-shadow: inset 0 1px 0 rgba(196, 228, 255, 0.28), 0 0 12px rgba(74, 158, 255, 0.24);
+}
+.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #eef6ff; }
+.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-number {
+  background: #6fc4ff !important; color: #04101f !important;
+  box-shadow: 0 0 8px rgba(111, 196, 255, 0.7);
+}
+/* a layer that answers clicks: no more box inside the box, the name simply
+   carries a small lit dot */
+.neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0;
+}
+.neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label::before {
+  content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 6px; vertical-align: 2px;
+  border-radius: 50%; background: #7ee0ff; box-shadow: 0 0 6px rgba(126, 224, 255, 0.85);
+}
+/* a layer switched off: dimmed, dashed, its name struck through */
+.neuroglancer-layer-item[data-visible=false] {
+  border-style: dashed !important;
+  background: transparent !important;
+  opacity: 0.6;
+}
+/* annotation layers: the badge carries the layer's colour, so the bar still
+   reads as a legend, without a square bar on a round pill */
+.neuroglancer-layer-item[data-tinted="true"] {
+  border-left: 1px solid color-mix(in srgb, var(--nge-layer-color) 55%, rgba(74, 158, 255, 0.24)) !important;
+  border-color: color-mix(in srgb, var(--nge-layer-color) 55%, rgba(74, 158, 255, 0.24)) !important;
+  background: color-mix(in srgb, var(--nge-layer-color) 9%, rgba(74, 158, 255, 0.04)) !important;
+}
+.neuroglancer-layer-item[data-tinted="true"] .neuroglancer-layer-item-number {
+  background: var(--nge-layer-color) !important; color: #05080f !important;
+  box-shadow: 0 0 7px color-mix(in srgb, var(--nge-layer-color) 70%, transparent);
+}
+/* add a layer: the same pill, round */
+.neuroglancer-layer-add-button {
+  width: 26px !important; height: 26px !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(74, 158, 255, 0.24) !important;
+  background: rgba(74, 158, 255, 0.05) !important;
+  color: rgba(160, 205, 255, 0.75) !important;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.neuroglancer-layer-add-button:hover {
+  border-color: rgba(126, 224, 255, 0.7) !important;
+  background: rgba(74, 158, 255, 0.14) !important;
+  color: #e6f3ff !important;
+}
+
 /* ── Hide neuroglancer settings gear + JSON editor + layer-list toggle ── */
 /* Settings and JSON are moved into our Settings panel. The layer-list toggle is
    now the reorderable "Layers" icon in our own toolbar (see ExtensionBar +
