@@ -88,6 +88,22 @@ const lightboxUrl = ref<string | null>(null);
 const openNotif = ref<any | null>(null);
 const confirmDeleteAll = ref(false);
 
+// Admins get the triage loop's alerts (a new suggestion to approve, a report
+// that shipped) in a tab of their own, so they stop burying everything else
+// (Ames 2026-10-06: "they are clogging up my feed"). Players never see the
+// tabs: a "Fixed!" note about their own report stays in their one feed.
+const feedTab = ref<'main' | 'triage'>('main');
+function isTriageNote(n: { title?: string | null }): boolean {
+  const t = n.title || '';
+  return backend.isAdmin && (t.startsWith('🗂') || t.startsWith('🎉 Fixed'));
+}
+const triageNotes = computed(() => backend.notifications.filter(isTriageNote));
+const mainNotes = computed(() => backend.notifications.filter(n => !isTriageNote(n)));
+const showFeedTabs = computed(() => backend.isAdmin && triageNotes.value.length > 0);
+const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications : feedTab.value === 'triage' ? triageNotes.value : mainNotes.value);
+const unreadIn = (list: { id: number }[]) => list.filter(n => !isRead(n.id)).length;
+watch(showFeedTabs, on => { if (!on) feedTab.value = 'main'; });
+
 async function doDeleteAll() {
   confirmDeleteAll.value = false;
   await backend.dismissAllNotifications();
@@ -380,9 +396,18 @@ function padRank(rank: number): string {
       <button class="nge-notif-confirm-no" @click="confirmDeleteAll = false">Cancel</button>
     </div>
 
-    <div class="nge-notif-list" v-if="backend.notifications.length > 0">
+    <div v-if="showFeedTabs" class="nge-notif-tabs" role="tablist">
+      <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'main' }" role="tab" :aria-selected="feedTab === 'main'" @click="feedTab = 'main'">
+        Notifications<b v-if="unreadIn(mainNotes) > 0">{{ unreadIn(mainNotes) }}</b>
+      </button>
+      <button class="nge-notif-tab nge-notif-tab--triage" :class="{ 'nge-notif-tab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'">
+        Triage<b v-if="unreadIn(triageNotes) > 0">{{ unreadIn(triageNotes) }}</b>
+      </button>
+    </div>
+
+    <div class="nge-notif-list" v-if="shownNotes.length > 0">
       <div
-        v-for="notif in backend.notifications"
+        v-for="notif in shownNotes"
         :key="notif.id"
         class="nge-notif-card"
         :class="{ 'nge-notif-card--unread': !isRead(notif.id), 'nge-notif-card--triage': (notif.title || '').startsWith('🗂'), 'nge-notif-card--fixed': (notif.title || '').startsWith('🎉'), 'nge-notif-card--streak': (notif.title || '').startsWith('🔥'), 'nge-notif-card--thanks': (notif.title || '').startsWith('💙'), 'nge-notif-card--recap': (notif.title || '').startsWith('✨') }"
@@ -622,6 +647,27 @@ function padRank(rank: number): string {
   cursor: pointer;
 }
 .nge-notif-delete-all:hover { color: #e06060; border-color: rgba(224, 96, 96, 0.5); }
+
+.nge-notif-tabs {
+  display: flex; gap: 4px; flex-shrink: 0;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.nge-notif-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px 7px;
+  font: 600 12px/1 'Inter', system-ui, sans-serif; letter-spacing: 0.02em;
+  color: #8b97ad; background: none; border: 0; border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.nge-notif-tab:hover { color: #dce6f5; }
+.nge-notif-tab--on { color: #ffffff; border-bottom-color: #7ee0ff; }
+.nge-notif-tab--triage.nge-notif-tab--on { border-bottom-color: #ff8f8f; }
+.nge-notif-tab b {
+  min-width: 16px; padding: 2px 5px; border-radius: 8px; box-sizing: border-box;
+  font-size: 10px; font-weight: 700; text-align: center; color: #06121f; background: #7ee0ff;
+}
+.nge-notif-tab--triage b { background: #ff8f8f; }
 
 .nge-notif-confirm {
   display: flex;
