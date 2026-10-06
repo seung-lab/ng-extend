@@ -464,3 +464,49 @@ textarea.neuroglancer-annotation-details-description:focus {
   color: rgba(159, 220, 255, 0.75);
 }
 .neuroglancer-selection-details .neuroglancer-annotation-property-label { color: rgba(159, 200, 235, 0.7); }
+
+/* ── Annotation list: one grid for the header and the rows (Ames 2026-10-06:
+      "the text placement is strange") ─────────────────────────────────────
+   The columns are sized in `ch`, and the header (10px, letter spaced) and
+   the rows (a larger sans face) each had their own idea of how wide a `ch`
+   is, so the numbers drifted out from under x, y and z. Both now share one
+   face and size, so the columns are the same grid. Numbers and their
+   headings start on the same left edge, the description starts on that edge
+   too, and the type mark sits on the first line instead of floating above
+   it. */
+.neuroglancer-annotation-list-header,
+.neuroglancer-annotation-list-entry {
+  font: 500 11px/16px 'JetBrains Mono', 'Consolas', monospace !important;
+  letter-spacing: 0 !important;
+  padding: 4px 6px 4px 8px !important;
+  align-items: start;
+}
+.neuroglancer-annotation-list-header { padding-top: 3px !important; padding-bottom: 4px !important; }
+.neuroglancer-annotation-list-header .neuroglancer-annotations-view-dimension,
+.neuroglancer-annotation-list-entry .neuroglancer-annotation-coordinate {
+  text-align: left !important;
+  font: inherit !important;
+  white-space: nowrap;
+}
+.neuroglancer-annotation-list-entry .neuroglancer-annotation-coordinate { color: rgba(214, 232, 250, 0.9); font-variant-numeric: tabular-nums; }
+.neuroglancer-annotation-list-header .neuroglancer-annotations-view-dimension-name { font-weight: 700; margin-right: 0.5ch; }
+.neuroglancer-annotation-list-header .neuroglancer-annotations-view-dimension-scale { font-size: 10px; }
+/* the type mark: on the first line, centred on the numbers beside it */
+.neuroglancer-annotation-list-entry .neuroglancer-annotation-icon {
+  grid-row: 1 !important;
+  align-self: start;
+  padding: 0 !important;
+  font-size: 11px; line-height: 16px; height: 16px;
+}
+/* the description: a second line under the numbers, on their left edge */
+.neuroglancer-annotation-list-entry .neuroglancer-annotation-description {
+  margin-top: 1px;
+  font: 400 11.5px/15px 'Inter', 'Roboto', sans-serif !important;
+  color: rgba(176, 200, 230, 0.78);
+}
+.neuroglancer-annotation-list-entry + .neuroglancer-annotation-list-entry { margin-top: 1px; }
+/* the row's buttons sit at its right edge, wherever the columns end */
+.neuroglancer-annotation-list-entry { position: relative; }
+/* grid-area auto: a positioned child that names a grid cell is placed inside
+   that cell, not inside the row */
+.neuroglancer-annotation-list-entry > .nge-ann-row-actions { position: absolute; right: 6px; top: 4px; grid-area: auto !important; }

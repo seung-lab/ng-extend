@@ -282,20 +282,14 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
   clip-path: polygon(5.6px 0, calc(100% - 12.4px) 0, 100% 12.4px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 5.6px);
   transition: background 0.15s;
 }
-/* everything inside sits above the fill, EXCEPT the two loading lines:
-   they are meant to float along the tab's foot, and lifting them into the
-   row turned them into a stray grey bar that squeezed the name onto two
-   lines (Ames 2026-10-06). */
-.neuroglancer-layer-item > :not(.neuroglancer-layer-item-visible-progress):not(.neuroglancer-layer-item-prefetch-progress) { position: relative; z-index: 1; }
+/* everything inside sits above the fill. The two loading lines are taken
+   out altogether: lifted into the row they became a stray grey bar that
+   squeezed the name onto two lines, and as a hairline along the foot they
+   were light where the tab should have none (Ames 2026-10-06, twice). */
+.neuroglancer-layer-item > * { position: relative; z-index: 1; }
 .neuroglancer-layer-item-visible-progress,
-.neuroglancer-layer-item-prefetch-progress {
-  position: absolute !important; z-index: 1;
-  left: 9px !important; bottom: 1px !important; top: auto !important;
-  height: 1px !important; max-width: calc(100% - 9px);
-  pointer-events: none;
-}
-.neuroglancer-layer-item-visible-progress { background: rgba(126, 224, 255, 0.75) !important; }
-.neuroglancer-layer-item-prefetch-progress { background: rgba(126, 224, 255, 0.3) !important; }
+.neuroglancer-layer-item-prefetch-progress { display: none !important; }
+/* a name never wraps onto a second line */
 .neuroglancer-layer-item-label { white-space: nowrap; }
 .neuroglancer-layer-item:hover { --tab-edge: rgba(111, 196, 255, 0.7); --tab-fill: #0e1b36; background: linear-gradient(180deg, var(--tab-edge) 0%, var(--tab-edge) 38%, transparent 96%) !important; }
 /* the index: a small chip with one corner cut, in the HUD face */

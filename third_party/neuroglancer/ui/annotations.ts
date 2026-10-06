@@ -1723,7 +1723,6 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
     jumpButton.addEventListener('mousedown', event => event.stopPropagation());
     jumpButton.addEventListener('click', event => event.stopPropagation());
     rowActions.appendChild(jumpButton);
-    element.appendChild(rowActions);
 
     let deleteButton: HTMLElement|undefined;
 
@@ -1789,7 +1788,10 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
       element.appendChild(description);
     }
     icon.style.gridRow = `span ${numRows}`;
-    rowActions.style.gridRow = `span ${numRows}`;
+    // Added last and pinned to the first line: placed earlier, it sat in the
+    // last column and pushed the coordinates down onto a second line.
+    rowActions.style.gridRow = `1 / span ${numRows}`;
+    element.appendChild(rowActions);
     element.addEventListener('mouseenter', () => {
       layer.selectAnnotation(state, annotation.id, false);
     });
