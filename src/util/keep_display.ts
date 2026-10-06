@@ -36,7 +36,50 @@ const LAYER_KEYS: Record<string, [string, Getter][]> = {
   ],
 };
 
+// ── Annotation point size, by layer name (annkri 2026-10-06) ────────────────
+// The size of a layer's points is set on the layer (the Annotations tab) and
+// travels in the view. Each Cell Library cell opens its own view with its own
+// layers (on Retina: Soma, True End, Can't Fix, Hits Edge, Notes), so the size
+// fell back to the small default on every new cell. The size a player set on a
+// layer is carried to the layer of the same name in the next cell, and kept in
+// the browser so the first cell of a session gets it too.
+const SIZES_KEY = 'nge-annotation-point-sizes';
+type Sizes = Record<string, number>;
+const annotationSize = (ml: any): any =>
+  ml?.layer?.constructor?.type === 'annotation' ? ml.layer.annotationDisplayState?.ngeSize : undefined;
+function storedSizes(): Sizes {
+  try { const v = JSON.parse(localStorage.getItem(SIZES_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+}
+/** The size of each annotation layer on screen, by name; also saved. */
+function currentSizes(viewer: any): Sizes {
+  const now: Sizes = {};
+  for (const ml of viewer.layerManager.managedLayers) {
+    const size = annotationSize(ml)?.value;
+    if (ml.archived || typeof size !== 'number' || !ml.name) continue;
+    now[ml.name] = size;
+  }
+  const all = { ...storedSizes(), ...now };
+  try {
+    const names = Object.keys(all);
+    // Keep the list small: layer names are few, but never let it grow without end.
+    for (const name of names.slice(0, Math.max(0, names.length - 80))) delete all[name];
+    localStorage.setItem(SIZES_KEY, JSON.stringify(all));
+  } catch { /* private mode */ }
+  return all;
+}
+function applySizes(sizes: Sizes, before: Set<unknown>) {
+  const viewer: any = (window as any).viewer;
+  for (const ml of viewer.layerManager.managedLayers) {
+    if (before.has(ml) || ml.archived) continue;
+    const size = annotationSize(ml);
+    const want = sizes[ml.name];
+    if (!size || typeof want !== 'number' || !(want >= 0.25 && want <= 20) || size.value === want) continue;
+    try { size.value = want; } catch { /* skip */ }
+  }
+}
+
 interface Snapshot {
+  sizes: Sizes;
   viewer: Record<string, unknown>;
   layers: Record<string, Record<string, unknown>>;  // by layer type
   before: Set<unknown>;                             // managed layers before the load
@@ -47,7 +90,7 @@ const layerType = (ml: any): string => ml?.layer?.constructor?.type ?? '';
 export function snapshotDisplay(): Snapshot | null {
   const viewer: any = (window as any).viewer;
   if (!viewer) return null;
-  const snap: Snapshot = { viewer: {}, layers: {}, before: new Set(viewer.layerManager.managedLayers) };
+  const snap: Snapshot = { sizes: currentSizes(viewer), viewer: {}, layers: {}, before: new Set(viewer.layerManager.managedLayers) };
   for (const [key, get] of VIEWER_KEYS) {
     try { const t = get(viewer); if (t?.toJSON) snap.viewer[key] = t.toJSON(); } catch { /* skip */ }
   }
@@ -77,6 +120,7 @@ function apply(snap: Snapshot, layers: any[]) {
       try { get(ml.layer)?.restoreState(vals[key]); } catch { /* skip */ }
     }
   }
+  applySizes(snap.sizes, snap.before);
 }
 
 /** When the new view lands, put the snapshot back (twice: some settings
