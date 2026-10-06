@@ -90,6 +90,40 @@ function arrive(fast = false) {
 }
 onUnmounted(() => cancelAnimationFrame(arriveRaf));
 
+// The way out is the way in, run backwards (Ames 2026-10-06): the rows leave
+// from the bottom up, the scores count back down, and the controls, title
+// and trophy fold away in the reverse of the order they arrived, before the
+// panel zips into its button. Quicker than the arrival, so closing never
+// feels held up.
+const departing = ref(false);
+function depart(): Promise<void> {
+  cancelAnimationFrame(arriveRaf);
+  const box = contentEl.value;
+  const all = Array.from(box?.querySelectorAll<HTMLElement>('tbody > tr.nge-lb-row') || []);
+  // only the rows on screen take part; the rest are already out of sight
+  const view = box?.getBoundingClientRect();
+  const rows = view ? all.filter(r => { const b = r.getBoundingClientRect(); return b.bottom > view.top && b.top < view.bottom; }) : all;
+  departing.value = true;
+  const STEP = 16, DUR = 200, ROLL = 300, t0 = performance.now();
+  const total = Math.max(ROLL, (rows.length - 1) * STEP + DUR, 340);
+  return new Promise(resolve => {
+    const tick = (now: number) => {
+      const t = now - t0;
+      rows.forEach((el, i) => {
+        const start = (rows.length - 1 - i) * STEP;         // last row first
+        const q = Math.min(1, Math.max(0, (t - start) / DUR));
+        el.style.setProperty('--in', (1 - q * q).toFixed(3));
+        if (q > 0) el.classList.remove('is-landed');
+      });
+      const rq = Math.min(1, t / ROLL);
+      rollK.value = 1 - rq * rq;
+      if (t < total) arriveRaf = requestAnimationFrame(tick);
+      else resolve();
+    };
+    arriveRaf = requestAnimationFrame(tick);
+  });
+}
+
 // Load the board when it opens, and again every minute while it stays open,
 // so the numbers do not go stale behind an open panel.
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -294,6 +328,7 @@ async function close() {
   // ModalOverlay passes id="nge-lb-modal" to its root, the dimmed backdrop.
   const blocker = document.getElementById('nge-lb-modal');
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce && !selectedUser.value) await depart();
   if (shell && btn && !reduce && shell.animate) {
     const a = shell.getBoundingClientRect();
     const b = btn.getBoundingClientRect();
@@ -373,7 +408,7 @@ onUnmounted(() => {
 
 <template>
   <modal-overlay id="nge-lb-modal" class="nge-lb-modal" :class="{ 'nge-lb-modal--peek': props.peek }" @hide="close">
-    <div class="nge-lb-shell">
+    <div class="nge-lb-shell" :class="{ 'nge-lb-shell--departing': departing }">
       <span class="nge-lb-scan" aria-hidden="true"></span>
 
       <!-- ── LIST VIEW ─────────────────────────────────── -->
@@ -641,6 +676,19 @@ onUnmounted(() => {
    Neuroglancer's .overlay-content has position:absolute; top:50%; left:50%;
    transform:translate(-50%,-50%). We override those with !important to pin
    the panel to the right edge of the screen as a full-height sidebar.       */
+/* One scrollbar, the list's own (Ames 2026-10-06: a second one ran down the
+   far right edge). The panel is a column exactly as tall as the screen and
+   never scrolls itself; only the list inside it does. */
+/* (the selector names all three of the dialog's classes so it outranks the
+   site-wide "every dialog scrolls" rule in ng-override.css) */
+.nge-lb-modal :deep(.nge-overlay.modal.overlay-content) {
+  display: flex !important;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden !important;
+  max-height: 100vh !important;
+}
+.nge-lb-modal :deep(.nge-overlay) > .nge-lb-shell { flex: 1 1 auto; height: auto; min-height: 0; }
 .nge-lb-modal :deep(.nge-overlay) {
   right:  0    !important;
   top:    0    !important;
@@ -1143,6 +1191,25 @@ onUnmounted(() => {
 .nge-lb-metric-toggle { animation: nge-lb-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) 560ms both; }
 .nge-lb-table thead { animation: nge-lb-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) 620ms both; }
 @keyframes nge-lb-rise { 0% { opacity: 0; translate: 0 8px; } 100% { opacity: 1; translate: none; } }
+
+/* ── The way out: each piece folds away, last in first out ── */
+.nge-lb-shell--departing .nge-lb-table thead { animation: nge-lb-sink 180ms ease-in 0ms both; }
+.nge-lb-shell--departing .nge-lb-metric-toggle { animation: nge-lb-sink 180ms ease-in 40ms both; }
+.nge-lb-shell--departing .nge-lb-tabs { animation: nge-lb-sink 180ms ease-in 80ms both; }
+.nge-lb-shell--departing .nge-lb-onopen,
+.nge-lb-shell--departing .nge-lb-note { animation: nge-lb-sink 160ms ease-in 0ms both; }
+@keyframes nge-lb-sink { 0% { opacity: 1; translate: none; } 100% { opacity: 0; translate: 0 8px; } }
+.nge-lb-shell--departing .nge-lb-title-sub { animation: nge-lb-sub-out 200ms ease-in 100ms both; }
+@keyframes nge-lb-sub-out { 0% { opacity: 1; } 100% { opacity: 0; letter-spacing: 0.95em; } }
+.nge-lb-shell--departing .nge-lb-title-treat { animation: nge-lb-title-close 240ms cubic-bezier(0.7, 0, 0.84, 0) 120ms both; }
+@keyframes nge-lb-title-close { 0% { clip-path: inset(-20px -20px -20px -20px); opacity: 1; } 100% { clip-path: inset(0 50% 0 50%); opacity: 0; } }
+.nge-lb-shell--departing .nge-lb-title-rule { animation: nge-lb-rule-out 240ms cubic-bezier(0.7, 0, 0.84, 0) 120ms both; }
+@keyframes nge-lb-rule-out { 0% { transform: none; opacity: 1; } 100% { transform: scaleX(0); opacity: 0; } }
+.nge-lb-shell--departing .nge-lb-hero-img-wrap { animation: nge-lb-trophy-out 300ms cubic-bezier(0.6, -0.3, 0.74, 0.05) 100ms both; }
+@keyframes nge-lb-trophy-out {
+  0%   { opacity: 1; transform: none; filter: none; }
+  100% { opacity: 0; transform: translateY(18px) scale(0.5); filter: blur(6px) brightness(2.4); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .nge-lb-scan { display: none; }
