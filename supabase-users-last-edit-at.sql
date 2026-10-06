@@ -17,7 +17,7 @@ alter table if exists users add column if not exists last_cave_sync_at timestamp
 create index if not exists users_last_edit_at_idx      on users (last_edit_at desc nulls last);
 create index if not exists users_last_cave_sync_at_idx on users (last_cave_sync_at asc nulls first);
 
-create or replace view cave_edits_watermarks as
+create or replace view cave_edits_watermarks with (security_invoker = true) as
   select cave_user_id, dataset, max(timestamp) as newest
   from cave_edits_mirror
   group by cave_user_id, dataset;

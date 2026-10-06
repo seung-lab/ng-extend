@@ -54,7 +54,7 @@ $$;
 -- first mark after the last un-mark. Decided over the WHOLE log, before any
 -- time window, so a cell first completed a month ago and marked again today
 -- is not a new cell today. Failed operations never count.
-CREATE OR REPLACE VIEW public.ew_cell_completions AS
+CREATE OR REPLACE VIEW public.ew_cell_completions WITH (security_invoker = true) AS
 WITH ev AS (
   SELECT l.id, l.user_id, public.ew_dataset_key(l.dataset) AS dataset,
          l.timestamp AS ts, l.operation, l.task_id,
@@ -108,7 +108,7 @@ HAVING MIN(k.ts) FILTER (WHERE u.at IS NULL OR k.ts > u.at) IS NOT NULL;
 -- never counted them). All-time stays on the saved counters: nothing is
 -- recomputed or reset. Two columns are ADDED at the end so the log's own
 -- all-time numbers can be read beside the saved ones.
-CREATE OR REPLACE VIEW public.user_edit_counts AS
+CREATE OR REPLACE VIEW public.user_edit_counts WITH (security_invoker = true) AS
 SELECT
   u.id              AS id,
   u.display_name    AS display_name,
