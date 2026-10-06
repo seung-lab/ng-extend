@@ -307,6 +307,11 @@ async function loadDatasetStats() {
 watch(activeTab, tab => { if (tab === 'datasets') loadDatasetStats(); });
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
+/** The whole dataset's progress lives in its own panel (DatasetStatsPanel).
+ *  ExtensionBar listens, closes the profile and opens it. */
+function openDatasetProgress() {
+  document.dispatchEvent(new CustomEvent('nge:open-dataset-stats'));
+}
 async function switchProfileDataset(ds: DatasetEntry) {
   const canon = canonicalDataset(segLayerName(ds));
   if (canon === activeDatasetCanon.value || switchingDatasetId.value) return;
@@ -1681,6 +1686,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           {{ viewingOtherUser ? `${profileName}'s contributions across datasets.` : 'Your contributions across datasets.' }}
           Click one to switch your viewer to it.
         </div>
+        <button class="nge-ds-tab-progress" @click="openDatasetProgress">Dataset progress: how far along each dataset is →</button>
         <div v-if="datasetStatsLoading && !Object.keys(datasetStats).length" class="nge-ds-tab-loading">
           Counting edits…
         </div>
@@ -1936,6 +1942,17 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   font-size: 12px;
   color: rgba(255, 255, 255, 0.55);
 }
+.nge-ds-tab-progress {
+  align-self: flex-start;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: rgb(126, 224, 255);
+  background: rgba(126, 224, 255, 0.06);
+  border: 1px solid rgba(126, 224, 255, 0.28);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nge-ds-tab-progress:hover { background: rgba(126, 224, 255, 0.14); color: #fff; }
 .nge-ds-tab-loading {
   font-size: 12px;
   color: rgba(100, 200, 255, 0.7);

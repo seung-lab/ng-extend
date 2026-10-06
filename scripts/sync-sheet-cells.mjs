@@ -40,6 +40,11 @@
  *               Only rows still pending and unassigned in Supabase change, and
  *               each PATCH re-checks that, so a claim or completion made in
  *               EyeWire II always wins over the sheet.
+ *   --mirror    instead of importing, copy what the sheet says about each
+ *               cell (status, proofreader, date complete, predicted type)
+ *               into ew_sheet_cells, for the Dataset Progress panel
+ *               (supabase-dataset-stats.sql). Touches no task. Hourly, after
+ *               --statuses.
  */
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -58,6 +63,7 @@ const force = has('--force');
 const onlyDataset = val('--dataset');
 const refreshNucleus = has('--refresh-nucleus');
 const statusesOnly = has('--statuses');
+const mirrorOnly = has('--mirror');
 // --retire-source <sheet id>: hide Available cells imported from a sheet the
 // game no longer uses (they become skipped, with a note; nothing is deleted,
 // and claimed or completed cells are left alone). Needs --dataset.
@@ -379,13 +385,14 @@ function extractStatusRows(rows) {
   const col = (...names) => { for (const n of names) { const i = header.findIndex(h => h.includes(n)); if (i >= 0) return i; } return -1; };
   const iSeg = col('startseg', 'segmentid'), iWho = col('proofreader'), iStatus = header.indexOf('status');
   const iDate = col('datecomplete', 'date'), iFinal = col('finalseg');
+  const iType = col('predicted', 'celltype');
   if (iSeg < 0 || (iStatus < 0 && iWho < 0)) return [];
   const cell = (r, i) => (i >= 0 ? (r[i] || '').trim() : '');
   const out = [];
   for (let r = headerIdx + 1; r < rows.length; r++) {
     const segId = cell(rows[r], iSeg);
     if (!/^\d+$/.test(segId)) continue;
-    out.push({ segId, who: cell(rows[r], iWho), status: cell(rows[r], iStatus), date: cell(rows[r], iDate), finalSeg: cell(rows[r], iFinal) });
+    out.push({ segId, who: cell(rows[r], iWho), status: cell(rows[r], iStatus), date: cell(rows[r], iDate), finalSeg: cell(rows[r], iFinal), type: cell(rows[r], iType) });
   }
   return out;
 }
@@ -469,6 +476,57 @@ async function syncStatuses(cfg) {
   return changed;
 }
 
+/** A sheet date (4/30/2026, or 2026-04-30) as YYYY-MM-DD, or null. */
+function sheetDate(text) {
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+  if (m) { const [, mo, d, y] = m; return validDate(+y, +mo, +d); }
+  m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(text);
+  return m ? validDate(+m[1], +m[2], +m[3]) : null;
+}
+function validDate(y, mo, d) {
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return null;
+  return t.toISOString().slice(0, 10);
+}
+
+/**
+ * Copy the sheet's own record of each cell into ew_sheet_cells. One row per
+ * starting segment id; where the sheet lists a segment twice, the row that
+ * got furthest (completed, then skipped, then in progress) is kept.
+ */
+async function mirrorSheet(cfg) {
+  console.log(`
+[mirror] === ${cfg.dataset} ===`);
+  const res = await fetch(csvUrlFor(cfg.url));
+  if (!res.ok) throw new Error(`sheet fetch ${res.status}`);
+  const rows = extractStatusRows(parseCsv(await res.text()));
+  const best = new Map();
+  for (const r of rows) {
+    const rank = RANK[sheetDecision(r)?.status] || 0;
+    const prev = best.get(r.segId);
+    if (!prev || rank > prev.rank) best.set(r.segId, { rank, r });
+  }
+  const now = new Date().toISOString();
+  const out = [...best.values()].map(({ r }) => ({
+    dataset: cfg.dataset, segment_id: r.segId, status: r.status || null, proofreader: r.who || null,
+    date_complete: sheetDate(r.date), cell_type: r.type || null, synced_at: now,
+  }));
+  const dated = out.filter(o => o.date_complete).length, typed = out.filter(o => o.cell_type).length;
+  console.log(`[mirror] ${rows.length} sheet rows, ${out.length} cells (${dated} with a date, ${typed} with a type)`);
+  if (dryRun || !out.length) return 0;
+  for (let i = 0; i < out.length; i += 500) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/ew_sheet_cells?on_conflict=dataset,segment_id`, {
+      method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(out.slice(i, i + 500)),
+    });
+    // Before supabase-dataset-stats.sql is installed there is nowhere to write.
+    if (r.status === 404) { console.log('[mirror] ew_sheet_cells does not exist yet (run supabase-dataset-stats.sql). Nothing written.'); return 0; }
+    if (!r.ok) throw new Error(`mirror write ${r.status}: ${await r.text()}`);
+  }
+  console.log(`[mirror] wrote ${out.length} row(s)`);
+  return out.length;
+}
+
 async function retireOldSource(dataset, sheetId) {
   if (!/^[A-Za-z0-9_-]{6,}$/.test(sheetId || '')) throw new Error('--retire-source needs a sheet id');
   const note = `Retired ${new Date().toISOString().slice(0, 10)}: imported from an old sheet (${sheetId.slice(0, 8)}) the game no longer uses.`;
@@ -505,6 +563,18 @@ async function retireOldSource(dataset, sheetId) {
   if (retireSource) {
     if (!onlyDataset) { console.error('--retire-source needs --dataset'); process.exit(1); }
     await retireOldSource(onlyDataset, retireSource);
+    return;
+  }
+  if (mirrorOnly) {
+    const targets = SHEETS.filter(s => !s.byPoint && (!onlyDataset || s.dataset === onlyDataset));
+    let wrote = 0, failed = 0;
+    for (const cfg of targets) {
+      try { wrote += await mirrorSheet(cfg); }
+      catch (e) { console.error(`[mirror] ${cfg.dataset} failed:`, e.message); failed++; }
+    }
+    console.log(`
+[mirror] done: ${wrote} row(s) written, ${failed} dataset(s) failed`);
+    if (failed) process.exit(1);
     return;
   }
   if (statusesOnly) {

@@ -4,6 +4,7 @@ import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
 import UserProfilePanel from "components/UserProfilePanel.vue";
 import LeaderboardPanel from "components/LeaderboardPanel.vue";
+import DatasetStatsPanel from "components/DatasetStatsPanel.vue";
 import SettingsPanel from "components/SettingsPanel.vue";
 import AnnotationPanel from "components/AnnotationPanel.vue";
 import LoginModal from "components/LoginModal.vue";
@@ -316,6 +317,10 @@ function maybeOpenLeaderboardOnArrival() {
   leaderboardPeek.value = true;
   showLeaderboard.value = true;
 }
+// Dataset Progress: the whole dataset's progress. Opened from the toolbar,
+// or from the profile's Datasets tab (the way in on a phone).
+const showDatasetStats = ref(false);
+document.addEventListener('nge:open-dataset-stats', () => { showProfile.value = false; showDatasetStats.value = true; });
 const showSettings = ref(false);
 const showQueue = ref(false);
 const showFeed = ref(false);
@@ -662,6 +667,7 @@ const toolbarActions: Record<string, ToolbarAction> = {
   layers:      { action: () => toggleLayerListPanel() },
   recap:       { action: () => { openWeekRecap(); } },
   leaderboard: { action: () => { showLeaderboard.value = true; } },
+  datasetStats: { action: () => { showDatasetStats.value = !showDatasetStats.value; } },
   quest:       { action: () => { showQueue.value = !showQueue.value; }, badge: () => queueStore.pendingCount() },
   cells:       { action: () => { cellLibraryInitialTab.value = undefined; showCellLibrary.value = !showCellLibrary.value; } },
   batch:       { action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
@@ -701,6 +707,7 @@ const iconActiveState: Record<string, () => boolean> = {
   layers: () => layerPanelOpen.value,
   recap: () => showProfile.value && profileInitialTab.value === 'weekInScience',
   leaderboard: () => showLeaderboard.value,
+  datasetStats: () => showDatasetStats.value,
   quest: () => showQueue.value,
   cells: () => showCellLibrary.value,
   batch: () => showBatchProcessor.value,
@@ -840,6 +847,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
   <!-- Always a peek on desktop (Ames 2026-09-30): no dim, the site stays usable, a click elsewhere puts it away. Phones keep the sheet. -->
   <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek || !isMobileRef" @hide="showLeaderboard = false; leaderboardPeek = false" />
+  <dataset-stats-panel v-if="showDatasetStats" :peek="!isMobileRef" @hide="showDatasetStats = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />

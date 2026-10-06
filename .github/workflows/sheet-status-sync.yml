@@ -55,3 +55,15 @@ jobs:
           if [ -n "$RETIRE" ]; then args=(--retire-source "$RETIRE" --dataset "$DATASET"); else args=(--statuses); fi
           if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
           node scripts/sync-sheet-cells.mjs "${args[@]}"
+      # What the sheet says about each cell (date complete, proofreader,
+      # predicted type) for the Dataset Progress panel. Touches no task.
+      - name: Mirror the sheet for Dataset Progress
+        if: ${{ !inputs.retire_source }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--mirror)
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          node scripts/sync-sheet-cells.mjs "${args[@]}"

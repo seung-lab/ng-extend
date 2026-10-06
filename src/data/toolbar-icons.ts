@@ -85,6 +85,9 @@ const NOTIF_SVG       = `<svg viewBox="0.85 1.6 14.3 14.3" fill="none" style="${
 const CHAT_SVG        = `<svg viewBox="1.1 1.6 13.8 13.8" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M2.5 5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2H7L4.5 14v-2.5a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
 // Heroicons cog-6-tooth — proper teeth, not radial lines.
 const SETTINGS_SVG    = `<svg viewBox="1.6 1.6 20.8 20.8" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 0 1 0 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 0 1 0-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.213-1.281Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" stroke="currentColor" stroke-width="1.5"/></svg>`;
+// Dataset Progress: a ring three quarters drawn around a centre dot, the
+// whole dataset and how much of it is done.
+const DATASET_STATS_SVG = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${NEUTRAL_COLOR}"><circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-width="1.3" opacity=".35"/><path d="M8 2.4a5.6 5.6 0 1 1-5.6 5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>`;
 const QUEST_SVG       = `<svg viewBox="0.85 1.1 14.3 14.3" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M8 2.5C5.2 2.5 3 4.7 3 7.4c0 1.4.6 2.7 1.6 3.6.5.4.7 1 .7 1.6V14h5.4v-1.4c0-.6.2-1.2.7-1.6 1-.9 1.6-2.2 1.6-3.6 0-2.7-2.2-4.9-5-4.9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.8 14h4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 const FEED_SVG        = `<svg viewBox="0.4 2.6 13.0 13.0" fill="none" style="${S}color:${NEUTRAL_COLOR}"><circle cx="3.2" cy="12.8" r="1.4" fill="currentColor"/><path d="M2 8.5a5.5 5.5 0 0 1 5.5 5.5M2 4a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 
@@ -101,6 +104,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'layers',      emoji: '🗂️', svg: LAYERS_SVG,      label: 'Layer side panel' },
   { id: 'recap',       emoji: '📊', svg: RECAP_SVG,       label: 'Your Week in Science' },
   { id: 'leaderboard', emoji: '🏆', svg: LEADERBOARD_SVG, label: 'Leaderboard' },
+  { id: 'datasetStats', emoji: '🧭', svg: DATASET_STATS_SVG, label: 'Dataset Progress' },
   { id: 'quest',       emoji: '🧠', svg: QUEST_SVG,       label: 'Brain Quest' },
   // Blue (Amy 2026-09-30): the white neuron PNG used as a mask over sky blue.
   { id: 'cells',       emoji: '🧬', svg: CELLS_ICON,      label: 'Cell Library' },
@@ -138,7 +142,7 @@ export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed', 'settings'];
 // be farther right") — see REPOSITION_TOOLBAR_ICONS for saved prefs.
 // Cell Library first (Amy 2026-09-30): the main way in, left of Split/Merge.
 export const DEFAULT_TOOLBAR_ORDER = [
-  'cells', 'split', 'merge', 'findPath', 'highlight', 'recap', 'leaderboard',
+  'cells', 'split', 'merge', 'findPath', 'highlight', 'recap', 'leaderboard', 'datasetStats',
   'batch', 'help', 'tags', 'layers', 'notif', 'chat',
 ];
 
@@ -156,6 +160,7 @@ const AUTO_INJECT_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: 
   { id: 'highlight', after: 'findPath' },
   { id: 'layers',   after: 'tags', beforeFallback: 'notif' },
   { id: 'tags',     after: 'help', beforeFallback: 'notif' },
+  { id: 'datasetStats', after: 'leaderboard', beforeFallback: 'notif' },
 ];
 
 /**
