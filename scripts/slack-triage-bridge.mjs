@@ -257,6 +257,14 @@ const REPORTER_CMD = /^(update\s+(the\s+)?(reporter|submitter|sender)|draft\s+(a
 // The list of replies that must be typed exactly, on the admin page.
 const REPLY_GUIDE = '<https://connectome.quest/admin/#exact-replies|Exact replies and what they do>';
 
+/** The words to send when a reply carries its own: "update: words",
+ *  "update sender: words", "update the reporter: words". Null otherwise. */
+export function reporterOwnWords(text) {
+  const m = String(text || '').trim().match(/^update(?:\s+(?:the\s+)?(?:reporter|submitter|sender))?\s*:\s*([\s\S]+)$/i);
+  const words = m?.[1].trim();
+  return words || null;
+}
+
 /** Draft for the submitter from the row's state. Never includes internal
  *  notes (approver_note is the reviewers' own comment). Mirrors
  *  draftReporterUpdate in AdminHub.vue. */
@@ -316,14 +324,17 @@ async function reporterUpdates() {
         await say(row, `Only listed approvers can message the reporter (<@${m.user}> is not on the list).`).catch(() => {});
         continue;
       }
-      const own = text.match(/^update\s*:\s*([\s\S]+)$/i);
-      if (/^(update\s+(the\s+)?(reporter|submitter|sender)|draft\s+(an?\s+)?update)/i.test(text)) {
+      // "update: words" and "update sender: words" both send those words
+      // (Ames 2026-10-06: "Update sender: fix is being deployed" came back as
+      // a stock draft, her words dropped). Without words it is a draft request.
+      const own = reporterOwnWords(text);
+      if (!own && /^(update\s+(the\s+)?(reporter|submitter|sender)|draft\s+(an?\s+)?update)/i.test(text)) {
         const draft = draftReporterUpdate(row);
         log.push({ role: 'reporter_draft', ts: m.ts, user: m.user, text: draft });
         await say(row, `✉️ Draft update for the reporter:\n> ${draft}\nReply *send update* to send it as is, *update: your own words* to send your version, or just ignore this.`);
         continue;
       }
-      const body = own ? own[1].trim()
+      const body = own ? own
         : ([...log].reverse().find(e => e.role === 'reporter_draft')?.text || draftReporterUpdate(row));
       const userId = await reporterUserId(row);
       const ok = userId ? await notifyUser(userId, '💬 An update on your report', body) : false;
