@@ -249,6 +249,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_editlog_op_key
 -- A duplicate op_key changes nothing and says so.
 -- The player's time zone, for the streak's day (supabase-streak-local-days.sql).
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS tz TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS total_days INTEGER NOT NULL DEFAULT 0;
 CREATE OR REPLACE FUNCTION public.ew_log_activity(p_user UUID, p_row JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
@@ -263,6 +264,7 @@ DECLARE
   d_edits  INTEGER := 0;
   d_cells  INTEGER := 0;
   d_ann    INTEGER := 0;
+  d_days   INTEGER := 0;
   streak   INTEGER;
   longest  INTEGER;
   is_cell  BOOLEAN := op IN ('complete_task', 'mark_complete', 'unmark_complete');
@@ -312,6 +314,7 @@ BEGIN
     IF op <> 'annotate' AND (u.last_edit_date IS NULL OR today > u.last_edit_date) THEN
       streak := CASE WHEN u.last_edit_date = today - 1 THEN streak + 1 ELSE 1 END;
       longest := GREATEST(longest, streak);
+      d_days := 1;               -- a new day on the player's calendar
     END IF;
 
     UPDATE public.users SET
@@ -320,6 +323,7 @@ BEGIN
       total_splits      = COALESCE(total_splits, 0) + CASE WHEN op = 'split' THEN d_edits ELSE 0 END,
       cells_completed   = GREATEST(0, COALESCE(cells_completed, 0) + d_cells),
       total_annotations = COALESCE(total_annotations, 0) + d_ann,
+      total_days        = COALESCE(total_days, 0) + d_days,
       current_streak    = streak,
       longest_streak    = longest,
       last_edit_date    = CASE WHEN op = 'annotate' THEN last_edit_date
@@ -334,7 +338,8 @@ BEGIN
       'cells_completed', n.cells_completed, 'total_annotations', n.total_annotations,
       'current_streak', n.current_streak, 'longest_streak', n.longest_streak,
       'last_edit_date', n.last_edit_date,
-      'streak_before', COALESCE(u.current_streak, 0), 'edits_before', COALESCE(u.total_edits, 0))
+      'streak_before', COALESCE(u.current_streak, 0), 'edits_before', COALESCE(u.total_edits, 0),
+      'total_days', COALESCE(n.total_days, 0), 'days_before', COALESCE(u.total_days, 0))
     FROM public.users n WHERE n.id = p_user);
 END;
 $$;

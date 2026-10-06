@@ -1799,7 +1799,18 @@ exports.ewSecureWrite = onRequest(
             const saved = await sb(`users?id=eq.${me.id}&select=current_streak&limit=1`);
             if ((saved[0]?.current_streak || 0) < Number(streakHit[1])) throw ewErr(400, "not yet");
           }
-          if (!okTitle && !streakHit) throw ewErr(400, "not an allowed self notification");
+          // "📅 Day 30 at EyeWire II": only the Days ladder's own steps
+          // (src/util/day_milestones.ts), and only once the caller's saved
+          // total has reached it (Ames 2026-10-06).
+          const dayHit = title.match(/^📅 Day ([1-9]\d{0,4}) at EyeWire II$/);
+          if (dayHit) {
+            const n = Number(dayHit[1]);
+            const step = n <= 100 ? [2,3,5,7,14,21,28,30,40,50,60,70,80,90,100].includes(n) : (n % 25 === 0 || n % 365 === 0);
+            if (!step) throw ewErr(400, "not a milestone");
+            const saved = await sb(`users?id=eq.${me.id}&select=total_days&limit=1`);
+            if ((saved[0]?.total_days || 0) < n) throw ewErr(400, "not yet");
+          }
+          if (!okTitle && !streakHit && !dayHit) throw ewErr(400, "not an allowed self notification");
           if (title.startsWith("💙") && (me.total_edits || 0) < 3) throw ewErr(400, "not yet");
           const since = new Date(Date.now() - 6 * 864e5).toISOString();
           const dup = await sb(`notifications?target_type=eq.user&target_id=eq.${me.id}&title=eq.${encodeURIComponent(title)}&created_at=gte.${since}&select=id`);

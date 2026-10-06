@@ -148,3 +148,61 @@ test('only the server can call them',async()=>{
     assert.deepEqual([p.a,p.b,p.c,p.d],[false,false,true,false]);
   } finally { await db.close(); }
 });
+
+// ── The Days track: total days shown up (supabase-days-track.sql) ───────────
+async function freshDays() {
+  const db=await fresh();
+  const sql=fs.readFileSync(path.join(__dirname,'../supabase-days-track.sql'),'utf8');
+  await db.exec(sql);
+  await db.exec(sql);            // safe to re-run
+  return db;
+}
+const days=async(db,user)=>(await db.query('SELECT total_days FROM users WHERE id=$1',[uid(user)])).rows[0].total_days;
+
+test('total days: counted once from the log, then one more for each new day',async()=>{
+  const db=await freshDays();
+  try {
+    // Five separate days of history (two of them evenings), a failed edit and
+    // an annotation that are not days, and today's visit: six.
+    await at(db,1,NY,9,'10:00'); await at(db,1,NY,7,'21:30'); await at(db,1,NY,6,'21:30');
+    await at(db,1,NY,3,'12:00'); await at(db,1,NY,3,'15:00'); await at(db,1,NY,1,'09:00');
+    await at(db,1,NY,5,'12:00','merge',false); await at(db,1,NY,4,'12:00','annotate');
+    let r=await touch(db,1,NY);
+    assert.deepEqual([r.total_days,r.days_before,r.days_recounted],[6,0,true]);
+    assert.equal(r.current_streak,2);                // yesterday and today
+    // The same day again: nothing moves.
+    r=await touch(db,1,NY);
+    assert.deepEqual([r.total_days,r.days_before,r.days_recounted],[6,6,false]);
+    // A new day by a visit, then nothing more for an edit that same day.
+    await db.query(`UPDATE users SET last_edit_date=last_edit_date-1 WHERE id=$1`,[uid(1)]);
+    r=await touch(db,1,NY);
+    assert.deepEqual([r.total_days,r.days_before],[7,6]);
+    assert.equal((await rec(db,1,{operation:'merge',dataset:'stroeh_mouse_retina',op_key:'pcg:d1'})).total_days,7);
+    // A new day by an edit: one more, and the visit after it adds nothing.
+    await db.query(`UPDATE users SET last_edit_date=last_edit_date-1 WHERE id=$1`,[uid(1)]);
+    r=await rec(db,1,{operation:'merge',dataset:'stroeh_mouse_retina',op_key:'pcg:d2'});
+    assert.deepEqual([r.total_days,r.days_before],[8,7]);
+    assert.equal((await touch(db,1,NY)).total_days,8);
+    // Annotating is not a day. A missed week resets the streak, never the total.
+    await db.query(`UPDATE users SET last_edit_date=last_edit_date-7 WHERE id=$1`,[uid(1)]);
+    assert.equal((await rec(db,1,{operation:'annotate',dataset:'stroeh_mouse_retina',metadata:{count:3}})).total_days,8);
+    r=await touch(db,1,NY);
+    assert.deepEqual([r.total_days,r.current_streak],[9,1]);
+    assert.equal(await days(db,1),9);
+    // A brand new player: day one.
+    assert.equal((await touch(db,2,'Europe/Warsaw')).total_days,1);
+    // A player who already visited before this track existed keeps the day already saved.
+    await db.query(`UPDATE users SET tz=$2,streak_recounted_at=now(),current_streak=1,last_edit_date=(now() AT TIME ZONE $2)::date-1 WHERE id=$1`,[uid(3),NY]);
+    r=await touch(db,3,NY);
+    assert.deepEqual([r.total_days,r.days_recounted,r.current_streak],[2,true,2]);
+  } finally { await db.close(); }
+});
+
+test('total days can be read by anyone; a time zone can not',async()=>{
+  const db=await freshDays();
+  try {
+    const p=(await db.query(`SELECT has_column_privilege('anon','public.users','total_days','SELECT') a,
+      has_function_privilege('anon','public.ew_touch_streak(uuid,text)','EXECUTE') b`)).rows[0];
+    assert.deepEqual([p.a,p.b],[true,false]);
+  } finally { await db.close(); }
+});

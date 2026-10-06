@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
 import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
+import {dayLadderAround, nextDayMilestone, lastDayMilestone} from '../util/day_milestones';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
@@ -47,6 +48,18 @@ const backendStore = useProofreadingBackendStore();
 // ── Viewing another user's profile ────────────────────────────────────────────
 const viewingOtherUser = computed(() => !!props.viewUserId && props.viewUserId !== backendStore.userId);
 const otherUserProfile = ref<any>(null);
+// ── Days track: total days shown up, the streaks, and the milestone ladder ──
+const otherDays = ref<number | null>(null);
+const totalDays = computed(() => viewingOtherUser.value ? (otherDays.value ?? 0) : (stats.value.totalDays || 0));
+const dayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.value?.current_streak || 0) : (stats.value.currentStreak || 0));
+const bestDayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.value?.longest_streak || 0) : (stats.value.longestStreak || 0));
+const dayLadder = computed(() => dayLadderAround(totalDays.value));
+const nextDay = computed(() => nextDayMilestone(totalDays.value));
+/** How far from the last step to the next one, 0 to 1. */
+const dayProgress = computed(() => {
+  const from = lastDayMilestone(totalDays.value), to = nextDay.value;
+  return Math.max(0, Math.min(1, (totalDays.value - from) / Math.max(1, to - from)));
+});
 // Annotations placed: their total, or mine plus what this browser has yet to send.
 const otherAnnotations = ref<number | null>(null);
 const annotationsPlaced = computed(() => viewingOtherUser.value ? (otherAnnotations.value ?? 0) : sentAnnotations.value + pendingAnnotations.value);
@@ -58,6 +71,8 @@ async function loadOtherUser() {
     void backendStore.loadSilverBadges(props.viewUserId).then(l => { otherSilver.value = l; });
     otherAnnotations.value = null;
     void loadAnnotationTotal(props.viewUserId).then(n => { otherAnnotations.value = n; });
+    otherDays.value = null;
+    void backendStore.loadDayTotal(props.viewUserId).then(n => { otherDays.value = n; });
   } else {
     otherUserProfile.value = null;
     backendStore.loadUserStats();
@@ -1008,6 +1023,34 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   </span>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- Days: total days shown up (never resets), the streaks, and the
+               ladder of milestones (Ames 2026-10-06). -->
+          <div v-if="totalDays > 0" class="nge-profile-section nge-profile-section--days">
+            <div class="nge-profile-section-label">▌ Days</div>
+            <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
+              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Every day you have shown up, ever. This never resets.">
+                <div class="nge-profile-stat-label">Total days</div>
+                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="totalDays" /></div>
+              </div>
+              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Days in a row right now, on your own calendar">
+                <div class="nge-profile-stat-label">Streak</div>
+                <div class="nge-profile-stat-val"><RollUp :value="dayStreak" /></div>
+              </div>
+              <div class="nge-profile-stat-col nge-profile-stat-tile" title="The longest run of days in a row">
+                <div class="nge-profile-stat-label">Best streak</div>
+                <div class="nge-profile-stat-val"><RollUp :value="bestDayStreak" /></div>
+              </div>
+            </div>
+            <div class="nge-days-ladder" :title="`Next milestone: day ${nextDay}`">
+              <div class="nge-days-steps">
+                <span v-for="step in dayLadder" :key="step.days" class="nge-days-step"
+                      :class="{ 'nge-days-step--reached': step.reached, 'nge-days-step--big': step.big }">{{ step.days.toLocaleString() }}</span>
+              </div>
+              <div class="nge-days-bar"><div class="nge-days-bar-fill" :style="{ width: (dayProgress * 100) + '%' }"></div></div>
+              <div class="nge-days-next">{{ (nextDay - totalDays).toLocaleString() }} {{ nextDay - totalDays === 1 ? 'day' : 'days' }} to day {{ nextDay.toLocaleString() }}</div>
             </div>
           </div>
 
@@ -2394,6 +2437,18 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-profile-countdown-fill--exploration { background: linear-gradient(90deg, #90fff2, #4ae5d5); }
 
 /* ── Stat row ── */
+/* Days track: the stretch of the milestone ladder around today. */
+.nge-days-ladder { margin: 10px 0 12px; }
+.nge-days-steps { display: flex; flex-wrap: wrap; gap: 6px; }
+.nge-days-step { min-width: 34px; padding: 3px 8px; border-radius: 999px; text-align: center; font-size: 0.8em; font-variant-numeric: tabular-nums;
+  color: rgba(200, 215, 240, 0.55); background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(140, 170, 220, 0.3); }
+.nge-days-step--reached { color: #0a1424; font-weight: 700; background: #7fd4ff; border: 1px solid #7fd4ff; }
+.nge-days-step--big { border-color: rgba(255, 205, 100, 0.75); color: rgba(255, 215, 130, 0.9); }
+.nge-days-step--big.nge-days-step--reached { color: #1c1200; background: #ffcd64; border-color: #ffcd64; }
+.nge-days-bar { height: 4px; margin-top: 9px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.nge-days-bar-fill { height: 100%; border-radius: 2px; background: #7fd4ff; transition: width 0.5s ease; }
+.nge-days-next { margin-top: 5px; font-size: 0.8em; color: rgba(200, 215, 240, 0.7); }
+
 .nge-profile-stat-row {
   display: flex;
   gap: 16px;

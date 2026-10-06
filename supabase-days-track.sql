@@ -1,32 +1,29 @@
 -- ============================================================================
--- Streaks count the player's own days, and a visit counts (Ames 2026-10-06).
+-- The Days track: total days a player has shown up (Ames 2026-10-06).
 --
--- Why. A streak "day" was a UTC day, which ends at 8 pm in New York. An
--- evening session landed on the next day, so a player active on Oct 4, 5 and
--- 6 of their own calendar was shown a 2 day streak, and nine days running in
--- late September were split by a day that looked empty. Checked against the
--- log: in UTC the days were Oct 5, 6; in Eastern time Oct 4, 5, 6.
+-- A streak resets after one missed day. Total days never resets, so it
+-- rewards coming back after a holiday or a sick week. The profile shows it
+-- beside the current and best streak, with a ladder of milestones:
+--   2, 3, 5, 7, 14, 21, 28, 30, 40, 50, 60, 70, 80, 90, 100, then every 25,
+--   with a big celebration at each 100 and each full year (365, 730, ...).
 --
--- What changes.
---   1. users.tz holds the player's time zone (an IANA name, sent by the game
---      when they open it; only names PostgreSQL knows are kept).
---   2. ew_touch_streak(player, tz): opening the game counts as that day. The
---      first time a player's zone is known, their streak is recounted from
---      their whole log in that zone, so a streak wrongly broken by the UTC
---      day is put back. Their best streak never goes down.
---   3. ew_log_activity (supabase-leaderboard-accuracy.sql) uses the same local
---      day. It is the same function with only the day changed.
---   A streak only ever moves forwards: changing time zone can not reset it.
+-- users.total_days moves by one whenever the player's own calendar day
+-- advances, by a visit (ew_touch_streak) or by an edit (ew_log_activity): the
+-- same test that moves the streak, so the two can not disagree. The first
+-- time, it is counted from the player's whole activity log in their time zone.
+-- Visits made before this ran were not recorded, so history counts the days
+-- with activity only.
 --
--- Called only by the EyeWire II server function (service role).
--- Run in the Supabase SQL editor. Safe to re-run.
+-- total_days is public, like the streak: it shows on a player's profile.
+-- Both functions are the ones in supabase-streak-local-days.sql with the day
+-- counter added. Run in the Supabase SQL editor. Safe to re-run.
 -- ============================================================================
 
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS tz TEXT;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS streak_recounted_at TIMESTAMPTZ;
--- Total days shown up, for the Days track (supabase-days-track.sql).
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS total_days INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS days_recounted_at TIMESTAMPTZ;
+GRANT SELECT (total_days) ON public.users TO anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.ew_touch_streak(p_user UUID, p_tz TEXT)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
@@ -126,7 +123,6 @@ $$;
 REVOKE ALL ON FUNCTION public.ew_touch_streak(UUID, TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.ew_touch_streak(UUID, TEXT) TO service_role;
 
--- ── ew_log_activity: the same function, on the player's own day ─────────────
 CREATE OR REPLACE FUNCTION public.ew_log_activity(p_user UUID, p_row JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
@@ -224,13 +220,19 @@ $$;
 REVOKE ALL ON FUNCTION public.ew_log_activity(UUID, JSONB) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.ew_log_activity(UUID, JSONB) TO service_role;
 
--- Check: three rows. The public key can use none of them (false), the server
--- can use all of them (true).
+-- Check: four rows.
+--   the two functions:  public_can false, server_can true
+--   users.total_days:   public_can true  (it shows on profiles)
+--   users.tz:           public_can false (a time zone stays private)
 SELECT p.proname::TEXT AS what,
        has_function_privilege('anon', p.oid, 'EXECUTE') AS public_can,
        has_function_privilege('service_role', p.oid, 'EXECUTE') AS server_can
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public' AND p.proname IN ('ew_touch_streak', 'ew_log_activity')
+UNION ALL
+SELECT 'users.total_days (shown on profiles)',
+       has_column_privilege('anon', 'public.users', 'total_days', 'SELECT'),
+       has_column_privilege('service_role', 'public.users', 'total_days', 'SELECT')
 UNION ALL
 SELECT 'users.tz (a player''s time zone)',
        has_column_privilege('anon', 'public.users', 'tz', 'SELECT'),

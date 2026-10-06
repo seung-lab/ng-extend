@@ -3,6 +3,7 @@ import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot
 import { taskAction } from './pilot_actions';
 import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
+import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
 import { secureWrite } from './secure_write';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {defineStore} from 'pinia';
@@ -712,6 +713,8 @@ export interface UserStats {
   currentStreak: number;
   longestStreak: number;
   lastEditDate: string;       // ISO date string e.g. "2026-03-01"
+  // Days track — every day the player has shown up, ever. Never resets.
+  totalDays: number;
   // Community totals — dataset-wide aggregate from CAVE ChunkedGraph
   communityEditsThisWeek: number;
   communityEditsThisMonth: number;
@@ -755,6 +758,7 @@ export const useUserStatsStore = defineStore('userStats', () => {
     currentStreak: 0,
     longestStreak: 0,
     lastEditDate: '',
+    totalDays: 0,
     communityEditsThisWeek: 0,
     communityEditsThisMonth: 0,
     ...saved,
@@ -3725,8 +3729,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           currentStreak: result.current_streak ?? 0,
           longestStreak: result.longest_streak ?? 0,
           ...(result.last_edit_date ? { lastEditDate: result.last_edit_date } : {}),
+          ...(typeof result.total_days === 'number' ? { totalDays: result.total_days } : {}),
         });
         if (result.recorded) {
+          celebrateDays(result.days_before, result.total_days, false);
           if ((result.current_streak ?? 0) !== (result.streak_before ?? 0)) sendStreakMilestone(result.current_streak).catch(() => {});
           if ((result.edits_before ?? 0) < 3 && (result.total_edits ?? 0) >= 3) sendThirdEditThanks().catch(() => {});
         }
@@ -3835,6 +3841,40 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       thumbnail_url: `${art}/nurro-dance.png`,
     });
     loadNotifications().catch(() => {});
+  }
+
+  /**
+   * The Days track (Ames 2026-10-06). When the total of days shown up passes
+   * a step of its ladder, a note lands in the bell; every 100 days and every
+   * full year also get the big centre celebration. A first count of old days
+   * is a correction, not a day earned just now, so it celebrates nothing.
+   */
+  function celebrateDays(before: unknown, now: unknown, recounted: boolean) {
+    if (recounted || typeof before !== 'number' || typeof now !== 'number' || now <= before) return;
+    const reached = dayMilestonesReached(before, now);
+    const days = reached[reached.length - 1];
+    if (!days || !userId.value) return;
+    const years = wholeYears(days);
+    const big = isBigDayMilestone(days);
+    const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
+    const title = `📅 Day ${days} at EyeWire II`;
+    const body = years
+      ? `${years} of days spent mapping the brain with us. There are no words. Thank you! Next milestone: day ${nextDayMilestone(days)}.`
+      : big
+        ? `${days} days of showing up for science. That is extraordinary. Thank you! Next milestone: day ${nextDayMilestone(days)}.`
+        : `You have shown up on ${days} different days. Thank you for coming back! Next milestone: day ${nextDayMilestone(days)}.`;
+    secureWrite('notification.self', { title, body, image_url: `${art}/nurro-dance.png`, thumbnail_url: `${art}/nurro-dance.png` })
+      .then(() => loadNotifications().catch(() => {}), () => {});
+    if (big) pendingBadgeCelebration.value = { title: years ? `${years} at EyeWire II` : `Day ${days} at EyeWire II`, body, imageUrl: `${art}/nurro-dance.png` };
+  }
+
+  /** Total days shown up for any player, or null when it can not be read
+   *  (before supabase-days-track.sql is run the column does not exist). */
+  async function loadDayTotal(id: string): Promise<number | null> {
+    try {
+      const { data, error } = await supabase.from('users').select('total_days').eq('id', id).single();
+      return error || !data ? null : Number((data as any).total_days) || 0;
+    } catch { return null; }
   }
 
   /** A personal "thank you, for science" notification after someone's third
@@ -4001,7 +4041,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // (supabase-streak-local-days.sql). Days used to be UTC days, which end at
   // 8 pm in New York, so an evening session broke or skipped a day.
   const VISIT_KEY = 'nge-streak-visit';
-  let visitStreak: { currentStreak: number; longestStreak: number; lastEditDate: string } | null = null;
+  let visitStreak: { currentStreak: number; longestStreak: number; lastEditDate: string; totalDays?: number } | null = null;
   let visiting = false;
   async function recordVisit() {
     const uid = userId.value;
@@ -4017,11 +4057,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       const r: any = await secureWrite('activity.visit', { tz });
       if (!r || typeof r.current_streak !== 'number') return;   // SQL not installed yet
       if (userId.value !== uid) return;
-      visitStreak = { currentStreak: r.current_streak, longestStreak: r.longest_streak ?? 0, lastEditDate: r.last_edit_date || day };
+      visitStreak = { currentStreak: r.current_streak, longestStreak: r.longest_streak ?? 0, lastEditDate: r.last_edit_date || day,
+        ...(typeof r.total_days === 'number' ? { totalDays: r.total_days } : {}) };
       useUserStatsStore().setStats(visitStreak);
       try { localStorage.setItem(VISIT_KEY, key); } catch { /* */ }
       // A recount of old days is a correction, not a day earned just now.
       if (!r.recounted && r.current_streak !== (r.streak_before ?? 0)) sendStreakMilestone(r.current_streak).catch(() => {});
+      celebrateDays(r.days_before, r.total_days, !!r.days_recounted);
     } catch (e: any) {
       console.warn('[backend] visit not counted:', e?.message);
     } finally {
@@ -4056,6 +4098,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         });
         // Today's visit may have been counted while this read was on its way.
         if (visitStreak) statsStore.setStats(visitStreak);
+        // Total days has its own read: it is absent until its SQL is run.
+        else void loadDayTotal(userId.value).then(n => { if (n != null && n > 0) statsStore.setStats({ totalDays: n }); });
         console.info('[backend] Loaded user stats from Supabase');
       }
     } catch (e: any) {
@@ -5350,7 +5394,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
-    leaderboard, leaderboardMyRanks, leaderboardState, leaderboardAt,
+    leaderboard, leaderboardMyRanks, loadDayTotal, leaderboardState, leaderboardAt,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
