@@ -103,6 +103,12 @@
   line-height: 1.5;
   pointer-events: none;
 }
+/* The chips ride above whatever is on the bottom edge: neuroglancer's status
+   bar while it shows a message, and the cut and merge bar (Ames 2026-10-02). */
+.neuroglancer-position-widget { bottom: calc(6px + var(--nge-bottom-bar, 0px)); transition: bottom 0.2s ease; }
+.neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-bottom-bar, 0px)); }
+body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
+body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 .neuroglancer-mouse-position-widget:empty {
   display: none;
 }
@@ -1137,29 +1143,22 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
 #statusContainer li a { color: #7fd4ff; }
 
 /* Cut and merge mode: neuroglancer's own tool line showed under our Cut
-   and Merge bar as a grey strip of raw key names ("control+mousedown0 ->
-   set-anchor, keyg -> swap-group, enter -> submit"), with the coordinates
-   chip sitting on top of the text (Ames 2026-10-06). The bar already carries
-   those controls, so the strip becomes a plain dark footer the height of the
-   gap under the bar, and its contents are hidden. They stay in the page,
-   because the bar reads its state from them and presses their buttons. */
+   and Merge bar, first as a grey strip of raw key names, then (restyled) as
+   a black bar (Ames 2026-10-06: "we gotta get rid of the black bar under
+   cut and merge"). The bar already carries those controls, so the line is
+   taken off screen entirely and the bar sits on the bottom edge
+   (SplitMergeOverlay.vue), with the coordinates and chat stacked above it.
+   The line stays in the page, because the bar reads its state from it and
+   presses its buttons. */
 #statusContainer li.neuroglancer-tool-status:has(.graphene-multicut),
 #statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments) {
-  display: block !important;
-  box-sizing: border-box;
-  height: 28px !important;
-  max-height: 28px !important;
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  max-height: 1px !important;
   padding: 0 !important;
   overflow: hidden !important;
-  list-style: none;
-  background: rgba(8, 14, 28, 0.96) !important;
-  border-top: 1px solid rgba(120, 180, 255, 0.12);
-  color: transparent !important;
-}
-/* The coordinates sit in that footer, so they ride above it. */
-body.nge-tool-bar-open .neuroglancer-position-widget,
-body.nge-tool-bar-open .neuroglancer-mouse-position-widget { z-index: 101; }
-#statusContainer li.neuroglancer-tool-status:has(.graphene-multicut) > *,
-#statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments) > * {
-  visibility: hidden !important;
+  clip-path: inset(50%);
+  opacity: 0;
+  pointer-events: none;
 }

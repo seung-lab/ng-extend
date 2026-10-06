@@ -1951,5 +1951,5 @@ button.nge-chat-quote:hover { background: rgba(74, 158, 255, 0.13); border-left-
   font-style: italic;
 }
 /* The cut/merge bar is open: clear it. */
-body.nge-tool-bar-open .nge-chat-float { bottom: max(96px, calc(36px + var(--nge-bottom-bar, 0px))); }
+body.nge-tool-bar-open .nge-chat-float { bottom: calc(36px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 </style>
