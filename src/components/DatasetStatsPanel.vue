@@ -13,6 +13,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import RollUp from 'components/RollUp.vue';
+import GrowingCell from 'components/GrowingCell.vue';
 import { canonicalDataset, currentDatasetTag, type DatasetEntry } from '../datasets';
 import { datasetKey } from '../util/completion_rule';
 import { datasetsWithStats, loadDatasetStats, statsKey, weeklySeries, type DatasetStats } from '../util/dataset_stats';
@@ -190,7 +191,7 @@ onUnmounted(() => {
       <div class="nge-dsp-content">
         <!-- Whole panel states -->
         <div v-if="phase === 'loading' || (phase === 'ready' && active && !stats)" class="nge-dsp-loading" role="status">
-          <div class="nge-dsp-loading-bar"><i></i></div>
+          <GrowingCell :size="110" />
           <div class="nge-dsp-loading-text">Reading the dataset</div>
         </div>
         <div v-else-if="phase === 'unavailable'" class="nge-dsp-note" role="status">
@@ -474,15 +475,9 @@ onUnmounted(() => {
   background: rgba(120, 170, 255, 0.08); border: 1px solid rgba(120, 170, 255, 0.25);
 }
 
-/* ── Loading: one thin line sweeping, the only thing here that loops ── */
-.nge-dsp-loading { padding: 36px 0; text-align: center; }
-.nge-dsp-loading-bar { position: relative; height: 2px; margin: 0 40px 12px; overflow: hidden; background: rgba(126, 224, 255, 0.12); }
-.nge-dsp-loading-bar i {
-  position: absolute; top: 0; bottom: 0; width: 34%;
-  background: linear-gradient(90deg, transparent, rgb(126, 224, 255), transparent);
-  animation: ngeDsSweep 1.25s ease-in-out infinite;
-}
-@keyframes ngeDsSweep { from { left: -34%; } to { left: 100%; } }
+/* ── Loading: the game's growing cell (GrowingCell.vue), the only thing here
+   that loops, and it stands still under reduced motion ── */
+.nge-dsp-loading { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 0; }
 .nge-dsp-loading-text { font-size: 0.78em; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(170, 205, 255, 0.75); }
 
 /* ── Progress ── */
@@ -590,7 +585,6 @@ onUnmounted(() => {
 @media (prefers-reduced-motion: reduce) {
   .nge-dsp-modal :deep(.nge-overlay), .nge-dsp-fill, .nge-dsp-type-fill, .nge-dsp-bar { animation: none; }
   .nge-dsp-run { animation: none; stroke-dashoffset: 0; }
-  .nge-dsp-loading-bar i { animation: none; left: 33%; }
 }
 </style>
 
