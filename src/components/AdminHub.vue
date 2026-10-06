@@ -1386,7 +1386,8 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'notifications' }" @click="adminSubTab = 'notifications'">Notifications</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'groups' }" @click="adminSubTab = 'groups'">Groups</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
-      <button class="nge-admin-subtab nge-admin-subtab--triage" :class="{ 'nge-admin-subtab--active': adminSubTab === 'triage' }" @click="adminSubTab = 'triage'">Triage</button>
+      <!-- Triage lives on its own page: the full board, in a new tab (Ames 2026-10-05). -->
+      <a class="nge-admin-subtab nge-admin-subtab--triage" :href="boardUrl" target="_blank" rel="noopener" title="Opens the triage board in a new tab">Triage ↗</a>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'pilot' }" @click="adminSubTab = 'pilot'">Pilot testers</button>
     </div>
@@ -1949,6 +1950,7 @@ function practiceWhen(iso: string | null) {
   padding-bottom: 0;
   margin-bottom: 4px;
 }
+a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: center; box-sizing: border-box; }
 .nge-admin-subtab {
   background: transparent;
   border: none;
