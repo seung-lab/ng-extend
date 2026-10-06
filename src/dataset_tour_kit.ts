@@ -6,6 +6,7 @@
  * A dataset's tour file (tutorial-mec-tour.ts, tutorial-retina-tour.ts) only
  * lists its stage and its cells; makeCellTour builds the steps.
  */
+import { marked } from 'marked';
 import { Step } from "./store-pyr";
 import { useLayersStore } from "./store";
 import { setStatedColor } from "./widgets/widget_utils";
@@ -40,6 +41,26 @@ export interface TourCell {
   max: number[];
   /** Camera orientation (a quaternion). Default: the stage's own. */
   view?: number[];
+  /** A picture at the top of the card (the superclass render, FlyWire). */
+  image?: string;
+  imageAlt?: string;
+  /** Buttons under the text that load more cells: every cell of this type,
+   *  or the cells around this one. Each lists how many it loads. */
+  more?: TourMore[];
+}
+
+export interface TourMore {
+  /** Button text, e.g. "Show all 729 T4a cells in this optic lobe". */
+  label: string;
+  /** Under the button, e.g. "This may take a while to load." */
+  note?: string;
+  ids: string[];
+  /** Box to frame, micrometres. */
+  min: number[];
+  max: number[];
+  /** One colour for all of them (default: the card's cell colour). With
+   *  'own', each keeps the viewer's own colour, so neighbours tell apart. */
+  color?: string | 'own';
 }
 
 export interface CellTourSpec {
@@ -51,6 +72,9 @@ export interface CellTourSpec {
   voxelUm: number[];
   /** The view the tour plays on: image and segmentation layers, camera. */
   stage: Record<string, any>;
+  /** Name of a stage layer that stays as it is through the tour (an outline
+   *  of the whole brain). The tour never clears or selects it. */
+  backdropLayer?: string;
   cells: TourCell[];
   welcome: {
     title: string; hero: string; heroAlt: string; paragraphs: string[]; nextLabel?: string;
@@ -64,6 +88,9 @@ export interface CellTourSpec {
      *  tour is shown together. */
     showcaseUrl?: string;
     view?: number[];
+    /** false: the finale does not point at the Cell Library (a dataset with
+     *  nothing to claim). Default true. */
+    pointAtCellLibrary?: boolean;
   };
 }
 
@@ -88,6 +115,7 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
     st.showDefaultAnnotations = false;
     for (const l of st.layers) {
       if (l.type !== 'segmentation') continue;
+      if (l.name === spec.backdropLayer) continue;
       l.segments = [];
       st.selectedLayer = { layer: l.name, visible: false };
     }
@@ -102,7 +130,9 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
     if (!v) return;
     document.dispatchEvent(new CustomEvent('nge:close-all-panels'));
     document.dispatchEvent(new CustomEvent('nge:close-cell-library'));
-    if (!segLayer()) {
+    const layers: any[] = v.layerManager?.managedLayers ?? [];
+    const backdropMissing = !!spec.backdropLayer && !layers.some(l => l.name === spec.backdropLayer);
+    if (!segLayer() || backdropMissing) {
       await useLayersStore().loadState(baseState());
       for (let i = 0; i < 40 && !segLayer()?.layer?.displayState; i++) {
         await new Promise(r => setTimeout(r, 200));
@@ -145,10 +175,83 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
       v.navigationState.position.value = Float32Array.from([0, 1, 2].map(i => (min[i] + max[i]) / 2 / spec.voxelUm[i]));
       const orient = view ?? spec.stage.projectionOrientation;
       if (orient) v.perspectiveNavigationState.pose.orientation.restoreState(orient);
-      v.projectionScale.value = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * SCALE_PER_UM;
+      // projectionScale counts x voxels, and SCALE_PER_UM was tuned on the
+      // 16 nm retina and MEC. On FlyWire's 4 nm voxels the same number framed
+      // a quarter of the cell, off to one side (Ames 2026-10-06).
+      v.projectionScale.value = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * SCALE_PER_UM * (0.016 / spec.voxelUm[0]);
     } catch (e) {
       console.warn(tag, 'could not show the cell:', e);
     }
+  }
+
+  /** A card's "show all" button: add a whole group to the view and frame it. */
+  function showMore(cell: TourCell, more: TourMore) {
+    const v = viewer();
+    const layer = segLayer()?.layer;
+    const group = layer?.displayState?.segmentationGroupState?.value;
+    if (!v || !group) return;
+    try {
+      const { Uint64 } = require('neuroglancer/util/uint64');
+      const colors = layer.displayState.segmentationColorGroupState?.value?.segmentStatedColors;
+      const hex = more.color === 'own' ? null : (more.color || cell.color);
+      const n = hex ? parseInt(hex.slice(1), 16) : 0;
+      const packed = ((n >> 16) & 255) | (n & 0xff00) | ((n & 255) << 16);
+      const keep = new Set(cell.ids);
+      for (const id of more.ids) {
+        const seg = Uint64.parseString(id);
+        if (hex && colors && !keep.has(id)) { try { setStatedColor(colors, seg, packed); } catch { /* default colour */ } }
+        group.visibleSegments.add(seg);
+      }
+      const min = [0, 1, 2].map(i => Math.min(cell.min[i], more.min[i]));
+      const max = [0, 1, 2].map(i => Math.max(cell.max[i], more.max[i]));
+      v.navigationState.position.value = Float32Array.from([0, 1, 2].map(i => (min[i] + max[i]) / 2 / spec.voxelUm[i]));
+      v.projectionScale.value = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * SCALE_PER_UM * (0.016 / spec.voxelUm[0]);
+    } catch (e) {
+      console.warn(tag, 'could not show the group:', e);
+    }
+  }
+
+  // One listener for every card's buttons (the card is plain HTML).
+  const MORE_ATTR = `data-tour-more-${spec.name}`;
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click', ev => {
+      const btn = (ev.target as HTMLElement | null)?.closest?.(`[${MORE_ATTR}]`) as HTMLButtonElement | null;
+      if (!btn) return;
+      const [ci, mi] = (btn.getAttribute(MORE_ATTR) || '').split(':').map(Number);
+      const cell = spec.cells[ci];
+      const more = cell?.more?.[mi];
+      if (!more) return;
+      if (btn.dataset.shown === '1') {
+        // Back to the one cell.
+        btn.dataset.shown = '';
+        btn.textContent = more.label;
+        // Every button on this card goes back to its own label.
+        btn.closest('.html')?.querySelectorAll(`[${MORE_ATTR}]`).forEach(b => {
+          const el = b as HTMLElement;
+          const other = cell.more?.[Number((el.getAttribute(MORE_ATTR) || '').split(':')[1])];
+          el.dataset.shown = '';
+          if (other) el.textContent = other.label;
+        });
+        void showCells([cell], cell.view);
+        return;
+      }
+      btn.dataset.shown = '1';
+      btn.textContent = 'Back to one cell';
+      showMore(cell, more);
+    });
+  }
+
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  /** A cell card: optional picture, the text, then its "show all" buttons. */
+  function cellHtml(c: TourCell, ci: number): string {
+    const img = c.image ? `<div class="nge-tour-cell-img"><img src="${c.image}" alt="${esc(c.imageAlt || '')}" /></div>` : '';
+    const body = marked.parse(c.text, { async: false }) as string;
+    const more = (c.more || []).map((m, mi) => `
+<div class="nge-tour-more">
+  <button type="button" class="nge-tour-more-btn" data-no-drag ${MORE_ATTR}="${ci}:${mi}">${esc(m.label)}</button>
+  ${m.note ? `<div class="nge-tour-more-note">${esc(m.note)}</div>` : ''}
+</div>`).join('');
+    return `${img}<div class="nge-tour-cell-text">${body}</div>${more}`;
   }
 
   /** The finale: every cell type at once. Finishing the tour then opens the
@@ -178,18 +281,20 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
       nextLabel: spec.welcome.nextLabel ?? "Meet the cells",
       onEnter: ensureStage,
     },
-    ...spec.cells.map((c): Step => ({
+    ...spec.cells.map((c, ci): Step => ({
       title: c.title,
-      text: c.text,
+      // Plain text cards stay markdown; a card with a picture or buttons is HTML.
+      ...(c.image || c.more?.length ? { html: cellHtml(c, ci) } : { text: c.text }),
       position: BESIDE,
-      width: "340px",
+      width: c.image ? "380px" : "340px",
       onEnter: () => showCells([c], c.view),
     })),
     {
       title: spec.finale.title,
       text: spec.finale.text,
-      position: { element: '[data-icon-id="cells"]', side: "bottom", offset: { x: 0, y: 14 } },
-      highlight: true,
+      ...(spec.finale.pointAtCellLibrary === false
+        ? { position: BESIDE, width: "340px" }
+        : { position: { element: '[data-icon-id="cells"]', side: "bottom", offset: { x: 0, y: 14 } }, highlight: true }),
       onEnter: showAllTypes,
     },
   ];

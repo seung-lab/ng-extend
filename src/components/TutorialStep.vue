@@ -1272,6 +1272,26 @@ onUnmounted(() => {
     max-height: max(180px, min(436px, calc(100vh - 430px)));
     background: #03040a;
 }
+/* Dataset tour cell cards: a picture on top, "show all" buttons below. */
+.chip .html .nge-tour-cell-img { margin: 0 0 10px; line-height: 0; text-align: center; }
+.chip .html .nge-tour-cell-img img { max-width: 100%; max-height: 190px; width: auto; height: auto; }
+.chip .html .nge-tour-cell-text p { margin: 0 0 10px; }
+.chip .html .nge-tour-more { margin-top: 8px; }
+.chip .html .nge-tour-more-btn {
+    width: 100%;
+    background: rgba(74, 158, 255, 0.1);
+    border: 1px solid rgba(74, 158, 255, 0.4);
+    border-radius: 6px;
+    color: #d6e8ff;
+    font: inherit;
+    font-size: 0.9em;
+    padding: 7px 10px;
+    cursor: pointer;
+    text-align: left;
+}
+.chip .html .nge-tour-more-btn:hover { background: rgba(74, 158, 255, 0.2); }
+.chip .html .nge-tour-more-btn[data-shown="1"] { background: rgba(74, 158, 255, 0.28); }
+.chip .html .nge-tour-more-note { font-size: 0.8em; color: rgba(190, 205, 225, 0.65); margin-top: 3px; }
 .nge-tour-welcome-body {
     display: flex;
     flex-direction: column;
