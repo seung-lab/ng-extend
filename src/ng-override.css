@@ -252,9 +252,11 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
    is lit and grows a trace along its foot that ends in a solder point.
    Kept as one block after the older rules, so it layers over them. */
 .neuroglancer-layer-panel {
-  padding: 6px 8px 0 !important;
-  gap: 5px;
-  min-height: 36px;
+  /* compact (Ames 2026-10-06: "layers are too tall"): the tabs are 22px and
+     the bar adds 2px above them, nothing below */
+  padding: 2px 8px 0 !important;
+  gap: 4px;
+  min-height: 0 !important;
   align-items: flex-end !important;
   background: linear-gradient(180deg, rgba(7, 12, 26, 0.95), rgba(4, 8, 18, 0.9)) !important;
   border-bottom: 1px solid rgba(74, 158, 255, 0.22) !important;
@@ -262,11 +264,11 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
 .neuroglancer-layer-item {
   --tab-edge: rgba(74, 158, 255, 0.34);
   --tab-fill: #0a1326;
-  --tab-cut: polygon(6px 0, calc(100% - 13px) 0, 100% 13px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 6px);
+  --tab-cut: polygon(5px 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 7px 100%, 0 calc(100% - 7px), 0 5px);
   position: relative;
-  height: 27px;
-  gap: 7px;
-  padding: 0 20px 0 9px !important;
+  height: 22px;
+  gap: 6px;
+  padding: 0 16px 0 8px !important;
   border: 0 !important;
   border-radius: 0 !important;
   /* the edge light runs across the top and down the sides, and fades out
@@ -279,7 +281,7 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
   content: '';
   position: absolute; inset: 1px; z-index: 0; pointer-events: none;
   background: var(--tab-fill);
-  clip-path: polygon(5.6px 0, calc(100% - 12.4px) 0, 100% 12.4px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 5.6px);
+  clip-path: polygon(4.6px 0, calc(100% - 9.4px) 0, 100% 9.4px, 100% 100%, 6.4px 100%, 0 calc(100% - 6.4px), 0 4.6px);
   transition: background 0.15s;
 }
 /* everything inside sits above the fill. The two loading lines are taken
@@ -296,10 +298,10 @@ body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + 
 .neuroglancer-layer-item-number {
   flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 15px; height: 15px; padding: 0 !important; box-sizing: border-box;
+  width: 13px; height: 13px; padding: 0 !important; box-sizing: border-box;
   border-radius: 0 !important;
-  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%);
-  font: 600 9px/1 'Orbitron', 'Inter', sans-serif;
+  clip-path: polygon(0 0, calc(100% - 3.5px) 0, 100% 3.5px, 100% 100%, 0 100%);
+  font: 600 8.5px/1 'Orbitron', 'Inter', sans-serif;
   background: rgba(74, 158, 255, 0.2) !important;
   color: rgba(170, 212, 255, 0.95) !important;
   transition: background 0.15s, color 0.15s;
@@ -322,7 +324,7 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
 .neuroglancer-layer-item::after {
   content: '';
   position: absolute; z-index: 1; pointer-events: none;
-  left: 8px; top: 0; height: 5px; width: 0;
+  left: 7px; top: 0; height: 5px; width: 0;
   background:
     radial-gradient(circle at calc(100% - 2.5px) 2px, #e6f9ff 0 1.5px, rgba(126, 224, 255, 0.6) 2.1px, transparent 2.6px),
     linear-gradient(90deg, rgba(126, 224, 255, 0), #c9f3ff 30%) 0 1.5px / calc(100% - 3px) 1.5px no-repeat;
@@ -374,10 +376,10 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
 }
 /* add a layer: the same cut, small */
 .neuroglancer-layer-add-button {
-  width: 26px !important; height: 27px !important;
+  width: 22px !important; height: 22px !important;
   border: 0 !important;
   border-radius: 0 !important;
-  clip-path: polygon(5px 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%, 0 5px);
+  clip-path: polygon(4px 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%, 0 4px);
   background: rgba(74, 158, 255, 0.16) !important;
   color: rgba(170, 212, 255, 0.85) !important;
   transition: background 0.15s, color 0.15s;
