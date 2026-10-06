@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
 import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
-import {nextDayMilestone, lastDayMilestone} from '../util/day_milestones';
+import {nextDayMilestone} from '../util/day_milestones';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import AdminHub from 'components/AdminHub.vue';
@@ -63,11 +63,6 @@ const totalDays = computed(() => viewingOtherUser.value ? (otherDays.value ?? 0)
 const dayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.value?.current_streak || 0) : (stats.value.currentStreak || 0));
 const bestDayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.value?.longest_streak || 0) : (stats.value.longestStreak || 0));
 const nextDay = computed(() => nextDayMilestone(totalDays.value));
-/** How far from the last step to the next one, 0 to 1. */
-const dayProgress = computed(() => {
-  const from = lastDayMilestone(totalDays.value), to = nextDay.value;
-  return Math.max(0, Math.min(1, (totalDays.value - from) / Math.max(1, to - from)));
-});
 // Annotations placed: their total, or mine plus what this browser has yet to send.
 const otherAnnotations = ref<number | null>(null);
 const annotationsPlaced = computed(() => viewingOtherUser.value ? (otherAnnotations.value ?? 0) : sentAnnotations.value + pendingAnnotations.value);
@@ -1081,8 +1076,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </div>
             </div>
             <div class="nge-days-ladder" :title="`Next milestone: day ${nextDay}`">
-              <!-- the row of milestone pills is gone (Ames 2026-10-06: "unnecessary"); the bar and the count say it -->
-              <div class="nge-days-bar"><div class="nge-days-bar-fill" :style="{ width: (dayProgress * 100) + '%' }"></div></div>
+              <!-- no pills and no bar (Ames 2026-10-06: "unnecessary", "too much"): the count says it -->
               <div class="nge-days-next">{{ (nextDay - totalDays).toLocaleString() }} {{ nextDay - totalDays === 1 ? 'day' : 'days' }} to day {{ nextDay.toLocaleString() }}</div>
             </div>
           </div>

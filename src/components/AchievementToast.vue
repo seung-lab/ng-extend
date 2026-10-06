@@ -226,18 +226,41 @@ watch(() => stats.value.currentStreak, (newStreak) => {
 // (celebrateDays: yesterday's total and today's), so it says so, and the
 // achievement for each total just reached is saved. Only the highest gets
 // the card, so two reached at once never stack.
+// Every Loyalty achievement the player's total has reached and that is not
+// saved yet is saved now, and the highest of them is announced: the card,
+// and a note in the bell that stays (Ames 2026-10-06: "I should have
+// received a notif award for my top loyalty badge"). This also covers
+// players who had the days before the achievements existed: they get the
+// one announcement for their top one the next time they open the game.
+// Nothing is decided until the saved list has really been read, so a
+// failed read can never announce an old achievement again.
+function settleLoyalty(days: number) {
+  if (!backend.badgeAwardsLoaded || !Number.isFinite(days) || days <= 0) return;
+  const due = LOYALTY_BADGES.filter(b => days >= b.threshold && !backend.myBadgeAwards.has(`loyalty:${b.id}`));
+  if (!due.length) return;
+  // Announced once per browser as well: if saving ever fails, the card must
+  // not come back on every visit.
+  const fresh = due.filter(b => claimBadgeOnce(`l:${b.id}`));
+  for (const b of due) backend.recordBadgeAward('loyalty', b.id);
+  if (!fresh.length) return;
+  const top = due[due.length - 1];
+  const title = `🏆 New Achievement: ${top.name}`;
+  const rel = BADGE_IMAGE_MAP[top.imageKey] ?? '';
+  const img = rel ? new URL(rel, document.baseURI).href : '';
+  if (claimCelebration(title)) {
+    addToast({ type: 'badge', title: top.name, subtitle: top.description, icon: rel || '🏅', isImage: !!rel });
+    fireConfetti('gold', 1.5);
+  }
+  backend.createSelfNotification({
+    title,
+    body: `You earned the "${top.name}" Loyalty achievement! ${top.description}`,
+    ...(img ? { image_url: img, thumbnail_url: img } : {}),
+  }).then(() => backend.loadNotifications()).catch(() => { /* the achievement itself is saved */ });
+}
 function onLoyaltyDays(e: Event) {
-  const d = (e as CustomEvent).detail || {};
-  const before = Number(d.before), now = Number(d.now);
-  if (!Number.isFinite(before) || !Number.isFinite(now) || now <= before) return;
-  const won = LOYALTY_BADGES.filter(b => before < b.threshold && now >= b.threshold
-    && claimBadgeOnce(`l:${b.id}`) && !backend.myBadgeAwards.has(`loyalty:${b.id}`));
-  for (const b of won) backend.recordBadgeAward('loyalty', b.id);
-  const top = won[won.length - 1];
-  if (!top) return;
-  const imgUrl = BADGE_IMAGE_MAP[top.imageKey] ?? '';
-  addToast({ type: 'badge', title: top.name, subtitle: top.description, icon: imgUrl || '🏅', isImage: !!imgUrl });
-  fireConfetti('gold', 1.5);
+  const now = Number(((e as CustomEvent).detail || {}).now);
+  // a moment for the saved list to arrive on a first load
+  if (backend.badgeAwardsLoaded) settleLoyalty(now); else setTimeout(() => settleLoyalty(now), 4000);
 }
 document.addEventListener('nge:loyalty-days', onLoyaltyDays);
 // The day may have been counted before this component existed.
@@ -340,6 +363,11 @@ watch(() => backend.notifications.length, (newLen) => {
   }
   prevNotifCount = newLen;
 });
+
+// Loyalty catch up: once the total and the saved list are both known.
+watch([() => stats.value.totalDays, () => backend.badgeAwardsLoaded], ([days, loaded]) => {
+  if (loaded && days > 0) setTimeout(() => settleLoyalty(stats.value.totalDays || 0), 2500);
+}, { immediate: true });
 
 // ── Replay badge celebration when clicked from notification panel ─────────
 watch(() => backend.pendingBadgeCelebration, (pending) => {

@@ -5230,16 +5230,19 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // Persist the first time each edits/cells threshold is crossed, so a badge
   // stays earned even if the underlying stat later drops. Keyed 'track:badgeId'.
   const myBadgeAwards = ref<Set<string>>(new Set());
+  const badgeAwardsLoaded = ref(false);
   function badgeAwardKey(track: string, badgeId: number): string {
     return `${track}:${badgeId}`;
   }
   async function loadMyBadgeAwards() {
     if (!userId.value) return;
-    const { data } = await supabase
+    const { data, error: err } = await supabase
       .from('badge_awards')
       .select('track,badge_id')
       .eq('user_id', userId.value);
     myBadgeAwards.value = new Set((data || []).map((r: any) => badgeAwardKey(r.track, r.badge_id)));
+    // Only a list that was really read may be used to decide what is new.
+    if (!err && data) badgeAwardsLoaded.value = true;
   }
   async function recordBadgeAward(track: string, badgeId: number) {
     if (!userId.value || badgeId == null) return;
@@ -5441,7 +5444,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
     // Special Badges
     specialBadges, mySpecialBadges,
-    myBadgeAwards, loadMyBadgeAwards, recordBadgeAward,
+    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward,
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload
