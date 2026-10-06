@@ -672,11 +672,16 @@ function segLayerChip(): HTMLElement | undefined {
 const FRIENDLY_TIPS: Record<string, string> = {
   '2D EM': 'Electron Microscope Images',
   '3D segmentation': 'The 3D reconstruction of every cell in the images',
+  '3D Retina Cells': 'The 3D reconstruction of every retina cell in the images',
 };
 function friendlyLayerNames() {
   const inTutorial = [3, 5].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
-  const onSandbox = canonicalDataset(currentSegLayerName()) === 'pinky_nf_v2';
-  const on = inTutorial || onSandbox;
+  // Which dataset is on screen decides the segmentation layer's shown name:
+  // "3D segmentation" on the Sandbox, "3D Retina Cells" on the Retina (Ames
+  // 2026-10-06). Other datasets keep their real layer names.
+  const dataset = canonicalDataset(currentSegLayerName());
+  const segName = dataset === 'stroeh_mouse_retina' && !inTutorial ? '3D Retina Cells' : '3D segmentation';
+  const on = inTutorial || dataset === 'pinky_nf_v2' || dataset === 'stroeh_mouse_retina';
   document.body.classList.toggle('nge-friendly-layers', on);
   if (!on) return;
   // A practice view that loads after the step opened brings the Selection
@@ -695,7 +700,7 @@ function friendlyLayerNames() {
   const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
   for (const ml of layers) {
     const kind = layerKind(ml);
-    const name = kind === 'segmentation' ? '3D segmentation' : kind === 'image' ? '2D EM' : '';
+    const name = kind === 'segmentation' ? segName : kind === 'image' ? '2D EM' : '';
     const label = chips.find(c => (c.querySelector('.neuroglancer-layer-item-label')?.textContent ?? '') === ml.name)
       ?.querySelector('.neuroglancer-layer-item-label') as HTMLElement | null | undefined;
     if (!label) continue;
