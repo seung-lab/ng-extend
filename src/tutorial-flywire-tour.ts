@@ -177,7 +177,7 @@ export const steps: Step[] = makeCellTour({
         name: 'brain_outline',
         segments: ['1'],
         segmentColors: { '1': '#8fb8e8' },
-        objectAlpha: 0.11,
+        objectAlpha: 0.4,
         selectedAlpha: 0,
         notSelectedAlpha: 0,
         meshSilhouetteRendering: 3,
