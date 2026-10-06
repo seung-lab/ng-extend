@@ -223,10 +223,18 @@ const quoteReport = row => {
 
 /** What changed, in words for the player: the release note without the
  *  tester credit, the commit link and Slack mentions. */
-const fixText = row => String(row.result_note || row.impl_summary || '')
-  .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/\bDetails:\s*<?https?:\S+/gi, ' ')
-  .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
-  .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+// A build that stopped to ask something leaves "QUESTION: ..." (or
+// "BLOCKED: ...") as its summary. That is Claude talking to the approver, never
+// a description of a fix: it must not reach a player (it did, 2026-10-06, when
+// a report was closed with a bare "shipped").
+const NOT_A_FIX = /^\s*(?:#+\s*)?(?:QUESTION|BLOCKED)\s*:/i;
+const fixText = row => {
+  const text = String(row.result_note || row.impl_summary || '')
+    .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/\bDetails:\s*<?https?:\S+/gi, ' ')
+    .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
+    .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+  return NOT_A_FIX.test(text) ? '' : text;
+};
 
 /** The note a reporter gets once their fix is live (Ames 2026-10-04):
  *  thanks, their own words back, what was built. Mirrors AdminHub.vue. */
@@ -769,7 +777,7 @@ async function shippedRequests() {
       && APPROVERS.includes(x.user) && SHIPPED_CMD.test(plainText(x.text)));
     if (!m) continue;
     const what = (plainText(m.text).match(SHIPPED_CMD)[1] || '').trim().replace(/[.\s]+$/, '')
-      || String(row.impl_summary || '').split('\n')[0].trim().replace(/[.\s]+$/, '') || 'Fixed by the team';
+      || [String(row.impl_summary || '').split('\n')[0].trim().replace(/[.\s]+$/, '')].find(x => x && !NOT_A_FIX.test(x)) || '';
     const cancelled = await cancelRun(row);
     const log = Array.isArray(row.feedback_log) ? [...row.feedback_log] : [];
     log.push({ user: m.user, text: m.text, ts: m.ts, role: 'shipped_by_hand' });
@@ -778,7 +786,7 @@ async function shippedRequests() {
       status: 'done', impl_state: 'deployed', tested_by: `slack:${m.user}`, tested_at: now,
       reviewed_by: row.reviewed_by || `slack:${m.user}`, reviewed_at: row.reviewed_at || now,
       // "(tested ...)" is dropped from the reporter's note by fixText.
-      result_note: `${what}. (tested and shipped by hand, confirmed by <@${m.user}>).`,
+      result_note: `${what ? what + '. ' : ''}(tested and shipped by hand, confirmed by <@${m.user}>).`,
       feedback_log: log, last_reply_ts: m.ts, decision_slack_ts: m.ts,
     });
     console.log(`[bridge] ${row.id} marked shipped by ${m.user}${cancelled ? ' (run cancelled)' : ''}`);
@@ -1067,7 +1075,7 @@ To add something, reply *update: your own words* and I'll send that too.`).catch
         // hand-written one) already: not a second card for the same fix.
         if (id === reporterId) continue;
         await notifyUser(id, '🎉 Fixed!',
-          `"${report.length > 90 ? report.slice(0, 87) + '...' : report}" is fixed and live. ${plain}`, ADMIN_FIXED_IMAGE_URL);
+          `"${report.length > 90 ? report.slice(0, 87) + '...' : report}" is fixed and live.${fixText(row) ? ' ' + fixText(row) + '.' : ''}`, ADMIN_FIXED_IMAGE_URL);
       }
     }
     console.log(`[bridge] announced done ${row.id}`);

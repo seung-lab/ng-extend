@@ -418,7 +418,9 @@ function draftReporterUpdate(row: TriageRow): string {
     const fix = String(row.result_note || row.impl_summary || '')
       .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/\bDetails:\s*<?https?:\S+/gi, ' ')
       .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
-      .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+      .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '')
+      // "QUESTION: ..." is Claude asking the approver, not a fix: never sent on.
+      .replace(/^\s*(?:#+\s*)?(?:QUESTION|BLOCKED)\s*:[\s\S]*$/i, '');
     const thanks = t ? `Thank you for submitting: "${t.length > 200 ? t.slice(0, 197) + '...' : t}".` : 'Thank you for your report.';
     return `${thanks} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
   }
