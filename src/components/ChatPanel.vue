@@ -284,15 +284,46 @@ function followNewest() {
 watch(() => chatMessages.value.length, followNewest);
 watch(() => shownHeight.value, followNewest);
 
-// ── Leaderboard trophy mapping ──
-const trophyMap = computed(() => {
-  const map: Record<string, string> = {};
-  const lb = backendStore.leaderboard || [];
-  if (lb.length > 0) map[lb[0].display_name] = '\u{1F947}';
-  if (lb.length > 1) map[lb[1].display_name] = '\u{1F948}';
-  if (lb.length > 2) map[lb[2].display_name] = '\u{1F949}';
-  return map;
+// ── Leaderboard medals in chat ──
+// Whoever is on today's podium wears the medal in chat (Ames 2026-10-06:
+// "where is annkri's medal?", top of Cells for the day with none). The old
+// version took the first three rows of the loaded board, which since the
+// board became six merged rankings were simply the top all-time editors,
+// and matched them by display name, which is not the name chat shows. Now:
+// the top three of the last 24 hours on Edits and on Cells, matched by
+// account, each player wearing the better of their two places.
+const MEDALS = ['🥇', '🥈', '🥉'];
+const chatMedals = computed(() => {
+  const byId: Record<string, { medal: string; place: number; why: string }> = {};
+  const byName: Record<string, string> = {};
+  const lb: any[] = backendStore.leaderboard || [];
+  for (const [col, what] of [['completions_24h', 'cells'], ['edits_24h', 'edits']] as const) {
+    const top = lb.filter(u => (u[col] || 0) > 0)
+      .sort((a, b) => (b[col] || 0) - (a[col] || 0) || String(a.id).localeCompare(String(b.id)))
+      .slice(0, 3);
+    top.forEach((u, place) => {
+      const why = `${['1st', '2nd', '3rd'][place]} in ${what} over the last 24 hours`;
+      const had = byId[u.id];
+      if (!had || place < had.place) byId[u.id] = { medal: MEDALS[place], place, why: had ? `${why}, ${had.why}` : why };
+      else had.why = `${had.why}, ${why}`;
+    });
+  }
+  for (const u of lb) if (byId[u.id] && u.display_name) byName[u.display_name] = u.id;
+  return { byId, byName };
 });
+function medalFor(msg: ChatMessage): { medal: string; why: string } | null {
+  const { byId, byName } = chatMedals.value;
+  const id = (msg.userId && byId[msg.userId]) ? msg.userId : byName[msg.name];
+  return id && byId[id] ? byId[id] : null;
+}
+// The board is loaded when the leaderboard opens; chat keeps its own copy
+// fresh so the medals are right even if the board was never opened.
+let medalTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  if (!(backendStore.leaderboard || []).length) void backendStore.loadLeaderboard();
+  medalTimer = setInterval(() => { void backendStore.loadLeaderboard(); }, 5 * 60 * 1000);
+});
+onUnmounted(() => { if (medalTimer) clearInterval(medalTimer); });
 
 // ── Format name: "First L." ──
 function shortName(name: string): string {
@@ -882,7 +913,7 @@ function toggleCollapse() {
                   </button>
                   <span v-else-if="msg.replyTo" class="nge-chat-quote nge-chat-quote--gone"><span class="nge-chat-quote-arrow" aria-hidden="true">↩</span><span class="nge-chat-quote-text">an earlier message</span></span>
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
-                  <span class="nge-chat-msg-trophy" v-if="trophyMap[msg.name]">{{ trophyMap[msg.name] }}</span>
+                  <span class="nge-chat-msg-trophy" v-if="medalFor(msg)" :title="medalFor(msg)?.why">{{ medalFor(msg)?.medal }}</span>
                   <button v-if="msg.rank === 'bot' && msg.name === 'Nurro'" class="nge-chat-msg-name nge-chat-nurro-name"
                           @click="openNurroProfile" title="Nurro's profile"><img :src="nurroAvatar" alt="" />Nurro<span class="nge-chat-bot-tag nge-chat-nurro-tag">guide</span></button>
                   <span v-else-if="msg.rank === 'bot'" class="nge-chat-msg-name nge-chat-bot-name"
