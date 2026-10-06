@@ -1,1 +1,57 @@
-{}
+{
+  "sandbox-1": {
+    "note": "read only",
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "76000855320789331",
+    "supervoxel_b": "76000855320939666",
+    "baseline_at": "2026-10-01T00:00:00+00:00",
+    "root_a": "648518346351857077",
+    "root_b": "648518346351581101"
+  },
+  "sandbox-2": {
+    "note": "read only",
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "76563118884779287",
+    "supervoxel_b": "76563118884754542",
+    "baseline_at": "2026-10-01T00:00:00+00:00",
+    "root_a": "648518346350134420",
+    "root_b": "648518346351690318"
+  },
+  "sandbox-3": {
+    "note": "read only",
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "75155261958545260",
+    "supervoxel_b": "75155261958511742",
+    "baseline_at": "2026-10-01T00:00:00+00:00",
+    "root_a": "648518346352910120",
+    "root_b": "648518346352910120"
+  },
+  "sandbox-4": {
+    "note": "read only",
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "76000512461733396",
+    "supervoxel_b": "75930143717531419",
+    "baseline_at": "2026-10-01T00:00:00+00:00",
+    "root_a": "648518346352711821",
+    "root_b": "648518346351728757"
+  },
+  "sandbox-5": {
+    "note": "read only",
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "74873099854092049",
+    "supervoxel_b": "74943468598158118",
+    "baseline_at": "2026-10-01T00:00:00+00:00",
+    "root_a": "648518346351593708",
+    "root_b": "648518346356157002"
+  }
+}
