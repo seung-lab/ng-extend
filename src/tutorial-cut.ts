@@ -8,7 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 import imgCutPoints from './images/cut-points-example.jpg';
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, getViewer, movingToSandbox, stopWatching, watchPractice } from './tutorial-3';
+import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, getViewer, movingToSandbox, stopWatching, watchPractice, watchTool } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -52,7 +52,7 @@ If you see a segment with a branch that clearly belongs to a *different* cell, t
   {
     title: "What a cut fixes",
     text: `
-The yellow piece was incorrectly fused by AI to the purple branch. A citizen scientist like yourself corrected it by cutting it off.
+The yellow axon was incorrectly fused by AI to the purple dendrite. A citizen scientist like yourself corrected it by cutting it off.
 
 In a moment you'll get the fused version of this very cell and make the cut yourself. It is yours alone until you finish.`,
     position: OVER_3D,
@@ -82,17 +82,15 @@ In a moment you'll get the fused version of this very cell and make the cut your
     text: `
 Now the same cell as the AI left it: the two are one purple segment. Your job is to separate them.
 
-Press the **C** key to start the cut tool. The segmentation layer has to be selected for that.
-
-Stuck at any point? The **?** button shows where the points go.
+Press the **C** key to start the cut tool.
 
 Once it's on, the cut bar appears at the bottom of the viewer with the red group active.`,
     position: OVER_3D,
     width: "440px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(false, 'Press C to start the cut tool, then next.', 'Cut success! You did it. The two pieces are separate now.');
-      setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
+      // No "?" yet: the help it opens is about placing points, the next box.
+      watchTool('Press C to start the cut tool.', 'Cut mode is on. Press next.');
       await beginPractice('cut', 'start');
     },
   },
@@ -111,7 +109,9 @@ The cut tool uses a <strong style="color:#ff5c5c">red</strong> and <strong style
 2. Press **G** to switch to <strong style="color:#5c8cff">blue</strong>, then **Ctrl+Click** 3 or 4 <strong style="color:#5c8cff">blue</strong> points on the cell, just past the join.
 3. Press **Submit cut** on the bar at the bottom, or **Enter**. You'll see "splitting..." for a moment, then the piece comes away as its own segment.
 
-If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>.`,
+If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>.
+
+Stuck? The **?** button shows where the points go.`,
     position: OVER_3D,
     width: "460px",
     onEnter: async () => {

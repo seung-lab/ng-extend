@@ -76,6 +76,16 @@ export function closeSidePanel() {
   const viewer = getViewer();
   if (!viewer) return;
   try { viewer.selectedLayer.visible = false; } catch (e) { /* */ }
+  closeSelectionPanel();
+}
+
+/** neuroglancer's "Selection" panel opens with a practice view and takes a
+ *  third of the screen for nothing the tutorial uses (Ames, 2026-10-06). */
+function closeSelectionPanel() {
+  try {
+    const loc = getViewer()?.selectionDetailsState?.location;
+    if (loc?.visible) loc.visible = false;
+  } catch (e) { /* */ }
 }
 
 // ─── Practice cell wiring (src/practice.ts) ────────────────────────────────
@@ -506,6 +516,9 @@ function friendlyLayerNames() {
   const on = [3, 5].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
   document.body.classList.toggle('nge-friendly-layers', on);
   if (!on) return;
+  // A practice view that loads after the step opened brings the Selection
+  // panel back; keep it shut while the Merge or Cut tutorial is up.
+  closeSelectionPanel();
   if (!document.getElementById('nge-friendly-layers-style')) {
     const st = document.createElement('style');
     st.id = 'nge-friendly-layers-style';
