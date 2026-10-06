@@ -250,6 +250,9 @@ export class LayerBar extends RefCounted {
         this.manager.add(layer);
         this.selectedLayer.layer = layer;
         this.selectedLayer.visible = true;
+        // EyeWire II (Ames 2026-10-06): a layer you just made is ready to
+        // annotate, with the point tool already picked (ui/annotations.ts).
+        document.dispatchEvent(new CustomEvent('nge:new-annotation-layer', {detail: {managedLayer: layer}}));
       } else {
         this.addLayerMenu();
       }

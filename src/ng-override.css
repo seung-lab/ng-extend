@@ -103,6 +103,12 @@
   line-height: 1.5;
   pointer-events: none;
 }
+/* The chips ride above whatever is on the bottom edge: neuroglancer's status
+   bar while it shows a message, and the cut and merge bar (Ames 2026-10-02). */
+.neuroglancer-position-widget { bottom: calc(6px + var(--nge-bottom-bar, 0px)); transition: bottom 0.2s ease; }
+.neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-bottom-bar, 0px)); }
+body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
+body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 .neuroglancer-mouse-position-widget:empty {
   display: none;
 }
@@ -232,6 +238,129 @@
   border-color: rgba(74, 158, 255, 0.3) !important;
   color: rgba(74, 158, 255, 0.7) !important;
 }
+
+/* ── Layer bar in the site's own style (Ames 2026-10-06) ───────────────────
+   "Layers still look a lot worse in style than the rest of the site", then:
+   "a little more rectangular/angular ... reminiscent of folder tabs ... a
+   circuit motif inspired edge that is asymmetrical with diagonals".
+
+   So each layer is a tab cut like a circuit board part: a long diagonal on
+   the top right (the folder tab), a short one top left, a third on the
+   bottom left, and one corner left square, so no two corners match. The
+   outline is the tab's own background showing round a slightly smaller fill
+   (::before), because a clipped box cannot carry a border. The selected tab
+   is lit and grows a trace along its foot that ends in a solder point.
+   Kept as one block after the older rules, so it layers over them. */
+.neuroglancer-layer-panel {
+  padding: 6px 8px 0 !important;
+  gap: 5px;
+  min-height: 36px;
+  align-items: flex-end !important;
+  background: linear-gradient(180deg, rgba(7, 12, 26, 0.95), rgba(4, 8, 18, 0.9)) !important;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.22) !important;
+}
+.neuroglancer-layer-item {
+  --tab-edge: rgba(74, 158, 255, 0.34);
+  --tab-fill: #0a1326;
+  --tab-cut: polygon(6px 0, calc(100% - 13px) 0, 100% 13px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 6px);
+  position: relative;
+  height: 27px;
+  gap: 7px;
+  padding: 0 20px 0 9px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  /* the edge light runs across the top and down the sides, and fades out
+     before the foot (Ames 2026-10-06), so the tab sits into the bar */
+  background: linear-gradient(180deg, var(--tab-edge) 0%, var(--tab-edge) 38%, transparent 96%) !important;
+  clip-path: var(--tab-cut);
+  transition: background 0.15s;
+}
+.neuroglancer-layer-item::before {
+  content: '';
+  position: absolute; inset: 1px; z-index: 0; pointer-events: none;
+  background: var(--tab-fill);
+  clip-path: polygon(5.6px 0, calc(100% - 12.4px) 0, 100% 12.4px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 5.6px);
+  transition: background 0.15s;
+}
+.neuroglancer-layer-item > * { position: relative; z-index: 1; }
+.neuroglancer-layer-item:hover { --tab-edge: rgba(111, 196, 255, 0.7); --tab-fill: #0e1b36; background: linear-gradient(180deg, var(--tab-edge) 0%, var(--tab-edge) 38%, transparent 96%) !important; }
+/* the index: a small chip with one corner cut, in the HUD face */
+.neuroglancer-layer-item-number {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; padding: 0 !important; box-sizing: border-box;
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%);
+  font: 600 9px/1 'Orbitron', 'Inter', sans-serif;
+  background: rgba(74, 158, 255, 0.2) !important;
+  color: rgba(170, 212, 255, 0.95) !important;
+  transition: background 0.15s, color 0.15s;
+}
+/* the name: the top bar's lettering, quiet until its layer is the selected one */
+.neuroglancer-layer-item-label {
+  font: 500 11px/1 'Orbitron', 'Inter', sans-serif !important;
+  letter-spacing: 0.05em;
+  color: #9db1cb;
+  transition: color 0.15s;
+}
+body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
+  font: 500 11px/1 'Orbitron', 'Inter', sans-serif !important;
+  letter-spacing: 0.05em;
+}
+.neuroglancer-layer-item:hover .neuroglancer-layer-item-label { color: #d6e4f6; }
+/* selected: lit, with a trace along the foot that ends in a solder point */
+.neuroglancer-layer-item[data-selected=true],
+.neuroglancer-layer-item[data-selected=true]:hover {
+  --tab-edge: #7ee0ff;
+  background: linear-gradient(180deg, #b4f0ff 0%, #6fc4ff 34%, rgba(74, 158, 255, 0) 96%) !important;
+}
+.neuroglancer-layer-item[data-selected=true]::before {
+  background:
+    radial-gradient(circle at calc(9px + 46%) calc(100% - 2px), #dff7ff 0 1.6px, rgba(126, 224, 255, 0.55) 2.2px, transparent 3.4px),
+    linear-gradient(90deg, rgba(126, 224, 255, 0.95), rgba(126, 224, 255, 0.95)) 9px calc(100% - 1.5px) / 46% 1px no-repeat,
+    linear-gradient(180deg, #1c3a66, #0d1d3a 70%);
+}
+.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #f2f8ff; }
+.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-number { background: #7ee0ff !important; color: #04101f !important; }
+/* a layer that answers clicks: no box inside the box, the name carries a small lit point */
+.neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0;
+}
+.neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label::before {
+  content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 6px; vertical-align: 2px;
+  background: #7ee0ff; box-shadow: 0 0 6px rgba(126, 224, 255, 0.85);
+  transform: rotate(45deg);
+}
+/* a layer switched off: dimmed, its name struck through */
+.neuroglancer-layer-item[data-visible=false] { opacity: 0.5; --tab-fill: #070c18; }
+/* annotation layers: the edge and the index carry the layer's colour, so the bar still reads as a legend */
+.neuroglancer-layer-item[data-tinted="true"] {
+  --tab-edge: color-mix(in srgb, var(--nge-layer-color) 70%, rgba(74, 158, 255, 0.3));
+  --tab-fill: color-mix(in srgb, var(--nge-layer-color) 11%, #0a1326);
+  border-left: 0 !important;
+  background: linear-gradient(180deg, var(--tab-edge) 0%, var(--tab-edge) 38%, transparent 96%) !important;
+}
+.neuroglancer-layer-item[data-tinted="true"] .neuroglancer-layer-item-number { background: var(--nge-layer-color) !important; color: #05080f !important; }
+.neuroglancer-layer-item[data-tinted="true"][data-selected=true] { background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff) 0%, var(--nge-layer-color) 34%, transparent 96%) !important; }
+.neuroglancer-layer-item[data-tinted="true"][data-selected=true]::before {
+  background:
+    radial-gradient(circle at calc(9px + 46%) calc(100% - 2px), #ffffff 0 1.6px, color-mix(in srgb, var(--nge-layer-color) 60%, transparent) 2.2px, transparent 3.4px),
+    linear-gradient(90deg, var(--nge-layer-color), var(--nge-layer-color)) 9px calc(100% - 1.5px) / 46% 1px no-repeat,
+    linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 30%, #101c34), color-mix(in srgb, var(--nge-layer-color) 12%, #0a1326) 70%);
+}
+/* add a layer: the same cut, small */
+.neuroglancer-layer-add-button {
+  width: 26px !important; height: 27px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  clip-path: polygon(5px 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%, 0 5px);
+  background: rgba(74, 158, 255, 0.16) !important;
+  color: rgba(170, 212, 255, 0.85) !important;
+  transition: background 0.15s, color 0.15s;
+}
+.neuroglancer-layer-add-button:hover { background: rgba(111, 196, 255, 0.4) !important; color: #ffffff !important; }
 
 /* ── Hide neuroglancer settings gear + JSON editor + layer-list toggle ── */
 /* Settings and JSON are moved into our Settings panel. The layer-list toggle is
@@ -1014,29 +1143,22 @@
 #statusContainer li a { color: #7fd4ff; }
 
 /* Cut and merge mode: neuroglancer's own tool line showed under our Cut
-   and Merge bar as a grey strip of raw key names ("control+mousedown0 ->
-   set-anchor, keyg -> swap-group, enter -> submit"), with the coordinates
-   chip sitting on top of the text (Ames 2026-10-06). The bar already carries
-   those controls, so the strip becomes a plain dark footer the height of the
-   gap under the bar, and its contents are hidden. They stay in the page,
-   because the bar reads its state from them and presses their buttons. */
+   and Merge bar, first as a grey strip of raw key names, then (restyled) as
+   a black bar (Ames 2026-10-06: "we gotta get rid of the black bar under
+   cut and merge"). The bar already carries those controls, so the line is
+   taken off screen entirely and the bar sits on the bottom edge
+   (SplitMergeOverlay.vue), with the coordinates and chat stacked above it.
+   The line stays in the page, because the bar reads its state from it and
+   presses its buttons. */
 #statusContainer li.neuroglancer-tool-status:has(.graphene-multicut),
 #statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments) {
-  display: block !important;
-  box-sizing: border-box;
-  height: 28px !important;
-  max-height: 28px !important;
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  max-height: 1px !important;
   padding: 0 !important;
   overflow: hidden !important;
-  list-style: none;
-  background: rgba(8, 14, 28, 0.96) !important;
-  border-top: 1px solid rgba(120, 180, 255, 0.12);
-  color: transparent !important;
-}
-/* The coordinates sit in that footer, so they ride above it. */
-body.nge-tool-bar-open .neuroglancer-position-widget,
-body.nge-tool-bar-open .neuroglancer-mouse-position-widget { z-index: 101; }
-#statusContainer li.neuroglancer-tool-status:has(.graphene-multicut) > *,
-#statusContainer li.neuroglancer-tool-status:has(.graphene-merge-segments) > * {
-  visibility: hidden !important;
+  clip-path: inset(50%);
+  opacity: 0;
+  pointer-events: none;
 }

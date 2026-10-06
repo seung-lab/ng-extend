@@ -799,6 +799,28 @@ const ANNOTATE_LINE_TOOL_ID = 'annotateLine';
 const ANNOTATE_BOUNDING_BOX_TOOL_ID = 'annotateBoundingBox';
 const ANNOTATE_ELLIPSOID_TOOL_ID = 'annotateSphere';
 
+// EyeWire II (Ames 2026-10-06): "when I make an annotation layer it
+// automatically selects an annotation point (and let's select point at
+// 1.5)". The layer bar and the layer type picker announce a layer the person
+// has just made; it gets the point tool, drawn as a dot at size 1.5. Layers
+// the app makes itself, or that arrive with a saved view, are never touched.
+const NEW_LAYER_POINT_SIZE = 1.5;
+function armNewAnnotationLayer(managedLayer: any, triesLeft = 20) {
+  const userLayer = managedLayer?.layer;
+  const displayState = userLayer?.annotationDisplayState;
+  if (!userLayer || !displayState || !userLayer.tool) {
+    // the layer object can arrive a moment after the tab does
+    if (triesLeft > 0) setTimeout(() => armNewAnnotationLayer(managedLayer, triesLeft - 1), 50);
+    return;
+  }
+  displayState.ngeMarker.value = 'dot';
+  displayState.ngeSize.value = NEW_LAYER_POINT_SIZE;
+  userLayer.tool.value = new PlacePointTool(userLayer, {});
+}
+document.addEventListener('nge:new-annotation-layer', (event: Event) => {
+  armNewAnnotationLayer((event as CustomEvent).detail?.managedLayer);
+});
+
 export class PlacePointTool extends PlaceAnnotationTool {
   trigger(mouseState: MouseSelectionState) {
     const {annotationLayer} = this;

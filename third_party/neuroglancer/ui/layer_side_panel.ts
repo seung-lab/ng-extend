@@ -91,7 +91,13 @@ export class LayerTypeWidget extends RefCounted {
     element.addEventListener('change', () => {
       const newType = element.value;
       const layerConstructor = layerTypes.get(newType)!;
-      changeLayerType(this.layer.managedLayer, layerConstructor);
+      const managedLayer = this.layer.managedLayer;
+      changeLayerType(managedLayer, layerConstructor);
+      // EyeWire II (Ames 2026-10-06): turning a new layer into an annotation
+      // layer picks the point tool for it (ui/annotations.ts).
+      if (newType === 'annotation') {
+        document.dispatchEvent(new CustomEvent('nge:new-annotation-layer', {detail: {managedLayer}}));
+      }
     });
     this.updateView();
   }
