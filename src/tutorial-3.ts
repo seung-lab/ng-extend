@@ -91,10 +91,9 @@ function chipBody(): Element | null {
 
 function smallButton(cls: string, label: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement('button');
-  b.className = cls;
+  // Looks come from src/tutorial_kit.css.
+  b.className = `nge-hud-btn nge-hud-btn--sm ${cls}`;
   b.textContent = label;
-  b.style.cssText = 'margin:8px 8px 0 0;padding:5px 10px;border-radius:4px;font:inherit;font-size:0.85em;cursor:pointer;'
-    + 'background:rgba(74,158,255,0.12);border:1px solid rgba(74,158,255,0.4);color:#cde;';
   b.addEventListener('click', onClick);
   return b;
 }
@@ -109,21 +108,19 @@ export function practiceStatus(text: string, done = false) {
   let el = chip.querySelector('.nge-practice-status') as HTMLElement | null;
   if (!el) {
     el = document.createElement('p');
-    el.className = 'nge-practice-status';
-    el.style.cssText = 'margin:10px 0 0;padding:8px 10px;border-radius:4px;font-size:1rem;line-height:1.4;'
-      + 'background:rgba(53,181,255,0.10);border-left:2px solid rgba(53,181,255,0.75);color:#d0e8ff;';
+    el.className = 'nge-hud-note nge-practice-status';
     chip.appendChild(el);
   }
   el.textContent = text;
-  el.style.background = done ? 'rgba(96,192,96,0.14)' : 'rgba(53,181,255,0.10)';
-  el.style.borderLeftColor = done ? '#60c060' : 'rgba(53,181,255,0.75)';
-  el.style.fontWeight = done ? '600' : '';
+  el.classList.toggle('nge-hud-note--ok', done);
   // Stuck? A "?" on the right opens a small panel with the ways out (Amy).
   let help = chip.querySelector('.nge-practice-help') as HTMLElement | null;
   if (!help) {
     help = smallButton('nge-practice-help', '?', () => toggleStuckPanel());
     help.title = 'Stuck? Ways to get help';
-    help.style.cssText += 'float:right;width:30px;height:30px;padding:0;border-radius:50%;font-weight:700;font-size:1em;margin:8px 0 0;';
+    help.classList.remove('nge-hud-btn--sm');
+    help.classList.add('nge-hud-btn--round');
+    help.style.cssText = 'float:right;margin:10px 0 0;';
     chip.appendChild(help);
   }
   help.style.display = (done || !helpWanted) ? 'none' : '';
@@ -137,9 +134,7 @@ export function practiceStatus(text: string, done = false) {
 
 function notePanel(cls: string, html: string): HTMLElement {
   const el = document.createElement('div');
-  el.className = cls;
-  el.style.cssText = 'margin:8px 0 0;padding:10px 12px;border-radius:6px;font-size:0.9em;line-height:1.45;'
-    + 'background:rgba(8,12,24,0.9);border:1px solid rgba(74,158,255,0.35);color:#d0e8ff;';
+  el.className = `nge-hud-panel ${cls}`;
   el.innerHTML = html;
   return el;
 }
@@ -217,12 +212,12 @@ function toggleStuckPanel() {
   const existing = chip.querySelector('.nge-practice-stuck');
   if (existing) { existing.remove(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); return; }
   const panel = notePanel('nge-practice-stuck',
-    '<div style="font-weight:600;margin-bottom:6px">Stuck? Three ways out.</div>'
-    + '<div style="margin:4px 0">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer. Press <kbd>2</kbd> or right-click it to select it.</div>'
-    + '<div style="margin:4px 0">2. Ask people in the community chat. Someone is usually around.</div>'
-    + '<div style="margin:4px 0">3. Ask Nurro, the AI guide. It knows this tutorial and the tools.</div>');
+    '<div class="nge-hud-panel-title">Stuck? Three ways out.</div>'
+    + '<div class="nge-hud-panel-row">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer. Press <kbd>2</kbd> or right-click it to select it.</div>'
+    + '<div class="nge-hud-panel-row">2. Ask people in the community chat. Someone is usually around.</div>'
+    + '<div class="nge-hud-panel-row">3. Ask Nurro, the AI guide. It knows this tutorial and the tools.</div>');
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex;flex-wrap:wrap;gap:0 4px;margin-top:6px';
+  row.className = 'nge-hud-btnrow';
   row.appendChild(smallButton('nge-practice-stuck-layer', 'Show me the layer', () => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer'))));
   const ex = currentPractice().example;
   if (ex && ex.kind === 'merge_then_cut') {
@@ -435,9 +430,7 @@ document.addEventListener('nge:practice-countdown', ((e: CustomEvent) => {
   if (secs == null) { if (el) el.remove(); return; }
   if (!el) {
     el = document.createElement('p');
-    el.className = 'nge-practice-countdown';
-    el.style.cssText = 'margin:8px 0 0;padding:6px 10px;border-radius:4px;font-size:0.88em;line-height:1.4;'
-      + 'background:rgba(245,166,35,0.12);border-left:2px solid rgba(245,166,35,0.8);color:#ffd27a;';
+    el.className = 'nge-hud-note nge-hud-note--warn nge-practice-countdown';
     chip.appendChild(el);
   }
   const m = Math.floor(secs / 60), s = String(secs % 60).padStart(2, '0');
@@ -467,7 +460,7 @@ function waitForCell(kind: PracticeKind, wantMerged: boolean, waiting: string, f
 /** A small (i) in the step text. Hover for the tip, click to flash the
  *  segmentation layer chip at the top of the viewer. Inline onclick works
  *  inside v-html where a Vue handler would not. */
-export const INFO_LAYER = '<span class="nge-tut-info" role="button" tabindex="0"'
+export const INFO_LAYER = '<span class="nge-hud-info nge-tut-info" role="button" tabindex="0"'
   + ' title="Which layer? Click for a note."'
   + ' onclick="document.dispatchEvent(new CustomEvent(\'nge:tutorial-layer-note\'))"'
   + ' style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:4px;border-radius:50%;border:1px solid #7ecaff;color:#7ecaff;font-size:12px;font-weight:700;cursor:pointer;vertical-align:middle;line-height:1">i</span>';
@@ -598,58 +591,9 @@ export async function movingToSandbox<T>(tutorial: string, work: () => Promise<T
   try { return await work(); } finally { releaseDatasetTransition(); }
 }
 
-// The gate card wears the app's scifi-ui holopanel (the surface
-// DatasetTransition.vue uses) and the sign in dialog's holo buttons, with
-// Professor Nurro at the board (Ames, 2026-09-29).
-function ensureGateStyle() {
-  if (document.getElementById('nge-gate-style')) return;
-  const st = document.createElement('style');
-  st.id = 'nge-gate-style';
-  st.textContent = `
-    #nge-tutorial-gate { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 9500;
-      width: min(480px, 92vw); padding: 20px 22px 18px; border-radius: 14px;
-      border: 1px solid rgba(74, 150, 224, 0.35);
-      background: linear-gradient(158deg, rgba(15, 18, 24, 0.97), rgba(6, 10, 18, 0.98));
-      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6), 0 0 70px rgba(66, 213, 236, 0.10), inset 0 1px 0 rgba(196, 228, 255, 0.12);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-      color: rgba(214, 228, 242, 0.9); font-size: 14.5px; line-height: 1.5;
-      animation: nge-gate-materialize 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
-    @keyframes nge-gate-materialize {
-      0% { opacity: 0; transform: translate(-50%, -50%) scale(1.025) translateY(-8px); filter: blur(14px); }
-      60% { opacity: 1; transform: translate(-50%, -50%) scale(0.995); filter: blur(0); }
-      100% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); } }
-    #nge-tutorial-gate .nge-gate-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 11px;
-      letter-spacing: 0.22em; text-transform: uppercase; font-weight: 600; color: rgba(140, 200, 245, 0.95); }
-    #nge-tutorial-gate .nge-gate-dot { width: 7px; height: 7px; border-radius: 50%; background: #42d5ec;
-      box-shadow: 0 0 10px #42d5ec; animation: nge-gate-pulse 1.1s ease-in-out infinite; }
-    @keyframes nge-gate-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-    #nge-tutorial-gate .nge-gate-title { margin: 6px 0 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
-      color: #fff; text-shadow: 0 0 22px rgba(120, 190, 255, 0.35); }
-    #nge-tutorial-gate .nge-gate-art { display: block; width: 100%; height: auto; max-height: 250px; object-fit: contain;
-      margin: 0 0 12px; border-radius: 10px; padding: 8px 10px; box-sizing: border-box;
-      background: radial-gradient(ellipse at 45% 55%, rgba(66, 213, 236, 0.14), #04070d 72%);
-      border: 1px solid rgba(255, 255, 255, 0.08); }
-    #nge-tutorial-gate p { margin: 0 0 12px; }
-    #nge-tutorial-gate .nge-gate-status { color: #9fd0ff; }
-    #nge-tutorial-gate .nge-gate-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
-    #nge-tutorial-gate button { position: relative; overflow: hidden; padding: 9px 16px; border-radius: 2px; cursor: pointer;
-      border: 1px solid rgba(0, 180, 255, 0.3); color: rgba(200, 230, 255, 0.95); font: 600 13px/1.2 inherit; letter-spacing: 0.04em;
-      background: linear-gradient(135deg, rgba(0, 100, 255, 0.2) 0%, rgba(0, 60, 180, 0.3) 50%, rgba(80, 0, 200, 0.2) 100%);
-      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s; }
-    #nge-tutorial-gate button:hover:not(:disabled) { border-color: rgba(0, 220, 255, 0.6); transform: translateY(-1px);
-      box-shadow: 0 0 30px rgba(0, 180, 255, 0.15), inset 0 0 30px rgba(0, 150, 255, 0.05); }
-    #nge-tutorial-gate button.nge-gate-primary::after { content: ''; position: absolute; inset: 0; pointer-events: none;
-      background: linear-gradient(90deg, transparent 0%, rgba(0, 200, 255, 0.15) 50%, transparent 100%);
-      animation: nge-gate-sweep 3s ease-in-out infinite; }
-    @keyframes nge-gate-sweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-    #nge-tutorial-gate button.nge-gate-quiet { background: transparent; border-color: rgba(255, 255, 255, 0.12); color: rgba(214, 228, 242, 0.75); }
-    #nge-tutorial-gate button:disabled { cursor: default; opacity: 0.8; border-style: dashed; background: rgba(0, 60, 120, 0.12); }
-    #nge-tutorial-gate button:disabled::after { display: none; }
-    @media (prefers-reduced-motion: reduce) {
-      #nge-tutorial-gate, #nge-tutorial-gate .nge-gate-dot, #nge-tutorial-gate button::after { animation: none; } }
-  `;
-  document.head.appendChild(st);
-}
+// The gate card's looks live in src/tutorial_kit.css, with the rest of the
+// tutorial pieces: the same surface, title and buttons as a tutorial box.
+function ensureGateStyle() { /* styled by tutorial_kit.css */ }
 
 function gateButton(label: string, cls: string, onClick: () => void) {
   const b = document.createElement('button');
@@ -742,9 +686,9 @@ document.addEventListener('nge:tutorial-start', (async (e: CustomEvent) => {
 }) as EventListener);
 
 export function startTutorialButton(id: number, label: string) {
-  return `<button onclick="document.dispatchEvent(new CustomEvent('nge:tutorial-start',{detail:{id:${id}}}))"`
-    + ' style="margin-top:12px;padding:8px 16px;border-radius:6px;font:inherit;font-weight:600;cursor:pointer;'
-    + 'background:rgba(96,192,96,0.18);border:1px solid rgba(96,192,96,0.6);color:#d6ffd6">' + label + '</button>';
+  return `<button class="nge-hud-btn nge-hud-btn--go" style="margin-top:12px"`
+    + ` onclick="document.dispatchEvent(new CustomEvent('nge:tutorial-start',{detail:{id:${id}}}))">`
+    + label + '</button>';
 }
 
 /** Two captioned pictures side by side, inline styled because the step
@@ -752,14 +696,14 @@ export function startTutorialButton(id: number, label: string) {
  *  in a new tab (Amy: keep the examples open while working). */
 export function beforeAfter(before: string, beforeCaption: string, after: string, afterCaption: string) {
   const fig = (src: string, cap: string) =>
-    `<figure style="margin:0;flex:1 1 0;min-width:0">`
+    `<figure>`
     + `<a href="${src}" target="_blank" rel="noopener" title="Open in a new tab">`
-    + `<img src="${src}" alt="${cap}" style="display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;border-radius:4px;border:1px solid rgba(74,158,255,0.25)">`
+    + `<img src="${src}" alt="${cap}">`
     + `</a>`
-    + `<figcaption style="margin-top:6px;font-size:0.85em;line-height:1.35;color:#9fd0ff">${cap}`
-    + ` <a href="${src}" target="_blank" rel="noopener" style="color:#7ecaff;white-space:nowrap">open in new tab ↗</a></figcaption>`
+    + `<figcaption>${cap}`
+    + ` <a href="${src}" target="_blank" rel="noopener">open in new tab ↗</a></figcaption>`
     + `</figure>`;
-  return `<div style="display:flex;gap:12px;align-items:flex-start;margin-top:14px">${fig(before, beforeCaption)}${fig(after, afterCaption)}</div>`;
+  return `<div class="nge-hud-figs">${fig(before, beforeCaption)}${fig(after, afterCaption)}</div>`;
 }
 
 /** Where the cheat sheet lives on the web, to keep open beside the viewer. */
@@ -770,12 +714,12 @@ export const CHEAT_SHEET_URL = 'https://connectome.quest/proofreading/';
  *  connectome.quest in a new tab. */
 export function cheatSheet(rows: Array<[string, string]>) {
   const key = (k: string) => /^[A-Z]$|^Enter$|^Ctrl\+Click$/.test(k)
-    ? `<kbd style="display:inline-block;padding:2px 8px;border-radius:4px;border:1px solid rgba(126,202,255,0.5);background:rgba(126,202,255,0.10);font:inherit;font-size:0.9em;color:#d0e8ff">${k}</kbd>`
+    ? `<kbd class="nge-hud-kbd">${k}</kbd>`
     : k;
   const tr = (a: string, b: string) =>
-    `<tr><td style="padding:6px 18px 6px 0;white-space:nowrap;color:#d0e8ff">${a}</td><td style="padding:6px 0;color:#9fd0ff">${key(b)}</td></tr>`;
-  return `<table style="border-collapse:collapse;margin:10px 0 4px;font-size:0.95em;line-height:1.3">${rows.map(r => tr(r[0], r[1])).join('')}</table>`
-    + `<p style="margin:6px 0 0;font-size:0.85em"><a href="${CHEAT_SHEET_URL}" target="_blank" rel="noopener" style="color:#7ecaff">Open the cheat sheet in a new tab ↗</a></p>`;
+    `<tr><td>${a}</td><td>${key(b)}</td></tr>`;
+  return `<table class="nge-hud-keys">${rows.map(r => tr(r[0], r[1])).join('')}</table>`
+    + `<p class="nge-hud-fine"><a href="${CHEAT_SHEET_URL}" target="_blank" rel="noopener">Open the cheat sheet in a new tab ↗</a></p>`;
 }
 
 export const MIDDLE = {

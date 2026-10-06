@@ -456,9 +456,8 @@ Hit next to reveal the answer.`,
 **If you already know how to merge branches, please DO NOT merge this branch, because it will break the tutorial 😉**`,
     // Starts through the same gate as the book menu, which offers a place
     // in line when the practice cells are in use.
-    html: `<button onclick="document.dispatchEvent(new CustomEvent('nge:tutorial-start',{detail:{id:3}}))"`
-      + ` style="margin-top:4px;padding:8px 16px;border-radius:6px;font:inherit;font-weight:600;cursor:pointer;`
-      + `background:rgba(96,192,96,0.18);border:1px solid rgba(96,192,96,0.6);color:#d6ffd6">Try the Merge tutorial</button>`,
+    html: `<button class="nge-hud-btn nge-hud-btn--go" style="margin-top:4px"`
+      + ` onclick="document.dispatchEvent(new CustomEvent('nge:tutorial-start',{detail:{id:3}}))">Try the Merge tutorial</button>`,
     image:
       imgRikaSuccess,
     position: OVER_3D,

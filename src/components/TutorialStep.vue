@@ -493,10 +493,11 @@ onUnmounted(() => {
 
             <div v-if="inExitConfirm" class="chip exitConfirm" :class="{ modal: computedStep.modal }"
                 :style="chipBounds">
-                <div>Do you want to exit the tutorial?</div>
+                <div class="nge-exit-ask">Exit the tutorial?</div>
+                <div class="nge-exit-sub">You can start it again any time.</div>
                 <div class="buttonContainer">
-                    <button @click="inExitConfirm = false" class="next">No</button>
-                    <button @click="$emit('exitIntro')" class="next">Yes</button>
+                    <button @click="inExitConfirm = false" class="nge-hud-btn nge-hud-btn--quiet">Keep going</button>
+                    <button @click="$emit('exitIntro')" class="nge-hud-btn">Exit</button>
                 </div>
             </div>
         </div>
@@ -1161,8 +1162,17 @@ onUnmounted(() => {
     box-shadow: inset 0 0 12px rgba(126, 224, 255, 0.18), 0 0 18px rgba(126, 224, 255, 0.35);
 }
 .ng-extend .chip button.next:hover::after { transform: translateX(3px); }
-.ng-extend .chip.exitConfirm button.next { margin-left: 0; }
-.ng-extend .chip.exitConfirm button.next::after { content: none; }
+.chip.exitConfirm { padding: 26px 28px 22px; grid-row-gap: 6px; min-width: 280px; }
+.nge-exit-ask {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #eef8ff;
+    text-shadow: 0 0 14px rgba(126, 224, 255, 0.35);
+}
+.nge-exit-sub { font-size: 13px; color: rgba(196, 228, 255, 0.75); }
+.ng-extend .chip.exitConfirm .buttonContainer { margin-top: 12px; justify-content: flex-end; }
 .ng-extend .chip button.back {
     position: static;
     font-style: normal;

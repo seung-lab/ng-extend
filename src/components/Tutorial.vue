@@ -177,14 +177,14 @@ const exitIntro = () => {
 </script>
 
 <template>
-    <div v-if="needsResumePrompt" class="nge-tut-resume" role="dialog" aria-label="Resume tutorial">
+    <div v-if="needsResumePrompt" class="ng-extend nge-tut-resume" role="dialog" aria-label="Resume tutorial">
         <div class="nge-tut-resume-text">
             You're partway through <strong>{{ resumeName }}</strong>
             <span class="nge-tut-resume-step">step {{ (activeStep?.index ?? 0) + 1 }} of {{ steps.length }}</span>
         </div>
         <div class="nge-tut-resume-actions">
-            <button class="nge-tut-resume-go" @click="continueTutorial">Continue</button>
-            <button class="nge-tut-resume-exit" @click="exitFromPrompt">Exit tutorial</button>
+            <button class="nge-hud-btn nge-hud-btn--arrow nge-tut-resume-go" @click="continueTutorial">Continue</button>
+            <button class="nge-hud-btn nge-hud-btn--quiet nge-tut-resume-exit" @click="exitFromPrompt">Exit tutorial</button>
         </div>
     </div>
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
@@ -203,33 +203,49 @@ const exitIntro = () => {
     z-index: 9500;
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 12px 14px 12px 18px;
-    border-radius: 12px;
-    background: rgba(8, 12, 24, 0.96);
-    border: 1px solid rgba(126, 202, 255, 0.35);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 18px rgba(74, 158, 255, 0.12);
-    color: #d6e4f5;
-    font-family: 'Inter', 'Roboto', sans-serif;
+    gap: 22px;
+    padding: 12px 14px 12px 20px;
+    border-radius: 10px;
+    border: 1px solid rgba(74, 150, 224, 0.36);
+    background: linear-gradient(180deg, rgba(14, 21, 36, 0.97) 0%, rgba(6, 10, 19, 0.98) 70%);
+    backdrop-filter: blur(14px) saturate(1.2);
+    box-shadow:
+        0 18px 50px rgba(0, 0, 0, 0.55),
+        0 0 60px rgba(74, 150, 224, 0.10),
+        inset 0 1px 0 rgba(196, 228, 255, 0.10);
+    color: rgba(226, 238, 251, 0.88);
+    font-family: 'Roboto', 'Inter', sans-serif;
     font-size: 14px;
-    animation: nge-tut-resume-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+    animation: nge-tut-resume-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-@keyframes nge-tut-resume-in { from { opacity: 0; translate: 0 12px; } to { opacity: 1; translate: 0 0; } }
-.nge-tut-resume strong { color: #fff; }
-.nge-tut-resume-step { margin-left: 6px; font-size: 12px; color: #8fa6c2; }
-.nge-tut-resume-actions { display: flex; gap: 8px; }
-.nge-tut-resume-actions button {
-    border-radius: 999px;
-    padding: 5px 14px;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
+/* The lit hairline along the top edge, as on a tutorial box. */
+.nge-tut-resume::before {
+    content: '';
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: -1px;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(196, 228, 255, 0.95) 50%, transparent);
+    box-shadow: 0 0 12px rgba(178, 216, 248, 0.6);
 }
-.nge-tut-resume-go { background: #4a9eff; border: 1px solid #4a9eff; color: #04121f; }
-.nge-tut-resume-go:hover { background: #7ecaff; }
-.nge-tut-resume-exit { background: transparent; border: 1px solid rgba(126, 202, 255, 0.35); color: #cfe0ff; }
-.nge-tut-resume-exit:hover { border-color: rgba(126, 202, 255, 0.8); color: #fff; }
+@keyframes nge-tut-resume-in {
+    0%   { opacity: 0; filter: blur(10px) brightness(2.4); }
+    60%  { opacity: 1; filter: blur(0) brightness(1.15); }
+    100% { opacity: 1; filter: none; }
+}
+.nge-tut-resume-text { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.nge-tut-resume strong { color: #fff; font-weight: 600; }
+.nge-tut-resume-step {
+    font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(126, 224, 255, 0.7);
+}
+.nge-tut-resume-actions { display: flex; gap: 8px; flex: none; }
+@media (prefers-reduced-motion: reduce) { .nge-tut-resume { animation: none; } }
 
 .introduction {
     z-index: 89;

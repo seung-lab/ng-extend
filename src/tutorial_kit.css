@@ -1,0 +1,333 @@
+/* ══ Tutorial instrument kit ════════════════════════════════════════════════
+   The pieces that live inside or beside a tutorial box, in the same style as
+   the box itself (TutorialStep.vue, "Instrument restyle", Ames 2026-10-05:
+   "make this universal style"). Unscoped on purpose: most of these are
+   written into a step as html, or built by script (tutorial-3.ts), where a
+   component's scoped styles do not reach.
+
+   One vocabulary, so a new tutorial piece is a class and not another block of
+   inline styles:
+     .nge-hud-btn      the action button (--sm small, --go green, --quiet
+                       outline only, --round the "?" disc)
+     .nge-hud-note     a status line with a rule down its left edge
+                       (--ok done, --warn amber)
+     .nge-hud-panel    a boxed aside (the "Stuck?" panel)
+     .nge-hud-kbd      a key cap; plain <kbd> inside a box gets it too
+     .nge-hud-info     the small (i)
+     .nge-hud-figs     captioned pictures side by side
+     .nge-hud-keys     the two column shortcut table
+     .nge-hud-chip     a name as it appears on a layer chip
+     .nge-hud-tab      a name as it appears on a side panel tab
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── Buttons ── */
+.ng-extend .nge-hud-btn,
+#nge-tutorial-gate button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 18px;
+  border-radius: 3px;
+  border: 1px solid rgba(126, 224, 255, 0.55);
+  background: linear-gradient(180deg, rgba(126, 224, 255, 0.17), rgba(126, 224, 255, 0.05));
+  box-shadow: inset 0 0 12px rgba(126, 224, 255, 0.10);
+  color: #eaf9ff;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, opacity 0.2s;
+}
+.ng-extend .nge-hud-btn:hover:not(:disabled),
+#nge-tutorial-gate button:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(126, 224, 255, 0.30), rgba(126, 224, 255, 0.12));
+  border-color: rgba(190, 240, 255, 0.95);
+  box-shadow: inset 0 0 12px rgba(126, 224, 255, 0.18), 0 0 18px rgba(126, 224, 255, 0.35);
+}
+.ng-extend .nge-hud-btn:disabled,
+#nge-tutorial-gate button:disabled {
+  cursor: default;
+  opacity: 0.7;
+  border-style: dashed;
+  background: rgba(126, 224, 255, 0.04);
+  box-shadow: none;
+}
+.ng-extend .nge-hud-btn--sm { padding: 5px 11px; font-size: 10px; letter-spacing: 0.16em; }
+.ng-extend .nge-hud-btn--quiet,
+#nge-tutorial-gate button.nge-gate-quiet {
+  background: transparent;
+  box-shadow: none;
+  border-color: rgba(196, 228, 255, 0.22);
+  color: rgba(214, 228, 242, 0.8);
+}
+.ng-extend .nge-hud-btn--go {
+  border-color: rgba(128, 255, 204, 0.6);
+  background: linear-gradient(180deg, rgba(128, 255, 204, 0.18), rgba(128, 255, 204, 0.05));
+  box-shadow: inset 0 0 12px rgba(128, 255, 204, 0.10);
+  color: #e6fff4;
+}
+.ng-extend .nge-hud-btn--go:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(128, 255, 204, 0.32), rgba(128, 255, 204, 0.12));
+  border-color: rgba(190, 255, 228, 0.95);
+  box-shadow: inset 0 0 12px rgba(128, 255, 204, 0.18), 0 0 18px rgba(128, 255, 204, 0.35);
+}
+.ng-extend .nge-hud-btn--go::after,
+.ng-extend .nge-hud-btn--arrow::after {
+  content: '\203A';
+  font-size: 15px;
+  line-height: 0.8;
+  letter-spacing: 0;
+  transition: transform 0.2s ease-out;
+}
+.ng-extend .nge-hud-btn--go:hover::after,
+.ng-extend .nge-hud-btn--arrow:hover::after { transform: translateX(3px); }
+.ng-extend .nge-hud-btn--round {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+/* ── Notes and panels ── */
+.nge-hud-note {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-left: 2px solid rgba(126, 224, 255, 0.8);
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(90deg, rgba(126, 224, 255, 0.12), rgba(126, 224, 255, 0.03));
+  color: #d8ecff;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.nge-hud-note--ok {
+  border-left-color: #80ffcc;
+  background: linear-gradient(90deg, rgba(128, 255, 204, 0.16), rgba(128, 255, 204, 0.03));
+  color: #e6fff4;
+  font-weight: 600;
+}
+.nge-hud-note--warn {
+  border-left-color: rgba(245, 184, 74, 0.9);
+  background: linear-gradient(90deg, rgba(245, 184, 74, 0.14), rgba(245, 184, 74, 0.03));
+  color: #ffdf9e;
+  font-size: 13px;
+}
+.nge-hud-panel {
+  position: relative;
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(74, 150, 224, 0.36);
+  border-radius: 6px;
+  background: rgba(4, 8, 16, 0.6);
+  box-shadow: inset 0 1px 0 rgba(196, 228, 255, 0.08);
+  color: #d8ecff;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.nge-hud-panel-title {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(126, 224, 255, 0.9);
+}
+.nge-hud-panel-row { margin: 4px 0; }
+.nge-hud-btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+/* ── Small inline pieces ── */
+.nge-hud-kbd,
+.introductionStep .chip kbd,
+#nge-tutorial-gate kbd {
+  display: inline-block;
+  min-width: 1.1em;
+  padding: 1px 7px;
+  border: 1px solid rgba(126, 224, 255, 0.5);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: rgba(126, 224, 255, 0.10);
+  color: #eaf9ff;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+}
+.nge-hud-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  margin-left: 4px;
+  border: 1px solid rgba(126, 224, 255, 0.7);
+  border-radius: 50%;
+  color: #7ee0ff;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.nge-hud-info:hover { background: rgba(126, 224, 255, 0.18); box-shadow: 0 0 8px rgba(126, 224, 255, 0.6); }
+.nge-hud-chip {
+  padding: 1px 8px;
+  border: 1px solid rgba(126, 224, 255, 0.4);
+  border-radius: 3px;
+  background: rgba(126, 224, 255, 0.08);
+  color: #d8f3ff;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.nge-hud-tab {
+  padding: 1px 7px;
+  border-bottom: 2px solid #7ee0ff;
+  background: rgba(126, 224, 255, 0.08);
+  color: #ffffff;
+  font-size: 0.82em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* ── Pictures and tables ── */
+.nge-hud-figs { display: flex; gap: 12px; align-items: flex-start; margin-top: 14px; }
+.nge-hud-figs figure { margin: 0; flex: 1 1 0; min-width: 0; }
+.nge-hud-figs img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 1px solid rgba(74, 150, 224, 0.36);
+  border-radius: 4px;
+  background: #03040a;
+}
+.nge-hud-figs figcaption {
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(196, 228, 255, 0.78);
+}
+.nge-hud-figs figcaption a { white-space: nowrap; }
+.nge-hud-keys { border-collapse: collapse; margin: 10px 0 4px; font-size: 14px; line-height: 1.3; }
+.nge-hud-keys td { padding: 6px 0; border-bottom: 1px solid rgba(196, 228, 255, 0.08); color: rgba(196, 228, 255, 0.8); }
+.nge-hud-keys td:first-child { padding-right: 20px; white-space: nowrap; color: #e2eefb; }
+.nge-hud-keys tr:last-child td { border-bottom: 0; }
+.nge-hud-fine { margin: 8px 0 0; font-size: 12px; color: rgba(196, 228, 255, 0.7); }
+
+/* ── The practice gate card (tutorial-3.ts): the same surface as a box ── */
+#nge-tutorial-gate {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9500;
+  box-sizing: border-box;
+  width: min(480px, 92vw);
+  padding: 22px 28px 20px;
+  border: 1px solid rgba(74, 150, 224, 0.36);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(14, 21, 36, 0.97) 0%, rgba(6, 10, 19, 0.98) 70%);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.6),
+    0 0 60px rgba(74, 150, 224, 0.10),
+    inset 0 1px 0 rgba(196, 228, 255, 0.10);
+  font-family: 'Roboto', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  color: rgba(226, 238, 251, 0.88);
+  font-size: 15px;
+  line-height: 1.55;
+  animation: nge-gate-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+#nge-tutorial-gate::before {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: -1px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(196, 228, 255, 0.95) 50%, transparent);
+  box-shadow: 0 0 12px rgba(178, 216, 248, 0.6);
+}
+@keyframes nge-gate-in {
+  0%   { opacity: 0; filter: blur(10px) brightness(2.4); }
+  60%  { opacity: 1; filter: blur(0) brightness(1.15); }
+  100% { opacity: 1; filter: none; }
+}
+#nge-tutorial-gate .nge-gate-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(126, 224, 255, 0.7);
+}
+#nge-tutorial-gate .nge-gate-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7ee0ff;
+  box-shadow: 0 0 8px rgba(126, 224, 255, 0.9);
+  animation: nge-gate-pulse 1.1s ease-in-out infinite;
+}
+@keyframes nge-gate-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+#nge-tutorial-gate .nge-gate-title {
+  display: flex;
+  align-items: center;
+  margin: 12px 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, rgba(126, 224, 255, 0.7), rgba(126, 224, 255, 0.10) 62%, transparent) 1;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: #eef8ff;
+  text-shadow: 0 0 14px rgba(126, 224, 255, 0.35);
+}
+#nge-tutorial-gate .nge-gate-title::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 12px;
+  transform: rotate(45deg);
+  background: #7ee0ff;
+  box-shadow: 0 0 8px rgba(126, 224, 255, 0.9);
+}
+#nge-tutorial-gate .nge-gate-art {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  max-height: 250px;
+  object-fit: contain;
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  border: 1px solid rgba(120, 180, 240, 0.18);
+  border-radius: 8px;
+  background: radial-gradient(ellipse at 45% 55%, rgba(126, 224, 255, 0.12), #04070d 72%);
+}
+#nge-tutorial-gate p { margin: 0 0 12px; }
+#nge-tutorial-gate .nge-gate-status { color: rgba(126, 224, 255, 0.9); }
+#nge-tutorial-gate .nge-gate-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  #nge-tutorial-gate, #nge-tutorial-gate .nge-gate-dot { animation: none; }
+}
