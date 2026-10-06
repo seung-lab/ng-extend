@@ -377,6 +377,9 @@ array with one object per report:
    "rationale": "...", "proposed_message": "... or null", "spec": "... or null"}
 `);
   output('count', String(todo.length));
+  // When the newest waiting report arrived, so the bridge can tell whether
+  // the last Triage Propose run could have seen it.
+  output('newest', todo.length ? String(todo[todo.length - 1].created_at || '') : '');
   output('pending_file', PENDING_FILE);
   output('proposals_file', PROPOSALS_FILE);
   console.log(`[loop] ${todo.length} report(s) waiting for triage`);
