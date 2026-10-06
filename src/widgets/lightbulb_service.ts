@@ -447,7 +447,9 @@ export async function getCellStatus(
     caveServer: string, rootId: string): Promise<CellStatus | null> {
   const dsCfg = getActiveDatasetConfig();
   const {cellStatusTable, cellTypeTable, datastack, cellTypeSchema} = dsCfg;
-  if (!caveServer) return null;
+  // Explore only volumes have no CAVE; a caller may still hand in a default
+  // server, so the dataset's own config decides.
+  if (!caveServer || dsCfg.exploreOnly || !datastack) return null;
 
   if (dsCfg.annotationLog === 'edit_log') {
     const logged = await statusFromEditLog(rootId);
