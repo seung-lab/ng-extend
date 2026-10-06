@@ -398,7 +398,8 @@ function goToMessage(id: string | null | undefined) {
 
 // ── Send message ──
 function send() {
-  const text = messageInput.value.trim();
+  // New lines are kept, but never a wall of blank ones.
+  const text = messageInput.value.trim().replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
   if (!text || messageTooLong.value) return;
   chatStore.sendMessage(text, null, replyingTo.value?.id != null ? String(replyingTo.value.id) : null);
   replyingTo.value = null;
@@ -491,10 +492,11 @@ function onInputKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault();
     send();
-  } else if (e.key === 'Enter') {
-    // The box wraps long text but messages stay one line, so no newlines.
+  } else if (e.key === 'Enter' && !e.shiftKey) {
+    // Ctrl, Alt or Cmd with Enter does nothing, so a slip never sends.
     e.preventDefault();
   }
+  // Shift+Enter falls through: the box adds a new line (Ames 2026-10-06).
 }
 
 // ── Share my view (Ames 2026-09-28) ──
@@ -1405,6 +1407,7 @@ function toggleCollapse() {
 
 .nge-chat-msg-text {
   color: #b0b8c8;
+  white-space: pre-wrap;   /* a message keeps the line breaks it was typed with */
 }
 
 .nge-chat-link {
