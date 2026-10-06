@@ -3136,6 +3136,22 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
     }, durationMs);
   }
 
+  /** Close the result flash now. Also presses Dismiss on neuroglancer's own
+   *  error status: main.ts re-raises the flash from it while it is shown. */
+  function dismissResult() {
+    const text = resultText.value;
+    if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
+    resultFlash.value = '';
+    resultText.value = '';
+    const statusContainer = document.getElementById('statusContainer');
+    if (!statusContainer || !text) return;
+    for (const el of Array.from(statusContainer.children)) {
+      const elText = (el.textContent || '').trim().replace(/\s*dismiss\s*$/i, '').trim();
+      if (elText !== text) continue;
+      (el.querySelector('button') as HTMLElement | null)?.click();
+    }
+  }
+
   /** Hold bar in success state for 2.5s, then holographic exit */
   function beginSuccessClose(text: string) {
     closingTool.value = toolActive.value;
@@ -3188,7 +3204,7 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
     mergeSubmissionCount, mergeSegments, autoSubmit, submitting, statusMessage, resultFlash, resultText,
     pendingClose, closingTool, clearedAt,
     setToolState, setActiveGroup, updatePointCounts, setStatusMessage,
-    showResult, beginSuccessClose, removeMergeSegment, markCleared,
+    showResult, dismissResult, beginSuccessClose, removeMergeSegment, markCleared,
   };
 });
 

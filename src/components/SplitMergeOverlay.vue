@@ -245,6 +245,7 @@ function cancelTool() {
             <button class="nge-smo-result-ask" @click.stop="askGuideAboutError">✦ Ask the AI guide what this means</button>
           </div>
         </div>
+        <button v-if="resultIsError" class="nge-smo-result-close" @click.stop="store.dismissResult()" title="Dismiss" aria-label="Dismiss">×</button>
       </div>
     </transition>
   </Teleport>
@@ -841,6 +842,20 @@ function cancelTool() {
   cursor: pointer;
 }
 .nge-smo-result-ask:hover { background: rgba(120, 170, 255, 0.24); }
+.nge-smo-result-close {
+  pointer-events: auto;
+  align-self: flex-start;
+  margin: -6px -18px 0 4px;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 6px;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.nge-smo-result-close:hover { opacity: 1; }
 
 .nge-smo-result-retry {
   font-size: 12px;

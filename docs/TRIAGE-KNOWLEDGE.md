@@ -137,3 +137,12 @@ summaries.
   (like layout) overwrites what the URL just restored unless it checks
   `BOOT_HASH` first (2026-10-06, layout after refresh build, from reading
   main.ts and store.ts).
+- The split error flash is fed by `checkStatusMessages` in main.ts, which
+  re-raises it from neuroglancer's `#statusContainer` once its 3s cooldown
+  passes. Graphene's error status stays until its own Dismiss button is
+  clicked, so clearing `resultFlash` alone brings the flash back; the store's
+  `dismissResult` clicks that button too (2026-10-06, dismiss split error
+  build, from reading status.ts and graphene frontend.ts).
+- Earlier builds of a spec may not be in the checkout even when the thread
+  says "deployed": check the code before marking BLOCKED (2026-10-06, the
+  dismiss button from three prior builds was absent).
