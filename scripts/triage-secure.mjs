@@ -30,17 +30,41 @@ async function deploy(sha,version) {
  // Wait for a deploy of the live site that is already running, so this one
  // goes next instead of colliding with it (up to 30 minutes).
  if(version===base)for(let i=0;i<90&&await liveDeployBusy();i++){if(!i)console.log('Another live deploy is running; waiting for it to finish.');await sleep(20000);}
- // GitHub keeps one waiting run per deploy group and cancels the older one
- // when another arrives, so a cancelled deploy is sent again (3 tries).
+ // Sent again, up to 3 tries in all, in two cases:
+ //  - cancelled: GitHub keeps one waiting run per deploy group and cancels the
+ //    older one when another arrives;
+ //  - the hosting step failed after the build and its tests passed. That is
+ //    the host having a bad moment, not the change: App Engine has answered
+ //    "internal error" and "Project is not valid" to builds that went through
+ //    on a second try (2026-10-05, 2026-10-07), and each one was reported to
+ //    the tester as a failed deploy until someone re-ran it by hand.
+ // A failed build or failed tests are never sent again.
+ let last='';
  for(let attempt=1;attempt<=3;attempt++) {
   const deploymentId='triage-'+env.GITHUB_RUN_ID+'-'+mode+(attempt>1?'-'+attempt:'');
   await gh('actions/workflows/on_dev_branch_push.yml/dispatches',{ref:base,inputs:{source_ref:sha,version,deployment_id:deploymentId}});
   const result=await waitForDeploy(sha,version,deploymentId);
-  if(result!=='cancelled')return;
-  console.log('Deploy '+deploymentId+' was cancelled by a newer deploy; sending it again.');
+  if(result==='ok')return;
+  if(result==='cancelled') {
+   last='cancelled by other deploys';
+   console.log('Deploy '+deploymentId+' was cancelled by a newer deploy; sending it again.');
+  } else {
+   last='the hosting step failed: '+result.hostingFailed;
+   console.log('Deploy '+deploymentId+' built and passed its tests, but the hosting step failed ('+result.hostingFailed+'). Try '+attempt+' of 3.');
+   if(attempt<3)await sleep(45000*attempt);
+  }
   if(version===base)for(let i=0;i<90&&await liveDeployBusy();i++)await sleep(20000);
  }
- throw Error('Deploy was cancelled three times by other deploys');
+ throw Error('Deploy did not go through in three tries ('+last+')');
+}
+// True when the run's build job (the build and every test) succeeded and only
+// its deploy job, the upload to the host, failed.
+async function onlyHostingFailed(run) {
+ try {
+  const jobs=(await gh('actions/runs/'+run.id+'/jobs?per_page=30')).jobs||[];
+  const build=jobs.find(j=>j.name==='build'),host=jobs.find(j=>j.name==='deploy');
+  return !!build&&!!host&&build.conclusion==='success'&&host.conclusion==='failure';
+ } catch {return false;}
 }
 async function waitForDeploy(sha,version,deploymentId) {
  // A GITHUB_TOKEN push does not trigger another workflow. Dispatch trusted YAML explicitly.
@@ -50,7 +74,10 @@ async function waitForDeploy(sha,version,deploymentId) {
   const run=runs.workflow_runs.find(r=>r.display_title==='Deploy '+deploymentId);
   if(!run||run.status!=='completed')continue;
   if(run.conclusion==='cancelled')return 'cancelled';
-  if(run.conclusion!=='success')throw Error('Build/deploy failed: '+run.html_url);
+  if(run.conclusion!=='success') {
+   if(await onlyHostingFailed(run))return {hostingFailed:run.html_url};
+   throw Error('Build/deploy failed: '+run.html_url);
+  }
   const url=version===base?'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/':`https://${version}-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/`;
   const response=await fetch(url+'build-commit.txt?run='+env.GITHUB_RUN_ID,{redirect:'error',signal:AbortSignal.timeout(15000),cache:'no-store'});
   if(!response.ok||(await response.text()).trim()!==sha)throw Error('Deployed build does not match the expected commit');
