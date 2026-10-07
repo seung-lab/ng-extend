@@ -37,4 +37,4 @@ Limits to say out loud in the design:
 
 ## Built
 
-- **Undelete** (asked by Nik, 2026-10-07; Krzysztof Kruk's idea and user scripts, discuss.flywire.ai/t/235 and /t/236). Built the same day: `src/util/undelete.ts` and `src/components/UndeleteChip.vue`. Keeps the last 50 steps per dataset and tab; a "clear" comes back as one step; Ctrl+Z or the chip in the top bar.
+- **Undelete** (asked by Nik, 2026-10-07; Krzysztof Kruk's idea and user scripts, discuss.flywire.ai/t/235 and /t/236). Built the same day: `src/util/undelete.ts`, with a top bar icon (`undelete` in `src/data/toolbar-icons.ts`) that is off until a player turns it on in Profile, Settings, Toolbar Icons. Keeps the last 50 steps per dataset and tab; a "clear" comes back as one step; the icon or Ctrl+Z. It restores the view only and never undoes an edit.

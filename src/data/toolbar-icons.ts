@@ -102,6 +102,11 @@ const FEED_SVG        = `<svg viewBox="0.4 2.6 13.0 13.0" fill="none" style="${S
  *  earns a plaque somewhere. */
 export const FLIGHT_SVG      = `<svg viewBox="1 1 14 14" fill="none" style="${S}color:${NEUTRAL_COLOR}"><path d="M9.3 2.6c1.9-.7 3.6-.6 4.1-.1.5.5.6 2.2-.1 4.1-.6 1.6-1.7 3.3-3.2 4.5l-.4 2.5c0 .3-.4.4-.6.2l-1.5-1.7c-.9.2-1.7.1-2.3-.4-.5-.6-.6-1.4-.4-2.3L3.2 8c-.2-.2-.1-.6.2-.6l2.5-.4c1.2-1.5 2.9-2.6 4.4-3.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="10.4" cy="5.6" r="1.15" stroke="currentColor" stroke-width="1.1"/><path d="M4.9 11.1c-.7.3-1.3 1.4-1.5 2.5 1.1-.2 2.2-.8 2.5-1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
 
+// Undelete: a curved back arrow. Off unless a player turns it on in Profile,
+// Settings, Toolbar Icons (Ames 2026-10-07): it is not in DEFAULT_TOOLBAR_ORDER
+// and is never auto injected.
+const UNDELETE_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${ACCENT_SKY}"><path d="M3.2 6.4h6.1a3.6 3.6 0 0 1 0 7.2H5.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 3.4 3 6.4l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
 export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)' },
   { id: 'merge',       emoji: '🔗', svg: MERGE_SVG,       label: 'Merge Mode (M)' },
@@ -116,6 +121,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'cells',       emoji: '🧬', svg: CELLS_ICON,      label: 'Cell Library' },
   { id: 'batch',       emoji: '📦', svg: BATCH_SVG,       label: 'Batch Processor' },
   { id: 'screenshot',  emoji: '📷', svg: CAMERA_SVG,      label: 'Take a screenshot' },
+  { id: 'undelete',    emoji: '↩️', svg: UNDELETE_SVG,    label: 'Undelete: bring back a cell you removed from view (Ctrl+Z)' },
   { id: 'help',        emoji: '🔍', svg: HELP_SVG,        label: 'Second Opinion Requests' },
   { id: 'tags',        emoji: '📍', svg: TAG_SVG,         label: 'Tag Mode (Shift+T)' },
   { id: 'feed',        emoji: '📡', svg: FEED_SVG,        label: 'Activity Feed' },

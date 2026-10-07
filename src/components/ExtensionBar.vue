@@ -29,7 +29,7 @@ import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
-import UndeleteChip from "components/UndeleteChip.vue";
+import { undelete, undeleteCount } from "../util/undelete";
 import RadioPlayer from "components/RadioPlayer.vue";
 import UsernamePrompt from "components/UsernamePrompt.vue";
 import MobileWelcome from "components/MobileWelcome.vue";
@@ -706,6 +706,9 @@ const toolbarActions: Record<string, ToolbarAction> = {
   batch:       { action: () => { showBatchProcessor.value = !showBatchProcessor.value; } },
   // Toolbar camera (Amy): the same Save screenshot dialog the palette opens.
   screenshot:  { action: () => { showScreenshotDialog.value = true; } },
+  // Undelete (Krzysztof Kruk's idea): bring back the cells last removed from
+  // the view. It never undoes an edit. Off until turned on in Settings.
+  undelete:    { action: () => { undelete(); } },
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
   tags:        { action: () => { showTagMode.value = !showTagMode.value; } },
@@ -1014,8 +1017,6 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <RadioPlayer v-if="login.sessions.length > 0" />
     <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
-      <!-- Undelete: an icon, only there when a removed cell can be brought back -->
-      <UndeleteChip />
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">
         <!-- A bug (Amy 2026-09-30), whose legs scurry on hover and click. -->
@@ -1043,6 +1044,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           'nge-icon-btn--mention': icon.id === 'chat' && chatMentionPending,
           'nge-icon-btn--active': isIconActive(icon.id),
           'nge-icon-btn--off': icon.id === 'highlight' && !!highlightOff,
+          'nge-icon-btn--idle': icon.id === 'undelete' && undeleteCount === 0,
           'nge-spraying': icon.id === 'highlight' && spraying,
           'nge-icon-btn--dragging': dragId === icon.id,
           'nge-icon-btn--drag-over': dragOverId === icon.id && dragId !== icon.id,
@@ -1956,6 +1958,15 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   #extensionBar [data-icon-id="batch"]:hover .nge-cube3d-inner,
   #extensionBar [data-icon-id="batch"].nge-pop .nge-cube3d-inner { animation: none; }
 }
+
+/* Undelete: dim while there is nothing to bring back; the arrow nudges back
+   on hover and swings round on click. */
+#extensionBar [data-icon-id="undelete"].nge-icon-btn--idle { opacity: 0.38; }
+#extensionBar [data-icon-id="undelete"]:not(.nge-icon-btn--idle):hover svg { animation: nge-ti-undelete-nudge 0.7s ease-in-out infinite; }
+#extensionBar [data-icon-id="undelete"].nge-pop svg { animation: nge-ti-undelete-swing 0.45s ease-out; }
+@keyframes nge-ti-undelete-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.6px); } }
+@keyframes nge-ti-undelete-swing { 0% { transform: rotate(-70deg) scale(1.2); filter: brightness(2); } 100% { transform: none; filter: none; } }
+@media (prefers-reduced-motion: reduce) { #extensionBar [data-icon-id="undelete"] svg { animation: none !important; } }
 
 /* Screenshot (camera): the lens glints; click is a shutter flash. */
 #extensionBar [data-icon-id="screenshot"]:hover svg > :nth-child(2) { animation: nge-ti-lens 0.9s ease-in-out infinite; }

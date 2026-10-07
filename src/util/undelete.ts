@@ -135,11 +135,24 @@ export function clearUndelete() {
   save(); publish();
 }
 
+/** Ctrl+Z (⌘+Z) brings a step back, when the player has the Undelete icon
+ *  turned on and is not typing somewhere. */
+function onKey(e: KeyboardEvent, enabled: () => boolean) {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+  const t = e.target as HTMLElement | null;
+  if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  if (!enabled() || !steps.length) return;
+  e.preventDefault();
+  undelete();
+}
+
 let started = false;
-/** Call once the viewer exists. */
-export function startUndelete(Uint64Class: any) {
+/** Call once the viewer exists. `enabled` says whether the player has turned
+ *  Undelete on; the list is kept either way, so it is ready when they do. */
+export function startUndelete(Uint64Class: any, enabled: () => boolean = () => true) {
   if (started) return;
   started = true;
+  window.addEventListener('keydown', e => onKey(e, enabled));
   (window as any).__ngeUint64 = Uint64Class;   // so a step can come back into an empty view
   attach();
   // The segmentation layer is replaced on a dataset switch or a loaded view.

@@ -379,7 +379,7 @@ function setupViewer() {
   // Phones: never leave the 3D only view with nothing in it.
   watchPhoneEmptyView(() => phoneRef.value);
   // Undelete: remember the cells that leave the view, to bring them back.
-  startUndelete(Uint64ForUndelete);
+  startUndelete(Uint64ForUndelete, () => !!document.querySelector('#extensionBar [data-icon-id="undelete"]'));
   installNoFourPanel(viewer);
   // window.eyewire, the stable API for player scripts (static/scripts.html).
   installScriptApi(viewer, {
