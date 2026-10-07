@@ -4840,9 +4840,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }).then(() => {}, () => {}); // ignore duplicate errors
   }
 
-  async function markAllNotificationsRead() {
+  /** only: mark just these (one tab of the feed) instead of everything. */
+  async function markAllNotificationsRead(only?: number[]) {
     if (!userId.value) return;
-    const unread = notifications.value.filter(n => !notificationReads.value.has(n.id));
+    const pick = only ? new Set(only) : null;
+    const unread = notifications.value.filter(n => !notificationReads.value.has(n.id) && (!pick || pick.has(n.id)));
     for (const n of unread) {
       notificationReads.value.add(n.id);
     }

@@ -374,20 +374,24 @@ function padRank(rank: number): string {
     <div class="nge-notif-topbar">
       <span class="nge-notif-title">🔔 Notifications</span>
       <div class="nge-notif-topbar-actions">
+        <!-- With the two admin tabs showing, this marks the tab you are on. -->
         <button
-          v-if="backend.unreadNotificationCount > 0"
+          v-if="showFeedTabs ? unreadIn(shownNotes) > 0 : backend.unreadNotificationCount > 0"
           class="nge-notif-mark-all"
-          @click="backend.markAllNotificationsRead()"
-        >Mark all read</button>
+          @click="showFeedTabs ? backend.markAllNotificationsRead(shownNotes.map(n => n.id)) : backend.markAllNotificationsRead()"
+        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : 'Mark all read' }}</button>
         <!-- Separate from "mark all read" on purpose: read state controls the
              unread pip, this clears the feed. Only hides them for THIS user —
              the underlying notification rows are untouched. -->
+        <!-- Not on the Triage tab: triage is kept and only marked read
+             (Ames 2026-10-07: "I don't want to delete triage, just mark as
+             read"). One note can still be removed with its own x. -->
         <button
-          v-if="shownNotes.length > 0"
+          v-if="shownNotes.length > 0 && !(showFeedTabs && feedTab === 'triage')"
           class="nge-notif-delete-all"
           @click="confirmDeleteAll = true"
-          :title="showFeedTabs ? (feedTab === 'triage' ? 'Delete every triage notification (only affects your feed)' : 'Delete every notification on this tab; triage is kept (only affects your feed)') : 'Delete all notifications (only affects your feed)'"
-        >{{ showFeedTabs && feedTab === 'triage' ? 'Delete triage' : 'Delete all' }}</button>
+          :title="showFeedTabs ? 'Delete every notification on this tab; triage is kept (only affects your feed)' : 'Delete all notifications (only affects your feed)'"
+        >Delete all</button>
         <button class="nge-notif-close" @click.stop="emit('hide')">×</button>
       </div>
     </div>
