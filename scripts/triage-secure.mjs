@@ -30,7 +30,7 @@ async function deploy(sha,version) {
  // Wait for a deploy of the live site that is already running, so this one
  // goes next instead of colliding with it (up to 30 minutes).
  if(version===base)for(let i=0;i<90&&await liveDeployBusy();i++){if(!i)console.log('Another live deploy is running; waiting for it to finish.');await sleep(20000);}
- // Sent again, up to 3 tries in all, in two cases:
+ // Sent again, up to 3 retries, in two cases:
  //  - cancelled: GitHub keeps one waiting run per deploy group and cancels the
  //    older one when another arrives;
  //  - the hosting step failed after the build and its tests passed. That is
@@ -39,8 +39,11 @@ async function deploy(sha,version) {
  //    on a second try (2026-10-05, 2026-10-07), and each one was reported to
  //    the tester as a failed deploy until someone re-ran it by hand.
  // A failed build or failed tests are never sent again.
+ // Three retries after the first try, four tries in all, before the tester is
+ // told (Ames 2026-10-07: "retry 3x before bugging me again").
+ const TRIES=4;
  let last='';
- for(let attempt=1;attempt<=3;attempt++) {
+ for(let attempt=1;attempt<=TRIES;attempt++) {
   const deploymentId='triage-'+env.GITHUB_RUN_ID+'-'+mode+(attempt>1?'-'+attempt:'');
   await gh('actions/workflows/on_dev_branch_push.yml/dispatches',{ref:base,inputs:{source_ref:sha,version,deployment_id:deploymentId}});
   const result=await waitForDeploy(sha,version,deploymentId);
@@ -50,12 +53,12 @@ async function deploy(sha,version) {
    console.log('Deploy '+deploymentId+' was cancelled by a newer deploy; sending it again.');
   } else {
    last='the hosting step failed: '+result.hostingFailed;
-   console.log('Deploy '+deploymentId+' built and passed its tests, but the hosting step failed ('+result.hostingFailed+'). Try '+attempt+' of 3.');
-   if(attempt<3)await sleep(45000*attempt);
+   console.log('Deploy '+deploymentId+' built and passed its tests, but the hosting step failed ('+result.hostingFailed+'). Try '+attempt+' of '+TRIES+'.');
+   if(attempt<TRIES)await sleep(30000*attempt);
   }
   if(version===base)for(let i=0;i<90&&await liveDeployBusy();i++)await sleep(20000);
  }
- throw Error('Deploy did not go through in three tries ('+last+')');
+ throw Error('Deploy did not go through after 3 retries ('+last+')');
 }
 // True when the run's build job (the build and every test) succeeded and only
 // its deploy job, the upload to the host, failed.
