@@ -294,9 +294,9 @@ Let's try adding an ANNOTATION LAYER.
   //17 -- Remove new layer
   {
     text: `
-Oops, I forgot 🙈! LEFT-CLICK adds a BLANK LAYER. For an ANNOTATION LAYER we need to RIGHT-CLICK. 
+That made an ANNOTATION LAYER. (CTRL+CLICK the "+" makes a BLANK data LAYER instead, which you will rarely need.)
 
-That's okay, it's an easy fix! <strong>Hover on NEW LAYER, and click the "X" to remove it.</strong>`,
+A layer is just as easy to take away. Let's practise: <strong>Hover on the new layer, and click the "X" to remove it.</strong>`,
     width: "500px",
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(4)",
@@ -307,7 +307,7 @@ That's okay, it's an easy fix! <strong>Hover on NEW LAYER, and click the "X" to 
    //5 -- Layers menu
   {
     text: `
-Our NEW LAYER was removed, but it was not deleted permanently!
+Our new layer was removed, but it was not deleted permanently!
 
 You can view all layers by opening <strong>Settings ⚙️</strong> in the toolbar, then clicking <strong>☰ Layer List Panel</strong> at the bottom.
 
@@ -338,7 +338,7 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
 
 <details>
     <summary>Answer</summary>
-    <strong>RIGHT-CLICK the "+" button</strong> to add an ANNOTATION LAYER.
+    <strong>CLICK the "+" button</strong> to add an ANNOTATION LAYER.
 </details>`,
     width: "500px",
     position: {

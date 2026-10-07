@@ -258,15 +258,18 @@ export class LayerBar extends RefCounted {
 
     let addButton = makeIcon({
       svg: svg_plus,
-      title: 'Click to add layer, control+click/right click/⌘+click to add local annotation layer.',
+      title: 'Click to add an annotation layer. Ctrl+click, ⌘+click or right click to add a blank data layer.',
     });
     addButton.classList.add('neuroglancer-layer-add-button');
 
     let dropZone = this.dropZone = document.createElement('div');
     dropZone.className = 'neuroglancer-layer-panel-drop-zone';
 
+    // EyeWire II (Ames 2026-10-07): a plain click makes an annotation layer,
+    // which is what players nearly always want. Ctrl, ⌘ or a right click
+    // makes a blank data layer (neuroglancer had these the other way round).
     const addLayer = (event: MouseEvent) => {
-      if (event.ctrlKey || event.metaKey || event.type === 'contextmenu') {
+      if (!(event.ctrlKey || event.metaKey || event.type === 'contextmenu')) {
         const layer = makeLayer(
             this.manager, 'annotation', {type: 'annotation', 'source': 'local://annotations'});
         this.manager.add(layer);
