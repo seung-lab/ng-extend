@@ -138,6 +138,34 @@ export async function datasetCellCount(uid: string, segId?: string): Promise<{ l
   return count == null ? null : { label: ds.shortLabel || ds.label, count };
 }
 
+/**
+ * Both numbers of the completion celebration from ONE place: the database's
+ * own list of a player's completed cells (ew_cell_completions, the rule the
+ * leaderboard uses). They used to come from two: the dataset's number from
+ * the CAVE mirror joined with the log, the overall number from a counter on
+ * the profile. The two disagreed, and the celebration said "your EyeWire II
+ * total is 72" over "63 cells across all datasets" (Ames 2026-10-07). Counted
+ * from one list, a dataset can never have more cells than all datasets do.
+ * Null when the list can not be read.
+ */
+export async function celebrationCellCounts(uid: string): Promise<{ label: string; here: number; all: number } | null> {
+  const ds = findDatasetByCanonical(canonicalDataset(currentDatasetTag()));
+  try {
+    const { supabase } = await import('../supabase');
+    const rows: { dataset: string }[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase.from('ew_cell_completions').select('dataset,cell')
+        .eq('user_id', uid).order('cell', { ascending: true }).range(from, from + 999);
+      if (error || !data) return null;
+      rows.push(...(data as any[]));
+      if (data.length < 1000) break;
+    }
+    const keys = new Set(ds ? datasetTagVariants(ds).map(datasetKey) : []);
+    const here = rows.filter(r => keys.has(datasetKey(r.dataset))).length;
+    return { label: ds ? (ds.shortLabel || ds.label) : '', here, all: rows.length };
+  } catch { return null; }
+}
+
 export async function loadContribution(ds: DatasetEntry, uid: string): Promise<DatasetContribution> {
   const { supabase } = await import('../supabase');
   const caveId = await caveIdFor(uid);
