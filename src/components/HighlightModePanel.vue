@@ -9,7 +9,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import { startLoader, type Live } from '../find_path_status';
 import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, tintShown, setTintShown, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -183,6 +183,12 @@ const tintUm = ref(tintRadiusNm() / 1000);
 function onTintInput(e: Event) {
   tintUm.value = Number((e.target as HTMLInputElement).value);
   setTintRadiusNm(tintUm.value * 1000);
+}
+/** Whether the marks show on the cell in 3D; they stay in 2D either way. */
+const show3d = ref(tintShown());
+function onShow3d(e: Event) {
+  show3d.value = (e.target as HTMLInputElement).checked;
+  setTintShown(show3d.value);
 }
 
 // The crosshair cursor shows while a click would place a point.
@@ -420,6 +426,10 @@ onBeforeUnmount(() => {
         <input type="range" min="0.5" max="8" step="0.5" :value="tintUm" @input="onTintInput" />
         <span class="nge-hl-width-val">{{ tintUm }} <span class="nge-hl-unit">µm</span></span>
       </label>
+      <label class="nge-hl-show3d" title="Turn off to hide the marks from the 3D view. They stay in the 2D views and in the saved view.">
+        <input type="checkbox" :checked="show3d" @change="onShow3d" />
+        <span>Show marks in 3D</span>
+      </label>
       <!-- The foot of the box reads like a stats line: what just happened, a
            count or two, quietly (Ames 2026-10-02). -->
       <div class="nge-hl-status">
@@ -560,6 +570,8 @@ onBeforeUnmount(() => {
 .nge-hl-width input { flex: 1; min-width: 0; accent-color: #7cffb2; }
 .nge-hl-width-val { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: #dce6f5; }
 .nge-hl-unit { text-transform: none; }
+.nge-hl-show3d { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11.5px; color: rgba(220, 230, 245, 0.72); cursor: pointer; user-select: none; }
+.nge-hl-show3d input { margin: 0; accent-color: #7cffb2; cursor: pointer; }
 .nge-hl-status { display: flex; align-items: baseline; gap: 8px; margin-top: 10px; min-height: 18px; font-size: 11px; color: rgba(200, 212, 228, 0.62); }
 .nge-hl-dim { color: rgba(200, 212, 228, 0.42); }
 .nge-hl-stat { color: rgba(200, 212, 228, 0.4); font-variant-numeric: tabular-nums; }

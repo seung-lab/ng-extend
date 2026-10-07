@@ -146,3 +146,9 @@ summaries.
 - Earlier builds of a spec may not be in the checkout even when the thread
   says "deployed": check the code before marking BLOCKED (2026-10-06, the
   dismiss button from three prior builds was absent).
+- Highlight strokes are never drawn in 3D: `startHighlightTint` forces
+  `ngeHideIn3d` on every highlight layer, so all a player sees there is the
+  mesh tint from `buildTint` (one global tint, not per layer). Hiding marks in
+  3D means turning the tint off (`tintShown`, localStorage
+  `nge_highlight_tint_3d`), not flipping `ngeHideIn3d` (2026-10-07, show in 3D
+  toggle build, from reading highlight.ts and perspective_view/panel.ts).

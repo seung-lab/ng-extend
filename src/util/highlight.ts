@@ -323,13 +323,23 @@ export function setTintRadiusNm(nm: number) {
   try { localStorage.setItem(TINT_KEY, String(Math.round(nm))); } catch { /* */ }
   scheduleTint();
 }
+/** Whether the marks colour the cell in 3D. The stroke is never drawn there,
+ *  so off hides the marks from the 3D view; the 2D strokes stay. */
+const TINT_SHOWN_KEY = 'nge_highlight_tint_3d';
+export function tintShown(): boolean {
+  try { return localStorage.getItem(TINT_SHOWN_KEY) !== '0'; } catch { return true; }
+}
+export function setTintShown(on: boolean) {
+  try { localStorage.setItem(TINT_SHOWN_KEY, on ? '1' : '0'); } catch { /* */ }
+  scheduleTint();
+}
 
 const MAX_VOXELS = 6e6;   // 24 MB of RGBA at most
 const hexRgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
 
 function buildTint(): NgeMeshTint | null {
   const viewer = viewerOf();
-  if (!viewer) return null;
+  if (!viewer || !tintShown()) return null;
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).slice(0, 3).map(x => x / 1e-9);
   if (scalesNm.length < 3) return null;
   // Every stroke segment, in nanometres.
