@@ -707,8 +707,9 @@ const toolbarActions: Record<string, ToolbarAction> = {
   // Toolbar camera (Amy): the same Save screenshot dialog the palette opens.
   screenshot:  { action: () => { showScreenshotDialog.value = true; } },
   // Undelete (Krzysztof Kruk's idea): bring back the cells last removed from
-  // the view. It never undoes an edit. Off until turned on in Settings.
-  undelete:    { action: () => { undelete(); } },
+  // the view. It never undoes an edit. Its counter is a Settings choice, off
+  // by default.
+  undelete:    { action: () => { undelete(); }, badge: () => useUserPreferencesStore().prefs.undeleteCounter ? undeleteCount.value : 0 },
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
   tags:        { action: () => { showTagMode.value = !showTagMode.value; } },

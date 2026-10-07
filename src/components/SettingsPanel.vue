@@ -32,6 +32,7 @@ const draftChatFade = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftClassicLayers = ref(false);
+const draftUndeleteCounter = ref(false);
 const draftJumpAdds = ref(false);
 const draftOfferRestore = ref(true);
 /** Point annotation size (after EyeWire's "Annotation Resizer" addon). Applied
@@ -99,6 +100,7 @@ onMounted(() => {
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
+  draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
   draftAnnotationSize.value = savedAnnotationSize.value = ngePointScale.value;
@@ -125,7 +127,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, classicLayerClicks: draftClassicLayers.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
   });
@@ -385,6 +387,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Off: left click selects a layer, right click hides or shows it. On: the other way round, as in neuroglancer.">
               <input type="checkbox" v-model="draftClassicLayers" />
               <span class="nge-settings-toggle-label">Classic layer tabs: left click hides a layer, right click selects it</span>
+            </label>
+            <label class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
+              <input type="checkbox" v-model="draftUndeleteCounter" />
+              <span class="nge-settings-toggle-label">Show a counter on the Undelete icon</span>
             </label>
             <label class="nge-settings-toggle" title="Off: a jump shows only the cell you jumped to. On: each jump adds its cell to the ones already in your view.">
               <input type="checkbox" v-model="draftJumpAdds" />

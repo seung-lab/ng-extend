@@ -947,6 +947,9 @@ export interface UserPreferences {
    *  selects it (neuroglancer's own way). Defaults to false: left click
    *  selects, right click hides (Ames 2026-10-06). */
   classicLayerClicks?: boolean;
+  /** Show how many steps Undelete can bring back, as a badge on its icon.
+   *  Defaults to false: the icon alone (Ames 2026-10-07). */
+  undeleteCounter?: boolean;
   /** Jumping to a cell ADDS it to the view instead of replacing what is
    *  shown. Defaults to false (replace). */
   jumpAddsToView?: boolean;
