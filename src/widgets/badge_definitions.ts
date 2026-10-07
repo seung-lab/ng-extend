@@ -310,17 +310,21 @@ const LOYALTY_DRAFTS: BadgeDefinition[] = [
   loyalty(13,  80, 'amethyst-crown',      'AC', 'Eighty Days',      'Eighty days at EyeWire II! That is royal dedication.'),
   loyalty(14,  90, 'radiant-return',      'RR', 'Three Months',      'Ninety days of science! Three months of coming back, and we are glad every time.'),
   loyalty(15, 100, 'century-star',        'CS', 'One Hundred Days',        'One hundred days at EyeWire II! Thank you for every single one.'),
-  loyalty(16, 125, 'celestial-bloom',     'CB', '125 Days',     '125 days of science! Your dedication keeps growing.'),
-  loyalty(17, 150, 'constellation-crown', 'CN', 'Five Months', '150 days at EyeWire II! You are a guiding light for this community.'),
-  loyalty(18, 175, 'astral-engine',       'AE', 'Twenty Five Weeks',       '175 days of science! You help power this whole project.'),
-  loyalty(19, 200, 'twin-century',        'TC', 'Two Hundred Days',        'Two hundred days at EyeWire II! Double the century, double the cheers.'),
-  loyalty(20, 225, 'nebula-heart',        'NH', '225 Days',        '225 days of science! You are at the heart of EyeWire II.'),
-  loyalty(21, 250, 'gilded-galaxy',       'GG', '250 Days',       '250 days at EyeWire II! That is a galaxy of good work.'),
-  loyalty(22, 275, 'astral-crown',        'AS', '275 Days',        '275 days of science! Few have come this far.'),
-  loyalty(23, 300, 'three-hundred-suns',  'TS', 'Three Hundred Days',  'Three hundred days at EyeWire II! Three hundred sunrises of science.'),
-  loyalty(24, 325, 'everstar',            'EV', '325 Days',            '325 days of science! Your star never fades.'),
-  loyalty(25, 350, 'yearward',            'YW', 'Fifty Weeks',            '350 days at EyeWire II! A full year is in sight.'),
-  loyalty(26, 365, 'the-constant',        'TH', 'One Year',        '365 days at EyeWire II! A whole year of science. You are a legend.'),
+  // Past 100 days: one a month (Celia, Ames 2026-10-07), with 200 kept as a
+  // hundred day milestone beside 100 and 300. The art is the existing set,
+  // each piece moved to the nearest new day; ids and slugs are unchanged, so
+  // an award saved on 2026-10-06 still means the same picture. The 350 day
+  // achievement (id 225, 'yearward') is retired and its id is not reused.
+  loyalty(16, 120, 'celestial-bloom',     'CB', 'Four Months',        '120 days of science! Four months, and your dedication keeps growing.'),
+  loyalty(17, 150, 'constellation-crown', 'CN', 'Five Months',        '150 days at EyeWire II! You are a guiding light for this community.'),
+  loyalty(18, 180, 'astral-engine',       'AE', 'Six Months',         '180 days of science! Half a year, and you help power this whole project.'),
+  loyalty(19, 200, 'twin-century',        'TC', 'Two Hundred Days',   'Two hundred days at EyeWire II! Double the century, double the cheers.'),
+  loyalty(20, 210, 'nebula-heart',        'NH', 'Seven Months',       '210 days of science! You are at the heart of EyeWire II.'),
+  loyalty(21, 240, 'gilded-galaxy',       'GG', 'Eight Months',       '240 days at EyeWire II! That is a galaxy of good work.'),
+  loyalty(22, 270, 'astral-crown',        'AS', 'Nine Months',        '270 days of science! Few have come this far.'),
+  loyalty(23, 300, 'three-hundred-suns',  'TS', 'Three Hundred Days', 'Three hundred days at EyeWire II! Three hundred sunrises of science.'),
+  loyalty(24, 330, 'everstar',            'EV', 'Eleven Months',      '330 days of science! Your star never fades, and a full year is in sight.'),
+  loyalty(26, 365, 'the-constant',        'TH', 'One Year',           '365 days at EyeWire II! A whole year of science. You are a legend.'),
 ];
 
 export const LOYALTY_BADGES: BadgeDefinition[] = LOYALTY_ENABLED ? LOYALTY_DRAFTS : [];
