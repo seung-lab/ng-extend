@@ -1714,8 +1714,8 @@ function getVisibleSegmentIds(): string[] {
     for (const ml of viewer?.layerManager?.managedLayers ?? []) {
       const layer = ml.layer;
       if (!layer) continue;
-      const className = layer.constructor?.name || '';
-      if (!className.includes('Segmentation')) continue;
+      // by the layer's own type: class names are renamed in the production build
+      if (!String(layer.type || '').startsWith('segmentation')) continue;
       const visible = layer.displayState?.segmentationGroupState?.value?.visibleSegments;
       if (!visible) continue;
       const ids: string[] = [];

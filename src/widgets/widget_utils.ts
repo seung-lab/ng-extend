@@ -110,7 +110,7 @@ export function openSegPanel(retryAttempts = 3): void {
     const viewer: any = (window as any)['viewer'];
     if (!viewer) return;
     const segLayer = viewer.layerManager.managedLayers.find(
-      (l: any) => l.layer?.constructor?.name?.includes('Segmentation'),
+      isSegLayer,   // by the layer's own type: class names are renamed in the production build
     );
     if (!segLayer) {
       if (retryAttempts > 0) {

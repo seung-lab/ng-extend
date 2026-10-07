@@ -78,7 +78,7 @@ function currentDataset(): string {
   try {
     const viewer = (window as any)['viewer'];
     for (const ml of viewer?.layerManager?.managedLayers ?? []) {
-      if ((ml.layer?.constructor?.name ?? '').includes('Segmentation')) return ml.name ?? '';
+      if (String(ml.layer?.type || '').startsWith('segmentation')) return ml.name ?? '';   // by the layer's own type: class names are renamed in the production build
     }
   } catch {}
   return '';

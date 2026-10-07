@@ -331,8 +331,8 @@ export function getSelectedSupervoxelId(): string | null {
     for (const ml of viewer?.layerManager?.managedLayers ?? []) {
       const layer = ml.layer;
       if (!layer) continue;
-      const typeName = layer.constructor?.name ?? '';
-      if (!typeName.includes('Segmentation')) continue;
+      // by the layer's own type: class names are renamed in the production build
+      if (!String(layer.type || '').startsWith('segmentation')) continue;
       const selState = layer.displayState?.segmentSelectionState;
       if (selState?.hasSelectedSegment) {
         const base = selState.baseSelectedSegment;

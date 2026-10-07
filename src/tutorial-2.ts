@@ -409,7 +409,7 @@ Great! Click the "○" button to select the single point annotation.
       try {
         const viewer = (window as any).viewer;
         for (const ml of viewer?.layerManager?.managedLayers ?? []) {
-          if (ml.layer?.constructor?.name?.includes('Annotation')) {
+          if (ml.layer?.type === 'annotation') {   // by the layer's own type: class names are renamed in the production build
             const color = ml.layer.annotationDisplayState?.color;
             if (color) color.restoreState('#ffd700');
             break;

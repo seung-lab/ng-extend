@@ -243,7 +243,7 @@ function buildActions(): PaletteItem[] {
       try {
         const viewer = (window as any)['viewer'];
         const segLayer = viewer?.layerManager?.managedLayers?.find(
-          (x: any) => x.layer?.constructor?.name?.includes('Segmentation'),
+          (x: any) => String(x.layer?.type || '').startsWith('segmentation'),   // by the layer's own type: class names are renamed in the production build
         );
         const gs = segLayer?.layer?.displayState?.segmentationGroupState?.value;
         gs?.visibleSegments?.clear?.();
@@ -595,7 +595,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
   if (!viewer) return;
   try {
     const segLayer = viewer.layerManager?.managedLayers?.find(
-      (x: any) => x.layer?.constructor?.name?.includes('Segmentation'),
+      (x: any) => String(x.layer?.type || '').startsWith('segmentation'),   // by the layer's own type: class names are renamed in the production build
     );
     if (segLayer) {
       viewer.selectedLayer.layer = segLayer;

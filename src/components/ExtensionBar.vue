@@ -802,7 +802,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   // 1. Select the segmentation layer (required for tool keybindings)
   try {
     const segLayer = viewer.layerManager?.managedLayers?.find(
-      (x: any) => x.layer?.constructor?.name?.includes('Segmentation'),
+      (x: any) => String(x.layer?.type || '').startsWith('segmentation'),   // by the layer's own type: class names are renamed in the production build
     );
     if (segLayer) {
       viewer.selectedLayer.layer = segLayer;
