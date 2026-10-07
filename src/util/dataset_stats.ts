@@ -131,10 +131,14 @@ export async function loadDatasetStats(ds: DatasetEntry, me?: { id: string | nul
 
   let mine: MyPart | null = null;
   if (me?.id) {
-    const names = new Set(me.names.map(s => s.trim()).filter(Boolean));
+    // Capitals and stray spaces do not make a different person: the sheet
+    // holds "annkri" and "Annkri" for one player, who then saw only the cells
+    // under whichever spelling matched her name today (Annkri 2026-10-07).
+    const fold = (s: unknown) => String(s ?? '').trim().toLowerCase();
+    const names = new Set(me.names.map(fold).filter(Boolean));
     const row = work && work.find(r => r.user_id === me.id);
     mine = {
-      cells: people ? people.filter(r => names.has(String(r.proofreader))).reduce((s, r) => s + n(r.cells_done), 0) : null,
+      cells: people ? people.filter(r => names.has(fold(r.proofreader))).reduce((s, r) => s + n(r.cells_done), 0) : null,
       splits: work ? n(row?.splits) : null,
       merges: work ? n(row?.merges) : null,
       edits: work ? n(row?.splits) + n(row?.merges) : null,
