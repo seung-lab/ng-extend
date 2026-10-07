@@ -514,6 +514,21 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
       return;
     }
     const failed = recentEditError();
+    // Where the learner is in a cut, from the tool's own point counts: the
+    // box says what comes next (Ames: draw attention to G after the first
+    // point).
+    let cutStage = '';
+    if (!wantMerged && !failed) {
+      const bar = useSplitMergeOverlayStore();
+      if (bar.redPointCount > 0 && bar.bluePointCount === 0) {
+        cutStage = bar.activeGroup === 'red'
+          ? 'Red point placed. Now press G to switch to blue, then Ctrl+click the other side.'
+          : 'Blue is on. Ctrl+click a blue point on the other side of the join.';
+      } else if (bar.redPointCount > 0 && bar.bluePointCount > 0) {
+        cutStage = 'Both colours placed. Press Submit cut, or Enter.';
+      }
+    }
+    if (cutStage) { practiceStatus(cutStage); setTimeout(tick, 700); return; }
     practiceStatus(failed
       ? `That ${wantMerged ? 'merge' : 'cut'} didn't go through. The server said: "${failed}". `
         + (wantMerged
@@ -521,7 +536,8 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
           : 'Keep every point on the one fused segment, red on one side of the join and blue on the other, then submit again. Clear on the bar starts over.')
       : waiting);
     if (wantMerged) offerPlacePoints();
-    setTimeout(tick, failed ? 1500 : 3000);
+    // Cuts are watched closely so the first point is noticed at once.
+    setTimeout(tick, failed ? 1500 : wantMerged ? 3000 : 800);
   };
   setTimeout(tick, 600);
 }

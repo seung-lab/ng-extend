@@ -26,6 +26,11 @@ const isMerge = computed(() => store.toolActive === 'merge' || store.closingTool
 const isRedActive = computed(() => store.activeGroup === 'red');
 // A short pulse on the colour pills each time the active colour changes, so
 // pressing G visibly does something there (Ames, 2026-10-06).
+// "Now press G": red has points, blue has none, and red is still the active
+// colour (Ames, 2026-10-07). The G key and the hint keep pulsing until the
+// colour is switched.
+const needsSwap = computed(() => isMulticut.value && !store.pendingClose
+  && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red');
 const groupPulse = ref(false);
 let groupPulseTimer: ReturnType<typeof setTimeout> | null = null;
 watch(() => store.activeGroup, (now, before) => {
@@ -178,10 +183,10 @@ function cancelTool() {
             </div>
             <!-- The swap key sits with the colours it swaps (it used to be
                  far right, among Submit and Cancel). -->
-            <span class="nge-smo-key-hint nge-smo-swap-hint" @click="swapGroup()" title="Switch between red and blue"><kbd>G</kbd> Swap</span>
+            <span class="nge-smo-key-hint nge-smo-swap-hint" :class="{ 'nge-smo-swap-hint--now': needsSwap }" @click="swapGroup()" title="Switch between red and blue"><kbd>G</kbd> {{ needsSwap ? 'Press G for blue' : 'Swap' }}</span>
           </div>
 
-          <div class="nge-smo-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>
+          <div class="nge-smo-hint" :class="{ 'error-hint': hasInlineResult && resultIsError, 'nge-smo-hint--now': needsSwap }">{{ contextHint }}</div>
 
           <div class="nge-smo-actions" v-if="!isSubmitting">
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
@@ -420,6 +425,18 @@ function cancelTool() {
 .nge-smo-group.active .nge-smo-group-count { color: #fff; }
 .nge-smo-group:not(.active) { opacity: 0.38; }
 .nge-smo-swap-hint { margin: 0 0 0 4px; cursor: pointer; pointer-events: auto; opacity: 0.9; }
+/* "Now press G": the key lights up blue and pulses until it is pressed. */
+.nge-smo-swap-hint--now { opacity: 1; color: #fff; font-weight: 600; }
+.nge-smo-swap-hint--now kbd {
+  background: #4f7dff !important; border-color: #b9caff !important; color: #fff !important;
+  transform: scale(1.25); animation: nge-smo-swap-now 0.9s ease-out infinite;
+}
+.nge-smo-hint--now { color: #fff; font-weight: 600; font-style: normal; }
+@keyframes nge-smo-swap-now {
+  0% { box-shadow: 0 0 0 0 rgba(120, 150, 255, 0.9); }
+  100% { box-shadow: 0 0 0 14px rgba(120, 150, 255, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-smo-swap-hint--now kbd { animation: none; box-shadow: 0 0 0 3px rgba(120, 150, 255, 0.8); } }
 .nge-smo-groups--pulse .nge-smo-group.active { animation: nge-smo-group-pulse 0.6s ease-out 3; }
 .nge-smo-groups--pulse .nge-smo-swap-hint kbd { animation: nge-smo-group-pulse 0.6s ease-out 3; }
 @keyframes nge-smo-group-pulse {
