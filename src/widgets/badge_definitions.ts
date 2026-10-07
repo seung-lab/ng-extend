@@ -281,7 +281,17 @@ const loyalty = (n: number, days: number, slug: string, code: string, name: stri
  * folder must then go back into the build copy (scripts/build-prod.js and
  * scripts/dev-server.js).
  */
-export const LOYALTY_ENABLED = false;
+export const LOYALTY_ENABLED = true;
+/**
+ * TEST BUILD ONLY (branch claude/loyalty-test, Ames 2026-10-07: "a test
+ * deployment of loyalty achievements"). A test site reads and writes the
+ * live database, so while this is true the unlock card is shown but nothing
+ * is saved: no award row and no bell note (its picture would point at a test
+ * site that closes after a day). The card also ignores awards saved on
+ * 2026-10-06, so a tester who already has one still sees it once.
+ * MUST be false before this reaches eyewire-ii-community.
+ */
+export const LOYALTY_TEST_ONLY = true;
 const LOYALTY_DRAFTS: BadgeDefinition[] = [
   loyalty(1,  2, 'second-spark',   'SS', 'Day Two',   "Day 2! We're glad you came back :)"),
   loyalty(2,  3, 'third-light',    'TL', 'Day Three',    'Three days of science! You are on a roll.'),
