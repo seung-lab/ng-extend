@@ -545,6 +545,22 @@ function onInputKeydown(e: KeyboardEvent) {
   // Shift+Enter falls through: the box adds a new line (Ames 2026-10-06).
 }
 
+// ── Sending from a phone (Ames 2026-10-07: "no way to send a message from my
+// phone, enter now goes to a new line") ───────────────────────────────────
+// A phone's Return key does not always arrive as an Enter key press, so since
+// the box became a multi line one it only added a line there, and there was no
+// other way to send. On a touch screen a line break from the keyboard sends
+// instead, and a Send button is always there for everyone.
+const touchScreen = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+function onBeforeInput(e: Event) {
+  const type = (e as InputEvent).inputType;
+  if (!touchScreen || (type !== 'insertLineBreak' && type !== 'insertParagraph')) return;
+  e.preventDefault();
+  if (mentionOptions.value.length) { pickMention(mentionOptions.value[Math.min(mentionIndex.value, mentionOptions.value.length - 1)].handle); return; }
+  send();
+}
+const canSend = computed(() => isLoggedIn.value && connected.value && !!messageInput.value.trim() && !messageTooLong.value);
+
 // ── Share my view (Ames 2026-09-28) ──
 // Posts a short link to exactly what you're looking at, optionally with a
 // screenshot. Anything typed in the box rides along as the caption.
@@ -1089,6 +1105,8 @@ function toggleCollapse() {
               @keydown.stop="onInputKeydown"
               @keyup.stop
               @keypress.stop
+              @beforeinput="onBeforeInput"
+              enterkeyhint="send"
               @input="onInputChange"
               @click="onInputChange"
               @blur="mentionQuery = null"
@@ -1105,6 +1123,12 @@ function toggleCollapse() {
                 <button v-for="e in CHAT_EMOJI" :key="e" @mousedown.prevent @click.stop="insertEmoji(e)">{{ e }}</button>
               </span>
             </span>
+            <!-- Send: the only way on a phone, and there for anyone who prefers a button.
+                 mousedown is held so the keyboard stays up and the box keeps its focus. -->
+            <button v-if="!isQuiet" class="nge-chat-share-btn nge-chat-send-btn" :disabled="!canSend"
+                    @mousedown.prevent @click.stop="send" title="Send" aria-label="Send message">
+              <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M1.6 2.2 14.6 8 1.6 13.8l1.9-5.1L9.4 8 3.5 7.3z"/></svg>
+            </button>
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
@@ -1854,6 +1878,11 @@ function toggleCollapse() {
 .nge-chat-share-btn:hover:not(:disabled) { border-color: rgba(74, 158, 255, 0.5); }
 .nge-chat-share > .nge-chat-share-btn { display: flex; align-items: center; justify-content: center; padding: 0; }
 .nge-chat-share-btn:disabled { opacity: 0.4; cursor: default; }
+/* Send: lit when there is something to send. */
+.nge-chat-send-btn { flex: 0 0 auto; margin-left: 4px; display: flex; align-items: center; justify-content: center; padding: 0; color: rgba(160, 185, 220, 0.8); }
+.nge-chat-send-btn:not(:disabled) { color: #06121f; background: #7fd4ff; border-color: #7fd4ff; }
+.nge-chat-send-btn:not(:disabled):hover { background: #a9e3ff; border-color: #a9e3ff; }
+.nge-chat-send-btn:focus-visible { outline: 2px solid #7fd4ff; outline-offset: 2px; }
 .nge-chat-emoji { position: relative; flex: 0 0 auto; margin-left: 4px; }
 .nge-chat-emoji-grid {
   position: absolute;
