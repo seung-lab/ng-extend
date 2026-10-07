@@ -746,6 +746,23 @@ function toolActive(): boolean {
   return !!document.querySelector('.neuroglancer-tool-status');
 }
 
+/**
+ * The two spots that decide whether an exercise is done, when they are not
+ * the row's own. The row's supervoxels are what the reset job is pinned to
+ * (its manifest must match the row exactly), and for the 2D cut cell they
+ * were arbitrary spots in each neuron: a correct cut near the join left one
+ * of them on the wrong side, so the cut never counted (Ames, 2026-10-07).
+ * These are the supervoxels under her own two points beside the join. Kept
+ * here so the fix needs no database change.
+ */
+const CHECK_SUPERVOXELS: Record<string, [string, string]> = {
+  // Axon fused to a dendrite, 2D cut: axon (86830, 59380, 846), dendrite (86418, 59244, 814)
+  '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': ['75507587050992924', '75507587050897753'],
+};
+function checkSupervoxels(ex: PracticeExample): [string, string] {
+  return CHECK_SUPERVOXELS[ex.id] ?? [ex.supervoxel_a, ex.supervoxel_b];
+}
+
 async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
   if (session.shownId !== ex.id) {
     // Loading a view rebuilds the layers, and a tool left on stays bound to
@@ -775,7 +792,8 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     session.shownId = ex.id;
   }
   await ensureSupervoxels(ex);
-  const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
+  const [sa, sb] = checkSupervoxels(ex);
+  const [a, b] = await Promise.all([rootOfSupervoxel(ex, sa), rootOfSupervoxel(ex, sb)]);
   session.rootA = a ?? ex.root_a;
   session.rootB = b ?? ex.root_b;
   // A preview needs the two roots from after a cut. A cell registered from
@@ -799,7 +817,8 @@ export async function piecesMerged(): Promise<boolean | null> {
   const ex = session.example;
   if (!ex) return null;
   await ensureSupervoxels(ex);
-  const [a, b] = await Promise.all([rootOfSupervoxel(ex, ex.supervoxel_a), rootOfSupervoxel(ex, ex.supervoxel_b)]);
+  const [sa, sb] = checkSupervoxels(ex);
+  const [a, b] = await Promise.all([rootOfSupervoxel(ex, sa), rootOfSupervoxel(ex, sb)]);
   if (!a || !b) return null;
   const changed = a !== session.rootA || b !== session.rootB;
   session.rootA = a;
