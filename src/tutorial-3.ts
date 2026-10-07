@@ -485,6 +485,7 @@ export function finishPracticeTutorial(what: 'merge' | 'cut'): boolean {
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
   pointAtNext(false);
   const token = ++practiceWatch;
+  waitingFor = { token, wantMerged };
   watchEditErrors();
   lastEditError = null;
   helpWanted = true;
@@ -574,9 +575,38 @@ function pointAtNext(on: boolean) {
   document.querySelectorAll('.introductionStepAnchor .nge-practice-status').forEach(s => s.classList.toggle('nge-status-pop', on));
 }
 
-// Pressing Next (or Back) ends the pulse, whatever the next step does.
+/** The practice edit a step is waiting for right now, if any. */
+let waitingFor: { token: number; wantMerged: boolean } | null = null;
+
+/**
+ * Next on a practice step, with the points placed but not submitted, submits
+ * the edit instead of walking past it (Ames, 2026-10-07). The step then
+ * moves on by itself when the edit lands. With nothing placed, Next behaves
+ * as before.
+ */
+function submitInsteadOfNext(): boolean {
+  if (!waitingFor || waitingFor.token !== practiceWatch) return false;
+  const bar = useSplitMergeOverlayStore();
+  const ready = waitingFor.wantMerged ? bar.mergeSubmissionCount > 0 : (bar.redPointCount > 0 && bar.bluePointCount > 0);
+  if (!ready) return false;
+  const icon = document.querySelector(`.neuroglancer-icon[title="${waitingFor.wantMerged ? 'Submit merge' : 'Submit multicut'}"]`) as HTMLElement | null;
+  if (!icon) return false;
+  icon.click();
+  practiceStatus(waitingFor.wantMerged ? 'Submitting your merge…' : 'Submitting your cut…');
+  return true;
+}
+
+// Capture phase, so this runs before the button's own handler.
 document.addEventListener('click', e => {
-  if ((e.target as HTMLElement | null)?.closest?.('.introductionStepAnchor .chip button')) pointAtNext(false);
+  const btn = (e.target as HTMLElement | null)?.closest?.('.introductionStepAnchor .chip button') as HTMLElement | null;
+  if (!btn) return;
+  if (btn.classList.contains('next') && submitInsteadOfNext()) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  // Pressing Next (or Back) ends the pulse, whatever the next step does.
+  pointAtNext(false);
 }, true);
 
 export function watchTool(waiting: string, finished: string) {
