@@ -286,7 +286,7 @@ const adminInitialSubTab = ref<string | undefined>(undefined);
 // ── Datasets tab: per-dataset contributions + switcher ───────────────────────
 // One card per known dataset with this user's contribution counts, doubling as
 // the dataset switcher (same switchToDataset the top-bar selector uses).
-interface DatasetContribution { edits: number; completions: number; helpRequests: number; }
+interface DatasetContribution { edits: number; completions: number; helpRequests: number; outside?: number; }
 const datasetStats = ref<Record<string, DatasetContribution>>({});
 const datasetStatsLoading = ref(false);
 const activeDatasetCanon = ref('');
@@ -367,7 +367,7 @@ function datasetContribution(ds: DatasetEntry): DatasetContribution | undefined 
 const contributedDatasets = computed(() => DATASETS.filter(isDatasetShown).filter(ds => !datasetContribution(ds) || hasContributed(ds)));
 function hasContributed(ds: DatasetEntry): boolean {
   const c = datasetContribution(ds);
-  return !!c && (c.edits > 0 || c.completions > 0 || c.helpRequests > 0);
+  return !!c && (c.edits > 0 || c.completions > 0 || c.helpRequests > 0 || (c.outside ?? 0) > 0);
 }
 
 // ── Inline flag picker ────────────────────────────────────────────────────────
@@ -1902,7 +1902,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-ds-tab-stats">
               <template v-if="datasetContribution(ds)">
                 <span v-if="showsAllStats(ds) || datasetContribution(ds)?.edits" class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.edits ?? 0).toLocaleString() }}</b> edits</span>
-                <span class="nge-ds-tab-stat" :class="{ 'nge-ds-tab-stat--cells': datasetContribution(ds)?.completions }"><b>{{ (datasetContribution(ds)?.completions ?? 0).toLocaleString() }}</b> cells completed</span>
+                <span v-if="showsAllStats(ds) || datasetContribution(ds)?.completions || !datasetContribution(ds)?.outside" class="nge-ds-tab-stat" :class="{ 'nge-ds-tab-stat--cells': datasetContribution(ds)?.completions }"><b>{{ (datasetContribution(ds)?.completions ?? 0).toLocaleString() }}</b> cells completed</span>
+                <!-- Work the dataset's own records credit to this player, done in other
+                     tools. Shown here only: it counts toward nothing (Ames 2026-10-07). -->
+                <span v-if="datasetContribution(ds)?.outside" class="nge-ds-tab-stat nge-ds-tab-stat--cells"
+                      title="From the dataset's own records, for work done outside EyeWire II. It does not count toward Achievements, the leaderboard or cells completed."><b>{{ (datasetContribution(ds)?.outside ?? 0).toLocaleString() }}</b> cells proofread outside the game</span>
                 <span v-if="showsAllStats(ds) || datasetContribution(ds)?.helpRequests" class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.helpRequests ?? 0).toLocaleString() }}</b> help requests</span>
                 <span v-if="!hasContributed(ds)" class="nge-ds-tab-stat nge-ds-tab-stat--none">no contributions yet</span>
               </template>

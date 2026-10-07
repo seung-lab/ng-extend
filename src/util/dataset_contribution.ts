@@ -16,7 +16,15 @@
 import { segLayerName, canonicalDataset, currentDatasetTag, findDatasetByCanonical, type DatasetEntry } from '../datasets';
 import { completedCells, datasetKey, type CompletedCell, type CompletionLogRow } from './completion_rule';
 
-export interface DatasetContribution { edits: number; completions: number; helpRequests: number; }
+export interface DatasetContribution {
+  edits: number; completions: number; helpRequests: number;
+  /** Cells the dataset's own records credit to this player that were not
+   *  completed in the game (BANC, FlyWire...). Shown on the dataset card as
+   *  its own number and counted nowhere else: not in cells completed, the
+   *  career number, the leaderboard or any Achievement (Ames 2026-10-07:
+   *  "they should show in dataset stats but not count toward achievements"). */
+  outside: number;
+}
 
 /**
  * Datasets whose work happens in the game, so edits and help requests there
@@ -106,10 +114,30 @@ export async function celebrationCellCounts(uid: string): Promise<{ label: strin
   } catch { return null; }
 }
 
+/** The cells CAVE's copy of a dataset's own records credits to a player,
+ *  as root ids. Empty when the player has no CAVE id or it cannot be read. */
+async function mirroredCells(uid: string, tags: string[]): Promise<Set<string>> {
+  const ids = new Set<string>();
+  try {
+    const { supabase } = await import('../supabase');
+    const { data: me } = await supabase.from('users').select('cave_user_id').eq('id', uid).single();
+    const caveId = (me as any)?.cave_user_id;
+    if (caveId == null) return ids;
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase.from('cave_completions_mirror').select('segment_id')
+        .eq('cave_user_id', caveId).in('dataset', tags).order('segment_id', { ascending: true }).range(from, from + 999);
+      if (error || !data) break;
+      for (const r of data as any[]) ids.add(String(r.segment_id));
+      if (data.length < 1000) break;
+    }
+  } catch { /* the card simply shows no outside work */ }
+  return ids;
+}
+
 export async function loadContribution(ds: DatasetEntry, uid: string): Promise<DatasetContribution> {
   const { supabase } = await import('../supabase');
   const tags = datasetTagVariants(ds);
-  const [edits, helpRequests, logged] = await Promise.all([
+  const [edits, helpRequests, logged, mirror] = await Promise.all([
     // Splits and merges that went through: the same rows the board counts.
     supabase.from('edit_log').select('id', { count: 'exact', head: true })
       .eq('user_id', uid).in('dataset', tags).in('operation', ['split', 'merge']).not('success', 'is', false)
@@ -117,6 +145,11 @@ export async function loadContribution(ds: DatasetEntry, uid: string): Promise<D
     supabase.from('help_requests').select('id', { count: 'exact', head: true })
       .eq('user_id', uid).in('dataset', tags).then((r: any) => r.count ?? 0),
     loggedCells(uid, tags),
+    // Only where most work happens in other tools. On the game's own datasets
+    // the game's log is the whole record.
+    showsAllStats(ds) ? Promise.resolve(new Set<string>()) : mirroredCells(uid, tags),
   ]);
-  return { edits, completions: logged?.length ?? 0, helpRequests };
+  // A cell completed in the game is already in cells completed: not twice.
+  for (const c of logged ?? []) for (const r of c.roots) mirror.delete(r);
+  return { edits, completions: logged?.length ?? 0, helpRequests, outside: mirror.size };
 }
