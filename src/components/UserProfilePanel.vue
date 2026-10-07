@@ -67,6 +67,10 @@ const nextDay = computed(() => nextDayMilestone(totalDays.value));
 const otherAnnotations = ref<number | null>(null);
 const annotationsPlaced = computed(() => viewingOtherUser.value ? (otherAnnotations.value ?? 0) : sentAnnotations.value + pendingAnnotations.value);
 
+// Declared before loadOtherUser runs: for a signed out visitor loadPodium
+// reaches these with no wait in between, and they did not exist yet.
+const podium = ref<{ gold: number; silver: number; bronze: number }>({ gold: 0, silver: 0, bronze: 0 });
+const podiumCompletions = ref<{ gold: number; silver: number; bronze: number }>({ gold: 0, silver: 0, bronze: 0 });
 async function loadOtherUser() {
   if (viewingOtherUser.value && props.viewUserId) {
     otherUserProfile.value = await backendStore.loadUserProfile(props.viewUserId);
@@ -91,8 +95,6 @@ watch(() => props.viewUserId, () => { void loadOtherUser(); });
 // Two podiums: edits (split+merge wins) and completions (cell-mark wins).
 // loadPodium fetches both metrics in parallel; the UI tile is hidden when
 // a metric has no podium history.
-const podium = ref<{ gold: number; silver: number; bronze: number }>({ gold: 0, silver: 0, bronze: 0 });
-const podiumCompletions = ref<{ gold: number; silver: number; bronze: number }>({ gold: 0, silver: 0, bronze: 0 });
 async function loadPodium() {
   const id = (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '';
   if (!id) {
@@ -1900,7 +1902,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <div class="nge-ds-tab-stats">
               <template v-if="datasetContribution(ds)">
                 <span v-if="showsAllStats(ds) || datasetContribution(ds)?.edits" class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.edits ?? 0).toLocaleString() }}</b> edits</span>
-                <span class="nge-ds-tab-stat" :class="{ 'nge-ds-tab-stat--cells': datasetContribution(ds)?.completions }"><b>{{ (datasetContribution(ds)?.completions ?? 0).toLocaleString() }}</b> cells proofread</span>
+                <span class="nge-ds-tab-stat" :class="{ 'nge-ds-tab-stat--cells': datasetContribution(ds)?.completions }"><b>{{ (datasetContribution(ds)?.completions ?? 0).toLocaleString() }}</b> cells completed</span>
                 <span v-if="showsAllStats(ds) || datasetContribution(ds)?.helpRequests" class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.helpRequests ?? 0).toLocaleString() }}</b> help requests</span>
                 <span v-if="!hasContributed(ds)" class="nge-ds-tab-stat nge-ds-tab-stat--none">no contributions yet</span>
               </template>

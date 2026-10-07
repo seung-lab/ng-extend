@@ -1,8 +1,17 @@
 /**
- * One person's contribution to one dataset: edits (edit_log), cells
- * proofread (cave_completions_mirror, keyed by the numeric CAVE id) and help
+ * One person's contribution to one dataset: edits, cells completed and help
  * requests. Shared by the profile's Datasets tab and the "Now entering"
  * card, so the two can never show different numbers.
+ *
+ * ONE SOURCE, AND ONLY THE GAME (Ames 2026-10-07: "stats for this game
+ * should only include things that were done in this game"). Cells completed
+ * are the game's own log by the completed cell rule (completion_rule.ts,
+ * the same rule as the SQL view ew_cell_completions that the leaderboard and
+ * the career counter users.cells_completed are built on). They used to be
+ * joined with CAVE's copy of each dataset's own records, which also holds
+ * cells a player marked in other tools: a profile said 360 cells completed
+ * while its Retina card said 365, and a BANC card said 1,939 for work never
+ * done here. Summed over datasets, the cards now equal the career number.
  */
 import { segLayerName, canonicalDataset, currentDatasetTag, findDatasetByCanonical, type DatasetEntry } from '../datasets';
 import { completedCells, datasetKey, type CompletedCell, type CompletionLogRow } from './completion_rule';
@@ -28,21 +37,6 @@ export function datasetTagVariants(ds: DatasetEntry): string[] {
   // explicit tag carries that legacy retina name.
   const legacy = canon === 'stroeh_mouse_retina' ? ['eyewire_ii', 'eyewire_ii_retina'] : [];
   return [...new Set([canon, ds.id, segLayerName(ds), ...legacy])];
-}
-
-let caveIdCache: { uid: string; caveId: number | null } | null = null;
-
-async function caveIdFor(uid: string): Promise<number | null> {
-  const { supabase } = await import('../supabase');
-  if (!caveIdCache || caveIdCache.uid !== uid) {
-    let caveId: number | null = null;
-    try {
-      const { data } = await supabase.from('users').select('cave_user_id').eq('id', uid).single();
-      caveId = data?.cave_user_id ?? null;
-    } catch { /* no CAVE id yet */ }
-    caveIdCache = { uid, caveId };
-  }
-  return caveIdCache.caveId;
 }
 
 /**
@@ -84,60 +78,6 @@ async function loggedCells(uid: string, tags: string[]): Promise<CompletedCell[]
   } catch { return null; }
 }
 
-/** The mirror's cells for a dataset (root ids), or null when it cannot be read. */
-async function mirroredCells(caveId: number | null, tags: string[]): Promise<Set<string> | null> {
-  if (caveId == null) return new Set();
-  try {
-    const { supabase } = await import('../supabase');
-    const ids = new Set<string>();
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase.from('cave_completions_mirror').select('segment_id')
-        .eq('cave_user_id', caveId).in('dataset', tags).order('segment_id', { ascending: true }).range(from, from + 999);
-      if (error || !data) return null;
-      for (const r of data as any[]) ids.add(String(r.segment_id));
-      if (data.length < 1000) break;
-    }
-    return ids;
-  } catch { return null; }
-}
-
-/**
- * Cells on a dataset: the mirror's and the log's, each cell once. The mirror
- * holds older history, the log holds what CAVE's snapshots miss, and most
- * recent cells are in both. A logged cell is the same as a mirrored one when
- * any root id it was logged under is in the mirror. (This used to be the
- * larger of the two counts, which loses cells whenever each side knows of
- * some the other does not.) Null when neither can be read.
- */
-function unionCount(mirror: Set<string> | null, logged: CompletedCell[] | null, alsoSeg?: string): number | null {
-  if (mirror == null && logged == null) return null;
-  const seen = new Set(mirror ?? []);
-  let n = seen.size;
-  for (const c of logged ?? []) {
-    if (!c.roots.some(r => seen.has(r))) n++;
-    for (const r of c.roots) seen.add(r);
-  }
-  // A cell completed this second may be in neither yet.
-  if (alsoSeg && !seen.has(alsoSeg)) n++;
-  return n;
-}
-
-/**
- * Cells you have completed on the dataset on screen, for the completion
- * celebration (Amy 2026-09-28). The cell completed just now is counted even
- * when neither the mirror nor the log has caught up with it.
- */
-export async function datasetCellCount(uid: string, segId?: string): Promise<{ label: string; count: number } | null> {
-  const ds = findDatasetByCanonical(canonicalDataset(currentDatasetTag()));
-  if (!ds) return null;
-  const caveId = await caveIdFor(uid);
-  const tags = datasetTagVariants(ds);
-  if (logCache?.uid === uid) logCache = null;   // a cell was just completed
-  const [mirror, logged] = await Promise.all([mirroredCells(caveId, tags), loggedCells(uid, tags)]);
-  const count = unionCount(mirror, logged, segId);
-  return count == null ? null : { label: ds.shortLabel || ds.label, count };
-}
-
 /**
  * Both numbers of the completion celebration from ONE place: the database's
  * own list of a player's completed cells (ew_cell_completions, the rule the
@@ -168,17 +108,15 @@ export async function celebrationCellCounts(uid: string): Promise<{ label: strin
 
 export async function loadContribution(ds: DatasetEntry, uid: string): Promise<DatasetContribution> {
   const { supabase } = await import('../supabase');
-  const caveId = await caveIdFor(uid);
   const tags = datasetTagVariants(ds);
-  const [edits, mirror, helpRequests, logged] = await Promise.all([
+  const [edits, helpRequests, logged] = await Promise.all([
     // Splits and merges that went through: the same rows the board counts.
     supabase.from('edit_log').select('id', { count: 'exact', head: true })
       .eq('user_id', uid).in('dataset', tags).in('operation', ['split', 'merge']).not('success', 'is', false)
       .then((r: any) => r.count ?? 0),
-    mirroredCells(caveId, tags),
     supabase.from('help_requests').select('id', { count: 'exact', head: true })
       .eq('user_id', uid).in('dataset', tags).then((r: any) => r.count ?? 0),
     loggedCells(uid, tags),
   ]);
-  return { edits, completions: unionCount(mirror, logged) ?? 0, helpRequests };
+  return { edits, completions: logged?.length ?? 0, helpRequests };
 }
