@@ -325,6 +325,40 @@ onMounted(() => {
 });
 onUnmounted(() => { if (medalTimer) clearInterval(medalTimer); });
 
+// ── Copying chat text (Nseraf 2026-10-07: "say I wanted to copy text (I do),
+// the buttons overlapping") ───────────────────────────────────────────────
+// The Reply and React buttons sat on top of the first line of each message.
+// While text is being selected (the mouse is held down in the chat, or a
+// selection exists in it) they are put away, so every word can be reached.
+// They are also not selectable themselves: their "↩" and "☺+" used to come
+// along in whatever was copied.
+const selectingText = ref(false);
+function chatHasSelection(): boolean {
+  const sel = window.getSelection?.();
+  if (!sel || sel.isCollapsed || !sel.toString().trim()) return false;
+  const node = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
+  return !!node?.closest?.('.nge-chat-msg');
+}
+let selectMouseDown = false;
+function onSelectDown(e: MouseEvent) {
+  const t = e.target as HTMLElement | null;
+  if (e.button !== 0 || !t?.closest?.('.nge-chat-msg') || t.closest('button, a, input, textarea')) return;
+  selectMouseDown = true;
+  selectingText.value = true;
+}
+function onSelectUp() { selectMouseDown = false; selectingText.value = chatHasSelection(); }
+function onSelectionChange() { if (!selectMouseDown) selectingText.value = chatHasSelection(); }
+onMounted(() => {
+  document.addEventListener('mousedown', onSelectDown, true);
+  document.addEventListener('mouseup', onSelectUp, true);
+  document.addEventListener('selectionchange', onSelectionChange);
+});
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onSelectDown, true);
+  document.removeEventListener('mouseup', onSelectUp, true);
+  document.removeEventListener('selectionchange', onSelectionChange);
+});
+
 // ── Format name: "First L." ──
 function shortName(name: string): string {
   if (!name) return '?';
@@ -809,7 +843,7 @@ function toggleCollapse() {
     <div
       ref="panelEl"
       class="nge-chat-float"
-      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash, 'nge-chat-float--quiet': isQuiet, 'nge-chat-float--resizing': isResizing }"
+      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash, 'nge-chat-float--quiet': isQuiet, 'nge-chat-float--resizing': isResizing, 'nge-chat-selecting': selectingText }"
       @focusin="onPanelFocusIn"
       :style="{
         ...(collapsed ? {} : { width: panelWidth + 'px', height: shownHeight + 'px' }),
@@ -1927,7 +1961,9 @@ button.nge-chat-quote:hover { background: rgba(74, 158, 255, 0.13); border-left-
 
 /* ── Reactions ── */
 .nge-chat-msg { position: relative; }
-.nge-chat-react-add { position: absolute; top: 1px; right: 2px; display: flex; gap: 3px; }
+.nge-chat-react-add { position: absolute; top: 1px; right: 2px; display: flex; gap: 3px; user-select: none; -webkit-user-select: none; }
+/* Put away while chat text is being selected, so they never cover a word. */
+.nge-chat-selecting .nge-chat-react-add:not(:has(.nge-chat-react-plus--open)) { visibility: hidden; pointer-events: none; }
 .nge-chat-reply-btn { font-size: 12px; }
 .nge-chat-react-plus {
   opacity: 0;
