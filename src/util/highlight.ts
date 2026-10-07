@@ -127,6 +127,8 @@ async function strokeSource(style: HighlightStyle): Promise<any> {
     });
     viewer.layerSpecification.add(managed);
   }
+  // A new highlight is always one you can see.
+  if (managed.visible === false) managed.setVisible(true);
   // The local source appears once the layer has loaded.
   for (let i = 0; i < 60; i++) {
     const src = managed.layer?.localAnnotations;
@@ -323,14 +325,25 @@ export function setTintRadiusNm(nm: number) {
   try { localStorage.setItem(TINT_KEY, String(Math.round(nm))); } catch { /* */ }
   scheduleTint();
 }
-/** Whether the marks colour the cell in 3D. The stroke is never drawn there,
- *  so off hides the marks from the 3D view; the 2D strokes stay. */
-const TINT_SHOWN_KEY = 'nge_highlight_tint_3d';
-export function tintShown(): boolean {
-  try { return localStorage.getItem(TINT_SHOWN_KEY) !== '0'; } catch { return true; }
+/** Whether your highlights are showing. A highlight lives in a layer of its
+ *  own, so this is those layers being switched on: the same thing as the eye
+ *  on each layer's tab, for all of them at once. Off hides the strokes in 2D
+ *  and the colour on the cell in 3D, and nothing is deleted. */
+export function highlightsShown(): boolean {
+  const layers = highlightLayers();
+  return !layers.length || layers.some(l => l.managed.visible !== false);
 }
-export function setTintShown(on: boolean) {
-  try { localStorage.setItem(TINT_SHOWN_KEY, on ? '1' : '0'); } catch { /* */ }
+/** Calls back whenever a layer is added, removed, shown or hidden. */
+export function onLayersChanged(cb: () => void): () => void {
+  const signal = viewerOf()?.layerManager?.layersChanged;
+  if (!signal) return () => { /* nothing to undo */ };
+  signal.add(cb);
+  return () => { signal.remove(cb); };
+}
+export function setHighlightsShown(on: boolean) {
+  for (const { managed } of highlightLayers()) {
+    if ((managed.visible !== false) !== on) managed.setVisible(on);
+  }
   scheduleTint();
 }
 
@@ -339,7 +352,7 @@ const hexRgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2),
 
 function buildTint(): NgeMeshTint | null {
   const viewer = viewerOf();
-  if (!viewer || !tintShown()) return null;
+  if (!viewer) return null;
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).slice(0, 3).map(x => x / 1e-9);
   if (scalesNm.length < 3) return null;
   // Every stroke segment, in nanometres.

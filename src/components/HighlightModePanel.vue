@@ -9,7 +9,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import { startLoader, type Live } from '../find_path_status';
 import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, tintShown, setTintShown, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -184,12 +184,12 @@ function onTintInput(e: Event) {
   tintUm.value = Number((e.target as HTMLInputElement).value);
   setTintRadiusNm(tintUm.value * 1000);
 }
-/** Whether the marks show on the cell in 3D; they stay in 2D either way. */
-const show3d = ref(tintShown());
-function setShow3d(on: boolean) {
-  if (show3d.value === on) return;
-  show3d.value = on;
-  setTintShown(on);
+/** Whether your highlights are showing, in 2D and in 3D alike. It is the
+ *  highlight layers being switched on, so it follows the layer tabs too. */
+const shown = ref(highlightsShown());
+function setShown(on: boolean) {
+  shown.value = on;
+  setHighlightsShown(on);
 }
 
 // The crosshair cursor shows while a click would place a point.
@@ -197,7 +197,7 @@ const ctrlHeld = ref(false);
 watch([ctrlHeld, hHeld], () => document.body.classList.toggle('nge-highlight-armed', ctrlHeld.value || hHeld.value));
 
 function say(text: string, bad = false, count = '') { message.value = text; messageBad.value = bad; stat.value = count; }
-function refresh() { markCount.value = listHighlights().length; }
+function refresh() { markCount.value = listHighlights().length; shown.value = highlightsShown(); }
 const styleOf = () => styles.value.find(s => s.key === styleKey.value) ?? styles.value[0];
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
 
@@ -322,8 +322,10 @@ function clearAll() {
   refresh();
 }
 
+let stopLayerWatch = () => { /* set on mount */ };
 onMounted(() => {
   refresh();
+  stopLayerWatch = onLayersChanged(() => { shown.value = highlightsShown(); });
   requestAnimationFrame(() => { if (panelEl.value) runPanelTrace(panelEl.value); });
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);
@@ -334,6 +336,7 @@ onMounted(() => {
   requestAnimationFrame(clampPos);
 });
 onBeforeUnmount(() => {
+  stopLayerWatch();
   window.removeEventListener('keydown', onKeyDown, true);
   window.removeEventListener('keyup', onKeyUp, true);
   window.removeEventListener('pointerdown', onPointerCapture, true);
@@ -427,18 +430,18 @@ onBeforeUnmount(() => {
         <input type="range" min="0.5" max="8" step="0.5" :value="tintUm" @input="onTintInput" />
         <span class="nge-hl-width-val">{{ tintUm }} <span class="nge-hl-unit">µm</span></span>
       </label>
-      <!-- Show / Hide, as a two way switch in the box's own style (Ames
-           2026-10-07: "this check box should say hide/show, give it better
-           style"). The side that is lit is how things are now. -->
-      <div class="nge-hl-show3d" title="Hide takes your highlights off the 3D view. They stay in the 2D views and are still saved.">
-        <span id="nge-hl-show3d-label">Highlights in 3D</span>
-        <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-show3d-label" :data-on="show3d ? 'show' : 'hide'">
-          <button type="button" role="radio" :aria-checked="show3d ? 'true' : 'false'" :tabindex="show3d ? 0 : -1"
-                  class="nge-hl-switch-opt" @click="setShow3d(true)"
-                  @keydown.right.prevent.stop="setShow3d(false)" @keydown.left.prevent.stop="setShow3d(true)">Show</button>
-          <button type="button" role="radio" :aria-checked="show3d ? 'false' : 'true'" :tabindex="show3d ? -1 : 0"
-                  class="nge-hl-switch-opt nge-hl-switch-opt--hide" @click="setShow3d(false)"
-                  @keydown.right.prevent.stop="setShow3d(false)" @keydown.left.prevent.stop="setShow3d(true)">Hide</button>
+      <!-- Show / Hide for every highlight at once, in 2D and 3D (Ames
+           2026-10-07: "keep the hide/show highlight slider in highlight").
+           The side that is lit is how things are now. -->
+      <div class="nge-hl-show3d" title="Hide takes your highlights out of view, in 2D and in 3D. Nothing is deleted. You can also hide one highlight from its own layer tab.">
+        <span id="nge-hl-show3d-label">Highlight</span>
+        <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-show3d-label" :data-on="shown ? 'show' : 'hide'">
+          <button type="button" role="radio" :aria-checked="shown ? 'true' : 'false'" :tabindex="shown ? 0 : -1"
+                  class="nge-hl-switch-opt" @click="setShown(true)"
+                  @keydown.right.prevent.stop="setShown(false)" @keydown.left.prevent.stop="setShown(true)">Show</button>
+          <button type="button" role="radio" :aria-checked="shown ? 'false' : 'true'" :tabindex="shown ? -1 : 0"
+                  class="nge-hl-switch-opt nge-hl-switch-opt--hide" @click="setShown(false)"
+                  @keydown.right.prevent.stop="setShown(false)" @keydown.left.prevent.stop="setShown(true)">Hide</button>
         </div>
       </div>
       <!-- The foot of the box reads like a stats line: what just happened, a
