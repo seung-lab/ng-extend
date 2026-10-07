@@ -35,25 +35,6 @@ Limits to say out loud in the design:
 - Annotations are logged as hourly totals, so a range can only be accurate to
   about the hour for them.
 
-## Undo for removed segments ("undelete")
+## Built
 
-Asked by Nik (Nseraf), passed on by Ames, 2026-10-07. Not urgent: Nik said
-"eventually".
-
-What was asked: a button that brings back a segment you just removed from the
-view, going back up to 50 segments, rolling. KK (Krzysztof Kruk) wrote this
-first as a neuroglancer user script and proofreaders found it very useful.
-
-Known so far:
-
-- The viewer in this branch has no undo of its own. A search of the layer,
-  viewer and UI code finds none, and nothing in the app keeps a list of
-  removed segments.
-- This is about the VIEW (which segments are shown), not about edits. Undoing
-  a merge or a cut is a different thing with its own rules on the server.
-- A likely shape: watch the segmentation layer's visible set, keep the last
-  50 ids that left it, and add a button and a shortcut that puts the newest
-  one back. A dataset switch or opening a shared view replaces everything at
-  once and should clear the list instead of filling it.
-- Worth asking KK for the script, so the behaviour players already know
-  (order, the limit, the shortcut) is matched.
+- **Undelete** (asked by Nik, 2026-10-07; Krzysztof Kruk's idea and user scripts, discuss.flywire.ai/t/235 and /t/236). Built the same day: `src/util/undelete.ts` and `src/components/UndeleteChip.vue`. Keeps the last 50 steps per dataset and tab; a "clear" comes back as one step; Ctrl+Z or the chip in the top bar.

@@ -4,6 +4,8 @@ import { startImageLoadingHint } from './util/image_loading_hint';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
 import GrowingCell from 'components/GrowingCell.vue';
 import { watchPhoneEmptyView } from './widgets/widget_utils';
+import { startUndelete } from './util/undelete';
+import { Uint64 as Uint64ForUndelete } from 'neuroglancer/util/uint64';
 import { isMobileRef as phoneRef } from './util/mobile';
 import { installScriptApi } from './script_api';
 import { startHighlightTint } from './util/highlight';
@@ -376,6 +378,8 @@ function setupViewer() {
   startImageLoadingHint(viewer);
   // Phones: never leave the 3D only view with nothing in it.
   watchPhoneEmptyView(() => phoneRef.value);
+  // Undelete: remember the cells that leave the view, to bring them back.
+  startUndelete(Uint64ForUndelete);
   installNoFourPanel(viewer);
   // window.eyewire, the stable API for player scripts (static/scripts.html).
   installScriptApi(viewer, {
