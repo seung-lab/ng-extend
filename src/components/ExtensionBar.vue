@@ -1825,7 +1825,11 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-zoom { 0% { transform: scale(1); } 40% { transform: scale(1.4); } 100% { transform: scale(1); } }
 
 /* Tags (pin): bobs; click drops it in and it sticks with a squash. */
-#extensionBar [data-icon-id="tags"]:hover svg { animation: nge-ti-bob 0.9s ease-in-out infinite; }
+/* Tags: the pin hops, the ground under it does not (Ames 2026-10-07). */
+#extensionBar [data-icon-id="tags"] svg { overflow: visible; }
+#extensionBar [data-icon-id="tags"]:hover svg .nge-ti-pin { animation: nge-ti-pin-hop 0.9s ease-in-out infinite; }
+@keyframes nge-ti-pin-hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.9px); } }
+@media (prefers-reduced-motion: reduce) { #extensionBar [data-icon-id="tags"]:hover svg .nge-ti-pin { animation: none; } }
 #extensionBar [data-icon-id="tags"].nge-pop svg { animation: nge-ti-drop 0.55s cubic-bezier(0.5, 0, 0.5, 1); }
 @keyframes nge-ti-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
 @keyframes nge-ti-drop { 0% { transform: translateY(-9px); opacity: 0.4; } 55% { transform: translateY(0) scale(1.12, 0.82); opacity: 1; } 78% { transform: translateY(-1.5px) scale(0.96, 1.05); } 100% { transform: none; } }
