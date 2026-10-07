@@ -25,15 +25,20 @@ async function fresh() {
     INSERT INTO proofreading_tasks SELECT FROM generate_series(1,9);
     INSERT INTO users(id,display_name) SELECT ('00000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'p'||n FROM generate_series(1,30) n;`);
   const sql=fs.readFileSync(path.join(__dirname,'../supabase-leaderboard-accuracy.sql'),'utf8');
+  // The completed-cell rule as it is now: a cell completed again after an edit is the same cell.
+  const same=fs.readFileSync(path.join(__dirname,'../supabase-completions-same-cell.sql'),'utf8');
   await db.exec(sql);
-  await db.exec(sql);            // safe to re-run
+  await db.exec(same);
+  await db.exec(sql);            // safe to re-run, in either order
+  await db.exec(same);
+  await db.exec(same);
   return db;
 }
 /** Log a row `ago` (a PostgreSQL interval) before now. */
-const log=(db,user,operation,ago,{root,final,task,dataset='stroeh_mouse_retina',success=true}={})=>db.query(
+const log=(db,user,operation,ago,{root,final,task,same,dataset='stroeh_mouse_retina',success=true}={})=>db.query(
   `INSERT INTO edit_log(user_id,operation,timestamp,task_id,metadata,dataset,success)
    VALUES($1,$2,now()-$3::interval,$4,$5::jsonb,$6,$7)`,
-  [uid(user),operation,ago,task??null,JSON.stringify({...(root?{root_id:root}:{}),...(final?{final_segment_id:final}:{})}),dataset,success]);
+  [uid(user),operation,ago,task??null,JSON.stringify({...(root?{root_id:root}:{}),...(final?{final_segment_id:final}:{}),...(same?{same_cell_as:same}:{})}),dataset,success]);
 const board=async(db,user)=>(await db.query('SELECT * FROM user_edit_counts WHERE id=$1',[uid(user)])).rows[0];
 const cells=async(db,user)=>(await db.query('SELECT dataset,cell,done_at FROM ew_cell_completions WHERE user_id=$1 ORDER BY done_at',[uid(user)])).rows;
 
@@ -61,7 +66,7 @@ test('one completed-cell rule: duplicates, un-marks, ids, datasets, history',asy
     // 5 a row with no id on its own is one cell
     await log(db,5,'mark_complete','2 hours');
     assert.equal((await board(db,5)).completions_week,1);
-    // 6 free marks: a changed root id is two roots (documented: distinct roots)
+    // 6 free marks the server could not tie together: a changed root id is two roots
     await log(db,6,'mark_complete','2 days',{root:'old'});
     await log(db,6,'mark_complete','2 hours',{root:'new'});
     assert.equal((await board(db,6)).completions_week,2);
@@ -111,6 +116,63 @@ test('one completed-cell rule: duplicates, un-marks, ids, datasets, history',asy
     assert.deepEqual([b.edits_24h,b.edits_week,b.edits_logged],[1,2,2]);
     // a player with no activity is still on the board, with zeros
     assert.deepEqual((({edits_24h,completions_week})=>[edits_24h,completions_week])(await board(db,30)),[0,0]);
+  } finally { await db.close(); }
+});
+
+test('a cell completed again after an edit is the same cell',async()=>{
+  const db=await fresh();
+  try {
+    const rec=async(user,row)=>(await db.query('SELECT public.ew_log_activity($1,$2::jsonb) AS r',[uid(user),JSON.stringify(row)])).rows[0].r;
+    const ds='stroeh_mouse_retina';
+    // 1 The reported case: complete, edit (new root id), complete again, over and over. One cell.
+    let r=await rec(1,{operation:'mark_complete',dataset:ds,metadata:{root_id:'100'}});
+    assert.equal(r.cells_completed,1);
+    r=await rec(1,{operation:'mark_complete',dataset:ds,metadata:{root_id:'101',same_cell_as:'100'}});
+    assert.equal(r.cells_completed,1);
+    r=await rec(1,{operation:'mark_complete',dataset:ds,metadata:{root_id:'102',same_cell_as:'100'}});
+    assert.equal(r.cells_completed,1);
+    assert.deepEqual((await cells(db,1)).map(c=>c.cell),['100']);
+    // ... and it is dated at the first completion, so it is not a new cell this week either.
+    await log(db,2,'mark_complete','9 days',{root:'200'});
+    await log(db,2,'mark_complete','2 hours',{root:'201',same:'200'});
+    assert.deepEqual([(await board(db,2)).completions_week,(await board(db,2)).completions_logged],[0,1]);
+    // 2 Un-marking the newest version un-marks the cell; marking it again brings it back.
+    r=await rec(1,{operation:'unmark_complete',dataset:ds,metadata:{root_id:'102'}});
+    assert.equal(r.cells_completed,0);
+    r=await rec(1,{operation:'mark_complete',dataset:ds,metadata:{root_id:'102'}});
+    assert.equal(r.cells_completed,1);
+    // 3 Un-marked, edited, marked again: still that one cell.
+    r=await rec(1,{operation:'unmark_complete',dataset:ds,metadata:{root_id:'102'}});
+    r=await rec(1,{operation:'mark_complete',dataset:ds,metadata:{root_id:'103',same_cell_as:'100'}});
+    assert.equal(r.cells_completed,1);
+    // 4 A cell the server did not tie to anything is its own cell.
+    r=await rec(1,{operation:'mark_complete',dataset:ds,metadata:{root_id:'900'}});
+    assert.equal(r.cells_completed,2);
+    // 5 Identity is per player: another player completing the edited cell has one cell of their own.
+    r=await rec(3,{operation:'mark_complete',dataset:ds,metadata:{root_id:'101'}});
+    assert.equal(r.cells_completed,1);
+    // 6 ... and per dataset.
+    r=await rec(1,{operation:'mark_complete',dataset:'pinky_nf_v2',metadata:{root_id:'101'}});
+    assert.equal(r.cells_completed,3);
+    // 7 A later version of a Cell Library cell is that task, whichever was logged first.
+    await log(db,4,'complete_task','3 days',{final:'300',task:1});
+    await log(db,4,'mark_complete','2 hours',{root:'301',same:'task:1'});
+    assert.deepEqual((await cells(db,4)).map(c=>c.cell),['task:1']);
+    await log(db,5,'mark_complete','3 days',{root:'400'});
+    await log(db,5,'mark_complete','2 days',{root:'401',same:'400'});
+    await log(db,5,'complete_task','2 hours',{final:'400',task:2});
+    assert.deepEqual((await cells(db,5)).map(c=>c.cell),['task:2']);
+    // 8 Only a mark carries it: on any other row the field means nothing.
+    await log(db,6,'mark_complete','3 days',{root:'500'});
+    await log(db,6,'unmark_complete','2 hours',{root:'501',same:'500'});
+    assert.equal((await board(db,6)).completions_logged,1);
+    // The server reads a player's roots with their cells; browsers can not.
+    const roots=(await db.query('SELECT cell,rid FROM public.ew_completion_roots($1,$2) ORDER BY rid',[uid(1),'eyewire_ii'])).rows.map(x=>x.rid+'>'+x.cell);
+    assert.deepEqual(roots,['100>100','101>100','102>100','103>100','900>900']);
+    const grants=(await db.query(`SELECT has_function_privilege('anon','public.ew_completion_roots(uuid,text)','EXECUTE') a,
+      has_function_privilege('authenticated','public.ew_completion_roots(uuid,text)','EXECUTE') b,
+      has_function_privilege('service_role','public.ew_completion_roots(uuid,text)','EXECUTE') c`)).rows[0];
+    assert.deepEqual([grants.a,grants.b,grants.c],[false,false,true]);
   } finally { await db.close(); }
 });
 
@@ -229,6 +291,8 @@ test('the app\'s copy of the rule (completion_rule.ts) gives the same cells as t
       const operation=pick(['mark_complete','mark_complete','complete_task','complete_task','unmark_complete']);
       const root=pick([null,'r1','r2','r3','r4','r5']), task=pick([null,null,1,2,3]);
       const metadata=root==null?{}:operation==='complete_task'?{final_segment_id:root}:{root_id:root};
+      // Some marks were tied by the server to an earlier cell (a root id or a task).
+      if (root!=null&&operation!=='complete_task'&&rnd(3)===0) metadata.same_cell_as=pick(['r1','r2','r5','task:1','task:3','gone']);
       rows.push({id:i+1,user_id:uid(1),operation,timestamp:new Date(t).toISOString(),task_id:task,metadata,
         dataset:pick(['stroeh_mouse_retina','stroeh_mouse_retina','eyewire_ii','pni_mec']),success:rnd(12)!==0});
     }

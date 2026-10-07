@@ -2,7 +2,7 @@
 // Recording a player's activity: check it, write it once, and let the
 // database move the counters in the same transaction (ew_log_activity in
 // supabase-leaderboard-accuracy.sql). See activity-policy.js for the rules.
-const {cleanActivityRow, verifyGraphEdit, stripCounters} = require('./activity-policy');
+const {cleanActivityRow, verifyGraphEdit, lineageTarget, sameCellAs, stripCounters} = require('./activity-policy');
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 const NOBODY = '00000000-0000-0000-0000-000000000000';
 
@@ -47,6 +47,19 @@ async function recordActivity({rpc, insertLegacy, who, me, token, value, fetchIm
   if (check.state === 'rejected') fail(403, check.why);
   if (check.state === 'verified') { row.operation = check.operation; row.metadata = {...row.metadata, verified: true}; }
   else if (check.state === 'unverified') row.metadata = {...(row.metadata || {}), verified: false};
+  // A cell completed again after an edit is the same cell: tie a root id the
+  // player has not logged before to the cell it came from. Until
+  // supabase-completions-same-cell.sql is run the first call answers 404 and
+  // nothing changes.
+  if (lineageTarget(row)) {
+    let known = null;
+    try { known = await rpc('ew_completion_roots', {p_user: me.id, p_dataset: row.dataset}); } catch { /* counted by root id */ }
+    if (known?.status === 200 && Array.isArray(known.body)) {
+      const same = await sameCellAs(row, known.body, token, fetchImpl);
+      if (same.state === 'same') row.metadata = {...row.metadata, same_cell_as: same.cell};
+      else if (same.state === 'unchecked') row.metadata = {...row.metadata, lineage_checked: false};
+    }
+  }
   const r = await rpc('ew_log_activity', {p_user: me.id, p_row: row});
   if (r.status !== 200 || !r.body || typeof r.body !== 'object') fail(500, 'The activity could not be recorded.');
   return {counted: true, verified: check.state === 'verified' ? true : check.state === 'unverified' ? false : null, ...r.body};

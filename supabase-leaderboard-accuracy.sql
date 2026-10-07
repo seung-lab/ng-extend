@@ -31,6 +31,9 @@ RETURNS text LANGUAGE sql IMMUTABLE AS $$
 $$;
 
 -- ── 2. The completed-cell rule ──────────────────────────────────────────────
+-- SUPERSEDED: supabase-completions-same-cell.sql redefines this view (a cell
+-- completed again after an edit is the same cell). Run that file after this
+-- one; the text below is what a fresh install starts from.
 -- One row per cell a player has completed and not un-marked, with the moment
 -- it was completed. Every reader windows THIS, so a rule can never differ
 -- between the board, the podium and the announcement again.

@@ -68,6 +68,7 @@ function cleanActivityRow(value) {
     metadata = {...value.metadata};
     // Set by the server only.
     delete metadata.verified; delete metadata.verified_by;
+    delete metadata.same_cell_as; delete metadata.lineage_checked;
   }
   const dataset = value.dataset == null || value.dataset === '' ? 'eyewire_ii' : String(value.dataset);
   if (!/^[A-Za-z0-9_.-]{1,100}$/.test(dataset)) fail(400, 'Invalid dataset.');
@@ -126,6 +127,79 @@ async function verifyGraphEdit(row, who, token, fetchImpl = fetch, now = Date.no
   return {state: 'verified', operation};
 }
 
+// Dataset name -> its graph table, for the datasets on a graph server the
+// server may ask. Rows logged under the retina's old aliases are the retina.
+const DATASET_TABLE = Object.freeze({
+  ...Object.fromEntries(Object.entries(TABLE_DATASET).map(([table, dataset]) => [dataset, table])),
+  eyewire_ii: 'stroeh_mouse_retina', eyewire_ii_retina: 'stroeh_mouse_retina',
+});
+const LINEAGE_HOST = 'minnie.microns-daf.com';
+/** The root id a completion row is about (same order as the SQL rule). */
+const rootOf = metadata => {
+  const id = metadata?.final_segment_id ?? metadata?.root_id ?? metadata?.segment_id;
+  return id == null || id === '' ? null : String(id);
+};
+/** Does this row need the lineage question at all? A free mark with a root
+ *  id, on a dataset whose graph server may be asked. */
+function lineageTarget(row) {
+  if (row?.operation !== 'mark_complete' || row.success === false) return null;
+  const root = rootOf(row.metadata);
+  const table = DATASET_TABLE[row.dataset];
+  if (!root || !/^[1-9]\d{0,19}$/.test(root) || !table) return null;
+  return {host: LINEAGE_HOST, table, root};
+}
+
+/**
+ * Is the cell being marked a later version of a cell this player already
+ * completed? An edit gives a cell a new root id, so without this a cell that
+ * is edited and completed again would count as another cell.
+ *
+ * `known` is every root id the player has completed on this dataset, with
+ * the cell it belongs to ({cell, rid, first_at}, SQL: ew_completion_roots).
+ *   'same'            every root id logged for an earlier cell is an ancestor
+ *                     of this one: {cell} is that cell (the earliest, if the
+ *                     player's own merge joined several)
+ *   'new'             no earlier cell leads to this root. The second piece of
+ *                     a cell that was split in two is new: its sibling is not
+ *                     its ancestor.
+ *   'unchecked'       the graph server gave no answer; the row is recorded as
+ *                     a root of its own, and says so
+ *   'not_applicable'  not a free mark, a root already logged, or a dataset
+ *                     whose graph server is not asked (MEC)
+ */
+async function sameCellAs(row, known, token, fetchImpl = fetch) {
+  const target = lineageTarget(row);
+  if (!target) return {state: 'not_applicable'};
+  const rows = (Array.isArray(known) ? known : []).filter(k => k && k.cell != null && k.rid != null);
+  if (rows.some(k => String(k.rid) === target.root)) return {state: 'not_applicable'};
+  if (!rows.length) return {state: 'new'};
+  if (!token) return {state: 'unchecked'};
+  let body;
+  try {
+    const url = `https://${target.host}/segmentation/api/v1/table/${target.table}/root/${target.root}/lineage_graph`;
+    const res = await fetchImpl(url, {headers: {Authorization: `Bearer ${token}`}, redirect: 'error', signal: AbortSignal.timeout(8000)});
+    if (!res.ok) return {state: 'unchecked'};
+    body = await res.text();
+  } catch { return {state: 'unchecked'}; }
+  // Ids are read as text: they are 18 digits and JSON numbers would round them.
+  const parents = new Map();
+  for (const m of body.matchAll(/"source"\s*:\s*"?(\d+)"?\s*,\s*"target"\s*:\s*"?(\d+)/g)) {
+    if (!parents.has(m[2])) parents.set(m[2], []);
+    parents.get(m[2]).push(m[1]);
+  }
+  const ancestors = new Set(), todo = [target.root];
+  while (todo.length) for (const p of parents.get(todo.pop()) || []) if (!ancestors.has(p)) { ancestors.add(p); todo.push(p); }
+  const cells = new Map();
+  for (const k of rows) {
+    const c = cells.get(String(k.cell)) || {cell: String(k.cell), all: true, at: Infinity};
+    if (!ancestors.has(String(k.rid))) c.all = false;
+    const at = Date.parse(k.first_at); if (at < c.at) c.at = at;
+    cells.set(c.cell, c);
+  }
+  const same = [...cells.values()].filter(c => c.all).sort((a, b) => a.at - b.at || (a.cell < b.cell ? -1 : 1))[0];
+  return same ? {state: 'same', cell: same.cell} : {state: 'new'};
+}
+
 // Counters only the server may move once it records activity itself.
 const SERVER_COUNTERS = ['total_edits','total_merges','total_splits','cells_completed','current_streak',
   'longest_streak','last_edit_date','total_annotations'];
@@ -136,4 +210,4 @@ function stripCounters(row) {
   return removed;
 }
 
-module.exports = {cleanActivityRow, verifyGraphEdit, graphTarget, stripCounters, OPERATIONS, SERVER_COUNTERS, MAX_OPERATION_AGE_MS};
+module.exports = {cleanActivityRow, verifyGraphEdit, graphTarget, lineageTarget, sameCellAs, stripCounters, OPERATIONS, SERVER_COUNTERS, MAX_OPERATION_AGE_MS};

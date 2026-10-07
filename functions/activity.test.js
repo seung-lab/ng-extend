@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {cleanActivityRow,verifyGraphEdit,stripCounters,MAX_OPERATION_AGE_MS}=require('./activity-policy');
+const {cleanActivityRow,verifyGraphEdit,sameCellAs,lineageTarget,stripCounters,MAX_OPERATION_AGE_MS}=require('./activity-policy');
 const {recordActivity,serverCounts,resetServerCounts}=require('./activity');
 const who={email:'player@example.invalid',caveId:2455}, me={id:'11111111-1111-4111-8111-111111111111'};
 const graph='https://minnie.microns-daf.com/segmentation/api/v1/table/stroeh_mouse_retina';
@@ -88,6 +88,72 @@ test('before the database function exists nothing changes; after, the server cou
  out=await recordActivity({rpc,insertLegacy,who,me,token:'tok',value:{operation:'split',metadata:{diff:1}},fetchImpl:fresh({})});
  assert.equal(out.verified,false); assert.equal(calls.at(-1).p_row.metadata.verified,false);
  await assert.rejects(()=>recordActivity({rpc,insertLegacy,who,me:null,token:'tok',value}),/Sign in/);
+ resetServerCounts();
+});
+// The graph server's history of a root, as it sends it: big ids as bare numbers.
+const lineage=links=>async(url,init)=>{caveCalls.push({url,auth:init.headers.Authorization});
+  return {ok:true,status:200,text:async()=>`{"directed":true,"links":[${links.map(([s,t])=>`{"source":${s},"target":${t}}`).join(',')}],"nodes":[]}`};};
+const A='720575940562157822',B='720575940563268315',C='720575940552793357',P='720575940556844672',Q='720575940556833152',OTHER='720575940578129082';
+const mark=(root,over={})=>cleanActivityRow({operation:'mark_complete',dataset:'stroeh_mouse_retina',metadata:{root_id:root},...over});
+const known=(...pairs)=>pairs.map(([rid,cell],i)=>({rid,cell,first_at:new Date(now+i*60000).toISOString()}));
+
+test('a root that descends from a cell the player completed is that cell',async()=>{
+ caveCalls=[];
+ // Completed A, edited it (A -> B), completing B: the same cell.
+ assert.deepEqual(await sameCellAs(mark(B),known([A,A]),'tok',lineage([[A,B]])),{state:'same',cell:A});
+ assert.equal(caveCalls[0].url,`https://minnie.microns-daf.com/segmentation/api/v1/table/stroeh_mouse_retina/root/${B}/lineage_graph`);
+ assert.equal(caveCalls[0].auth,'Bearer tok');
+ // Edited again (A -> B -> C): still A, through every version in between.
+ assert.deepEqual(await sameCellAs(mark(C),known([A,A],[B,A]),'tok',lineage([[A,B],[B,C]])),{state:'same',cell:A});
+ // A Cell Library cell: its task.
+ assert.deepEqual(await sameCellAs(mark(B),known([A,'task:7']),'tok',lineage([[A,B]])),{state:'same',cell:'task:7'});
+ // What a root BECAME is not where it came from: an old root is not "the same as" its later version.
+ assert.deepEqual(await sameCellAs(mark(A),known([B,B]),'tok',lineage([[A,B]])),{state:'new'});
+ // A split in two (A -> P and Q). The first piece completed is the cell; the second is a cell of its own.
+ assert.deepEqual(await sameCellAs(mark(P),known([A,A]),'tok',lineage([[A,P],[A,Q]])),{state:'same',cell:A});
+ assert.deepEqual(await sameCellAs(mark(Q),known([A,A],[P,A]),'tok',lineage([[A,P],[A,Q]])),{state:'new'});
+ // Two completed cells merged into one (A + OTHER -> C): the earliest, and never a new one.
+ assert.deepEqual(await sameCellAs(mark(C),known([OTHER,OTHER],[A,A]),'tok',lineage([[A,C],[OTHER,C]])),{state:'same',cell:OTHER});
+ // An unrelated cell is new.
+ assert.deepEqual(await sameCellAs(mark(OTHER),known([A,A]),'tok',lineage([[P,OTHER]])),{state:'new'});
+ // The retina's old dataset names are the retina.
+ assert.equal((await sameCellAs(mark(B,{dataset:'eyewire_ii'}),known([A,A]),'tok',lineage([[A,B]]))).state,'same');
+ // No answer: recorded as its own root, and it says so. Never a rejection.
+ assert.deepEqual(await sameCellAs(mark(B),known([A,A]),'tok',async()=>({ok:false,status:503})),{state:'unchecked'});
+ assert.deepEqual(await sameCellAs(mark(B),known([A,A]),'tok',async()=>{throw new Error('down');}),{state:'unchecked'});
+ assert.deepEqual(await sameCellAs(mark(B),known([A,A]),null,lineage([[A,B]])),{state:'unchecked'});
+ // Never asked: nothing completed before, a root already logged, MEC, a made-up id, anything that is not a mark.
+ caveCalls=[];
+ assert.deepEqual(await sameCellAs(mark(B),[],'tok',lineage([[A,B]])),{state:'new'});
+ assert.equal((await sameCellAs(mark(B),known([B,A]),'tok',lineage([[A,B]]))).state,'not_applicable');
+ assert.equal((await sameCellAs(mark(B,{dataset:'pni_mec'}),known([A,A]),'tok',lineage([[A,B]]))).state,'not_applicable');
+ assert.equal(lineageTarget(mark('1/../../x')),null);
+ assert.equal(lineageTarget(mark(B,{success:false})),null);
+ assert.equal(lineageTarget(cleanActivityRow({operation:'unmark_complete',dataset:'stroeh_mouse_retina',metadata:{root_id:B}})),null);
+ assert.equal(lineageTarget(cleanActivityRow({operation:'complete_task',dataset:'stroeh_mouse_retina',metadata:{final_segment_id:B}})),null);
+ assert.equal(caveCalls.length,0);
+});
+test('the server writes the earlier cell on the row; a browser can not',async()=>{
+ resetServerCounts();
+ const m=mark(B,{metadata:{root_id:B,same_cell_as:'task:1',lineage_checked:true}}).metadata;
+ assert.deepEqual(m,{root_id:B});
+ let installed=true; const sent=[];
+ const rpc=async(name,args)=>{
+   if(name==='ew_completion_roots') return installed?{status:200,body:known([A,A])}:{status:404,body:{code:'PGRST202'}};
+   if(args.p_user.startsWith('0000')) return {status:400,body:{code:'P0001',message:'unknown player'}};
+   sent.push(args.p_row); return {status:200,body:{recorded:true,duplicate:false,cells_completed:1}};};
+ const value={operation:'mark_complete',dataset:'stroeh_mouse_retina',metadata:{root_id:B,same_cell_as:'x'}};
+ await recordActivity({rpc,insertLegacy:async()=>{},who,me,token:'tok',value,fetchImpl:lineage([[A,B]])});
+ assert.deepEqual(sent.at(-1).metadata,{root_id:B,same_cell_as:A});
+ // A new cell carries nothing; no answer is written down.
+ await recordActivity({rpc,insertLegacy:async()=>{},who,me,token:'tok',value,fetchImpl:lineage([[P,B]])});
+ assert.deepEqual(sent.at(-1).metadata,{root_id:B});
+ await recordActivity({rpc,insertLegacy:async()=>{},who,me,token:'tok',value,fetchImpl:async()=>({ok:false,status:500})});
+ assert.deepEqual(sent.at(-1).metadata,{root_id:B,lineage_checked:false});
+ // Before the SQL is run the row is recorded exactly as before, and the graph server is not asked.
+ installed=false; caveCalls=[];
+ await recordActivity({rpc,insertLegacy:async()=>{},who,me,token:'tok',value,fetchImpl:lineage([[A,B]])});
+ assert.deepEqual(sent.at(-1).metadata,{root_id:B}); assert.equal(caveCalls.length,0);
  resetServerCounts();
 });
 test('counters are taken out of profile writes',()=>{

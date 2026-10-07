@@ -1,9 +1,9 @@
 /**
  * The completed-cell rule, for one player's log rows.
  *
- * The rule itself lives in supabase-leaderboard-accuracy.sql (the view
- * ew_cell_completions), which the board, the weekly podium and the weekly
- * announcement all read. This is the same rule for the places in the app
+ * The rule itself lives in supabase-completions-same-cell.sql (the views
+ * ew_cell_marks and ew_cell_completions), which the board, the weekly podium
+ * and the weekly announcement all read. This is the same rule for the places in the app
  * that count from rows they already hold (the profile's per-dataset numbers).
  * functions/leaderboard-accuracy.test.js runs both on the same rows and fails
  * if they ever disagree, so change them together.
@@ -50,6 +50,9 @@ export function completedCells(rows: CompletionLogRow[]): CompletedCell[] {
       return {
         i, op: r.operation, ts: Date.parse(r.timestamp), dataset: datasetKey(r.dataset),
         task: r.task_id ?? null, rid: rid == null || rid === '' ? null : String(rid),
+        // Written by the server when this root is a later version of a cell
+        // the player already completed (an edit changes a cell's root id).
+        same: r.operation === 'mark_complete' && m.same_cell_as != null && m.same_cell_as !== '' ? String(m.same_cell_as) : null,
       };
     });
   // A root id that a task was completed with belongs to that task.
@@ -60,11 +63,24 @@ export function completedCells(rows: CompletionLogRow[]): CompletedCell[] {
     const had = taskOfRoot.get(k);
     if (had == null || e.task < had) taskOfRoot.set(k, e.task);
   }
+  // A root id the server tied to an earlier cell belongs to that cell.
+  const cellOfRoot = new Map<string, string>();
+  for (const e of ev) {
+    if (e.same == null || e.rid == null) continue;
+    const k = e.dataset + '|' + e.rid;
+    const had = cellOfRoot.get(k);
+    if (had == null || e.same < had) cellOfRoot.set(k, e.same);
+  }
   const keyOf = (e: typeof ev[number]): string | null => {
     if (e.op === 'complete_task' && e.task != null && e.rid != null) return 'task:' + e.task;
     if (e.rid != null) {
       const t = taskOfRoot.get(e.dataset + '|' + e.rid);
-      return t != null ? 'task:' + t : e.rid;
+      if (t != null) return 'task:' + t;
+      const same = cellOfRoot.get(e.dataset + '|' + e.rid);
+      if (same == null) return e.rid;
+      // The earlier cell may itself have become a Cell Library cell since.
+      const st = taskOfRoot.get(e.dataset + '|' + same);
+      return st != null ? 'task:' + st : same;
     }
     if (e.op === 'unmark_complete') return null;
     // No id: the echo of a completion that has one, within two minutes.
