@@ -108,3 +108,9 @@ jobs:
             [ "$SECONDS" -ge "$end" ] && break
             sleep 45
           done
+          # GitHub starts scheduled runs late, or skips them (2026-10-07: no
+          # run for 28 minutes, and an approve sat unanswered). So each run
+          # starts the next one itself as it finishes, and the bridge is always
+          # listening. The cron above only restarts the chain if it ever
+          # breaks. Still one run at a time (the concurrency group).
+          gh workflow run slack-triage-bridge.yml -R "$GITHUB_REPOSITORY" --ref main || echo "::warning::could not start the next bridge run"
