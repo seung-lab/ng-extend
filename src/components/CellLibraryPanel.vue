@@ -1246,6 +1246,26 @@ function toggleHelpForm() {
 }
 /** Annotation layer attached to the INITIAL request (mirrors the reply form). */
 const newHelpAnnotationLayer = ref('');
+/** The layers picked on the new request: any number of them, or all
+ *  (Ames 2026-10-07: "attach all annotation layers, or multiple"). "All" is
+ *  read when the request is sent, so a layer made after ticking it counts. */
+const newHelpLayers = ref<string[]>([]);
+const newHelpAllLayers = ref(false);
+function toggleHelpLayer(name: string) {
+  newHelpAllLayers.value = false;
+  const at = newHelpLayers.value.indexOf(name);
+  if (at >= 0) newHelpLayers.value.splice(at, 1); else newHelpLayers.value.push(name);
+}
+function toggleAllHelpLayers() {
+  newHelpAllLayers.value = !newHelpAllLayers.value;
+  newHelpLayers.value = [];
+}
+/** What is saved on the request: the picked layers that still exist, by name. */
+function pickedHelpLayers(): string {
+  const have = getAnnotationLayers();
+  const names = newHelpAllLayers.value ? have : have.filter(n => newHelpLayers.value.includes(n));
+  return names.join(', ');
+}
 const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branch', 'Other'];
 
 // Pre-fill the segment ID from the current viewer selection when the Help tab
@@ -1320,7 +1340,7 @@ async function submitNewHelp() {
     cellType: '',
     nickname: '',
     screenshotUrl: newHelpScreenshotUrl.value || undefined,
-    annotationLayer: newHelpAnnotationLayer.value.trim() || undefined,
+    annotationLayer: pickedHelpLayers() || undefined,
   });
   helpStore.refreshPending();
   newHelpSegId.value = '';
@@ -1330,6 +1350,8 @@ async function submitNewHelp() {
   newHelpIssue.value = 'Unsure';
   newHelpScreenshotUrl.value = '';
   newHelpAnnotationLayer.value = '';
+  newHelpLayers.value = [];
+  newHelpAllLayers.value = false;
 }
 
 // ── Help note expand state ──────────────────────────────────────────
@@ -2462,19 +2484,19 @@ const panelStyle = computed(() => ({
               >
                 <option v-for="t in HELP_ISSUE_TYPES" :key="t" :value="t">{{ t }}</option>
               </select>
-              <!-- Same annotation-layer picker the reply form has: point a
-                   reviewer at the layer holding your marks from the start,
-                   instead of only being able to add one when replying. -->
-              <select
-                v-if="getAnnotationLayers().length > 0"
-                v-model="newHelpAnnotationLayer"
-                class="nge-cl-help-issue-select"
-                @keydown.stop
-                title="Attach an annotation layer (optional)"
-              >
-                <option value="">No annotation layer</option>
-                <option v-for="layer in getAnnotationLayers()" :key="layer" :value="layer">{{ layer }}</option>
-              </select>
+            </div>
+            <!-- Which annotation layers hold your marks: any number, or all
+                 of them. The request's view carries every layer either way;
+                 this tells the helper where to look. -->
+            <div v-if="getAnnotationLayers().length > 0" class="nge-cl-help-layers" role="group" aria-label="Annotation layers to point the helper at">
+              <span class="nge-cl-help-layers-label">Annotation layers</span>
+              <button type="button" class="nge-cl-help-layer" :class="{ 'nge-cl-help-layer--on': newHelpAllLayers }"
+                      :aria-pressed="newHelpAllLayers ? 'true' : 'false'" @click="toggleAllHelpLayers"
+                      title="Point the helper at every annotation layer in your view">All</button>
+              <button v-for="layer in getAnnotationLayers()" :key="layer" type="button" class="nge-cl-help-layer"
+                      :class="{ 'nge-cl-help-layer--on': newHelpAllLayers || newHelpLayers.includes(layer) }"
+                      :aria-pressed="newHelpAllLayers || newHelpLayers.includes(layer) ? 'true' : 'false'"
+                      :title="layer" @click="toggleHelpLayer(layer)">{{ layer }}</button>
             </div>
             <div class="nge-cl-help-quickadd-row">
               <input
@@ -2573,7 +2595,7 @@ const panelStyle = computed(() => ({
                       <a v-if="req.viewUrl" class="nge-cl-response-link" href="#" @click.prevent="openResponseUrl(req.viewUrl)"
                          title="Load the view they were looking at">↗ Open their view</a>
                       <span v-if="req.annotationLayer" class="nge-cl-response-layer"
-                            :title="req.viewUrl ? 'Their marks are in this annotation layer. Open their view to see it.' : 'They pointed at this annotation layer, but this request did not save their view.'">📐 Layer: {{ req.annotationLayer }}</span>
+                            :title="req.viewUrl ? 'Their marks are in this annotation layer. Open their view to see it.' : 'They pointed at this annotation layer, but this request did not save their view.'">📐 {{ req.annotationLayer.includes(', ') ? 'Layers' : 'Layer' }}: {{ req.annotationLayer }}</span>
                       <a v-if="req.screenshotUrl" :href="req.screenshotUrl" target="_blank" rel="noopener"
                          class="nge-cl-help-shot-thumb" :title="'Open full screenshot'">
                         <img :src="req.screenshotUrl" alt="Help screenshot" />
@@ -4242,6 +4264,40 @@ select.nge-cl-response-input:hover {
   border-color: rgba(74, 158, 255, 0.35);
 }
 
+.nge-cl-help-layers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+.nge-cl-help-layers-label {
+  font-size: 0.72em;
+  color: #9fb0c8;
+  margin-right: 2px;
+}
+.nge-cl-help-layer {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #cfdcef;
+  font: inherit;
+  font-size: 0.72em;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.nge-cl-help-layer:hover { border-color: rgba(120, 190, 255, 0.5); }
+.nge-cl-help-layer:focus-visible { outline: 2px solid #6cf; outline-offset: 1px; }
+.nge-cl-help-layer--on {
+  background: rgba(70, 160, 255, 0.22);
+  border-color: rgba(120, 190, 255, 0.8);
+  color: #eaf4ff;
+}
 .nge-cl-help-issue-select {
   flex-shrink: 0;
   background-color: rgba(0, 0, 0, 0.25);
