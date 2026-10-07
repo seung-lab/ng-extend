@@ -257,6 +257,13 @@ export class VirtualList extends RefCounted {
   private debouncedUpdateView =
       this.registerCancellable(animationFrameDebounce(() => this.updateView()));
   private resizeObserver = new ResizeObserver(() => this.updateView());
+  // nge: a row can change height after it was measured (the game adds a cell
+  // name or label under it a moment later). The list then believed it was
+  // shorter than it is, and the last rows could not be scrolled to. Rows are
+  // watched, and measured again when one changes.
+  private itemResizeObserver = new ResizeObserver(() => this.debouncedRemeasure());
+  private debouncedRemeasure =
+      this.registerCancellable(animationFrameDebounce(() => this.remeasure()));
 
   constructor(options: {source: VirtualListSource, selectedIndex?: number, horizontalScroll?: boolean}) {
     super();
@@ -270,6 +277,7 @@ export class VirtualList extends RefCounted {
     const {element, header, body, scrollContent, topItems, bottomItems} = this;
     this.resizeObserver.observe(element);
     this.registerDisposer(() => this.resizeObserver.disconnect());
+    this.registerDisposer(() => this.itemResizeObserver.disconnect());
     element.appendChild(scrollContent);
     // The default scroll anchoring behavior of browsers interacts poorly with this virtual list
     // mechanism and is unnecessary.
@@ -389,7 +397,44 @@ export class VirtualList extends RefCounted {
         sizes.totalKnownSize += newSize;
         ++sizes.numItemsInTotalKnownSize;
       }
+      this.itemResizeObserver.disconnect();
+      for (let i = curStartIndex; i < curEndIndex; ++i) {
+        this.itemResizeObserver.observe(renderedItems[i]);
+      }
     }
+    this.placeItems(renderParams);
+  }
+
+  /** Measures the rows on screen again and puts the list right if any of
+   *  them changed height since it was drawn. */
+  private remeasure() {
+    const {sizes, renderedItems, renderParams} = this;
+    let changed = false;
+    for (let i = renderParams.startIndex; i < renderParams.endIndex; ++i) {
+      const item = renderedItems[i];
+      if (item === undefined || !item.isConnected) continue;
+      const newSize = item.getBoundingClientRect().height;
+      const existingSize = sizes.itemSize[i];
+      if (existingSize !== undefined && Math.abs(existingSize - newSize) < 0.5) continue;
+      if (existingSize !== undefined) {
+        sizes.totalKnownSize -= existingSize;
+        --sizes.numItemsInTotalKnownSize;
+      }
+      sizes.itemSize[i] = newSize;
+      sizes.totalKnownSize += newSize;
+      ++sizes.numItemsInTotalKnownSize;
+      changed = true;
+    }
+    if (!changed) return;
+    // Hold the view where the reader has it while the rows are placed again.
+    renderParams.scrollOffset = this.element.scrollTop;
+    this.placeItems(renderParams);
+    // More rows may now be needed to fill the view, or fewer.
+    this.updateView();
+  }
+
+  private placeItems(renderParams: RenderParameters) {
+    const {sizes, state, body, topItems, bottomItems, element} = this;
     normalizeRenderParams(renderParams, sizes);
     state.anchorIndex = renderParams.anchorIndex;
     state.anchorClientOffset = renderParams.anchorOffset - renderParams.scrollOffset;
