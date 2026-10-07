@@ -234,7 +234,7 @@ async function ready() {
       ? `📝 Notes added while Claude was building are NOT in this preview:\n${lateNotes.map(n => `> ${n.text.slice(0, 200)}`).join('\n')}\nReply *rebuild* to include them, or test it as is.`
       : null,
     `Build: \`${env.COMMIT_SHA}\``,
-    `After testing, reply exactly *good ${env.COMMIT_SHA.slice(0,12)}* to deploy, or *ship to test ${env.COMMIT_SHA.slice(0,12)}* for a live test. A question ending in *?* asks for help; *note: ...* saves context; *change: ...* asks Claude for a fix. Any other reply is only saved as a note. <https://connectome.quest/admin/#exact-replies|All replies>`,
+    `After testing, reply exactly *good ${env.COMMIT_SHA.slice(0,12)}* to deploy, or *ship to test ${env.COMMIT_SHA.slice(0,12)}* for a live test.${liveOnly ? '' : ' The deploy reply is on its own in the next message, ready to copy.'} A question ending in *?* asks for help; *note: ...* saves context; *change: ...* asks Claude for a fix. Any other reply is only saved as a note. <https://connectome.quest/admin/#exact-replies|All replies>`,
   ].filter(Boolean).join('\n'));
   await patchRow(row.id, {
     impl_state: 'testing', preview_url: url, impl_summary: summaryFirstLine() || null,
@@ -243,6 +243,15 @@ async function ready() {
     feedback_log: [...logOf(row), {role:'preview',sha:env.COMMIT_SHA,base_sha:env.BASE_SHA,ts}],
     ...(ts ? { last_reply_ts: ts } : {}),
   });
+  // The deploy command again, alone in its own message. On a phone Slack only
+  // copies a whole message, so the command could not be lifted out of the
+  // announcement above and had to be typed by hand (Ames 2026-10-07). This one
+  // is copied in one press and pasted as the reply. It is posted after the row
+  // is saved: the announcement above stays the one the release step checks.
+  if (!liveOnly) {
+    await say(row, `good ${env.COMMIT_SHA.slice(0,12)}`)
+      .catch(e => console.warn(`[loop] copy-ready command not posted: ${e.message}`));
+  }
   console.log(`[loop] ${row.id} ready at ${url}`);
 }
 
