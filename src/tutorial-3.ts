@@ -486,6 +486,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   pointAtNext(false);
   const token = ++practiceWatch;
   waitingFor = { token, wantMerged };
+  let startRoot = '';
   watchEditErrors();
   lastEditError = null;
   helpWanted = true;
@@ -499,6 +500,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     if (!p.example) { practiceStatus('Loading a practice cell…'); setTimeout(tick, 1000); return; }
     labelPart();
     practiceAsked.add(p.example.id);
+    if (!startRoot) startRoot = p.rootA ?? '';
     const merged = await piecesMerged();
     if (token !== practiceWatch) return;
     if (merged === wantMerged) {
@@ -519,6 +521,14 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     // box says what comes next (Ames: draw attention to G after the first
     // point).
     let cutStage = '';
+    // A cut went through but the two neurons are still one segment: it cut
+    // through one of them instead of between them. Say so, or the learner
+    // sees a piece come off and the box still "waiting".
+    if (!wantMerged && !failed && startRoot && p.rootA && p.rootA !== startRoot && useSplitMergeOverlayStore().redPointCount === 0) {
+      practiceStatus('A cut went through, but the two neurons are still joined: it cut across one of them. Put red on one neuron and blue on the other, right where they touch, and submit again.');
+      setTimeout(tick, 1500);
+      return;
+    }
     if (!wantMerged && !failed) {
       const bar = useSplitMergeOverlayStore();
       if (bar.redPointCount > 0 && bar.bluePointCount === 0) {
@@ -817,6 +827,10 @@ function removeGateCard() {
  */
 export async function movingToSandbox<T>(tutorial: string, work: () => Promise<T>): Promise<T> {
   if (practiceShown()) return work();
+  // Already in the Sandbox: nothing to announce (Ames, 2026-10-07). The
+  // practice cell still loads, the card is just not shown.
+  const inSandbox = (getViewer()?.layerManager?.managedLayers ?? []).some((l: any) => l.name === 'pinky_nf_v2');
+  if (inSandbox) return work();
   startDatasetTransition({
     id: 'practice-sandbox',
     label: 'The Sandbox',
@@ -931,9 +945,10 @@ export function startTutorialButton(id: number, label: string) {
 /** Two captioned pictures side by side, inline styled because the step
  *  html is rendered outside TutorialStep's scoped CSS. Each opens full size
  *  in a new tab (Amy: keep the examples open while working). */
-export function beforeAfter(before: string, beforeCaption: string, after: string, afterCaption: string) {
-  const fig = (src: string, cap: string) =>
-    `<figure>`
+export function beforeAfter(before: string, beforeCaption: string, after: string, afterCaption: string, links = true) {
+  const fig = (src: string, cap: string) => !links
+    ? `<figure><img src="${src}" alt="${cap}"><figcaption>${cap}</figcaption></figure>`
+    : `<figure>`
     + `<a href="${src}" target="_blank" rel="noopener" title="Open in a new tab">`
     + `<img src="${src}" alt="${cap}">`
     + `</a>`

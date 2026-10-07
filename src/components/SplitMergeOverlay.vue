@@ -186,13 +186,15 @@ function cancelTool() {
             <span class="nge-smo-key-hint nge-smo-swap-hint" :class="{ 'nge-smo-swap-hint--now': needsSwap }" @click="swapGroup()" title="Switch between red and blue"><kbd>G</kbd> {{ needsSwap ? 'Press G for blue' : 'Swap' }}</span>
           </div>
 
-          <div class="nge-smo-hint" :class="{ 'error-hint': hasInlineResult && resultIsError, 'nge-smo-hint--now': needsSwap }">{{ contextHint }}</div>
-
-          <div class="nge-smo-actions" v-if="!isSubmitting">
-            <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
+          <!-- All the cut controls sit together on the left (Ames,
+               2026-10-07); the hint takes the rest of the bar. -->
+          <div class="nge-smo-actions nge-smo-actions--left" v-if="!isSubmitting">
             <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': cutReady }" @click="submitTool('multicut')" title="Submit the cut (or press Enter)">Submit cut</button>
+            <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd>Esc</kbd> Cancel</button>
           </div>
+
+          <div class="nge-smo-hint nge-smo-hint--left" :class="{ 'error-hint': hasInlineResult && resultIsError, 'nge-smo-hint--now': needsSwap }">{{ contextHint }}</div>
         </template>
 
         <!-- MERGE MODE -->
@@ -536,6 +538,8 @@ function cancelTool() {
 }
 
 /* Actions & keyboard shortcuts */
+.nge-smo-actions--left { margin-left: 14px; }
+.nge-smo-hint--left { text-align: left; padding-left: 18px; }
 .nge-smo-actions {
   display: flex;
   align-items: center;

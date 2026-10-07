@@ -154,15 +154,11 @@ You did it. The piece that didn't belong is its own segment now.
     text: `
 **Ctrl+Click** places points on the 2D images too, not only on the 3D shape: <strong style="color:#ff5c5c">red</strong> inside one cell's outline, <strong style="color:#5c8cff">blue</strong> inside the other's. It helps when the join is hard to see in 3D.
 
-Scroll through the 2D images to the cross-section where the two cells touch, and place points **near the cut point**.
-
-Keep every point on the one fused segment. Points on a neighbour make the server refuse the cut.
-
 <span class="nge-cut-2d-next">Press next to try it on a new cell, this one:</span>
 `
     + beforeAfter(
         imgCut2Before, 'Now: one segment.',
-        imgCut2After, 'After your cut: the axon (yellow) is its own segment.'),
+        imgCut2After, 'After your cut: the axon (yellow) is its own segment.', false),
     position: OVER_2D,
     width: "440px",
     onEnter: () => {
@@ -184,7 +180,7 @@ Keep every point on the one fused segment. Points on a neighbour make the server
     text: `
 A new cell, again with an axon (the thin branch) fused onto a dendrite (the thicker branch with all the little blobs coming out of it). Fun fact: each one of those blobs is the receiving half of a synapse!
 
-Find where they touch and cut them apart, placing the points in the 2D images on the left.
+Click to add new cut points in the 2D images on the left, on either side of where the two touch.
 
 1. Press **C** if the cut tool is off.
 2. **Ctrl+Click** 3 or 4 <strong style="color:#ff5c5c">red</strong> points inside the piece that doesn't belong.
@@ -224,6 +220,10 @@ The red and blue dots on the images show where the points go.`,
 <span class="nge-done-lead">You now know the two most important proofreading operations: every <strong style="color:#60c060">merge</strong> reconnects a lost branch, every <strong style="color:#e06060">cut</strong> untangles confused neurons.</span>
 
 The cells you practised on are put back for the next person. Happy proofreading!
+
+Ready for more? The **Merger Sandbox** in the burger menu (top right) has more fused cells to cut apart, without the preset points.
+
+<button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-start',{detail:{index:0}}))">Try Merger 1</button>
 
 **Coming soon:** a harder Cut tutorial, where you use **Find Path** to track down where two neurons were fused.
 
