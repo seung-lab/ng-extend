@@ -1012,10 +1012,10 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <!-- 🔥 streak: its fire, its click and its card live in StreakChip.vue -->
     <!-- EyeWire Radio: bottom right, teleported to the body -->
     <RadioPlayer v-if="login.sessions.length > 0" />
-    <!-- Undelete: only there when a removed cell can be brought back -->
-    <UndeleteChip v-if="login.sessions.length > 0" />
     <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
+      <!-- Undelete: an icon, only there when a removed cell can be brought back -->
+      <UndeleteChip />
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">
         <!-- A bug (Amy 2026-09-30), whose legs scurry on hover and click. -->

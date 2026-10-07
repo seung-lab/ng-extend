@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The Undelete chip in the top bar: brings back the cells you just removed
+ * The Undelete icon in the top bar: brings back the cells you just removed
  * from the view, newest first (util/undelete.ts; Krzysztof Kruk's idea).
  * It is only there when there is something to bring back.
  */
@@ -34,37 +34,24 @@ onUnmounted(() => window.removeEventListener('keydown', onKey));
 </script>
 
 <template>
-  <button v-if="undeleteCount > 0" class="nge-undelete-chip" :class="{ 'nge-undelete-chip--flash': flash }"
+  <!-- An icon like its neighbours, with the count as a badge (Ames 2026-10-07:
+       the labelled chip took a lot of space). -->
+  <button v-if="undeleteCount > 0" class="nge-icon-btn nge-icon-btn--badge nge-undelete-btn" :class="{ 'nge-undelete-btn--flash': flash }"
           type="button" :title="tip" :aria-label="tip" @click="run">
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
-      <path d="M3.2 6.4h6.1a3.6 3.6 0 0 1 0 7.2H5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M6 3.4 3 6.4l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <svg viewBox="0 0 16 16" width="19" height="19" fill="none" aria-hidden="true">
+      <path d="M3.2 6.4h6.1a3.6 3.6 0 0 1 0 7.2H5.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M6 3.4 3 6.4l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <span class="nge-undelete-label">Undelete</span>
-    <b class="nge-undelete-count">{{ undeleteCount }}</b>
+    <span class="nge-toolbar-badge nge-undelete-badge">{{ undeleteCount }}</span>
   </button>
 </template>
 
 <style>
-#extensionBar .nge-undelete-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 26px; margin: 0 6px; padding: 0 10px 0 8px; align-self: center;
-  font: 600 12px/1 'Inter', system-ui, sans-serif; letter-spacing: 0.02em; white-space: nowrap;
-  color: #bfe9ff; background: rgba(53, 181, 255, 0.1);
-  border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 13px;
-  cursor: pointer; user-select: none;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-#extensionBar .nge-undelete-chip:hover, #extensionBar .nge-undelete-chip:focus-visible { color: #ffffff; background: rgba(53, 181, 255, 0.22); border-color: #7ee0ff; outline: none; }
-.nge-undelete-chip:hover svg { animation: nge-undelete-nudge 0.7s ease-in-out infinite; }
-.nge-undelete-count {
-  min-width: 16px; padding: 2px 5px; box-sizing: border-box; border-radius: 8px;
-  font-size: 10px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums;
-  color: #06121f; background: #7ee0ff;
-}
-.nge-undelete-chip--flash { animation: nge-undelete-flash 0.42s ease-out; }
+#extensionBar .nge-undelete-btn { color: #9fdcff; }
+#extensionBar .nge-undelete-btn:hover svg { animation: nge-undelete-nudge 0.7s ease-in-out infinite; }
+#extensionBar .nge-undelete-btn .nge-undelete-badge { background: #35b5ff; color: #06121f; }
+.nge-undelete-btn--flash svg { animation: nge-undelete-flash 0.42s ease-out; }
 @keyframes nge-undelete-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.6px); } }
-@keyframes nge-undelete-flash { 0% { box-shadow: 0 0 0 0 rgba(126, 224, 255, 0.7); } 100% { box-shadow: 0 0 0 9px rgba(126, 224, 255, 0); } }
-@media (max-width: 900px) { .nge-undelete-label { display: none; } }
-@media (prefers-reduced-motion: reduce) { .nge-undelete-chip:hover svg, .nge-undelete-chip--flash { animation: none; } }
+@keyframes nge-undelete-flash { 0% { transform: rotate(-70deg) scale(1.25); filter: brightness(2); } 100% { transform: none; filter: none; } }
+@media (prefers-reduced-motion: reduce) { #extensionBar .nge-undelete-btn:hover svg, .nge-undelete-btn--flash svg { animation: none; } }
 </style>
