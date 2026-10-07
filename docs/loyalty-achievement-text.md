@@ -23,16 +23,17 @@ The source of truth is `src/widgets/badge_definitions.ts` (`LOYALTY_BADGES`). Th
 | 80 | Eighty Days | Eighty days at EyeWire II! That is royal dedication. | draft | 080-days.png |
 | 90 | Three Months | Ninety days of science! Three months of coming back, and we are glad every time. | draft | 090-days.png |
 | 100 | One Hundred Days | One hundred days at EyeWire II! Thank you for every single one. | draft | 100-days.png |
-| 125 | 125 Days | 125 days of science! Your dedication keeps growing. | draft | 125-days.png |
+| 120 | Four Months | 120 days of science! Four months, and your dedication keeps growing. | draft | 125-days.png |
 | 150 | Five Months | 150 days at EyeWire II! You are a guiding light for this community. | draft | 150-days.png |
-| 175 | Twenty Five Weeks | 175 days of science! You help power this whole project. | draft | 175-days.png |
-| 200 | Two Hundred Days | Two hundred days at EyeWire II! Double the century, double the cheers. | draft | 200-days.png |
-| 225 | 225 Days | 225 days of science! You are at the heart of EyeWire II. | draft | 225-days.png |
-| 250 | 250 Days | 250 days at EyeWire II! That is a galaxy of good work. | draft | 250-days.png |
-| 275 | 275 Days | 275 days of science! Few have come this far. | draft | 275-days.png |
-| 300 | Three Hundred Days | Three hundred days at EyeWire II! Three hundred sunrises of science. | draft | 300-days.png |
-| 325 | 325 Days | 325 days of science! Your star never fades. | draft | 325-days.png |
-| 350 | Fifty Weeks | 350 days at EyeWire II! A full year is in sight. | draft | 350-days.png |
-| 365 | One Year | 365 days at EyeWire II! A whole year of science. You are a legend. | draft | 365-days.png |
+| 180 | Six Months | 180 days of science! Half a year, and you help power this whole project. | draft | 175-days.png |
+| 200 | Two Hundred Days | Two hundred days at EyeWire II! Double the century, double the cheers. | draft | 200-days-crown-signal.png (hand picked by Ames) |
+| 210 | Seven Months | 210 days of science! You are at the heart of EyeWire II. | draft | 225-days.png |
+| 240 | Eight Months | 240 days at EyeWire II! That is a galaxy of good work. | draft | 250-days.png |
+| 270 | Nine Months | 270 days of science! Few have come this far. | draft | 275-days.png |
+| 300 | Three Hundred Days | Three hundred days at EyeWire II! Three hundred sunrises of science. | draft | 300-days-v2.png |
+| 330 | Eleven Months | 330 days of science! Your star never fades, and a full year is in sight. | draft | 325-days.png |
+| 365 | One Year | 365 days at EyeWire II! A whole year of science. You are a legend. | draft | 365-days-v2.png |
+
+Ladder (Ames 2026-10-07): every 10 days up to 100, then one a month, with 200 kept as a milestone. The art past 100 is the existing set moved to the nearest new day; the 350 day art is unused. The test build uses the V2 art for days 2 to 80 and 100 (`NNN-days-v2.png`), not the files named in the rows above 120.
 
 Tooltip on every one: "Earned for N days of science".
