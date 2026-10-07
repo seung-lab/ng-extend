@@ -535,7 +535,40 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
 }
 /* The legend is also the list's filter: each kind is a small control. Click
    to take those cells out of the list, click again to bring them back. */
-.nge-seg-legend { flex-wrap: wrap; row-gap: 4px; }
+.nge-seg-legend { flex-wrap: nowrap; }
+/* The line above the legend: a kind's tip on hover, and the count while cells
+   are checked. It floats over the foot of the list, so the legend never
+   changes size, and it stays inside the panel. */
+.nge-seg-legend-note {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font: 500 11.5px/1.35 'Inter', system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: center;
+  color: #dce6f5;
+  background: rgba(8, 14, 28, 0.96);
+  border: 1px solid rgba(100, 200, 255, 0.35);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.nge-seg-legend-note--on { opacity: 1; transform: translateY(0); }
+.nge-seg-legend-note-cell { display: none; flex: 0 0 auto; line-height: 0; }
+.nge-seg-legend-note--busy .nge-seg-legend-note-cell { display: block; }
+.nge-seg-legend-note--busy { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .nge-seg-legend-note { transition: none; } }
 .nge-seg-legend-item[role="button"] {
   cursor: pointer;
   padding: 3px 6px;

@@ -2,6 +2,7 @@ import { startViewAutosave } from './util/view_autosave';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
+import GrowingCell from 'components/GrowingCell.vue';
 import { watchPhoneEmptyView } from './widgets/widget_utils';
 import { isMobileRef as phoneRef } from './util/mobile';
 import { installScriptApi } from './script_api';
@@ -425,7 +426,51 @@ const LEGEND_KINDS: { kind: CellKind; pip: string; label: string; plural: string
   { kind: 'typed', pip: 'annotated', label: 'Typed', plural: 'typed cells' },
   { kind: 'done', pip: 'done', label: 'Done', plural: 'done cells' },
 ];
-function makeLegendItem(legend: HTMLElement, spec: typeof LEGEND_KINDS[number]): HTMLElement {
+/** The line just above the legend: what a kind does when the pointer is on it,
+ *  and the count while cells are being checked, with the game's growing cell.
+ *  It floats over the foot of the list, so the legend itself never changes
+ *  size or moves (Ames 2026-10-07: "checking moves the legend up"), and it is
+ *  inside the panel, where the browser's own tooltip fell below the window. */
+interface LegendNote { tip(words: string | null): void; checking(done: number, total: number): void; done(words?: string): void; }
+function makeLegendNote(legend: HTMLElement): LegendNote {
+  const el = document.createElement('div');
+  el.className = 'nge-seg-legend-note';
+  el.setAttribute('role', 'status');
+  const cell = document.createElement('span');
+  cell.className = 'nge-seg-legend-note-cell';
+  const words = document.createElement('span');
+  el.append(cell, words);
+  legend.appendChild(el);
+  let app: ReturnType<typeof createApp> | null = null;
+  let busy = false, tipWords: string | null = null, sayTimer = 0;
+  const show = (text: string | null) => {
+    words.textContent = text ?? '';
+    el.classList.toggle('nge-seg-legend-note--on', !!text);
+  };
+  const stopCell = () => { try { app?.unmount(); } catch { /* already gone */ } app = null; cell.replaceChildren(); el.classList.remove('nge-seg-legend-note--busy'); };
+  return {
+    tip(text) { tipWords = text; if (!busy && !sayTimer) show(text); },
+    checking(done, total) {
+      if (!busy) {
+        busy = true;
+        clearTimeout(sayTimer); sayTimer = 0;
+        el.classList.add('nge-seg-legend-note--busy');
+        app = createApp(GrowingCell, { size: 26, named: false });
+        app.mount(cell);
+      }
+      show(total ? `Checking ${done} of ${total}` : 'Checking…');
+    },
+    done(text) {
+      busy = false;
+      stopCell();
+      clearTimeout(sayTimer); sayTimer = 0;
+      if (text) { show(text); sayTimer = window.setTimeout(() => { sayTimer = 0; show(tipWords); }, 3200); }
+      else show(tipWords);
+    },
+  };
+}
+
+function makeLegendItem(legend: HTMLElement, note: LegendNote, spec: typeof LEGEND_KINDS[number]): HTMLElement {
   const item = document.createElement('span');
   item.className = 'nge-seg-legend-item';
   item.setAttribute('role', 'button');
@@ -437,26 +482,35 @@ function makeLegendItem(legend: HTMLElement, spec: typeof LEGEND_KINDS[number]):
   text.className = 'nge-seg-legend-text';
   item.append(pip, text);
 
+  text.textContent = spec.label;      // the word itself never changes
+
   let hidden: HideResult | null = null;
   let busy = false;
-  let revert = 0;
+  let over = false;
+  const tipWords = () => {
+    const n = hidden?.hidden.length ?? 0;
+    return hidden
+      ? `${n} ${n === 1 ? spec.plural.replace(/cells/, 'cell') : spec.plural} hidden. Click to bring ${n === 1 ? 'it' : 'them'} back.`
+      : `Click to hide the ${spec.plural} from this list.`;
+  };
   const rest = () => {
-    text.textContent = spec.label;
     item.classList.toggle('nge-seg-legend-item--off', !!hidden);
     item.setAttribute('aria-pressed', hidden ? 'true' : 'false');
-    const n = hidden?.hidden.length ?? 0;
-    item.title = hidden
-      ? `${n} ${n === 1 ? spec.plural.replace(/cells/, 'cell') : spec.plural} hidden from this list. Click to bring ${n === 1 ? 'it' : 'them'} back.`
-      : `Click to hide the ${spec.plural} from this list. Nothing changes for anyone else.`;
+    item.setAttribute('aria-label', `${spec.label}. ${tipWords()}`);
     // The legend stays up while anything is hidden, even if that emptied the list.
     legend.dataset.hiding = legend.querySelector('.nge-seg-legend-item--off') ? '1' : '';
+    if (over) note.tip(tipWords());
   };
   rest();
-  const say = (words: string) => { text.textContent = words; clearTimeout(revert); revert = window.setTimeout(rest, 2600); };
+  const enter = () => { over = true; note.tip(tipWords()); };
+  const leave = () => { over = false; note.tip(null); };
+  item.addEventListener('mouseenter', enter);
+  item.addEventListener('mouseleave', leave);
+  item.addEventListener('focus', enter);
+  item.addEventListener('blur', leave);
 
   const toggle = async () => {
-    if (busy) return;
-    clearTimeout(revert);
+    if (busy || legend.dataset.checking) return;     // one check at a time
     if (hidden) {                       // bring them back
       showHiddenCells(hidden);
       hidden = null;
@@ -464,16 +518,23 @@ function makeLegendItem(legend: HTMLElement, spec: typeof LEGEND_KINDS[number]):
       return;
     }
     busy = true;
+    legend.dataset.checking = '1';
     item.classList.add('nge-seg-legend-item--busy');
-    text.textContent = 'Checking…';
+    note.checking(0, 0);
     const result = await hideCellsOfKind(useLayersStore().getCaveServerUrl(), spec.kind,
-      (done, total) => { text.textContent = `${done} of ${total}`; }).catch(() => null);
+      (done, total) => note.checking(done, total)).catch(() => null);
     busy = false;
+    delete legend.dataset.checking;
     item.classList.remove('nge-seg-legend-item--busy');
-    if (!result || !result.checked) { say('No cells'); return; }
-    if (!result.hidden.length) { say(result.unread === result.checked ? 'Not marked here' : 'None'); return; }
+    if (!result || !result.checked) { note.done('No cells in the list to check.'); return; }
+    if (!result.hidden.length) {
+      note.done(result.unread === result.checked ? 'Cells are not marked on this dataset.' : `None of these are ${spec.label.toLowerCase()}.`);
+      return;
+    }
     hidden = result;
+    const n = result.hidden.length;
     rest();
+    note.done(`${n} ${n === 1 ? spec.plural.replace(/cells/, 'cell') : spec.plural} hidden.`);
   };
   item.addEventListener('click', () => { void toggle(); });
   return item;
@@ -507,7 +568,8 @@ function injectSegmentLegend() {
       // CAVE status in button_service and referenced by the restyle CSS);
       // only the labels and their order change. "Complete" was relabelled
       // "Proofread" to say what the user actually did to the cell.
-      for (const spec of LEGEND_KINDS) legend.appendChild(makeLegendItem(legend, spec));
+      const note = makeLegendNote(legend);
+      for (const spec of LEGEND_KINDS) legend.appendChild(makeLegendItem(legend, note, spec));
       tab.appendChild(legend);
     } else if (legend.parentElement !== tab) {
       // Move to the end of the tab if it ended up somewhere else
