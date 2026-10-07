@@ -5337,7 +5337,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
 
   async function uploadHelpScreenshot(blob: Blob): Promise<string> {
-    return secureUpload(blob,'help');
+    // Saved compressed (WebP, or JPEG): a fraction of the PNG's size.
+    const { compressScreenshot } = await import('./util/compress_screenshot');
+    return secureUpload(await compressScreenshot(blob),'help');
   }
 
   async function uploadAdminIcon(file: File): Promise<string> {
