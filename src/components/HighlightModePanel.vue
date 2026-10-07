@@ -186,9 +186,10 @@ function onTintInput(e: Event) {
 }
 /** Whether the marks show on the cell in 3D; they stay in 2D either way. */
 const show3d = ref(tintShown());
-function onShow3d(e: Event) {
-  show3d.value = (e.target as HTMLInputElement).checked;
-  setTintShown(show3d.value);
+function setShow3d(on: boolean) {
+  if (show3d.value === on) return;
+  show3d.value = on;
+  setTintShown(on);
 }
 
 // The crosshair cursor shows while a click would place a point.
@@ -426,10 +427,20 @@ onBeforeUnmount(() => {
         <input type="range" min="0.5" max="8" step="0.5" :value="tintUm" @input="onTintInput" />
         <span class="nge-hl-width-val">{{ tintUm }} <span class="nge-hl-unit">µm</span></span>
       </label>
-      <label class="nge-hl-show3d" title="Turn off to hide the marks from the 3D view. They stay in the 2D views and in the saved view.">
-        <input type="checkbox" :checked="show3d" @change="onShow3d" />
-        <span>Show marks in 3D</span>
-      </label>
+      <!-- Show / Hide, as a two way switch in the box's own style (Ames
+           2026-10-07: "this check box should say hide/show, give it better
+           style"). The side that is lit is how things are now. -->
+      <div class="nge-hl-show3d" title="Hide takes the marks off the 3D view. They stay in the 2D views and in the saved view.">
+        <span id="nge-hl-show3d-label">Marks in 3D</span>
+        <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-show3d-label">
+          <button type="button" role="radio" :aria-checked="show3d ? 'true' : 'false'" :tabindex="show3d ? 0 : -1"
+                  class="nge-hl-switch-opt" :class="{ 'nge-hl-switch-opt--on': show3d }" @click="setShow3d(true)"
+                  @keydown.right.prevent.stop="setShow3d(false)" @keydown.left.prevent.stop="setShow3d(true)">Show</button>
+          <button type="button" role="radio" :aria-checked="show3d ? 'false' : 'true'" :tabindex="show3d ? -1 : 0"
+                  class="nge-hl-switch-opt nge-hl-switch-opt--hide" :class="{ 'nge-hl-switch-opt--on': !show3d }" @click="setShow3d(false)"
+                  @keydown.right.prevent.stop="setShow3d(false)" @keydown.left.prevent.stop="setShow3d(true)">Hide</button>
+        </div>
+      </div>
       <!-- The foot of the box reads like a stats line: what just happened, a
            count or two, quietly (Ames 2026-10-02). -->
       <div class="nge-hl-status">
@@ -570,8 +581,20 @@ onBeforeUnmount(() => {
 .nge-hl-width input { flex: 1; min-width: 0; accent-color: #7cffb2; }
 .nge-hl-width-val { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: #dce6f5; }
 .nge-hl-unit { text-transform: none; }
-.nge-hl-show3d { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11.5px; color: rgba(220, 230, 245, 0.72); cursor: pointer; user-select: none; }
-.nge-hl-show3d input { margin: 0; accent-color: #7cffb2; cursor: pointer; }
+.nge-hl-show3d { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 11.5px; color: rgba(220, 230, 245, 0.72); user-select: none; }
+/* A two way switch: both words always in sight, the lit one is the state. */
+.nge-hl-switch { display: inline-flex; padding: 2px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(124, 255, 178, 0.28); }
+.nge-hl-switch-opt {
+  min-width: 46px; padding: 3px 12px; border: 0; border-radius: 999px; cursor: pointer;
+  font: 600 11px 'Inter', sans-serif; color: rgba(220, 230, 245, 0.6); background: transparent;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.nge-hl-switch-opt:hover:not(.nge-hl-switch-opt--on) { color: #dce6f5; }
+.nge-hl-switch-opt--on { color: #06140c; background: #7cffb2; box-shadow: 0 0 10px rgba(124, 255, 178, 0.35); }
+/* Hidden is a quieter state than shown: lit, but not in the box's green. */
+.nge-hl-switch-opt--hide.nge-hl-switch-opt--on { color: #0a1424; background: #b9c6dc; box-shadow: none; }
+.nge-hl-switch-opt:focus-visible { outline: 2px solid #7cffb2; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .nge-hl-switch-opt { transition: none; } }
 .nge-hl-status { display: flex; align-items: baseline; gap: 8px; margin-top: 10px; min-height: 18px; font-size: 11px; color: rgba(200, 212, 228, 0.62); }
 .nge-hl-dim { color: rgba(200, 212, 228, 0.42); }
 .nge-hl-stat { color: rgba(200, 212, 228, 0.4); font-variant-numeric: tabular-nums; }
