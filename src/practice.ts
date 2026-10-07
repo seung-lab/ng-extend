@@ -759,6 +759,19 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     if (wasOn) resumeToolAfterLoad = ex.kind === 'cut' ? 'multicut' : 'merge';
     // restoreState applies asynchronously; give the layer a moment to exist.
     await new Promise(r => setTimeout(r, 800));
+    // Full detail for the 2D images. A saved view can carry a coarse image
+    // setting, which draws the images as big grey blocks and counts as fully
+    // loaded, so no loading sign shows either (Ames, 2026-10-07). Logged so a
+    // blocky image can be traced: what the view asked for, and its zoom.
+    try {
+      const viewer = getViewer();
+      for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+        if ((ml.layer?.constructor as any)?.type !== 'image') continue;
+        const t = ml.layer.sliceViewRenderScaleTarget;
+        console.info(`[practice] image layer "${ml.name}": detail setting ${t?.value}, 2D zoom ${viewer?.navigationState?.zoomFactor?.value}`);
+        if (t && t.value > 1) t.value = 1;
+      }
+    } catch (e) { /* the view still loads */ }
     session.shownId = ex.id;
   }
   await ensureSupervoxels(ex);
