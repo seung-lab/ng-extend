@@ -9,6 +9,16 @@
  * Auto-generated from pyr manifest. Do not edit manually.
  */
 
+/**
+ * HARD RULE (Ames 2026-10-07): achievements count ONLY what a player did in
+ * this game. A cell completed in another tool, or recorded on a legacy
+ * dataset's own tables (BANC, FlyWire, MICrONS), never counts toward an
+ * achievement, a profile total or the leaderboard. The numbers these
+ * thresholds are checked against (users.total_edits, users.cells_completed,
+ * users.total_days) are moved only by the server, from the game's own log
+ * (ew_log_activity and the view ew_cell_completions). Never feed a track from
+ * a CAVE table or from cave_completions_mirror.
+ */
 export type BadgeTrack = 'building' | 'exploration' | 'loyalty';
 
 export interface BadgeDefinition {
