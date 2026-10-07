@@ -1209,11 +1209,15 @@ const newHelpSegId = ref('');
  *  "Save link" refreshes it. The cell comes from the viewer selection. */
 const newHelpLink = ref('');
 const newHelpLinkMinting = ref(false);
+/** The link the form made by itself. If it is still the one in the field
+ *  when the request is sent, a fresh one is made then, so marks drawn after
+ *  the form opened are in it. A link the player pasted is left alone. */
+let autoHelpLink = '';
 async function saveHelpLink() {
   newHelpLinkMinting.value = true;
   try {
     const link = await mintShortStateLink();
-    if (link) { newHelpLink.value = link; newHelpError.value = ''; }
+    if (link) { newHelpLink.value = link; autoHelpLink = link; newHelpError.value = ''; }
     else newHelpError.value = 'Could not make a link of this view. Sign in, or paste one.';
   } finally { newHelpLinkMinting.value = false; }
 }
@@ -1289,7 +1293,8 @@ async function submitNewHelp() {
   // Either one is enough to find the problem (Amy 2026-09-29).
   const selected = (newHelpSegId.value.trim() || getActiveSegId()).trim();
   const segId = /^\d{6,}$/.test(selected) ? selected : '';
-  const link = newHelpLink.value.trim();
+  let link = newHelpLink.value.trim();
+  if (!link || link === autoHelpLink) link = (await mintShortStateLink().catch(() => null)) || link;
   if (link && !/^https:\/\/[^\s"'<>]+$/i.test(link)) {
     newHelpError.value = 'The link must be a single https link.';
     return;
@@ -1302,7 +1307,9 @@ async function submitNewHelp() {
   await helpStore.add({
     segId,
     viewUrl: link || undefined,
-    position: segId ? getViewerPosition() : [],
+    // Always where the requester was looking, cell selected or not, so a
+    // helper can always jump there.
+    position: getViewerPosition(),
     note: newHelpNote.value.trim(),
     issueType: newHelpIssue.value,
     dataset: getCurrentDatasetName(),
@@ -1314,6 +1321,7 @@ async function submitNewHelp() {
   helpStore.refreshPending();
   newHelpSegId.value = '';
   newHelpLink.value = '';
+  autoHelpLink = '';
   newHelpNote.value = '';
   newHelpIssue.value = 'Unsure';
   newHelpScreenshotUrl.value = '';
@@ -1422,26 +1430,76 @@ async function ensureDataset(raw: string | undefined | null): Promise<boolean> {
   return true;
 }
 
+/**
+ * Switching datasets reloads the page, so anything meant to happen after a
+ * switch has to be left where the next page finds it: reopen the Cell
+ * Library on Help, and carry on to the request that was asked for
+ * (Ames 2026-10-07: "switch here should reopen the cell library / jump me to
+ * the help request"). Read by ExtensionBar (reopen) and here (the jump).
+ */
+const AFTER_SWITCH_KEY = 'nge_cl_after_switch';
+function rememberAfterSwitch(reqId?: string) {
+  try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab: 'help', reqId: reqId || null, at: Date.now() })); } catch { /* private window */ }
+}
+function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY); } catch { /* */ } }
+function isOnDataset(raw: string | undefined | null): boolean {
+  return !raw || canonicalDataset(raw) === canonicalDataset(getCurrentDatasetName() || activeDataset.value);
+}
+
 /** Jump to a help request, switching dataset automatically when it lives on
  *  another one (Amy: "check dataset ID and automatically jump"). */
 async function jumpToReq(req: HelpRequest) {
+  const crossing = !isOnDataset(req.dataset);
+  if (crossing) rememberAfterSwitch(req.id);
   if (!(await ensureDataset(req.dataset))) {
+    forgetAfterSwitch();
     flashJumpError(`Could not switch to ${datasetHeading(req.dataset)}.`);
+    return;
+  }
+  // Still here: finish the jump now. The note is dropped a little later, not
+  // at once: a reload that is on its way lets this line run first.
+  if (crossing) setTimeout(forgetAfterSwitch, 8000);
+  const pos = Array.isArray(req.position) && req.position.length >= 3 && req.position.some(n => n) ? req.position : null;
+  if (!req.segId && !pos) {
+    // Nothing to fly to: a request that saved only a view, or nothing.
+    if (req.viewUrl) { openResponseUrl(req.viewUrl); return; }
+    flashJumpError('This request did not save a cell or a place to jump to.');
     return;
   }
   const left = await prepareJump(req.segId);
   if (!left.ok) return;
   activeHelpId.value = req.id;
-  history.jumpToCell(req.segId, req.position, { keep: left.keep });
+  history.jumpToCell(req.segId, (pos ?? undefined) as any, { keep: left.keep });
 }
+
+/** After a switch reloaded the page: carry on to the request that was asked
+ *  for, once the requests have loaded and the new dataset is on screen. */
+onMounted(async () => {
+  let want: { reqId?: string | null; at?: number } | null = null;
+  try { want = JSON.parse(sessionStorage.getItem(AFTER_SWITCH_KEY) || 'null'); } catch { want = null; }
+  forgetAfterSwitch();
+  if (!want?.reqId || Date.now() - (want.at || 0) > 120_000) return;
+  for (let i = 0; i < 60; i++) {
+    const req = helpStore.requests.find(r => r.id === want!.reqId);
+    if (req && isOnDataset(req.dataset) && currentSegLayer()?.layer) {
+      await new Promise(r => setTimeout(r, 1200));
+      void jumpToReq(req);
+      return;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+});
 
 /** The dataset header's "switch here" (Amy: the old "jump switches" tag
  *  looked like a button and did nothing). Switch datasets and open the group. */
 async function switchToDatasetGroup(group: HelpDatasetGroup) {
+  rememberAfterSwitch();
   if (!(await ensureDataset(group.dataset))) {
+    forgetAfterSwitch();
     flashJumpError(`Could not switch to ${datasetHeading(group.dataset)}.`);
     return;
   }
+  setTimeout(forgetAfterSwitch, 8000);
   collapsedDatasets.value.delete(group.dataset);
 }
 
@@ -2510,6 +2568,8 @@ const panelStyle = computed(() => ({
                       <div v-if="req.note" class="nge-cl-help-note" :class="{ 'nge-cl-help-note--expanded': expandedNotes.has(req.id) }" @click="toggleNoteExpand(req.id)">{{ req.note }}</div>
                       <a v-if="req.viewUrl" class="nge-cl-response-link" href="#" @click.prevent="openResponseUrl(req.viewUrl)"
                          title="Load the view they were looking at">↗ Open their view</a>
+                      <span v-if="req.annotationLayer" class="nge-cl-response-layer"
+                            :title="req.viewUrl ? 'Their marks are in this annotation layer. Open their view to see it.' : 'They pointed at this annotation layer, but this request did not save their view.'">📐 Layer: {{ req.annotationLayer }}</span>
                       <a v-if="req.screenshotUrl" :href="req.screenshotUrl" target="_blank" rel="noopener"
                          class="nge-cl-help-shot-thumb" :title="'Open full screenshot'">
                         <img :src="req.screenshotUrl" alt="Help screenshot" />

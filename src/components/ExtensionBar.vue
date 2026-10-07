@@ -623,6 +623,20 @@ onUnmounted(() => document.removeEventListener('nge:assistant-action', handleAss
 const backendStore = useProofreadingBackendStore();
 // Signed in: give the page a moment to settle, then greet with the leaderboard.
 watch(() => backendStore.userId, id => { if (id) setTimeout(maybeOpenLeaderboardOnArrival, 1800); }, { immediate: true });
+// A dataset switch made from the Cell Library reloads the page: open the
+// library again where the player was (CellLibraryPanel leaves the note and
+// finishes any jump itself).
+let reopenedAfterSwitch = false;
+watch(() => backendStore.userId, id => {
+  if (!id || reopenedAfterSwitch) return;
+  try {
+    const want = JSON.parse(sessionStorage.getItem('nge_cl_after_switch') || 'null');
+    if (!want || Date.now() - (want.at || 0) > 120_000) return;
+    reopenedAfterSwitch = true;
+    cellLibraryInitialTab.value = want.tab || 'help';
+    showCellLibrary.value = true;
+  } catch { /* nothing to reopen */ }
+}, { immediate: true });
 const { tutorialStep } = storeToRefs(useTutorialStore());
 
 function logout(session: loginSession) {

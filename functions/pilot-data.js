@@ -7,7 +7,7 @@ const fields = {
   tutorial_practice_waitlist: 'kind',
   edit_log: 'task_id,operation,segment_before,segment_after,coordinates,metadata,dataset,success',
   activity_feed: 'action,segment_id',
-  help_requests: 'segment_id,position,note,issue_type,dataset,resolved,cell_type,nickname,screenshot_url,annotation_layer',
+  help_requests: 'segment_id,position,note,issue_type,dataset,resolved,cell_type,nickname,screenshot_url,annotation_layer,view_url',
   help_responses: 'request_id,note,url,annotation_layer,screenshot_url,resolved',
   issue_tags: 'dataset,segment_id,position,tag_type,subtype,annotation_layer,screenshot_url,note,status',
   segment_tags: 'segment_id,tag,notes,source,dataset',
@@ -74,6 +74,10 @@ function authorizePilotData(input,ctx) {
     if(['edit_log','activity_feed','help_requests','help_responses','issue_tags','client_errors','badge_awards','tutorial_practice_waitlist'].includes(table) && method==='POST') row.user_id=me;
     if(['activity_feed','help_requests','help_responses','issue_tags'].includes(table) && method==='POST') row.user_name=name;
     if(['segment_tags','special_badges','tutorial_practice_examples'].includes(table) && method==='POST') row.created_by=me;
+    // The requester's view: one https link, or nothing. It was missing from
+    // the list above, so every request lost its view, and with it whatever
+    // the requester had drawn, until 2026-10-07.
+    if(table==='help_requests' && 'view_url' in row && !(typeof row.view_url==='string' && /^https:\/\/[^\s"'<>]+$/.test(row.view_url) && row.view_url.length<=2000)) delete row.view_url;
     if(['help_requests','issue_tags'].includes(table) && (row.resolved===true||row.status==='resolved')) {
       row.resolved_by=me;row.resolved_by_name=name;row.resolved_at=ctx.now;
     }
