@@ -589,7 +589,7 @@ onUnmounted(() => {
           </div>
 
           <!-- Edit Achievements -->
-          <div class="nge-lb-detail-badges-label" style="color: #ffd08a;">Edit Achievements</div>
+          <div class="nge-lb-detail-badges-label" style="color: #ffd08a;">Editor Achievements</div>
           <div v-if="earnedBuildingForUser.length > 0" class="nge-lb-detail-badges-grid">
             <div
               v-for="badge in earnedBuildingForUser"
@@ -608,7 +608,7 @@ onUnmounted(() => {
           <div v-else class="nge-lb-detail-no-badges">No edit badges earned yet</div>
 
           <!-- Cell Achievements -->
-          <div class="nge-lb-detail-badges-label" style="color: #90fff2;">Cell Achievements</div>
+          <div class="nge-lb-detail-badges-label" style="color: #90fff2;">Cell Completions</div>
           <div v-if="earnedExplorationForUser.length > 0" class="nge-lb-detail-badges-grid">
             <div
               v-for="badge in earnedExplorationForUser"

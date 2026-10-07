@@ -359,6 +359,10 @@ function datasetContribution(ds: DatasetEntry): DatasetContribution | undefined 
   return datasetStats.value[canonicalDataset(segLayerName(ds))];
 }
 
+// The Datasets tab lists only the datasets this player has contributed to
+// (Ames 2026-10-07). One whose numbers have not arrived yet stays until they
+// do, so the list never flickers empty while it loads.
+const contributedDatasets = computed(() => DATASETS.filter(isDatasetShown).filter(ds => !datasetContribution(ds) || hasContributed(ds)));
 function hasContributed(ds: DatasetEntry): boolean {
   const c = datasetContribution(ds);
   return !!c && (c.edits > 0 || c.completions > 0 || c.helpRequests > 0);
@@ -1083,18 +1087,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Someone else's profile: their cells and annotations (Ames
-               2026-10-06: it showed edits and annotations but no cells). Your
+          <!-- Someone else's profile: their annotations. Their cells completed
+               total is in the Cell Completions column (Ames 2026-10-07). Your
                own profile has the fuller Cells block below, built from your
-               cell history; for another player the totals come from their
-               account, so they cover every dataset. -->
+               cell history on this dataset. -->
           <div v-if="viewingOtherUser" class="nge-profile-section nge-profile-section--cells">
             <div class="nge-profile-section-label">▌ Cells</div>
             <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
-              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Cells this player has completed, on every dataset">
-                <div class="nge-profile-stat-label">Completed</div>
-                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="profileStats.cellsSubmitted ?? 0" /></div>
-              </div>
               <div class="nge-profile-stat-col nge-profile-stat-tile" title="Points, lines and boxes this player has placed in annotation layers, on every dataset">
                 <div class="nge-profile-stat-label">Annotations</div>
                 <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
@@ -1201,11 +1200,18 @@ const emit = defineEmits({hide: null, 'open-settings': null});
         <div class="nge-profile-col nge-profile-col--center">
 
           <!-- The left column is one dataset; achievements are a career. -->
-          <div v-if="activeDatasetCanon" class="nge-profile-career-note">Achievements count every dataset</div>
+          <div v-if="activeDatasetCanon" class="nge-profile-career-note">Totals and achievements here count every dataset</div>
 
           <!-- Proofreading Achievements (building track) -->
           <div class="nge-profile-section nge-profile-section--badges">
-            <div class="nge-profile-section-label" style="color: #ffd08a;">▌ Proofreading Achievements</div>
+            <!-- The career total lives here, beside what it earns (Ames
+                 2026-10-07); the left column is the breakdown. -->
+            <div class="nge-profile-track-head">
+              <div class="nge-profile-section-label" style="color: #ffd08a;">▌ Editor Achievements</div>
+              <div class="nge-profile-track-total" style="--track: #ffd08a;" title="Every merge and cut made in EyeWire II, on every dataset">
+                <b><RollUp :value="profileStats.editsAllTime ?? 0" /></b> {{ (profileStats.editsAllTime ?? 0) === 1 ? 'edit' : 'edits' }}
+              </div>
+            </div>
             <div class="nge-profile-countdown-inline" v-if="nextBuildingAchievement">
               <div class="nge-profile-countdown-row">
                 <div class="nge-profile-countdown-remaining">{{ nextBuildingAchievement.remaining.toLocaleString() }} edits to go</div>
@@ -1266,7 +1272,12 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
           <!-- Cell Achievements (exploration track) -->
           <div class="nge-profile-section nge-profile-section--badges">
-            <div class="nge-profile-section-label" style="color: #90fff2;">▌ Cell Achievements</div>
+            <div class="nge-profile-track-head">
+              <div class="nge-profile-section-label" style="color: #90fff2;">▌ Cell Completions</div>
+              <div class="nge-profile-track-total" style="--track: #90fff2;" title="Every cell completed, on every dataset">
+                <b><RollUp :value="profileStats.cellsSubmitted ?? 0" /></b> {{ (profileStats.cellsSubmitted ?? 0) === 1 ? 'cell completed' : 'cells completed' }}
+              </div>
+            </div>
             <div class="nge-profile-countdown-inline" v-if="nextExplorationAchievement">
               <div class="nge-profile-countdown-row">
                 <div class="nge-profile-countdown-remaining">{{ nextExplorationAchievement.remaining.toLocaleString() }} cells to go</div>
@@ -1746,7 +1757,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <div class="nge-trophy-main">
           <!-- Exploration track (Cell Achievements first) -->
           <div class="nge-trophy-track">
-            <div class="nge-trophy-track-label" style="color: #90fff2;">Cell Achievements
+            <div class="nge-trophy-track-label" style="color: #90fff2;">Cell Completions
               <span class="nge-trophy-track-count">{{ earnedExplorationBadges.earned.length }} earned</span>
             </div>
             <div class="nge-trophy-grid">
@@ -1771,7 +1782,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
           <!-- Proofreading track -->
           <div class="nge-trophy-track">
-            <div class="nge-trophy-track-label" style="color: #ffd08a;">Proofreading Achievements
+            <div class="nge-trophy-track-label" style="color: #ffd08a;">Editor Achievements
               <span class="nge-trophy-track-count">{{ earnedBuildingBadges.earned.length }} earned</span>
             </div>
             <div class="nge-trophy-grid">
@@ -1855,16 +1866,19 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       <!-- ── Datasets tab: contributions per dataset + switcher ── -->
       <div v-if="activeTab === 'datasets'" class="nge-profile-body nge-profile-body--datasets">
         <div class="nge-ds-tab-intro">
-          {{ viewingOtherUser ? `${profileName}'s contributions across datasets.` : 'Your contributions across datasets.' }}
+          {{ viewingOtherUser ? `The datasets ${profileName} has contributed to.` : 'The datasets you have contributed to.' }}
           Click one to switch your viewer to it.
         </div>
         <button class="nge-ds-tab-progress" @click="openDatasetProgress">Dataset stats: what has been done on each dataset →</button>
         <div v-if="datasetStatsLoading && !Object.keys(datasetStats).length" class="nge-ds-tab-loading">
           Counting edits…
         </div>
+        <div v-if="!contributedDatasets.length && !datasetStatsLoading" class="nge-ds-tab-loading">
+          {{ viewingOtherUser ? 'No contributions yet.' : 'No contributions yet. Your datasets appear here once you make an edit or complete a cell.' }}
+        </div>
         <div class="nge-ds-tab-grid">
           <div
-            v-for="ds in DATASETS.filter(isDatasetShown)"
+            v-for="ds in contributedDatasets"
             :key="ds.id"
             class="nge-ds-tab-card"
             :class="{
@@ -3211,6 +3225,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
   font-weight: 500;
 }
 
+.nge-profile-track-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.nge-profile-track-head .nge-profile-section-label { margin-bottom: 0; }
+.nge-profile-track-total { font-size: 0.82em; color: #9fb3cc; white-space: nowrap; }
+.nge-profile-track-total b {
+  font-family: 'Orbitron', 'Inter', sans-serif; font-size: 1.55em; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--track); margin-right: 3px;
+}
+.nge-profile-track-head + .nge-profile-countdown-inline { margin-top: 8px; }
 .nge-profile-career-note {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.45);
