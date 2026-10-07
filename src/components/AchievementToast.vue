@@ -12,7 +12,7 @@
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useUserStatsStore, useProofreadingQueueStore, useProofreadingBackendStore } from '../store';
-import { BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
+import { BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, LOYALTY_TEST_ONLY, BadgeDefinition, statKeyForTrack } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { streakMilestonesBetween } from '../util/streak_milestones';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
@@ -240,12 +240,13 @@ watch(() => stats.value.currentStreak, (newStreak) => {
 // failed read can never announce an old achievement again.
 function settleLoyalty(days: number) {
   if (!backend.badgeAwardsLoaded || !Number.isFinite(days) || days <= 0) return;
-  const due = LOYALTY_BADGES.filter(b => days >= b.threshold && !backend.myBadgeAwards.has(`loyalty:${b.id}`));
+  const due = LOYALTY_BADGES.filter(b => days >= b.threshold && (LOYALTY_TEST_ONLY || !backend.myBadgeAwards.has(`loyalty:${b.id}`)));
   if (!due.length) return;
   // Announced once per browser as well: if saving ever fails, the card must
   // not come back on every visit.
   const fresh = due.filter(b => claimBadgeOnce(`l:${b.id}`));
-  for (const b of due) backend.recordBadgeAward('loyalty', b.id);
+  // Test build: show the card, save nothing (see LOYALTY_TEST_ONLY).
+  if (!LOYALTY_TEST_ONLY) for (const b of due) backend.recordBadgeAward('loyalty', b.id);
   if (!fresh.length) return;
   const top = due[due.length - 1];
   const title = `🏆 New Achievement: ${top.name}`;
@@ -255,6 +256,7 @@ function settleLoyalty(days: number) {
     addToast({ type: 'badge', title: top.name, subtitle: top.description, icon: rel || '🏅', isImage: !!rel });
     fireConfetti('gold', 1.5);
   }
+  if (LOYALTY_TEST_ONLY) return;
   backend.createSelfNotification({
     title,
     body: `You earned the "${top.name}" Loyalty achievement! ${top.description}`,

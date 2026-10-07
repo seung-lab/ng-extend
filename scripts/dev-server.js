@@ -199,8 +199,8 @@ args.push('--config=dev', '--serve', '--watch', '--host', '0.0.0.0');
 const path = require('path');
 const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-art');
 const DEV_OUT = path.join(__dirname, '..', 'dist', 'dev', 'center-art');
-// 'loyalty' is left out while LOYALTY_ENABLED is false (src/widgets/badge_definitions.ts).
-for (const track of ['building', 'exploration']) {
+// 'loyalty' is copied only while LOYALTY_ENABLED is true (src/widgets/badge_definitions.ts).
+for (const track of ['building', 'exploration', 'loyalty']) {
   const srcDir = path.join(BADGE_ART, track);
   const destDir = path.join(DEV_OUT, track);
   if (fs.existsSync(srcDir)) {
