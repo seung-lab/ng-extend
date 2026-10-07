@@ -1,1 +1,8 @@
-{}
+{
+  "cut2-points": {
+    "note": "Ames's own two points for the 2D cut cell 0813e168 (axon to cut, dendrite that stays).",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "points": { "axon": [86552, 59453, 814], "axon_far": [86830, 59380, 846], "dendrite": [86418, 59244, 814] }
+  }
+}
