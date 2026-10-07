@@ -722,10 +722,10 @@ function segLayerChip(): HTMLElement | undefined {
 }
 
 /**
- * Friendlier layer names on the Sandbox, and while the Merge or Cut tutorial
- * is up (Ames, 2026-10-02 and 2026-10-06): "2D EM" for img, with the tooltip
- * "Electron Microscope Images", and "3D segmentation" in place of
- * pinky_nf_v2. Display only: the layers keep their real names, which the app
+ * Friendlier layer names on every dataset. On the Sandbox, and while the
+ * Merge or Cut tutorial is up (Ames, 2026-10-02 and 2026-10-06): "2D EM" for
+ * img, with the tooltip "Electron Microscope Images", and "3D segmentation"
+ * in place of pinky_nf_v2. Display only: the layers keep their real names, which the app
  * uses to tell which dataset it is in. The real name stays in the chip's
  * text (hidden), a data attribute carries the shown one.
  */
@@ -733,17 +733,22 @@ const FRIENDLY_TIPS: Record<string, string> = {
   '2D EM': 'Electron Microscope Images',
   '3D segmentation': 'The 3D reconstruction of every cell in the images',
   '3D Retina Cells': 'The 3D reconstruction of every retina cell in the images',
+  // Every other dataset (Ames 2026-10-07, on MEC's "img" and "pni_mec").
+  '2D images': 'Electron Microscope Images',
+  '3D neurons': 'The 3D reconstruction of every cell in the images',
 };
 function friendlyLayerNames() {
   const inTutorial = [3, 5].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
-  // Which dataset is on screen decides the segmentation layer's shown name:
-  // "3D segmentation" on the Sandbox, "3D Retina Cells" on the Retina (Ames
-  // 2026-10-06). Other datasets keep their real layer names.
+  // Which dataset is on screen decides the shown names. The Sandbox and the
+  // tutorials say "2D EM" and "3D segmentation", the Retina "2D EM" and
+  // "3D Retina Cells" (Ames 2026-10-06). Every other dataset says
+  // "2D images" and "3D neurons" (Ames 2026-10-07), so nobody meets a raw
+  // name like "pni_mec".
   const dataset = canonicalDataset(currentSegLayerName());
-  const segName = dataset === 'stroeh_mouse_retina' && !inTutorial ? '3D Retina Cells' : '3D segmentation';
-  const on = inTutorial || dataset === 'pinky_nf_v2' || dataset === 'stroeh_mouse_retina';
-  document.body.classList.toggle('nge-friendly-layers', on);
-  if (!on) return;
+  const named = inTutorial || dataset === 'pinky_nf_v2' || dataset === 'stroeh_mouse_retina';
+  const segName = !named ? '3D neurons' : dataset === 'stroeh_mouse_retina' && !inTutorial ? '3D Retina Cells' : '3D segmentation';
+  const imgName = named ? '2D EM' : '2D images';
+  document.body.classList.add('nge-friendly-layers');
   // A practice view that loads after the step opened brings the Selection
   // panel back; keep it shut while the Merge or Cut tutorial is up (only
   // then: the Sandbox on its own leaves the panel alone).
@@ -758,9 +763,15 @@ function friendlyLayerNames() {
   }
   const layers: any[] = getViewer()?.layerManager?.managedLayers ?? [];
   const chips = Array.from(document.querySelectorAll('.neuroglancer-layer-panel .neuroglancer-layer-item')) as HTMLElement[];
+  // Only the first image and the first segmentation layer take the friendly
+  // name: a second one of the same kind keeps its own, so two tabs never
+  // carry the same label.
+  const used = new Set<string>();
   for (const ml of layers) {
     const kind = layerKind(ml);
-    const name = kind === 'segmentation' ? segName : kind === 'image' ? '2D EM' : '';
+    let name = kind === 'segmentation' ? segName : kind === 'image' ? imgName : '';
+    if (name && used.has(name)) name = '';
+    if (name) used.add(name);
     const label = chips.find(c => (c.querySelector('.neuroglancer-layer-item-label')?.textContent ?? '') === ml.name)
       ?.querySelector('.neuroglancer-layer-item-label') as HTMLElement | null | undefined;
     if (!label) continue;
