@@ -420,11 +420,13 @@ function makeExtendViewer() {
  *  list; clicking it again puts them back. While its cells are out, the word
  *  is dimmed and struck through. No button is added for a job only some
  *  people need. See util/hide_completed.ts. */
-const LEGEND_KINDS: { kind: CellKind; pip: string; label: string; plural: string }[] = [
-  { kind: 'todo', pip: 'incomplete', label: 'Todo', plural: 'cells still to do' },
-  { kind: 'proofread', pip: 'complete', label: 'Proofread', plural: 'proofread cells' },
-  { kind: 'typed', pip: 'annotated', label: 'Typed', plural: 'typed cells' },
-  { kind: 'done', pip: 'done', label: 'Done', plural: 'done cells' },
+// `means` says what the word is, in the tip: players asked what "Done" and
+// "Typed" are (annkri 2026-10-07), and the legend never said.
+const LEGEND_KINDS: { kind: CellKind; pip: string; label: string; plural: string; means: string }[] = [
+  { kind: 'todo', pip: 'incomplete', label: 'Todo', plural: 'cells still to do', means: 'Todo: not proofread and no cell type yet.' },
+  { kind: 'proofread', pip: 'complete', label: 'Proofread', plural: 'proofread cells', means: 'Proofread: marked proofread, no cell type yet.' },
+  { kind: 'typed', pip: 'annotated', label: 'Typed', plural: 'typed cells', means: 'Typed: has a cell type, not proofread yet.' },
+  { kind: 'done', pip: 'done', label: 'Done', plural: 'done cells', means: 'Done: proofread and has a cell type.' },
 ];
 /** The line just above the legend: what a kind does when the pointer is on it,
  *  and the count while cells are being checked, with the game's growing cell.
@@ -490,8 +492,8 @@ function makeLegendItem(legend: HTMLElement, note: LegendNote, spec: typeof LEGE
   const tipWords = () => {
     const n = hidden?.hidden.length ?? 0;
     return hidden
-      ? `${n} ${n === 1 ? spec.plural.replace(/cells/, 'cell') : spec.plural} hidden. Click to bring ${n === 1 ? 'it' : 'them'} back.`
-      : `Click to hide the ${spec.plural} from this list.`;
+      ? `${spec.means} ${n} hidden. Click to bring ${n === 1 ? 'it' : 'them'} back.`
+      : `${spec.means} Click to hide these from the list.`;
   };
   const rest = () => {
     item.classList.toggle('nge-seg-legend-item--off', !!hidden);
