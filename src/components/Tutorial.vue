@@ -22,7 +22,8 @@ import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 // Badge art for the merge and cut tutorials is not drawn yet (Amy, 2026-09-28);
 // until it is, the confetti and super Nurros from static/nurro stand in.
 import badgeMerge from '../../static/nurro/nurro-confetti-card.png';
-import badgeCut from '../../static/nurro/nurro-super-v2.png';
+// Safety Scissors art from Ames (2026-10-07).
+import badgeCut from '../../static/badges/safety-scissors.png';
 
 
 const store = useTutorialStore();
