@@ -203,6 +203,20 @@ async function sameCellAs(row, known, token, fetchImpl = fetch) {
 // Counters only the server may move once it records activity itself.
 const SERVER_COUNTERS = ['total_edits','total_merges','total_splits','cells_completed','current_streak',
   'longest_streak','last_edit_date','total_annotations'];
+// Days and streaks are the database's alone, always (supabase-days-need-action.sql
+// counts a day only for real work). The counters above are dropped from a
+// profile write once the server has seen its counting function; these are
+// dropped on EVERY profile write, with no such condition, so a moment when
+// that check could not be made is never a moment a browser may write its own
+// streak (Ames 2026-10-07, ahead of the Loyalty achievements).
+const DAY_COUNTERS = ['current_streak','longest_streak','last_edit_date','total_days','tz','streak_recounted_at','days_recounted_at'];
+/** Drop days and streaks from a profile write. Returns true when it removed any. */
+function stripDayCounters(row) {
+  let removed = false;
+  for (const k of DAY_COUNTERS) if (row && k in row) { delete row[k]; removed = true; }
+  return removed;
+}
+
 /** Drop the counters from a profile write. Returns true when it removed any. */
 function stripCounters(row) {
   let removed = false;
@@ -210,4 +224,4 @@ function stripCounters(row) {
   return removed;
 }
 
-module.exports = {cleanActivityRow, verifyGraphEdit, graphTarget, lineageTarget, sameCellAs, stripCounters, OPERATIONS, SERVER_COUNTERS, MAX_OPERATION_AGE_MS};
+module.exports = {cleanActivityRow, verifyGraphEdit, graphTarget, lineageTarget, sameCellAs, stripCounters, stripDayCounters, DAY_COUNTERS, OPERATIONS, SERVER_COUNTERS, MAX_OPERATION_AGE_MS};

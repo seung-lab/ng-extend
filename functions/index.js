@@ -10,7 +10,7 @@ const db = admin.firestore();
 const ewServiceKey = defineSecret("EW_SUPABASE_SERVICE_KEY");
 const {pilotContext, requirePilot} = require("./pilot-access");
 const {authorizePilotData, conflicts:pilotConflicts} = require("./pilot-data");
-const {recordActivity, serverCounts, stripCounters} = require("./activity");
+const {recordActivity, serverCounts, stripCounters, stripDayCounters} = require("./activity");
 
 // Reference docs for the Slack bot — uploaded to Anthropic Files via
 // scripts/upload-bot-docs.js. JSON shape: {"<filename>": "<file_id>"}.
@@ -1928,6 +1928,12 @@ exports.ewCommunityData = onRequest(
       // by the browser. Once the database function is installed: log rows go
       // through it (this route is how app versions from before the change
       // still report), and counters are dropped from profile writes.
+      // Days and streaks never come from a browser, whatever else is true.
+      if (plan.table === "users" && ["POST","PATCH"].includes(plan.method) && plan.body != null) {
+        const rows = Array.isArray(plan.body) ? plan.body : [plan.body];
+        rows.forEach(stripDayCounters);
+        if (rows.some(row => !Object.keys(row).length)) return res.json({status:200,headers:{"Content-Type":"application/json"},body:"[]"});
+      }
       if ((plan.table === "edit_log" || plan.table === "users") && ["POST","PATCH"].includes(plan.method) && plan.body != null && await serverCounts(ewRpc(key))) {
         const rows = Array.isArray(plan.body) ? plan.body : [plan.body];
         if (plan.table === "edit_log") {

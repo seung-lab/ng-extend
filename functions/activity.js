@@ -2,7 +2,7 @@
 // Recording a player's activity: check it, write it once, and let the
 // database move the counters in the same transaction (ew_log_activity in
 // supabase-leaderboard-accuracy.sql). See activity-policy.js for the rules.
-const {cleanActivityRow, verifyGraphEdit, lineageTarget, sameCellAs, stripCounters} = require('./activity-policy');
+const {cleanActivityRow, verifyGraphEdit, lineageTarget, sameCellAs, stripCounters, stripDayCounters} = require('./activity-policy');
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 const NOBODY = '00000000-0000-0000-0000-000000000000';
 
@@ -65,4 +65,4 @@ async function recordActivity({rpc, insertLegacy, who, me, token, value, fetchIm
   return {counted: true, verified: check.state === 'verified' ? true : check.state === 'unverified' ? false : null, ...r.body};
 }
 
-module.exports = {recordActivity, serverCounts, resetServerCounts, stripCounters};
+module.exports = {recordActivity, serverCounts, resetServerCounts, stripCounters, stripDayCounters};

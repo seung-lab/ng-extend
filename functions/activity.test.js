@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {cleanActivityRow,verifyGraphEdit,sameCellAs,lineageTarget,stripCounters,MAX_OPERATION_AGE_MS}=require('./activity-policy');
+const {cleanActivityRow,verifyGraphEdit,sameCellAs,lineageTarget,stripCounters,stripDayCounters,MAX_OPERATION_AGE_MS}=require('./activity-policy');
 const {recordActivity,serverCounts,resetServerCounts}=require('./activity');
 const who={email:'player@example.invalid',caveId:2455}, me={id:'11111111-1111-4111-8111-111111111111'};
 const graph='https://minnie.microns-daf.com/segmentation/api/v1/table/stroeh_mouse_retina';
@@ -161,4 +161,14 @@ test('counters are taken out of profile writes',()=>{
  assert.equal(stripCounters(row),true);
  assert.deepEqual(row,{display_name:'A',updated_at:'x'});
  assert.equal(stripCounters({flag:'x'}),false);
+});
+
+test('a profile write never carries days or streaks',()=>{
+ const row={display_name:'A',bio:'hi',current_streak:400,longest_streak:400,last_edit_date:'2020-01-01',total_days:999,tz:'UTC',total_edits:5};
+ assert.equal(stripDayCounters(row),true);
+ assert.deepEqual(row,{display_name:'A',bio:'hi',total_edits:5});
+ assert.equal(stripDayCounters({flag:'x'}),false);
+ // a write of nothing but a streak is left with nothing to save
+ const only={current_streak:30,longest_streak:30}; stripDayCounters(only);
+ assert.equal(Object.keys(only).length,0);
 });
