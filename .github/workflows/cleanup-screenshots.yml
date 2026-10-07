@@ -1,0 +1,33 @@
+name: Clean Up Old Screenshots
+
+# Deletes player screenshots older than 7 days that nothing still needs
+# (scripts/cleanup-screenshots.mjs has the rules). Run by hand for now, and it
+# only prints what it would delete unless "delete" is ticked. A daily schedule
+# is added once Ames has read a dry run.
+on:
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: 'Really delete. Unticked: print what would be deleted and change nothing.'
+        type: boolean
+        default: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      # The script lives on the game's branch, not the default branch.
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Clean up old screenshots
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DELETE: ${{ inputs.delete && '1' || '0' }}
+        run: node scripts/cleanup-screenshots.mjs
