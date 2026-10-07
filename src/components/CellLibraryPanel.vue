@@ -1246,26 +1246,49 @@ function toggleHelpForm() {
 }
 /** Annotation layer attached to the INITIAL request (mirrors the reply form). */
 const newHelpAnnotationLayer = ref('');
-/** The layers picked on the new request: any number of them, or all
- *  (Ames 2026-10-07: "attach all annotation layers, or multiple"). "All" is
- *  read when the request is sent, so a layer made after ticking it counts. */
+/** The annotation layers a new request points the helper at. All of them
+ *  unless the player says otherwise, in one small dropdown so a view with many
+ *  layers does not grow the form (Ames 2026-10-07: "default to attach all and
+ *  make a dropdown where user can select one by one"). "All" is read when the
+ *  request is sent, so a layer made after the form opened counts. */
+const newHelpAllLayers = ref(true);
 const newHelpLayers = ref<string[]>([]);
-const newHelpAllLayers = ref(false);
+const helpLayersOpen = ref(false);
+const helpLayersEl = ref<HTMLElement | null>(null);
+function helpLayerOn(name: string): boolean {
+  return newHelpAllLayers.value || newHelpLayers.value.includes(name);
+}
 function toggleHelpLayer(name: string) {
-  newHelpAllLayers.value = false;
-  const at = newHelpLayers.value.indexOf(name);
-  if (at >= 0) newHelpLayers.value.splice(at, 1); else newHelpLayers.value.push(name);
+  const have = getAnnotationLayers();
+  // Leaving "all": start from every layer ticked, then untick this one.
+  const picked = new Set(newHelpAllLayers.value ? have : newHelpLayers.value.filter(n => have.includes(n)));
+  if (picked.has(name)) picked.delete(name); else picked.add(name);
+  newHelpAllLayers.value = have.length > 0 && have.every(n => picked.has(n));
+  newHelpLayers.value = newHelpAllLayers.value ? [] : have.filter(n => picked.has(n));
 }
 function toggleAllHelpLayers() {
   newHelpAllLayers.value = !newHelpAllLayers.value;
   newHelpLayers.value = [];
 }
+/** What the closed dropdown reads. */
+function helpLayersSummary(): string {
+  const have = getAnnotationLayers();
+  if (newHelpAllLayers.value) return `All ${have.length} annotation layers`.replace('All 1 annotation layers', 'Annotation layer: ' + (have[0] || ''));
+  const picked = have.filter(n => newHelpLayers.value.includes(n));
+  if (!picked.length) return 'No annotation layers';
+  return picked.length === 1 ? 'Annotation layer: ' + picked[0] : `${picked.length} of ${have.length} annotation layers`;
+}
 /** What is saved on the request: the picked layers that still exist, by name. */
 function pickedHelpLayers(): string {
   const have = getAnnotationLayers();
-  const names = newHelpAllLayers.value ? have : have.filter(n => newHelpLayers.value.includes(n));
-  return names.join(', ');
+  if (newHelpAllLayers.value) return have.length > 1 ? 'All annotation layers' : (have[0] || '');
+  return have.filter(n => newHelpLayers.value.includes(n)).join(', ');
 }
+function onHelpLayersOutside(e: Event) {
+  if (helpLayersOpen.value && helpLayersEl.value && !helpLayersEl.value.contains(e.target as Node)) helpLayersOpen.value = false;
+}
+onMounted(() => document.addEventListener('mousedown', onHelpLayersOutside, true));
+onBeforeUnmount(() => document.removeEventListener('mousedown', onHelpLayersOutside, true));
 const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branch', 'Other'];
 
 // Pre-fill the segment ID from the current viewer selection when the Help tab
@@ -1351,7 +1374,8 @@ async function submitNewHelp() {
   newHelpScreenshotUrl.value = '';
   newHelpAnnotationLayer.value = '';
   newHelpLayers.value = [];
-  newHelpAllLayers.value = false;
+  newHelpAllLayers.value = true;
+  helpLayersOpen.value = false;
 }
 
 // ── Help note expand state ──────────────────────────────────────────
@@ -2485,18 +2509,27 @@ const panelStyle = computed(() => ({
                 <option v-for="t in HELP_ISSUE_TYPES" :key="t" :value="t">{{ t }}</option>
               </select>
             </div>
-            <!-- Which annotation layers hold your marks: any number, or all
-                 of them. The request's view carries every layer either way;
+            <!-- Which annotation layers hold your marks: all of them unless
+                 you say otherwise, in one dropdown so many layers do not grow
+                 the form. The request's view carries every layer either way;
                  this tells the helper where to look. -->
-            <div v-if="getAnnotationLayers().length > 0" class="nge-cl-help-layers" role="group" aria-label="Annotation layers to point the helper at">
-              <span class="nge-cl-help-layers-label">Annotation layers</span>
-              <button type="button" class="nge-cl-help-layer" :class="{ 'nge-cl-help-layer--on': newHelpAllLayers }"
-                      :aria-pressed="newHelpAllLayers ? 'true' : 'false'" @click="toggleAllHelpLayers"
-                      title="Point the helper at every annotation layer in your view">All</button>
-              <button v-for="layer in getAnnotationLayers()" :key="layer" type="button" class="nge-cl-help-layer"
-                      :class="{ 'nge-cl-help-layer--on': newHelpAllLayers || newHelpLayers.includes(layer) }"
-                      :aria-pressed="newHelpAllLayers || newHelpLayers.includes(layer) ? 'true' : 'false'"
-                      :title="layer" @click="toggleHelpLayer(layer)">{{ layer }}</button>
+            <div v-if="getAnnotationLayers().length > 0" ref="helpLayersEl" class="nge-cl-help-layers" @keydown.esc.stop="helpLayersOpen = false">
+              <button type="button" class="nge-cl-help-layers-toggle" :aria-expanded="helpLayersOpen ? 'true' : 'false'"
+                      aria-haspopup="true" title="Choose which annotation layers to point the helper at"
+                      @click="helpLayersOpen = !helpLayersOpen">
+                <span class="nge-cl-help-layers-summary">📐 {{ helpLayersSummary() }}</span>
+                <span class="nge-cl-help-layers-caret" aria-hidden="true">▾</span>
+              </button>
+              <div v-if="helpLayersOpen" class="nge-cl-help-layers-menu" role="group" aria-label="Annotation layers to point the helper at">
+                <label class="nge-cl-help-layers-item nge-cl-help-layers-item--all">
+                  <input type="checkbox" :checked="newHelpAllLayers" @change="toggleAllHelpLayers" />
+                  <span>All annotation layers</span>
+                </label>
+                <label v-for="layer in getAnnotationLayers()" :key="layer" class="nge-cl-help-layers-item" :title="layer">
+                  <input type="checkbox" :checked="helpLayerOn(layer)" @change="toggleHelpLayer(layer)" />
+                  <span>{{ layer }}</span>
+                </label>
+              </div>
             </div>
             <div class="nge-cl-help-quickadd-row">
               <input
@@ -2595,7 +2628,7 @@ const panelStyle = computed(() => ({
                       <a v-if="req.viewUrl" class="nge-cl-response-link" href="#" @click.prevent="openResponseUrl(req.viewUrl)"
                          title="Load the view they were looking at">↗ Open their view</a>
                       <span v-if="req.annotationLayer" class="nge-cl-response-layer"
-                            :title="req.viewUrl ? 'Their marks are in this annotation layer. Open their view to see it.' : 'They pointed at this annotation layer, but this request did not save their view.'">📐 {{ req.annotationLayer.includes(', ') ? 'Layers' : 'Layer' }}: {{ req.annotationLayer }}</span>
+                            :title="req.viewUrl ? 'Their marks are in this annotation layer. Open their view to see it.' : 'They pointed at this annotation layer, but this request did not save their view.'">📐 {{ req.annotationLayer === 'All annotation layers' ? req.annotationLayer : (req.annotationLayer.includes(', ') ? 'Layers: ' : 'Layer: ') + req.annotationLayer }}</span>
                       <a v-if="req.screenshotUrl" :href="req.screenshotUrl" target="_blank" rel="noopener"
                          class="nge-cl-help-shot-thumb" :title="'Open full screenshot'">
                         <img :src="req.screenshotUrl" alt="Help screenshot" />
@@ -4265,39 +4298,58 @@ select.nge-cl-response-input:hover {
 }
 
 .nge-cl-help-layers {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
+  position: relative;
   margin-top: 6px;
 }
-.nge-cl-help-layers-label {
-  font-size: 0.72em;
-  color: #9fb0c8;
-  margin-right: 2px;
-}
-.nge-cl-help-layer {
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+.nge-cl-help-layers-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
   color: #cfdcef;
   font: inherit;
-  font-size: 0.72em;
-  padding: 2px 8px;
+  font-size: 0.76em;
+  padding: 5px 8px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  text-align: left;
+  transition: border-color 0.15s;
 }
-.nge-cl-help-layer:hover { border-color: rgba(120, 190, 255, 0.5); }
-.nge-cl-help-layer:focus-visible { outline: 2px solid #6cf; outline-offset: 1px; }
-.nge-cl-help-layer--on {
-  background: rgba(70, 160, 255, 0.22);
-  border-color: rgba(120, 190, 255, 0.8);
-  color: #eaf4ff;
+.nge-cl-help-layers-toggle:hover,
+.nge-cl-help-layers-toggle[aria-expanded="true"] { border-color: rgba(120, 190, 255, 0.6); }
+.nge-cl-help-layers-toggle:focus-visible { outline: 2px solid #6cf; outline-offset: 1px; }
+.nge-cl-help-layers-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nge-cl-help-layers-caret { flex-shrink: 0; opacity: 0.7; }
+.nge-cl-help-layers-menu {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: calc(100% + 3px);
+  max-height: 168px;
+  overflow-y: auto;
+  background: #0d1424;
+  border: 1px solid rgba(120, 190, 255, 0.45);
+  border-radius: 6px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+  padding: 4px 0;
 }
+.nge-cl-help-layers-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  font-size: 0.76em;
+  color: #cfdcef;
+  cursor: pointer;
+}
+.nge-cl-help-layers-item:hover { background: rgba(70, 160, 255, 0.14); }
+.nge-cl-help-layers-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nge-cl-help-layers-item input { flex-shrink: 0; accent-color: #4a9eff; margin: 0; }
+.nge-cl-help-layers-item--all { border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 6px; margin-bottom: 2px; font-weight: 600; }
 .nge-cl-help-issue-select {
   flex-shrink: 0;
   background-color: rgba(0, 0, 0, 0.25);
