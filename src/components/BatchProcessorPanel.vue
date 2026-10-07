@@ -5,6 +5,7 @@
  * Actions: recolor, complete, annotate, copy IDs, remove from viewer.
  */
 import { ref, computed, onMounted } from 'vue';
+import { pointsInsideCells } from '../util/cell_points';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from '../widgets/widget_utils';
 import { setCellComplete, saveCellType, activeCaveServer, NURRO_IMAGES } from '../widgets/lightbulb_service';
@@ -59,6 +60,11 @@ interface GuideState {
   points: Record<string, [number, number, number]>;
   /** Skipped segIds. */
   skipped: Set<string>;
+  /** Cells whose point came from the player's own clicks while working
+   *  (util/cell_points.ts), checked to be inside the cell. */
+  auto: Set<string>;
+  /** Looking for those points: how far along, or null when done. */
+  finding: { done: number; total: number } | null;
   /** Solo mode: hide every other cell so the active one is unambiguous. */
   solo: boolean;
   /** Snapshot of visibleSegments at the moment solo was enabled, so we can
@@ -368,11 +374,47 @@ function startCompleteWizard(group: SegmentGroup) {
     index: 0,
     points: {},
     skipped: new Set(),
+    auto: new Set(),
+    finding: { done: 0, total: 0 },
     solo: false,
     soloSnapshot: null,
   };
   confirmAction.value = null;
+  void findPointsFromWork(group);
 }
+
+/**
+ * Fill in the points the player already made while working (Ames 2026-10-07).
+ * Each one is checked on the graph server to be inside its cell right now, so
+ * only cells with no usable click are left to place by hand. A point the
+ * player places or skips during the search is never overwritten.
+ */
+async function findPointsFromWork(group: SegmentGroup) {
+  const mine = guide.value;
+  if (!mine) return;
+  try {
+    const found = await pointsInsideCells(group.segmentIds, (done, total) => {
+      if (guide.value === mine && mine.finding) mine.finding = { done, total };
+    });
+    if (guide.value !== mine) return;                     // the wizard was closed or restarted
+    for (const [segId, pt] of Object.entries(found)) {
+      if (mine.points[segId] || mine.skipped.has(segId)) continue;
+      mine.points[segId] = pt;
+      mine.auto.add(segId);
+    }
+  } catch (e) {
+    console.warn('[batch] looking for points from your work failed:', e);
+  } finally {
+    if (guide.value === mine) mine.finding = null;
+  }
+}
+
+/** Index of the first cell at or after `from` that still needs a point, or -1. */
+function nextPendingIndex(group: SegmentGroup, from: number): number {
+  for (let i = from; i < group.segmentIds.length; i++) if (segStatus(group.segmentIds[i]) === 'pending') return i;
+  return -1;
+}
+const pendingCount = (group: SegmentGroup) => group.segmentIds.filter(id => segStatus(id) === 'pending').length;
 
 function cancelCompleteWizard() {
   if (guide.value?.solo) restoreSoloSnapshot();
@@ -491,6 +533,9 @@ function startWalk(group: SegmentGroup) {
   // Pre-load all segments so meshes start streaming — the moveToSegment call
   // in jumpToCurrentSegment relies on a loaded mesh fragment for the centroid.
   loadAllSegmentsIntoViewer(group);
+  // Begin at the first cell that still needs a point.
+  const first = nextPendingIndex(group, 0);
+  guide.value.index = first >= 0 ? first : 0;
   guide.value.stage = 'walk';
   // Default solo ON: snapshot the now-loaded set, then hide everything except
   // the active cell. toggleSolo also calls jumpToCurrentSegment to center.
@@ -506,6 +551,7 @@ function saveCurrentPoint(group: SegmentGroup) {
     return;
   }
   guide.value.points[segId] = pt;
+  guide.value.auto.delete(segId);                         // placed by hand now
   guide.value.skipped.delete(segId);
 }
 
@@ -514,12 +560,16 @@ function skipCurrent(group: SegmentGroup) {
   const segId = group.segmentIds[guide.value.index];
   guide.value.skipped.add(segId);
   delete guide.value.points[segId];
+  guide.value.auto.delete(segId);
 }
 
 function nextSegment(group: SegmentGroup) {
   if (!guide.value) return;
-  if (guide.value.index < group.segmentIds.length - 1) {
-    guide.value.index++;
+  // On to the next cell that still needs a point; the ones already filled in
+  // from your work are passed over (they can be opened from the review list).
+  const next = nextPendingIndex(group, guide.value.index + 1);
+  if (next >= 0) {
+    guide.value.index = next;
     jumpToCurrentSegment(group);
   } else {
     guide.value.stage = 'review';
@@ -883,15 +933,29 @@ const panelStyle = computed(() => ({
               <div v-if="guide && guide.groupId === group.id" class="nge-bp-guide">
                 <!-- Stage 1: Intro -->
                 <div v-if="guide.stage === 'intro'" class="nge-bp-guide-intro">
-                  <div class="nge-bp-guide-title">Place crosshairs in each cell</div>
-                  <p class="nge-bp-guide-text">
+                  <div class="nge-bp-guide-title">{{ guide.finding ? 'Looking for your points' : pendingCount(group) === 0 ? 'Every cell has a point' : 'Place crosshairs in each cell' }}</div>
+                  <!-- Points you already made while working (Ames 2026-10-07) -->
+                  <p v-if="guide.finding" class="nge-bp-guide-text" role="status">
+                    Checking where you clicked while working, to find a point inside each cell{{ guide.finding.total ? ` (${guide.finding.done} of ${guide.finding.total} checked)` : '' }}.
+                  </p>
+                  <p v-else-if="guide.auto.size > 0 && pendingCount(group) === 0" class="nge-bp-guide-text">
+                    All {{ group.segmentIds.length }} cells already have a point from where you clicked while working.
+                    Each one was checked to be inside its cell. Nothing to place.
+                  </p>
+                  <p v-else-if="guide.auto.size > 0" class="nge-bp-guide-text">
+                    {{ guide.auto.size }} of {{ group.segmentIds.length }} cells already have a point from where you clicked while working,
+                    each checked to be inside its cell. {{ pendingCount(group) }} still {{ pendingCount(group) === 1 ? 'needs' : 'need' }} one:
+                    place the crosshairs inside {{ pendingCount(group) === 1 ? 'it' : 'each' }}.
+                  </p>
+                  <p v-else class="nge-bp-guide-text">
                     To mark {{ group.segmentIds.length }} cells as proofread, you'll
                     place crosshairs inside each one so CAVE can map points to
                     the right segment. Each cell needs its own point.
                   </p>
                   <div class="nge-bp-guide-actions">
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="loadAllSegmentsIntoViewer(group)">Load all into viewer</button>
-                    <button class="nge-bp-btn nge-bp-btn--go" @click="startWalk(group)">Start →</button>
+                    <button v-if="!guide.finding && pendingCount(group) === 0" class="nge-bp-btn nge-bp-btn--go" @click="guide.stage = 'review'">Review →</button>
+                    <button v-else class="nge-bp-btn nge-bp-btn--go" :disabled="!!guide.finding" @click="startWalk(group)">Start →</button>
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="cancelCompleteWizard">Cancel</button>
                   </div>
                 </div>
@@ -910,7 +974,7 @@ const panelStyle = computed(() => ({
                     </button>
                   </div>
                   <div class="nge-bp-guide-status">
-                    <span v-if="segStatus(group.segmentIds[guide.index]) === 'saved'" class="nge-bp-guide-saved">✓ Saved</span>
+                    <span v-if="segStatus(group.segmentIds[guide.index]) === 'saved'" class="nge-bp-guide-saved">{{ guide.auto.has(group.segmentIds[guide.index]) ? '✓ Point from your work' : '✓ Saved' }}</span>
                     <span v-else-if="segStatus(group.segmentIds[guide.index]) === 'skipped'" class="nge-bp-guide-skipped">— Skipped</span>
                     <span v-else class="nge-bp-guide-pending">Place crosshairs in the cell</span>
                   </div>
@@ -926,7 +990,7 @@ const panelStyle = computed(() => ({
                   <div class="nge-bp-guide-nav">
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="prevSegment(group)" :disabled="guide.index === 0">◂ Prev</button>
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="nextSegment(group)">
-                      {{ guide.index === group.segmentIds.length - 1 ? 'Review →' : 'Next ▸' }}
+                      {{ nextPendingIndex(group, guide.index + 1) < 0 ? 'Review →' : 'Next ▸' }}
                     </button>
                     <button class="nge-bp-btn nge-bp-btn--sm" @click="cancelCompleteWizard">Cancel</button>
                   </div>
@@ -936,7 +1000,7 @@ const panelStyle = computed(() => ({
                 <div v-else-if="guide.stage === 'review'" class="nge-bp-guide-review">
                   <div class="nge-bp-guide-title">Ready to submit</div>
                   <div class="nge-bp-guide-summary">
-                    {{ Object.keys(guide.points).length }} ready ·
+                    {{ Object.keys(guide.points).length }} ready<template v-if="guide.auto.size"> ({{ guide.auto.size }} from your work)</template> ·
                     {{ guide.skipped.size }} skipped ·
                     {{ group.segmentIds.length - Object.keys(guide.points).length - guide.skipped.size }} pending
                   </div>
