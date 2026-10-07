@@ -1250,9 +1250,13 @@ const HELP_ISSUE_TYPES = ['Unsure', 'Merge error', 'Split error', 'Missing branc
 
 // Pre-fill the segment ID from the current viewer selection when the Help tab
 // opens, so the common case is one click. The user can still edit/paste any ID.
-watch(() => filter.value, (f) => {
-  if (f === 'help' && helpFormOpen.value && !newHelpLink.value.trim()) void saveHelpLink();
-});
+// The link is always filled in for you: when the Help tab is showing with the
+// form open and the field is empty (first open, and again after a request is
+// sent), it is made from the current view (Ames 2026-10-07: "I shouldn't need
+// to click"). It is made afresh when the request is sent, so it is never stale.
+watch([() => filter.value, helpFormOpen, newHelpLink], ([f, open, link]) => {
+  if (f === 'help' && open && !String(link).trim() && !newHelpLinkMinting.value) void saveHelpLink();
+}, { immediate: true });
 
 function onHelpScreenshotAttached(payload: { url: string }) {
   newHelpScreenshotUrl.value = payload.url;
@@ -2440,7 +2444,7 @@ const panelStyle = computed(() => ({
               <input
                 v-model="newHelpLink"
                 class="nge-cl-help-segid-input"
-                placeholder="Link to your view (https://…)"
+                placeholder="Your view is attached when you send"
                 @keydown.stop @keyup.stop @keypress.stop
                 @input="newHelpError = ''"
               />
@@ -2448,8 +2452,8 @@ const panelStyle = computed(() => ({
                 class="nge-cl-help-segid-use"
                 :disabled="newHelpLinkMinting"
                 @click="saveHelpLink"
-                title="Save a link to exactly what you are looking at now"
-              >{{ newHelpLinkMinting ? 'Saving…' : 'Save link' }}</button>
+                title="The link is filled in for you, and made again from what you are looking at when you send. Click to remake it now."
+              >{{ newHelpLinkMinting ? 'Saving…' : 'Refresh link' }}</button>
               <select
                 v-model="newHelpIssue"
                 class="nge-cl-help-issue-select"
