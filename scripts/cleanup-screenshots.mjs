@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Deletes old player screenshots from Supabase Storage so the bucket does
- * not fill up (Ames 2026-10-07: "delete screenshots that are over 7 days
- * old for now, so that we don't run out of storage").
+ * not fill up (Ames 2026-10-07: "delete screenshots... so that we don't run
+ * out of storage"; 14 days, once screenshots were also stored compressed).
  *
  * Only the folder admin-uploads/help-screenshots/ is ever touched. Achievement
  * art, notification images and blog images live in other folders.
@@ -26,7 +26,7 @@ const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SUPABASE_URL || !KEY) { console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY'); process.exit(1); }
 
 const DELETE = process.env.DELETE === '1';
-const MAX_AGE_DAYS = Number(process.env.MAX_AGE_DAYS || 7);
+const MAX_AGE_DAYS = Number(process.env.MAX_AGE_DAYS || 14);
 const BUG_REPORT_DAYS = Number(process.env.BUG_REPORT_DAYS || 30);
 const BUCKET = 'admin-uploads';
 const FOLDER = 'help-screenshots';

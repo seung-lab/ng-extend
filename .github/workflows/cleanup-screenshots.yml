@@ -1,22 +1,32 @@
 name: Clean Up Old Screenshots
 
-# Deletes player screenshots older than 7 days that nothing still needs
-# (scripts/cleanup-screenshots.mjs has the rules). Run by hand for now, and it
-# only prints what it would delete unless "delete" is ticked. A daily schedule
-# is added once Ames has read a dry run.
+# Keeps player screenshot storage small (Ames 2026-10-07).
+#   cleanup:    deletes player screenshots older than 14 days that nothing
+#               still needs (scripts/cleanup-screenshots.mjs has the rules).
+#               Runs every day; a run by hand only prints unless "delete" is ticked.
+#   recompress: a one-off, by hand only: rewrites screenshots stored before the
+#               app compressed them itself (scripts/recompress-screenshots.mjs).
 on:
+  schedule:
+    # Every day at 06:20 UTC.
+    - cron: '20 6 * * *'
   workflow_dispatch:
     inputs:
-      delete:
-        description: 'Really delete. Unticked: print what would be deleted and change nothing.'
+      job:
+        description: 'What to run.'
+        type: choice
+        options: [cleanup, recompress]
+        default: cleanup
+      write:
+        description: 'Really change storage. Unticked: print what would happen and change nothing.'
         type: boolean
         default: false
 
 jobs:
-  cleanup:
+  screenshots:
     runs-on: ubuntu-latest
     steps:
-      # The script lives on the game's branch, not the default branch.
+      # The scripts live on the game's branch, not the default branch.
       - uses: actions/checkout@v4
         with:
           ref: eyewire-ii-community
@@ -25,9 +35,21 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Clean up old screenshots
+      - name: Delete old screenshots nothing needs
+        if: github.event_name == 'schedule' || inputs.job == 'cleanup'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          DELETE: ${{ inputs.delete && '1' || '0' }}
+          DELETE: ${{ (github.event_name == 'schedule' || inputs.write) && '1' || '0' }}
         run: node scripts/cleanup-screenshots.mjs
+
+      - name: Compress screenshots stored before compression
+        if: github.event_name == 'workflow_dispatch' && inputs.job == 'recompress'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          WRITE: ${{ inputs.write && '1' || '0' }}
+        run: |
+          mkdir -p /tmp/recompress && cp scripts/recompress-screenshots.mjs /tmp/recompress/
+          cd /tmp/recompress && npm init -y >/dev/null && npm install --no-audit --no-fund sharp@0.33 >/dev/null
+          node recompress-screenshots.mjs
