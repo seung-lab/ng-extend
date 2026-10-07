@@ -533,24 +533,26 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
 .nge-seg-legend:hover {
   opacity: 1;
 }
-/* "Hide completed" sits with the legend; in a narrow panel it takes the line below. */
-.nge-seg-legend { flex-wrap: wrap; row-gap: 6px; }
-.nge-seg-hide-done {
-  flex: 0 0 auto;
-  padding: 3px 10px;
-  border-radius: 999px;
+/* The legend is also the list's filter: each kind is a small control. Click
+   to take those cells out of the list, click again to bring them back. */
+.nge-seg-legend { flex-wrap: wrap; row-gap: 4px; }
+.nge-seg-legend-item[role="button"] {
   cursor: pointer;
-  font: 600 10px 'Inter', system-ui, sans-serif;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #cfe6ff;
-  background: rgba(74, 158, 255, 0.1);
-  border: 1px solid rgba(74, 158, 255, 0.4);
-  transition: background 0.15s, border-color 0.15s;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  border-radius: 6px;
+  transition: background 0.15s, opacity 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.nge-seg-hide-done:hover:not(:disabled) { background: rgba(74, 158, 255, 0.2); border-color: rgba(127, 212, 255, 0.8); }
-.nge-seg-hide-done:focus-visible { outline: 2px solid #7fd4ff; outline-offset: 2px; }
-.nge-seg-hide-done:disabled { cursor: default; opacity: 0.7; }
+.nge-seg-legend-item[role="button"]:hover { background: rgba(74, 158, 255, 0.14); }
+.nge-seg-legend-item[role="button"]:focus-visible { outline: 2px solid #7fd4ff; outline-offset: 1px; }
+/* Its cells are out of the list. */
+.nge-seg-legend-item--off { opacity: 0.45; }
+.nge-seg-legend-item--off .nge-seg-legend-text { text-decoration: line-through; }
+.nge-seg-legend-item--off:hover { opacity: 0.8; }
+.nge-seg-legend-item--busy { cursor: progress; }
+.nge-seg-legend-text { font-variant-numeric: tabular-nums; }
 .nge-seg-legend-item {
   display: flex;
   align-items: center;

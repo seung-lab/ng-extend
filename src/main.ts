@@ -1,7 +1,7 @@
 import { startViewAutosave } from './util/view_autosave';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
-import { hideCompletedCells, showHiddenCells, type HideResult } from './util/hide_completed';
+import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
 import { watchPhoneEmptyView } from './widgets/widget_utils';
 import { isMobileRef as phoneRef } from './util/mobile';
 import { installScriptApi } from './script_api';
@@ -414,53 +414,81 @@ function makeExtendViewer() {
   }
 }
 
-/** The "Hide completed" button at the end of the legend (annkri 2026-10-07):
- *  takes every cell already marked proofread out of the list, and then offers
- *  to put them back. It sits with the legend because the legend is what says
- *  which cells are proofread. */
-function makeHideCompletedButton(): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'nge-seg-hide-done';
-  const IDLE = 'Hide completed';
-  const idle = () => {
-    btn.textContent = IDLE;
-    btn.title = 'Take the cells already marked proofread out of this list. Nothing is changed for anyone else.';
-    btn.disabled = false;
-    delete btn.dataset.undo;
-  };
-  idle();
-  let last: HideResult | null = null;
+/** The legend under the segment list is also its filter (Ames 2026-10-07: "yes
+ *  brilliant, clickable legend"). Clicking a kind takes those cells out of the
+ *  list; clicking it again puts them back. While its cells are out, the word
+ *  is dimmed and struck through. No button is added for a job only some
+ *  people need. See util/hide_completed.ts. */
+const LEGEND_KINDS: { kind: CellKind; pip: string; label: string; plural: string }[] = [
+  { kind: 'todo', pip: 'incomplete', label: 'Todo', plural: 'cells still to do' },
+  { kind: 'proofread', pip: 'complete', label: 'Proofread', plural: 'proofread cells' },
+  { kind: 'typed', pip: 'annotated', label: 'Typed', plural: 'typed cells' },
+  { kind: 'done', pip: 'done', label: 'Done', plural: 'done cells' },
+];
+function makeLegendItem(legend: HTMLElement, spec: typeof LEGEND_KINDS[number]): HTMLElement {
+  const item = document.createElement('span');
+  item.className = 'nge-seg-legend-item';
+  item.setAttribute('role', 'button');
+  item.tabIndex = 0;
+  item.dataset.kind = spec.kind;
+  const pip = document.createElement('span');
+  pip.className = `nge-legend-pip nge-legend-pip--${spec.pip}`;
+  const text = document.createElement('span');
+  text.className = 'nge-seg-legend-text';
+  item.append(pip, text);
+
+  let hidden: HideResult | null = null;
+  let busy = false;
   let revert = 0;
-  btn.addEventListener('click', async () => {
+  const rest = () => {
+    text.textContent = spec.label;
+    item.classList.toggle('nge-seg-legend-item--off', !!hidden);
+    item.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+    const n = hidden?.hidden.length ?? 0;
+    item.title = hidden
+      ? `${n} ${n === 1 ? spec.plural.replace(/cells/, 'cell') : spec.plural} hidden from this list. Click to bring ${n === 1 ? 'it' : 'them'} back.`
+      : `Click to hide the ${spec.plural} from this list. Nothing changes for anyone else.`;
+    // The legend stays up while anything is hidden, even if that emptied the list.
+    legend.dataset.hiding = legend.querySelector('.nge-seg-legend-item--off') ? '1' : '';
+  };
+  rest();
+  const say = (words: string) => { text.textContent = words; clearTimeout(revert); revert = window.setTimeout(rest, 2600); };
+
+  const toggle = async () => {
+    if (busy) return;
     clearTimeout(revert);
-    if (last) {                       // the button is offering to put them back
-      showHiddenCells(last);
-      last = null;
-      idle();
+    if (hidden) {                       // bring them back
+      showHiddenCells(hidden);
+      hidden = null;
+      rest();
       return;
     }
-    btn.disabled = true;
-    btn.textContent = 'Checking…';
-    const result = await hideCompletedCells(useLayersStore().getCaveServerUrl(),
-      (done, total) => { btn.textContent = `Checking ${done} of ${total}`; }).catch(() => null);
-    btn.disabled = false;
-    if (!result || !result.checked) { btn.textContent = 'No cells to check'; revert = window.setTimeout(idle, 3000); return; }
-    if (!result.hidden.length) {
-      btn.textContent = result.unread === result.checked ? 'No completion marks here' : 'None are completed';
-      revert = window.setTimeout(idle, 3500);
-      return;
-    }
-    last = result;
-    btn.dataset.undo = '1';
-    const n = result.hidden.length;
-    btn.textContent = `Put ${n} back`;
-    btn.title = `${n} completed ${n === 1 ? 'cell was' : 'cells were'} taken out of the list. Click to put ${n === 1 ? 'it' : 'them'} back.`;
-    // The offer to put them back does not last for ever: the list moves on.
-    revert = window.setTimeout(() => { last = null; idle(); }, 60000);
-  });
-  return btn;
+    busy = true;
+    item.classList.add('nge-seg-legend-item--busy');
+    text.textContent = 'Checking…';
+    const result = await hideCellsOfKind(useLayersStore().getCaveServerUrl(), spec.kind,
+      (done, total) => { text.textContent = `${done} of ${total}`; }).catch(() => null);
+    busy = false;
+    item.classList.remove('nge-seg-legend-item--busy');
+    if (!result || !result.checked) { say('No cells'); return; }
+    if (!result.hidden.length) { say(result.unread === result.checked ? 'Not marked here' : 'None'); return; }
+    hidden = result;
+    rest();
+  };
+  item.addEventListener('click', () => { void toggle(); });
+  return item;
 }
+// Enter or Space on a focused legend item works it like a click. Listened for
+// on the window, at capture: another handler there takes Enter before it can
+// reach the item itself.
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const item = document.activeElement as HTMLElement | null;
+  if (!item?.classList?.contains('nge-seg-legend-item') || item.getAttribute('role') !== 'button') return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  item.click();
+}, true);
 
 /** Injects a small pip legend as the last child of the seg display tab so
  *  it sits at the bottom of the panel as a sticky footer. Idempotent —
@@ -479,19 +507,15 @@ function injectSegmentLegend() {
       // CAVE status in button_service and referenced by the restyle CSS);
       // only the labels and their order change. "Complete" was relabelled
       // "Proofread" to say what the user actually did to the cell.
-      legend.innerHTML =
-        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--incomplete"></span>Todo</span>' +
-        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--complete"></span>Proofread</span>' +
-        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--annotated"></span>Typed</span>' +
-        '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--done"></span>Done</span>';
-      legend.appendChild(makeHideCompletedButton());
+      for (const spec of LEGEND_KINDS) legend.appendChild(makeLegendItem(legend, spec));
       tab.appendChild(legend);
     } else if (legend.parentElement !== tab) {
       // Move to the end of the tab if it ended up somewhere else
       tab.appendChild(legend);
     }
-    // Stays up while "Put N back" is on offer, even if hiding emptied the list.
-    legend.style.display = hasEntries || legend.querySelector('.nge-seg-hide-done[data-undo]') ? '' : 'none';
+    // Stays up while a kind is hidden, even if hiding emptied the list: it is
+    // the only way to bring those cells back.
+    legend.style.display = hasEntries || legend.dataset.hiding ? '' : 'none';
   });
 }
 
