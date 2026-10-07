@@ -1322,9 +1322,10 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Loyalty Achievements: total days, not in a row (Ames 2026-10-06) -->
-          <div class="nge-profile-badges-divider"></div>
-          <div class="nge-profile-section nge-profile-section--badges">
+          <!-- Loyalty Achievements: total days, not in a row (Ames 2026-10-06).
+               Hidden while the set is switched off (LOYALTY_ENABLED). -->
+          <div v-if="LOYALTY_BADGES.length" class="nge-profile-badges-divider"></div>
+          <div v-if="LOYALTY_BADGES.length" class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-section-label" style="color: #c9a8ff;">▌ Loyalty Achievements</div>
             <div class="nge-profile-countdown-inline" v-if="nextLoyaltyAchievement">
               <div class="nge-profile-countdown-row">

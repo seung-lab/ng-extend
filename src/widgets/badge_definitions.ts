@@ -262,7 +262,17 @@ export const EXPLORATION_BADGES: BadgeDefinition[] = [
  */
 const loyalty = (n: number, days: number, slug: string, code: string, name: string, description: string): BadgeDefinition =>
   ({ id: 200 + n, track: 'loyalty', sequence: n, slug, code, name, description, imageKey: `loyalty/${slug}`, threshold: days, editThreshold: days });
-export const LOYALTY_BADGES: BadgeDefinition[] = [
+/**
+ * OFF for now (Ames 2026-10-06: "remove the loyalty badges for now. We need
+ * to iterate. The counter can stay."). The names, text and art below are
+ * drafts and are kept for that work, but nothing is shown, earned, announced
+ * or favourited while this is false. The Days counter in the profile is
+ * separate and stays. Turn on only when Ames says the set is ready; the art
+ * folder must then go back into the build copy (scripts/build-prod.js and
+ * scripts/dev-server.js).
+ */
+export const LOYALTY_ENABLED = false;
+const LOYALTY_DRAFTS: BadgeDefinition[] = [
   loyalty(1,  2, 'second-spark',   'SS', 'Day Two',   "Day 2! We're glad you came back :)"),
   loyalty(2,  3, 'third-light',    'TL', 'Day Three',    'Three days of science! You are on a roll.'),
   loyalty(3,  5, 'growing-signal', 'GS', 'Five Days', 'Five days for science!'),
@@ -292,6 +302,8 @@ export const LOYALTY_BADGES: BadgeDefinition[] = [
   loyalty(25, 350, 'yearward',            'YW', 'Fifty Weeks',            '350 days at EyeWire II! A full year is in sight.'),
   loyalty(26, 365, 'the-constant',        'TH', 'One Year',        '365 days at EyeWire II! A whole year of science. You are a legend.'),
 ];
+
+export const LOYALTY_BADGES: BadgeDefinition[] = LOYALTY_ENABLED ? LOYALTY_DRAFTS : [];
 
 /** Every achievement: building, then exploration, then loyalty. */
 export const BADGE_DEFINITIONS: BadgeDefinition[] = [

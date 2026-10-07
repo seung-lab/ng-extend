@@ -173,7 +173,8 @@ const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-
 // esbuild --config=min outputs to dist/min
 const OUT_DIR = path.join(__dirname, '..', 'dist', 'min', 'center-art');
 
-for (const track of ['building', 'exploration', 'loyalty']) {
+// 'loyalty' is left out while LOYALTY_ENABLED is false (src/widgets/badge_definitions.ts).
+for (const track of ['building', 'exploration']) {
   const srcDir = path.join(BADGE_ART, track);
   const destDir = path.join(OUT_DIR, track);
   if (fs.existsSync(srcDir)) {

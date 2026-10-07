@@ -199,7 +199,8 @@ args.push('--config=dev', '--serve', '--watch', '--host', '0.0.0.0');
 const path = require('path');
 const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-art');
 const DEV_OUT = path.join(__dirname, '..', 'dist', 'dev', 'center-art');
-for (const track of ['building', 'exploration', 'loyalty']) {
+// 'loyalty' is left out while LOYALTY_ENABLED is false (src/widgets/badge_definitions.ts).
+for (const track of ['building', 'exploration']) {
   const srcDir = path.join(BADGE_ART, track);
   const destDir = path.join(DEV_OUT, track);
   if (fs.existsSync(srcDir)) {
