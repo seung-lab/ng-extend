@@ -1,6 +1,7 @@
 import { startViewAutosave } from './util/view_autosave';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
+import { hideCompletedCells, showHiddenCells, type HideResult } from './util/hide_completed';
 import { watchPhoneEmptyView } from './widgets/widget_utils';
 import { isMobileRef as phoneRef } from './util/mobile';
 import { installScriptApi } from './script_api';
@@ -413,6 +414,54 @@ function makeExtendViewer() {
   }
 }
 
+/** The "Hide completed" button at the end of the legend (annkri 2026-10-07):
+ *  takes every cell already marked proofread out of the list, and then offers
+ *  to put them back. It sits with the legend because the legend is what says
+ *  which cells are proofread. */
+function makeHideCompletedButton(): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'nge-seg-hide-done';
+  const IDLE = 'Hide completed';
+  const idle = () => {
+    btn.textContent = IDLE;
+    btn.title = 'Take the cells already marked proofread out of this list. Nothing is changed for anyone else.';
+    btn.disabled = false;
+    delete btn.dataset.undo;
+  };
+  idle();
+  let last: HideResult | null = null;
+  let revert = 0;
+  btn.addEventListener('click', async () => {
+    clearTimeout(revert);
+    if (last) {                       // the button is offering to put them back
+      showHiddenCells(last);
+      last = null;
+      idle();
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Checking…';
+    const result = await hideCompletedCells(useLayersStore().getCaveServerUrl(),
+      (done, total) => { btn.textContent = `Checking ${done} of ${total}`; }).catch(() => null);
+    btn.disabled = false;
+    if (!result || !result.checked) { btn.textContent = 'No cells to check'; revert = window.setTimeout(idle, 3000); return; }
+    if (!result.hidden.length) {
+      btn.textContent = result.unread === result.checked ? 'No completion marks here' : 'None are completed';
+      revert = window.setTimeout(idle, 3500);
+      return;
+    }
+    last = result;
+    btn.dataset.undo = '1';
+    const n = result.hidden.length;
+    btn.textContent = `Put ${n} back`;
+    btn.title = `${n} completed ${n === 1 ? 'cell was' : 'cells were'} taken out of the list. Click to put ${n === 1 ? 'it' : 'them'} back.`;
+    // The offer to put them back does not last for ever: the list moves on.
+    revert = window.setTimeout(() => { last = null; idle(); }, 60000);
+  });
+  return btn;
+}
+
 /** Injects a small pip legend as the last child of the seg display tab so
  *  it sits at the bottom of the panel as a sticky footer. Idempotent —
  *  safe to call repeatedly; existing legends get reused (and shown/hidden
@@ -435,12 +484,14 @@ function injectSegmentLegend() {
         '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--complete"></span>Proofread</span>' +
         '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--annotated"></span>Typed</span>' +
         '<span class="nge-seg-legend-item"><span class="nge-legend-pip nge-legend-pip--done"></span>Done</span>';
+      legend.appendChild(makeHideCompletedButton());
       tab.appendChild(legend);
     } else if (legend.parentElement !== tab) {
       // Move to the end of the tab if it ended up somewhere else
       tab.appendChild(legend);
     }
-    legend.style.display = hasEntries ? '' : 'none';
+    // Stays up while "Put N back" is on offer, even if hiding emptied the list.
+    legend.style.display = hasEntries || legend.querySelector('.nge-seg-hide-done[data-undo]') ? '' : 'none';
   });
 }
 
