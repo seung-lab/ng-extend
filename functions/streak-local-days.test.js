@@ -57,7 +57,13 @@ test('the first visit recounts the streak on the player\'s own calendar',async()
     const r=await touch(db,1,NY);
     assert.deepEqual([r.current_streak,r.recounted,r.tz,r.streak_before],[4,true,NY,2]);
     assert.equal(r.longest_streak,4);
-    assert.equal((await row(db,1)).last, await localToday(db,NY));
+    // The saved day only ever moves forwards. Between 8 pm and midnight in New
+    // York the old UTC rule's day (set above) is already tomorrow, so that is
+    // the day kept; the rest of the day it is the player's own today. Without
+    // this the test failed every evening and blocked the deploy.
+    const utcToday=(await db.query(`SELECT (now() AT TIME ZONE 'UTC')::date::text AS d`)).rows[0].d;
+    const localDay=await localToday(db,NY);
+    assert.equal((await row(db,1)).last, utcToday>localDay?utcToday:localDay);
 
     // The same day again: nothing moves, and it is not a recount.
     const again=await touch(db,1,NY);
