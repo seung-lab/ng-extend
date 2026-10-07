@@ -889,15 +889,22 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   /* neuroglancer sizes the chip in ch of its own font (0 here): size to the label. */
   width: auto !important;
   min-width: 0 !important;
-  max-width: 200px;
+  /* As wide as the row has room for (beside it sit three icons and the jump
+     arrow, about 128px of the row's inner width), never more than 200px. A
+     longer name is cut short. */
+  max-width: min(200px, calc(100cqw - 128px)) !important;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .neuroglancer-segment-list-entry.nge-seg-labelled .neuroglancer-segment-list-entry-id::after {
   content: attr(data-nge-label);
   font: 600 12px 'Inter', system-ui, sans-serif;
   letter-spacing: 0.01em;
+  /* The chip's own font size is 0, so its ellipsis would be invisible:
+     the label draws its own. */
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* ...and its copy button stays visible, since the id is no longer on show. */
 .neuroglancer-segment-list-entry.nge-seg-labelled .neuroglancer-segment-list-entry-copy {
@@ -991,6 +998,44 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
    width and the bars look like a glitch when the list contains long IDs. ── */
 .neuroglancer-segment-list {
   overflow-x: hidden !important;
+}
+
+/* ── The Δ stays put at the right of its row (Nseraf, Ames 2026-10-07) ──────
+   A row used to be as wide as its longest content, which in a narrow panel is
+   wider than the panel: the Δ ended up half under the scrollbar, where a click
+   meant for it scrolled the list instead. And with a long cell type name the
+   Δ wrapped onto a second line at the left. Now every row is exactly the
+   panel's width, the Δ is pinned to the right of the first line with room
+   between it and the scrollbar, and a long name is cut short with an ellipsis
+   rather than pushing anything. */
+.neuroglancer-segment-list > div,
+.neuroglancer-segment-list > div > div > div {
+  /* the list's inner boxes size themselves to their widest row otherwise */
+  width: 100% !important;
+  min-width: 0 !important;
+}
+/* Only rows of the list itself. A segment row also appears in the merge and
+   cut bars and the selection panel, where it sizes to its content; those are
+   left exactly as they were. */
+.neuroglancer-segment-list .neuroglancer-segment-list-entry {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding-right: 46px !important;   /* the Δ's own space, clear of the scrollbar */
+  container-type: inline-size;      /* lets a long name size itself to the row (cqw) */
+}
+.neuroglancer-segment-list .neuroglancer-segment-list-entry .nge-lb-btn {
+  position: absolute !important;
+  right: 14px;
+  top: 3px;
+  margin-left: 0;
+}
+.neuroglancer-segment-list .neuroglancer-segment-list-entry .neuroglancer-segment-list-entry-sticky {
+  max-width: 100%;
+}
+.neuroglancer-segment-list .neuroglancer-segment-list-entry .neuroglancer-segment-list-entry-id {
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 /* ── Visible-segments list: hide the vertical scrollbar UNTIL it's actually
