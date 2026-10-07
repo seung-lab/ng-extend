@@ -1780,30 +1780,74 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   #extensionBar [data-icon-id="highlight"] .nge-can-all, #extensionBar [data-icon-id="highlight"] .nge-can-lid,
   #extensionBar [data-icon-id="highlight"] .nge-can-spray circle { animation: none !important; }
 }
-#extensionBar [data-icon-id="split"]:hover svg > :nth-child(4) { animation: nge-ti-split-l 0.9s ease-in-out infinite; }
-#extensionBar [data-icon-id="split"]:hover svg > :nth-child(5) { animation: nge-ti-split-r 0.9s ease-in-out infinite; }
-#extensionBar [data-icon-id="split"].nge-pop svg { animation: nge-ti-snip 0.5s cubic-bezier(0.3, 1.6, 0.5, 1); }
-@keyframes nge-ti-split-l { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-1.2px, 0.6px); } }
-@keyframes nge-ti-split-r { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(1.2px, 0.6px); } }
-@keyframes nge-ti-snip { 0% { transform: scaleX(1); } 35% { transform: scaleX(1.3) scaleY(0.9); } 70% { transform: scaleX(0.94); } 100% { transform: scaleX(1); } }
+/* Cut (Ames 2026-10-07): on hover one arm of the fork is cut away and hangs
+   apart; on click that arm bursts into particles and fades. */
+#extensionBar [data-icon-id="split"] svg .nge-cut-arm { transform-box: fill-box; transform-origin: 20% 10%; transition: transform 0.28s cubic-bezier(0.3, 1.5, 0.5, 1), opacity 0.2s ease; }
+#extensionBar [data-icon-id="split"] svg .nge-cut-bits circle { opacity: 0; }
+#extensionBar [data-icon-id="split"]:hover svg .nge-cut-arm { transform: translate(1.7px, 1.3px) rotate(13deg); opacity: 0.9; }
+#extensionBar [data-icon-id="split"].nge-pop svg .nge-cut-arm { animation: nge-cut-vanish 0.8s ease-out both; }
+#extensionBar [data-icon-id="split"].nge-pop svg .nge-cut-bits circle { animation: nge-cut-burst 0.8s cubic-bezier(0.15, 0.7, 0.3, 1) both; }
+#extensionBar [data-icon-id="split"].nge-pop svg .nge-cut-keep { animation: nge-cut-recoil 0.4s cubic-bezier(0.3, 1.6, 0.5, 1); transform-box: fill-box; transform-origin: 50% 0; }
+@keyframes nge-cut-vanish { 0% { opacity: 1; filter: brightness(2.4); } 16%, 100% { opacity: 0; } }
+@keyframes nge-cut-burst {
+  0%   { opacity: 0; transform: translate(0, 0) scale(1); }
+  10%  { opacity: 1; filter: brightness(2); }
+  55%  { opacity: 1; filter: brightness(1.3); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.35); }
+}
+@keyframes nge-cut-recoil { 0% { transform: rotate(0); } 35% { transform: rotate(-7deg); } 100% { transform: rotate(0); } }
 
-/* Merge: the two top ends lean in; click snaps them together, the join flashes. */
-#extensionBar [data-icon-id="merge"]:hover svg > :nth-child(2) { animation: nge-ti-merge-l 0.9s ease-in-out infinite; }
-#extensionBar [data-icon-id="merge"]:hover svg > :nth-child(3) { animation: nge-ti-merge-r 0.9s ease-in-out infinite; }
-#extensionBar [data-icon-id="merge"].nge-pop svg > :nth-child(2) { animation: nge-ti-merge-snap-l 0.55s ease-in-out; }
-#extensionBar [data-icon-id="merge"].nge-pop svg > :nth-child(3) { animation: nge-ti-merge-snap-r 0.55s ease-in-out; }
-#extensionBar [data-icon-id="merge"].nge-pop svg > :nth-child(4) { animation: nge-ti-flash 0.55s ease-out; }
-@keyframes nge-ti-merge-l { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1.2px); } }
-@keyframes nge-ti-merge-r { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.2px); } }
-@keyframes nge-ti-merge-snap-l { 0%, 100% { transform: translateX(0); } 45% { transform: translateX(3.6px); } }
-@keyframes nge-ti-merge-snap-r { 0%, 100% { transform: translateX(0); } 45% { transform: translateX(-3.6px); } }
+/* Merge (Ames 2026-10-07): on hover the two branches come together, side by
+   side with their ends touching; on click a signal runs down both branches,
+   through the join and into the stem. The branch lines change shape (the CSS
+   `d` property); where a browser can not do that, they lean in instead. */
+#extensionBar [data-icon-id="merge"] svg .nge-mg-sig { opacity: 0; }
+#extensionBar [data-icon-id="merge"] svg .nge-mg-l circle,
+#extensionBar [data-icon-id="merge"] svg .nge-mg-r circle { transition: transform 0.3s cubic-bezier(0.3, 1.3, 0.5, 1); }
+@supports (d: path("M0 0")) {
+  #extensionBar [data-icon-id="merge"] svg .nge-mg-l path,
+  #extensionBar [data-icon-id="merge"] svg .nge-mg-r path { transition: d 0.3s cubic-bezier(0.3, 1.3, 0.5, 1); }
+  #extensionBar [data-icon-id="merge"]:hover svg .nge-mg-l path { d: path("M6.6 3 V8.2 A1.4 2.8 0 0 0 8 11"); }
+  #extensionBar [data-icon-id="merge"]:hover svg .nge-mg-r path { d: path("M9.4 3 V8.2 A1.4 2.8 0 0 1 8 11"); }
+  #extensionBar [data-icon-id="merge"]:hover svg .nge-mg-l circle { transform: translateX(2.6px); }
+  #extensionBar [data-icon-id="merge"]:hover svg .nge-mg-r circle { transform: translateX(-2.6px); }
+}
+@supports not (d: path("M0 0")) {
+  #extensionBar [data-icon-id="merge"] svg .nge-mg-l,
+  #extensionBar [data-icon-id="merge"] svg .nge-mg-r { transition: transform 0.3s ease; }
+  #extensionBar [data-icon-id="merge"]:hover svg .nge-mg-l { transform: translateX(1.2px); }
+  #extensionBar [data-icon-id="merge"]:hover svg .nge-mg-r { transform: translateX(-1.2px); }
+}
+#extensionBar [data-icon-id="merge"].nge-pop svg .nge-mg-sig { animation: nge-mg-signal 0.42s ease-in both; }
+#extensionBar [data-icon-id="merge"].nge-pop svg .nge-mg-stem { animation: nge-mg-arrive 0.4s ease-out 0.36s both; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes nge-mg-signal { 0% { opacity: 1; stroke-dashoffset: 27; } 90% { opacity: 1; } 100% { opacity: 0; stroke-dashoffset: -100; } }
+@keyframes nge-mg-arrive { 0% { filter: brightness(1); transform: scale(1); } 40% { filter: brightness(2.4) drop-shadow(0 0 2px #b8ffb8); transform: scale(1.35); } 100% { filter: brightness(1); transform: scale(1); } }
 @keyframes nge-ti-flash { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.9); filter: brightness(1.8); } }
 
-/* Find Path: the dotted path marches; click runs it fast and the ends pulse. */
-#extensionBar [data-icon-id="findPath"]:hover svg > :nth-child(3) { animation: nge-ti-march 0.8s linear infinite; }
-#extensionBar [data-icon-id="findPath"].nge-pop svg > :nth-child(3) { animation: nge-ti-march 0.25s linear 3; }
-#extensionBar [data-icon-id="findPath"].nge-pop svg > circle { animation: nge-ti-flash 0.6s ease-out; }
-@keyframes nge-ti-march { to { stroke-dashoffset: -6.4; } }
+/* Find Path (Ames 2026-10-07: "hard to see"): a solid white trace draws from
+   one end to the other over the dotted route, and each end lights as the
+   trace leaves and arrives. Click runs it once, fast. */
+#extensionBar [data-icon-id="findPath"] svg .nge-fp-trace { opacity: 0; }
+#extensionBar [data-icon-id="findPath"] svg .nge-fp-a,
+#extensionBar [data-icon-id="findPath"] svg .nge-fp-b { transform-box: fill-box; transform-origin: center; }
+#extensionBar [data-icon-id="findPath"]:hover svg .nge-fp-dots { opacity: 0.45; }
+#extensionBar [data-icon-id="findPath"]:hover svg .nge-fp-trace { animation: nge-fp-draw 1.3s ease-in-out infinite; }
+#extensionBar [data-icon-id="findPath"]:hover svg .nge-fp-a { animation: nge-fp-start 1.3s ease-in-out infinite; }
+#extensionBar [data-icon-id="findPath"]:hover svg .nge-fp-b { animation: nge-fp-end 1.3s ease-in-out infinite; }
+#extensionBar [data-icon-id="findPath"].nge-pop svg .nge-fp-trace { animation: nge-fp-run 0.7s ease-in-out 1; }
+#extensionBar [data-icon-id="findPath"].nge-pop svg .nge-fp-a { animation: nge-fp-run-a 0.7s ease-in-out 1; }
+#extensionBar [data-icon-id="findPath"].nge-pop svg .nge-fp-b { animation: nge-fp-run-b 0.7s ease-in-out 1; }
+@keyframes nge-fp-draw { 0% { opacity: 1; stroke-dashoffset: 100; } 55% { opacity: 1; stroke-dashoffset: 0; } 80% { opacity: 1; stroke-dashoffset: 0; } 100% { opacity: 0; stroke-dashoffset: 0; } }
+@keyframes nge-fp-start { 0% { transform: scale(1.5); filter: brightness(2); } 25%, 100% { transform: scale(1); filter: none; } }
+@keyframes nge-fp-end { 0%, 45% { transform: scale(1); filter: none; } 62% { transform: scale(1.6); filter: brightness(2.2); } 100% { transform: scale(1); filter: none; } }
+/* The click run has its own names: an animation with the same name as the
+   hover loop already running would not start again. */
+@keyframes nge-fp-run { 0% { opacity: 1; stroke-dashoffset: 100; } 55% { opacity: 1; stroke-dashoffset: 0; } 80% { opacity: 1; stroke-dashoffset: 0; } 100% { opacity: 0; stroke-dashoffset: 0; } }
+@keyframes nge-fp-run-a { 0% { transform: scale(1.7); filter: brightness(2.2); } 30%, 100% { transform: scale(1); filter: none; } }
+@keyframes nge-fp-run-b { 0%, 45% { transform: scale(1); filter: none; } 62% { transform: scale(1.9); filter: brightness(2.4); } 100% { transform: scale(1); filter: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #extensionBar [data-icon-id="split"] svg *, #extensionBar [data-icon-id="merge"] svg *, #extensionBar [data-icon-id="findPath"] svg * { animation: none !important; transition: none !important; }
+}
 
 /* Leaderboard: the cup wiggles; click hops it with a sparkle burst. */
 #extensionBar [data-icon-id="leaderboard"]:hover svg { animation: nge-ti-wiggle 0.6s ease-in-out; }
