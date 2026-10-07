@@ -5,7 +5,7 @@
  * Actions: recolor, complete, annotate, copy IDs, remove from viewer.
  */
 import { ref, computed, onMounted } from 'vue';
-import { pointsInsideCells } from '../util/cell_points';
+import { pointsInsideCells, saveCellPointAtCrosshair, savedCellPoints, refreshCellPoints, forgetCellPoint } from '../util/cell_points';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { setStatedColor } from '../widgets/widget_utils';
 import { setCellComplete, saveCellType, activeCaveServer, NURRO_IMAGES } from '../widgets/lightbulb_service';
@@ -60,8 +60,8 @@ interface GuideState {
   points: Record<string, [number, number, number]>;
   /** Skipped segIds. */
   skipped: Set<string>;
-  /** Cells whose point came from the player's own clicks while working
-   *  (util/cell_points.ts), checked to be inside the cell. */
+  /** Cells whose point is one the player saved while working
+   *  (util/cell_points.ts), checked to still be inside the cell. */
   auto: Set<string>;
   /** Looking for those points: how far along, or null when done. */
   finding: { done: number; total: number } | null;
@@ -87,6 +87,7 @@ function persist() {
 }
 
 onMounted(() => {
+  refreshCellPoints();
   groups.value = loadGroups();
   activeDataset.value = currentDataset();
 });
@@ -225,6 +226,31 @@ function addById(group: SegmentGroup) {
   if (added) persist();
   flash(`Added ${added} segment${added !== 1 ? 's' : ''}`);
 }
+
+// ── Save a point for a cell while you are on it (Ames 2026-10-07) ────────────
+// "It should let you place the cross-hairs and label them, not guess": put the
+// crosshairs inside a cell, press Save point, and that cell is labelled with
+// the point (and added to this group if it was not in it). The cell is the one
+// the graph server says is at the crosshairs. Batch complete then uses these.
+const savingPointFor = ref<string | null>(null);
+async function savePointHere(group: SegmentGroup) {
+  if (savingPointFor.value) return;
+  savingPointFor.value = group.id;
+  try {
+    const r = await saveCellPointAtCrosshair();
+    if ('problem' in r) { flash(r.problem); return; }
+    const added = !group.segmentIds.includes(r.root);
+    if (added) { group.segmentIds.push(r.root); persist(); }
+    flash(`Point saved for ${truncId(r.root)}${added ? ', and the cell was added to this group' : ''}`);
+  } catch (e: any) {
+    flash(`Could not save the point: ${e?.message || 'try again'}`);
+  } finally {
+    savingPointFor.value = null;
+  }
+}
+const hasSavedPoint = (segId: string) => !!savedCellPoints[segId];
+const savedPointCount = (group: SegmentGroup) => group.segmentIds.filter(hasSavedPoint).length;
+const pointTip = (segId: string) => { const p = savedCellPoints[segId]; return p ? `Point saved at ${p[0]}, ${p[1]}, ${p[2]}. Click the pin to remove it.` : ''; };
 
 function removeSegment(group: SegmentGroup, segId: string) {
   group.segmentIds = group.segmentIds.filter(id => id !== segId);
@@ -384,10 +410,10 @@ function startCompleteWizard(group: SegmentGroup) {
 }
 
 /**
- * Fill in the points the player already made while working (Ames 2026-10-07).
- * Each one is checked on the graph server to be inside its cell right now, so
- * only cells with no usable click are left to place by hand. A point the
- * player places or skips during the search is never overwritten.
+ * Fill in the points the player saved while working (Ames 2026-10-07). Each
+ * one is checked on the graph server to still be inside its cell, so only
+ * cells with no saved point are left to place by hand. A point the player
+ * places or skips during the check is never overwritten.
  */
 async function findPointsFromWork(group: SegmentGroup) {
   const mine = guide.value;
@@ -403,7 +429,7 @@ async function findPointsFromWork(group: SegmentGroup) {
       mine.auto.add(segId);
     }
   } catch (e) {
-    console.warn('[batch] looking for points from your work failed:', e);
+    console.warn('[batch] checking your saved points failed:', e);
   } finally {
     if (guide.value === mine) mine.finding = null;
   }
@@ -858,7 +884,10 @@ const panelStyle = computed(() => ({
 
               <!-- Segment chips -->
               <div class="nge-bp-chips" v-if="group.segmentIds.length > 0">
-                <span v-for="segId in group.segmentIds" :key="segId" class="nge-bp-chip">
+                <span v-for="segId in group.segmentIds" :key="segId" class="nge-bp-chip" :class="{ 'nge-bp-chip--pointed': hasSavedPoint(segId) }">
+                  <button v-if="hasSavedPoint(segId)" class="nge-bp-chip-pin" :title="pointTip(segId)" aria-label="Remove this cell's saved point" @click.stop="forgetCellPoint(segId)">
+                    <svg viewBox="0 0 16 16" width="10" height="10" fill="none" aria-hidden="true"><path d="M8 1.6a4.3 4.3 0 0 1 4.3 4.3c0 3-4.3 7.5-4.3 7.5S3.7 8.9 3.7 5.9A4.3 4.3 0 0 1 8 1.6z" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="5.9" r="1.5" fill="currentColor"/></svg>
+                  </button>
                   {{ truncId(segId) }}
                   <button class="nge-bp-chip-x" @click="removeSegment(group, segId)">×</button>
                 </span>
@@ -876,6 +905,16 @@ const panelStyle = computed(() => ({
                   @keydown.enter.prevent="addById(group)"
                 />
                 <button class="nge-bp-btn nge-bp-btn--add" @click="addById(group)">Add</button>
+              </div>
+
+              <!-- Save a point for the cell you are on (Ames 2026-10-07) -->
+              <div class="nge-bp-point-row">
+                <button class="nge-bp-btn nge-bp-btn--point" :disabled="savingPointFor === group.id" @click="savePointHere(group)"
+                        title="Put the crosshairs inside a cell, then press this. The cell is labelled with that point, and batch complete will use it.">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true"><path d="M8 1.6a4.3 4.3 0 0 1 4.3 4.3c0 3-4.3 7.5-4.3 7.5S3.7 8.9 3.7 5.9A4.3 4.3 0 0 1 8 1.6z" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="5.9" r="1.5" fill="currentColor"/></svg>
+                  {{ savingPointFor === group.id ? 'Checking the cell…' : 'Save point for the cell at the crosshairs' }}
+                </button>
+                <span v-if="group.segmentIds.length" class="nge-bp-point-count">{{ savedPointCount(group) }} of {{ group.segmentIds.length }} have a point</span>
               </div>
 
               <!-- Action bar -->
@@ -933,18 +972,17 @@ const panelStyle = computed(() => ({
               <div v-if="guide && guide.groupId === group.id" class="nge-bp-guide">
                 <!-- Stage 1: Intro -->
                 <div v-if="guide.stage === 'intro'" class="nge-bp-guide-intro">
-                  <div class="nge-bp-guide-title">{{ guide.finding ? 'Looking for your points' : pendingCount(group) === 0 ? 'Every cell has a point' : 'Place crosshairs in each cell' }}</div>
-                  <!-- Points you already made while working (Ames 2026-10-07) -->
+                  <div class="nge-bp-guide-title">{{ guide.finding ? 'Checking your saved points' : pendingCount(group) === 0 ? 'Every cell has a point' : 'Place crosshairs in each cell' }}</div>
+                  <!-- Points you saved while working (Ames 2026-10-07) -->
                   <p v-if="guide.finding" class="nge-bp-guide-text" role="status">
-                    Checking where you clicked while working, to find a point inside each cell{{ guide.finding.total ? ` (${guide.finding.done} of ${guide.finding.total} checked)` : '' }}.
+                    Making sure each point you saved is still inside its cell{{ guide.finding.total ? ` (${guide.finding.done} of ${guide.finding.total} checked)` : '' }}.
                   </p>
                   <p v-else-if="guide.auto.size > 0 && pendingCount(group) === 0" class="nge-bp-guide-text">
-                    All {{ group.segmentIds.length }} cells already have a point from where you clicked while working.
-                    Each one was checked to be inside its cell. Nothing to place.
+                    All {{ group.segmentIds.length }} cells have the point you saved for them, and each is still inside its cell. Nothing to place.
                   </p>
                   <p v-else-if="guide.auto.size > 0" class="nge-bp-guide-text">
-                    {{ guide.auto.size }} of {{ group.segmentIds.length }} cells already have a point from where you clicked while working,
-                    each checked to be inside its cell. {{ pendingCount(group) }} still {{ pendingCount(group) === 1 ? 'needs' : 'need' }} one:
+                    {{ guide.auto.size }} of {{ group.segmentIds.length }} cells have the point you saved for them.
+                    {{ pendingCount(group) }} still {{ pendingCount(group) === 1 ? 'needs' : 'need' }} one:
                     place the crosshairs inside {{ pendingCount(group) === 1 ? 'it' : 'each' }}.
                   </p>
                   <p v-else class="nge-bp-guide-text">
@@ -974,7 +1012,7 @@ const panelStyle = computed(() => ({
                     </button>
                   </div>
                   <div class="nge-bp-guide-status">
-                    <span v-if="segStatus(group.segmentIds[guide.index]) === 'saved'" class="nge-bp-guide-saved">{{ guide.auto.has(group.segmentIds[guide.index]) ? '✓ Point from your work' : '✓ Saved' }}</span>
+                    <span v-if="segStatus(group.segmentIds[guide.index]) === 'saved'" class="nge-bp-guide-saved">{{ guide.auto.has(group.segmentIds[guide.index]) ? '✓ Your saved point' : '✓ Saved' }}</span>
                     <span v-else-if="segStatus(group.segmentIds[guide.index]) === 'skipped'" class="nge-bp-guide-skipped">— Skipped</span>
                     <span v-else class="nge-bp-guide-pending">Place crosshairs in the cell</span>
                   </div>
@@ -1000,7 +1038,7 @@ const panelStyle = computed(() => ({
                 <div v-else-if="guide.stage === 'review'" class="nge-bp-guide-review">
                   <div class="nge-bp-guide-title">Ready to submit</div>
                   <div class="nge-bp-guide-summary">
-                    {{ Object.keys(guide.points).length }} ready<template v-if="guide.auto.size"> ({{ guide.auto.size }} from your work)</template> ·
+                    {{ Object.keys(guide.points).length }} ready<template v-if="guide.auto.size"> ({{ guide.auto.size }} saved earlier)</template> ·
                     {{ guide.skipped.size }} skipped ·
                     {{ group.segmentIds.length - Object.keys(guide.points).length - guide.skipped.size }} pending
                   </div>
@@ -1313,6 +1351,13 @@ const panelStyle = computed(() => ({
   font-size: 0.82em;
   color: #aab;
 }
+.nge-bp-chip--pointed { border-color: rgba(61, 220, 151, 0.45); background: rgba(61, 220, 151, 0.1); }
+.nge-bp-chip-pin { display: inline-flex; padding: 0; background: none; border: 0; color: #3ddc97; cursor: pointer; }
+.nge-bp-chip-pin:hover { color: #ff8f8f; }
+.nge-bp-point-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 8px; }
+.nge-bp-btn--point { display: inline-flex; align-items: center; gap: 6px; color: #bff5dd; border-color: rgba(61, 220, 151, 0.5); background: rgba(61, 220, 151, 0.1); }
+.nge-bp-btn--point:hover:not(:disabled) { background: rgba(61, 220, 151, 0.22); color: #ffffff; }
+.nge-bp-point-count { font-size: 0.8em; color: #8fa3bd; }
 .nge-bp-chip-x {
   background: none;
   border: none;
