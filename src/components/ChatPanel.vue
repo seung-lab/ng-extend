@@ -962,7 +962,24 @@ function toggleCollapse() {
                      title="Open this notification">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-announce-text">{{ msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('') }}</span>
+                  <!-- Announcements take reactions like any message (Ames
+                       2026-10-07). The picker sits in the row, beside Open,
+                       and a click on it never opens the notification. -->
+                  <span v-if="msg.id != null && isLoggedIn" class="nge-chat-react-add nge-chat-react-add--inline" @click.stop @keydown.enter.stop>
+                    <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
+                            @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
+                    <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
+                      <button v-for="e in CHAT_REACTION_EMOJI" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                    </span>
+                  </span>
                   <span class="nge-chat-announce-cta">Open →</span>
+                  <div v-if="msg.id != null && Object.keys(reactionsOf(msg)).length" class="nge-chat-react-row nge-chat-react-row--announce" @click.stop>
+                    <button v-for="(list, emo) in reactionsOf(msg)" :key="emo" class="nge-chat-react"
+                            :class="{ 'nge-chat-react--mine': reactedByMe(list) }"
+                            :title="list.map(r => r.name).join(', ')"
+                            :disabled="!isLoggedIn"
+                            @click.stop="react(String(msg.id), String(emo))">{{ emo }}<span>{{ list.length }}</span></button>
+                  </div>
                 </div>
 
                 <!-- Nurro's daily leaders, as a card (Ames 2026-09-29). -->
@@ -1569,6 +1586,10 @@ function toggleCollapse() {
   transition: background 0.15s;
 }
 .nge-chat-announce:hover { background: rgba(74, 158, 255, 0.18); }
+/* reactions on an announcement: the picker in the row, the tally on a line of its own */
+.nge-chat-announce { flex-wrap: wrap; }
+.nge-chat-react-add.nge-chat-react-add--inline { position: relative; top: auto; right: auto; flex: 0 0 auto; }
+.nge-chat-react-row--announce { flex: 1 0 100%; margin-top: 3px; }
 .nge-chat-announce-text { flex: 1; color: #d6e6ff; }
 .nge-chat-announce-cta {
   flex: 0 0 auto;
