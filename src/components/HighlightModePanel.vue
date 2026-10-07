@@ -430,8 +430,8 @@ onBeforeUnmount(() => {
       <!-- Show / Hide, as a two way switch in the box's own style (Ames
            2026-10-07: "this check box should say hide/show, give it better
            style"). The side that is lit is how things are now. -->
-      <div class="nge-hl-show3d" title="Hide takes the marks off the 3D view. They stay in the 2D views and in the saved view.">
-        <span id="nge-hl-show3d-label">Marks in 3D</span>
+      <div class="nge-hl-show3d" title="Hide takes your highlights off the 3D view. They stay in the 2D views and are still saved.">
+        <span id="nge-hl-show3d-label">Highlights in 3D</span>
         <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-show3d-label" :data-on="show3d ? 'show' : 'hide'">
           <button type="button" role="radio" :aria-checked="show3d ? 'true' : 'false'" :tabindex="show3d ? 0 : -1"
                   class="nge-hl-switch-opt" @click="setShow3d(true)"
