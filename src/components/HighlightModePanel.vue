@@ -432,12 +432,12 @@ onBeforeUnmount(() => {
            style"). The side that is lit is how things are now. -->
       <div class="nge-hl-show3d" title="Hide takes the marks off the 3D view. They stay in the 2D views and in the saved view.">
         <span id="nge-hl-show3d-label">Marks in 3D</span>
-        <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-show3d-label">
+        <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-show3d-label" :data-on="show3d ? 'show' : 'hide'">
           <button type="button" role="radio" :aria-checked="show3d ? 'true' : 'false'" :tabindex="show3d ? 0 : -1"
-                  class="nge-hl-switch-opt" :class="{ 'nge-hl-switch-opt--on': show3d }" @click="setShow3d(true)"
+                  class="nge-hl-switch-opt" @click="setShow3d(true)"
                   @keydown.right.prevent.stop="setShow3d(false)" @keydown.left.prevent.stop="setShow3d(true)">Show</button>
           <button type="button" role="radio" :aria-checked="show3d ? 'false' : 'true'" :tabindex="show3d ? -1 : 0"
-                  class="nge-hl-switch-opt nge-hl-switch-opt--hide" :class="{ 'nge-hl-switch-opt--on': !show3d }" @click="setShow3d(false)"
+                  class="nge-hl-switch-opt nge-hl-switch-opt--hide" @click="setShow3d(false)"
                   @keydown.right.prevent.stop="setShow3d(false)" @keydown.left.prevent.stop="setShow3d(true)">Hide</button>
         </div>
       </div>
@@ -582,19 +582,41 @@ onBeforeUnmount(() => {
 .nge-hl-width-val { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: #dce6f5; }
 .nge-hl-unit { text-transform: none; }
 .nge-hl-show3d { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 11.5px; color: rgba(220, 230, 245, 0.72); user-select: none; }
-/* A two way switch: both words always in sight, the lit one is the state. */
-.nge-hl-switch { display: inline-flex; padding: 2px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(124, 255, 178, 0.28); }
-.nge-hl-switch-opt {
-  min-width: 46px; padding: 3px 12px; border: 0; border-radius: 999px; cursor: pointer;
-  font: 600 11px 'Inter', sans-serif; color: rgba(220, 230, 245, 0.6); background: transparent;
-  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+/* A two way switch in the site's own language (scifi-ui, SCIFIIFY.md): the
+   leaderboard's Edits / Cells lettering (Orbitron, tracked, squared corners),
+   and the library's mark for "this one is on" (a tinted field with an inner
+   glow, keyed off the same aria attribute a screen reader reads, not a class).
+   One lit field slides between the two words: it chases to the new state
+   rather than jumping, runs once, and under reduced motion simply sits where
+   the state is. Both words are always in sight. */
+.nge-hl-switch {
+  --sw: 124 255 178;                       /* the box's green while marks show */
+  position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; flex: 0 0 auto;
+  border-radius: 3px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(12, 22, 34, 0.92), rgba(4, 9, 18, 0.92));
+  border: 1px solid rgb(var(--sw) / 0.3);
+  box-shadow: inset 0 1px 0 rgba(196, 228, 255, 0.08);
+  transition: border-color 0.2s ease;
 }
-.nge-hl-switch-opt:hover:not(.nge-hl-switch-opt--on) { color: #dce6f5; }
-.nge-hl-switch-opt--on { color: #06140c; background: #7cffb2; box-shadow: 0 0 10px rgba(124, 255, 178, 0.35); }
-/* Hidden is a quieter state than shown: lit, but not in the box's green. */
-.nge-hl-switch-opt--hide.nge-hl-switch-opt--on { color: #0a1424; background: #b9c6dc; box-shadow: none; }
-.nge-hl-switch-opt:focus-visible { outline: 2px solid #7cffb2; outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { .nge-hl-switch-opt { transition: none; } }
+.nge-hl-switch[data-on="hide"] { --sw: 150 178 214; }   /* hidden is a quieter, cooler state */
+.nge-hl-switch::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 50%; pointer-events: none;
+  background: rgb(var(--sw) / 0.16);
+  box-shadow: inset 0 0 12px rgb(var(--sw) / 0.38), inset 0 -2px 0 rgb(var(--sw) / 0.95);
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.2s ease, box-shadow 0.2s ease;
+}
+.nge-hl-switch[data-on="hide"]::after { transform: translateX(100%); }
+.nge-hl-switch-opt {
+  position: relative; z-index: 1; min-width: 54px; padding: 5px 12px 6px; border: 0; cursor: pointer; background: transparent;
+  font: 600 9.5px 'Orbitron', 'Rajdhani', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(160, 195, 230, 0.5);
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+.nge-hl-switch-opt:hover, .nge-hl-switch-opt:focus-visible { color: rgba(214, 232, 250, 0.92); }
+.nge-hl-switch-opt[aria-checked="true"] { color: #f1fff7; text-shadow: 0 0 8px rgb(var(--sw) / 0.75); }
+.nge-hl-switch-opt:focus-visible { outline: 1px solid rgb(var(--sw) / 0.9); outline-offset: -2px; }
+.nge-hl-switch-opt:active { transform: translateY(1px); }
+@media (prefers-reduced-motion: reduce) { .nge-hl-switch, .nge-hl-switch::after, .nge-hl-switch-opt { transition: none; } }
 .nge-hl-status { display: flex; align-items: baseline; gap: 8px; margin-top: 10px; min-height: 18px; font-size: 11px; color: rgba(200, 212, 228, 0.62); }
 .nge-hl-dim { color: rgba(200, 212, 228, 0.42); }
 .nge-hl-stat { color: rgba(200, 212, 228, 0.4); font-variant-numeric: tabular-nums; }
