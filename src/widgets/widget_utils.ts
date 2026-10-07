@@ -38,12 +38,38 @@ export function setStatedColor(segmentStatedColors: any, segId: Uint64, packed: 
  * segment is visible, so without this a fresh login lands on a black
  * screen (Amy 2026-08-24). Idempotent; retries while layers initialize.
  */
+const isSegLayer = (l: any) => !l?.archived && String(l?.layer?.constructor?.type || '').startsWith('segmentation');
+
+/**
+ * Phones show the 3D view only, and 3D draws nothing until a cell is
+ * selected. So whenever a dataset arrives on a phone with no cell selected
+ * (the Sandbox does, and so does any switch "without starter cells"), its
+ * starter cell is shown, once for that arrival. A player who then clears
+ * the view on purpose is left alone. Desktop is untouched: it has the 2D
+ * image to click on.
+ */
+export function watchPhoneEmptyView(isPhone: () => boolean): void {
+  let seenLayer = '';
+  setInterval(() => {
+    if (!isPhone()) return;
+    const viewer: any = (window as any)['viewer'];
+    const seg = viewer?.layerManager?.managedLayers?.find(isSegLayer);
+    const visible = seg?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!seg || !visible) return;                       // still loading
+    if (seg.name === seenLayer) return;                 // already handled this arrival
+    seenLayer = seg.name;
+    // Give a saved or shared view a moment to put its own cells in first.
+    setTimeout(() => { if (isPhone() && visible.size === 0) showDefaultCell(2); }, 2500);
+  }, 1500);
+}
+
 export function showDefaultCell(retryAttempts = 5): void {
   try {
     const viewer: any = (window as any)['viewer'];
-    const segLayer = viewer?.layerManager?.managedLayers?.find(
-      (l: any) => l.layer?.constructor?.name?.includes('Segmentation'),
-    );
+    // By the layer's own `type`, never its class name: the production build
+    // renames classes, so the old name test never matched there and phones
+    // were left on a black screen (Ames 2026-10-07).
+    const segLayer = viewer?.layerManager?.managedLayers?.find(isSegLayer);
     if (!viewer || !segLayer?.layer) {
       if (retryAttempts > 0) setTimeout(() => showDefaultCell(retryAttempts - 1), 1500);
       return;

@@ -1,6 +1,8 @@
 import { startViewAutosave } from './util/view_autosave';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
+import { watchPhoneEmptyView } from './widgets/widget_utils';
+import { isMobileRef as phoneRef } from './util/mobile';
 import { installScriptApi } from './script_api';
 import { startHighlightTint } from './util/highlight';
 import {createApp, nextTick} from 'vue';
@@ -370,6 +372,8 @@ function setupViewer() {
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
   startSegmentationServerWatch(viewer);
   startImageLoadingHint(viewer);
+  // Phones: never leave the 3D only view with nothing in it.
+  watchPhoneEmptyView(() => phoneRef.value);
   installNoFourPanel(viewer);
   // window.eyewire, the stable API for player scripts (static/scripts.html).
   installScriptApi(viewer, {
