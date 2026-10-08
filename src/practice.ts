@@ -759,6 +759,19 @@ const CHECK_SUPERVOXELS: Record<string, [string, string]> = {
   // Axon fused to a dendrite, 2D cut: axon (86830, 59380, 846), dendrite (86418, 59244, 814)
   '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': ['75507587050992924', '75507587050897753'],
 };
+/**
+ * How a staged tutorial cell opens, when that differs from its registered
+ * view: the saved view to load and the panel layout. Kept here so a new view
+ * needs no database change.
+ */
+const STAGED_VIEW: Record<string, { state?: string; layout?: '3d' | 'xy-3d' }> = {
+  // First merge (dendrite): 3D only, the merge point centred, no stray
+  // segments (Ames's view, 2026-10-08).
+  'b231f4e7-e9f3-4214-941f-975b8b25a237': { state: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4805358249836544', layout: '3d' },
+  // Second merge (axon): done in 2D, so split view.
+  'a4bd2f76-67e9-4093-adc7-e670230d1577': { layout: 'xy-3d' },
+};
+
 function checkSupervoxels(ex: PracticeExample): [string, string] {
   return CHECK_SUPERVOXELS[ex.id] ?? [ex.supervoxel_a, ex.supervoxel_b];
 }
@@ -770,7 +783,12 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     // re-enter merge mode at step 6). Switch it off here and back on after.
     const wasOn = toolActive();
     pausePracticeTools();
-    await useLayersStore().loadState(ex.state_url);
+    const staged = STAGED_VIEW[ex.id];
+    await useLayersStore().loadState(staged?.state ?? ex.state_url);
+    // The staged panel layout for this cell (3D only, or split with 2D).
+    if (staged?.layout) {
+      try { getViewer()?.layout?.restoreState(staged.layout); } catch (e) { /* the view still loads */ }
+    }
     // Back on once the practice phase is set (beginPractice does it), so
     // ensureTool's guard lets it through.
     if (wasOn) resumeToolAfterLoad = ex.kind === 'cut' ? 'multicut' : 'merge';

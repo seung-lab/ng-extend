@@ -1069,7 +1069,7 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     text: `
 With merge mode on:
 
-1. **Ctrl+Click** the yellow piece. You can click in the 2D or the 3D view.
+1. **Ctrl+Click** the yellow piece in the 3D view.
 2. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 3. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
@@ -1108,7 +1108,7 @@ Press next to keep going.`,
 Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` behind this box lost the yellow piece; the AI left it as its own segment.
 
 1. Press **M** if the merge tool is off.
-2. **Ctrl+Click** the yellow piece, in 2D or 3D.
+2. **Ctrl+Click** the yellow piece. This time try it in the 2D images on the left: click inside its coloured outline.
 3. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
