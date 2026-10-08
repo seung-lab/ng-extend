@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-08T21:27:00Z",
+      "title": "Tutorial Achievements and small fixes",
+      "items": [
+        "Finishing a tutorial now records its Achievement for every player. If you finished one before and it is missing, it arrives the next time you sign in.",
+        "After Claim 10, My Cells opens at the top, where your new cells are.",
+        "When an award is given to a group, every player's award shows in chat.",
+        "Dataset Stats explains where its count of your cells comes from.",
+        "The spreadsheet keeps your name spelled the way it already has it."
+      ]
+    },
+    {
       "at": "2026-10-08T20:28:00Z",
       "title": "A new look for Cut and Merge",
       "items": [
