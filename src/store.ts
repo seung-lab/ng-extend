@@ -5323,8 +5323,6 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     await loadSpecialBadges();
   }
 
-  /** Most players one award can be announced to in chat at a time. */
-  const CHAT_AWARD_ANNOUNCE_MAX = 5;
   async function awardBadge(badgeId: number, userIds: string[], reason: string = '') {
     if (!isAdmin.value || !userId.value) return;
     const rows = userIds.map(uid => ({
@@ -5333,9 +5331,22 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const { error: err } = await supabase.from('special_badge_awards')
       .upsert(rows, { onConflict: 'badge_id,user_id' });
     if (err) { console.warn('[admin] awardBadge error:', err.message); return; }
-    // Say so in chat (Ames 2026-10-08), one line per player. An award given
-    // to a whole group at once would fill chat, so only a handful is announced.
-    if (userIds.length <= CHAT_AWARD_ANNOUNCE_MAX) for (const uid of userIds) announceAchievement('special', badgeId, uid);
+    // Say so in chat, one line per player, however many there are (Ames
+    // 2026-10-08: "post them all in chat, it's sort of a fun tradition in
+    // eyewire chat"). One at a time with a short gap: the server turns away
+    // a burst with "Please wait", and a line that was turned away is sent again.
+    void (async () => {
+      for (const uid of userIds) {
+        for (let attempt = 0; attempt < 4; attempt++) {
+          try { await secureWrite('chat.achievement', { track: 'special', badgeId, userId: uid }); break; }
+          catch (e: any) {
+            if (!/please wait/i.test(e?.message ?? '')) break;
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+          }
+        }
+        await new Promise(r => setTimeout(r, 350));
+      }
+    })();
   }
 
   async function awardBadgeToGroup(badgeId: number, groupId: number, reason: string = '') {
