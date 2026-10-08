@@ -2180,9 +2180,24 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
     activation.bindInputEventMap(MERGE_SEGMENTS_INPUT_EVENT_MAP);
     // Merge begins on the segmentation layer, whichever layer it was opened
     // from (so a ctrl+click right after opening always picks a segment).
+    // When merge closes, the player goes back to the layer they opened it
+    // from. They used to stay there throughout; since this switch was
+    // added they were left on the segmentation layer after every merge
+    // (Andrearwen 2026-10-08: "stopped returning to the annotation tab the
+    // user was on after they do a merge"). Not if they picked another layer
+    // themselves in the meantime, or the one they came from is gone.
     try {
       const sel = (window as any).viewer?.selectedLayer;
-      if (sel && sel.layer !== this.layer.managedLayer) sel.layer = this.layer.managedLayer;
+      const cameFrom = sel?.layer;
+      if (sel && cameFrom !== this.layer.managedLayer) {
+        sel.layer = this.layer.managedLayer;
+        activation.registerDisposer(() => {
+          try {
+            const still = (window as any).viewer?.layerManager?.managedLayers?.includes(cameFrom);
+            if (cameFrom && still && sel.layer === this.layer.managedLayer) sel.layer = cameFrom;
+          } catch { /* nothing to go back to */ }
+        });
+      }
     } catch { /* the viewer is not up yet */ }
     activation.bindAction('place-merge-point', event => {
       event.stopPropagation();
