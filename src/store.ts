@@ -4999,6 +4999,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
 
   /** Create a self-targeted notification (no admin required). */
+  /** Ask the server to announce an achievement in chat. It checks the
+   *  achievement is really earned and posts the line once; a refusal or a
+   *  failure is silent (the achievement itself is unaffected). */
+  function announceAchievement(track: string, badgeId: number) {
+    if (!userId.value) return;
+    secureWrite('chat.achievement', { track, badgeId }).catch(() => { /* not announced */ });
+  }
+
   async function createSelfNotification(data: {
     title: string; body: string;
     image_url?: string; thumbnail_url?: string;
@@ -5473,7 +5481,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,
-    createNotification, createSelfNotification, postDueChatAnnouncements, deleteNotification, dismissNotification,
+    createNotification, createSelfNotification, announceAchievement, postDueChatAnnouncements, deleteNotification, dismissNotification,
     dismissAllNotifications,
     subscribeToNotifications, unsubscribeFromNotifications,
     pendingBadgeCelebration,
@@ -6277,10 +6285,11 @@ export const useChatStore = defineStore('chat', () => {
         if (mention) {
           mentionPing.value++; lastMentionFrom.value = row.name || '';
           alertMentionAway(row.name || 'Someone', row.text || '', true);
-        } else if (!useUserPreferencesStore().prefs.chatMuted && row.notification_id == null) {
+        } else if (!useUserPreferencesStore().prefs.chatMuted && row.notification_id == null && row.rank !== 'achievement') {
           alertMentionAway(row.name || 'Someone', row.text || '', false);
         }
-        if (!useUserPreferencesStore().prefs.chatMuted) {
+        // An achievement line is a quiet aside: it never lights the unread count.
+        if (!useUserPreferencesStore().prefs.chatMuted && row.rank !== 'achievement') {
           unreadMessages.value = true;
           if (!panelVisible.value) unreadCount.value++;
         }

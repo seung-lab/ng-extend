@@ -6,6 +6,8 @@
  * Three states: open, collapsed (just input bar), closed (hidden).
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { BADGE_DEFINITIONS, type BadgeDefinition } from '../widgets/badge_definitions';
+import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
 import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI, CHAT_MAX_CHARS, chatTextLength } from '../store';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
@@ -637,6 +639,44 @@ function react(id: string, emoji: string) {
   pickerFor.value = null;
   void chatStore.toggleReaction(id, emoji);
 }
+// ── Achievement lines (Ames 2026-10-08) ─────────────────────────────────────
+// "Nseraf earned Altimeter": a quiet line the server writes when a player
+// earns an achievement. Clicking it opens that player's Trophy Case on the
+// achievement, so it can be shown off. Only a row with the server's own rank
+// is drawn this way; a typed message can not pose as one.
+function achievementOf(msg: ChatMessage): BadgeDefinition | null {
+  if (msg.type !== 'message' || msg.rank !== 'achievement') return null;
+  const m = /^achievement:(building|exploration):(\d+)$/.exec(String(msg.dataset || ''));
+  if (!m) return null;
+  return BADGE_DEFINITIONS.find(b => b.track === m[1] && b.id === Number(m[2])) || null;
+}
+/** A run by one player is one line: an achievement line is hidden when the
+ *  next thing in chat is a newer achievement line from the same player. */
+const foldedAchievements = computed(() => {
+  const hidden = new Set<ChatMessage>();
+  const list = chatMessages.value.filter(m => m.type !== 'time');
+  for (let i = 0; i < list.length - 1; i++) {
+    if (achievementOf(list[i]) && achievementOf(list[i + 1]) && list[i].name === list[i + 1].name) hidden.add(list[i]);
+  }
+  return hidden;
+});
+const achTrack = (msg: ChatMessage) => achievementOf(msg)?.track || '';
+const achArt = (msg: ChatMessage) => { const d = achievementOf(msg); return d ? BADGE_IMAGE_MAP[d.imageKey] || '' : ''; };
+/** "608 cells" or "1 edit": what the achievement was earned for. */
+function achWhy(msg: ChatMessage): string {
+  const d = achievementOf(msg);
+  if (!d) return '';
+  const unit = d.track === 'building' ? (d.threshold === 1 ? 'edit' : 'edits') : (d.threshold === 1 ? 'cell' : 'cells');
+  return `${d.threshold.toLocaleString()} ${unit}`;
+}
+function openAchievement(msg: ChatMessage) {
+  const def = achievementOf(msg);
+  if (!def || !msg.userId) return;
+  document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: msg.userId, tab: 'trophyCase' } }));
+  // once the profile is up, bring that achievement to the front
+  setTimeout(() => document.dispatchEvent(new CustomEvent('nge:profile-show-achievement', { detail: { slug: def.slug } })), 350);
+}
+
 function reactionsOf(msg: ChatMessage) {
   return msg.id != null ? chatStore.reactions[String(msg.id)] || {} : {};
 }
@@ -947,6 +987,21 @@ function toggleCollapse() {
                      :class="{ 'nge-chat-sys--warn': msg.type === 'disconnected', 'nge-chat-fresh': isFresh(msg) }">
                   {{ msg.type === 'join' ? '→' : msg.type === 'leave' ? '←' : msg.type === 'complete' ? '✓' : '⚠' }}
                   {{ msg.parts[0]?.text || '' }}
+                </div>
+
+                <!-- An achievement line folded into the newer one that follows it. -->
+                <template v-else-if="foldedAchievements.has(msg)"></template>
+
+                <!-- "Nseraf earned Altimeter": click to see their Trophy Case. -->
+                <div v-else-if="achievementOf(msg)"
+                     class="nge-chat-sys nge-chat-ach"
+                     :class="['nge-chat-ach--' + achTrack(msg), { 'nge-chat-fresh': isFresh(msg) }]"
+                     role="button" tabindex="0"
+                     :title="'See the achievements of ' + msg.name"
+                     @click="openAchievement(msg)" @keydown.enter="openAchievement(msg)">
+                  <img class="nge-chat-ach-art" :src="achArt(msg)" alt="" />
+                  <span><b>{{ shortName(msg.name) }}</b> earned <b class="nge-chat-ach-name">{{ achievementOf(msg)?.name }}</b></span>
+                  <span class="nge-chat-ach-why">{{ achWhy(msg) }}</span>
                 </div>
 
                 <!-- Announcement: carries a notification id, so the whole
@@ -1678,6 +1733,18 @@ function toggleCollapse() {
   padding: 1px 4px;
 }
 .nge-chat-sys--warn { color: #c08030; }
+/* an achievement line: quiet like the other asides, but upright, with its art, and clickable */
+.nge-chat-ach {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-style: normal; color: #9aa6ba; cursor: pointer; border-radius: 4px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.nge-chat-ach:hover, .nge-chat-ach:focus-visible { background: rgba(255, 255, 255, 0.05); color: #dce6f5; outline: none; }
+.nge-chat-ach b { font-weight: 600; color: #c9d4e6; }
+.nge-chat-ach--building .nge-chat-ach-name { color: #ffd08a; }
+.nge-chat-ach--exploration .nge-chat-ach-name { color: #90fff2; }
+.nge-chat-ach-art { width: 22px; height: 22px; object-fit: contain; flex: 0 0 auto; }
+.nge-chat-ach-why { font-size: 11px; color: #6a7282; }
 
 /* Time separator */
 .nge-chat-time-sep {

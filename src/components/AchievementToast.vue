@@ -150,6 +150,8 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
       if (!claimBadgeOnce(badge.id != null ? `b:${badge.id}` : `b:${badge.slug}`)) continue;
       // Persist the earn so it survives a stat drop / new device (item 11).
       if (badge.id != null) backend.recordBadgeAward('building', badge.id);
+      // and say so in chat (the server checks it, and posts it once)
+      if (badge.id != null) backend.announceAchievement('building', badge.id);
       const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
       addToast({
         type: 'badge',
@@ -193,6 +195,8 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
       if (!claimBadgeOnce(badge.id != null ? `e:${badge.id}` : `e:${badge.slug}`)) continue;
       // Persist the earn so it survives a stat drop / new device (item 11).
       if (badge.id != null) backend.recordBadgeAward('exploration', badge.id);
+      // in chat too, except cells 2, 3 and 4 (Ames: announce the first, then from the fifth)
+      if (badge.id != null && ![2, 3, 4].includes(badge.threshold)) backend.announceAchievement('exploration', badge.id);
       const imgUrl = BADGE_IMAGE_MAP[badge.imageKey] ?? '';
       addToast({
         type: 'badge',

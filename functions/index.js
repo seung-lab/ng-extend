@@ -11,6 +11,7 @@ const ewServiceKey = defineSecret("EW_SUPABASE_SERVICE_KEY");
 const {pilotContext, requirePilot} = require("./pilot-access");
 const {authorizePilotData, conflicts:pilotConflicts} = require("./pilot-data");
 const {recordActivity, serverCounts, stripCounters, stripDayCounters} = require("./activity");
+const {achievementRow} = require("./achievements");
 
 // Reference docs for the Slack bot — uploaded to Anthropic Files via
 // scripts/upload-bot-docs.js. JSON shape: {"<filename>": "<file_id>"}.
@@ -1852,6 +1853,21 @@ exports.ewSecureWrite = onRequest(
           const row = { title, body: String(args.body || "").slice(0, 500), image_url: args.image_url || null, thumbnail_url: args.thumbnail_url || null,
             target_type: "user", target_id: me.id, send_at: new Date().toISOString(), created_by: me.id };
           out = (await sb("notifications", { method: "POST", body: JSON.stringify(row) }))[0];
+          break;
+        }
+        // "Nseraf earned Altimeter" in chat (Ames 2026-10-08). The browser says
+        // which achievement; the server checks the player's own counters have
+        // reached it and writes the line itself, once per achievement.
+        case "chat.achievement": {
+          if (!me) throw ewErr(403, "no EyeWire II profile");
+          const totals = (await sb(`users?id=eq.${me.id}&select=total_edits,cells_completed&limit=1`))[0] || {};
+          const line = achievementRow(String(args.track || ""), args.badgeId, totals);
+          if (line.quiet) { out = { announced: false }; break; }
+          const dup = await sb(`chat_messages?user_id=eq.${me.id}&dataset=eq.${encodeURIComponent(line.dataset)}&select=id&limit=1`);
+          if (dup.length) { out = { announced: false, already: true }; break; }
+          await sb("chat_messages", { method: "POST", body: JSON.stringify({
+            user_id: me.id, name: me.username || me.display_name || "Player", rank: "achievement", text: line.text, dataset: line.dataset }) });
+          out = { announced: true };
           break;
         }
         case "notification.helpReply": {

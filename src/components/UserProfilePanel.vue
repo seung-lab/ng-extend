@@ -285,6 +285,8 @@ onMounted(() => {
 onMounted(() => {
   if (props.initialTab === 'weekInScience' && !viewingOtherUser.value) {
     openWeekInScience();
+  } else if (props.initialTab === 'trophyCase') {
+    activeTab.value = 'trophyCase';
   } else if (props.initialTab === 'datasets') {
     activeTab.value = 'datasets';
   } else if (props.initialTab === 'datasetStats') {
@@ -297,6 +299,19 @@ onMounted(() => {
     adminInitialSubTab.value = 'triage';
   }
 });
+
+// An achievement line in chat was clicked: bring that achievement to the
+// front of this player's Trophy Case (Ames 2026-10-08, to show them off).
+function onShowAchievement(e: Event) {
+  const slug = (e as CustomEvent).detail?.slug;
+  const def = BADGE_DEFINITIONS.find(b => b.slug === slug);
+  if (!def) return;
+  activeTab.value = 'trophyCase';
+  selectedSpecialBadge.value = null;
+  selectedBadge.value = def;
+}
+onMounted(() => document.addEventListener('nge:profile-show-achievement', onShowAchievement));
+onUnmounted(() => document.removeEventListener('nge:profile-show-achievement', onShowAchievement));
 
 /** Sub-tab AdminHub should open on; set by the triage deep-link. */
 const adminInitialSubTab = ref<string | undefined>(undefined);
