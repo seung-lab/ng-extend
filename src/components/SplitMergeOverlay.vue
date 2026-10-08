@@ -129,6 +129,12 @@ function clearPoints() {
   }
 }
 
+/** Empty the merge queue, with neuroglancer's own "Clear pending merges". */
+function clearMerges() {
+  const icon = document.querySelector('.graphene-merge-segments .neuroglancer-icon[title="Clear pending merges"]') as HTMLElement | null;
+  icon?.click();
+}
+
 /** Toggle NG's native auto-submit checkbox */
 function toggleAutoSubmit() {
   const mergeEl = document.querySelector('.graphene-merge-segments');
@@ -240,17 +246,21 @@ function cancelTool() {
             <span class="nge-smo-spinner"></span>
           </div>
 
-          <div class="nge-smo-hint merge-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>
-
-          <div class="nge-smo-actions" v-if="!isSubmitting">
+          <!-- The merge controls sit together on the left, as the cut ones do
+               (Ames, 2026-10-08), with Clear among them; the hint takes the
+               rest of the bar. -->
+          <div class="nge-smo-actions nge-smo-actions--left" v-if="!isSubmitting">
+            <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': mergeReady }" @click="submitTool('merge')" title="Submit the merge (or press Enter)">Submit merge</button>
+            <button class="nge-smo-action-btn clear-btn" @click="clearMerges" title="Clear every queued merge">Clear</button>
+            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit merge mode"><kbd>Esc</kbd> Cancel</button>
             <label class="nge-smo-auto-submit" title="Auto-submit merges when both points are placed" @click.prevent="toggleAutoSubmit">
               <span class="nge-smo-checkbox" :class="{ checked: store.autoSubmit }">{{ store.autoSubmit ? '☑' : '☐' }}</span>
               auto-submit
             </label>
             <span class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
-            <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': mergeReady }" @click="submitTool('merge')" title="Submit the merge (or press Enter)">Submit merge</button>
-            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit merge mode"><kbd>Esc</kbd> Cancel</button>
           </div>
+
+          <div class="nge-smo-hint nge-smo-hint--left merge-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>
         </template>
 
       </div>
