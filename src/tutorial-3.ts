@@ -58,14 +58,27 @@ async function pointsInState(stateUrl: string): Promise<number[][]> {
 
 /** Pyr pins at the click spots: the example's registered points if it has
  *  them, else Amy's hint state for the built-in merge example. */
+/** A saved view whose annotation points mark where to Ctrl+click, per merge
+ *  cell (Ames, 2026-10-08). Cells without one use STATE_MERGE_HINTS. */
+const MERGE_HINT_STATES: Record<string, string> = {
+  // First merge (dendrite): one point on the yellow piece, one on the purple.
+  'b231f4e7-e9f3-4214-941f-975b8b25a237': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5193945751486464',
+};
+
 async function showWhereToClick(): Promise<boolean> {
   const ex = currentPractice().example;
   let pts: number[][] = [];
-  if (ex?.point_a && ex?.point_b) {
+  if (ex && MERGE_HINT_STATES[ex.id]) pts = await pointsInState(MERGE_HINT_STATES[ex.id]);
+  if (!pts.length && ex?.point_a && ex?.point_b) {
     try { pts = [JSON.parse(ex.point_a), JSON.parse(ex.point_b)]; } catch { pts = []; }
   }
   if (!pts.length) pts = await pointsInState(STATE_MERGE_HINTS);
-  return showPyrMarkers(pts, ['Ctrl+click', 'Ctrl+click'], 60);
+  if (!pts.length) return false;
+  // Gems in the scene, like the cut hints: they sit on the cell and neurons
+  // in front hide them. They are not pickable, so a Ctrl+click right on one
+  // lands on the cell underneath. Flat pins if the layer cannot be added.
+  return showGemMarkers([{ name: 'Ctrl+click here', color: '#ff5cb0', points: pts }])
+    || showPyrMarkers(pts, ['Ctrl+click', 'Ctrl+click'], 60);
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -327,7 +340,7 @@ function toggleStuckPanel() {
       const placed = ex?.point_a && ex?.point_b ? placeMergeLine() : false;
       practiceStatus(placed
         ? 'Pyr marks the two spots and the merge line is already placed. Press Submit merge, or Enter.'
-        : 'Pyr marks the two spots: Ctrl+click the one on the yellow piece, then the one on the purple segment, then Submit merge.');
+        : 'The pink gems mark the two spots. Ctrl+click the yellow piece by its gem, then the purple one by its gem, then Submit merge.');
     }));
   }
   if (ex && ex.kind === 'cut') {
