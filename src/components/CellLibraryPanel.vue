@@ -19,6 +19,8 @@ import {
   type WorkingLink,
   type ClaimPoint,
   jumpAddsToView,
+  LIVE_HELP,
+  isLiveHelp,
 } from '../store';
 import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
@@ -1226,7 +1228,13 @@ const newHelpIssue = ref('Unsure');
 const newHelpNote = ref('');
 const newHelpScreenshotUrl = ref('');
 const newHelpError = ref('');
-/** Also say the request in chat, where someone can press Join. Remembered. */
+/** Which kind of request this is: one that waits for a written reply, or a
+ *  live one that asks someone to join the asker's view now (Mentor mode). */
+const newHelpLive = ref(false);
+/** A normal request is also said in chat, with its Open view button, so
+ *  someone can look and answer there without a live session (Ames
+ *  2026-10-07). On unless the asker turns it off; remembered. A live request
+ *  always goes to chat. */
 const HELP_CHAT_KEY = 'nge_cl_help_to_chat_v1';
 const newHelpToChat = ref((() => { try { return localStorage.getItem(HELP_CHAT_KEY) !== '0'; } catch { return true; } })());
 watch(newHelpToChat, on => { try { localStorage.setItem(HELP_CHAT_KEY, on ? '1' : '0'); } catch { /* */ } });
@@ -1375,7 +1383,7 @@ async function submitNewHelp() {
     // helper can always jump there.
     position: getViewerPosition(),
     note: newHelpNote.value.trim(),
-    issueType: newHelpIssue.value,
+    issueType: newHelpLive.value ? `${LIVE_HELP} · ${newHelpIssue.value}` : newHelpIssue.value,
     dataset: getCurrentDatasetName(),
     cellType: '',
     nickname: '',
@@ -1390,6 +1398,7 @@ async function submitNewHelp() {
   newHelpIssue.value = 'Unsure';
   newHelpScreenshotUrl.value = '';
   newHelpAnnotationLayer.value = '';
+  newHelpLive.value = false;
   newHelpLayers.value = [];
   newHelpAllLayers.value = true;
   helpLayersOpen.value = false;
@@ -2532,6 +2541,19 @@ const panelStyle = computed(() => ({
               Submit a help request
               <button class="nge-cl-help-collapse" @click="toggleHelpForm" title="Collapse">▾</button>
             </div>
+            <!-- Two kinds of request: one that waits for a reply, and a live
+                 one that asks someone to join your view now (Mentor mode). -->
+            <div class="nge-cl-help-kind" role="radiogroup" aria-label="Kind of help">
+              <button type="button" role="radio" :aria-checked="!newHelpLive ? 'true' : 'false'" class="nge-cl-help-kind-opt"
+                      title="Your request waits in the Help tab. Someone replies when they can." @click="newHelpLive = false">Leave a request</button>
+              <button type="button" role="radio" :aria-checked="newHelpLive ? 'true' : 'false'" class="nge-cl-help-kind-opt nge-cl-help-kind-opt--live"
+                      title="Asks in chat for a player to join your view and help you now. You choose whether to accept who offers." @click="newHelpLive = true">🤝 Live help now</button>
+            </div>
+            <div v-if="newHelpLive" class="nge-cl-help-kind-note">Posts to chat. A player with production access can offer to join your view, and you accept or decline.</div>
+            <label v-else class="nge-cl-help-tochat" title="Your request is also said in chat with a button that opens your view, so someone can look and answer there.">
+              <input type="checkbox" v-model="newHelpToChat" />
+              <span>Also post to chat</span>
+            </label>
             <div class="nge-cl-help-quickadd-row">
               <input
                 v-model="newHelpLink"
@@ -2604,12 +2626,9 @@ const panelStyle = computed(() => ({
                 @click="clearHelpScreenshot"
                 title="Screenshot attached — click to remove"
               >✓</button>
-              <button class="nge-cl-help-quickadd-submit" @click="submitNewHelp" title="Submit help request">Submit</button>
+              <button class="nge-cl-help-quickadd-submit" @click="submitNewHelp"
+                      :title="newHelpLive ? 'Ask in chat for someone to join your view and help now' : 'Submit help request'">{{ newHelpLive ? 'Ask now' : 'Submit' }}</button>
             </div>
-            <label class="nge-cl-help-tochat" title="Your request is also said in chat, where a player can open your view or press Join to help you live.">
-              <input type="checkbox" v-model="newHelpToChat" />
-              <span>Also ask in chat</span>
-            </label>
             <div v-if="newHelpScreenshotUrl" class="nge-cl-help-shot-preview nge-cl-help-shot-preview--sm">
               <img :src="newHelpScreenshotUrl" alt="Attached screenshot" />
               <button class="nge-cl-help-shot-remove" @click="clearHelpScreenshot" title="Remove screenshot">×</button>
@@ -2670,7 +2689,7 @@ const panelStyle = computed(() => ({
                         <span v-if="copiedId === req.segId" class="nge-cl-copied">copied</span>
                       </div>
                       <div class="nge-cl-row-meta">
-                        <span class="nge-cl-badge nge-cl-status--help">{{ req.issueType }}</span>
+                        <span class="nge-cl-badge nge-cl-status--help" :class="{ 'nge-cl-badge--live': isLiveHelp(req) }">{{ isLiveHelp(req) ? '🤝 ' + req.issueType : req.issueType }}</span>
                         <span v-if="req.userName" class="nge-cl-notes">by {{ req.userName }}</span>
                         <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
                       </div>
@@ -2692,7 +2711,7 @@ const panelStyle = computed(() => ({
                       :title="!group.isCurrent ? `Switch to ${group.label} and jump` : 'Jump to segment'"
                     >↗</button>
                     <!-- Mentor mode: offer to join the asker's view. They accept or decline. -->
-                    <button v-if="teamAllowed && req.userId && req.userId !== backend.userId" class="nge-cl-btn nge-cl-btn--join"
+                    <button v-if="teamAllowed && isLiveHelp(req) && req.userId && req.userId !== backend.userId" class="nge-cl-btn nge-cl-btn--join"
                             :disabled="offeredTo.has(req.id)"
                             :title="offeredTo.has(req.id) ? 'Offer sent. Waiting for them to accept.' : `Offer to join ${req.userName || 'their'} view and help, live. They choose whether to accept.`"
                             @click="offerToJoin(req)">{{ offeredTo.has(req.id) ? 'Offered' : 'Join' }}</button>
@@ -4358,8 +4377,15 @@ select.nge-cl-response-input:hover {
   border-color: rgba(74, 158, 255, 0.35);
 }
 
-.nge-cl-help-tochat { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.74em; color: #9fb0c8; cursor: pointer; }
+.nge-cl-help-kind { display: flex; gap: 4px; margin-bottom: 6px; }
+.nge-cl-help-tochat { display: flex; align-items: center; gap: 6px; margin: -2px 0 6px; font-size: 0.74em; color: #9fb0c8; cursor: pointer; }
 .nge-cl-help-tochat input { accent-color: #4a9eff; margin: 0; }
+.nge-cl-help-kind-opt { flex: 1; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #9fb0c8; font: inherit; font-size: 0.76em; padding: 5px 6px; cursor: pointer; transition: border-color 0.15s, background 0.15s, color 0.15s; }
+.nge-cl-help-kind-opt[aria-checked="true"] { background: rgba(70, 160, 255, 0.2); border-color: rgba(120, 190, 255, 0.8); color: #eaf4ff; }
+.nge-cl-help-kind-opt--live[aria-checked="true"] { background: rgba(93, 255, 160, 0.16); border-color: rgba(93, 255, 160, 0.7); color: #d8ffe9; }
+.nge-cl-help-kind-opt:focus-visible { outline: 2px solid #6cf; outline-offset: 1px; }
+.nge-cl-help-kind-note { font-size: 0.72em; color: #9fe8c0; margin: -2px 0 6px; }
+.nge-cl-badge--live { color: #9fe8c0 !important; border-color: rgba(93, 255, 160, 0.45) !important; }
 .nge-cl-help-layers {
   position: relative;
   margin-top: 6px;

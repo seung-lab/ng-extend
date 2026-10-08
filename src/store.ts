@@ -1403,8 +1403,24 @@ function rowToHelpRequest(row: any): HelpRequest {
   };
 }
 
-/** How a help request reads in chat. ChatPanel shows a Join button on it. */
+/**
+ * Two kinds of help request (Ames 2026-10-07: "help request for mentor mode,
+ * including in chat, should be a different type of request than a normal
+ * help request"):
+ *   a normal request waits in the Help tab for a written reply;
+ *   a LIVE request asks for someone to join the asker's view now (Mentor
+ *   mode). It is said in chat with a Join button, and carries Join in the
+ *   Help tab. It is marked by its issue type, so no new column is needed.
+ */
+export const LIVE_HELP = 'Live help';
+/** How each kind reads in chat. Both carry the Open view button; only the
+ *  live one carries Join (ChatPanel), so the usual way to help is to open
+ *  the view, look, and answer in chat. */
 export const HELP_CHAT_PREFIX = '🆘 Help requested';
+export const LIVE_CHAT_PREFIX = '🤝 Live help wanted';
+export function isLiveHelp(req: { issueType?: string | null } | null | undefined): boolean {
+  return !!req && typeof req.issueType === 'string' && req.issueType.startsWith(LIVE_HELP);
+}
 
 export const useHelpRequestStore = defineStore('helpRequests', () => {
   const requests = ref<HelpRequest[]>([]);
@@ -1563,10 +1579,8 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   }
 
   /** Add a new help request to Supabase. */
-  /** chat: also say it in chat, where a player with production access can
-   *  open the view or press Join to help live (Ames 2026-10-07: "a help
-   *  requested thing that posts to chat and a player can join via a chat
-   *  button"). On unless the asker turns it off. */
+  /** A request is also said in chat (a normal one unless chat is false; a
+   *  live one always), with its Open view button. Only a live one gets Join. */
   async function add(req: Omit<HelpRequest, 'id' | 'createdAt' | 'resolved'>, opts: { chat?: boolean } = {}) {
     const backend = useProofreadingBackendStore();
     // The requester's view, so helpers see exactly what they saw.
@@ -1613,10 +1627,12 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       if (!requests.value.find(r => r.id === newReq.id)) {
         requests.value.unshift(newReq);
       }
-      if (opts.chat !== false) {
+      const live = isLiveHelp(req);
+      if (live || opts.chat !== false) {
         try {
           const note = (req.note || '').replace(/\s+/g, ' ').trim().slice(0, 110);
-          const text = [HELP_CHAT_PREFIX, req.issueType ? `(${req.issueType})` : '', note, row.view_url as string | undefined].filter(Boolean).join(' ');
+          const issue = live ? req.issueType.slice(LIVE_HELP.length).replace(/^[\s·:]+/, '') : (req.issueType || '');
+          const text = [live ? LIVE_CHAT_PREFIX : HELP_CHAT_PREFIX, issue ? `(${issue})` : '', note, row.view_url as string | undefined].filter(Boolean).join(' ');
           useChatStore().sendMessage(text);
         } catch (e) { console.warn('[helpRequests] could not post to chat:', e); }
       }

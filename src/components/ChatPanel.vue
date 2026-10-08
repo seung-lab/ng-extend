@@ -20,7 +20,7 @@ function openNurroProfile() {
   document.dispatchEvent(new CustomEvent('nge:open-nurro-profile'));
 }
 import { canonicalDataset, datasetDisplayName, switchToDataset, segLayerName, DATASETS } from '../datasets';
-import { HELP_CHAT_PREFIX } from '../store';
+import { LIVE_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
 
@@ -615,7 +615,7 @@ function isHelpAsk(msg: any): boolean {
   if (msg?.type !== 'message' || !msg.userId || msg.userId === backendStore.userId) return false;
   if (teamAccess() === false) return false;
   const first = (msg.parts || []).find((p: any) => p.type !== 'sender');
-  return !!first && typeof first.text === 'string' && first.text.trimStart().startsWith(HELP_CHAT_PREFIX);
+  return !!first && typeof first.text === 'string' && first.text.trimStart().startsWith(LIVE_CHAT_PREFIX);
 }
 const joinKey = (msg: any) => String(msg.id ?? msg.userId + ':' + msg.dateTime);
 async function joinHelp(msg: any) {
