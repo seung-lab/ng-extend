@@ -73,6 +73,9 @@ const podium = ref<{ gold: number; silver: number; bronze: number }>({ gold: 0, 
 const podiumCompletions = ref<{ gold: number; silver: number; bronze: number }>({ gold: 0, silver: 0, bronze: 0 });
 async function loadOtherUser() {
   if (viewingOtherUser.value && props.viewUserId) {
+    // Going from one player's profile to another: the first one's numbers
+    // must not stand in while the second loads.
+    if (otherUserProfile.value && otherUserProfile.value.id !== props.viewUserId) otherUserProfile.value = null;
     otherUserProfile.value = await backendStore.loadUserProfile(props.viewUserId);
     otherSilver.value = [];
     void backendStore.loadSilverBadges(props.viewUserId).then(l => { otherSilver.value = l; });
@@ -117,6 +120,7 @@ const anyPodium = computed(() => podiumTotal.value + podiumCompletionsTotal.valu
 // Profile display name & email — works for both self and other users
 const profileName = computed(() => {
   if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.display_name || 'Anonymous';
+  if (viewingOtherUser.value) return '';   // still loading: never the reader's own name
   return backendStore.userName || sessions.value?.[0]?.name || 'Researcher';
 });
 // NOTE: a `profileEmail` computed used to live here and was rendered on the
@@ -126,10 +130,12 @@ const profileName = computed(() => {
 /** Chat handle. Empty until the user sets one — the row is hidden in that case. */
 const profileUsername = computed(() => {
   if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.username || '';
+  if (viewingOtherUser.value) return '';
   return backendStore.username || '';
 });
 const profileFlag = computed(() => {
   if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.flag || '';
+  if (viewingOtherUser.value) return '';
   return prefs.value.flag || '';
 });
 const profileStats = computed(() => {
@@ -144,10 +150,22 @@ const profileStats = computed(() => {
       editsToday: 0, mergesToday: 0, splitsToday: 0,
     };
   }
+  // Someone else's profile that has not arrived yet: nothing, never the
+  // reader's own numbers. They used to show for a moment (Ames saw her own
+  // ~600 on Nseraf's profile before his 235 rolled in, 2026-10-07).
+  if (viewingOtherUser.value) {
+    return {
+      editsAllTime: 0, mergesAllTime: 0, splitsAllTime: 0, cellsSubmitted: 0, currentStreak: 0, longestStreak: 0,
+      editsThisWeek: 0, mergesThisWeek: 0, splitsThisWeek: 0,
+      editsThisMonth: 0, mergesThisMonth: 0, splitsThisMonth: 0,
+      editsToday: 0, mergesToday: 0, splitsToday: 0,
+    };
+  }
   return stats.value;
 });
 const profileSpecialBadges = computed(() => {
   if (viewingOtherUser.value && otherUserProfile.value) return otherUserProfile.value.specialBadges || [];
+  if (viewingOtherUser.value) return [];
   return backendStore.mySpecialBadges;
 });
 
