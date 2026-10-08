@@ -436,7 +436,16 @@ function applyMarks(name: string, spec: any, up: any[], del: string[], whole: bo
   // What the team has is now also what is known here, so it is not sent back.
   known.set(name, new Map(merged));
   if (same) return;
-  try { src.restoreState([...merged.values()].map(t => JSON.parse(t))); } catch (e) { console.warn('[team] marks not applied:', e); }
+  // Replacing a layer's marks empties it first, so a single mark this layer
+  // cannot read would leave it empty, and the next send would then tell the
+  // whole team those marks were deleted. If the new set cannot be read, put
+  // back what was here and forget nothing.
+  const before = [...was.values()].map(t => JSON.parse(t));
+  try { src.restoreState([...merged.values()].map(t => JSON.parse(t))); } catch (e) {
+    console.warn('[team] marks not applied (this layer cannot read one of them):', e);
+    try { src.restoreState(before); } catch { /* it could not read its own marks either */ }
+    known.set(name, was);
+  }
 }
 
 function sendState() {
