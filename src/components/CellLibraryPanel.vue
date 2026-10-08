@@ -26,6 +26,7 @@ import { syncCellToSheet, completeStatusesFor } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
+import { teamAccess } from '../util/team_session';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
@@ -1554,6 +1555,9 @@ async function offerToJoin(req: HelpRequest) {
   if (await invite({ id: req.userId, name: req.userName || 'Player' }, 'mentor', note)) offeredTo.add(req.id);
 }
 function teamUp() { document.dispatchEvent(new CustomEvent('nge:team-start')); }
+/** Sessions are for players with production access: the buttons are not
+ *  offered to someone known not to have it. */
+const teamAllowed = computed(() => teamAccess() !== false);
 
 /** The dataset header's "switch here" (Amy: the old "jump switches" tag
  *  looked like a button and did nothing). Switch datasets and open the group. */
@@ -2485,7 +2489,7 @@ const panelStyle = computed(() => ({
         <div v-if="filter === 'help'" class="nge-cl-list">
 
           <!-- Team mode: two or more players on one cell, live. -->
-          <button class="nge-cl-help-open-btn nge-cl-team-btn" @click="teamUp"
+          <button v-if="teamAllowed" class="nge-cl-help-open-btn nge-cl-team-btn" @click="teamUp"
                   title="Work on the cell in your view together with other players, live. You invite them by name.">
             <span class="nge-cl-help-open-plus">👥</span> Team up on this cell
           </button>
@@ -2662,7 +2666,7 @@ const panelStyle = computed(() => ({
                       :title="!group.isCurrent ? `Switch to ${group.label} and jump` : 'Jump to segment'"
                     >↗</button>
                     <!-- Mentor mode: offer to join the asker's view. They accept or decline. -->
-                    <button v-if="req.userId && req.userId !== backend.userId" class="nge-cl-btn nge-cl-btn--join"
+                    <button v-if="teamAllowed && req.userId && req.userId !== backend.userId" class="nge-cl-btn nge-cl-btn--join"
                             :disabled="offeredTo.has(req.id)"
                             :title="offeredTo.has(req.id) ? 'Offer sent. Waiting for them to accept.' : `Offer to join ${req.userName || 'their'} view and help, live. They choose whether to accept.`"
                             @click="offerToJoin(req)">{{ offeredTo.has(req.id) ? 'Offered' : 'Join' }}</button>

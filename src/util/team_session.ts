@@ -29,7 +29,8 @@
 import { reactive } from 'vue';
 import { supabase } from '../supabase';
 import { useProofreadingBackendStore } from '../store';
-import { currentSegLayer, currentDatasetTag, canonicalDataset, findDatasetByCanonical, switchToDataset } from '../datasets';
+import { currentSegLayer, currentDatasetTag, canonicalDataset, findDatasetByCanonical, switchToDataset, DATASETS } from '../datasets';
+import { editsAny } from './dataset_access';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { makeLayer } from 'neuroglancer/layer';
 import { StatusMessage } from 'neuroglancer/status';
@@ -69,6 +70,22 @@ function colorOf(id: string): string {
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return COLORS[h % COLORS.length];
 }
+/**
+ * Sessions are for players with production access (Ames 2026-10-07: "this
+ * would be open to anyone with production access"): the same test the chat
+ * uses for its Eyewirer rank. true or false once CAVE has answered, null
+ * while it is not known. Admins always may.
+ */
+export function teamAccess(): boolean | null {
+  try { if ((backend() as any).isAdmin) return true; } catch { /* store not ready */ }
+  try { return editsAny(DATASETS.filter(d => d.section === 'production').map(d => d.caveDataset)); } catch { return null; }
+}
+/** Stops a player who is known not to have production access, and says why. */
+function mayTeam(): boolean {
+  if (teamAccess() !== false) return true;
+  say('Mentor and Team sessions are for players with production access. Finish the Sandbox to get it.', 8000);
+  return false;
+}
 function say(text: string, ms = 6000) { try { StatusMessage.showTemporaryMessage(text, ms); } catch { /* no viewer */ } }
 const here = () => canonicalDataset(currentDatasetTag());
 
@@ -83,21 +100,32 @@ export function startTeamInbox() {
   if (!id || inboxFor === id) return;
   inboxFor = id;
   try { if (inbox) supabase.removeChannel(inbox); } catch { /* */ }
-  inbox = supabase.channel('ew-team-inbox-' + id, { config: { broadcast: { self: false } } });
+  inbox = supabase.channel('ew-team-inbox-' + id, { config: { broadcast: { self: false }, presence: { key: 'owner' } } });
   inbox.on('broadcast', { event: 'msg' }, (m: any) => { try { onInbox(m.payload || {}); } catch (e) { console.warn('[team] inbox:', e); } });
-  inbox.subscribe();
+  // Being present here is how someone inviting this player knows they are in the game.
+  const mine = inbox;
+  inbox.subscribe((s: string) => { if (s === 'SUBSCRIBED') { try { void mine.track({ id }); } catch { /* shows as offline */ } } });
   installWatchers();
   resume();
 }
 
-async function sendTo(userId: string, payload: Record<string, unknown>) {
+/** Sends to a player's inbox. Returns whether they looked to be in the game
+ *  at that moment (the message is sent either way: an older page that is
+ *  open still receives it without showing as present). */
+async function sendTo(userId: string, payload: Record<string, unknown>): Promise<boolean> {
   const ch = supabase.channel('ew-team-inbox-' + userId, { config: { broadcast: { self: false } } });
+  let online = false, synced = () => { /* set below */ };
+  const seen = new Promise<void>(resolve => { synced = resolve; });
+  ch.on('presence', { event: 'sync' }, () => { try { online = Object.keys(ch.presenceState()).length > 0; } catch { /* unknown */ } synced(); });
   await new Promise<void>(resolve => {
     const t = setTimeout(resolve, 4000);
     ch.subscribe((s: string) => { if (s === 'SUBSCRIBED') { clearTimeout(t); resolve(); } });
   });
+  await Promise.race([seen, new Promise(r => setTimeout(r, 1500))]);
+  try { online = online || Object.keys(ch.presenceState()).length > 0; } catch { /* unknown */ }
   try { await ch.send({ type: 'broadcast', event: 'msg', payload }); } catch (e) { console.warn('[team] send failed:', e); }
   setTimeout(() => { try { supabase.removeChannel(ch); } catch { /* */ } }, 1500);
+  return online;
 }
 
 function onInbox(p: any) {
@@ -121,6 +149,7 @@ function onInbox(p: any) {
 export async function startTeam(): Promise<boolean> {
   const { id } = me();
   if (!id) { say('Sign in to start a team.'); return false; }
+  if (!mayTeam()) return false;
   if (team.room) return true;
   await joinRoom(newRoom(), 'team', id);
   return true;
@@ -131,14 +160,17 @@ export async function startTeam(): Promise<boolean> {
 export async function invite(user: { id: string; name: string }, mode: TeamMode, note?: string): Promise<boolean> {
   const self = me();
   if (!self.id) { say('Sign in first.'); return false; }
+  if (!mayTeam()) return false;
   if (!user.id || user.id === self.id) return false;
   if (!team.room) await joinRoom(newRoom(), mode, mode === 'mentor' ? user.id : self.id);
   if (!team.waiting.some(w => w.id === user.id) && !team.members.some(m => m.id === user.id)) team.waiting.push({ id: user.id, name: user.name });
-  await sendTo(user.id, { t: 'invite', from: self, room: team.room, mode: team.mode, leader: team.leader, dataset: here(), note });
+  const online = await sendTo(user.id, { t: 'invite', from: self, room: team.room, mode: team.mode, leader: team.leader, dataset: here(), note });
+  if (!online) say(`${user.name} does not seem to be in the game right now. They will see your invitation only if they have it open.`, 9000);
   return true;
 }
 
 export async function acceptInvite(inv: TeamInvite) {
+  if (!mayTeam()) return;
   team.invites.splice(team.invites.indexOf(inv), 1);
   if (team.room && team.room !== inv.room) await leaveTeam();
   void sendTo(inv.from.id, { t: 'accept', from: me(), room: inv.room });
@@ -585,4 +617,4 @@ function installWatchers() {
 }
 
 // For player scripts and for testing two players side by side.
-try { (window as any).ngeTeam = { team, startTeam, invite, acceptInvite, declineInvite, leaveTeam, jumpTo, follow }; } catch { /* no window */ }
+try { (window as any).ngeTeam = { team, teamAccess, startTeam, invite, acceptInvite, declineInvite, leaveTeam, jumpTo, follow }; } catch { /* no window */ }
