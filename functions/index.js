@@ -1933,7 +1933,7 @@ exports.ewCommunityData = onRequest(
         const rows=Array.isArray(plan.body)?plan.body:[plan.body];
         for(const row of rows) {
           const badges=await sb("special_badges?id=eq."+Number(row.badge_id)+"&select=name,slug&limit=1");
-          if(!badges.some(b=>["Citizen Scientist","Advanced Operator","Merge Master","Cut Master"].includes(b.name))) throw ewErr(403,"This award requires an admin.");
+          if(!badges.some(b=>["Citizen Scientist","Advanced Operator","Mini Michelangelo","Safety Scissors","Merge Master","Cut Master"].includes(b.name))) throw ewErr(403,"This award requires an admin.");
         }
       }
       if (plan.method !== "GET" && plan.method !== "HEAD") {
