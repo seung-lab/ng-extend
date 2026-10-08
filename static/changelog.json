@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-08T20:28:00Z",
+      "title": "A new look for Cut and Merge",
+      "items": [
+        "The Cut and Merge bars have a cleaner look, with the buttons together on the left.",
+        "Merge has a Clear button again, which empties the whole Merge Queue.",
+        "Each merge in the queue shows when it is submitting, done or failed.",
+        "In Cut, the G key lights up without pulsing, and switching between red and blue is calmer."
+      ]
+    },
+    {
       "at": "2026-10-08T16:20:00Z",
       "title": "Chat awards, calmer loading, easier merging",
       "items": [
