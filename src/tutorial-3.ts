@@ -505,11 +505,22 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   helpWanted = true;
   let celebrated = false;
   const tick = async () => {
+    // Nothing in here may stop the watch: a failed lookup is logged and the
+    // next look happens anyway.
+    try { await look(); } catch (e) {
+      console.warn('[tutorial] practice check failed, trying again:', e);
+      if (token === practiceWatch) setTimeout(tick, 2000);
+    }
+  };
+  const look = async () => {
     if (token !== practiceWatch) return;
     const p = currentPractice();
     if (p.phase === 'unavailable') { practiceStatus('Practice needs an invited account and a current session. Sign in, or press back then next to try again. You can read along while waiting.'); return; }
     if (p.phase === 'busy') { waitForCell(wantMerged ? 'merge_then_cut' : 'cut', wantMerged, waiting, finished); return; }
-    if (p.phase === 'released') { return; }
+    // Released after idle time: keep looking. The step may take the cells
+    // again (this used to stop the watch for good, so a merge made after
+    // coming back was never noticed: Ames, 2026-10-08).
+    if (p.phase === 'released') { setTimeout(tick, 1000); return; }
     if (!p.example) { practiceStatus('Loading a practice cell…'); setTimeout(tick, 1000); return; }
     labelPart();
     practiceAsked.add(p.example.id);
@@ -1092,7 +1103,10 @@ The server connects the two. You'll see "trying..." and then "done", and the pie
     onEnter: async () => {
       closeSidePanel();
       watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
-      await beginPractice('merge_then_cut');
+      await beginPractice('merge_then_cut', 'start', { slot: 'a', avoid: holdsSlot('a') ? [] : [MERGE_SECOND] });
+      // The second cell too, if it is not held (after an idle release the
+      // cells are taken again here, and the second merge must not be lost).
+      if (!holdsSlot('b')) await beginPractice('merge_then_cut', 'start', { slot: 'b', show: false });
       // The previous step said "press M"; if they pressed next instead,
       // the tool comes on anyway.
       setTimeout(() => ensureTool('merge'), 400);

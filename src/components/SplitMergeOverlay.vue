@@ -139,6 +139,7 @@ function cancelTool() {
   <Teleport to="body">
     <transition name="overlay-slide">
       <div v-if="isVisible" ref="barEl" class="nge-split-merge-overlay" :class="{
+        'nge-smo-has-banner': needsSwap,
         multicut: isMulticut && !isPendingClose,
         'group-red': isMulticut && !isPendingClose && isRedActive,
         'group-blue': isMulticut && !isPendingClose && isBlueActive,
@@ -160,6 +161,15 @@ function cancelTool() {
 
         <!-- MULTICUT / SPLIT MODE -->
         <template v-else-if="isMulticut">
+          <!-- "Press G": red is placed, blue is empty, red is still on. A
+               large prompt above the bar, since the small key on the bar was
+               missed and second red points were placed instead (Ames,
+               2026-10-08). Clicking it switches too. -->
+          <div v-if="needsSwap" class="nge-smo-swap-banner" @click="swapGroup()" role="status">
+            <span class="nge-smo-swap-banner-step">Red is placed</span>
+            <span class="nge-smo-swap-banner-main">Now press <kbd>G</kbd> to switch to <b>blue</b></span>
+            <span class="nge-smo-swap-banner-sub">then Ctrl+click the other side</span>
+          </div>
           <div class="nge-smo-loading-indicator nge-smo-loading-indicator--left" v-if="isSubmitting">
             <span class="nge-smo-spinner"></span>
           </div>
@@ -427,6 +437,29 @@ function cancelTool() {
 .nge-smo-group.active .nge-smo-group-count { color: #fff; }
 .nge-smo-group:not(.active) { opacity: 0.38; }
 .nge-smo-swap-hint { margin: 0 0 0 4px; cursor: pointer; pointer-events: auto; opacity: 0.9; }
+.nge-smo-swap-banner {
+  position: fixed; left: 50%; bottom: calc(var(--nge-tool-bar-h, 66px) + 22px); transform: translateX(-50%);
+  z-index: 9000; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 14px 28px 16px; border-radius: 14px; cursor: pointer; pointer-events: auto; text-align: center;
+  background: linear-gradient(160deg, rgba(30, 44, 150, 0.96), rgba(14, 20, 70, 0.97));
+  border: 2px solid #8fa6ff; color: #fff; font-family: Inter, system-ui, sans-serif;
+  animation: nge-smo-banner-in 0.35s cubic-bezier(0.2, 1.3, 0.4, 1) both, nge-smo-banner-pulse 1.3s ease-out 0.35s infinite;
+}
+.nge-smo-swap-banner-step { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; color: #ff9a9a; }
+.nge-smo-swap-banner-main { font-size: 24px; font-weight: 700; line-height: 1.25; }
+.nge-smo-swap-banner-main b { color: #9db4ff; }
+.nge-smo-swap-banner-main kbd {
+  display: inline-block; min-width: 38px; padding: 2px 10px; margin: 0 4px; border-radius: 8px;
+  background: #4f7dff; border: 2px solid #dbe4ff; color: #fff; font: inherit; font-size: 26px; text-align: center;
+  box-shadow: 0 3px 0 #2a48b0;
+}
+.nge-smo-swap-banner-sub { font-size: 14px; color: rgba(225, 232, 255, 0.85); }
+@keyframes nge-smo-banner-in { from { opacity: 0; margin-bottom: -14px; } to { opacity: 1; margin-bottom: 0; } }
+@keyframes nge-smo-banner-pulse {
+  0% { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 0 0 rgba(120, 150, 255, 0.75); }
+  100% { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 0 22px rgba(120, 150, 255, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-smo-swap-banner { animation: none; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); } }
 /* "Now press G": the key lights up blue and pulses until it is pressed. */
 .nge-smo-swap-hint--now { opacity: 1; color: #fff; font-weight: 600; }
 .nge-smo-swap-hint--now kbd {

@@ -126,7 +126,9 @@ The red and blue gems on the cell show where the points go.`,
     onEnter: async () => {
       closeSidePanel();
       watchPractice(false, 'Waiting for your cut: red on the piece to remove, G, blue on the cell, Submit cut.', '', { advance: true });
-      await beginPractice('cut', 'start');
+      await beginPractice('cut', 'start', { slot: 'a', prefer: holdsSlot('a') ? undefined : CUT_FIRST });
+      // The second cell too, if it is not held (taken again after an idle release).
+      if (!holdsSlot('b')) await beginPractice('cut', 'start', { slot: 'b', show: false, prefer: CUT_SECOND });
       // The previous step said "press C"; turn the tool on if they didn't.
       setTimeout(() => ensureTool('multicut'), 400);
       // The first cut starts with the red and blue hint gems showing (Ames,

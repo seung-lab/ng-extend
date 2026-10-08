@@ -81,7 +81,16 @@ function pcgBase(ex: Pick<PracticeExample, 'pcg_server' | 'pcg_table'>) {
 export async function rootOfSupervoxel(ex: Pick<PracticeExample, 'pcg_server' | 'pcg_table'>, sv: string): Promise<string | null> {
   // Three tries: a fresh login can race the token, and the server rate limits.
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(`${pcgBase(ex)}/node/${sv}/root?int64_as_str=1`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
+    let res: Response;
+    try {
+      res = await fetch(`${pcgBase(ex)}/node/${sv}/root?int64_as_str=1`, { headers: pcgHeaders(ex.pcg_server), redirect: 'error', signal: AbortSignal.timeout(15000) });
+    } catch (e) {
+      // A timeout or a dropped connection: try again, never throw (a throw
+      // here stopped the tutorial's watch for good).
+      console.warn(`[practice] root of ${sv}: request failed`, e);
+      await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+      continue;
+    }
     if (res.ok) {
       const data = await res.json();
       return data.root_id != null ? String(data.root_id) : null;
@@ -164,18 +173,24 @@ function segLayer(dataset: string): any {
  * been shown since.
  */
 function showOnlyAndKeep(ex: PracticeExample, rootIds: string[], colors: Array<[string, number]>) {
+  const startA = session.rootA, startB = session.rootB;
   showOnly(ex.dataset, rootIds);
   colorSegments(ex.dataset, colors);
-  for (const ms of [1500, 3500]) {
+  for (const ms of [1500, 3500, 7000]) {
     setTimeout(() => {
       if (session.shownId !== ex.id) return;
       const layer = segLayer(ex.dataset);
       const set = layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
       if (!set) return;
       const now = [...set].map((s: any) => s.toString());
-      // Only step in when something that does not belong is showing; an
-      // edit by the learner changes the ids and is theirs to keep.
-      if (now.some(id => !rootIds.includes(id)) && rootIds.every(id => now.includes(id))) {
+      // A saved view that finishes loading late puts its own segments back,
+      // under ids from before the last reset (Ames saw three blue segments,
+      // 2026-10-08). Step in whenever the view is not what was set, unless
+      // the learner has edited since: an edit changes the roots, and that
+      // view is theirs to keep.
+      const untouched = (session.rootA === startA && session.rootB === startB);
+      const same = now.length === rootIds.length && rootIds.every(id => now.includes(id));
+      if (untouched && !same) {
         showOnly(ex.dataset, rootIds);
         colorSegments(ex.dataset, colors);
       }
