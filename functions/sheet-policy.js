@@ -31,7 +31,11 @@ function sheetValues(input, me, task, now) {
   if (!me || task?.assigned_to !== me.id || task.dataset !== input.dataset || task.segment_id !== input.segmentId) fail(403,'Only your own claimed cell can be synced.');
   if (!['assigned','in_progress','completed'].includes(task.status)) fail(409,'Claim this cell before syncing.');
   if (input.action === 'complete' && task.status !== 'completed') fail(409,'Complete this cell before syncing.');
-  const name = String(me.display_name || me.username || 'Player').slice(0,120);
+  // The player's username first, the name they chose and the one chat shows.
+  // The display name comes from their sign in and is often a full real name:
+  // the sheet got "Krzysztof Kruk" for the player it knows, as CAVE does, as
+  // "KrzysztofKruk" (Krzysztof 2026-10-08). Display name only if no username.
+  const name = String(me.username || me.display_name || 'Player').slice(0,120);
   const coords = String(input.action === 'coordinates' ? input.coordinates || '' : task.soma_coords || '').trim();
   if (coords && !/^\[?\s*-?\d+(?:\.\d+)?[\s,]+-?\d+(?:\.\d+)?[\s,]+-?\d+(?:\.\d+)?\s*\]?$/.test(coords)) fail(400,'Enter three numeric coordinates.');
   // On completion the completer IS the proofreader: replace a name left by an

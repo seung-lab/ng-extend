@@ -110,7 +110,7 @@ test('completing replaces an in-progress Status (WIP, Need Help), never a final 
   const out=run(['123','Someone Else',wip,'']);
   assert.equal(out.C2,'Complete (cut off)');
   // The row was not finished, so the completer becomes the Proofreader too.
-  assert.equal(out.B2,me.display_name||me.username);
+  assert.equal(out.B2,me.username||me.display_name);
  }
  // A row the lab already gave a final status keeps it, and keeps its Proofreader.
  for(const final of ['Complete','Not BC',"Can't Complete",'Complete (cut off)']) {
@@ -118,4 +118,14 @@ test('completing replaces an in-progress Status (WIP, Need Help), never a final 
   assert.equal(out.C2,undefined);
   assert.equal(out.B2,undefined);
  }
+});
+
+test('the sheet gets the username a player chose, not the full name from their sign in',()=>{
+ const input={dataset:'stroeh_mouse_retina',segmentId:'123',action:'claim'};
+ const task={assigned_to:'kk',dataset:'stroeh_mouse_retina',segment_id:'123',status:'assigned'};
+ const nameOf=me=>sheetValues(input,me,task,'10/8/2026')[0][1];
+ assert.equal(nameOf({id:'kk',username:'KrzysztofKruk',display_name:'Krzysztof Kruk'}),'KrzysztofKruk');
+ // no username yet: the display name, as before
+ assert.equal(nameOf({id:'kk',username:null,display_name:'Krzysztof Kruk'}),'Krzysztof Kruk');
+ assert.equal(nameOf({id:'kk',username:'',display_name:''}),'Player');
 });
