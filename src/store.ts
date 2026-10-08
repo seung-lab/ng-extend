@@ -3207,25 +3207,19 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   }
 
   function removeMergeSegment(index: number) {
-    // Remove from neuroglancer's DOM (the source of truth)
+    // Remove it in neuroglancer, which owns the queue.
     try {
       const mergeEl = document.querySelector('.graphene-merge-segments');
-      if (mergeEl) {
-        const submissions = mergeEl.querySelectorAll('.graphene-merge-segments-submission');
-        const sub = submissions[index];
-        if (sub) {
-          // Look for a delete/close/remove button within the submission
-          const deleteBtn = sub.querySelector('button[title*="delete" i], button[title*="remove" i], button[title*="cancel" i], .neuroglancer-icon[title*="delete" i]') as HTMLElement | null;
-          if (deleteBtn) {
-            deleteBtn.click();
-          } else {
-            // No button found — try removing the DOM node directly
-            sub.remove();
-          }
-        }
-      }
+      const sub = mergeEl?.querySelectorAll('.graphene-merge-segments-submission')[index];
+      const deleteBtn = sub?.querySelector('button[title*="delete" i], button[title*="remove" i], button[title*="cancel" i], .neuroglancer-icon[title*="delete" i]') as HTMLElement | null;
+      // No delete control means the merge is on its way to the server and
+      // cannot be taken back. Taking the row off the screen anyway only made
+      // it come straight back (Nik 2026-10-08: "they just re-add on their own").
+      if (!deleteBtn) return;
+      deleteBtn.click();
     } catch (e) {
       console.warn('[smo] removeMergeSegment DOM error:', e);
+      return;
     }
     // Also update local state immediately for UI responsiveness
     mergeSegments.value.splice(index, 1);
