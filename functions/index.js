@@ -1878,6 +1878,22 @@ exports.ewSecureWrite = onRequest(
           break;
         }
         default:
+          // Saved teams (supabase-teams.sql): every rule is in teams.js.
+          if (typeof action === "string" && action.startsWith("team.")) {
+            if (!me) throw ewErr(403, "no EyeWire II profile");
+            const { teamAction, restDb } = require("./teams");
+            const key = ewServiceKey.value().trim();
+            try {
+              out = await teamAction(action, args, { db: restDb(sb), me,
+                credit: (userId, row) => recordActivity({ rpc: ewRpc(key), who, me: { id: userId }, token, value: row,
+                  insertLegacy: r => sb("edit_log", { method: "POST", body: JSON.stringify(r) }) }) });
+            } catch (e) {
+              // Until the SQL is run the tables are missing: say so plainly.
+              if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
+              throw e;
+            }
+            break;
+          }
           throw ewErr(400, `unknown action ${action}`);
       }
       res.json({ ok: true, data: out });
