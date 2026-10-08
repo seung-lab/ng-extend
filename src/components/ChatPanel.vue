@@ -20,6 +20,9 @@ function openNurroProfile() {
   document.dispatchEvent(new CustomEvent('nge:open-nurro-profile'));
 }
 import { canonicalDataset, datasetDisplayName, switchToDataset, segLayerName, DATASETS } from '../datasets';
+import { HELP_CHAT_PREFIX } from '../store';
+import { invite as teamInvite, teamAccess } from '../util/team_session';
+import { currentDatasetTag } from '../datasets';
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -603,6 +606,30 @@ function isShotLink(u: string): boolean {
   return u.startsWith(OWN_STORAGE) && /\.(png|jpe?g|webp)$/i.test(u);
 }
 
+// ── Join a help request from chat (Mentor mode) ──
+// A help request says itself in chat. A player with production access can
+// press Join on it: the asker gets the offer and accepts or declines.
+const joinOffered = ref(new Set<string>());
+const joinNote = ref('');
+function isHelpAsk(msg: any): boolean {
+  if (msg?.type !== 'message' || !msg.userId || msg.userId === backendStore.userId) return false;
+  if (teamAccess() === false) return false;
+  const first = (msg.parts || []).find((p: any) => p.type !== 'sender');
+  return !!first && typeof first.text === 'string' && first.text.trimStart().startsWith(HELP_CHAT_PREFIX);
+}
+const joinKey = (msg: any) => String(msg.id ?? msg.userId + ':' + msg.dateTime);
+async function joinHelp(msg: any) {
+  // The asker leads, so the helper has to be on the asker's dataset first.
+  if (msg.dataset && canonicalDataset(msg.dataset) !== canonicalDataset(currentDatasetTag())) {
+    joinNote.value = `Switch to ${datasetDisplayName(msg.dataset) || msg.dataset} first, then press Join.`;
+    setTimeout(() => { joinNote.value = ''; }, 6000);
+    return;
+  }
+  if (await teamInvite({ id: msg.userId, name: msg.name || 'Player' }, 'mentor')) {
+    joinOffered.value = new Set(joinOffered.value).add(joinKey(msg));
+  }
+}
+
 // ── Reactions (Ames 2026-09-28) ──
 const pickerFor = ref<string | null>(null);
 function togglePicker(id: string) { pickerFor.value = pickerFor.value === id ? null : id; }
@@ -1017,6 +1044,9 @@ function toggleCollapse() {
                       >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
                     <span v-else class="nge-chat-msg-text" :class="{ 'nge-chat-bot-text': msg.rank === 'bot' && msg.name !== 'Nurro' }">{{ part.text }}</span>
                   </template>
+                  <button v-if="isHelpAsk(msg)" type="button" class="nge-chat-view-chip nge-chat-join-chip" :disabled="joinOffered.has(joinKey(msg))"
+                          :title="joinOffered.has(joinKey(msg)) ? 'Offer sent. Waiting for them to accept.' : `Offer to join ${msg.name}'s view and help, live. They choose whether to accept.`"
+                          @click="joinHelp(msg)">{{ joinOffered.has(joinKey(msg)) ? '🤝 Offered' : '🤝 Join' }}</button>
                   <span v-if="msg.botLanguage" class="nge-chat-bot-lang">{{ msg.botLanguage }}</span>
                   <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
                           :title="msg.userId === backendStore.userId ? 'Delete your message' : 'Delete this message for everyone (admin)'"
@@ -1084,6 +1114,7 @@ function toggleCollapse() {
               <span class="nge-chat-mention-dot" :class="{ 'nge-chat-mention-dot--on': o.online }"></span>@{{ o.handle }}
             </button>
           </div>
+          <div v-if="joinNote" class="nge-chat-join-note" role="status">{{ joinNote }}</div>
           <div v-if="shareError" class="nge-chat-share-error" @click="shareError = ''">{{ shareError }}</div>
           <div class="nge-chat-input-row">
             <span class="nge-chat-share">
@@ -1940,6 +1971,9 @@ function toggleCollapse() {
 }
 .nge-chat-view-chip:hover { background: rgba(74, 158, 255, 0.25); color: #fff; }
 .nge-chat-view-chip { text-decoration: none; }
+.nge-chat-join-chip { border-color: rgba(93, 255, 160, 0.45); background: rgba(93, 255, 160, 0.12); color: #9fe8c0; }
+.nge-chat-join-chip:disabled { opacity: 0.6; cursor: default; }
+.nge-chat-join-note { font-size: 12px; color: #ffd08a; padding: 2px 10px; }
 .nge-chat-shot { display: block; margin: 4px 0 2px; }
 .nge-chat-shot img {
   display: block;

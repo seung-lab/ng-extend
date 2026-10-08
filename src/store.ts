@@ -1403,6 +1403,9 @@ function rowToHelpRequest(row: any): HelpRequest {
   };
 }
 
+/** How a help request reads in chat. ChatPanel shows a Join button on it. */
+export const HELP_CHAT_PREFIX = '🆘 Help requested';
+
 export const useHelpRequestStore = defineStore('helpRequests', () => {
   const requests = ref<HelpRequest[]>([]);
   const pending = ref<HelpRequest[]>([]);
@@ -1560,7 +1563,11 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   }
 
   /** Add a new help request to Supabase. */
-  async function add(req: Omit<HelpRequest, 'id' | 'createdAt' | 'resolved'>) {
+  /** chat: also say it in chat, where a player with production access can
+   *  open the view or press Join to help live (Ames 2026-10-07: "a help
+   *  requested thing that posts to chat and a player can join via a chat
+   *  button"). On unless the asker turns it off. */
+  async function add(req: Omit<HelpRequest, 'id' | 'createdAt' | 'resolved'>, opts: { chat?: boolean } = {}) {
     const backend = useProofreadingBackendStore();
     // The requester's view, so helpers see exactly what they saw.
     const viewUrl = req.viewUrl ?? await mintShortStateLink().catch(() => null) ?? undefined;
@@ -1605,6 +1612,13 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       const newReq = rowToHelpRequest(data);
       if (!requests.value.find(r => r.id === newReq.id)) {
         requests.value.unshift(newReq);
+      }
+      if (opts.chat !== false) {
+        try {
+          const note = (req.note || '').replace(/\s+/g, ' ').trim().slice(0, 110);
+          const text = [HELP_CHAT_PREFIX, req.issueType ? `(${req.issueType})` : '', note, row.view_url as string | undefined].filter(Boolean).join(' ');
+          useChatStore().sendMessage(text);
+        } catch (e) { console.warn('[helpRequests] could not post to chat:', e); }
       }
     }
     refreshPending();

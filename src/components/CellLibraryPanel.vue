@@ -1226,6 +1226,10 @@ const newHelpIssue = ref('Unsure');
 const newHelpNote = ref('');
 const newHelpScreenshotUrl = ref('');
 const newHelpError = ref('');
+/** Also say the request in chat, where someone can press Join. Remembered. */
+const HELP_CHAT_KEY = 'nge_cl_help_to_chat_v1';
+const newHelpToChat = ref((() => { try { return localStorage.getItem(HELP_CHAT_KEY) !== '0'; } catch { return true; } })());
+watch(newHelpToChat, on => { try { localStorage.setItem(HELP_CHAT_KEY, on ? '1' : '0'); } catch { /* */ } });
 const showHelpScreenshotDialog = ref(false);
 
 /**
@@ -1377,7 +1381,7 @@ async function submitNewHelp() {
     nickname: '',
     screenshotUrl: newHelpScreenshotUrl.value || undefined,
     annotationLayer: pickedHelpLayers() || undefined,
-  });
+  }, { chat: newHelpToChat.value });
   helpStore.refreshPending();
   newHelpSegId.value = '';
   newHelpLink.value = '';
@@ -2602,6 +2606,10 @@ const panelStyle = computed(() => ({
               >✓</button>
               <button class="nge-cl-help-quickadd-submit" @click="submitNewHelp" title="Submit help request">Submit</button>
             </div>
+            <label class="nge-cl-help-tochat" title="Your request is also said in chat, where a player can open your view or press Join to help you live.">
+              <input type="checkbox" v-model="newHelpToChat" />
+              <span>Also ask in chat</span>
+            </label>
             <div v-if="newHelpScreenshotUrl" class="nge-cl-help-shot-preview nge-cl-help-shot-preview--sm">
               <img :src="newHelpScreenshotUrl" alt="Attached screenshot" />
               <button class="nge-cl-help-shot-remove" @click="clearHelpScreenshot" title="Remove screenshot">×</button>
@@ -4350,6 +4358,8 @@ select.nge-cl-response-input:hover {
   border-color: rgba(74, 158, 255, 0.35);
 }
 
+.nge-cl-help-tochat { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.74em; color: #9fb0c8; cursor: pointer; }
+.nge-cl-help-tochat input { accent-color: #4a9eff; margin: 0; }
 .nge-cl-help-layers {
   position: relative;
   margin-top: 6px;
