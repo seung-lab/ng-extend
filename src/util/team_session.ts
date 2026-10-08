@@ -257,7 +257,7 @@ async function joinRoom(id: string, mode: TeamMode, leader: string) {
     // And everyone says again where they are, so Jump works for the newcomer at once.
     if (arrived) lastSent = '';
   });
-  for (const ev of ['state', 'cell', 'marks', 'pos', 'complete', 'bye', 'chat']) {
+  for (const ev of ['state', 'cell', 'marks', 'pos', 'complete', 'bye', 'chat', 'path']) {
     room.on('broadcast', { event: ev }, (m: any) => { try { onRoom(ev, m.payload || {}); } catch (e) { console.warn('[team]', ev, e); } });
   }
   await new Promise<void>(resolve => {
@@ -345,6 +345,7 @@ function onRoom(event: string, p: any) {
     if (adopted) return;
     if (Array.isArray(p.segs)) applySegs(p.segs);
     for (const l of Array.isArray(p.layers) ? p.layers : []) applyMarks(l.name, l.spec, l.anns || [], [], true);
+    if (p.path) setTimeout(() => applyPath(p.path), 600);   // after the cell is in view
     synced = true;
     adopted = true;
   } else if (event === 'cell') {
@@ -357,6 +358,8 @@ function onRoom(event: string, p: any) {
     if (team.following === by) applyView(p);
   } else if (event === 'complete') {
     creditCompletion(p);
+  } else if (event === 'path') {
+    if (synced) applyPath(p.path);
   } else if (event === 'chat') {
     const text = String(p.text || '').slice(0, TEAM_CHAT_MAX).trim();
     const by = String(p.by || '');
@@ -514,9 +517,49 @@ function applyMarks(name: string, spec: any, up: any[], del: string[], whole: bo
 function sendState() {
   if (!team.room || !synced) return;
   send('state', {
+    path: readPath(),
     segs: readSegs(),
     layers: markLayers().map(l => ({ name: l.name, spec: layerSpec(l.managed), anns: [...annMap(l.src).values()].map(t => JSON.parse(t)) })),
   });
+}
+
+// ── The Find Path line ─────────────────────────────────────────────────
+// Find Path keeps its two ends and the line between them inside the tool, not
+// in an annotation layer, so it was the one mark teammates could not see
+// (Ames 2026-10-07: "there is no way to share it?"). The tool can save and
+// restore itself, so its saved form is passed along like any other mark.
+const pathTool = (): any => (currentSegLayer() as any)?.layer?.graphConnection?.value?.state?.findPathState;
+let lastPath = '';
+let pathTimer: any = null;
+function readPath(): any {
+  try { const st = pathTool(); return st ? JSON.parse(JSON.stringify(st.toJSON() ?? null)) : null; } catch { return null; }
+}
+function onPathChanged() {
+  if (!team.room) return;
+  clearTimeout(pathTimer);
+  pathTimer = setTimeout(() => {
+    if (!team.room || !synced) return;
+    const now = readPath();
+    const text = JSON.stringify(now);
+    if (text === lastPath) return;
+    lastPath = text;
+    send('path', { path: now });
+  }, 300);
+}
+function applyPath(path: any) {
+  const st = pathTool();
+  if (!st || path == null || typeof path !== 'object') return;
+  const text = JSON.stringify(path);
+  if (text === lastPath || text === JSON.stringify(readPath())) { lastPath = text; return; }
+  // Set before restoring: restoring fires the tool's own change signal, and
+  // what arrives from the team must not be sent straight back.
+  lastPath = text;
+  try { st.reset(); st.restoreState(path); } catch (e) { console.warn('[team] path not applied:', e); }
+}
+/** The tool exists only once the dataset's proofreading graph has loaded. */
+function hookPath() {
+  const st = pathTool();
+  if (st?.changed?.add && !hooked.has(st)) { hooked.add(st); st.changed.add(onPathChanged); }
 }
 
 // ── Where everyone is ───────────────────────────────────────────────────
@@ -535,6 +578,7 @@ function startTicker() {
   stopTicker();
   ticker = setInterval(() => {
     if (!team.room) return;
+    hookPath();
     const p = myPos();
     if (!p) return;
     const v = myView();
@@ -544,7 +588,7 @@ function startTicker() {
     send('pos', { p, v });
   }, 250);
 }
-function stopTicker() { if (ticker) clearInterval(ticker); ticker = null; lastSent = ''; }
+function stopTicker() { if (ticker) clearInterval(ticker); ticker = null; lastSent = ''; lastPath = ''; }
 
 function applyView(p: any) {
   const viewer = viewerOf();
