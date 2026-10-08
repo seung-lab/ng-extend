@@ -2,6 +2,20 @@
 import { computed, ref, watch } from 'vue';
 import { useSplitMergeOverlayStore } from 'src/store';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
+import { currentSegLayer } from '../datasets';
+import { Uint64 } from 'neuroglancer/util/uint64';
+
+// Hovering a segment in the Merge Queue lights it up in the 2D and 3D views
+// and in the segment list, the way neuroglancer's own merge list does (Nik,
+// 2026-10-08). It sets the viewer's hovered segment, nothing more.
+function hoverSegment(id: string | null) {
+  try {
+    const state = (currentSegLayer()?.layer as any)?.displayState?.segmentSelectionState;
+    if (!state) return;
+    if (id && /^\d+$/.test(id)) state.set(Uint64.parseString(id));
+    else state.set(null);
+  } catch { /* the layer went away */ }
+}
 
 const store = useSplitMergeOverlayStore();
 
@@ -242,9 +256,11 @@ function cancelTool() {
         <div class="nge-smo-merge-panel-list">
           <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-row">
             <span class="nge-smo-merge-num">{{ i + 1 }}.</span>
-            <span class="nge-smo-seg-id">{{ pair[0] }}</span>
+            <span class="nge-smo-seg-id nge-smo-seg-id--hover" title="Hover to light this segment up in the views"
+                  @mouseenter="hoverSegment(pair[0])" @mouseleave="hoverSegment(null)">{{ pair[0] }}</span>
             <span v-if="pair[1]" class="nge-smo-merge-arrow">⇄</span>
-            <span v-if="pair[1]" class="nge-smo-seg-id">{{ pair[1] }}</span>
+            <span v-if="pair[1]" class="nge-smo-seg-id nge-smo-seg-id--hover" title="Hover to light this segment up in the views"
+                  @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)">{{ pair[1] }}</span>
             <button class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
           </div>
         </div>
@@ -695,6 +711,8 @@ function cancelTool() {
 .nge-smo-merge-row:hover {
   background: rgba(0, 220, 120, 0.08);
 }
+.nge-smo-seg-id--hover { cursor: default; border-radius: 3px; transition: background 0.12s ease, color 0.12s ease; }
+.nge-smo-seg-id--hover:hover { background: rgba(0, 220, 120, 0.22); color: #ffffff; }
 
 .nge-smo-merge-num {
   font-size: 10px;

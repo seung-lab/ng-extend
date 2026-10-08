@@ -2154,6 +2154,10 @@ const MERGE_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   // selected: entering merge straight from an annotation layer dropped an
   // annotation point instead of picking a segment (andrearwen 2026-10-06).
   // The cut tool has always bound its own click the same way.
+  // Since 2026-10-08 (Nik): opening merge selects the segmentation layer, so
+  // that case is covered at the door, and a player who then SWITCHES to an
+  // annotation layer on purpose gets an annotation from ctrl+click, without
+  // having to close merge first. See 'place-merge-point' below.
   'at:shift?+control+mousedown0': {action: 'place-merge-point'},
 });
 
@@ -2174,8 +2178,22 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
     header.textContent = 'Merge segments';
     body.classList.add('graphene-tool-status', 'graphene-merge-segments');
     activation.bindInputEventMap(MERGE_SEGMENTS_INPUT_EVENT_MAP);
+    // Merge begins on the segmentation layer, whichever layer it was opened
+    // from (so a ctrl+click right after opening always picks a segment).
+    try {
+      const sel = (window as any).viewer?.selectedLayer;
+      if (sel && sel.layer !== this.layer.managedLayer) sel.layer = this.layer.managedLayer;
+    } catch { /* the viewer is not up yet */ }
     activation.bindAction('place-merge-point', event => {
       event.stopPropagation();
+      // The player has moved to an annotation layer with a tool picked (to
+      // mark a true end, say): the click is an annotation there. Back on the
+      // segmentation layer it is a merge point again. Merge stays open.
+      try {
+        const chosen = (window as any).viewer?.selectedLayer?.layer?.layer;
+        const annotate = chosen && chosen !== this.layer && (chosen.constructor as any)?.type === 'annotation' ? chosen.tool?.value : undefined;
+        if (annotate && typeof annotate.trigger === 'function') { annotate.trigger(this.mouseState); return; }
+      } catch { /* fall through to the merge point */ }
       lineTool.trigger(this.mouseState);
     });
     const submitAction = async () => {
