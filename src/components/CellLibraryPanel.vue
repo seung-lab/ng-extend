@@ -793,13 +793,18 @@ function openComplete(cell: CellRow) {
   void useCurrentViewLink();  // prefilled with the current view; editable (Amy 2026-09-28)
 }
 
+/** The link the Complete form made by itself when it opened. If it is still
+ *  the one in the field when the cell is submitted, a fresh one is made then:
+ *  highlights and points added while the form was open were missing from the
+ *  Final Link in the sheet (2026-10-08). A link the player pasted is kept. */
+let autoCompleteLink = '';
 async function useCurrentViewLink() {
   const c = completing.value;
   if (!c) return;
   c.minting = true;
   const short = await mintShortStateLink();
   c.minting = false;
-  if (short) c.link = short;
+  if (short) { c.link = short; autoCompleteLink = short; }
   else c.message = 'Could not make a link of this view (sign in, or paste one).';
 }
 
@@ -861,6 +866,10 @@ async function submitComplete(cell: CellRow) {
     // The crosshairs may have moved since the check: check once more.
     await runCrosshairCheck(cell);
     if (!c.ok || !c.check?.root) return;
+    if (c.link.trim() === autoCompleteLink) {
+      const fresh = await mintShortStateLink().catch(() => null);
+      if (fresh) { c.link = fresh; autoCompleteLink = fresh; }
+    }
     const claimsBefore = myOpenClaims.value;
     await completeCell(cell, {
       finalSegId: c.check.root,
