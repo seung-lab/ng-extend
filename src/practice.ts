@@ -615,14 +615,49 @@ export function hasCutPreview(ex: PracticeExample | null): boolean {
   return !!ex && ex.kind === 'cut' && !!ex.root_a && ex.root_a !== ex.root_b;
 }
 
-/** The cells this learner holds right now. */
+/**
+ * Exercises that ride on another cell's claim.
+ *
+ * The Merge tutorial's two merges are on one neuron. The server will not
+ * hand a learner a second cell on a neuron while the first is held (its rule
+ * against two people on one neuron also catches the learner's own cell), so
+ * the second merge was skipped on every run from 2026-10-05 to 2026-10-08:
+ * the axon cell's use count never moved. It does not need a claim of its
+ * own. Nobody else can start the Merge tutorial while the first cell is
+ * held, and resetting the first cell undoes every edit on the neuron since
+ * the shared baseline, the second merge included. So the second exercise is
+ * shown from its row, read only, and rides on the first cell's claim.
+ */
+const RIDES_WITH: Record<string, string> = {
+  // Axon missing a branch rides with Branch cut in half.
+  'a4bd2f76-67e9-4093-adc7-e670230d1577': 'b231f4e7-e9f3-4214-941f-975b8b25a237',
+};
+const riders: Record<string, PracticeExample> = {};
+
+async function riderFor(slot: string, kind: PracticeKind): Promise<PracticeExample | null> {
+  const hosts = Object.values(session.held);
+  for (const [riderId, hostId] of Object.entries(RIDES_WITH)) {
+    const host = hosts.find(h => h.id === hostId);
+    if (!host || Object.values(riders).some(r => r.id === riderId)) continue;
+    const { data, error } = await supabase.from('tutorial_practice_examples').select('*').eq('id', riderId).eq('enabled', true).eq('kind', kind).limit(1);
+    const row = (data ?? [])[0] as PracticeExample | undefined;
+    if (error || !row) { console.warn('[practice] rider cell not available:', riderId, error?.message); continue; }
+    // The host's claim stands in for its own (never sent to the server).
+    riders[slot] = { ...row, claimed_by: host.claimed_by, claim_nonce: host.claim_nonce };
+    console.info(`[practice] ${row.title} rides on the claim of ${host.title}`);
+    return riders[slot];
+  }
+  return null;
+}
+
+/** The cells this learner holds right now, riders included. */
 export function heldPracticeIds(): string[] {
-  return Object.values(session.held).map(ex => ex.id);
+  return [...Object.values(session.held), ...Object.values(riders)].map(ex => ex.id);
 }
 
 /** Whether this learner holds a cell in the slot. */
 export function holdsSlot(slot: string): boolean {
-  return !!session.held[slot];
+  return !!session.held[slot] || !!riders[slot];
 }
 
 /** True once a practice view is on screen (no need to announce the move). */
@@ -642,6 +677,20 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   let uid = userId();
   for (let i = 0; !uid && i < 12; i++) { await new Promise(r => setTimeout(r, 500)); uid = userId(); }
   if (!uid) { practiceUnavailable(); return null; }
+  // A rider has no claim to renew: show it if its host is still held.
+  const riding = riders[slot];
+  if (riding && riding.kind === kind) {
+    if (!Object.values(session.held).some(h => h.id === RIDES_WITH[riding.id])) { delete riders[slot]; }
+    else {
+      if (!show) return riding;
+      session.example = riding;
+      await showExample(riding, view);
+      session.phase = kind === 'cut' ? 'cut' : 'merge';
+      resumeTool();
+      startActivityWatch();
+      return riding;
+    }
+  }
   const held = session.held[slot];
   if (held && held.claimed_by === uid && held.kind === kind) {
     try { await practiceAction('heartbeat', { id: held.id, session: held.claim_nonce }); }
@@ -708,7 +757,23 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   // A second cell that could not be had (show: false) must not mark the
   // session busy: the first cell is on screen and usable (Ames saw "every
   // practice cell is in use" over her own loaded cell, 2026-10-05).
-  if (!row) { if (show) session.phase = 'busy'; else if (session.example) session.phase = kind === 'cut' ? 'cut' : 'merge'; return null; }
+  if (!row) {
+    // No cell of its own: a rider, if this slot's exercise shares a neuron
+    // with a cell already held.
+    const rider = await riderFor(slot, kind);
+    if (rider) {
+      if (session.example) session.phase = kind === 'cut' ? 'cut' : 'merge';
+      if (!show) return rider;
+      session.example = rider;
+      await showExample(rider, view);
+      session.phase = kind === 'cut' ? 'cut' : 'merge';
+      resumeTool();
+      startActivityWatch();
+      return rider;
+    }
+    if (show) session.phase = 'busy'; else if (session.example) session.phase = kind === 'cut' ? 'cut' : 'merge';
+    return null;
+  }
   session.held[slot] = row;
   if (!show) {
     // Claimed, not shown: the step's own cell stays on screen.
@@ -909,6 +974,7 @@ export function endPractice(): Promise<void> {
       catch (error: any) { console.warn('[practice] reset left to the scheduled worker:', error?.message || error); }
     }
     session.held = {};
+    for (const k of Object.keys(riders)) delete riders[k];
     session.example = null;
     session.shownId = '';
     session.rootA = '';
