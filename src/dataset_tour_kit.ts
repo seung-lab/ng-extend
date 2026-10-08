@@ -44,6 +44,12 @@ export interface TourCell {
   /** A picture at the top of the card (the superclass render, FlyWire). */
   image?: string;
   imageAlt?: string;
+  /** A colour per id, where one step shows cells that must tell apart (CA3's
+   *  synapse step: the fiber and the cell it contacts). Else `color`. */
+  colors?: Record<string, string>;
+  /** A live page at the top of the card instead of a picture (CA3: the
+   *  interactive action potential from amyleesterling.github.io/ca3). */
+  embed?: { src: string; title: string };
   /** Buttons under the text that load more cells: every cell of this type,
    *  or the cells around this one. Each lists how many it loads. */
   more?: TourMore[];
@@ -172,9 +178,9 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
       group.visibleSegments.clear();
       for (const c of cells) {
         // neuroglancer packs as 0xBBGGRR.
-        const n = parseInt(c.color.slice(1), 16);
-        const packed = ((n >> 16) & 255) | (n & 0xff00) | ((n & 255) << 16);
         for (const id of c.ids) {
+          const n = parseInt((c.colors?.[id] ?? c.color).slice(1), 16);
+          const packed = ((n >> 16) & 255) | (n & 0xff00) | ((n & 255) << 16);
           const seg = Uint64.parseString(id);
           try { if (colors) setStatedColor(colors, seg, packed); } catch { /* keeps its default colour */ }
           group.visibleSegments.add(seg);
@@ -254,7 +260,9 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   /** A cell card: optional picture, the text, then its "show all" buttons. */
   function cellHtml(c: TourCell, ci: number): string {
-    const img = c.image ? `<div class="nge-tour-cell-img"><img src="${c.image}" alt="${esc(c.imageAlt || '')}" /></div>` : '';
+    const img = c.embed
+      ? `<div class="nge-tour-cell-embed" data-no-drag><iframe src="${esc(c.embed.src)}" title="${esc(c.embed.title)}" loading="lazy" allow="fullscreen"></iframe></div>`
+      : c.image ? `<div class="nge-tour-cell-img"><img src="${c.image}" alt="${esc(c.imageAlt || '')}" /></div>` : '';
     const body = marked.parse(c.text, { async: false }) as string;
     const more = (c.more || []).map((m, mi) => `
 <div class="nge-tour-more">
@@ -294,9 +302,9 @@ export function makeCellTour(spec: CellTourSpec): Step[] {
     ...spec.cells.map((c, ci): Step => ({
       title: c.title,
       // Plain text cards stay markdown; a card with a picture or buttons is HTML.
-      ...(c.image || c.more?.length ? { html: cellHtml(c, ci) } : { text: c.text }),
+      ...(c.image || c.embed || c.more?.length ? { html: cellHtml(c, ci) } : { text: c.text }),
       position: BESIDE,
-      width: c.image ? "380px" : "340px",
+      width: c.embed ? "460px" : c.image ? "380px" : "340px",
       onEnter: () => showCells([c], c.view),
     })),
     {

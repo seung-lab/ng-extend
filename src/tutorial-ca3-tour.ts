@@ -51,6 +51,22 @@ Look for the giant swellings along it. Each one wraps a cluster of thorns. This 
     ],
   },
   {
+    // Ames 2026-10-07: zoom into a synapse and play the interactive animation
+    // from the CA3 renders page. The box is the 53 synapses this fiber makes
+    // onto the cell (web/scene.json there) with a margin; the embedded page is
+    // that site's viewer.html in its embed mode.
+    title: "Watch the Synapse Fire",
+    embed: { src: 'https://amyleesterling.github.io/ca3/viewer.html?embed=1', title: 'An action potential travelling from the mossy fiber into the pyramidal cell' },
+    text: `The view has zoomed in to where the gold fiber meets the blue cell: 53 synapses packed into a space about 5 micrometres across, where the fiber wraps a cluster of thorns.
+
+Above is the same pair, alive. Press **Play**, or drag the slider: the signal runs down the fiber, crosses at the bouton and travels through the cell to its cell body. Drag the picture to turn it.
+
+One spike is usually not enough to make the cell fire. A quick burst is. That is why this is called a **conditional detonator** synapse.`,
+    ids: [PYR, FIBER], color: '#2E8BE0', colors: { [FIBER]: '#E8A93A' },
+    min: [990.8, 1163.3, 4.3], max: [1015.4, 1188.5, 29.8],
+    view: VIEW_TOP,
+  },
+  {
     title: "Sparsely Thorny Pyramidal Cell",
     text: `A pyramidal cell with far fewer thorns on its dendrites, so the mossy fibers have fewer places to plug in.
 

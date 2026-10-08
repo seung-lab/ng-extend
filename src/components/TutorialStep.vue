@@ -1278,6 +1278,9 @@ onUnmounted(() => {
     background: #03040a;
 }
 /* Dataset tour cell cards: a picture on top, "show all" buttons below. */
+/* A live page in a tour card (CA3's interactive action potential). */
+.chip .html .nge-tour-cell-embed { margin: 0 0 10px; line-height: 0; border: 1px solid rgba(112, 190, 255, 0.2); border-radius: 6px; overflow: hidden; background: #06090f; }
+.chip .html .nge-tour-cell-embed iframe { display: block; width: 100%; height: 300px; border: 0; }
 .chip .html .nge-tour-cell-img { margin: 0 0 10px; line-height: 0; text-align: center; }
 .chip .html .nge-tour-cell-img img { max-width: 100%; max-height: 190px; width: auto; height: auto; }
 .chip .html .nge-tour-cell-text p { margin: 0 0 10px; }
