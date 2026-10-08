@@ -152,3 +152,11 @@ summaries.
   3D means turning the tint off (`tintShown`, localStorage
   `nge_highlight_tint_3d`), not flipping `ngeHideIn3d` (2026-10-07, show in 3D
   toggle build, from reading highlight.ts and perspective_view/panel.ts).
+- `backend.liveRoots` only covers the signed in player's own open claims, not
+  every task. The old unused `isLatestRoots` in pcg_service.ts did a GET with
+  `root_ids`, but PyChunkedGraph's route is POST with `{node_ids}`; it now
+  POSTs. `getLatestRoots` posts to a `get_latest_roots` table route that
+  PyChunkedGraph does not seem to have, and reads ids with `res.json()`,
+  which rounds 18 digit ids. Use `latestDescendants` (lineage_graph) for the
+  current id instead (2026-10-08, cell library edited flag build, from
+  reading store.ts and pcg_service.ts. Not yet checked against the server).

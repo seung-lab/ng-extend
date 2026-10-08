@@ -26,7 +26,7 @@ import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
 import { syncCellToSheet, completeStatusesFor } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
-import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
+import { getRootFromSupervoxel, ancestorAmong, isLatestRoots, latestDescendants } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
@@ -164,6 +164,35 @@ async function resolveClaimPoints() {
   resolving.value = false;
 }
 
+// ── Has the listed cell been edited since it was listed? ──────────────
+// Only your own claims were followed to their current ID (liveRoots), so an
+// available or completed cell edited by someone else still showed its old
+// ID. Every listed ID is checked in one batch; an edited one is followed
+// forward to its current ID. '' = edited, but splits left several pieces.
+const listedLatest = ref<Record<string, string>>({});
+const listedChecked = new Set<string>();
+async function checkListedRoots() {
+  const ids = [...new Set(queue.items.map(i => i.segId))].filter(id => /^\d+$/.test(id) && !listedChecked.has(id));
+  if (!ids.length) return;
+  ids.forEach(id => listedChecked.add(id));
+  const stale: string[] = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const flags = await isLatestRoots(ids.slice(i, i + 500));
+    if (!flags) { ids.slice(i).forEach(id => listedChecked.delete(id)); break; }  // try again next open
+    for (const [id, latest] of flags) if (!latest) stale.push(id);
+  }
+  // A few lineage lookups at a time, so a long list does not flood CAVE.
+  for (let i = 0; i < stale.length; i += 6) {
+    const found = await Promise.all(stale.slice(i, i + 6).map(id => latestDescendants(id).catch(() => null)));
+    const next = { ...listedLatest.value };
+    stale.slice(i, i + 6).forEach((id, k) => {
+      const ends = found[k];
+      next[id] = ends && ends.length === 1 && ends[0] !== id ? ends[0] : '';
+    });
+    listedLatest.value = next;
+  }
+}
+
 const copiedId = ref<string | null>(null);
 /** Last cell the user jumped to — highlighted in the list so it's easy to find
  *  again when the Available list is long. */
@@ -221,6 +250,7 @@ async function loadCellsForActiveDataset() {
   if (queue.sheetUrl !== sheetUrl || queue.items.length === 0) {
     await queue.loadFromSheet(sheetUrl, canonicalDataset(dsName));
   }
+  void checkListedRoots().catch(() => {});
 }
 
 // Follow the viewer's dataset while the panel is open. activeDataset used to
@@ -313,7 +343,9 @@ const cells = computed(() => {
         svId: task?.supervoxel_id ?? null,
         nucleusId: task?.final_nucleus_id ?? null,
         // The cell's ID after your edits, when it differs from the listed one.
-        liveSegId: (task && backend.liveRoots[task.id] && backend.liveRoots[task.id] !== item.segId) ? backend.liveRoots[task.id] : null as string | null,
+        // Otherwise the current ID found for the listed one, edited by anyone.
+        liveSegId: (task && backend.liveRoots[task.id] && backend.liveRoots[task.id] !== item.segId) ? backend.liveRoots[task.id] : (listedLatest.value[item.segId] || null) as string | null,
+        editedSince: item.segId in listedLatest.value,
       };
     });
 
@@ -338,6 +370,7 @@ const cells = computed(() => {
         svId: t.supervoxel_id ?? null,
         nucleusId: t.final_nucleus_id ?? null,
         liveSegId: null as string | null,
+        editedSince: false,
       }));
 
     return [...sheetCells, ...extraTasks];
@@ -3313,6 +3346,8 @@ const panelStyle = computed(() => ({
               <div class="nge-cl-row-info">
                 <div class="nge-cl-row-name" @click="copyId(cell.segId)" :title="'Click to copy ' + cell.segId">
                   <span :title="cell.liveSegId ? `Updated after edits. Listed as ${cell.segId}` : undefined">{{ history.getNickname(cell.segId) || cell.liveSegId || cell.segId }}</span>
+                  <span v-if="cell.liveSegId || cell.editedSince" class="nge-cl-updated"
+                    :title="cell.liveSegId ? `Updated after edits. Listed as ${cell.segId}` : `Edited since it was listed, and split into several pieces. Listed as ${cell.segId}`">edited</span>
                   <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
                 </div>
                 <div class="nge-cl-row-meta">
@@ -3883,6 +3918,12 @@ const panelStyle = computed(() => ({
   color: #4a6;
   margin-left: 6px;
   font-weight: 400;
+}
+.nge-cl-updated {
+  font-size: 0.75em;
+  color: #f0b850;
+  margin-left: 6px;
+  font-weight: 600;
 }
 
 /* Actions */

@@ -425,17 +425,25 @@ export async function latestDescendants(root: string): Promise<string[] | null> 
 /**
  * Check which root IDs are still current (not superseded by edits).
  *
- * Endpoint: GET /segmentation/api/v1/table/{table}/is_latest_roots?root_ids=...
+ * Endpoint: POST /segmentation/api/v1/table/{table}/is_latest_roots
+ * with { node_ids: [...] } (PyChunkedGraph has no GET form of this route).
+ * The ids go in as bare JSON numbers written from the text, so the 18-digit
+ * ids are never rounded on the way.
  */
 export async function isLatestRoots(rootIds: string[]): Promise<Map<string, boolean> | null> {
   const pcg = getPcgInfo();
+  rootIds = rootIds.filter(id => /^\d+$/.test(id));
   if (!pcg || rootIds.length === 0) return null;
 
-  const url = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/is_latest_roots?root_ids=${rootIds.join(',')}`;
-  console.info(`[pcg] GET is_latest_roots → ${rootIds.length} IDs`);
+  const url = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/is_latest_roots`;
+  console.info(`[pcg] POST is_latest_roots → ${rootIds.length} IDs`);
 
   try {
-    const res = await fetch(url, { headers: authHeaders(pcg.server) });
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: authHeaders(pcg.server),
+      body: `{"node_ids":[${rootIds.join(',')}]}`,
+    });
     if (!res.ok) {
       console.warn(`[pcg] is_latest_roots ${res.status}`);
       return null;
