@@ -214,6 +214,11 @@ export const useTutorialStore = defineStore("tutorial", () => {
   // exercise at a time, never resumed, so it is not stored.
   const tutorialStep9: Ref<number> = ref(-1);
 
+  // Tutorial 10, the CA3 dataset tour (src/tutorial-ca3-tour.ts). Local only.
+  const tutorialStep10: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-10-step`) ?? "-1")
+  );
+
   // Track whether we've already hydrated for the current user so we don't
   // clobber locally-advanced progress on every re-render.
   const hydratedForUserId: Ref<string | null> = ref(null);
@@ -228,6 +233,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 7) return tutorialStep7.value;
     if (activeTutorial.value === 8) return tutorialStep8.value;
     if (activeTutorial.value === 9) return tutorialStep9.value;
+    if (activeTutorial.value === 10) return tutorialStep10.value;
     return tutorialStep4.value;
   }
 
@@ -240,6 +246,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     else if (activeTutorial.value === 7) tutorialStep7.value = val;
     else if (activeTutorial.value === 8) tutorialStep8.value = val;
     else if (activeTutorial.value === 9) tutorialStep9.value = val;
+    else if (activeTutorial.value === 10) tutorialStep10.value = val;
     else tutorialStep4.value = val;
   }
 
@@ -337,6 +344,9 @@ export const useTutorialStore = defineStore("tutorial", () => {
   watch(tutorialStep8, () => {
     localStorage.setItem(`nge-tutorial-8-step`, `${tutorialStep8.value}`);
   });
+  watch(tutorialStep10, () => {
+    localStorage.setItem(`nge-tutorial-10-step`, `${tutorialStep10.value}`);
+  });
   watch(activeTutorial, () => {
     localStorage.setItem(`nge-active-tutorial`, `${activeTutorial.value}`);
     scheduleSync();
@@ -372,6 +382,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep7,
     tutorialStep8,
     tutorialStep9,
+    tutorialStep10,
     hydrateFromSupabase,
   };
 });

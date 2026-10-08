@@ -133,6 +133,13 @@
     "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
     "projectionScale": 60000.0
   },
+  "zheng_ca3": {
+    "dimensions": [1.8e-8, 1.8e-8, 4.5e-8],
+    "position": [58208.0, 63963.0, 1119.0],
+    "crossSectionScale": 4.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 24000.0
+  },
   "pni_mec": {
     "dimensions": [1.6e-8, 1.6e-8, 4.5e-8],
     "position": [158487, 128036, 5061],

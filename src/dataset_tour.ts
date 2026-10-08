@@ -16,6 +16,7 @@ const TOUR_TUTORIAL: Record<string, number> = {
   stroeh_mouse_retina: 7,
   flywire_fafb_public: 8,
   flywire_fafb_production: 8,
+  zheng_ca3: 10,
 };
 
 const seenKey = (dataset: string) => `nge-dataset-tour-seen:${dataset}`;

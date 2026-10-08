@@ -15,6 +15,7 @@ import { steps as steps6 } from '../tutorial-mec-tour';
 import { steps as steps7 } from '../tutorial-retina-tour';
 import { steps as steps8 } from '../tutorial-flywire-tour';
 import { steps as steps9 } from '../merger-sandbox';
+import { steps as steps10 } from '../tutorial-ca3-tour';
 import { endPractice } from '../practice';
 import { practiceEarned } from '../tutorial-3';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
@@ -27,7 +28,7 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10 };
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {
@@ -39,6 +40,7 @@ const currentStep = computed(() => {
     if (store.activeTutorial === 7) return store.tutorialStep7;
     if (store.activeTutorial === 8) return store.tutorialStep8;
     if (store.activeTutorial === 9) return store.tutorialStep9;
+    if (store.activeTutorial === 10) return store.tutorialStep10;
     return store.tutorialStep4;
 });
 

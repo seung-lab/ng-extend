@@ -9,6 +9,7 @@
 import { offerViewRestoreAfterSwitch } from './util/view_autosave';
 import thumbMicrons from '../static/images/datasets/microns.jpg';
 import thumbMec from '../static/images/datasets/mec.jpg';
+import thumbCa3 from '../static/images/datasets/ca3.jpg';
 // EyeWire II retina: e2_overview.png from eyewire.ai.
 import thumbRetina from '../static/images/datasets/retina.jpg';
 import thumbBanc from '../static/images/datasets/banc.jpg';
@@ -446,6 +447,38 @@ export const DATASETS: DatasetEntry[] = [
     ],
   },
   {
+    // Mouse hippocampus, area CA3 (Zheng et al. 2025; Ames 2026-10-07, from
+    // amyleesterling.github.io/ca3). Graph zheng_ca3 on the MICrONS CAVE
+    // server, auth dataset zheng-mouse-hc: not public, so players without
+    // access see the card locked. It has no proofread or cell type table and
+    // no cell list, so it is a place to look and to tour. Id = layer name.
+    id: 'zheng_ca3',
+    section: 'viewonly',
+    caveDataset: 'zheng-mouse-hc',
+    thumbnail: thumbCa3,
+    label: 'CA3: Mouse Hippocampus',
+    shortLabel: 'CA3',
+    abbrev: 'CA3',
+    species: 'mouse',
+    description: 'Mouse hippocampus area CA3, pyramidal cells and their mossy fiber inputs (18×18×45 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://zheng_mouse_hippocampus_production/v2/img_aligned_sharded_18nm',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/zheng_ca3',
+          subsources: { default: true, mesh: true, graph: true },
+          enableDefaultSubsources: true,
+        },
+        name: 'zheng_ca3',
+      },
+    ],
+  },
+  {
     id: 'pni_mec',
     section: 'production',
     highlightOff: 'Highlight is not available on this dataset yet: its server cannot trace paths along a cell.',
@@ -556,6 +589,7 @@ export function currentCellTypes(): string[] {
  *   • Pinky sandbox:  'pinky_nf_v2', 'pinky_training3', 'pinky_training6', 'pinky'
  *   • Minnie65:       'minnie65_public', 'minnie65_public_v117' (and other versions)
  *   • MEC:            'pni_mec', 'mec'
+ *   • CA3:            'zheng_ca3', 'ca3'
  *
  * NOTE: the team's shared spelunker states name the MEC segmentation layer
  * 'seg'. That is deliberately NOT mapped here — 'seg' is generic enough that
@@ -583,6 +617,7 @@ export function canonicalDataset(name: string | undefined | null): string {
   if (n.startsWith('malecns')) return 'malecns_v1_0';
   if (n.startsWith('optic_lobe')) return 'optic_lobe_v1_1';
   if (n.startsWith('pni_mec') || n === 'mec') return 'pni_mec';
+  if (n.startsWith('zheng_ca3') || n === 'ca3') return 'zheng_ca3';
   if (n.startsWith('brain_and_nerve') || n === 'banc' || n.startsWith('wclee_fly_cns')) return 'brain_and_nerve_cord';
   return n;
 }

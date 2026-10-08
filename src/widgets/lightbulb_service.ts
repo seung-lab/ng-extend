@@ -450,6 +450,8 @@ export async function getCellStatus(
   // Explore only volumes have no CAVE; a caller may still hand in a default
   // server, so the dataset's own config decides.
   if (!caveServer || dsCfg.exploreOnly || !datastack) return null;
+  // A dataset with neither table (CA3): there is nothing to ask CAVE.
+  if (!cellStatusTable && !cellTypeTable) return {isComplete: false};
 
   if (dsCfg.annotationLog === 'edit_log') {
     const logged = await statusFromEditLog(rootId);

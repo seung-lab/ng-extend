@@ -321,7 +321,9 @@ export class ButtonService {
       toggleBtn.style.display = 'none';
       const note = document.createElement('div');
       note.classList.add('nge-lb-readonly-note');
-      note.textContent = `Shown from ${roCfg.cellStatusTable}. Marking cells here is not open to players yet.`;
+      note.textContent = roCfg.cellStatusTable
+        ? `Shown from ${roCfg.cellStatusTable}. Marking cells here is not open to players yet.`
+        : 'This dataset has no proofread list yet, so there is nothing to mark here.';
       completionSection.appendChild(note);
     }
     toggleBtn.addEventListener('click', async () => {

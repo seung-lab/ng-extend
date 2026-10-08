@@ -321,6 +321,24 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeReadOnly: true,
     defaultPosition:  [139823, 138471, 2627],
   },
+  // CA3, mouse hippocampus (Zheng et al. 2025). The datastack has no proofread
+  // table and no usable cell type table (ca3_cell_type holds one row, checked
+  // 2026-10-07), so both names are empty: nothing is read or written, and the
+  // cell menu says so. Starts on the tour's pyramidal cell and one of the
+  // mossy fibers that contact it (src/tutorial-ca3-tour.ts).
+  zheng_ca3: {
+    caveServer:       'https://minnie.microns-daf.com',
+    datastack:        'zheng_ca3',
+    alignedVolume:    'zheng_ca3',
+    cellStatusTable:  '',
+    cellStatusReadOnly: true,
+    cellTypeTable:    '',
+    cellTypeSchema:   'bound_tag_user',
+    cellTypeReadOnly: true,
+    defaultSegments:  ['648518346438632877', '648518346448994107'],
+    segmentColors:    { '648518346438632877': '#2E8BE0', '648518346448994107': '#E8A93A' },
+    defaultPosition:  [58208, 63963, 1119],
+  },
   // FlyWire public release (frozen at materialization v783), on FlyWire's own
   // CAVE server. Auth dataset flywire_public: view for everyone, edit for
   // nobody. proofread_neurons has one row per proofread neuron (schema
