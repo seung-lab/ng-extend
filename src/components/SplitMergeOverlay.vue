@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useSplitMergeOverlayStore } from 'src/store';
+import { useTutorialStore } from '../store-pyr';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -45,6 +46,14 @@ const isRedActive = computed(() => store.activeGroup === 'red');
 // colour is switched.
 const needsSwap = computed(() => isMulticut.value && !store.pendingClose
   && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red');
+// The large "Press G" prompt is for learners only: it shows while a step of
+// the Merge, Cut or Merger Sandbox tutorial is up (Ames, 2026-10-08). Outside
+// a tutorial the small pulsing G key on the bar is the only nudge.
+const tutorialStore = useTutorialStore();
+const inPracticeTutorial = computed(() => {
+  const step = tutorialStore.getTutorialStep();
+  return [3, 5, 9].includes(tutorialStore.activeTutorial) && step >= 0 && step < 8;
+});
 const groupPulse = ref(false);
 let groupPulseTimer: ReturnType<typeof setTimeout> | null = null;
 watch(() => store.activeGroup, (now, before) => {
@@ -179,7 +188,7 @@ function cancelTool() {
                large prompt above the bar, since the small key on the bar was
                missed and second red points were placed instead (Ames,
                2026-10-08). Clicking it switches too. -->
-          <div v-if="needsSwap" class="nge-smo-swap-banner" @click="swapGroup()" role="status">
+          <div v-if="needsSwap && inPracticeTutorial" class="nge-smo-swap-banner" @click="swapGroup()" role="status">
             <span class="nge-smo-swap-banner-step">Red is placed</span>
             <span class="nge-smo-swap-banner-main">Now press <kbd>G</kbd> to switch to <b>blue</b></span>
             <span class="nge-smo-swap-banner-sub">then Ctrl+click the other side</span>
