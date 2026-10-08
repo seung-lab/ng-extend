@@ -9,7 +9,7 @@ import imgCutPoints from './images/cut-points-example.jpg';
 // The second cut's cell, fused and after the cut (Ames, 2026-10-06).
 import imgCut2Before from './images/cut2-before.jpg';
 import imgCut2After from './images/cut2-after.jpg';
-import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot } from './practice';
+import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot, openSplitView } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchPractice, watchTool } from './tutorial-3';
 
@@ -30,7 +30,7 @@ export function showSections() {
 
 /** Split view, so the 2D images are on screen for the 2D cut. */
 export function show2D() {
-  try { getViewer()?.layout?.restoreState('xy-3d'); } catch (e) { console.warn('[tutorial] could not open the 2D view:', e); }
+  openSplitView();
 }
 
 /**

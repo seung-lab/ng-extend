@@ -775,6 +775,36 @@ const CHECK_SUPERVOXELS: Record<string, [string, string]> = {
   '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': ['75507587050992924', '75507587050897753'],
 };
 /**
+ * Split view (2D images beside 3D), with the 2D panel rebuilt once the view
+ * has settled.
+ *
+ * A 2D panel opened in the same moment a saved view loads can stay blocky:
+ * the images sit at a coarse level and never sharpen. Testers found that
+ * pressing Space twice (3D only, then split again) fixes it (andrearwen,
+ * 2026-10-08; Ames saw the same in the Merger Sandbox). This does that for
+ * them: a moment after opening, the panel is taken down and put straight
+ * back, in one go so nothing flickers.
+ */
+let splitRebuildTimer: ReturnType<typeof setTimeout> | null = null;
+export function openSplitView() {
+  const viewer = getViewer();
+  try { viewer?.layout?.restoreState('xy-3d'); } catch (e) { console.warn('[practice] could not open the 2D view:', e); return; }
+  if (splitRebuildTimer) clearTimeout(splitRebuildTimer);
+  splitRebuildTimer = setTimeout(() => {
+    splitRebuildTimer = null;
+    try {
+      const v = getViewer();
+      // Only if the learner has not changed the layout themselves meanwhile.
+      if (JSON.stringify(v?.layout?.toJSON?.()) !== '"xy-3d"') return;
+      v.layout.restoreState('3d');
+      v.layout.restoreState('xy-3d');
+      v.display?.onResize?.();
+      v.display?.scheduleRedraw?.();
+    } catch (e) { console.warn('[practice] could not rebuild the 2D view:', e); }
+  }, 2500);
+}
+
+/**
  * How a staged tutorial cell opens, when that differs from its registered
  * view: the saved view to load and the panel layout. Kept here so a new view
  * needs no database change.
@@ -801,7 +831,8 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     const staged = STAGED_VIEW[ex.id];
     await useLayersStore().loadState(staged?.state ?? ex.state_url);
     // The staged panel layout for this cell (3D only, or split with 2D).
-    if (staged?.layout) {
+    if (staged?.layout === 'xy-3d') openSplitView();
+    else if (staged?.layout) {
       try { getViewer()?.layout?.restoreState(staged.layout); } catch (e) { /* the view still loads */ }
     }
     // Back on once the practice phase is set (beginPractice does it), so
