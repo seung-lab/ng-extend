@@ -9,10 +9,11 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useProofreadingBackendStore } from '../store';
 import { team, startTeamInbox, startTeam, invite, acceptInvite, declineInvite, leaveTeam, jumpTo, follow, sendTeamChat, TEAM_CHAT_MAX } from '../util/team_session';
 import { findDatasetByCanonical } from '../datasets';
+import { teamsState, startTeams, teamSeen, type SavedTeam } from '../util/teams';
 
 const backend = useProofreadingBackendStore();
 // Signed in: listen for invitations (and rejoin a session a reload interrupted).
-watch(() => backend.userId, id => { if (id) startTeamInbox(); }, { immediate: true });
+watch(() => backend.userId, id => { if (id) { startTeamInbox(); startTeams(); } }, { immediate: true });
 
 const myId = computed(() => String(backend.userId || ''));
 const title = computed(() => team.mode === 'mentor' ? 'Mentor session' : 'Team');
@@ -34,6 +35,22 @@ watch(query, q => {
 async function inviteUser(u: { id: string; display_name: string; username: string }) {
   await invite({ id: u.id, name: u.username || u.display_name || 'Player' }, team.mode);
   query.value = ''; found.value = []; inviting.value = false;
+}
+
+// ── The team celebration ────────────────────────────────────────────────
+// A saved team's cell was completed, by this player or by a teammate while
+// this player was away. It shows once, to each member (Ames 2026-10-07:
+// "offline player gets notif and special cell complete celebration for team").
+const celebrating = computed<SavedTeam | null>(() => teamsState.teams.find(t => t.status === 'completed' && t.celebrate) || null);
+const celebrationMates = computed(() => (celebrating.value?.members || []).filter(m => m.state === 'joined'));
+const iCompletedIt = computed(() => !!celebrating.value && celebrating.value.completedBy === myId.value);
+const completerName = computed(() => celebrationMates.value.find(m => m.id === celebrating.value?.completedBy)?.name || 'A teammate');
+const closingCelebration = ref(false);
+async function closeCelebration() {
+  const t = celebrating.value;
+  if (!t || closingCelebration.value) return;
+  closingCelebration.value = true;
+  try { await teamSeen(t.id); } catch { t.celebrate = false; } finally { closingCelebration.value = false; }
 }
 
 // ── Team chat: only the people in this session, nothing stored ──────────
@@ -73,6 +90,23 @@ document.addEventListener('nge:team-start', (async () => {
           <button type="button" class="nge-team-btn nge-team-btn--go" @click="acceptInvite(inv)">Accept</button>
           <button type="button" class="nge-team-btn" @click="declineInvite(inv)">Decline</button>
         </div>
+      </div>
+    </div>
+
+    <!-- A saved team finished its cell. -->
+    <div v-if="celebrating" class="nge-team-party" role="alertdialog" aria-label="Team cell complete" @keydown.esc="closeCelebration">
+      <div class="nge-team-party-card">
+        <div class="nge-team-party-burst" aria-hidden="true"><i v-for="n in 14" :key="n" :style="{ '--i': n }"></i></div>
+        <div class="nge-team-party-kicker">Team cell complete</div>
+        <div class="nge-team-party-title">{{ celebrating.title || 'You did it together' }}</div>
+        <div class="nge-team-party-mates">
+          <span v-for="m in celebrationMates" :key="m.id" class="nge-team-party-mate" :class="{ 'nge-team-party-mate--you': m.id === myId }">{{ m.id === myId ? 'You' : m.name }}</span>
+        </div>
+        <div class="nge-team-party-text">
+          <template v-if="iCompletedIt">You completed the cell your team was working on. Everyone on the team gets it.</template>
+          <template v-else>{{ completerName }} completed the cell your team was working on. It counts for you too.</template>
+        </div>
+        <button type="button" class="nge-team-btn nge-team-btn--go" :disabled="closingCelebration" @click="closeCelebration">For science</button>
       </div>
     </div>
 
@@ -164,6 +198,26 @@ document.addEventListener('nge:team-start', (async () => {
   width: 232px; padding: 9px 10px 8px;
 }
 .nge-team-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.nge-team-party { position: fixed; inset: 0; z-index: 2147483000; display: flex; align-items: center; justify-content: center; background: rgba(2, 6, 14, 0.62); }
+.nge-team-party-card { position: relative; width: min(420px, calc(100vw - 32px)); padding: 26px 24px 20px; text-align: center; overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(40, 110, 90, 0.55), rgba(8, 13, 26, 0) 62%), #080d1a; border: 1px solid rgba(93, 255, 160, 0.6); border-radius: 14px;
+  box-shadow: 0 0 0 1px rgba(93, 255, 160, 0.12), 0 18px 60px rgba(0, 0, 0, 0.7), 0 0 60px rgba(93, 255, 160, 0.18); color: #eaf4ff; font-family: 'Inter', system-ui, sans-serif;
+  animation: nge-team-party-in 0.5s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
+.nge-team-party-kicker { font-family: 'Orbitron', 'Inter', sans-serif; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: #9fe8c0; }
+.nge-team-party-title { font-size: 21px; font-weight: 700; margin: 8px 0 12px; overflow-wrap: anywhere; }
+.nge-team-party-mates { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 12px; }
+.nge-team-party-mate { border: 1px solid rgba(93, 255, 160, 0.5); background: rgba(93, 255, 160, 0.12); color: #d8ffe9; border-radius: 999px; padding: 3px 11px; font-size: 13px;
+  animation: nge-team-party-mate 0.45s ease-out both; }
+.nge-team-party-mate:nth-child(2) { animation-delay: 0.12s; } .nge-team-party-mate:nth-child(3) { animation-delay: 0.24s; } .nge-team-party-mate:nth-child(4) { animation-delay: 0.36s; }
+.nge-team-party-mate--you { border-color: rgba(120, 190, 255, 0.7); background: rgba(70, 160, 255, 0.18); color: #eaf4ff; }
+.nge-team-party-text { color: #c6d5ea; font-size: 13.5px; line-height: 1.45; margin-bottom: 16px; }
+.nge-team-party-burst { position: absolute; left: 50%; top: 34px; width: 0; height: 0; pointer-events: none; }
+.nge-team-party-burst i { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: hsl(calc(140 + var(--i) * 14), 90%, 68%);
+  transform: rotate(calc(var(--i) * 25.7deg)) translateY(0); opacity: 0; animation: nge-team-party-spark 1.1s ease-out 0.15s both; }
+@keyframes nge-team-party-in { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes nge-team-party-mate { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes nge-team-party-spark { 0% { transform: rotate(calc(var(--i) * 25.7deg)) translateY(0); opacity: 1; } 100% { transform: rotate(calc(var(--i) * 25.7deg)) translateY(-150px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .nge-team-party-card, .nge-team-party-mate, .nge-team-party-burst i { animation: none; } .nge-team-party-burst { display: none; } }
 .nge-team-chat { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 6px; }
 .nge-team-chat-head { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; padding: 0 0 4px; color: #9fb3cc; font: inherit; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; }
 .nge-team-chat-head:focus-visible { outline: 2px solid #6cf; outline-offset: 2px; }

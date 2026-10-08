@@ -55,6 +55,8 @@ export const team = reactive({
   /** Team chat: what the members of this session say to each other. It goes
    *  only to the people in the session and is not stored anywhere
    *  (Ames 2026-10-07: "a separate private message group for the team"). */
+  /** The saved team this session belongs to (util/teams.ts), or ''. */
+  saved: '',
   chat: [] as TeamChatLine[],
   /** Lines that arrived while the chat was folded away. */
   unread: 0,
@@ -289,9 +291,44 @@ export function sendTeamChat(text: string): boolean {
   if (!t || !team.room || !room) return false;
   const self = me();
   send('chat', { text: t, name: self.name });
+  try { saved?.say(t); } catch { /* said live only */ }
   pushChat({ by: self.id, name: self.name, color: colorOf(self.id), text: t, at: Date.now() });
   return true;
 }
+
+// ── A saved team's session ─────────────────────────────────────────────
+// A saved team (util/teams.ts) opens the same kind of session, in a room
+// named after the team, so teammates who are in the game at the same moment
+// share live. What makes it saved is this sink: each change to the marks,
+// each chat line and the completion are also kept on the server, where a
+// teammate who is not here finds them later.
+export interface SavedSink {
+  teamId: string;
+  saveMarks(layer: string, spec: any, up: any[], del: string[]): void;
+  say(text: string): void;
+  complete(root: string, dataset: string): void;
+}
+let saved: SavedSink | null = null;
+export const savedRoom = (teamId: string) => 'saved-' + teamId;
+
+/** Opens (or carries on) the session of a saved team: the team's saved marks
+ *  go into the view first, then the room is joined. */
+export async function openSavedRoom(sink: SavedSink, marks: any, lines: TeamChatLine[]) {
+  const id = savedRoom(sink.teamId);
+  if (team.room && team.room !== id) await leaveTeam();
+  for (const [name, l] of Object.entries((marks && marks.layers) || {}) as [string, any][]) {
+    try { applyMarks(name, l?.spec, Object.values(l?.anns || {}), [], true); } catch (e) { console.warn('[team] saved marks:', e); }
+  }
+  saved = sink;
+  // Every member's own view is good to start from: the marks came from the
+  // server, and the cell is the one the team is on.
+  if (!team.room) await joinRoom(id, 'team', me().id);
+  team.saved = sink.teamId;
+  team.chat = lines.slice(-200);
+  team.unread = 0;
+}
+/** After a reload the room is rejoined by itself; this gives it its sink back. */
+export function attachSaved(sink: SavedSink) { saved = sink; team.saved = sink.teamId; }
 
 export async function leaveTeam() {
   if (!room && !team.room) return;
@@ -303,6 +340,7 @@ export async function leaveTeam() {
   for (const w of team.waiting) void sendTo(w.id, { t: 'cancel', from: me(), room: team.room });
   team.room = ''; team.members = []; team.waiting = []; team.following = ''; team.leader = '';
   team.chat = []; team.unread = 0;
+  saved = null; team.saved = '';
   synced = false;
   forget();
   removePosLayer();
@@ -459,6 +497,7 @@ function onMarksChanged() {
       if (!up.length && !del.length) continue;
       known.set(l.name, now);
       send('marks', { layer: l.name, spec: layerSpec(l.managed), up, del });
+      try { saved?.saveMarks(l.name, layerSpec(l.managed), up, del); } catch { /* kept live only */ }
     }
   }, 300);
 }
@@ -648,6 +687,12 @@ function creditCompletion(p: any) {
   if (!/^\d+$/.test(root) || credited.has(root)) return;
   credited.add(root);
   const who = team.members.find(m => m.id === String(p.by))?.name || 'A teammate';
+  if (p.saved) {
+    // A saved team: the server has already credited every member. Fetch the
+    // team again, which brings the team celebration.
+    document.dispatchEvent(new CustomEvent('nge:teams-refresh'));
+    return;
+  }
   void backend().logEdit({
     operation: 'mark_complete', segment_after: root,
     metadata: { root_id: root, team_room: team.room, team_with: who },
@@ -684,7 +729,12 @@ function installWatchers() {
       if (!team.room || (e.operation !== 'mark_complete' && e.operation !== 'complete_task') || e.metadata?.team_room) return;
       after(() => {
         const root = String(e.segment_after ?? e.metadata?.final_segment_id ?? e.metadata?.root_id ?? '');
-        if (/^\d+$/.test(root)) { credited.add(root); send('complete', { root, dataset: e.dataset || currentDatasetTag() }); }
+        if (/^\d+$/.test(root)) {
+          credited.add(root);
+          const dataset = e.dataset || currentDatasetTag();
+          try { saved?.complete(root, dataset); } catch { /* the live credit below still happens */ }
+          send('complete', { root, dataset, saved: !!saved });
+        }
       });
     });
   } catch { /* completion is simply not shared */ }

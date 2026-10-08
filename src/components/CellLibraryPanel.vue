@@ -29,6 +29,8 @@ import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
+import { teamsState, createTeam } from '../util/teams';
+import TeamsTab from './TeamsTab.vue';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
@@ -140,7 +142,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams'>(
   (props.initialTab as any) || 'mine',
 );
 const search = ref('');
@@ -1586,6 +1588,21 @@ async function offerToJoin(req: HelpRequest) {
   if (await invite({ id: req.userId, name: req.userName || 'Player' }, 'mentor', note)) offeredTo.add(req.id);
 }
 function teamUp() { document.dispatchEvent(new CustomEvent('nge:team-start')); }
+/** A saved team on a cell this player has claimed (Ames 2026-10-07: "shouldn't
+ *  that be via claimed cell?"). The claim gives the team its cell. */
+const teamingUp = ref('');
+const teamInvites = computed(() => teamsState.teams.filter(t => t.mine === 'invited').length);
+async function teamUpOnClaim(cell: typeof cells.value[0]) {
+  teamingUp.value = cellKey(cell);
+  try {
+    const pos = parseCoords(cell.coords || '');
+    await createTeam({ dataset: cell.dataset || getCurrentDatasetName(), taskId: cell.taskId ?? null, segmentId: cell.segId,
+      anchor: pos[0] || pos[1] || pos[2] ? pos : null, title: (cell as any).nickname || (cell as any).cellType || '' });
+    filter.value = 'teams';
+  } catch (e: any) {
+    flashJumpError(e?.message || 'Could not start a team on that cell.');
+  } finally { teamingUp.value = ''; }
+}
 /** Sessions are for players with production access: the buttons are not
  *  offered to someone known not to have it. */
 const teamAllowed = computed(() => teamAccess() !== false);
@@ -2086,6 +2103,7 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'all',       label: 'All' },
   { key: 'completed', label: 'Completed' },
   { key: 'help',      label: 'Help' },
+  { key: 'teams',     label: 'Teams' },
   { key: 'tags',      label: 'Tags' },
   { key: 'ai',        label: 'AI' },
   { key: 'links',     label: 'My Links' },
@@ -2464,6 +2482,10 @@ const panelStyle = computed(() => ({
                       title="Questions from other proofreaders">
                 Help <b>{{ pendingHelp.length }}</b>
               </button>
+              <button v-if="tabShown('teams')" :class="{ active: filter === 'teams', 'nge-cl-teams-tab': true }" @click="filter = 'teams'"
+                      title="Two to four players on one cell, each working when they can">
+                Teams <b v-if="teamInvites">{{ teamInvites }}</b>
+              </button>
               <button v-if="tabShown('tags')" :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'"
                       title="Scout tags: spots someone flagged to cut or extend">
                 Tags <b>{{ datasetTags.length }}</b>
@@ -2492,7 +2514,7 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- Search (not shown on Help / Links tabs) -->
-        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai'" class="nge-cl-search">
+        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai' && filter !== 'teams'" class="nge-cl-search">
           <input
             v-model="search"
             placeholder="Search by ID, name, or notes..."
@@ -2856,6 +2878,11 @@ const panelStyle = computed(() => ({
               </a>
             </div>
           </div>
+        </div>
+
+        <!-- ═══ TEAMS TAB (saved teams: two to four players on one cell) ═══ -->
+        <div v-else-if="filter === 'teams'" class="nge-cl-list">
+          <teams-tab />
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
@@ -3303,6 +3330,14 @@ const panelStyle = computed(() => ({
                 @click="saveClaimView(cell)"
                 title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
               ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
+
+              <button
+                v-if="isMyClaim(cell) && teamAllowed && cell.status !== 'completed'"
+                class="nge-cl-btn nge-cl-btn--team"
+                :disabled="teamingUp === cellKey(cell)"
+                @click="teamUpOnClaim(cell)"
+                title="Work on this cell with up to three other players, each when they can. Opens the Teams tab."
+              >{{ teamingUp === cellKey(cell) ? 'Starting…' : '👥 Team up' }}</button>
 
               <button
                 v-if="isMyClaim(cell)"
@@ -4286,6 +4321,7 @@ const panelStyle = computed(() => ({
 /* ── Help quick-add bar (always visible at top of Help list) ── */
 /* Collapsed state: a quiet action button rather than a standing panel. */
 .nge-cl-team-btn { margin-bottom: 6px; }
+.nge-cl-btn--team { color: #9fe8c0; border-color: rgba(93, 255, 160, 0.35); }
 .nge-cl-btn--join { color: #9fe8c0; border-color: rgba(93, 255, 160, 0.35); }
 .nge-cl-btn--join:disabled { opacity: 0.6; cursor: default; }
 .nge-cl-help-open-btn {
