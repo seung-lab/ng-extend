@@ -1222,7 +1222,74 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           <!-- The left column is one dataset; achievements are a career. -->
           <div v-if="activeDatasetCanon" class="nge-profile-career-note">Totals and achievements here count every dataset</div>
 
-          <!-- Proofreading Achievements (building track) -->
+          <!-- Cell Completions (exploration track): first, above Editor
+               Achievements (Ames 2026-10-08) -->
+          <div class="nge-profile-section nge-profile-section--badges">
+            <div class="nge-profile-track-head">
+              <div class="nge-profile-section-label" style="color: #90fff2;">▌ Cell Completions</div>
+              <div class="nge-profile-track-total" style="--track: #90fff2;" title="Every cell completed, on every dataset">
+                <b><RollUp :value="profileStats.cellsSubmitted ?? 0" /></b> {{ (profileStats.cellsSubmitted ?? 0) === 1 ? 'cell completed' : 'cells completed' }}
+              </div>
+            </div>
+            <div class="nge-profile-countdown-inline" v-if="nextExplorationAchievement">
+              <div class="nge-profile-countdown-row">
+                <div class="nge-profile-countdown-remaining">{{ nextExplorationAchievement.remaining.toLocaleString() }} cells to go</div>
+              </div>
+              <div class="nge-profile-countdown-track">
+                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--exploration" :style="{ width: nextExplorationAchievement.pct + '%' }"></div>
+              </div>
+            </div>
+            <div class="nge-profile-badges-grid">
+              <div
+                v-for="badge in displayedExplorationBadges"
+                :key="badge.id"
+                class="nge-profile-badge nge-profile-badge--exploration"
+                :class="{
+                  'nge-profile-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-profile-badge--latest': latestEarnedBadge?.id === badge.id,
+                }"
+                :title="badgeTooltip(badge)"
+                @click="onBadgeClick(badge)"
+              >
+                <div class="nge-profile-badge-img">
+                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
+                </div>
+                <div class="nge-profile-badge-name">{{ badge.name }}</div>
+              </div>
+              <!-- Next locked badge teaser -->
+              <div
+                v-if="earnedExplorationBadges.next && !showExplorationViewAll"
+                class="nge-profile-badge nge-profile-badge--locked"
+                :title="'Next: complete more cells to unlock!'"
+              >
+                <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-mystery">
+                    <span class="nge-profile-badge-mystery-q">?</span>
+                  </div>
+                </div>
+              </div>
+              <!-- "View All" tile at end of row 2 -->
+              <div
+                v-if="showExplorationViewAll && !showAllExploration"
+                class="nge-profile-badge nge-profile-badge--viewall"
+                title="View all badges in Trophy Case"
+                @click="activeTab = 'trophyCase'"
+              >
+                <div class="nge-profile-badge-img">
+                  <div class="nge-profile-badge-viewall-icon">→</div>
+                </div>
+                <div class="nge-profile-badge-name">View all</div>
+              </div>
+            </div>
+            <div v-if="earnedExplorationBadges.earned.length === 0" class="nge-profile-badges-empty">
+              Complete your first cell to earn a badge!
+            </div>
+          </div>
+
+          <!-- Divider between achievement tracks -->
+          <div class="nge-profile-badges-divider"></div>
+
+          <!-- Editor Achievements (building track) -->
           <div class="nge-profile-section nge-profile-section--badges">
             <!-- The career total lives here, beside what it earns (Ames
                  2026-10-07); the left column is the breakdown. -->
@@ -1284,72 +1351,6 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
             <div v-if="earnedBuildingBadges.earned.length === 0" class="nge-profile-badges-empty">
               Make your first edit to earn a badge!
-            </div>
-          </div>
-
-          <!-- Divider between achievement tracks -->
-          <div class="nge-profile-badges-divider"></div>
-
-          <!-- Cell Achievements (exploration track) -->
-          <div class="nge-profile-section nge-profile-section--badges">
-            <div class="nge-profile-track-head">
-              <div class="nge-profile-section-label" style="color: #90fff2;">▌ Cell Completions</div>
-              <div class="nge-profile-track-total" style="--track: #90fff2;" title="Every cell completed, on every dataset">
-                <b><RollUp :value="profileStats.cellsSubmitted ?? 0" /></b> {{ (profileStats.cellsSubmitted ?? 0) === 1 ? 'cell completed' : 'cells completed' }}
-              </div>
-            </div>
-            <div class="nge-profile-countdown-inline" v-if="nextExplorationAchievement">
-              <div class="nge-profile-countdown-row">
-                <div class="nge-profile-countdown-remaining">{{ nextExplorationAchievement.remaining.toLocaleString() }} cells to go</div>
-              </div>
-              <div class="nge-profile-countdown-track">
-                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--exploration" :style="{ width: nextExplorationAchievement.pct + '%' }"></div>
-              </div>
-            </div>
-            <div class="nge-profile-badges-grid">
-              <div
-                v-for="badge in displayedExplorationBadges"
-                :key="badge.id"
-                class="nge-profile-badge nge-profile-badge--exploration"
-                :class="{
-                  'nge-profile-badge--selected': selectedBadge?.id === badge.id,
-                  'nge-profile-badge--latest': latestEarnedBadge?.id === badge.id,
-                }"
-                :title="badgeTooltip(badge)"
-                @click="onBadgeClick(badge)"
-              >
-                <div class="nge-profile-badge-img">
-                  <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-profile-badge-icon" :class="`nge-badge--${badge.slug}`" />
-                </div>
-                <div class="nge-profile-badge-name">{{ badge.name }}</div>
-              </div>
-              <!-- Next locked badge teaser -->
-              <div
-                v-if="earnedExplorationBadges.next && !showExplorationViewAll"
-                class="nge-profile-badge nge-profile-badge--locked"
-                :title="'Next: complete more cells to unlock!'"
-              >
-                <div class="nge-profile-badge-img">
-                  <div class="nge-profile-badge-mystery">
-                    <span class="nge-profile-badge-mystery-q">?</span>
-                  </div>
-                </div>
-              </div>
-              <!-- "View All" tile at end of row 2 -->
-              <div
-                v-if="showExplorationViewAll && !showAllExploration"
-                class="nge-profile-badge nge-profile-badge--viewall"
-                title="View all badges in Trophy Case"
-                @click="activeTab = 'trophyCase'"
-              >
-                <div class="nge-profile-badge-img">
-                  <div class="nge-profile-badge-viewall-icon">→</div>
-                </div>
-                <div class="nge-profile-badge-name">View all</div>
-              </div>
-            </div>
-            <div v-if="earnedExplorationBadges.earned.length === 0" class="nge-profile-badges-empty">
-              Complete your first cell to earn a badge!
             </div>
           </div>
 
