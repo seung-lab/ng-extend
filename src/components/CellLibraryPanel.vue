@@ -1309,15 +1309,27 @@ function clearHelpScreenshot() {
   newHelpScreenshotUrl.value = '';
 }
 
+/**
+ * The cell a new help request is about. It used to be whatever segment the
+ * mouse had last been over (neuroglancer's "selected segment" is the one
+ * under the pointer), and only when the cell layer was the selected layer:
+ * with an annotation layer selected a request saved no cell at all, and
+ * otherwise it could save a stray one, so a jump opened "random segments"
+ * (Celia 2026-10-07). Now: the one cell showing; or, with several showing,
+ * the one under the pointer if it is one of them; otherwise none, and the
+ * request is found by its position and its view.
+ */
 function getActiveSegId(): string {
   try {
-    const viewer = (window as any)['viewer'];
-    const seg = viewer?.selectedLayer?.layer_?.layer_;
-    if (seg?.type === 'segmentation' || seg?.type === 'segmentation_with_graph') {
-      const sel = seg.displayState?.segmentSelectionState?.selectedSegment;
-      if (sel) return sel.toString();
-    }
-  } catch {}
+    const layer = currentSegLayer()?.layer;
+    const visible = layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!visible) return '';
+    const showing: string[] = [];
+    for (const id of visible) { showing.push(id.toString()); if (showing.length > 400) break; }
+    if (showing.length === 1) return showing[0];
+    const hovered = layer.displayState?.segmentSelectionState?.selectedSegment?.toString?.() || '';
+    if (hovered && layer.displayState?.segmentSelectionState?.hasSelectedSegment && showing.includes(hovered)) return hovered;
+  } catch { /* layer not ready */ }
   return '';
 }
 
@@ -1515,6 +1527,12 @@ async function jumpToReq(req: HelpRequest) {
     // Nothing to fly to: a request that saved only a view, or nothing.
     if (req.viewUrl) { openResponseUrl(req.viewUrl); return; }
     flashJumpError('This request did not save a cell or a place to jump to.');
+    return;
+  }
+  if (!req.segId) {
+    // No cell was saved: go to the place, and leave the cells in view alone.
+    activeHelpId.value = req.id;
+    try { (window as any)['viewer'].navigationState.position.value = Float32Array.from(pos as number[]); } catch { /* no viewer */ }
     return;
   }
   const left = await prepareJump(req.segId);
@@ -3409,18 +3427,21 @@ const panelStyle = computed(() => ({
   <ScreenshotDialog
     :show="showHelpScreenshotDialog"
     mode="attach"
+    hide-opener=".nge-cl-panel"
     @close="showHelpScreenshotDialog = false"
     @attached="onHelpScreenshotAttached"
   />
   <ScreenshotDialog
     :show="showResponseScreenshotDialog"
     mode="attach"
+    hide-opener=".nge-cl-panel"
     @close="showResponseScreenshotDialog = false"
     @attached="onResponseScreenshotAttached"
   />
   <ScreenshotDialog
     :show="showLinkScreenshotDialog"
     mode="attach"
+    hide-opener=".nge-cl-panel"
     @close="showLinkScreenshotDialog = false"
     @attached="onLinkScreenshotAttached"
   />

@@ -29,6 +29,10 @@ const props = withDefaults(defineProps<{
   /** 'download' (default) saves to disk; 'attach' uploads to Firebase Storage
    *  and emits the public URL via the `attached` event. */
   mode?: 'download' | 'attach';
+  /** A window to keep out of a whole-screen picture: the one this dialog was
+   *  opened from (the Cell Library's help form). A picture for a helper
+   *  should show the view, not the form it was sent from (Celia 2026-10-07). */
+  hideOpener?: string;
 }>(), { mode: 'download' });
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -118,6 +122,21 @@ function drawNurro(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; 
 const busy = ref(false);
 const errorMsg = ref('');
 const dialogHidden = ref(false);
+/** Takes the opener (and the layer it sits in) out of sight for the capture. */
+let openerHidden: { el: HTMLElement; was: string }[] = [];
+function hideOpener() {
+  showOpener();
+  if (!props.hideOpener) return;
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>(props.hideOpener))) {
+    const host = el.parentElement && el.parentElement !== document.body ? el.parentElement : el;
+    openerHidden.push({ el: host, was: host.style.visibility });
+    host.style.visibility = 'hidden';
+  }
+}
+function showOpener() {
+  for (const h of openerHidden) h.el.style.visibility = h.was;
+  openerHidden = [];
+}
 
 // While the page is being drawn the dialog is hidden, so for a second or
 // two nothing said a capture was under way (Ames 2026-10-06, Bug Report).
@@ -140,6 +159,7 @@ async function captureWholeScreen(): Promise<HTMLCanvasElement> {
   // to ask (Ames 2026-10-01: "avoid the chrome permission every time").
   dialogHidden.value = true;
   document.body.classList.add('nge-shot-capturing');
+  hideOpener();
   const hideSign = showCaptureSign();
   try {
     await new Promise(r => setTimeout(r, 60));
@@ -150,6 +170,7 @@ async function captureWholeScreen(): Promise<HTMLCanvasElement> {
     hideSign();
     dialogHidden.value = false;
     document.body.classList.remove('nge-shot-capturing');
+    showOpener();
   }
   const md = navigator.mediaDevices as any;
   if (!md?.getDisplayMedia) throw new Error('This browser cannot capture the screen. Untick "Whole screen" to capture the viewer only.');
@@ -159,6 +180,7 @@ async function captureWholeScreen(): Promise<HTMLCanvasElement> {
   // Library, chat, layer panels) stays in the shot (Ames 2026-09-28).
   dialogHidden.value = true;
   document.body.classList.add('nge-shot-capturing');
+  hideOpener();
   await new Promise(r => setTimeout(r, 120));
   let stream: MediaStream | null = null;
   try {
@@ -182,6 +204,7 @@ async function captureWholeScreen(): Promise<HTMLCanvasElement> {
     stream?.getTracks().forEach(t => t.stop());
     dialogHidden.value = false;
     document.body.classList.remove('nge-shot-capturing');
+    showOpener();
   }
 }
 
