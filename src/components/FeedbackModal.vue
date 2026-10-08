@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
+import { version, reloadForUpdate } from '../util/version_watch';
 import { caveToken } from '../secure_write';
 import { reportFeedbackFailure } from '../util/error_reporting';
 import { functionUrl } from '../functions_base';
@@ -400,6 +401,11 @@ onBeforeUnmount(() => {
       <div v-else-if="!done" class="nge-fb-body">
         <div class="nge-fb-title">Submit an issue</div>
         <div class="nge-fb-hint">Found a bug or have an idea? Tell us, it goes straight to the team.</div>
+        <!-- Behind the live version: the bug may already be fixed (Ames 2026-10-07). -->
+        <div v-if="version.newer" class="nge-fb-update" role="status">
+          <span>A newer version of EyeWire II is out. Reload first: what you are seeing may already be fixed.</span>
+          <button type="button" class="nge-fb-update-btn" @click="reloadForUpdate()">Reload now</button>
+        </div>
 
         <div class="nge-fb-chips">
           <button
@@ -774,4 +780,17 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .holoscan.holo-on > .holoscan-line { animation: none; opacity: 0; }
 }
+.nge-fb-update {
+  display: flex; align-items: center; gap: 10px; margin: 8px 0 4px; padding: 8px 10px;
+  border: 1px solid rgba(53, 181, 255, 0.45); border-radius: 8px; background: rgba(53, 181, 255, 0.08);
+  font-size: 12.5px; line-height: 1.4; color: #cfe2f7;
+}
+.nge-fb-update span { flex: 1; }
+.nge-fb-update-btn {
+  flex-shrink: 0; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 6px 10px; border-radius: 6px; cursor: pointer;
+  background: rgba(53, 181, 255, 0.18); border: 1px solid rgba(53, 181, 255, 0.75); color: #eef7ff;
+}
+.nge-fb-update-btn:hover { background: rgba(53, 181, 255, 0.3); }
+.nge-fb-update-btn:focus-visible { outline: 2px solid rgb(124, 196, 255); outline-offset: 2px; }
 </style>

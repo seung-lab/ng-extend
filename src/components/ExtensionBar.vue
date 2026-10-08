@@ -21,6 +21,7 @@ import BatchProcessorPanel from "components/BatchProcessorPanel.vue";
 import TagModePanel from "components/TagModePanel.vue";
 import HighlightModePanel from "components/HighlightModePanel.vue";
 import TeamPanel from "components/TeamPanel.vue";
+import VersionNotice from "components/VersionNotice.vue";
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
@@ -880,6 +881,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <highlight-mode-panel v-if="showHighlight" @hide="showHighlight = false" />
   <!-- Mentor mode and Team mode: shows only for an invitation or a live session. -->
   <team-panel />
+  <!-- "A newer version is out": only when the game was updated since this page loaded. -->
+  <version-notice />
   <flight-mode v-if="showFlightMode" @hide="showFlightMode = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
