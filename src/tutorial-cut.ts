@@ -223,9 +223,9 @@ The red and blue dots on the images show where the points go.`,
 
 The cells you practised on are put back for the next person. Happy proofreading!
 
-Ready for more? The **Merger Sandbox** in the burger menu (top right) has more fused cells to cut apart, without the preset points.
+Good, you've learned the basics of cut. Now see if you can find and cut **all 5 mergers** in the Merger Sandbox, without the preset points.
 
-<button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-start',{detail:{index:0}}))">Try Merger 1</button>
+<button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-next'))">Start the 5 mergers</button>
 
 **Coming soon:** a harder Cut tutorial, where you use **Find Path** to track down where two neurons were fused.
 

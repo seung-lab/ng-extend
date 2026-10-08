@@ -55,27 +55,45 @@ document.addEventListener('nge:sandbox-start', ((e: CustomEvent) => {
   if (Number.isInteger(i)) startSandbox(i);
 }) as EventListener);
 
-function nextButtons(): string {
-  const style = 'margin:4px 6px 0 0;padding:6px 12px;border-radius:3px;font:inherit;font-size:0.85em;font-weight:600;cursor:pointer;'
-    + 'background:rgba(126,224,255,0.10);border:1px solid rgba(126,224,255,0.45);color:#d8ecff';
-  return SANDBOX_CELLS.map((c, i) => i === current ? '' :
-    `<button onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-start',{detail:{index:${i}}}))" style="${style}">`
-    + `${sandboxDone.value.includes(c.id) ? '✓ ' : ''}${c.title}</button>`).join('');
+/** How many of the mergers this browser has cut, and which comes next. */
+const TOTAL = SANDBOX_CELLS.length;
+const doneCount = () => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length;
+function nextUndone(after = current): number {
+  for (let k = 1; k <= TOTAL; k++) {
+    const i = (after + k) % TOTAL;
+    if (!sandboxDone.value.includes(SANDBOX_CELLS[i].id)) return i;
+  }
+  return -1;
 }
+// From the Cut tutorial's last box: start with the first merger not cut yet.
+document.addEventListener('nge:sandbox-next', () => {
+  const i = nextUndone(-1);
+  startSandbox(i < 0 ? 0 : i);
+});
 
+const BTN = 'class="nge-hud-btn nge-hud-btn--go" style="margin:6px 8px 0 0"';
+const go = (i: number, label: string) =>
+  `<button ${BTN} onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-start',{detail:{index:${i}}}))">${label}</button>`;
+
+/**
+ * The sandbox reads as one challenge, "cut all 5 mergers" (Nseraf,
+ * 2026-10-08: five separate entries left him unsure what was being asked).
+ * Each box says which merger this is and how many are left, and the last
+ * one congratulates on the set.
+ */
 export const steps: Step[] = [
   // 1: The exercise
   {
-    get title() { return `Merger Sandbox: ${cell().title}`; },
-    text: `
-Two neurons were fused into one segment here. Find where they touch and cut them apart.
+    get title() { return `Merger ${current + 1} of ${TOTAL}`; },
+    get text() {
+      const done = doneCount();
+      return `
+**Can you find and cut all ${TOTAL} mergers?** ${done === 0 ? 'This is the first.' : `You have cut ${done} so far.`}
 
-1. Press **C** if the cut tool is off.
-2. **Ctrl+Click** a few <strong style="color:#ff5c5c">red</strong> points on one neuron, near the join.
-3. Press **G**, then **Ctrl+Click** a few <strong style="color:#5c8cff">blue</strong> points on the other.
-4. Press **Submit cut**, or **Enter**.
+Two neurons are fused into one segment here. Find where they touch and cut them apart, the way you did in the Cut tutorial: <strong style="color:#ff5c5c">red</strong> points on one neuron, **G**, <strong style="color:#5c8cff">blue</strong> points on the other, then **Submit cut**.
 
-This cell is yours until you finish, and goes back to its merged state afterwards. Stuck? The **?** button shows where the points go.`,
+No preset points this time. Stuck? The **?** button shows where they go.`;
+    },
     position: OVER_3D,
     width: "440px",
     onEnter: async () => {
@@ -84,7 +102,9 @@ This cell is yours until you finish, and goes back to its merged state afterward
       stopWatching();
       const got = await movingToSandbox('Merger Sandbox', () => beginPractice('cut', 'start', { only: mine.id }));
       if (!got) {
-        practiceStatus(`Someone else is working on ${mine.title} right now, or it is being reset. Pick another example from the menu, or try this one again in a few minutes.`);
+        const other = nextUndone();
+        practiceStatus(`Someone else is working on merger ${current + 1} right now, or it is being reset. `
+          + (other >= 0 && other !== current ? `Try merger ${other + 1} from the burger menu meanwhile.` : 'Try again in a few minutes.'));
         return;
       }
       // Watch only once the cell is held: with nothing held, the watch
@@ -99,16 +119,23 @@ This cell is yours until you finish, and goes back to its merged state afterward
 
   // 2: Done
   {
-    title: "Separated!",
+    get title() { return doneCount() >= TOTAL ? `All ${TOTAL} mergers cut!` : `Merger ${current + 1} cut!`; },
     get text() {
-      return `
-<span class="nge-done-lead">The two neurons are separate segments again. Nice work.</span>
+      const done = doneCount(), left = TOTAL - done, next = nextUndone();
+      if (left <= 0) {
+        return `
+<span class="nge-done-lead">Congratulations, you found and cut all ${TOTAL} mergers. That is real proofreading: nobody marked the spots for you.</span>
 
 ` + BLACK_BOX_NOTE + `
 
-The cell is going back to its merged state for the next person. Try another:
+The cells go back to their merged state for the next person. You can cut any of them again from the burger menu.`;
+      }
+      return `
+<span class="nge-done-lead">Congratulations, that is ${done} of ${TOTAL}. ${left} ${left === 1 ? 'remains' : 'remain'}!</span>
 
-` + nextButtons();
+` + BLACK_BOX_NOTE + `
+
+` + (next >= 0 ? go(next, `Next: merger ${next + 1}`) : '');
     },
     position: OVER_3D,
     width: "440px",

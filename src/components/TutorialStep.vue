@@ -169,6 +169,13 @@ async function waitForElement(selector: string, timeout = 3000): Promise<Element
     });
 }
 
+/** A box width that grows with the window, like its text: the pixel width
+ *  it was written for up to about 1750px wide, wider beyond that. */
+function wider(width: string): string {
+    const m = /^(\d+(?:\.\d+)?)px$/.exec(width.trim());
+    return m ? `max(${m[1]}px, ${(Number(m[1]) / 1750 * 100).toFixed(2)}vw)` : width;
+}
+
 async function updateChipPosition() {
     const step = props.step;
 
@@ -216,11 +223,11 @@ async function updateChipPosition() {
     chipBounds.value = { top: 'auto', left: 'auto', 'width': 'inherit' };
 
     if (!step.modal) {
-        chipBounds.value.width = '350px';
+        chipBounds.value.width = wider('350px');
     }
 
     if (step.width) {
-        chipBounds.value.width = step.width;
+        chipBounds.value.width = wider(step.width);
     }
 
     let html = step.html;
@@ -1001,7 +1008,10 @@ onUnmounted(() => {
     padding: 46px 28px 20px;
     border-radius: 12px;
     justify-items: stretch;
-    font-size: 15px;
+    /* Grows with the window: 15px read as tiny on a large monitor (Ames and
+       Nik, 2026-10-08, "waaayyy too small"). 15px up to about 1750px wide,
+       then in step with the width, to 24px at most. */
+    font-size: clamp(15px, 0.86vw, 24px);
     line-height: 1.55;
     font-weight: 400;
     grid-row-gap: 14px;

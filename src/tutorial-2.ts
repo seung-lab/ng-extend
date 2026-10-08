@@ -283,6 +283,13 @@ Let's try adding an ANNOTATION LAYER.
           border-radius: 4px !important;
           position: relative;
           z-index: 1;
+          /* Big enough to read as a plus (Nik took it for an airplane). */
+          transform: scale(1.7);
+          transform-origin: left center;
+          margin-right: 18px !important;
+          color: #fff !important;
+          border-color: #7ee0ff !important;
+          background: rgba(126, 224, 255, 0.22) !important;
         }
         @keyframes nge-pulse-highlight {
           0%, 100% { box-shadow: 0 0 8px 3px rgba(80, 160, 255, 0.7), inset 0 0 4px rgba(80, 160, 255, 0.3); }
@@ -355,6 +362,13 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
           border-radius: 4px !important;
           position: relative;
           z-index: 1;
+          /* Big enough to read as a plus (Nik took it for an airplane). */
+          transform: scale(1.7);
+          transform-origin: left center;
+          margin-right: 18px !important;
+          color: #fff !important;
+          border-color: #7ee0ff !important;
+          background: rgba(126, 224, 255, 0.22) !important;
         }
         @keyframes nge-pulse-highlight {
           0%, 100% { box-shadow: 0 0 8px 3px rgba(80, 160, 255, 0.7), inset 0 0 4px rgba(80, 160, 255, 0.3); }
