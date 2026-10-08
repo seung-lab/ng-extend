@@ -17,7 +17,13 @@ import { createApp, type App } from 'vue';
 import GrowingCell from 'components/GrowingCell.vue';
 
 const POLL_MS = 400;
-const SHOW_AFTER_MS = 1500;      // a quick load never shows the sign
+// A quick load never shows the sign, and neither does tracing: the wait is
+// counted from the last time the view moved, so scrolling through slices
+// (when the image is always a little behind, but readable) never brings the
+// card up over the work. It is for a view that has sat still and is still not
+// there. (Player report 2026-10-08: "the loading box for 2d should also wait a
+// second or 2 before getting in ... this is making the tracing slower.")
+const SHOW_AFTER_MS = 2500;
 const HIDE_AFTER_MS = 500;       // and it does not flicker between pieces
 
 interface Progress { need: number; have: number; }
@@ -67,6 +73,10 @@ export function startImageLoadingHint(viewer: any) {
   let app: App | null = null;
   let behindSince = 0;      // when the image first fell behind, 0 when it is all there
   let caughtUpAt = 0;
+  let movedAt = 0;          // when the player last moved the view
+  try {
+    viewer.navigationState.changed.add(() => { movedAt = Date.now(); if (el) hide(); });
+  } catch { /* no navigation state: the wait is counted from falling behind */ }
 
   const place = () => {
     const panel = slicePanel(viewer);
@@ -110,7 +120,7 @@ export function startImageLoadingHint(viewer: any) {
     if (p.need > 0 && p.have < p.need) {
       caughtUpAt = 0;
       if (!behindSince) behindSince = now;
-      if (now - behindSince >= SHOW_AFTER_MS) show(p);
+      if (now - Math.max(behindSince, movedAt) >= SHOW_AFTER_MS) show(p);
     } else {
       behindSince = 0;
       if (!caughtUpAt) caughtUpAt = now;
