@@ -161,8 +161,18 @@ watch(() => useProofreadingBackendStore().userId, async id => {
 const next = () => {
     const isLastStep = activeStep.value?.last;
     const tutorialNum = store.activeTutorial;
-    store.setTutorialStep(store.getTutorialStep() + 1);
+    // The last box closes the tutorial outright, by its length, so nothing
+    // that moves the step at the same moment can leave it showing.
+    store.setTutorialStep(isLastStep ? steps.value.length : store.getTutorialStep() + 1);
     if (isLastStep) {
+        console.info(`[tutorial] finished tutorial ${tutorialNum}; step is now ${store.getTutorialStep()} of ${steps.value.length}`);
+        // Say so if anything puts a box back in the next few seconds.
+        const stop = watch(currentStep, (now) => {
+            if (store.activeTutorial === tutorialNum && now < steps.value.length) {
+                console.warn(`[tutorial] step moved back to ${now} after finishing tutorial ${tutorialNum}`, new Error('who moved it').stack);
+            }
+        });
+        setTimeout(stop, 8000);
         awardBadgeIfNew(tutorialNum);
         // Ask for a username after Tutorial 1 — by now they've seen the
         // community side of the app, so the ask makes sense. Login would be
@@ -188,7 +198,8 @@ watch(() => store.activeTutorial, (now, before) => {
 });
 // A practice step advances by itself when the edit lands (Amy: straight
 // to the success box).
-document.addEventListener('nge:tutorial-next', () => { if (activeStep.value) next(); });
+// Never on the last box: finishing a tutorial is the learner's own click.
+document.addEventListener('nge:tutorial-next', () => { if (activeStep.value && !activeStep.value.last) next(); });
 const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() - 1)); };
 // ── Resuming on page load (Nseraf 2026-09-29) ──
 // Progress follows the account, so a tutorial left partway used to restart

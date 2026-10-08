@@ -196,7 +196,7 @@ The red and blue dots on the images show where the points go.`,
       closeSidePanel();
       // No second cut cell: never show the first again (it is already cut),
       // go to the wrap up.
-      if (!holdsSlot('b')) { useTutorialStore().setTutorialStep(7); return; }
+      if (!holdsSlot('b')) { const st = useTutorialStore(); if (st.getTutorialStep() === 6) st.setTutorialStep(7); return; }
       // The second cut cell, taken at the start together with the first. The
       // watch starts only once it is the cell on screen: started before, it
       // saw the first cell, already cut, and jumped straight to "done" while

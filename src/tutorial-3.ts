@@ -1146,7 +1146,7 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
       closeSidePanel();
       // Only one merge cell for now: never show the first again (Ames), go
       // straight to the wrap up.
-      if (!holdsSlot('b')) { useTutorialStore().setTutorialStep(7); return; }
+      if (!holdsSlot('b')) { const st = useTutorialStore(); if (st.getTutorialStep() === 5) st.setTutorialStep(7); return; }
       // The second merge cell, taken at How to Merge together with the first.
       // The watch starts only once it is the cell on screen: started before,
       // it saw the first cell, already merged, and skipped this box.
