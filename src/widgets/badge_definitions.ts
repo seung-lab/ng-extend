@@ -283,15 +283,14 @@ const loyalty = (n: number, days: number, slug: string, code: string, name: stri
  */
 export const LOYALTY_ENABLED = true;
 /**
- * TEST BUILD ONLY (branch claude/loyalty-test, Ames 2026-10-07: "a test
- * deployment of loyalty achievements"). A test site reads and writes the
- * live database, so while this is true the unlock card is shown but nothing
- * is saved: no award row and no bell note (its picture would point at a test
- * site that closes after a day). The card also ignores awards saved on
- * 2026-10-06, so a tester who already has one still sees it once.
- * MUST be false before this reaches eyewire-ii-community.
+ * Anywhere but the production site (a test site, a triage preview, a dev
+ * server) the unlock card is shown but nothing is saved: no award row and no
+ * bell note. Those sites read and write the live database, and a bell note's
+ * picture would point at a test site that closes after a day. There the card
+ * also ignores awards already saved, so a tester sees it once per browser.
+ * Production is recognised by its App Engine version name in the address.
  */
-export const LOYALTY_TEST_ONLY = true;
+export const LOYALTY_TEST_ONLY = typeof location !== 'undefined' && !location.hostname.startsWith('eyewire-ii-community-dot-');
 const LOYALTY_DRAFTS: BadgeDefinition[] = [
   loyalty(1,  2, 'second-spark',   'SS', 'Day Two',   "Day 2! We're glad you came back :)"),
   loyalty(2,  3, 'third-light',    'TL', 'Day Three',    'Three days of science! You are on a roll.'),
@@ -300,7 +299,9 @@ const LOYALTY_DRAFTS: BadgeDefinition[] = [
   loyalty(5, 14, 'double-orbit',   'DO', 'Two Weeks',   'Fourteen days at EyeWire II! Two weeks of discoveries.'),
   loyalty(6, 21, 'steady-signal',  'ST', 'Three Weeks',  'Three cheers for three weeks of citizen science!'),
   loyalty(7, 28, 'constellation',  'CO', 'Four Weeks',  "We're fourtunate that you have been helping to advance neuroscience for 4 weeks!"),
-  loyalty(8, 30, 'one-month',      'OM', 'One Month',      'Thirty days at EyeWire II! A whole month of showing up for science!'),
+  // No separate One Month (Ames 2026-10-08: "4 weeks is one month yet there are 2"):
+  // Four Weeks stands for it. Id 208 ('one-month') is retired and not reused; its
+  // art is now Two Months' (deep-orbit.png).
   // Added 2026-10-06 with the second set of art. The first line is Ames's own;
   // the rest are first drafts, to be reviewed (she asked for a text review).
   loyalty(9,   40, 'golden-orbit',        'GO', 'Forty Days',        'Forty days at EyeWire II! A whole month of showing up for science. You are becoming a legend.'),
