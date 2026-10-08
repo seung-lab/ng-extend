@@ -93,7 +93,7 @@ const contextHint = computed(() => {
   if (isMulticut.value && !store.pendingClose) {
     if (totalPoints.value === 0) return 'Ctrl+Click on supervoxels to mark them';
     if (store.redPointCount > 0 && store.bluePointCount === 0) return 'Press G to swap to Blue group, then Ctrl+Click';
-    if (store.redPointCount > 0 && store.bluePointCount > 0) return 'Ready to submit — press Enter';
+    if (store.redPointCount > 0 && store.bluePointCount > 0) return 'Ready to submit. Press Enter';
     return 'Ctrl+Click to add more points';
   }
   if (isMerge.value && !store.pendingClose) {
@@ -134,6 +134,11 @@ function clearMerges() {
   const icon = document.querySelector('.graphene-merge-segments .neuroglancer-icon[title="Clear pending merges"]') as HTMLElement | null;
   icon?.click();
 }
+
+// Each queued merge says where it stands while a batch is going through
+// (Ames 2026-10-08), and loses its remove button once it has been sent.
+const rowStatus = (i: number) => store.mergeRows[i]?.status || '';
+const rowRemovable = (i: number) => store.mergeRows[i]?.removable ?? true;
 
 /** Toggle NG's native auto-submit checkbox */
 function toggleAutoSubmit() {
@@ -280,7 +285,8 @@ function cancelTool() {
             <span v-if="pair[1]" class="nge-smo-merge-arrow">⇄</span>
             <span v-if="pair[1]" class="nge-smo-seg-id nge-smo-seg-id--hover" title="Hover to light this segment up in the views"
                   @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)">{{ pair[1] }}</span>
-            <button class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
+            <span v-if="rowStatus(i)" class="nge-smo-merge-status" :class="'nge-smo-merge-status--' + rowStatus(i)">{{ rowStatus(i) }}</span>
+            <button v-if="rowRemovable(i)" class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
           </div>
         </div>
       </div>
@@ -1065,4 +1071,145 @@ function cancelTool() {
 }
 /* Progress by the mode badge instead of the far right. */
 .nge-smo-loading-indicator--left { margin: 0 0 0 10px; order: 0; }
+
+/* ═══ scifi-ui pass (Ames 2026-10-08) ═════════════════════════════════════
+   The bar and the Merge Queue take the library's panel surface
+   (scifi-ui components/panel-surface.css: the dark 158deg gradient, the soft
+   rim, the lit hairline on the top edge) in place of a flat colour wash.
+   The colour of the mode is kept, as light: it runs along the hairline and
+   glows from the corner where the mode badge sits. Controls are one height,
+   on hairline borders. Nothing here loops except the Submit button when a
+   merge or cut is ready, which is a status the player asked for.
+   These rules come last, so they win over the older ones above. */
+.nge-split-merge-overlay { --smo-rgb: 196 228 255; gap: 14px; padding: 9px 20px; min-height: 50px; color: rgb(239 244 251 / .92); }
+.nge-split-merge-overlay.merge { --smo-rgb: 0 220 120; --smo-ink: #a6ffd6; --smo-wash: .30; }
+.nge-split-merge-overlay.multicut.group-red { --smo-rgb: 255 84 84; --smo-ink: #ffc2c2; --smo-wash: .46; }
+.nge-split-merge-overlay.multicut.group-blue { --smo-rgb: 104 132 255; --smo-ink: #ccd6ff; --smo-wash: .50; }
+
+/* Cut is on the same surface as merge (Ames 2026-10-08: the grey and green
+   buttons on a solid red or blue bar were ugly). The active colour still
+   reads at a glance: it is the glow that fills the left of the bar, the
+   hairline, the badge, the active pill and the Submit button, and all of
+   them change together when G is pressed. */
+.nge-split-merge-overlay.merge,
+.nge-split-merge-overlay.multicut.group-red,
+.nge-split-merge-overlay.multicut.group-blue {
+  background:
+    radial-gradient(130% 260% at 0% 100%, rgb(var(--smo-rgb) / var(--smo-wash)) 0%, rgb(var(--smo-rgb) / calc(var(--smo-wash) * .34)) 30%, transparent 58%),
+    linear-gradient(158deg, rgb(15 18 24 / .96) 0%, rgb(6 10 18 / .98) 100%);
+  border-top: 1px solid rgb(var(--smo-rgb) / .34);
+  box-shadow: 0 -12px 36px rgb(0 0 0 / .45), inset 0 1px 0 rgb(196 228 255 / .08);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+}
+/* the lit hairline: brightest over the badge, gone by the far side */
+.nge-split-merge-overlay.merge::before,
+.nge-split-merge-overlay.multicut::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, rgb(var(--smo-rgb) / .95) 0%, rgb(var(--smo-rgb) / .6) 28%, rgb(var(--smo-rgb) / .12) 70%, transparent 100%);
+  box-shadow: 0 0 12px rgb(var(--smo-rgb) / .55);
+}
+
+/* Mode badge: an instrument label, steady rather than pulsing. */
+.nge-smo-mode-badge { padding: 6px 14px; border-radius: 5px; font-family: 'Orbitron', 'Inter', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .16em; }
+.split-badge, .merge-badge { animation: none; }
+.merge-badge, .split-badge {
+  background: rgb(var(--smo-rgb) / .10); border: 1px solid rgb(var(--smo-rgb) / .62); color: var(--smo-ink, #fff);
+  text-shadow: 0 0 10px rgb(var(--smo-rgb) / .5);
+  box-shadow: inset 0 0 14px rgb(var(--smo-rgb) / .14), 0 0 16px rgb(var(--smo-rgb) / .16);
+  transition: color .35s ease, border-color .35s ease, background .35s ease;
+}
+
+/* Controls: one height, hairline borders. */
+.nge-smo-actions { gap: 8px; color: rgb(154 162 177); }
+.nge-smo-action-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; margin-right: 0;
+  border-radius: 6px; background: rgb(196 228 255 / .05); border: 1px solid rgb(196 228 255 / .22);
+  color: rgb(239 244 251 / .86); font-size: 12px; font-weight: 500; letter-spacing: .02em; white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+.nge-smo-action-btn:hover, .nge-smo-action-btn:focus-visible {
+  background: rgb(196 228 255 / .12); border-color: rgb(196 228 255 / .55); color: #fff;
+  box-shadow: 0 0 14px rgb(74 150 224 / .28); outline: none;
+}
+.nge-smo-action-btn:active { background: rgb(196 228 255 / .2); transform: scale(.97); }
+/* Submit is the one filled control, in the colour of the mode (it was green
+   on every bar, which fought the red and the blue). */
+.nge-smo-action-btn.submit-btn { background: rgb(var(--smo-rgb) / .18); border-color: rgb(var(--smo-rgb) / .65); color: #fff; font-weight: 600; }
+.nge-smo-action-btn.submit-btn:hover, .nge-smo-action-btn.submit-btn:focus-visible {
+  background: rgb(var(--smo-rgb) / .34); border-color: rgb(var(--smo-rgb) / .95); box-shadow: 0 0 16px rgb(var(--smo-rgb) / .45);
+}
+.nge-smo-action-btn.submit-btn.is-ready { animation: nge-smo-submit-ready 1.1s ease-in-out infinite; }
+@keyframes nge-smo-submit-ready {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--smo-rgb) / 0); background: rgb(var(--smo-rgb) / .20); }
+  50%      { box-shadow: 0 0 14px 4px rgb(var(--smo-rgb) / .55); background: rgb(var(--smo-rgb) / .42); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nge-smo-action-btn.submit-btn.is-ready { animation: none; background: rgb(var(--smo-rgb) / .40); box-shadow: 0 0 12px 2px rgb(var(--smo-rgb) / .5); }
+}
+/* The red and blue pills: hairline capsules, the active one lit. */
+.nge-smo-group { padding: 4px 12px; border-radius: 6px; }
+.nge-smo-group:not(.active) { border: 1px solid rgb(196 228 255 / .16); }
+.nge-smo-group.red.active, .nge-smo-group.blue.active {
+  background: rgb(var(--smo-rgb) / .16); border: 1px solid rgb(var(--smo-rgb) / .7);
+  box-shadow: 0 0 14px rgb(var(--smo-rgb) / .35), inset 0 0 10px rgb(var(--smo-rgb) / .14);
+}
+.nge-smo-divider { color: rgb(196 228 255 / .16); }
+.nge-smo-key-hint { display: inline-flex; align-items: center; gap: 6px; margin-right: 0; white-space: nowrap; }
+.nge-smo-key-hint kbd, .nge-smo-actions kbd {
+  padding: 1px 6px; border-radius: 4px; background: rgb(196 228 255 / .07);
+  border: 1px solid rgb(196 228 255 / .26); border-bottom-width: 2px;
+  font-family: 'Inter', 'Roboto', sans-serif; font-size: 10.5px; font-weight: 600; line-height: 1.4; color: rgb(239 244 251 / .82);
+}
+/* the options sit after a hairline, apart from the three buttons */
+.nge-smo-auto-submit {
+  height: 28px; gap: 7px; margin: 0 4px 0 6px; padding-left: 14px; border-left: 1px solid rgb(196 228 255 / .14);
+  color: rgb(154 162 177);
+}
+.nge-smo-auto-submit:hover { color: #a6ffd6; }
+/* a drawn box in place of the box characters */
+.nge-smo-checkbox {
+  position: relative; display: inline-block; width: 14px; height: 14px; font-size: 0; border-radius: 3px;
+  border: 1px solid rgb(196 228 255 / .42); background: rgb(196 228 255 / .04);
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.nge-smo-checkbox.checked { background: rgb(0 220 120 / .22); border-color: rgb(0 230 130 / .95); box-shadow: 0 0 8px rgb(0 220 120 / .5); text-shadow: none; }
+.nge-smo-checkbox.checked::after {
+  content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px;
+  border: solid #a6ffd6; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+
+/* Hint: upright (no thin italic on a dark field), in the dim ink. */
+.nge-smo-hint { font-style: normal; color: rgb(154 162 177); letter-spacing: .01em; }
+.merge-hint { color: rgb(150 226 186); }
+.nge-smo-hint--left { padding-left: 16px; border-left: 1px solid rgb(196 228 255 / .14); margin-left: 2px; }
+
+/* Merge Queue: the same surface, with the rim of the mode. */
+.nge-smo-merge-panel {
+  /* clear of the bar, whatever height it comes to */
+  bottom: calc(max(var(--nge-tool-bar-h, 50px), 50px) + 8px + var(--nge-bottom-bar, 0px));
+  background: linear-gradient(158deg, rgb(15 18 24 / .96) 0%, rgb(6 10 18 / .98) 100%);
+  border: 1px solid rgb(0 220 120 / .30); border-radius: 10px;
+  backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow: 0 18px 50px rgb(0 0 0 / .5), 0 0 40px rgb(0 220 120 / .07), inset 0 1px 0 rgb(196 228 255 / .10);
+}
+.nge-smo-merge-panel::before {
+  content: ""; position: absolute; left: 8%; right: 8%; top: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(0 230 130 / .95) 50%, transparent);
+  box-shadow: 0 0 12px rgb(0 220 120 / .6);
+}
+.nge-smo-merge-panel-header { padding: 8px 12px 7px; font-family: 'Orbitron', 'Inter', sans-serif; font-size: 10.5px; letter-spacing: .14em; color: #a6ffd6; border-bottom-color: rgb(0 220 120 / .16); }
+.nge-smo-merge-row { padding: 5px 10px; }
+.nge-smo-seg-id { font-size: 11px; color: #a9efcf; padding: 1px 4px; }
+.nge-smo-merge-num { font-variant-numeric: tabular-nums; }
+.nge-smo-merge-remove { color: #ff8a8a; border-radius: 4px; }
+.nge-smo-merge-status {
+  margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; border: 1px solid rgb(196 228 255 / .25); color: rgb(196 228 255 / .85);
+}
+.nge-smo-merge-status + .nge-smo-merge-remove { margin-left: 2px; }
+.nge-smo-merge-status--submitting { border-color: rgb(232 169 58 / .6); color: rgb(246 205 128); background: rgb(232 169 58 / .10); }
+.nge-smo-merge-status--done { border-color: rgb(0 220 120 / .6); color: #a6ffd6; background: rgb(0 220 120 / .10); }
+.nge-smo-merge-status--failed { border-color: rgb(255 100 100 / .6); color: #ffb0b0; background: rgb(255 80 80 / .10); }
+.nge-smo-merge-remove:hover, .nge-smo-merge-remove:focus-visible { background: rgb(255 90 90 / .14); outline: none; }
 </style>

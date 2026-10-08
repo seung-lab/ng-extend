@@ -3098,6 +3098,10 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   const mergeSubmissionCount = ref(0);
   /** Scraped merge pairs: each entry is [sinkId, sourceId] or [sinkId] if incomplete */
   const mergeSegments = ref<string[][]>([]);
+  /** One per queued merge, in step with mergeSegments: where it stands
+   *  ('submitting', 'done', an error, or '' while it waits) and whether it
+   *  can still be removed (not once it is on its way to the server). */
+  const mergeRows = ref<{ status: string; removable: boolean }[]>([]);
   /** Whether NG's auto-submit checkbox is checked */
   const autoSubmit = ref(false);
   const submitting = ref(false);
@@ -3133,6 +3137,7 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
         bluePointCount.value = 0;
         mergeSubmissionCount.value = 0;
         mergeSegments.value = [];
+        mergeRows.value = [];
         autoSubmit.value = false;
         submitting.value = false;
         statusMessage.value = '';
@@ -3228,7 +3233,7 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
 
   return {
     toolActive, activeGroup, redPointCount, bluePointCount,
-    mergeSubmissionCount, mergeSegments, autoSubmit, submitting, statusMessage, resultFlash, resultText,
+    mergeSubmissionCount, mergeSegments, mergeRows, autoSubmit, submitting, statusMessage, resultFlash, resultText,
     pendingClose, closingTool, clearedAt,
     setToolState, setActiveGroup, updatePointCounts, setStatusMessage,
     showResult, dismissResult, beginSuccessClose, removeMergeSegment, markCleared,

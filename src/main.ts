@@ -953,6 +953,7 @@ function observeSplitMergeTools() {
 
       // Scrape segment IDs from each submission pair
       const segments: string[][] = [];
+      const rows: { status: string; removable: boolean }[] = [];
       submissions.forEach(sub => {
         const points = sub.querySelectorAll('.graphene-merge-segments-point');
         const pair: string[] = [];
@@ -961,9 +962,18 @@ function observeSplitMergeTools() {
           const text = (pt.textContent || '').trim().split('\n')[0].trim();
           if (text) pair.push(text);
         });
-        if (pair.length > 0) segments.push(pair);
+        if (pair.length > 0) {
+          segments.push(pair);
+          // Where this merge stands, and whether neuroglancer still offers
+          // to delete it (it does not once the merge has been sent).
+          const raw = (sub.querySelector('.graphene-merge-segments-submission-status')?.textContent || '').trim();
+          const low = raw.toLowerCase();
+          const removable = !!sub.querySelector('[title*="delete" i]');
+          rows.push({ status: low.startsWith('trying') ? 'submitting' : low === 'done' ? 'done' : raw ? 'failed' : (!removable ? 'submitting' : ''), removable });
+        }
       });
       store.mergeSegments = segments;
+      store.mergeRows = rows;
 
       // Scrape auto-submit checkbox state
       const autoSubmitCheckbox = mergeEl.querySelector('label input[type="checkbox"]') as HTMLInputElement | null;
