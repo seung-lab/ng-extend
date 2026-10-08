@@ -16,7 +16,7 @@ The source of truth is `src/widgets/badge_definitions.ts` (`LOYALTY_BADGES`). Th
 | 7 | One Week | Seven days of mapping the brain! That is a whole week of science. | final | 007-days-v8.png | first-orbit.png |
 | 14 | Two Weeks | Fourteen days at EyeWire II! Two weeks of discoveries. | final | 014-days-v10.png | double-orbit.png |
 | 21 | Three Weeks | Three cheers for three weeks of citizen science! | final | 021-days-v10.png | steady-signal.png |
-| 28 | Four Weeks | We're fourtunate that you have been helping to advance neuroscience for 4 weeks! | final | 028-days-v2.png | constellation.png |
+| 28 | Four Weeks | We're fourtunate that you have been helping to advance neuroscience for 4 weeks! | final | 028-days-v8.png | constellation.png |
 | 40 | Forty Days | Forty days at EyeWire II! A whole month of showing up for science. You are becoming a legend. | Ames, to confirm | 040-days-v12.png | golden-orbit.png |
 | 50 | Fifty Days | Fifty days of science! You always find your way back. | draft | 050-days-v12.png | celestial-compass.png |
 | 60 | Two Months | Sixty days at EyeWire II! Two months of discoveries. | draft | 031-days-v10.png | deep-orbit.png |
