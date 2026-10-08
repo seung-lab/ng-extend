@@ -1083,8 +1083,8 @@ function cancelTool() {
    These rules come last, so they win over the older ones above. */
 .nge-split-merge-overlay { --smo-rgb: 196 228 255; gap: 14px; padding: 9px 20px; min-height: 50px; color: rgb(239 244 251 / .92); }
 .nge-split-merge-overlay.merge { --smo-rgb: 0 220 120; --smo-ink: #a6ffd6; --smo-wash: .30; }
-.nge-split-merge-overlay.multicut.group-red { --smo-rgb: 255 84 84; --smo-ink: #ffc2c2; --smo-wash: .46; }
-.nge-split-merge-overlay.multicut.group-blue { --smo-rgb: 104 132 255; --smo-ink: #ccd6ff; --smo-wash: .50; }
+.nge-split-merge-overlay.multicut.group-red { --smo-rgb: 255 44 44; --smo-ink: #ffd0d0; --smo-wash: .78; }
+.nge-split-merge-overlay.multicut.group-blue { --smo-rgb: 84 112 255; --smo-ink: #d2dbff; --smo-wash: .72; }
 
 /* Cut is on the same surface as merge (Ames 2026-10-08: the grey and green
    buttons on a solid red or blue bar were ugly). The active colour still
@@ -1155,6 +1155,20 @@ function cancelTool() {
   box-shadow: 0 0 14px rgb(var(--smo-rgb) / .35), inset 0 0 10px rgb(var(--smo-rgb) / .14);
 }
 .nge-smo-divider { color: rgb(196 228 255 / .16); }
+/* Cut: the colour reaches further across the bar than on merge, since red
+   or blue is the thing to read (Ames: "the red is not red enough"). */
+.nge-split-merge-overlay.multicut.group-red,
+.nge-split-merge-overlay.multicut.group-blue {
+  background:
+    radial-gradient(150% 300% at 0% 100%, rgb(var(--smo-rgb) / var(--smo-wash)) 0%, rgb(var(--smo-rgb) / calc(var(--smo-wash) * .55)) 32%, rgb(var(--smo-rgb) / calc(var(--smo-wash) * .16)) 62%, transparent 88%),
+    linear-gradient(158deg, rgb(15 18 24 / .96) 0%, rgb(6 10 18 / .98) 100%);
+  border-top-color: rgb(var(--smo-rgb) / .6);
+}
+/* The G key lights up when it is the next thing to press, and holds still
+   (Ames 2026-10-08: "the G should not pulse"). */
+.nge-smo-swap-hint--now kbd,
+.nge-smo-groups--pulse .nge-smo-swap-hint kbd { animation: none; }
+.nge-smo-swap-hint--now kbd { box-shadow: 0 0 0 2px rgb(150 172 255 / .55), 0 0 14px rgb(84 112 255 / .6); }
 .nge-smo-key-hint { display: inline-flex; align-items: center; gap: 6px; margin-right: 0; white-space: nowrap; }
 .nge-smo-key-hint kbd, .nge-smo-actions kbd {
   padding: 1px 6px; border-radius: 4px; background: rgb(196 228 255 / .07);
