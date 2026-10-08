@@ -298,9 +298,9 @@ const LOYALTY_DRAFTS: BadgeDefinition[] = [
   loyalty(4,  7, 'first-orbit',    'FO', 'One Week',    'Seven days of mapping the brain! That is a whole week of science.'),
   loyalty(5, 14, 'double-orbit',   'DO', 'Two Weeks',   'Fourteen days at Pyr! Two weeks of discoveries.'),
   loyalty(6, 21, 'steady-signal',  'ST', 'Three Weeks',  'Three cheers for three weeks of citizen science!'),
-  loyalty(7, 28, 'constellation',  'CO', 'Four Weeks',  "We're fourtunate that you have been helping to advance neuroscience for 4 weeks!"),
+  loyalty(7, 28, 'constellation',  'CO', 'One Month',  "We're fourtunate that you have been helping to advance neuroscience for 4 weeks!"),
   // No separate One Month (Ames 2026-10-08: "4 weeks is one month yet there are 2"):
-  // Four Weeks stands for it. Id 208 ('one-month') is retired and not reused; its
+  // the 28 day achievement is One Month. Id 208 ('one-month') is retired and not reused; its
   // art is now Two Months' (deep-orbit.png).
   // Added 2026-10-06 with the second set of art. The first line is Ames's own;
   // the rest are first drafts, to be reviewed (she asked for a text review).
@@ -308,9 +308,9 @@ const LOYALTY_DRAFTS: BadgeDefinition[] = [
   loyalty(10,  50, 'celestial-compass',   'CC', 'Fifty Days',   'Fifty days of science! You always find your way back.'),
   loyalty(11,  60, 'deep-orbit',          'DP', 'Two Months',          'Sixty days at Pyr! Two months of discoveries.'),
   loyalty(12,  70, 'star-weaver',         'SW', 'Ten Weeks',         'Seventy days of science! Thank you for weaving your days into the map of the brain.'),
-  loyalty(13,  80, 'amethyst-crown',      'AC', 'Eighty Days',      'Eighty days at Pyr! That is royal dedication.'),
+  loyalty(13,  80, 'amethyst-crown',      'AC', 'Eighty Days',      'Eighty days at Pyr! Thank you for every single one.'),
   loyalty(14,  90, 'radiant-return',      'RR', 'Three Months',      'Ninety days of science! Three months of coming back, and we are glad every time.'),
-  loyalty(15, 100, 'century-star',        'CS', 'One Hundred Days',        'One hundred days at Pyr! Thank you for every single one.'),
+  loyalty(15, 100, 'century-star',        'CS', 'One Hundred Days',        'One hundred days at Pyr! That is royal dedication.'),
   // Past 100 days: one a month (Celia, Ames 2026-10-07), with 200 kept as a
   // hundred day milestone beside 100 and 300. The art is the existing set,
   // each piece moved to the nearest new day; ids and slugs are unchanged, so

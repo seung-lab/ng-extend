@@ -4,7 +4,7 @@ Every Loyalty achievement in EyeWire II. Each is named for the time it marks. Th
 
 Text for days 2 to 28 is final wording from Ames. Day 40 is her line. Days 50 to 365 are first drafts. Names are proposals.
 
-Ladder (Ames 2026-10-07 and 08): the early days, then every 10 days up to 100, then one a month, with 200 kept as a milestone and One Year at 365. There is no separate One Month: Four Weeks stands for it.
+Ladder (Ames 2026-10-07 and 08): the early days, then every 10 days up to 100, then one a month, with 200 kept as a milestone and One Year at 365. One Month is earned at 28 days (four weeks); there is no separate 30 or 31 day achievement.
 
 The source of truth is `src/widgets/badge_definitions.ts` (`LOYALTY_BADGES`). The art is at github.com/amyleesterling/badges/tree/main/loyalty; the picks below follow its complete preview page (2026-10-08), except Two Months, which uses the art first made for One Month on Ames's instruction. The art's own files hold a prompt and a working title only, not this player text.
 
@@ -16,14 +16,14 @@ The source of truth is `src/widgets/badge_definitions.ts` (`LOYALTY_BADGES`). Th
 | 7 | One Week | Seven days of mapping the brain! That is a whole week of science. | final | 007-days-v8.png | first-orbit.png |
 | 14 | Two Weeks | Fourteen days at Pyr! Two weeks of discoveries. | final | 014-days-v10.png | double-orbit.png |
 | 21 | Three Weeks | Three cheers for three weeks of citizen science! | final | 021-days-v10.png | steady-signal.png |
-| 28 | Four Weeks | We're fourtunate that you have been helping to advance neuroscience for 4 weeks! | final | 028-days-v8.png | constellation.png |
+| 28 | One Month | We're fourtunate that you have been helping to advance neuroscience for 4 weeks! | final | 028-days-v8.png | constellation.png |
 | 40 | Forty Days | Forty days at Pyr! A whole month of showing up for science. You are becoming a legend. | Ames, to confirm | 040-days-v12.png | golden-orbit.png |
 | 50 | Fifty Days | Fifty days of science! You always find your way back. | draft | 050-days-v12.png | celestial-compass.png |
 | 60 | Two Months | Sixty days at Pyr! Two months of discoveries. | draft | 031-days-v10.png | deep-orbit.png |
 | 70 | Ten Weeks | Seventy days of science! Thank you for weaving your days into the map of the brain. | draft | 070-days-v12.png | star-weaver.png |
-| 80 | Eighty Days | Eighty days at Pyr! That is royal dedication. | draft | 080-days-v12.png | amethyst-crown.png |
+| 80 | Eighty Days | Eighty days at Pyr! Thank you for every single one. | draft | 080-days-v12.png | amethyst-crown.png |
 | 90 | Three Months | Ninety days of science! Three months of coming back, and we are glad every time. | draft | 090-days-v12.png | radiant-return.png |
-| 100 | One Hundred Days | One hundred days at Pyr! Thank you for every single one. | draft | 100-days-v6.png | century-star.png |
+| 100 | One Hundred Days | One hundred days at Pyr! That is royal dedication. | draft | 100-days-v6.png | century-star.png |
 | 120 | Four Months | 120 days of science! Four months, and your dedication keeps growing. | draft | 120-days-v5.png | celestial-bloom.png |
 | 150 | Five Months | 150 days at Pyr! You are a guiding light for this community. | draft | 150-days-v5.png | constellation-crown.png |
 | 180 | Six Months | 180 days of science! Half a year, and you help power this whole project. | draft | 180-days-v5.png | astral-engine.png |
