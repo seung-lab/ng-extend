@@ -16,6 +16,30 @@ export const version = reactive({
   newer: '',
 });
 
+export interface ChangeEntry { at: string; title: string; items: string[]; }
+/** When this page loaded: changes that went live after it are the news. */
+const PAGE_LOADED = Date.now();
+
+/**
+ * What changed, for players: static/changelog.json, newest first. `since`
+ * are the entries that went live after this page loaded. When none carries a
+ * later time (a deploy nobody wrote up), `latest` are the newest few instead,
+ * so the box is never empty.
+ */
+export async function readChanges(): Promise<{ since: ChangeEntry[]; latest: ChangeEntry[] }> {
+  try {
+    const res = await fetch(`/changelog.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return { since: [], latest: [] };
+    const raw = await res.json();
+    const entries: ChangeEntry[] = (Array.isArray(raw?.entries) ? raw.entries : [])
+      .filter((e: any) => e && typeof e.title === 'string' && Array.isArray(e.items) && !Number.isNaN(Date.parse(e.at)))
+      .map((e: any) => ({ at: String(e.at), title: String(e.title).slice(0, 80), items: e.items.filter((i: any) => typeof i === 'string').map((i: string) => i.slice(0, 240)).slice(0, 8) }))
+      .sort((a: ChangeEntry, b: ChangeEntry) => Date.parse(b.at) - Date.parse(a.at));
+    // A minute of slack: an entry is written just before its deploy finishes.
+    return { since: entries.filter(e => Date.parse(e.at) > PAGE_LOADED - 60_000).slice(0, 12), latest: entries.slice(0, 3) };
+  } catch { return { since: [], latest: [] }; }
+}
+
 const EVERY_MS = 4 * 60_000;
 let started = false;
 

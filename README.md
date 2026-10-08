@@ -353,3 +353,21 @@ To update the screenshots referenced in this README, save images to the `docs/` 
 ---
 
 *Based on the [neuroglancer dependent-project example](https://github.com/google/neuroglancer/tree/master/examples/dependent-project), using a git submodule instead of npm due to [neuroglancer#172](https://github.com/google/neuroglancer/issues/172).*
+
+## CHANGELOG-RULE: tell players what changed
+
+`static/changelog.json` is the log of what changed in Pyr, written for players.
+The game shows it in the "New version ready" notice (the i button), so it is
+read by people who do not know any of the code words.
+
+Every deploy that changes something a player can see or do adds one entry at
+the **top** of `entries`, in the same commit as the change:
+
+- `at`: when it goes live, UTC, a few minutes ahead of the push.
+- `title`: a few words naming it.
+- `items`: one plain sentence each, saying what a player can now do or what no
+  longer goes wrong. No file names, no code words, no dashes. Say "Achievement",
+  never "badge". The game is called Pyr.
+
+Leave out changes a player cannot notice (refactors, admin tools, server
+housekeeping). Never rewrite or remove older entries.

@@ -1,0 +1,73 @@
+{
+  "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
+  "entries": [
+    {
+      "at": "2026-10-08T02:27:00Z",
+      "title": "See what changed",
+      "items": [
+        "The New version ready notice now has an info button that lists what changed, in plain words."
+      ]
+    },
+    {
+      "at": "2026-10-08T01:30:00Z",
+      "title": "Help requests work better",
+      "items": [
+        "A screenshot taken from the help form shows your view, without the Cell Library in the way.",
+        "A help request now saves the cell you are working on, not whichever one the mouse last touched.",
+        "Jumping to a request with no cell takes you to the right place and leaves your cells alone.",
+        "Ask for Help in the Delta menu lets you choose which annotation layers to point the helper at."
+      ]
+    },
+    {
+      "at": "2026-10-08T01:30:00Z",
+      "title": "New version notice",
+      "items": [
+        "Pyr tells you when it has been updated while you were playing, so you can reload and get the newest fixes."
+      ]
+    },
+    {
+      "at": "2026-10-08T00:30:00Z",
+      "title": "Mentor mode and Team mode (first version)",
+      "items": [
+        "Mentor mode: press Join on a help request to offer to step into that player's view. They choose whether to accept.",
+        "Team mode: press Team up on this cell in the Help tab and invite players by name to work on one cell together.",
+        "In a session you share the cell, your marks, and where each of you is looking. Jump takes you to a teammate, Follow keeps you with them.",
+        "When one teammate marks the cell complete, everyone on the team is credited."
+      ]
+    },
+    {
+      "at": "2026-10-07T23:50:00Z",
+      "title": "Clearer messages",
+      "items": [
+        "If you paste a cell ID with digits missing from the start, Pyr tells you instead of showing an empty view.",
+        "Another player's profile no longer shows your own numbers for a moment while it loads."
+      ]
+    },
+    {
+      "at": "2026-10-07T22:30:00Z",
+      "title": "Your stats, counted right",
+      "items": [
+        "Your cells in Dataset Stats are matched to your name whether or not it is typed with capitals.",
+        "Cells you proofread outside Pyr on other datasets show on your profile's Datasets tab. They do not count toward Achievements."
+      ]
+    },
+    {
+      "at": "2026-10-07T20:30:00Z",
+      "title": "Help requests keep your marks",
+      "items": [
+        "A help request now saves your whole view, so a helper who opens it sees your annotations and highlights.",
+        "The link to your view fills itself in. You do not need to click anything.",
+        "You can point a helper at any of your annotation layers, or all of them.",
+        "Switch here and jumping to a request on another dataset now bring you back to the Help tab and finish the jump."
+      ]
+    },
+    {
+      "at": "2026-10-07T19:30:00Z",
+      "title": "Smoother lists and highlights",
+      "items": [
+        "With many cells open, you can scroll all the way to the bottom of the cell list.",
+        "The Highlight box has one Show or Hide switch for all your highlights, in 2D and 3D."
+      ]
+    }
+  ]
+}

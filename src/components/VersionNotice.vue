@@ -10,7 +10,7 @@
  * one the Cell Library opens with). Nothing here loops.
  */
 import { nextTick, ref, watch } from 'vue';
-import { version, startVersionWatch, reloadForUpdate } from '../util/version_watch';
+import { version, startVersionWatch, reloadForUpdate, readChanges, type ChangeEntry } from '../util/version_watch';
 import { runPanelTrace } from '../util/holo_trace';
 
 startVersionWatch();
@@ -30,6 +30,21 @@ watch(() => version.newer, async (now, was) => {
 
 function reload() { reloading.value = true; reloadForUpdate(); }
 
+// ── What changed: the i button ──────────────────────────────────────────
+const showChanges = ref(false);
+const changes = ref<ChangeEntry[] | null>(null);
+/** True when the list is the changes since this page loaded; false when it
+ *  is only the newest few, because none is dated after the page loaded. */
+const changesAreNew = ref(true);
+async function toggleChanges() {
+  showChanges.value = !showChanges.value;
+  if (!showChanges.value || changes.value) return;
+  const { since, latest } = await readChanges();
+  changesAreNew.value = since.length > 0;
+  changes.value = since.length ? since : latest;
+}
+const dayOf = (iso: string) => { try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return ''; } };
+
 /** The chip lives in the top bar with the other tools, first in the row, so
  *  it can never sit on top of one. Before sign in there is no such row and it
  *  floats under the bar instead. */
@@ -42,8 +57,23 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
     <div v-if="version.newer && !folded" ref="panelEl" class="nge-ver" role="status" aria-live="polite">
       <span class="nge-ver-corner nge-ver-corner--tl" aria-hidden="true"></span>
       <span class="nge-ver-corner nge-ver-corner--br" aria-hidden="true"></span>
-      <div class="nge-ver-label"><span class="nge-ver-pip" aria-hidden="true"></span>New version ready</div>
+      <div class="nge-ver-label">
+        <span class="nge-ver-pip" aria-hidden="true"></span><span class="nge-ver-label-text">New version ready</span>
+        <button type="button" class="nge-ver-info" :aria-expanded="showChanges ? 'true' : 'false'" aria-controls="nge-ver-changes"
+                :title="showChanges ? 'Hide what changed' : 'See what changed'" aria-label="What changed" @click="toggleChanges">i</button>
+      </div>
       <div class="nge-ver-text">Pyr was updated while you were here. Reload to get the newest fixes. Your edits are already saved.</div>
+      <div v-if="showChanges" id="nge-ver-changes" class="nge-ver-changes" tabindex="0" aria-label="What changed">
+        <div v-if="!changes" class="nge-ver-changes-note">Reading what changed.</div>
+        <div v-else-if="!changes.length" class="nge-ver-changes-note">No notes were written for this update. It is likely a small fix.</div>
+        <template v-else>
+          <div class="nge-ver-changes-head">{{ changesAreNew ? 'What changed' : 'Latest changes' }}</div>
+          <div v-for="(c, i) in changes" :key="i" class="nge-ver-change">
+            <div class="nge-ver-change-title">{{ c.title }}<span class="nge-ver-change-day">{{ dayOf(c.at) }}</span></div>
+            <ul><li v-for="(item, j) in c.items" :key="j">{{ item }}</li></ul>
+          </div>
+        </template>
+      </div>
       <div class="nge-ver-actions">
         <button type="button" class="nge-ver-btn nge-ver-go" :disabled="reloading" @click="reload">{{ reloading ? 'Reloading' : 'Reload now' }}</button>
         <button type="button" class="nge-ver-btn" @click="folded = true">Later</button>
@@ -67,7 +97,7 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
   color: #dbe7f7;
 }
 .nge-ver {
-  top: 64px; width: 300px; max-width: calc(100vw - 32px); margin-left: max(-150px, calc(-50vw + 16px)); padding: 13px 15px 12px;
+  top: 64px; width: 340px; max-width: calc(100vw - 32px); margin-left: max(-170px, calc(-50vw + 16px)); padding: 13px 15px 12px;
   background: linear-gradient(180deg, rgba(13, 22, 40, 0.97), rgba(6, 10, 20, 0.97));
   border: 1px solid rgba(var(--ver-line), 0.34);
   border-radius: 10px;
@@ -92,6 +122,34 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
   font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase;
   color: rgb(124, 196, 255); margin-bottom: 7px;
 }
+.nge-ver-label-text { flex: 1; }
+/* The i: a small round instrument button, lit while its list is open. */
+.nge-ver-info {
+  width: 19px; height: 19px; border-radius: 50%; flex-shrink: 0; padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: italic 700 12px Georgia, 'Times New Roman', serif; letter-spacing: 0; text-transform: none; line-height: 1;
+  background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(var(--ver-line), 0.55); color: rgb(160, 212, 255);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, color 0.15s;
+}
+.nge-ver-info:hover, .nge-ver-info.holo-on, .nge-ver-info[aria-expanded="true"] {
+  border-color: rgba(var(--ver-line), 0.95); background: rgba(var(--ver-line), 0.22); color: #fff; box-shadow: 0 0 10px rgba(var(--ver-line), 0.4);
+}
+.nge-ver-info:focus-visible, .nge-ver-changes:focus-visible { outline: 2px solid rgb(124, 196, 255); outline-offset: 2px; }
+.nge-ver-changes {
+  margin-top: 10px; padding: 9px 10px 4px; max-height: min(260px, 42vh); overflow-y: auto;
+  border: 1px solid rgba(var(--ver-line), 0.22); border-radius: 8px; background: rgba(0, 0, 0, 0.28);
+  /* Opens once: unfolds downward. */
+  animation: nge-ver-open 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: top;
+}
+@keyframes nge-ver-open { from { opacity: 0; transform: scaleY(0.92); } to { opacity: 1; transform: none; } }
+.nge-ver-changes-head { font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(124, 196, 255); margin-bottom: 7px; }
+.nge-ver-changes-note { font-size: 12px; color: #9fb0c8; padding-bottom: 5px; }
+.nge-ver-change { margin-bottom: 9px; }
+.nge-ver-change-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12.5px; font-weight: 600; color: #e6eefb; }
+.nge-ver-change-day { font-size: 10.5px; font-weight: 400; color: #7f92ad; flex-shrink: 0; }
+.nge-ver-change ul { margin: 4px 0 0; padding-left: 16px; }
+.nge-ver-change li { font-size: 12px; line-height: 1.45; color: #b9c9de; margin-bottom: 3px; }
+.nge-ver-change li::marker { color: rgba(var(--ver-line), 0.8); }
 .nge-ver-pip { width: 7px; height: 7px; border-radius: 50%; background: rgb(var(--ver-line)); box-shadow: 0 0 8px rgba(var(--ver-line), 0.9); flex-shrink: 0; }
 .nge-ver-text { font-size: 12.5px; line-height: 1.45; color: #b9c9de; }
 .nge-ver-actions { display: flex; gap: 8px; margin-top: 11px; }
@@ -116,7 +174,7 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
 }
 .nge-ver-chip:hover:not(:disabled), .nge-ver-chip.holo-on { border-color: rgba(var(--ver-line), 0.95); box-shadow: 0 0 12px rgba(var(--ver-line), 0.3); }
 @media (prefers-reduced-motion: reduce) {
-  .nge-ver, .nge-ver-corner { animation: none; }
+  .nge-ver, .nge-ver-corner, .nge-ver-changes { animation: none; }
 }
 /* In the top bar it is one of the row's own items, first in line. */
 .nge-ver-chip.nge-ver-chip--bar { position: static; transform: none; order: -1; margin-right: 8px; flex-shrink: 0; }
