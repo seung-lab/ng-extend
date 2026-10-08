@@ -313,7 +313,11 @@ const cells = computed(() => {
         taskId: task?.id ?? null,
         // ...except a hold in the sheet ("Need Help", "WIP"), which keeps a cell
         // out of Available even after its claim here was let go.
-        status: (sheetHolds(item.sheetStatus) && (!task || task.status === 'pending')) ? 'in_progress' : (task?.status ?? mapSheetStatus(item.sheetStatus)),
+        // The same goes for a cell the sheet has closed by hand (Complete, Not
+        // BC, Can't Complete) while its claim here is merely let go: it is
+        // closed, not available.
+        status: (!task || task.status === 'pending') && mapSheetStatus(item.sheetStatus) !== 'pending'
+          ? mapSheetStatus(item.sheetStatus) : (task?.status ?? 'pending'),
         sheetHold: sheetHolds(item.sheetStatus) ? (item.sheetStatus || '').trim() : '',
         assignedTo: task?.assigned_to ?? null,
         finalSegId: task?.final_segment_id ?? null,
