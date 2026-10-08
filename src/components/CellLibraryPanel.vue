@@ -714,6 +714,14 @@ async function batchClaim() {
   filter.value = 'mine';
   if (ok < picks.length) claimError.value = `Claimed ${ok} of ${picks.length}. ${lastError}`;
 }
+// A tab opens at its top. The cell tabs (Available, Mine, ...) share one list
+// element, so it kept the scroll position of the tab before: after "Claim 10"
+// from far down Available, My Cells opened at its bottom, away from the new
+// cells at the top (Annkri 2026-10-08).
+watch(filter, async () => {
+  await nextTick();
+  document.querySelectorAll<HTMLElement>('.nge-cl-list').forEach(el => { el.scrollTop = 0; });
+});
 function heldLabel(t: ProofreadingTask): string {
   const row = queue.items.find(i => i.segId === t.segment_id);
   const name = row?.index || (t.segment_id ? '…' + t.segment_id.slice(-6) : 'a point claim');
