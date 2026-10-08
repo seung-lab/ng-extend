@@ -17,7 +17,8 @@
  */
 import { useIssueTagStore, useProofreadingBackendStore, useProofreadingQueueStore, type QueueItem, type ProofreadingTask } from '../store';
 import { getDatasetCaveConfig } from '../config';
-import { currentDatasetTag } from '../datasets';
+import { currentDatasetTag, currentSegLayer } from '../datasets';
+import { removeHighlightsOfCells } from './highlight';
 import { ancestorAmong, getRootFromSupervoxel } from '../widgets/pcg_service';
 import { mintShortStateLink } from './state_link';
 import { syncCellToSheet } from '../sheet_sync';
@@ -124,8 +125,20 @@ async function planFromTasks(plan: MenuCompletionPlan) {
 /** Empty the player's own local annotation layers (points, lines, boxes,
  *  highlights) once a cell is complete, since that markup does not apply to
  *  the next cell. The layers stay; shared ones (Scout tags, AI candidates)
- *  are left alone, as are layers whose annotations come from a server. */
-export function clearOwnAnnotations() {
+ *  are left alone, as are layers whose annotations come from a server.
+ *
+ *  `done`: the cell just completed (every id it is known by). With other
+ *  cells still showing, their markup must survive: a player who marked
+ *  several cells and then completed them one by one lost every mark after
+ *  the first, so those cells reached the sheet with empty annotation layers
+ *  (2026-10-08). Then only this cell's highlights go, and the rest stays
+ *  until the last of those cells is completed. Without `done` (a batch,
+ *  which completes everything on show) all of it is cleared. */
+export function clearOwnAnnotations(done?: string[]) {
+  if (done && othersShowing(done)) {
+    try { removeHighlightsOfCells(done); } catch (e) { console.warn('[menuComplete] could not clear this cell\'s highlights', e); }
+    return;
+  }
   const issueTags = useIssueTagStore();
   for (const managed of (window as any)['viewer']?.layerManager?.managedLayers ?? []) {
     if (managed.archived || issueTags.isTagStoreLayer(managed.name)) continue;
@@ -133,6 +146,18 @@ export function clearOwnAnnotations() {
       console.warn('[menuComplete] could not clear', managed.name, e);
     }
   }
+}
+
+/** True when a cell other than the completed one is showing in the view. If
+ *  the view cannot be read, say yes: keeping markup is the safe mistake. */
+function othersShowing(done: string[]): boolean {
+  try {
+    const visible = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!visible) return true;
+    const mine = new Set(done.filter(Boolean).map(String));
+    for (const id of visible) if (!mine.has(id.toString())) return true;
+    return false;
+  } catch { return true; }
 }
 
 /** For a batch (Batch Processor): the point captured on each cell, and one
@@ -182,7 +207,7 @@ export async function finishMenuCompletion(plan: MenuCompletionPlan, opts: Finis
   const link = opts.link !== undefined ? opts.link : await mintShortStateLink();
   await syncCellToSheet('complete', row.segId, undefined, plan.dataset, link || undefined, opts.notes, opts.status);
   // After the Final Link has captured it: the markup belonged to this cell.
-  if (!opts.keepMarkup) clearOwnAnnotations();
+  if (!opts.keepMarkup) clearOwnAnnotations([plan.segId, row.segId, row.finalSegId, plan.cellRoot ?? '', task?.final_segment_id ?? ''].filter(Boolean) as string[]);
   await backend.loadTasks(plan.dataset);
   return link
     ? `Written to the sheet${row.index ? ` (${row.index})` : ''}.`

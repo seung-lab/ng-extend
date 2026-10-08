@@ -303,6 +303,29 @@ export function undoHighlight(): boolean {
   return true;
 }
 
+/** Remove only the highlights that were made on these cells (each mark's
+ *  first stroke names the cell it was made on). Returns how many marks went. */
+export function removeHighlightsOfCells(roots: string[]): number {
+  const want = new Set(roots.filter(Boolean).map(String));
+  if (!want.size) return 0;
+  let gone = 0;
+  for (const m of listHighlights()) {
+    const src = managedLayer(m.style.layer)?.layer?.localAnnotations;
+    if (!src) continue;
+    let cell = '';
+    for (const ann of src) {
+      if (!String(ann.id).startsWith(m.mark + '_')) continue;
+      const hit = String(ann.description ?? '').match(/cell (\d+)\s*$/);
+      if (hit) { cell = hit[1]; break; }
+    }
+    if (!want.has(cell)) continue;
+    removeIds(m.style, m.ids);
+    if (m.mark === latestMark) setLatestMark(null);
+    gone++;
+  }
+  return gone;
+}
+
 export function clearHighlights() {
   for (const m of listHighlights()) removeIds(m.style, m.ids);
   setLatestMark(null);
