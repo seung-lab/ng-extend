@@ -48,7 +48,7 @@ const needsSwap = computed(() => isMulticut.value && !store.pendingClose
   && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red');
 // The large "Press G" prompt is for learners only: it shows while a step of
 // the Merge, Cut or Merger Sandbox tutorial is up (Ames, 2026-10-08). Outside
-// a tutorial the small pulsing G key on the bar is the only nudge.
+// a tutorial the lit G key on the bar is the only nudge, and it holds still.
 const tutorialStore = useTutorialStore();
 const inPracticeTutorial = computed(() => {
   const step = tutorialStore.getTutorialStep();
@@ -174,6 +174,7 @@ function cancelTool() {
     <transition name="overlay-slide">
       <div v-if="isVisible" ref="barEl" class="nge-split-merge-overlay" :class="{
         'nge-smo-has-banner': needsSwap,
+        'nge-smo-learning': inPracticeTutorial,
         multicut: isMulticut && !isPendingClose,
         'group-red': isMulticut && !isPendingClose && isRedActive,
         'group-blue': isMulticut && !isPendingClose && isBlueActive,
@@ -1167,19 +1168,22 @@ function cancelTool() {
 /* Swapping colour: the pill that becomes active lands once, a small
    overshoot and one ring in its own colour, and is still. It used to flash a
    white ring three times (Ames 2026-10-08: "it doesn't need to pulse so
-   much ... simpler and more satisfying"). */
-.nge-smo-groups--pulse .nge-smo-group.active { animation: nge-smo-group-land .42s cubic-bezier(.2, 1.35, .4, 1) 1; }
+   much ... simpler and more satisfying").
+   This and the still G key below are for the main game. In the Merge, Cut
+   and Merger Sandbox tutorials (nge-smo-learning) a learner keeps the
+   stronger prompts: the pill flashes and the G key pulses until pressed. */
+.nge-split-merge-overlay:not(.nge-smo-learning) .nge-smo-groups--pulse .nge-smo-group.active { animation: nge-smo-group-land .42s cubic-bezier(.2, 1.35, .4, 1) 1; }
 @keyframes nge-smo-group-land {
   0%   { transform: scale(.94); box-shadow: 0 0 0 0 rgb(var(--smo-rgb) / .75), inset 0 0 10px rgb(var(--smo-rgb) / .14); }
   60%  { transform: scale(1.11); }
   100% { transform: scale(1.08); box-shadow: 0 0 0 9px rgb(var(--smo-rgb) / 0), inset 0 0 10px rgb(var(--smo-rgb) / .14); }
 }
-@media (prefers-reduced-motion: reduce) { .nge-smo-groups--pulse .nge-smo-group.active { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .nge-split-merge-overlay:not(.nge-smo-learning) .nge-smo-groups--pulse .nge-smo-group.active { animation: none; } }
 /* The G key lights up when it is the next thing to press, and holds still
    (Ames 2026-10-08: "the G should not pulse"). */
-.nge-smo-swap-hint--now kbd,
-.nge-smo-groups--pulse .nge-smo-swap-hint kbd { animation: none; }
-.nge-smo-swap-hint--now kbd { box-shadow: 0 0 0 2px rgb(150 172 255 / .55), 0 0 14px rgb(84 112 255 / .6); }
+.nge-split-merge-overlay:not(.nge-smo-learning) .nge-smo-swap-hint--now kbd,
+.nge-split-merge-overlay:not(.nge-smo-learning) .nge-smo-groups--pulse .nge-smo-swap-hint kbd { animation: none; }
+.nge-split-merge-overlay:not(.nge-smo-learning) .nge-smo-swap-hint--now kbd { box-shadow: 0 0 0 2px rgb(150 172 255 / .55), 0 0 14px rgb(84 112 255 / .6); }
 .nge-smo-key-hint { display: inline-flex; align-items: center; gap: 6px; margin-right: 0; white-space: nowrap; }
 .nge-smo-key-hint kbd, .nge-smo-actions kbd {
   padding: 1px 6px; border-radius: 4px; background: rgb(196 228 255 / .07);
