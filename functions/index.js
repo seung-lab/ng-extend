@@ -2100,6 +2100,19 @@ exports.ewSheetSync = onRequest(
    requirePilot(await pilotContext(sb,who));
    if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
    const tasks=await sb('proofreading_tasks?dataset=eq.'+encodeURIComponent(input.dataset)+'&segment_id=eq.'+input.segmentId+'&assigned_to=eq.'+me.id+'&select=*&order=updated_at.desc&limit=1');
+   // Write the player's name the way the sheet already spells it, when it
+   // does (sheet-policy.js sheetSpelling). The spellings come from the hourly
+   // copy of the sheet, so nothing extra is read from the sheet itself. If
+   // this lookup fails the display name is written, as before.
+   try {
+     const {sheetSpelling,nameKey}=require('./sheet-policy');
+     const key=nameKey(me.display_name).slice(0,80);
+     if(key) {
+       const like=[...key].map(c=>encodeURIComponent(c)).join('*');
+       const rows=await sb('ew_sheet_cells?dataset=eq.'+encodeURIComponent(input.dataset)+'&proofreader=ilike.'+like+'&select=proofreader&order=date_complete.desc.nullslast&limit=300');
+       me.sheet_name=sheetSpelling(me.display_name,rows.map(r=>r.proofreader));
+     }
+   } catch(e) { console.warn('[ewSheetSync] sheet spelling lookup failed',String(e&&e.message||e).slice(0,200)); }
    return res.json(await require('./sheet-sync').syncSheet(input,me,tasks[0],admin.credential.applicationDefault()));
   } catch(e) {
    console.warn('[ewSheetSync]',e.status||500,e.message);

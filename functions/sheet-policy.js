@@ -26,16 +26,41 @@ function sourceFor(input) {
   if (!['claim','complete','coordinates'].includes(input.action)) fail(400,'Invalid sheet action.');
   return SOURCES[input.dataset];
 }
+/** Letters and digits only, lower case: "Krzysztof Kruk" and "KrzysztofKruk" are one name. */
+const nameKey = v => String(v ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+/**
+ * How the sheet already spells this player's name, if it does.
+ * Pyr knows a player by the name from their sign in ("Krzysztof Kruk"); the
+ * lab's sheet may hold the same name written another way ("KrzysztofKruk",
+ * 4,461 rows). Writing Pyr's spelling made a second person in the sheet
+ * (Krzysztof 2026-10-08). So: among the names already in the Proofreader
+ * column, the ones that are this player's display name apart from spaces,
+ * punctuation and capitals; the most used of those wins, the player's own
+ * spelling on a tie. Never a different name: a username or a nickname in the
+ * sheet is not matched. Returns '' when the sheet has no such spelling.
+ *   existing  Proofreader values already in the sheet (repeats count)
+ */
+function sheetSpelling(displayName, existing) {
+  const own = String(displayName ?? '').trim(), key = nameKey(own);
+  if (!key) return '';
+  const count = new Map();
+  for (const raw of existing || []) {
+    const v = String(raw ?? '').trim();
+    if (v && nameKey(v) === key) count.set(v,(count.get(v)||0)+1);
+  }
+  let best = '', n = 0;
+  for (const [v,c] of count) if (c > n || (c === n && v === own)) { best = v; n = c; }
+  return best.slice(0,120);
+}
 function sheetValues(input, me, task, now) {
   sourceFor(input);
   if (!me || task?.assigned_to !== me.id || task.dataset !== input.dataset || task.segment_id !== input.segmentId) fail(403,'Only your own claimed cell can be synced.');
   if (!['assigned','in_progress','completed'].includes(task.status)) fail(409,'Claim this cell before syncing.');
   if (input.action === 'complete' && task.status !== 'completed') fail(409,'Complete this cell before syncing.');
-  // The player's username first, the name they chose and the one chat shows.
-  // The display name comes from their sign in and is often a full real name:
-  // the sheet got "Krzysztof Kruk" for the player it knows, as CAVE does, as
-  // "KrzysztofKruk" (Krzysztof 2026-10-08). Display name only if no username.
-  const name = String(me.username || me.display_name || 'Player').slice(0,120);
+  // The player's name as the sheet already spells it (see sheetSpelling), or
+  // their display name. Nobody's name in the sheet is swapped for another one
+  // (Ames 2026-10-08: "we don't want to replace their name in the sheet").
+  const name = String(me.sheet_name || me.display_name || me.username || 'Player').slice(0,120);
   const coords = String(input.action === 'coordinates' ? input.coordinates || '' : task.soma_coords || '').trim();
   if (coords && !/^\[?\s*-?\d+(?:\.\d+)?[\s,]+-?\d+(?:\.\d+)?[\s,]+-?\d+(?:\.\d+)?\s*\]?$/.test(coords)) fail(400,'Enter three numeric coordinates.');
   // On completion the completer IS the proofreader: replace a name left by an
@@ -130,4 +155,4 @@ function planSheetUpdate(grid, title, match, fields) {
   // userEnteredData holds only validated M/D/YYYY dates; everything else is RAW.
   return {valueInputOption:'RAW',data,userEnteredData};
 }
-module.exports={SOURCES,SEGMENT_HEADERS,START_COORD_HEADERS,sourceFor,sheetValues,planSheetUpdate,pointKey};
+module.exports={SOURCES,SEGMENT_HEADERS,START_COORD_HEADERS,sourceFor,sheetValues,sheetSpelling,nameKey,planSheetUpdate,pointKey};

