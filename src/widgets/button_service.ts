@@ -682,6 +682,87 @@ export class ButtonService {
     noteInput.addEventListener('keypress', stopK);
     helpSection.appendChild(noteInput);
 
+    // Which annotation layers hold the marks: all of them unless unticked, in
+    // one dropdown, the same as the Cell Library's help form (Ames 2026-10-07).
+    const annotationLayerNames = (): string[] => {
+      try {
+        return ((window as any)['viewer']?.layerManager?.managedLayers ?? [])
+          .filter((l: any) => l.layer?.type === 'annotation' && !l.archived).map((l: any) => String(l.name));
+      } catch { return []; }
+    };
+    let allLayers = true;
+    const pickedLayers = new Set<string>();
+    const layerOn = (name: string) => allLayers || pickedLayers.has(name);
+    const layerSummary = (): string => {
+      const have = annotationLayerNames();
+      if (allLayers) return have.length === 1 ? 'Annotation layer: ' + have[0] : `All ${have.length} annotation layers`;
+      const picked = have.filter(n => pickedLayers.has(n));
+      if (!picked.length) return 'No annotation layers';
+      return picked.length === 1 ? 'Annotation layer: ' + picked[0] : `${picked.length} of ${have.length} annotation layers`;
+    };
+    const pickedLayerText = (): string => {
+      const have = annotationLayerNames();
+      if (allLayers) return have.length > 1 ? 'All annotation layers' : (have[0] || '');
+      return have.filter(n => pickedLayers.has(n)).join(', ');
+    };
+    if (annotationLayerNames().length > 0) {
+      const wrap = document.createElement('div');
+      wrap.classList.add('nge-lb-layers');
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.classList.add('nge-lb-layers-toggle');
+      toggle.title = 'Choose which annotation layers to point the helper at';
+      toggle.setAttribute('aria-haspopup', 'true');
+      const list = document.createElement('div');
+      list.classList.add('nge-lb-layers-menu');
+      list.setAttribute('role', 'group');
+      list.setAttribute('aria-label', 'Annotation layers to point the helper at');
+      list.hidden = true;
+      const draw = () => {
+        toggle.textContent = '';
+        const label = document.createElement('span');
+        label.classList.add('nge-lb-layers-summary');
+        label.textContent = '📐 ' + layerSummary();
+        const caret = document.createElement('span');
+        caret.textContent = '▾';
+        caret.setAttribute('aria-hidden', 'true');
+        toggle.append(label, caret);
+        toggle.setAttribute('aria-expanded', list.hidden ? 'false' : 'true');
+        list.textContent = '';
+        const row = (text: string, on: boolean, change: () => void, bold = false) => {
+          const item = document.createElement('label');
+          item.classList.add('nge-lb-layers-item');
+          if (bold) item.classList.add('nge-lb-layers-item--all');
+          item.title = text;
+          const box = document.createElement('input');
+          box.type = 'checkbox';
+          box.checked = on;
+          box.addEventListener('change', () => { change(); draw(); });
+          const name = document.createElement('span');
+          name.textContent = text;
+          item.append(box, name);
+          list.appendChild(item);
+        };
+        const have = annotationLayerNames();
+        row('All annotation layers', allLayers, () => { allLayers = !allLayers; pickedLayers.clear(); }, true);
+        for (const name of have) {
+          row(name, layerOn(name), () => {
+            // Leaving "all": start from every layer ticked, then change this one.
+            const picked = new Set(allLayers ? have : have.filter(n => pickedLayers.has(n)));
+            if (picked.has(name)) picked.delete(name); else picked.add(name);
+            allLayers = have.length > 0 && have.every(n => picked.has(n));
+            pickedLayers.clear();
+            if (!allLayers) for (const n of picked) pickedLayers.add(n);
+          });
+        }
+      };
+      toggle.addEventListener('click', e => { e.stopPropagation(); list.hidden = !list.hidden; draw(); });
+      wrap.addEventListener('keydown', e => { if (e.key === 'Escape' && !list.hidden) { e.stopPropagation(); list.hidden = true; draw(); toggle.focus(); } });
+      wrap.append(toggle, list);
+      draw();
+      helpSection.appendChild(wrap);
+    }
+
     const helpBtn = document.createElement('button');
     helpBtn.classList.add('nge-lb-section-button', 'nge-lb-help-btn');
     helpBtn.textContent = '🔍 Ask for Help';
@@ -703,6 +784,7 @@ export class ButtonService {
         issueType: selectedIssue || 'Doublecheck',
         cellType: cachedStatus?.cellType,
         dataset,
+        annotationLayer: pickedLayerText() || undefined,
       });
       helpBtn.textContent = '✓ Help Requested';
       helpBtn.disabled = true;

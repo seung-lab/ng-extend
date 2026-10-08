@@ -323,6 +323,27 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
 }
 
 /* Ask for Help button — accent orange */
+.nge-lb-layers { margin: 6px 0 2px; }
+.nge-lb-layers-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%;
+  background-color: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px;
+  color: #cfdcef; font: inherit; font-size: 0.82em; padding: 5px 8px; cursor: pointer; text-align: left;
+  transition: border-color 0.15s;
+}
+.nge-lb-layers-toggle:hover, .nge-lb-layers-toggle[aria-expanded="true"] { border-color: rgba(120, 190, 255, 0.6); }
+.nge-lb-layers-toggle:focus-visible { outline: 2px solid #6cf; outline-offset: 1px; }
+.nge-lb-layers-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* Opens in the flow of the menu, so it is never cut off by the menu's own edge. */
+.nge-lb-layers-menu {
+  margin-top: 3px; max-height: 132px; overflow-y: auto;
+  background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(120, 190, 255, 0.35); border-radius: 6px; padding: 3px 0;
+}
+.nge-lb-layers-menu[hidden] { display: none; }
+.nge-lb-layers-item { display: flex; align-items: center; gap: 7px; padding: 3px 9px; font-size: 0.82em; color: #cfdcef; cursor: pointer; }
+.nge-lb-layers-item:hover { background: rgba(70, 160, 255, 0.14); }
+.nge-lb-layers-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nge-lb-layers-item input { flex-shrink: 0; accent-color: #4a9eff; margin: 0; }
+.nge-lb-layers-item--all { border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 5px; margin-bottom: 2px; font-weight: 600; }
 .nge-lb-help-btn {
   border-color: rgba(255, 152, 0, 0.45);
   color: #ffb74d;
