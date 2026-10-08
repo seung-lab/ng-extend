@@ -1540,6 +1540,21 @@ onMounted(async () => {
   }
 });
 
+/** Mentor mode: offer to join the view of whoever asked for help. The helper
+ *  has to be on the same dataset first, since switching reloads the page. */
+const offeredTo = reactive(new Set<string>());
+async function offerToJoin(req: HelpRequest) {
+  if (!req.userId) return;
+  if (!isOnDataset(req.dataset)) {
+    flashJumpError(`Switch to ${datasetHeading(req.dataset)} first, then press Join.`);
+    return;
+  }
+  const { invite } = await import('../util/team_session');
+  const note = req.note ? `About their request: ${req.note}`.slice(0, 140) : undefined;
+  if (await invite({ id: req.userId, name: req.userName || 'Player' }, 'mentor', note)) offeredTo.add(req.id);
+}
+function teamUp() { document.dispatchEvent(new CustomEvent('nge:team-start')); }
+
 /** The dataset header's "switch here" (Amy: the old "jump switches" tag
  *  looked like a button and did nothing). Switch datasets and open the group. */
 async function switchToDatasetGroup(group: HelpDatasetGroup) {
@@ -2469,6 +2484,11 @@ const panelStyle = computed(() => ({
         <!-- ═══ HELP TAB ═══ -->
         <div v-if="filter === 'help'" class="nge-cl-list">
 
+          <!-- Team mode: two or more players on one cell, live. -->
+          <button class="nge-cl-help-open-btn nge-cl-team-btn" @click="teamUp"
+                  title="Work on the cell in your view together with other players, live. You invite them by name.">
+            <span class="nge-cl-help-open-plus">👥</span> Team up on this cell
+          </button>
           <!-- Always-visible quick-add: submit a new help request from the top -->
           <!-- Collapsed by default: a permanently-open form at the top of the
                tab read as an alert rather than an action. -->
@@ -2641,6 +2661,11 @@ const panelStyle = computed(() => ({
                       @click="jumpToReq(req)"
                       :title="!group.isCurrent ? `Switch to ${group.label} and jump` : 'Jump to segment'"
                     >↗</button>
+                    <!-- Mentor mode: offer to join the asker's view. They accept or decline. -->
+                    <button v-if="req.userId && req.userId !== backend.userId" class="nge-cl-btn nge-cl-btn--join"
+                            :disabled="offeredTo.has(req.id)"
+                            :title="offeredTo.has(req.id) ? 'Offer sent. Waiting for them to accept.' : `Offer to join ${req.userName || 'their'} view and help, live. They choose whether to accept.`"
+                            @click="offerToJoin(req)">{{ offeredTo.has(req.id) ? 'Offered' : 'Join' }}</button>
                     <button class="nge-cl-btn nge-cl-btn--respond" @click="toggleResponseForm(req.id)" :title="respondingTo === req.id ? 'Cancel' : 'Respond'">
                       {{ respondingTo === req.id ? '▾' : '💬' }}
                     </button>
@@ -4208,6 +4233,9 @@ const panelStyle = computed(() => ({
 
 /* ── Help quick-add bar (always visible at top of Help list) ── */
 /* Collapsed state: a quiet action button rather than a standing panel. */
+.nge-cl-team-btn { margin-bottom: 6px; }
+.nge-cl-btn--join { color: #9fe8c0; border-color: rgba(93, 255, 160, 0.35); }
+.nge-cl-btn--join:disabled { opacity: 0.6; cursor: default; }
 .nge-cl-help-open-btn {
   display: flex;
   align-items: center;
