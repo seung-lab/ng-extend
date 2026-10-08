@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-09T14:00:00Z",
+      "title": "Loyalty Achievements",
+      "items": [
+        "Loyalty Achievements are here: one for each milestone of days you do science in Pyr, from your second day to a full year.",
+        "Your days add up forever and never have to be in a row, so taking a break costs you nothing.",
+        "Find them in the Trophy Case on your profile, with a count of the days to your next one."
+      ]
+    },
+    {
       "at": "2026-10-08T21:27:00Z",
       "title": "Tutorial Achievements and small fixes",
       "items": [
