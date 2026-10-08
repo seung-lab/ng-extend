@@ -373,6 +373,11 @@ onUnmounted(() => {
                   <span v-if="hasList && progress" class="nge-dsp-mine-share">{{ shareText(mine.cells, progress.total) }} of the dataset</span>
                 </template>
               </div>
+              <!-- Two honest numbers that differ (Nseraf 2026-10-07: 4,805 here,
+                   760 in his profile): say which one this is. -->
+              <div v-if="hasList && mine.cells !== null" class="nge-dsp-mine-note">
+                Counted from the lab's spreadsheet, so it includes cells finished before Pyr. A profile counts only cells completed in Pyr.
+              </div>
               <div v-if="hasList || !outsideCells || mine.edits" class="nge-dsp-mine-row">
                 <span class="nge-dsp-mine-key">Edits</span>
                 <span v-if="mine.edits === null" class="nge-dsp-mine-na">not available</span>
@@ -601,6 +606,7 @@ onUnmounted(() => {
 .nge-dsp-type-of { color: #8fa0b6; }
 
 /* ── Your part ── */
+.nge-dsp-mine-note { margin: -2px 0 6px; font-size: 11px; line-height: 1.4; color: rgba(220, 230, 245, 0.55); }
 .nge-dsp-section--mine {
   padding: 12px 14px; border: 1px solid rgba(255, 195, 110, 0.22); border-radius: 8px;
   background: rgba(255, 195, 110, 0.04);

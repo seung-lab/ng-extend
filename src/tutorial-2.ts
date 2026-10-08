@@ -396,7 +396,7 @@ Now it's time to add some annotations! Select the <span style="color: white; bac
     text: `
 Great! Click the "○" button to select the single point annotation.
 
-⚠️<em>You must always choose an annotation type after creating a new annotation layer.</em>`,
+A new annotation layer starts with the point tool already picked. Use these buttons whenever you want a different kind of annotation.`,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div.neuroglancer-tab-content.neuroglancer-annotations-tab > div > div.neuroglancer-annotation-toolbox",
       side: "left",

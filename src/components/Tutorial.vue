@@ -89,22 +89,39 @@ async function awardBadgeIfNew(tutorialNum: number) {
         };
     }
 
-    // Persist to Supabase: self-award the special badge, then announce it.
+    await persistTutorialAward(tutorialNum);
+}
+
+/**
+ * Record a tutorial's award for the signed in player, and say so (a
+ * notification and a line in chat) the first time.
+ *
+ * The list of awards used to be loaded only when the Admin Hub opened, so for
+ * every player who is not an admin the award was looked up in an empty list
+ * and silently never recorded: by 2026-10-08 nobody held Mini Michelangelo or
+ * Safety Scissors. The list is now fetched here when it is not there yet.
+ */
+async function persistTutorialAward(tutorialNum: number) {
+    const badge = BADGE_KEYS[tutorialNum];
+    if (!badge) return;
+    const backend = useProofreadingBackendStore();
     try {
         if (!backend.userId) return;
+        if (!backend.specialBadges.length) await backend.loadSpecialBadges();
 
-        // The badge must exist as a special_badges row (Citizen Scientist /
-        // Advanced Operator). If it doesn't, there's nothing to persist — the
-        // award silently no-ops until those rows are created.
+        // The award must exist as a special_badges row. If it does not, there
+        // is nothing to record.
         const matchingBadge = backend.specialBadges.find(
             (b: any) => b.name === badge.title || b.slug === badge.key
         );
         if (!matchingBadge) return;
 
-        // Announce (notification) ONLY when this is a genuinely new award, so
-        // replaying the tutorial doesn't insert duplicate "New Achievement"
-        // rows. The upsert itself is idempotent.
+        // Announce ONLY when this is a genuinely new award, so replaying the
+        // tutorial does not repeat it. The list is read fresh first: at sign
+        // in it may not have arrived yet. The upsert itself is idempotent.
+        await backend.loadMySpecialBadges();
         const alreadyAwarded = backend.mySpecialBadges.some((a: any) => a.badge_id === matchingBadge.id);
+        if (alreadyAwarded) return;
 
         // Direct insert (no admin check) for tutorial self-awards.
         await supabase.from('special_badge_awards').upsert({
@@ -114,21 +131,32 @@ async function awardBadgeIfNew(tutorialNum: number) {
             reason: `Completed Tutorial ${tutorialNum}`,
         }, { onConflict: 'badge_id,user_id' });
         await backend.loadMySpecialBadges();
-        // and in chat, the first time (the server posts it once)
-        if (!alreadyAwarded) backend.announceAchievement('special', matchingBadge.id);
-
-        if (!alreadyAwarded) {
-            await backend.createSelfNotification({
-                title: `🏆 New Achievement: ${badge.title}`,
-                body: `You completed the ${TUTORIAL_NAMES[tutorialNum] ?? ''} tutorial and earned the "${badge.title}" achievement. Congratulations!`,
-                image_url: badge.image,
-                thumbnail_url: badge.image,
-            });
-        }
+        // Only if it was really recorded.
+        if (!backend.mySpecialBadges.some((a: any) => a.badge_id === matchingBadge.id)) return;
+        // and in chat (the server posts it once)
+        backend.announceAchievement('special', matchingBadge.id);
+        await backend.createSelfNotification({
+            title: `🏆 New Achievement: ${badge.title}`,
+            body: `You completed the ${TUTORIAL_NAMES[tutorialNum] ?? ''} tutorial and earned the "${badge.title}" achievement. Congratulations!`,
+            image_url: badge.image,
+            thumbnail_url: badge.image,
+        });
     } catch (e) {
         console.warn('[tutorial] badge persistence error:', e);
     }
 }
+
+// Players who finished a tutorial while the award could not be recorded (see
+// above) get it the next time they sign in: this browser remembers which
+// tutorials it celebrated, and each of those is recorded if it is missing.
+watch(() => useProofreadingBackendStore().userId, async id => {
+    if (!id) return;
+    for (const n of Object.keys(BADGE_KEYS).map(Number)) {
+        let earned = false;
+        try { earned = !!localStorage.getItem(BADGE_KEYS[n].key); } catch { /* no storage */ }
+        if (earned) await persistTutorialAward(n);
+    }
+}, { immediate: true });
 
 const next = () => {
     const isLastStep = activeStep.value?.last;

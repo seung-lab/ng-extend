@@ -1011,8 +1011,7 @@ function toggleCollapse() {
                      @click="openAchievement(msg)" @keydown.enter="openAchievement(msg)">
                   <img v-if="achArt(msg)" class="nge-chat-ach-art" :src="achArt(msg)" alt="" />
                   <span v-else class="nge-chat-ach-star" aria-hidden="true">★</span>
-                  <span><b>{{ shortName(msg.name) }}</b> earned <b class="nge-chat-ach-name">{{ achievementOf(msg)?.name }}</b></span>
-                  <span class="nge-chat-ach-why">{{ achWhy(msg) }}</span>
+                  <span><b>{{ shortName(msg.name) }}</b> earned <b class="nge-chat-ach-name">{{ achievementOf(msg)?.name }}</b> <span class="nge-chat-ach-why">{{ achWhy(msg) }}</span></span>
                 </div>
 
                 <!-- Announcement: carries a notification id, so the whole
@@ -1746,7 +1745,7 @@ function toggleCollapse() {
 .nge-chat-sys--warn { color: #c08030; }
 /* an achievement line: quiet like the other asides, but upright, with its art, and clickable */
 .nge-chat-ach {
-  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 7px;
   font-style: normal; color: #9aa6ba; cursor: pointer; border-radius: 4px;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -1757,7 +1756,7 @@ function toggleCollapse() {
 .nge-chat-ach--special .nge-chat-ach-name { color: #b9c8ff; }
 .nge-chat-ach-star { width: 22px; text-align: center; color: #b9c8ff; flex: 0 0 auto; }
 .nge-chat-ach-art { width: 22px; height: 22px; object-fit: contain; flex: 0 0 auto; }
-.nge-chat-ach-why { font-size: 11px; color: #6a7282; }
+.nge-chat-ach-why { font-size: 11px; color: #6a7282; margin-left: 3px; white-space: nowrap; }
 
 /* Time separator */
 .nge-chat-time-sep {
