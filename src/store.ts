@@ -3694,6 +3694,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (!activeTaskId.value || !userId.value) return;
     const taskId = activeTaskId.value;
     try {
+      // Take the player's name off the cell's row in the sheet first, while
+      // the claim is still theirs (the server only writes a row for the
+      // player who holds it). A sheet that cannot be reached must not stop
+      // the release: the claim is let go either way.
+      const mine = tasks.value.find(t => t.id === taskId);
+      if (mine?.segment_id) {
+        await syncCellToSheet('release', String(mine.segment_id), undefined, (mine as any).dataset)
+          .catch((e: any) => console.warn('[backend] sheet not updated on release:', e?.message));
+      }
       await taskAction('release', { id: taskId });
       tellScripts('release', taskId);
 

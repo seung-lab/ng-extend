@@ -21,7 +21,7 @@ export function completeStatusesFor(dataset?: string | null) {
 /** Only the server holds Sheets credentials and chooses the destination/range. */
 /** `link` and `notes` (complete only) fill the sheet's "Final Link" and
  *  "Notes" columns; the server never overwrites a filled cell. */
-export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinates', segmentId: string, coordinates?: string, sourceDataset?: string, link?: string, notes?: string, status?: string) {
+export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinates' | 'release', segmentId: string, coordinates?: string, sourceDataset?: string, link?: string, notes?: string, status?: string) {
   const dataset = canonicalDataset(sourceDataset || currentDatasetTag());
   if (!['pinky_nf_v2', 'stroeh_mouse_retina', 'pni_mec'].includes(dataset)) return;
   let token: string | null = null;

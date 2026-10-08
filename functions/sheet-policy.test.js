@@ -143,3 +143,27 @@ test('the sheet keeps the spelling it already has for a player, and never swaps 
  assert.equal(nameOf({id:'kk',username:'celiad',display_name:'Celia D',sheet_name:''}),'Celia D');
  assert.equal(nameOf({id:'kk',username:'celiad',display_name:''}),'celiad');
 });
+test('releasing a claim takes the player\'s own name off the row, and nothing else',()=>{
+ const rel={dataset:'stroeh_mouse_retina',segmentId:'123',action:'release'};
+ const annkri={id:'mine',display_name:'annkri',username:'Annkri'};
+ const held={assigned_to:'mine',dataset:rel.dataset,segment_id:'123',status:'in_progress'};
+ const head=['Start SegID','Proofreader','Status','Date Started','Notes'];
+ const plan=(row,who=annkri,t=held)=>planSheetUpdate([head,row],'cells','123',sheetValues(rel,who,t,'now'));
+ // Her name, in either spelling, on an open claim: cleared, with the start date.
+ assert.deepEqual(plan(['123','Annkri','','10/8/2026','keep me']).data,[{range:"'cells'!B2",values:[['']]},{range:"'cells'!D2",values:[['']]}]);
+ assert.deepEqual(plan(['123','annkri','WIP','','']).data,[{range:"'cells'!B2",values:[['']]}]);
+ // Someone else's name stays, and so does its start date.
+ assert.deepEqual(plan(['123','Nseraf','','10/8/2026','']).data,[]);
+ // A row waiting on a gamemaster or already finished keeps its name.
+ assert.deepEqual(plan(['123','Annkri','Need Help','','']).data,[]);
+ assert.deepEqual(plan(['123','Annkri','Complete (cut off)','','']).data,[]);
+ assert.deepEqual(plan(['123','Annkri',"Can't Complete",'','']).data,[]);
+ // Nothing to clear: nothing written.
+ assert.deepEqual(plan(['123','','','','']).data,[]);
+ // Only the player who holds the claim, and never a completed cell.
+ assert.throws(()=>sheetValues(rel,annkri,{...held,assigned_to:'someone-else'},'now'));
+ assert.throws(()=>sheetValues(rel,annkri,{...held,status:'completed'},'now'));
+ assert.throws(()=>sheetValues(rel,annkri,{...held,status:'pending'},'now'));
+ // The name as the sheet spells it (spaces and capitals aside) counts as hers.
+ assert.deepEqual(plan(['123','KrzysztofKruk','','',''],{id:'mine',display_name:'Krzysztof Kruk'}).data,[{range:"'cells'!B2",values:[['']]}]);
+});

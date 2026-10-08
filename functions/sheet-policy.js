@@ -23,7 +23,7 @@ const norm = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g,'');
 function sourceFor(input) {
   if (!Object.hasOwn(SOURCES,input.dataset)) fail(400,'This dataset has no registered source sheet.');
   if (!/^\d{1,20}$/.test(String(input.segmentId))) fail(400,'Invalid segment ID.');
-  if (!['claim','complete','coordinates'].includes(input.action)) fail(400,'Invalid sheet action.');
+  if (!['claim','complete','coordinates','release'].includes(input.action)) fail(400,'Invalid sheet action.');
   return SOURCES[input.dataset];
 }
 /** Letters and digits only, lower case: "Krzysztof Kruk" and "KrzysztofKruk" are one name. */
@@ -57,6 +57,19 @@ function sheetValues(input, me, task, now) {
   if (!me || task?.assigned_to !== me.id || task.dataset !== input.dataset || task.segment_id !== input.segmentId) fail(403,'Only your own claimed cell can be synced.');
   if (!['assigned','in_progress','completed'].includes(task.status)) fail(409,'Claim this cell before syncing.');
   if (input.action === 'complete' && task.status !== 'completed') fail(409,'Complete this cell before syncing.');
+  // Letting a claim go takes the player's name off the row again (Annkri
+  // 2026-10-08: "after releasing a cell I am still marked as proofreader in
+  // the sheet"). Sent just BEFORE the claim is released, while it is still
+  // theirs. Only their own name is cleared, however the sheet spells it, and
+  // only on a row that is not finished or waiting on a gamemaster.
+  if (input.action === 'release') {
+    if (task.status === 'completed') fail(409,'A completed cell keeps its proofreader.');
+    const mine = [...new Set([me.sheet_name, me.display_name, me.username].map(nameKey).filter(Boolean))];
+    return [
+      [['proofreader','claimedby'],'',{clearIfName:mine}],
+      [['datestarted','dateclaimed'],'',{clearWithName:true}],
+    ];
+  }
   // The player's name as the sheet already spells it (see sheetSpelling), or
   // their display name. Nobody's name in the sheet is swapped for another one
   // (Ames 2026-10-08: "we don't want to replace their name in the sheet").
@@ -138,10 +151,24 @@ function planSheetUpdate(grid, title, match, fields) {
   // "Empty" for the Proofreader rule includes an in-progress Status: the cell is not finished yet.
   const statusNow=statusCol<0 ? '' : String(grid[row][statusCol]??'').trim();
   const statusEmpty=!statusNow || UNFINISHED_STATUSES.includes(statusNow);
+  // A release may clear a claim that is still open: no Status yet, or WIP.
+  // "Need Help" and every finished Status keep the name they have.
+  const openClaim=!statusNow || statusNow==='WIP';
+  let nameCleared=false;
+  const rangeOf=col=>{let letters='',n=col; do {letters=String.fromCharCode(65+n%26)+letters; n=Math.floor(n/26)-1;} while(n>=0); return `'${title.replace(/'/g,"''")}'!${letters}${row+1}`;};
   for(const [patterns,value,opts] of fields) {
     const col=firstColumn(header,patterns);
     if(col<0) continue;
     const existing=String(grid[row][col]??'').trim();
+    if(opts?.clearIfName) {
+      // Only the releasing player's own name, never someone else's.
+      if(existing && openClaim && opts.clearIfName.includes(nameKey(existing))) { data.push({range:rangeOf(col),values:[['']]}); nameCleared=true; }
+      continue;
+    }
+    if(opts?.clearWithName) {
+      if(existing && nameCleared) data.push({range:rangeOf(col),values:[['']]});
+      continue;
+    }
     // Preserve the sheet owner's existing data. Retrying a write is harmless.
     // Exception: the Proofreader on completion, while Status is still empty.
     // Exception: a Status that only says the cell was in progress.
