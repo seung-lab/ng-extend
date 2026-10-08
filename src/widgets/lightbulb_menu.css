@@ -339,9 +339,9 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(120, 190, 255, 0.35); border-radius: 6px; padding: 3px 0;
 }
 .nge-lb-layers-menu[hidden] { display: none; }
-.nge-lb-layers-item { display: flex; align-items: center; gap: 7px; padding: 3px 9px; font-size: 0.82em; color: #cfdcef; cursor: pointer; }
+.nge-lb-layers-item { display: flex; align-items: center; justify-content: flex-start; gap: 7px; padding: 3px 9px; font-size: 0.82em; color: #cfdcef; cursor: pointer; text-align: left; margin: 0; }
 .nge-lb-layers-item:hover { background: rgba(70, 160, 255, 0.14); }
-.nge-lb-layers-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nge-lb-layers-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; text-align: left; }
 .nge-lb-layers-item input { flex-shrink: 0; accent-color: #4a9eff; margin: 0; }
 .nge-lb-layers-item--all { border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 5px; margin-bottom: 2px; font-weight: 600; }
 .nge-lb-help-btn {

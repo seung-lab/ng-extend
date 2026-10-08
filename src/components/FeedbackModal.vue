@@ -403,7 +403,7 @@ onBeforeUnmount(() => {
         <div class="nge-fb-hint">Found a bug or have an idea? Tell us, it goes straight to the team.</div>
         <!-- Behind the live version: the bug may already be fixed (Ames 2026-10-07). -->
         <div v-if="version.newer" class="nge-fb-update" role="status">
-          <span>A newer version of EyeWire II is out. Reload first: what you are seeing may already be fixed.</span>
+          <span>A newer version of Pyr is out. Reload first: what you are seeing may already be fixed.</span>
           <button type="button" class="nge-fb-update-btn" @click="reloadForUpdate()">Reload now</button>
         </div>
 

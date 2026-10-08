@@ -29,6 +29,12 @@ watch(() => version.newer, async (now, was) => {
 });
 
 function reload() { reloading.value = true; reloadForUpdate(); }
+
+/** The chip lives in the top bar with the other tools, first in the row, so
+ *  it can never sit on top of one. Before sign in there is no such row and it
+ *  floats under the bar instead. */
+const inBar = ref(false);
+watch([() => version.newer, folded], () => { inBar.value = !!document.querySelector('.nge-toolbar-icons'); });
 </script>
 
 <template>
@@ -37,14 +43,16 @@ function reload() { reloading.value = true; reloadForUpdate(); }
       <span class="nge-ver-corner nge-ver-corner--tl" aria-hidden="true"></span>
       <span class="nge-ver-corner nge-ver-corner--br" aria-hidden="true"></span>
       <div class="nge-ver-label"><span class="nge-ver-pip" aria-hidden="true"></span>New version ready</div>
-      <div class="nge-ver-text">EyeWire II was updated while you were here. Reload to get the newest fixes. Your edits are already saved.</div>
+      <div class="nge-ver-text">Pyr was updated while you were here. Reload to get the newest fixes. Your edits are already saved.</div>
       <div class="nge-ver-actions">
         <button type="button" class="nge-ver-btn nge-ver-go" :disabled="reloading" @click="reload">{{ reloading ? 'Reloading' : 'Reload now' }}</button>
         <button type="button" class="nge-ver-btn" @click="folded = true">Later</button>
       </div>
     </div>
-    <button v-else-if="version.newer && folded" type="button" class="nge-ver-chip" :disabled="reloading"
-            title="A newer version of EyeWire II is out. Click to reload and get it." @click="reload">
+  </Teleport>
+  <Teleport v-if="version.newer && folded" :to="inBar ? '.nge-toolbar-icons' : 'body'">
+    <button type="button" class="nge-ver-chip" :class="{ 'nge-ver-chip--bar': inBar }" :disabled="reloading"
+            title="A newer version of Pyr is out. Click to reload and get it." @click="reload">
       <span class="nge-ver-pip" aria-hidden="true"></span>{{ reloading ? 'Reloading' : 'Update ready' }}
     </button>
   </Teleport>
@@ -53,12 +61,13 @@ function reload() { reloading.value = true; reloadForUpdate(); }
 <style>
 .nge-ver, .nge-ver-chip {
   --ver-line: 53, 181, 255;   /* the kit's beam blue, as holo_trace.ts draws it */
-  position: fixed; right: 16px; bottom: 56px; z-index: 10040;
+  /* Top centre: the one stretch of the screen no panel, list or menu uses. */
+  position: fixed; left: 50%; z-index: 10040;
   font-family: 'Inter', system-ui, sans-serif;
   color: #dbe7f7;
 }
 .nge-ver {
-  width: min(300px, calc(100vw - 32px)); padding: 13px 15px 12px;
+  top: 64px; width: 300px; max-width: calc(100vw - 32px); margin-left: max(-150px, calc(-50vw + 16px)); padding: 13px 15px 12px;
   background: linear-gradient(180deg, rgba(13, 22, 40, 0.97), rgba(6, 10, 20, 0.97));
   border: 1px solid rgba(var(--ver-line), 0.34);
   border-radius: 10px;
@@ -67,7 +76,7 @@ function reload() { reloading.value = true; reloadForUpdate(); }
   animation: nge-ver-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 @keyframes nge-ver-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.985); filter: blur(3px); }
+  from { opacity: 0; transform: translateY(-10px) scale(0.985); filter: blur(3px); }
   to { opacity: 1; transform: none; filter: none; }
 }
 /* Corner brackets that settle outward as the panel arrives, then rest. */
@@ -100,7 +109,8 @@ function reload() { reloading.value = true; reloadForUpdate(); }
 .nge-ver-chip {
   display: inline-flex; align-items: center; gap: 7px;
   font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase;
-  padding: 6px 11px; border-radius: 14px; cursor: pointer;
+  top: 58px; transform: translateX(-50%);
+  padding: 6px 11px; border-radius: 14px; cursor: pointer; white-space: nowrap;
   background: rgba(8, 13, 26, 0.95); border: 1px solid rgba(var(--ver-line), 0.5);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -108,5 +118,16 @@ function reload() { reloading.value = true; reloadForUpdate(); }
 @media (prefers-reduced-motion: reduce) {
   .nge-ver, .nge-ver-corner { animation: none; }
 }
-@media (max-width: 700px) { .nge-ver, .nge-ver-chip { right: 10px; bottom: 76px; } }
+/* In the top bar it is one of the row's own items, first in line. */
+.nge-ver-chip.nge-ver-chip--bar { position: static; transform: none; order: -1; margin-right: 8px; flex-shrink: 0; }
+/* The bar strips its buttons bare; this one keeps its outline and its light. */
+#extensionBar .nge-ver-chip.nge-ver-chip--bar {
+  display: inline-flex !important; align-items: center; gap: 7px; width: auto; height: auto;
+  padding: 5px 11px !important; border-radius: 14px !important;
+  background: rgba(8, 13, 26, 0.95) !important; border: 1px solid rgba(var(--ver-line), 0.55) !important;
+  color: #dbe7f7 !important; font: 600 10px 'Orbitron', 'Inter', sans-serif !important; letter-spacing: 0.14em !important;
+}
+#extensionBar .nge-ver-chip.nge-ver-chip--bar:hover:not(:disabled),
+#extensionBar .nge-ver-chip.nge-ver-chip--bar.holo-on { border-color: rgba(var(--ver-line), 0.95) !important; box-shadow: 0 0 12px rgba(var(--ver-line), 0.3); }
+#extensionBar .nge-ver-chip .nge-ver-pip { display: inline-block !important; width: 7px !important; height: 7px !important; border-radius: 50%; background: rgb(var(--ver-line)) !important; box-shadow: 0 0 8px rgba(var(--ver-line), 0.9); }
 </style>
