@@ -2,10 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-08T02:27:00Z",
-      "title": "See what changed",
+      "at": "2026-10-08T16:20:00Z",
+      "title": "Chat awards, calmer loading, easier merging",
       "items": [
-        "The New version ready notice now has an info button that lists what changed, in plain words."
+        "Chat now announces special awards, and you can click the line to see that player's Trophy Case.",
+        "The 2D loading card waits until the view has been still for a moment, so it stays out of the way while you trace.",
+        "Hovering a segment in the Merge Queue lights it up in the 2D and 3D views.",
+        "With merge open, Ctrl+click on an annotation layer places an annotation, so you do not have to close merge first."
       ]
     },
     {
