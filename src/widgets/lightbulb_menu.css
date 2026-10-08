@@ -478,6 +478,36 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   filter: drop-shadow(0 0 6px #B388FFcc);
 }
 
+/* Out of date ID: the cell was edited since and has a new one. Amber, with a
+   mark that reads without relying on color alone. */
+.nge-lb-btn.nge-lb-outdated { position: relative; }
+.nge-lb-btn.nge-lb-outdated::after {
+  content: '!';
+  position: absolute;
+  top: -4px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffb347;
+  color: #1a1206;
+  font: 700 8px/10px 'Inter', system-ui, sans-serif;
+  text-align: center;
+  box-shadow: 0 0 5px rgba(255, 179, 71, 0.8);
+  pointer-events: none;
+}
+.nge-lb-outdated-note {
+  margin: 8px 10px 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 179, 71, 0.55);
+  border-radius: 6px;
+  background: rgba(255, 179, 71, 0.1);
+  color: #ffd9a0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.nge-lb-outdated-note .nge-lb-section-button { margin-top: 6px; }
+
 /* Tint the dots text to match status */
 .nge-lb-btn.nge-lb-complete .nge-lb-dots { color: #66BB6A; }
 .nge-lb-btn.nge-lb-done-unlabeled .nge-lb-dots { color: #42A5F5; }

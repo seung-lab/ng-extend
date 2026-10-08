@@ -12,6 +12,7 @@ import {currentSegLayerName} from '../datasets';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
 import {getSelectedSupervoxelId} from './pcg_service';
 import {startLinkForSegment, openStartLink} from '../util/start_link';
+import {isCurrentId, updateToCurrentId} from '../util/outdated_ids';
 
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
@@ -32,6 +33,16 @@ export class ButtonService {
 
     // Async: fetch CAVE status and update the pip accordingly
     this._refreshButtonStatus(button, localServerURL, segmentIDString);
+
+    // Is this ID still the cell's current one? An edit by anyone gives the
+    // cell a new ID, and an old one in the list kept looking fine. The old
+    // lightbulb said so; this marks the button amber and the menu offers to
+    // update it (Ames 2026-10-08).
+    void isCurrentId(segmentIDString).then(current => {
+      if (current !== false) return;
+      button.classList.add('nge-lb-outdated');
+      button.title = 'This ID is out of date: the cell has been edited since. Click to update it.';
+    });
 
     button.addEventListener('click', (_event: MouseEvent) => {
       const menu = this.makeMenu(button, localServerURL, segmentIDString, dataset);
@@ -269,6 +280,36 @@ export class ButtonService {
     header.appendChild(eyebrow);
     header.appendChild(segIdLabel);
     menu.appendChild(header);
+
+    // ── Out of date ID ────────────────────────────────────────────────────
+    // Shown only when the graph says this ID has been replaced by an edit.
+    const outdated = document.createElement('div');
+    outdated.className = 'nge-lb-outdated-note';
+    outdated.style.display = 'none';
+    const outdatedText = document.createElement('div');
+    outdatedText.textContent = 'This ID is out of date. The cell has been edited since, so it has a new ID.';
+    const outdatedBtn = document.createElement('button');
+    outdatedBtn.classList.add('nge-lb-section-button');
+    outdatedBtn.textContent = 'Update to the current ID';
+    outdatedBtn.addEventListener('click', async () => {
+      outdatedBtn.disabled = true;
+      outdatedBtn.textContent = 'Finding the current ID…';
+      const now = await updateToCurrentId(segmentIDString).catch(() => null);
+      if (!now) {
+        outdatedBtn.disabled = false;
+        outdatedBtn.textContent = 'Update to the current ID';
+        outdatedText.textContent = 'Could not find the current ID just now. Try again in a moment.';
+        return;
+      }
+      // The old row leaves the list with its ID, and this menu with it.
+      contextMenu.hide();
+    });
+    outdated.appendChild(outdatedText);
+    outdated.appendChild(outdatedBtn);
+    menu.appendChild(outdated);
+    void isCurrentId(segmentIDString).then(current => {
+      if (current === false) outdated.style.display = '';
+    });
 
     let cachedStatus: CellStatus|null = (parent as any)._cellStatus ?? null;
 
