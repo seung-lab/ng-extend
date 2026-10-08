@@ -106,7 +106,9 @@ document.addEventListener('animationend', (e) => {
 
 // Merger Sandbox examples (src/merger-sandbox.ts).
 import { SANDBOX_CELLS } from '../practice_pools';
-import { startSandbox, sandboxDone } from '../merger-sandbox';
+import { sandboxDone } from '../merger-sandbox';
+const sandboxCut = computed(() => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length);
+function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbox-next')); }
 
 function closeHamburger() {
   dropdownStore.activeDropdowns['extension-bar-right'] = undefined;
@@ -1117,9 +1119,11 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
              merged view and is done when its two points are on different
              segments. A tick marks the ones this browser has finished. -->
         <li class="nge-menu-heading" @click.stop>Merger Sandbox</li>
-        <li v-for="(c, i) in SANDBOX_CELLS" :key="c.id">
-          <div class="logoutButton button nge-menu-item" @click="startSandbox(i); closeHamburger()">
-            <span class="nge-menu-num">{{ sandboxDone.includes(c.id) ? '✓' : i + 1 }}</span><span>{{ c.title }}</span>
+        <!-- One entry: a merger is assigned, the next free one this player
+             has not cut yet (Ames, 2026-10-08). The count is theirs. -->
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="startNextSandbox(); closeHamburger()">
+            <span class="nge-menu-num">{{ sandboxCut >= SANDBOX_CELLS.length ? '✓' : sandboxCut }}</span><span>Cut the mergers ({{ sandboxCut }} of {{ SANDBOX_CELLS.length }})</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Learn more</li>

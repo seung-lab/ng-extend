@@ -98,13 +98,21 @@ No preset points this time. Stuck? The **?** button shows where they go.`;
     width: "440px",
     onEnter: async () => {
       closeSidePanel();
-      const mine = cell();
       stopWatching();
-      const got = await movingToSandbox('Merger Sandbox', () => beginPractice('cut', 'start', { only: mine.id }));
+      // One merger is assigned at a time, and players work in parallel
+      // (Ames, 2026-10-08): if this one is taken, the next free one this
+      // player has not cut is given instead, then any free one.
+      const order = [current, ...SANDBOX_CELLS.map((_, i) => i).filter(i => i !== current)]
+        .sort((a, b) => Number(sandboxDone.value.includes(SANDBOX_CELLS[a].id)) - Number(sandboxDone.value.includes(SANDBOX_CELLS[b].id)));
+      const got = await movingToSandbox('Merger Sandbox', async () => {
+        for (const i of order) {
+          const cellRow = await beginPractice('cut', 'start', { only: SANDBOX_CELLS[i].id });
+          if (cellRow) { current = i; return cellRow; }
+        }
+        return null;
+      });
       if (!got) {
-        const other = nextUndone();
-        practiceStatus(`Someone else is working on merger ${current + 1} right now, or it is being reset. `
-          + (other >= 0 && other !== current ? `Try merger ${other + 1} from the burger menu meanwhile.` : 'Try again in a few minutes.'));
+        practiceStatus(`Every merger is being worked on by someone else right now, or is being reset. Try again in a few minutes.`);
         return;
       }
       // Watch only once the cell is held: with nothing held, the watch
