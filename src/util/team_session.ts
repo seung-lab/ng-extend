@@ -37,6 +37,7 @@ import { StatusMessage } from 'neuroglancer/status';
 
 export type TeamMode = 'mentor' | 'team';
 export interface TeamMember { id: string; name: string; color: string; pos?: number[]; }
+export interface TeamChatLine { by: string; name: string; color: string; text: string; at: number; }
 export interface TeamInvite { from: { id: string; name: string }; room: string; mode: TeamMode; leader: string; dataset: string; note?: string; at: number; }
 
 export const team = reactive({
@@ -51,7 +52,14 @@ export const team = reactive({
   /** The teammate whose camera this player's view is following, or ''. */
   following: '',
   note: '',
+  /** Team chat: what the members of this session say to each other. It goes
+   *  only to the people in the session and is not stored anywhere
+   *  (Ames 2026-10-07: "a separate private message group for the team"). */
+  chat: [] as TeamChatLine[],
+  /** Lines that arrived while the chat was folded away. */
+  unread: 0,
 });
+export const TEAM_CHAT_MAX = 240;
 
 const POS_LAYER = 'Teammates';
 const SKIP_LAYERS = new Set([POS_LAYER, 'Highlight start']);
@@ -249,7 +257,7 @@ async function joinRoom(id: string, mode: TeamMode, leader: string) {
     // And everyone says again where they are, so Jump works for the newcomer at once.
     if (arrived) lastSent = '';
   });
-  for (const ev of ['state', 'cell', 'marks', 'pos', 'complete', 'bye']) {
+  for (const ev of ['state', 'cell', 'marks', 'pos', 'complete', 'bye', 'chat']) {
     room.on('broadcast', { event: ev }, (m: any) => { try { onRoom(ev, m.payload || {}); } catch (e) { console.warn('[team]', ev, e); } });
   }
   await new Promise<void>(resolve => {
@@ -271,6 +279,20 @@ async function joinRoom(id: string, mode: TeamMode, leader: string) {
   startTicker();
 }
 
+function pushChat(line: TeamChatLine) {
+  team.chat.push(line);
+  if (team.chat.length > 200) team.chat.splice(0, team.chat.length - 200);
+}
+/** Say something to the team. Only the people in the session receive it. */
+export function sendTeamChat(text: string): boolean {
+  const t = String(text || '').slice(0, TEAM_CHAT_MAX).trim();
+  if (!t || !team.room || !room) return false;
+  const self = me();
+  send('chat', { text: t, name: self.name });
+  pushChat({ by: self.id, name: self.name, color: colorOf(self.id), text: t, at: Date.now() });
+  return true;
+}
+
 export async function leaveTeam() {
   if (!room && !team.room) return;
   stopTicker();
@@ -280,6 +302,7 @@ export async function leaveTeam() {
   room = null;
   for (const w of team.waiting) void sendTo(w.id, { t: 'cancel', from: me(), room: team.room });
   team.room = ''; team.members = []; team.waiting = []; team.following = ''; team.leader = '';
+  team.chat = []; team.unread = 0;
   synced = false;
   forget();
   removePosLayer();
@@ -334,6 +357,14 @@ function onRoom(event: string, p: any) {
     if (team.following === by) applyView(p);
   } else if (event === 'complete') {
     creditCompletion(p);
+  } else if (event === 'chat') {
+    const text = String(p.text || '').slice(0, TEAM_CHAT_MAX).trim();
+    const by = String(p.by || '');
+    if (text && by) {
+      const m = team.members.find(x => x.id === by);
+      pushChat({ by, name: m?.name || String(p.name || 'Teammate').slice(0, 40), color: m?.color || colorOf(by), text, at: Date.now() });
+      team.unread++;
+    }
   } else if (event === 'bye') {
     // Said on the way out, so nobody waits for the service to notice.
     const gone = team.members.find(x => x.id === by);
@@ -617,4 +648,4 @@ function installWatchers() {
 }
 
 // For player scripts and for testing two players side by side.
-try { (window as any).ngeTeam = { team, teamAccess, startTeam, invite, acceptInvite, declineInvite, leaveTeam, jumpTo, follow }; } catch { /* no window */ }
+try { (window as any).ngeTeam = { team, teamAccess, sendTeamChat, startTeam, invite, acceptInvite, declineInvite, leaveTeam, jumpTo, follow }; } catch { /* no window */ }

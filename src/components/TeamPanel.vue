@@ -5,9 +5,9 @@
  * session, with Jump to, Follow, Invite and Leave. Nothing shows while a
  * player is in no session and has no invitation.
  */
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useProofreadingBackendStore } from '../store';
-import { team, startTeamInbox, startTeam, invite, acceptInvite, declineInvite, leaveTeam, jumpTo, follow } from '../util/team_session';
+import { team, startTeamInbox, startTeam, invite, acceptInvite, declineInvite, leaveTeam, jumpTo, follow, sendTeamChat, TEAM_CHAT_MAX } from '../util/team_session';
 import { findDatasetByCanonical } from '../datasets';
 
 const backend = useProofreadingBackendStore();
@@ -35,6 +35,19 @@ async function inviteUser(u: { id: string; display_name: string; username: strin
   await invite({ id: u.id, name: u.username || u.display_name || 'Player' }, team.mode);
   query.value = ''; found.value = []; inviting.value = false;
 }
+
+// ── Team chat: only the people in this session, nothing stored ──────────
+const chatOpen = ref(true);
+const chatText = ref('');
+const chatList = ref<HTMLElement | null>(null);
+function sayToTeam() {
+  if (sendTeamChat(chatText.value)) chatText.value = '';
+}
+watch(() => team.chat.length, () => {
+  if (chatOpen.value) team.unread = 0;
+  void nextTick(() => { const el = chatList.value; if (el) el.scrollTop = el.scrollHeight; });
+});
+watch(chatOpen, open => { if (open) { team.unread = 0; void nextTick(() => { const el = chatList.value; if (el) el.scrollTop = el.scrollHeight; }); } });
 
 // "Team up" elsewhere in the game opens a session with the invite box ready.
 document.addEventListener('nge:team-start', (async () => {
@@ -102,6 +115,24 @@ document.addEventListener('nge:team-start', (async () => {
           <div v-else-if="query.trim().length >= 2" class="nge-team-empty">No player by that name.</div>
         </template>
       </div>
+      <!-- Team chat. -->
+      <div class="nge-team-chat">
+        <button type="button" class="nge-team-chat-head" :aria-expanded="chatOpen ? 'true' : 'false'" @click="chatOpen = !chatOpen">
+          <span>{{ team.mode === 'mentor' ? 'Help chat' : 'Team chat' }}</span>
+          <span v-if="!chatOpen && team.unread" class="nge-team-chat-unread">{{ team.unread }}</span>
+          <span class="nge-team-chat-caret" aria-hidden="true">{{ chatOpen ? '▾' : '▸' }}</span>
+        </button>
+        <template v-if="chatOpen">
+          <div ref="chatList" class="nge-team-chat-list" role="log" aria-live="polite">
+            <div v-if="!team.chat.length" class="nge-team-empty">Only the people in this session see what is said here. Nothing is saved.</div>
+            <div v-for="(c, i) in team.chat" :key="i" class="nge-team-chat-line">
+              <b :style="{ color: c.color }">{{ c.by === myId ? 'You' : c.name }}</b> <span>{{ c.text }}</span>
+            </div>
+          </div>
+          <input v-model="chatText" class="nge-team-input" :placeholder="team.mode === 'mentor' ? 'Message each other' : 'Message your team'" aria-label="Message this session" :maxlength="TEAM_CHAT_MAX"
+                 enterkeyhint="send" @keydown.stop @keyup.stop @keypress.stop @keydown.enter.prevent.stop="sayToTeam" />
+        </template>
+      </div>
       <div class="nge-team-foot">The cell, every annotation layer and where you are looking are shared with this session.</div>
     </div>
   </Teleport>
@@ -133,6 +164,14 @@ document.addEventListener('nge:team-start', (async () => {
   width: 232px; padding: 9px 10px 8px;
 }
 .nge-team-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.nge-team-chat { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 6px; }
+.nge-team-chat-head { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; padding: 0 0 4px; color: #9fb3cc; font: inherit; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; }
+.nge-team-chat-head:focus-visible { outline: 2px solid #6cf; outline-offset: 2px; }
+.nge-team-chat-caret { margin-left: auto; opacity: 0.7; }
+.nge-team-chat-unread { background: #ff7aa8; color: #1a0a12; border-radius: 9px; padding: 0 6px; font-size: 10.5px; }
+.nge-team-chat-list { max-height: 150px; overflow-y: auto; margin-bottom: 5px; font-size: 12.5px; line-height: 1.35; }
+.nge-team-chat-line { padding: 1px 0; overflow-wrap: anywhere; }
+.nge-team-chat-line span { color: #dbe7f7; }
 .nge-team-live { width: 7px; height: 7px; border-radius: 50%; background: #5dffa0; box-shadow: 0 0 6px #5dffa0; flex-shrink: 0; }
 .nge-team-title { font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #7cc4ff; flex: 1; }
 .nge-team-members { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
