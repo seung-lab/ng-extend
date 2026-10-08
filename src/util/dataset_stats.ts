@@ -148,8 +148,8 @@ export async function loadDatasetStats(ds: DatasetEntry, me?: { id: string | nul
 
   // No cell list in the game: the dataset's own records are the only count
   // of cells there is (Ames 2026-10-06, BANC showed 0 beside 1,939 on the
-  // Datasets tab). The person's number is the Datasets tab's number, from
-  // the same helper.
+  // Datasets tab). The person's number is cells completed in the game only
+  // (Ames's hard rule, 2026-10-07), from the Datasets tab's helper.
   let outsideCells: number | null = null;
   if (progress && progress.total === 0) {
     try {

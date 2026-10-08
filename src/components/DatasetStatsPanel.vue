@@ -391,7 +391,7 @@ onUnmounted(() => {
               </div>
             </div>
             <div v-if="hasList" class="nge-dsp-foot">Cells are the ones under {{ props.person ? 'their' : 'your' }} name in the cell list.</div>
-            <div v-else-if="outsideCells" class="nge-dsp-foot">Cells are the ones this dataset's own records credit to {{ props.person ? 'them' : 'you' }}.</div>
+            <div v-else-if="outsideCells" class="nge-dsp-foot">Cells are the ones {{ props.person ? 'they' : 'you' }} completed in the game. The number above is from the dataset's own records and counts work done outside it.</div>
           </section>
         </template>
       </div>
