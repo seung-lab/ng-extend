@@ -29,7 +29,7 @@ import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
-import { teamsState, createTeam } from '../util/teams';
+import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
@@ -1606,6 +1606,9 @@ async function teamUpOnClaim(cell: typeof cells.value[0]) {
 /** Sessions are for players with production access: the buttons are not
  *  offered to someone known not to have it. */
 const teamAllowed = computed(() => teamAccess() !== false);
+/** Team play shows only on the dataset it is being tried on (util/teams.ts). */
+const teamsHere = computed(() => teamAllowed.value && teamsOnDataset(activeDataset.value || getCurrentDatasetName()));
+watch(teamsHere, here => { if (!here && filter.value === 'teams') filter.value = 'mine'; });
 
 /** The dataset header's "switch here" (Amy: the old "jump switches" tag
  *  looked like a button and did nothing). Switch datasets and open the group. */
@@ -2117,6 +2120,12 @@ const visibleTabs = ref<string[]>((() => {
     if (Array.isArray(saved) && saved.length) {
       // AI was hidden for everyone on 2026-09-26 (Amy); do it once for tab
       // lists saved before then. It stays available in the gear picker.
+      // Teams arrived 2026-10-08: a tab list saved before then gets it once.
+      // It stays removable in the gear picker.
+      if (!localStorage.getItem('nge_cl_tabs_teams_added_v1')) {
+        localStorage.setItem('nge_cl_tabs_teams_added_v1', '1');
+        if (!saved.includes('teams')) { saved.push('teams'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
+      }
       if (!localStorage.getItem('nge_cl_tabs_ai_hidden_v1')) {
         localStorage.setItem('nge_cl_tabs_ai_hidden_v1', '1');
         const next = saved.filter((k: string) => k !== 'ai');
@@ -2482,7 +2491,7 @@ const panelStyle = computed(() => ({
                       title="Questions from other proofreaders">
                 Help <b>{{ pendingHelp.length }}</b>
               </button>
-              <button v-if="tabShown('teams')" :class="{ active: filter === 'teams', 'nge-cl-teams-tab': true }" @click="filter = 'teams'"
+              <button v-if="teamsHere && tabShown('teams')" :class="{ active: filter === 'teams', 'nge-cl-teams-tab': true }" @click="filter = 'teams'"
                       title="Two to four players on one cell, each working when they can">
                 Teams <b v-if="teamInvites">{{ teamInvites }}</b>
               </button>
@@ -2542,7 +2551,7 @@ const panelStyle = computed(() => ({
         <div v-if="filter === 'help'" class="nge-cl-list">
 
           <!-- Team mode: two or more players on one cell, live. -->
-          <button v-if="teamAllowed" class="nge-cl-help-open-btn nge-cl-team-btn" @click="teamUp"
+          <button v-if="teamsHere" class="nge-cl-help-open-btn nge-cl-team-btn" @click="teamUp"
                   title="Work on the cell in your view together with other players, live. You invite them by name.">
             <span class="nge-cl-help-open-plus">👥</span> Team up on this cell
           </button>
@@ -2881,7 +2890,7 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- ═══ TEAMS TAB (saved teams: two to four players on one cell) ═══ -->
-        <div v-else-if="filter === 'teams'" class="nge-cl-list">
+        <div v-else-if="filter === 'teams' && teamsHere" class="nge-cl-list">
           <teams-tab />
         </div>
 
@@ -3332,7 +3341,7 @@ const panelStyle = computed(() => ({
               ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
 
               <button
-                v-if="isMyClaim(cell) && teamAllowed && cell.status !== 'completed'"
+                v-if="isMyClaim(cell) && teamsHere && teamsOnDataset(cell.dataset) && cell.status !== 'completed'"
                 class="nge-cl-btn nge-cl-btn--team"
                 :disabled="teamingUp === cellKey(cell)"
                 @click="teamUpOnClaim(cell)"

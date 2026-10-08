@@ -26,6 +26,16 @@ export interface SavedTeam {
   mine: 'invited' | 'requested' | 'joined' | null; celebrate: boolean; members: SavedTeamMember[];
 }
 
+/**
+ * Team play is being tried on one dataset first (Ames 2026-10-08: "it should
+ * only show on MEC while we are testing"). Everywhere else the Team up
+ * buttons and the Teams tab do not appear. Null opens it on every dataset.
+ */
+export const TEAMS_TESTING_ON: string | null = 'pni_mec';
+export function teamsOnDataset(raw: string | null | undefined): boolean {
+  return TEAMS_TESTING_ON == null || canonicalDataset(raw || currentDatasetTag()) === TEAMS_TESTING_ON;
+}
+
 export const teamsState = reactive({
   /** False until supabase-teams.sql has been run: the tab then says so. */
   installed: true,
