@@ -1164,6 +1164,17 @@ function cancelTool() {
     linear-gradient(158deg, rgb(15 18 24 / .96) 0%, rgb(6 10 18 / .98) 100%);
   border-top-color: rgb(var(--smo-rgb) / .6);
 }
+/* Swapping colour: the pill that becomes active lands once, a small
+   overshoot and one ring in its own colour, and is still. It used to flash a
+   white ring three times (Ames 2026-10-08: "it doesn't need to pulse so
+   much ... simpler and more satisfying"). */
+.nge-smo-groups--pulse .nge-smo-group.active { animation: nge-smo-group-land .42s cubic-bezier(.2, 1.35, .4, 1) 1; }
+@keyframes nge-smo-group-land {
+  0%   { transform: scale(.94); box-shadow: 0 0 0 0 rgb(var(--smo-rgb) / .75), inset 0 0 10px rgb(var(--smo-rgb) / .14); }
+  60%  { transform: scale(1.11); }
+  100% { transform: scale(1.08); box-shadow: 0 0 0 9px rgb(var(--smo-rgb) / 0), inset 0 0 10px rgb(var(--smo-rgb) / .14); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-smo-groups--pulse .nge-smo-group.active { animation: none; } }
 /* The G key lights up when it is the next thing to press, and holds still
    (Ames 2026-10-08: "the G should not pulse"). */
 .nge-smo-swap-hint--now kbd,
