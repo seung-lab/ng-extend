@@ -275,8 +275,16 @@ function mapSheetStatus(s?: string): 'pending' | 'in_progress' | 'completed' {
   // 'Complete', 'Complete (cut off)', and 'Not BC' are all dispositioned —
   // treat as done so they don't show as available to claim.
   if (t.includes('complete') || t.includes('done') || t.includes('finished') || t.includes('not bc') || t.includes('notbc')) return 'completed';
-  if (t.includes('progress') || t.includes('claim') || t.includes('working') || t.includes('started')) return 'in_progress';
+  if (sheetHolds(s) || t.includes('progress') || t.includes('claim') || t.includes('working') || t.includes('started')) return 'in_progress';
   return 'pending';
+}
+/** A sheet status that means someone is still on the cell or it is waiting
+ *  for a gamemaster: "Need Help", "WIP". Such a cell is never offered to
+ *  claim, even when its claim in the game has been let go (it showed under
+ *  Available and could be claimed over the player who asked for help,
+ *  2026-10-08). It frees up when the status is cleared in the sheet. */
+function sheetHolds(s?: string): boolean {
+  return /needs?.{0,3}help|\bhelp\b|\bwip\b|work in progress/i.test(s || '');
 }
 
 const cells = computed(() => {
@@ -303,7 +311,10 @@ const cells = computed(() => {
         // Supabase task is source of truth for status/claim when it exists;
         // otherwise fall back to the sheet's own Status column (Stroeh).
         taskId: task?.id ?? null,
-        status: task?.status ?? mapSheetStatus(item.sheetStatus),
+        // ...except a hold in the sheet ("Need Help", "WIP"), which keeps a cell
+        // out of Available even after its claim here was let go.
+        status: (sheetHolds(item.sheetStatus) && (!task || task.status === 'pending')) ? 'in_progress' : (task?.status ?? mapSheetStatus(item.sheetStatus)),
+        sheetHold: sheetHolds(item.sheetStatus) ? (item.sheetStatus || '').trim() : '',
         assignedTo: task?.assigned_to ?? null,
         finalSegId: task?.final_segment_id ?? null,
         completedByName: null as string | null,
@@ -328,6 +339,7 @@ const cells = computed(() => {
         notes: t.notes || '',
         dataset: (t as any).dataset || '',
         sheetAssignee: '',
+        sheetHold: '',
         taskId: t.id,
         status: t.status,
         assignedTo: t.assigned_to,
@@ -352,6 +364,7 @@ const cells = computed(() => {
     notes: t.notes || '',
     dataset: (t as any).dataset || '',
     sheetAssignee: '',
+    sheetHold: '',
     taskId: t.id,
     status: t.status,
     assignedTo: t.assigned_to,
@@ -3319,6 +3332,7 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.segId === jumpedSegId" class="nge-cl-viewing">● viewing</span>
                   <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
+                  <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
               </div>
