@@ -11,7 +11,7 @@ const ewServiceKey = defineSecret("EW_SUPABASE_SERVICE_KEY");
 const {pilotContext, requirePilot} = require("./pilot-access");
 const {authorizePilotData, conflicts:pilotConflicts} = require("./pilot-data");
 const {recordActivity, serverCounts, stripCounters, stripDayCounters} = require("./activity");
-const {achievementRow} = require("./achievements");
+const {achievementRow, specialAwardRow} = require("./achievements");
 
 // Reference docs for the Slack bot — uploaded to Anthropic Files via
 // scripts/upload-bot-docs.js. JSON shape: {"<filename>": "<file_id>"}.
@@ -1860,13 +1860,34 @@ exports.ewSecureWrite = onRequest(
         // reached it and writes the line itself, once per achievement.
         case "chat.achievement": {
           if (!me) throw ewErr(403, "no EyeWire II profile");
-          const totals = (await sb(`users?id=eq.${me.id}&select=total_edits,cells_completed&limit=1`))[0] || {};
-          const line = achievementRow(String(args.track || ""), args.badgeId, totals);
+          // Whose line it is: the caller's own, or, for a special award an
+          // admin has just given, the player it was given to.
+          let who_ = me;
+          let line;
+          if (String(args.track) === "special") {
+            const badgeId = Number(args.badgeId);
+            if (!Number.isInteger(badgeId) || badgeId <= 0) throw ewErr(400, "Unknown award.");
+            const target = typeof args.userId === "string" && args.userId !== me.id ? args.userId : null;
+            if (target) {
+              needAdmin();
+              if (!/^[0-9a-f-]{36}$/i.test(target)) throw ewErr(400, "bad target");
+              who_ = (await sb(`users?id=eq.${target}&select=id,username,display_name&limit=1`))[0];
+              if (!who_) throw ewErr(400, "bad target");
+            }
+            // The award must really exist for that player.
+            const held = await sb(`special_badge_awards?badge_id=eq.${badgeId}&user_id=eq.${who_.id}&select=badge_id&limit=1`);
+            if (!held.length) throw ewErr(400, "Not earned yet.");
+            const badge = (await sb(`special_badges?id=eq.${badgeId}&select=id,name&limit=1`))[0];
+            line = specialAwardRow(badge);
+          } else {
+            const totals = (await sb(`users?id=eq.${me.id}&select=total_edits,cells_completed&limit=1`))[0] || {};
+            line = achievementRow(String(args.track || ""), args.badgeId, totals);
+          }
           if (line.quiet) { out = { announced: false }; break; }
-          const dup = await sb(`chat_messages?user_id=eq.${me.id}&dataset=eq.${encodeURIComponent(line.dataset)}&select=id&limit=1`);
+          const dup = await sb(`chat_messages?user_id=eq.${who_.id}&dataset=eq.${encodeURIComponent(line.dataset)}&select=id&limit=1`);
           if (dup.length) { out = { announced: false, already: true }; break; }
           await sb("chat_messages", { method: "POST", body: JSON.stringify({
-            user_id: me.id, name: me.username || me.display_name || "Player", rank: "achievement", text: line.text, dataset: line.dataset }) });
+            user_id: who_.id, name: who_.username || who_.display_name || "Player", rank: "achievement", text: line.text, dataset: line.dataset }) });
           out = { announced: true };
           break;
         }

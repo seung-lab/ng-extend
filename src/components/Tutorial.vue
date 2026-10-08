@@ -114,6 +114,8 @@ async function awardBadgeIfNew(tutorialNum: number) {
             reason: `Completed Tutorial ${tutorialNum}`,
         }, { onConflict: 'badge_id,user_id' });
         await backend.loadMySpecialBadges();
+        // and in chat, the first time (the server posts it once)
+        if (!alreadyAwarded) backend.announceAchievement('special', matchingBadge.id);
 
         if (!alreadyAwarded) {
             await backend.createSelfNotification({

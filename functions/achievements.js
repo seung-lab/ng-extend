@@ -40,4 +40,16 @@ function achievementRow(track, id, totals) {
   };
 }
 
-module.exports = {achievementRow, COUNTER, QUIET, TABLE};
+/**
+ * The chat row for a special award (the ones an admin gives, and the ones a
+ * tutorial gives). The server has already confirmed the award exists for
+ * that player; this only shapes the row.
+ */
+function specialAwardRow(badge) {
+  const id = Number(badge && badge.id);
+  const name = String((badge && badge.name) || '').trim().slice(0, 80);
+  if (!Number.isInteger(id) || id <= 0 || !name) fail(400, 'Unknown award.');
+  return {text: `earned the ${name} award`, dataset: `achievement:special:${id}`, name};
+}
+
+module.exports = {achievementRow, specialAwardRow, COUNTER, QUIET, TABLE};

@@ -6,7 +6,7 @@
  * Three states: open, collapsed (just input bar), closed (hidden).
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { BADGE_DEFINITIONS, type BadgeDefinition } from '../widgets/badge_definitions';
+import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
 import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI, CHAT_MAX_CHARS, chatTextLength } from '../store';
@@ -644,11 +644,24 @@ function react(id: string, emoji: string) {
 // earns an achievement. Clicking it opens that player's Trophy Case on the
 // achievement, so it can be shown off. Only a row with the server's own rank
 // is drawn this way; a typed message can not pose as one.
-function achievementOf(msg: ChatMessage): BadgeDefinition | null {
+let specialAsked = false;
+interface ChatAchievement { track: string; name: string; art: string; why: string; slug?: string; specialId?: number; }
+function achievementOf(msg: ChatMessage): ChatAchievement | null {
   if (msg.type !== 'message' || msg.rank !== 'achievement') return null;
-  const m = /^achievement:(building|exploration):(\d+)$/.exec(String(msg.dataset || ''));
+  const m = /^achievement:(building|exploration|special):(\d+)$/.exec(String(msg.dataset || ''));
   if (!m) return null;
-  return BADGE_DEFINITIONS.find(b => b.track === m[1] && b.id === Number(m[2])) || null;
+  if (m[1] === 'special') {
+    // A special award (given by an admin, or by a tutorial).
+    // The list of awards is small and public; fetch it the first time one is needed.
+    if (!backendStore.specialBadges.length && !specialAsked) { specialAsked = true; void backendStore.loadSpecialBadges(); }
+    const b: any = backendStore.specialBadges.find((x: any) => Number(x.id) === Number(m[2]));
+    const name = b?.name || (msg.parts.map(p => p.text || '').join('').match(/earned the (.+) award/)?.[1] ?? 'a special award');
+    return { track: 'special', name, art: b?.thumbnail_url || b?.image_url || '', why: 'special award', specialId: Number(m[2]) };
+  }
+  const d = BADGE_DEFINITIONS.find(x => x.track === m[1] && x.id === Number(m[2]));
+  if (!d) return null;
+  const unit = d.track === 'building' ? (d.threshold === 1 ? 'edit' : 'edits') : (d.threshold === 1 ? 'cell' : 'cells');
+  return { track: d.track, name: d.name, art: BADGE_IMAGE_MAP[d.imageKey] || '', why: `${d.threshold.toLocaleString()} ${unit}`, slug: d.slug };
 }
 /** A run by one player is one line: an achievement line is hidden when the
  *  next thing in chat is a newer achievement line from the same player. */
@@ -656,25 +669,22 @@ const foldedAchievements = computed(() => {
   const hidden = new Set<ChatMessage>();
   const list = chatMessages.value.filter(m => m.type !== 'time');
   for (let i = 0; i < list.length - 1; i++) {
-    if (achievementOf(list[i]) && achievementOf(list[i + 1]) && list[i].name === list[i + 1].name) hidden.add(list[i]);
+    // Only within one track: a special award is never folded away, and never
+    // folds an Editor or Cell Completions line.
+    const a = achievementOf(list[i]), b = achievementOf(list[i + 1]);
+    if (a && b && a.track === b.track && a.track !== 'special' && list[i].name === list[i + 1].name) hidden.add(list[i]);
   }
   return hidden;
 });
 const achTrack = (msg: ChatMessage) => achievementOf(msg)?.track || '';
-const achArt = (msg: ChatMessage) => { const d = achievementOf(msg); return d ? BADGE_IMAGE_MAP[d.imageKey] || '' : ''; };
-/** "608 cells" or "1 edit": what the achievement was earned for. */
-function achWhy(msg: ChatMessage): string {
-  const d = achievementOf(msg);
-  if (!d) return '';
-  const unit = d.track === 'building' ? (d.threshold === 1 ? 'edit' : 'edits') : (d.threshold === 1 ? 'cell' : 'cells');
-  return `${d.threshold.toLocaleString()} ${unit}`;
-}
+const achArt = (msg: ChatMessage) => achievementOf(msg)?.art || '';
+const achWhy = (msg: ChatMessage) => achievementOf(msg)?.why || '';
 function openAchievement(msg: ChatMessage) {
   const def = achievementOf(msg);
   if (!def || !msg.userId) return;
   document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: msg.userId, tab: 'trophyCase' } }));
   // once the profile is up, bring that achievement to the front
-  setTimeout(() => document.dispatchEvent(new CustomEvent('nge:profile-show-achievement', { detail: { slug: def.slug } })), 350);
+  setTimeout(() => document.dispatchEvent(new CustomEvent('nge:profile-show-achievement', { detail: { slug: def.slug, specialId: def.specialId } })), 350);
 }
 
 function reactionsOf(msg: ChatMessage) {
@@ -999,7 +1009,8 @@ function toggleCollapse() {
                      role="button" tabindex="0"
                      :title="'See the achievements of ' + msg.name"
                      @click="openAchievement(msg)" @keydown.enter="openAchievement(msg)">
-                  <img class="nge-chat-ach-art" :src="achArt(msg)" alt="" />
+                  <img v-if="achArt(msg)" class="nge-chat-ach-art" :src="achArt(msg)" alt="" />
+                  <span v-else class="nge-chat-ach-star" aria-hidden="true">★</span>
                   <span><b>{{ shortName(msg.name) }}</b> earned <b class="nge-chat-ach-name">{{ achievementOf(msg)?.name }}</b></span>
                   <span class="nge-chat-ach-why">{{ achWhy(msg) }}</span>
                 </div>
@@ -1743,6 +1754,8 @@ function toggleCollapse() {
 .nge-chat-ach b { font-weight: 600; color: #c9d4e6; }
 .nge-chat-ach--building .nge-chat-ach-name { color: #ffd08a; }
 .nge-chat-ach--exploration .nge-chat-ach-name { color: #90fff2; }
+.nge-chat-ach--special .nge-chat-ach-name { color: #b9c8ff; }
+.nge-chat-ach-star { width: 22px; text-align: center; color: #b9c8ff; flex: 0 0 auto; }
 .nge-chat-ach-art { width: 22px; height: 22px; object-fit: contain; flex: 0 0 auto; }
 .nge-chat-ach-why { font-size: 11px; color: #6a7282; }
 

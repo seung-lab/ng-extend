@@ -5012,9 +5012,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Ask the server to announce an achievement in chat. It checks the
    *  achievement is really earned and posts the line once; a refusal or a
    *  failure is silent (the achievement itself is unaffected). */
-  function announceAchievement(track: string, badgeId: number) {
+  function announceAchievement(track: string, badgeId: number, forUserId?: string) {
     if (!userId.value) return;
-    secureWrite('chat.achievement', { track, badgeId }).catch(() => { /* not announced */ });
+    // forUserId: a special award an admin has just given to someone else.
+    secureWrite('chat.achievement', { track, badgeId, ...(forUserId ? { userId: forUserId } : {}) }).catch(() => { /* not announced */ });
   }
 
   async function createSelfNotification(data: {
@@ -5323,6 +5324,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     await loadSpecialBadges();
   }
 
+  /** Most players one award can be announced to in chat at a time. */
+  const CHAT_AWARD_ANNOUNCE_MAX = 5;
   async function awardBadge(badgeId: number, userIds: string[], reason: string = '') {
     if (!isAdmin.value || !userId.value) return;
     const rows = userIds.map(uid => ({
@@ -5330,7 +5333,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }));
     const { error: err } = await supabase.from('special_badge_awards')
       .upsert(rows, { onConflict: 'badge_id,user_id' });
-    if (err) console.warn('[admin] awardBadge error:', err.message);
+    if (err) { console.warn('[admin] awardBadge error:', err.message); return; }
+    // Say so in chat (Ames 2026-10-08), one line per player. An award given
+    // to a whole group at once would fill chat, so only a handful is announced.
+    if (userIds.length <= CHAT_AWARD_ANNOUNCE_MAX) for (const uid of userIds) announceAchievement('special', badgeId, uid);
   }
 
   async function awardBadgeToGroup(badgeId: number, groupId: number, reason: string = '') {

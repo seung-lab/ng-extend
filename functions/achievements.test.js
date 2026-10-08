@@ -1,7 +1,7 @@
 // Announcing achievements in chat: the server's check (achievements.js).
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {achievementRow, TABLE} = require('./achievements');
+const {achievementRow, specialAwardRow, TABLE} = require('./achievements');
 const {readDefinitions} = require('../scripts/build-achievement-thresholds');
 
 test('the server\'s list is the app\'s list', () => {
@@ -29,4 +29,12 @@ test('made up achievements and tracks are refused', () => {
   assert.throws(() => achievementRow('building', 9999, {total_edits: 1e9}), /Unknown achievement/);
   assert.throws(() => achievementRow('loyalty', 201, {total_days: 400}), /Unknown achievement/);
   assert.throws(() => achievementRow('exploration', 1, {cells_completed: 1e9}), /Unknown achievement/);   // id 1 is a building one
+});
+
+test('a special award makes a chat row from the award itself', () => {
+  assert.deepEqual(specialAwardRow({id: 7, name: 'Mini Michelangelo'}),
+    {text: 'earned the Mini Michelangelo award', dataset: 'achievement:special:7', name: 'Mini Michelangelo'});
+  assert.throws(() => specialAwardRow({id: 0, name: 'x'}), /Unknown award/);
+  assert.throws(() => specialAwardRow({id: 3, name: '  '}), /Unknown award/);
+  assert.throws(() => specialAwardRow(null), /Unknown award/);
 });

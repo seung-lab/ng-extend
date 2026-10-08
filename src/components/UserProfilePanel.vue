@@ -303,7 +303,19 @@ onMounted(() => {
 // An achievement line in chat was clicked: bring that achievement to the
 // front of this player's Trophy Case (Ames 2026-10-08, to show them off).
 function onShowAchievement(e: Event) {
-  const slug = (e as CustomEvent).detail?.slug;
+  const { slug, specialId } = (e as CustomEvent).detail || {};
+  if (specialId != null) {
+    // A special award: this player's awards may still be loading, so look a few times.
+    activeTab.value = 'trophyCase';
+    let tries = 0;
+    const pick = () => {
+      const award = profileSpecialBadges.value.find((a: any) => Number(a.badge_id ?? a.badge?.id) === Number(specialId));
+      if (award) { selectedBadge.value = null; selectedSpecialBadge.value = award; }
+      else if (++tries < 12) setTimeout(pick, 300);
+    };
+    pick();
+    return;
+  }
   const def = BADGE_DEFINITIONS.find(b => b.slug === slug);
   if (!def) return;
   activeTab.value = 'trophyCase';
