@@ -3762,7 +3762,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       };
       let result: any = null;
       try {
-        result = await secureWrite('activity.log', { row: logRow });
+        // The server turns a record away with "Please wait" when many land in
+        // the same moment (a batch of up to 20 merges finishing together). It
+        // was refused before anything was written, so sending it again cannot
+        // count an edit twice. Without this the edit was simply never counted.
+        for (let attempt = 0; ; attempt++) {
+          try { result = await secureWrite('activity.log', { row: logRow }); break; }
+          catch (e: any) {
+            if (attempt >= 3 || !/please wait/i.test(e?.message ?? '')) throw e;
+            await new Promise(r => setTimeout(r, 1500 * (attempt + 1) + Math.random() * 1000));
+          }
+        }
       } catch (e: any) {
         if (!/unknown action/i.test(e?.message ?? '')) {
           console.warn('[backend] activity not recorded:', e?.message);

@@ -2142,7 +2142,8 @@ function mergeToLine(submission: MergeSubmission): Line {
   return res;
 }
 
-const MAX_MERGE_COUNT = 10;
+// nge: 20, as in stock neuroglancer (was 10 here; player request 2026-10-08).
+const MAX_MERGE_COUNT = 20;
 
 // on error, copy (also clean up error message)
 
