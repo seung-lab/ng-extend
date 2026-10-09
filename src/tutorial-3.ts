@@ -533,7 +533,8 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   const look = async () => {
     if (token !== practiceWatch) return;
     const p = currentPractice();
-    if (p.phase === 'unavailable') { practiceStatus('Practice needs an invited account and a current session. Sign in, or press back then next to try again. You can read along while waiting.'); return; }
+    // Keep looking: the step may get its cell a moment later.
+    if (p.phase === 'unavailable') { practiceStatus('Practice needs an invited account and a current session. Sign in, or press back then next to try again. You can read along while waiting.'); setTimeout(tick, 2000); return; }
     if (p.phase === 'busy') { waitForCell(wantMerged ? 'merge_then_cut' : 'cut', wantMerged, waiting, finished); return; }
     // Released after idle time: keep looking. The step may take the cells
     // again (this used to stop the watch for good, so a merge made after
@@ -668,7 +669,7 @@ export function watchTool(waiting: string, finished: string) {
   const tick = () => {
     if (token !== practiceWatch) return;
     const p = currentPractice();
-    if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); return; }
+    if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); setTimeout(tick, 2000); return; }
     if (p.phase === 'busy') { practiceStatus('Every practice cell is in use right now. Read along and press next.'); return; }
     if (toolIsOn()) { practiceStatus(finished, true); pointAtNext(true); return; }
     practiceStatus(waiting);

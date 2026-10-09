@@ -694,7 +694,14 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   const held = session.held[slot];
   if (held && held.claimed_by === uid && held.kind === kind) {
     try { await practiceAction('heartbeat', { id: held.id, session: held.claim_nonce }); }
-    catch { delete session.held[slot]; practiceUnavailable(); return null; }
+    catch (error: any) {
+      const why = String(error?.message || error);
+      console.warn(`[practice] renewing slot ${slot} failed:`, why);
+      // Only a session the server says is over ends practice. Any other
+      // failure (a dropped request, a busy server) keeps the cell: the next
+      // renewal, a minute on, tries again.
+      if (/has ended|no longer yours|not found/i.test(why)) { delete session.held[slot]; practiceUnavailable(); return null; }
+    }
     if (!show) return held;
     session.example = held;
     await showExample(held, view);
