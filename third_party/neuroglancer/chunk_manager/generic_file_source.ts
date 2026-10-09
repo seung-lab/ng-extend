@@ -61,7 +61,8 @@ class GenericSharedDataChunk<Key, Data> extends Chunk {
   downloadFailed(error: any) {
     super.downloadFailed(error);
     let {requesters} = this;
-    this.requesters = undefined;
+    // Pyr: a revived chunk (chunk_manager/backend.ts FAILED_CHUNK_RETRY_MS) takes new requesters.
+    this.requesters = new Set<FileDataRequester<Data>>();
     for (let requester of requesters!) {
       requester.reject(error);
     }
@@ -139,8 +140,13 @@ export class GenericSharedDataSource<Key, Data> extends ChunkSourceBase {
       // promise immediately.
       switch (chunk!.state) {
         case ChunkState.FAILED:
-          reject(chunk!.error);
-          return;
+          if (Date.now() < chunk!.retryAfter) {
+            reject(chunk!.error);
+            return;
+          }
+          // Pyr: the cool-down is over; register the requester, so updateChunkPriorities
+          // re-requests the chunk and performChunkPriorityUpdate revives it.
+          break;
 
         case ChunkState.SYSTEM_MEMORY_WORKER:
           resolve(chunk!.data!);

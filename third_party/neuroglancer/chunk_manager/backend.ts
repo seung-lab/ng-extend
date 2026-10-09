@@ -33,6 +33,27 @@ import {initializeSharedObjectCounterpart, registerPromiseRPC, registerRPC, regi
 
 const DEBUG_CHUNK_UPDATES = false;
 
+// Pyr (EyeWire II) changes to the download queue, see docs/2D-LOADING.md.
+// Never start a PREFETCH-tier download at a queue level while a VISIBLE-tier chunk is still
+// downloading at that level, so prefetch cannot share the pipe with what is on screen. Visible
+// chunks already preempt prefetch when the pool is full (tryToFreeCapacity); this covers the
+// common case where it is not full.
+const PREFETCH_WAITS_FOR_VISIBLE = true;
+// When a VISIBLE chunk is promoted, cancel the speculative (prefetch) downloads still in flight at
+// that level unless they have since become visible themselves. On the Sandbox a half-screen pan
+// otherwise waited about 50 s at 20 Mbps behind stale 3.7 MB prefetch chunks that neuroglancer
+// never cancelled because its 100-slot pool was never full.
+const SPECULATIVE_YIELDS_TO_VISIBLE = true;
+// An in-flight VISIBLE download is never cancelled to make room for a higher-priority VISIBLE
+// request (mesh manifests and fragments outrank 2D image chunks). Cancelling throws away the
+// bytes received and refetches from byte zero (a Sandbox chunk is 3.7 MB). RECENT and PREFETCH
+// downloads stay evictable.
+const PROTECT_VISIBLE_DOWNLOADS = true;
+// A FAILED chunk that is still wanted is tried again after this long (fetchOk already retries a
+// few times inside the download); without it a chunk stayed FAILED, and the panel coarse there,
+// until the data source was invalidated.
+const FAILED_CHUNK_RETRY_MS = 10000;
+
 export interface ChunkStateListener {
   stateChanged(chunk: Chunk, oldState: ChunkState): void;
 }
@@ -95,6 +116,11 @@ export class Chunk implements Disposable {
    */
   downloadCancellationToken: CancellationTokenSource|undefined = undefined;
 
+  /** Pyr: true while this chunk's download began as a PREFETCH (speculative) request. */
+  speculative = false;
+  /** Pyr: a FAILED chunk that is still wanted is tried again once this time has passed. */
+  retryAfter = 0;
+
   initialize(key: string) {
     this.key = key;
     this.priority = Number.NEGATIVE_INFINITY;
@@ -102,6 +128,8 @@ export class Chunk implements Disposable {
     this.newPriority = Number.NEGATIVE_INFINITY;
     this.newPriorityTier = ChunkPriorityTier.RECENT;
     this.error = null;
+    this.speculative = false;
+    this.retryAfter = 0;
     this.state = ChunkState.NEW;
     this.requestedToFrontend = false;
     this.newlyRequestedToFrontend = false;
@@ -136,6 +164,7 @@ export class Chunk implements Disposable {
 
   downloadFailed(error: any) {
     this.error = error;
+    this.retryAfter = Date.now() + FAILED_CHUNK_RETRY_MS;
     this.queueManager.updateChunkState(this, ChunkState.FAILED);
   }
 
@@ -389,6 +418,8 @@ export class ChunkSource extends ChunkSourceBase {
 function startChunkDownload(chunk: Chunk) {
   const downloadCancellationToken = chunk.downloadCancellationToken = new CancellationTokenSource();
   const startTime = Date.now();
+  chunk.speculative = chunk.priorityTier === ChunkPriorityTier.PREFETCH;
+  if (chunk.speculative) chunk.queueManager.speculativeDownloads.add(chunk);
   chunk.source!.download(chunk, downloadCancellationToken)
       .then(
           () => {
@@ -492,6 +523,11 @@ class ChunkPriorityQueue {
     }
   }
 
+  /** Pyr: true if any chunk of the given ordered tier (VISIBLE or PREFETCH) is in this queue. */
+  hasTier(tier: ChunkPriorityTier) {
+    return this.heapRoots[tier] !== null;
+  }
+
   /**
    * Deletes a chunk from this priority queue.
    * @param chunk The chunk to delete from the priority queue.
@@ -536,6 +572,20 @@ function tryToFreeCapacity(
     }
   }
   return true;
+}
+
+/**
+ * Pyr: eviction candidates arrive lowest priority first (RECENT, then PREFETCH, then VISIBLE).
+ * Stop at the first VISIBLE one, so an in-flight VISIBLE download is never cancelled for another
+ * request; tryToFreeCapacity then reports no capacity and promotion resumes on the next update.
+ */
+function* evictableDownloads(candidates: Iterator<Chunk>): Iterator<Chunk> {
+  while (true) {
+    const {value, done} = candidates.next();
+    if (done) return;
+    if (PROTECT_VISIBLE_DOWNLOADS && value.priorityTier === ChunkPriorityTier.VISIBLE) return;
+    yield value;
+  }
 }
 
 class AvailableCapacity extends RefCounted {
@@ -756,7 +806,11 @@ export class ChunkQueueManager extends SharedObjectCounterpart {
   }
 
   performChunkPriorityUpdate(chunk: Chunk) {
-    if (chunk.priorityTier === chunk.newPriorityTier && chunk.priority === chunk.newPriority) {
+    // Pyr: a FAILED chunk that is still wanted goes back to the queue once its cool-down is over.
+    const retryFailed = chunk.state === ChunkState.FAILED &&
+        chunk.newPriorityTier !== ChunkPriorityTier.RECENT && Date.now() >= chunk.retryAfter;
+    if (!retryFailed && chunk.priorityTier === chunk.newPriorityTier &&
+        chunk.priority === chunk.newPriority) {
       chunk.newPriorityTier = ChunkPriorityTier.RECENT;
       chunk.newPriority = Number.NEGATIVE_INFINITY;
       return;
@@ -771,6 +825,12 @@ export class ChunkQueueManager extends SharedObjectCounterpart {
     if (chunk.state === ChunkState.NEW) {
       chunk.state = ChunkState.QUEUED;
       this.adjustCapacitiesForChunk(chunk, true);
+    } else if (retryFailed) {
+      // Pyr: still wanted after the cool-down: back into the download queue.
+      this.adjustCapacitiesForChunk(chunk, false);  // numFailed--
+      chunk.error = null;
+      chunk.state = ChunkState.QUEUED;
+      this.adjustCapacitiesForChunk(chunk, true);  // numQueued++
     }
     this.addChunkToQueues_(chunk);
   }
@@ -784,6 +844,10 @@ export class ChunkQueueManager extends SharedObjectCounterpart {
     }
     this.adjustCapacitiesForChunk(chunk, false);
     this.removeChunkFromQueues_(chunk);
+    if (chunk.state === ChunkState.DOWNLOADING) {
+      this.speculativeDownloads.delete(chunk);
+      chunk.speculative = false;
+    }
     chunk.state = newState;
     this.adjustCapacitiesForChunk(chunk, true);
     this.addChunkToQueues_(chunk);
@@ -855,6 +919,21 @@ export class ChunkQueueManager extends SharedObjectCounterpart {
     }
   }
 
+  /** Pyr: downloads that began as prefetch and are still in flight, see SPECULATIVE_YIELDS_TO_VISIBLE. */
+  speculativeDownloads = new Set<Chunk>();
+
+  cancelSpeculativeDownloads(sourceQueueLevel: number) {
+    for (const chunk of Array.from(this.speculativeDownloads)) {
+      if (chunk.state !== ChunkState.DOWNLOADING ||
+          chunk.priorityTier === ChunkPriorityTier.VISIBLE ||
+          chunk.source!.sourceQueueLevel !== sourceQueueLevel) {
+        continue;
+      }
+      cancelChunkDownload(chunk);
+      this.updateChunkState(chunk, ChunkState.QUEUED);
+    }
+  }
+
   private processQueuePromotions_() {
     let queueManager = this;
     const evict = (chunk: Chunk) => {
@@ -875,7 +954,7 @@ export class ChunkQueueManager extends SharedObjectCounterpart {
 
     const promotionLambda =
         (promotionCandidates: Iterator<Chunk>, evictionCandidates: Iterator<Chunk>,
-         capacity: AvailableCapacity) => {
+         capacity: AvailableCapacity, downloadQueue?: ChunkPriorityQueue) => {
           let systemMemoryEvictionCandidates = this.systemMemoryEvictionQueue.candidates();
           let systemMemoryCapacity = this.systemMemoryCapacity;
           while (true) {
@@ -887,6 +966,17 @@ export class ChunkQueueManager extends SharedObjectCounterpart {
             const size = 0; /* unknown size, since it hasn't been downloaded yet. */
             let priorityTier = promotionCandidate.priorityTier;
             let priority = promotionCandidate.priority;
+            if (downloadQueue !== undefined) {
+              if (PREFETCH_WAITS_FOR_VISIBLE && priorityTier === ChunkPriorityTier.PREFETCH &&
+                  downloadQueue.hasTier(ChunkPriorityTier.VISIBLE)) {
+                // Candidates are ordered VISIBLE then PREFETCH, so every remaining candidate is
+                // also PREFETCH: stop here and come back when the next download completes.
+                return;
+              }
+              if (SPECULATIVE_YIELDS_TO_VISIBLE && priorityTier === ChunkPriorityTier.VISIBLE) {
+                this.cancelSpeculativeDownloads(promotionCandidate.source!.sourceQueueLevel);
+              }
+            }
             // console.log("Download capacity: " + downloadCapacity);
             if (!tryToFreeCapacity(
                     size, capacity, priorityTier, priority, evictionCandidates, evict)) {
@@ -905,8 +995,8 @@ export class ChunkQueueManager extends SharedObjectCounterpart {
     for (let sourceQueueLevel = 0; sourceQueueLevel < numSourceQueueLevels; ++sourceQueueLevel) {
       promotionLambda(
           this.queuedDownloadPromotionQueue[sourceQueueLevel].candidates(),
-          this.downloadEvictionQueue[sourceQueueLevel].candidates(),
-          this.downloadCapacity[sourceQueueLevel]);
+          evictableDownloads(this.downloadEvictionQueue[sourceQueueLevel].candidates()),
+          this.downloadCapacity[sourceQueueLevel], this.downloadEvictionQueue[sourceQueueLevel]);
     }
     promotionLambda(
         this.queuedComputePromotionQueue.candidates(), this.computeEvictionQueue.candidates(),

@@ -142,10 +142,7 @@ function getMinishardIndexDataSource(
                   cancellationToken);
               if (sharding.minishardIndexEncoding === DataEncoding.GZIP) {
                 minishardIndexResponse =
-                    (await requestAsyncComputation(
-                         decodeGzip, cancellationToken, [minishardIndexResponse],
-                         new Uint8Array(minishardIndexResponse)))
-                        .buffer;
+                    await inflateGzipInline(minishardIndexResponse, cancellationToken);
               }
               if ((minishardIndexResponse.byteLength % 24) !== 0) {
                 throw new Error(
@@ -253,6 +250,29 @@ function getOrNotFoundError<T>(v: T|undefined) {
 }
 
 const chunkDecoders = new Map<VolumeChunkEncoding, ChunkDecoder>();
+/**
+ * Pyr: the minishard index (about 6 KB of gzip) sits on the critical path of the first chunk of
+ * every new minishard. Inflating it in the async computation pool meant waiting for that pool's
+ * first worker to start, and that worker's bundle carried the JPEG XL decoder, so the wait was
+ * 0.16 to 0.78 s per cold load. The browser's own DecompressionStream inflates it here instead;
+ * the pool stays the fallback where the API is missing.
+ */
+async function inflateGzipInline(
+    data: ArrayBuffer, cancellationToken: CancellationToken): Promise<ArrayBuffer> {
+  const DS = (self as any).DecompressionStream;
+  if (typeof DS === 'function') {
+    try {
+      const stream = new Blob([data]).stream().pipeThrough(new DS('gzip'));
+      return await new Response(stream).arrayBuffer();
+    } catch {
+      // Fall through to the worker pool.
+    }
+  }
+  return (await requestAsyncComputation(
+              decodeGzip, cancellationToken, [data], new Uint8Array(data)))
+      .buffer;
+}
+
 chunkDecoders.set(VolumeChunkEncoding.RAW, decodeRawChunk);
 chunkDecoders.set(VolumeChunkEncoding.JPEG, decodeJpegChunk);
 chunkDecoders.set(VolumeChunkEncoding.COMPRESSED_SEGMENTATION, decodeCompressedSegmentationChunk);

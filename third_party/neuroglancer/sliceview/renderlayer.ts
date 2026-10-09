@@ -39,6 +39,8 @@ export interface SliceViewRenderLayerOptions {
   transform: WatchableValueInterface<RenderLayerTransformOrError>;
   renderScaleTarget?: WatchableValueInterface<number>;
   renderScaleHistogram?: RenderScaleHistogram;
+  /** Pyr: drop expensive coarse fallback scales (see sliceview/base.ts selectFallbackScales). */
+  capExpensiveFallbacks?: boolean;
 
   /**
    * Specifies the position within the "local" coordinate space.
@@ -73,6 +75,8 @@ export abstract class SliceViewRenderLayer<
 
   renderScaleTarget: WatchableValueInterface<number>;
   renderScaleHistogram?: RenderScaleHistogram;
+  /** Pyr: see sliceview/base.ts selectFallbackScales. Mirrored to the worker in initializeCounterpart. */
+  capExpensiveFallbacks: boolean;
 
   // This is only used by `ImageRenderLayer` currently, but is defined here because
   // `sliceview/frontend.ts` is responsible for providing the texture buffers used for accumulating
@@ -147,6 +151,7 @@ export abstract class SliceViewRenderLayer<
     const {renderScaleTarget = trackableRenderScaleTarget(1)} = options;
     this.renderScaleTarget = renderScaleTarget;
     this.renderScaleHistogram = options.renderScaleHistogram;
+    this.capExpensiveFallbacks = options.capExpensiveFallbacks === true;
     this.transform = options.transform;
     this.localPosition = options.localPosition;
     this.rpcTransfer = options.rpcTransfer || {};
@@ -172,6 +177,7 @@ export abstract class SliceViewRenderLayer<
       renderScaleTarget:
           this.registerDisposer(SharedWatchableValue.makeFromExisting(rpc, this.renderScaleTarget))
               .rpcId,
+      capExpensiveFallbacks: this.capExpensiveFallbacks,
       ...this.rpcTransfer,
     });
     this.rpcId = sharedObject.rpcId;

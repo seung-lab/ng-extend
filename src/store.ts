@@ -423,6 +423,35 @@ export const useLayersStore = defineStore('layers', () => {
     // set default values in settings
     viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit.value = 2e9;
     viewer.chunkQueueManager.capacities.systemMemory.sizeLimit.value = 3e9;
+    // 2D detail: a saved view can carry crossSectionRenderScale above 1, which draws the image
+    // at a coarser level, counts as fully loaded and never sharpens (seen on practice views,
+    // 2026-10-07, src/practice.ts). Clamp it to 1 on every image layer, now and whenever a
+    // layer appears or the value changes (Cell Library jumps, shared links, curated states).
+    const hookedManaged = new WeakSet<object>();
+    const clampedTargets = new WeakSet<object>();
+    const clampImageDetail = () => {
+      for (const ml of v.layerManager.managedLayers as any[]) {
+        if (!hookedManaged.has(ml) && ml.layerChanged) {
+          hookedManaged.add(ml);
+          ml.layerChanged.add(clampImageDetail);
+        }
+        const layer = ml.layer;
+        if (!layer || layer.constructor?.type !== 'image') continue;
+        const t = layer.sliceViewRenderScaleTarget;
+        if (!t || clampedTargets.has(t)) continue;
+        clampedTargets.add(t);
+        const clamp = () => {
+          if (t.value > 1) {
+            console.info(`[2D] image layer "${ml.name}" asked for detail ${t.value}; set to 1`);
+            t.value = 1;
+          }
+        };
+        t.changed.add(clamp);
+        clamp();
+      }
+    };
+    v.layerManager.layersChanged.add(clampImageDetail);
+    clampImageDetail();
     // Mobile defaults to fullscreen 3D (Amy 2026-08-18): split screen is
     // reachable only from a share link that carries its own layout or the
     // corner view toggle. A layout named in the URL hash wins on any device.

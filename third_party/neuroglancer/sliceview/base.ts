@@ -152,6 +152,8 @@ export interface SliceViewRenderLayer {
    */
   localPosition: WatchableValueInterface<Float32Array>;
   renderScaleTarget: WatchableValueInterface<number>;
+  /** Pyr: see selectFallbackScales. Set by image layers on both threads. */
+  capExpensiveFallbacks?: boolean;
 
   filterVisibleSources(
       sliceView: SliceViewBase<SliceViewChunkSource, SliceViewRenderLayer>,
@@ -586,6 +588,51 @@ export function makeSliceViewChunkSpecification<ChunkDataSize extends Uint32Arra
   };
 }
 
+/** Pyr: a fallback scale whose uncompressed chunk is bigger than this is expensive. */
+export const EXPENSIVE_FALLBACK_CHUNK_BYTES = 1 << 20;
+/** Pyr: how many expensive fallback scales (nearest the target) stay visible. */
+export const MAX_EXPENSIVE_FALLBACK_SCALES = 1;
+/** Pyr: the coarsest scale always stays: one clipped chunk that covers the panel and paints first. */
+export const KEEP_COARSEST_SCALE = true;
+
+function uncompressedChunkBytes(source: TransformedSource): number {
+  const spec: any = source.source.spec;
+  const chunkDataSize: ArrayLike<number> = spec.chunkDataSize;
+  let bytes: number = (DATA_TYPE_BYTES as any)[spec.dataType] ?? 1;
+  if (typeof spec.numChannels === 'number') bytes *= spec.numChannels;
+  for (let i = 0; i < chunkDataSize.length; ++i) bytes *= chunkDataSize[i];
+  return bytes;
+}
+
+/**
+ * Pyr (EyeWire II) change. `walked` holds the scales the walk in filterVisibleSources visited,
+ * coarsest first, the target last. Every coarser scale stays visible as a fallback so the panel
+ * can draw something blurry while the target loads. That is cheap when chunks are small (Retina:
+ * 128x128x16 JXL, about 70 KB each) and ruinous when they are not: the Sandbox stores 512x512x16
+ * raw chunks, 3.7 MB each, at every one of its nine scales, so 16 of the 28 chunks in one view
+ * (55 of 100 MB) were fallbacks, queued ahead of the chunks the screen can resolve. A fallback
+ * scale whose uncompressed chunk is larger than EXPENSIVE_FALLBACK_CHUNK_BYTES is expensive: only
+ * the MAX_EXPENSIVE_FALLBACK_SCALES nearest the target are kept, plus the coarsest scale. Cheap
+ * fallbacks are kept as before. Only layers that set capExpensiveFallbacks ask for this (image
+ * layers); segmentation chunks compress far below their uncompressed size and keep the full
+ * pyramid.
+ */
+function selectFallbackScales(walked: readonly TransformedSource[], cap: boolean): boolean[] {
+  const keep = walked.map(() => true);
+  if (!cap || walked.length < 2) return keep;
+  const target = walked.length - 1;
+  let expensiveKept = 0;
+  for (let i = target - 1; i >= 0; --i) {
+    if (uncompressedChunkBytes(walked[i]) <= EXPENSIVE_FALLBACK_CHUNK_BYTES) continue;
+    if (expensiveKept < MAX_EXPENSIVE_FALLBACK_SCALES) {
+      ++expensiveKept;
+      continue;
+    }
+    keep[i] = KEEP_COARSEST_SCALE && i === 0;
+  }
+  return keep;
+}
+
 export function*
     filterVisibleSources(
         sliceView: SliceViewBase, renderLayer: SliceViewRenderLayer,
@@ -626,6 +673,10 @@ export function*
     }
     return false;
   };
+  // Walk from the coarsest scale toward the target, remembering every scale walked (coarsest
+  // first, the target last). Still yielded coarsest first: updateVisibleSources() reverses the
+  // list and the backend gives the highest download priority to the last (coarsest) entry.
+  const walked: TransformedSource[] = [];
   let scaleIndex = sources.length - 1;
   let prevVoxelSize: vec3|undefined;
   while (true) {
@@ -634,13 +685,17 @@ export function*
         !improvesOnPrevVoxelSize(transformedSource.effectiveVoxelSize, prevVoxelSize)) {
       break;
     }
-    yield transformedSource;
+    walked.push(transformedSource);
 
     if (scaleIndex === 0 || !canImproveOnVoxelSize(transformedSource.effectiveVoxelSize)) {
       break;
     }
     prevVoxelSize = transformedSource.effectiveVoxelSize;
     --scaleIndex;
+  }
+  const keep = selectFallbackScales(walked, renderLayer.capExpensiveFallbacks === true);
+  for (let i = 0; i < walked.length; ++i) {
+    if (keep[i]) yield walked[i];
   }
 }
 

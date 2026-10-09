@@ -194,6 +194,8 @@ const micronState = JSON.stringify({
 args.push('--define', `NEUROGLANCER_DEFAULT_STATE_FRAGMENT=${JSON.stringify(micronState)}`);
 
 args.push('--config=dev', '--serve', '--watch', '--host', '0.0.0.0');
+// PORT=3490 npm run dev-server-win picks the port (several checkouts run dev servers at once).
+if (process.env.PORT) args.push('--port', String(process.env.PORT));
 
 // ── Copy badge center-art PNGs into dev output ─────────────────────────────
 const path = require('path');

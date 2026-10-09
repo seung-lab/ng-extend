@@ -159,8 +159,12 @@ export class SliceViewBackend extends SliceViewIntermediateBase {
               if (!Number.isFinite(newPriority)) {
                 debugger;
               }
+              // Pyr: within the PREFETCH tier rank by how likely the chunk is needed soon
+              // (newPriority is that probability), then coarse before fine. The old formula ranked
+              // every coarse-scale chunk six slabs away above the finest chunk of the next slab.
               chunkManager.requestChunk(
-                  chunk, ChunkPriorityTier.PREFETCH, sourceBasePriority + newPriority);
+                  chunk, ChunkPriorityTier.PREFETCH,
+                  basePriority + newPriority * SCALE_PRIORITY_MULTIPLIER + priorityIndex);
               ++layer.numPrefetchChunksNeeded;
               if (chunk.state === ChunkState.GPU_MEMORY) {
                 ++layer.numPrefetchChunksAvailable;
@@ -333,6 +337,8 @@ export class SliceViewRenderLayerBackend extends SharedObjectCounterpart impleme
   rpcId: number;
   renderScaleTarget: SharedWatchableValue<number>;
   localPosition: WatchableValueInterface<Float32Array>;
+  /** Pyr: see sliceview/base.ts selectFallbackScales. */
+  capExpensiveFallbacks: boolean;
 
   numVisibleChunksNeeded: number;
   numVisibleChunksAvailable: number;
@@ -344,6 +350,7 @@ export class SliceViewRenderLayerBackend extends SharedObjectCounterpart impleme
     super(rpc, options);
     this.renderScaleTarget = rpc.get(options.renderScaleTarget);
     this.localPosition = rpc.get(options.localPosition);
+    this.capExpensiveFallbacks = options.capExpensiveFallbacks === true;
     this.numVisibleChunksNeeded = 0;
     this.numVisibleChunksAvailable = 0;
     this.numPrefetchChunksAvailable = 0;
@@ -359,8 +366,10 @@ export class SliceViewRenderLayerBackend extends SharedObjectCounterpart impleme
 
 const PREFETCH_MS = 2000;
 const MAX_PREFETCH_VELOCITY = 0.1;  // voxels per millisecond
-const MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS =
-    32;  // Maximum number of chunks to prefetch in a single direction.
+// Maximum number of chunks to prefetch in a single direction. Pyr: was 32. Two slabs or chunk
+// columns ahead is all a link can deliver inside PREFETCH_MS; one 16-slice jump used to predict
+// up to six slabs ahead and four behind at every scale (200 to 500 requests, 15 to 56 MB).
+const MAX_SINGLE_DIRECTION_PREFETCH_CHUNKS = 2;
 
 // If the probability under the model of needing a chunk within `PREFETCH_MS` is less than this
 // probability, skip prefetching it.
@@ -387,7 +396,9 @@ function getPrefetchChunkOffsets(
       mean += coeff * meanValue;
       variance += coeff * coeff * varianceValue;
     }
-    if (mean > MAX_PREFETCH_VELOCITY) {
+    // Pyr: Math.abs, so a fast leftward or upward pan is skipped like a rightward one (it used to
+    // run the behind loop to the cap for every boundary chunk).
+    if (Math.abs(mean) > MAX_PREFETCH_VELOCITY) {
       continue;
     }
     const chunkSize = chunkDataSize[chunkDim];

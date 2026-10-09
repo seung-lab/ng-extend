@@ -73,6 +73,8 @@ export class ImageRenderLayer extends SliceViewVolumeRenderLayer<ShaderControlsB
     const {opacity, blendMode, shaderControlState} = options;
     super(multiscaleSource, {
       ...options,
+      // Pyr: image layers drop expensive coarse fallbacks (sliceview/base.ts selectFallbackScales).
+      capExpensiveFallbacks: true,
       fallbackShaderParameters:
           new WatchableValue(getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN, {
             imageData: {

@@ -25,7 +25,7 @@ if (!fs.existsSync(configPath)) {
 }
 
 const before = fs.readFileSync(configPath, 'utf8');
-if (before.includes("'.jpg': 'file'") && before.includes("'.obj': 'file'") && before.includes("'.vtk': 'file'")) {
+if (before.includes("'.jpg': 'file'") && before.includes("'.obj': 'file'") && before.includes("'.vtk': 'file'") && before.includes("'.wasm': 'file'")) {
   console.log('[patch-esbuild-loaders] already patched');
   process.exit(0);
 }
@@ -47,6 +47,13 @@ if (!after.includes("'.obj': 'file'")) {
 }
 if (!after.includes("'.vtk': 'file'")) {
   after = after.replace("'.obj': 'file'", "'.obj': 'file', '.vtk': 'file'");
+}
+// .wasm: the JPEG XL decoder (1.7 MB) used to be inlined as a base64 data URL into
+// async_computation.bundle.js, which made every pool worker parse a 3 MB script before its first
+// job and put that on the critical path of the first Retina chunk. As a file it is fetched once,
+// on the first JXL decode, and cached by the browser.
+if (!after.includes("'.wasm': 'file'")) {
+  after = after.replace("'.wasm': 'dataurl'", "'.wasm': 'file'");
 }
 
 fs.writeFileSync(configPath, after, 'utf8');
