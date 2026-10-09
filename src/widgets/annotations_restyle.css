@@ -380,6 +380,7 @@ textarea.neuroglancer-annotation-details-description:focus {
   font-size: 11px !important; color: rgba(160, 185, 220, 0.85);
 }
 .nge-ann-top-row { cursor: pointer; }
+.nge-ann-count { margin-left: auto; padding-left: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; color: #bfe6ff; pointer-events: none; }
 .nge-ann-top-row input[type='checkbox'] { accent-color: #4fcfff; margin: 0; }
 .nge-ann-size-row input[type='range'] { flex: 1; min-width: 0; accent-color: #4fcfff; }
 .nge-ann-size-row input[type='number'] {

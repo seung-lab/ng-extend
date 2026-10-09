@@ -203,6 +203,14 @@ onMounted(() => {
       e.stopImmediatePropagation();
       showTagMode.value = !showTagMode.value;
     }
+    // Shift+L: the Cell Library (Nik 2026-10-09). Plain L is neuroglancer's
+    // "recolour", so the library takes the shifted key, as tag mode does.
+    if (!typing && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'L' || e.key === 'l')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!showCellLibrary.value) cellLibraryInitialTab.value = undefined;
+      showCellLibrary.value = !showCellLibrary.value;
+    }
     if (!typing && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
       e.preventDefault();
       e.stopImmediatePropagation();

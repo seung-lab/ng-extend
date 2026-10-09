@@ -177,6 +177,8 @@ export class AnnotationLayerView extends Tab {
       {annotationId: string, annotationLayerState: AnnotationLayerState, pin: boolean}|undefined =
           undefined;
   private previousHoverId: string|undefined = undefined;
+  /** EyeWire II: "12 annotations", beside Show through cells in 3D. */
+  private ngeCountEl: HTMLElement|undefined = undefined;
   private previousHoverAnnotationLayerState: AnnotationLayerState|undefined = undefined;
 
   private virtualListSource: VirtualListSource = {
@@ -431,7 +433,13 @@ export class AnnotationLayerView extends Tab {
     topBox.addEventListener('change', () => { displayState.ngeOnTop.value = topBox.checked; });
     this.registerDisposer(displayState.ngeOnTop.changed.add(showTop));
     showTop();
-    topRow.append(topBox, topLabel);
+    // How many annotations this layer holds (Nik 2026-10-09: a counter per
+    // annotation layer, to count true ends without scrolling the list).
+    const countEl = this.ngeCountEl = document.createElement('span');
+    countEl.className = 'nge-ann-count';
+    countEl.title = 'Annotations in this layer';
+    topRow.append(topBox, topLabel, countEl);
+    this.updateListLength();
     this.element.appendChild(topRow);
 
     this.element.appendChild(this.headerRow);
@@ -680,6 +688,7 @@ export class AnnotationLayerView extends Tab {
       length += info.annotations.length;
     }
     this.virtualListSource.length = length;
+    if (this.ngeCountEl) this.ngeCountEl.textContent = `${length.toLocaleString()} ${length === 1 ? 'annotation' : 'annotations'}`;
   }
 
   private addAnnotationElement(annotation: Annotation, state: AnnotationLayerState) {

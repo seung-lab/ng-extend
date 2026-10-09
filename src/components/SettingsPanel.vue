@@ -33,6 +33,7 @@ const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
+const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
 const draftOfferRestore = ref(true);
 /** Point annotation size (after EyeWire's "Annotation Resizer" addon). Applied
@@ -101,6 +102,7 @@ onMounted(() => {
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
+  draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
   draftAnnotationSize.value = savedAnnotationSize.value = ngePointScale.value;
@@ -127,7 +129,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
   });
@@ -391,6 +393,17 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
               <input type="checkbox" v-model="draftUndeleteCounter" />
               <span class="nge-settings-toggle-label">Show a counter on the Undelete icon</span>
+            </label>
+            <label class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">
+              <span class="nge-settings-toggle-label">Cell Library opens on</span>
+              <select v-model="draftLibraryTab" class="nge-sv-select">
+                <option value="mine">My Cells</option>
+                <option value="available">Available</option>
+                <option value="claimed">Claimed</option>
+                <option value="all">All</option>
+                <option value="help">Help</option>
+                <option value="links">My Links</option>
+              </select>
             </label>
             <label class="nge-settings-toggle" title="Off: a jump shows only the cell you jumped to. On: each jump adds its cell to the ones already in your view.">
               <input type="checkbox" v-model="draftJumpAdds" />
@@ -1296,4 +1309,7 @@ const props = defineProps<{ embedded?: boolean }>();
   font-size: 11.5px;
   box-shadow: 0 0 16px rgba(74, 158, 255, 0.18);
 }
+/* a toggle row that carries a menu, not a checkbox */
+.nge-settings-pick { justify-content: space-between; gap: 12px; cursor: default; }
+.nge-settings-pick .nge-sv-select { flex: 0 0 auto; min-width: 130px; }
 </style>

@@ -394,6 +394,24 @@ function nameColor(msg: { name: string; rank: string }): string {
   return rankColor(msg.rank === 'admin' ? 'admin' : knownRank.value[msg.name] || msg.rank);
 }
 
+// ── Who is online: the "2 online" label opens the list ──────────────────
+const showOnline = ref(false);
+const onlineNow = computed(() => {
+  void chatStore.onlineCount;          // the store's tick: people go stale after 90 s
+  const cutoff = Date.now() - 90_000;
+  return Object.entries(chatStore.online)
+    .filter(([, p]) => p.lastSeen >= cutoff)
+    .map(([id, p]) => ({ id, name: p.name }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+});
+function openOnlineProfile(id: string) {
+  showOnline.value = false;
+  document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: id } }));
+}
+const closeOnline = () => { showOnline.value = false; };
+onMounted(() => document.addEventListener('click', closeOnline));
+onUnmounted(() => document.removeEventListener('click', closeOnline));
+
 function msgTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
@@ -951,8 +969,17 @@ function toggleCollapse() {
       <div class="nge-chat-strip" @mousedown="startDrag" @dblclick="toggleCollapse">
         <span class="nge-chat-strip-dot" :class="{ 'nge-chat-strip-dot--on': connected }"></span>
         <span v-if="collapsed" class="nge-chat-strip-label">Chat</span>
-        <span v-if="connected && chatStore.onlineCount > 0" class="nge-chat-online"
-              :title="Object.values(chatStore.online).map(p => p.name).join(', ')">{{ chatStore.onlineCount }} online</span>
+        <span v-if="connected && chatStore.onlineCount > 0" class="nge-chat-online-wrap">
+          <button type="button" class="nge-chat-online" :aria-expanded="showOnline" title="See who is online"
+                  @click.stop="showOnline = !showOnline">{{ chatStore.onlineCount }} online</button>
+          <!-- Who that is (Ames 2026-10-09). A name opens that player's profile. -->
+          <div v-if="showOnline" class="nge-chat-online-list" role="menu" @click.stop>
+            <button v-for="p in onlineNow" :key="p.id" type="button" class="nge-chat-online-name" role="menuitem"
+                    :style="{ color: rankColor(knownRank[p.name] || 'player') }" @click="openOnlineProfile(p.id)">
+              <span class="nge-chat-online-dot" aria-hidden="true"></span>{{ p.name }}
+            </button>
+          </div>
+        </span>
         <span v-if="collapsed && unreadMessages" class="nge-chat-strip-unread" title="New messages"></span>
         <span v-if="mentionFlash && chatStore.lastMentionFrom" class="nge-chat-mentioned-by">@ from {{ chatStore.lastMentionFrom }}</span>
         <span class="nge-chat-strip-spacer"></span>
@@ -1528,13 +1555,31 @@ function toggleCollapse() {
   background: rgba(200, 164, 255, 0.12);
   vertical-align: 1px;
 }
+.nge-chat-online-wrap { position: relative; margin-left: 6px; }
 .nge-chat-online {
-  margin-left: 6px;
-  font-size: 11px;
+  padding: 1px 6px; border: 1px solid transparent; border-radius: 6px; background: none;
+  font: inherit; font-size: 11px;
   color: rgba(125, 255, 176, 0.85);
   white-space: nowrap;
-  cursor: default;
+  cursor: pointer;
 }
+.nge-chat-online:hover, .nge-chat-online:focus-visible, .nge-chat-online[aria-expanded="true"] {
+  border-color: rgba(125, 255, 176, 0.4); background: rgba(125, 255, 176, 0.08); color: #b9ffd6; outline: none;
+}
+.nge-chat-online-list {
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 30; min-width: 150px; max-width: 240px; max-height: 240px; overflow-y: auto;
+  display: flex; flex-direction: column; padding: 5px;
+  border: 1px solid rgba(125, 255, 176, 0.28); border-radius: 10px;
+  background: linear-gradient(158deg, rgba(15, 18, 24, 0.97), rgba(6, 10, 18, 0.99));
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+}
+.nge-chat-online-name {
+  display: flex; align-items: center; gap: 7px; padding: 5px 8px; border: 0; border-radius: 6px; background: none;
+  font: inherit; font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nge-chat-online-name:hover, .nge-chat-online-name:focus-visible { background: rgba(255, 255, 255, 0.07); outline: none; }
+.nge-chat-online-dot { width: 7px; height: 7px; border-radius: 50%; background: #7dffb0; box-shadow: 0 0 6px rgba(125, 255, 176, 0.8); flex: 0 0 auto; }
 .nge-chat-del {
   visibility: hidden;
   margin-left: 6px;

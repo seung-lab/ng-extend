@@ -143,7 +143,9 @@ function confirmDeleteTag(tag: IssueTag) {
 
 const loading = ref(false);
 const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams'>(
-  (props.initialTab as any) || 'mine',
+  // A tab asked for by whoever opened the library, else the one the player
+  // chose in Settings, else My Cells.
+  (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
 );
 const search = ref('');
 const claimError = ref('');
