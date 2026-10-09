@@ -135,6 +135,61 @@ function clearMerges() {
   icon?.click();
 }
 
+// ── Where the Merge Queue sits (Ames 2026-10-09) ────────────────────────
+// It used to open on the bottom left, on top of the chat. Now it opens
+// beside the chat when the chat is there, and it can be dragged by its
+// header to anywhere; the place is remembered. Double click the header to
+// put it back.
+const QUEUE_POS_KEY = 'nge-merge-queue-pos';
+const queueEl = ref<HTMLElement | null>(null);
+const queuePos = ref<{ x: number; y: number } | null>(null);
+try {
+  const saved = JSON.parse(localStorage.getItem(QUEUE_POS_KEY) || 'null');
+  if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) queuePos.value = { x: saved.x, y: saved.y };
+} catch { /* no saved place */ }
+/** Left edge when the player has not placed it: clear of the chat. */
+const queueBesideChat = ref<number | null>(null);
+function placeBesideChat() {
+  const chat = document.querySelector('.nge-chat-float') as HTMLElement | null;
+  const r = chat?.getBoundingClientRect();
+  // only when the chat is in the corner the queue opens in, and there is room beside it
+  const inTheWay = !!r && r.width > 0 && r.left < 440 && r.bottom > window.innerHeight - 420;
+  queueBesideChat.value = inTheWay && r!.right + 8 + 300 < window.innerWidth ? Math.round(r!.right + 8) : null;
+}
+const clampQueue = (x: number, y: number) => {
+  const w = queueEl.value?.offsetWidth ?? 300, h = queueEl.value?.offsetHeight ?? 120;
+  return { x: Math.max(4, Math.min(window.innerWidth - w - 4, x)), y: Math.max(4, Math.min(window.innerHeight - h - 4, y)) };
+};
+const queueStyle = computed(() => {
+  if (queuePos.value) { const p = clampQueue(queuePos.value.x, queuePos.value.y); return { left: p.x + 'px', top: p.y + 'px', bottom: 'auto' }; }
+  return queueBesideChat.value != null ? { left: queueBesideChat.value + 'px' } : {};
+});
+function startQueueDrag(e: MouseEvent) {
+  if (e.button !== 0 || !queueEl.value) return;
+  e.preventDefault();
+  const box = queueEl.value.getBoundingClientRect();
+  const dx = e.clientX - box.left, dy = e.clientY - box.top;
+  let moved = false;
+  const move = (ev: MouseEvent) => {
+    if (!moved && Math.abs(ev.clientX - e.clientX) + Math.abs(ev.clientY - e.clientY) < 4) return;
+    moved = true;
+    queuePos.value = clampQueue(ev.clientX - dx, ev.clientY - dy);
+  };
+  const up = () => {
+    window.removeEventListener('mousemove', move, true);
+    window.removeEventListener('mouseup', up, true);
+    if (moved && queuePos.value) { try { localStorage.setItem(QUEUE_POS_KEY, JSON.stringify(queuePos.value)); } catch { /* not saved */ } }
+  };
+  window.addEventListener('mousemove', move, true);
+  window.addEventListener('mouseup', up, true);
+}
+function resetQueuePlace() {
+  queuePos.value = null;
+  try { localStorage.removeItem(QUEUE_POS_KEY); } catch { /* nothing to clear */ }
+  placeBesideChat();
+}
+watch(hasMergeSegments, shown => { if (shown) placeBesideChat(); }, { immediate: true });
+
 // Each queued merge says where it stands while a batch is going through
 // (Ames 2026-10-08), and loses its remove button once it has been sent.
 const rowStatus = (i: number) => store.mergeRows[i]?.status || '';
@@ -274,9 +329,11 @@ function cancelTool() {
 
     <!-- Merge segment queue (vertical list, left side) -->
     <transition name="merge-list-fade">
-      <div v-if="isMerge && hasMergeSegments && !isPendingClose" class="nge-smo-merge-panel">
-        <div class="nge-smo-merge-panel-header">
+      <div v-if="isMerge && hasMergeSegments && !isPendingClose" ref="queueEl" class="nge-smo-merge-panel" :style="queueStyle">
+        <div class="nge-smo-merge-panel-header" title="Drag to move. Double click to put it back."
+             @mousedown="startQueueDrag" @dblclick="resetQueuePlace">
           Merge Queue ({{ store.mergeSegments.length }})
+          <span class="nge-smo-merge-grip" aria-hidden="true">⠿</span>
         </div>
         <div class="nge-smo-merge-panel-list">
           <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-row">
@@ -1228,6 +1285,9 @@ function cancelTool() {
   box-shadow: 0 0 12px rgb(0 220 120 / .6);
 }
 .nge-smo-merge-panel-header { padding: 8px 12px 7px; font-family: 'Orbitron', 'Inter', sans-serif; font-size: 10.5px; letter-spacing: .14em; color: #a6ffd6; border-bottom-color: rgb(0 220 120 / .16); }
+.nge-smo-merge-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: grab; user-select: none; }
+.nge-smo-merge-panel-header:active { cursor: grabbing; }
+.nge-smo-merge-grip { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 0; color: rgb(166 255 214 / .45); }
 .nge-smo-merge-row { padding: 5px 10px; }
 .nge-smo-seg-id { font-size: 11px; color: #a9efcf; padding: 1px 4px; }
 .nge-smo-merge-num { font-variant-numeric: tabular-nums; }
