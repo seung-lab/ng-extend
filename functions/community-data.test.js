@@ -159,6 +159,14 @@ test('silver favorites: a short list of badge slugs, nothing else',()=>{
  assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{favorite_badges:'chisel'}),/Invalid favorites/);
  assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{favorite_badges:['a','b','c','d','e','f']}),/Invalid favorites/);
  assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{favorite_badges:['<script>']}),/Invalid favorites/);
+ // bronze favorites: up to ten; the order of the Trophy Case sections: the four known names, once each
+ assert.equal(JSON.stringify((x=>x.body??x.rows)(plan('users','PATCH',`id=eq.${a}`,{favorite_badges_bronze:['chisel','mallet']}))).includes('"favorite_badges_bronze":["chisel","mallet"]'),true);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{favorite_badges_bronze:Array.from({length:11},(_,i)=>'b'+i)}),/Invalid favorites/);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{favorite_badges_bronze:['no spaces']}),/Invalid favorites/);
+ assert.equal(JSON.stringify((x=>x.body??x.rows)(plan('users','PATCH',`id=eq.${a}`,{trophy_order:['special','cells','editor','loyalty']}))).includes('"trophy_order":["special","cells","editor","loyalty"]'),true);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{trophy_order:['cells','cells']}),/Invalid order/);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{trophy_order:['nope']}),/Invalid order/);
+ assert.throws(()=>plan('users','PATCH',`id=eq.${a}`,{trophy_order:'cells'}),/Invalid order/);
 });
 test('blog: public reads published only; only listed authors write',()=>{
  const author={...user,isBlogAuthor:true};

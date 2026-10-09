@@ -5481,6 +5481,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       console.warn('[backend] loadFavoriteBadge error:', e.message);
     }
     silverBadgeSlugs.value = await loadSilverBadges(userId.value);
+    bronzeBadgeSlugs.value = await loadBronzeBadges(userId.value);
+    trophyOrder.value = await loadTrophyOrder(userId.value);
   }
 
   // Silver favorites (Ames 2026-10-01): one gold favorite, plus a row of
@@ -5505,6 +5507,41 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch (e: any) {
       console.warn('[backend] saveSilverBadges error:', e.message);
     }
+  }
+
+  // Bronze favorites (Ames 2026-10-09): a third, longer strip, for players
+  // who want more of their achievements on show. users.favorite_badges_bronze.
+  const MAX_BRONZE_BADGES = 10;
+  const bronzeBadgeSlugs: Ref<string[]> = ref([]);
+  /** A list column of the player's row; [] when it can not be read (the
+   *  column is not there yet, or offline). */
+  async function loadUserList(id: string | null, column: string, max: number): Promise<string[]> {
+    if (!id) return [];
+    try {
+      const { data, error } = await supabase.from('users').select(column).eq('id', id).single();
+      const list = (data as any)?.[column];
+      return !error && Array.isArray(list) ? list.filter((x: any) => typeof x === 'string').slice(0, max) : [];
+    } catch { return []; }
+  }
+  const loadBronzeBadges = (id: string | null) => loadUserList(id, 'favorite_badges_bronze', MAX_BRONZE_BADGES);
+  async function saveBronzeBadges(list: string[]) {
+    bronzeBadgeSlugs.value = list.slice(0, MAX_BRONZE_BADGES);
+    if (!userId.value) return;
+    try {
+      const { error } = await supabase.from('users').update({ favorite_badges_bronze: bronzeBadgeSlugs.value }).eq('id', userId.value);
+      if (error) console.warn('[backend] saveBronzeBadges failed:', error.message);
+    } catch (e: any) { console.warn('[backend] saveBronzeBadges error:', e.message); }
+  }
+  // The order a player keeps their Trophy Case sections in. users.trophy_order.
+  const trophyOrder: Ref<string[]> = ref([]);
+  const loadTrophyOrder = (id: string | null) => loadUserList(id, 'trophy_order', 4);
+  async function saveTrophyOrder(list: string[]) {
+    trophyOrder.value = list.slice(0, 4);
+    if (!userId.value) return;
+    try {
+      const { error } = await supabase.from('users').update({ trophy_order: trophyOrder.value }).eq('id', userId.value);
+      if (error) console.warn('[backend] saveTrophyOrder failed:', error.message);
+    } catch (e: any) { console.warn('[backend] saveTrophyOrder error:', e.message); }
   }
 
   async function saveFavoriteBadge(slug: string) {
@@ -5556,6 +5593,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Favorite Badge
     favoriteBadgeSlug, loadFavoriteBadge, saveFavoriteBadge,
     silverBadgeSlugs, loadSilverBadges, saveSilverBadges, MAX_SILVER_BADGES,
+    bronzeBadgeSlugs, loadBronzeBadges, saveBronzeBadges, MAX_BRONZE_BADGES,
+    trophyOrder, loadTrophyOrder, saveTrophyOrder,
   };
 });
 

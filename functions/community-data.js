@@ -12,7 +12,10 @@ const fail = (status, message) => { throw Object.assign(new Error(message), {sta
 // users.last_edit_date and users.total_days are never writable from a browser:
 // the database decides when a new day starts (supabase-days-need-action.sql),
 // and a browser that could set the date back could count one day many times.
-const PUBLIC_USER_COLUMNS = 'id,display_name,flag,bio,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,created_at,updated_at,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,cave_user_id,username,last_edit_at,last_cave_sync_at,total_annotations,favorite_badges,total_days';
+// favorite_badges_bronze and trophy_order need supabase-trophy-case-favorites.sql
+// run BEFORE this is deployed: a select of a column that is not there fails,
+// and every profile read uses this list.
+const PUBLIC_USER_COLUMNS = 'id,display_name,flag,bio,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,last_edit_date,created_at,updated_at,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,cave_user_id,username,last_edit_at,last_cave_sync_at,total_annotations,favorite_badges,favorite_badges_bronze,trophy_order,total_days';
 const columns = {
   users: PUBLIC_USER_COLUMNS+',middleauth_email',
   admins: 'id,user_id,email,created_at',
@@ -41,7 +44,7 @@ const columns = {
   blog_authors: 'user_id,added_at',
 };
 const writable = {
-  users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,total_annotations,favorite_badges',
+  users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,total_annotations,favorite_badges,favorite_badges_bronze,trophy_order',
   working_links: 'title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,updated_at,screenshot_url',
   // Nothing from the client is kept: every field is set below from identity.
   chat_presence: 'last_seen_at',
@@ -182,6 +185,17 @@ function authorizeData(input, ctx) {
         const f = row.favorite_badges;
         if (!Array.isArray(f) || f.length > 5 || f.some(x => typeof x !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(x))) fail(400, 'Invalid favorites');
       }
+      // Bronze favorites: a second, longer strip (Ames 2026-10-09).
+      if ('favorite_badges_bronze' in row) {
+        const f = row.favorite_badges_bronze;
+        if (!Array.isArray(f) || f.length > 10 || f.some(x => typeof x !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(x))) fail(400, 'Invalid favorites');
+      }
+      // The order a player keeps their Trophy Case sections in.
+      if ('trophy_order' in row) {
+        const f = row.trophy_order;
+        const known = ['cells', 'editor', 'loyalty', 'special'];
+        if (!Array.isArray(f) || f.length > known.length || new Set(f).size !== f.length || f.some(x => !known.includes(x))) fail(400, 'Invalid order');
+      }
       for (const field of ['total_edits','total_merges','total_splits','cells_completed','current_streak','longest_streak','total_annotations']) {
         if (field in row && (!Number.isSafeInteger(row[field]) || row[field]<0 || row[field]>1000000000)) fail(400,'Invalid counter');
       }
@@ -266,7 +280,7 @@ function authorizeData(input, ctx) {
  * gate still covers everything else, including the client-reported stats on
  * the same row. Ownership is enforced by authorizeData (id = own row).
  */
-const PERSONAL_PROFILE_FIELDS = new Set(['username','display_name','flag','bio','favorite_badge','avatar_json',
+const PERSONAL_PROFILE_FIELDS = new Set(['username','display_name','flag','bio','favorite_badge','favorite_badges','favorite_badges_bronze','trophy_order','avatar_json',
   'avatar_thumbnail_url','avatar_coins_spent','avatar_updated_at','updated_at']);
 function isPersonalProfileEdit(input) {
   if (!input || input.table !== 'users' || String(input.method || '').toUpperCase() !== 'PATCH') return false;

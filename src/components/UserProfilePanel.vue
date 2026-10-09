@@ -79,6 +79,10 @@ async function loadOtherUser() {
     otherUserProfile.value = await backendStore.loadUserProfile(props.viewUserId);
     otherSilver.value = [];
     void backendStore.loadSilverBadges(props.viewUserId).then(l => { otherSilver.value = l; });
+    otherBronze.value = [];
+    void backendStore.loadBronzeBadges(props.viewUserId).then(l => { otherBronze.value = l; });
+    otherTrophyOrder.value = [];
+    void backendStore.loadTrophyOrder(props.viewUserId).then(l => { otherTrophyOrder.value = l; });
     otherAnnotations.value = null;
     void loadAnnotationTotal(props.viewUserId).then(n => { otherAnnotations.value = n; });
     otherDays.value = null;
@@ -600,26 +604,37 @@ function toggleFavoriteSpecialBadge(award: any) {
   backendStore.saveFavoriteBadge(newSlug);
 }
 
-// ── Favorites row: one gold, then silver (Ames 2026-10-01) ──────────────────
+// ── Favorites: one gold, a silver strip, a bronze strip ─────────────────────
+// Gold and silver are Ames 2026-10-01; bronze is 2026-10-09 (players asked to
+// show more). An achievement holds one star: giving it another takes the
+// first away.
 const specialSlug = (a: any): string => a?.badge?.slug || `special-${a?.id}`;
 const otherSilver = ref<string[]>([]);
+const otherBronze = ref<string[]>([]);
 const silverSlugs = computed<string[]>(() => viewingOtherUser.value ? otherSilver.value : backendStore.silverBadgeSlugs);
-interface FavItem { slug: string; name: string; img: string; gold: boolean; def?: BadgeDefinition; award?: any }
-function favItem(slug: string, gold: boolean): FavItem | null {
+const bronzeSlugs = computed<string[]>(() => viewingOtherUser.value ? otherBronze.value : backendStore.bronzeBadgeSlugs);
+type FavTier = 'gold' | 'silver' | 'bronze';
+interface FavItem { slug: string; name: string; img: string; gold: boolean; tier: FavTier; def?: BadgeDefinition; award?: any }
+function favItem(slug: string, tier: FavTier): FavItem | null {
+  const gold = tier === 'gold';
   const def = BADGE_DEFINITIONS.find(b => b.slug === slug);
-  if (def) return isBadgeEarned(def) ? { slug, name: def.name, img: getBadgeUrl(def.imageKey), gold, def } : null;
+  if (def) return isBadgeEarned(def) ? { slug, name: def.name, img: getBadgeUrl(def.imageKey), gold, tier, def } : null;
   const award = profileSpecialBadges.value.find((a: any) => specialSlug(a) === slug);
   const img = award?.badge?.thumbnail_url || award?.badge?.image_url;
-  return award && img ? { slug, name: award.badge?.name || 'Award', img, gold, award } : null;
+  return award && img ? { slug, name: award.badge?.name || 'Award', img, gold, tier, award } : null;
 }
 const goldSlug = computed(() => favoriteBadge.value?.slug || (favoriteSpecialBadge.value ? specialSlug(favoriteSpecialBadge.value) : ''));
 const favoriteRow = computed<FavItem[]>(() => {
   const out: (FavItem | null)[] = [];
-  if (goldSlug.value) out.push(favItem(goldSlug.value, true));
-  for (const sl of silverSlugs.value) if (sl !== goldSlug.value) out.push(favItem(sl, false));
+  const seen = new Set<string>();
+  const add = (sl: string, tier: FavTier) => { if (sl && !seen.has(sl)) { seen.add(sl); out.push(favItem(sl, tier)); } };
+  add(goldSlug.value, 'gold');
+  for (const sl of silverSlugs.value) add(sl, 'silver');
+  for (const sl of bronzeSlugs.value) add(sl, 'bronze');
   return out.filter((x): x is FavItem => !!x);
 });
-const silverRow = computed(() => favoriteRow.value.filter(f => !f.gold));
+const silverRow = computed(() => favoriteRow.value.filter(f => f.tier === 'silver'));
+const bronzeRow = computed(() => favoriteRow.value.filter(f => f.tier === 'bronze'));
 /** The badge the Trophy Case is showing large (same order as its template). */
 const featuredSlug = computed(() => {
   if (selectedSpecialBadge.value) return specialSlug(selectedSpecialBadge.value);
@@ -628,22 +643,84 @@ const featuredSlug = computed(() => {
 });
 const featuredIsGold = computed(() => !!featuredSlug.value && featuredSlug.value === favoriteBadgeSlug.value);
 const featuredIsSilver = computed(() => silverSlugs.value.includes(featuredSlug.value));
-const silverFull = computed(() => silverSlugs.value.length >= backendStore.MAX_SILVER_BADGES);
+const featuredIsBronze = computed(() => bronzeSlugs.value.includes(featuredSlug.value));
+// A strip is full when it SHOWS its limit. A saved slug that no longer shows
+// (an achievement that was withdrawn, such as the first Loyalty set) used to
+// keep its place and count against the limit, so a player could be stopped
+// at one or two favorites with room apparently left (Nik 2026-10-09). Such
+// slugs are dropped the next time the strip is saved.
+const silverFull = computed(() => silverRow.value.length >= backendStore.MAX_SILVER_BADGES);
+const bronzeFull = computed(() => bronzeRow.value.length >= backendStore.MAX_BRONZE_BADGES);
+const shownSilver = () => silverRow.value.map(f => f.slug);
+const shownBronze = () => bronzeRow.value.map(f => f.slug);
 function toggleGoldFeatured() {
   const sl = featuredSlug.value;
   if (!sl) return;
   if (featuredIsGold.value) { backendStore.saveFavoriteBadge(''); return; }
-  // Gold outranks silver: a badge holds one star.
-  if (featuredIsSilver.value) backendStore.saveSilverBadges(silverSlugs.value.filter(x => x !== sl));
+  // Gold outranks the others: a badge holds one star.
+  if (featuredIsSilver.value) backendStore.saveSilverBadges(shownSilver().filter(x => x !== sl));
+  if (featuredIsBronze.value) backendStore.saveBronzeBadges(shownBronze().filter(x => x !== sl));
   backendStore.saveFavoriteBadge(sl);
 }
 function toggleSilverFeatured() {
   const sl = featuredSlug.value;
   if (!sl) return;
-  if (featuredIsSilver.value) { backendStore.saveSilverBadges(silverSlugs.value.filter(x => x !== sl)); return; }
+  if (featuredIsSilver.value) { backendStore.saveSilverBadges(shownSilver().filter(x => x !== sl)); return; }
   if (silverFull.value) return;
   if (featuredIsGold.value) backendStore.saveFavoriteBadge('');
-  backendStore.saveSilverBadges([...silverSlugs.value, sl]);
+  if (featuredIsBronze.value) backendStore.saveBronzeBadges(shownBronze().filter(x => x !== sl));
+  backendStore.saveSilverBadges([...shownSilver().filter(x => x !== sl), sl]);
+}
+function toggleBronzeFeatured() {
+  const sl = featuredSlug.value;
+  if (!sl) return;
+  if (featuredIsBronze.value) { backendStore.saveBronzeBadges(shownBronze().filter(x => x !== sl)); return; }
+  if (bronzeFull.value) return;
+  if (featuredIsGold.value) backendStore.saveFavoriteBadge('');
+  if (featuredIsSilver.value) backendStore.saveSilverBadges(shownSilver().filter(x => x !== sl));
+  backendStore.saveBronzeBadges([...shownBronze().filter(x => x !== sl), sl]);
+}
+
+// ── Trophy Case sections in the player's own order ─────────────────────────
+// Drag a section by its heading (Ames 2026-10-09). The order is saved with
+// the profile, so visitors see the case the way its owner arranged it.
+const TROPHY_SECTIONS = ['cells', 'editor', 'loyalty', 'special'] as const;
+type TrophySection = typeof TROPHY_SECTIONS[number];
+const otherTrophyOrder = ref<string[]>([]);
+const trophyOrder = computed<TrophySection[]>(() => {
+  const saved = (viewingOtherUser.value ? otherTrophyOrder.value : backendStore.trophyOrder)
+    .filter((x): x is TrophySection => (TROPHY_SECTIONS as readonly string[]).includes(x));
+  return [...new Set([...saved, ...TROPHY_SECTIONS])];
+});
+const sectionOrder = (k: TrophySection) => ({ order: trophyOrder.value.indexOf(k) });
+const draggingSection = ref<TrophySection | null>(null);
+const dropSection = ref<TrophySection | null>(null);
+function sectionDragStart(k: TrophySection, e: DragEvent) {
+  if (viewingOtherUser.value) { e.preventDefault(); return; }
+  draggingSection.value = k;
+  try { e.dataTransfer?.setData('text/plain', k); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; } catch { /* some browsers */ }
+}
+function sectionDragOver(k: TrophySection, e: DragEvent) {
+  if (!draggingSection.value || draggingSection.value === k) return;
+  e.preventDefault();
+  dropSection.value = k;
+}
+function sectionDrop(k: TrophySection) {
+  const from = draggingSection.value;
+  draggingSection.value = null; dropSection.value = null;
+  if (!from || from === k) return;
+  const order = trophyOrder.value.filter(x => x !== from);
+  order.splice(order.indexOf(k), 0, from);       // lands where the one it was dropped on stood
+  backendStore.saveTrophyOrder(order);
+}
+function sectionDragEnd() { draggingSection.value = null; dropSection.value = null; }
+/** For the keyboard, and for touch where dragging is awkward. */
+function moveSection(k: TrophySection, by: number) {
+  const order = [...trophyOrder.value];
+  const i = order.indexOf(k), j = i + by;
+  if (j < 0 || j >= order.length) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  backendStore.saveTrophyOrder(order);
 }
 function openFavorite(item: FavItem) {
   if (item.def) { selectedSpecialBadge.value = null; selectedBadge.value = item.def; }
@@ -1573,6 +1650,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <span class="nge-trophy-fav-star">★</span>
             </button>
           </div>
+          <!-- Bronze favorites, a smaller strip under those -->
+          <div v-if="bronzeRow.length" class="nge-profile-silvers nge-profile-bronzes">
+            <button v-for="f in bronzeRow" :key="f.slug" class="nge-trophy-fav nge-trophy-fav--bronze"
+                    :title="f.name + ', bronze favorite'" @click="openFavoriteInCase(f)">
+              <img :src="f.img" :alt="f.name" />
+              <span class="nge-trophy-fav-star">★</span>
+            </button>
+          </div>
 
           <!-- Divider between badge and streak -->
           <div class="nge-profile-right-divider"></div>
@@ -1777,7 +1862,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             >{{ favoriteBadgeSlug === featuredBadge.slug ? '★' : '☆' }}</button>
           </div>
 
-          <!-- Stars for the badge on show: one gold favorite, up to five silver -->
+          <!-- Stars for the badge on show: one gold favorite, up to five silver, up to ten bronze -->
           <div v-if="!viewingOtherUser && featuredSlug" class="nge-trophy-stars">
             <button class="nge-trophy-starbtn nge-trophy-starbtn--gold" :class="{ 'is-on': featuredIsGold }"
                     :title="featuredIsGold ? 'Remove the gold star' : 'Make this your one gold favorite, shown on your profile'"
@@ -1786,27 +1871,47 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                     :disabled="!featuredIsSilver && silverFull"
                     :title="featuredIsSilver ? 'Remove the silver star' : silverFull ? 'Five silver favorites is the limit. Remove one first.' : 'Add to your silver favorites'"
                     @click="toggleSilverFeatured">★ {{ featuredIsSilver ? 'Silver favorite' : 'Add silver' }}</button>
+            <button class="nge-trophy-starbtn nge-trophy-starbtn--bronze" :class="{ 'is-on': featuredIsBronze }"
+                    :disabled="!featuredIsBronze && bronzeFull"
+                    :title="featuredIsBronze ? 'Remove the bronze star' : bronzeFull ? 'Ten bronze favorites is the limit. Remove one first.' : 'Add to your bronze favorites'"
+                    @click="toggleBronzeFeatured">★ {{ featuredIsBronze ? 'Bronze favorite' : 'Add bronze' }}</button>
           </div>
 
           <div v-if="favoriteRow.length || !viewingOtherUser" class="nge-trophy-favs">
             <div class="nge-trophy-favs-label">Favorites</div>
-            <div v-if="favoriteRow.length" class="nge-trophy-favs-row">
-              <button v-for="f in favoriteRow" :key="f.slug" class="nge-trophy-fav"
-                      :class="{ 'nge-trophy-fav--gold': f.gold, 'is-shown': featuredSlug === f.slug }"
-                      :title="f.name + (f.gold ? ', gold favorite' : ', silver favorite')" @click="openFavorite(f)">
-                <img :src="f.img" :alt="f.name" />
-                <span class="nge-trophy-fav-star">★</span>
-              </button>
-            </div>
+            <template v-if="favoriteRow.length">
+              <div class="nge-trophy-favs-row">
+                <button v-for="f in favoriteRow.filter(x => x.tier !== 'bronze')" :key="f.slug" class="nge-trophy-fav"
+                        :class="{ 'nge-trophy-fav--gold': f.gold, 'is-shown': featuredSlug === f.slug }"
+                        :title="f.name + (f.gold ? ', gold favorite' : ', silver favorite')" @click="openFavorite(f)">
+                  <img :src="f.img" :alt="f.name" />
+                  <span class="nge-trophy-fav-star">★</span>
+                </button>
+              </div>
+              <div v-if="bronzeRow.length" class="nge-trophy-favs-row nge-trophy-favs-row--bronze">
+                <button v-for="f in bronzeRow" :key="f.slug" class="nge-trophy-fav nge-trophy-fav--bronze"
+                        :class="{ 'is-shown': featuredSlug === f.slug }"
+                        :title="f.name + ', bronze favorite'" @click="openFavorite(f)">
+                  <img :src="f.img" :alt="f.name" />
+                  <span class="nge-trophy-fav-star">★</span>
+                </button>
+              </div>
+            </template>
             <div v-else class="nge-trophy-favs-empty">Pick a badge on the right, then star it.</div>
           </div>
           </div><!-- end side -->
 
           <div class="nge-trophy-main">
           <!-- Exploration track (Cell Achievements first) -->
-          <div class="nge-trophy-track">
+          <div class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'cells', 'is-drop': dropSection === 'cells' }" :style="sectionOrder('cells')" @dragover="sectionDragOver('cells', $event)" @drop.prevent="sectionDrop('cells')">
             <div class="nge-trophy-track-label" style="color: #90fff2;">Cell Completions
               <span class="nge-trophy-track-count">{{ earnedExplorationBadges.earned.length }} earned</span>
+              <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
+                <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
+                        @dragstart="sectionDragStart('cells', $event)" @dragend="sectionDragEnd">⠿</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move up" aria-label="Move this section up" @click="moveSection('cells', -1)">▲</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('cells', 1)">▼</button>
+              </span>
             </div>
             <div class="nge-trophy-grid">
               <div
@@ -1817,6 +1922,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
                   'nge-trophy-badge--silver': silverSlugs.includes(badge.slug),
+                  'nge-trophy-badge--bronze': bronzeSlugs.includes(badge.slug),
                 }"
                 @click="onBadgeClick(badge)"
               >
@@ -1829,9 +1935,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           </div>
 
           <!-- Proofreading track -->
-          <div class="nge-trophy-track">
+          <div class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'editor', 'is-drop': dropSection === 'editor' }" :style="sectionOrder('editor')" @dragover="sectionDragOver('editor', $event)" @drop.prevent="sectionDrop('editor')">
             <div class="nge-trophy-track-label" style="color: #ffd08a;">Editor Achievements
               <span class="nge-trophy-track-count">{{ earnedBuildingBadges.earned.length }} earned</span>
+              <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
+                <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
+                        @dragstart="sectionDragStart('editor', $event)" @dragend="sectionDragEnd">⠿</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move up" aria-label="Move this section up" @click="moveSection('editor', -1)">▲</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('editor', 1)">▼</button>
+              </span>
             </div>
             <div class="nge-trophy-grid">
               <div
@@ -1842,6 +1954,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
                   'nge-trophy-badge--silver': silverSlugs.includes(badge.slug),
+                  'nge-trophy-badge--bronze': bronzeSlugs.includes(badge.slug),
                 }"
                 @click="onBadgeClick(badge)"
               >
@@ -1854,9 +1967,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           </div>
 
           <!-- Loyalty track -->
-          <div v-if="earnedLoyaltyBadges.earned.length > 0" class="nge-trophy-track">
+          <div v-if="earnedLoyaltyBadges.earned.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'loyalty', 'is-drop': dropSection === 'loyalty' }" :style="sectionOrder('loyalty')" @dragover="sectionDragOver('loyalty', $event)" @drop.prevent="sectionDrop('loyalty')">
             <div class="nge-trophy-track-label" style="color: #c9a8ff;">Loyalty Achievements
               <span class="nge-trophy-track-count">{{ earnedLoyaltyBadges.earned.length }} earned</span>
+              <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
+                <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
+                        @dragstart="sectionDragStart('loyalty', $event)" @dragend="sectionDragEnd">⠿</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move up" aria-label="Move this section up" @click="moveSection('loyalty', -1)">▲</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('loyalty', 1)">▼</button>
+              </span>
             </div>
             <div class="nge-trophy-grid">
               <div
@@ -1867,6 +1986,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
                   'nge-trophy-badge--silver': silverSlugs.includes(badge.slug),
+                  'nge-trophy-badge--bronze': bronzeSlugs.includes(badge.slug),
                 }"
                 @click="onBadgeClick(badge)"
               >
@@ -1879,14 +1999,21 @@ const emit = defineEmits({hide: null, 'open-settings': null});
           </div>
 
           <!-- Special Awards -->
-          <div v-if="profileSpecialBadges.length > 0" class="nge-trophy-track">
-            <div class="nge-trophy-track-label">★ Special Awards</div>
+          <div v-if="profileSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
+            <div class="nge-trophy-track-label">★ Special Awards
+              <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
+                <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
+                        @dragstart="sectionDragStart('special', $event)" @dragend="sectionDragEnd">⠿</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move up" aria-label="Move this section up" @click="moveSection('special', -1)">▲</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('special', 1)">▼</button>
+              </span>
+            </div>
             <div class="nge-trophy-grid">
               <div
                 v-for="award in profileSpecialBadges"
                 :key="award.id"
                 class="nge-trophy-badge"
-                :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id, 'nge-trophy-badge--favorited': favoriteBadgeSlug === specialSlug(award), 'nge-trophy-badge--silver': silverSlugs.includes(specialSlug(award)) }"
+                :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id, 'nge-trophy-badge--favorited': favoriteBadgeSlug === specialSlug(award), 'nge-trophy-badge--silver': silverSlugs.includes(specialSlug(award)), 'nge-trophy-badge--bronze': bronzeSlugs.includes(specialSlug(award)) }"
                 :title="specialBadgeTooltip(award)"
                 @click="onSpecialBadgeClick(award)"
               >
@@ -3694,6 +3821,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-trophy-badge--silver {
   box-shadow: 0 0 0 1.5px rgba(200, 212, 228, 0.4) inset;
 }
+.nge-trophy-badge--bronze {
+  box-shadow: 0 0 0 1.5px rgba(214, 150, 96, 0.45) inset;
+}
 .nge-trophy-detail-close:hover { color: #f66; }
 
 /* ── Trophy Case, wide screens (Ames 2026-10-01): the badge on show sits on
@@ -3728,6 +3858,32 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-trophy-fav--gold { border-color: rgba(255, 213, 74, 0.6); }
 .nge-trophy-fav--gold .nge-trophy-fav-star { color: #ffd54a; text-shadow: 0 0 4px #000, 0 0 6px rgba(255, 213, 74, 0.7); }
 .nge-profile-silvers .nge-trophy-fav { width: 42px; height: 42px; padding: 4px; }
+/* Bronze: the third strip, a size down, in a warm copper */
+.nge-trophy-starbtn--bronze:hover:not(:disabled), .nge-trophy-starbtn--bronze.is-on { color: #e8a878; border-color: rgba(232, 168, 120, 0.6); }
+.nge-trophy-starbtn--bronze.is-on { background: rgba(232, 168, 120, 0.1); }
+.nge-trophy-favs-row--bronze { margin-top: 10px; gap: 6px; }
+.nge-trophy-fav--bronze { width: 42px; height: 42px; padding: 4px; border-color: rgba(214, 150, 96, 0.45); }
+.nge-trophy-fav--bronze:hover { border-color: rgba(232, 168, 120, 0.9); }
+.nge-trophy-fav--bronze .nge-trophy-fav-star { font-size: 12px; color: #e8a878; text-shadow: 0 0 4px #000, 0 0 6px rgba(232, 168, 120, 0.6); }
+.nge-profile-bronzes { margin-top: 8px; gap: 6px; }
+.nge-profile-bronzes .nge-trophy-fav { width: 34px; height: 34px; padding: 3px; }
+/* Sections in the player's own order: dragged by the grip in the heading */
+.nge-trophy-main { display: flex; flex-direction: column; }
+.nge-trophy-track { transition: opacity 0.15s ease, box-shadow 0.15s ease; border-radius: 10px; }
+.nge-trophy-track.is-dragging { opacity: 0.45; }
+.nge-trophy-track.is-drop { box-shadow: 0 -3px 0 0 rgba(120, 190, 255, 0.85); }
+.nge-trophy-track-move { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 0.15s ease; }
+.nge-trophy-track:hover .nge-trophy-track-move, .nge-trophy-track-move:focus-within { opacity: 1; }
+.nge-trophy-track-grip, .nge-trophy-track-nudge {
+  padding: 2px 6px; border: 1px solid transparent; border-radius: 5px; background: none; color: rgba(160, 185, 220, 0.75);
+  font: inherit; font-size: 11px; line-height: 1.2; cursor: pointer;
+}
+.nge-trophy-track-grip { cursor: grab; font-size: 14px; }
+.nge-trophy-track-grip:active { cursor: grabbing; }
+.nge-trophy-track-grip:hover, .nge-trophy-track-nudge:hover, .nge-trophy-track-grip:focus-visible, .nge-trophy-track-nudge:focus-visible {
+  color: #dcebff; border-color: rgba(120, 190, 255, 0.45); background: rgba(120, 190, 255, 0.08); outline: none;
+}
+@media (hover: none) { .nge-trophy-track-move { opacity: 1; } }
 
 @media (min-width: 901px) {
   body:not(.nge-mobile) .nge-profile-shell--trophy { width: 97vw; max-width: none; height: 94vh; max-height: 94vh; }
