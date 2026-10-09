@@ -1115,7 +1115,9 @@ With merge mode on:
 2. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 3. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
-The server connects the two. You'll see "trying..." and then "done", and the piece turns purple.`,
+The server connects the two. You'll see "trying..." and then "done", and the piece turns purple.
+
+The pink gems show where to click.`,
     position: OVER_3D,
     width: "400px",
     onEnter: async () => {
@@ -1125,6 +1127,9 @@ The server connects the two. You'll see "trying..." and then "done", and the pie
       // The second cell too, if it is not held (after an idle release the
       // cells are taken again here, and the second merge must not be lost).
       if (!holdsSlot('b')) await beginPractice('merge_then_cut', 'start', { slot: 'b', show: false });
+      // The first merge starts with the two click spots marked (Ames: "we
+      // want them to control click on each piece, easy peasy").
+      setTimeout(() => { showWhereToClick(); }, 1400);
       // The previous step said "press M"; if they pressed next instead,
       // the tool comes on anyway.
       setTimeout(() => ensureTool('merge'), 400);

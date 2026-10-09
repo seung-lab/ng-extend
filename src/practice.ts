@@ -748,7 +748,16 @@ export async function beginPractice(kind: PracticeKind = 'merge_then_cut', view:
   }
   let row: PracticeExample | null;
   try { row = await practiceAction('claim', { kind, exclude }); }
-  catch (error: any) { console.warn('[practice] claim failed:', error.message); practiceUnavailable(); return null; }
+  catch (error: any) {
+    console.warn(`[practice] claim ${kind} slot ${slot} failed:`, error?.message || error);
+    // A failed claim for a further cell must not throw away the one already
+    // held and on screen (Ames saw "practice cells need you to be signed
+    // in" over her own loaded cell, 2026-10-09). Treat it as "no cell of its
+    // own", which lets a rider take the slot; only a first claim that fails
+    // means practice is unavailable.
+    if (!Object.keys(session.held).length) { practiceUnavailable(); return null; }
+    row = null;
+  }
   // A claim that hands back a cell already held (the database still has
   // the claim function without p_exclude) counts as nothing free: a
   // practice step never shows the previous step's cell again (Amy).
