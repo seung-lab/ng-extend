@@ -178,7 +178,11 @@ export function showGemMarkers(groups: Array<{ name: string; color: string; poin
       viewer.layerSpecification.add(makeLayer(viewer.layerSpecification, g.name, {
         type: 'annotation', source: 'local://annotations',
         annotations: pts.map((p, i) => ({ type: 'point', id: `${g.name}-${i}`, point: [p[0], p[1], p[2]] })),
-        annotationColor: g.color, pointMarker: 'pyr', pointSize: 1.4,
+        // Drawn over the cell and large. Hidden behind the mesh they could
+        // only be found from far away: up close the gem sat inside the
+        // surface it marks (Ames, 2026-10-09). A hint has to be findable
+        // first; Highlight Mode's start gem is drawn the same way.
+        annotationColor: g.color, pointMarker: 'pyr', pointSize: 2.4, onTop: true,
         // Not pickable: a Ctrl+click on a gem must reach the cell under it,
         // or the learner's own cut point would not land.
         pick: false,
