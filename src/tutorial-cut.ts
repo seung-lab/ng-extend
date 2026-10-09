@@ -4,14 +4,12 @@ import imgBravoNurro from './images/bravo-nurro.png';
 // axon off it (2026-09-26). Web-sized JPEGs; originals in her images.
 import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
-// Amy's cut with the points placed (2026-09-26): red along the axon, blue on the dendrite.
-import imgCutPoints from './images/cut-points-example.jpg';
 // The second cut's cell, fused and after the cut (Ames, 2026-10-06).
 import imgCut2Before from './images/cut2-before.jpg';
 import imgCut2After from './images/cut2-after.jpg';
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot, openSplitView } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchPractice, watchTool } from './tutorial-3';
+import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -104,40 +102,63 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
     },
   },
 
-  // 4: Placing the points
+  // 4 to 6: the first cut, one small thing per box (Ames, 2026-10-09: the
+  // single "Place the points" box was a lot of text). Each moves on by
+  // itself when its one thing is done.
+  // 4: a red point
   {
-    title: "Place the points",
-    // The example picture is a thumbnail beside the text (Ames, 2026-10-02:
-    // full width made the box taller than the screen). Click opens it full size.
+    title: "Place a red point",
     text: `
-<a href="` + imgCutPoints + `" target="_blank" rel="noopener" title="Open full size in a new tab" style="float:right;width:150px;margin:2px 0 8px 14px;text-align:center;font-size:0.72em;line-height:1.3;color:#9fd0ff;text-decoration:none"><img src="` + imgCutPoints + `" alt="A good set of cut points" style="display:block;width:150px;height:auto;border-radius:6px;border:1px solid rgba(74,158,255,0.35);margin-bottom:4px">A good set of points. Click to enlarge.</a>
-
-The cut tool uses a <strong style="color:#ff5c5c">red</strong> and <strong style="color:#5c8cff">blue</strong> point system, one colour on each side of where you want to cut.
-
-1. **Ctrl+Click** a <strong style="color:#ff5c5c">red</strong> point on the piece that doesn't belong, by the red gem.
-2. Press **G** to switch to <strong style="color:#5c8cff">blue</strong>, then **Ctrl+Click** a <strong style="color:#5c8cff">blue</strong> point on the cell, by the blue gem. Tricky cuts can need a few points of each.
-3. Press **Submit cut** on the bar at the bottom, or **Enter**. You'll see "splitting..." for a moment, then the piece comes away as its own segment.
-
-If the result isn't right, there is no undo key: rejoin the pieces with a <strong style="color:#60c060">merge</strong>.
-
-The red and blue gems on the cell show where the points go.`,
+**Ctrl+Click** the piece that doesn't belong, by the <strong style="color:#ff5c5c">red</strong> gem.`,
     position: OVER_3D,
-    width: "460px",
+    width: "380px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(false, 'Waiting for your cut: red on the piece to remove, G, blue on the cell, Submit cut.', '', { advance: true });
+      stopWatching();
       await beginPractice('cut', 'start', { slot: 'a', prefer: holdsSlot('a') ? undefined : CUT_FIRST });
       // The second cell too, if it is not held (taken again after an idle release).
       if (!holdsSlot('b')) await beginPractice('cut', 'start', { slot: 'b', show: false, prefer: CUT_SECOND });
       // The previous step said "press C"; turn the tool on if they didn't.
       setTimeout(() => ensureTool('multicut'), 400);
-      // The first cut starts with the red and blue hint gems showing (Ames,
-      // 2026-10-06); the second one leaves them to the "?" button.
+      // One red and one blue gem show where the points go.
       setTimeout(() => { showWhereToCut(1); }, 1400);
+      watchCutStep('red', 'Waiting for a red point: Ctrl+click by the red gem.');
     },
   },
 
-  // 5: Cut success
+  // 5: switch colour
+  {
+    title: "Press G",
+    text: `
+Red is placed. Now press **G** to switch to <strong style="color:#5c8cff">blue</strong>.
+
+The two colours mark the two sides of the cut.`,
+    position: OVER_3D,
+    width: "380px",
+    onEnter: () => {
+      closeSidePanel();
+      watchCutStep('blue', 'Waiting for G: the bar at the bottom turns blue.');
+    },
+  },
+
+  // 6: a blue point, and submit
+  {
+    title: "Place a blue point",
+    text: `
+**Ctrl+Click** the cell, by the <strong style="color:#5c8cff">blue</strong> gem.
+
+Then press **Submit cut** on the bar at the bottom, or **Enter**.`,
+    position: OVER_3D,
+    width: "380px",
+    onEnter: async () => {
+      closeSidePanel();
+      watchPractice(false, 'Waiting for a blue point, then Submit cut.', '', { advance: true });
+      await beginPractice('cut', 'start', { slot: 'a' });
+      setTimeout(() => ensureTool('multicut'), 400);
+    },
+  },
+
+  // 7: Cut success
   {
     title: "Cut success!",
     text: `
@@ -150,7 +171,7 @@ You did it. The piece that didn't belong is its own segment now.
     onEnter: celebrateStep,
   },
 
-  // 6: Cutting in 2D, then straight to the second cell
+  // 8: Cutting in 2D, then straight to the second cell
   {
     title: "You can also cut in 2D",
     text: `
@@ -176,7 +197,7 @@ You did it. The piece that didn't belong is its own segment now.
     },
   },
 
-  // 7: The 2D cut, on the second cell
+  // 9: The 2D cut, on the second cell
   {
     title: "Your Turn: cut in 2D",
     text: `
@@ -196,7 +217,7 @@ The red and blue dots on the images show where the points go.`,
       closeSidePanel();
       // No second cut cell: never show the first again (it is already cut),
       // go to the wrap up.
-      if (!holdsSlot('b')) { const st = useTutorialStore(); if (st.getTutorialStep() === 6) st.setTutorialStep(7); return; }
+      if (!holdsSlot('b')) { const st = useTutorialStore(); if (st.getTutorialStep() === 8) st.setTutorialStep(9); return; }
       // The second cut cell, taken at the start together with the first. The
       // watch starts only once it is the cell on screen: started before, it
       // saw the first cell, already cut, and jumped straight to "done" while
@@ -212,7 +233,7 @@ The red and blue dots on the images show where the points go.`,
     },
   },
 
-  // 8: Done. Kept short (Ames: the box was taller than the screen); the full
+  // 10: Done. Kept short (Ames: the box was taller than the screen); the full
   // key list is one click away.
   {
     title: "Cut: done!",

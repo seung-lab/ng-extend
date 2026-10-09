@@ -513,6 +513,27 @@ export function finishPracticeTutorial(what: 'merge' | 'cut'): boolean {
   return false;
 }
 
+/**
+ * One small step of a cut: wait for the first red point ('red'), or for the
+ * colour to be switched to blue ('blue'), then move on. The counts and the
+ * active colour are the cut tool's own.
+ */
+export function watchCutStep(want: 'red' | 'blue', waiting: string) {
+  pointAtNext(false);
+  const token = ++practiceWatch;
+  waitingFor = null;
+  helpWanted = true;
+  const bar = useSplitMergeOverlayStore();
+  const tick = () => {
+    if (token !== practiceWatch) return;
+    const done = want === 'red' ? bar.redPointCount > 0 : bar.activeGroup === 'blue';
+    if (done) { practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
+    practiceStatus(waiting);
+    setTimeout(tick, 300);
+  };
+  setTimeout(tick, 500);
+}
+
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
   pointAtNext(false);
   const token = ++practiceWatch;

@@ -52,7 +52,7 @@ const needsSwap = computed(() => isMulticut.value && !store.pendingClose
 const tutorialStore = useTutorialStore();
 const inPracticeTutorial = computed(() => {
   const step = tutorialStore.getTutorialStep();
-  return [3, 5, 9].includes(tutorialStore.activeTutorial) && step >= 0 && step < 8;
+  return [3, 5, 9].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
 });
 const groupPulse = ref(false);
 let groupPulseTimer: ReturnType<typeof setTimeout> | null = null;
