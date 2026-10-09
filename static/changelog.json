@@ -3,6 +3,17 @@
   "entries": [
     {
       "at": "2026-10-09T14:00:00Z",
+      "title": "Shortcuts, counts and who is online",
+      "items": [
+        "Shift+L opens and closes the Cell Library.",
+        "In Settings you can choose which tab the Cell Library opens on.",
+        "Each annotation layer shows how many annotations it holds.",
+        "Click the online count in chat to see who is there. A name opens that player's profile.",
+        "The Merge Queue opens beside the chat, and you can drag it by its header to wherever you like."
+      ]
+    },
+    {
+      "at": "2026-10-09T14:00:00Z",
       "title": "Loyalty Achievements",
       "items": [
         "Loyalty Achievements are here: one for each milestone of days you do science in Pyr, from your second day to a full year.",
