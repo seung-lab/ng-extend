@@ -142,10 +142,8 @@ export function practiceStatus(text: string, done = false) {
   // Stuck? A "?" on the right opens a small panel with the ways out (Amy).
   let help = chip.querySelector('.nge-practice-help') as HTMLElement | null;
   if (!help) {
-    help = smallButton('nge-practice-help', '?', () => toggleStuckPanel());
-    help.title = 'Stuck? Ways to get help';
-    help.classList.remove('nge-hud-btn--sm');
-    help.classList.add('nge-hud-btn--round');
+    help = smallButton('nge-practice-help', 'Help me', () => helpMe());
+    help.title = 'Show me where to click';
     help.style.cssText = 'float:right;margin:10px 0 0;position:relative;z-index:3;';
     chip.appendChild(help);
   }
@@ -190,6 +188,10 @@ const RED = '#ff5c5c', BLUE = '#5c8cff';
 const CUT_HINT_STATES: Record<string, string> = {
   // Small branch merged to cell (Celia, 16:27)
   '0482d846-0c16-4393-ab8a-0d1212b9520f': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5145051306917888',
+  // Ames's points for a cut, as annotation layers (2026-10-09). Which cell
+  // it belongs to is settled by cutHintFor, which tries every view here
+  // against the cell on screen.
+  'hint-view-2026-10-09': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5455870037065728',
   // Axon fused to a dendrite (Ames, 2026-10-06), the 2D cut
   '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5695110385762304',
   // Fusion on a proofread cell (Ames), the 3D cut
@@ -217,6 +219,29 @@ async function cutPointsInState(stateUrl: string): Promise<{ red: number[][]; bl
       for (const v of Array.isArray(o) ? o : Object.values(o)) walk(v, depth + 1);
     };
     walk(state, 0);
+    // No cut points in the tool: the view may carry them as ordinary
+    // annotation layers, saved with the cut tool off (Ames, 2026-10-09). A
+    // layer named for removing or coloured red is the red side; one named
+    // for keeping or coloured blue is the blue side.
+    if (!found) {
+      const red: number[][] = [], blue: number[][] = [];
+      const layers: any[] = Array.isArray(state?.layers) ? state.layers : Object.values(state?.layers ?? {});
+      for (const layer of layers) {
+        if (layer?.type !== 'annotation') continue;
+        const pts: number[][] = [];
+        for (const a of layer.annotations ?? []) {
+          const pt = a?.point;
+          if ((a?.type === 'point' || a?.type === undefined) && Array.isArray(pt)) pts.push(pt.slice(0, 3).map(Number));
+        }
+        if (!pts.length) continue;
+        const name = String(layer.name ?? '').toLowerCase();
+        const c = /^#?([0-9a-f]{6})$/i.exec(String(layer.annotationColor ?? '').trim());
+        const r = c ? parseInt(c[1].slice(0, 2), 16) : 0, b = c ? parseInt(c[1].slice(4, 6), 16) : 0;
+        const isRed = /remove|red|cut|axon|wrong/.test(name) ? true : /keep|blue|stay|cell/.test(name) ? false : r >= b;
+        (isRed ? red : blue).push(...pts);
+      }
+      if (red.length || blue.length) found = { red, blue };
+    }
     console.info('[tutorial] cut hint state:', found ? `${(found as any).red.length} red, ${(found as any).blue.length} blue` : 'no cut points in it');
     return found;
   } catch (e) {
@@ -319,39 +344,51 @@ export async function showWhereToCut(perColour = 4): Promise<boolean> {
   ]) || showPyrMarkers([...red, ...blue], [], 60, [...red.map(() => RED), ...blue.map(() => BLUE)]);
 }
 
-function toggleStuckPanel() {
+/**
+ * "Help me" (Ames, 2026-10-09): the first press shows where to click, which
+ * is what a stuck learner wants. Other ways out sit one step further, behind
+ * "Still need help?". With nothing to point at, it opens those straight away.
+ */
+async function helpMe() {
   const chip = chipBody();
   if (!chip) return;
-  const existing = chip.querySelector('.nge-practice-stuck');
-  if (existing) { existing.remove(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); return; }
+  // A second press closes whatever the first opened.
+  const open = chip.querySelector('.nge-practice-stuck, .nge-practice-more');
+  if (open) {
+    chip.querySelectorAll('.nge-practice-stuck, .nge-practice-more').forEach(el => el.remove());
+    document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+    return;
+  }
+  const ex = currentPractice().example;
+  let shown = false;
+  if (ex?.kind === 'cut') {
+    ensureTool('multicut');
+    shown = await showWhereToCut();
+    if (shown) practiceStatus('The red and blue gems mark the spots: red on one side of the join, blue on the other. Ctrl+click near each, press G to switch colour, then Submit cut.');
+  } else if (ex?.kind === 'merge_then_cut') {
+    ensureTool('merge');
+    shown = await showWhereToClick();
+    if (shown) practiceStatus('The pink gems mark the two spots. Ctrl+click one piece by its gem, then the other, then Submit merge.');
+  }
+  if (!shown) { openStuckPanel(); return; }
+  const more = smallButton('nge-practice-more', 'Still need help?', () => { more.remove(); openStuckPanel(); });
+  more.style.cssText = 'float:right;clear:right;margin:8px 0 0;';
+  chip.appendChild(more);
+  document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+}
+
+/** The other ways out: the layer, the chat, the guide. */
+function openStuckPanel() {
+  const chip = chipBody();
+  if (!chip || chip.querySelector('.nge-practice-stuck')) return;
   const panel = notePanel('nge-practice-stuck',
-    '<div class="nge-hud-panel-title">Stuck? Three ways out.</div>'
+    '<div class="nge-hud-panel-title">Still stuck? Three ways out.</div>'
     + '<div class="nge-hud-panel-row">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer named <b>3D segmentation</b>. Right-click it to select it.</div>'
     + '<div class="nge-hud-panel-row">2. Ask people in the community chat. Someone is usually around.</div>'
     + '<div class="nge-hud-panel-row">3. Ask Nurro, the AI guide. It knows this tutorial and the tools.</div>');
   const row = document.createElement('div');
   row.className = 'nge-hud-btnrow';
   row.appendChild(smallButton('nge-practice-stuck-layer', 'Show me the layer', () => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer'))));
-  const ex = currentPractice().example;
-  if (ex && ex.kind === 'merge_then_cut') {
-    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to click', async () => {
-      ensureTool('merge');
-      const shown = await showWhereToClick();
-      if (!shown) { practiceStatus('No click hints for this cell yet. Ctrl+click anywhere on the yellow piece, then anywhere on the purple segment near it.'); return; }
-      const placed = ex?.point_a && ex?.point_b ? placeMergeLine() : false;
-      practiceStatus(placed
-        ? 'Pyr marks the two spots and the merge line is already placed. Press Submit merge, or Enter.'
-        : 'The pink gems mark the two spots. Ctrl+click the yellow piece by its gem, then the purple one by its gem, then Submit merge.');
-    }));
-  }
-  if (ex && ex.kind === 'cut') {
-    row.appendChild(smallButton('nge-practice-stuck-where', 'Show me where to place points', async () => {
-      ensureTool('multicut');
-      practiceStatus((await showWhereToCut())
-        ? 'The red and blue gems mark the spots: red points on one side of the join, blue on the other. Ctrl+click near each, press G to switch colour, then Submit cut.'
-        : 'No point hints for this cell yet. Red goes on the piece that does not belong, blue on the cell just past the join.');
-    }));
-  }
   row.appendChild(smallButton('nge-practice-stuck-chat', 'Ask in chat', () => document.dispatchEvent(new CustomEvent('nge:open-chat'))));
   row.appendChild(smallButton('nge-practice-stuck-ai', 'Ask Nurro', () => (document.querySelector('.nge-ask-btn') as HTMLElement | null)?.click()));
   panel.appendChild(row);

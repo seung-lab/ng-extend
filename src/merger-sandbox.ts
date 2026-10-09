@@ -116,7 +116,7 @@ export const steps: Step[] = [
 
 Two neurons are fused into one segment here. Find where they touch and cut them apart, the way you did in the Cut tutorial: <strong style="color:#ff5c5c">red</strong> points on one neuron, **G**, <strong style="color:#5c8cff">blue</strong> points on the other, then **Submit cut**.
 
-No preset points this time. Stuck? The **?** button shows where they go.`;
+No preset points this time. Stuck? Press **Help me**.`;
     },
     position: OVER_3D,
     width: "440px",
