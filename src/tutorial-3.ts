@@ -520,6 +520,12 @@ export async function recordTutorialDone(tutorial: number, item: string | null =
   }
 }
 
+/** Credit a practice edit confirmed some other way than by the watch. */
+export function creditPractice(id: string) {
+  practiceAsked.add(id);
+  practiceLanded.add(id);
+}
+
 /** How many practice edits were asked for and how many landed. */
 export function practiceScore(): { asked: number; landed: number } {
   return { asked: practiceAsked.size, landed: [...practiceAsked].filter(id => practiceLanded.has(id)).length };
@@ -755,6 +761,9 @@ document.addEventListener('nge:practice-countdown', ((e: CustomEvent) => {
 
 document.addEventListener('nge:practice-unavailable', () => {
   hidePyrMarkers();
+  // Not over a success or done box: the edit is made and the cells are on
+  // their way back anyway.
+  if (document.querySelector('.introductionStepAnchor .nge-done-lead')) return;
   practiceStatus('Your practice session could not be renewed. Editing is paused. Press back, then next, to get a session again.');
 });
 

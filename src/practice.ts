@@ -399,8 +399,14 @@ function startActivityWatch() {
     if (idle < WARN_AFTER_MS && Date.now() - lastHeartbeat > 60 * 1000) {
       lastHeartbeat = Date.now();
       for (const ex of cells) {
+        // Not while the cells are being handed back: the server has already
+        // ended the session, and its refusal used to show "could not be
+        // renewed" on the success box.
+        if (session.releasing) break;
         practiceAction('heartbeat', { id: ex.id, session: ex.claim_nonce }).catch((error) => {
-          console.warn('[practice] heartbeat failed:', error.message);
+          const why = String(error?.message || error);
+          console.warn('[practice] heartbeat failed:', why);
+          if (session.releasing || !/has ended|no longer yours|not found/i.test(why)) return;
           for (const [slot, held] of Object.entries(session.held)) {
             if (held.id === ex.id && held.claim_nonce === ex.claim_nonce) delete session.held[slot];
           }
@@ -608,6 +614,26 @@ function userId(): string | null {
  * reproduce; 'start' shows the fused root for them to cut.
  */
 export type PracticeView = 'start' | 'preview';
+
+/**
+ * Whether a cell's two spots are on different segments right now, asked
+ * directly. Used where it matters that a cut is credited even if the watch
+ * missed it (the Merger Sandbox count). null when it cannot be told.
+ */
+export async function cellIsCut(id: string): Promise<boolean | null> {
+  try {
+    let ex = [...Object.values(session.held), ...Object.values(riders)].find(c => c.id === id) as PracticeExample | undefined;
+    if (!ex) {
+      // No longer held (the session was lost): the row still says where to look.
+      const { data } = await supabase.from('tutorial_practice_examples').select('*').eq('id', id).limit(1);
+      ex = data?.[0] as PracticeExample | undefined;
+    }
+    if (!ex) return null;
+    const [sa, sb] = checkSupervoxels(ex);
+    const [a, b] = await Promise.all([rootOfSupervoxel(ex, sa), rootOfSupervoxel(ex, sb)]);
+    return a && b ? a !== b : null;
+  } catch { return null; }
+}
 
 /** Whether a cut cell has a finished cut to preview (its two roots from
  *  after the cut). Cells registered fused do not. */
@@ -894,6 +920,9 @@ const STAGED_VIEW: Record<string, { state?: string; layout?: '3d' | 'xy-3d' }> =
   // First merge (dendrite): 3D only, the merge point centred, no stray
   // segments (Ames's view, 2026-10-08).
   'b231f4e7-e9f3-4214-941f-975b8b25a237': { state: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4805358249836544', layout: '3d' },
+  // Merger Sandbox 5: Ames's view (2026-10-09), the registered one showed
+  // the wrong cell.
+  'f11ad22b-8043-4223-9b7e-264eb5d6d0a3': { state: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5699422331600896' },
   // Second merge (axon): done in 2D, so split view.
   'a4bd2f76-67e9-4093-adc7-e670230d1577': { layout: 'xy-3d' },
 };

@@ -494,7 +494,7 @@ onUnmounted(() => {
                     <div class="buttonContainer">
                         <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
                         <span class="stepCounter">{{ stepIndex + 1 }}/{{ totalSteps }}</span>
-                        <button v-if="computedStep.last" @click="launchConfetti(); $emit('next')" class="next" :title="nextTip">done</button>
+                        <button v-if="computedStep.last" @click="launchConfetti(); $emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'done' }}</button>
                         <button v-else @click="$emit('next')" class="next" :title="nextTip">{{ computedStep.nextLabel || 'next' }}</button>
                     </div>
                     <div class="progressBarContainer nge-chip-rail" :aria-label="`Step ${stepIndex + 1} of ${totalSteps}`">
