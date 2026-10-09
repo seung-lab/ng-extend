@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-09T16:40:00Z",
+      "at": "2026-10-09T16:22:00Z",
       "title": "The 2D image arrives sooner",
       "items": [
         "In the Sandbox a view now fetches about 60 MB of image instead of 100 MB, and moving to the next slab or panning no longer waits on pieces the screen cannot show.",
