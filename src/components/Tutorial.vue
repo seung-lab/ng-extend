@@ -17,7 +17,7 @@ import { steps as steps8 } from '../tutorial-flywire-tour';
 import { steps as steps9 } from '../merger-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { endPractice } from '../practice';
-import { practiceEarned } from '../tutorial-3';
+import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 // Mini Michelangelo art from Ames (2026-10-07).
@@ -166,6 +166,8 @@ const next = () => {
     store.setTutorialStep(isLastStep ? steps.value.length : store.getTutorialStep() + 1);
     if (isLastStep) {
         console.info(`[tutorial] finished tutorial ${tutorialNum}; step is now ${store.getTutorialStep()} of ${steps.value.length}`);
+        // The sandbox records each merger as it is cut, not the box closing.
+        if (tutorialNum !== 9) recordTutorialDone(tutorialNum);
         // Say so if anything puts a box back in the next few seconds.
         const stop = watch(currentStep, (now) => {
             if (store.activeTutorial === tutorialNum && now < steps.value.length) {
@@ -221,8 +223,17 @@ function exitFromPrompt() { resumeDecided.value = true; exitIntro(); }
 const exitIntro = () => {
     console.log('exiting intro!');
     // Leaving the merge or cut tutorial mid practice hands the cell back.
-    if (PRACTICE_TUTORIALS.includes(store.activeTutorial)) endPractice();
+    const leaving = store.activeTutorial;
+    if (PRACTICE_TUTORIALS.includes(leaving)) { stopWatching(); endPractice(); }
     store.setTutorialStep(steps.value.length);
+    // Exit is reported as not always closing the tutorial, and it closes in
+    // every test: say what puts a box back, if anything does.
+    const stop = watch(() => [store.activeTutorial, currentStep.value] as const, ([tut, now]) => {
+        if (tut !== leaving || now < steps.value.length) {
+            console.warn(`[tutorial] a box came back after exiting tutorial ${leaving}: now tutorial ${tut}, step ${now}`, new Error('who moved it').stack);
+        }
+    });
+    setTimeout(stop, 15000);
 };
 
 </script>

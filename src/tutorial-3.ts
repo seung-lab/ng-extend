@@ -11,6 +11,7 @@ import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
 import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
+import { supabase } from './supabase';
 import { SANDBOX_CELLS } from './practice_pools';
 import { useSplitMergeOverlayStore } from './store';
 import { watch } from 'vue';
@@ -465,6 +466,23 @@ export function watchFindPath(waiting: string, found: string, opts: { advance?: 
 const practiceAsked = new Set<string>();
 const practiceLanded = new Set<string>();
 export function resetPracticeLog() { practiceAsked.clear(); practiceLanded.clear(); }
+/**
+ * Record that this player finished a tutorial (table tutorial_completions,
+ * written through the server, which stamps the player). `item` names the
+ * thing done where a tutorial has several (a sandbox merger). Quiet on
+ * failure: a tutorial never breaks because the record could not be saved.
+ */
+export async function recordTutorialDone(tutorial: number, item: string | null = null) {
+  try {
+    const s = practiceScore();
+    const { error } = await supabase.from('tutorial_completions')
+      .insert({ tutorial, item, practice_asked: s.asked, practice_made: s.landed });
+    if (error) console.warn('[tutorial] completion not recorded:', error.message);
+  } catch (e) {
+    console.warn('[tutorial] completion not recorded:', e);
+  }
+}
+
 /** How many practice edits were asked for and how many landed. */
 export function practiceScore(): { asked: number; landed: number } {
   return { asked: practiceAsked.size, landed: [...practiceAsked].filter(id => practiceLanded.has(id)).length };

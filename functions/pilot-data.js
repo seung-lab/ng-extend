@@ -15,8 +15,11 @@ const fields = {
   special_badge_awards: 'badge_id,user_id,reason',
   badge_awards: 'track,badge_id',
   client_errors: 'message,stack,source,component,url,dataset,user_agent,build',
+  // One row each time a player finishes a tutorial or cuts a sandbox merger
+  // (supabase-tutorial-completions.sql). The player is stamped here.
+  tutorial_completions: 'tutorial,item,practice_asked,practice_made',
 };
-const INSERT_ONLY = new Set(['edit_log','activity_feed','help_responses','client_errors','badge_awards']);
+const INSERT_ONLY = new Set(['edit_log','activity_feed','help_responses','client_errors','badge_awards','tutorial_completions']);
 const conflicts = {pilot_members:'email',tutorial_practice_waitlist:'user_id,kind',special_badge_awards:'badge_id,user_id',badge_awards:'user_id,track,badge_id'};
 function authorizePilotData(input,ctx) {
   if (!Object.hasOwn(fields,input.table)) return null;
@@ -71,7 +74,14 @@ function authorizePilotData(input,ctx) {
         row.added_by=me;
       } else delete row.email;
     }
-    if(['edit_log','activity_feed','help_requests','help_responses','issue_tags','client_errors','badge_awards','tutorial_practice_waitlist'].includes(table) && method==='POST') row.user_id=me;
+    if(['edit_log','activity_feed','help_requests','help_responses','issue_tags','client_errors','badge_awards','tutorial_practice_waitlist','tutorial_completions'].includes(table) && method==='POST') row.user_id=me;
+    if(table==='tutorial_completions') {
+      row.tutorial=Number(row.tutorial);
+      if(!Number.isInteger(row.tutorial)||row.tutorial<1||row.tutorial>50) fail(400,'Unknown tutorial');
+      row.item=typeof row.item==='string'?row.item.slice(0,80):null;
+      for(const k of ['practice_asked','practice_made']) { const n=Number(row[k]); row[k]=Number.isInteger(n)&&n>=0&&n<=50?n:0; }
+      if(row.practice_made>row.practice_asked) row.practice_made=row.practice_asked;
+    }
     if(['activity_feed','help_requests','help_responses','issue_tags'].includes(table) && method==='POST') row.user_name=name;
     if(['segment_tags','special_badges','tutorial_practice_examples'].includes(table) && method==='POST') row.created_by=me;
     // The requester's view: one https link, or nothing. It was missing from

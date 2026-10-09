@@ -13,8 +13,10 @@ import { Step, useTutorialStore } from './store-pyr';
 import imgBravoNurro from './images/bravo-nurro.png';
 import { beginPractice, endPractice, ensureTool } from './practice';
 import { SANDBOX_CELLS } from './practice_pools';
+import { supabase } from './supabase';
+import { useProofreadingBackendStore } from './store';
 import { show2D, showSections } from './tutorial-cut';
-import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, finishPracticeTutorial, movingToSandbox, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
+import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, finishPracticeTutorial, movingToSandbox, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
 
 export const SANDBOX_TUTORIAL = 9;
 
@@ -34,13 +36,35 @@ function markDone(id: string) {
   try { localStorage.setItem(DONE_KEY, JSON.stringify(sandboxDone.value)); } catch { /* private mode */ }
 }
 
+/**
+ * The mergers this player has cut, from their account (tutorial_completions),
+ * so the count follows them to another computer. Added to what this browser
+ * remembers; looked up once the player is known, and again on each start.
+ */
+async function loadDoneFromAccount() {
+  try {
+    const uid = useProofreadingBackendStore().userId;
+    if (!uid) return;
+    const { data, error } = await supabase.from('tutorial_completions')
+      .select('item').eq('user_id', uid).eq('tutorial', SANDBOX_TUTORIAL).gt('practice_made', 0).limit(500);
+    if (error || !data) return;
+    for (const row of data as Array<{ item: string | null }>) if (row.item && SANDBOX_CELLS.some(c => c.id === row.item)) markDone(row.item);
+  } catch { /* the browser's own record still counts */ }
+}
+setTimeout(loadDoneFromAccount, 6000);
+
 /** Open one example from the menu, or from another example's last box. */
 export function startSandbox(index: number) {
   if (!SANDBOX_CELLS[index]) return;
   const store = useTutorialStore();
+  loadDoneFromAccount();
   stopWatching();
   // Hand back whatever is held (another example, or a tutorial's cells).
+  const from = store.activeTutorial, fromStep = store.getTutorialStep();
   endPractice().finally(() => {
+    // Handing cells back can take seconds. If the player closed the box or
+    // went elsewhere meanwhile, do not pop a sandbox box up over them.
+    if (store.activeTutorial !== from || store.getTutorialStep() !== fromStep) return;
     resetPracticeLog();
     current = index;
     store.activeTutorial = SANDBOX_TUTORIAL;
@@ -150,7 +174,7 @@ The cells go back to their merged state for the next person. You can cut any of 
     image: imgBravoNurro,
     onEnter: () => {
       // Done means the cut was made, not that Next was pressed.
-      if (finishPracticeTutorial('cut')) { markDone(cell().id); celebrateStep(); } else stopWatching();
+      if (finishPracticeTutorial('cut')) { markDone(cell().id); celebrateStep(); recordTutorialDone(SANDBOX_TUTORIAL, cell().id); } else stopWatching();
       endPractice();
     },
   } as Step,
