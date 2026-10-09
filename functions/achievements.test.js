@@ -6,7 +6,8 @@ const {readDefinitions} = require('../scripts/build-achievement-thresholds');
 
 test('the server\'s list is the app\'s list', () => {
   assert.deepEqual(TABLE, readDefinitions());
-  assert.equal(TABLE.length, 200);
+  assert.equal(TABLE.length, 224);   // 100 Editor, 100 Cell Completions, 24 Loyalty
+  assert.equal(TABLE.filter(a => a.track === 'loyalty').length, 24);
 });
 
 test('an achievement is announced only once the counter has reached it', () => {
@@ -27,7 +28,8 @@ test('cell achievements 2, 3 and 4 stay quiet; 1 and 5 are announced', () => {
 
 test('made up achievements and tracks are refused', () => {
   assert.throws(() => achievementRow('building', 9999, {total_edits: 1e9}), /Unknown achievement/);
-  assert.throws(() => achievementRow('loyalty', 201, {total_days: 400}), /Unknown achievement/);
+  assert.throws(() => achievementRow('loyalty', 208, {total_days: 400}), /Unknown achievement/);   // the retired 30 day One Month
+  assert.throws(() => achievementRow('streaks', 201, {total_days: 400}), /Unknown achievement/);
   assert.throws(() => achievementRow('exploration', 1, {cells_completed: 1e9}), /Unknown achievement/);   // id 1 is a building one
 });
 
@@ -37,4 +39,16 @@ test('a special award makes a chat row from the award itself', () => {
   assert.throws(() => specialAwardRow({id: 0, name: 'x'}), /Unknown award/);
   assert.throws(() => specialAwardRow({id: 3, name: '  '}), /Unknown award/);
   assert.throws(() => specialAwardRow(null), /Unknown award/);
+});
+
+test('a Loyalty achievement is announced once the total days have reached it', () => {
+  const day = n => TABLE.find(a => a.track === 'loyalty' && a.threshold === n);
+  assert.equal(day(2).id, 201);
+  assert.equal(day(28).name, 'One Month');
+  assert.throws(() => achievementRow('loyalty', 201, {total_days: 1}), /Not earned yet/);
+  assert.deepEqual(achievementRow('loyalty', 201, {total_days: 2}),
+    {text: 'earned the Day Two achievement', dataset: 'achievement:loyalty:201', name: 'Day Two', slug: 'second-spark'});
+  // edits and cells do not stand in for days
+  assert.throws(() => achievementRow('loyalty', day(40).id, {total_edits: 5000, cells_completed: 5000, total_days: 39}), /Not earned yet/);
+  assert.equal(achievementRow('loyalty', day(40).id, {total_days: 41}).name, 'Forty Days');
 });

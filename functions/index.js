@@ -1880,7 +1880,7 @@ exports.ewSecureWrite = onRequest(
             const badge = (await sb(`special_badges?id=eq.${badgeId}&select=id,name&limit=1`))[0];
             line = specialAwardRow(badge);
           } else {
-            const totals = (await sb(`users?id=eq.${me.id}&select=total_edits,cells_completed&limit=1`))[0] || {};
+            const totals = (await sb(`users?id=eq.${me.id}&select=total_edits,cells_completed,total_days&limit=1`))[0] || {};
             line = achievementRow(String(args.track || ""), args.badgeId, totals);
           }
           if (line.quiet) { out = { announced: false }; break; }

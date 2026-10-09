@@ -11,8 +11,8 @@
 const TABLE = require('./achievement-thresholds.json');
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 
-/** Which counter a track is earned on. Only the two tracks that are live. */
-const COUNTER = {building: 'total_edits', exploration: 'cells_completed'};
+/** Which counter a track is earned on. Loyalty is total days of science. */
+const COUNTER = {building: 'total_edits', exploration: 'cells_completed', loyalty: 'total_days'};
 /** Cell achievements 2, 3 and 4 are earned but not announced (Ames). */
 const QUIET = new Set(['exploration:2', 'exploration:3', 'exploration:4']);
 

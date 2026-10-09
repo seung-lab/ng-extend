@@ -240,6 +240,14 @@ watch(() => stats.value.currentStreak, (newStreak) => {
 // failed read can never announce an old achievement again.
 function settleLoyalty(days: number) {
   if (!backend.badgeAwardsLoaded || !Number.isFinite(days) || days <= 0) return;
+  // Players who got theirs on launch morning, before chat announced Loyalty:
+  // ask once per browser for the line for their highest one. The server posts
+  // a line only once, so asking again from another device adds nothing.
+  if (!LOYALTY_TEST_ONLY) {
+    const held = LOYALTY_BADGES.filter(b => days >= b.threshold && backend.myBadgeAwards.has(`loyalty:${b.id}`));
+    const best = held[held.length - 1];
+    if (best && claimBadgeOnce(`lchat:${best.id}`)) backend.announceAchievement('loyalty', best.id);
+  }
   const due = LOYALTY_BADGES.filter(b => days >= b.threshold && (LOYALTY_TEST_ONLY || !backend.myBadgeAwards.has(`loyalty:${b.id}`)));
   if (!due.length) return;
   // Announced once per browser as well: if saving ever fails, the card must
@@ -249,6 +257,9 @@ function settleLoyalty(days: number) {
   if (!LOYALTY_TEST_ONLY) for (const b of due) backend.recordBadgeAward('loyalty', b.id);
   if (!fresh.length) return;
   const top = due[due.length - 1];
+  // Chat says so too, for the highest one only (the server checks the days
+  // and writes the line once).
+  if (!LOYALTY_TEST_ONLY) backend.announceAchievement('loyalty', top.id);
   const title = `🏆 New Achievement: ${top.name}`;
   const rel = BADGE_IMAGE_MAP[top.imageKey] ?? '';
   const img = rel ? new URL(rel, document.baseURI).href : '';

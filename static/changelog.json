@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-09T14:25:00Z",
+      "title": "Chat celebrates Loyalty Achievements",
+      "items": [
+        "When you earn a Loyalty Achievement, chat now says so, and anyone can click the line to see your Trophy Case.",
+        "If you earned yours this morning, your highest one is announced the next time you open Pyr."
+      ]
+    },
+    {
       "at": "2026-10-09T14:00:00Z",
       "title": "Shortcuts, counts and who is online",
       "items": [

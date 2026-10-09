@@ -666,7 +666,7 @@ let specialAsked = false;
 interface ChatAchievement { track: string; name: string; art: string; why: string; slug?: string; specialId?: number; }
 function achievementOf(msg: ChatMessage): ChatAchievement | null {
   if (msg.type !== 'message' || msg.rank !== 'achievement') return null;
-  const m = /^achievement:(building|exploration|special):(\d+)$/.exec(String(msg.dataset || ''));
+  const m = /^achievement:(building|exploration|loyalty|special):(\d+)$/.exec(String(msg.dataset || ''));
   if (!m) return null;
   if (m[1] === 'special') {
     // A special award (given by an admin, or by a tutorial).
@@ -678,7 +678,7 @@ function achievementOf(msg: ChatMessage): ChatAchievement | null {
   }
   const d = BADGE_DEFINITIONS.find(x => x.track === m[1] && x.id === Number(m[2]));
   if (!d) return null;
-  const unit = d.track === 'building' ? (d.threshold === 1 ? 'edit' : 'edits') : (d.threshold === 1 ? 'cell' : 'cells');
+  const unit = d.track === 'building' ? (d.threshold === 1 ? 'edit' : 'edits') : d.track === 'loyalty' ? 'days of science' : (d.threshold === 1 ? 'cell' : 'cells');
   return { track: d.track, name: d.name, art: BADGE_IMAGE_MAP[d.imageKey] || '', why: `${d.threshold.toLocaleString()} ${unit}`, slug: d.slug };
 }
 /** A run by one player is one line: an achievement line is hidden when the
