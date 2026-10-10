@@ -2790,6 +2790,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   font: 700 10px/1 'Inter', system-ui, sans-serif; color: #fff;
   background: hsl(var(--hue, 210) 58% 46%);
 }
+.nge-triage-board .nge-triage-card--selected .nge-triage-avatar { margin-right: 6px; vertical-align: -3px; }
 .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt {
   font-size: 12.5px; line-height: 1.35; -webkit-line-clamp: 2;
 }
