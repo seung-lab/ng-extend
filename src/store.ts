@@ -981,7 +981,8 @@ export interface UserPreferences {
    *  false keeps chat fully shown (Amy 2026-09-28). */
   chatFadeAway?: boolean;
   /** A thin bar down the left edge of your own chat messages, so they are
-   *  easy to find. Defaults to false (Krzysztof 2026-10-09, #84). */
+   *  easy to find (Krzysztof 2026-10-09, #84). Defaults to true; false
+   *  switches it off (Ames 2026-10-10). */
   chatMarkMine?: boolean;
   /** Chat panel size in px, kept when you resize it (Ames 2026-09-30:
    *  "I have to reset it every time!"). */

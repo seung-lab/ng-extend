@@ -29,7 +29,7 @@ const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
 const draftChatMuted = ref(false);
 const draftChatFade = ref(true);
-const draftChatMarkMine = ref(false);
+const draftChatMarkMine = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftClassicLayers = ref(false);
@@ -99,7 +99,7 @@ onMounted(() => {
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
   draftChatFade.value = prefsStore.prefs.chatFadeAway !== false;
-  draftChatMarkMine.value = prefsStore.prefs.chatMarkMine === true;
+  draftChatMarkMine.value = prefsStore.prefs.chatMarkMine !== false;
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
@@ -442,7 +442,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftChatFade" />
               <span class="nge-settings-toggle-label">Fade chat when I click away</span>
             </label>
-            <label class="nge-settings-toggle" title="On: a thin bar marks your own messages in chat, so they are easy to find when you scroll back.">
+            <label class="nge-settings-toggle" title="A thin bar marks your own messages in chat, so they are easy to find when you scroll back. Switch off to hide it.">
               <input type="checkbox" v-model="draftChatMarkMine" />
               <span class="nge-settings-toggle-label">Mark my own messages in chat</span>
             </label>

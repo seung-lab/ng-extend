@@ -28,7 +28,7 @@ The marks only count around a whole word or phrase. A name with an underscore in
 
 ## Find your own messages
 
-Open **Settings** and switch on **Mark my own messages in chat**. A thin bar appears beside everything you wrote, which makes your own messages easy to spot when you scroll back. It is off unless you turn it on.
+A thin bar now appears beside everything you wrote, which makes your own messages easy to spot when you scroll back. If you would rather not see it, open **Settings** and switch off **Mark my own messages in chat**.
 
 ## Thank you, Krzysztof
 

@@ -472,8 +472,9 @@ function goToMessage(id: string | null | undefined) {
 
 // ── Your own messages, marked (Krzysztof 2026-10-09, #84) ────────────────
 // A thin bar down the left edge, not a "(You)" label: it takes no room and is
-// quicker to pick out. Off unless switched on in Settings.
-const markMine = computed(() => useUserPreferencesStore().prefs.chatMarkMine === true);
+// quicker to pick out. On for everyone (Ames 2026-10-10: "automatically
+// marked"); Settings can switch it off.
+const markMine = computed(() => useUserPreferencesStore().prefs.chatMarkMine !== false);
 const isMine = (msg: ChatMessage) => markMine.value && !!msg.userId && msg.userId === backendStore.userId;
 
 // ── Search (Krzysztof 2026-10-09, #79) ───────────────────────────────────
