@@ -329,15 +329,17 @@ textarea.neuroglancer-annotation-details-description:focus {
 .nge-ann-row-actions {
   grid-column: delete;
   align-self: start;
-  display: flex; align-items: center; justify-content: flex-end; gap: 2px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px;
   visibility: hidden;
 }
 .neuroglancer-annotation-list-entry:hover > .nge-ann-row-actions,
 .neuroglancer-annotation-list-entry.neuroglancer-annotation-selected > .nge-ann-row-actions { visibility: visible; }
 .nge-ann-row-actions > .neuroglancer-annotation-list-entry-delete { visibility: inherit; margin-left: 0; }
-/* small enough that the pair fits where the delete button alone used to */
-.nge-ann-row-actions > .neuroglancer-icon { box-sizing: border-box; width: 16px; min-width: 16px; height: 16px; min-height: 16px; padding: 0; margin: 0; font-size: 12px; line-height: 16px; }
-.nge-ann-row-actions > .neuroglancer-icon > svg { width: 13px; height: 13px; }
+/* The jump and delete buttons: large enough to hit without aiming (Ames
+   2026-10-10: "a bit larger"; they were 16px with a 2px gap), and still
+   inside the height of one row. */
+.nge-ann-row-actions > .neuroglancer-icon { box-sizing: border-box; width: 22px; min-width: 22px; height: 22px; min-height: 22px; padding: 0; margin: 0; font-size: 15px; line-height: 22px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; }
+.nge-ann-row-actions > .neuroglancer-icon > svg { width: 17px; height: 17px; }
 .nge-ann-row-jump { opacity: 0.75; color: #7ee0ff; }
 .nge-ann-row-jump:hover { opacity: 1; color: #e6f7ff; background-color: rgba(74, 158, 255, 0.2) !important; border-radius: 4px; }
 .neuroglancer-annotation-list-entry-delete { opacity: 0.6; }
@@ -512,7 +514,7 @@ textarea.neuroglancer-annotation-details-description:focus {
 .neuroglancer-annotation-list-entry { position: relative; }
 /* grid-area auto: a positioned child that names a grid cell is placed inside
    that cell, not inside the row */
-.neuroglancer-annotation-list-entry > .nge-ann-row-actions { position: absolute; right: 6px; top: 4px; grid-area: auto !important; }
+.neuroglancer-annotation-list-entry > .nge-ann-row-actions { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); grid-area: auto !important; }
 
 /* The armed tool pill in the top bar repeated the selected layer's name right
    above its own tab (Ames 2026-10-06: "we don't need the duplication"). The

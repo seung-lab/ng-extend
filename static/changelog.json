@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-10T14:56:00Z",
+      "title": "Truer edit counts and a few extras",
+      "items": [
+        "Edits are now counted only when the server confirms them, so a merge or cut is never counted twice.",
+        "A merge that fails tells you why, right under it in the Merge Queue.",
+        "Drag your silver and bronze favorites into the order you like.",
+        "Chat says what kind of cell was completed, such as a retina cell.",
+        "The jump and delete buttons on each annotation are larger."
+      ]
+    },
+    {
       "at": "2026-10-10T14:25:00Z",
       "title": "More favorites in your Trophy Case",
       "items": [
