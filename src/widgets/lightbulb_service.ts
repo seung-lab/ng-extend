@@ -642,6 +642,16 @@ export async function setCellComplete(
       } else {
         // Clear local mirror so the lightbulb doesn't keep showing the deleted state.
         deleteLocalAnnotation(segKey(rootId), 'isComplete');
+        // Record the un-mark. It was only recorded when CAVE could not be
+        // reached, so a cell unmarked the normal way stayed counted as
+        // completed on the leaderboard.
+        try {
+          const backend = useProofreadingBackendStore();
+          if (backend.userId) {
+            const p = getViewerPosition();
+            backend.logEdit({ operation: 'unmark_complete', segment_after: rootId, coordinates: `${p[0]}, ${p[1]}, ${p[2]}`, metadata: { root_id: rootId } });
+          }
+        } catch { /* non-critical */ }
       }
       return res.ok;
     }

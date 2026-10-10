@@ -145,6 +145,29 @@ async function planFromTasks(plan: MenuCompletionPlan) {
   }
 }
 
+/** The player's own completed Cell Library cell that this ID is, if any:
+ *  by the ID it was completed as, the ID it was listed under, or its
+ *  current ID. Unmarking such a cell reopens it. */
+export function myCompletedTaskFor(segId: string): ProofreadingTask | undefined {
+  const backend = useProofreadingBackendStore();
+  const dataset = currentDatasetTag();
+  return backend.tasks.find(t => t.status === 'completed' && t.assigned_to === backend.userId
+    && (!(t as any).dataset || (t as any).dataset === dataset)
+    && (t.final_segment_id === segId || t.segment_id === segId || backend.liveRoots[t.id] === segId));
+}
+
+/** After a cell was unmarked: if it is the player's own completed Cell
+ *  Library cell, it goes back to being their open claim and the sheet row to
+ *  WIP. Returns a short note for the menu ('' when it is not such a cell). */
+export async function reopenAfterUnmark(segId: string): Promise<string> {
+  const task = myCompletedTaskFor(segId);
+  if (!task) return '';
+  const problem = await useProofreadingBackendStore().reopenTask(task.id);
+  return problem
+    ? `Unmarked in CAVE, but the Cell Library still shows it completed: ${problem}`
+    : 'Reopened: it is back in your claims, and its sheet row says WIP.';
+}
+
 /** Empty the player's own local annotation layers (points, lines, boxes,
  *  highlights) once a cell is complete, since that markup does not apply to
  *  the next cell. The layers stay; shared ones (Scout tags, AI candidates)

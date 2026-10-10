@@ -4706,6 +4706,29 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
+  /** Take back a cell you completed as an open claim (Ames 2026-10-10:
+   *  "uncomplete reopens the cell"). Unmarking it in the Delta menu took the
+   *  mark off in CAVE but left the claim completed, so the Cell Library still
+   *  showed it done. The sheet row goes back to WIP; its date, final ID and
+   *  link stay until the cell is completed again. Returns '' when it worked,
+   *  else why not, in plain words. */
+  async function reopenTask(taskId: number): Promise<string> {
+    const mine = tasks.value.find(t => t.id === taskId);
+    try {
+      await taskAction('reopen', { id: taskId });
+    } catch (e: any) {
+      const msg = String(e?.message || '');
+      if (/unknown pilot action|pilot_task_reopen|could not find the function/i.test(msg)) return 'Reopening is not switched on yet.';
+      return msg || 'Could not reopen this cell.';
+    }
+    if (mine?.segment_id) {
+      await syncCellToSheet('reopen', String(mine.segment_id), undefined, (mine as any).dataset)
+        .catch((e: any) => console.warn('[backend] sheet not updated on reopen:', e?.message));
+    }
+    await loadTasks();
+    return '';
+  }
+
   async function releaseTaskById(taskId: number): Promise<boolean> {
     const prevActive = activeTaskId.value;
     activeTaskId.value = taskId;
@@ -5574,7 +5597,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
-    claimCell, releaseCell, releaseBySegment, releaseTaskById, saveWorkingLink, loadMyActiveClaims, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
+    claimCell, releaseCell, releaseBySegment, releaseTaskById, reopenTask, saveWorkingLink, loadMyActiveClaims, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
     refreshSegmentIds,
     liveRoots, refreshLiveRoots, anchorClaimAt,
     MAX_CLAIMS, claimLimitFor,

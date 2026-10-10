@@ -1,5 +1,5 @@
 import { secureWrite } from './secure_write';
-export async function taskAction(action: 'claim' | 'claim_cell' | 'release' | 'complete' | 'heartbeat' | 'save_link' | 'set_anchor', args: Record<string, unknown>) {
+export async function taskAction(action: 'claim' | 'claim_cell' | 'release' | 'complete' | 'heartbeat' | 'save_link' | 'set_anchor' | 'reopen', args: Record<string, unknown>) {
   return secureWrite('pilot.task', { operation: action, args });
 }
 /**

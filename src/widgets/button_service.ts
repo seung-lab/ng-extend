@@ -4,7 +4,7 @@ import {Uint64} from 'neuroglancer/util/uint64';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
-import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails} from '../util/menu_complete';
+import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem} from './lightbulb_service';
 import {getDatasetCaveConfig} from '../config';
@@ -363,6 +363,14 @@ export class ButtonService {
         if (cachedStatus) cachedStatus.isComplete = willBeComplete;
         this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
 
+        if (!willBeComplete) {
+          // Your own completed Cell Library cell: it becomes your claim again.
+          const note = await reopenAfterUnmark(segmentIDString).catch(() => '');
+          if (note) {
+            statusLine.textContent = '○ In Progress. ' + note;
+            document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'reopened' } }));
+          }
+        }
         if (plan?.row) {
           statusLine.textContent = '✓ Proofread. Writing to the sheet…';
           try {
