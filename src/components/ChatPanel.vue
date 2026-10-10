@@ -1163,7 +1163,7 @@ function toggleCollapse() {
         <!-- Message area with top fade -->
         <div v-if="shownPin && !searchOpen" class="nge-chat-pin" role="note">
           <button type="button" class="nge-chat-pin-text" :title="'Pinned by ' + shownPin.by + '. Click to go to the message.'"
-                  @click.stop="goToMessage(shownPin.messageId)"><span class="nge-chat-pin-glyph" aria-hidden="true">📌</span>{{ plainChatText(shownPin.text) }}</button>
+                  @click.stop="goToMessage(shownPin.messageId)"><span class="nge-chat-pin-glyph" aria-hidden="true"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></span>{{ plainChatText(shownPin.text) }}</button>
           <button v-if="backendStore.isAdmin" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
           <button type="button" class="nge-chat-pin-x" title="Hide this pin for me" aria-label="Hide this pin for me" @click.stop="hidePin">×</button>
         </div>
@@ -1193,7 +1193,7 @@ function toggleCollapse() {
                   <span>{{ msg.time }}</span>
                 </div>
                 <div v-else-if="isPinRow(msg)" class="nge-chat-sys nge-chat-pin-line" :class="{ 'nge-chat-fresh': isFresh(msg) }">
-                  📌 <b>{{ shortName(msg.name) }}</b> {{ pinRowSays(msg) }}
+                  <svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg> <b>{{ shortName(msg.name) }}</b> {{ pinRowSays(msg) }}
                 </div>
 
                 <div v-else-if="msg.type === 'join' || msg.type === 'leave' || msg.type === 'disconnected' || msg.type === 'complete'"
@@ -1344,7 +1344,7 @@ function toggleCollapse() {
                     <span class="nge-chat-react-add">
                       <button v-if="msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-reply-btn" @click.stop="startReply(msg)" title="Reply">↩</button>
                       <button v-if="backendStore.isAdmin && msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-pin-btn" :class="{ 'is-on': isPinnedMsg(msg) }" :disabled="pinBusy"
-                              @click.stop="togglePin(msg)" :title="isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin this message for everyone'">📌</button>
+                              @click.stop="togglePin(msg)" :title="isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin this message for everyone'"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></button>
                       <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                               @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
                       <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
@@ -1755,7 +1755,9 @@ function toggleCollapse() {
 .nge-chat-pin-x:hover:not(:disabled), .nge-chat-pin-x:focus-visible { color: #fff6d6; border-color: rgba(230, 199, 96, 0.5); outline: none; }
 .nge-chat-pin-line { font-size: 12px; font-style: normal; color: #8f98a8; }
 .nge-chat-pin-line b { font-weight: 600; color: #c9d4e6; }
-.nge-chat-pin-btn { font-size: 11px; }
+.nge-chat-pin-btn { font-size: 11px; display: inline-flex; align-items: center; color: #e6eefc; }
+.nge-chat-pin-ico { display: inline-block; vertical-align: -1.5px; flex: 0 0 auto; }
+.nge-chat-pin-btn.is-on { color: #f3d98a; }
 .nge-chat-pin-btn.is-on { background: rgba(230, 199, 96, 0.25); border-color: rgba(230, 199, 96, 0.6); }
 /* Your own messages: a bar on the left edge, drawn inside the row so nothing
    moves (Krzysztof 2026-10-09). */
@@ -2385,6 +2387,13 @@ button.nge-chat-quote:hover { background: rgba(74, 158, 255, 0.13); border-left-
 /* ── Reactions ── */
 .nge-chat-msg { position: relative; }
 .nge-chat-react-add { position: absolute; top: 1px; right: 2px; display: flex; gap: 3px; user-select: none; -webkit-user-select: none; }
+/* The hover buttons used to sit ON the first line of the message and hid its
+   last words (Ames 2026-10-10). They ride on the message's top edge now, in
+   the gap above its text, as one small bar. The inline variant (announcement
+   cards, where they have their own place in the row) is unchanged. */
+.nge-chat-react-add:not(.nge-chat-react-add--inline) { top: -13px; right: 6px; gap: 2px; z-index: 3; }
+/* The first message has nothing above it to ride on. */
+.nge-chat-messages-inner > .nge-chat-msg:first-child > .nge-chat-react-add:not(.nge-chat-react-add--inline) { top: 1px; }
 /* Put away while chat text is being selected, so they never cover a word. */
 .nge-chat-selecting .nge-chat-react-add:not(:has(.nge-chat-react-plus--open)) { visibility: hidden; pointer-events: none; }
 .nge-chat-reply-btn { font-size: 12px; }

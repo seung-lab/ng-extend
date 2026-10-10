@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-10T17:03:00Z",
+      "title": "Chat buttons stay out of the way",
+      "items": [
+        "The reply and reaction buttons that appear when you point at a chat message now sit just above it, so they no longer cover its last words.",
+        "The pin is a simple outline now."
+      ]
+    },
+    {
       "at": "2026-10-10T16:22:00Z",
       "title": "Chat: new message line, pinned messages, search by day",
       "items": [
