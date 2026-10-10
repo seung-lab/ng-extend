@@ -215,16 +215,24 @@ function handleCountryGlobalClick(e: MouseEvent) {
 }
 onMounted(() => document.addEventListener('click', handleCountryGlobalClick, true));
 
+// These four open something in the viewer itself, which sits BEHIND this
+// panel (and behind the profile it may be shown in). The button seemed to do
+// nothing until the panel was closed by hand (M Sorek 2026-10-09). So the
+// panel gets out of the way once the thing has been opened.
 function openNgSettings() {
   const viewer = (window as any)['viewer'];
   if (viewer?.settingsPanelState) {
     viewer.settingsPanelState.location.watchableVisible.value = true;
+    emit('hide');
   }
 }
 
 function openJsonEditor() {
   const viewer = (window as any)['viewer'];
-  if (viewer?.editJsonState) viewer.editJsonState();
+  if (!viewer?.editJsonState) return;
+  // Close first: the editor is a dialog of the viewer's own.
+  emit('hide');
+  viewer.editJsonState();
 }
 
 function toggleLayerListPanel() {
@@ -232,6 +240,7 @@ function toggleLayerListPanel() {
   if (viewer?.layerListPanelState?.location?.watchableVisible) {
     const vis = viewer.layerListPanelState.location.watchableVisible;
     vis.value = !vis.value;
+    if (vis.value) emit('hide');
   }
 }
 
@@ -240,6 +249,7 @@ function toggleSelectionDetails() {
   if (viewer?.selectionDetailsState?.location?.watchableVisible) {
     const vis = viewer.selectionDetailsState.location.watchableVisible;
     vis.value = !vis.value;
+    if (vis.value) emit('hide');
   } else if (viewer?.selectedStatePanel) {
     // Alternative API path
     viewer.selectedStatePanel.visible = !viewer.selectedStatePanel.visible;

@@ -2127,7 +2127,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 
       <!-- ── Settings tab ──────────────────────────────────────── -->
       <div v-if="activeTab === 'settings'" class="nge-profile-body nge-profile-body--settings">
-        <SettingsPanel embedded />
+        <SettingsPanel embedded @hide="emit('hide')" />
       </div>
 
       <!-- ── All Special Awards modal ── -->
