@@ -4,12 +4,58 @@
  * on. It folds down to a chip, so it never takes more than a line. See
  * util/lantern.ts for what the three settings do.
  */
+import { computed, ref } from 'vue';
 import { lantern, LANTERN_LIMITS as L } from '../util/lantern';
+
+// The bar can be dragged anywhere by its grip (Ames 2026-10-10: "I need to be
+// able to move the lantern box"). Its place is remembered in this browser;
+// a double click on the grip puts it back under the top bar.
+const POS_KEY = 'nge-lantern-bar-pos';
+const bar = ref<HTMLElement | null>(null);
+const pos = ref<{ x: number; y: number } | null>(null);
+try {
+  const saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+  if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) pos.value = { x: saved.x, y: saved.y };
+} catch { /* the usual place */ }
+const clamp = (x: number, y: number) => {
+  const w = bar.value?.offsetWidth ?? 420, h = bar.value?.offsetHeight ?? 34;
+  return { x: Math.max(4, Math.min(window.innerWidth - w - 4, x)), y: Math.max(4, Math.min(window.innerHeight - h - 4, y)) };
+};
+const placed = computed(() => {
+  if (!pos.value) return {};
+  const p = clamp(pos.value.x, pos.value.y);
+  return { left: p.x + 'px', top: p.y + 'px', transform: 'none' };
+});
+function startDrag(e: PointerEvent) {
+  if (e.button !== 0 || !bar.value) return;
+  e.preventDefault();
+  const box = bar.value.getBoundingClientRect();
+  const dx = e.clientX - box.left, dy = e.clientY - box.top;
+  let moved = false;
+  const move = (ev: PointerEvent) => {
+    if (!moved && Math.abs(ev.clientX - e.clientX) + Math.abs(ev.clientY - e.clientY) < 4) return;
+    moved = true;
+    pos.value = clamp(ev.clientX - dx, ev.clientY - dy);
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move, true);
+    window.removeEventListener('pointerup', up, true);
+    if (moved && pos.value) { try { localStorage.setItem(POS_KEY, JSON.stringify(pos.value)); } catch { /* not remembered */ } }
+  };
+  window.addEventListener('pointermove', move, true);
+  window.addEventListener('pointerup', up, true);
+}
+function resetPlace() {
+  pos.value = null;
+  try { localStorage.removeItem(POS_KEY); } catch { /* nothing to clear */ }
+}
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="lantern.on" class="nge-lantern" :class="{ 'nge-lantern--folded': !lantern.open }" role="group" aria-label="Lantern mode">
+    <div v-if="lantern.on" ref="bar" class="nge-lantern" :class="{ 'nge-lantern--folded': !lantern.open }" :style="placed" role="group" aria-label="Lantern mode">
+      <span class="nge-lantern-grip" title="Drag to move. Double click to put it back." aria-hidden="true"
+            @pointerdown="startDrag" @dblclick="resetPlace">⠿</span>
       <button type="button" class="nge-lantern-name" :aria-expanded="lantern.open"
               :title="lantern.open ? 'Fold the Lantern settings away' : 'Show the Lantern settings'" @click="lantern.open = !lantern.open">
         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
@@ -44,7 +90,7 @@ import { lantern, LANTERN_LIMITS as L } from '../util/lantern';
 .nge-lantern {
   position: fixed; left: 50%; top: 46px; transform: translateX(-50%); z-index: 900;
   display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); box-sizing: border-box;
-  padding: 5px 6px 5px 10px; border-radius: 10px;
+  padding: 5px 6px 5px 4px; border-radius: 10px;
   background: linear-gradient(158deg, rgba(15, 18, 24, 0.95), rgba(6, 10, 18, 0.97));
   border: 1px solid rgba(255, 196, 110, 0.34);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(196, 228, 255, 0.08);
@@ -52,6 +98,9 @@ import { lantern, LANTERN_LIMITS as L } from '../util/lantern';
   user-select: none;
 }
 .nge-lantern--folded { gap: 4px; }
+.nge-lantern-grip { margin-right: -8px; padding: 3px 4px; border-radius: 5px; cursor: grab; font-size: 13px; line-height: 1; color: rgba(255, 200, 120, 0.55); touch-action: none; }
+.nge-lantern-grip:hover { color: #ffc878; background: rgba(255, 196, 110, 0.1); }
+.nge-lantern-grip:active { cursor: grabbing; }
 .nge-lantern-name {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px;
   background: none; cursor: pointer; font: inherit; font-weight: 600; letter-spacing: 0.04em; color: #ffc878;
