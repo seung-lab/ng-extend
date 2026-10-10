@@ -333,7 +333,10 @@ function toggleFold(key: TriageGroupKey) {
   triageFolded.value = { ...triageFolded.value, [key]: !triageFolded.value[key] };
   try { localStorage.setItem(TRIAGE_FOLD_KEY, JSON.stringify(triageFolded.value)); } catch { /* not remembered */ }
 }
-const boardColumns = computed(() => triageGroups.value.map(g => (triageFolded.value[g.key] ? '46px' : 'minmax(0, 1fr)')).join(' '));
+/** Folded right now. While searching nothing is folded, so a match in Done
+ *  or Dismissed is not hidden. */
+const isFolded = (key: TriageGroupKey) => triageFolded.value[key] && !triageWords.value.length;
+const boardColumns = computed(() => triageGroups.value.map(g => (isFolded(g.key) ? '46px' : 'minmax(0, 1fr)')).join(' '));
 
 // ── In progress, by hand ──
 // Most reports are fixed in a Claude chat, not by the robot (Ames 2026-10-10).
@@ -1910,8 +1913,8 @@ function practiceWhen(iso: string | null) {
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
           <span class="nge-triage-tally" title="Closed so far, over every report">
-            <span class="nge-triage-tally-item nge-triage-tally-item--bug" :class="{ 'nge-triage-tally-item--pop': triageCheer?.kind === 'bug' }" :key="'b' + triageTally.bugs"><b>{{ triageTally.bugs }}</b> bugs fixed</span>
-            <span class="nge-triage-tally-item nge-triage-tally-item--feature" :class="{ 'nge-triage-tally-item--pop': triageCheer?.kind === 'feature' }" :key="'f' + triageTally.features"><b>{{ triageTally.features }}</b> features shipped</span>
+            <span class="nge-triage-tally-item nge-triage-tally-item--bug" :class="{ 'nge-triage-tally-item--pop': triageCheer?.kind === 'bug' }" :key="'b' + triageTally.bugs"><b>{{ triageTally.bugs }}</b> {{ triageTally.bugs === 1 ? 'bug' : 'bugs' }} fixed</span>
+            <span class="nge-triage-tally-item nge-triage-tally-item--feature" :class="{ 'nge-triage-tally-item--pop': triageCheer?.kind === 'feature' }" :key="'f' + triageTally.features"><b>{{ triageTally.features }}</b> {{ triageTally.features === 1 ? 'feature' : 'features' }} shipped</span>
           </span>
           <input v-model="triageSearch" class="nge-triage-search" type="search" placeholder="Search reports, or #number"
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
@@ -1947,13 +1950,13 @@ function practiceWhen(iso: string | null) {
 
         <div class="nge-triage-cols" :style="triageBoard ? { gridTemplateColumns: boardColumns } : undefined">
         <div v-for="g in triageGroups" :key="g.key" class="nge-triage-col"
-             :class="[`nge-triage-col--${g.key}`, { 'nge-triage-col--folded': triageBoard && triageFolded[g.key] }]">
+             :class="[`nge-triage-col--${g.key}`, { 'nge-triage-col--folded': triageBoard && isFolded(g.key) }]">
         <button
           v-if="triageRows.length"
           class="nge-triage-group"
           :class="{ 'nge-triage-group--open': triageOpen[g.key], 'nge-triage-group--empty': !g.rows.length }"
-          :aria-expanded="(triageBoard ? !triageFolded[g.key] : triageOpen[g.key]) ? 'true' : 'false'"
-          :title="triageBoard ? (triageFolded[g.key] ? `Open ${g.title}` : `Fold ${g.title} away`) : undefined"
+          :aria-expanded="(triageBoard ? !isFolded(g.key) : triageOpen[g.key]) ? 'true' : 'false'"
+          :title="triageBoard ? (isFolded(g.key) ? `Open ${g.title}` : `Fold ${g.title} away`) : undefined"
           @click="triageBoard ? toggleFold(g.key) : (triageOpen[g.key] = !triageOpen[g.key])"
         >
           <span class="nge-triage-group-caret" aria-hidden="true">▸</span>
@@ -1961,7 +1964,7 @@ function practiceWhen(iso: string | null) {
           <span class="nge-triage-group-count">{{ g.rows.length }}</span>
           <span class="nge-triage-group-hint">{{ g.hint }}</span>
         </button>
-        <template v-if="triageBoard ? !triageFolded[g.key] : triageOpen[g.key]">
+        <template v-if="triageBoard ? !isFolded(g.key) : triageOpen[g.key]">
         <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :data-triage-id="row.id"
              :class="{ 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id }"
              @click="triageSelected = row.id">
@@ -2101,7 +2104,7 @@ function practiceWhen(iso: string | null) {
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
           </div>
         </div>
-        <div v-if="triageBoard && !g.rows.length && !triageFolded[g.key]" class="nge-triage-col-empty">Nothing here</div>
+        <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">Nothing here</div>
         </template>
         </div>
         </div>
