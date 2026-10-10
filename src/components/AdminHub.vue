@@ -436,14 +436,17 @@ const isDiscarded = (r: TriageRow) => r.status === 'dismissed' && (r.result_note
 /** Too late to stop from here: it is on, or on its way to, the live site. */
 const isGoingLive = (r: TriageRow) => ['deploying', 'live_test_queued', 'live_testing', 'revert_queued', 'reverting'].includes(r.impl_state || '');
 
-async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done', discard = false, builtElsewhere = false) {
+async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done', discard = false, builtElsewhere = false, presetNote?: string | null) {
   if (triageActing.value) return;
   if (discard && !window.confirm('Discard this report? It is dismissed and taken off the board. Any build in progress is stopped. You can still find it with "Show older".')) return;
   // Shipping a change closes the loop in Slack: the bridge posts a change
   // update into the original thread and tags the approvers, carrying this
   // note. Blank is fine, the update just goes noteless.
   let resultNote: string | null = null;
-  if (status === 'done') {
+  if (status === 'done' && presetNote !== undefined) {
+    // "Send and mark done": what was just told to the submitter is the note.
+    resultNote = presetNote;
+  } else if (status === 'done') {
     const typed = window.prompt('One line for the Slack update (what was fixed?). Leave it blank to skip the note; Cancel leaves the card where it is.', '');
     if (typed === null) return;
     resultNote = typed.trim() || null;
@@ -601,9 +604,14 @@ function relTime(iso: string): string {
   return hrs < 24 ? `${hrs}h ago` : `${Math.floor(hrs / 24)}d ago`;
 }
 
-async function sendReporterUpdate(row: TriageRow) {
+/** andDone: once the update has gone to the submitter, close the report too,
+ *  with that same text as its note, so there is no second question to answer
+ *  (Ames 2026-10-10: "let's add a send and mark done"). If the update could
+ *  not be sent, the report is left where it is. */
+async function sendReporterUpdate(row: TriageRow, andDone = false) {
   const text = (reporterDrafts.value[row.id] || '').trim();
   if (!text || reporterSending.value) return;
+  let sent = false;
   reporterSending.value = row.id;
   triageError.value = '';
   try {
@@ -634,12 +642,14 @@ async function sendReporterUpdate(row: TriageRow) {
     await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } })
       .catch((lErr: any) => console.warn('[triage] reporter update sent but not logged:', lErr?.message));
     delete reporterDrafts.value[row.id];
-    await loadTriage();
+    sent = true;
+    if (!andDone) await loadTriage();
   } catch (e: any) {
     triageError.value = `Could not send the update: ${e?.message ?? String(e)}`;
   } finally {
     reporterSending.value = null;
   }
+  if (sent && andDone) await setTriageStatus(row, 'done', false, false, text.replace(/\s+/g, ' ').slice(0, 300));
 }
 
 /** Build ID of the preview waiting to go live: the tested preview, or one
@@ -2124,6 +2134,10 @@ function practiceWhen(iso: string | null) {
                 <button class="nge-admin-primary-btn" :disabled="reporterSending === row.id || !reporterDrafts[row.id]?.trim()" @click="sendReporterUpdate(row)">
                   {{ reporterSending === row.id ? 'Sending…' : 'Send to submitter' }}
                 </button>
+                <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn"
+                        :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
+                        title="Sends this to the submitter, then moves the card to Done with the same text as its note."
+                        @click="sendReporterUpdate(row, true)">✓ Send and mark done</button>
                 <button class="nge-admin-action-btn" :disabled="reporterSending === row.id" @click="closeReporterDraft(row)">Not now</button>
               </div>
             </template>
