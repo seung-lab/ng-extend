@@ -32,9 +32,9 @@ const active = () => lantern.on && (inSeason() || testOn());
 
 // How the ghost behaves. Distances are in units of the view's height when it
 // appeared, so it is a sensible size whatever the zoom.
-const SIZE = 0.13;               // its height
+const SIZE = 0.065;              // its height (half the first try: Ames, "he needs to be smaller")
 const NEAR = 0.24, FAR = 0.40;   // how far from the centre it appears
-const SCARED = 1.35;             // it flees when the centre is this many of its own heights away
+const SCARED = 2.2;              // it flees when the centre is this many of its own heights away
 const APPEAR_S = 1.1, VANISH_S = 0.9;
 const STAY_S: [number, number] = [22, 40];     // how long it stays if left alone
 const GAP_S: [number, number] = [9, 26];       // how long before the next one
