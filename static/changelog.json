@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-10T17:13:00Z",
+      "title": "Lantern mode",
+      "items": [
+        "Lantern mode lights the cell around the centre of your view and dims the rest, so you can check a big cell one part at a time. The light follows you as you move.",
+        "Turn it on with the lantern in the toolbar, or press Shift+N.",
+        "Set how far the light reaches and how bright it is in the small Lantern bar. Drag the bar by its grip to put it where you like.",
+        "Thank you to Krzysztof Kruk for the idea."
+      ]
+    },
+    {
       "at": "2026-10-10T17:03:00Z",
       "title": "Chat buttons stay out of the way",
       "items": [
