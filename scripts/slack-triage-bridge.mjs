@@ -568,9 +568,14 @@ async function echoAppDecisions() {
     }
     if (!row.slack_ts) await openThread(row, '_Decided in the Admin Hub before this reached Slack._');
     const tester = slackIdFor(row.reviewed_by);
-    const building = LOOP && row.status === 'approved' && isBuildable(row) && !row.impl_state;
+    // Marked "In progress" by hand in the Admin Hub: someone is fixing it
+    // themselves, so the robot does not build it (AdminHub.vue BY_HAND_NOTE).
+    const byHand = row.status === 'approved' && /^By hand\b/.test(row.approver_note || '');
+    const building = LOOP && row.status === 'approved' && isBuildable(row) && !row.impl_state && !byHand;
     const note = row.approver_note ? ` with the note "${row.approver_note}"` : '';
-    const posted = await say(row, row.status === 'approved'
+    const posted = await say(row, byHand
+      ? `Marked in progress in the Admin Hub by ${row.reviewed_by}: it is being fixed by hand, so the robot is not building it. ✓`
+      : row.status === 'approved'
       ? `Approved in the Admin Hub by ${row.reviewed_by}${note}.${building ? ` Claude is starting on it now. <@${tester}>, you're the tester.` : ''} ✓`
       : `Dismissed in the Admin Hub by ${row.reviewed_by}. ✓`);
     await patchRow(row.id, {

@@ -245,6 +245,52 @@ const triageGroups = computed(() => {
   return defs.map(d => ({ ...d, rows: triageRows.value.filter(r => triageGroupOf(r) === d.key) }));
 });
 
+// Every report has a number: its place in the order reports arrived, counted
+// over ALL of them, so a number never changes as cards come and go from the
+// board (Ames 2026-10-10: "number the requests so it's easier to keep track").
+const triageNumbers = ref<Record<string, number>>({});
+async function loadTriageNumbers() {
+  try {
+    const { supabase } = await import('../supabase');
+    const next: Record<string, number> = {};
+    for (let from = 0, n = 0; ; from += 1000) {
+      const { data, error } = await supabase.from('feedback_triage').select('id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 999);
+      if (error || !data) return;
+      for (const r of data as any[]) next[r.id] = ++n;
+      if (data.length < 1000) break;
+    }
+    triageNumbers.value = next;
+  } catch { /* the cards simply show no number */ }
+}
+
+// ── In progress, by hand ──
+// Most reports are fixed in a Claude chat, not by the robot (Ames 2026-10-10).
+// This moves a card to In progress WITHOUT queueing a robot build and without
+// sending anything to the reporter. The note is how the Slack bridge knows not
+// to start a build (scripts/slack-triage-bridge.mjs reads the same words).
+const BY_HAND_NOTE = 'By hand';
+const isByHand = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(BY_HAND_NOTE);
+async function markInProgress(row: TriageRow) {
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  try {
+    const who = backend.userName || backend.userEmail || 'admin';
+    const comment = (triageNotes.value[row.id] ?? '').trim();
+    await secureWrite('triage.update', { id: row.id, fields: {
+      status: 'approved',
+      approver_note: `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
+      reviewed_by: who,
+      reviewed_at: new Date().toISOString(),
+    } });
+    triageOpen.value.progress = true;
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageActing.value = null;
+  }
+}
+
 async function loadTriage() {
   triageLoading.value = true;
   triageError.value = '';
@@ -264,6 +310,7 @@ async function loadTriage() {
     // Discarded reports are off the board unless you ask for older ones.
     triageRows.value = ((data ?? []) as TriageRow[]).filter(r => triageShowReviewed.value || !isDiscarded(r));
     void loadReporters(triageRows.value);
+    void loadTriageNumbers();
     applyTriageFocus();
     keepSelectedInView();
     for (const r of triageRows.value) {
@@ -378,7 +425,7 @@ function claudeBriefing(row: TriageRow): string {
     'You are helping with the EyeWire II community app (seung-lab/ng-extend, branch eyewire-ii-community;',
     'a Vue 3 + Pinia extension of neuroglancer). Work on this user report.',
     '',
-    `Report (${row.source.replace('_', ' ')}, ${row.created_at.slice(0, 10)}): "${row.source_excerpt || ''}"`,
+    `Report${triageNumbers.value[row.id] ? ' #' + triageNumbers.value[row.id] : ''} (${row.source.replace('_', ' ')}, ${row.created_at.slice(0, 10)}): "${row.source_excerpt || ''}"`,
     `Triage proposal: ${TRIAGE_LABELS[row.recommendation]}. Status: ${row.status}${row.impl_state ? `, robot state: ${row.impl_state}` : ''}.`,
     row.rationale ? `Rationale: ${row.rationale}` : '',
     row.spec ? `Spec:\n${row.spec}` : '',
@@ -1827,9 +1874,11 @@ function practiceWhen(iso: string | null) {
              :class="{ 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id }"
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
+            <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
             <span class="nge-triage-rec" :class="`nge-triage-rec--${row.recommendation}`">{{ TRIAGE_LABELS[row.recommendation] }}</span>
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
             <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by.startsWith('slack:') ? 'in Slack' : row.reviewed_by }}</template></span>
+            <span v-if="isByHand(row)" class="nge-triage-impl" title="Marked in progress by hand. The robot is not building this.">by hand</span>
             <span v-if="row.impl_state" class="nge-triage-impl" :class="`nge-triage-impl--${row.impl_state}`">{{ IMPL_LABELS[row.impl_state] }}</span>
             <a v-if="slackThreadUrl(row)" class="nge-triage-link" :href="slackThreadUrl(row) || undefined" target="_blank" rel="noopener">Slack thread</a>
           </div>
@@ -1897,6 +1946,9 @@ function practiceWhen(iso: string | null) {
             <!-- Done, on every card that is not already done (Ames 2026-10-01:
                  "a lot of the time I fix in Claude"), whatever state it is in:
                  waiting for a decision, in progress, or dismissed. -->
+            <button v-if="row.status === 'proposed'" class="nge-admin-action-btn" :disabled="triageActing === row.id"
+                    title="You are fixing this yourself, for example in a Claude chat. Moves the card to In progress. The robot does not build it and nothing is sent to the reporter."
+                    @click="markInProgress(row)">▶ In progress</button>
             <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id"
                     title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
                     @click="setTriageStatus(row, 'done')">✓ Done</button>
@@ -2621,6 +2673,10 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-rec--message      { background: rgba(100,200,255,0.14); color: #64c8ff; }
 .nge-triage-rec--bug_fix_spec { background: rgba(255,120,120,0.14); color: #f88; }
 .nge-triage-rec--new_feature  { background: rgba(160,255,160,0.12); color: #8e8; }
+.nge-triage-num {
+  font: 600 11.5px 'Consolas', 'SF Mono', monospace; color: #cfe3ff;
+  padding: 1px 6px; border-radius: 4px; background: rgba(120, 180, 255, 0.14);
+}
 .nge-triage-src { font-size: 11px; color: rgba(255,255,255,0.4); }
 .nge-triage-status { font-size: 11px; color: rgba(255,255,255,0.62); }
 .nge-triage-done-btn { color: #8fe6a2; border-color: rgba(143, 230, 162, 0.4); }
