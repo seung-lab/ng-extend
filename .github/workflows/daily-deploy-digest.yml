@@ -22,6 +22,11 @@ on:
         type: boolean
         required: false
         default: false
+      preview:
+        description: 'Send it only to the admins, titled (preview), with no chat line'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   digest:
@@ -41,4 +46,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           POST_TO_CHAT: 'true'
-        run: node scripts/daily-deploy-digest.mjs ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: node scripts/daily-deploy-digest.mjs ${{ inputs.dry_run && '--dry-run' || '' }} ${{ inputs.preview && '--preview' || '' }}
