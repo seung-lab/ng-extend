@@ -12,7 +12,7 @@ import {currentSegLayerName} from '../datasets';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
 import {getSelectedSupervoxelId} from './pcg_service';
 import {startLinkForSegment, openStartLink} from '../util/start_link';
-import {isCurrentId, updateToCurrentId} from '../util/outdated_ids';
+import {isCurrentId, updateToCurrentId, currentIdsOf} from '../util/outdated_ids';
 
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
@@ -283,32 +283,59 @@ export class ButtonService {
 
     // ── Out of date ID ────────────────────────────────────────────────────
     // Shown only when the graph says this ID has been replaced by an edit.
-    const outdated = document.createElement('div');
-    outdated.className = 'nge-lb-outdated-note';
-    outdated.style.display = 'none';
-    const outdatedText = document.createElement('div');
-    outdatedText.textContent = 'This ID is out of date. The cell has been edited since, so it has a new ID.';
-    const outdatedBtn = document.createElement('button');
-    outdatedBtn.classList.add('nge-lb-section-button');
-    outdatedBtn.textContent = 'Update to the current ID';
-    outdatedBtn.addEventListener('click', async () => {
-      outdatedBtn.disabled = true;
-      outdatedBtn.textContent = 'Finding the current ID…';
+    // An error state, but a calm one: what is wrong, what the cell is now,
+    // and one button that puts it right (Ames 2026-10-10: "it should still
+    // be an elegant and satisfying error state").
+    const stale = document.createElement('div');
+    stale.className = 'nge-lb-stale';
+    stale.setAttribute('role', 'status');
+    stale.hidden = true;
+    const shortId = (id: string) => (id.length > 9 ? '…' + id.slice(-7) : id);
+    stale.innerHTML =
+        '<div class="nge-lb-stale-head"><span class="nge-lb-stale-mark" aria-hidden="true"></span>' +
+        '<span class="nge-lb-stale-eyebrow">ID out of date</span></div>' +
+        '<div class="nge-lb-stale-text">This cell has been edited since, so it has a new ID.</div>' +
+        '<div class="nge-lb-stale-swap"><span class="nge-lb-stale-old"></span>' +
+        '<span class="nge-lb-stale-arrow" aria-hidden="true">→</span>' +
+        '<span class="nge-lb-stale-new">looking it up…</span></div>';
+    const staleText = stale.querySelector('.nge-lb-stale-text') as HTMLElement;
+    const staleOld = stale.querySelector('.nge-lb-stale-old') as HTMLElement;
+    const staleNew = stale.querySelector('.nge-lb-stale-new') as HTMLElement;
+    staleOld.textContent = shortId(segmentIDString);
+    staleOld.title = segmentIDString;
+    const staleBtn = document.createElement('button');
+    staleBtn.className = 'nge-lb-stale-btn';
+    staleBtn.textContent = 'Update to the current ID';
+    stale.appendChild(staleBtn);
+    const showCurrent = (ends: string[] | null) => {
+      if (!ends) { staleNew.textContent = 'not found yet'; return; }
+      staleNew.textContent = ends.length === 1 ? shortId(ends[0]) : `${ends.length} pieces`;
+      staleNew.title = ends.join(', ');
+      staleNew.classList.add('nge-lb-stale-new--known');
+      if (ends.length > 1) staleBtn.textContent = `Show all ${ends.length} pieces`;
+    };
+    staleBtn.addEventListener('click', async () => {
+      staleBtn.disabled = true;
+      stale.classList.add('nge-lb-stale--working');
       const now = await updateToCurrentId(segmentIDString).catch(() => null);
+      stale.classList.remove('nge-lb-stale--working');
       if (!now) {
-        outdatedBtn.disabled = false;
-        outdatedBtn.textContent = 'Update to the current ID';
-        outdatedText.textContent = 'Could not find the current ID just now. Try again in a moment.';
+        staleBtn.disabled = false;
+        staleText.textContent = 'Could not find the current ID just now. Try again in a moment.';
         return;
       }
-      // The old row leaves the list with its ID, and this menu with it.
-      contextMenu.hide();
+      // Put right: say so for a moment, then the old row and this menu go.
+      stale.classList.add('nge-lb-stale--done');
+      stale.querySelector('.nge-lb-stale-eyebrow')!.textContent = 'Up to date';
+      staleText.textContent = now.length === 1 ? 'Now showing the current ID.' : `Now showing all ${now.length} pieces.`;
+      staleBtn.hidden = true;
+      setTimeout(() => contextMenu.hide(), 900);
     });
-    outdated.appendChild(outdatedText);
-    outdated.appendChild(outdatedBtn);
-    menu.appendChild(outdated);
+    menu.appendChild(stale);
     void isCurrentId(segmentIDString).then(current => {
-      if (current === false) outdated.style.display = '';
+      if (current !== false) return;
+      stale.hidden = false;
+      void currentIdsOf(segmentIDString).then(showCurrent);
     });
 
     let cachedStatus: CellStatus|null = (parent as any)._cellStatus ?? null;

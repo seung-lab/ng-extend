@@ -58,9 +58,23 @@ export function isCurrentId(id: string): Promise<boolean | null> {
  * player can see them and drop the ones they do not want.
  * Returns the IDs now showing, or null when the current ID could not be found.
  */
+/** What an out of date ID has become: one current ID, or several pieces
+ *  after splits. Null when it could not be looked up. Asked once per ID. */
+const became = new Map<string, Promise<string[] | null>>();
+export function currentIdsOf(id: string): Promise<string[] | null> {
+  let p = became.get(id);
+  if (!p) {
+    p = latestDescendants(id).then(ends => (ends && ends.length && !(ends.length === 1 && ends[0] === id) ? ends : null)).catch(() => null);
+    became.set(id, p);
+    // A failed lookup is asked again next time.
+    void p.then(v => { if (!v) became.delete(id); });
+  }
+  return p;
+}
+
 export async function updateToCurrentId(id: string): Promise<string[] | null> {
-  const ends = await latestDescendants(id);
-  if (!ends || !ends.length || (ends.length === 1 && ends[0] === id)) return null;
+  const ends = await currentIdsOf(id);
+  if (!ends) return null;
   const group = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value;
   if (!group?.visibleSegments) return null;
   const old = Uint64.parseString(id);

@@ -478,35 +478,151 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   filter: drop-shadow(0 0 6px #B388FFcc);
 }
 
-/* Out of date ID: the cell was edited since and has a new one. Amber, with a
-   mark that reads without relying on color alone. */
+/* ── Out of date ID ─────────────────────────────────────────────────────
+   The cell was edited since and has a new ID. Amber is the game's "needs a
+   look" color; the mark and the words carry the meaning too, not color alone.
+   One short settle when it appears, nothing that loops. */
 .nge-lb-btn.nge-lb-outdated { position: relative; }
+.nge-lb-btn.nge-lb-outdated .nge-lb-pip { color: #ffb347; filter: drop-shadow(0 0 5px rgba(255, 179, 71, 0.75)); }
+.nge-lb-btn.nge-lb-outdated .nge-lb-dots { color: #ffb347; }
 .nge-lb-btn.nge-lb-outdated::after {
-  content: '!';
+  /* a small clock hand: this one is behind */
+  content: '';
   position: absolute;
-  top: -4px;
-  right: -3px;
-  width: 10px;
-  height: 10px;
+  top: -3px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: #ffb347;
-  color: #1a1206;
-  font: 700 8px/10px 'Inter', system-ui, sans-serif;
-  text-align: center;
-  box-shadow: 0 0 5px rgba(255, 179, 71, 0.8);
+  background:
+    linear-gradient(#1a1206, #1a1206) 50% 28% / 1.4px 3.4px no-repeat,
+    linear-gradient(#1a1206, #1a1206) 66% 52% / 3px 1.4px no-repeat,
+    #ffb347;
+  box-shadow: 0 0 0 1.5px rgba(10, 18, 35, 0.95), 0 0 6px rgba(255, 179, 71, 0.8);
   pointer-events: none;
+  animation: nge-stale-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
-.nge-lb-outdated-note {
-  margin: 8px 10px 2px;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 179, 71, 0.55);
-  border-radius: 6px;
-  background: rgba(255, 179, 71, 0.1);
-  color: #ffd9a0;
-  font-size: 12px;
-  line-height: 1.4;
+@keyframes nge-stale-in {
+  from { transform: scale(0.2); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
-.nge-lb-outdated-note .nge-lb-section-button { margin-top: 6px; }
+
+.nge-lb-stale {
+  position: relative;
+  margin: 10px 10px 4px;
+  padding: 11px 12px 12px;
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(255, 179, 71, 0.11), rgba(255, 179, 71, 0.035));
+  border: 1px solid rgba(255, 179, 71, 0.38);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 160, 0.12), 0 0 18px rgba(255, 179, 71, 0.08);
+  animation: nge-stale-card 0.32s ease-out both;
+  transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+.nge-lb-stale[hidden] { display: none; }
+/* a lit edge down the left, like the menu's own section rules */
+.nge-lb-stale::before {
+  content: '';
+  position: absolute;
+  left: -1px; top: 9px; bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+  background: #ffb347;
+  box-shadow: 0 0 8px rgba(255, 179, 71, 0.9);
+  transition: background 0.35s ease, box-shadow 0.35s ease;
+}
+@keyframes nge-stale-card {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.nge-lb-stale-head { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.nge-lb-stale-mark {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #ffb347;
+  box-shadow: 0 0 0 3px rgba(255, 179, 71, 0.18);
+  transition: background 0.35s ease, box-shadow 0.35s ease;
+}
+.nge-lb-stale-eyebrow {
+  font: 600 10px/1 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ffc56e;
+  transition: color 0.35s ease;
+}
+.nge-lb-stale-text {
+  font: 400 12.5px/1.45 'Inter', system-ui, sans-serif;
+  color: rgba(255, 236, 205, 0.9);
+}
+.nge-lb-stale-swap {
+  display: flex; align-items: center; gap: 8px;
+  margin: 9px 0 10px;
+  font: 500 12px/1 'Consolas', 'SF Mono', 'Monaco', monospace;
+}
+.nge-lb-stale-old {
+  color: rgba(255, 220, 170, 0.6);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 179, 71, 0.7);
+}
+.nge-lb-stale-arrow { color: rgba(255, 200, 120, 0.75); }
+.nge-lb-stale-new { color: rgba(255, 236, 205, 0.55); }
+.nge-lb-stale-new--known {
+  color: #fff3df;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: rgba(255, 179, 71, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 179, 71, 0.4);
+}
+.nge-lb-stale-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 11px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 179, 71, 0.6);
+  background: linear-gradient(180deg, rgba(255, 179, 71, 0.26), rgba(255, 179, 71, 0.12));
+  color: #fff3df;
+  font: 600 13px/1.2 'Inter', system-ui, sans-serif;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s, transform 0.06s, box-shadow 0.14s;
+}
+.nge-lb-stale-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(255, 179, 71, 0.38), rgba(255, 179, 71, 0.18));
+  border-color: #ffb347;
+  box-shadow: 0 0 14px rgba(255, 179, 71, 0.28);
+}
+.nge-lb-stale-btn:active:not(:disabled) { transform: translateY(1px); }
+.nge-lb-stale-btn:focus-visible { outline: 2px solid #ffd08a; outline-offset: 2px; }
+.nge-lb-stale-btn:disabled { cursor: default; opacity: 0.75; }
+.nge-lb-stale-btn[hidden] { display: none; }
+/* while the current ID is being fetched: a light sweeps the button once per pass */
+.nge-lb-stale--working .nge-lb-stale-btn {
+  background-image: linear-gradient(100deg, transparent 30%, rgba(255, 230, 180, 0.35) 50%, transparent 70%),
+    linear-gradient(180deg, rgba(255, 179, 71, 0.26), rgba(255, 179, 71, 0.12));
+  background-size: 220% 100%, 100% 100%;
+  animation: nge-stale-sweep 1.1s linear infinite;
+}
+@keyframes nge-stale-sweep { from { background-position: 120% 0, 0 0; } to { background-position: -120% 0, 0 0; } }
+/* put right: the card turns to the game's "done" green and settles */
+.nge-lb-stale--done {
+  background: linear-gradient(180deg, rgba(102, 187, 106, 0.16), rgba(102, 187, 106, 0.05));
+  border-color: rgba(102, 187, 106, 0.55);
+  box-shadow: inset 0 1px 0 rgba(200, 255, 205, 0.14), 0 0 20px rgba(102, 187, 106, 0.16);
+}
+.nge-lb-stale--done::before { background: #66bb6a; box-shadow: 0 0 8px rgba(102, 187, 106, 0.9); }
+.nge-lb-stale--done .nge-lb-stale-mark { background: #66bb6a; box-shadow: 0 0 0 3px rgba(102, 187, 106, 0.2); }
+.nge-lb-stale--done .nge-lb-stale-eyebrow { color: #9be29f; }
+.nge-lb-stale--done .nge-lb-stale-text { color: rgba(220, 255, 224, 0.92); }
+.nge-lb-stale--done .nge-lb-stale-old { color: rgba(200, 235, 205, 0.45); text-decoration-color: rgba(102, 187, 106, 0.6); }
+.nge-lb-stale--done .nge-lb-stale-arrow { color: rgba(160, 230, 165, 0.8); }
+.nge-lb-stale--done .nge-lb-stale-new--known {
+  color: #eaffec; background: rgba(102, 187, 106, 0.2); box-shadow: inset 0 0 0 1px rgba(102, 187, 106, 0.55);
+}
+.nge-lb-stale--done .nge-lb-stale-swap { margin-bottom: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .nge-lb-btn.nge-lb-outdated::after, .nge-lb-stale { animation: none; }
+  .nge-lb-stale--working .nge-lb-stale-btn { animation: none; }
+  .nge-lb-stale, .nge-lb-stale::before, .nge-lb-stale-mark, .nge-lb-stale-eyebrow { transition: none; }
+}
 
 /* Tint the dots text to match status */
 .nge-lb-btn.nge-lb-complete .nge-lb-dots { color: #66BB6A; }
