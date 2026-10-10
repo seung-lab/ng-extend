@@ -1,0 +1,44 @@
+# ============================================================================
+# daily-deploy-digest — once a day, tell players what changed in Pyr that day.
+# ----------------------------------------------------------------------------
+# Reads the LIVE site's changelog, takes the entries that went live since the
+# last digest, and sends one notification to everyone (and a chat line through
+# the chat-announcements job). A day with no deploy sends nothing.
+#
+# Scheduled workflows run from main, so this file must exist on main; like the
+# weekly recap it checks out eyewire-ii-community to run the maintained script.
+# ============================================================================
+name: Daily Deploy Digest
+
+on:
+  schedule:
+    # 23:00 UTC: 7 pm Eastern in summer, 6 pm in winter, the same hour as the
+    # weekly recap, after the day's deploys are done.
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print the notification without sending it'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Send the daily digest
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          POST_TO_CHAT: 'true'
+        run: node scripts/daily-deploy-digest.mjs ${{ inputs.dry_run && '--dry-run' || '' }}
