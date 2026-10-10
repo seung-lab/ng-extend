@@ -245,6 +245,19 @@ const triageGroups = computed(() => {
   return defs.map(d => ({ ...d, rows: triageRows.value.filter(r => triageGroupOf(r) === d.key && triageMatches(r)) }));
 });
 
+// A light page for reading (Ames 2026-10-10: "it's hard to read this much
+// text on dark BG"). The triage page on its own opens light; the board inside
+// the game stays dark like the game unless switched. The choice is remembered.
+const TRIAGE_LIGHT_KEY = 'nge_triage_light_v1';
+const triageLight = ref((() => {
+  try { const v = localStorage.getItem(TRIAGE_LIGHT_KEY); if (v === '1' || v === '0') return v === '1'; } catch { /* private window */ }
+  return !!props.standalone;
+})());
+function toggleTriageLight() {
+  triageLight.value = !triageLight.value;
+  try { localStorage.setItem(TRIAGE_LIGHT_KEY, triageLight.value ? '1' : '0'); } catch { /* not remembered */ }
+}
+
 // Search the board (Ames 2026-10-10: "I need search in active feedback / in
 // progress"). Every word typed must be found somewhere in the report: its
 // number, who sent it, what they wrote, the proposal, the notes, the state.
@@ -1854,7 +1867,7 @@ function practiceWhen(iso: string | null) {
       <!-- Board view leaves the panel for the whole window. Teleported: the
            profile panel's backdrop filter would otherwise trap a fixed box. -->
       <Teleport to="body" :disabled="!triageBoard || standalone">
-      <div class="nge-admin-block" :class="{ 'nge-triage-board': triageBoard }">
+      <div class="nge-admin-block" :class="{ 'nge-triage-board': triageBoard, 'nge-triage-light': triageBoard && triageLight }">
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
           <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
@@ -1863,6 +1876,9 @@ function practiceWhen(iso: string | null) {
           <input v-model="triageSearch" class="nge-triage-search" type="search" placeholder="Search reports, or #number"
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
           <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
+          <button v-if="triageBoard" class="nge-admin-action-btn" :aria-pressed="triageLight ? 'true' : 'false'"
+                  :title="triageLight ? 'Switch to the dark page' : 'Switch to a light page, easier for reading a lot of text'"
+                  @click="toggleTriageLight">{{ triageLight ? '☾ Dark' : '☀ Light' }}</button>
           <label class="nge-triage-toggle">
             <input type="checkbox" v-model="triageShowReviewed" />
             <span>Show older</span>
@@ -2659,6 +2675,83 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-board .nge-triage-card--selected { cursor: default; }
 .nge-triage-col-empty { padding: 14px 4px; color: #62738c; font-size: 0.9em; text-align: center; }
+
+/* ── Light page ──────────────────────────────────────────────────────────
+   Dark ink on paper for long reading. Every color the board sets is given
+   its light counterpart here; nothing else about the layout changes. */
+.nge-triage-light { background: #eef1f6; color: #1c2635; }
+.nge-triage-light .nge-admin-label { color: #24324a; }
+.nge-triage-light .nge-admin-hint { color: #5a6880; }
+.nge-triage-light .nge-admin-error { color: #b3261e; }
+.nge-triage-light .nge-triage-toggle { color: #4a5870; }
+.nge-triage-light .nge-triage-search {
+  background: #ffffff; border-color: #c3ccda; color: #1c2635;
+}
+.nge-triage-light .nge-triage-search::placeholder { color: #7b889c; }
+.nge-triage-light .nge-triage-search:focus { border-color: #2f6fd6; box-shadow: 0 0 0 3px rgba(47, 111, 214, 0.15); }
+.nge-triage-light .nge-triage-search-count { color: #5a6880; }
+.nge-triage-light .nge-triage-col {
+  background: #f7f9fc; border-color: #d3dae6;
+  scrollbar-color: #b9c4d6 transparent;
+}
+.nge-triage-light .nge-triage-col--decide { border-top-color: #e2584f; }
+.nge-triage-light .nge-triage-col--progress { border-top-color: #2f8fd6; }
+.nge-triage-light .nge-triage-col--done { border-top-color: #2e9e68; }
+.nge-triage-light .nge-triage-col--dismissed { border-top-color: #8793a6; }
+.nge-triage-light .nge-triage-group { background: #e9edf4; border-bottom-color: #d3dae6; color: #1c2635; }
+.nge-triage-light .nge-triage-group-title { color: #1c2635; }
+.nge-triage-light .nge-triage-group-count { background: #d7deea; color: #2a3850; }
+.nge-triage-light .nge-triage-col-empty { color: #7b889c; }
+.nge-triage-light .nge-triage-card {
+  background: #ffffff; border-color: #d8dee9; box-shadow: 0 1px 2px rgba(20, 30, 50, 0.05);
+}
+.nge-triage-light .nge-triage-card:hover { border-color: #7fb0ea; }
+.nge-triage-light .nge-triage-card--selected {
+  background: #ffffff; border-color: #2f6fd6;
+  box-shadow: inset 4px 0 0 #2f6fd6, 0 0 0 1px rgba(47, 111, 214, 0.3), 0 4px 16px rgba(47, 111, 214, 0.14);
+}
+.nge-triage-light .nge-triage-card--closed { opacity: 0.8; }
+.nge-triage-light .nge-triage-num { background: #e3ebf8; color: #20457f; }
+.nge-triage-light .nge-triage-rec--nothing { background: #e7eaf0; color: #56637a; }
+.nge-triage-light .nge-triage-rec--message { background: #dceefb; color: #0d5f94; }
+.nge-triage-light .nge-triage-rec--bug_fix_spec { background: #fde4e1; color: #a8271e; }
+.nge-triage-light .nge-triage-rec--new_feature { background: #dff3e4; color: #1d7038; }
+.nge-triage-light .nge-triage-src { color: #6b788d; }
+.nge-triage-light .nge-triage-status { color: #46546b; }
+.nge-triage-light .nge-triage-link { color: #1f5fc4; }
+.nge-triage-light .nge-triage-impl { background: #e3ebf8; color: #20457f; }
+.nge-triage-light .nge-triage-impl--testing, .nge-triage-light .nge-triage-impl--changes_requested { background: #fff0cf; color: #7a5200; }
+.nge-triage-light .nge-triage-impl--deployed { background: #dff3e4; color: #1d7038; }
+.nge-triage-light .nge-triage-impl--failed { background: #fde4e1; color: #a8271e; }
+.nge-triage-light .nge-triage-from { color: #46546b; }
+.nge-triage-light .nge-triage-from strong { color: #111a28; }
+.nge-triage-light .nge-triage-excerpt { color: #18212f; }
+.nge-triage-light .nge-triage-rationale { color: #4a5870; }
+.nge-triage-light .nge-triage-note, .nge-triage-light .nge-triage-loop { color: #26324a; }
+.nge-triage-light .nge-triage-loop { background: #f1f4f9; border-color: #d8dee9; }
+.nge-triage-light .nge-triage-copied { color: #1d7038; }
+.nge-triage-light .nge-triage-console-btn { background: #eef3fb; border-color: #c3d3ec; color: #1f5fc4; }
+.nge-triage-light .nge-triage-console-log { background: #f4f6fa; border-color: #d8dee9; color: #2a3446; }
+.nge-triage-light .nge-triage-spec { background: #f4f6fa; border-color: #d8dee9; color: #26324a; }
+.nge-triage-light .nge-triage-spec-label { color: #2f6fd6; }
+.nge-triage-light .nge-triage-spec-text { color: #1c2635; }
+.nge-triage-light .nge-triage-message, .nge-triage-light .nge-triage-comment {
+  background: #ffffff; border-color: #c3ccda; color: #1c2635;
+}
+.nge-triage-light .nge-triage-message::placeholder, .nge-triage-light .nge-triage-comment::placeholder { color: #7b889c; }
+.nge-triage-light .nge-triage-reporter { color: #46546b; }
+.nge-triage-light .nge-triage-reporter-by { color: #6b788d; }
+.nge-triage-light .nge-triage-release { background: #eef3fb; border-color: #c3d3ec; }
+.nge-triage-light .nge-triage-release-why { color: #34425a; }
+.nge-triage-light .nge-triage-claude { border-top-color: #e0e5ee; }
+.nge-triage-light .nge-admin-primary-btn { background: #2f6fd6; border-color: #2a62bd; color: #ffffff; }
+.nge-triage-light .nge-admin-primary-btn:hover:not(:disabled) { background: #295fb8; border-color: #23529f; }
+.nge-triage-light .nge-admin-action-btn { background: #ffffff; border-color: #b9c6da; color: #23324a; }
+.nge-triage-light .nge-admin-action-btn:hover:not(:disabled) { background: #edf2fa; border-color: #7fa3d8; }
+.nge-triage-light .nge-triage-done-btn { color: #1d7038; border-color: #8fcba3; }
+.nge-triage-light .nge-triage-discard-btn { color: #a8271e; border-color: #e3aaa5; }
+.nge-triage-light a { color: #1f5fc4; }
+.nge-triage-light :focus-visible { outline: 2px solid #2f6fd6; outline-offset: 2px; }
 @media (max-width: 1100px) {
   .nge-triage-board .nge-triage-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
 }
