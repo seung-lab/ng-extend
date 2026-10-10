@@ -26,10 +26,10 @@ const postToChat = (process.env.POST_TO_CHAT ?? 'true') !== 'false';
 
 // Every digest title starts with this, which is how the last one is found.
 const DIGEST_TAG = 'Today in Pyr';
-// The look of an admin-sent notification: Nurro as the thumbnail, a neuron picture inside.
-const STORAGE_BASE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads';
-const THUMBNAIL_URL = `${STORAGE_BASE}/nurro/guide-avatar.png`;
-const neuronPicture = (dayOfYear) => `${STORAGE_BASE}/nurro-neurons/neuron-${1 + (dayOfYear % 24)}.jpg`;
+// Weatherman Nurro (Ames, 2026-10-10), served from the branch like the Week in Science art.
+const ART_BASE = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/digest';
+const THUMBNAIL_URL = `${ART_BASE}/weatherman-nurro-icon.png`;
+const IMAGE_URL = `${ART_BASE}/weatherman-nurro.png`;
 const DAY_MS = 24 * 60 * 60 * 1000;
 // A digest never reaches back further than this, even if the job missed days.
 const MAX_LOOKBACK_MS = 7 * DAY_MS;
@@ -111,10 +111,9 @@ function buildBody(entries, sinceMs, nowMs) {
 
   const title = `${DIGEST_TAG}: ${easternDay(now)}`;
   const body = buildBody(entries, sinceMs, nowMs);
-  const dayOfYear = Math.floor((nowMs - Date.UTC(now.getUTCFullYear(), 0, 1)) / DAY_MS);
   const row = {
     title, body, target_type: 'all', send_at: now.toISOString(), post_to_chat: postToChat,
-    thumbnail_url: THUMBNAIL_URL, image_url: neuronPicture(dayOfYear),
+    thumbnail_url: THUMBNAIL_URL, image_url: IMAGE_URL,
   };
   console.log(`[digest] ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}: ` +
       entries.map(e => `"${e.title}" (${e.at})`).join(', '));
