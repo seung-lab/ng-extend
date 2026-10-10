@@ -2666,7 +2666,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-discard-btn:hover:not(:disabled) { background: rgba(255, 90, 90, 0.12); color: #ffb3b3; }
 .nge-triage-claude { flex-wrap: wrap; }
 .nge-triage-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.nge-triage-from { font-size: 0.86em; color: #9fb3cc; }
+.nge-triage-from { font-size: 13px; color: #a9bcd4; }
 .nge-triage-release { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 6px; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(74, 158, 255, 0.25); }
 .nge-triage-release-why { font-size: 0.88em; color: #b9cbe2; }
 .nge-triage-release-row { display: flex; align-items: center; gap: 8px; }
@@ -2693,7 +2693,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-card--closed { opacity: 0.62; }
 .nge-triage-card--closed:hover { opacity: 0.9; }
 .nge-triage-rec {
-  font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em;
   padding: 1px 8px; border-radius: 9px; text-transform: uppercase;
 }
 .nge-triage-rec--nothing      { background: rgba(255,255,255,0.08); color: #aab; }
@@ -2711,8 +2711,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   font: 600 11.5px 'Consolas', 'SF Mono', monospace; color: #cfe3ff;
   padding: 1px 6px; border-radius: 4px; background: rgba(120, 180, 255, 0.14);
 }
-.nge-triage-src { font-size: 11px; color: rgba(255,255,255,0.4); }
-.nge-triage-status { font-size: 11px; color: rgba(255,255,255,0.62); }
+.nge-triage-src { font-size: 12px; color: rgba(255,255,255,0.5); }
+.nge-triage-status { font-size: 12px; color: rgba(255,255,255,0.68); }
 .nge-triage-done-btn { color: #8fe6a2; border-color: rgba(143, 230, 162, 0.4); }
 .nge-triage-done-btn:hover:not(:disabled) { background: rgba(143, 230, 162, 0.12); border-color: rgba(143, 230, 162, 0.75); }
 .nge-triage-impl {
@@ -2723,17 +2723,17 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-impl--needs_info, .nge-triage-impl--live_testing { background: rgba(255,210,90,0.14); color: #ffd35a; }
 .nge-triage-impl--deployed { background: rgba(160,255,160,0.12); color: #8e8; }
 .nge-triage-impl--failed { background: rgba(255,120,120,0.16); color: #f88; }
-.nge-triage-link { font-size: 11px; color: #8fd3ff; }
+.nge-triage-link { font-size: 12px; color: #8fd3ff; }
 .nge-triage-claude { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .nge-triage-copied { font-size: 12px; color: #8ee88e; }
-.nge-triage-note { font-size: 12px; color: rgba(235,238,250,0.88); line-height: 1.45; }
+.nge-triage-note { font-size: 13px; color: rgba(235,238,250,0.9); line-height: 1.45; }
 .nge-triage-loop {
   display: flex; flex-direction: column; gap: 4px;
   font-size: 12px; color: rgba(235,238,250,0.88); line-height: 1.45;
   padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,0.03);
 }
 .nge-triage-loop a { color: #8fd3ff; word-break: break-all; }
-.nge-triage-excerpt { font-size: 12px; color: rgba(255,255,255,0.75); }
+.nge-triage-excerpt { font-size: 14px; line-height: 1.45; color: rgba(255,255,255,0.86); }
 .nge-triage-console-btn {
   background: none; border: 1px solid rgba(100,200,255,0.2); border-radius: 999px;
   color: #9cc8ff; font-size: 11px; padding: 2px 9px; cursor: pointer;
@@ -2745,10 +2745,10 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   padding: 7px 9px; font-size: 11px; line-height: 1.4; color: #c9d4e4;
   font-family: 'JetBrains Mono', 'Consolas', monospace; user-select: text;
 }
-.nge-triage-rationale { font-size: 11.5px; color: rgba(255,255,255,0.5); line-height: 1.4; }
+.nge-triage-rationale { font-size: 13px; color: rgba(255,255,255,0.62); line-height: 1.45; }
 .nge-triage-message {
   background: rgba(0,0,0,0.3); border: 1px solid rgba(100,200,255,0.2);
-  border-radius: 6px; color: #dde; font-size: 12px; padding: 7px 9px; resize: vertical;
+  border-radius: 6px; color: #dde; font-size: 13.5px; padding: 8px 10px; resize: vertical;
 }
 .nge-triage-comment { border-color: rgba(255,255,255,0.14); font-family: inherit; }
 .nge-triage-reporter {
@@ -2764,14 +2764,14 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-spec {
   background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 6px; color: #ccd; font-size: 12px; padding: 9px 11px;
+  border-radius: 6px; color: #ccd; font-size: 13.5px; padding: 10px 12px;
   max-height: 240px; overflow-y: auto; margin: 0;
   display: flex; flex-direction: column; gap: 5px;
 }
 .nge-triage-spec-row { display: flex; gap: 8px; align-items: baseline; line-height: 1.45; }
 .nge-triage-spec-label {
   flex: none; min-width: 62px;
-  font-size: 9.5px; font-weight: 700; letter-spacing: 0.07em;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em;
   text-transform: uppercase; color: rgba(100, 200, 255, 0.75);
 }
 .nge-triage-spec-text { color: rgba(235, 238, 250, 0.88); }
