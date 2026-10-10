@@ -20,6 +20,10 @@ const panelEl = ref<HTMLElement | null>(null);
 const reloading = ref(false);
 
 watch(() => version.newer, async (now, was) => {
+  // Each newer version brings its own list of what changed: read it again
+  // the next time it is opened, not the one from an earlier update.
+  changes.value = null;
+  if (showChanges.value) void loadChanges();
   // The first newer version opens the panel. One after that changes nothing:
   // the player has already been told, and has the chip.
   if (!now || was) return;
@@ -34,14 +38,17 @@ function reload() { reloading.value = true; reloadForUpdate(); }
 const showChanges = ref(false);
 const changes = ref<ChangeEntry[] | null>(null);
 /** True when the list is the changes since this page loaded; false when it
- *  is only the newest few, because none is dated after the page loaded. */
+ *  is only the newest few, because nothing was added since the page loaded. */
 const changesAreNew = ref(true);
-async function toggleChanges() {
-  showChanges.value = !showChanges.value;
-  if (!showChanges.value || changes.value) return;
+async function loadChanges() {
   const { since, latest } = await readChanges();
   changesAreNew.value = since.length > 0;
   changes.value = since.length ? since : latest;
+}
+async function toggleChanges() {
+  showChanges.value = !showChanges.value;
+  if (!showChanges.value || changes.value) return;
+  await loadChanges();
 }
 const dayOf = (iso: string) => { try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return ''; } };
 

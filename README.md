@@ -363,7 +363,8 @@ read by people who do not know any of the code words.
 Every deploy that changes something a player can see or do adds one entry at
 the **top** of `entries`, in the same commit as the change:
 
-- `at`: when it goes live, UTC, a few minutes ahead of the push.
+- `at`: the time of the push, in UTC. Never a future time: the deploy refuses
+  an entry dated more than 20 minutes ahead.
 - `title`: a few words naming it.
 - `items`: one plain sentence each, saying what a player can now do or what no
   longer goes wrong. No file names, no code words, no dashes. Say "Achievement",
@@ -371,3 +372,12 @@ the **top** of `entries`, in the same commit as the change:
 
 Leave out changes a player cannot notice (refactors, admin tools, server
 housekeeping). Never rewrite or remove older entries.
+
+**The deploy checks this** (`scripts/check-changelog.mjs`, the first step of
+the deploy workflow). A push to `eyewire-ii-community` that changes anything
+under `src/`, `static/` or `third_party/` must add an entry in the same push,
+or the deploy stops before it builds. When players truly cannot notice the
+change, put `[no player change]` in a commit message of that push instead.
+The game shows a player the entries that were added since their page loaded,
+so an entry that is missing means they are told nothing, and one copied from
+an earlier deploy tells them the wrong thing.

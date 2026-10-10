@@ -48,6 +48,15 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
+      # What players are told changed (static/changelog.json) must be valid,
+      # and a push to the live branch that changes what they get must add an
+      # entry, or say [no player change] in a commit message. First, so a
+      # forgotten entry fails in seconds, not after the build.
+      - name: What changed, for players
+        if: github.event_name == 'push' && github.ref_name == 'eyewire-ii-community'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: node scripts/check-changelog.mjs "$BEFORE"
       - run: npm ci
       - name: Security regression tests
         run: node --test scripts/security-regression.cjs

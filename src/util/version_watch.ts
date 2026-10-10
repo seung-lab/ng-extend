@@ -17,27 +17,47 @@ export const version = reactive({
 });
 
 export interface ChangeEntry { at: string; title: string; items: string[]; }
-/** When this page loaded: changes that went live after it are the news. */
-const PAGE_LOADED = Date.now();
 
-/**
- * What changed, for players: static/changelog.json, newest first. `since`
- * are the entries that went live after this page loaded. When none carries a
- * later time (a deploy nobody wrote up), `latest` are the newest few instead,
- * so the box is never empty.
- */
-export async function readChanges(): Promise<{ since: ChangeEntry[]; latest: ChangeEntry[] }> {
+async function fetchEntries(): Promise<ChangeEntry[] | null> {
   try {
     const res = await fetch(`/changelog.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) return { since: [], latest: [] };
+    if (!res.ok) return null;
     const raw = await res.json();
-    const entries: ChangeEntry[] = (Array.isArray(raw?.entries) ? raw.entries : [])
+    const now = Date.now();
+    return (Array.isArray(raw?.entries) ? raw.entries : [])
       .filter((e: any) => e && typeof e.title === 'string' && Array.isArray(e.items) && !Number.isNaN(Date.parse(e.at)))
-      .map((e: any) => ({ at: String(e.at), title: String(e.title).slice(0, 80), items: e.items.filter((i: any) => typeof i === 'string').map((i: string) => i.slice(0, 240)).slice(0, 8) }))
-      .sort((a: ChangeEntry, b: ChangeEntry) => Date.parse(b.at) - Date.parse(a.at));
-    // A minute of slack: an entry is written just before its deploy finishes.
-    return { since: entries.filter(e => Date.parse(e.at) > PAGE_LOADED - 60_000).slice(0, 12), latest: entries.slice(0, 3) };
-  } catch { return { since: [], latest: [] }; }
+      // An entry dated ahead of the clock is a mistake in the file, not news.
+      .filter((e: any) => Date.parse(e.at) <= now + 20 * 60_000)
+      .map((e: any) => ({ at: String(e.at), title: String(e.title).slice(0, 80), items: e.items.filter((i: any) => typeof i === 'string').map((i: string) => i.slice(0, 240)).slice(0, 8) }));
+  } catch { return null; }
+}
+const keyOf = (e: ChangeEntry) => `${e.at}|${e.title}`;
+
+/**
+ * The entries that were already in the list when this page loaded. What is
+ * new is whatever is NOT among them, whatever its date says. (The first
+ * version compared dates with the time the page loaded, so an entry dated a
+ * few hours ahead showed as "new" on every load, and one dated a little early
+ * never showed at all: Ames 2026-10-10.) Null until read, or if it could not
+ * be: then the newest few are shown instead.
+ */
+let knownAtLoad: Set<string> | null = null;
+async function rememberLoadedChanges() {
+  const entries = await fetchEntries();
+  if (entries) knownAtLoad = new Set(entries.map(keyOf));
+}
+
+/**
+ * What changed, for players: static/changelog.json. `since` are the entries
+ * added since this page loaded, newest first. When there are none (a deploy
+ * nobody wrote up), `latest` are the newest few, so the box is never empty.
+ */
+export async function readChanges(): Promise<{ since: ChangeEntry[]; latest: ChangeEntry[] }> {
+  const entries = await fetchEntries();
+  if (!entries) return { since: [], latest: [] };
+  const byNewest = [...entries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const known = knownAtLoad;
+  return { since: known ? byNewest.filter(e => !known.has(keyOf(e))).slice(0, 12) : [], latest: byNewest.slice(0, 3) };
 }
 
 const EVERY_MS = 4 * 60_000;
@@ -63,6 +83,7 @@ export function startVersionWatch() {
   if (started) return;
   started = true;
   void check();
+  void rememberLoadedChanges();
   setInterval(() => { if (!document.hidden) void check(); }, EVERY_MS);
   // Coming back to the tab after a while is when a player is most likely behind.
   document.addEventListener('visibilitychange', () => { if (!document.hidden) void check(); });
