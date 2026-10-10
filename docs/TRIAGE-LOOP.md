@@ -15,6 +15,7 @@ shows the same commands with a Copy button.
 
 | Reply | When | What it does |
 |---|---|---|
+| `@Amy's Claude` | on a new report, before any suggestion | Asks Claude to suggest a fix for this report. Tag the bot alone, or add `suggest a fix`. A plain `suggest` works too. Costs one Claude run, so it only happens when asked. Tagging the bot with a question (`@Amy's Claude where is this?`) still goes to the Q&A bot. |
 | `approve` | a suggestion is waiting | Accepts it and Claude starts building. Words after it are kept as your note for Claude: `approve, use gold`. `approved` and `accept` work too. |
 | `dismiss` | a suggestion is waiting | Turns it down. Nothing is built. |
 | `good <build ID>` | a preview is up | Puts that exact build on the live site. A bare `good`, `looks good` or `lgtm` is only saved as a note and deploys nothing. |
@@ -56,11 +57,15 @@ the new preview.
 1. **Report.** A user submits an issue. `submitIssue` posts it to
    #citsci_feedback and the app saves it into Supabase `site_issues`
    (through the `ewCommunityData` server function).
-2. **Proposal.** Saving the report starts `triage-propose.yml` straight away,
-   and so does the bridge the next time it sees a report waiting. Claude
-   reads the code and writes one `feedback_triage` row: no action, send a
-   message, bug fix spec, or new feature. Every admin gets a 🗂️ "Feedback
-   triage: new suggestion" notification in the app when it is posted.
+2. **Suggestion, when asked.** Nothing is suggested by itself (since 10
+   October 2026: each suggestion is a Claude run, and many bugs go straight
+   to a Claude session instead). To get one, an approver replies in the
+   report's Slack thread tagging the bot: `@Amy's Claude`, alone or with
+   `suggest a fix`. The bot answers "On it", and within a few minutes Claude
+   has read the code and written one `feedback_triage` row: no action, send
+   a message, bug fix spec, or new feature. Every admin gets a 🗂️ "Feedback
+   triage: new suggestion" notification in the app when it is posted. A
+   report nobody asks about never reaches the triage board.
 3. **Decision.** The proposal is posted in the report's Slack thread. An
    approver (Amy or Celia) approves or dismisses it, in Slack or in Admin Hub
    > Triage. Both places always show the same rows.

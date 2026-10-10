@@ -142,7 +142,7 @@ This is a snapshot, not a standing truth. If someone says it is fixed, believe t
 
 **YOU HAVE TOOLS.** When asked about ng-extend code, use fetch_ng_extend_file; pass repo="amyleesterling" if a file looks like it is missing recent work, because Amy's fork is often ahead of seung-lab. When asked about CAVE status, use check_cave_health with the right dataset argument (pni_mec for MEC, it is on a different server). Know its limit: it proves reachability and CORS only. It cannot see whether a table exists, whether an aligned volume is registered, or whether materialization runs, because CAVE checks auth first and you have no CAVE token. If someone asks you to confirm MEC's tables, say plainly that you cannot check that and a signed-in human has to. Prefer tool calls over guessing. If asked something outside this context, say so honestly. Route CAVE issues to #shared_cave_seunglab — don't name individuals.
 
-**The feedback triage loop (#citsci_feedback), live since 2026-09-25.** User reports get a triage proposal in their Slack thread. An approver (Amy or Celia) replies approve or dismiss, in the thread or in Admin Hub > Triage; both show the same list. An approved fix is built by Claude in GitHub Actions (seung-lab/ng-extend, workflow "Triage Implement", on Amy's Princeton Claude subscription) on branch triage/<first 8 of the row id>, which deploys a preview at https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/ using the real data. The approver is the tester and is tagged every 10 minutes until they reply with an exact command: good <build ID> (deploys live; the 12 character build ID is in the preview announcement, and a bare good deploys nothing), ship to test <build ID> (goes live for a real-data test, then good <build ID> or revert <build ID>), a question ending in ? (Claude answers), note: words (saved, no rebuild), anything else (Claude fixes it, new preview), or hand off @someone. Reply update sender to draft a note to the person who reported it, then send update. The full list of exact replies is at https://connectome.quest/admin/#exact-replies. Claude can also stop and ask a question; the tester's answer sends it back to work. When anyone asks where a fix or Claude's work is, call get_triage_status (with the thread's ts if you are in a triage thread) and answer from the row: its state, preview link, run link, and who it is waiting on. Approvals from before 2026-09-25 were never built by anything unless the row says otherwise. You cannot approve, test, or deploy anything yourself; only people can, by replying in the thread. Mentions of you are skipped by the loop, so they never count as a tester's verdict.`;
+**The feedback triage loop (#citsci_feedback), live since 2026-09-25.** A user report is posted to the channel. It gets a triage proposal (a suggested fix) only when an approver asks for one by tagging this bot in the report's thread, alone or with "suggest a fix" (since 2026-10-10, to save Claude runs); then the proposal is posted in that thread. An approver (Amy or Celia) replies approve or dismiss, in the thread or in Admin Hub > Triage; both show the same list. An approved fix is built by Claude in GitHub Actions (seung-lab/ng-extend, workflow "Triage Implement", on Amy's Princeton Claude subscription) on branch triage/<first 8 of the row id>, which deploys a preview at https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/ using the real data. The approver is the tester and is tagged every 10 minutes until they reply with an exact command: good <build ID> (deploys live; the 12 character build ID is in the preview announcement, and a bare good deploys nothing), ship to test <build ID> (goes live for a real-data test, then good <build ID> or revert <build ID>), a question ending in ? (Claude answers), note: words (saved, no rebuild), anything else (Claude fixes it, new preview), or hand off @someone. Reply update sender to draft a note to the person who reported it, then send update. The full list of exact replies is at https://connectome.quest/admin/#exact-replies. Claude can also stop and ask a question; the tester's answer sends it back to work. When anyone asks where a fix or Claude's work is, call get_triage_status (with the thread's ts if you are in a triage thread) and answer from the row: its state, preview link, run link, and who it is waiting on. Approvals from before 2026-09-25 were never built by anything unless the row says otherwise. You cannot approve, test, or deploy anything yourself; only people can, by replying in the thread. Mentions of you are skipped by the loop, so they never count as a tester's verdict.`;
 
 async function verifySlackSignature(req, signingSecret) {
   const timestamp = req.header("X-Slack-Request-Timestamp");
@@ -547,6 +547,11 @@ async function handleMention(event, botToken, anthropicApiKey) {
   // Strip the <@BOTUSERID> prefix from the message
   const cleanText = text.replace(/<@[UW][A-Z0-9]+>/g, "").trim();
   if (!cleanText) return;
+  // In a report's thread, "@Amy's Claude suggest a fix" asks the triage robot
+  // for a suggestion: the bridge answers that one, not the Q&A bot. Must
+  // match SUGGEST_AFTER_TAG in scripts/slack-triage-bridge.mjs.
+  if (channel === "C0BG5CN71C3" && thread_ts && thread_ts !== ts
+      && /^(?:please\s+)?(?:can you\s+)?(?:suggest|propose|triage|fix|look)\b[\s\S]{0,80}$/i.test(cleanText.replace(/[*_~`]/g, "").replace(/\s+/g, " ").trim())) return;
 
   // Fetch thread context if this is in a thread
   let threadContext = "";
@@ -1443,6 +1448,7 @@ async function postIssueToSlack(token, issue) {
       `*Report:* ${issue.message}`,
       issue.url ? `*Page:* ${issue.url}` : null,
       mentions || null,
+      "_For a suggested fix, reply here tagging @Amy's Claude._",
     ].filter(Boolean);
     const text = lines.join("\n");
     let r = await slackPost(token, "chat.postMessage", { channel, text, unfurl_links: false });
@@ -2029,7 +2035,8 @@ exports.ewCommunityData = onRequest(
         body = JSON.stringify({code, message:upstream.status===406 ? "Requested row was not found or was not unique." : "The requested operation could not be completed."});
       }
       // A new report exists now: have Claude write its suggestion straight away.
-      if (upstream.ok && plan.table === "site_issues" && plan.method === "POST") await wakeWorkflow("triage-propose.yml", "new report");
+      // A new report no longer starts a suggestion by itself (2026-10-10):
+      // an approver asks for one by tagging the bot in the report's thread.
       const responseHeaders = {"Content-Type":"application/json"};
       for (const name of ["content-range","range-unit"]) if (upstream.headers.has(name)) responseHeaders[name]=upstream.headers.get(name);
       return res.json({status:upstream.status,headers:responseHeaders,body});

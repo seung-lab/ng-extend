@@ -344,7 +344,10 @@ async function pending() {
   ]);
   if (!issuesRes.ok || !triageRes.ok) throw new Error(`pending query failed: ${issuesRes.status}/${triageRes.status}`);
   const seen = new Set((await triageRes.json()).map(r => r.source_id));
-  const todo = (await issuesRes.json()).filter(i => !seen.has(i.id)).slice(0,20);
+  // Only the reports that were asked about (ISSUE_IDS, from the bridge when
+  // an approver tags the bot in a report's thread). No ids, no suggestions.
+  const asked = new Set(String(env.ISSUE_IDS || '').split(',').map(s => s.trim()).filter(Boolean));
+  const todo = (await issuesRes.json()).filter(i => !seen.has(i.id) && asked.has(i.id)).slice(0,20);
   writeFileSync(PENDING_FILE, JSON.stringify(todo, null, 2));
   writeFileSync(PROMPT_FILE, `You are the triage agent for the EyeWire II community app (ng-extend, a
 Vue 3 + Pinia extension of neuroglancer). ${PENDING_FILE} lists new user

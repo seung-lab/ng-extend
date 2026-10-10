@@ -437,6 +437,94 @@ async function findReportTs(row) {
   return null;
 }
 
+// ── A suggestion only when asked (Ames 2026-10-10) ───────────────────────
+// A new report used to get a suggested fix by itself, a Claude run each time
+// (20 to 60 cents), even when Ames was about to hand the bug to a Claude
+// session directly. Now nothing is suggested until an approver asks in the
+// report's own Slack thread, by tagging the bot ("@Amy's Claude", alone or
+// with "suggest a fix"), or by replying just "suggest".
+const SUGGEST_AFTER_TAG = /^(?:please\s+)?(?:can you\s+)?(?:suggest|propose|triage|fix|look)\b[\s\S]{0,80}$/i;
+const SUGGEST_PLAIN = /^(?:please\s+)?(?:suggest|propose|triage)(?:\s+(?:a\s+|the\s+)?(?:fix|this|it))?[.!]?$/i;
+function isSuggestRequest(text, botId = BOT_USER_ID) {
+  const t = String(text || '');
+  const tagged = !!botId && t.includes(`<@${botId}>`);
+  const rest = plainText(t.replace(/<@[UW][A-Z0-9]+>/g, ' '));
+  // Tagged with other words is a question for the Q&A bot, not a request.
+  if (tagged) return !rest || SUGGEST_AFTER_TAG.test(rest);
+  // "@Celia suggest a fix" is asking Celia, not the robot.
+  if (/<@[UW][A-Z0-9]+>/.test(t)) return false;
+  return SUGGEST_PLAIN.test(rest);
+}
+
+async function suggestRequests() {
+  if (!GH_TOKEN) return 0;
+  // Reports from the last 10 days that have no suggestion yet.
+  const since = encodeURIComponent(new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString());
+  const [issuesRes, triageRes] = await Promise.all([
+    sb(`site_issues?created_at=gte.${since}&select=id,message,created_at&order=created_at.desc&limit=60`),
+    sb(`feedback_triage?source=eq.site_issue&created_at=gte.${since}&select=source_id`),
+  ]);
+  if (!issuesRes.ok || !triageRes.ok) { console.warn(`[bridge] suggest check skipped (${issuesRes.status}/${triageRes.status})`); return 0; }
+  const done = new Set((await triageRes.json()).map(r => r.source_id));
+  const open = (await issuesRes.json()).filter(i => !done.has(i.id));
+  if (!open.length) return 0;
+
+  // Their Slack posts: one read of the channel around those dates.
+  const oldest = Math.min(...open.map(i => new Date(i.created_at).getTime())) / 1000 - 600;
+  const posts = [];
+  for (let cursor = '', page = 0; page < 5; page++) {
+    const h = await slackGet('conversations.history', { channel: CHANNEL, oldest: String(oldest), limit: 200, ...(cursor ? { cursor } : {}) });
+    posts.push(...(h.messages ?? []).filter(m => /New site issue submitted/i.test(m.text || '')));
+    cursor = h.response_metadata?.next_cursor || '';
+    if (!cursor) break;
+  }
+  // Every thread on the first pass of a run; after that only threads that
+  // had a reply in the last 20 minutes (a pass comes round every minute).
+  const firstPass = !process.env.BRIDGE_PASS || process.env.BRIDGE_PASS === '1';
+  const fresh = Date.now() / 1000 - 20 * 60;
+
+  const wanted = [];
+  for (const issue of open) {
+    const at = new Date(issue.created_at).getTime() / 1000;
+    const needle = lettersOnly(issue.message).slice(0, 40);
+    const post = (needle.length >= 8 && posts.find(m => lettersOnly(m.text).includes(needle)))
+      || posts.map(m => ({ m, gap: Math.abs(Number(m.ts) - at) })).filter(x => x.gap <= 180).sort((a, b) => a.gap - b.gap)[0]?.m;
+    if (!post || !post.reply_count) continue;
+    if (!firstPass && Number(post.latest_reply || 0) < fresh) continue;
+    let thread;
+    try { thread = await slackGet('conversations.replies', { channel: CHANNEL, ts: post.ts, limit: 200 }); }
+    catch (e) { console.warn(`[bridge] replies fetch failed for report ${issue.id}: ${e.message}`); continue; }
+    const replies = (thread.messages ?? []).slice(1);
+    const ask = replies.find(m => !m.bot_id && m.subtype !== 'bot_message' && APPROVERS.includes(m.user) && isSuggestRequest(m.text));
+    if (!ask) continue;
+    wanted.push({ issue, post, ask, acked: replies.some(m => m.bot_id && Number(m.ts) > Number(ask.ts) && /^👀/.test(m.text || '')) });
+  }
+  if (!wanted.length) return 0;
+
+  for (const w of wanted.filter(x => !x.acked)) {
+    await slack('chat.postMessage', { channel: CHANNEL, thread_ts: w.post.ts,
+      text: `👀 On it, <@${w.ask.user}>. Claude is reading the code for this one; a suggested fix will be posted here in a few minutes.` }).catch(() => {});
+  }
+  // One run at a time, and no hammering: if a run already started after the
+  // newest request and within the last 10 minutes, it had its chance.
+  const runs = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/triage-propose.yml/runs?per_page=3`, {
+    headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' } }).then(r => r.ok ? r.json() : { workflow_runs: [] }).catch(() => ({ workflow_runs: [] }));
+  const last = (runs.workflow_runs || [])[0];
+  const newestAsk = Math.max(...wanted.map(w => Number(w.ask.ts)));
+  if (last && last.status !== 'completed') return 0;
+  if (last) {
+    const started = new Date(last.created_at).getTime() / 1000;
+    if (started > newestAsk + 5 && Date.now() / 1000 - started < 600) return 0;
+  }
+  const ids = wanted.map(w => w.issue.id).slice(0, 20).join(',');
+  const res = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/triage-propose.yml/dispatches`, {
+    method: 'POST', headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' },
+    body: JSON.stringify({ ref: 'main', inputs: { issue_ids: ids } }) });
+  if (res.status !== 204) { console.warn(`[bridge] could not start Triage Propose: ${res.status}`); return 0; }
+  console.log(`[bridge] suggestion asked for ${wanted.length} report(s): started Triage Propose (${ids})`);
+  return wanted.length;
+}
+
 /** Post a card for a row and store the THREAD ROOT ts on it. */
 async function openThread(row, footer) {
   const threadTs = await findReportTs(row);
@@ -1145,6 +1233,7 @@ let LOOP = false;
     else LOOP = true;
   }
   const posted = await postProposals();
+  await suggestRequests().catch(e => console.warn('[bridge] suggest check failed:', e.message));
   const halted = COLS ? await stopRequests().catch(e => { console.warn('[bridge] stop check failed:', e.message); return 0; }) : 0;
   if (COLS) await shippedRequests().catch(e => console.warn('[bridge] shipped check failed:', e.message));
   const acted = await readApprovals();
