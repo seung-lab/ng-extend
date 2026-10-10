@@ -190,8 +190,8 @@ const shortDate = (iso: string) => {
 // ── Board: open work on top, finished and dismissed folded away ───────────
 // Slack and this tab write the same rows, so a dismiss, stop or "good" in a
 // Slack thread moves the card here too (after Refresh).
-type TriageGroupKey = 'decide' | 'hand' | 'robot' | 'test' | 'done' | 'dismissed';
-const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, hand: true, robot: true, test: true, done: false, dismissed: false });
+type TriageGroupKey = 'decide' | 'progress' | 'done' | 'dismissed';
+const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, done: false, dismissed: false });
 
 // The card you are working on stays marked, and stays in view when the list
 // reloads after an action (Ames 2026-10-05: sending an update reloaded the
@@ -244,23 +244,20 @@ function onBoardKey(e: KeyboardEvent) {
 }
 onMounted(() => document.addEventListener('keydown', onBoardKey));
 onUnmounted(() => document.removeEventListener('keydown', onBoardKey));
-// Where a report is on its way (Ames 2026-10-10: "you can have more
-// columns"). In progress used to be one pile; it is three now, by who has
-// the next move: you fixing it by hand, the robot, or you again to test.
-const ROBOT_YOUR_MOVE = ['testing', 'live_testing', 'needs_info', 'failed', 'changes_requested'];
+// The main categories are Needs your decision and In progress (Ames
+// 2026-10-10). What "more columns" means is INSIDE them: the chips of a wide
+// category sit in several columns side by side, so more fit on screen. Who
+// has the next move on an in-progress report is said by the tag on its chip.
 function triageGroupOf(r: TriageRow): TriageGroupKey {
   if (r.status === 'dismissed') return 'dismissed';
   if (r.status === 'done' || r.impl_state === 'deployed') return 'done';
   if (r.status === 'proposed') return 'decide';
-  if (!r.impl_state) return 'hand';
-  return ROBOT_YOUR_MOVE.includes(r.impl_state) ? 'test' : 'robot';
+  return 'progress';
 }
 const triageGroups = computed(() => {
   const defs: { key: TriageGroupKey; icon: string; title: string; hint: string; empty: string; closed: boolean }[] = [
-    { key: 'decide', icon: '📥', title: 'Inbox', hint: 'Needs your decision', empty: 'Inbox zero. Nicely done.', closed: false },
-    { key: 'hand', icon: '🛠', title: 'With Claude', hint: 'You are fixing it by hand', empty: 'Nothing on the bench.', closed: false },
-    { key: 'robot', icon: '🤖', title: 'Robot at work', hint: 'Queued, building or deploying', empty: 'The robot is resting.', closed: false },
-    { key: 'test', icon: '👀', title: 'Your move', hint: 'Test it, answer it or look at a failure', empty: 'Nothing waiting on you.', closed: false },
+    { key: 'decide', icon: '📥', title: 'Needs your decision', hint: 'Approve or dismiss', empty: 'Inbox zero. Nicely done.', closed: false },
+    { key: 'progress', icon: '🛠', title: 'In progress', hint: 'By hand, building, or waiting on a test', empty: 'Nothing on the bench.', closed: false },
     { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
     { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
   ];
@@ -346,9 +343,9 @@ function cheerFor(row: TriageRow) {
 // Done and Dismissed start folded to a narrow rail, so the two columns that
 // need attention get the width (Ames 2026-10-10). Click a column's heading
 // to fold or open it; the choice is remembered.
-const TRIAGE_FOLD_KEY = 'nge_triage_folded_v2';
+const TRIAGE_FOLD_KEY = 'nge_triage_folded_v3';
 const triageFolded = ref<Record<TriageGroupKey, boolean>>((() => {
-  const start = { decide: false, hand: false, robot: false, test: false, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
+  const start = { decide: false, progress: false, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
   try { return { ...start, ...(JSON.parse(localStorage.getItem(TRIAGE_FOLD_KEY) || '{}') || {}) }; } catch { return start; }
 })());
 function toggleFold(key: TriageGroupKey) {
@@ -379,7 +376,7 @@ async function markInProgress(row: TriageRow) {
       reviewed_by: who,
       reviewed_at: new Date().toISOString(),
     } });
-    triageOpen.value.hand = true;
+    triageOpen.value.progress = true;
     await loadTriage();
   } catch (e: any) {
     triageError.value = e?.message ?? String(e);
@@ -2732,9 +2729,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   scrollbar-width: thin; scrollbar-color: rgba(74, 158, 255, 0.3) transparent;
 }
 .nge-triage-board .nge-triage-col--decide { border-top: 3px solid #ff8d8d; }
-.nge-triage-board .nge-triage-col--hand { border-top: 3px solid #4fcfff; }
-.nge-triage-board .nge-triage-col--robot { border-top: 3px solid #b99cff; }
-.nge-triage-board .nge-triage-col--test { border-top: 3px solid #ffc857; }
+.nge-triage-board .nge-triage-col--progress { border-top: 3px solid #4fcfff; }
 .nge-triage-board .nge-triage-col--done { border-top: 3px solid #5ee8a8; }
 .nge-triage-board .nge-triage-col--dismissed { border-top: 3px solid #7f93ad; }
 /* Column headers stay put and are not folds here. */
@@ -2794,9 +2789,19 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt {
   font-size: 12.5px; line-height: 1.35; -webkit-line-clamp: 2;
 }
-/* six columns need room: the board scrolls sideways before it squeezes */
-.nge-triage-board .nge-triage-cols { overflow-x: auto; }
-.nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) { min-width: 210px; }
+/* Inside a category the chips sit in as many columns as fit, so a wide
+   category shows a lot at once. The heading, an opened card and the empty
+   note each take the full width. */
+.nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  align-content: start; align-items: start; gap: 8px;
+}
+.nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) > .nge-triage-group,
+.nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) > .nge-triage-card--selected,
+.nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) > .nge-triage-col-empty { grid-column: 1 / -1; }
+.nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) > .nge-triage-group { width: auto; }
+/* chips in a row are the same height, so the rows read as rows */
+.nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) > .nge-triage-card:not(.nge-triage-card--selected) { height: 100%; box-sizing: border-box; }
 .nge-triage-board .nge-triage-col-empty { font-style: normal; padding: 22px 8px; }
 .nge-triage-light .nge-triage-card:not(.nge-triage-card--selected):hover { box-shadow: 0 6px 16px rgba(20, 30, 50, 0.14); }
 .nge-triage-board.nge-triage-light .nge-triage-card { border-left-color: #9aa7ba; }
@@ -2884,9 +2889,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   scrollbar-color: #b9c4d6 transparent;
 }
 .nge-triage-light .nge-triage-col--decide { border-top-color: #e2584f; }
-.nge-triage-light .nge-triage-col--hand { border-top-color: #2f8fd6; }
-.nge-triage-light .nge-triage-col--robot { border-top-color: #7a5fd0; }
-.nge-triage-light .nge-triage-col--test { border-top-color: #d99a1c; }
+.nge-triage-light .nge-triage-col--progress { border-top-color: #2f8fd6; }
 .nge-triage-light .nge-triage-col--done { border-top-color: #2e9e68; }
 .nge-triage-light .nge-triage-col--dismissed { border-top-color: #8793a6; }
 .nge-triage-light .nge-triage-group { background: #e9edf4; border-bottom-color: #d3dae6; color: #1c2635; }
