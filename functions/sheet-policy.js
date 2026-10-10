@@ -70,7 +70,7 @@ function sheetValues(input, me, task, now) {
     if (task.status === 'completed') fail(409,'Reopen this cell before syncing.');
     const mine = [...new Set([me.sheet_name, me.display_name, me.username].map(nameKey).filter(Boolean))];
     const finished = SOURCES[input.dataset].completeStatuses || ['Complete'];
-    return [[['status'],'WIP',{replaceValues:finished,requireName:mine}]];
+    return [[['status'],'WIP',{replaceValues:finished,requireName:mine,onlyReplace:true}]];
   }
   if (input.action === 'release') {
     if (task.status === 'completed') fail(409,'A completed cell keeps its proofreader.');
@@ -191,6 +191,8 @@ function planSheetUpdate(grid, title, match, fields) {
     // Exception: the Proofreader on completion, while Status is still empty.
     // Exception: a Status that only says the cell was in progress.
     if(opts?.requireName && !opts.requireName.includes(rowName)) continue;
+    // onlyReplace: change a value that is there, never fill an empty cell.
+    if(opts?.onlyReplace && !existing) continue;
     const replaceable = (opts?.replaceUntilStatus && statusEmpty && existing!==String(value))
       || (opts?.replaceValues?.includes(existing) && existing!==String(value))
       || (opts?.whenReopened && statusNow==='WIP' && opts.whenReopened.includes(rowName) && existing!==String(value));
