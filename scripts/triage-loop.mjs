@@ -142,6 +142,16 @@ ${log.map(e => `- [${e.role}] ${e.text}`).join('\n') || '(none recorded)'}
   will answer in Slack and you will be run again with the answer.
 - If the spec is already implemented, or cannot be done safely, change
   nothing and start the summary with "BLOCKED:" and the reason.
+- Tell players what changed. If a player can see or do something different
+  because of this change, add ONE entry at the very top of "entries" in
+  static/changelog.json, shaped like the ones already there:
+  "at": "${new Date().toISOString().slice(0, 16)}:00Z" (use exactly this time),
+  "title": a few words naming it, "items": one plain sentence each, saying
+  what a player can now do or what no longer goes wrong. Write for players:
+  no file names, no code words, no dashes of any kind, say "Achievement"
+  never "badge", and the game is called Pyr. Do not change or remove any
+  other entry. Add no entry when only admins can notice the change (the
+  Admin Hub, the triage board), or when nothing a player sees changes.
 - Before you finish, add to docs/TRIAGE-KNOWLEDGE.md (section "Learned from
   builds") anything durable this build taught you that the next build should
   know: a trap in the code, how to check something, what the tester actually

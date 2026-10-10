@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import {SHA,UUID,validateResult,approvedRelease,approvedHubRelease,permittedPath} from './triage-policy.mjs';
 import {replayOnto} from './triage-replay.mjs';
+import {readEntries} from './check-changelog.mjs';
 const env=process.env,repo='seung-lab/ng-extend',base='eyewire-ii-community';
 const id=env.ROW_ID;
 if(!UUID.test(id||''))throw Error('Invalid triage row UUID');
@@ -106,6 +107,10 @@ async function publish() {
  if(mode==='answer'){if(result.files.length)throw Error('Answer changed source files');out('next','answered');return;}
  if(/^\s*(?:#+\s*)?(QUESTION|BLOCKED):/i.test(result.summary)){if(result.files.length)throw Error('Blocked run changed source files');out('next','blocked');return;}
  if(!result.files.length)throw Error('Model produced no changes');
+ // What players are told changed must still be a valid list after the model's
+ // edit: a broken file would leave the game's update notice with nothing to say.
+ const log=result.files.find(f=>f.path==='static/changelog.json'&&f.content!==null);
+ if(log){try{readEntries(Buffer.from(log.content,'base64').toString('utf8'));}catch(e){throw Error('The changelog entry is not valid: '+e.message);}}
  await row();
  const commit=await gh('git/commits/'+plan.baseSha),tree=[];
  for(const file of result.files) {

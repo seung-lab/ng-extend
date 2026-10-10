@@ -78,6 +78,9 @@ the new preview.
    **preview**: `https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/`.
    The preview uses the real data (same CAVE, accounts and database). The
    live site is untouched.
+   When players will notice the change, Claude also writes its entry for
+   the players' changelog (`static/changelog.json`), so the fix shows under
+   What changed in the game's update notice. It is dated when it goes live.
 5. **Test.** The bot posts the preview in the thread and tags the person who
    approved it. **That person must test it**, and is tagged every 10 minutes
    until they reply (see below).

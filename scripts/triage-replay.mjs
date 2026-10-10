@@ -11,7 +11,9 @@
 //    most days: without this nearly every approval was rebuilt and tested
 //    twice, 2026-10-06);
 //  - the robot's own notes, where every build appends a line, have the
-//    approved lines appended.
+//    approved lines appended;
+//  - the players' changelog, where every deploy adds an entry at the top,
+//    has the approved entries put on top of the current list.
 // Both sides changing the same lines, a rename, a deletion on one side, or
 // anything else returns null, and the caller asks for a rebuild.
 import {permittedPath} from './triage-policy.mjs';
@@ -86,6 +88,32 @@ export function merge3(base,ours,theirs) {
  return out.join('\n');
 }
 
+/**
+ * The players' changelog (static/changelog.json). Every deploy adds an entry
+ * at the top, so the approved change and the live branch nearly always both
+ * touched its first lines, which a line merge calls a conflict. It is a list,
+ * so it is merged as one: the entries the approved change ADDED go on top of
+ * the current list, dated when they actually go live. Null when the approved
+ * change did anything to the file other than add entries.
+ */
+export const CHANGELOG='static/changelog.json';
+export function mergedChangelog(before,approved,current,now=new Date()) {
+ let b,a,c;
+ try{b=JSON.parse(before);a=JSON.parse(approved);c=JSON.parse(current);}catch{return null;}
+ if(![b,a,c].every(x=>x&&Array.isArray(x.entries)))return null;
+ const key=e=>`${e?.at}|${e?.title}`;
+ const had=new Set(b.entries.map(key));
+ const added=a.entries.filter(e=>!had.has(key(e)));
+ const kept=a.entries.filter(e=>had.has(key(e)));
+ if(JSON.stringify(kept)!==JSON.stringify(b.entries))return null;                       // an older entry was edited or removed
+ if(JSON.stringify({...a,entries:0})!==JSON.stringify({...b,entries:0}))return null;    // something besides entries changed
+ if(!added.length)return current;
+ if(added.some(e=>!e||typeof e.title!=='string'||!e.title.trim()||!Array.isArray(e.items)||!e.items.length||e.items.some(i=>typeof i!=='string')))return null;
+ const at=now.toISOString().slice(0,16)+':00Z';
+ const text=JSON.stringify({...c,entries:[...added.map(e=>({...e,at})),...c.entries]},null,2)+'\n';
+ return current.includes('\r\n')?text.replace(/\n/g,'\r\n'):text;
+}
+
 /** The approved text appended to the notes, or null when the approved edit
  *  was anything other than adding lines at the end. */
 export function appendedNotes(before,approved,current) {
@@ -126,7 +154,9 @@ export async function replayOnto(gh,{sha,baseOld,baseNow,comparison,note=''}) {
    // The notes file: every build appends at the end, which a line merge
    // calls a conflict, so its lines are appended instead. Any other file:
    // a plain three-way merge, refused if both sides touched the same lines.
-   const merged=f.filename===KNOWLEDGE?appendedNotes(before,approved,current):merge3(before,approved,current);
+   const merged=f.filename===KNOWLEDGE?appendedNotes(before,approved,current)
+    :f.filename===CHANGELOG?mergedChangelog(before,approved,current)
+    :merge3(before,approved,current);
    if(merged===null||merged.includes('\u0000'))return null;
    const blob=await gh('git/blobs',{content:Buffer.from(merged,'utf8').toString('base64'),encoding:'base64'});
    tree.push({path:f.filename,mode:'100644',type:'blob',sha:blob.sha});

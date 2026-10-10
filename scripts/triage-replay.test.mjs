@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {replayOnto,appendedNotes,merge3,lineHunks,KNOWLEDGE} from './triage-replay.mjs';
+import {replayOnto,appendedNotes,merge3,lineHunks,mergedChangelog,KNOWLEDGE,CHANGELOG} from './triage-replay.mjs';
 
 const A='a'.repeat(40),B='b'.repeat(40),C='c'.repeat(40),N='d'.repeat(40);
 const b64=s=>Buffer.from(s).toString('base64');
@@ -99,4 +99,39 @@ test('refuses a rewritten branch, a rename, a forbidden path, or a result that c
  assert.equal(await run({moved:{status:'ahead',files:[]},approvedFiles:['src/a.ts']},[{...src,previous_filename:'src/old.ts'}]),null);
  assert.equal(await run({moved:{status:'ahead',files:[]},approvedFiles:['scripts/x.mjs']},[{...src,filename:'scripts/x.mjs'}]),null);
  assert.equal(await run({moved:{status:'ahead',files:[]},approvedFiles:['src/a.ts'],replayedFiles:['src/a.ts','src/extra.ts']},[src]),null);
+});
+
+test('changelog: the approved entry goes on top of what other deploys added meanwhile',()=>{
+ const E=(at,title)=>({at,title,items:['A sentence.']});
+ const file=(...entries)=>JSON.stringify({about:'x',entries},null,2)+'\n';
+ const old=E('2026-10-09T10:00:00Z','Old');
+ const mine=E('2026-10-10T09:00:00Z','A close button on the error');
+ const theirs=E('2026-10-10T12:00:00Z','Bigger pictures');
+ const now=new Date('2026-10-10T15:30:20Z');
+ const out=JSON.parse(mergedChangelog(file(old),file(mine,old),file(theirs,old),now));
+ assert.deepEqual(out.entries.map(e=>e.title),['A close button on the error','Bigger pictures','Old']);
+ assert.equal(out.entries[0].at,'2026-10-10T15:30:00Z');                 // dated when it goes live
+ assert.equal(out.entries[1].at,theirs.at);                              // nobody else's entry is touched
+ assert.equal(mergedChangelog(file(old),file(old),file(theirs,old),now),file(theirs,old));   // added nothing: unchanged
+ // Editing or removing an older entry, or anything else in the file, is not a merge.
+ assert.equal(mergedChangelog(file(old),file(mine,{...old,title:'Rewritten'}),file(theirs,old),now),null);
+ assert.equal(mergedChangelog(file(old),file(mine),file(theirs,old),now),null);
+ assert.equal(mergedChangelog(file(old),JSON.stringify({about:'changed',entries:[mine,old]}),file(theirs,old),now),null);
+ assert.equal(mergedChangelog(file(old),'{not json',file(theirs,old),now),null);
+ assert.equal(mergedChangelog(file(old),file({at:'x',title:'No items',items:[]},old),file(theirs,old),now),null);
+ // Windows line endings are kept.
+ assert.ok(mergedChangelog(file(old),file(mine,old),file(theirs,old).replace(/\n/g,'\r\n'),now).includes('\r\n'));
+});
+
+test('a shared changelog is merged as a list while a shared source file is merged by line',async()=>{
+ const E=(at,title)=>({at,title,items:['A sentence.']});
+ const file=(...entries)=>JSON.stringify({about:'x',entries},null,2)+'\n';
+ const old=E('2026-10-09T10:00:00Z','Old'),mine=E('2026-10-10T09:00:00Z','Mine'),theirs=E('2026-10-10T12:00:00Z','Theirs');
+ const log={filename:CHANGELOG,status:'modified',sha:'4'.repeat(40)};
+ const f=fake({moved:{status:'ahead',files:[{filename:CHANGELOG,status:'modified'}]},approvedFiles:['src/a.ts',CHANGELOG],
+  texts:{[CHANGELOG+'?ref='+A]:file(old),[CHANGELOG+'?ref='+B]:file(mine,old),[CHANGELOG+'?ref='+C]:file(theirs,old)}});
+ const r=await replayOnto(f.gh,{sha:B,baseOld:A,baseNow:C,comparison:comparison([src,log])});
+ assert.equal(r.sha,N);
+ const written=JSON.parse(Buffer.from(f.writes.find(w=>w.path==='git/blobs').body.content,'base64').toString());
+ assert.deepEqual(written.entries.map(e=>e.title),['Mine','Theirs','Old']);
 });
