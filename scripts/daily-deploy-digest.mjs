@@ -129,11 +129,22 @@ function buildBody(entries, sinceMs, nowMs) {
   }
 
   if (preview) {
-    const admins = await supabaseGet('admins', 'select=user_id');
-    const ids = [...new Set(admins.map(a => a.user_id).filter(Boolean))];
-    if (ids.length === 0) throw new Error('no admins to preview to');
-    const names = await supabaseGet('users',
-        `select=id,display_name&id=in.(${ids.join(',')})`);
+    // The admins table names people by user_id or by email; resolve both to users rows.
+    const admins = await supabaseGet('admins', 'select=user_id,email');
+    const byId = admins.map(a => a.user_id).filter(Boolean);
+    const emails = admins.map(a => a.email).filter(Boolean);
+    const users = [];
+    if (byId.length) {
+      users.push(...await supabaseGet('users',
+          `select=id,display_name&id=in.(${byId.join(',')})`));
+    }
+    if (emails.length) {
+      users.push(...await supabaseGet('users',
+          `select=id,display_name&middleauth_email=in.(${emails.map(e => `"${e}"`).join(',')})`));
+    }
+    const ids = [...new Set(users.map(u => u.id))];
+    if (ids.length === 0) throw new Error(`no admins to preview to (${admins.length} admin rows)`);
+    const names = users;
     const previewTitle = `${title} (preview)`;
     const sent = [];
     for (const id of ids) {
