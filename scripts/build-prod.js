@@ -199,6 +199,19 @@ for (const file of fs.readdirSync(STATIC_DIR)) {
   }
 }
 
+// ── Copy the Halloween models (the ghost in Lantern mode: src/util/spooky.ts) ──
+// Fetched by the game only when it is needed, so they are files, not part of
+// the bundle.
+const HALLOWEEN_DIR = path.join(STATIC_DIR, 'halloween');
+if (fs.existsSync(HALLOWEEN_DIR)) {
+  const dest = path.join(DIST_MIN, 'halloween');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(HALLOWEEN_DIR)) {
+    if (file.endsWith('.glb')) fs.copyFileSync(path.join(HALLOWEEN_DIR, file), path.join(dest, file));
+  }
+  console.log(`Copied the Halloween models to ${dest}`);
+}
+
 // ── Stamp bundle URLs with a build version ──────────────────────────────────
 // The App Engine edge caches every path for 10 minutes. A cache-busted page
 // URL (the Pyr logo's hard refresh) used to fetch a FRESH index.html that
