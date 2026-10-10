@@ -5910,6 +5910,37 @@ export const useChatStore = defineStore('chat', () => {
   /** History paging: the oldest message loaded, and whether older ones exist. */
   const hasMoreHistory = ref(true);
   const loadingHistory = ref(false);
+
+  // ── The pinned message (Ames 2026-10-10) ───────────────────────────────
+  // An admin pins a message; the server writes a chat row of rank 'pin'
+  // (functions/chat-pin.js). The newest such row is the pin: it names the
+  // message and carries its words, or says the pin was taken down.
+  interface ChatPin { rowId: string; messageId: string; text: string; by: string; at: number; }
+  const pinned = ref<ChatPin | null>(null);
+  let pinAt = 0;
+  /** Take a chat row of rank 'pin' into account if it is the newest seen. */
+  function notePinRow(row: any) {
+    if (!row || row.rank !== 'pin') return;
+    const at = new Date(row.created_at ?? Date.now()).getTime();
+    if (at < pinAt) return;
+    pinAt = at;
+    const m = /^pin:([A-Za-z0-9-]{1,64})$/.exec(String(row.dataset || ''));
+    pinned.value = !m || m[1] === 'none' ? null
+      : { rowId: String(row.id ?? ''), messageId: m[1], text: String(row.text || '').replace(/^\u{1F4CC}\s*/u, ''), by: String(row.name || ''), at };
+  }
+  /** The newest pin row, wherever it is in the history. */
+  async function loadPin() {
+    try {
+      const { data } = await supabase.from('chat_messages').select('id,name,rank,text,dataset,created_at')
+        .eq('rank', 'pin').order('created_at', { ascending: false }).limit(1);
+      notePinRow((data as any[] | null)?.[0]);
+    } catch { /* no pin shown */ }
+  }
+  /** Admins: pin a message for everyone, or take the pin down. */
+  async function pinMessage(id: string | null): Promise<boolean> {
+    try { await secureWrite(id ? 'chat.pin' : 'chat.unpin', id ? { id } : {}); return true; }
+    catch (e: any) { console.warn('[chat] pin failed:', e?.message); return false; }
+  }
   let oldestLoadedAt: string | null = null;
   /** Reactions per message id: emoji to who reacted. */
   const reactions = ref<Record<string, Record<string, Array<{ userId: string; name: string }>>>>({});
@@ -6472,6 +6503,7 @@ export const useChatStore = defineStore('chat', () => {
     channel.on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload => {
       const row = payload.new;
       if (!row.user_id) return;
+      notePinRow(row);
       const date = new Date(row.created_at);
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
@@ -6643,6 +6675,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online,
+    pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };
 });

@@ -1870,6 +1870,26 @@ exports.ewSecureWrite = onRequest(
         // "Nseraf earned Altimeter" in chat (Ames 2026-10-08). The browser says
         // which achievement; the server checks the player's own counters have
         // reached it and writes the line itself, once per achievement.
+        // Pin a chat message for everyone, or take the pin down (admins).
+        // The row is written here so its rank can not be forged: see chat-pin.js.
+        case "chat.pin":
+        case "chat.unpin": {
+          needAdmin();
+          if (!me) throw ewErr(403, "no EyeWire II profile");
+          const { pinRow, unpinRow } = require("./chat-pin");
+          let line;
+          if (action === "chat.pin") {
+            const id = String(args.id ?? "");
+            if (!/^[A-Za-z0-9-]{1,64}$/.test(id)) throw ewErr(400, "Unknown message.");
+            const found = (await sb(`chat_messages?id=eq.${encodeURIComponent(id)}&select=id,name,text,rank&limit=1`))[0];
+            if (!found || found.rank === "pin") throw ewErr(400, "Unknown message.");
+            line = pinRow(found);
+          } else line = unpinRow();
+          await sb("chat_messages", { method: "POST", body: JSON.stringify({
+            user_id: me.id, name: me.username || me.display_name || "Player", rank: "pin", text: line.text, dataset: line.dataset }) });
+          out = { pinned: action === "chat.pin" };
+          break;
+        }
         case "chat.achievement": {
           if (!me) throw ewErr(403, "no EyeWire II profile");
           // Whose line it is: the caller's own, or, for a special award an

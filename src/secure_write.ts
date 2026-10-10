@@ -21,7 +21,7 @@ export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
   | 'triage.update' | 'triage.release'
   | 'pilot.task' | 'pilot.practice' | 'pilot.status' | 'activity.log' | 'activity.visit'
-  | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost' | 'chat.achievement';
+  | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin';
 
 /** Returns the row (or result) the function wrote; throws with a readable message. */
 export async function secureWrite<T = any>(action: SecureAction, args: Record<string, any> = {}): Promise<T> {

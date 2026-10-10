@@ -487,9 +487,22 @@ const chatQuery = computed(() => (searchOpen.value ? parseChatQuery(searchText.v
 const messageText = (m: ChatMessage) => m.parts.filter(p => p.type !== 'sender').map(p => p.text).join('');
 const searchHits = computed<ChatMessage[]>(() => {
   const q = chatQuery.value;
-  if (!q) return [];
-  return chatMessages.value.filter(m => m.type === 'message' && matchesChatQuery(q, m.name || '', messageText(m)));
+  // a day that could not be read finds nothing, rather than everything
+  if (!q || q.badDate) return [];
+  return chatMessages.value.filter(m => m.type === 'message' && m.rank !== 'pin' && matchesChatQuery(q, m.name || '', messageText(m), m.dateTime.getTime()));
 });
+// A search for a day further back than chat has loaded brings the earlier
+// messages in by itself, a page at a time, until it reaches that day (or
+// the start of chat, or forty pages).
+let searchPages = 0;
+watch(searchText, () => { searchPages = 0; });
+watch([chatQuery, () => chatMessages.value.length, () => chatStore.loadingHistory], () => {
+  const q = chatQuery.value;
+  if (!q || q.fromTime == null || chatStore.loadingHistory || !chatStore.hasMoreHistory || searchPages >= 40) return;
+  const first = chatMessages.value.find(m => m.type !== 'time');
+  if (first && first.dateTime.getTime() > q.fromTime) { searchPages++; void chatStore.loadOlder(); }
+});
+const searchingBack = computed(() => !!chatQuery.value && chatQuery.value.fromTime != null && chatStore.loadingHistory);
 /** What the list draws: everything, or only the matches while searching. */
 const listedMessages = computed<ChatMessage[]>(() => (chatQuery.value ? searchHits.value : chatMessages.value));
 function openSearch() {
@@ -519,6 +532,70 @@ function onMessageClick(msg: ChatMessage, e: MouseEvent) {
 }
 const msgDateTime = (d: Date) => d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
+// ── "New since you left" (Ames 2026-10-10) ───────────────────────────────
+// A line across the chat where the messages you have not seen begin. The
+// newest message you had on screen is remembered in this browser, per
+// player, and only moves while chat is really in front of you (the tab
+// showing, the chat not folded away). The line is set when you come back:
+// on opening the game, and on returning to its tab. Sending a message
+// clears it, since you are caught up by then.
+const seenKey = () => `nge-chat-seen:${backendStore.userId || ''}`;
+const readSeen = () => { try { return Number(localStorage.getItem(seenKey())) || 0; } catch { return 0; } };
+const newMarker = ref(0);          // messages after this moment are new; 0 = no line
+let seenLoadedFor = '';
+function latestMessageTime(): number {
+  const list = chatMessages.value;
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].type === 'message') return list[i].dateTime.getTime();
+  return 0;
+}
+function noteSeen() {
+  const uid = backendStore.userId;
+  if (!uid) return;
+  if (seenLoadedFor !== uid) { seenLoadedFor = uid; newMarker.value = readSeen(); }
+  if (document.visibilityState !== 'visible' || collapsed.value) return;
+  const t = latestMessageTime();
+  if (t > readSeen()) { try { localStorage.setItem(seenKey(), String(t)); } catch { /* not remembered */ } }
+}
+function onVisibilityForSeen() {
+  if (document.visibilityState !== 'visible') return;
+  newMarker.value = readSeen();    // where you were when you left
+  noteSeen();
+}
+const firstNewMsg = computed<ChatMessage | null>(() => {
+  const mark = newMarker.value;
+  if (!mark || chatQuery.value) return null;
+  const me = backendStore.userId;
+  return chatMessages.value.find(m => m.type === 'message' && m.rank !== 'pin' && m.dateTime.getTime() > mark && m.userId !== me) ?? null;
+});
+
+// ── The pinned message (Ames 2026-10-10) ─────────────────────────────────
+// One line above the conversation while an admin has a message pinned.
+// Clicking it goes to the message. Anyone can put it away for themselves;
+// an admin can take it down for everyone, or pin a message from its row.
+const PIN_HIDDEN_KEY = 'nge-chat-pin-hidden';
+const hiddenPin = ref('');
+try { hiddenPin.value = localStorage.getItem(PIN_HIDDEN_KEY) || ''; } catch { /* shown */ }
+const shownPin = computed(() => {
+  const pin = chatStore.pinned;
+  return pin && pin.rowId !== hiddenPin.value ? pin : null;
+});
+function hidePin() {
+  const pin = chatStore.pinned;
+  if (!pin) return;
+  hiddenPin.value = pin.rowId;
+  try { localStorage.setItem(PIN_HIDDEN_KEY, pin.rowId); } catch { /* until reload */ }
+}
+const isPinRow = (m: ChatMessage) => m.type === 'message' && m.rank === 'pin';
+const pinRowSays = (m: ChatMessage) => (String(m.dataset || '') === 'pin:none' ? 'took the pinned message down' : 'pinned a message');
+const isPinnedMsg = (m: ChatMessage) => m.id != null && chatStore.pinned?.messageId === String(m.id);
+const pinBusy = ref(false);
+async function togglePin(m: ChatMessage | null) {
+  if (pinBusy.value) return;
+  pinBusy.value = true;
+  try { await chatStore.pinMessage(m && !isPinnedMsg(m) && m.id != null ? String(m.id) : null); }
+  finally { pinBusy.value = false; }
+}
+
 // ── Bold and underline (Krzysztof 2026-10-09, #83) ───────────────────────
 // Typed as *bold* and _underline_ (see util/chat_text.ts); Ctrl+B and Ctrl+U
 // put the marks round the selection, or take them off.
@@ -530,12 +607,18 @@ function markSelection(mark: '*' | '_') {
   void nextTick(() => { el.focus(); el.setSelectionRange(r.start, r.end); });
 }
 
+watch([() => chatMessages.value.length, collapsed, () => backendStore.userId], noteSeen, { immediate: true });
+onMounted(() => { document.addEventListener('visibilitychange', onVisibilityForSeen); void chatStore.loadPin(); });
+onUnmounted(() => document.removeEventListener('visibilitychange', onVisibilityForSeen));
+watch(connected, on => { if (on) void chatStore.loadPin(); });
+
 // ── Send message ──
 function send() {
   // New lines are kept, but never a wall of blank ones.
   const text = messageInput.value.trim().replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
   if (!text || messageTooLong.value) return;
   chatStore.sendMessage(text, null, replyingTo.value?.id != null ? String(replyingTo.value.id) : null);
+  newMarker.value = 0;             // caught up: no "new since you left" line
   replyingTo.value = null;
   messageInput.value = '';
   mentionQuery.value = null;
@@ -1078,6 +1161,12 @@ function toggleCollapse() {
       <!-- Body (hidden when collapsed) -->
       <template v-if="!collapsed">
         <!-- Message area with top fade -->
+        <div v-if="shownPin && !searchOpen" class="nge-chat-pin" role="note">
+          <button type="button" class="nge-chat-pin-text" :title="'Pinned by ' + shownPin.by + '. Click to go to the message.'"
+                  @click.stop="goToMessage(shownPin.messageId)"><span class="nge-chat-pin-glyph" aria-hidden="true">📌</span>{{ plainChatText(shownPin.text) }}</button>
+          <button v-if="backendStore.isAdmin" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
+          <button type="button" class="nge-chat-pin-x" title="Hide this pin for me" aria-label="Hide this pin for me" @click.stop="hidePin">×</button>
+        </div>
         <div class="nge-chat-messages-wrap">
           <div class="nge-chat-fade"></div>
           <div
@@ -1092,13 +1181,19 @@ function toggleCollapse() {
                 <span v-else>Beginning of chat</span>
               </div>
               <div v-if="searchOpen" class="nge-chat-search-note" role="status">
-                <template v-if="!chatQuery">Type to search. Use -word to leave messages out, "two words" for a phrase, from:name for one player.</template>
+                <template v-if="!chatQuery">Type to search. Use -word to leave messages out, "two words" for a phrase, from:name for one player, and on:10/8, after:yesterday or before:2026-10-01 for a day.</template>
+                <template v-else-if="chatQuery.badDate">That day could not be read: "{{ chatQuery.badDate }}". Try today, yesterday, 10/8 or 2026-10-08.</template>
+                <template v-else-if="searchingBack">Looking further back…</template>
                 <template v-else-if="!searchHits.length">No messages match{{ chatStore.hasMoreHistory ? ' in what is loaded so far.' : '.' }}</template>
                 <template v-else>{{ searchHits.length.toLocaleString() }} {{ searchHits.length === 1 ? 'message' : 'messages' }}. Click one to see it in the conversation.</template>
               </div>
               <template v-for="(msg, i) in listedMessages" :key="msg.id ?? ('i' + i)">
+                <div v-if="msg === firstNewMsg" class="nge-chat-new-line" role="separator"><span>New since you left</span></div>
                 <div v-if="msg.type === 'time'" class="nge-chat-time-sep">
                   <span>{{ msg.time }}</span>
+                </div>
+                <div v-else-if="isPinRow(msg)" class="nge-chat-sys nge-chat-pin-line" :class="{ 'nge-chat-fresh': isFresh(msg) }">
+                  📌 <b>{{ shortName(msg.name) }}</b> {{ pinRowSays(msg) }}
                 </div>
 
                 <div v-else-if="msg.type === 'join' || msg.type === 'leave' || msg.type === 'disconnected' || msg.type === 'complete'"
@@ -1248,6 +1343,8 @@ function toggleCollapse() {
                   <template v-if="msg.id != null && isLoggedIn">
                     <span class="nge-chat-react-add">
                       <button v-if="msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-reply-btn" @click.stop="startReply(msg)" title="Reply">↩</button>
+                      <button v-if="backendStore.isAdmin && msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-pin-btn" :class="{ 'is-on': isPinnedMsg(msg) }" :disabled="pinBusy"
+                              @click.stop="togglePin(msg)" :title="isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin this message for everyone'">📌</button>
                       <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                               @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
                       <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
@@ -1638,6 +1735,28 @@ function toggleCollapse() {
   font-size: 14.5px;
 }
 .nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
+/* "New since you left": a hairline across the chat with its words in the middle */
+.nge-chat-new-line { display: flex; align-items: center; gap: 8px; margin: 6px 2px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ff9d8a; }
+.nge-chat-new-line::before, .nge-chat-new-line::after { content: ''; flex: 1; height: 1px; background: rgba(255, 130, 110, 0.55); }
+.nge-chat-float--quiet .nge-chat-new-line { opacity: 0; }
+/* The pinned message: one line above the conversation */
+.nge-chat-pin {
+  display: flex; align-items: center; gap: 4px; margin: 0 6px 2px; padding: 3px 4px 3px 8px; border-radius: 7px;
+  background: rgba(230, 199, 96, 0.09); border: 1px solid rgba(230, 199, 96, 0.3);
+}
+.nge-chat-float--quiet .nge-chat-pin { opacity: 0; pointer-events: none; }
+.nge-chat-pin-text {
+  flex: 1; min-width: 0; padding: 2px 0; border: 0; background: none; cursor: pointer; text-align: left;
+  font: inherit; font-size: 12.5px; color: #f1e3b0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nge-chat-pin-text:hover, .nge-chat-pin-text:focus-visible { color: #fff6d6; outline: none; }
+.nge-chat-pin-glyph { margin-right: 6px; }
+.nge-chat-pin-x { flex: 0 0 auto; padding: 1px 6px; border: 1px solid transparent; border-radius: 5px; background: none; cursor: pointer; font: inherit; font-size: 11.5px; color: rgba(241, 227, 176, 0.75); }
+.nge-chat-pin-x:hover:not(:disabled), .nge-chat-pin-x:focus-visible { color: #fff6d6; border-color: rgba(230, 199, 96, 0.5); outline: none; }
+.nge-chat-pin-line { font-size: 12px; font-style: normal; color: #8f98a8; }
+.nge-chat-pin-line b { font-weight: 600; color: #c9d4e6; }
+.nge-chat-pin-btn { font-size: 11px; }
+.nge-chat-pin-btn.is-on { background: rgba(230, 199, 96, 0.25); border-color: rgba(230, 199, 96, 0.6); }
 /* Your own messages: a bar on the left edge, drawn inside the row so nothing
    moves (Krzysztof 2026-10-09). */
 .nge-chat-msg--mine { box-shadow: inset 2px 0 0 rgba(124, 200, 255, 0.85); }

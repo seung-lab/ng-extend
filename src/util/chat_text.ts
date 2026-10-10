@@ -11,6 +11,9 @@
  * SEARCH is words, in any order, all of which must be in the message or the
  * sender's name. "quoted words" must appear together. -word leaves out the
  * messages that have it. from:name keeps one player's messages.
+ * on:, after: and before: take a day (Krzysztof asked for a time range):
+ * today, yesterday, 2026-10-08, or 10/8. after: includes its day, before:
+ * stops short of its day. Days are the player's own, not UTC's.
  */
 
 export interface RichPiece { text: string; bold?: boolean; underline?: boolean; }
@@ -59,10 +62,42 @@ export function toggleMark(text: string, start: number, end: number, mark: '*' |
   return { text: text.slice(0, start) + mark + sel + mark + text.slice(end), start: start + 1, end: end + 1 };
 }
 
-export interface ChatQuery { must: string[]; not: string[]; from: string[]; }
+export interface ChatQuery {
+  must: string[]; not: string[]; from: string[];
+  /** Only messages at or after this moment (ms), if set. */
+  fromTime?: number;
+  /** Only messages before this moment (ms), if set. */
+  toTime?: number;
+  /** A date that could not be read, as typed, so the search line can say so. */
+  badDate?: string;
+}
+
+const DAY_MS = 86_400_000;
+/** The start (local midnight) of the day a word names, or null. */
+export function parseChatDay(word: string, now: number = Date.now()): number | null {
+  const w = word.toLowerCase().trim();
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  if (w === 'today') return today.getTime();
+  if (w === 'yesterday') { const d = new Date(today); d.setDate(d.getDate() - 1); return d.getTime(); }
+  let y: number, m: number, d: number;
+  let hit = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(w);
+  if (hit) { y = +hit[1]; m = +hit[2]; d = +hit[3]; }
+  else {
+    hit = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/.exec(w);
+    if (!hit) return null;
+    m = +hit[1]; d = +hit[2];
+    y = hit[3] ? (+hit[3] < 100 ? 2000 + +hit[3] : +hit[3]) : today.getFullYear();
+    // 12/30 typed in January means last December
+    if (!hit[3] && new Date(y, m - 1, d).getTime() > today.getTime() + DAY_MS) y -= 1;
+  }
+  const day = new Date(y, m - 1, d);
+  // 2/31 is not a day
+  if (day.getFullYear() !== y || day.getMonth() !== m - 1 || day.getDate() !== d) return null;
+  return day.getTime();
+}
 
 /** Read what was typed in the search line. Null when there is nothing to search for. */
-export function parseChatQuery(raw: string): ChatQuery | null {
+export function parseChatQuery(raw: string, now: number = Date.now()): ChatQuery | null {
   const q: ChatQuery = { must: [], not: [], from: [] };
   const re = /(-?)(?:"([^"]*)"|(\S+))/g;
   let m: RegExpExecArray | null;
@@ -75,13 +110,26 @@ export function parseChatQuery(raw: string): ChatQuery | null {
       if (word) q.from.push(word);
       continue;
     }
+    const when = !neg && m[2] === undefined ? /^(on|after|before):(.+)$/.exec(word) : null;
+    if (when) {
+      const day = parseChatDay(when[2], now);
+      if (day === null) { q.badDate = when[2]; continue; }
+      if (when[1] === 'on') { q.fromTime = day; q.toTime = day + DAY_MS; }
+      else if (when[1] === 'after') q.fromTime = day;
+      else q.toTime = day;
+      continue;
+    }
     (neg ? q.not : q.must).push(word);
   }
-  return q.must.length || q.not.length || q.from.length ? q : null;
+  return q.must.length || q.not.length || q.from.length || q.fromTime != null || q.toTime != null || q.badDate ? q : null;
 }
 
 /** Does a message (its sender and its text) answer the query? */
-export function matchesChatQuery(q: ChatQuery, name: string, text: string): boolean {
+export function matchesChatQuery(q: ChatQuery, name: string, text: string, at?: number): boolean {
+  if (at != null) {
+    if (q.fromTime != null && at < q.fromTime) return false;
+    if (q.toTime != null && at >= q.toTime) return false;
+  }
   const who = name.toLowerCase();
   const hay = `${who} ${plainChatText(text).toLowerCase()}`;
   if (q.from.length && !q.from.some(f => who.includes(f))) return false;
