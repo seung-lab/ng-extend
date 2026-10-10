@@ -275,11 +275,13 @@ async function loadTriageNumbers() {
   try {
     const { supabase } = await import('../supabase');
     const next: Record<string, number> = {};
-    for (let from = 0, n = 0; ; from += 1000) {
-      const { data, error } = await supabase.from('feedback_triage').select('id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 999);
+    // 500 at a time: the server refuses a larger page, which is why the
+    // numbers did not show at first.
+    for (let from = 0, n = 0; ; from += 500) {
+      const { data, error } = await supabase.from('feedback_triage').select('id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
       if (error || !data) return;
       for (const r of data as any[]) next[r.id] = ++n;
-      if (data.length < 1000) break;
+      if (data.length < 500) break;
     }
     triageNumbers.value = next;
   } catch { /* the cards simply show no number */ }
