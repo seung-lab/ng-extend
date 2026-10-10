@@ -232,6 +232,16 @@ function rerenderNeeded(newParams: RenderParameters, prevParams: RenderParameter
       (newParams.viewportWidth !== 0) && (prevParams.viewportWidth === 0);
 }
 
+// nge: the room a row takes up includes the gap above and below it. Going by
+// the row's own height alone left the list one gap short per row, and the
+// last rows of a long list could not be reached (Ames 2026-10-10, the
+// annotation list, whose rows have a 1px gap).
+function outerHeight(element: HTMLElement) {
+  const style = getComputedStyle(element);
+  return element.getBoundingClientRect().height + (parseFloat(style.marginTop) || 0) +
+      (parseFloat(style.marginBottom) || 0);
+}
+
 export class VirtualList extends RefCounted {
   // Outer scrollable element
   element = document.createElement('div');
@@ -386,8 +396,7 @@ export class VirtualList extends RefCounted {
       // Update item size estimates.
       for (let i = curStartIndex; i < curEndIndex; ++i) {
         const element = renderedItems[i];
-        const bounds = element.getBoundingClientRect();
-        const newSize = bounds.height;
+        const newSize = outerHeight(element);
         const existingSize = sizes.itemSize[i];
         if (existingSize !== undefined) {
           sizes.totalKnownSize -= existingSize;
@@ -413,7 +422,7 @@ export class VirtualList extends RefCounted {
     for (let i = renderParams.startIndex; i < renderParams.endIndex; ++i) {
       const item = renderedItems[i];
       if (item === undefined || !item.isConnected) continue;
-      const newSize = item.getBoundingClientRect().height;
+      const newSize = outerHeight(item);
       const existingSize = sizes.itemSize[i];
       if (existingSize !== undefined && Math.abs(existingSize - newSize) < 0.5) continue;
       if (existingSize !== undefined) {
