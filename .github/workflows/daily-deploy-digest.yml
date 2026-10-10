@@ -2,8 +2,9 @@
 # daily-deploy-digest — once a day, tell players what changed in Pyr that day.
 # ----------------------------------------------------------------------------
 # Reads the LIVE site's changelog, takes the entries that went live since the
-# last digest, and sends one notification to everyone (and a chat line through
-# the chat-announcements job). A day with no deploy sends nothing.
+# last digest, has Claude write a short note about them in player words, and
+# sends one notification to everyone (and a chat line through the
+# chat-announcements job). A day with no deploy sends nothing.
 #
 # Scheduled workflows run from main, so this file must exist on main; like the
 # weekly recap it checks out eyewire-ii-community to run the maintained script.
@@ -12,9 +13,11 @@ name: Daily Deploy Digest
 
 on:
   schedule:
-    # 23:00 UTC: 7 pm Eastern in summer, 6 pm in winter, the same hour as the
-    # weekly recap, after the day's deploys are done.
-    - cron: '0 23 * * *'
+    # 4:30 pm Eastern (Ames, 2026-10-10). GitHub cron is UTC and Eastern moves
+    # with daylight saving, so both candidates fire and the script lets only
+    # the one that is 4:30 pm Eastern send (DIGEST_LOCAL_TIME below).
+    - cron: '30 20 * * *'
+    - cron: '30 21 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -45,5 +48,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           POST_TO_CHAT: 'true'
+          # Only scheduled runs are held to the Eastern clock; a run by hand goes now.
+          DIGEST_LOCAL_TIME: ${{ github.event_name == 'schedule' && '16:30' || '' }}
         run: node scripts/daily-deploy-digest.mjs ${{ inputs.dry_run && '--dry-run' || '' }} ${{ inputs.preview && '--preview' || '' }}
