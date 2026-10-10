@@ -29,6 +29,7 @@ const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
 const draftChatMuted = ref(false);
 const draftChatFade = ref(true);
+const draftChatMarkMine = ref(false);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftClassicLayers = ref(false);
@@ -98,6 +99,7 @@ onMounted(() => {
   draftBio.value  = prefsStore.prefs.bio;
   draftChatMuted.value = !!prefsStore.prefs.chatMuted;
   draftChatFade.value = prefsStore.prefs.chatFadeAway !== false;
+  draftChatMarkMine.value = prefsStore.prefs.chatMarkMine === true;
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
@@ -129,7 +131,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
   });
@@ -439,6 +441,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftChatFade" />
               <span class="nge-settings-toggle-label">Fade chat when I click away</span>
+            </label>
+            <label class="nge-settings-toggle" title="On: a thin bar marks your own messages in chat, so they are easy to find when you scroll back.">
+              <input type="checkbox" v-model="draftChatMarkMine" />
+              <span class="nge-settings-toggle-label">Mark my own messages in chat</span>
             </label>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftHelpMuted" />

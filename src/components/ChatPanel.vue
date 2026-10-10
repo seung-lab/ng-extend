@@ -6,6 +6,7 @@
  * Three states: open, collapsed (just input bar), closed (hidden).
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { richPieces, plainChatText, toggleMark, parseChatQuery, matchesChatQuery } from '../util/chat_text';
 import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
@@ -33,6 +34,10 @@ const backendStore = useProofreadingBackendStore();
 
 const messageInput = ref('');
 const inputEl = ref<HTMLTextAreaElement | null>(null);
+const searchEl = ref<HTMLInputElement | null>(null);
+// Search state lives up here because the fade rule below reads it.
+const searchOpen = ref(false);
+const searchText = ref('');
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const isScrolledUp = ref(false);
 const collapsed = ref(false);
@@ -165,7 +170,7 @@ function onPanelFocusIn() { chatFocused.value = true; }
 document.addEventListener('pointerdown', onDocPointerDown, true);
 // Settings > "Fade chat when I click away" can switch quiet mode off.
 const isQuiet = computed(() => useUserPreferencesStore().prefs.chatFadeAway !== false
-  && !chatFocused.value && !collapsed.value && !isResizing.value && !isDragging.value
+  && !searchOpen.value && !chatFocused.value && !collapsed.value && !isResizing.value && !isDragging.value
   && panelHeight.value > QUIET_H && !document.body.classList.contains('nge-mobile'));
 const shownHeight = computed(() => isQuiet.value ? QUIET_H : panelHeight.value);
 /** The last few messages stay faintly readable when chat fades (Amy
@@ -444,7 +449,7 @@ function startReply(msg: ChatMessage) {
 /** The words of a message, without its links, cut short for a quote. */
 function excerptOf(msg: ChatMessage | null | undefined, max = 70): string {
   if (!msg) return '';
-  const text = msg.parts.filter(p => p.type !== 'sender' && p.type !== 'link').map(p => p.text).join('').replace(/\s+/g, ' ').trim();
+  const text = plainChatText(msg.parts.filter(p => p.type !== 'sender' && p.type !== 'link').map(p => p.text).join('')).replace(/\s+/g, ' ').trim();
   const out = text || (msg.parts.some(p => p.type === 'link') ? 'a link' : '');
   return Array.from(out).length > max ? Array.from(out).slice(0, max).join('').trimEnd() + '…' : out;
 }
@@ -463,6 +468,65 @@ function goToMessage(id: string | null | undefined) {
   flashedMsgId.value = String(id);
   clearTimeout(flashTimer);
   flashTimer = window.setTimeout(() => { flashedMsgId.value = null; }, 1600);
+}
+
+// ── Your own messages, marked (Krzysztof 2026-10-09, #84) ────────────────
+// A thin bar down the left edge, not a "(You)" label: it takes no room and is
+// quicker to pick out. Off unless switched on in Settings.
+const markMine = computed(() => useUserPreferencesStore().prefs.chatMarkMine === true);
+const isMine = (msg: ChatMessage) => markMine.value && !!msg.userId && msg.userId === backendStore.userId;
+
+// ── Search (Krzysztof 2026-10-09, #79) ───────────────────────────────────
+// No search box of its own: the magnifier in the top strip turns the message
+// line into a search line. What is typed filters the loaded messages in
+// place; Escape (or the magnifier again) puts chat back. Clicking a result
+// goes to that message in the conversation. Older messages are brought in
+// with the same "earlier messages" button chat always had.
+const chatQuery = computed(() => (searchOpen.value ? parseChatQuery(searchText.value) : null));
+const messageText = (m: ChatMessage) => m.parts.filter(p => p.type !== 'sender').map(p => p.text).join('');
+const searchHits = computed<ChatMessage[]>(() => {
+  const q = chatQuery.value;
+  if (!q) return [];
+  return chatMessages.value.filter(m => m.type === 'message' && matchesChatQuery(q, m.name || '', messageText(m)));
+});
+/** What the list draws: everything, or only the matches while searching. */
+const listedMessages = computed<ChatMessage[]>(() => (chatQuery.value ? searchHits.value : chatMessages.value));
+function openSearch() {
+  searchOpen.value = true;
+  if (collapsed.value) toggleCollapse();
+  void nextTick(() => searchEl.value?.focus());
+}
+function closeSearch() {
+  if (!searchOpen.value) return;
+  searchOpen.value = false;
+  searchText.value = '';
+  void nextTick(() => { followNewest(); inputEl.value?.focus(); });
+}
+const toggleSearch = () => (searchOpen.value ? closeSearch() : openSearch());
+function onSearchKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') { e.preventDefault(); closeSearch(); }
+}
+/** A click on a result (not on a link or button inside it) opens the
+ *  conversation at that message. */
+function onMessageClick(msg: ChatMessage, e: MouseEvent) {
+  if (!chatQuery.value || msg.id == null) return;
+  if ((e.target as HTMLElement | null)?.closest('a, button, [role="button"]')) return;
+  if (window.getSelection()?.toString()) return;
+  const id = String(msg.id);
+  closeSearch();
+  void nextTick(() => setTimeout(() => goToMessage(id), 60));
+}
+const msgDateTime = (d: Date) => d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+// ── Bold and underline (Krzysztof 2026-10-09, #83) ───────────────────────
+// Typed as *bold* and _underline_ (see util/chat_text.ts); Ctrl+B and Ctrl+U
+// put the marks round the selection, or take them off.
+function markSelection(mark: '*' | '_') {
+  const el = inputEl.value;
+  if (!el) return;
+  const r = toggleMark(messageInput.value, el.selectionStart ?? 0, el.selectionEnd ?? 0, mark);
+  messageInput.value = r.text;
+  void nextTick(() => { el.focus(); el.setSelectionRange(r.start, r.end); });
 }
 
 // ── Send message ──
@@ -557,6 +621,11 @@ function onInputKeydown(e: KeyboardEvent) {
       e.preventDefault();
       return;
     }
+  }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'b' || e.key === 'B' || e.key === 'u' || e.key === 'U')) {
+    e.preventDefault();
+    markSelection(e.key.toLowerCase() === 'b' ? '*' : '_');
+    return;
   }
   if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault();
@@ -983,6 +1052,13 @@ function toggleCollapse() {
         <span v-if="collapsed && unreadMessages" class="nge-chat-strip-unread" title="New messages"></span>
         <span v-if="mentionFlash && chatStore.lastMentionFrom" class="nge-chat-mentioned-by">@ from {{ chatStore.lastMentionFrom }}</span>
         <span class="nge-chat-strip-spacer"></span>
+        <button v-if="isLoggedIn" class="nge-chat-strip-btn nge-chat-search-btn" :class="{ 'nge-chat-search-btn--on': searchOpen }"
+                @click.stop="toggleSearch" :aria-pressed="searchOpen"
+                :title="searchOpen ? 'Close search (Esc)' : 'Search chat'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.2" y2="16.2" />
+          </svg>
+        </button>
         <button class="nge-chat-strip-btn nge-chat-bell-btn" :class="{ 'nge-chat-bell-btn--on': chatStore.mentionNotify }"
                 @click.stop="chatStore.setMentionNotify(!chatStore.mentionNotify)"
                 :title="chatStore.mentionNotify ? 'Chat notifications are on: new messages notify you while EyeWire is in the background (click to turn off)' : 'Turn on browser notifications for new chat messages while EyeWire is in the background'">
@@ -1011,10 +1087,15 @@ function toggleCollapse() {
             <div class="nge-chat-messages-inner">
               <div v-if="isLoggedIn && chatMessages.length" class="nge-chat-history-top">
                 <button v-if="chatStore.hasMoreHistory" class="nge-chat-history-btn" :disabled="chatStore.loadingHistory"
-                        @click="chatStore.loadOlder()">{{ chatStore.loadingHistory ? 'Loading…' : 'Load earlier messages' }}</button>
+                        @click="chatStore.loadOlder()">{{ chatStore.loadingHistory ? 'Loading…' : chatQuery ? 'Search earlier messages too' : 'Load earlier messages' }}</button>
                 <span v-else>Beginning of chat</span>
               </div>
-              <template v-for="(msg, i) in chatMessages" :key="msg.id ?? ('i' + i)">
+              <div v-if="searchOpen" class="nge-chat-search-note" role="status">
+                <template v-if="!chatQuery">Type to search. Use -word to leave messages out, "two words" for a phrase, from:name for one player.</template>
+                <template v-else-if="!searchHits.length">No messages match{{ chatStore.hasMoreHistory ? ' in what is loaded so far.' : '.' }}</template>
+                <template v-else>{{ searchHits.length.toLocaleString() }} {{ searchHits.length === 1 ? 'message' : 'messages' }}. Click one to see it in the conversation.</template>
+              </div>
+              <template v-for="(msg, i) in listedMessages" :key="msg.id ?? ('i' + i)">
                 <div v-if="msg.type === 'time'" class="nge-chat-time-sep">
                   <span>{{ msg.time }}</span>
                 </div>
@@ -1102,7 +1183,8 @@ function toggleCollapse() {
                   <div v-else class="nge-chat-daily-empty">No edits in the last 24 hours yet. The top spot is wide open!</div>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id) }"
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id), 'nge-chat-msg--mine': isMine(msg), 'nge-chat-msg--hit': !!chatQuery }"
+                     @click="onMessageClick(msg, $event)"
                      :data-msg-id="msg.id != null ? String(msg.id) : undefined"
                      :title="msg.private ? 'Only you can see this' : undefined">
                   <!-- A reply: the message it answers, quoted above it. -->
@@ -1111,7 +1193,7 @@ function toggleCollapse() {
                     <span class="nge-chat-quote-arrow" aria-hidden="true">↩</span><span class="nge-chat-quote-name">{{ shortName(repliedMsg(msg)?.name || '') }}</span><span class="nge-chat-quote-text">{{ excerptOf(repliedMsg(msg)) }}</span>
                   </button>
                   <span v-else-if="msg.replyTo" class="nge-chat-quote nge-chat-quote--gone"><span class="nge-chat-quote-arrow" aria-hidden="true">↩</span><span class="nge-chat-quote-text">an earlier message</span></span>
-                  <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
+                  <span class="nge-chat-msg-time">{{ chatQuery ? msgDateTime(msg.dateTime) : msgTime(msg.dateTime) }}</span>
                   <span class="nge-chat-msg-trophy" v-if="medalFor(msg)" :title="medalFor(msg)?.why">{{ medalFor(msg)?.medal }}</span>
                   <button v-if="msg.rank === 'bot' && msg.name === 'Nurro'" class="nge-chat-msg-name nge-chat-nurro-name"
                           @click="openNurroProfile" title="Nurro's profile"><img :src="nurroAvatar" alt="" />Nurro<span class="nge-chat-bot-tag nge-chat-nurro-tag">guide</span></button>
@@ -1151,7 +1233,9 @@ function toggleCollapse() {
                         @click="copySegId(part.text, $event)"
                         :title="'Copy ' + part.text.slice(1)"
                       >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
-                    <span v-else class="nge-chat-msg-text" :class="{ 'nge-chat-bot-text': msg.rank === 'bot' && msg.name !== 'Nurro' }">{{ part.text }}</span>
+                    <span v-else class="nge-chat-msg-text" :class="{ 'nge-chat-bot-text': msg.rank === 'bot' && msg.name !== 'Nurro' }"><template
+                      v-for="(piece, ri) in richPieces(part.text)" :key="ri"><b v-if="piece.bold" class="nge-chat-b" :class="{ 'nge-chat-u': piece.underline }">{{ piece.text }}</b><u
+                      v-else-if="piece.underline" class="nge-chat-u">{{ piece.text }}</u><template v-else>{{ piece.text }}</template></template></span>
                   </template>
                   <button v-if="isHelpAsk(msg)" type="button" class="nge-chat-view-chip nge-chat-join-chip" :disabled="joinOffered.has(joinKey(msg))"
                           :title="joinOffered.has(joinKey(msg)) ? 'Offer sent. Waiting for them to accept.' : `Offer to join ${msg.name}'s view and help, live. They choose whether to accept.`"
@@ -1225,7 +1309,16 @@ function toggleCollapse() {
           </div>
           <div v-if="joinNote" class="nge-chat-join-note" role="status">{{ joinNote }}</div>
           <div v-if="shareError" class="nge-chat-share-error" @click="shareError = ''">{{ shareError }}</div>
-          <div class="nge-chat-input-row">
+          <div v-if="searchOpen" class="nge-chat-input-row nge-chat-search-row">
+            <svg class="nge-chat-search-glyph" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.2" y2="16.2" />
+            </svg>
+            <input ref="searchEl" v-model="searchText" type="text" class="nge-chat-input nge-chat-search-input"
+                   placeholder="Search chat" aria-label="Search chat" autocomplete="off" spellcheck="false"
+                   @keydown.stop="onSearchKeydown" @keyup.stop @keypress.stop />
+            <button type="button" class="nge-chat-share-btn nge-chat-search-x" title="Close search (Esc)" aria-label="Close search" @click.stop="closeSearch">×</button>
+          </div>
+          <div v-else class="nge-chat-input-row">
             <span class="nge-chat-share">
               <button class="nge-chat-share-btn" :disabled="!isLoggedIn || !connected || sharing"
                       @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat"><template v-if="sharing">…</template><svg v-else class="nge-chat-share-pin" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M8 15.4S2.6 10.5 2.6 6.3a5.4 5.4 0 0 1 10.8 0C13.4 10.5 8 15.4 8 15.4zM8 8.4a2.1 2.1 0 1 0 0-4.2 2.1 2.1 0 0 0 0 4.2z"/></svg></button>
@@ -1241,6 +1334,7 @@ function toggleCollapse() {
               :class="{ 'nge-chat-input--over': messageTooLong }"
               rows="1"
               :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : 'Message... (@ to mention)'"
+              title="Enter sends. *bold* and _underline_, or Ctrl+B and Ctrl+U on selected text."
               @keydown.stop="onInputKeydown"
               @keyup.stop
               @keypress.stop
@@ -1543,6 +1637,20 @@ function toggleCollapse() {
   font-size: 14.5px;
 }
 .nge-chat-msg:hover { background: rgba(255, 255, 255, 0.03); border-radius: 3px; }
+/* Your own messages: a bar on the left edge, drawn inside the row so nothing
+   moves (Krzysztof 2026-10-09). */
+.nge-chat-msg--mine { box-shadow: inset 2px 0 0 rgba(124, 200, 255, 0.85); }
+.nge-chat-b { font-weight: 700; color: #f2f6fc; }
+.nge-chat-u { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+/* Search */
+.nge-chat-search-btn--on { color: #9fdcff !important; background: rgba(120, 190, 255, 0.14); }
+.nge-chat-search-note { padding: 6px 6px 8px; font-size: 12px; line-height: 1.4; color: rgba(190, 205, 225, 0.75); }
+.nge-chat-msg--hit { cursor: pointer; }
+.nge-chat-msg--hit:hover { background: rgba(120, 190, 255, 0.09); }
+.nge-chat-search-row { align-items: center; }
+.nge-chat-search-glyph { flex: 0 0 auto; margin: 0 2px 0 6px; color: #9fdcff; }
+.nge-chat-search-input { height: auto; }
+.nge-chat-search-x { font-size: 18px; line-height: 1; }
 /* Nurro commands and answers are yours alone (Amy 2026-09-30). */
 .nge-chat-private { border-left: 2px solid rgba(200, 164, 255, 0.5); padding-left: 6px; }
 .nge-chat-private::after {
