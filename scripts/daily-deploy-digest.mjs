@@ -7,10 +7,11 @@
  *
  * Source of truth is the LIVE site's changelog (static/changelog.json as
  * served), so an entry counts only once it is actually deployed; the CHANGELOG
- * RULE in README.md keeps those entries in player words. The body is a short
- * summary of those entries written by Claude (ANTHROPIC_API_KEY), checked
- * against the house rules, followed by the entry titles; without a key, or if
- * the model's text breaks a rule twice, a plain list of titles goes out instead.
+ * RULE in README.md keeps those entries in player words. The body opens with
+ * a TLDR, a short summary of those entries written by Claude (ANTHROPIC_API_KEY)
+ * and checked against the house rules, then each entry with its items for the
+ * players who want the detail; without a key, or if the model's text breaks a
+ * rule twice, the TLDR is the list of titles.
  *
  * Runs from .github/workflows/daily-deploy-digest.yml every day at 4:30 pm
  * Eastern (Ames, 2026-10-10): the workflow fires at both UTC times that can be
@@ -179,13 +180,11 @@ function buildBody(entries, sinceMs, nowMs, summary) {
     parts.push(`Since the last update on ${easternDay(new Date(sinceMs))}:`);
   }
   const titles = entries.map(e => e.title);
-  if (summary) {
-    parts.push(summary);
-    parts.push(`**What changed:** ${titles.join('. ')}.`);
-  } else {
-    parts.push(`Changed today: ${joinNaturally(titles)}.`);
+  parts.push(`**TLDR:** ${summary || `${joinNaturally(titles)}.`}`);
+  // The detail, for the players who want it: each entry as the changelog has it.
+  for (const e of entries) {
+    parts.push(`**${e.title}**\n` + e.items.map(i => `• ${i}`).join('\n'));
   }
-  parts.push('The full list is behind the i button at the top of the game.');
   return parts.join('\n\n');
 }
 
