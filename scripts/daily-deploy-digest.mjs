@@ -128,11 +128,34 @@ function buildBody(entries, sinceMs, nowMs) {
     return;
   }
 
+  if (preview) {
+    const admins = await supabaseGet('admins', 'select=user_id');
+    const ids = [...new Set(admins.map(a => a.user_id).filter(Boolean))];
+    if (ids.length === 0) throw new Error('no admins to preview to');
+    const names = await supabaseGet('users',
+        `select=id,display_name&id=in.(${ids.join(',')})`);
+    const previewTitle = `${title} (preview)`;
+    const sent = [];
+    for (const id of ids) {
+      const dup = await supabaseGet('notifications',
+          `select=id&title=eq.${encodeURIComponent(previewTitle)}` +
+          `&target_type=eq.user&target_id=eq.${id}&limit=1`);
+      if (dup.length) continue;
+      await supabasePost('notifications', [{
+        ...row, title: previewTitle, target_type: 'user', target_id: id, post_to_chat: false,
+      }]);
+      sent.push(names.find(n => n.id === id)?.display_name || id.slice(0, 8));
+    }
+    console.log(`[digest] PREVIEW sent to ${sent.length} admin${sent.length === 1 ? '' : 's'}` +
+        (sent.length ? `: ${sent.join(', ')}` : ' (every admin already had it)'));
+    return;
+  }
+
   // Idempotent per day: a second run on the same day sends nothing; whatever
   // went live after this digest is picked up tomorrow (the window starts at
   // the last digest's send_at).
   const existing = await supabaseGet('notifications',
-      `select=id&title=eq.${encodeURIComponent(title)}&limit=1`);
+      `select=id&title=eq.${encodeURIComponent(title)}&target_type=eq.all&limit=1`);
   if (existing.length) {
     console.log(`[digest] "${title}" already sent (id ${existing[0].id}); nothing to do.`);
     return;
