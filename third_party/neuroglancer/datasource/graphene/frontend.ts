@@ -56,6 +56,7 @@ import {parseArray, parseFixedLengthArray, verify3dVec, verifyBoolean, verifyEnu
 import {getObjectId} from 'neuroglancer/util/object_id';
 import {NullarySignal} from 'neuroglancer/util/signal';
 import {cancellableFetchSpecialOk, parseSpecialUrl, SpecialProtocolCredentials, SpecialProtocolCredentialsProvider} from 'neuroglancer/util/special_protocol_request';
+import {CancellationToken, CancellationTokenSource} from 'neuroglancer/util/cancellation';
 import {Trackable} from 'neuroglancer/util/trackable';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {makeDeleteButton} from 'neuroglancer/widget/delete_button';
@@ -1261,16 +1262,28 @@ class GraphConnection extends SegmentationGraphSourceConnection {
   deleteMergeSubmission = (submission: MergeSubmission) => {
     const {mergeAnnotationState} = this;
     submission.locked = false;
-    mergeAnnotationState.source.delete(mergeAnnotationState.source.getReference(submission.id));
+    // It may already be gone (Clear can now remove one that is still being
+    // sent, and a finished one removes itself a few seconds later).
+    const ref = mergeAnnotationState.source.getReference(submission.id);
+    try { if (ref.value) mergeAnnotationState.source.delete(ref); } finally { ref.dispose(); }
   }
 
   private submitMerge = async (submission: MergeSubmission, attempts=1): Promise<Uint64> => {
     const loadedSubsource = getGraphLoadedSubsource(this.layer)!;
     const annotationToNanometers = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
     submission.error = undefined;
+    // nge: a busy server answers "try later" and the request layer keeps
+    // trying, quietly, for minutes. The merge stayed locked on "trying..."
+    // all that time and Clear could not remove it (Nseraf 2026-10-09). Each
+    // merge now gives up after MERGE_WAIT_MS, and Clear can stop one early.
+    const stop = new CancellationTokenSource();
+    submission.cancel = (why: string) => { submission.error = why; stop.cancel(); };
+    const limit = setTimeout(() => submission.cancel?.('The server did not answer in time. Nothing was merged as far as the game can tell; check the cell, then try again.'), MERGE_WAIT_MS);
+    try {
     for (let i = 1; i <= attempts; i++) {
       try {
-        const newRoot = await this.graph.graphServer.mergeSegments(submission.sink, submission.source!, annotationToNanometers);
+        if (stop.isCanceled) throw new Error(submission.error || 'Stopped.');
+        const newRoot = await this.graph.graphServer.mergeSegments(submission.sink, submission.source!, annotationToNanometers, stop);
         const oldValues = new Uint64Set();
         oldValues.add(submission.sink.rootId);
         oldValues.add(submission.source!.rootId);
@@ -1279,11 +1292,16 @@ class GraphConnection extends SegmentationGraphSourceConnection {
         this.state.replaceSegments(oldValues, newValues);
         return newRoot;
       } catch (err) {
-        if (i === attempts) {
-          submission.error = err.message || "unknown";
+        if (i === attempts || stop.isCanceled) {
+          // A stop set its own reason: keep it over the bare "cancelled".
+          if (!stop.isCanceled || !submission.error) submission.error = err.message || "unknown";
           throw err;
         }
       }
+    }
+    } finally {
+      clearTimeout(limit);
+      submission.cancel = undefined;
     }
 
     return Uint64.ZERO; // appease typescript
@@ -1333,6 +1351,8 @@ class GraphConnection extends SegmentationGraphSourceConnection {
                 });
               }).catch(() => {
                 merges.changed.dispatch();
+                // One the player cleared is not tried again.
+                if (submission.cleared) { checkDone(); return; }
                 failed.push(submission);
                 if (completed > completedAt) {
                   loop(completed, failed);
@@ -1455,7 +1475,7 @@ class GrapheneGraphServerInterface {
 
   async mergeSegments(
       first: SegmentSelection, second: SegmentSelection,
-      annotationToNanometers: Float64Array): Promise<Uint64> {
+      annotationToNanometers: Float64Array, cancellationToken?: CancellationToken): Promise<Uint64> {
     const {url} = this;
     if (url === '') {
       return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
@@ -1475,7 +1495,7 @@ class GrapheneGraphServerInterface {
             ]
           ])
         },
-        responseIdentity);
+        responseIdentity, cancellationToken);
 
     try {
       const response = await promise;
@@ -2075,9 +2095,16 @@ const wait = (t: number) => {
   });
 }
 
+/** How long one merge may wait on the server before it gives up. */
+const MERGE_WAIT_MS = 90_000;
+
 interface MergeSubmission {
   id: string;
   locked: boolean;
+  /** Set while the merge is being sent: stops it, with the reason to show. */
+  cancel?: (why: string) => void;
+  /** The player cleared it from the queue while it was being sent. */
+  cleared?: boolean;
   error?: string;
   status?: string;
   sink: SegmentSelection;
@@ -2234,9 +2261,11 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
       onClick: () => {
         lineTool.deactivate();
         for (const merge of [...merges.value]) {
-          if (!merge.locked) {
-            graphConnection.deleteMergeSubmission(merge);
-          }
+          // One still being sent is stopped first; it then leaves the queue
+          // with the rest instead of sitting there locked.
+          if (merge.locked) merge.cleared = true;
+          if (merge.locked) merge.cancel?.('Stopped. If the server had already taken this merge it may still go through: check the cell.');
+          graphConnection.deleteMergeSubmission(merge);
         }
       }
     }));
