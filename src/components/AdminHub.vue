@@ -2745,7 +2745,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-board .nge-triage-group-caret, .nge-triage-board .nge-triage-group-hint { display: none; }
 .nge-triage-board .nge-triage-card { cursor: pointer; background: rgba(10, 18, 32, 0.9); }
-.nge-triage-board .nge-triage-card:hover { border-color: rgba(79, 207, 255, 0.45); }
+.nge-triage-board .nge-triage-card:hover { border-top-color: rgba(79, 207, 255, 0.45); border-right-color: rgba(79, 207, 255, 0.45); border-bottom-color: rgba(79, 207, 255, 0.45); }
 /* Compact until clicked: who, what they said, where it stands. */
 .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) > :not(.nge-triage-meta):not(.nge-triage-from):not(.nge-triage-excerpt) { display: none; }
 .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt {
@@ -2762,9 +2762,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-avatar, .nge-triage-ago { display: none; }
 .nge-triage-board .nge-triage-group-icon { margin-right: -2px; }
 .nge-triage-board .nge-triage-card { position: relative; border-left: 4px solid #6f7f98; transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease; }
-.nge-triage-board .nge-triage-card--bug_fix_spec { border-left-color: #ff7b72; }
-.nge-triage-board .nge-triage-card--new_feature { border-left-color: #5ad17f; }
-.nge-triage-board .nge-triage-card--message { border-left-color: #58b6f5; }
+.nge-triage-board .nge-triage-card.nge-triage-card--bug_fix_spec { border-left-color: #ff7b72; }
+.nge-triage-board .nge-triage-card.nge-triage-card--new_feature { border-left-color: #5ad17f; }
+.nge-triage-board .nge-triage-card.nge-triage-card--message { border-left-color: #58b6f5; }
 .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) {
   padding: 7px 9px 8px 10px; gap: 3px; border-radius: 12px;
 }
@@ -2798,11 +2798,11 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) { min-width: 210px; }
 .nge-triage-board .nge-triage-col-empty { font-style: normal; padding: 22px 8px; }
 .nge-triage-light .nge-triage-card:not(.nge-triage-card--selected):hover { box-shadow: 0 6px 16px rgba(20, 30, 50, 0.14); }
-.nge-triage-light .nge-triage-card { border-left-color: #9aa7ba; }
-.nge-triage-light .nge-triage-card--bug_fix_spec { border-left-color: #e2584f; }
-.nge-triage-light .nge-triage-card--new_feature { border-left-color: #2e9e68; }
-.nge-triage-light .nge-triage-card--message { border-left-color: #2f8fd6; }
-.nge-triage-light .nge-triage-card--selected { border-left-color: #2f6fd6; }
+.nge-triage-board.nge-triage-light .nge-triage-card { border-left-color: #9aa7ba; }
+.nge-triage-board.nge-triage-light .nge-triage-card--bug_fix_spec { border-left-color: #e2584f; }
+.nge-triage-board.nge-triage-light .nge-triage-card--new_feature { border-left-color: #2e9e68; }
+.nge-triage-board.nge-triage-light .nge-triage-card--message { border-left-color: #2f8fd6; }
+.nge-triage-board.nge-triage-light .nge-triage-card--selected { border-left-color: #2f6fd6; }
 @media (prefers-reduced-motion: reduce) {
   .nge-triage-board .nge-triage-card { transition: none; }
   .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected):hover { transform: none; }
@@ -2895,7 +2895,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-card {
   background: #ffffff; border-color: #d8dee9; box-shadow: 0 1px 2px rgba(20, 30, 50, 0.05);
 }
-.nge-triage-light .nge-triage-card:hover { border-color: #7fb0ea; }
+.nge-triage-light .nge-triage-card:hover { border-top-color: #7fb0ea; border-right-color: #7fb0ea; border-bottom-color: #7fb0ea; }
 .nge-triage-light .nge-triage-card--selected {
   background: #ffffff; border-color: #2f6fd6;
   box-shadow: inset 4px 0 0 #2f6fd6, 0 0 0 1px rgba(47, 111, 214, 0.3), 0 4px 16px rgba(47, 111, 214, 0.14);
