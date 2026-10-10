@@ -242,7 +242,30 @@ const triageGroups = computed(() => {
     { key: 'done', title: 'Done', hint: 'Shipped or handled', closed: true },
     { key: 'dismissed', title: 'Dismissed', hint: 'Stopped or turned down', closed: true },
   ];
-  return defs.map(d => ({ ...d, rows: triageRows.value.filter(r => triageGroupOf(r) === d.key) }));
+  return defs.map(d => ({ ...d, rows: triageRows.value.filter(r => triageGroupOf(r) === d.key && triageMatches(r)) }));
+});
+
+// Search the board (Ames 2026-10-10: "I need search in active feedback / in
+// progress"). Every word typed must be found somewhere in the report: its
+// number, who sent it, what they wrote, the proposal, the notes, the state.
+// "#42" finds report 42. Typing opens every section that has a match.
+const triageSearch = ref('');
+const triageWords = computed(() => triageSearch.value.toLowerCase().split(/\s+/).filter(Boolean));
+function triageMatches(r: TriageRow): boolean {
+  const words = triageWords.value;
+  if (!words.length) return true;
+  const n = triageNumbers.value[r.id];
+  const who = reporterOf(r);
+  const hay = [n ? `#${n}` : '', who?.name, who?.category, r.source_excerpt, r.rationale, r.spec, r.proposed_message,
+    r.approver_note, r.impl_summary, r.result_note, r.reviewed_by, r.status, r.impl_state, TRIAGE_LABELS[r.recommendation],
+    ...(r.feedback_log || []).map(f => f.text)].filter(Boolean).join(' 
+ ').toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+const triageMatchCount = computed(() => triageRows.value.filter(triageMatches).length);
+watch(triageWords, words => {
+  if (!words.length) return;
+  for (const g of triageGroups.value) if (g.rows.length) triageOpen.value[g.key] = true;
 });
 
 // Every report has a number: its place in the order reports arrived, counted
@@ -1836,6 +1859,9 @@ function practiceWhen(iso: string | null) {
           <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
+          <input v-model="triageSearch" class="nge-triage-search" type="search" placeholder="Search reports, or #number"
+                 aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
+          <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
           <label class="nge-triage-toggle">
             <input type="checkbox" v-model="triageShowReviewed" />
             <span>Show older</span>
@@ -2571,7 +2597,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-admin-award-section { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 
 /* ── Triage ── */
-.nge-triage-head { display: flex; align-items: center; gap: 12px; }
+.nge-triage-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .nge-triage-head .nge-admin-label { flex: 1; }
 .nge-triage-toggle {
   display: inline-flex; align-items: center; gap: 5px;
@@ -2673,6 +2699,13 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-rec--message      { background: rgba(100,200,255,0.14); color: #64c8ff; }
 .nge-triage-rec--bug_fix_spec { background: rgba(255,120,120,0.14); color: #f88; }
 .nge-triage-rec--new_feature  { background: rgba(160,255,160,0.12); color: #8e8; }
+.nge-triage-search {
+  flex: 1 1 160px; min-width: 120px; max-width: 320px;
+  background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px;
+  color: #e6eefc; font: inherit; font-size: 12.5px; padding: 5px 9px;
+}
+.nge-triage-search:focus { outline: none; border-color: rgba(120, 190, 255, 0.8); }
+.nge-triage-search-count { font-size: 11.5px; color: rgba(255, 255, 255, 0.55); white-space: nowrap; }
 .nge-triage-num {
   font: 600 11.5px 'Consolas', 'SF Mono', monospace; color: #cfe3ff;
   padding: 1px 6px; border-radius: 4px; background: rgba(120, 180, 255, 0.14);
