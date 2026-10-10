@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-10T14:25:00Z",
+      "title": "More favorites in your Trophy Case",
+      "items": [
+        "You can now pick up to ten bronze favorites, alongside your gold favorite and five silver ones.",
+        "Drag a Trophy Case section by its heading to put your sections in the order you like. Visitors see your order too.",
+        "A favorite that no longer shows does not use up one of your places.",
+        "In the Cell Library, search for one available cell and the Claim button takes that cell and the ones after it."
+      ]
+    },
+    {
       "at": "2026-10-10T23:00:00Z",
       "title": "A daily note of what changed",
       "items": [
