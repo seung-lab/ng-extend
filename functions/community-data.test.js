@@ -23,6 +23,21 @@ test('hostile query cannot remove notification or private-link ownership',()=>{
  assert.match(p.query.get('and'),/target_type.eq.all/);
  assert.doesNotMatch(p.query.get('and'),/target_type.eq.user/);
 });
+test('a stopped notification is kept for whoever asks for it by id, and only if it was meant for them',()=>{
+ const listed=plan('notifications','GET','select=*').query.get('and');
+ assert.match(listed,/expires_at\.gt\./);                       // the feed: nothing past its stop time
+ for(const q of ['id=in.(12,15,90)','id=eq.12']) {
+  const kept=plan('notifications','GET','select=*&'+q).query.get('and');
+  assert.doesNotMatch(kept,/expires_at/);                       // by id: the stop time does not hide it
+  assert.match(kept,/target_type\.eq\.all/);                    // still only what was meant for them
+  assert.match(kept,new RegExp('target_id\\.eq\\.'+a));
+  assert.match(kept,/send_at\.lte\./);                          // and never before it was sent
+ }
+ // Anything that is not a plain list of ids keeps the stop time.
+ for(const q of ['id=gt.0','id=not.is.null','id=in.(1,2);drop','id=neq.5'])
+  assert.match(plan('notifications','GET','select=*&'+q).query.get('and'),/expires_at\.gt\./);
+ assert.doesNotMatch(plan('notifications','GET','id=in.(12)',undefined,anon).query.get('and'),/target_type\.eq\.user/);
+});
 test('profile mutations cannot reassign identity or edit someone else',()=>{
  const p=plan('users','PATCH',`id=eq.${b}`,{id:b,middleauth_email:'victim@example.invalid',cave_user_id:999,total_edits:999999,display_name:'Player'});
  assert.equal(p.query.get('and'),`(id.eq.${a})`);

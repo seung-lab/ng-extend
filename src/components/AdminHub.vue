@@ -1639,7 +1639,7 @@ function practiceWhen(iso: string | null) {
             <input type="datetime-local" v-model="notifSendAt" class="nge-admin-date-input" />
           </label>
           <label class="nge-admin-date-label">
-            <span>Expires at <em class="nge-admin-tz">(ET)</em></span>
+            <span title="After this time the notification reaches nobody new. Players who already have it keep it.">Stop sending at <em class="nge-admin-tz">(ET)</em></span>
             <input type="datetime-local" v-model="notifExpiresAt" class="nge-admin-date-input" />
           </label>
         </div>
@@ -1737,7 +1737,7 @@ function practiceWhen(iso: string | null) {
             <strong>{{ n.title }}</strong>
             <span class="nge-admin-notif-meta">
               {{ n.target_type }} · sent {{ formatEt(n.send_at) }}
-              <span v-if="n.expires_at"> · expires {{ formatEt(n.expires_at) }}</span>
+              <span v-if="n.expires_at"> · stops sending {{ formatEt(n.expires_at) }}</span>
             </span>
           </div>
           <button class="nge-admin-edit-btn" @click="startEdit(n)" title="Edit this notification (changes it in place, sends nothing new)">&#9998; Edit</button>
@@ -1748,11 +1748,12 @@ function practiceWhen(iso: string | null) {
       <!-- Expired: no edit button. Editing something nobody can see any more
            would just be misleading, so these are read-only apart from delete. -->
       <div class="nge-admin-block" v-if="expiredNotifs.length > 0">
-        <label class="nge-admin-label">Expired ({{ expiredNotifs.length }})</label>
+        <label class="nge-admin-label">No longer sending ({{ expiredNotifs.length }})</label>
+        <div class="nge-admin-hint">These reach nobody new. Players who already had one still see it; Delete removes it for everyone.</div>
         <div v-for="n in expiredNotifs" :key="n.id" class="nge-admin-notif-row nge-admin-notif-row--expired">
           <div class="nge-admin-notif-info">
             <strong>{{ n.title }}</strong>
-            <span class="nge-admin-notif-meta">{{ n.target_type }} · expired {{ formatEt(n.expires_at) }}</span>
+            <span class="nge-admin-notif-meta">{{ n.target_type }} · stopped sending {{ formatEt(n.expires_at) }}</span>
           </div>
           <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Delete">&times;</button>
         </div>

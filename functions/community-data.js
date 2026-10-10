@@ -108,7 +108,11 @@ function authorizeData(input, ctx) {
       const targets = ['target_type.eq.all'];
       if (me) targets.push(`and(target_type.eq.user,target_id.eq.${own()})`);
       if (groups.length) targets.push(`and(target_type.eq.group,target_id.in.(${groups.join(',')}))`);
-      scope(`or(${targets.join(',')})`, 'send_at.lte.'+ctx.now, `or(expires_at.is.null,expires_at.gt.${ctx.now})`);
+      // "Stop sending at" stops a notification reaching anyone new; a player
+      // who already has it asks for it by id and still gets it (2026-10-10).
+      // Who it was meant for and when it was sent are checked either way.
+      const byId = /^(?:eq\.\d+|in\.\(\d+(?:,\d+){0,199}\))$/.test(query.get('id') || '');
+      scope(`or(${targets.join(',')})`, 'send_at.lte.'+ctx.now, ...(byId ? [] : [`or(expires_at.is.null,expires_at.gt.${ctx.now})`]));
     } else if (table === 'blog_posts' && !ctx.isBlogAuthor) {
       scope('status.eq.published');
     } else if (table === 'blog_authors' && !ctx.isAdmin) {

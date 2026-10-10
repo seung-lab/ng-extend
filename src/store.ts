@@ -1007,6 +1007,10 @@ export interface UserPreferences {
   /** Highlight mode's colours: the three built in ones (recoloured or not)
    *  and any the player added. Unset = the defaults. */
   highlightStyles?: { key: string; label: string; color: string }[];
+  /** Notifications this player has already been given (newest 300 ids).
+   *  "Stop sending at" only keeps a notification from reaching people who
+   *  have not had it yet; whoever got it keeps it (Ames 2026-10-10). */
+  notifDelivered?: number[];
   /** Offer "Pick up where you left off?" when a dataset opens. Defaults to true. */
   offerViewRestore?: boolean;
   /** Point annotation size multiplier, 1 to 4 (Amy 2026-09-30). Local only. */
@@ -1058,7 +1062,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles'];
+    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -1089,7 +1093,11 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
       pulledFor = userId;
       const remote = (data as any)?.settings;
       if (remote && typeof remote === 'object') {
+        // What was delivered on this computer before the account copy
+        // arrived is kept too: delivery is never taken back.
+        const hadHere = prefs.value.notifDelivered || [];
         Object.assign(prefs.value, syncedPart(remote));
+        if (hadHere.length) prefs.value.notifDelivered = [...new Set([...(prefs.value.notifDelivered || []), ...hadHere])].sort((a, b) => b - a).slice(0, 300);
         localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
       } else {
         pushToAccount(); // first sign in since this shipped: keep this browser's choices
@@ -4868,16 +4876,6 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const { data: allNotifs } = await query;
     if (!allNotifs) return;
 
-    // Filter: show only non-expired + matching target + not dismissed
-    notifications.value = allNotifs.filter((n: Notification) => {
-      if (n.expires_at && new Date(n.expires_at) < new Date()) return false;
-      if (notificationDismissals.value.has(n.id)) return false;
-      if (n.target_type === 'all') return true;
-      if (n.target_type === 'user' && n.target_id === userId.value) return true;
-      if (n.target_type === 'group' && groupIds.includes(n.target_id || '')) return true;
-      return false;
-    });
-
     // Load read + dismissed status together (both live on notification_reads).
     const { data: reads } = await supabase
       .from('notification_reads')
@@ -4886,6 +4884,37 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notificationReads.value = new Set((reads || []).map((r: any) => r.notification_id));
     notificationDismissals.value = new Set(
       (reads || []).filter((r: any) => r.dismissed).map((r: any) => r.notification_id));
+
+    // "Stop sending at" is a deadline for DELIVERY, not for the notification
+    // itself (Ames 2026-10-10: it was vanishing from everyone's feed). Past
+    // the deadline it reaches nobody new; a player who was already given it,
+    // or read it, keeps it. Delivered = it has been in this player's feed
+    // before, remembered with their settings so it follows them across
+    // computers.
+    const prefsStore = useUserPreferencesStore();
+    const delivered = new Set<number>([...(prefsStore.prefs.notifDelivered || []), ...notificationReads.value]);
+    const mine = (n: Notification) => !notificationDismissals.value.has(n.id) && (
+      n.target_type === 'all'
+      || (n.target_type === 'user' && n.target_id === userId.value)
+      || (n.target_type === 'group' && groupIds.includes(n.target_id || '')));
+    const stopped = (n: Notification) => !!n.expires_at && new Date(n.expires_at) < new Date();
+    const current = (allNotifs as Notification[]).filter(n => mine(n) && (!stopped(n) || delivered.has(n.id)));
+
+    // Delivered ones that have since stopped: the server leaves those out of
+    // the list above, so ask for them by id.
+    const have = new Set(current.map(n => n.id));
+    const kept = [...delivered].filter(id => !have.has(id) && !notificationDismissals.value.has(id)).sort((a, b) => b - a).slice(0, 100);
+    if (kept.length) {
+      const { data: older } = await supabase.from('notifications').select('*').in('id', kept).lte('send_at', now);
+      for (const n of (older || []) as Notification[]) if (mine(n)) current.push(n);
+      current.sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)));
+    }
+    notifications.value = current;
+
+    // Everything in the feed now counts as delivered from here on.
+    const before = prefsStore.prefs.notifDelivered || [];
+    const fresh = current.map(n => n.id).filter(id => !before.includes(id));
+    if (fresh.length) prefsStore.save({ notifDelivered: [...new Set([...fresh, ...before])].sort((a, b) => b - a).slice(0, 300) });
 
     // Dismissed notifications are hidden from the feed. Done after the read
     // query so the freshly-loaded dismissal set is applied to this batch.
