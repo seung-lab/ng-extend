@@ -1,8 +1,15 @@
 name: Triage Propose
+# Only on request (Ames 2026-10-10): a report gets a suggestion when an
+# approver tags the bot in its Slack thread, and the bridge then starts this
+# with that report's id. Nothing runs on a timer, and nothing runs for a
+# report nobody asked about.
 on:
-  schedule:
-    - cron: '*/10 * * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      issue_ids:
+        description: Report ids to suggest a fix for, comma separated
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -10,7 +17,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   prepare:
-    if: vars.TRIAGE_PROPOSER == 'on' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       count: ${{ steps.pending.outputs.count }}
@@ -26,6 +32,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ISSUE_IDS: ${{ inputs.issue_ids }}
         run: node scripts/triage-loop.mjs pending
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
