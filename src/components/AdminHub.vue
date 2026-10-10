@@ -288,17 +288,52 @@ async function loadTriageNumbers() {
   try {
     const { supabase } = await import('../supabase');
     const next: Record<string, number> = {};
+    let bugs = 0, features = 0, other = 0;
     // 500 at a time: the server refuses a larger page, which is why the
     // numbers did not show at first.
     for (let from = 0, n = 0; ; from += 500) {
-      const { data, error } = await supabase.from('feedback_triage').select('id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
+      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
       if (error || !data) return;
-      for (const r of data as any[]) next[r.id] = ++n;
+      for (const r of data as any[]) {
+        next[r.id] = ++n;
+        if (r.status === 'done' || r.impl_state === 'deployed') { if (r.recommendation === 'new_feature') features++; else if (r.recommendation === 'bug_fix_spec') bugs++; else other++; }
+      }
       if (data.length < 500) break;
     }
     triageNumbers.value = next;
+    triageTally.value = { bugs, features, other };
   } catch { /* the cards simply show no number */ }
 }
+
+// ── What has been closed, and a moment of reward for closing one ──
+// Counted over every report, not only the ones on the board (Ames
+// 2026-10-10: "give me some visual reward for completing them").
+const triageTally = ref({ bugs: 0, features: 0, other: 0 });
+const triageCheer = ref<{ key: number; kind: 'bug' | 'feature' | 'other'; text: string } | null>(null);
+let cheerTimer: ReturnType<typeof setTimeout> | null = null;
+function cheerFor(row: TriageRow) {
+  const kind = row.recommendation === 'new_feature' ? 'feature' : row.recommendation === 'bug_fix_spec' ? 'bug' : 'other';
+  const n = triageNumbers.value[row.id];
+  const what = kind === 'feature' ? 'Feature shipped' : kind === 'bug' ? 'Bug fixed' : 'Report closed';
+  triageCheer.value = { key: Date.now(), kind, text: `${what}${n ? ` · #${n}` : ''}` };
+  if (cheerTimer) clearTimeout(cheerTimer);
+  cheerTimer = setTimeout(() => { triageCheer.value = null; }, 2600);
+}
+
+// ── Board columns that fold away ──
+// Done and Dismissed start folded to a narrow rail, so the two columns that
+// need attention get the width (Ames 2026-10-10). Click a column's heading
+// to fold or open it; the choice is remembered.
+const TRIAGE_FOLD_KEY = 'nge_triage_folded_v1';
+const triageFolded = ref<Record<TriageGroupKey, boolean>>((() => {
+  const start = { decide: false, progress: false, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
+  try { return { ...start, ...(JSON.parse(localStorage.getItem(TRIAGE_FOLD_KEY) || '{}') || {}) }; } catch { return start; }
+})());
+function toggleFold(key: TriageGroupKey) {
+  triageFolded.value = { ...triageFolded.value, [key]: !triageFolded.value[key] };
+  try { localStorage.setItem(TRIAGE_FOLD_KEY, JSON.stringify(triageFolded.value)); } catch { /* not remembered */ }
+}
+const boardColumns = computed(() => triageGroups.value.map(g => (triageFolded.value[g.key] ? '46px' : 'minmax(0, 1fr)')).join(' '));
 
 // ── In progress, by hand ──
 // Most reports are fixed in a Claude chat, not by the robot (Ames 2026-10-10).
@@ -441,6 +476,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
       await secureWrite('triage.update', { id: row.id, fields: update });
     }
     delete triageNotes.value[row.id];
+    if (status === 'done') cheerFor(row);
     await loadTriage();
     if (noteLost) {
       triageError.value = `Saved as ${status}, but your comment was not stored: the approver_note column does not exist yet. Run supabase-triage-approver-note.sql in the Supabase SQL editor. Your comment was: "${note}"`;
@@ -1873,6 +1909,10 @@ function practiceWhen(iso: string | null) {
           <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
+          <span class="nge-triage-tally" title="Closed so far, over every report">
+            <span class="nge-triage-tally-item nge-triage-tally-item--bug" :class="{ 'nge-triage-tally-item--pop': triageCheer?.kind === 'bug' }" :key="'b' + triageTally.bugs"><b>{{ triageTally.bugs }}</b> bugs fixed</span>
+            <span class="nge-triage-tally-item nge-triage-tally-item--feature" :class="{ 'nge-triage-tally-item--pop': triageCheer?.kind === 'feature' }" :key="'f' + triageTally.features"><b>{{ triageTally.features }}</b> features shipped</span>
+          </span>
           <input v-model="triageSearch" class="nge-triage-search" type="search" placeholder="Search reports, or #number"
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
           <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
@@ -1892,27 +1932,36 @@ function practiceWhen(iso: string | null) {
           reporter. Approving a fix sends it to Claude, who posts a preview in
           the Slack thread for you to test before anything goes live.
         </div>
+        <Transition name="nge-triage-cheer">
+          <div v-if="triageCheer" :key="triageCheer.key" class="nge-triage-cheer" :class="`nge-triage-cheer--${triageCheer.kind}`" role="status">
+            <span class="nge-triage-cheer-ring" aria-hidden="true"></span>
+            <span class="nge-triage-cheer-check" aria-hidden="true">✓</span>
+            <span class="nge-triage-cheer-text">{{ triageCheer.text }}</span>
+          </div>
+        </Transition>
         <div v-if="triageError" class="nge-admin-error">⚠ {{ triageError }}</div>
         <div v-if="triageLoading && !triageRows.length" class="nge-admin-hint">Loading…</div>
         <div v-else-if="!triageRows.length" class="nge-admin-hint">
           No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
         </div>
 
-        <div class="nge-triage-cols">
-        <div v-for="g in triageGroups" :key="g.key" class="nge-triage-col" :class="`nge-triage-col--${g.key}`">
+        <div class="nge-triage-cols" :style="triageBoard ? { gridTemplateColumns: boardColumns } : undefined">
+        <div v-for="g in triageGroups" :key="g.key" class="nge-triage-col"
+             :class="[`nge-triage-col--${g.key}`, { 'nge-triage-col--folded': triageBoard && triageFolded[g.key] }]">
         <button
           v-if="triageRows.length"
           class="nge-triage-group"
           :class="{ 'nge-triage-group--open': triageOpen[g.key], 'nge-triage-group--empty': !g.rows.length }"
-          :aria-expanded="triageOpen[g.key] ? 'true' : 'false'"
-          @click="triageOpen[g.key] = !triageOpen[g.key]"
+          :aria-expanded="(triageBoard ? !triageFolded[g.key] : triageOpen[g.key]) ? 'true' : 'false'"
+          :title="triageBoard ? (triageFolded[g.key] ? `Open ${g.title}` : `Fold ${g.title} away`) : undefined"
+          @click="triageBoard ? toggleFold(g.key) : (triageOpen[g.key] = !triageOpen[g.key])"
         >
           <span class="nge-triage-group-caret" aria-hidden="true">▸</span>
           <span class="nge-triage-group-title">{{ g.title }}</span>
           <span class="nge-triage-group-count">{{ g.rows.length }}</span>
           <span class="nge-triage-group-hint">{{ g.hint }}</span>
         </button>
-        <template v-if="triageBoard || triageOpen[g.key]">
+        <template v-if="triageBoard ? !triageFolded[g.key] : triageOpen[g.key]">
         <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :data-triage-id="row.id"
              :class="{ 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id }"
              @click="triageSelected = row.id">
@@ -2052,7 +2101,7 @@ function practiceWhen(iso: string | null) {
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
           </div>
         </div>
-        <div v-if="triageBoard && !g.rows.length" class="nge-triage-col-empty">Nothing here</div>
+        <div v-if="triageBoard && !g.rows.length && !triageFolded[g.key]" class="nge-triage-col-empty">Nothing here</div>
         </template>
         </div>
         </div>
@@ -2676,6 +2725,62 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-board .nge-triage-card--selected { cursor: default; }
 .nge-triage-col-empty { padding: 14px 4px; color: #62738c; font-size: 0.9em; text-align: center; }
 
+/* Folded columns: a narrow rail with the heading turned on its side. */
+.nge-triage-board .nge-triage-cols { transition: grid-template-columns 0.22s ease; }
+.nge-triage-board .nge-triage-group { pointer-events: auto; cursor: pointer; }
+.nge-triage-board .nge-triage-group:hover { filter: brightness(1.15); }
+.nge-triage-board .nge-triage-col--folded { padding: 0; overflow: hidden; }
+.nge-triage-board .nge-triage-col--folded .nge-triage-group {
+  margin: 0; width: 100%; height: 100%; border-bottom: none;
+  writing-mode: vertical-rl; text-orientation: mixed;
+  display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 14px 0;
+}
+.nge-triage-board .nge-triage-col--folded .nge-triage-group-count { writing-mode: horizontal-tb; }
+
+/* Closed so far, and the moment one more is closed. */
+.nge-triage-tally { display: inline-flex; gap: 8px; align-items: center; }
+.nge-triage-tally-item {
+  font-size: 12px; padding: 3px 9px; border-radius: 11px; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.72);
+}
+.nge-triage-tally-item b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.nge-triage-tally-item--bug b { color: #ff9c94; }
+.nge-triage-tally-item--feature b { color: #8ee8a0; }
+.nge-triage-tally-item--pop { animation: nge-tally-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+@keyframes nge-tally-pop { 0% { transform: scale(1); } 35% { transform: scale(1.22); } 100% { transform: scale(1); } }
+.nge-triage-cheer {
+  position: fixed; left: 50%; top: 64px; transform: translateX(-50%); z-index: 100002;
+  display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px 10px 12px; border-radius: 26px;
+  font: 600 15px/1 'Inter', system-ui, sans-serif; color: #eafff0;
+  background: linear-gradient(180deg, #1f7a45, #17603a); border: 1px solid #5fd08a;
+  box-shadow: 0 10px 34px rgba(20, 110, 60, 0.45), 0 0 0 4px rgba(95, 208, 138, 0.16);
+  pointer-events: none;
+}
+.nge-triage-cheer--feature { background: linear-gradient(180deg, #2f6fd6, #2558ad); border-color: #8db8ff; box-shadow: 0 10px 34px rgba(40, 90, 190, 0.45), 0 0 0 4px rgba(141, 184, 255, 0.18); }
+.nge-triage-cheer-check {
+  width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.95); color: #17603a; font-weight: 800; font-size: 14px;
+  animation: nge-cheer-check 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.5) both;
+}
+.nge-triage-cheer--feature .nge-triage-cheer-check { color: #2558ad; }
+.nge-triage-cheer-ring {
+  position: absolute; left: 12px; top: 50%; width: 24px; height: 24px; margin-top: -12px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  animation: nge-cheer-ring 0.9s ease-out both;
+}
+@keyframes nge-cheer-check { from { transform: scale(0.2) rotate(-40deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes nge-cheer-ring { from { transform: scale(1); opacity: 0.9; } to { transform: scale(3.2); opacity: 0; } }
+.nge-triage-cheer-enter-active { transition: opacity 0.2s ease, transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+.nge-triage-cheer-leave-active { transition: opacity 0.4s ease, transform 0.4s ease; }
+.nge-triage-cheer-enter-from { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(0.92); }
+.nge-triage-cheer-leave-to { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+@media (prefers-reduced-motion: reduce) {
+  .nge-triage-board .nge-triage-cols { transition: none; }
+  .nge-triage-tally-item--pop, .nge-triage-cheer-check, .nge-triage-cheer-ring { animation: none; }
+  .nge-triage-cheer-ring { display: none; }
+  .nge-triage-cheer-enter-active, .nge-triage-cheer-leave-active { transition: opacity 0.2s ease; }
+}
+
 /* ── Light page ──────────────────────────────────────────────────────────
    Dark ink on paper for long reading. Every color the board sets is given
    its light counterpart here; nothing else about the layout changes. */
@@ -2750,6 +2855,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-admin-action-btn:hover:not(:disabled) { background: #edf2fa; border-color: #7fa3d8; }
 .nge-triage-light .nge-triage-done-btn { color: #1d7038; border-color: #8fcba3; }
 .nge-triage-light .nge-triage-discard-btn { color: #a8271e; border-color: #e3aaa5; }
+.nge-triage-light .nge-triage-tally-item { background: #e3e8f0; color: #3a475c; }
+.nge-triage-light .nge-triage-tally-item--bug b { color: #b3261e; }
+.nge-triage-light .nge-triage-tally-item--feature b { color: #1d7038; }
 .nge-triage-light a { color: #1f5fc4; }
 .nge-triage-light :focus-visible { outline: 2px solid #2f6fd6; outline-offset: 2px; }
 @media (max-width: 1100px) {
