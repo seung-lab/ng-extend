@@ -165,6 +165,21 @@ async function loadReporters(rows: TriageRow[]) {
   } catch (e) { console.warn('[triage] could not load who submitted:', e); }
 }
 const reporterOf = (r: TriageRow) => (r.source === 'site_issue' ? reporters.value[r.source_id] : undefined);
+/** A steady color for a name, so each reporter is easy to spot on the board. */
+function avatarHue(name: string): number {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return h;
+}
+/** "5m", "3h", "2d": how long ago, short enough for a chip. */
+function ago(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (m < 60) return `${m}m`;
+  if (m < 60 * 36) return `${Math.round(m / 60)}h`;
+  return `${Math.round(m / 1440)}d`;
+}
 const shortDate = (iso: string) => {
   const d = new Date(iso);
   // Date and time, in the admin's own time zone (Ames 2026-10-10: "timestamp,
@@ -175,8 +190,8 @@ const shortDate = (iso: string) => {
 // ── Board: open work on top, finished and dismissed folded away ───────────
 // Slack and this tab write the same rows, so a dismiss, stop or "good" in a
 // Slack thread moves the card here too (after Refresh).
-type TriageGroupKey = 'decide' | 'progress' | 'done' | 'dismissed';
-const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, done: false, dismissed: false });
+type TriageGroupKey = 'decide' | 'hand' | 'robot' | 'test' | 'done' | 'dismissed';
+const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, hand: true, robot: true, test: true, done: false, dismissed: false });
 
 // The card you are working on stays marked, and stays in view when the list
 // reloads after an action (Ames 2026-10-05: sending an update reloaded the
@@ -229,18 +244,25 @@ function onBoardKey(e: KeyboardEvent) {
 }
 onMounted(() => document.addEventListener('keydown', onBoardKey));
 onUnmounted(() => document.removeEventListener('keydown', onBoardKey));
+// Where a report is on its way (Ames 2026-10-10: "you can have more
+// columns"). In progress used to be one pile; it is three now, by who has
+// the next move: you fixing it by hand, the robot, or you again to test.
+const ROBOT_YOUR_MOVE = ['testing', 'live_testing', 'needs_info', 'failed', 'changes_requested'];
 function triageGroupOf(r: TriageRow): TriageGroupKey {
   if (r.status === 'dismissed') return 'dismissed';
   if (r.status === 'done' || r.impl_state === 'deployed') return 'done';
   if (r.status === 'proposed') return 'decide';
-  return 'progress';
+  if (!r.impl_state) return 'hand';
+  return ROBOT_YOUR_MOVE.includes(r.impl_state) ? 'test' : 'robot';
 }
 const triageGroups = computed(() => {
-  const defs: { key: TriageGroupKey; title: string; hint: string; closed: boolean }[] = [
-    { key: 'decide', title: 'Needs your decision', hint: 'Approve or dismiss', closed: false },
-    { key: 'progress', title: 'In progress', hint: 'Approved: building, testing or waiting', closed: false },
-    { key: 'done', title: 'Done', hint: 'Shipped or handled', closed: true },
-    { key: 'dismissed', title: 'Dismissed', hint: 'Stopped or turned down', closed: true },
+  const defs: { key: TriageGroupKey; icon: string; title: string; hint: string; empty: string; closed: boolean }[] = [
+    { key: 'decide', icon: '📥', title: 'Inbox', hint: 'Needs your decision', empty: 'Inbox zero. Nicely done.', closed: false },
+    { key: 'hand', icon: '🛠', title: 'With Claude', hint: 'You are fixing it by hand', empty: 'Nothing on the bench.', closed: false },
+    { key: 'robot', icon: '🤖', title: 'Robot at work', hint: 'Queued, building or deploying', empty: 'The robot is resting.', closed: false },
+    { key: 'test', icon: '👀', title: 'Your move', hint: 'Test it, answer it or look at a failure', empty: 'Nothing waiting on you.', closed: false },
+    { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
+    { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
   ];
   return defs.map(d => ({ ...d, rows: triageRows.value.filter(r => triageGroupOf(r) === d.key && triageMatches(r)) }));
 });
@@ -324,9 +346,9 @@ function cheerFor(row: TriageRow) {
 // Done and Dismissed start folded to a narrow rail, so the two columns that
 // need attention get the width (Ames 2026-10-10). Click a column's heading
 // to fold or open it; the choice is remembered.
-const TRIAGE_FOLD_KEY = 'nge_triage_folded_v1';
+const TRIAGE_FOLD_KEY = 'nge_triage_folded_v2';
 const triageFolded = ref<Record<TriageGroupKey, boolean>>((() => {
-  const start = { decide: false, progress: false, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
+  const start = { decide: false, hand: false, robot: false, test: false, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
   try { return { ...start, ...(JSON.parse(localStorage.getItem(TRIAGE_FOLD_KEY) || '{}') || {}) }; } catch { return start; }
 })());
 function toggleFold(key: TriageGroupKey) {
@@ -357,7 +379,7 @@ async function markInProgress(row: TriageRow) {
       reviewed_by: who,
       reviewed_at: new Date().toISOString(),
     } });
-    triageOpen.value.progress = true;
+    triageOpen.value.hand = true;
     await loadTriage();
   } catch (e: any) {
     triageError.value = e?.message ?? String(e);
@@ -1960,13 +1982,14 @@ function practiceWhen(iso: string | null) {
           @click="triageBoard ? toggleFold(g.key) : (triageOpen[g.key] = !triageOpen[g.key])"
         >
           <span class="nge-triage-group-caret" aria-hidden="true">▸</span>
+          <span class="nge-triage-group-icon" aria-hidden="true">{{ g.icon }}</span>
           <span class="nge-triage-group-title">{{ g.title }}</span>
           <span class="nge-triage-group-count">{{ g.rows.length }}</span>
           <span class="nge-triage-group-hint">{{ g.hint }}</span>
         </button>
         <template v-if="triageBoard ? !isFolded(g.key) : triageOpen[g.key]">
         <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :data-triage-id="row.id"
-             :class="{ 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id }"
+             :class="[`nge-triage-card--${row.recommendation}`, { 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id }]"
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
@@ -1978,7 +2001,8 @@ function practiceWhen(iso: string | null) {
             <a v-if="slackThreadUrl(row)" class="nge-triage-link" :href="slackThreadUrl(row) || undefined" target="_blank" rel="noopener">Slack thread</a>
           </div>
           <div v-if="reporterOf(row)" class="nge-triage-from">
-            From <strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · {{ shortDate(reporterOf(row)?.at || '') }}</template>
+            <span class="nge-triage-avatar" aria-hidden="true" :style="{ '--hue': avatarHue(reporterOf(row)?.name || '') }">{{ (reporterOf(row)?.name || '?').slice(0, 1).toUpperCase() }}</span>
+            <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
           </div>
           <div v-if="row.source_excerpt" class="nge-triage-excerpt">"{{ row.source_excerpt }}"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
@@ -2104,7 +2128,7 @@ function practiceWhen(iso: string | null) {
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
           </div>
         </div>
-        <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">Nothing here</div>
+        <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">{{ g.empty }}</div>
         </template>
         </div>
         </div>
@@ -2708,7 +2732,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   scrollbar-width: thin; scrollbar-color: rgba(74, 158, 255, 0.3) transparent;
 }
 .nge-triage-board .nge-triage-col--decide { border-top: 3px solid #ff8d8d; }
-.nge-triage-board .nge-triage-col--progress { border-top: 3px solid #4fcfff; }
+.nge-triage-board .nge-triage-col--hand { border-top: 3px solid #4fcfff; }
+.nge-triage-board .nge-triage-col--robot { border-top: 3px solid #b99cff; }
+.nge-triage-board .nge-triage-col--test { border-top: 3px solid #ffc857; }
 .nge-triage-board .nge-triage-col--done { border-top: 3px solid #5ee8a8; }
 .nge-triage-board .nge-triage-col--dismissed { border-top: 3px solid #7f93ad; }
 /* Column headers stay put and are not folds here. */
@@ -2727,6 +2753,60 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-board .nge-triage-card--selected { cursor: default; }
 .nge-triage-col-empty { padding: 14px 4px; color: #62738c; font-size: 0.9em; text-align: center; }
+
+/* ── Chips ───────────────────────────────────────────────────────────────
+   On the board a report is a chip until you click it: a colored edge for
+   what kind it is, a face for who sent it, how long ago, two lines of what
+   they said. Clicking opens the whole card in place. */
+.nge-triage-group-icon { font-size: 1.05em; }
+.nge-triage-avatar, .nge-triage-ago { display: none; }
+.nge-triage-board .nge-triage-group-icon { margin-right: -2px; }
+.nge-triage-board .nge-triage-card { position: relative; border-left: 4px solid #6f7f98; transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease; }
+.nge-triage-board .nge-triage-card--bug_fix_spec { border-left-color: #ff7b72; }
+.nge-triage-board .nge-triage-card--new_feature { border-left-color: #5ad17f; }
+.nge-triage-board .nge-triage-card--message { border-left-color: #58b6f5; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) {
+  padding: 7px 9px 8px 10px; gap: 3px; border-radius: 12px;
+}
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected):hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35); }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected):active { transform: translateY(0); }
+/* one tidy line at the top of a chip: number, kind, state */
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-meta { gap: 5px; flex-wrap: nowrap; overflow: hidden; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-src,
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-status,
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-link { display: none; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-rec { font-size: 9.5px; padding: 1px 6px; white-space: nowrap; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-impl { font-size: 10px; padding: 1px 6px; white-space: nowrap; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-num { font-size: 10.5px; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-from {
+  display: flex; align-items: center; gap: 5px; font-size: 11.5px; white-space: nowrap; overflow: hidden;
+}
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-from-word,
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-when { display: none; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-ago { display: inline; }
+.nge-triage-board .nge-triage-avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  width: 18px; height: 18px; border-radius: 50%;
+  font: 700 10px/1 'Inter', system-ui, sans-serif; color: #fff;
+  background: hsl(var(--hue, 210) 58% 46%);
+}
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt {
+  font-size: 12.5px; line-height: 1.35; -webkit-line-clamp: 2;
+}
+/* six columns need room: the board scrolls sideways before it squeezes */
+.nge-triage-board .nge-triage-cols { overflow-x: auto; }
+.nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) { min-width: 210px; }
+.nge-triage-board .nge-triage-col-empty { font-style: normal; padding: 22px 8px; }
+.nge-triage-light .nge-triage-card:not(.nge-triage-card--selected):hover { box-shadow: 0 6px 16px rgba(20, 30, 50, 0.14); }
+.nge-triage-light .nge-triage-card { border-left-color: #9aa7ba; }
+.nge-triage-light .nge-triage-card--bug_fix_spec { border-left-color: #e2584f; }
+.nge-triage-light .nge-triage-card--new_feature { border-left-color: #2e9e68; }
+.nge-triage-light .nge-triage-card--message { border-left-color: #2f8fd6; }
+.nge-triage-light .nge-triage-card--selected { border-left-color: #2f6fd6; }
+@media (prefers-reduced-motion: reduce) {
+  .nge-triage-board .nge-triage-card { transition: none; }
+  .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected):hover { transform: none; }
+}
 
 /* Folded columns: a narrow rail with the heading turned on its side. */
 .nge-triage-board .nge-triage-cols { transition: grid-template-columns 0.22s ease; }
@@ -2803,7 +2883,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   scrollbar-color: #b9c4d6 transparent;
 }
 .nge-triage-light .nge-triage-col--decide { border-top-color: #e2584f; }
-.nge-triage-light .nge-triage-col--progress { border-top-color: #2f8fd6; }
+.nge-triage-light .nge-triage-col--hand { border-top-color: #2f8fd6; }
+.nge-triage-light .nge-triage-col--robot { border-top-color: #7a5fd0; }
+.nge-triage-light .nge-triage-col--test { border-top-color: #d99a1c; }
 .nge-triage-light .nge-triage-col--done { border-top-color: #2e9e68; }
 .nge-triage-light .nge-triage-col--dismissed { border-top-color: #8793a6; }
 .nge-triage-light .nge-triage-group { background: #e9edf4; border-bottom-color: #d3dae6; color: #1c2635; }
