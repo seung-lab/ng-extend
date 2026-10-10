@@ -13,6 +13,9 @@
  * (7 pm Eastern in summer, 6 pm in winter, like the weekly recap), or by hand:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/daily-deploy-digest.mjs [--dry-run]
  * --dry-run prints the notification instead of sending it (no Supabase needed).
+ * --preview sends it only to the admins (one copy each, titled "(preview)", no
+ * chat line) so the look can be checked without telling every player; a
+ * preview never counts as a digest for the daily window.
  * POST_TO_CHAT=false keeps it out of chat (the chat-announcements job posts
  * one line when a notification has post_to_chat set).
  */
@@ -22,6 +25,7 @@ const LIVE_URL = process.env.PYR_LIVE_URL ||
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const dryRun = process.argv.includes('--dry-run');
+const preview = process.argv.includes('--preview');
 const postToChat = (process.env.POST_TO_CHAT ?? 'true') !== 'false';
 
 // Every digest title starts with this, which is how the last one is found.
@@ -77,7 +81,8 @@ async function liveChangelog() {
 async function lastDigestSentAt() {
   if (!SUPABASE_URL || !SUPABASE_KEY) return null;
   const rows = await supabaseGet('notifications',
-      `select=send_at&title=like.${encodeURIComponent(DIGEST_TAG + '*')}&order=send_at.desc&limit=1`);
+      `select=send_at&title=like.${encodeURIComponent(DIGEST_TAG + '*')}` +
+      `&target_type=eq.all&order=send_at.desc&limit=1`);
   return rows[0]?.send_at ? Date.parse(rows[0].send_at) : null;
 }
 
