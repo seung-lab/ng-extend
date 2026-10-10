@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-10T16:11:26Z",
+      "title": "The last annotations in the list can be reached",
+      "items": [
+        "The annotation list now scrolls all the way to its last row. Before, the end of a long list was cut off."
+      ]
+    },
+    {
       "at": "2026-10-10T16:00:42Z",
       "title": "Click an annotation to find it in the list",
       "items": [
