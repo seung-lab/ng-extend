@@ -382,18 +382,26 @@ textarea.neuroglancer-annotation-details-description:focus {
   font-size: 11px !important; color: rgba(160, 185, 220, 0.85);
 }
 .nge-ann-top-row { cursor: pointer; }
-.nge-ann-stepper { margin-left: auto; display: inline-flex; gap: 3px; }
-.nge-ann-stepper + .nge-ann-count { margin-left: 0; }
+/* The bar that holds the previous / next arrows: taller, with the arrows in
+   the middle and big enough to hit without aiming (Ames 2026-10-10). The
+   checkbox sits on the left and the count on the right, each taking an equal
+   share, so the arrows land on the true centre. */
+.nge-ann-top-row { min-height: 40px; padding-top: 6px; padding-bottom: 6px; gap: 6px; }
+.nge-ann-top-row > span:not(.nge-ann-stepper):not(.nge-ann-count) { flex: 1 1 0; min-width: 0; }
+.nge-ann-stepper { flex: 0 0 auto; display: inline-flex; gap: 6px; margin: 0 4px; }
+/* 19px: the checkbox and its gap on the other side, so both halves match */
+.nge-ann-top-row .nge-ann-count { flex: 1 1 19px; min-width: 0; margin-left: 0; padding-left: 0; text-align: right; }
 .nge-ann-step {
-  width: 22px; height: 20px; padding: 0; line-height: 1;
-  border-radius: 4px; border: 1px solid rgba(79, 207, 255, 0.28);
-  background: rgba(79, 207, 255, 0.07); color: #bfe6ff;
-  font: 600 15px/1 'Inter', system-ui, sans-serif; cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+  width: 38px; height: 30px; padding: 0 0 3px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; border: 1px solid rgba(79, 207, 255, 0.4);
+  background: rgba(79, 207, 255, 0.1); color: #d9f1ff;
+  font: 600 24px/1 'Inter', system-ui, sans-serif; cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.06s, box-shadow 0.12s;
 }
-.nge-ann-step:hover { background: rgba(79, 207, 255, 0.2); border-color: rgba(79, 207, 255, 0.7); }
+.nge-ann-step:hover { background: rgba(79, 207, 255, 0.24); border-color: rgba(79, 207, 255, 0.85); box-shadow: 0 0 10px rgba(79, 207, 255, 0.25); }
 .nge-ann-step:active { transform: translateY(1px); }
-.nge-ann-step:focus-visible { outline: 2px solid #4fcfff; outline-offset: 1px; }
+.nge-ann-step:focus-visible { outline: 2px solid #4fcfff; outline-offset: 2px; }
 .nge-ann-count { margin-left: auto; padding-left: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; color: #bfe6ff; pointer-events: none; }
 .nge-ann-top-row input[type='checkbox'] { accent-color: #4fcfff; margin: 0; }
 .nge-ann-size-row input[type='range'] { flex: 1; min-width: 0; accent-color: #4fcfff; }
