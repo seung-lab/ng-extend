@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-10T15:49:00Z",
+      "title": "Chat: search, bold and underline, and your own messages",
+      "items": [
+        "Search chat with the magnifier at the top of the chat. Click a result to see it in the conversation, and press Esc to go back.",
+        "Type *bold* or _underline_ in a message, or select text and press Ctrl+B or Ctrl+U.",
+        "In Settings, switch on Mark my own messages in chat to put a thin bar beside what you wrote."
+      ]
+    },
+    {
       "at": "2026-10-10T15:34:00Z",
       "title": "Notifications stay with you",
       "items": [
