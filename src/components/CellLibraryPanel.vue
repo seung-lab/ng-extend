@@ -686,16 +686,45 @@ function heldHere(held: ProofreadingTask[]): ProofreadingTask[] {
 // (10 on Retina). Each needs its own point: the sheet's soma coordinates.
 const batchClaiming = ref<{ done: number; total: number } | null>(null);
 const batchRoom = computed(() => Math.max(0, backend.claimLimitFor() - backend.myActiveClaimCount()));
+/** A cell Claim N can take: available, with a point to claim it at. */
+function claimable(c: CellRow): boolean {
+  if (c.status !== 'pending' || !c.segId) return false;
+  const p = c.claimPoint ?? parseCoords(c.somaCoords || c.nucCoords);
+  return !!(p[0] || p[1] || p[2]);
+}
+// Searching for one cell and pressing Claim N takes that cell AND the ones
+// after it in the Available list (Krzysztof 2026-10-09: "search for a specific
+// cell ... and claim that cell and the next n cells"). A search that finds
+// one cell used to leave only that one to claim. A search that finds several
+// (a cell type, say) still claims from the matches, as before.
+const batchStart = computed<CellRow | null>(() => {
+  if (filter.value !== 'available' || !search.value.trim()) return null;
+  const found = filteredCells.value.filter(claimable);
+  return found.length === 1 ? found[0] : null;
+});
+const batchCandidates = computed<CellRow[]>(() => {
+  const start = batchStart.value;
+  if (!start) return filteredCells.value.filter(claimable);
+  const all = datasetScopedCells.value.filter(c => c.status === 'pending');
+  const i = all.indexOf(start);
+  return (i < 0 ? [start] : all.slice(i)).filter(claimable);
+});
+const batchStartName = computed(() => {
+  const c = batchStart.value;
+  return c ? (c.index || '…' + c.segId.slice(-6)) : '';
+});
+// "Claim this + next 9": the searched cell and as many after it as the
+// player has room for (fewer when they already hold some, or the list ends).
+const batchFromLabel = computed(() => {
+  const n = Math.min(batchRoom.value, batchCandidates.value.length);
+  return n > 1 ? `Claim this + next ${n - 1}` : 'Claim this';
+});
 async function batchClaim() {
   if (!isLoggedIn.value || batchClaiming.value) return;
   const room = heldHere(await backend.loadMyActiveClaims());
   const n = backend.claimLimitFor() - room.length;
   if (n <= 0) { showClaimLimit(room); return; }
-  const picks = filteredCells.value.filter(c => {
-    if (c.status !== 'pending' || !c.segId) return false;
-    const p = c.claimPoint ?? parseCoords(c.somaCoords || c.nucCoords);
-    return !!(p[0] || p[1] || p[2]);
-  }).slice(0, n);
+  const picks = batchCandidates.value.slice(0, n);
   if (!picks.length) { claimError.value = 'No available cells with a starting point to claim.'; return; }
   batchClaiming.value = { done: 0, total: picks.length };
   let ok = 0, lastError = '';
@@ -2568,8 +2597,10 @@ const panelStyle = computed(() => ({
           />
           <button v-if="filter === 'available' && isLoggedIn && (batchRoom > 0 || batchClaiming)"
                   class="nge-cl-btn nge-cl-batch-claim" :disabled="!!batchClaiming" @click="batchClaim"
-                  :title="`Claim the next ${batchRoom} available cells in this list (up to ${backend.claimLimitFor()} at a time)`">
-            <span v-if="batchClaiming" class="nge-cl-spin" />{{ batchClaiming ? `Claiming ${batchClaiming.done}/${batchClaiming.total}…` : `Claim ${batchRoom}` }}
+                  :title="batchStart
+                    ? `Claim ${batchStartName} and the available cells after it, ${Math.min(batchRoom, batchCandidates.length)} in all (up to ${backend.claimLimitFor()} at a time)`
+                    : `Claim the next ${batchRoom} available cells in this list (up to ${backend.claimLimitFor()} at a time)`">
+            <span v-if="batchClaiming" class="nge-cl-spin" />{{ batchClaiming ? `Claiming ${batchClaiming.done}/${batchClaiming.total}…` : batchStart ? batchFromLabel : `Claim ${batchRoom}` }}
           </button>
         </div>
 
