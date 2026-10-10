@@ -52,15 +52,22 @@ export function startAnnotationClickSelect(viewer: any) {
     try {
       // Bring the layer's list forward if another layer's panel is showing.
       const sel = viewer.selectedLayer;
-      if (sel && sel.layer !== managed) sel.layer = managed;
-      if (sel && !sel.visible) sel.visible = true;
-      try { if (managed.layer.tabs?.value !== 'annotations') managed.layer.tabs.value = 'annotations'; } catch { /* no such tab */ }
-      // Unpinned first, then pinned: the change to pinned is what makes a
-      // list that has only just been drawn scroll to the row.
-      managed.layer.selectAnnotation(state, id, false);
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        try { managed.layer.selectAnnotation(state, id, true); } catch { /* the layer went away */ }
-      }));
+      let opened = false;
+      if (sel && sel.layer !== managed) { sel.layer = managed; opened = true; }
+      if (sel && !sel.visible) { sel.visible = true; opened = true; }
+      try { if (managed.layer.tabs?.value !== 'annotations') { managed.layer.tabs.value = 'annotations'; opened = true; } } catch { /* no such tab */ }
+      // Unpinned first, then pinned: the change to pinned is what makes the
+      // list scroll to the row.
+      const pin = () => {
+        managed.layer.selectAnnotation(state, id, false);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          try { managed.layer.selectAnnotation(state, id, true); } catch { /* the layer went away */ }
+        }));
+      };
+      pin();
+      // A list that had to be brought forward is not laid out yet when the
+      // first scroll is asked for: ask once more when it is.
+      if (opened) setTimeout(() => { try { pin(); } catch { /* the layer went away */ } }, 400);
     } catch (err) {
       console.warn('[annotation click] could not select', err);
     }
