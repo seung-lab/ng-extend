@@ -258,8 +258,7 @@ function triageMatches(r: TriageRow): boolean {
   const who = reporterOf(r);
   const hay = [n ? `#${n}` : '', who?.name, who?.category, r.source_excerpt, r.rationale, r.spec, r.proposed_message,
     r.approver_note, r.impl_summary, r.result_note, r.reviewed_by, r.status, r.impl_state, TRIAGE_LABELS[r.recommendation],
-    ...(r.feedback_log || []).map(f => f.text)].filter(Boolean).join(' 
- ').toLowerCase();
+    ...(r.feedback_log || []).map(f => f.text)].filter(Boolean).join(' | ').toLowerCase();
   return words.every(w => hay.includes(w));
 }
 const triageMatchCount = computed(() => triageRows.value.filter(triageMatches).length);
