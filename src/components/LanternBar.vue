@@ -9,6 +9,7 @@ import { lantern, LANTERN_LIMITS as L } from '../util/lantern';
 import { spooky, callGhost, callTheReaper, shoo } from '../util/spooky';
 import { useProofreadingBackendStore } from '../store';
 import ghostIcon from '../images/ghost-icon.png';
+import reaperIcon from '../images/reaper-icon.png';
 
 // The ghost button (Halloween: util/spooky.ts). Everyone has it in Halloween
 // week; outside it, admins only, for trying it out.
@@ -89,12 +90,11 @@ function resetPlace() {
         <button type="button" class="nge-lantern-ghost" :class="{ 'is-on': spooky.on }" title="Call a ghost" aria-label="Call a ghost" @click="callGhost">
           <img :src="ghostIcon" alt="" draggable="false" />
         </button>
-        <template v-if="spooky.on">
-          <button type="button" class="nge-lantern-mini nge-lantern-mini--reaper" title="Call the reaper" aria-label="Call the reaper" @click="callTheReaper">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M4.2 14.5 10.6 2.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M10.6 2.2c-3.4-.9-6.3.2-8.2 2.7 2.4-1 4.9-.9 7.2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="currentColor" fill-opacity=".35"/></svg>
-          </button>
-          <button type="button" class="nge-lantern-mini" title="Send them away" aria-label="Send them away" @click="shoo">shoo</button>
-        </template>
+        <!-- The reaper is held back from players for now: admins only, to try him out. -->
+        <button v-if="backend.isAdmin" type="button" class="nge-lantern-ghost nge-lantern-ghost--reaper" title="Call the reaper (admins only, for testing)" aria-label="Call the reaper" @click="callTheReaper">
+          <img :src="reaperIcon" alt="" draggable="false" />
+        </button>
+        <button v-if="spooky.on" type="button" class="nge-lantern-mini" title="Send them away" aria-label="Send them away" @click="shoo">shoo</button>
       </span>
       <button type="button" class="nge-lantern-off" title="Turn the Lantern off (Shift+N)" aria-label="Turn the Lantern off" @click="lantern.on = false">×</button>
     </div>
@@ -149,8 +149,8 @@ function resetPlace() {
 .nge-lantern-ghost:active { transform: scale(0.9); }
 .nge-lantern-mini { height: 24px; padding: 0 7px; border: 1px solid rgba(196, 228, 255, 0.2); border-radius: 6px; background: none; cursor: pointer; font: inherit; font-size: 11px; color: rgba(190, 205, 225, 0.85); display: inline-flex; align-items: center; }
 .nge-lantern-mini:hover, .nge-lantern-mini:focus-visible { color: #fff; border-color: rgba(196, 228, 255, 0.5); outline: none; }
-.nge-lantern-mini--reaper { color: #ff8f84; border-color: rgba(255, 120, 110, 0.35); }
-.nge-lantern-mini--reaper:hover, .nge-lantern-mini--reaper:focus-visible { color: #ffc2bb; border-color: rgba(255, 120, 110, 0.75); }
+.nge-lantern-ghost--reaper:hover, .nge-lantern-ghost--reaper:focus-visible { border-color: rgba(255, 120, 110, 0.6); background: rgba(255, 120, 110, 0.08); }
+.nge-lantern-ghost--reaper:hover img, .nge-lantern-ghost--reaper:focus-visible img { filter: drop-shadow(0 0 5px rgba(255, 90, 70, 0.85)); }
 @media (prefers-reduced-motion: reduce) { .nge-lantern-ghost { transition: none; } .nge-lantern-ghost:hover { transform: none; } }
 .nge-lantern-off {
   padding: 1px 7px; border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer;

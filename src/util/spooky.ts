@@ -48,29 +48,36 @@ export const spooky = reactive({ on: inSeason() || testOn(), season: inSeason() 
 const haunted = () => lantern.on && spooky.on;
 
 type Kind = 'ghost' | 'reaper' | 'boo';
-// Distances are in units of the view's height at the moment a visitor
-// appears, so each is a sensible size whatever the zoom.
+// The ghost and the reaper are sized and placed by the LANTERN: its reach is
+// their yardstick. So they are a fixed size in the data, the same against the
+// cell however far you are zoomed, and they turn up at the edge of the light
+// (Ames 2026-10-10: sized by the view, the ghost was as big as the cell body
+// from far away and bigger than it close up; "he should appear close to the
+// edge of the area lit by lantern"). The boo! ghost is the exception: it pops
+// up in front of you, so it is sized by the view.
 const KINDS: Record<Kind, {
-  model: 'ghost' | 'reaper'; size: number; near: number; far: number;
+  model: 'ghost' | 'reaper';
+  by: 'lantern' | 'view';          // what size, near and far are fractions of
+  size: number; near: number; far: number;
   scared: number;                  // it goes when the view centre is this many of its own heights away (0 = never)
   appearS: number; vanishS: number; stayS: [number, number];
   gapS: [number, number];          // how long after it has gone before the next visitor
   alpha: number; glow: [number, number, number]; rim: [number, number, number];
 }> = {
-  // The ghost is small (Ames: "even smaller"), and comes back two seconds
-  // after it goes, somewhere else ("he reappears 2 seconds later in a
-  // different spot").
-  ghost:  { model: 'ghost',  size: 0.045, near: 0.20, far: 0.38, scared: 2.4, appearS: 1.0, vanishS: 0.9, stayS: [22, 40], gapS: [2, 2], alpha: 0.86, glow: [0.16, 0.2, 0.26], rim: [0.55, 0.9, 1.0] },
-  reaper: { model: 'reaper', size: 0.11,  near: 0.34, far: 0.44, scared: 1.6, appearS: 1.8, vanishS: 1.4, stayS: [14, 22], gapS: [6, 14], alpha: 0.96, glow: [0.07, 0.02, 0.02], rim: [1.0, 0.16, 0.1] },
-  boo:    { model: 'ghost',  size: 0.15,  near: 0,    far: 0,    scared: 0,   appearS: 0.34, vanishS: 1.15, stayS: [1.0, 1.0], gapS: [0, 0], alpha: 0.95, glow: [0.2, 0.24, 0.3], rim: [0.6, 0.92, 1.0] },
+  // The ghost comes back two seconds after it goes, somewhere else.
+  ghost:  { model: 'ghost',  by: 'lantern', size: 0.3,  near: 0.85, far: 1.1, scared: 1.7, appearS: 0.9, vanishS: 0.9, stayS: [22, 40], gapS: [2, 2], alpha: 0.86, glow: [0.16, 0.2, 0.26], rim: [0.55, 0.9, 1.0] },
+  reaper: { model: 'reaper', by: 'lantern', size: 0.7,  near: 1.2,  far: 1.5, scared: 1.0, appearS: 1.8, vanishS: 1.4, stayS: [14, 22], gapS: [6, 14], alpha: 0.96, glow: [0.07, 0.02, 0.02], rim: [1.0, 0.16, 0.1] },
+  boo:    { model: 'ghost',  by: 'view',    size: 0.15, near: 0,    far: 0,   scared: 0,   appearS: 0.34, vanishS: 1.15, stayS: [1.0, 1.0], gapS: [0, 0], alpha: 0.95, glow: [0.2, 0.24, 0.3], rim: [0.6, 0.92, 1.0] },
 };
 // How near you may come before a visitor goes also depends on how far in you
 // are zoomed: zoomed in, you can get closer (Ames). It is the smaller of its
 // own "scared" distance and this share of what the view shows right now, and
 // never less than about its own height.
 const SCARED_OF_VIEW = 0.11;
-const FIRST_S: [number, number] = [2.5, 6];    // the first, after the Lantern is lit
-const REAPER_ODDS = 0.07;                      // how often the next visitor is the reaper
+const FIRST_S: [number, number] = [0.4, 0.9];  // the first, after the Lantern is lit (it was up to 6 s: too long)
+// The reaper does not come by himself yet (Ames 2026-10-10: "hold off on
+// reaper for now"). Admins can call him from the Lantern bar to try him out.
+const REAPER_ODDS = 0;
 const BOO_EVERY_MS = 6000;
 const between = ([a, b]: [number, number]) => a + Math.random() * (b - a);
 
@@ -142,6 +149,8 @@ function load(model: 'ghost' | 'reaper') {
 
 function arrive(kind: Kind, f: Frame, now: number) {
   const k = KINDS[kind], h = f.heightNm;
+  // the yardstick: the lantern's reach, or the height of the view
+  const unit = k.by === 'lantern' ? Math.max(1000, lantern.sizeUm * 1000) : h;
   const at = (x: number, y: number, z: number) => [0, 1, 2].map(i => f.centreNm[i] + f.right[i] * x + f.up[i] * y + f.eye[i] * z);
   let pos: number[] = [], drift = [0, 0, 0];
   if (kind === 'boo') {
@@ -152,18 +161,18 @@ function arrive(kind: Kind, f: Frame, now: number) {
     let angle = 0;
     for (let tries = 0; tries < 8; tries++) {
       angle = Math.random() * Math.PI * 2;
-      const far = (k.near + Math.random() * (k.far - k.near)) * h;
-      pos = at(Math.cos(angle) * far, Math.sin(angle) * far, (Math.random() - 0.5) * 0.16 * h);
-      if (!lastSpot || dist(pos, lastSpot) > 0.22 * h) break;
+      const far = (k.near + Math.random() * (k.far - k.near)) * unit;
+      pos = at(Math.cos(angle) * far, Math.sin(angle) * far, (Math.random() - 0.5) * 0.3 * unit);
+      if (!lastSpot || dist(pos, lastSpot) > 0.7 * unit) break;
     }
     if (kind === 'reaper') {
       // he drifts slowly round you, not toward you
-      const speed = 0.012 * h * (Math.random() < 0.5 ? -1 : 1);
+      const speed = 0.05 * unit * (Math.random() < 0.5 ? -1 : 1);
       drift = [0, 1, 2].map(i => (-f.right[i] * Math.sin(angle) + f.up[i] * Math.cos(angle)) * speed);
     }
   }
   visitors.push({
-    kind, posNm: pos, sizeNm: k.size * h, viewNm: h, born: now, leaveAt: now + between(k.stayS) * 1000, goneAt: null,
+    kind, posNm: pos, sizeNm: k.size * unit, viewNm: h, born: now, leaveAt: now + between(k.stayS) * 1000, goneAt: null,
     seed: Math.random() * 40, drift,
     prop: { mesh: meshes[k.model]!, modelMat: mat4.create(), alpha: k.alpha, dissolve: 1, seed: 0, glow: k.glow, rim: k.rim },
   });
@@ -279,6 +288,7 @@ function stop() {
 function sync() {
   if (document.hidden) { stop(); return; }
   if (haunted()) {
+    load('ghost');                 // fetched now, so the first one is not kept waiting
     if (timer === null) nextAt = performance.now() + between(FIRST_S) * 1000;
     start();
   } else if (!visitors.length) stop();
