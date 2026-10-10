@@ -1609,6 +1609,104 @@ class GrapheneGraphServerInterface {
     }
     return centroidsTransformed;
   }
+
+  // ── EyeWire II Highlight: "toward the soma" and "beyond this point" ──
+  // A cell is a graph of small pieces (level 2 chunks). The server gives the
+  // links between a cell's pieces, and a point inside each piece, which is
+  // all it takes to know what lies on which side of a click.
+
+  /** The links between the pieces of a cell, as pairs of piece ids. */
+  async ngeBranchEdges(rootId: string): Promise<[string, string][]> {
+    const {url} = this;
+    if (url === '') return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
+    const response = await cancellableFetchSpecialOk(
+        this.credentialsProvider, `${url}/node/${rootId}/lvl2_graph?int64_as_str=1`, {}, responseIdentity);
+    const edges = (await response.json())['edge_graph'];
+    if (!Array.isArray(edges)) throw new Error('The server did not return this cell\'s branches.');
+    return edges.map((e: any[]) => [String(e[0]), String(e[1])] as [string, string]);
+  }
+
+  /** The piece of the cell that a supervoxel belongs to. */
+  async ngePieceOf(supervoxelId: string): Promise<string> {
+    const {url} = this;
+    if (url === '') return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
+    const response = await cancellableFetchSpecialOk(
+        this.credentialsProvider, `${url}/node/${supervoxelId}/root?int64_as_str=1&stop_layer=2`, {}, responseIdentity);
+    return String((await response.json())['root_id']);
+  }
+
+  /** A point inside each piece, in NANOMETERS. From the server's store of
+   *  piece positions where the dataset has one (the retina does). Where it
+   *  has none (the Sandbox), or for any piece it is missing, the middle of
+   *  the piece's chunk of the volume, which the piece's own id spells out:
+   *  coarser, a point every few microns, but always there. */
+  async ngePiecePoints(ids: string[]): Promise<Map<string, number[]>> {
+    const {url} = this;
+    // .../segmentation/api/v1/table/<name>  ->  .../l2cache/api/v1/table/<name>
+    const m = url.match(/^(https:\/\/[^/]+)\/segmentation\/(?:api\/v1\/)?table\/([^/?#]+)/);
+    if (!m) throw new Error('This dataset has no map of its branches.');
+    const out = new Map<string, number[]>();
+    const wanted = ids.filter(id => /^\d+$/.test(id));
+    try {
+      const BATCH = 2000;
+      for (let i = 0; i < wanted.length; i += BATCH) {
+        const batch = wanted.slice(i, i + BATCH);
+        // The ids are larger than a JavaScript number holds: written as text.
+        const response = await cancellableFetchSpecialOk(
+            this.credentialsProvider,
+            `${m[1]}/l2cache/api/v1/table/${m[2]}/attributes?attribute_names=rep_coord_nm&int64_as_str=1`,
+            {method: 'POST', headers: {'Content-Type': 'application/json'}, body: `{"l2_ids":[${batch.join(',')}]}`},
+            responseIdentity);
+        const json = await response.json();
+        for (const id of batch) {
+          const pt = json?.[id]?.['rep_coord_nm'];
+          if (Array.isArray(pt) && pt.length === 3 && pt.every((v: any) => Number.isFinite(v))) out.set(id, pt.map(Number));
+        }
+      }
+    } catch (e) {
+      console.info('[highlight] no stored piece positions for this dataset, using chunk middles:', (e as any)?.message);
+    }
+    if (out.size < wanted.length) {
+      const middle = await this.ngeChunkMiddle(m[1], m[2]);
+      for (const id of wanted) if (!out.has(id)) { const p = middle(id); if (p) out.set(id, p); }
+    }
+    return out;
+  }
+
+  /** Where a piece's chunk of the volume is, read from the piece's id. A
+   *  level 2 id is, from the top bit down: the layer, then the chunk's x, y
+   *  and z, then a number within the chunk. */
+  private ngeChunkInfo = new Map<string, Promise<(id: string) => number[]|undefined>>();
+  ngeChunkMiddle(host: string, table: string): Promise<(id: string) => number[]|undefined> {
+    const key = `${host}/${table}`;
+    let made = this.ngeChunkInfo.get(key);
+    if (!made) {
+      made = (async () => {
+        const response = await cancellableFetchSpecialOk(
+            this.credentialsProvider, `${host}/segmentation/table/${table}/info`, {}, responseIdentity);
+        const info = await response.json();
+        const graph = info?.['graph'], scale = info?.['scales']?.[0];
+        const layerBits = Number(graph?.['n_bits_for_layer_id']);
+        const bits = Number(graph?.['spatial_bit_masks']?.['2']);
+        const chunk: number[] = graph?.['chunk_size'], res: number[] = scale?.['resolution'];
+        if (!Number.isFinite(layerBits) || !Number.isFinite(bits) || !Array.isArray(chunk) || !Array.isArray(res)) {
+          throw new Error('This dataset has no map of its branches.');
+        }
+        const offset: number[] = info?.['chunks_start_at_voxel_offset'] && Array.isArray(scale?.['voxel_offset']) ? scale['voxel_offset'] : [0, 0, 0];
+        const mask = (BigInt(1) << BigInt(bits)) - BigInt(1);
+        return (id: string) => {
+          let n: bigint;
+          try { n = BigInt(id); } catch { return undefined; }
+          if (Number(n >> BigInt(64 - layerBits)) !== 2) return undefined;
+          const at = (k: number) => Number((n >> BigInt(64 - layerBits - bits * (k + 1))) & mask);
+          return [0, 1, 2].map(k => (offset[k] + (at(k) + 0.5) * chunk[k]) * res[k]);
+        };
+      })();
+      this.ngeChunkInfo.set(key, made);
+      made.catch(() => this.ngeChunkInfo.delete(key));
+    }
+    return made;
+  }
 }
 
 class GrapheneGraphSource extends SegmentationGraphSource {
@@ -2507,4 +2605,25 @@ export async function ngeGrapheneFindPath(
   // quick mode returns chunk positions, a staircase beside the branch.
   const centroids = await connection.graph.graphServer.findPath(a, b, precise, toNm);
   return centroids.map(pt => pt.map((v, i) => v * toNm[i]));
+}
+
+/** The branch graph of a cell for Highlight mode: the links between its
+ *  pieces and a point (in NANOMETERS) inside each piece. */
+export async function ngeGrapheneBranchGraph(layer: SegmentationUserLayer, rootId: string):
+    Promise<{edges: [string, string][], points: Map<string, number[]>}> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const server = connection.graph.graphServer as any;
+  const edges: [string, string][] = await server.ngeBranchEdges(rootId);
+  const ids = new Set<string>();
+  for (const [a, b] of edges) { ids.add(a); ids.add(b); }
+  const points: Map<string, number[]> = await server.ngePiecePoints([...ids]);
+  return {edges, points};
+}
+
+/** The piece of its cell that a pick landed in, or undefined. */
+export async function ngeGraphenePieceOf(layer: SegmentationUserLayer, pick: SegmentSelection): Promise<string|undefined> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) return undefined;
+  try { return await (connection.graph.graphServer as any).ngePieceOf(pick.segmentId.toString()); } catch { return undefined; }
 }

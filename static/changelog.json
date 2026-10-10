@@ -2,6 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-10T15:14:00Z",
+      "title": "Highlight: to the soma, and beyond a point",
+      "items": [
+        "In Highlight mode, after your first Ctrl + click, To soma marks the way from that point back to the soma.",
+        "Beyond marks every branch on the far side of that point, away from the soma.",
+        "If the cell's soma is not on record, Pyr asks you to click it once, and keeps it as a point in a Soma layer.",
+        "A two click mark that the server could not trace is now drawn from the cell's own branch map instead of failing.",
+        "Shift + H turns Highlight mode on and off.",
+        "The Show and Hide switch in the Highlight box is quieter.",
+        "Thanks to Krzysztof Kruk for the idea."
+      ]
+    },
+    {
       "at": "2026-10-10T14:56:00Z",
       "title": "Truer edit counts and a few extras",
       "items": [

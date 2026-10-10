@@ -8,8 +8,9 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import { startLoader, type Live } from '../find_path_status';
-import { runPanelTrace, runParticleBurst } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
+import type { BranchWay } from '../util/branch_tree';
+import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -50,6 +51,8 @@ function removeStyle(s: HighlightStyle) {
   if (styleKey.value === s.key) styleKey.value = styles.value[0].key;
 }
 const first = ref<Pick | null>(null);
+/** Set while one more click is awaited, to say which side the soma is on. */
+const branchWay = ref<BranchWay | null>(null);
 const busy = ref(false);
 const message = ref('');
 const messageBad = ref(false);
@@ -140,6 +143,7 @@ async function setSlim(v: boolean) {
 /** The one line the strip has room for. */
 const slimStep = computed(() => {
   if (messageBad.value && message.value) return message.value;
+  if (branchWay.value) return 'Ctrl + click the soma';
   if (first.value) return 'Now the end';
   if (message.value === 'Highlight complete') return stat.value ? `Done, ${stat.value}` : 'Done';
   return 'Ctrl + click';
@@ -217,38 +221,96 @@ async function place(x: number, y: number) {
     return;
   }
   const a = first.value;
+  // One more click was asked for, to say which side the soma is on.
+  const way = branchWay.value;
+  if (way) {
+    branchWay.value = null;
+    first.value = null;
+    try { showEndMarker(pick); } catch (e) { console.warn('[highlight] end marker failed:', e); }
+    await trace(wanted => addBranchHighlight(a, way, styleOf(), pick, wanted), 'pieces');
+    return;
+  }
   first.value = null;
   try { showEndMarker(pick); } catch (e) { console.warn('[highlight] end marker failed:', e); }
+  await trace(wanted => addHighlight(a, pick, styleOf(), wanted), 'points');
+}
+
+// ── To soma, and Beyond ───────────────────────────────────────────────────
+// With one point placed: To soma marks the way back to the soma, Beyond
+// marks every branch on the far side of the point (Krzysztof Kruk's idea,
+// after the first EyeWire's highlight parents and children). When the soma
+// is not known, one more click on the soma side says which way is which.
+async function markBranch(way: BranchWay) {
+  const a = first.value;
+  if (!a || busy.value) return;
+  try {
+    first.value = null;
+    await trace(wanted => addBranchHighlight(a, way, styleOf(), undefined, wanted), 'pieces', true);
+  } catch (e) {
+    if (!(e instanceof NeedsSomaSide)) throw e;
+    // Keep the point, and wait for the click that orients it.
+    first.value = a;
+    branchWay.value = way;
+    try { showStartMarker(a, styleOf()); } catch { /* shown already */ }
+    say('');   // the line under the buttons asks for the soma
+  }
+}
+
+// The ask for the soma lights up as it arrives: one head of light laps its
+// border and a few sparks leave it, in the soma layer's amber. Once.
+const askEl = ref<HTMLElement | null>(null);
+watch(branchWay, async way => {
+  if (!way) return;
+  await nextTick();
+  const el = askEl.value;
+  if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  try {
+    runPanelLap(el);
+    const r = el.getBoundingClientRect();
+    runParticleBurst(r.left + 18, r.top + r.height / 2, '255,210,77');
+  } catch (e) { console.warn('[highlight] ask animation failed:', e); }
+});
+
+/**
+ * Run one marking job behind the search band, with the same limits whatever
+ * is being marked. The request has no time limit of its own, so a server
+ * that never answers left the panel on "Tracing" for good (Krzysztof
+ * 2026-10-02): give up after TRACE_LIMIT_MS, or when the player presses
+ * Stop. `passSomaAsk` lets the "soma not known" answer through to the caller.
+ */
+async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit: string, passSomaAsk = false) {
   busy.value = true;
   say('');   // the band at the foot of the box says it is tracing
-  // The path request has no time limit of its own, so a server that never
-  // answers left the panel on "Tracing" for good (Krzysztof 2026-10-02).
-  // Give up after TRACE_LIMIT_MS, or when the player presses Stop.
   let wanted = true;
   let timer = 0;
+  let asked: NeedsSomaSide | null = null;
   const gaveUp = new Promise<never>((_, reject) => {
     stopTrace = () => reject(new Error('Stopped. Nothing was marked.'));
-    timer = window.setTimeout(() => reject(new Error('The server took too long to trace that path. Nothing was marked. Try again, or pick two closer points.')), TRACE_LIMIT_MS);
+    timer = window.setTimeout(() => reject(new Error('The server took too long. Nothing was marked. Try again, or pick two closer points.')), TRACE_LIMIT_MS);
   });
   try {
-    const n = await Promise.race([addHighlight(a, pick, styleOf(), () => wanted), gaveUp]);
+    const n = await Promise.race([job(() => wanted), gaveUp]);
     // The band announces it first; closeBand() then writes the footer line.
-    doneStat.value = `${n} points`;
+    doneStat.value = `${n.toLocaleString()} ${n === 1 ? unit.replace(/s$/, '') : unit}`;
     traceOk = n > 0;
     if (!traceOk) say('Highlight complete', false, doneStat.value);
   } catch (e: any) {
-    const text = String(e?.message || '');
-    say(/HTTP error 0|Network or CORS|Failed to fetch/i.test(text)
-      ? 'The server did not answer, so nothing was marked. Try again in a moment.'
-      : text || 'Could not mark that stretch.', true);
+    if (passSomaAsk && e instanceof NeedsSomaSide) asked = e;
+    else {
+      const text = String(e?.message || '');
+      say(/HTTP error 0|Network or CORS|Failed to fetch/i.test(text)
+        ? 'The server did not answer, so nothing was marked. Try again in a moment.'
+        : text || 'Could not mark that stretch.', true);
+    }
   } finally {
     wanted = false;
     stopTrace = null;
     clearTimeout(timer);
     busy.value = false;
-    clearStartMarker();
+    if (!asked) clearStartMarker();
     refresh();
   }
+  if (asked) throw asked;
 }
 
 function isTypingTarget(e: Event): boolean {
@@ -257,7 +319,8 @@ function isTypingTarget(e: Event): boolean {
 }
 function onKeyDown(e: KeyboardEvent) {
   if (e.key === 'Control' || e.key === 'Meta') { ctrlHeld.value = true; return; }
-  if (isTypingTarget(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+  // Shift+H opens and closes the mode (ExtensionBar): not a held H.
+  if (isTypingTarget(e) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
   if (e.key === 'h' || e.key === 'H') {
     e.stopImmediatePropagation();
     e.preventDefault();
@@ -304,11 +367,12 @@ function onContextMenu(e: MouseEvent) {
 /** Drop the start point of the mark being made; finished marks are untouched. */
 function cancelPick() {
   first.value = null;
+  branchWay.value = null;
   clearStartMarker();
   say('Cancelled. Your finished marks are untouched.');
 }
 function undo() {
-  if (first.value) { first.value = null; clearStartMarker(); say('Start point cleared.'); return; }
+  if (first.value) { first.value = null; branchWay.value = null; clearStartMarker(); say('Start point cleared.'); return; }
   say(undoHighlight() ? 'Removed the last mark.' : 'Nothing to undo.');
   refresh();
 }
@@ -372,6 +436,10 @@ onBeforeUnmount(() => {
                 title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel</button>
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--sm" type="button" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop</button>
+        <template v-if="first && !busy && !branchWay">
+          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
+          <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
+        </template>
         <span class="nge-hl-slim-step" :class="{ 'nge-hl-bad': messageBad }" :title="slimStep">{{ busy ? 'Tracing' : slimStep }}</span>
         <button class="nge-hl-btn nge-hl-btn--sm" type="button" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
         <span class="nge-hl-count" :title="`${markCount} ${markCount === 1 ? 'mark' : 'marks'}`">{{ markCount }}</span>
@@ -386,8 +454,8 @@ onBeforeUnmount(() => {
         <button class="nge-hl-close" aria-label="Close" @click="emit('hide')">×</button>
       </div>
       <p class="nge-hl-how">
-        Mark a stretch of a cell you have checked: <kbd>Ctrl</kbd> + click where it starts, then where it ends.
-        Turn and move the view freely in between. The surface of that stretch takes the color.
+        <kbd>Ctrl</kbd> + click where a checked stretch starts, then where it ends.
+        After the first click you can also mark <b>to the soma</b> or <b>beyond</b>.
       </p>
       <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
         <span
@@ -448,7 +516,7 @@ onBeforeUnmount(() => {
            count or two, quietly (Ames 2026-10-02). -->
       <div class="nge-hl-status">
         <span v-if="message" :class="{ 'nge-hl-bad': messageBad }">{{ message }}</span>
-        <span v-else-if="!busy && !bandOn" class="nge-hl-dim">{{ first ? 'Start placed. Ctrl + click the end.' : 'No point placed yet.' }}</span>
+        <span v-else-if="!busy && !bandOn" class="nge-hl-dim">{{ branchWay ? '' : first ? 'Start placed. Ctrl + click the end.' : 'No point placed yet.' }}</span>
         <span v-if="stat && !busy" class="nge-hl-stat">{{ stat }}</span>
         <span class="nge-hl-count">{{ markCount }} {{ markCount === 1 ? 'mark' : 'marks' }}</span>
       </div>
@@ -457,6 +525,20 @@ onBeforeUnmount(() => {
       <div class="nge-hl-loader-wrap" :class="{ 'nge-hl-loader-wrap--on': bandOn, 'nge-hl-loader-wrap--done': bandDone }" :aria-hidden="bandOn ? 'false' : 'true'">
         <canvas v-if="bandOn" ref="loaderEl" class="nge-hl-loader"></canvas>
         <span v-if="bandOn" class="nge-hl-loader-label"><template v-if="!bandDone">Tracing path <b>{{ traceSecs }}s</b></template><template v-else>Highlight complete</template></span>
+      </div>
+      <!-- With one point placed: the way back to the soma, or everything
+           beyond the point (Krzysztof Kruk's idea, 2026-10-09). -->
+      <div v-if="first && !busy && !branchWay" class="nge-hl-branch">
+        <span class="nge-hl-branch-label">From here</span>
+        <button class="nge-hl-btn" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
+        <button class="nge-hl-btn" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
+      </div>
+      <!-- The soma is not on record: one clear ask, lit as it arrives so the
+           eye goes to it (Ames 2026-10-10). -->
+      <div v-if="first && !busy && branchWay" ref="askEl" class="nge-hl-ask" role="status"
+           title="This cell's soma is not on record yet. Your click is kept as a point in a Soma layer, so you are asked once per cell.">
+        <span class="nge-hl-ask-gem" aria-hidden="true"></span>
+        <span><kbd>Ctrl</kbd> + click the soma</span>
       </div>
     </div>
   </Teleport>
@@ -547,7 +629,7 @@ onBeforeUnmount(() => {
 .nge-hl-panel--slim .nge-hl-loader-wrap--on { margin: 7px -10px -7px; min-width: 268px; }
 .nge-hl-close { margin-left: auto; background: none; border: none; color: rgba(255, 255, 255, 0.55); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-hl-close:hover { color: #fff; }
-.nge-hl-how { margin: 8px 0 10px; font-size: 12px; line-height: 1.45; color: rgba(220, 230, 245, 0.72); }
+.nge-hl-how { margin: 8px 0 10px; font-size: 13px; line-height: 1.45; color: rgba(220, 230, 245, 0.72); }
 .nge-hl-how kbd { padding: 0 5px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.08); font: 600 11px 'JetBrains Mono', 'Consolas', monospace; color: #fff; }
 .nge-hl-styles { display: flex; gap: 6px; flex-wrap: wrap; }
 .nge-hl-style {
@@ -570,6 +652,33 @@ onBeforeUnmount(() => {
 .nge-hl-add-name:focus { border-color: rgba(124, 255, 178, 0.6); }
 .nge-hl-add-error { flex-basis: 100%; font-size: 11px; color: #ff9aa8; }
 .nge-hl-actions { display: flex; gap: 6px; margin-top: 10px; }
+.nge-hl-branch { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.nge-hl-branch-label { flex: 1; font-size: 13px; color: #b9c8da; }
+.nge-hl-branch .nge-hl-btn { font-size: 13px; }
+.nge-hl-ask {
+  position: relative; display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 9px 12px;
+  border-radius: 8px; font-size: 14px; font-weight: 600; color: #ffe9a8;
+  background: rgba(255, 210, 77, 0.09); border: 1px solid rgba(255, 210, 77, 0.45);
+  animation: nge-hl-ask-in 0.42s cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
+}
+.nge-hl-ask kbd { padding: 0 5px; border-radius: 4px; border: 1px solid rgba(255, 233, 168, 0.4); background: rgba(255, 210, 77, 0.14); font: 600 12px 'JetBrains Mono', 'Consolas', monospace; color: #fff; }
+/* A small gem, the soma marker's shape, that settles after one pulse. */
+.nge-hl-ask-gem {
+  flex: 0 0 auto; width: 12px; height: 12px; transform: rotate(45deg); border-radius: 2px;
+  background: #ffd24d; box-shadow: 0 0 10px rgba(255, 210, 77, 0.8);
+  animation: nge-hl-ask-gem 0.9s ease-out both;
+}
+@keyframes nge-hl-ask-in {
+  0% { opacity: 0; transform: translateY(6px) scale(0.96); box-shadow: 0 0 0 rgba(255, 210, 77, 0); }
+  60% { opacity: 1; box-shadow: 0 0 22px rgba(255, 210, 77, 0.45); }
+  100% { opacity: 1; transform: none; box-shadow: 0 0 0 rgba(255, 210, 77, 0); }
+}
+@keyframes nge-hl-ask-gem {
+  0% { transform: rotate(45deg) scale(0.2); opacity: 0; }
+  45% { transform: rotate(225deg) scale(1.5); opacity: 1; }
+  100% { transform: rotate(405deg) scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .nge-hl-ask, .nge-hl-ask-gem { animation: none; } }
 .nge-hl-btn {
   padding: 5px 10px; border-radius: 7px; cursor: pointer; font: 600 11.5px 'Inter', sans-serif;
   color: #cfe6ff; background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(74, 158, 255, 0.3);
@@ -596,27 +705,27 @@ onBeforeUnmount(() => {
   --sw: 124 255 178;                       /* the box's green while marks show */
   position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; flex: 0 0 auto;
   border-radius: 3px; overflow: hidden;
-  background: linear-gradient(180deg, rgba(12, 22, 34, 0.92), rgba(4, 9, 18, 0.92));
-  border: 1px solid rgb(var(--sw) / 0.3);
-  box-shadow: inset 0 1px 0 rgba(196, 228, 255, 0.08);
+  background: transparent;
+  /* Quiet (Ames 2026-10-10: "too bold"): a setting, not a call to action. */
+  border: 1px solid rgb(var(--sw) / 0.16);
   transition: border-color 0.2s ease;
 }
 .nge-hl-switch[data-on="hide"] { --sw: 150 178 214; }   /* hidden is a quieter, cooler state */
 .nge-hl-switch::after {
   content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 50%; pointer-events: none;
-  background: rgb(var(--sw) / 0.16);
-  box-shadow: inset 0 0 12px rgb(var(--sw) / 0.38), inset 0 -2px 0 rgb(var(--sw) / 0.95);
+  background: rgb(var(--sw) / 0.08);
+  box-shadow: inset 0 -1px 0 rgb(var(--sw) / 0.55);
   transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.2s ease, box-shadow 0.2s ease;
 }
 .nge-hl-switch[data-on="hide"]::after { transform: translateX(100%); }
 .nge-hl-switch-opt {
-  position: relative; z-index: 1; min-width: 54px; padding: 5px 12px 6px; border: 0; cursor: pointer; background: transparent;
-  font: 600 9.5px 'Orbitron', 'Rajdhani', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
-  color: rgba(160, 195, 230, 0.5);
-  transition: color 0.15s ease, text-shadow 0.15s ease;
+  position: relative; z-index: 1; min-width: 42px; padding: 3px 9px 4px; border: 0; cursor: pointer; background: transparent;
+  font: 500 8.5px 'Orbitron', 'Rajdhani', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(160, 195, 230, 0.42);
+  transition: color 0.15s ease;
 }
 .nge-hl-switch-opt:hover, .nge-hl-switch-opt:focus-visible { color: rgba(214, 232, 250, 0.92); }
-.nge-hl-switch-opt[aria-checked="true"] { color: #f1fff7; text-shadow: 0 0 8px rgb(var(--sw) / 0.75); }
+.nge-hl-switch-opt[aria-checked="true"] { color: rgba(222, 240, 232, 0.86); }
 .nge-hl-switch-opt:focus-visible { outline: 1px solid rgb(var(--sw) / 0.9); outline-offset: -2px; }
 .nge-hl-switch-opt:active { transform: translateY(1px); }
 @media (prefers-reduced-motion: reduce) { .nge-hl-switch, .nge-hl-switch::after, .nge-hl-switch-opt { transition: none; } }

@@ -216,6 +216,13 @@ onMounted(() => {
       e.stopImmediatePropagation();
       showFlightMode.value = !showFlightMode.value;
     }
+    // Shift+H: Highlight mode on and off (Ames 2026-10-10). Plain H is held
+    // inside the mode to place a point, so the toggle takes the shifted key.
+    if (!typing && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'H' || e.key === 'h')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!highlightOff.value) { showHighlight.value = !showHighlight.value; if (showHighlight.value) sprayHighlightIcon(); }
+    }
     // The other way in is the old legend: up up down down left right left
     // right B A. Flight mode is an easter egg, it is FOUND, not labeled.
     if (!typing && !showFlightMode.value) {

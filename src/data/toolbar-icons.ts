@@ -110,7 +110,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)' },
   { id: 'merge',       emoji: '🔗', svg: MERGE_SVG,       label: 'Merge Mode (M)' },
   { id: 'findPath',    emoji: '🛤️', svg: FINDPATH_SVG,    label: 'Find Path (F)' },
-  { id: 'highlight',   emoji: '🖍️', svg: HIGHLIGHT_SVG,   label: 'Highlight Mode: mark what you have checked' },
+  { id: 'highlight',   emoji: '🖍️', svg: HIGHLIGHT_SVG,   label: 'Highlight Mode (Shift+H): mark what you have checked' },
   { id: 'layers',      emoji: '🗂️', svg: LAYERS_SVG,      label: 'Layer side panel' },
   { id: 'recap',       emoji: '📊', svg: RECAP_SVG,       label: 'Your Week in Science' },
   { id: 'leaderboard', emoji: '🏆', svg: LEADERBOARD_SVG, label: 'Leaderboard' },

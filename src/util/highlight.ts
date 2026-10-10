@@ -7,9 +7,10 @@
  */
 import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
-import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
+import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
+import { branchSegments, nearestPiece, type BranchGraph, type BranchWay } from './branch_tree';
 import { currentSegLayer } from '../datasets';
-import { useUserPreferencesStore } from '../store';
+import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
 
@@ -195,10 +196,24 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
   const layer = currentSegLayer()?.layer;
   if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
   if (a.root !== b.root) throw new Error('Those two points are on different cells. Pick both on the same cell.');
-  const nm = await ngeGrapheneFindPath(layer, a.selection, b.selection);
+  let nm: number[][] | null = null;
+  let pathError: any = null;
+  try { nm = await ngeGrapheneFindPath(layer, a.selection, b.selection); } catch (e) { pathError = e; }
   // The panel gave up waiting (timed out or cancelled): draw nothing late.
   if (!stillWanted()) return 0;
-  if (!nm || nm.length < 2) throw new Error('No path came back between those points. Try two points farther apart.');
+  if (!nm || nm.length < 2) {
+    // The path service fails outright on some pairs of points (it answers
+    // with a server error, seen 2026-10-10 on the retina). The cell's branch
+    // map can still join them, so the mark is made from that instead.
+    try {
+      return await addBranchHighlight(a, 'toward', style, b, stillWanted, '');
+    } catch (e) {
+      console.warn('[highlight] path failed, and so did the branch map:', pathError, e);
+      throw new Error(pathError && !/HTTP error 0|Network|Failed to fetch/i.test(String(pathError?.message))
+        ? 'The server could not trace a path between those points. Try two points a little farther apart.'
+        : (pathError?.message || 'No path came back between those points. Try two points farther apart.'));
+    }
+  }
   // Annotation layers live in the viewer's own coordinates.
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
   const pts = nm.map(p => Float32Array.from(p.map((v, i) => v / (scalesNm[i] || 1))));
@@ -230,6 +245,162 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
   }
   setLatestMark(mark);
   return pts.length;
+}
+
+// ── To soma, and Beyond (Krzysztof Kruk 2026-10-09) ─────────────────────
+// "Select a centroid and click a button to highlight all its descendants or
+// highlight all the ancestors", as in the first EyeWire. One click on the
+// cell, then: To soma marks the way back to the soma; Beyond marks every
+// branch on the far side of the click. See branch_tree.ts for how "which
+// side" is decided, and where it can be wrong.
+
+/** Every soma point on record, in viewer coordinates: the points in a layer
+ *  named Soma (a Cell Library cell's starting view has one, and a soma you
+ *  click for Highlight is kept there), and the cell's row in the library.
+ *  A view can hold several cells, so the one that belongs to a cell is
+ *  chosen later, by which lies on it. */
+function knownSomas(root: string): number[][] {
+  const out: number[][] = [];
+  for (const managed of viewerOf()?.layerManager?.managedLayers ?? []) {
+    if (managed.archived || !SOMA_LAYER_NAME.test(String(managed.name))) continue;
+    try {
+      for (const ann of managed.layer?.localAnnotations ?? []) {
+        const pt = ann.point ?? ann.pointA;
+        if (!pt || pt.length < 3) continue;
+        const p = Array.from(pt as ArrayLike<number>).slice(0, 3);
+        if (p.every(Number.isFinite)) out.push(p);
+      }
+    } catch { /* not loaded */ }
+  }
+  try {
+    const task = useProofreadingBackendStore().tasks.find((t: any) => t.segment_id === root || t.final_segment_id === root);
+    const nums = String(task?.soma_coords || task?.nucleus_coords || '').match(/-?\d+(?:\.\d+)?/g)?.map(Number);
+    if (nums && nums.length === 3 && nums.every(Number.isFinite)) out.push(nums);
+  } catch { /* no library */ }
+  return out;
+}
+
+const SOMA_LAYER_NAME = /^soma/i;
+const SOMA_LAYER = 'Soma';
+/**
+ * Keep a soma the player clicked, so the next To soma or Beyond on this cell
+ * does not ask again (Ames 2026-10-10). It goes where a Cell Library cell's
+ * soma already lives: a point in the view's Soma layer. So it can be seen,
+ * moved or deleted like any annotation, it is saved and shared with the
+ * view, and it still fits the cell after an edit changes the cell's id.
+ */
+function rememberSoma(pick: Pick, scalesNm: number[]) {
+  try {
+    const viewer = viewerOf();
+    const near = knownSomas('').some(p => Math.hypot(...[0, 1, 2].map(i => (p[i] - pick.global[i]) * (scalesNm[i] || 1))) < 2000);
+    if (near) return;   // already there
+    const description = `Soma of cell ${pick.root} (clicked for Highlight)`;
+    const managed = viewer.layerManager.managedLayers.find((l: any) => !l.archived && SOMA_LAYER_NAME.test(String(l.name)));
+    if (!managed) {
+      viewer.layerSpecification.add(makeLayer(viewer.layerSpecification, SOMA_LAYER, {
+        type: 'annotation', source: 'local://annotations', annotationColor: '#ffd24d',
+        annotations: [{ type: 'point', id: `soma_${Date.now().toString(36)}`, point: pick.global, description }],
+      }));
+      return;
+    }
+    managed.layer?.localAnnotations?.add({
+      id: `soma_${Date.now().toString(36)}`, type: 0 /* POINT */, point: Float32Array.from(pick.global), properties: [], description,
+    }, true).dispose();
+  } catch (e) { console.warn('[highlight] could not keep the soma point:', e); }
+}
+
+/** A soma point farther than this from every piece of the cell is some
+ *  other cell's soma (or an old one): not used. */
+const SOMA_REACH_NM = 25000;
+/** More strokes than this is a whole large cell: say so instead of drawing. */
+const MAX_BRANCH_STROKES = 6000;
+
+let graphCache: { root: string; at: number; graph: BranchGraph } | null = null;
+async function branchGraphOf(layer: SegmentationUserLayer, root: string): Promise<BranchGraph> {
+  // A cell's id changes with every edit, so a kept graph is never a stale one.
+  if (graphCache && graphCache.root === root && Date.now() - graphCache.at < 5 * 60 * 1000) return graphCache.graph;
+  const graph = await ngeGrapheneBranchGraph(layer, root);
+  if (!graph.edges.length && !graph.points.size) throw new Error('The server has no branch map for this cell.');
+  graphCache = { root, at: Date.now(), graph };
+  return graph;
+}
+
+/** Thrown when the soma is not known: the panel asks for one more click. */
+export class NeedsSomaSide extends Error {
+  constructor() { super("Now Ctrl + click this cell's soma."); }
+}
+
+/**
+ * Mark from one pick toward the soma, or everything beyond it.
+ * `somaSide` is a second pick on the soma side; leave it out to use the
+ * cell's known soma (NeedsSomaSide is thrown when there is none).
+ * Returns how many pieces of the cell were marked.
+ */
+export async function addBranchHighlight(a: Pick, way: BranchWay, style: HighlightStyle, somaSide?: Pick,
+                                         stillWanted: () => boolean = () => true, label?: string): Promise<number> {
+  const viewer = viewerOf();
+  const layer = currentSegLayer()?.layer;
+  if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
+  if (somaSide && somaSide.root !== a.root) throw new Error('Those two points are on different cells. Pick both on the same cell.');
+  const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
+  const toNm = (g: ArrayLike<number>) => [0, 1, 2].map(i => g[i] * (scalesNm[i] || 1));
+  const fromNm = (p: number[]) => Float32Array.from(p.map((v, i) => v / (scalesNm[i] || 1)));
+
+  const somas = somaSide ? [] : knownSomas(a.root);
+  if (!somaSide && !somas.length) throw new NeedsSomaSide();
+  const graph = await branchGraphOf(layer, a.root);
+  if (!stillWanted()) return 0;
+
+  // The piece each point is in: asked of the server, else the nearest one.
+  const pieceAt = async (pick: Pick) => {
+    const id = await ngeGraphenePieceOf(layer, pick.selection);
+    if (id && (graph.points.has(id) || graph.edges.some(e => e[0] === id || e[1] === id))) return id;
+    return nearestPiece(graph, toNm(pick.global))?.id;
+  };
+  const from = await pieceAt(a);
+  let ref: string | undefined;
+  let refNm: number[] | undefined;
+  if (somaSide) {
+    ref = await pieceAt(somaSide);
+    refNm = toNm(somaSide.global);
+  } else {
+    // Of the somas on record, the one that lies on this cell.
+    let best: { id: string; distNm: number; nm: number[] } | undefined;
+    for (const p of somas) {
+      const near = nearestPiece(graph, toNm(p));
+      if (near && (!best || near.distNm < best.distNm)) best = { ...near, nm: toNm(p) };
+    }
+    // None of them is on this cell: ask for a click instead.
+    if (!best || best.distNm > SOMA_REACH_NM) throw new NeedsSomaSide();
+    ref = best.id;
+    refNm = best.nm;
+  }
+  if (!stillWanted()) return 0;
+  if (!from || !ref) throw new Error('That point is not on a mapped part of this cell.');
+
+  // A plain two click mark that fell back to the branch map, with both clicks
+  // in the same small piece of the cell: the stretch is the line between them.
+  const direct = label !== undefined && from === ref && !!refNm;
+  const { segments, pieces } = direct
+    ? { segments: [[toNm(a.global), refNm!]] as [number[], number[]][], pieces: 1 }
+    : branchSegments(graph, from, ref, way, toNm(a.global), way === 'toward' ? refNm : undefined);
+  if (segments.length > MAX_BRANCH_STROKES) {
+    throw new Error(`That is ${pieces.toLocaleString()} pieces of the cell, too much to mark at once. Pick a point farther out along the branch.`);
+  }
+  const src = await strokeSource(style);
+  const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
+  const what = label ?? (way === 'toward' ? 'to soma' : 'beyond');
+  segments.forEach(([p, q], i) => {
+    src.add({
+      id: `${mark}_${i}`, type: LINE, pointA: fromNm(p), pointB: fromNm(q), properties: [],
+      description: i === 0 ? `${style.label}${what ? ', ' + what : ''}: cell ${a.root}` : undefined,
+      relatedSegments: undefined,
+    }, true).dispose();
+  });
+  setLatestMark(mark);
+  // A soma that was clicked for this is kept for next time.
+  if (somaSide && label === undefined) rememberSoma(somaSide, scalesNm);
+  return pieces;
 }
 
 // ── The newest mark stands out (Annkri 2026-10-04) ──────────────────────
